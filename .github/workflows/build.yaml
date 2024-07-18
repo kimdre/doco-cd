@@ -6,6 +6,9 @@ on:
       - main
     tags:
       - 'v*'
+  pull_request:
+    branches:
+        - main
 
 jobs:
   build:
@@ -38,6 +41,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=ref,event=branch
+            type=ref,event=pr
             
       - name: Build and push
         uses: docker/build-push-action@v5
