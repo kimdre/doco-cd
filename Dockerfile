@@ -6,11 +6,11 @@ FROM golang:1.22 AS build-stage
 WORKDIR /app
 
 # Download Go modules
-COPY go.mod go.sum ./
+COPY src/go.mod src/go.sum ./
 RUN go mod download
 
 # Copy source code
-COPY *.go ./
+COPY src/*.go ./
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux go build -o /webhook-app
