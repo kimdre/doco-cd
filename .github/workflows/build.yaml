@@ -37,7 +37,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            type=ref,ref=branch
+            type=ref,event=branch
             
       - name: Build and push
         uses: docker/build-push-action@v5
