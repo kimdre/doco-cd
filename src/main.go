@@ -37,7 +37,6 @@ func main() {
 			}
 		}
 
-		fmt.Printf("Received %+v", payload)
 		switch payload.(type) {
 
 		case github.PushPayload:
@@ -54,6 +53,14 @@ func main() {
 			pullRequest := payload.(github.PullRequestPayload)
 			// Do whatever you want from here...
 			fmt.Printf("%+v", pullRequest)
+
+		case github.PingPayload:
+			ping := payload.(github.PingPayload)
+			// Do whatever you want from here...
+			fmt.Printf("%+v", ping)
+
+		default:
+			fmt.Println("Event not supported")
 		}
 	})
 	fmt.Println("Server is running on port " + httpPort)
