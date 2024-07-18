@@ -25,8 +25,7 @@ WORKDIR /
 
 COPY --from=build-stage /webhook-app /webhook-app
 
-ENV HTTP_PORT=8080 \
-    GITHUB_WEBHOOK_SECRET=""
+ENV HTTP_PORT=8080
 
 EXPOSE $HTTP_PORT
 
