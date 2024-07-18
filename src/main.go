@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/go-playground/webhooks/v6/github"
-	"github.com/kimdre/docker-compose-webhook/utils"
 	"net/http"
 	"os"
 )
@@ -45,8 +44,8 @@ func main() {
 			// DO whatever you want from here
 			fmt.Printf("%+v", push)
 
-			if !utils.DirectoryExists(fmt.Sprintf("/tmp/%v", push.Repository.ID)) {
-				err := utils.CloneRepository(
+			if !DirectoryExists(fmt.Sprintf("/tmp/%v", push.Repository.ID)) {
+				err := CloneRepository(
 					push.Repository.CloneURL,
 					fmt.Sprintf("/tmp/%v", push.Repository.ID),
 					push.Ref,
