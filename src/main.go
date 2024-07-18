@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/go-playground/webhooks/v6/github"
+	"github.com/kimdre/docker-compose-webhook/utils"
 	"net/http"
 	"os"
 )
@@ -33,7 +34,6 @@ func main() {
 		if err != nil {
 			if errors.Is(err, github.ErrEventNotFound) {
 				// ok event wasn't one of the ones asked to be parsed
-				fmt.Println("nope")
 			}
 		}
 
@@ -45,17 +45,17 @@ func main() {
 			// DO whatever you want from here
 			fmt.Printf("%+v", push)
 
-		case github.ReleasePayload:
-			fmt.Println("Release event received")
-			release := payload.(github.ReleasePayload)
-			// Do whatever you want from here...
-			fmt.Printf("%+v", release)
-
-		case github.PullRequestPayload:
-			fmt.Println("Pull request event received")
-			pullRequest := payload.(github.PullRequestPayload)
-			// Do whatever you want from here...
-			fmt.Printf("%+v", pullRequest)
+			if !utils.DirectoryExists(fmt.Sprintf("/tmp/%v", push.Repository.ID)) {
+				err := utils.CloneRepository(
+					push.Repository.CloneURL,
+					fmt.Sprintf("/tmp/%v", push.Repository.ID),
+					push.Ref,
+					push.Repository.Private,
+				)
+				if err != nil {
+					return
+				}
+			}
 
 		case github.PingPayload:
 			fmt.Println("Ping event received")
