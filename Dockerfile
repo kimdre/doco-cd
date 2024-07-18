@@ -25,7 +25,7 @@ WORKDIR /
 
 COPY --from=build-stage /webhook-app /webhook-app
 
-ENV HTTP_PORT=8080
+ENV HTTP_PORT=80
 
 USER nonroot:nonroot
 
