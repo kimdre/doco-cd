@@ -40,21 +40,25 @@ func main() {
 		switch payload.(type) {
 
 		case github.PushPayload:
+			fmt.Println("Push event received")
 			push := payload.(github.PushPayload)
 			// DO whatever you want from here
 			fmt.Printf("%+v", push)
 
 		case github.ReleasePayload:
+			fmt.Println("Release event received")
 			release := payload.(github.ReleasePayload)
 			// Do whatever you want from here...
 			fmt.Printf("%+v", release)
 
 		case github.PullRequestPayload:
+			fmt.Println("Pull request event received")
 			pullRequest := payload.(github.PullRequestPayload)
 			// Do whatever you want from here...
 			fmt.Printf("%+v", pullRequest)
 
 		case github.PingPayload:
+			fmt.Println("Ping event received")
 			ping := payload.(github.PingPayload)
 			// Do whatever you want from here...
 			fmt.Printf("%+v", ping)
