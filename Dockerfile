@@ -27,8 +27,6 @@ COPY --from=build-stage /webhook-app /webhook-app
 
 ENV HTTP_PORT=8080
 
-EXPOSE $HTTP_PORT
-
 USER nonroot:nonroot
 
 # Run
