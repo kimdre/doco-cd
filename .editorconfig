@@ -3,11 +3,11 @@ root = true
 [*]
 charset = utf-8
 end_of_line = lf
-indent_size = 4
+indent_size = 2
 indent_style = space
 insert_final_newline = false
 max_line_length = 120
-tab_width = 4
+tab_width = 2
 
 [{*.bash,*.sh,*.zsh}]
 indent_size = 2
@@ -16,5 +16,5 @@ tab_width = 2
 [{*.go,*.go2}]
 indent_style = tab
 
-[{*.yaml,*.yml,*playbook.yaml,*playbook.yml,main.yaml,main.yml}]
+[{*.yaml,*.yml}]
 indent_size = 2
