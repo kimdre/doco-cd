@@ -14,7 +14,17 @@ const (
 
 func main() {
 	githubWebhookSecret := os.Getenv("GITHUB_WEBHOOK_SECRET")
-	port := os.Getenv("PORT")
+	httpPort := os.Getenv("HTTP_PORT")
+
+	if githubWebhookSecret == "" {
+		fmt.Println("GITHUB_WEBHOOK_SECRET is required")
+		return
+	}
+
+	if httpPort == "" {
+		fmt.Println("HTTP_PORT is required")
+		return
+	}
 
 	hook, _ := github.New(github.Options.Secret(githubWebhookSecret))
 
@@ -46,8 +56,8 @@ func main() {
 			fmt.Printf("%+v", pullRequest)
 		}
 	})
-	fmt.Println("Server is running on port " + port)
-	err := http.ListenAndServe(":"+port, nil)
+	fmt.Println("Server is running on port " + httpPort)
+	err := http.ListenAndServe(":"+httpPort, nil)
 	if err != nil {
 		return
 	}
