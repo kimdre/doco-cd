@@ -55,6 +55,7 @@ func main() {
 
 				if c.GitUsername == "" || c.GitPassword == "" {
 					log.Error("Missing username or password for private repository")
+					return
 				}
 
 				auth = &gitHttp.BasicAuth{
