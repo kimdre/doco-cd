@@ -3,8 +3,9 @@ package git
 import (
 	"errors"
 	"fmt"
-	"github.com/go-git/go-git/v5/plumbing/transport"
 	"os"
+
+	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/kimdre/docker-compose-webhook/internal/logger"
 

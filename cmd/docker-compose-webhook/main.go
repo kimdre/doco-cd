@@ -3,10 +3,11 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/go-git/go-git/v5/plumbing/transport"
 	"log/slog"
 	"net/http"
 	"os"
+
+	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/kimdre/docker-compose-webhook/internal/config"
 	"github.com/kimdre/docker-compose-webhook/internal/git"
@@ -48,8 +49,10 @@ func main() {
 			repoPath := "/tmp/" + event.Repository.Name
 
 			var auth transport.AuthMethod = nil
+
 			if event.Repository.Private {
 				log.Info("Repository is private")
+
 				if c.GitUsername == "" || c.GitPassword == "" {
 					log.Error("Missing username or password for private repository")
 				}
