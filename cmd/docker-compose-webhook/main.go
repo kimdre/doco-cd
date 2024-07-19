@@ -3,9 +3,10 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/go-playground/webhooks/v6/github"
 	"net/http"
 	"os"
+
+	"github.com/go-playground/webhooks/v6/github"
 )
 
 const (
@@ -13,16 +14,18 @@ const (
 )
 
 func main() {
+	log := GetLogger()
+
 	githubWebhookSecret := os.Getenv("GITHUB_WEBHOOK_SECRET")
 	httpPort := os.Getenv("HTTP_PORT")
 
 	if githubWebhookSecret == "" {
-		fmt.Println("GITHUB_WEBHOOK_SECRET is required")
+		log.Error("GITHUB_WEBHOOK_SECRET is required")
 		return
 	}
 
 	if httpPort == "" {
-		fmt.Println("HTTP_PORT is required")
+		log.Error("HTTP_PORT is required")
 		return
 	}
 
@@ -33,40 +36,40 @@ func main() {
 		if err != nil {
 			if errors.Is(err, github.ErrEventNotFound) {
 				// ok event wasn't one of the ones asked to be parsed
+				log.Error("Event not found")
 			}
 		}
 
-		switch payload.(type) {
-
+		switch event := payload.(type) {
 		case github.PushPayload:
-			fmt.Println("Push event received")
-			push := payload.(github.PushPayload)
-			// DO whatever you want from here
-			fmt.Printf("%+v", push)
+			log.Info("Push event received for " + event.Repository.FullName)
 
-			if !DirectoryExists(fmt.Sprintf("/tmp/%v", push.Repository.ID)) {
-				err := CloneRepository(
-					push.Repository.CloneURL,
-					fmt.Sprintf("/tmp/%v", push.Repository.ID),
-					push.Ref,
-					push.Repository.Private,
+			if !DirectoryExists(fmt.Sprintf("/tmp/%v", event.Repository.ID)) {
+				repo, err := CloneRepository(
+					event.Repository.CloneURL,
+					event.Ref,
+					event.Repository.Private,
 				)
 				if err != nil {
 					return
 				}
+
+				fmt.Println(repo)
 			}
 
 		case github.PingPayload:
-			fmt.Println("Ping event received")
+			log.Info("Ping event received")
+
 			ping := payload.(github.PingPayload)
 			// Do whatever you want from here...
 			fmt.Printf("%+v", ping)
 
 		default:
-			fmt.Println("Event not supported")
+			log.Warn("Event not supported")
 		}
 	})
-	fmt.Println("Server is running on port " + httpPort)
+	log.Info("Server listening on port " + httpPort)
+
 	err := http.ListenAndServe(":"+httpPort, nil)
 	if err != nil {
 		return
