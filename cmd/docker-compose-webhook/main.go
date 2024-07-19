@@ -3,8 +3,16 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/go-git/go-git/v5/plumbing/transport"
+	"log/slog"
 	"net/http"
 	"os"
+
+	"github.com/kimdre/docker-compose-webhook/internal/config"
+	"github.com/kimdre/docker-compose-webhook/internal/git"
+	"github.com/kimdre/docker-compose-webhook/internal/logger"
+
+	gitHttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 
 	"github.com/go-playground/webhooks/v6/github"
 )
@@ -14,22 +22,15 @@ const (
 )
 
 func main() {
-	log := GetLogger()
+	log := logger.GetLogger()
 
-	githubWebhookSecret := os.Getenv("GITHUB_WEBHOOK_SECRET")
-	httpPort := os.Getenv("HTTP_PORT")
-
-	if githubWebhookSecret == "" {
-		log.Error("GITHUB_WEBHOOK_SECRET is required")
-		return
+	c, err := config.GetAppConfig()
+	if err != nil {
+		log.Error(fmt.Sprintf("failed to parse environment variables: %+v", err))
+		os.Exit(1)
 	}
 
-	if httpPort == "" {
-		log.Error("HTTP_PORT is required")
-		return
-	}
-
-	hook, _ := github.New(github.Options.Secret(githubWebhookSecret))
+	hook, _ := github.New(github.Options.Secret(c.GithubWebhookSecret))
 
 	http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 		payload, err := hook.Parse(r, github.PushEvent, github.PullRequestEvent)
@@ -42,19 +43,49 @@ func main() {
 
 		switch event := payload.(type) {
 		case github.PushPayload:
-			log.Info("Push event received for " + event.Repository.FullName)
+			log.Info("Push event received for repository " + event.Repository.FullName + " (" + event.Ref + ")")
 
-			if !DirectoryExists(fmt.Sprintf("/tmp/%v", event.Repository.ID)) {
-				repo, err := CloneRepository(
-					event.Repository.CloneURL,
-					event.Ref,
-					event.Repository.Private,
-				)
-				if err != nil {
-					return
+			repoPath := "/tmp/" + event.Repository.Name
+
+			var auth transport.AuthMethod = nil
+			if event.Repository.Private {
+				log.Info("Repository is private")
+				if c.GitUsername == "" || c.GitPassword == "" {
+					log.Error("Missing username or password for private repository")
 				}
 
-				fmt.Println(repo)
+				auth = &gitHttp.BasicAuth{
+					Username: c.GitUsername,
+					Password: c.GitPassword,
+				}
+			}
+
+			// if !DirectoryExists(repoPath) {
+			repo, err := git.CloneRepository(
+				event.Repository.CloneURL,
+				event.Ref,
+				auth,
+			)
+			if err != nil {
+				return
+			}
+			//}
+
+			log.Info("Repository cloned successfully", slog.String("path", repoPath))
+
+			// Show files in the repository
+			worktree, err := repo.Worktree()
+			if err != nil {
+				return
+			}
+
+			dir, err := worktree.Filesystem.ReadDir("/")
+			if err != nil {
+				return
+			}
+
+			for _, file := range dir {
+				log.Info(fmt.Sprintf("File: %s, IsDir: %t", file.Name(), file.IsDir()))
 			}
 
 		case github.PingPayload:
@@ -62,15 +93,15 @@ func main() {
 
 			ping := payload.(github.PingPayload)
 			// Do whatever you want from here...
-			fmt.Printf("%+v", ping)
+			log.Info("Ping event received for repository " + ping.Repository.FullName)
 
 		default:
 			log.Warn("Event not supported")
 		}
 	})
-	log.Info("Server listening on port " + httpPort)
+	log.Info("Server listening on port " + c.HttpPort)
 
-	err := http.ListenAndServe(":"+httpPort, nil)
+	err = http.ListenAndServe(":"+c.HttpPort, nil)
 	if err != nil {
 		return
 	}

@@ -1,5 +1,4 @@
 # syntax=docker/dockerfile:1
-
 FROM golang:1.22 AS build-stage
 
 # Set destination for COPY
@@ -10,24 +9,25 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # Copy source code
-COPY cmd ./
+COPY . ./
 
 # Build
-RUN CGO_ENABLED=0 GOOS=linux go build -o /webhook-app ./...
+RUN CGO_ENABLED=0 GOOS=linux go build -o / ./...
 
 # Run the tests in the container
 FROM build-stage AS run-test-stage
+
 RUN go test -v ./...
 
-FROM gcr.io/distroless/base-debian11 AS build-release-stage
+FROM gcr.io/distroless/base-debian12 AS build-release-stage
 
 WORKDIR /
 
-COPY --from=build-stage /webhook-app /webhook-app
+COPY --from=build-stage /docker-compose-webhook /docker-compose-webhook
 
 ENV HTTP_PORT=80
 
 USER nonroot:nonroot
 
 # Run
-CMD ["/webhook-app"]
+CMD ["/docker-compose-webhook"]
