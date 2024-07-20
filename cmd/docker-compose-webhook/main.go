@@ -10,13 +10,9 @@ import (
 	"github.com/go-playground/webhooks/v6/gitea"
 	"github.com/go-playground/webhooks/v6/gitlab"
 
-	"github.com/go-git/go-git/v5/plumbing/transport"
-
 	"github.com/kimdre/docker-compose-webhook/internal/config"
 	"github.com/kimdre/docker-compose-webhook/internal/git"
 	"github.com/kimdre/docker-compose-webhook/internal/logger"
-
-	gitHttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 
 	"github.com/go-playground/webhooks/v6/github"
 )
@@ -63,18 +59,25 @@ func main() {
 			log.Debug(
 				"Push event received",
 				slog.String("repository", event.Repository.FullName),
-				slog.String("reference", event.Ref),
-			)
+				slog.String("reference", event.Ref))
 
-			repoPath := "/tmp/" + event.Repository.Name
+			// Clone the repository
+			log.Info(
+				"Cloning repository",
+				slog.String("url", event.Repository.CloneURL),
+				slog.String("reference", event.Ref),
+				slog.String("repository", event.Repository.FullName))
+
+			// var auth transport.AuthMethod = nil
 
 			cloneUrl := event.Repository.CloneURL
 
 			if event.Repository.Private {
-				log.Info("Repository is private")
-
 				if c.GitAccessToken == "" {
-					log.Error("Missing access token for private repository")
+					log.Error(
+						"Missing access token for private repository",
+						slog.String("repository", event.Repository.FullName))
+
 					return
 				}
 
@@ -90,23 +93,30 @@ func main() {
 				cloneUrl = git.GetAuthUrl(event.Repository.CloneURL, c.GitAccessToken)
 			}
 
-			// Clone the repository
-			log.Info(
-				"Cloning repository",
-				slog.String("url", event.Repository.CloneURL),
-				slog.String("reference", event.Ref),
-			)
+			log.Debug(
+				"Using clone URL",
+				slog.String("url", cloneUrl),
+				slog.String("repository", event.Repository.FullName),
+				slog.String("reference", event.Ref))
 
-			repo, err := git.CloneRepository(event.Repository.CloneURL, event.Ref, auth)
+			repo, err := git.CloneRepository(cloneUrl, event.Ref)
 			if err != nil {
+				log.Error(
+					"Failed to clone repository",
+					logger.ErrAttr(err),
+					slog.String("repository", event.Repository.FullName))
+
 				return
 			}
-
-			log.Debug("Repository cloned successfully", slog.String("path", repoPath))
 
 			// Get the worktree from the repository
 			worktree, err := repo.Worktree()
 			if err != nil {
+				log.Error(
+					"Failed to get worktree",
+					logger.ErrAttr(err),
+					slog.String("repository", event.Repository.FullName))
+
 				return
 			}
 
@@ -116,11 +126,24 @@ func main() {
 			// Get the deployment config from the repository
 			deployConfig, err := config.GetDeployConfig(fs, event)
 			if deployConfig == nil && err != nil {
-				log.Error("Failed to get deploy config: " + err.Error())
+				log.Error(
+					"Failed to get deploy config",
+					logger.ErrAttr(err),
+					slog.String("repository", event.Repository.FullName))
+
 				return
 			}
 
-			log.Debug("Deployment config retrieved", slog.Any("config", deployConfig))
+			log.Debug(
+				"Deployment config retrieved",
+				slog.Any("config", deployConfig),
+				slog.String("repository", event.Repository.FullName))
+
+			log.Info(
+				"Cleaning up repository",
+				slog.String("repository", event.Repository.FullName))
+
+			repo = nil
 
 			// TODO docker-compose deployment logic here
 
