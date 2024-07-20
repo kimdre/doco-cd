@@ -31,10 +31,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	hook, _ := github.New(github.Options.Secret(c.GithubWebhookSecret))
+	hook, _ := github.New(github.Options.Secret(c.WebhookSecret))
 
 	http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-		payload, err := hook.Parse(r, github.PushEvent, github.PullRequestEvent)
+		payload, err := hook.Parse(r, github.PushEvent) // , github.PullRequestEvent)
 		if err != nil {
 			if errors.Is(err, github.ErrEventNotFound) {
 				// ok event wasn't one of the ones asked to be parsed
@@ -53,27 +53,26 @@ func main() {
 			if event.Repository.Private {
 				log.Info("Repository is private")
 
-				if c.GitUsername == "" || c.GitPassword == "" {
-					log.Error("Missing username or password for private repository")
+				if c.GitAccessToken == "" {
+					log.Error("Missing access token for private repository")
 					return
 				}
 
+				// Basic auth examples:
+				// https://YOUR-USERNAME:GENERATED-TOKEN@github.com/YOUR-USERNAME/YOUR-REPOSITORY
+				// Or
+				// https://GENERATED-TOKEN@github.com/YOUR-USERNAME/YOUR-REPOSITORY
 				auth = &gitHttp.BasicAuth{
 					Username: c.GitUsername,
-					Password: c.GitPassword,
+					Password: c.GitAccessToken,
 				}
 			}
 
-			// if !DirectoryExists(repoPath) {
-			repo, err := git.CloneRepository(
-				event.Repository.CloneURL,
-				event.Ref,
-				auth,
-			)
+			// Clone the repository
+			repo, err := git.CloneRepository(event.Repository.CloneURL, event.Ref, auth)
 			if err != nil {
 				return
 			}
-			//}
 
 			log.Info("Repository cloned successfully", slog.String("path", repoPath))
 
@@ -83,14 +82,15 @@ func main() {
 				return
 			}
 
-			dir, err := worktree.Filesystem.ReadDir("/")
-			if err != nil {
+			fs := worktree.Filesystem
+
+			deployConfig, err := config.GetDeployConfig(fs, event)
+			if deployConfig == nil && err != nil {
+				log.Error("Failed to get deploy config: " + err.Error())
 				return
 			}
 
-			for _, file := range dir {
-				log.Info(fmt.Sprintf("File: %s, IsDir: %t", file.Name(), file.IsDir()))
-			}
+			fmt.Println(*deployConfig)
 
 		case github.PingPayload:
 			log.Info("Ping event received")

@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/go-git/go-billy/v5/memfs"
+
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/kimdre/docker-compose-webhook/internal/logger"
 
-	"github.com/go-git/go-billy/v5/memfs"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/storage/memory"
