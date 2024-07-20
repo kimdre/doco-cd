@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/creasty/defaults"
+
 	"github.com/caarlos0/env/v11"
 	"github.com/go-git/go-billy/v5"
 	"github.com/go-playground/webhooks/v6/github"
@@ -24,11 +26,11 @@ type DeployConfigMeta struct {
 
 // DeployConfig is the structure of the deployment configuration file
 type DeployConfig struct {
-	Name                  string   `yaml:"name"`                     // Name is the name of the docker-compose deployment / stack
-	Reference             string   `yaml:"reference"`                // Reference is the reference to the deployment, e.g. refs/heads/main or refs/tags/v1.0.0
-	DockerComposePath     string   `yaml:"docker_compose_path"`      // DockerComposePath is the path to the docker-compose file
-	DockerComposeEnvFiles []string `yaml:"docker_compose_env_files"` // DockerComposeEnvFiles is the path to the environment files to use
-	SkipTLSVerification   bool     `yaml:"skip_tls_verify"`          // SkipTLSVerification skips the TLS verification
+	Name                  string   `yaml:"name"`                                                 // Name is the name of the docker-compose deployment / stack
+	Reference             string   `yaml:"reference" default:"refs/heads/main"`                  // Reference is the reference to the deployment, e.g. refs/heads/main or refs/tags/v1.0.0
+	DockerComposePath     string   `yaml:"docker_compose_path" default:"docker-compose.y(a)?ml"` // DockerComposePath is the path to the docker-compose file
+	DockerComposeEnvFiles []string `yaml:"docker_compose_env_files" default:""`                  // DockerComposeEnvFiles is the path to the environment files to use
+	SkipTLSVerification   bool     `yaml:"skip_tls_verify" default:"false"`                      // SkipTLSVerification skips the TLS verification
 }
 
 func NewDeployConfigMeta() (*DeployConfigMeta, error) {
@@ -50,16 +52,22 @@ func DefaultDeployConfig(name string) *DeployConfig {
 	}
 }
 
-func (c *DeployConfig) parseConfigFile(file []byte) (*DeployConfig, error) {
-	err := yaml.Unmarshal(file, c)
+func (c *DeployConfig) parseConfigFile(file []byte) error {
+	err := defaults.Set(c)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return c, nil
+	type Plain DeployConfig
+
+	if err := yaml.Unmarshal(file, (*Plain)(c)); err != nil {
+		return err
+	}
+
+	return nil
 }
 
-// GetDeployConfig returns the deployment configuration file from the filesystem or the default configuration if file does not exist
+// GetDeployConfig returns either the deployment configuration from the repository or the default configuration
 func GetDeployConfig(fs billy.Filesystem, event github.PushPayload) (*DeployConfig, error) {
 	m, err := NewDeployConfigMeta()
 	if err != nil {
@@ -112,7 +120,11 @@ func GetDeployConfig(fs billy.Filesystem, event github.PushPayload) (*DeployConf
 
 			c := DeployConfig{}
 
-			return c.parseConfigFile(fileContents)
+			if err := c.parseConfigFile(fileContents); err != nil {
+				return nil, err
+			}
+
+			return &c, nil
 		}
 	}
 

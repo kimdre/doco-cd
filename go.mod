@@ -4,6 +4,7 @@ go 1.22.5
 
 require (
 	github.com/caarlos0/env/v11 v11.1.0
+	github.com/creasty/defaults v1.7.0
 	github.com/go-git/go-billy/v5 v5.5.0
 	github.com/go-git/go-git/v5 v5.12.0
 	github.com/go-playground/webhooks/v6 v6.3.0
