@@ -3,11 +3,12 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/go-playground/webhooks/v6/gitea"
-	"github.com/go-playground/webhooks/v6/gitlab"
 	"log/slog"
 	"net/http"
 	"os"
+
+	"github.com/go-playground/webhooks/v6/gitea"
+	"github.com/go-playground/webhooks/v6/gitlab"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
