@@ -25,7 +25,10 @@ WORKDIR /
 
 COPY --from=build-stage /docker-compose-webhook /docker-compose-webhook
 
-ENV HTTP_PORT=80
+ENV TZ=UTC \
+    HTTP_PORT=80 \
+    LOG_LEVEL=info \
+    DEPLOYMENT_CONFIG_FILE_NAME='.compose-webhook.y(a)?ml'
 
 USER nonroot:nonroot
 

@@ -10,5 +10,6 @@ services:
       LOG_LEVEL: debug
       GITHUB_WEBHOOK_SECRET: bdfv8y!oghvi4ea3b-5tiehrefgdnb
       DEPLOYMENT_CONFIG_FILE_NAME: /.compose-webhook.y(a)?ml
+      GIT_ACCESS_TOKEN: 'xxx'
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
