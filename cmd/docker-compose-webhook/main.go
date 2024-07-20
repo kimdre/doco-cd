@@ -76,14 +76,16 @@ func main() {
 
 			log.Info("Repository cloned successfully", slog.String("path", repoPath))
 
-			// Show files in the repository
+			// Get the worktree from the repository
 			worktree, err := repo.Worktree()
 			if err != nil {
 				return
 			}
 
+			// Get the filesystem from the worktree
 			fs := worktree.Filesystem
 
+			// Get the deployment config from the repository
 			deployConfig, err := config.GetDeployConfig(fs, event)
 			if deployConfig == nil && err != nil {
 				log.Error("Failed to get deploy config: " + err.Error())
@@ -91,6 +93,8 @@ func main() {
 			}
 
 			fmt.Println(*deployConfig)
+
+			// Get the docker-compose file from the repository
 
 		case github.PingPayload:
 			log.Info("Ping event received")

@@ -5,5 +5,6 @@ services:
     ports:
       - "80:80"
     environment:
-      - GITHUB_WEBHOOK_SECRET=bdfv8y!oghvi4ea3b-5tiehrefgdnb
-      - HTTP_PORT=80
+      GITHUB_WEBHOOK_SECRET: bdfv8y!oghvi4ea3b-5tiehrefgdnb
+      HTTP_PORT: 80
+      DEPLOYMENT_CONFIG_FILE_NAME: ./.compose-webhook.y(a)?ml

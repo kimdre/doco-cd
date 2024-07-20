@@ -3,7 +3,6 @@ package config
 import (
 	"io"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/creasty/defaults"
@@ -21,7 +20,7 @@ var log = logger.GetLogger()
 type DeployConfigMeta struct {
 	// DeploymentConfigFilePath is the default path/regex pattern to the deployment configuration file
 	// in a repository and overrides the default deployment configuration
-	DeploymentConfigFilePath string `env:"DEPLOYMENT_CONFIG_FILE_NAME" envDefault:"compose-webhook.y(a)?ml"`
+	DeploymentConfigFilePath string `env:"DEPLOYMENT_CONFIG_FILE_NAME" envDefault:".compose-webhook.y(a)?ml"`
 }
 
 // DeployConfig is the structure of the deployment configuration file
@@ -29,7 +28,7 @@ type DeployConfig struct {
 	Name                  string   `yaml:"name"`                                                 // Name is the name of the docker-compose deployment / stack
 	Reference             string   `yaml:"reference" default:"refs/heads/main"`                  // Reference is the reference to the deployment, e.g. refs/heads/main or refs/tags/v1.0.0
 	DockerComposePath     string   `yaml:"docker_compose_path" default:"docker-compose.y(a)?ml"` // DockerComposePath is the path to the docker-compose file
-	DockerComposeEnvFiles []string `yaml:"docker_compose_env_files" default:""`                  // DockerComposeEnvFiles is the path to the environment files to use
+	DockerComposeEnvFiles []string `yaml:"docker_compose_env_files" default:"[]"`                // DockerComposeEnvFiles is the path to the environment files to use
 	SkipTLSVerification   bool     `yaml:"skip_tls_verify" default:"false"`                      // SkipTLSVerification skips the TLS verification
 }
 
@@ -74,7 +73,6 @@ func GetDeployConfig(fs billy.Filesystem, event github.PushPayload) (*DeployConf
 		return nil, err
 	}
 
-	// Search for regex pattern DeploymentConfigFilePath in the filesystem
 	lastIdx := strings.LastIndex(m.DeploymentConfigFilePath, "/")
 
 	var path, file string
@@ -84,8 +82,11 @@ func GetDeployConfig(fs billy.Filesystem, event github.PushPayload) (*DeployConf
 		file = m.DeploymentConfigFilePath
 	} else {
 		path = m.DeploymentConfigFilePath[:lastIdx]
-		file = strconv.Itoa(int(m.DeploymentConfigFilePath[lastIdx+1]))
+		file = m.DeploymentConfigFilePath[lastIdx+1:]
 	}
+
+	log.Info(path)
+	log.Info(file)
 
 	files, err := fs.ReadDir(path)
 	if err != nil {
