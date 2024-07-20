@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/go-playground/webhooks/v6/gitea"
+	"github.com/go-playground/webhooks/v6/gitlab"
 	"log/slog"
 	"net/http"
 	"os"
@@ -23,13 +25,26 @@ const (
 )
 
 func main() {
-	log := logger.GetLogger()
+	// Set default log level to debug
+	log := logger.GetLogger(slog.LevelDebug)
 
+	// Get the application configuration
 	c, err := config.GetAppConfig()
 	if err != nil {
 		log.Error(fmt.Sprintf("failed to parse environment variables: %+v", err))
 		os.Exit(1)
 	}
+
+	// Parse the log level from the app configuration
+	logLevel, err := logger.ParseLevel(c.LogLevel)
+	if err != nil {
+		logLevel = slog.LevelInfo
+	}
+
+	// Set the actual log level
+	log = logger.GetLogger(logLevel)
+
+	log.Info("Starting application", slog.String("log_level", c.LogLevel))
 
 	hook, _ := github.New(github.Options.Secret(c.WebhookSecret))
 
@@ -44,7 +59,11 @@ func main() {
 
 		switch event := payload.(type) {
 		case github.PushPayload:
-			log.Info("Push event received for repository " + event.Repository.FullName + " (" + event.Ref + ")")
+			log.Debug(
+				"Push event received",
+				slog.String("repository", event.Repository.FullName),
+				slog.String("reference", event.Ref),
+			)
 
 			repoPath := "/tmp/" + event.Repository.Name
 
@@ -63,18 +82,23 @@ func main() {
 				// Or
 				// https://GENERATED-TOKEN@github.com/YOUR-USERNAME/YOUR-REPOSITORY
 				auth = &gitHttp.BasicAuth{
-					Username: c.GitUsername,
 					Password: c.GitAccessToken,
 				}
 			}
 
 			// Clone the repository
+			log.Info(
+				"Cloning repository",
+				slog.String("url", event.Repository.CloneURL),
+				slog.String("reference", event.Ref),
+			)
+
 			repo, err := git.CloneRepository(event.Repository.CloneURL, event.Ref, auth)
 			if err != nil {
 				return
 			}
 
-			log.Info("Repository cloned successfully", slog.String("path", repoPath))
+			log.Debug("Repository cloned successfully", slog.String("path", repoPath))
 
 			// Get the worktree from the repository
 			worktree, err := repo.Worktree()
@@ -92,24 +116,30 @@ func main() {
 				return
 			}
 
-			fmt.Println(*deployConfig)
+			log.Debug("Deployment config retrieved", slog.Any("config", deployConfig))
 
-			// Get the docker-compose file from the repository
+			// TODO docker-compose deployment logic here
 
-		case github.PingPayload:
-			log.Info("Ping event received")
+		case gitlab.PushEventPayload:
+			// TODO: Implement GitLab webhook handling
+			log.Error("GitLab webhook event not yet implemented")
 
-			ping := payload.(github.PingPayload)
-			// Do whatever you want from here...
-			log.Info("Ping event received for repository " + ping.Repository.FullName)
+		case gitea.PushPayload:
+			// TODO: Implement Gitea webhook handling
+			log.Error("Gitea webhook event not yet implemented")
 
 		default:
 			log.Warn("Event not supported")
 		}
 	})
-	log.Info("Server listening on port " + c.HttpPort)
 
-	err = http.ListenAndServe(":"+c.HttpPort, nil)
+	log.Info(
+		"Listening for webhooks",
+		slog.Int("http_port", int(c.HttpPort)),
+		slog.String("path", path),
+	)
+
+	err = http.ListenAndServe(fmt.Sprintf(":%d", c.HttpPort), nil)
 	if err != nil {
 		return
 	}

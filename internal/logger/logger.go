@@ -5,16 +5,21 @@ import (
 	"os"
 )
 
-func GetLogger() *slog.Logger {
-	log := slog.New(
+func ParseLevel(s string) (slog.Level, error) {
+	var level slog.Level
+	err := level.UnmarshalText([]byte(s))
+
+	return level, err
+}
+
+func GetLogger(logLevel slog.Level) *slog.Logger {
+	return slog.New(
 		slog.NewJSONHandler(
 			os.Stdout,
 			&slog.HandlerOptions{
 				// AddSource: true,
-				Level: slog.LevelDebug,
+				Level: logLevel,
 			},
 		),
 	)
-
-	return log
 }

@@ -6,10 +6,10 @@ import (
 
 // AppConfig is used to configure this application
 type AppConfig struct {
-	HttpPort       string `env:"HTTP_PORT" envDefault:"80"` // HttpPort is the port the HTTP server will listen on
-	WebhookSecret  string `env:"WEBHOOK_SECRET"`            // WebhookSecret is the secret used to authenticate the webhook
-	GitUsername    string `env:"GIT_USERNAME"`              // GitUsername is the username used to authenticate with the git server
-	GitAccessToken string `env:"GIT_ACCESS_TOKEN"`          // GitAccessToken is the access token used to authenticate with the git server
+	LogLevel       string `env:"LOG_LEVEL" envDefault:"info"` // LogLevel is the log level for the application
+	HttpPort       uint16 `env:"HTTP_PORT" envDefault:"80"`   // HttpPort is the port the HTTP server will listen on
+	WebhookSecret  string `env:"WEBHOOK_SECRET"`              // WebhookSecret is the secret used to authenticate the webhook
+	GitAccessToken string `env:"GIT_ACCESS_TOKEN"`            // GitAccessToken is the access token used to authenticate with the git server
 }
 
 // GetAppConfig returns the configuration

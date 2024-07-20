@@ -1,6 +1,8 @@
 package config
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"regexp"
 	"strings"
@@ -10,11 +12,10 @@ import (
 	"github.com/caarlos0/env/v11"
 	"github.com/go-git/go-billy/v5"
 	"github.com/go-playground/webhooks/v6/github"
-	"github.com/kimdre/docker-compose-webhook/internal/logger"
 	"gopkg.in/yaml.v3"
 )
 
-var log = logger.GetLogger()
+var ErrConfigFileNotFound = errors.New("configuration file not found in repository")
 
 // DeployConfigMeta is the deployment configuration meta data
 type DeployConfigMeta struct {
@@ -85,9 +86,6 @@ func GetDeployConfig(fs billy.Filesystem, event github.PushPayload) (*DeployConf
 		file = m.DeploymentConfigFilePath[lastIdx+1:]
 	}
 
-	log.Info(path)
-	log.Info(file)
-
 	files, err := fs.ReadDir(path)
 	if err != nil {
 		return DefaultDeployConfig(event.Repository.Name), err
@@ -103,10 +101,7 @@ func GetDeployConfig(fs billy.Filesystem, event github.PushPayload) (*DeployConf
 		if matched {
 			file, err := fs.Open(path + "/" + f.Name())
 			defer func(f billy.File) {
-				err := f.Close()
-				if err != nil {
-					log.Error("failed to close file: " + err.Error())
-				}
+				_ = f.Close()
 			}(file)
 
 			if err != nil {
@@ -129,7 +124,5 @@ func GetDeployConfig(fs billy.Filesystem, event github.PushPayload) (*DeployConf
 		}
 	}
 
-	log.Warn("Configuration file '" + m.DeploymentConfigFilePath + "' not found in repository, using default configuration")
-
-	return DefaultDeployConfig(event.Repository.Name), nil
+	return DefaultDeployConfig(event.Repository.Name), fmt.Errorf("%s: '%s', using default configuration", m.DeploymentConfigFilePath, ErrConfigFileNotFound)
 }
