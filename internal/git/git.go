@@ -38,3 +38,10 @@ func DirectoryExists(path string) bool {
 	_, err := os.Stat(path)
 	return !os.IsNotExist(err)
 }
+
+// GetAuthUrl returns a clone URL with an access token for private repositories
+func GetAuthUrl(url, token string) string {
+	// Retrieve the protocol from the clone URL (e.g. https://, http://, git://
+	protocol := regexp.MustCompile("^(https?|git)://").FindString(url)
+	return protocol + token + "@" + url[len(protocol):]
+}

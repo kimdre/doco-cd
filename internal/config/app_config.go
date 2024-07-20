@@ -9,7 +9,7 @@ type AppConfig struct {
 	LogLevel       string `env:"LOG_LEVEL" envDefault:"info"` // LogLevel is the log level for the application
 	HttpPort       uint16 `env:"HTTP_PORT" envDefault:"80"`   // HttpPort is the port the HTTP server will listen on
 	WebhookSecret  string `env:"WEBHOOK_SECRET"`              // WebhookSecret is the secret used to authenticate the webhook
-	GitAccessToken string `env:"GIT_ACCESS_TOKEN"`            // GitAccessToken is the access token used to authenticate with the git server
+	GitAccessToken string `env:"GIT_ACCESS_TOKEN"`            // GitAccessToken is the access token used to authenticate with the Git server (e.g. GitHub) for private repositories
 }
 
 // GetAppConfig returns the configuration

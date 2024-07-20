@@ -68,7 +68,7 @@ func main() {
 
 			repoPath := "/tmp/" + event.Repository.Name
 
-			var auth transport.AuthMethod = nil
+			cloneUrl := event.Repository.CloneURL
 
 			if event.Repository.Private {
 				log.Info("Repository is private")
@@ -82,9 +82,12 @@ func main() {
 				// https://YOUR-USERNAME:GENERATED-TOKEN@github.com/YOUR-USERNAME/YOUR-REPOSITORY
 				// Or
 				// https://GENERATED-TOKEN@github.com/YOUR-USERNAME/YOUR-REPOSITORY
-				auth = &gitHttp.BasicAuth{
-					Password: c.GitAccessToken,
-				}
+				//auth = &gitHttp.BasicAuth{
+				//	Username: "",
+				//	Password: c.GitAccessToken,
+				//}
+
+				cloneUrl = git.GetAuthUrl(event.Repository.CloneURL, c.GitAccessToken)
 			}
 
 			// Clone the repository
