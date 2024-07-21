@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/kimdre/docker-compose-webhook/internal/compose"
+
 	"github.com/go-playground/webhooks/v6/gitea"
 	"github.com/go-playground/webhooks/v6/gitlab"
 
@@ -41,7 +43,15 @@ func main() {
 	// Set the actual log level
 	log = logger.New(logLevel)
 
-	log.Info("Starting application", slog.String("log_level", c.LogLevel))
+	log.Info("starting application", slog.String("log_level", c.LogLevel))
+
+	err = compose.VerifySocketConnection()
+	if err != nil {
+		log.Error(compose.ErrDockerSocketConnectionFailed.Error(), log.ErrAttr(err))
+		os.Exit(1)
+	}
+
+	log.Debug("connection to docker socket was successful")
 
 	hook, _ := github.New(github.Options.Secret(c.WebhookSecret))
 
