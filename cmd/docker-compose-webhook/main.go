@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
 
 	"github.com/kimdre/docker-compose-webhook/internal/compose"
 
@@ -30,8 +29,7 @@ func main() {
 	// Get the application configuration
 	c, err := config.GetAppConfig()
 	if err != nil {
-		log.Error("failed to get application configuration", log.ErrAttr(err))
-		os.Exit(1)
+		log.Critical("failed to get application configuration", log.ErrAttr(err))
 	}
 
 	// Parse the log level from the app configuration
@@ -47,8 +45,7 @@ func main() {
 
 	err = compose.VerifySocketConnection()
 	if err != nil {
-		log.Error(compose.ErrDockerSocketConnectionFailed.Error(), log.ErrAttr(err))
-		os.Exit(1)
+		log.Critical(compose.ErrDockerSocketConnectionFailed.Error(), log.ErrAttr(err))
 	}
 
 	log.Debug("connection to docker socket was successful")
