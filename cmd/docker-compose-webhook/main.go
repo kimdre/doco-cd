@@ -58,10 +58,22 @@ func main() {
 	http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 		payload, err := hook.Parse(r, github.PushEvent) // , github.PullRequestEvent)
 		if err != nil {
-			if errors.Is(err, github.ErrEventNotFound) {
-				// ok event wasn't one of the ones asked to be parsed
-				log.Error("Event not found")
+			switch {
+			case errors.Is(err, github.ErrHMACVerificationFailed):
+				log.Debug("incorrect webhook secret", slog.String("ip", r.RemoteAddr), log.ErrAttr(err))
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			case errors.Is(err, github.ErrEventNotFound):
+				log.Debug("event not found", slog.String("ip", r.RemoteAddr), log.ErrAttr(err))
+				http.Error(w, "Event not found", http.StatusNotFound)
+			case errors.Is(err, github.ErrInvalidHTTPMethod):
+				log.Debug("invalid HTTP method", slog.String("ip", r.RemoteAddr), log.ErrAttr(err))
+				http.Error(w, "Invalid HTTP method", http.StatusMethodNotAllowed)
+			default:
+				log.Debug("failed to parse webhook", slog.String("ip", r.RemoteAddr), log.ErrAttr(err))
+				http.Error(w, "Failed to parse webhook", http.StatusInternalServerError)
 			}
+
+			return
 		}
 
 		switch event := payload.(type) {
