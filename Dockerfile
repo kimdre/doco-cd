@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM golang:1.22 AS build-stage
+FROM golang:1.22.5 AS build-stage
 
 # Set destination for COPY
 WORKDIR /app
@@ -30,7 +30,9 @@ ENV TZ=UTC \
     LOG_LEVEL=info \
     DEPLOYMENT_CONFIG_FILE_NAME='.compose-webhook.y(a)?ml'
 
-USER nonroot:nonroot
+# The connection to the docker socket requires the user to be
+# either root or in the docker group (the group id may vary)
+#USER nonroot:nonroot
 
 # Run
 CMD ["/docker-compose-webhook"]

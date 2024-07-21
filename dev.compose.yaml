@@ -11,5 +11,8 @@ services:
       HTTP_PORT: 80
       LOG_LEVEL: debug
       DEPLOYMENT_CONFIG_FILE_NAME: /.compose-webhook.y(a)?ml
+    # The connection to the docker socket requires the user to be
+    # either root or in the docker group (the group id may vary and needs to match the docker socket permissions)
+    #user: "1000:971"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
