@@ -2,7 +2,6 @@ package compose
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"os"
 )
@@ -21,13 +20,6 @@ func ConnectToSocket() (net.Conn, error) {
 		return nil, err
 	}
 
-	defer func(c net.Conn) {
-		err := c.Close()
-		if err != nil {
-			fmt.Printf("failed to close connection to docker socket: %v\n", err)
-		}
-	}(c)
-
 	return c, nil
 }
 
@@ -37,7 +29,12 @@ func VerifySocketConnection() error {
 		return err
 	}
 
-	_, err := ConnectToSocket()
+	c, err := ConnectToSocket()
+	if err != nil {
+		return err
+	}
+
+	err = c.Close()
 	if err != nil {
 		return err
 	}
