@@ -23,12 +23,12 @@ const (
 
 func main() {
 	// Set default log level to debug
-	log := logger.GetLogger(slog.LevelDebug)
+	log := logger.New(slog.LevelDebug)
 
 	// Get the application configuration
 	c, err := config.GetAppConfig()
 	if err != nil {
-		log.Error(fmt.Sprintf("failed to parse environment variables: %+v", err))
+		log.Error("Failed to get application configuration", log.ErrAttr(err))
 		os.Exit(1)
 	}
 
@@ -39,7 +39,7 @@ func main() {
 	}
 
 	// Set the actual log level
-	log = logger.GetLogger(logLevel)
+	log = logger.New(logLevel)
 
 	log.Info("Starting application", slog.String("log_level", c.LogLevel))
 
@@ -103,7 +103,7 @@ func main() {
 			if err != nil {
 				log.Error(
 					"Failed to clone repository",
-					logger.ErrAttr(err),
+					log.ErrAttr(err),
 					slog.String("repository", event.Repository.FullName))
 
 				return
@@ -114,7 +114,7 @@ func main() {
 			if err != nil {
 				log.Error(
 					"Failed to get worktree",
-					logger.ErrAttr(err),
+					log.ErrAttr(err),
 					slog.String("repository", event.Repository.FullName))
 
 				return
@@ -128,7 +128,7 @@ func main() {
 			if deployConfig == nil && err != nil {
 				log.Error(
 					"Failed to get deploy config",
-					logger.ErrAttr(err),
+					log.ErrAttr(err),
 					slog.String("repository", event.Repository.FullName))
 
 				return
@@ -139,13 +139,23 @@ func main() {
 				slog.Any("config", deployConfig),
 				slog.String("repository", event.Repository.FullName))
 
-			log.Info(
-				"Cleaning up repository",
+			log.Debug("Deploying", slog.String("repository", event.Repository.FullName))
+			// TODO docker-compose deployment logic here
+			//err = compose.LoadComposeFile("test", "docker-compose.yml")
+			//if err != nil {
+			//	log.Error(
+			//		"Failed to load compose file",
+			//		logger.ErrAttr(err),
+			//		slog.String("repository", event.Repository.FullName))
+			//
+			//	return
+			//}
+
+			log.Debug(
+				"Cleaning up",
 				slog.String("repository", event.Repository.FullName))
 
 			repo = nil
-
-			// TODO docker-compose deployment logic here
 
 		case gitlab.PushEventPayload:
 			// TODO: Implement GitLab webhook handling
@@ -156,7 +166,7 @@ func main() {
 			log.Error("Gitea webhook event not yet implemented")
 
 		default:
-			log.Warn("Event not supported")
+			log.Warn("Event not supported", slog.Any("event", event))
 		}
 	})
 
