@@ -30,7 +30,7 @@ func main() {
 	// Get the application configuration
 	c, err := config.GetAppConfig()
 	if err != nil {
-		log.Error("Failed to get application configuration", log.ErrAttr(err))
+		log.Error("failed to get application configuration", log.ErrAttr(err))
 		os.Exit(1)
 	}
 
@@ -161,7 +161,7 @@ func main() {
 				slog.Any("config", deployConfig),
 				slog.String("repository", event.Repository.FullName))
 
-			log.Debug("Deploying", slog.String("repository", event.Repository.FullName))
+			log.Debug("deploying", slog.String("repository", event.Repository.FullName))
 			// TODO docker-compose deployment logic here
 			//err = compose.LoadComposeFile("test", "docker-compose.yml")
 			//if err != nil {
@@ -181,14 +181,15 @@ func main() {
 
 		case gitlab.PushEventPayload:
 			// TODO: Implement GitLab webhook handling
-			log.Error("GitLab webhook event not yet implemented")
+			log.Error("gitLab webhook event not yet implemented")
 
 		case gitea.PushPayload:
 			// TODO: Implement Gitea webhook handling
-			log.Error("Gitea webhook event not yet implemented")
+			log.Error("gitea webhook event not yet implemented")
 
 		default:
-			log.Warn("Event not supported", slog.Any("event", event))
+			log.Debug("event not supported", slog.Any("event", event))
+			http.Error(w, "Event not supported", http.StatusNotImplemented)
 		}
 	})
 
