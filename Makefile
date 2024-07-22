@@ -19,3 +19,11 @@ fmt:
 	-go run golang.org/x/tools/cmd/goimports@latest -l -w .
 	-go run github.com/bombsimon/wsl/v4/cmd...@latest -strict-append -test=true -fix ./...
 	-go run github.com/catenacyber/perfsprint@latest -fix ./...
+
+update:
+	git pull origin main
+	git submodule update --init --recursive
+
+update-all: update
+	git submodule foreach git pull origin master
+	git submodule foreach git checkout master
