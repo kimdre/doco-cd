@@ -1,6 +1,6 @@
 BINARY_DIR=bin
 BINARY_NAME=docker-compose-webhook
-.PHONY: test build run lint fmt
+.PHONY: test build run lint fmt update update-all
 
 test:
 	@echo "Running tests..."
