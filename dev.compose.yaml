@@ -1,7 +1,7 @@
 services:
   app:
     build: .
-    restart: on-failure
+    restart: no
     ports:
       - "80:80"
     env_file:
@@ -11,8 +11,11 @@ services:
       HTTP_PORT: 80
       LOG_LEVEL: debug
       DEPLOYMENT_CONFIG_FILE_NAME: /.compose-webhook.y(a)?ml
-    # The connection to the docker socket requires the user to be
-    # either root or in the docker group (the group id may vary and needs to match the docker socket permissions)
-    #user: "1000:971"
+    # The connection to the docker socket requires the user to be either root
+    # or in the docker group (the group id may vary and needs to match the docker socket permissions)
+    # Use `user: root` to run the app as root, or use `group_add` to use the non-root user and add the docker group id to it
+    #user: root
+    group_add:
+      - 971  # change to the docker group id shown in the app error logs or in the output of `ls -l /var/run/docker.sock`
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

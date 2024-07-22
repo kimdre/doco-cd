@@ -30,9 +30,6 @@ ENV TZ=UTC \
     LOG_LEVEL=info \
     DEPLOYMENT_CONFIG_FILE_NAME='.compose-webhook.y(a)?ml'
 
-# The connection to the docker socket requires the user to be
-# either root or in the docker group (the group id may vary)
-#USER nonroot:nonroot
+USER nonroot:nonroot
 
-# Run
 CMD ["/docker-compose-webhook"]
