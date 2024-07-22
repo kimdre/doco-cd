@@ -1,5 +1,6 @@
 services:
   app:
+    container_name: docker-compose-webhook
     build: .
     restart: no
     ports:
