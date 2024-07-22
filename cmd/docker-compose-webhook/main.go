@@ -77,13 +77,13 @@ func main() {
 		switch event := payload.(type) {
 		case github.PushPayload:
 			log.Debug(
-				"Push event received",
+				"push event received",
 				slog.String("repository", event.Repository.FullName),
 				slog.String("reference", event.Ref))
 
 			// Clone the repository
-			log.Info(
-				"Cloning repository",
+			log.Debug(
+				"cloning repository",
 				slog.String("url", event.Repository.CloneURL),
 				slog.String("reference", event.Ref),
 				slog.String("repository", event.Repository.FullName))
@@ -113,12 +113,6 @@ func main() {
 				cloneUrl = git.GetAuthUrl(event.Repository.CloneURL, c.GitAccessToken)
 			}
 
-			log.Debug(
-				"Using clone URL",
-				slog.String("url", cloneUrl),
-				slog.String("repository", event.Repository.FullName),
-				slog.String("reference", event.Ref))
-
 			repo, err := git.CloneRepository(cloneUrl, event.Ref)
 			if err != nil {
 				log.Error(
@@ -143,11 +137,16 @@ func main() {
 			// Get the filesystem from the worktree
 			fs := worktree.Filesystem
 
+			log.Debug(
+				"retrieving deployment config",
+				slog.String("repository", event.Repository.FullName),
+				slog.String("reference", event.Ref))
+
 			// Get the deployment config from the repository
 			deployConfig, err := config.GetDeployConfig(fs, event)
 			if deployConfig == nil && err != nil {
 				log.Error(
-					"Failed to get deploy config",
+					"failed to get deploy config",
 					log.ErrAttr(err),
 					slog.String("repository", event.Repository.FullName))
 
@@ -155,7 +154,7 @@ func main() {
 			}
 
 			log.Debug(
-				"Deployment config retrieved",
+				"deployment config retrieved",
 				slog.Any("config", deployConfig),
 				slog.String("repository", event.Repository.FullName))
 
@@ -172,10 +171,12 @@ func main() {
 			//}
 
 			log.Debug(
-				"Cleaning up",
+				"cleaning up",
 				slog.String("repository", event.Repository.FullName))
 
 			repo = nil
+
+			log.Info("deployment successful", slog.String("repository", event.Repository.FullName))
 
 		case gitlab.PushEventPayload:
 			// TODO: Implement GitLab webhook handling
@@ -192,7 +193,7 @@ func main() {
 	})
 
 	log.Info(
-		"Listening for webhooks",
+		"listening for webhooks",
 		slog.Int("http_port", int(c.HttpPort)),
 		slog.String("path", webhookPath),
 	)
