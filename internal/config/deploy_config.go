@@ -26,11 +26,10 @@ type DeployConfigMeta struct {
 
 // DeployConfig is the structure of the deployment configuration file
 type DeployConfig struct {
-	Name                  string   `yaml:"name"`                                                 // Name is the name of the docker-compose deployment / stack
-	Reference             string   `yaml:"reference" default:"refs/heads/main"`                  // Reference is the reference to the deployment, e.g. refs/heads/main or refs/tags/v1.0.0
-	DockerComposePath     string   `yaml:"docker_compose_path" default:"docker-compose.y(a)?ml"` // DockerComposePath is the path to the docker-compose file
-	DockerComposeEnvFiles []string `yaml:"docker_compose_env_files" default:"[]"`                // DockerComposeEnvFiles is the path to the environment files to use
-	SkipTLSVerification   bool     `yaml:"skip_tls_verify" default:"false"`                      // SkipTLSVerification skips the TLS verification
+	Name                string `yaml:"name"`                                          // Name is the name of the docker-compose deployment / stack
+	Reference           string `yaml:"reference" default:"refs/heads/main"`           // Reference is the Git reference to the deployment, e.g. refs/heads/main or refs/tags/v1.0.0
+	DockerComposePath   string `yaml:"compose_path" default:"docker-compose.y(a)?ml"` // DockerComposePath is the path to the docker compose file
+	SkipTLSVerification bool   `yaml:"skip_tls_verify" default:"false"`               // SkipTLSVerification skips the TLS verification
 }
 
 func NewDeployConfigMeta() (*DeployConfigMeta, error) {
@@ -44,11 +43,10 @@ func NewDeployConfigMeta() (*DeployConfigMeta, error) {
 
 func DefaultDeployConfig(name string) *DeployConfig {
 	return &DeployConfig{
-		Reference:             "/ref/heads/main",
-		Name:                  name,
-		DockerComposePath:     "docker-compose.y(a)?ml",
-		DockerComposeEnvFiles: nil,
-		SkipTLSVerification:   false,
+		Reference:           "/ref/heads/main",
+		Name:                name,
+		DockerComposePath:   "docker-compose.y(a)?ml",
+		SkipTLSVerification: false,
 	}
 }
 
