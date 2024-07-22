@@ -30,3 +30,4 @@ update-all: update
 
 submodule-commit:
 	git submodule foreach "git add . && git commit -m 'update' && git push"
+	git add docs/ && git commit -m 'docs: update wiki' && git push
