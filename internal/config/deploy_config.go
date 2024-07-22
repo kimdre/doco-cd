@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path"
 	"regexp"
-	"strings"
 
 	"github.com/creasty/defaults"
 
@@ -21,7 +21,7 @@ var ErrConfigFileNotFound = errors.New("configuration file not found in reposito
 type DeployConfigMeta struct {
 	// DeploymentConfigFilePath is the default path/regex pattern to the deployment configuration file
 	// in a repository and overrides the default deployment configuration
-	DeploymentConfigFilePath string `env:"DEPLOYMENT_CONFIG_FILE_NAME" envDefault:".compose-webhook.y(a)?ml"`
+	DeploymentConfigFilePath string `env:"DEPLOYMENT_CONFIG_FILE_NAME" envDefault:".compose-deploy.y(a)?ml"`
 }
 
 // DeployConfig is the structure of the deployment configuration file
@@ -32,6 +32,7 @@ type DeployConfig struct {
 	SkipTLSVerification bool   `yaml:"skip_tls_verify" default:"false"`               // SkipTLSVerification skips the TLS verification
 }
 
+// NewDeployConfigMeta creates a new DeployConfigMeta
 func NewDeployConfigMeta() (*DeployConfigMeta, error) {
 	cfg := DeployConfigMeta{}
 	if err := env.Parse(&cfg); err != nil {
@@ -41,6 +42,12 @@ func NewDeployConfigMeta() (*DeployConfigMeta, error) {
 	return &cfg, nil
 }
 
+// NewDeployConfig creates a new DeployConfig
+func NewDeployConfig() *DeployConfig {
+	return &DeployConfig{}
+}
+
+// DefaultDeployConfig creates a DeployConfig with default values
 func DefaultDeployConfig(name string) *DeployConfig {
 	return &DeployConfig{
 		Reference:           "/ref/heads/main",
@@ -50,6 +57,7 @@ func DefaultDeployConfig(name string) *DeployConfig {
 	}
 }
 
+// parseConfigFile parses the given deployment configuration file
 func (c *DeployConfig) parseConfigFile(file []byte) error {
 	err := defaults.Set(c)
 	if err != nil {
@@ -72,19 +80,9 @@ func GetDeployConfig(fs billy.Filesystem, event github.PushPayload) (*DeployConf
 		return nil, err
 	}
 
-	lastIdx := strings.LastIndex(m.DeploymentConfigFilePath, "/")
+	dir, file := path.Split(m.DeploymentConfigFilePath)
 
-	var path, file string
-
-	if lastIdx == -1 {
-		path = ""
-		file = m.DeploymentConfigFilePath
-	} else {
-		path = m.DeploymentConfigFilePath[:lastIdx]
-		file = m.DeploymentConfigFilePath[lastIdx+1:]
-	}
-
-	files, err := fs.ReadDir(path)
+	files, err := fs.ReadDir(dir)
 	if err != nil {
 		return DefaultDeployConfig(event.Repository.Name), err
 	}
@@ -97,7 +95,7 @@ func GetDeployConfig(fs billy.Filesystem, event github.PushPayload) (*DeployConf
 		}
 
 		if matched {
-			file, err := fs.Open(path + "/" + f.Name())
+			file, err := fs.Open(dir + "/" + f.Name())
 			defer func(f billy.File) {
 				_ = f.Close()
 			}(file)
@@ -112,13 +110,13 @@ func GetDeployConfig(fs billy.Filesystem, event github.PushPayload) (*DeployConf
 				return nil, err
 			}
 
-			c := DeployConfig{}
+			c := NewDeployConfig()
 
 			if err := c.parseConfigFile(fileContents); err != nil {
 				return nil, err
 			}
 
-			return &c, nil
+			return c, nil
 		}
 	}
 
