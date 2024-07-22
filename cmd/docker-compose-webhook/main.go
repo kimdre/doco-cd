@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	path = "/webhooks"
+	webhookPath = "/v1/webhook"
 )
 
 func main() {
@@ -43,6 +43,7 @@ func main() {
 
 	log.Info("starting application", slog.String("log_level", c.LogLevel))
 
+	// Test/verify the connection to the docker socket
 	err = compose.VerifySocketConnection()
 	if err != nil {
 		log.Critical(compose.ErrDockerSocketConnectionFailed.Error(), log.ErrAttr(err))
@@ -52,7 +53,7 @@ func main() {
 
 	hook, _ := github.New(github.Options.Secret(c.WebhookSecret))
 
-	http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc(webhookPath, func(w http.ResponseWriter, r *http.Request) {
 		payload, err := hook.Parse(r, github.PushEvent) // , github.PullRequestEvent)
 		if err != nil {
 			switch {
@@ -193,7 +194,7 @@ func main() {
 	log.Info(
 		"Listening for webhooks",
 		slog.Int("http_port", int(c.HttpPort)),
-		slog.String("path", path),
+		slog.String("path", webhookPath),
 	)
 
 	err = http.ListenAndServe(fmt.Sprintf(":%d", c.HttpPort), nil)
