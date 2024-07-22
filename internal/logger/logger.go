@@ -50,7 +50,7 @@ func New(logLevel slog.Level) *Logger {
 						// custom level values.
 						if a.Key == slog.LevelKey {
 							// Rename the level key from "level" to "sev".
-							//a.Key = "sev"
+							// a.Key = "sev"
 
 							// Handle custom level values.
 							level := a.Value.Any().(slog.Level)
