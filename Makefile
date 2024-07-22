@@ -1,6 +1,6 @@
 BINARY_DIR=bin
 BINARY_NAME=docker-compose-webhook
-.PHONY: test build run lint fmt update update-all
+.PHONY: test build run lint fmt update update-all submodule-commit
 
 test:
 	@echo "Running tests..."
@@ -27,3 +27,6 @@ update:
 update-all: update
 	git submodule foreach git pull origin master
 	git submodule foreach git checkout master
+
+submodule-commit:
+	git submodule foreach "git add . && git commit -m 'update' && git push"
