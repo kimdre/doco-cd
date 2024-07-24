@@ -1,2 +1,3 @@
 name: compose-webhook
 reference: refs/heads/main
+compose_path: dev.compose.yml
