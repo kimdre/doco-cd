@@ -1,4 +1,4 @@
 name: compose-webhook
-reference: refs/heads/feat/3-trigger-compose-deployments-via-go-code
+#reference: refs/heads/feat/3-trigger-compose-deployments-via-go-code
 compose_files:
   - dev.compose.yaml
