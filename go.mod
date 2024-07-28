@@ -6,7 +6,7 @@ require (
 	github.com/caarlos0/env/v11 v11.1.0
 	github.com/compose-spec/compose-go/v2 v2.1.5
 	github.com/creasty/defaults v1.7.0
-	github.com/docker/compose/v2 v2.29.1
+	github.com/docker/compose/v2 v2.29.0
 	github.com/go-git/go-git/v5 v5.12.0
 	github.com/go-playground/webhooks/v6 v6.3.0
 	gopkg.in/yaml.v3 v3.0.1
