@@ -11,11 +11,16 @@ type Logger struct {
 }
 
 const (
-	LevelDebug    = slog.LevelDebug
-	LevelInfo     = slog.LevelInfo
-	LevelWarning  = slog.LevelWarn
-	LevelError    = slog.LevelError
-	LevelCritical = slog.Level(12)
+	LevelDebug        = slog.LevelDebug
+	LevelDebugName    = "debug"
+	LevelInfo         = slog.LevelInfo
+	LevelInfoName     = "info"
+	LevelWarning      = slog.LevelWarn
+	LevelWarningName  = "warning"
+	LevelError        = slog.LevelError
+	LevelErrorName    = "error"
+	LevelCritical     = slog.Level(12)
+	LevelCriticalName = "critical"
 )
 
 // ParseLevel parses a string into a log level
@@ -41,35 +46,28 @@ func New(logLevel slog.Level) *Logger {
 					// AddSource: true,
 					Level: logLevel,
 					ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-						// Remove time from the output for predictable test output.
-						//if a.Key == slog.TimeKey {
-						//	return slog.Attr{}
-						//}
+						// Customize the name of the time key.
+						if a.Key == slog.TimeKey {
+							a.Key = "time"
+						}
 
 						// Customize the name of the level key and the output string, including
 						// custom level values.
 						if a.Key == slog.LevelKey {
-							// Rename the level key from "level" to "sev".
-							// a.Key = "sev"
-
 							// Handle custom level values.
 							level := a.Value.Any().(slog.Level)
 
-							// This could also look up the name from a map or other structure, but
-							// this demonstrates using a switch statement to rename levels. For
-							// maximum performance, the string values should be constants, but this
-							// example uses the raw strings for readability.
 							switch {
 							case level < LevelInfo:
-								a.Value = slog.StringValue("DEBUG")
+								a.Value = slog.StringValue(LevelDebugName)
 							case level < LevelWarning:
-								a.Value = slog.StringValue("INFO")
+								a.Value = slog.StringValue(LevelInfoName)
 							case level < LevelError:
-								a.Value = slog.StringValue("WARNING")
+								a.Value = slog.StringValue(LevelWarningName)
 							case level < LevelCritical:
-								a.Value = slog.StringValue("ERROR")
+								a.Value = slog.StringValue(LevelErrorName)
 							default:
-								a.Value = slog.StringValue("CRITICAL")
+								a.Value = slog.StringValue(LevelCriticalName)
 							}
 						}
 

@@ -3,43 +3,30 @@ package config
 import (
 	"errors"
 	"fmt"
-	"io"
+	"os"
 	"path"
-	"regexp"
 
-	"github.com/creasty/defaults"
+	"github.com/compose-spec/compose-go/v2/cli"
 
-	"github.com/caarlos0/env/v11"
-	"github.com/go-git/go-billy/v5"
 	"github.com/go-playground/webhooks/v6/github"
-	"gopkg.in/yaml.v3"
 )
 
-var ErrConfigFileNotFound = errors.New("configuration file not found in repository")
-
-// DeployConfigMeta is the deployment configuration meta data
-type DeployConfigMeta struct {
-	// DeploymentConfigFilePath is the default path/regex pattern to the deployment configuration file
-	// in a repository and overrides the default deployment configuration
-	DeploymentConfigFilePath string `env:"DEPLOYMENT_CONFIG_FILE_NAME" envDefault:".compose-deploy.y(a)?ml"`
-}
+var (
+	DefaultDeploymentConfigFileNames = []string{".compose-deploy.yaml", ".compose-deploy.yml"}
+	ErrConfigFileNotFound            = errors.New("configuration file not found in repository")
+	ErrNoValue                       = errors.New("no value for field 'value'")
+	ErrInvalidValue                  = errors.New("invalid value for field 'value'")
+	ErrInvalidConfig                 = errors.New("invalid deploy configuration")
+	ErrKeyNotFound                   = errors.New("key not found")
+)
 
 // DeployConfig is the structure of the deployment configuration file
 type DeployConfig struct {
-	Name                string `yaml:"name"`                                          // Name is the name of the docker-compose deployment / stack
-	Reference           string `yaml:"reference" default:"refs/heads/main"`           // Reference is the Git reference to the deployment, e.g. refs/heads/main or refs/tags/v1.0.0
-	DockerComposePath   string `yaml:"compose_path" default:"docker-compose.y(a)?ml"` // DockerComposePath is the path to the docker compose file
-	SkipTLSVerification bool   `yaml:"skip_tls_verify" default:"false"`               // SkipTLSVerification skips the TLS verification
-}
-
-// NewDeployConfigMeta creates a new DeployConfigMeta
-func NewDeployConfigMeta() (*DeployConfigMeta, error) {
-	cfg := DeployConfigMeta{}
-	if err := env.Parse(&cfg); err != nil {
-		return nil, err
-	}
-
-	return &cfg, nil
+	Name                string   `yaml:"name"`                                                                                        // Name is the name of the docker-compose deployment / stack
+	Reference           string   `yaml:"reference" default:"refs/heads/main"`                                                         // Reference is the Git reference to the deployment, e.g. refs/heads/main or refs/tags/v1.0.0
+	WorkingDirectory    string   `yaml:"working_dir" default:"."`                                                                     // WorkingDirectory is the working directory for the deployment
+	ComposeFiles        []string `yaml:"compose_files" default:"[\"compose.yaml\", \"docker-compose.yaml\", \"docker-compose.yml\"]"` // ComposeFiles is the list of docker-compose files to use
+	SkipTLSVerification bool     `yaml:"skip_tls_verify" default:"false"`                                                             // SkipTLSVerification skips the TLS verification
 }
 
 // NewDeployConfig creates a new DeployConfig
@@ -50,75 +37,78 @@ func NewDeployConfig() *DeployConfig {
 // DefaultDeployConfig creates a DeployConfig with default values
 func DefaultDeployConfig(name string) *DeployConfig {
 	return &DeployConfig{
-		Reference:           "/ref/heads/main",
 		Name:                name,
-		DockerComposePath:   "docker-compose.y(a)?ml",
+		Reference:           "/ref/heads/main",
+		WorkingDirectory:    ".",
+		ComposeFiles:        cli.DefaultFileNames,
 		SkipTLSVerification: false,
 	}
 }
 
-// parseConfigFile parses the given deployment configuration file
-func (c *DeployConfig) parseConfigFile(file []byte) error {
-	err := defaults.Set(c)
-	if err != nil {
-		return err
+func (c *DeployConfig) validateConfig() error {
+	if c.Name == "" {
+		return fmt.Errorf("%w: name", ErrKeyNotFound)
 	}
 
-	type Plain DeployConfig
+	if c.Reference == "" {
+		return fmt.Errorf("%w: reference", ErrKeyNotFound)
+	}
 
-	if err := yaml.Unmarshal(file, (*Plain)(c)); err != nil {
-		return err
+	if c.WorkingDirectory == "" {
+		return fmt.Errorf("%w: working_dir", ErrKeyNotFound)
+	}
+
+	if len(c.ComposeFiles) == 0 {
+		return fmt.Errorf("%w: compose_files", ErrKeyNotFound)
 	}
 
 	return nil
 }
 
 // GetDeployConfig returns either the deployment configuration from the repository or the default configuration
-func GetDeployConfig(fs billy.Filesystem, event github.PushPayload) (*DeployConfig, error) {
-	m, err := NewDeployConfigMeta()
+func GetDeployConfig(repoDir string, event github.PushPayload) (*DeployConfig, error) {
+	files, err := os.ReadDir(repoDir)
 	if err != nil {
 		return nil, err
 	}
 
-	dir, file := path.Split(m.DeploymentConfigFilePath)
-
-	files, err := fs.ReadDir(dir)
-	if err != nil {
-		return DefaultDeployConfig(event.Repository.Name), err
-	}
-
-	// Search for regex pattern of DeploymentConfigFilePath in the filesystem
-	for _, f := range files {
-		matched, err := regexp.MatchString(file, f.Name())
+	for _, configFile := range DefaultDeploymentConfigFileNames {
+		config, err := getDeployConfigFile(repoDir, files, configFile)
 		if err != nil {
-			return DefaultDeployConfig(event.Repository.Name), err
+			return nil, err
 		}
 
-		if matched {
-			file, err := fs.Open(dir + "/" + f.Name())
-			defer func(f billy.File) {
-				_ = f.Close()
-			}(file)
-
-			if err != nil {
-				return DefaultDeployConfig(event.Repository.Name), err
-			}
-
-			// Get contents of deploy config file
-			fileContents, err := io.ReadAll(file)
-			if err != nil {
-				return nil, err
-			}
-
-			c := NewDeployConfig()
-
-			if err := c.parseConfigFile(fileContents); err != nil {
-				return nil, err
-			}
-
-			return c, nil
+		if config != nil {
+			return config, nil
 		}
 	}
 
-	return DefaultDeployConfig(event.Repository.Name), fmt.Errorf("%s: '%s', using default configuration", m.DeploymentConfigFilePath, ErrConfigFileNotFound)
+	return DefaultDeployConfig(event.Repository.Name), nil
+}
+
+// getDeployConfigFile returns the deployment configuration from the repository or nil if not found
+func getDeployConfigFile(dir string, files []os.DirEntry, configFile string) (*DeployConfig, error) {
+	for _, f := range files {
+		if f.IsDir() {
+			continue
+		}
+
+		if f.Name() == configFile {
+			// Get contents of deploy config file
+			c, err := FromYAML(path.Join(dir, f.Name()))
+			if err != nil {
+				return nil, err
+			}
+
+			if err = c.validateConfig(); err != nil {
+				return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+			}
+
+			if c != nil {
+				return c, nil
+			}
+		}
+	}
+
+	return nil, ErrConfigFileNotFound
 }
