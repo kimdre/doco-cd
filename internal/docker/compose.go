@@ -11,7 +11,12 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"syscall"
+	"time"
+
+	"github.com/docker/cli/cli/command"
+	"github.com/docker/cli/cli/flags"
 
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/compose-spec/compose-go/v2/types"
@@ -25,6 +30,7 @@ const (
 )
 
 var ErrDockerSocketConnectionFailed = errors.New("failed to connect to docker socket")
+var ErrNoContainerToStart = errors.New("no container to start")
 
 // ConnectToSocket connects to the docker socket
 func ConnectToSocket() (net.Conn, error) {
@@ -120,10 +126,46 @@ func VerifySocketConnection() error {
 	return nil
 }
 
+func CreateDockerCli() (command.Cli, error) {
+	dockerCli, err := command.NewDockerCli(
+		command.WithOutputStream(os.Stdout),
+		command.WithErrorStream(os.Stderr),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create docker cli: %w", err)
+	}
+
+	opts := &flags.ClientOptions{Context: "default", LogLevel: "error"}
+
+	err = dockerCli.Initialize(opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize docker cli: %w", err)
+	}
+
+	return dockerCli, nil
+}
+
+/*
+addServiceLabels adds the labels docker compose expects to exist on services.
+This is required for future compose operations to work, such as finding
+containers that are part of a service.
+*/
+func addServiceLabels(project *types.Project) {
+	for i, s := range project.Services {
+		s.CustomLabels = map[string]string{
+			api.ProjectLabel:     project.Name,
+			api.ServiceLabel:     s.Name,
+			api.VersionLabel:     api.ComposeVersion,
+			api.WorkingDirLabel:  "/",
+			api.ConfigFilesLabel: strings.Join(project.ComposeFiles, ","),
+			api.OneoffLabel:      "False", // default, will be overridden by `run` command
+		}
+		project.Services[i] = s
+	}
+}
+
 // LoadCompose parses and loads Compose files as specified by the Docker Compose specification
 func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles []string) (*types.Project, error) {
-	// Iterate over the compose files and remove the first one until the project is successfully loaded
-	// for len(composeFiles) > 0 {
 	options, err := cli.NewProjectOptions(
 		composeFiles,
 		cli.WithName(projectName),
@@ -141,22 +183,23 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 		return nil, err
 	}
 
-	//	}
-	//		composeFiles = composeFiles[1:]
-	//		// Remove the first compose file
 	return project, nil
 }
 
 // DeployCompose deploys a project as specified by the Docker Compose specification (LoadCompose)
-func DeployCompose(ctx context.Context, project *types.Project) error {
-	service := compose.NewComposeService(nil)
+func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project) error {
+	service := compose.NewComposeService(dockerCli)
+	addServiceLabels(project)
 
 	createOpts := api.CreateOptions{
 		RemoveOrphans: true,
+		QuietPull:     true,
 	}
 
 	startOpts := api.StartOptions{
-		Project: project,
+		Project:     project,
+		Wait:        true,
+		WaitTimeout: time.Duration(3) * time.Minute,
 	}
 
 	err := service.Up(ctx, project, api.UpOptions{
@@ -164,7 +207,12 @@ func DeployCompose(ctx context.Context, project *types.Project) error {
 		Start:  startOpts,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to deploy compose project: %w", err)
+		if errors.Is(err, ErrNoContainerToStart) {
+			err = service.Start(ctx, project.Name, startOpts)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil

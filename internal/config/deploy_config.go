@@ -22,16 +22,11 @@ var (
 
 // DeployConfig is the structure of the deployment configuration file
 type DeployConfig struct {
-	Name                string   `yaml:"name"`                                                                                        // Name is the name of the docker-compose deployment / stack
-	Reference           string   `yaml:"reference" default:"refs/heads/main"`                                                         // Reference is the Git reference to the deployment, e.g. refs/heads/main or refs/tags/v1.0.0
-	WorkingDirectory    string   `yaml:"working_dir" default:"."`                                                                     // WorkingDirectory is the working directory for the deployment
-	ComposeFiles        []string `yaml:"compose_files" default:"[\"compose.yaml\", \"docker-compose.yaml\", \"docker-compose.yml\"]"` // ComposeFiles is the list of docker-compose files to use
-	SkipTLSVerification bool     `yaml:"skip_tls_verify" default:"false"`                                                             // SkipTLSVerification skips the TLS verification
-}
-
-// NewDeployConfig creates a new DeployConfig
-func NewDeployConfig() *DeployConfig {
-	return &DeployConfig{}
+	Name                string   `yaml:"name"`                                                                                                         // Name is the name of the docker-compose deployment / stack
+	Reference           string   `yaml:"reference" default:"refs/heads/main"`                                                                          // Reference is the Git reference to the deployment, e.g. refs/heads/main or refs/tags/v1.0.0
+	WorkingDirectory    string   `yaml:"working_dir" default:"."`                                                                                      // WorkingDirectory is the working directory for the deployment
+	ComposeFiles        []string `yaml:"compose_files" default:"[\"compose.yaml\", \"compose.yml\", \"docker-compose.yml\", \"docker-compose.yaml\"]"` // ComposeFiles is the list of docker-compose files to use
+	SkipTLSVerification bool     `yaml:"skip_tls_verify" default:"false"`                                                                              // SkipTLSVerification skips the TLS verification
 }
 
 // DefaultDeployConfig creates a DeployConfig with default values
@@ -75,7 +70,8 @@ func GetDeployConfig(repoDir string, event github.PushPayload) (*DeployConfig, e
 	for _, configFile := range DefaultDeploymentConfigFileNames {
 		config, err := getDeployConfigFile(repoDir, files, configFile)
 		if err != nil {
-			return nil, err
+			continue
+			// return nil, err
 		}
 
 		if config != nil {
