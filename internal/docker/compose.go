@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/kimdre/docker-compose-webhook/internal/config"
+
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/flags"
 
@@ -29,8 +31,10 @@ const (
 	apiVersion = "v1.46"
 )
 
-var ErrDockerSocketConnectionFailed = errors.New("failed to connect to docker socket")
-var ErrNoContainerToStart = errors.New("no container to start")
+var (
+	ErrDockerSocketConnectionFailed = errors.New("failed to connect to docker socket")
+	ErrNoContainerToStart           = errors.New("no container to start")
+)
 
 // ConnectToSocket connects to the docker socket
 func ConnectToSocket() (net.Conn, error) {
@@ -156,7 +160,7 @@ func addServiceLabels(project *types.Project) {
 			api.ProjectLabel:     project.Name,
 			api.ServiceLabel:     s.Name,
 			api.VersionLabel:     api.ComposeVersion,
-			api.WorkingDirLabel:  "/",
+			api.WorkingDirLabel:  project.WorkingDir,
 			api.ConfigFilesLabel: strings.Join(project.ComposeFiles, ","),
 			api.OneoffLabel:      "False", // default, will be overridden by `run` command
 		}
@@ -187,19 +191,20 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 }
 
 // DeployCompose deploys a project as specified by the Docker Compose specification (LoadCompose)
-func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project) error {
+func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project, deployConfig *config.DeployConfig) error {
 	service := compose.NewComposeService(dockerCli)
+
 	addServiceLabels(project)
 
 	createOpts := api.CreateOptions{
-		RemoveOrphans: true,
+		RemoveOrphans: deployConfig.RemoveOrphans,
 		QuietPull:     true,
 	}
 
 	startOpts := api.StartOptions{
 		Project:     project,
 		Wait:        true,
-		WaitTimeout: time.Duration(3) * time.Minute,
+		WaitTimeout: time.Duration(deployConfig.Timeout) * time.Second,
 	}
 
 	err := service.Up(ctx, project, api.UpOptions{

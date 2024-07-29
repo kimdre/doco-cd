@@ -14,8 +14,6 @@ import (
 var (
 	DefaultDeploymentConfigFileNames = []string{".compose-deploy.yaml", ".compose-deploy.yml"}
 	ErrConfigFileNotFound            = errors.New("configuration file not found in repository")
-	ErrNoValue                       = errors.New("no value for field 'value'")
-	ErrInvalidValue                  = errors.New("invalid value for field 'value'")
 	ErrInvalidConfig                 = errors.New("invalid deploy configuration")
 	ErrKeyNotFound                   = errors.New("key not found")
 )
@@ -27,6 +25,8 @@ type DeployConfig struct {
 	WorkingDirectory    string   `yaml:"working_dir" default:"."`                                                                                      // WorkingDirectory is the working directory for the deployment
 	ComposeFiles        []string `yaml:"compose_files" default:"[\"compose.yaml\", \"compose.yml\", \"docker-compose.yml\", \"docker-compose.yaml\"]"` // ComposeFiles is the list of docker-compose files to use
 	SkipTLSVerification bool     `yaml:"skip_tls_verify" default:"false"`                                                                              // SkipTLSVerification skips the TLS verification
+	RemoveOrphans       bool     `yaml:"remove_orphans" default:"true"`                                                                                // RemoveOrphans removes containers for services not defined in the Compose file
+	Timeout             int      `yaml:"timeout" default:"300"`                                                                                        // Timeout is the time to wait for the deployment to finish in seconds before timing out
 }
 
 // DefaultDeployConfig creates a DeployConfig with default values
