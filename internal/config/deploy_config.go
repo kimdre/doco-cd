@@ -26,6 +26,8 @@ type DeployConfig struct {
 	ComposeFiles        []string `yaml:"compose_files" default:"[\"compose.yaml\", \"compose.yml\", \"docker-compose.yml\", \"docker-compose.yaml\"]"` // ComposeFiles is the list of docker-compose files to use
 	SkipTLSVerification bool     `yaml:"skip_tls_verify" default:"false"`                                                                              // SkipTLSVerification skips the TLS verification
 	RemoveOrphans       bool     `yaml:"remove_orphans" default:"true"`                                                                                // RemoveOrphans removes containers for services not defined in the Compose file
+	ForceRecreate       bool     `yaml:"force_recreate" default:"false"`                                                                               // ForceRecreate forces the recreation/redeployment of containers even if the configuration has not changed
+	ForceImagePull      bool     `yaml:"force_image_pull" default:"false"`                                                                             // ForceImagePull always pulls the latest version of the image tags you've specified if a newer version is available
 	Timeout             int      `yaml:"timeout" default:"300"`                                                                                        // Timeout is the time to wait for the deployment to finish in seconds before timing out
 }
 

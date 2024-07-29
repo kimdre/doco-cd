@@ -196,9 +196,25 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 
 	addServiceLabels(project)
 
+	if deployConfig.ForceImagePull {
+		err := service.Pull(ctx, project, api.PullOptions{
+			Quiet: true,
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	recreateType := api.RecreateDiverged
+	if deployConfig.ForceRecreate {
+		recreateType = api.RecreateForce
+	}
+
 	createOpts := api.CreateOptions{
-		RemoveOrphans: deployConfig.RemoveOrphans,
-		QuietPull:     true,
+		RemoveOrphans:        deployConfig.RemoveOrphans,
+		Recreate:             recreateType,
+		RecreateDependencies: recreateType,
+		QuietPull:            false,
 	}
 
 	startOpts := api.StartOptions{
@@ -217,6 +233,8 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 			if err != nil {
 				return err
 			}
+		} else {
+			return err
 		}
 	}
 
