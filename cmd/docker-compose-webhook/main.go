@@ -307,7 +307,6 @@ func main() {
 			}
 
 			log.Debug("deploying project", slog.String("repository", event.Repository.FullName))
-			// TODO docker-compose deployment logic here
 			err = docker.DeployCompose(ctx, dockerCli, project, deployConfig)
 			if err != nil {
 				errMsg = "failed to deploy project"
