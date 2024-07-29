@@ -1,11 +1,20 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"path"
+	"reflect"
+
+	"github.com/compose-spec/compose-go/v2/cli"
+	"github.com/docker/docker/client"
+	"github.com/kimdre/docker-compose-webhook/internal/utils"
+
+	"github.com/kimdre/docker-compose-webhook/internal/docker"
 
 	"github.com/go-playground/webhooks/v6/gitea"
 	"github.com/go-playground/webhooks/v6/gitlab"
@@ -18,18 +27,19 @@ import (
 )
 
 const (
-	path = "/webhooks"
+	webhookPath = "/v1/webhook"
 )
+
+var errMsg string
 
 func main() {
 	// Set default log level to debug
-	log := logger.GetLogger(slog.LevelDebug)
+	log := logger.New(slog.LevelDebug)
 
 	// Get the application configuration
 	c, err := config.GetAppConfig()
 	if err != nil {
-		log.Error(fmt.Sprintf("failed to parse environment variables: %+v", err))
-		os.Exit(1)
+		log.Critical("failed to get application configuration", log.ErrAttr(err))
 	}
 
 	// Parse the log level from the app configuration
@@ -39,31 +49,69 @@ func main() {
 	}
 
 	// Set the actual log level
-	log = logger.GetLogger(logLevel)
+	log = logger.New(logLevel)
 
-	log.Info("Starting application", slog.String("log_level", c.LogLevel))
+	log.Info("starting application", slog.String("log_level", c.LogLevel))
 
-	hook, _ := github.New(github.Options.Secret(c.WebhookSecret))
+	// Test/verify the connection to the docker socket
+	err = docker.VerifySocketConnection()
+	if err != nil {
+		log.Critical(docker.ErrDockerSocketConnectionFailed.Error(), log.ErrAttr(err))
+	}
 
-	http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-		payload, err := hook.Parse(r, github.PushEvent) // , github.PullRequestEvent)
+	log.Debug("connection to docker socket was successful")
+
+	dockerCli, err := docker.CreateDockerCli()
+	if err != nil {
+		log.Critical("failed to create docker client", log.ErrAttr(err))
+		return
+	}
+	defer func(client client.APIClient) {
+		log.Debug("closing docker client")
+
+		err := client.Close()
 		if err != nil {
-			if errors.Is(err, github.ErrEventNotFound) {
-				// ok event wasn't one of the ones asked to be parsed
-				log.Error("Event not found")
+			log.Error("failed to close docker client", log.ErrAttr(err))
+		}
+	}(dockerCli.Client())
+
+	log.Debug("docker client created")
+
+	githubHook, _ := github.New(github.Options.Secret(c.WebhookSecret))
+
+	http.HandleFunc(webhookPath, func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.Background()
+
+		payload, err := githubHook.Parse(r, github.PushEvent)
+		if err != nil {
+			switch {
+			case errors.Is(err, github.ErrHMACVerificationFailed):
+				log.Debug("incorrect webhook secret", slog.String("ip", r.RemoteAddr), log.ErrAttr(err))
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			case errors.Is(err, github.ErrEventNotFound):
+				log.Debug("event not found", slog.String("ip", r.RemoteAddr), log.ErrAttr(err))
+				http.Error(w, "Event not found", http.StatusNotFound)
+			case errors.Is(err, github.ErrInvalidHTTPMethod):
+				log.Debug("invalid HTTP method", slog.String("ip", r.RemoteAddr), log.ErrAttr(err))
+				http.Error(w, "Invalid HTTP method", http.StatusMethodNotAllowed)
+			default:
+				log.Debug("failed to parse webhook", slog.String("ip", r.RemoteAddr), log.ErrAttr(err))
+				http.Error(w, "Failed to parse webhook", http.StatusInternalServerError)
 			}
+
+			return
 		}
 
 		switch event := payload.(type) {
 		case github.PushPayload:
 			log.Debug(
-				"Push event received",
+				"push event received",
 				slog.String("repository", event.Repository.FullName),
 				slog.String("reference", event.Ref))
 
 			// Clone the repository
-			log.Info(
-				"Cloning repository",
+			log.Debug(
+				"cloning repository to temporary directory",
 				slog.String("url", event.Repository.CloneURL),
 				slog.String("reference", event.Ref),
 				slog.String("repository", event.Repository.FullName))
@@ -73,10 +121,16 @@ func main() {
 			cloneUrl := event.Repository.CloneURL
 
 			if event.Repository.Private {
+				errMsg = "missing access token for private repository"
 				if c.GitAccessToken == "" {
 					log.Error(
-						"Missing access token for private repository",
+						errMsg,
 						slog.String("repository", event.Repository.FullName))
+					utils.JSONError(w,
+						errMsg,
+						err.Error(),
+						event.Repository.FullName,
+						http.StatusInternalServerError)
 
 					return
 				}
@@ -93,18 +147,18 @@ func main() {
 				cloneUrl = git.GetAuthUrl(event.Repository.CloneURL, c.GitAccessToken)
 			}
 
-			log.Debug(
-				"Using clone URL",
-				slog.String("url", cloneUrl),
-				slog.String("repository", event.Repository.FullName),
-				slog.String("reference", event.Ref))
-
-			repo, err := git.CloneRepository(cloneUrl, event.Ref)
+			repo, err := git.CloneRepository(event.Repository.Name, cloneUrl, event.Ref)
 			if err != nil {
+				errMsg = "failed to clone repository"
 				log.Error(
-					"Failed to clone repository",
-					logger.ErrAttr(err),
+					errMsg,
+					log.ErrAttr(err),
 					slog.String("repository", event.Repository.FullName))
+				utils.JSONError(w,
+					errMsg,
+					err.Error(),
+					event.Repository.FullName,
+					http.StatusInternalServerError)
 
 				return
 			}
@@ -112,58 +166,196 @@ func main() {
 			// Get the worktree from the repository
 			worktree, err := repo.Worktree()
 			if err != nil {
+				errMsg = "failed to get worktree"
 				log.Error(
-					"Failed to get worktree",
-					logger.ErrAttr(err),
+					errMsg,
+					log.ErrAttr(err),
 					slog.String("repository", event.Repository.FullName))
+				utils.JSONError(w,
+					errMsg,
+					err.Error(),
+					event.Repository.FullName,
+					http.StatusInternalServerError)
 
 				return
 			}
 
-			// Get the filesystem from the worktree
 			fs := worktree.Filesystem
 
+			log.Debug(
+				"repository cloned",
+				slog.String("repository", event.Repository.FullName),
+				slog.String("reference", event.Ref),
+				slog.String("path", fs.Root()))
+
+			// Defer removal of the repository
+			defer func(workDir string) {
+				log.Debug(
+					"cleaning up",
+					slog.String("repository", event.Repository.FullName),
+					slog.String("path", workDir))
+
+				err := os.RemoveAll(workDir)
+				if err != nil {
+					errMsg = "failed to remove temporary directory"
+					log.Error(
+						errMsg,
+						log.ErrAttr(err),
+						slog.String("repository", event.Repository.FullName))
+					utils.JSONError(w,
+						errMsg,
+						err.Error(),
+						event.Repository.FullName,
+						http.StatusInternalServerError)
+				}
+			}(fs.Root())
+
+			log.Debug(
+				"retrieving deployment configuration",
+				slog.String("repository", event.Repository.FullName),
+				slog.String("reference", event.Ref))
+
 			// Get the deployment config from the repository
-			deployConfig, err := config.GetDeployConfig(fs, event)
-			if deployConfig == nil && err != nil {
+			deployConfig, err := config.GetDeployConfig(fs.Root(), event)
+			if err != nil {
+				errMsg = "failed to get deploy configuration"
 				log.Error(
-					"Failed to get deploy config",
-					logger.ErrAttr(err),
+					errMsg,
+					log.ErrAttr(err),
 					slog.String("repository", event.Repository.FullName))
+				utils.JSONError(w,
+					errMsg,
+					err.Error(),
+					event.Repository.FullName,
+					http.StatusInternalServerError)
 
 				return
 			}
 
 			log.Debug(
-				"Deployment config retrieved",
+				"deployment configuration retrieved",
 				slog.Any("config", deployConfig),
 				slog.String("repository", event.Repository.FullName))
 
-			log.Info(
-				"Cleaning up repository",
-				slog.String("repository", event.Repository.FullName))
+			workingDir := path.Join(fs.Root(), deployConfig.WorkingDirectory)
 
-			repo = nil
+			err = os.Chdir(workingDir)
+			if err != nil {
+				errMsg = "failed to change working directory"
+				log.Error(
+					errMsg,
+					log.ErrAttr(err),
+					slog.String("repository", event.Repository.FullName),
+					slog.String("path", workingDir))
+				utils.JSONError(w,
+					errMsg,
+					err.Error(),
+					event.Repository.FullName,
+					http.StatusInternalServerError)
 
+				return
+			}
+
+			// Check if the default compose files are used
+			if reflect.DeepEqual(deployConfig.ComposeFiles, cli.DefaultFileNames) {
+				var tmpComposeFiles []string
+
+				log.Debug("checking for default compose files", slog.String("repository", event.Repository.FullName))
+
+				// Check if the default compose files exist
+				for _, f := range deployConfig.ComposeFiles {
+					if _, err := os.Stat(path.Join(workingDir, f)); errors.Is(err, os.ErrNotExist) {
+						continue
+					}
+
+					tmpComposeFiles = append(tmpComposeFiles, f)
+				}
+
+				if len(tmpComposeFiles) == 0 {
+					errMsg = "no compose files found"
+					log.Error(
+						errMsg,
+						slog.String("repository", event.Repository.FullName),
+						slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+					utils.JSONError(w,
+						errMsg,
+						err.Error(),
+						event.Repository.FullName,
+						http.StatusInternalServerError)
+
+					return
+				}
+
+				deployConfig.ComposeFiles = tmpComposeFiles
+			}
+
+			project, err := docker.LoadCompose(ctx, workingDir, event.Repository.Name, deployConfig.ComposeFiles)
+			if err != nil {
+				errMsg = "failed to load project"
+				log.Error(
+					errMsg,
+					log.ErrAttr(err),
+					slog.String("repository", event.Repository.FullName),
+					slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+				utils.JSONError(w,
+					errMsg,
+					err.Error(),
+					event.Repository.FullName,
+					http.StatusInternalServerError)
+
+				return
+			}
+
+			log.Debug("deploying project", slog.String("repository", event.Repository.FullName))
 			// TODO docker-compose deployment logic here
+			err = docker.DeployCompose(ctx, dockerCli, project)
+			if err != nil {
+				errMsg = "failed to deploy project"
+				log.Error(
+					errMsg,
+					log.ErrAttr(err),
+					slog.String("repository", event.Repository.FullName),
+					slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+				utils.JSONError(w,
+					errMsg,
+					err.Error(),
+					event.Repository.FullName,
+					http.StatusInternalServerError)
+
+				return
+			}
+
+			log.Info(
+				"project deployment successful",
+				slog.String("repository", event.Repository.FullName),
+				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+
+			// Respond with a 204 No Content status
+			w.WriteHeader(http.StatusNoContent)
 
 		case gitlab.PushEventPayload:
 			// TODO: Implement GitLab webhook handling
-			log.Error("GitLab webhook event not yet implemented")
+			errMsg = "gitLab webhook event not implemented"
+			log.Error(errMsg)
+			http.Error(w, errMsg, http.StatusNotImplemented)
 
 		case gitea.PushPayload:
 			// TODO: Implement Gitea webhook handling
-			log.Error("Gitea webhook event not yet implemented")
+			errMsg = "gitea webhook event not implemented"
+			log.Error(errMsg)
+			http.Error(w, errMsg, http.StatusNotImplemented)
 
 		default:
-			log.Warn("Event not supported")
+			errMsg = "event not supported"
+			log.Debug(errMsg, slog.Any("event", event))
+			http.Error(w, errMsg, http.StatusNotImplemented)
 		}
 	})
 
 	log.Info(
-		"Listening for webhooks",
+		"listening for events",
 		slog.Int("http_port", int(c.HttpPort)),
-		slog.String("path", path),
+		slog.String("path", webhookPath),
 	)
 
 	err = http.ListenAndServe(fmt.Sprintf(":%d", c.HttpPort), nil)

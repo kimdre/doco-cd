@@ -1,0 +1,21 @@
+name: Spell checking
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  codespell:
+    name: Check for spelling errors
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+      - uses: codespell-project/actions-codespell@master
+        with:
+          check_filenames: true
+          skip: ./.git,go.mod,go.sum
+          ignore_words_list: AtLeast,AtMost

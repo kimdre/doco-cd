@@ -1,6 +1,6 @@
 BINARY_DIR=bin
 BINARY_NAME=docker-compose-webhook
-.PHONY: test build run lint fmt
+.PHONY: test build run lint fmt update update-all submodule-commit
 
 test:
 	@echo "Running tests..."
@@ -19,3 +19,15 @@ fmt:
 	-go run golang.org/x/tools/cmd/goimports@latest -l -w .
 	-go run github.com/bombsimon/wsl/v4/cmd...@latest -strict-append -test=true -fix ./...
 	-go run github.com/catenacyber/perfsprint@latest -fix ./...
+
+update:
+	git pull origin main
+	git submodule update --init --recursive
+
+update-all: update
+	git submodule foreach git pull origin master
+	git submodule foreach git checkout master
+
+submodule-commit:
+	git submodule foreach "git add . && git commit -m 'update' && git push"
+	git add docs/ && git commit -m 'docs: update wiki' && git push
