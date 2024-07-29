@@ -10,7 +10,7 @@ services:
     environment:
       TZ: Europe/Berlin
       HTTP_PORT: 80
-      LOG_LEVEL: debug
+      LOG_LEVEL: info
     # The connection to the docker socket requires the user to be either root
     # or in the docker group (the group id may vary and needs to match the docker socket permissions)
     # Use `user: root` to run the app as root, or use `group_add` to use the non-root user and add the docker group id to it
