@@ -147,7 +147,7 @@ func main() {
 				cloneUrl = git.GetAuthUrl(event.Repository.CloneURL, c.GitAccessToken)
 			}
 
-			repo, err := git.CloneRepository(event.Repository.Name, cloneUrl, event.Ref)
+			repo, err := git.CloneRepository(event.Repository.FullName, cloneUrl, event.Ref)
 			if err != nil {
 				errMsg = "failed to clone repository"
 				log.Error(
