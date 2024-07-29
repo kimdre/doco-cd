@@ -104,8 +104,8 @@ func main() {
 
 		switch event := payload.(type) {
 		case github.PushPayload:
-			log.Debug(
-				"push event received",
+			log.Info(
+				"preparing project deployment",
 				slog.String("repository", event.Repository.FullName),
 				slog.String("reference", event.Ref))
 
@@ -306,7 +306,8 @@ func main() {
 				return
 			}
 
-			log.Debug("deploying project", slog.String("repository", event.Repository.FullName))
+			log.Info("deploying project", slog.String("repository", event.Repository.FullName))
+
 			err = docker.DeployCompose(ctx, dockerCli, project, deployConfig)
 			if err != nil {
 				errMsg = "failed to deploy project"
