@@ -343,8 +343,7 @@ func main() {
 
 			jobLog.Info(
 				"project deployment successful",
-				slog.String("repository", event.Repository.FullName),
-				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+				slog.String("repository", event.Repository.FullName))
 
 			// Respond with a 204 No Content status
 			w.WriteHeader(http.StatusNoContent)
