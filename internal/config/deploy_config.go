@@ -20,25 +20,23 @@ var (
 
 // DeployConfig is the structure of the deployment configuration file
 type DeployConfig struct {
-	Name                string   `yaml:"name"`                                                                                                         // Name is the name of the docker-compose deployment / stack
-	Reference           string   `yaml:"reference" default:"refs/heads/main"`                                                                          // Reference is the Git reference to the deployment, e.g. refs/heads/main or refs/tags/v1.0.0
-	WorkingDirectory    string   `yaml:"working_dir" default:"."`                                                                                      // WorkingDirectory is the working directory for the deployment
-	ComposeFiles        []string `yaml:"compose_files" default:"[\"compose.yaml\", \"compose.yml\", \"docker-compose.yml\", \"docker-compose.yaml\"]"` // ComposeFiles is the list of docker-compose files to use
-	SkipTLSVerification bool     `yaml:"skip_tls_verify" default:"false"`                                                                              // SkipTLSVerification skips the TLS verification
-	RemoveOrphans       bool     `yaml:"remove_orphans" default:"true"`                                                                                // RemoveOrphans removes containers for services not defined in the Compose file
-	ForceRecreate       bool     `yaml:"force_recreate" default:"false"`                                                                               // ForceRecreate forces the recreation/redeployment of containers even if the configuration has not changed
-	ForceImagePull      bool     `yaml:"force_image_pull" default:"false"`                                                                             // ForceImagePull always pulls the latest version of the image tags you've specified if a newer version is available
-	Timeout             int      `yaml:"timeout" default:"300"`                                                                                        // Timeout is the time in seconds to wait for the deployment to finish in seconds before timing out
+	Name             string   `yaml:"name"`                                                                                                         // Name is the name of the docker-compose deployment / stack
+	Reference        string   `yaml:"reference" default:"refs/heads/main"`                                                                          // Reference is the Git reference to the deployment, e.g. refs/heads/main or refs/tags/v1.0.0
+	WorkingDirectory string   `yaml:"working_dir" default:"."`                                                                                      // WorkingDirectory is the working directory for the deployment
+	ComposeFiles     []string `yaml:"compose_files" default:"[\"compose.yaml\", \"compose.yml\", \"docker-compose.yml\", \"docker-compose.yaml\"]"` // ComposeFiles is the list of docker-compose files to use
+	RemoveOrphans    bool     `yaml:"remove_orphans" default:"true"`                                                                                // RemoveOrphans removes containers for services not defined in the Compose file
+	ForceRecreate    bool     `yaml:"force_recreate" default:"false"`                                                                               // ForceRecreate forces the recreation/redeployment of containers even if the configuration has not changed
+	ForceImagePull   bool     `yaml:"force_image_pull" default:"false"`                                                                             // ForceImagePull always pulls the latest version of the image tags you've specified if a newer version is available
+	Timeout          int      `yaml:"timeout" default:"300"`                                                                                        // Timeout is the time in seconds to wait for the deployment to finish in seconds before timing out
 }
 
 // DefaultDeployConfig creates a DeployConfig with default values
 func DefaultDeployConfig(name string) *DeployConfig {
 	return &DeployConfig{
-		Name:                name,
-		Reference:           "/ref/heads/main",
-		WorkingDirectory:    ".",
-		ComposeFiles:        cli.DefaultFileNames,
-		SkipTLSVerification: false,
+		Name:             name,
+		Reference:        "/ref/heads/main",
+		WorkingDirectory: ".",
+		ComposeFiles:     cli.DefaultFileNames,
 	}
 }
 
