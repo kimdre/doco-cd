@@ -6,10 +6,11 @@ import (
 
 // AppConfig is used to configure this application
 type AppConfig struct {
-	LogLevel       string `env:"LOG_LEVEL,required" envDefault:"info"` // LogLevel is the log level for the application
-	HttpPort       uint16 `env:"HTTP_PORT,required" envDefault:"80"`   // HttpPort is the port the HTTP server will listen on
-	WebhookSecret  string `env:"WEBHOOK_SECRET,required"`              // WebhookSecret is the secret used to authenticate the webhook
-	GitAccessToken string `env:"GIT_ACCESS_TOKEN"`                     // GitAccessToken is the access token used to authenticate with the Git server (e.g. GitHub) for private repositories
+	LogLevel            string `env:"LOG_LEVEL,required" envDefault:"info"`     // LogLevel is the log level for the application
+	HttpPort            uint16 `env:"HTTP_PORT,required" envDefault:"80"`       // HttpPort is the port the HTTP server will listen on
+	WebhookSecret       string `env:"WEBHOOK_SECRET,required"`                  // WebhookSecret is the secret used to authenticate the webhook
+	GitAccessToken      string `env:"GIT_ACCESS_TOKEN"`                         // GitAccessToken is the access token used to authenticate with the Git server (e.g. GitHub) for private repositories
+	SkipTLSVerification bool   `env:"SKIP_TLS_VERIFICATION" envDefault:"false"` // SkipTLSVerification skips the TLS verification when cloning repositories.
 }
 
 // GetAppConfig returns the configuration
