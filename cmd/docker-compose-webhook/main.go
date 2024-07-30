@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	"log/slog"
 	"net/http"
 	"os"
@@ -82,20 +83,24 @@ func main() {
 	http.HandleFunc(webhookPath, func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.Background()
 
+		// Add job id to the context to track deployments in the logs
+		jobID := uuid.Must(uuid.NewRandom()).String()
+		ctx = context.WithValue(ctx, "job_id", jobID)
+
 		payload, err := githubHook.Parse(r, github.PushEvent)
 		if err != nil {
 			switch {
 			case errors.Is(err, github.ErrHMACVerificationFailed):
-				log.Debug("incorrect webhook secret", slog.String("ip", r.RemoteAddr), log.ErrAttr(err))
+				log.Debug("incorrect webhook secret", slog.String("ip", r.RemoteAddr), log.ErrAttr(err), slog.String("job_id", jobID))
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			case errors.Is(err, github.ErrEventNotFound):
-				log.Debug("event not found", slog.String("ip", r.RemoteAddr), log.ErrAttr(err))
+				log.Debug("event not found", slog.String("ip", r.RemoteAddr), log.ErrAttr(err), slog.String("job_id", jobID))
 				http.Error(w, "Event not found", http.StatusNotFound)
 			case errors.Is(err, github.ErrInvalidHTTPMethod):
-				log.Debug("invalid HTTP method", slog.String("ip", r.RemoteAddr), log.ErrAttr(err))
+				log.Debug("invalid HTTP method", slog.String("ip", r.RemoteAddr), log.ErrAttr(err), slog.String("job_id", jobID))
 				http.Error(w, "Invalid HTTP method", http.StatusMethodNotAllowed)
 			default:
-				log.Debug("failed to parse webhook", slog.String("ip", r.RemoteAddr), log.ErrAttr(err))
+				log.Debug("failed to parse webhook", slog.String("ip", r.RemoteAddr), log.ErrAttr(err), slog.String("job_id", jobID))
 				http.Error(w, "Failed to parse webhook", http.StatusInternalServerError)
 			}
 
@@ -107,14 +112,16 @@ func main() {
 			log.Info(
 				"preparing project deployment",
 				slog.String("repository", event.Repository.FullName),
-				slog.String("reference", event.Ref))
+				slog.String("reference", event.Ref),
+				slog.String("job_id", jobID))
 
 			// Clone the repository
 			log.Debug(
 				"cloning repository to temporary directory",
 				slog.String("url", event.Repository.CloneURL),
 				slog.String("reference", event.Ref),
-				slog.String("repository", event.Repository.FullName))
+				slog.String("repository", event.Repository.FullName),
+				slog.String("job_id", jobID))
 
 			// var auth transport.AuthMethod = nil
 
@@ -125,11 +132,13 @@ func main() {
 				if c.GitAccessToken == "" {
 					log.Error(
 						errMsg,
-						slog.String("repository", event.Repository.FullName))
+						slog.String("repository", event.Repository.FullName),
+						slog.String("job_id", jobID))
 					utils.JSONError(w,
 						errMsg,
 						err.Error(),
 						event.Repository.FullName,
+						jobID,
 						http.StatusInternalServerError)
 
 					return
@@ -153,11 +162,13 @@ func main() {
 				log.Error(
 					errMsg,
 					log.ErrAttr(err),
-					slog.String("repository", event.Repository.FullName))
+					slog.String("repository", event.Repository.FullName),
+					slog.String("job_id", jobID))
 				utils.JSONError(w,
 					errMsg,
 					err.Error(),
 					event.Repository.FullName,
+					jobID,
 					http.StatusInternalServerError)
 
 				return
@@ -170,11 +181,13 @@ func main() {
 				log.Error(
 					errMsg,
 					log.ErrAttr(err),
-					slog.String("repository", event.Repository.FullName))
+					slog.String("repository", event.Repository.FullName),
+					slog.String("job_id", jobID))
 				utils.JSONError(w,
 					errMsg,
 					err.Error(),
 					event.Repository.FullName,
+					jobID,
 					http.StatusInternalServerError)
 
 				return
@@ -186,14 +199,16 @@ func main() {
 				"repository cloned",
 				slog.String("repository", event.Repository.FullName),
 				slog.String("reference", event.Ref),
-				slog.String("path", fs.Root()))
+				slog.String("path", fs.Root()),
+				slog.String("job_id", jobID))
 
 			// Defer removal of the repository
 			defer func(workDir string) {
 				log.Debug(
 					"cleaning up",
 					slog.String("repository", event.Repository.FullName),
-					slog.String("path", workDir))
+					slog.String("path", workDir),
+					slog.String("job_id", jobID))
 
 				err := os.RemoveAll(workDir)
 				if err != nil {
@@ -201,11 +216,13 @@ func main() {
 					log.Error(
 						errMsg,
 						log.ErrAttr(err),
-						slog.String("repository", event.Repository.FullName))
+						slog.String("repository", event.Repository.FullName),
+						slog.String("job_id", jobID))
 					utils.JSONError(w,
 						errMsg,
 						err.Error(),
 						event.Repository.FullName,
+						jobID,
 						http.StatusInternalServerError)
 				}
 			}(fs.Root())
@@ -213,7 +230,8 @@ func main() {
 			log.Debug(
 				"retrieving deployment configuration",
 				slog.String("repository", event.Repository.FullName),
-				slog.String("reference", event.Ref))
+				slog.String("reference", event.Ref),
+				slog.String("job_id", jobID))
 
 			// Get the deployment config from the repository
 			deployConfig, err := config.GetDeployConfig(fs.Root(), event)
@@ -222,11 +240,13 @@ func main() {
 				log.Error(
 					errMsg,
 					log.ErrAttr(err),
-					slog.String("repository", event.Repository.FullName))
+					slog.String("repository", event.Repository.FullName),
+					slog.String("job_id", jobID))
 				utils.JSONError(w,
 					errMsg,
 					err.Error(),
 					event.Repository.FullName,
+					jobID,
 					http.StatusInternalServerError)
 
 				return
@@ -235,7 +255,8 @@ func main() {
 			log.Debug(
 				"deployment configuration retrieved",
 				slog.Any("config", deployConfig),
-				slog.String("repository", event.Repository.FullName))
+				slog.String("repository", event.Repository.FullName),
+				slog.String("job_id", jobID))
 
 			workingDir := path.Join(fs.Root(), deployConfig.WorkingDirectory)
 
@@ -246,11 +267,13 @@ func main() {
 					errMsg,
 					log.ErrAttr(err),
 					slog.String("repository", event.Repository.FullName),
-					slog.String("path", workingDir))
+					slog.String("path", workingDir),
+					slog.String("job_id", jobID))
 				utils.JSONError(w,
 					errMsg,
 					err.Error(),
 					event.Repository.FullName,
+					jobID,
 					http.StatusInternalServerError)
 
 				return
@@ -260,7 +283,9 @@ func main() {
 			if reflect.DeepEqual(deployConfig.ComposeFiles, cli.DefaultFileNames) {
 				var tmpComposeFiles []string
 
-				log.Debug("checking for default compose files", slog.String("repository", event.Repository.FullName))
+				log.Debug("checking for default compose files",
+					slog.String("repository", event.Repository.FullName),
+					slog.String("job_id", jobID))
 
 				// Check if the default compose files exist
 				for _, f := range deployConfig.ComposeFiles {
@@ -276,11 +301,13 @@ func main() {
 					log.Error(
 						errMsg,
 						slog.String("repository", event.Repository.FullName),
-						slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+						slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)),
+						slog.String("job_id", jobID))
 					utils.JSONError(w,
 						errMsg,
 						err.Error(),
 						event.Repository.FullName,
+						jobID,
 						http.StatusInternalServerError)
 
 					return
@@ -296,17 +323,21 @@ func main() {
 					errMsg,
 					log.ErrAttr(err),
 					slog.String("repository", event.Repository.FullName),
-					slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+					slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)),
+					slog.String("job_id", jobID))
 				utils.JSONError(w,
 					errMsg,
 					err.Error(),
 					event.Repository.FullName,
+					jobID,
 					http.StatusInternalServerError)
 
 				return
 			}
 
-			log.Info("deploying project", slog.String("repository", event.Repository.FullName))
+			log.Info("deploying project",
+				slog.String("repository", event.Repository.FullName),
+				slog.String("job_id", jobID))
 
 			err = docker.DeployCompose(ctx, dockerCli, project, deployConfig)
 			if err != nil {
@@ -315,11 +346,13 @@ func main() {
 					errMsg,
 					log.ErrAttr(err),
 					slog.String("repository", event.Repository.FullName),
-					slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+					slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)),
+					slog.String("job_id", jobID))
 				utils.JSONError(w,
 					errMsg,
 					err.Error(),
 					event.Repository.FullName,
+					jobID,
 					http.StatusInternalServerError)
 
 				return
@@ -328,7 +361,8 @@ func main() {
 			log.Info(
 				"project deployment successful",
 				slog.String("repository", event.Repository.FullName),
-				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)),
+				slog.String("job_id", jobID))
 
 			// Respond with a 204 No Content status
 			w.WriteHeader(http.StatusNoContent)
@@ -336,18 +370,22 @@ func main() {
 		case gitlab.PushEventPayload:
 			// TODO: Implement GitLab webhook handling
 			errMsg = "gitLab webhook event not implemented"
-			log.Error(errMsg)
+			log.Error(errMsg,
+				slog.String("job_id", jobID))
 			http.Error(w, errMsg, http.StatusNotImplemented)
 
 		case gitea.PushPayload:
 			// TODO: Implement Gitea webhook handling
 			errMsg = "gitea webhook event not implemented"
-			log.Error(errMsg)
+			log.Error(errMsg,
+				slog.String("job_id", jobID))
 			http.Error(w, errMsg, http.StatusNotImplemented)
 
 		default:
 			errMsg = "event not supported"
-			log.Debug(errMsg, slog.Any("event", event))
+			log.Debug(errMsg,
+				slog.Any("event", event),
+				slog.String("job_id", jobID))
 			http.Error(w, errMsg, http.StatusNotImplemented)
 		}
 	})
