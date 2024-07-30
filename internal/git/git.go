@@ -10,7 +10,7 @@ import (
 )
 
 // CloneRepository clones a repository from a given URL and branch into the memory filesystem
-func CloneRepository(name, url, ref string) (*git.Repository, error) {
+func CloneRepository(name, url, ref string, skipTLSVerify bool) (*git.Repository, error) {
 	dir := fmt.Sprintf("%s/%s", os.TempDir(), name)
 	err := os.MkdirAll(dir, os.ModePerm)
 	if err != nil {
@@ -18,11 +18,12 @@ func CloneRepository(name, url, ref string) (*git.Repository, error) {
 	}
 
 	return git.PlainClone(dir, false, &git.CloneOptions{
-		URL:           url,
-		SingleBranch:  true,
-		ReferenceName: plumbing.ReferenceName(ref),
-		Tags:          git.NoTags,
-		Depth:         1,
+		URL:             url,
+		SingleBranch:    true,
+		ReferenceName:   plumbing.ReferenceName(ref),
+		Tags:            git.NoTags,
+		Depth:           1,
+		InsecureSkipTLS: skipTLSVerify,
 	})
 }
 
