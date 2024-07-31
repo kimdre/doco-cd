@@ -214,7 +214,7 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		RemoveOrphans:        deployConfig.RemoveOrphans,
 		Recreate:             recreateType,
 		RecreateDependencies: recreateType,
-		QuietPull:            false,
+		QuietPull:            true,
 	}
 
 	startOpts := api.StartOptions{
