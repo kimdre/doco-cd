@@ -32,7 +32,7 @@ func ParseLevel(s string) (slog.Level, error) {
 }
 
 // ErrAttr returns an attribute for an error
-func (l *Logger) ErrAttr(err error) slog.Attr {
+func ErrAttr(err error) slog.Attr {
 	return slog.Any("error", err)
 }
 

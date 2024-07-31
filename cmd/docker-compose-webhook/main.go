@@ -10,6 +10,8 @@ import (
 	"path"
 	"reflect"
 
+	"github.com/docker/cli/cli/command"
+
 	"github.com/google/uuid"
 
 	"github.com/compose-spec/compose-go/v2/cli"
@@ -34,6 +36,193 @@ const (
 
 var errMsg string
 
+func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, c *config.AppConfig, repoName, repoFullName, cloneUrl, ref, jobID string, private bool, dockerCli command.Cli) {
+	jobLog = jobLog.With(slog.String("repository", repoFullName))
+
+	jobLog.Info("preparing project deployment")
+
+	// Clone the repository
+	jobLog.Debug(
+		"cloning repository to temporary directory",
+		slog.String("url", cloneUrl))
+
+	// var auth transport.AuthMethod = nil
+
+	if private {
+		errMsg = "missing access token for private repository"
+		if c.GitAccessToken == "" {
+			jobLog.Error(errMsg)
+			utils.JSONError(w,
+				errMsg,
+				"",
+				jobID,
+				http.StatusInternalServerError)
+
+			return
+		}
+
+		// Basic auth examples:
+		// https://YOUR-USERNAME:GENERATED-TOKEN@github.com/YOUR-USERNAME/YOUR-REPOSITORY
+		// Or
+		// https://GENERATED-TOKEN@github.com/YOUR-USERNAME/YOUR-REPOSITORY
+		//auth = &gitHttp.BasicAuth{
+		//	Username: "",
+		//	Password: c.GitAccessToken,
+		//}
+
+		cloneUrl = git.GetAuthUrl(cloneUrl, c.GitAccessToken)
+	}
+
+	repo, err := git.CloneRepository(repoFullName, cloneUrl, ref, c.SkipTLSVerification)
+	if err != nil {
+		errMsg = "failed to clone repository"
+		jobLog.Error(errMsg, logger.ErrAttr(err))
+		utils.JSONError(w,
+			errMsg,
+			err.Error(),
+			jobID,
+			http.StatusInternalServerError)
+
+		return
+	}
+
+	// Get the worktree from the repository
+	worktree, err := repo.Worktree()
+	if err != nil {
+		errMsg = "failed to get worktree"
+		jobLog.Error(errMsg, logger.ErrAttr(err))
+		utils.JSONError(w,
+			errMsg,
+			err.Error(),
+			jobID,
+			http.StatusInternalServerError)
+
+		return
+	}
+
+	fs := worktree.Filesystem
+
+	jobLog.Debug("repository cloned", slog.String("path", fs.Root()))
+
+	// Defer removal of the repository
+	defer func(workDir string) {
+		jobLog.Debug("cleaning up", slog.String("path", workDir))
+
+		err = os.RemoveAll(workDir)
+		if err != nil {
+			errMsg = "failed to remove temporary directory"
+			jobLog.Error(errMsg, logger.ErrAttr(err))
+			utils.JSONError(w,
+				errMsg,
+				err.Error(),
+				jobID,
+				http.StatusInternalServerError)
+		}
+	}(fs.Root())
+
+	jobLog.Debug("retrieving deployment configuration")
+
+	// Get the deployment config from the repository
+	deployConfig, err := config.GetDeployConfig(fs.Root(), repoName)
+	if err != nil {
+		errMsg = "failed to get deploy configuration"
+		jobLog.Error(errMsg, logger.ErrAttr(err))
+		utils.JSONError(w,
+			errMsg,
+			err.Error(),
+			jobID,
+			http.StatusInternalServerError)
+
+		return
+	}
+
+	jobLog = jobLog.With(slog.String("reference", deployConfig.Reference))
+
+	jobLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
+
+	workingDir := path.Join(fs.Root(), deployConfig.WorkingDirectory)
+
+	err = os.Chdir(workingDir)
+	if err != nil {
+		errMsg = "failed to change working directory"
+		jobLog.Error(errMsg, logger.ErrAttr(err), slog.String("path", workingDir))
+		utils.JSONError(w,
+			errMsg,
+			err.Error(),
+			jobID,
+			http.StatusInternalServerError)
+
+		return
+	}
+
+	// Check if the default compose files are used
+	if reflect.DeepEqual(deployConfig.ComposeFiles, cli.DefaultFileNames) {
+		var tmpComposeFiles []string
+
+		jobLog.Debug("checking for default compose files")
+
+		// Check if the default compose files exist
+		for _, f := range deployConfig.ComposeFiles {
+			if _, err = os.Stat(path.Join(workingDir, f)); errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+
+			tmpComposeFiles = append(tmpComposeFiles, f)
+		}
+
+		if len(tmpComposeFiles) == 0 {
+			errMsg = "no compose files found"
+			jobLog.Error(errMsg,
+				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+			utils.JSONError(w,
+				errMsg,
+				err.Error(),
+				jobID,
+				http.StatusInternalServerError)
+
+			return
+		}
+
+		deployConfig.ComposeFiles = tmpComposeFiles
+	}
+
+	project, err := docker.LoadCompose(ctx, workingDir, repoName, deployConfig.ComposeFiles)
+	if err != nil {
+		errMsg = "failed to load project"
+		jobLog.Error(errMsg,
+			logger.ErrAttr(err),
+			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+		utils.JSONError(w,
+			errMsg,
+			err.Error(),
+			jobID,
+			http.StatusInternalServerError)
+
+		return
+	}
+
+	jobLog.Info("deploying project")
+
+	err = docker.DeployCompose(ctx, dockerCli, project, deployConfig)
+	if err != nil {
+		errMsg = "failed to deploy project"
+		jobLog.Error(errMsg,
+			logger.ErrAttr(err),
+			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+		utils.JSONError(w,
+			errMsg,
+			err.Error(),
+			jobID,
+			http.StatusInternalServerError)
+
+		return
+	}
+
+	msg := "project deployment successful"
+	jobLog.Info(msg)
+	utils.JSONResponse(w, msg, jobID, http.StatusCreated)
+}
+
 func main() {
 	// Set default log level to debug
 	log := logger.New(slog.LevelDebug)
@@ -41,7 +230,7 @@ func main() {
 	// Get the application configuration
 	c, err := config.GetAppConfig()
 	if err != nil {
-		log.Critical("failed to get application configuration", log.ErrAttr(err))
+		log.Critical("failed to get application configuration", logger.ErrAttr(err))
 	}
 
 	// Parse the log level from the app configuration
@@ -58,28 +247,29 @@ func main() {
 	// Test/verify the connection to the docker socket
 	err = docker.VerifySocketConnection()
 	if err != nil {
-		log.Critical(docker.ErrDockerSocketConnectionFailed.Error(), log.ErrAttr(err))
+		log.Critical(docker.ErrDockerSocketConnectionFailed.Error(), logger.ErrAttr(err))
 	}
 
 	log.Debug("connection to docker socket was successful")
 
 	dockerCli, err := docker.CreateDockerCli()
 	if err != nil {
-		log.Critical("failed to create docker client", log.ErrAttr(err))
+		log.Critical("failed to create docker client", logger.ErrAttr(err))
 		return
 	}
 	defer func(client client.APIClient) {
 		log.Debug("closing docker client")
 
-		err := client.Close()
+		err = client.Close()
 		if err != nil {
-			log.Error("failed to close docker client", log.ErrAttr(err))
+			log.Error("failed to close docker client", logger.ErrAttr(err))
 		}
 	}(dockerCli.Client())
 
 	log.Debug("docker client created")
 
 	githubHook, _ := github.New(github.Options.Secret(c.WebhookSecret))
+	giteaHook, _ := gitea.New(gitea.Options.Secret(c.WebhookSecret))
 
 	http.HandleFunc(webhookPath, func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.Background()
@@ -88,224 +278,59 @@ func main() {
 		jobID := uuid.Must(uuid.NewRandom()).String()
 		jobLog := log.With(slog.String("job_id", jobID))
 
-		payload, err := githubHook.Parse(r, github.PushEvent)
-		if err != nil {
+		githubPayload, githubHookErr := githubHook.Parse(r, github.PushEvent)
+		giteaPayload, giteaHookErr := giteaHook.Parse(r, gitea.PushEvent)
+
+		if githubHookErr != nil {
+			err = githubHookErr
+		} else if giteaHookErr != nil {
+			err = giteaHookErr
+		}
+
+		if githubHookErr != nil && giteaHookErr != nil {
 			switch {
-			case errors.Is(err, github.ErrHMACVerificationFailed):
-				jobLog.Debug("incorrect webhook secret", slog.String("ip", r.RemoteAddr), log.ErrAttr(err))
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			case errors.Is(err, github.ErrEventNotFound):
-				jobLog.Debug("event not found", slog.String("ip", r.RemoteAddr), log.ErrAttr(err))
-				http.Error(w, "Event not found", http.StatusNotFound)
-			case errors.Is(err, github.ErrInvalidHTTPMethod):
-				jobLog.Debug("invalid HTTP method", slog.String("ip", r.RemoteAddr), log.ErrAttr(err))
-				http.Error(w, "Invalid HTTP method", http.StatusMethodNotAllowed)
+			case errors.Is(err, github.ErrHMACVerificationFailed), errors.Is(err, gitea.ErrHMACVerificationFailed):
+				errMsg = "incorrect webhook secret"
+				jobLog.Debug(errMsg, slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
+				utils.JSONError(w, errMsg, err.Error(), jobID, http.StatusUnauthorized)
+			case errors.Is(err, github.ErrEventNotFound), errors.Is(err, gitea.ErrEventNotFound):
+				errMsg = "event not found"
+				jobLog.Debug(errMsg, slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
+				utils.JSONError(w, errMsg, err.Error(), jobID, http.StatusNotFound)
+			case errors.Is(err, github.ErrInvalidHTTPMethod), errors.Is(err, gitea.ErrInvalidHTTPMethod):
+				errMsg = "invalid HTTP method"
+				jobLog.Debug(errMsg, slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
+				utils.JSONError(w, errMsg, err.Error(), jobID, http.StatusMethodNotAllowed)
 			default:
-				jobLog.Debug("failed to parse webhook", slog.String("ip", r.RemoteAddr), log.ErrAttr(err))
-				http.Error(w, "Failed to parse webhook", http.StatusInternalServerError)
+				errMsg = "failed to parse webhook"
+				jobLog.Debug(errMsg, slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
+				utils.JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
 			}
 
 			return
 		}
 
+		var payload any
+		if githubPayload != nil {
+			payload = githubPayload
+		} else if giteaPayload != nil {
+			payload = giteaPayload
+		} else {
+			errMsg = "webhook payload not found"
+			jobLog.Error(errMsg)
+			utils.JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
+		}
+
 		switch event := payload.(type) {
 		case github.PushPayload:
-			jobLog = jobLog.With(slog.String("repository", event.Repository.FullName))
+			handleEvent(ctx, jobLog, w, c, event.Repository.Name, event.Repository.FullName, event.Repository.CloneURL, event.Ref, jobID, event.Repository.Private, dockerCli)
 
-			jobLog.Info("preparing project deployment")
-
-			// Clone the repository
-			jobLog.Debug(
-				"cloning repository to temporary directory",
-				slog.String("url", event.Repository.CloneURL))
-
-			// var auth transport.AuthMethod = nil
-
-			cloneUrl := event.Repository.CloneURL
-
-			if event.Repository.Private {
-				errMsg = "missing access token for private repository"
-				if c.GitAccessToken == "" {
-					jobLog.Error(errMsg)
-					utils.JSONError(w,
-						errMsg,
-						err.Error(),
-						jobID,
-						http.StatusInternalServerError)
-
-					return
-				}
-
-				// Basic auth examples:
-				// https://YOUR-USERNAME:GENERATED-TOKEN@github.com/YOUR-USERNAME/YOUR-REPOSITORY
-				// Or
-				// https://GENERATED-TOKEN@github.com/YOUR-USERNAME/YOUR-REPOSITORY
-				//auth = &gitHttp.BasicAuth{
-				//	Username: "",
-				//	Password: c.GitAccessToken,
-				//}
-
-				cloneUrl = git.GetAuthUrl(event.Repository.CloneURL, c.GitAccessToken)
-			}
-
-			repo, err := git.CloneRepository(event.Repository.FullName, cloneUrl, event.Ref, c.SkipTLSVerification)
-			if err != nil {
-				errMsg = "failed to clone repository"
-				jobLog.Error(errMsg, log.ErrAttr(err))
-				utils.JSONError(w,
-					errMsg,
-					err.Error(),
-					jobID,
-					http.StatusInternalServerError)
-
-				return
-			}
-
-			// Get the worktree from the repository
-			worktree, err := repo.Worktree()
-			if err != nil {
-				errMsg = "failed to get worktree"
-				jobLog.Error(errMsg, log.ErrAttr(err))
-				utils.JSONError(w,
-					errMsg,
-					err.Error(),
-					jobID,
-					http.StatusInternalServerError)
-
-				return
-			}
-
-			fs := worktree.Filesystem
-
-			jobLog.Debug("repository cloned", slog.String("path", fs.Root()))
-
-			// Defer removal of the repository
-			defer func(workDir string) {
-				jobLog.Debug("cleaning up", slog.String("path", workDir))
-
-				err := os.RemoveAll(workDir)
-				if err != nil {
-					errMsg = "failed to remove temporary directory"
-					jobLog.Error(errMsg, log.ErrAttr(err))
-					utils.JSONError(w,
-						errMsg,
-						err.Error(),
-						jobID,
-						http.StatusInternalServerError)
-				}
-			}(fs.Root())
-
-			jobLog.Debug("retrieving deployment configuration")
-
-			// Get the deployment config from the repository
-			deployConfig, err := config.GetDeployConfig(fs.Root(), event)
-			if err != nil {
-				errMsg = "failed to get deploy configuration"
-				jobLog.Error(errMsg, log.ErrAttr(err))
-				utils.JSONError(w,
-					errMsg,
-					err.Error(),
-					jobID,
-					http.StatusInternalServerError)
-
-				return
-			}
-
-			jobLog = jobLog.With(slog.String("reference", deployConfig.Reference))
-
-			jobLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
-
-			workingDir := path.Join(fs.Root(), deployConfig.WorkingDirectory)
-
-			err = os.Chdir(workingDir)
-			if err != nil {
-				errMsg = "failed to change working directory"
-				jobLog.Error(errMsg, log.ErrAttr(err), slog.String("path", workingDir))
-				utils.JSONError(w,
-					errMsg,
-					err.Error(),
-					jobID,
-					http.StatusInternalServerError)
-
-				return
-			}
-
-			// Check if the default compose files are used
-			if reflect.DeepEqual(deployConfig.ComposeFiles, cli.DefaultFileNames) {
-				var tmpComposeFiles []string
-
-				jobLog.Debug("checking for default compose files")
-
-				// Check if the default compose files exist
-				for _, f := range deployConfig.ComposeFiles {
-					if _, err := os.Stat(path.Join(workingDir, f)); errors.Is(err, os.ErrNotExist) {
-						continue
-					}
-
-					tmpComposeFiles = append(tmpComposeFiles, f)
-				}
-
-				if len(tmpComposeFiles) == 0 {
-					errMsg = "no compose files found"
-					jobLog.Error(errMsg,
-						slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-					utils.JSONError(w,
-						errMsg,
-						err.Error(),
-						jobID,
-						http.StatusInternalServerError)
-
-					return
-				}
-
-				deployConfig.ComposeFiles = tmpComposeFiles
-			}
-
-			project, err := docker.LoadCompose(ctx, workingDir, event.Repository.Name, deployConfig.ComposeFiles)
-			if err != nil {
-				errMsg = "failed to load project"
-				jobLog.Error(errMsg,
-					log.ErrAttr(err),
-					slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-				utils.JSONError(w,
-					errMsg,
-					err.Error(),
-					jobID,
-					http.StatusInternalServerError)
-
-				return
-			}
-
-			jobLog.Info("deploying project")
-
-			err = docker.DeployCompose(ctx, dockerCli, project, deployConfig)
-			if err != nil {
-				errMsg = "failed to deploy project"
-				jobLog.Error(errMsg,
-					log.ErrAttr(err),
-					slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-				utils.JSONError(w,
-					errMsg,
-					err.Error(),
-					jobID,
-					http.StatusInternalServerError)
-
-				return
-			}
-
-			msg := "project deployment successful"
-			jobLog.Info(msg)
-			utils.JSONResponse(w, msg, jobID, http.StatusCreated)
+		case gitea.PushPayload:
+			handleEvent(ctx, jobLog, w, c, event.Repo.Name, event.Repo.FullName, event.Repo.CloneURL, event.Ref, jobID, event.Repo.Private, dockerCli)
 
 		case gitlab.PushEventPayload:
 			// TODO: Implement GitLab webhook handling
 			errMsg = "gitLab webhook event not implemented"
-			jobLog.Error(errMsg)
-			http.Error(w, errMsg, http.StatusNotImplemented)
-
-		case gitea.PushPayload:
-			// TODO: Implement Gitea webhook handling
-			errMsg = "gitea webhook event not implemented"
 			jobLog.Error(errMsg)
 			http.Error(w, errMsg, http.StatusNotImplemented)
 
