@@ -6,33 +6,55 @@ import (
 	"net/http"
 )
 
+type jsonResponse struct {
+	Code    int    `json:"code"`
+	JobID   string `json:"job_id,omitempty"`
+	Details string `json:"details,omitempty"`
+}
+
+// jsonError inherits from jsonResponse and adds an error message
 type jsonError struct {
-	Code       int    `json:"code"`
-	Error      string `json:"error"`
-	Details    string `json:"details,omitempty"`
-	Repository string `json:"repository,omitempty"`
-	JobID      string `json:"job_id,omitempty"`
+	jsonResponse
+	Error string `json:"error"`
 }
 
 // JSONError writes an error response to the client in JSON format
-func JSONError(w http.ResponseWriter, err interface{}, details, repo, jobId string, code int) {
+func JSONError(w http.ResponseWriter, err interface{}, details, jobId string, code int) {
 	if _, ok := err.(error); ok {
 		err = fmt.Sprintf("%v", err)
 	}
 
-	err = jsonError{
-		Error:      err.(string),
-		Code:       code,
-		Details:    details,
-		Repository: repo,
-		JobID:      jobId,
+	resp := jsonError{
+		Error: err.(string),
+		jsonResponse: jsonResponse{
+			Code:    code,
+			JobID:   jobId,
+			Details: details,
+		},
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(code)
 
-	err = json.NewEncoder(w).Encode(err)
+	err = json.NewEncoder(w).Encode(resp)
+	if err != nil {
+		return
+	}
+}
+
+func JSONResponse(w http.ResponseWriter, details, jobId string, code int) {
+	resp := jsonResponse{
+		Code:    code,
+		JobID:   jobId,
+		Details: details,
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(code)
+
+	err := json.NewEncoder(w).Encode(resp)
 	if err != nil {
 		return
 	}

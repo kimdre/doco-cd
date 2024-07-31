@@ -130,7 +130,6 @@ func main() {
 					utils.JSONError(w,
 						errMsg,
 						err.Error(),
-						event.Repository.FullName,
 						jobID,
 						http.StatusInternalServerError)
 
@@ -156,7 +155,6 @@ func main() {
 				utils.JSONError(w,
 					errMsg,
 					err.Error(),
-					event.Repository.FullName,
 					jobID,
 					http.StatusInternalServerError)
 
@@ -171,7 +169,6 @@ func main() {
 				utils.JSONError(w,
 					errMsg,
 					err.Error(),
-					event.Repository.FullName,
 					jobID,
 					http.StatusInternalServerError)
 
@@ -193,7 +190,6 @@ func main() {
 					utils.JSONError(w,
 						errMsg,
 						err.Error(),
-						event.Repository.FullName,
 						jobID,
 						http.StatusInternalServerError)
 				}
@@ -209,7 +205,6 @@ func main() {
 				utils.JSONError(w,
 					errMsg,
 					err.Error(),
-					event.Repository.FullName,
 					jobID,
 					http.StatusInternalServerError)
 
@@ -229,7 +224,6 @@ func main() {
 				utils.JSONError(w,
 					errMsg,
 					err.Error(),
-					event.Repository.FullName,
 					jobID,
 					http.StatusInternalServerError)
 
@@ -258,7 +252,6 @@ func main() {
 					utils.JSONError(w,
 						errMsg,
 						err.Error(),
-						event.Repository.FullName,
 						jobID,
 						http.StatusInternalServerError)
 
@@ -277,7 +270,6 @@ func main() {
 				utils.JSONError(w,
 					errMsg,
 					err.Error(),
-					event.Repository.FullName,
 					jobID,
 					http.StatusInternalServerError)
 
@@ -295,17 +287,15 @@ func main() {
 				utils.JSONError(w,
 					errMsg,
 					err.Error(),
-					event.Repository.FullName,
 					jobID,
 					http.StatusInternalServerError)
 
 				return
 			}
 
-			jobLog.Info("project deployment successful")
-
-			// Respond with a 204 No Content status
-			w.WriteHeader(http.StatusNoContent)
+			msg := "project deployment successful"
+			jobLog.Info(msg)
+			utils.JSONResponse(w, msg, jobID, http.StatusCreated)
 
 		case gitlab.PushEventPayload:
 			// TODO: Implement GitLab webhook handling
