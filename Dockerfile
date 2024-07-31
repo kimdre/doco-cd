@@ -20,11 +20,11 @@ ENV GOCACHE=/root/.cache/go-build \
     CGO_ENABLED=0 \
     GOOS=linux
 
-# Build
+# Build and strip binary
 RUN --mount=type=cache,target=/go/pkg/mod/ \
     --mount=type=cache,target="/root/.cache/go-build" \
     --mount=type=bind,target=. \
-    go build -o / ./...
+    go build -ldflags="-s -w" -o / ./...
 
 # Run the tests in the container
 FROM build-stage AS run-test-stage
