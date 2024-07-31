@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/google/uuid"
 	"log/slog"
 	"net/http"
 	"os"
 	"path"
 	"reflect"
+
+	"github.com/google/uuid"
 
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/docker/docker/client"

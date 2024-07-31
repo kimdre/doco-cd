@@ -12,6 +12,7 @@ import (
 // CloneRepository clones a repository from a given URL and branch into the memory filesystem
 func CloneRepository(name, url, ref string, skipTLSVerify bool) (*git.Repository, error) {
 	dir := fmt.Sprintf("%s/%s", os.TempDir(), name)
+
 	err := os.MkdirAll(dir, os.ModePerm)
 	if err != nil {
 		return nil, err
