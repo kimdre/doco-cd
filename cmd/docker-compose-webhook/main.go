@@ -85,7 +85,7 @@ func main() {
 
 		// Add job id to the context to track deployments in the logs
 		jobID := uuid.Must(uuid.NewRandom()).String()
-		jobLog := log.With("job_id", jobID)
+		jobLog := log.With(slog.String("job_id", jobID))
 
 		payload, err := githubHook.Parse(r, github.PushEvent)
 		if err != nil {
@@ -109,17 +109,14 @@ func main() {
 
 		switch event := payload.(type) {
 		case github.PushPayload:
-			jobLog.Info(
-				"preparing project deployment",
-				slog.String("repository", event.Repository.FullName),
-				slog.String("reference", event.Ref))
+			jobLog = jobLog.With(slog.String("repository", event.Repository.FullName))
+
+			jobLog.Info("preparing project deployment")
 
 			// Clone the repository
 			jobLog.Debug(
 				"cloning repository to temporary directory",
-				slog.String("url", event.Repository.CloneURL),
-				slog.String("reference", event.Ref),
-				slog.String("repository", event.Repository.FullName))
+				slog.String("url", event.Repository.CloneURL))
 
 			// var auth transport.AuthMethod = nil
 
@@ -128,9 +125,7 @@ func main() {
 			if event.Repository.Private {
 				errMsg = "missing access token for private repository"
 				if c.GitAccessToken == "" {
-					jobLog.Error(
-						errMsg,
-						slog.String("repository", event.Repository.FullName))
+					jobLog.Error(errMsg)
 					utils.JSONError(w,
 						errMsg,
 						err.Error(),
@@ -156,10 +151,7 @@ func main() {
 			repo, err := git.CloneRepository(event.Repository.FullName, cloneUrl, event.Ref, c.SkipTLSVerification)
 			if err != nil {
 				errMsg = "failed to clone repository"
-				jobLog.Error(
-					errMsg,
-					log.ErrAttr(err),
-					slog.String("repository", event.Repository.FullName))
+				jobLog.Error(errMsg, log.ErrAttr(err))
 				utils.JSONError(w,
 					errMsg,
 					err.Error(),
@@ -174,10 +166,7 @@ func main() {
 			worktree, err := repo.Worktree()
 			if err != nil {
 				errMsg = "failed to get worktree"
-				jobLog.Error(
-					errMsg,
-					log.ErrAttr(err),
-					slog.String("repository", event.Repository.FullName))
+				jobLog.Error(errMsg, log.ErrAttr(err))
 				utils.JSONError(w,
 					errMsg,
 					err.Error(),
@@ -190,26 +179,16 @@ func main() {
 
 			fs := worktree.Filesystem
 
-			jobLog.Debug(
-				"repository cloned",
-				slog.String("repository", event.Repository.FullName),
-				slog.String("reference", event.Ref),
-				slog.String("path", fs.Root()))
+			jobLog.Debug("repository cloned", slog.String("path", fs.Root()))
 
 			// Defer removal of the repository
 			defer func(workDir string) {
-				jobLog.Debug(
-					"cleaning up",
-					slog.String("repository", event.Repository.FullName),
-					slog.String("path", workDir))
+				jobLog.Debug("cleaning up", slog.String("path", workDir))
 
 				err := os.RemoveAll(workDir)
 				if err != nil {
 					errMsg = "failed to remove temporary directory"
-					jobLog.Error(
-						errMsg,
-						log.ErrAttr(err),
-						slog.String("repository", event.Repository.FullName))
+					jobLog.Error(errMsg, log.ErrAttr(err))
 					utils.JSONError(w,
 						errMsg,
 						err.Error(),
@@ -219,19 +198,13 @@ func main() {
 				}
 			}(fs.Root())
 
-			jobLog.Debug(
-				"retrieving deployment configuration",
-				slog.String("repository", event.Repository.FullName),
-				slog.String("reference", event.Ref))
+			jobLog.Debug("retrieving deployment configuration")
 
 			// Get the deployment config from the repository
 			deployConfig, err := config.GetDeployConfig(fs.Root(), event)
 			if err != nil {
 				errMsg = "failed to get deploy configuration"
-				jobLog.Error(
-					errMsg,
-					log.ErrAttr(err),
-					slog.String("repository", event.Repository.FullName))
+				jobLog.Error(errMsg, log.ErrAttr(err))
 				utils.JSONError(w,
 					errMsg,
 					err.Error(),
@@ -242,21 +215,16 @@ func main() {
 				return
 			}
 
-			jobLog.Debug(
-				"deployment configuration retrieved",
-				slog.Any("config", deployConfig),
-				slog.String("repository", event.Repository.FullName))
+			jobLog = jobLog.With(slog.String("reference", deployConfig.Reference))
+
+			jobLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
 
 			workingDir := path.Join(fs.Root(), deployConfig.WorkingDirectory)
 
 			err = os.Chdir(workingDir)
 			if err != nil {
 				errMsg = "failed to change working directory"
-				jobLog.Error(
-					errMsg,
-					log.ErrAttr(err),
-					slog.String("repository", event.Repository.FullName),
-					slog.String("path", workingDir))
+				jobLog.Error(errMsg, log.ErrAttr(err), slog.String("path", workingDir))
 				utils.JSONError(w,
 					errMsg,
 					err.Error(),
@@ -271,8 +239,7 @@ func main() {
 			if reflect.DeepEqual(deployConfig.ComposeFiles, cli.DefaultFileNames) {
 				var tmpComposeFiles []string
 
-				jobLog.Debug("checking for default compose files",
-					slog.String("repository", event.Repository.FullName))
+				jobLog.Debug("checking for default compose files")
 
 				// Check if the default compose files exist
 				for _, f := range deployConfig.ComposeFiles {
@@ -285,9 +252,7 @@ func main() {
 
 				if len(tmpComposeFiles) == 0 {
 					errMsg = "no compose files found"
-					jobLog.Error(
-						errMsg,
-						slog.String("repository", event.Repository.FullName),
+					jobLog.Error(errMsg,
 						slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
 					utils.JSONError(w,
 						errMsg,
@@ -305,10 +270,8 @@ func main() {
 			project, err := docker.LoadCompose(ctx, workingDir, event.Repository.Name, deployConfig.ComposeFiles)
 			if err != nil {
 				errMsg = "failed to load project"
-				jobLog.Error(
-					errMsg,
+				jobLog.Error(errMsg,
 					log.ErrAttr(err),
-					slog.String("repository", event.Repository.FullName),
 					slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
 				utils.JSONError(w,
 					errMsg,
@@ -320,16 +283,13 @@ func main() {
 				return
 			}
 
-			jobLog.Info("deploying project",
-				slog.String("repository", event.Repository.FullName))
+			jobLog.Info("deploying project")
 
 			err = docker.DeployCompose(ctx, dockerCli, project, deployConfig)
 			if err != nil {
 				errMsg = "failed to deploy project"
-				jobLog.Error(
-					errMsg,
+				jobLog.Error(errMsg,
 					log.ErrAttr(err),
-					slog.String("repository", event.Repository.FullName),
 					slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
 				utils.JSONError(w,
 					errMsg,
@@ -341,9 +301,7 @@ func main() {
 				return
 			}
 
-			jobLog.Info(
-				"project deployment successful",
-				slog.String("repository", event.Repository.FullName))
+			jobLog.Info("project deployment successful")
 
 			// Respond with a 204 No Content status
 			w.WriteHeader(http.StatusNoContent)
