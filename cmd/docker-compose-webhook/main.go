@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/docker/cli/cli/command"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"path"
 	"reflect"
+
+	"github.com/docker/cli/cli/command"
 
 	"github.com/google/uuid"
 
@@ -277,17 +277,6 @@ func main() {
 		// Add job id to the context to track deployments in the logs
 		jobID := uuid.Must(uuid.NewRandom()).String()
 		jobLog := log.With(slog.String("job_id", jobID))
-
-		// Print request body
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			errMsg = "failed to read request body"
-			jobLog.Error(errMsg, logger.ErrAttr(err))
-			utils.JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
-			return
-		}
-
-		jobLog.Info("request body", slog.String("body", string(body)))
 
 		githubPayload, githubHookErr := githubHook.Parse(r, github.PushEvent)
 		giteaPayload, giteaHookErr := giteaHook.Parse(r, gitea.PushEvent)
