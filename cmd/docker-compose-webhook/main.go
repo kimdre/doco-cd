@@ -287,7 +287,7 @@ func main() {
 			return
 		}
 
-		jobLog.Debug("request body", slog.String("body", string(body)))
+		jobLog.Info("request body", slog.String("body", string(body)))
 
 		githubPayload, githubHookErr := githubHook.Parse(r, github.PushEvent)
 		giteaPayload, giteaHookErr := giteaHook.Parse(r, gitea.PushEvent)
