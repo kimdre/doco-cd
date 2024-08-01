@@ -4,13 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/docker/cli/cli/command"
 	"log/slog"
 	"net/http"
 	"os"
 	"path"
 	"reflect"
-
-	"github.com/docker/cli/cli/command"
 
 	"github.com/google/uuid"
 
@@ -277,6 +276,8 @@ func main() {
 		// Add job id to the context to track deployments in the logs
 		jobID := uuid.Must(uuid.NewRandom()).String()
 		jobLog := log.With(slog.String("job_id", jobID))
+
+		fmt.Println(r.Body)
 
 		githubPayload, githubHookErr := githubHook.Parse(r, github.PushEvent)
 		giteaPayload, giteaHookErr := giteaHook.Parse(r, gitea.PushEvent)
