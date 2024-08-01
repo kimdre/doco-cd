@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/docker/cli/cli/command"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -277,7 +278,16 @@ func main() {
 		jobID := uuid.Must(uuid.NewRandom()).String()
 		jobLog := log.With(slog.String("job_id", jobID))
 
-		fmt.Println(r.Body)
+		// Print request body
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			errMsg = "failed to read request body"
+			jobLog.Error(errMsg, logger.ErrAttr(err))
+			utils.JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
+			return
+		}
+
+		jobLog.Debug("request body", slog.String("body", string(body)))
 
 		githubPayload, githubHookErr := githubHook.Parse(r, github.PushEvent)
 		giteaPayload, giteaHookErr := giteaHook.Parse(r, gitea.PushEvent)
