@@ -7,8 +7,8 @@ import (
 )
 
 type jsonResponse struct {
-	JobID   string `json:"job_id,omitempty"`
 	Details string `json:"details,omitempty"`
+	JobID   string `json:"job_id,omitempty"`
 }
 
 // jsonError inherits from jsonResponse and adds an error message
@@ -26,8 +26,8 @@ func JSONError(w http.ResponseWriter, err interface{}, details, jobId string, co
 	resp := jsonError{
 		Error: err.(string),
 		jsonResponse: jsonResponse{
-			JobID:   jobId,
 			Details: details,
+			JobID:   jobId,
 		},
 	}
 
@@ -43,8 +43,8 @@ func JSONError(w http.ResponseWriter, err interface{}, details, jobId string, co
 
 func JSONResponse(w http.ResponseWriter, details, jobId string, code int) {
 	resp := jsonResponse{
-		JobID:   jobId,
 		Details: details,
+		JobID:   jobId,
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
