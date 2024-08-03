@@ -1,10 +1,16 @@
 # docker-compose-webhook
-Deploy your Docker Compose with Webhooks
 
-For documentation, see the [Wiki](https://github.com/kimdre/docker-compose-webhook/wiki).
+## GitOps for Docker Compose
 
-Docker Compose Webhook is a lightweight GitOps tool that automatically deploys and updates Docker Compose services when a change is pushed to a Git repository.
+![GitHub Release](https://img.shields.io/github/v/release/kimdre/docker-compose-webhook?display_name=tag&label=Release)
+[![CodeQL](https://github.com/kimdre/docker-compose-webhook/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/kimdre/docker-compose-webhook/actions/workflows/github-code-scanning/codeql)
+[![Spell checking](https://github.com/kimdre/docker-compose-webhook/actions/workflows/spelling.yaml/badge.svg)](https://github.com/kimdre/docker-compose-webhook/actions/workflows/spelling.yaml)
+[![Build Image](https://github.com/kimdre/docker-compose-webhook/actions/workflows/build.yaml/badge.svg)](https://github.com/kimdre/docker-compose-webhook/actions/workflows/build.yaml)
 
-> [!Important]
-> This project currently is still in early development.
-> Feel free to share your ideas and opinions with me. :)
+
+Docker Compose Webhook is a lightweight GitOps tool that automatically deploys and updates Docker Compose services using webhooks, that are triggered by your Git repository.
+You can think of a ArgoCD alternative for Docker.
+
+## Documentation
+
+You can find the documentation in the [Wiki](https://github.com/kimdre/docker-compose-webhook/wiki).

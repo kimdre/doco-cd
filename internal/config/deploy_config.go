@@ -7,8 +7,6 @@ import (
 	"path"
 
 	"github.com/compose-spec/compose-go/v2/cli"
-
-	"github.com/go-playground/webhooks/v6/github"
 )
 
 var (
@@ -61,7 +59,7 @@ func (c *DeployConfig) validateConfig() error {
 }
 
 // GetDeployConfig returns either the deployment configuration from the repository or the default configuration
-func GetDeployConfig(repoDir string, event github.PushPayload) (*DeployConfig, error) {
+func GetDeployConfig(repoDir, name string) (*DeployConfig, error) {
 	files, err := os.ReadDir(repoDir)
 	if err != nil {
 		return nil, err
@@ -71,7 +69,6 @@ func GetDeployConfig(repoDir string, event github.PushPayload) (*DeployConfig, e
 		config, err := getDeployConfigFile(repoDir, files, configFile)
 		if err != nil {
 			continue
-			// return nil, err
 		}
 
 		if config != nil {
@@ -79,7 +76,7 @@ func GetDeployConfig(repoDir string, event github.PushPayload) (*DeployConfig, e
 		}
 	}
 
-	return DefaultDeployConfig(event.Repository.Name), nil
+	return DefaultDeployConfig(name), nil
 }
 
 // getDeployConfigFile returns the deployment configuration from the repository or nil if not found

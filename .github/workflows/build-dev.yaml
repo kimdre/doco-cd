@@ -1,12 +1,7 @@
-name: Build Image
+name: Build Dev Image
 
 on:
   push:
-    tags:
-      - 'v*'
-  pull_request:
-    branches:
-        - main
 
 jobs:
   build:
@@ -35,10 +30,7 @@ jobs:
           images: |
             ghcr.io/${{ github.repository }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=ref,event=pr
+            type=raw,value=dev
             
       - name: Build and push
         uses: docker/build-push-action@v5

@@ -178,7 +178,6 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 		cli.WithResolvedPaths(true),
 	)
 	if err != nil {
-		fmt.Println(err)
 		return nil, err
 	}
 
