@@ -212,7 +212,7 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	buildOpts := api.BuildOptions{
 		Pull:     true,
 		Progress: "auto",
-		Quiet:    true,
+		Quiet:    false,
 	}
 
 	createOpts := api.CreateOptions{
