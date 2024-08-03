@@ -152,6 +152,8 @@ github.com/docker/cli-docs-tool v0.8.0 h1:YcDWl7rQJC3lJ7WVZRwSs3bc9nka97QLWfyJQl
 github.com/docker/cli-docs-tool v0.8.0/go.mod h1:8TQQ3E7mOXoYUs811LiPdUnAhXrcVsBIrW21a5pUbdk=
 github.com/docker/compose/v2 v2.29.0 h1:qPBhzfjT2zkxUXuu+TcbQq292bPpB0ozzVHot2w2IN0=
 github.com/docker/compose/v2 v2.29.0/go.mod h1:95QFO8lue3WJmLUDSdOLBkm7KdGhcG6U+RvVxrQIzOo=
+github.com/docker/compose/v2 v2.29.1 h1:H8oyStDcpjFvyczQ5IuKIE+Bz9jEh8NsRhrAFFlH90U=
+github.com/docker/compose/v2 v2.29.1/go.mod h1:oxZ/omiQ4pHlVtp4dJ/B/fZ1pCDlBvYt97UnVelbNKk=
 github.com/docker/distribution v2.7.1+incompatible/go.mod h1:J2gT2udsDAN96Uj4KfcMRqY0/ypR+oyYUYmja8H+y+w=
 github.com/docker/distribution v2.8.3+incompatible h1:AtKxIZ36LoNK51+Z6RpzLpddBirtxJnzDrHLEKxTAYk=
 github.com/docker/distribution v2.8.3+incompatible/go.mod h1:J2gT2udsDAN96Uj4KfcMRqY0/ypR+oyYUYmja8H+y+w=
