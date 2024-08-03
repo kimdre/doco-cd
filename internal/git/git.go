@@ -9,7 +9,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 )
 
-// CloneRepository clones a repository from a given URL and branch into the memory filesystem
+// CloneRepository clones a repository from a given URL and reference to a temporary directory
 func CloneRepository(name, url, ref string, skipTLSVerify bool) (*git.Repository, error) {
 	path := filepath.Join(os.TempDir(), name)
 
