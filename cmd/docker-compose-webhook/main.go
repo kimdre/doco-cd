@@ -46,8 +46,10 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	// var auth transport.AuthMethod = nil
 
 	if p.Private {
-		errMsg = "missing access token for private repository"
+		jobLog.Debug("repository is private", slog.String("access_token", c.GitAccessToken))
+
 		if c.GitAccessToken == "" {
+			errMsg = "missing access token for private repository"
 			jobLog.Error(errMsg)
 			utils.JSONError(w,
 				errMsg,
@@ -67,12 +69,14 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		//	Password: c.GitAccessToken,
 		//}
 
-		jobLog.Debug("repository is private", slog.String("access_token", c.GitAccessToken))
 		p.CloneURL = git.GetAuthUrl(p.CloneURL, c.GitAccessToken)
-		jobLog.Debug("repository clone URL updated", slog.String("url", p.CloneURL))
+	} else if c.GitAccessToken != "" {
+		// Always use the access token for public repositories if it is set to avoid rate limiting
+		p.CloneURL = git.GetAuthUrl(p.CloneURL, c.GitAccessToken)
 	}
 
 	jobLog.Debug("cloning repository", slog.String("url", p.CloneURL))
+
 	repo, err := git.CloneRepository(p.FullName, p.CloneURL, p.Ref, c.SkipTLSVerification)
 	if err != nil {
 		errMsg = "failed to clone repository"
