@@ -75,8 +75,6 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		p.CloneURL = git.GetAuthUrl(p.CloneURL, c.AuthType, c.GitAccessToken)
 	}
 
-	jobLog.Debug("cloning repository", slog.String("url", p.CloneURL))
-
 	repo, err := git.CloneRepository(p.FullName, p.CloneURL, p.Ref, c.SkipTLSVerification)
 	if err != nil {
 		errMsg = "failed to clone repository"
