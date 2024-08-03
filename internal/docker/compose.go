@@ -209,7 +209,14 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		recreateType = api.RecreateForce
 	}
 
+	buildOpts := api.BuildOptions{
+		Pull:     true,
+		Progress: "auto",
+		Quiet:    true,
+	}
+
 	createOpts := api.CreateOptions{
+		Build:                &buildOpts,
 		RemoveOrphans:        deployConfig.RemoveOrphans,
 		Recreate:             recreateType,
 		RecreateDependencies: recreateType,
