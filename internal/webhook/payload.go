@@ -21,7 +21,7 @@ type GitlabPushPayload struct {
 	Repository struct {
 		Name              string `json:"name"`
 		PathWithNamespace string `json:"path_with_namespace"`
-		CloneURL          string `json:"url"`
+		CloneURL          string `json:"http_url"`
 		VisibilityLevel   int64  `json:"visibility_level"`
 	} `json:"project"`
 }
