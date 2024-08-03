@@ -67,7 +67,9 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		//	Password: c.GitAccessToken,
 		//}
 
+		jobLog.Debug("repository is private", slog.String("access_token", c.GitAccessToken))
 		p.CloneURL = git.GetAuthUrl(p.CloneURL, c.GitAccessToken)
+		jobLog.Debug("repository clone URL updated", slog.String("url", p.CloneURL))
 	}
 
 	jobLog.Debug("cloning repository", slog.String("url", p.CloneURL))
