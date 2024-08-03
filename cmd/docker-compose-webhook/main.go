@@ -46,7 +46,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	// var auth transport.AuthMethod = nil
 
 	if p.Private {
-		jobLog.Debug("repository is private", slog.String("access_token", c.GitAccessToken))
+		jobLog.Debug("repository is private")
 
 		if c.GitAccessToken == "" {
 			errMsg = "missing access token for private repository"
