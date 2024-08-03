@@ -32,5 +32,5 @@ func CloneRepository(name, url, ref string, skipTLSVerify bool) (*git.Repository
 func GetAuthUrl(url, authType, token string) string {
 	// Retrieve the protocol from the clone URL (e.g. https://, http://, git://
 	protocol := regexp.MustCompile("^(https?|git)://").FindString(url)
-	return protocol + authType + token + "@" + url[len(protocol):]
+	return protocol + authType + ":" + token + "@" + url[len(protocol):]
 }
