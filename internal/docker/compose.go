@@ -209,10 +209,23 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		recreateType = api.RecreateForce
 	}
 
+	// Convert deployConfig.BuildOpts.Args to types.MappingWithEquals
+	buildArgs := make(types.MappingWithEquals)
+	for k, v := range deployConfig.BuildOpts.Args {
+		buildArgs[k] = &v
+	}
+
 	buildOpts := api.BuildOptions{
-		Pull:     true,
+		Pull:     deployConfig.BuildOpts.ForceImagePull,
+		Quiet:    deployConfig.BuildOpts.Quiet,
 		Progress: "auto",
-		Quiet:    false,
+		Args:     buildArgs,
+		NoCache:  deployConfig.BuildOpts.NoCache,
+	}
+
+	// Set memory limit if specified
+	if deployConfig.BuildOpts.MemoryLimit > 0 {
+		buildOpts.Memory = deployConfig.BuildOpts.MemoryLimit
 	}
 
 	createOpts := api.CreateOptions{
