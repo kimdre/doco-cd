@@ -30,6 +30,7 @@ func verifyProviderSecret(r *http.Request, payload []byte, secretKey string) (st
 		}
 
 		return "gitlab", nil
+
 	default:
 		return "", ErrMissingSecurityHeader
 	}
