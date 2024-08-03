@@ -223,13 +223,12 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		NoCache:  deployConfig.BuildOpts.NoCache,
 	}
 
-	// Set memory limit if specified
-	if deployConfig.BuildOpts.MemoryLimit > 0 {
-		buildOpts.Memory = deployConfig.BuildOpts.MemoryLimit
+	err := service.Build(ctx, project, buildOpts)
+	if err != nil {
+		return err
 	}
 
 	createOpts := api.CreateOptions{
-		Build:                &buildOpts,
 		RemoveOrphans:        deployConfig.RemoveOrphans,
 		Recreate:             recreateType,
 		RecreateDependencies: recreateType,
@@ -242,7 +241,7 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		WaitTimeout: time.Duration(deployConfig.Timeout) * time.Second,
 	}
 
-	err := service.Up(ctx, project, api.UpOptions{
+	err = service.Up(ctx, project, api.UpOptions{
 		Create: createOpts,
 		Start:  startOpts,
 	})
