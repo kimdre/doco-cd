@@ -301,7 +301,7 @@ func main() {
 			case errors.Is(err, webhook.ErrInvalidHTTPMethod):
 				errMsg = webhook.ErrInvalidHTTPMethod.Error()
 				jobLog.Debug(errMsg, slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
-				utils.JSONError(w, errMsg, err.Error(), jobID, http.StatusMethodNotAllowed)
+				utils.JSONError(w, errMsg, "", jobID, http.StatusMethodNotAllowed)
 			default:
 				jobLog.Debug(webhook.ErrParsingPayload.Error(), slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
 				utils.JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
