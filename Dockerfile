@@ -1,5 +1,5 @@
-# syntax=docker/dockerfile:1
-FROM golang:1.22.5 AS build-stage
+# syntax=docker/dockerfile:1@sha256:fe40cf4e92cd0c467be2cfc30657a680ae2398318afd50b0c80585784c604f28
+FROM golang:1.22.5@sha256:86a3c48a61915a8c62c0e1d7594730399caa3feb73655dfe96c7bc17710e96cf AS build-stage
 
 # Set destination for COPY
 WORKDIR /app
@@ -31,7 +31,7 @@ FROM build-stage AS run-test-stage
 
 RUN go test -v ./...
 
-FROM gcr.io/distroless/base-debian12 AS build-release-stage
+FROM gcr.io/distroless/base-debian12@sha256:1aae189e3baecbb4044c648d356ddb75025b2ba8d14cdc9c2a19ba784c90bfb9 AS build-release-stage
 
 WORKDIR /
 
