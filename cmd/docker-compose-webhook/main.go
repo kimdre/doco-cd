@@ -10,6 +10,8 @@ import (
 	"path"
 	"reflect"
 
+	"github.com/kimdre/docker-compose-webhook/internal/webhook"
+
 	"github.com/docker/cli/cli/command"
 
 	"github.com/google/uuid"
@@ -20,14 +22,9 @@ import (
 
 	"github.com/kimdre/docker-compose-webhook/internal/docker"
 
-	"github.com/go-playground/webhooks/v6/gitea"
-	"github.com/go-playground/webhooks/v6/gitlab"
-
 	"github.com/kimdre/docker-compose-webhook/internal/config"
 	"github.com/kimdre/docker-compose-webhook/internal/git"
 	"github.com/kimdre/docker-compose-webhook/internal/logger"
-
-	"github.com/go-playground/webhooks/v6/github"
 )
 
 const (
@@ -36,19 +33,19 @@ const (
 
 var errMsg string
 
-func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, c *config.AppConfig, repoName, repoFullName, cloneUrl, ref, jobID string, private bool, dockerCli command.Cli) {
-	jobLog = jobLog.With(slog.String("repository", repoFullName))
+func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, c *config.AppConfig, p webhook.ParsedPayload, jobID string, dockerCli command.Cli) {
+	jobLog = jobLog.With(slog.String("repository", p.FullName))
 
 	jobLog.Info("preparing project deployment")
 
 	// Clone the repository
 	jobLog.Debug(
 		"cloning repository to temporary directory",
-		slog.String("url", cloneUrl))
+		slog.String("url", p.CloneURL))
 
 	// var auth transport.AuthMethod = nil
 
-	if private {
+	if p.Private {
 		errMsg = "missing access token for private repository"
 		if c.GitAccessToken == "" {
 			jobLog.Error(errMsg)
@@ -70,10 +67,10 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		//	Password: c.GitAccessToken,
 		//}
 
-		cloneUrl = git.GetAuthUrl(cloneUrl, c.GitAccessToken)
+		p.CloneURL = git.GetAuthUrl(p.CloneURL, c.GitAccessToken)
 	}
 
-	repo, err := git.CloneRepository(repoFullName, cloneUrl, ref, c.SkipTLSVerification)
+	repo, err := git.CloneRepository(p.FullName, p.CloneURL, p.Ref, c.SkipTLSVerification)
 	if err != nil {
 		errMsg = "failed to clone repository"
 		jobLog.Error(errMsg, logger.ErrAttr(err))
@@ -123,7 +120,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	jobLog.Debug("retrieving deployment configuration")
 
 	// Get the deployment config from the repository
-	deployConfig, err := config.GetDeployConfig(fs.Root(), repoName)
+	deployConfig, err := config.GetDeployConfig(fs.Root(), p.Name)
 	if err != nil {
 		errMsg = "failed to get deploy configuration"
 		jobLog.Error(errMsg, logger.ErrAttr(err))
@@ -186,7 +183,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		deployConfig.ComposeFiles = tmpComposeFiles
 	}
 
-	project, err := docker.LoadCompose(ctx, workingDir, repoName, deployConfig.ComposeFiles)
+	project, err := docker.LoadCompose(ctx, workingDir, p.Name, deployConfig.ComposeFiles)
 	if err != nil {
 		errMsg = "failed to load project"
 		jobLog.Error(errMsg,
@@ -268,9 +265,6 @@ func main() {
 
 	log.Debug("docker client created")
 
-	githubHook, _ := github.New(github.Options.Secret(c.WebhookSecret))
-	giteaHook, _ := gitea.New(gitea.Options.Secret(c.WebhookSecret))
-
 	http.HandleFunc(webhookPath, func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.Background()
 
@@ -278,68 +272,40 @@ func main() {
 		jobID := uuid.Must(uuid.NewRandom()).String()
 		jobLog := log.With(slog.String("job_id", jobID))
 
-		githubPayload, githubHookErr := githubHook.Parse(r, github.PushEvent)
-		giteaPayload, giteaHookErr := giteaHook.Parse(r, gitea.PushEvent)
+		jobLog.Debug("received webhook event")
 
-		if githubHookErr != nil {
-			err = githubHookErr
-		} else if giteaHookErr != nil {
-			err = giteaHookErr
-		}
-
-		if githubHookErr != nil && giteaHookErr != nil {
+		payload, err := webhook.Parse(r, c.WebhookSecret)
+		if err != nil {
 			switch {
-			case errors.Is(err, github.ErrHMACVerificationFailed), errors.Is(err, gitea.ErrHMACVerificationFailed):
+			case errors.Is(err, webhook.ErrHMACVerificationFailed):
 				errMsg = "incorrect webhook secret"
 				jobLog.Debug(errMsg, slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
 				utils.JSONError(w, errMsg, err.Error(), jobID, http.StatusUnauthorized)
-			case errors.Is(err, github.ErrEventNotFound), errors.Is(err, gitea.ErrEventNotFound):
-				errMsg = "event not found"
+			case errors.Is(err, webhook.ErrGitlabTokenVerificationFailed):
+				errMsg = webhook.ErrGitlabTokenVerificationFailed.Error()
 				jobLog.Debug(errMsg, slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
-				utils.JSONError(w, errMsg, err.Error(), jobID, http.StatusNotFound)
-			case errors.Is(err, github.ErrInvalidHTTPMethod), errors.Is(err, gitea.ErrInvalidHTTPMethod):
-				errMsg = "invalid HTTP method"
+				utils.JSONError(w, errMsg, err.Error(), jobID, http.StatusUnauthorized)
+			case errors.Is(err, webhook.ErrMissingSecurityHeader):
+				errMsg = webhook.ErrMissingSecurityHeader.Error()
+				jobLog.Debug(errMsg, slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
+				utils.JSONError(w, errMsg, err.Error(), jobID, http.StatusBadRequest)
+			case errors.Is(err, webhook.ErrParsingPayload):
+				errMsg = webhook.ErrParsingPayload.Error()
+				jobLog.Debug(errMsg, slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
+				utils.JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
+			case errors.Is(err, webhook.ErrInvalidHTTPMethod):
+				errMsg = webhook.ErrInvalidHTTPMethod.Error()
 				jobLog.Debug(errMsg, slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
 				utils.JSONError(w, errMsg, err.Error(), jobID, http.StatusMethodNotAllowed)
 			default:
-				errMsg = "failed to parse webhook"
-				jobLog.Debug(errMsg, slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
+				jobLog.Debug(webhook.ErrParsingPayload.Error(), slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
 				utils.JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
 			}
 
 			return
 		}
 
-		var payload any
-		if githubPayload != nil {
-			payload = githubPayload
-		} else if giteaPayload != nil {
-			payload = giteaPayload
-		} else {
-			errMsg = "webhook payload not found"
-			jobLog.Error(errMsg)
-			utils.JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
-		}
-
-		switch event := payload.(type) {
-		case github.PushPayload:
-			handleEvent(ctx, jobLog, w, c, event.Repository.Name, event.Repository.FullName, event.Repository.CloneURL, event.Ref, jobID, event.Repository.Private, dockerCli)
-
-		case gitea.PushPayload:
-			handleEvent(ctx, jobLog, w, c, event.Repo.Name, event.Repo.FullName, event.Repo.CloneURL, event.Ref, jobID, event.Repo.Private, dockerCli)
-
-		case gitlab.PushEventPayload:
-			// TODO: Implement GitLab webhook handling
-			errMsg = "gitLab webhook event not implemented"
-			jobLog.Error(errMsg)
-			http.Error(w, errMsg, http.StatusNotImplemented)
-
-		default:
-			errMsg = "event not supported"
-			jobLog.Debug(errMsg,
-				slog.Any("event", event))
-			http.Error(w, errMsg, http.StatusNotImplemented)
-		}
+		handleEvent(ctx, jobLog, w, c, payload, jobID, dockerCli)
 	})
 
 	log.Info(

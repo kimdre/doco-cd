@@ -6,9 +6,11 @@ require (
 	github.com/caarlos0/env/v11 v11.1.0
 	github.com/compose-spec/compose-go/v2 v2.1.5
 	github.com/creasty/defaults v1.7.0
+	github.com/docker/cli v27.1.0+incompatible
 	github.com/docker/compose/v2 v2.29.0
+	github.com/docker/docker v27.1.0+incompatible
 	github.com/go-git/go-git/v5 v5.12.0
-	github.com/go-playground/webhooks/v6 v6.3.0
+	github.com/google/uuid v1.6.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -52,10 +54,8 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/buildx v0.16.0 // indirect
-	github.com/docker/cli v27.1.0+incompatible // indirect
 	github.com/docker/cli-docs-tool v0.8.0 // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
-	github.com/docker/docker v27.1.0+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.8.2 // indirect
 	github.com/docker/go v1.5.1-1.0.20160303222718-d30aec9fd63c // indirect
 	github.com/docker/go-connections v0.5.0 // indirect
@@ -84,7 +84,6 @@ require (
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.16.0 // indirect

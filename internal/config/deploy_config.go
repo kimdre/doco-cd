@@ -69,7 +69,6 @@ func GetDeployConfig(repoDir, name string) (*DeployConfig, error) {
 		config, err := getDeployConfigFile(repoDir, files, configFile)
 		if err != nil {
 			continue
-			// return nil, err
 		}
 
 		if config != nil {
