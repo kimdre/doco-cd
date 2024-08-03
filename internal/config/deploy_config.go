@@ -26,6 +26,13 @@ type DeployConfig struct {
 	ForceRecreate    bool     `yaml:"force_recreate" default:"false"`                                                                               // ForceRecreate forces the recreation/redeployment of containers even if the configuration has not changed
 	ForceImagePull   bool     `yaml:"force_image_pull" default:"false"`                                                                             // ForceImagePull always pulls the latest version of the image tags you've specified if a newer version is available
 	Timeout          int      `yaml:"timeout" default:"300"`                                                                                        // Timeout is the time in seconds to wait for the deployment to finish in seconds before timing out
+	BuildOpts        struct {
+		ForceImagePull bool              `yaml:"force_image_pull" default:"false"` // ForceImagePull always attempt to pull a newer version of the image
+		Quiet          bool              `yaml:"quiet" default:"false"`            // Quiet suppresses the build output and only shows the final image ID
+		Args           map[string]string `yaml:"args"`                             // BuildArgs is a map of build-time variables
+		MemoryLimit    int64             `yaml:"memory_limit" default:"0"`         // MemoryLimit is the maximum amount of memory the build process may consume
+		NoCache        bool              `yaml:"no_cache" default:"false"`         // NoCache disables the use of the cache when building the images
+	} `yaml:"build_opts"` // BuildOpts is the build options for the deployment
 }
 
 // DefaultDeployConfig creates a DeployConfig with default values
