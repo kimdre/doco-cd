@@ -10,7 +10,6 @@ generate-coverage:
 	@echo "Running tests with coverage..."
 	@WEBHOOK_SECRET="test_Secret1" go test -v -coverprofile cover.out ./...
 	@go tool cover -html cover.out -o cover.html
-	@xdg-open cover.html
 
 build:
 	mkdir -p $(BINARY_DIR)
