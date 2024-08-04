@@ -28,7 +28,7 @@ import (
 
 const (
 	socketPath = "/var/run/docker.sock"
-	apiVersion = "v1.46"
+	apiVersion = "v1.40"
 )
 
 var (
