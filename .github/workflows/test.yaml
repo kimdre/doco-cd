@@ -7,9 +7,6 @@ on:
       - 'README.md'
       - 'docs/**'
 
-permissions:
-  contents: read
-
 jobs:
   test:
     name: Run Acceptance Tests
