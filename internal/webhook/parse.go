@@ -7,9 +7,8 @@ import (
 )
 
 var (
-	ErrInvalidHTTPMethod     = errors.New("invalid http method")
-	ErrMissingSecurityHeader = errors.New("missing signature or token header")
-	ErrParsingPayload        = errors.New("failed to parse payload")
+	ErrInvalidHTTPMethod = errors.New("invalid http method")
+	ErrParsingPayload    = errors.New("failed to parse payload")
 )
 
 // Parse parses the payload and returns the parsed payload data
