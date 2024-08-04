@@ -19,7 +19,7 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
       - run: go mod download
-      - run: go test -v -cover -p 1 ./internal/...
+      - run: go test -v -cover ./... -timeout 5m
         timeout-minutes: 5
         env:
           WEBHOOK_SECRET: test_Secret1
