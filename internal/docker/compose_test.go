@@ -59,6 +59,15 @@ func TestVerifySocketConnection(t *testing.T) {
 	}
 }
 
+func TestGetSocketGroupOwner(t *testing.T) {
+	groupOwner, err := GetSocketGroupOwner()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("Socket group owner: %s", groupOwner)
+}
+
 func TestLoadCompose(t *testing.T) {
 	ctx := context.Background()
 
@@ -133,6 +142,8 @@ func TestDeployCompose(t *testing.T) {
 	deployConfig := fmt.Sprintf(`name: %s
 reference: %s
 working_dir: %s
+force_image_pull: true
+force_recreate: true
 compose_files:
   - %s
 `, projectName, reference, workingDirectory, composeFiles[0])
