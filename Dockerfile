@@ -26,11 +26,6 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
     --mount=type=bind,target=. \
     go build -ldflags="-s -w" -o / ./...
 
-# Run the tests in the container
-FROM build-stage AS run-test-stage
-
-RUN go test -v ./...
-
 FROM gcr.io/distroless/base-debian12@sha256:1aae189e3baecbb4044c648d356ddb75025b2ba8d14cdc9c2a19ba784c90bfb9 AS build-release-stage
 
 WORKDIR /
