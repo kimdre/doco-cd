@@ -1,0 +1,69 @@
+package git
+
+import (
+	"fmt"
+	"github.com/google/uuid"
+	"github.com/kimdre/docker-compose-webhook/internal/config"
+	"os"
+	"testing"
+)
+
+func TestGetAuthUrl(t *testing.T) {
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("Failed to get app config: %v", err)
+	}
+
+	expectedUrl := fmt.Sprintf("https://%s:%s@github.com/kimdre/docker-compose-webhook.git", c.AuthType, c.GitAccessToken)
+
+	authUrl := GetAuthUrl(
+		"https://github.com/kimdre/docker-compose-webhook.git",
+		c.AuthType,
+		c.GitAccessToken,
+	)
+
+	if authUrl != expectedUrl {
+		t.Fatalf("Expected %s, got %s", expectedUrl, authUrl)
+	}
+}
+
+func TestCloneRepository(t *testing.T) {
+	cloneUrl := "https://github.com/kimdre/docker-compose-webhook.git"
+	ref := "refs/heads/main"
+
+	repo, err := CloneRepository(uuid.New().String(), cloneUrl, ref, true)
+	if err != nil {
+		t.Fatalf("Failed to clone repository: %v", err)
+	}
+
+	if repo == nil {
+		t.Fatal("Repository is nil")
+	}
+
+	// Check files in the repository
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("Failed to get worktree: %v", err)
+	}
+
+	defer func() {
+		err = os.RemoveAll(worktree.Filesystem.Root())
+		if err != nil {
+			t.Fatalf("Failed to remove repository: %v", err)
+		}
+	}()
+
+	files, err := worktree.Filesystem.ReadDir(".")
+	if err != nil {
+		t.Fatalf("Failed to read directory: %v", err)
+	}
+
+	if len(files) == 0 {
+		t.Fatal("No files in repository")
+	}
+
+	// Check if the repository is cloned
+	if worktree.Filesystem.Root() == "" {
+		t.Fatal("Repository is not cloned")
+	}
+}
