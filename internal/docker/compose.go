@@ -28,7 +28,6 @@ import (
 
 const (
 	socketPath = "/var/run/docker.sock"
-	apiVersion = "v1.46"
 )
 
 var (
@@ -66,7 +65,7 @@ func NewHttpClient() *http.Client {
 }
 
 // VerifySocketRead verifies whether the application can read from the docker socket
-func VerifySocketRead(httpClient *http.Client) error {
+func VerifySocketRead(httpClient *http.Client, apiVersion string) error {
 	reqBody, err := json.Marshal("")
 	if err != nil {
 		return err
@@ -95,7 +94,7 @@ func VerifySocketRead(httpClient *http.Client) error {
 }
 
 // VerifySocketConnection verifies whether the application can connect to the docker socket
-func VerifySocketConnection() error {
+func VerifySocketConnection(apiVersion string) error {
 	// Check if the docker socket file exists
 	if _, err := os.Stat("/var/run/docker.sock"); errors.Is(err, os.ErrNotExist) {
 		return err
@@ -117,7 +116,7 @@ func VerifySocketConnection() error {
 
 	httpClient := NewHttpClient()
 
-	err = VerifySocketRead(httpClient)
+	err = VerifySocketRead(httpClient, apiVersion)
 	if err != nil {
 		return err
 	}

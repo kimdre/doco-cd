@@ -24,3 +24,6 @@ go.work.sum
 
 *.env
 .env
+
+cover.out
+cover.html

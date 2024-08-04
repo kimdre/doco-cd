@@ -11,6 +11,7 @@ require (
 	github.com/docker/docker v27.1.1+incompatible
 	github.com/go-git/go-git/v5 v5.12.0
 	github.com/google/uuid v1.6.0
+	gopkg.in/validator.v2 v2.0.1
 	gopkg.in/yaml.v3 v3.0.1
 )
 

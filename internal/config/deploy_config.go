@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"gopkg.in/validator.v2"
 	"os"
 	"path"
 
@@ -74,10 +75,18 @@ func GetDeployConfig(repoDir, name string) (*DeployConfig, error) {
 	for _, configFile := range DefaultDeploymentConfigFileNames {
 		config, err := getDeployConfigFile(repoDir, files, configFile)
 		if err != nil {
-			continue
+			if errors.Is(err, ErrConfigFileNotFound) {
+				continue
+			} else {
+				return nil, err
+			}
 		}
 
 		if config != nil {
+			if err := validator.Validate(config); err != nil {
+				return nil, err
+			}
+
 			return config, nil
 		}
 	}
