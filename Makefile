@@ -4,7 +4,7 @@ BINARY_NAME=docker-compose-webhook
 
 test:
 	@echo "Running tests..."
-	@go test -v ./... -timeout 30m
+	@go test -p 1 -v ./... -timeout 5m
 
 build:
 	mkdir -p $(BINARY_DIR)

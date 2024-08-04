@@ -1,0 +1,26 @@
+name: Tests
+
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Run Acceptance Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - run: go mod download
+      - run: go test -v -cover ./internal/...
+        timeout-minutes: 5
