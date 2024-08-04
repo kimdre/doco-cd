@@ -38,7 +38,7 @@ func createTestFile(fileName string, content string) error {
 }
 
 var (
-	dockerAPIVersion = "1.40"
+	dockerAPIVersion = "v1.40"
 	projectName      = "test"
 	composeContents  = `services:
   test:
