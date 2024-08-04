@@ -38,9 +38,8 @@ func createTestFile(fileName string, content string) error {
 }
 
 var (
-	dockerAPIVersion = "v1.40"
-	projectName      = "test"
-	composeContents  = `services:
+	projectName     = "test"
+	composeContents = `services:
   test:
     image: nginx:latest
     environment:
@@ -49,7 +48,12 @@ var (
 )
 
 func TestVerifySocketConnection(t *testing.T) {
-	err := VerifySocketConnection(dockerAPIVersion)
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = VerifySocketConnection(c.DockerAPIVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,9 +86,14 @@ func TestLoadCompose(t *testing.T) {
 }
 
 func TestDeployCompose(t *testing.T) {
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	t.Log("Verify socket connection")
 
-	err := VerifySocketConnection(dockerAPIVersion)
+	err = VerifySocketConnection(c.DockerAPIVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
