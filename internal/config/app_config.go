@@ -12,7 +12,7 @@ type AppConfig struct {
 	GitAccessToken      string `env:"GIT_ACCESS_TOKEN"`                         // GitAccessToken is the access token used to authenticate with the Git server (e.g. GitHub) for private repositories
 	AuthType            string `env:"AUTH_TYPE" envDefault:"oauth2"`            // AuthType is the type of authentication to use when cloning repositories
 	SkipTLSVerification bool   `env:"SKIP_TLS_VERIFICATION" envDefault:"false"` // SkipTLSVerification skips the TLS verification when cloning repositories.
-	DockerAPIVersion    string `env:"DOCKER_API_VERSION" envDefault:"1.40"`     // DockerAPIVersion is the version of the Docker API to use
+	DockerAPIVersion    string `env:"DOCKER_API_VERSION" envDefault:"v1.40"`    // DockerAPIVersion is the version of the Docker API to use
 }
 
 // GetAppConfig returns the configuration
