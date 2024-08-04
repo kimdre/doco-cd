@@ -2,7 +2,6 @@ package config
 
 import (
 	"errors"
-	"fmt"
 	"github.com/caarlos0/env/v11"
 	"gopkg.in/validator.v2"
 	"strings"
@@ -20,8 +19,8 @@ type AppConfig struct {
 }
 
 var (
-	ErrInvalidLogLevel   = validator.TextErr{Err: errors.New("invalid log level, must be one of debug, info, warn, error")}
-	ErrInvalidAPIVersion = validator.TextErr{Err: errors.New("invalid API version format, must be e.g. v1.40")}
+	ErrInvalidLogLevel         = validator.TextErr{Err: errors.New("invalid log level, must be one of debug, info, warn, error")}
+	ErrInvalidDockerAPIVersion = validator.TextErr{Err: errors.New("invalid Docker API version format, must be e.g. v1.40")}
 )
 
 // GetAppConfig returns the configuration
@@ -38,7 +37,7 @@ func GetAppConfig() (*AppConfig, error) {
 
 	if err := validator.Validate(cfg); err != nil {
 		if strings.Contains(err.Error(), "DockerAPIVersion") {
-			return nil, fmt.Errorf("%s: %s", "DockerAPIVersion", ErrInvalidAPIVersion)
+			return nil, ErrInvalidDockerAPIVersion
 		}
 
 		return nil, err
