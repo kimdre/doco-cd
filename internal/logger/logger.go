@@ -8,6 +8,7 @@ import (
 
 type Logger struct {
 	*slog.Logger
+	Level slog.Level
 }
 
 const (
@@ -76,6 +77,7 @@ func New(logLevel slog.Level) *Logger {
 				},
 			),
 		),
+		logLevel,
 	}
 }
 
