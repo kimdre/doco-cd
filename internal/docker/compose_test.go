@@ -60,12 +60,10 @@ func TestVerifySocketConnection(t *testing.T) {
 }
 
 func TestGetSocketGroupOwner(t *testing.T) {
-	groupOwner, err := GetSocketGroupOwner()
+	_, err := GetSocketGroupOwner()
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	t.Logf("Socket group owner: %s", groupOwner)
 }
 
 func TestLoadCompose(t *testing.T) {
