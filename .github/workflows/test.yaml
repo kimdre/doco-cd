@@ -19,7 +19,11 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
       - run: go mod download
-      - run: go test -v -cover ./... -timeout 5m
+      - run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./... -timeout 5m
         timeout-minutes: 5
         env:
           WEBHOOK_SECRET: test_Secret1
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4.0.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
