@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/kimdre/doco-cd/internal/webhook"
 	"io"
 	"net"
 	"net/http"
@@ -28,6 +29,7 @@ import (
 
 const (
 	socketPath = "/var/run/docker.sock"
+	baseLabel  = "doco"
 )
 
 var (
@@ -153,15 +155,20 @@ addServiceLabels adds the labels docker compose expects to exist on services.
 This is required for future compose operations to work, such as finding
 containers that are part of a service.
 */
-func addServiceLabels(project *types.Project) {
+func addServiceLabels(project *types.Project, payload webhook.ParsedPayload) {
 	for i, s := range project.Services {
 		s.CustomLabels = map[string]string{
-			api.ProjectLabel:     project.Name,
-			api.ServiceLabel:     s.Name,
-			api.VersionLabel:     api.ComposeVersion,
-			api.WorkingDirLabel:  project.WorkingDir,
-			api.ConfigFilesLabel: strings.Join(project.ComposeFiles, ","),
-			api.OneoffLabel:      "False", // default, will be overridden by `run` command
+			"cd.doco.deployedAt":           time.Now().UTC().Format(time.RFC3339),
+			"cd.doco.repository.name":      payload.FullName,
+			"cd.doco.repository.private":   strconv.FormatBool(payload.Private),
+			"cd.doco.repository.reference": payload.Ref,
+			"cd.doco.repository.commit":    payload.CommitSHA,
+			api.ProjectLabel:               project.Name,
+			api.ServiceLabel:               s.Name,
+			api.VersionLabel:               api.ComposeVersion,
+			api.WorkingDirLabel:            project.WorkingDir,
+			api.ConfigFilesLabel:           strings.Join(project.ComposeFiles, ","),
+			api.OneoffLabel:                "False", // default, will be overridden by `run` command
 		}
 		project.Services[i] = s
 	}
@@ -189,10 +196,10 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 }
 
 // DeployCompose deploys a project as specified by the Docker Compose specification (LoadCompose)
-func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project, deployConfig *config.DeployConfig) error {
+func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project, deployConfig *config.DeployConfig, payload webhook.ParsedPayload) error {
 	service := compose.NewComposeService(dockerCli)
 
-	addServiceLabels(project)
+	addServiceLabels(project, payload)
 
 	if deployConfig.ForceImagePull {
 		err := service.Pull(ctx, project, api.PullOptions{

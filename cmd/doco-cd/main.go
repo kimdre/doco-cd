@@ -205,7 +205,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	jobLog.Info("deploying project")
 
-	err = docker.DeployCompose(ctx, dockerCli, project, deployConfig)
+	err = docker.DeployCompose(ctx, dockerCli, project, deployConfig, p)
 	if err != nil {
 		errMsg = "failed to deploy project"
 		jobLog.Error(errMsg,
