@@ -1,6 +1,6 @@
 services:
   app:
-    container_name: docker-compose-webhook
+    container_name: doco-cd
     build: .
     restart: no
     ports:

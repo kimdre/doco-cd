@@ -3,7 +3,7 @@ package git
 import (
 	"fmt"
 	"github.com/google/uuid"
-	"github.com/kimdre/docker-compose-webhook/internal/config"
+	"github.com/kimdre/doco-cd/internal/config"
 	"os"
 	"testing"
 )
@@ -14,10 +14,10 @@ func TestGetAuthUrl(t *testing.T) {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
 
-	expectedUrl := fmt.Sprintf("https://%s:%s@github.com/kimdre/docker-compose-webhook.git", c.AuthType, c.GitAccessToken)
+	expectedUrl := fmt.Sprintf("https://%s:%s@github.com/kimdre/doco-cd.git", c.AuthType, c.GitAccessToken)
 
 	authUrl := GetAuthUrl(
-		"https://github.com/kimdre/docker-compose-webhook.git",
+		"https://github.com/kimdre/doco-cd.git",
 		c.AuthType,
 		c.GitAccessToken,
 	)
@@ -28,7 +28,7 @@ func TestGetAuthUrl(t *testing.T) {
 }
 
 func TestCloneRepository(t *testing.T) {
-	cloneUrl := "https://github.com/kimdre/docker-compose-webhook.git"
+	cloneUrl := "https://github.com/kimdre/doco-cd.git"
 	ref := "refs/heads/main"
 
 	repo, err := CloneRepository(uuid.New().String(), cloneUrl, ref, true)

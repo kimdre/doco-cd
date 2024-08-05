@@ -1,4 +1,4 @@
-module github.com/kimdre/docker-compose-webhook
+module github.com/kimdre/doco-cd
 
 go 1.22.5
 
