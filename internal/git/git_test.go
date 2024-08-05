@@ -2,10 +2,11 @@ package git
 
 import (
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/kimdre/doco-cd/internal/config"
 	"os"
 	"testing"
+
+	"github.com/google/uuid"
+	"github.com/kimdre/doco-cd/internal/config"
 )
 
 func TestGetAuthUrl(t *testing.T) {

@@ -3,9 +3,10 @@ package config
 import (
 	"errors"
 	"fmt"
-	"gopkg.in/validator.v2"
 	"os"
 	"path"
+
+	"gopkg.in/validator.v2"
 
 	"github.com/compose-spec/compose-go/v2/cli"
 )

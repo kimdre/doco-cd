@@ -2,9 +2,10 @@ package config
 
 import (
 	"errors"
+	"strings"
+
 	"github.com/caarlos0/env/v11"
 	"gopkg.in/validator.v2"
-	"strings"
 )
 
 // AppConfig is used to configure this application

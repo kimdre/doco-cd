@@ -7,6 +7,7 @@ import (
 // GithubPushPayload is a struct that represents the payload sent by GitHub or Gitea, as they have the same structure
 type GithubPushPayload struct {
 	Ref        string `json:"ref"`
+	CommitSHA  string `json:"after"`
 	Repository struct {
 		Name     string `json:"name"`
 		FullName string `json:"full_name"`
@@ -18,6 +19,7 @@ type GithubPushPayload struct {
 // GitlabPushPayload is a struct that represents the payload sent by GitLab
 type GitlabPushPayload struct {
 	Ref        string `json:"ref"`
+	CommitSHA  string `json:"after"`
 	Repository struct {
 		Name              string `json:"name"`
 		PathWithNamespace string `json:"path_with_namespace"`
@@ -28,11 +30,12 @@ type GitlabPushPayload struct {
 
 // ParsedPayload is a struct that contains the parsed payload data
 type ParsedPayload struct {
-	Ref      string
-	Name     string
-	FullName string
-	CloneURL string
-	Private  bool
+	Ref       string
+	CommitSHA string
+	Name      string
+	FullName  string
+	CloneURL  string
+	Private   bool
 }
 
 // ParsePayload parses the payload and returns a ParsedPayload struct
@@ -49,11 +52,12 @@ func parsePayload(payload []byte, provider string) (ParsedPayload, error) {
 		}
 
 		parsedPayload := ParsedPayload{
-			Ref:      githubPayload.Ref,
-			Name:     githubPayload.Repository.Name,
-			FullName: githubPayload.Repository.FullName,
-			CloneURL: githubPayload.Repository.CloneURL,
-			Private:  githubPayload.Repository.Private,
+			Ref:       githubPayload.Ref,
+			CommitSHA: githubPayload.CommitSHA,
+			Name:      githubPayload.Repository.Name,
+			FullName:  githubPayload.Repository.FullName,
+			CloneURL:  githubPayload.Repository.CloneURL,
+			Private:   githubPayload.Repository.Private,
 		}
 
 		return parsedPayload, nil
@@ -64,11 +68,12 @@ func parsePayload(payload []byte, provider string) (ParsedPayload, error) {
 		}
 
 		parsedPayload := ParsedPayload{
-			Ref:      gitlabPayload.Ref,
-			Name:     gitlabPayload.Repository.Name,
-			FullName: gitlabPayload.Repository.PathWithNamespace,
-			CloneURL: gitlabPayload.Repository.CloneURL,
-			Private:  gitlabPayload.Repository.VisibilityLevel == 0,
+			Ref:       gitlabPayload.Ref,
+			CommitSHA: gitlabPayload.CommitSHA,
+			Name:      gitlabPayload.Repository.Name,
+			FullName:  gitlabPayload.Repository.PathWithNamespace,
+			CloneURL:  gitlabPayload.Repository.CloneURL,
+			Private:   gitlabPayload.Repository.VisibilityLevel == 0,
 		}
 
 		return parsedPayload, nil

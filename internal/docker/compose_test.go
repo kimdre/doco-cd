@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/kimdre/doco-cd/internal/webhook"
+
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
 	"github.com/kimdre/doco-cd/internal/config"
@@ -94,6 +96,15 @@ func TestLoadCompose(t *testing.T) {
 
 func TestDeployCompose(t *testing.T) {
 	c, err := config.GetAppConfig()
+	p := webhook.ParsedPayload{
+		Ref:       "/refs/heads/test",
+		CommitSHA: "26263c2b44133367927cd1423d8c8457b5befce5",
+		Name:      "doco-cd",
+		FullName:  "kimdre/doco-cd",
+		CloneURL:  "https://github.com/kimdre/doco-cd",
+		Private:   false,
+	}
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +187,7 @@ compose_files:
 		}
 	}()
 
-	err = DeployCompose(ctx, dockerCli, project, deployConf)
+	err = DeployCompose(ctx, dockerCli, project, deployConf, p)
 	if err != nil {
 		t.Fatal(err)
 	}
