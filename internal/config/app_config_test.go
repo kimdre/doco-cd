@@ -59,6 +59,7 @@ func TestGetAppConfig(t *testing.T) {
 			if !errors.Is(err, tt.expectedErr) {
 				t.Errorf("expected error to be '%v', got '%v'", tt.expectedErr, err)
 			}
+
 			if err == nil {
 				// Clean up the environment
 				for k := range tt.envVars {

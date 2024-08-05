@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/kimdre/doco-cd/internal/webhook"
 	"io"
 	"net"
 	"net/http"
@@ -15,6 +14,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/kimdre/doco-cd/internal/webhook"
 
 	"github.com/kimdre/doco-cd/internal/config"
 

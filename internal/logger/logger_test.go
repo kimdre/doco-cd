@@ -51,6 +51,7 @@ func TestParseLevel(t *testing.T) {
 				t.Errorf("ParseLevel() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
+
 			if got != tt.want {
 				t.Errorf("ParseLevel() = %v, want %v", got, tt.want)
 			}
@@ -60,10 +61,12 @@ func TestParseLevel(t *testing.T) {
 
 func TestErrAttr(t *testing.T) {
 	err := errors.New("test message")
+
 	attr := ErrAttr(err)
 	if attr.Key != "error" {
 		t.Errorf("ErrAttr() key = %v, want %v", attr.Key, "error")
 	}
+
 	if !attr.Equal(slog.Any("error", err)) {
 		t.Errorf("ErrAttr() value = %v, want %v", attr.Value, err)
 	}
@@ -72,6 +75,7 @@ func TestErrAttr(t *testing.T) {
 func TestNew(t *testing.T) {
 	logLevel := LevelDebug
 	logger := New(logLevel)
+
 	if logger.Level != logLevel {
 		t.Errorf("New() level = %v, want %v", logger.Level, logLevel)
 	}
@@ -122,6 +126,7 @@ func TestLogger_ParseLevel(t *testing.T) {
 				t.Errorf("Logger.ParseLevel() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
+
 			if got != tt.want {
 				t.Errorf("Logger.ParseLevel() = %v, want %v", got, tt.want)
 			}

@@ -3,10 +3,11 @@ package docker
 import (
 	"context"
 	"fmt"
-	"github.com/kimdre/doco-cd/internal/webhook"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/kimdre/doco-cd/internal/webhook"
 
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
@@ -103,6 +104,7 @@ func TestDeployCompose(t *testing.T) {
 		CloneURL:  "https://github.com/kimdre/doco-cd",
 		Private:   false,
 	}
+
 	if err != nil {
 		t.Fatal(err)
 	}
