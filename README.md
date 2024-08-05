@@ -10,7 +10,7 @@
 
 
 Doco CD is a lightweight GitOps tool that automatically deploys and updates Docker Compose services using webhooks, that are triggered by your Git repository.
-You can think of it as a Portainer or ArgoCD alternative for Docker.
+You can think of it as a simple Portainer or ArgoCD alternative for Docker.
 
 ## Documentation
 
