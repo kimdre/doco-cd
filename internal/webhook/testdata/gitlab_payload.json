@@ -1,0 +1,68 @@
+{
+  "object_kind": "push",
+  "event_name": "push",
+  "before": "15b189048dcd079e1614c00bb781d0e962020d7e",
+  "after": "15b189048dcd079e1614c00bb781d0e962020d7e",
+  "ref": "refs/heads/main",
+  "ref_protected": true,
+  "checkout_sha": "15b189048dcd079e1614c00bb781d0e962020d7e",
+  "message": null,
+  "user_id": 10344894,
+  "user_name": "Kim Oliver Drechsel",
+  "user_username": "kimdre",
+  "user_email": "",
+  "user_avatar": "https://gitlab.com/uploads/-/system/user/avatar/10344894/avatar.png",
+  "project_id": 60609370,
+  "project": {
+    "id": 60609370,
+    "name": "test webhook",
+    "description": null,
+    "web_url": "https://gitlab.com/kimdre/doco-cd",
+    "avatar_url": null,
+    "git_ssh_url": "git@gitlab.com:kimdre/doco-cd.git",
+    "git_http_url": "https://gitlab.com/kimdre/doco-cd.git",
+    "namespace": "Kim Oliver Drechsel",
+    "visibility_level": 0,
+    "path_with_namespace": "kimdre/doco-cd",
+    "default_branch": "main",
+    "ci_config_path": "",
+    "homepage": "https://gitlab.com/kimdre/doco-cd",
+    "url": "git@gitlab.com:kimdre/doco-cd.git",
+    "ssh_url": "git@gitlab.com:kimdre/doco-cd.git",
+    "http_url": "https://gitlab.com/kimdre/doco-cd.git"
+  },
+  "commits": [
+    {
+      "id": "15b189048dcd079e1614c00bb781d0e962020d7e",
+      "message": "Initial commit",
+      "title": "Initial commit",
+      "timestamp": "2024-08-05T21:45:21+00:00",
+      "url": "https://gitlab.com/kimdre/doco-cd/-/commit/15b189048dcd079e1614c00bb781d0e962020d7e",
+      "author": {
+        "name": "Kim Oliver Drechsel",
+        "email": "[REDACTED]"
+      },
+      "added": [
+        "README.md"
+      ],
+      "modified": [
+
+      ],
+      "removed": [
+
+      ]
+    }
+  ],
+  "total_commits_count": 1,
+  "push_options": {
+  },
+  "repository": {
+    "name": "test webhook",
+    "url": "git@gitlab.com:kimdre/doco-cd.git",
+    "description": null,
+    "homepage": "https://gitlab.com/kimdre/doco-cd",
+    "git_http_url": "https://gitlab.com/kimdre/doco-cd.git",
+    "git_ssh_url": "git@gitlab.com:kimdre/doco-cd.git",
+    "visibility_level": 0
+  }
+}

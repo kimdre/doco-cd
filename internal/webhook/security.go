@@ -21,11 +21,15 @@ const (
 	GitlabTokenHeader     = "X-Gitlab-Token"
 )
 
-func verifySignature(payload []byte, signature, secretKey string) error {
+func GenerateHMAC(payload []byte, secretKey string) string {
 	mac := hmac.New(sha256.New, []byte(secretKey))
 	mac.Write(payload)
 
-	expectedMAC := hex.EncodeToString(mac.Sum(nil))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func verifySignature(payload []byte, signature, secretKey string) error {
+	expectedMAC := GenerateHMAC(payload, secretKey)
 	if !hmac.Equal([]byte(signature), []byte(expectedMAC)) {
 		return ErrHMACVerificationFailed
 	} else {

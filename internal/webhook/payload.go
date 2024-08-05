@@ -40,9 +40,10 @@ type ParsedPayload struct {
 
 // ParsePayload parses the payload and returns a ParsedPayload struct
 func parsePayload(payload []byte, provider string) (ParsedPayload, error) {
-	var githubPayload GithubPushPayload
-
-	var gitlabPayload GitlabPushPayload
+	var (
+		githubPayload GithubPushPayload
+		gitlabPayload GitlabPushPayload
+	)
 
 	switch provider {
 	case "github", "gitea":
