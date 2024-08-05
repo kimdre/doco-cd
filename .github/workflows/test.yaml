@@ -24,7 +24,7 @@ jobs:
           version: latest
 
   test:
-    name: Run Acceptance Tests
+    name: Acceptance Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
