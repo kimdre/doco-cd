@@ -30,7 +30,7 @@ FROM gcr.io/distroless/base-debian12@sha256:1aae189e3baecbb4044c648d356ddb75025b
 
 WORKDIR /
 
-COPY --from=build-stage /docker-compose-webhook /docker-compose-webhook
+COPY --from=build-stage /doco-cd /doco-cd
 
 ENV TZ=UTC \
     HTTP_PORT=80 \
@@ -38,4 +38,4 @@ ENV TZ=UTC \
 
 USER nonroot:nonroot
 
-CMD ["/docker-compose-webhook"]
+CMD ["/doco-cd"]

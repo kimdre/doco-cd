@@ -1,5 +1,5 @@
 BINARY_DIR=bin
-BINARY_NAME=docker-compose-webhook
+BINARY_NAME=doco-cd
 .PHONY: test build run lint fmt update update-all submodule-commit generate-coverage
 
 test:

@@ -9,7 +9,7 @@ import (
 
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
-	"github.com/kimdre/docker-compose-webhook/internal/config"
+	"github.com/kimdre/doco-cd/internal/config"
 )
 
 func createTmpDir(t *testing.T) string {

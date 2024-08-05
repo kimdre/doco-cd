@@ -10,7 +10,7 @@ import (
 	"path"
 	"reflect"
 
-	"github.com/kimdre/docker-compose-webhook/internal/webhook"
+	"github.com/kimdre/doco-cd/internal/webhook"
 
 	"github.com/docker/cli/cli/command"
 
@@ -18,13 +18,13 @@ import (
 
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/docker/docker/client"
-	"github.com/kimdre/docker-compose-webhook/internal/utils"
+	"github.com/kimdre/doco-cd/internal/utils"
 
-	"github.com/kimdre/docker-compose-webhook/internal/docker"
+	"github.com/kimdre/doco-cd/internal/docker"
 
-	"github.com/kimdre/docker-compose-webhook/internal/config"
-	"github.com/kimdre/docker-compose-webhook/internal/git"
-	"github.com/kimdre/docker-compose-webhook/internal/logger"
+	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/git"
+	"github.com/kimdre/doco-cd/internal/logger"
 )
 
 const (

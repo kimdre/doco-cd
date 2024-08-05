@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kimdre/docker-compose-webhook/internal/config"
+	"github.com/kimdre/doco-cd/internal/config"
 
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/flags"
