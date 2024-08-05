@@ -10,7 +10,7 @@
 [![Build Image](https://github.com/kimdre/doco-cd/actions/workflows/build.yaml/badge.svg)](https://github.com/kimdre/doco-cd/actions/workflows/build.yaml)
 
 
-Doco CD is a lightweight GitOps tool that automatically deploys and updates Docker Compose services using webhooks, that are triggered by your Git repository.
+Doco CD is a lightweight GitOps tool that automatically deploys and updates Docker Compose projects/services using webhooks, that are triggered by your Git repository.
 You can think of it as a simple Portainer or ArgoCD alternative for Docker.
 
 ## Documentation
