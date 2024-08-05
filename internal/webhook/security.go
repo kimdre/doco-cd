@@ -2,14 +2,11 @@ package webhook
 
 import (
 	"crypto/hmac"
-	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"net/http"
 	"strings"
-
-	"github.com/go-git/go-git/v5/plumbing/hash"
 )
 
 var (
@@ -24,22 +21,15 @@ const (
 	GitlabTokenHeader     = "X-Gitlab-Token"
 )
 
-func GenerateHMAC(payload []byte, secretKey, algorithm string) string {
-	var mac hash.Hash
-
-	if algorithm == "sha256" {
-		mac = hmac.New(sha256.New, []byte(secretKey))
-	} else if algorithm == "sha1" {
-		mac = hmac.New(sha1.New, []byte(secretKey))
-	}
-
+func GenerateHMAC(payload []byte, secretKey string) string {
+	mac := hmac.New(sha256.New, []byte(secretKey))
 	mac.Write(payload)
 
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
 func verifySignature(payload []byte, signature, secretKey string) error {
-	expectedMAC := GenerateHMAC(payload, secretKey, "sha256")
+	expectedMAC := GenerateHMAC(payload, secretKey)
 	if !hmac.Equal([]byte(signature), []byte(expectedMAC)) {
 		return ErrHMACVerificationFailed
 	} else {

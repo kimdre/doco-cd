@@ -48,9 +48,9 @@ func TestParse(t *testing.T) {
 			if tc.expectedError == nil {
 				switch tc.name {
 				case "Github Push Payload":
-					r.Header.Set(GithubSignatureHeader, "sha256="+GenerateHMAC(payload, testSecret, "sha256"))
+					r.Header.Set(GithubSignatureHeader, "sha256="+GenerateHMAC(payload, testSecret))
 				case "Gitea Push Payload":
-					r.Header.Set(GiteaSignatureHeader, GenerateHMAC(payload, testSecret, "sha256"))
+					r.Header.Set(GiteaSignatureHeader, GenerateHMAC(payload, testSecret))
 				case "Gitlab Push Payload":
 					r.Header.Set(GitlabTokenHeader, testSecret)
 				}
