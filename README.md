@@ -1,4 +1,4 @@
-# doco-cd
+# doco-cd - Docker Compose Continuous Deployment
 
 ## GitOps for Docker Compose
 
@@ -9,7 +9,7 @@
 
 
 Doco CD is a lightweight GitOps tool that automatically deploys and updates Docker Compose services using webhooks, that are triggered by your Git repository.
-You can think of a ArgoCD alternative for Docker.
+You can think of it as an ArgoCD alternative for Docker.
 
 ## Documentation
 
