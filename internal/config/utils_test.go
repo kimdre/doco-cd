@@ -2,7 +2,6 @@ package config
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"testing"
 )
@@ -22,7 +21,7 @@ func TestFromYAML(t *testing.T) {
 		{
 			name:          "invalid yaml",
 			file:          "testdata/invalid.yaml",
-			expectedError: fmt.Errorf("failed to unmarshal yaml"),
+			expectedError: errors.New("failed to unmarshal yaml"),
 		},
 		{
 			name:          "non-existent file",
