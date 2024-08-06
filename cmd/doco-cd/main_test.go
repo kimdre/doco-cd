@@ -85,6 +85,20 @@ func TestHandleEvent(t *testing.T) {
 				"GIT_ACCESS_TOKEN": "",
 			},
 		},
+		{
+			name: "Repository without Deployment Configuration",
+			payload: webhook.ParsedPayload{
+				Ref:       "refs/heads/main",
+				CommitSHA: "efefb4111f3c363692a2526f9be9b24560e6511f",
+				Name:      "doco-cd",
+				FullName:  "kimdre/kimdre",
+				CloneURL:  "https://github.com/kimdre/kimdre",
+				Private:   false,
+			},
+			expectedStatusCode:   http.StatusInternalServerError,
+			expectedResponseBody: `{"error":"no compose files found","details":"stat /tmp/kimdre/kimdre/docker-compose.yaml: no such file or directory","job_id":"%s"}%s`,
+			overrideEnv:          nil,
+		},
 	}
 
 	for _, tc := range testCases {
