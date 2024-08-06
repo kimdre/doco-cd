@@ -18,8 +18,6 @@ import (
 
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/docker/docker/client"
-	"github.com/kimdre/doco-cd/internal/utils"
-
 	"github.com/kimdre/doco-cd/internal/docker"
 
 	"github.com/kimdre/doco-cd/internal/config"
@@ -33,7 +31,8 @@ const (
 
 var errMsg string
 
-func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, c *config.AppConfig, p webhook.ParsedPayload, jobID string, dockerCli command.Cli) {
+// HandleEvent handles the incoming webhook event
+func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, c *config.AppConfig, p webhook.ParsedPayload, jobID string, dockerCli command.Cli) {
 	jobLog = jobLog.With(slog.String("repository", p.FullName))
 
 	jobLog.Info("preparing project deployment")
@@ -51,7 +50,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		if c.GitAccessToken == "" {
 			errMsg = "missing access token for private repository"
 			jobLog.Error(errMsg)
-			utils.JSONError(w,
+			JSONError(w,
 				errMsg,
 				"",
 				jobID,
@@ -79,7 +78,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	if err != nil {
 		errMsg = "failed to clone repository"
 		jobLog.Error(errMsg, logger.ErrAttr(err))
-		utils.JSONError(w,
+		JSONError(w,
 			errMsg,
 			err.Error(),
 			jobID,
@@ -93,7 +92,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	if err != nil {
 		errMsg = "failed to get worktree"
 		jobLog.Error(errMsg, logger.ErrAttr(err))
-		utils.JSONError(w,
+		JSONError(w,
 			errMsg,
 			err.Error(),
 			jobID,
@@ -114,7 +113,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		if err != nil {
 			errMsg = "failed to remove temporary directory"
 			jobLog.Error(errMsg, logger.ErrAttr(err))
-			utils.JSONError(w,
+			JSONError(w,
 				errMsg,
 				err.Error(),
 				jobID,
@@ -129,7 +128,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	if err != nil {
 		errMsg = "failed to get deploy configuration"
 		jobLog.Error(errMsg, logger.ErrAttr(err))
-		utils.JSONError(w,
+		JSONError(w,
 			errMsg,
 			err.Error(),
 			jobID,
@@ -148,7 +147,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	if err != nil {
 		errMsg = "failed to change working directory"
 		jobLog.Error(errMsg, logger.ErrAttr(err), slog.String("path", workingDir))
-		utils.JSONError(w,
+		JSONError(w,
 			errMsg,
 			err.Error(),
 			jobID,
@@ -176,7 +175,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			errMsg = "no compose files found"
 			jobLog.Error(errMsg,
 				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-			utils.JSONError(w,
+			JSONError(w,
 				errMsg,
 				err.Error(),
 				jobID,
@@ -194,7 +193,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		jobLog.Error(errMsg,
 			logger.ErrAttr(err),
 			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-		utils.JSONError(w,
+		JSONError(w,
 			errMsg,
 			err.Error(),
 			jobID,
@@ -211,7 +210,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		jobLog.Error(errMsg,
 			logger.ErrAttr(err),
 			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-		utils.JSONError(w,
+		JSONError(w,
 			errMsg,
 			err.Error(),
 			jobID,
@@ -222,7 +221,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	msg := "project deployment successful"
 	jobLog.Info(msg)
-	utils.JSONResponse(w, msg, jobID, http.StatusCreated)
+	JSONResponse(w, msg, jobID, http.StatusCreated)
 }
 
 func main() {
@@ -285,32 +284,32 @@ func main() {
 			case errors.Is(err, webhook.ErrHMACVerificationFailed):
 				errMsg = "incorrect webhook secret"
 				jobLog.Debug(errMsg, slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
-				utils.JSONError(w, errMsg, err.Error(), jobID, http.StatusUnauthorized)
+				JSONError(w, errMsg, err.Error(), jobID, http.StatusUnauthorized)
 			case errors.Is(err, webhook.ErrGitlabTokenVerificationFailed):
 				errMsg = webhook.ErrGitlabTokenVerificationFailed.Error()
 				jobLog.Debug(errMsg, slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
-				utils.JSONError(w, errMsg, err.Error(), jobID, http.StatusUnauthorized)
+				JSONError(w, errMsg, err.Error(), jobID, http.StatusUnauthorized)
 			case errors.Is(err, webhook.ErrMissingSecurityHeader):
 				errMsg = webhook.ErrMissingSecurityHeader.Error()
 				jobLog.Debug(errMsg, slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
-				utils.JSONError(w, errMsg, err.Error(), jobID, http.StatusBadRequest)
+				JSONError(w, errMsg, err.Error(), jobID, http.StatusBadRequest)
 			case errors.Is(err, webhook.ErrParsingPayload):
 				errMsg = webhook.ErrParsingPayload.Error()
 				jobLog.Debug(errMsg, slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
-				utils.JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
+				JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
 			case errors.Is(err, webhook.ErrInvalidHTTPMethod):
 				errMsg = webhook.ErrInvalidHTTPMethod.Error()
 				jobLog.Debug(errMsg, slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
-				utils.JSONError(w, errMsg, "", jobID, http.StatusMethodNotAllowed)
+				JSONError(w, errMsg, "", jobID, http.StatusMethodNotAllowed)
 			default:
 				jobLog.Debug(webhook.ErrParsingPayload.Error(), slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
-				utils.JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
+				JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
 			}
 
 			return
 		}
 
-		handleEvent(ctx, jobLog, w, c, payload, jobID, dockerCli)
+		HandleEvent(ctx, jobLog, w, c, payload, jobID, dockerCli)
 	})
 
 	log.Info(
