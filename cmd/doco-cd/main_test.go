@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/docker/compose/v2/pkg/api"
@@ -190,10 +189,4 @@ func TestJSONError(t *testing.T) {
 		t.Errorf("handler returned unexpected body: got '%v' want '%v'",
 			rr.Body.String(), expectedReturnMessage)
 	}
-}
-
-// Test main function
-func TestMain(m *testing.M) {
-	// Run the tests
-	os.Exit(m.Run())
 }
