@@ -86,7 +86,7 @@ func TestHandleEvent(t *testing.T) {
 			},
 		},
 		{
-			name: "Repository without Deployment Configuration",
+			name: "Missing Deployment Configuration",
 			payload: webhook.ParsedPayload{
 				Ref:       "refs/heads/main",
 				CommitSHA: "efefb4111f3c363692a2526f9be9b24560e6511f",
