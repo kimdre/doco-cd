@@ -72,12 +72,12 @@ func TestLoadCompose(t *testing.T) {
 	ctx := context.Background()
 
 	dirName := createTmpDir(t)
-	defer func(path string) {
-		err := os.RemoveAll(path)
+	t.Cleanup(func() {
+		err := os.RemoveAll(dirName)
 		if err != nil {
 			t.Fatal(err)
 		}
-	}(dirName)
+	})
 
 	filePath := filepath.Join(dirName, "test.compose.yaml")
 
@@ -119,12 +119,12 @@ func TestDeployCompose(t *testing.T) {
 	ctx := context.Background()
 
 	dirName := createTmpDir(t)
-	defer func(path string) {
-		err := os.RemoveAll(path)
+	t.Cleanup(func() {
+		err = os.RemoveAll(dirName)
 		if err != nil {
 			t.Fatal(err)
 		}
-	}(dirName)
+	})
 
 	filePath := filepath.Join(dirName, "test.compose.yaml")
 
@@ -172,7 +172,7 @@ compose_files:
 	service := compose.NewComposeService(dockerCli)
 
 	// Remove test container after test
-	defer func() {
+	t.Cleanup(func() {
 		downOpts := api.DownOptions{
 			RemoveOrphans: true,
 			Images:        "all",
@@ -185,7 +185,7 @@ compose_files:
 		if err != nil {
 			t.Fatal(err)
 		}
-	}()
+	})
 
 	err = DeployCompose(ctx, dockerCli, project, deployConf, p)
 	if err != nil {
