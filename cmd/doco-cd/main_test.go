@@ -28,7 +28,7 @@ func TestHandleEvent(t *testing.T) {
 		{
 			name: "Successful Deployment",
 			payload: webhook.ParsedPayload{
-				Ref:       "refs/heads/main",
+				Ref:       "refs/heads/test/main-test",
 				CommitSHA: "26263c2b44133367927cd1423d8c8457b5befce5",
 				Name:      "doco-cd",
 				FullName:  "kimdre/doco-cd",
@@ -54,7 +54,7 @@ func TestHandleEvent(t *testing.T) {
 		{
 			name: "Private Repository with Missing Access Token",
 			payload: webhook.ParsedPayload{
-				Ref:       "refs/heads/main",
+				Ref:       "refs/heads/test/main-test",
 				CommitSHA: "26263c2b44133367927cd1423d8c8457b5befce5",
 				Name:      "doco-cd",
 				FullName:  "kimdre/doco-cd",
@@ -67,7 +67,7 @@ func TestHandleEvent(t *testing.T) {
 		{
 			name: "Private Repository with Missing Access Token",
 			payload: webhook.ParsedPayload{
-				Ref:       "refs/heads/main",
+				Ref:       "refs/heads/test/main-test",
 				CommitSHA: "26263c2b44133367927cd1423d8c8457b5befce5",
 				Name:      "doco-cd",
 				FullName:  "kimdre/doco-cd",

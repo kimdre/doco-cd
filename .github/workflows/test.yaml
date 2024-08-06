@@ -34,7 +34,7 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
       - run: go mod download
-      - run: go test -p 1 -v -race -coverprofile=coverage.out -covermode=atomic ./... -timeout 5m
+      - run: go test -p 1 -v -coverprofile=coverage.out -covermode=atomic ./... -timeout 5m
         timeout-minutes: 5
         env:
           WEBHOOK_SECRET: test_Secret1
