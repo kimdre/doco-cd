@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/docker/compose/v2/pkg/api"
@@ -24,6 +25,7 @@ func TestHandleEvent(t *testing.T) {
 		payload              webhook.ParsedPayload
 		expectedStatusCode   int
 		expectedResponseBody string
+		overrideEnv          map[string]string
 	}{
 		{
 			name: "Successful Deployment",
@@ -37,6 +39,7 @@ func TestHandleEvent(t *testing.T) {
 			},
 			expectedStatusCode:   http.StatusCreated,
 			expectedResponseBody: `{"details":"project deployment successful","job_id":"%s"}%s`,
+			overrideEnv:          nil,
 		},
 		{
 			name: "Invalid Reference",
@@ -50,6 +53,7 @@ func TestHandleEvent(t *testing.T) {
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
 			expectedResponseBody: `{"error":"failed to clone repository","details":"couldn't find remote ref \"refs/heads/invalid\"","job_id":"%s"}%s`,
+			overrideEnv:          nil,
 		},
 		{
 			name: "Private Repository",
@@ -63,11 +67,37 @@ func TestHandleEvent(t *testing.T) {
 			},
 			expectedStatusCode:   http.StatusCreated,
 			expectedResponseBody: `{"details":"project deployment successful","job_id":"%s"}%s`,
+			overrideEnv:          nil,
+		},
+		{
+			name: "Private Repository with missing Git Access Token",
+			payload: webhook.ParsedPayload{
+				Ref:       "refs/heads/main",
+				CommitSHA: "26263c2b44133367927cd1423d8c8457b5befce5",
+				Name:      "doco-cd",
+				FullName:  "kimdre/doco-cd",
+				CloneURL:  "https://github.com/kimdre/doco-cd",
+				Private:   true,
+			},
+			expectedStatusCode:   http.StatusInternalServerError,
+			expectedResponseBody: `{"error":"missing access token for private repository","job_id":"%s"}%s`,
+			overrideEnv: map[string]string{
+				"GIT_ACCESS_TOKEN": "",
+			},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.overrideEnv != nil {
+				for k, v := range tc.overrideEnv {
+					err := os.Setenv(k, v)
+					if err != nil {
+						t.Fatalf("Failed to set environment variable: %v", err)
+					}
+				}
+			}
+
 			appConfig, _ := config.GetAppConfig()
 
 			log := logger.New(12)
