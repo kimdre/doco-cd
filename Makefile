@@ -6,7 +6,7 @@ test:
 	@echo "Running tests..."
 	@WEBHOOK_SECRET="test_Secret1" go test -v -cover -p 1 ./... -timeout 5m
 
-generate-coverage:
+test-coverage:
 	@echo "Running tests with coverage..."
 	@WEBHOOK_SECRET="test_Secret1" go test -v -coverprofile cover.out ./...
 	@go tool cover -html cover.out -o cover.html
