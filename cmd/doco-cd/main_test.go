@@ -65,7 +65,7 @@ func TestHandleEvent(t *testing.T) {
 			expectedResponseBody: `{"error":"missing access token for private repository","job_id":"%s"}%s`,
 		},
 		{
-			name: "Private Repository with Missing Access Token",
+			name: "Private Repository",
 			payload: webhook.ParsedPayload{
 				Ref:       "refs/heads/test/main-test",
 				CommitSHA: "26263c2b44133367927cd1423d8c8457b5befce5",
@@ -74,8 +74,8 @@ func TestHandleEvent(t *testing.T) {
 				CloneURL:  "https://github.com/kimdre/doco-cd",
 				Private:   true,
 			},
-			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"missing access token for private repository","job_id":"%s"}%s`,
+			expectedStatusCode:   http.StatusCreated,
+			expectedResponseBody: `{"details":"project deployment successful","job_id"":"%s"}%s`,
 		},
 	}
 
