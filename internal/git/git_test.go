@@ -47,12 +47,12 @@ func TestCloneRepository(t *testing.T) {
 		t.Fatalf("Failed to get worktree: %v", err)
 	}
 
-	defer func() {
+	t.Cleanup(func() {
 		err = os.RemoveAll(worktree.Filesystem.Root())
 		if err != nil {
 			t.Fatalf("Failed to remove repository: %v", err)
 		}
-	}()
+	})
 
 	files, err := worktree.Filesystem.ReadDir(".")
 	if err != nil {

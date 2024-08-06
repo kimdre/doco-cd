@@ -42,12 +42,12 @@ compose_files:
 `, projectName, reference, workingDirectory, composeFiles[0])
 
 	dirName := createTmpDir(t)
-	defer func(path string) {
-		err := os.RemoveAll(path)
+	t.Cleanup(func() {
+		err := os.RemoveAll(dirName)
 		if err != nil {
 			t.Fatal(err)
 		}
-	}(dirName)
+	})
 
 	filePath := filepath.Join(dirName, fileName)
 
@@ -82,12 +82,12 @@ func TestGetDeployConfig_Default(t *testing.T) {
 	defaultConfig := DefaultDeployConfig(projectName)
 
 	dirName := createTmpDir(t)
-	defer func(path string) {
-		err := os.RemoveAll(path)
+	t.Cleanup(func() {
+		err := os.RemoveAll(dirName)
 		if err != nil {
 			t.Fatal(err)
 		}
-	}(dirName)
+	})
 
 	config, err := GetDeployConfig(dirName, projectName)
 	if err != nil {
