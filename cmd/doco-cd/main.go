@@ -31,7 +31,8 @@ const (
 
 var errMsg string
 
-func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, c *config.AppConfig, p webhook.ParsedPayload, jobID string, dockerCli command.Cli) {
+// HandleEvent handles the incoming webhook event
+func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, c *config.AppConfig, p webhook.ParsedPayload, jobID string, dockerCli command.Cli) {
 	jobLog = jobLog.With(slog.String("repository", p.FullName))
 
 	jobLog.Info("preparing project deployment")
@@ -308,7 +309,7 @@ func main() {
 			return
 		}
 
-		handleEvent(ctx, jobLog, w, c, payload, jobID, dockerCli)
+		HandleEvent(ctx, jobLog, w, c, payload, jobID, dockerCli)
 	})
 
 	log.Info(
