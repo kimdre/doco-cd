@@ -62,7 +62,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   true,
 			},
 			expectedStatusCode:   http.StatusCreated,
-			expectedResponseBody: `{"details":"project deployment successful","job_id"":"%s"}%s`,
+			expectedResponseBody: `{"details":"project deployment successful","job_id":"%s"}%s`,
 		},
 	}
 
