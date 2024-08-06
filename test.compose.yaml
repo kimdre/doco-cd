@@ -1,0 +1,13 @@
+# NOTE: This is just for testing deployments
+services:
+  app:
+    image: nginx:latest
+    environment:
+      test: true
+    ports:
+      - "80:80"
+    volumes:
+      - test:/var/www/html
+
+volumes:
+  test:
