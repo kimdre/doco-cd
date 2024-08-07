@@ -55,12 +55,12 @@ func TestParse(t *testing.T) {
 					r.Header.Set(GitlabTokenHeader, testSecret)
 				}
 			} else {
-				switch tc.expectedError {
-				case ErrHMACVerificationFailed:
+				switch {
+				case errors.Is(tc.expectedError, ErrHMACVerificationFailed):
 					r.Header.Set(GithubSignatureHeader, "sha256=invalid")
-				case ErrMissingSecurityHeader:
+				case errors.Is(tc.expectedError, ErrMissingSecurityHeader):
 					// do nothing
-				case ErrGitlabTokenVerificationFailed:
+				case errors.Is(tc.expectedError, ErrGitlabTokenVerificationFailed):
 					r.Header.Set(GitlabTokenHeader, "invalid")
 				}
 			}
