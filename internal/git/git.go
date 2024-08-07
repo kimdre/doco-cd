@@ -1,6 +1,7 @@
 package git
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -11,9 +12,16 @@ import (
 
 // CloneRepository clones a repository from a given URL and reference to a temporary directory
 func CloneRepository(name, url, ref string, skipTLSVerify bool) (*git.Repository, error) {
-	path := filepath.Join(os.TempDir(), name)
+	tempDir, err := os.MkdirTemp(os.TempDir(), "deploy-*")
+	if err != nil {
+		return nil, err
+	}
 
-	err := os.MkdirAll(path, os.ModePerm)
+	path := filepath.Join(tempDir, name)
+
+	fmt.Println("Cloning repository to", path)
+
+	err = os.MkdirAll(path, os.ModePerm)
 	if err != nil {
 		return nil, err
 	}
