@@ -78,7 +78,7 @@ compose_files:
 	}
 }
 
-func TestGetDeployConfig_Default(t *testing.T) {
+func TestGetDeployConfig_DefaultValues(t *testing.T) {
 	defaultConfig := DefaultDeployConfig(projectName)
 
 	dirName := createTmpDir(t)
