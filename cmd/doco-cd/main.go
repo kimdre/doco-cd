@@ -253,7 +253,7 @@ func main() {
 
 	log.Debug("connection to docker socket was successful")
 
-	dockerCli, err := docker.CreateDockerCli(c.QuietDockerDeploy, !c.SkipTLSVerification)
+	dockerCli, err := docker.CreateDockerCli(c.DockerQuietDeploy, !c.SkipTLSVerification)
 	if err != nil {
 		log.Critical("failed to create docker client", logger.ErrAttr(err))
 		return

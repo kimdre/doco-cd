@@ -120,7 +120,7 @@ func TestHandleEvent(t *testing.T) {
 
 			ctx := context.Background()
 
-			dockerCli, err := docker.CreateDockerCli(appConfig.QuietDockerDeploy, !appConfig.SkipTLSVerification)
+			dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy, !appConfig.SkipTLSVerification)
 			if err != nil {
 				if tc.expectedStatusCode == http.StatusInternalServerError {
 					return
