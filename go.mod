@@ -3,7 +3,7 @@ module github.com/kimdre/doco-cd
 go 1.22.5
 
 require (
-	github.com/caarlos0/env/v11 v11.2.0
+	github.com/caarlos0/env/v11 v11.2.2
 	github.com/compose-spec/compose-go/v2 v2.1.6
 	github.com/creasty/defaults v1.7.0
 	github.com/docker/cli v27.1.1+incompatible
