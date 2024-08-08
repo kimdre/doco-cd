@@ -81,7 +81,6 @@ func TestLoadCompose(t *testing.T) {
 
 	filePath := filepath.Join(dirName, "test.compose.yaml")
 
-	t.Log("Load compose file")
 	createComposeFile(t, filePath, composeContents)
 
 	project, err := LoadCompose(ctx, dirName, projectName, []string{filePath})
@@ -138,7 +137,7 @@ func TestDeployCompose(t *testing.T) {
 
 	t.Log("Deploy compose")
 
-	dockerCli, err := CreateDockerCli()
+	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy, !c.SkipTLSVerification)
 	if err != nil {
 		t.Fatal(err)
 	}

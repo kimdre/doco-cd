@@ -17,6 +17,7 @@ type AppConfig struct {
 	AuthType            string `env:"AUTH_TYPE" envDefault:"oauth2"`                                              // AuthType is the type of authentication to use when cloning repositories
 	SkipTLSVerification bool   `env:"SKIP_TLS_VERIFICATION" envDefault:"false"`                                   // SkipTLSVerification skips the TLS verification when cloning repositories.
 	DockerAPIVersion    string `env:"DOCKER_API_VERSION" envDefault:"v1.40" validate:"regexp=^v[0-9]+\\.[0-9]+$"` // DockerAPIVersion is the version of the Docker API to use
+	DockerQuietDeploy   bool   `env:"DOCKER_QUIET_DEPLOY" envDefault:"true"`                                      // DockerQuietDeploy suppresses the status output of dockerCli in deployments (e.g. pull, create, start)
 }
 
 var (

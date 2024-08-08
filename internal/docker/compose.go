@@ -132,16 +132,29 @@ func VerifySocketConnection(apiVersion string) error {
 	return nil
 }
 
-func CreateDockerCli() (command.Cli, error) {
+func CreateDockerCli(quiet, verifyTLS bool) (command.Cli, error) {
+	var (
+		outputStream io.Writer
+		errorStream  io.Writer
+	)
+
+	if quiet {
+		outputStream = io.Discard
+		errorStream = io.Discard
+	} else {
+		outputStream = os.Stdout
+		errorStream = os.Stderr
+	}
+
 	dockerCli, err := command.NewDockerCli(
-		command.WithOutputStream(os.Stdout),
-		command.WithErrorStream(os.Stderr),
+		command.WithOutputStream(outputStream),
+		command.WithErrorStream(errorStream),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create docker cli: %w", err)
 	}
 
-	opts := &flags.ClientOptions{Context: "default", LogLevel: "error"}
+	opts := &flags.ClientOptions{Context: "default", LogLevel: "error", TLSVerify: verifyTLS}
 
 	err = dockerCli.Initialize(opts)
 	if err != nil {

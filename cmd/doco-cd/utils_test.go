@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
-	"github.com/google/uuid"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 func TestJSONResponse(t *testing.T) {
