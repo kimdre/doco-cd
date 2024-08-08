@@ -138,7 +138,7 @@ func TestDeployCompose(t *testing.T) {
 
 	t.Log("Deploy compose")
 
-	dockerCli, err := CreateDockerCli()
+	dockerCli, err := CreateDockerCli(c.QuietDockerDeploy, !c.SkipTLSVerification)
 	if err != nil {
 		t.Fatal(err)
 	}
