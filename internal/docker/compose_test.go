@@ -81,7 +81,6 @@ func TestLoadCompose(t *testing.T) {
 
 	filePath := filepath.Join(dirName, "test.compose.yaml")
 
-	t.Log("Load compose file")
 	createComposeFile(t, filePath, composeContents)
 
 	project, err := LoadCompose(ctx, dirName, projectName, []string{filePath})
