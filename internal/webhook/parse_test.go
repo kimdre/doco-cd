@@ -24,6 +24,12 @@ var (
 	gitlabPayloadFile = "testdata/gitlab_payload.json"
 )
 
+var (
+	githubPayloadFile = "testdata/github_payload.json"
+	giteaPayloadFile  = "testdata/gitea_payload.json"
+	gitlabPayloadFile = "testdata/gitlab_payload.json"
+)
+
 func TestParse(t *testing.T) {
 	testCases := []struct {
 		name          string
