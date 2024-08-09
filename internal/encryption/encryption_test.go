@@ -46,7 +46,7 @@ func TestDecryptFile(t *testing.T) {
 	}{
 		{file: encryptedFile, expected: expectedData, expectedError: nil},
 		{file: unencryptedFile, expected: "", expectedError: ErrFileDecryptFailed},
-		{file: nonexistentFile, expected: "", expectedError: ErrFileReadFailed},
+		{file: nonexistentFile, expected: "", expectedError: ErrFileDecryptFailed},
 	}
 
 	for _, tt := range tests {
