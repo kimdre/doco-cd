@@ -79,6 +79,7 @@ func (cfg *AppConfig) setSOPSconfig() error {
 		if err != nil {
 			return fmt.Errorf("failed to read base64-encoded SOPS key: %v", err)
 		}
+
 		cfg.SOPSKey = string(keyData)
 	}
 
@@ -88,7 +89,9 @@ func (cfg *AppConfig) setSOPSconfig() error {
 		if err != nil {
 			return fmt.Errorf("failed to read SOPS key file: %v", err)
 		}
+
 		cfg.SOPSKey = string(keyData)
 	}
+
 	return nil
 }

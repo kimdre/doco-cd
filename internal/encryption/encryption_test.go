@@ -27,10 +27,12 @@ func TestIsEncrypted(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.file, func(t *testing.T) {
 			filePath := filepath.Join("testdata", tt.file)
+
 			encrypted, err := IsEncrypted(filePath)
 			if err != nil && !errors.Is(err, tt.expectedError) {
 				t.Errorf("expected error %v, got %v", tt.expectedError, err)
 			}
+
 			if encrypted != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, encrypted)
 			}
@@ -52,6 +54,7 @@ func TestDecryptFile(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.file, func(t *testing.T) {
 			filePath := filepath.Join("testdata", tt.file)
+
 			decryptedData, err := DecryptFile(filePath)
 			if err != nil && !errors.Is(err, tt.expectedError) {
 				t.Errorf("expected error %v, got %v", tt.expectedError, err)
