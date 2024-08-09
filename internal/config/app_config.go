@@ -1,7 +1,10 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
+	"fmt"
+	"os"
 	"strings"
 
 	"github.com/caarlos0/env/v11"
@@ -18,6 +21,10 @@ type AppConfig struct {
 	SkipTLSVerification bool   `env:"SKIP_TLS_VERIFICATION" envDefault:"false"`                                   // SkipTLSVerification skips the TLS verification when cloning repositories.
 	DockerAPIVersion    string `env:"DOCKER_API_VERSION" envDefault:"v1.40" validate:"regexp=^v[0-9]+\\.[0-9]+$"` // DockerAPIVersion is the version of the Docker API to use
 	DockerQuietDeploy   bool   `env:"DOCKER_QUIET_DEPLOY" envDefault:"true"`                                      // DockerQuietDeploy suppresses the status output of dockerCli in deployments (e.g. pull, create, start)
+	SOPSKeyService      string `env:"SOPS_KEY_SERVICE"`                                                           // SOPSKeyService is the key service used for SOPS decryption (e.g., aws, gcp, azure, pgp)
+	SOPSKeyID           string `env:"SOPS_KEY_ID"`                                                                // SOPSKeyID is the key ID used for SOPS decryption
+	SOPSKeyFile         string `env:"SOPS_KEY_FILE"`                                                              // SOPSKeyFile is the path to the key file used for SOPS decryption (if applicable)
+	SOPSKey             string `env:"SOPS_KEY_BASE64"`                                                            // SOPSKey is the base64-encoded key used for SOPS decryption (if applicable)
 }
 
 var (
@@ -45,5 +52,43 @@ func GetAppConfig() (*AppConfig, error) {
 		return nil, err
 	}
 
+	if err := cfg.setSOPSconfig(); err != nil {
+		return nil, err
+	}
+
 	return &cfg, nil
+}
+
+// setSOPSconfig verifies and sets the SOPS configuration
+func (cfg *AppConfig) setSOPSconfig() error {
+	if cfg.SOPSKeyService != "" && cfg.SOPSKeyID == "" && cfg.SOPSKeyFile == "" && cfg.SOPSKey == "" {
+		return errors.New("SOPS_KEY_ID, SOPS_KEY_FILE, or SOPS_KEY_BASE64 must be provided when SOPS_KEY_SERVICE is set")
+	}
+
+	if cfg.SOPSKeyService == "" && (cfg.SOPSKeyID != "" || cfg.SOPSKeyFile != "" || cfg.SOPSKey != "") {
+		return errors.New("SOPS_KEY_SERVICE must be provided when SOPS_KEY_ID, SOPS_KEY_FILE, or SOPS_KEY_BASE64 is set")
+	}
+
+	if cfg.SOPSKeyService != "" && (cfg.SOPSKeyID != "" && cfg.SOPSKeyFile != "" && cfg.SOPSKey != "") {
+		return errors.New("only one of SOPS_KEY_ID, SOPS_KEY_FILE, or SOPS_KEY_BASE64 can be provided when SOPS_KEY_SERVICE is set")
+	}
+
+	// Decode the base64-encoded SOPS key if provided
+	if cfg.SOPSKey != "" {
+		keyData, err := base64.StdEncoding.DecodeString(cfg.SOPSKey)
+		if err != nil {
+			return fmt.Errorf("failed to read base64-encoded SOPS key: %v", err)
+		}
+		cfg.SOPSKey = string(keyData)
+	}
+
+	// Read the SOPS key file if provided and set the SOPS key
+	if cfg.SOPSKeyFile != "" {
+		keyData, err := os.ReadFile(cfg.SOPSKeyFile)
+		if err != nil {
+			return fmt.Errorf("failed to read SOPS key file: %v", err)
+		}
+		cfg.SOPSKey = string(keyData)
+	}
+	return nil
 }

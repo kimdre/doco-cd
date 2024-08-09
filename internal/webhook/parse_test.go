@@ -15,18 +15,24 @@ const (
 	testSecret  = "secret"
 )
 
+var (
+	githubPayloadFile = "testdata/github_payload.json"
+	giteaPayloadFile  = "testdata/gitea_payload.json"
+	gitlabPayloadFile = "testdata/gitlab_payload.json"
+)
+
 func TestParse(t *testing.T) {
 	testCases := []struct {
 		name          string
 		filePath      string
 		expectedError error
 	}{
-		{"Github Push Payload", "testdata/github_payload.json", nil},
-		{"Gitea Push Payload", "testdata/gitea_payload.json", nil},
-		{"Gitlab Push Payload", "testdata/gitlab_payload.json", nil},
-		{"Invalid Signature", "testdata/github_payload.json", ErrHMACVerificationFailed},
-		{"Missing Signature", "testdata/github_payload.json", ErrMissingSecurityHeader},
-		{"Invalid Gitlab Token", "testdata/gitlab_payload.json", ErrGitlabTokenVerificationFailed},
+		{"Github Push Payload", githubPayloadFile, nil},
+		{"Gitea Push Payload", giteaPayloadFile, nil},
+		{"Gitlab Push Payload", gitlabPayloadFile, nil},
+		{"Invalid Signature", githubPayloadFile, ErrHMACVerificationFailed},
+		{"Missing Signature", githubPayloadFile, ErrMissingSecurityHeader},
+		{"Invalid Gitlab Token", gitlabPayloadFile, ErrGitlabTokenVerificationFailed},
 	}
 
 	for _, tc := range testCases {
