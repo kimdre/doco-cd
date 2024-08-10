@@ -42,8 +42,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		"cloning repository to temporary directory",
 		slog.String("url", p.CloneURL))
 
-	// var auth transport.AuthMethod = nil
-
 	if p.Private {
 		jobLog.Debug("repository is private")
 
@@ -58,15 +56,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 			return
 		}
-
-		// Basic auth examples:
-		// https://YOUR-USERNAME:GENERATED-TOKEN@github.com/YOUR-USERNAME/YOUR-REPOSITORY
-		// Or
-		// https://GENERATED-TOKEN@github.com/YOUR-USERNAME/YOUR-REPOSITORY
-		//auth = &gitHttp.BasicAuth{
-		//	Username: "",
-		//	Password: c.GitAccessToken,
-		//}
 
 		p.CloneURL = git.GetAuthUrl(p.CloneURL, c.AuthType, c.GitAccessToken)
 	} else if c.GitAccessToken != "" {
