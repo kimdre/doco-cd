@@ -19,6 +19,13 @@ import (
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
+var (
+	validCommitSHA = "26263c2b44133367927cd1423d8c8457b5befce5"
+	projectName    = "doco-cd"
+	mainBranch     = "refs/heads/main"
+	invalidBranch  = "refs/heads/invalid"
+)
+
 func TestHandleEvent(t *testing.T) {
 	testCases := []struct {
 		name                 string
@@ -30,9 +37,9 @@ func TestHandleEvent(t *testing.T) {
 		{
 			name: "Successful Deployment",
 			payload: webhook.ParsedPayload{
-				Ref:       "refs/heads/main",
-				CommitSHA: "26263c2b44133367927cd1423d8c8457b5befce5",
-				Name:      "doco-cd",
+				Ref:       mainBranch,
+				CommitSHA: validCommitSHA,
+				Name:      projectName,
 				FullName:  "kimdre/doco-cd",
 				CloneURL:  "https://github.com/kimdre/doco-cd",
 				Private:   false,
@@ -44,23 +51,23 @@ func TestHandleEvent(t *testing.T) {
 		{
 			name: "Invalid Reference",
 			payload: webhook.ParsedPayload{
-				Ref:       "refs/heads/invalid",
-				CommitSHA: "26263c2b44133367927cd1423d8c8457b5befce5",
-				Name:      "doco-cd",
+				Ref:       invalidBranch,
+				CommitSHA: validCommitSHA,
+				Name:      projectName,
 				FullName:  "kimdre/doco-cd",
 				CloneURL:  "https://github.com/kimdre/doco-cd",
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"failed to clone repository","details":"couldn't find remote ref \"refs/heads/invalid\"","job_id":"%s"}%s`,
+			expectedResponseBody: `{"error":"failed to clone repository","details":"couldn't find remote ref \"` + invalidBranch + `\"","job_id":"%s"}%s`,
 			overrideEnv:          nil,
 		},
 		{
 			name: "Private Repository",
 			payload: webhook.ParsedPayload{
-				Ref:       "refs/heads/main",
-				CommitSHA: "26263c2b44133367927cd1423d8c8457b5befce5",
-				Name:      "doco-cd",
+				Ref:       mainBranch,
+				CommitSHA: validCommitSHA,
+				Name:      projectName,
 				FullName:  "kimdre/doco-cd",
 				CloneURL:  "https://github.com/kimdre/doco-cd",
 				Private:   true,
@@ -72,9 +79,9 @@ func TestHandleEvent(t *testing.T) {
 		{
 			name: "Private Repository with missing Git Access Token",
 			payload: webhook.ParsedPayload{
-				Ref:       "refs/heads/main",
-				CommitSHA: "26263c2b44133367927cd1423d8c8457b5befce5",
-				Name:      "doco-cd",
+				Ref:       mainBranch,
+				CommitSHA: validCommitSHA,
+				Name:      projectName,
 				FullName:  "kimdre/doco-cd",
 				CloneURL:  "https://github.com/kimdre/doco-cd",
 				Private:   true,
@@ -88,9 +95,9 @@ func TestHandleEvent(t *testing.T) {
 		{
 			name: "Missing Deployment Configuration",
 			payload: webhook.ParsedPayload{
-				Ref:       "refs/heads/main",
+				Ref:       mainBranch,
 				CommitSHA: "efefb4111f3c363692a2526f9be9b24560e6511f",
-				Name:      "doco-cd",
+				Name:      projectName,
 				FullName:  "kimdre/kimdre",
 				CloneURL:  "https://github.com/kimdre/kimdre",
 				Private:   false,

@@ -11,7 +11,7 @@ import (
 var projectName = "test"
 
 func createTestFile(fileName string, content string) error {
-	err := os.WriteFile(fileName, []byte(content), 0o644)
+	err := os.WriteFile(fileName, []byte(content), 0600)
 	if err != nil {
 		return err
 	}
