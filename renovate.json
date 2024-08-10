@@ -5,6 +5,7 @@
   ],
   "dependencyDashboardLabels": ["dependencies"],
   "labels": ["dependencies"],
+  "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
   "packageRules": [
     {
       "matchUpdateTypes": ["major"],
