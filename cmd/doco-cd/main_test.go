@@ -190,3 +190,81 @@ func TestHandleEvent(t *testing.T) {
 		})
 	}
 }
+
+func TestMain_WithEvent(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Successful Deployment", func(t *testing.T) {
+		main()
+	})
+}
+
+func TestMain_SendRequest(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name                 string
+		payload              webhook.ParsedPayload
+		expectedStatusCode   int
+		expectedResponseBody string
+	}{
+		{
+			name: "Successful Deployment",
+			payload: webhook.ParsedPayload{
+				Ref:       mainBranch,
+				CommitSHA: validCommitSHA,
+				Name:      projectName,
+				FullName:  "kimdre/doco-cd",
+				CloneURL:  "https://github.com/kimdre/doco-cd",
+				Private:   false,
+			},
+			expectedStatusCode:   http.StatusCreated,
+			expectedResponseBody: `{"details":"project deployment successful","job_id":"example-job-id"}`,
+		},
+		{
+			name: "Invalid Reference",
+			payload: webhook.ParsedPayload{
+				Ref:       invalidBranch,
+				CommitSHA: validCommitSHA,
+				Name:      projectName,
+				FullName:  "kimdre/doco-cd",
+				CloneURL:  "https://github.com/kimdre/doco-cd",
+				Private:   false,
+			},
+			expectedStatusCode:   http.StatusInternalServerError,
+			expectedResponseBody: `{"error":"failed to clone repository","details":"couldn't find remote ref \"refs/heads/invalid\"","job_id":"example-job-id"}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequest("POST", "/v1/webhook", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			rr := httptest.NewRecorder()
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				ctx := r.Context()
+				jobLog := logger.New(12).With(slog.String("job_id", "example-job-id"))
+				appConfig, _ := config.GetAppConfig()
+				jobID := "example-job-id"
+				dockerCli, _ := docker.CreateDockerCli(appConfig.DockerQuietDeploy, !appConfig.SkipTLSVerification)
+				HandleEvent(ctx, jobLog, w, appConfig, tc.payload, jobID, dockerCli)
+			})
+			handler.ServeHTTP(rr, req)
+
+			t.Log(rr.Body.String())
+
+			if status := rr.Code; status != tc.expectedStatusCode {
+				t.Errorf("handler returned wrong status code: got %v want %v",
+					status, tc.expectedStatusCode)
+			}
+
+			if rr.Body.String() != tc.expectedResponseBody+"\n" {
+				t.Errorf("handler returned unexpected body: got '%v' want '%v'",
+					rr.Body.String(), tc.expectedResponseBody)
+			}
+		})
+	}
+}
