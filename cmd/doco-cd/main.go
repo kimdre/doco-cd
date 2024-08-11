@@ -176,7 +176,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		deployConfig.ComposeFiles = tmpComposeFiles
 	}
 
-	project, err := docker.LoadCompose(ctx, workingDir, p.Name, deployConfig.ComposeFiles)
+	project, err := docker.LoadCompose(ctx, workingDir, deployConfig.Name, deployConfig.ComposeFiles)
 	if err != nil {
 		errMsg = "failed to load project"
 		jobLog.Error(errMsg,
