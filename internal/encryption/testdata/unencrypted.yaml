@@ -1,0 +1,6 @@
+key: foo
+number: 1234
+list:
+  - hello
+  - world
+boolean: true
