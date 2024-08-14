@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -29,53 +30,109 @@ func createTmpDir(t *testing.T) string {
 }
 
 func TestGetDeployConfig(t *testing.T) {
-	fileName := ".compose-deploy.yaml"
-	reference := "refs/heads/test"
-	workingDirectory := "/test"
-	composeFiles := []string{"test.compose.yaml"}
+	t.Run("Valid Config", func(t *testing.T) {
+		fileName := ".doco-cd.yaml"
+		reference := "refs/heads/test"
+		workingDirectory := "/test"
+		composeFiles := []string{"test.compose.yaml"}
 
-	deployConfig := fmt.Sprintf(`name: %s
+		deployConfig := fmt.Sprintf(`name: %s
 reference: %s
 working_dir: %s
 compose_files:
   - %s
 `, projectName, reference, workingDirectory, composeFiles[0])
 
-	dirName := createTmpDir(t)
-	t.Cleanup(func() {
-		err := os.RemoveAll(dirName)
+		dirName := createTmpDir(t)
+		t.Cleanup(func() {
+			err := os.RemoveAll(dirName)
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+
+		filePath := filepath.Join(dirName, fileName)
+
+		err := createTestFile(filePath, deployConfig)
 		if err != nil {
 			t.Fatal(err)
 		}
+
+		config, err := GetDeployConfig(dirName, projectName)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if config.Name != projectName {
+			t.Errorf("expected name to be %v, got %s", projectName, config.Name)
+		}
+
+		if config.Reference != reference {
+			t.Errorf("expected reference to be %v, got %s", reference, config.Reference)
+		}
+
+		if config.WorkingDirectory != workingDirectory {
+			t.Errorf("expected working directory to be '%v', got '%s'", workingDirectory, config.WorkingDirectory)
+		}
+
+		if !reflect.DeepEqual(config.ComposeFiles, composeFiles) {
+			t.Errorf("expected compose files to be %v, got %v", composeFiles, config.ComposeFiles)
+		}
 	})
 
-	filePath := filepath.Join(dirName, fileName)
+	t.Run("Deprecated Config File Name", func(t *testing.T) {
+		fileName := ".compose-deploy.yaml"
+		reference := "refs/heads/test"
+		workingDirectory := "/test"
+		composeFiles := []string{"test.compose.yaml"}
 
-	err := createTestFile(filePath, deployConfig)
-	if err != nil {
-		t.Fatal(err)
-	}
+		deployConfig := fmt.Sprintf(`name: %s
+reference: %s
+working_dir: %s
+compose_files:
+  - %s
+`, projectName, reference, workingDirectory, composeFiles[0])
 
-	config, err := GetDeployConfig(dirName, projectName)
-	if err != nil {
-		t.Fatal(err)
-	}
+		dirName := createTmpDir(t)
+		t.Cleanup(func() {
+			err := os.RemoveAll(dirName)
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
 
-	if config.Name != projectName {
-		t.Errorf("expected name to be %v, got %s", projectName, config.Name)
-	}
+		filePath := filepath.Join(dirName, fileName)
 
-	if config.Reference != reference {
-		t.Errorf("expected reference to be %v, got %s", reference, config.Reference)
-	}
+		err := createTestFile(filePath, deployConfig)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	if config.WorkingDirectory != workingDirectory {
-		t.Errorf("expected working directory to be '%v', got '%s'", workingDirectory, config.WorkingDirectory)
-	}
+		config, err := GetDeployConfig(dirName, projectName)
+		if err == nil || !errors.Is(err, ErrDeprecatedConfig) {
+			t.Fatalf("expected deprecated config error, got %v", err)
+		}
 
-	if !reflect.DeepEqual(config.ComposeFiles, composeFiles) {
-		t.Errorf("expected compose files to be %v, got %v", composeFiles, config.ComposeFiles)
-	}
+		if config == nil {
+			t.Fatal("expected config to be returned, got nil")
+		}
+
+		if config.Name != projectName {
+			t.Errorf("expected name to be %v, got %s", projectName, config.Name)
+		}
+
+		if config.Reference != reference {
+			t.Errorf("expected reference to be %v, got %s", reference, config.Reference)
+		}
+
+		if config.WorkingDirectory != workingDirectory {
+			t.Errorf("expected working directory to be '%v', got '%s'", workingDirectory, config.WorkingDirectory)
+		}
+
+		if !reflect.DeepEqual(config.ComposeFiles, composeFiles) {
+			t.Errorf("expected compose files to be %v, got %v", composeFiles, config.ComposeFiles)
+		}
+	})
 }
 
 func TestGetDeployConfig_DefaultValues(t *testing.T) {
