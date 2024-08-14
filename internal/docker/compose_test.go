@@ -142,7 +142,7 @@ func TestDeployCompose(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fileName := ".compose-deploy.yaml"
+	fileName := ".doco-cd.yaml"
 	reference := "refs/heads/test"
 	workingDirectory := "/test"
 	composeFiles := []string{"test.compose.yaml"}
