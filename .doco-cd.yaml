@@ -1,4 +1,4 @@
 name: compose-webhook
-reference: refs/heads/main
+reference: refs/heads/feat/adjust-deploy-config-filenames
 compose_files:
   - test.compose.yaml

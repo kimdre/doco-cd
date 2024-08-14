@@ -115,15 +115,19 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	// Get the deployment config from the repository
 	deployConfig, err := config.GetDeployConfig(fs.Root(), p.Name)
 	if err != nil {
-		errMsg = "failed to get deploy configuration"
-		jobLog.Error(errMsg, logger.ErrAttr(err))
-		JSONError(w,
-			errMsg,
-			err.Error(),
-			jobID,
-			http.StatusInternalServerError)
+		if errors.Is(err, config.ErrDeprecatedConfig) {
+			jobLog.Warn(err.Error())
+		} else {
+			errMsg = "failed to get deploy configuration"
+			jobLog.Error(errMsg, logger.ErrAttr(err))
+			JSONError(w,
+				errMsg,
+				err.Error(),
+				jobID,
+				http.StatusInternalServerError)
 
-		return
+			return
+		}
 	}
 
 	jobLog = jobLog.With(slog.String("reference", deployConfig.Reference))
