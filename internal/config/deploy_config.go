@@ -12,10 +12,12 @@ import (
 )
 
 var (
-	DefaultDeploymentConfigFileNames = []string{".compose-deploy.yaml", ".compose-deploy.yml"}
-	ErrConfigFileNotFound            = errors.New("configuration file not found in repository")
-	ErrInvalidConfig                 = errors.New("invalid deploy configuration")
-	ErrKeyNotFound                   = errors.New("key not found")
+	DefaultDeploymentConfigFileNames    = []string{".doco-cd.yaml", ".doco-cd.yml"}
+	DeprecatedDeploymentConfigFileNames = []string{".compose-deploy.yaml", ".compose-deploy.yml"}
+	ErrConfigFileNotFound               = errors.New("configuration file not found in repository")
+	ErrInvalidConfig                    = errors.New("invalid deploy configuration")
+	ErrKeyNotFound                      = errors.New("key not found")
+	ErrDeprecatedConfig                 = errors.New("configuration file name is deprecated, please use .doco-cd.y(a)ml instead")
 )
 
 // DeployConfig is the structure of the deployment configuration file
@@ -73,7 +75,10 @@ func GetDeployConfig(repoDir, name string) (*DeployConfig, error) {
 		return nil, err
 	}
 
-	for _, configFile := range DefaultDeploymentConfigFileNames {
+	// Merge default and deprecated deployment config file names
+	DeploymentConfigFileNames := append(DefaultDeploymentConfigFileNames, DeprecatedDeploymentConfigFileNames...)
+
+	for _, configFile := range DeploymentConfigFileNames {
 		config, err := getDeployConfigFile(repoDir, files, configFile)
 		if err != nil {
 			if errors.Is(err, ErrConfigFileNotFound) {
@@ -86,6 +91,11 @@ func GetDeployConfig(repoDir, name string) (*DeployConfig, error) {
 		if config != nil {
 			if err := validator.Validate(config); err != nil {
 				return nil, err
+			}
+
+			// Check if the config file name is deprecated
+			if configFile == DeprecatedDeploymentConfigFileNames[0] || configFile == DeprecatedDeploymentConfigFileNames[1] {
+				return config, fmt.Errorf("%w: %s", ErrDeprecatedConfig, configFile)
 			}
 
 			return config, nil
