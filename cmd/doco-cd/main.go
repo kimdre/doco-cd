@@ -26,7 +26,9 @@ import (
 )
 
 const (
-	webhookPath = "/v1/webhook"
+	version     = "v1"
+	webhookPath = "/" + version + "/webhook"
+	healthPath  = "/" + version + "/health"
 )
 
 var errMsg string
@@ -303,6 +305,18 @@ func main() {
 		}
 
 		HandleEvent(ctx, jobLog, w, c, payload, jobID, dockerCli)
+	})
+
+	http.HandleFunc(healthPath, func(w http.ResponseWriter, r *http.Request) {
+		err = docker.VerifySocketConnection(c.DockerAPIVersion)
+		if err != nil {
+			log.Error(docker.ErrDockerSocketConnectionFailed.Error(), logger.ErrAttr(err))
+			JSONError(w, "unhealthy", err.Error(), "", http.StatusInternalServerError)
+
+			return
+		}
+
+		JSONResponse(w, "healthy", "", http.StatusOK)
 	})
 
 	log.Info(
