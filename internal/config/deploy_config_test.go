@@ -12,7 +12,7 @@ import (
 var projectName = "test"
 
 func createTestFile(fileName string, content string) error {
-	err := os.WriteFile(fileName, []byte(content), 0600)
+	err := os.WriteFile(fileName, []byte(content), 0o600)
 	if err != nil {
 		return err
 	}
@@ -115,6 +115,7 @@ compose_files:
 
 		if config == nil {
 			t.Fatal("expected config to be returned, got nil")
+			return
 		}
 
 		if config.Name != projectName {
