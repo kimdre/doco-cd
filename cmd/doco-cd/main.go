@@ -311,7 +311,7 @@ func main() {
 		err = docker.VerifySocketConnection(c.DockerAPIVersion)
 		if err != nil {
 			log.Error(docker.ErrDockerSocketConnectionFailed.Error(), logger.ErrAttr(err))
-			JSONError(w, "unhealthy", err.Error(), "", http.StatusInternalServerError)
+			JSONError(w, "unhealthy", err.Error(), "", http.StatusServiceUnavailable)
 
 			return
 		}
