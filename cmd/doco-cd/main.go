@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
-	"github.com/docker/docker/client"
-	"github.com/kimdre/doco-cd/internal/docker"
 	"log/slog"
 	"net/http"
+
+	"github.com/docker/docker/client"
+	"github.com/kimdre/doco-cd/internal/docker"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/logger"

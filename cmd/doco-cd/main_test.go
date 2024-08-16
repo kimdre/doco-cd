@@ -46,7 +46,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusCreated,
-			expectedResponseBody: `{"details":"project deployment successful","job_id":"%s"}%s`,
+			expectedResponseBody: `{"details":"project deployment successful","job_id":"%s"}`,
 			overrideEnv:          nil,
 		},
 		{
@@ -60,7 +60,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"failed to clone repository","details":"couldn't find remote ref \"` + invalidBranch + `\"","job_id":"%s"}%s`,
+			expectedResponseBody: `{"error":"failed to clone repository","details":"couldn't find remote ref \"` + invalidBranch + `\"","job_id":"%s"}`,
 			overrideEnv:          nil,
 		},
 		{
@@ -74,7 +74,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   true,
 			},
 			expectedStatusCode:   http.StatusCreated,
-			expectedResponseBody: `{"details":"project deployment successful","job_id":"%s"}%s`,
+			expectedResponseBody: `{"details":"project deployment successful","job_id":"%s"}`,
 			overrideEnv:          nil,
 		},
 		{
@@ -88,7 +88,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   true,
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"missing access token for private repository","job_id":"%s"}%s`,
+			expectedResponseBody: `{"error":"missing access token for private repository","job_id":"%s"}`,
 			overrideEnv: map[string]string{
 				"GIT_ACCESS_TOKEN": "",
 			},
@@ -104,7 +104,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: fmt.Sprintf(`{"error":"no compose files found","details":"stat %s: no such file or directory","job_id":"%%s"}%%s`, filepath.Join(os.TempDir(), "kimdre/kimdre/docker-compose.yaml")),
+			expectedResponseBody: `{"error":"no compose files found","details":"stat ` + filepath.Join(os.TempDir(), "kimdre/kimdre/docker-compose.yaml") + `: no such file or directory","job_id":"%s"}`,
 			overrideEnv:          nil,
 		},
 	}
@@ -183,7 +183,7 @@ func TestHandleEvent(t *testing.T) {
 					status, tc.expectedStatusCode)
 			}
 
-			expectedReturnMessage := fmt.Sprintf(tc.expectedResponseBody, jobID, "\n")
+			expectedReturnMessage := fmt.Sprintf(tc.expectedResponseBody, jobID) + "\n"
 			if rr.Body.String() != expectedReturnMessage {
 				t.Errorf("handler returned unexpected body: got '%v' want '%v'",
 					rr.Body.String(), expectedReturnMessage)
