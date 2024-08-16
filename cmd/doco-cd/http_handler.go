@@ -3,6 +3,12 @@ package main
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"net/http"
+	"os"
+	"path"
+	"reflect"
+
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/docker/cli/cli/command"
 	"github.com/google/uuid"
@@ -11,11 +17,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/webhook"
-	"log/slog"
-	"net/http"
-	"os"
-	"path"
-	"reflect"
 )
 
 type handlerData struct {
