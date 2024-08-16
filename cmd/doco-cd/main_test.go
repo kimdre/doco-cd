@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/docker/compose/v2/pkg/api"
@@ -103,7 +104,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"no compose files found","details":"stat /tmp/kimdre/kimdre/docker-compose.yaml: no such file or directory","job_id":"%s"}%s`,
+			expectedResponseBody: fmt.Sprintf(`{"error":"no compose files found","details":"stat %s: no such file or directory","job_id":"%%s"}%%s`, filepath.Join(os.TempDir(), "kimdre/kimdre/docker-compose.yaml")),
 			overrideEnv:          nil,
 		},
 	}
