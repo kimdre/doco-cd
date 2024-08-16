@@ -1,7 +1,11 @@
 services:
   app:
     container_name: doco-cd
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - APP_VERSION=dev
     restart: no
     ports:
       - "80:80"
@@ -16,6 +20,6 @@ services:
     # Use `user: root` to run the app as root, or use `group_add` to use the non-root user and add the docker group id to it
     #user: root
     group_add:
-      - "971"  # change to the docker group id shown in the app error logs or in the output of `ls -l /var/run/docker.sock`
+      - "0"  # change to the docker group id shown in the app error logs or in the output of `ls -l /var/run/docker.sock`
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

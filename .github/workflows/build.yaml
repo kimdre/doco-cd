@@ -42,6 +42,8 @@ jobs:
         with:
           context: .
           provenance: false
+          args: |
+            APP_VERSION=${{ github.ref_name }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

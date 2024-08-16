@@ -17,7 +17,10 @@ const (
 	healthPath  = "/v1/health"
 )
 
-var errMsg string
+var (
+	Version string
+	errMsg  string
+)
 
 func main() {
 	// Set default log level to debug
@@ -38,7 +41,7 @@ func main() {
 	// Set the actual log level
 	log = logger.New(logLevel)
 
-	log.Info("starting application", slog.String("log_level", c.LogLevel))
+	log.Info("starting application", slog.String("version", Version), slog.String("log_level", c.LogLevel))
 
 	// Test/verify the connection to the docker socket
 	err = docker.VerifySocketConnection(c.DockerAPIVersion)
