@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1@sha256:fe40cf4e92cd0c467be2cfc30657a680ae2398318afd50b0c80585784c604f28
 FROM golang:1.23.0@sha256:613a108a4a4b1dfb6923305db791a19d088f77632317cfc3446825c54fb862cd AS build-stage
 
+ARG APP_VERSION=dev
+
 # Set destination for COPY
 WORKDIR /app
 
@@ -24,7 +26,7 @@ ENV GOCACHE=/root/.cache/go-build \
 RUN --mount=type=cache,target=/go/pkg/mod/ \
     --mount=type=cache,target="/root/.cache/go-build" \
     --mount=type=bind,target=. \
-    go build -ldflags="-s -w" -o / ./...
+    go build -ldflags="-s -w -X main.Version=${APP_VERSION}" -o / ./...
 
 FROM gcr.io/distroless/base-debian12@sha256:1aae189e3baecbb4044c648d356ddb75025b2ba8d14cdc9c2a19ba784c90bfb9 AS build-release-stage
 
