@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 )
@@ -13,6 +14,10 @@ var (
 
 // Parse parses the payload and returns the parsed payload data
 func Parse(r *http.Request, secretKey string) (ParsedPayload, error) {
+	if r.Body == nil {
+		return ParsedPayload{}, fmt.Errorf("%w: request body is empty", ErrParsingPayload)
+	}
+
 	defer func() {
 		_, _ = io.Copy(io.Discard, r.Body)
 		_ = r.Body.Close()
