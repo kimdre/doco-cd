@@ -10,7 +10,7 @@ require (
 	github.com/docker/compose/v2 v2.29.2
 	github.com/docker/docker v27.1.2+incompatible
 	github.com/go-git/go-git/v5 v5.12.0
-	github.com/golangci/golangci-lint v1.60.2
+	github.com/golangci/golangci-lint v1.60.3
 	github.com/google/uuid v1.6.0
 	gopkg.in/validator.v2 v2.0.1
 	gopkg.in/yaml.v3 v3.0.1
@@ -249,7 +249,7 @@ require (
 	github.com/sashamelentyev/interfacebloat v1.1.0 // indirect
 	github.com/sashamelentyev/usestdlibvars v1.27.0 // indirect
 	github.com/secure-systems-lab/go-securesystemslib v0.8.0 // indirect
-	github.com/securego/gosec/v2 v2.20.1-0.20240820084340-81cda2f91fbe // indirect
+	github.com/securego/gosec/v2 v2.20.1-0.20240822074752-ab3f6c1c83a0 // indirect
 	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
 	github.com/serialx/hashring v0.0.0-20200727003509-22c0c7ab6b1b // indirect
 	github.com/shazow/go-diff v0.0.0-20160112020656-b6b7b6733b8c // indirect
