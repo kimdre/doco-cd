@@ -4,10 +4,10 @@ go 1.22.5
 
 require (
 	github.com/caarlos0/env/v11 v11.2.2
-	github.com/compose-spec/compose-go/v2 v2.1.6
+	github.com/compose-spec/compose-go/v2 v2.2.0
 	github.com/creasty/defaults v1.8.0
 	github.com/docker/cli v27.2.1+incompatible
-	github.com/docker/compose/v2 v2.29.2
+	github.com/docker/compose/v2 v2.29.3
 	github.com/docker/docker v27.2.1+incompatible
 	github.com/go-git/go-git/v5 v5.12.0
 	github.com/golangci/golangci-lint v1.61.0
@@ -74,7 +74,7 @@ require (
 	github.com/ckaznocha/intrange v0.2.0 // indirect
 	github.com/cloudflare/circl v1.4.0 // indirect
 	github.com/containerd/console v1.0.4 // indirect
-	github.com/containerd/containerd v1.7.20 // indirect
+	github.com/containerd/containerd v1.7.22 // indirect
 	github.com/containerd/containerd/api v1.7.19 // indirect
 	github.com/containerd/continuity v0.4.3 // indirect
 	github.com/containerd/errdefs v0.1.0 // indirect
@@ -88,7 +88,7 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/denis-tingaikin/go-header v0.5.0 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
-	github.com/docker/buildx v0.16.2 // indirect
+	github.com/docker/buildx v0.17.0 // indirect
 	github.com/docker/cli-docs-tool v0.8.0 // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.8.2 // indirect
@@ -200,7 +200,7 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
-	github.com/moby/buildkit v0.15.2 // indirect
+	github.com/moby/buildkit v0.16.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/locker v1.0.1 // indirect
 	github.com/moby/patternmatcher v0.6.0 // indirect
