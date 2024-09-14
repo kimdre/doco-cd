@@ -94,8 +94,10 @@ func GetDeployConfig(repoDir, name string) (*DeployConfig, error) {
 			}
 
 			// Check if the config file name is deprecated
-			if configFile == DeprecatedDeploymentConfigFileNames[0] || configFile == DeprecatedDeploymentConfigFileNames[1] {
-				return config, fmt.Errorf("%w: %s", ErrDeprecatedConfig, configFile)
+			for _, deprecatedConfigFile := range DeprecatedDeploymentConfigFileNames {
+				if configFile == deprecatedConfigFile {
+					return config, fmt.Errorf("%w: %s", ErrDeprecatedConfig, configFile)
+				}
 			}
 
 			return config, nil
