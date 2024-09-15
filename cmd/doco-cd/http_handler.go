@@ -125,9 +125,10 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	for _, deployConfig := range deployConfigs {
-		jobLog = jobLog.With(slog.String("reference", deployConfig.Reference))
+		stackLog := jobLog.With(slog.String("stack", deployConfig.Name))
+		stackLog = jobLog.With(slog.String("reference", deployConfig.Reference))
 
-		jobLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
+		stackLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
 
 		workingDir := path.Join(fs.Root(), deployConfig.WorkingDirectory)
 
@@ -161,7 +162,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 			if len(tmpComposeFiles) == 0 {
 				errMsg = "no compose files found"
-				jobLog.Error(errMsg,
+				stackLog.Error(errMsg,
 					slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
 				JSONError(w,
 					errMsg,
@@ -178,7 +179,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		project, err := docker.LoadCompose(ctx, workingDir, deployConfig.Name, deployConfig.ComposeFiles)
 		if err != nil {
 			errMsg = "failed to load stack"
-			jobLog.Error(errMsg,
+			stackLog.Error(errMsg,
 				logger.ErrAttr(err),
 				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
 			JSONError(w,
@@ -190,12 +191,12 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			return
 		}
 
-		jobLog.Info("deploying stack", slog.Any("name", deployConfig.Name))
+		stackLog.Info("deploying stack")
 
 		err = docker.DeployCompose(ctx, dockerCli, project, deployConfig, p)
 		if err != nil {
 			errMsg = "failed to deploy stack"
-			jobLog.Error(errMsg,
+			stackLog.Error(errMsg,
 				logger.ErrAttr(err),
 				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
 			JSONError(w,
