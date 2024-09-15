@@ -35,6 +35,7 @@ func TestGetDeployConfigs(t *testing.T) {
 		reference := "refs/heads/test"
 		workingDirectory := "/test"
 		composeFiles := []string{"test.compose.yaml"}
+		customTarget := ""
 
 		deployConfig := fmt.Sprintf(`name: %s
 reference: %s
@@ -58,7 +59,7 @@ compose_files:
 			t.Fatal(err)
 		}
 
-		configs, err := GetDeployConfigs(dirName, projectName)
+		configs, err := GetDeployConfigs(dirName, projectName, customTarget)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -91,6 +92,7 @@ compose_files:
 		reference := "refs/heads/test"
 		workingDirectory := "/test"
 		composeFiles := []string{"test.compose.yaml"}
+		customTarget := ""
 
 		deployConfig := fmt.Sprintf(`name: %s
 reference: %s
@@ -114,7 +116,7 @@ compose_files:
 			t.Fatal(err)
 		}
 
-		configs, err := GetDeployConfigs(dirName, projectName)
+		configs, err := GetDeployConfigs(dirName, projectName, customTarget)
 		if err == nil || !errors.Is(err, ErrDeprecatedConfig) {
 			t.Fatalf("expected deprecated config error, got %v", err)
 		}
@@ -159,7 +161,7 @@ func TestGetDeployConfigs_DefaultValues(t *testing.T) {
 		}
 	})
 
-	configs, err := GetDeployConfigs(dirName, projectName)
+	configs, err := GetDeployConfigs(dirName, projectName, "")
 	if err != nil {
 		t.Fatal(err)
 	}
