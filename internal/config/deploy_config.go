@@ -91,6 +91,7 @@ func GetDeployConfigs(repoDir, name, customTarget string) ([]*DeployConfig, erro
 
 	var configs []*DeployConfig
 	for _, configFile := range DeploymentConfigFileNames {
+		fmt.Println(configFile)
 		configs, err = getDeployConfigsFromFile(repoDir, files, configFile)
 		if err != nil {
 			if errors.Is(err, ErrConfigFileNotFound) {
