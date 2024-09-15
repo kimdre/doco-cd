@@ -135,13 +135,19 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		}
 	}
 
-	msg := "deployment successful"
 	if nFailures == len(deployConfigs) {
-		msg = "deployment failed"
+		msg := "deployment failed"
+		jobLog.Error(msg)
+		JSONResponse(w, msg, jobID, http.StatusInternalServerError)
+		return
 	} else if nFailures > 0 && nFailures < len(deployConfigs) {
-		msg = "deployment partially successful"
+		msg := "deployment partially successful"
+		jobLog.Warn(msg)
+		JSONResponse(w, msg, jobID, http.StatusInternalServerError)
+		return
 	}
 
+	msg := "deployment successful"
 	jobLog.Info(msg)
 	JSONResponse(w, msg, jobID, http.StatusCreated)
 }
