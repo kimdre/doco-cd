@@ -132,9 +132,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			msg := "deployment failed"
 			jobLog.Error(msg)
 			JSONError(w, err, msg, jobID, http.StatusInternalServerError)
+			return
 		}
-
-		return
 	}
 
 	msg := "deployment successful"
