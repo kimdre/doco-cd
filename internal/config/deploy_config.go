@@ -76,8 +76,6 @@ func GetDeployConfigs(repoDir, name, customTarget string) ([]*DeployConfig, erro
 		return nil, err
 	}
 
-	fmt.Println(customTarget)
-
 	var DeploymentConfigFileNames []string
 
 	if customTarget != "" {
@@ -88,6 +86,8 @@ func GetDeployConfigs(repoDir, name, customTarget string) ([]*DeployConfig, erro
 		// Merge default and deprecated deployment config file names
 		DeploymentConfigFileNames = append(DefaultDeploymentConfigFileNames, DeprecatedDeploymentConfigFileNames...)
 	}
+
+	fmt.Println(DeploymentConfigFileNames)
 
 	var configs []*DeployConfig
 	for _, configFile := range DeploymentConfigFileNames {
