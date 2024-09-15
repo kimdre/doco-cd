@@ -9,8 +9,6 @@ import (
 	"path"
 	"reflect"
 
-	"github.com/go-git/go-billy/v5"
-
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/docker/cli/cli/command"
 	"github.com/google/uuid"
@@ -87,8 +85,9 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	fs := worktree.Filesystem
+	rootDir := fs.Root()
 
-	jobLog.Debug("repository cloned", slog.String("path", fs.Root()))
+	jobLog.Debug("repository cloned", slog.String("path", rootDir))
 
 	// Defer removal of the repository
 	defer func(workDir string) {
@@ -104,12 +103,12 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				jobID,
 				http.StatusInternalServerError)
 		}
-	}(fs.Root())
+	}(rootDir)
 
 	jobLog.Debug("retrieving deployment configuration")
 
 	// Get the deployment configs from the repository
-	deployConfigs, err := config.GetDeployConfigs(fs.Root(), p.Name)
+	deployConfigs, err := config.GetDeployConfigs(rootDir, p.Name)
 	if err != nil {
 		if errors.Is(err, config.ErrDeprecatedConfig) {
 			jobLog.Warn(err.Error())
@@ -129,7 +128,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	nFailures := 0
 
 	for _, deployConfig := range deployConfigs {
-		err = deployStack(jobLog, jobID, fs, w, ctx, dockerCli, p, deployConfig)
+		err = deployStack(jobLog, jobID, rootDir, &w, &ctx, &dockerCli, &p, deployConfig)
 		if err != nil {
 			nFailures++
 		}
@@ -139,11 +138,13 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		msg := "deployment failed"
 		jobLog.Error(msg)
 		JSONResponse(w, msg, jobID, http.StatusInternalServerError)
+
 		return
 	} else if nFailures > 0 && nFailures < len(deployConfigs) {
 		msg := "deployment partially successful"
 		jobLog.Warn(msg)
 		JSONResponse(w, msg, jobID, http.StatusInternalServerError)
+
 		return
 	}
 
@@ -209,9 +210,9 @@ func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request)
 }
 
 func deployStack(
-	jobLog *slog.Logger, jobID string,
-	fs billy.Filesystem, w http.ResponseWriter, ctx context.Context,
-	dockerCli command.Cli, p webhook.ParsedPayload, deployConfig *config.DeployConfig,
+	jobLog *slog.Logger, jobID, rootDir string,
+	w *http.ResponseWriter, ctx *context.Context,
+	dockerCli *command.Cli, p *webhook.ParsedPayload, deployConfig *config.DeployConfig,
 ) error {
 	stackLog := jobLog.
 		With(slog.String("stack", deployConfig.Name)).
@@ -219,13 +220,13 @@ func deployStack(
 
 	stackLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
 
-	workingDir := path.Join(fs.Root(), deployConfig.WorkingDirectory)
+	workingDir := path.Join(rootDir, deployConfig.WorkingDirectory)
 
 	err := os.Chdir(workingDir)
 	if err != nil {
 		errMsg = "failed to change working directory"
 		jobLog.Error(errMsg, logger.ErrAttr(err), slog.String("path", workingDir))
-		JSONError(w,
+		JSONError(*w,
 			errMsg,
 			err.Error(),
 			jobID,
@@ -253,7 +254,7 @@ func deployStack(
 			errMsg = "no compose files found"
 			stackLog.Error(errMsg,
 				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-			JSONError(w,
+			JSONError(*w,
 				errMsg,
 				err.Error(),
 				jobID,
@@ -265,13 +266,13 @@ func deployStack(
 		deployConfig.ComposeFiles = tmpComposeFiles
 	}
 
-	project, err := docker.LoadCompose(ctx, workingDir, deployConfig.Name, deployConfig.ComposeFiles)
+	project, err := docker.LoadCompose(*ctx, workingDir, deployConfig.Name, deployConfig.ComposeFiles)
 	if err != nil {
 		errMsg = "failed to load stack"
 		stackLog.Error(errMsg,
 			logger.ErrAttr(err),
 			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-		JSONError(w,
+		JSONError(*w,
 			errMsg,
 			err.Error(),
 			jobID,
@@ -282,13 +283,13 @@ func deployStack(
 
 	stackLog.Info("deploying stack")
 
-	err = docker.DeployCompose(ctx, dockerCli, project, deployConfig, p)
+	err = docker.DeployCompose(*ctx, *dockerCli, project, deployConfig, *p)
 	if err != nil {
 		errMsg = "failed to deploy stack"
 		stackLog.Error(errMsg,
 			logger.ErrAttr(err),
 			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-		JSONError(w,
+		JSONError(*w,
 			errMsg,
 			err.Error(),
 			jobID,
