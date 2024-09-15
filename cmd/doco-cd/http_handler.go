@@ -29,7 +29,7 @@ type handlerData struct {
 func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, c *config.AppConfig, p webhook.ParsedPayload, jobID string, dockerCli command.Cli) {
 	jobLog = jobLog.With(slog.String("repository", p.FullName))
 
-	jobLog.Info("preparing project deployment")
+	jobLog.Info("preparing stack deployment")
 
 	// Clone the repository
 	jobLog.Debug(
