@@ -125,8 +125,9 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	for _, deployConfig := range deployConfigs {
-		stackLog := jobLog.With(slog.String("stack", deployConfig.Name))
-		stackLog = jobLog.With(slog.String("reference", deployConfig.Reference))
+		stackLog := jobLog.
+			With(slog.String("stack", deployConfig.Name)).
+			With(slog.String("reference", deployConfig.Reference))
 
 		stackLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
 
