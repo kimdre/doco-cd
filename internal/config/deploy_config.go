@@ -92,18 +92,13 @@ func GetDeployConfigs(repoDir, name, customTarget string) ([]*DeployConfig, erro
 		configs, err = getDeployConfigsFromFile(repoDir, files, configFile)
 		if err != nil {
 			if errors.Is(err, ErrConfigFileNotFound) {
-				fmt.Println("continue")
 				continue
 			} else {
 				return nil, err
 			}
 		}
 
-		fmt.Println(len(configs))
-		fmt.Println(customTarget)
-
-		if len(configs) > 0 {
-			fmt.Println("test")
+		if configs != nil {
 			if err = validator.Validate(configs); err != nil {
 				return nil, err
 			}
@@ -116,13 +111,12 @@ func GetDeployConfigs(repoDir, name, customTarget string) ([]*DeployConfig, erro
 			}
 
 			return configs, nil
-		} else if len(configs) == 0 && customTarget != "" {
-			fmt.Println("test2")
-			return nil, ErrConfigFileNotFound
 		}
 	}
 
-	fmt.Println("default")
+	if customTarget != "" {
+		return nil, ErrConfigFileNotFound
+	}
 
 	return []*DeployConfig{DefaultDeployConfig(name)}, nil
 }
