@@ -98,7 +98,7 @@ func GetDeployConfigs(repoDir, name, customTarget string) ([]*DeployConfig, erro
 			}
 		}
 
-		if configs != nil {
+		if len(configs) > 0 {
 			if err = validator.Validate(configs); err != nil {
 				return nil, err
 			}
@@ -111,6 +111,8 @@ func GetDeployConfigs(repoDir, name, customTarget string) ([]*DeployConfig, erro
 			}
 
 			return configs, nil
+		} else if len(configs) == 0 && customTarget != "" {
+			return nil, ErrConfigFileNotFound
 		}
 	}
 
