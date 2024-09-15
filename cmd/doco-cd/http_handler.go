@@ -3,12 +3,13 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/go-git/go-billy/v5"
 	"log/slog"
 	"net/http"
 	"os"
 	"path"
 	"reflect"
+
+	"github.com/go-git/go-billy/v5"
 
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/docker/cli/cli/command"
@@ -204,8 +205,8 @@ func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request)
 func deployStack(
 	jobLog *slog.Logger, jobID string,
 	fs billy.Filesystem, w http.ResponseWriter, ctx context.Context,
-	dockerCli command.Cli, p webhook.ParsedPayload, deployConfig *config.DeployConfig) error {
-
+	dockerCli command.Cli, p webhook.ParsedPayload, deployConfig *config.DeployConfig,
+) error {
 	stackLog := jobLog.
 		With(slog.String("stack", deployConfig.Name)).
 		With(slog.String("reference", deployConfig.Reference))
