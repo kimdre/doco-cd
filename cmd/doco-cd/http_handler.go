@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/go-git/go-billy/v5"
 	"log/slog"
 	"net/http"
 	"os"
@@ -124,93 +125,22 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		}
 	}
 
+	nFailures := 0
+
 	for _, deployConfig := range deployConfigs {
-		stackLog := jobLog.
-			With(slog.String("stack", deployConfig.Name)).
-			With(slog.String("reference", deployConfig.Reference))
-
-		stackLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
-
-		workingDir := path.Join(fs.Root(), deployConfig.WorkingDirectory)
-
-		err = os.Chdir(workingDir)
+		err = deployStack(jobLog, jobID, fs, w, ctx, dockerCli, p, deployConfig)
 		if err != nil {
-			errMsg = "failed to change working directory"
-			jobLog.Error(errMsg, logger.ErrAttr(err), slog.String("path", workingDir))
-			JSONError(w,
-				errMsg,
-				err.Error(),
-				jobID,
-				http.StatusInternalServerError)
-
-			return
-		}
-
-		// Check if the default compose files are used
-		if reflect.DeepEqual(deployConfig.ComposeFiles, cli.DefaultFileNames) {
-			var tmpComposeFiles []string
-
-			jobLog.Debug("checking for default compose files")
-
-			// Check if the default compose files exist
-			for _, f := range deployConfig.ComposeFiles {
-				if _, err = os.Stat(path.Join(workingDir, f)); errors.Is(err, os.ErrNotExist) {
-					continue
-				}
-
-				tmpComposeFiles = append(tmpComposeFiles, f)
-			}
-
-			if len(tmpComposeFiles) == 0 {
-				errMsg = "no compose files found"
-				stackLog.Error(errMsg,
-					slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-				JSONError(w,
-					errMsg,
-					err.Error(),
-					jobID,
-					http.StatusInternalServerError)
-
-				return
-			}
-
-			deployConfig.ComposeFiles = tmpComposeFiles
-		}
-
-		project, err := docker.LoadCompose(ctx, workingDir, deployConfig.Name, deployConfig.ComposeFiles)
-		if err != nil {
-			errMsg = "failed to load stack"
-			stackLog.Error(errMsg,
-				logger.ErrAttr(err),
-				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-			JSONError(w,
-				errMsg,
-				err.Error(),
-				jobID,
-				http.StatusInternalServerError)
-
-			return
-		}
-
-		stackLog.Info("deploying stack")
-
-		err = docker.DeployCompose(ctx, dockerCli, project, deployConfig, p)
-		if err != nil {
-			errMsg = "failed to deploy stack"
-			stackLog.Error(errMsg,
-				logger.ErrAttr(err),
-				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-			JSONError(w,
-				errMsg,
-				err.Error(),
-				jobID,
-				http.StatusInternalServerError)
-
-			return
+			nFailures++
 		}
 	}
 
 	msg := "deployment successful"
+	if nFailures == len(deployConfigs) {
+		msg = "deployment failed"
+	} else if nFailures > 0 && nFailures < len(deployConfigs) {
+		msg = "deployment partially successful"
+	}
+
 	jobLog.Info(msg)
 	JSONResponse(w, msg, jobID, http.StatusCreated)
 }
@@ -269,4 +199,96 @@ func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request)
 
 	h.log.Debug("health check successful")
 	JSONResponse(w, "healthy", "", http.StatusOK)
+}
+
+func deployStack(
+	jobLog *slog.Logger, jobID string,
+	fs billy.Filesystem, w http.ResponseWriter, ctx context.Context,
+	dockerCli command.Cli, p webhook.ParsedPayload, deployConfig *config.DeployConfig) error {
+
+	stackLog := jobLog.
+		With(slog.String("stack", deployConfig.Name)).
+		With(slog.String("reference", deployConfig.Reference))
+
+	stackLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
+
+	workingDir := path.Join(fs.Root(), deployConfig.WorkingDirectory)
+
+	err := os.Chdir(workingDir)
+	if err != nil {
+		errMsg = "failed to change working directory"
+		jobLog.Error(errMsg, logger.ErrAttr(err), slog.String("path", workingDir))
+		JSONError(w,
+			errMsg,
+			err.Error(),
+			jobID,
+			http.StatusInternalServerError)
+
+		return err
+	}
+
+	// Check if the default compose files are used
+	if reflect.DeepEqual(deployConfig.ComposeFiles, cli.DefaultFileNames) {
+		var tmpComposeFiles []string
+
+		jobLog.Debug("checking for default compose files")
+
+		// Check if the default compose files exist
+		for _, f := range deployConfig.ComposeFiles {
+			if _, err = os.Stat(path.Join(workingDir, f)); errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+
+			tmpComposeFiles = append(tmpComposeFiles, f)
+		}
+
+		if len(tmpComposeFiles) == 0 {
+			errMsg = "no compose files found"
+			stackLog.Error(errMsg,
+				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+			JSONError(w,
+				errMsg,
+				err.Error(),
+				jobID,
+				http.StatusInternalServerError)
+
+			return err
+		}
+
+		deployConfig.ComposeFiles = tmpComposeFiles
+	}
+
+	project, err := docker.LoadCompose(ctx, workingDir, deployConfig.Name, deployConfig.ComposeFiles)
+	if err != nil {
+		errMsg = "failed to load stack"
+		stackLog.Error(errMsg,
+			logger.ErrAttr(err),
+			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+		JSONError(w,
+			errMsg,
+			err.Error(),
+			jobID,
+			http.StatusInternalServerError)
+
+		return err
+	}
+
+	stackLog.Info("deploying stack")
+
+	err = docker.DeployCompose(ctx, dockerCli, project, deployConfig, p)
+	if err != nil {
+		errMsg = "failed to deploy stack"
+		stackLog.Error(errMsg,
+			logger.ErrAttr(err),
+			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+		JSONError(w,
+			errMsg,
+			err.Error(),
+			jobID,
+			http.StatusInternalServerError)
+
+		return err
+	}
+
+	return nil
 }
