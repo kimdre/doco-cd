@@ -28,9 +28,11 @@ type handlerData struct {
 
 // HandleEvent handles the incoming webhook event
 func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, c *config.AppConfig, p webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli) {
-	jobLog = jobLog.
-		With(slog.String("repository", p.FullName)).
-		With(slog.String("custom_target", customTarget))
+	jobLog = jobLog.With(slog.String("repository", p.FullName))
+
+	if customTarget != "" {
+		jobLog = jobLog.With(slog.String("custom_target", customTarget))
+	}
 
 	jobLog.Info("preparing stack deployment")
 
