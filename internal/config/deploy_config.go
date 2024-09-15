@@ -98,6 +98,9 @@ func GetDeployConfigs(repoDir, name, customTarget string) ([]*DeployConfig, erro
 			}
 		}
 
+		fmt.Println(len(configs))
+		fmt.Println(customTarget)
+
 		if len(configs) > 0 {
 			fmt.Println("test")
 			if err = validator.Validate(configs); err != nil {
