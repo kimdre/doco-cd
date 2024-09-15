@@ -246,7 +246,7 @@ func deployStack(
 
 	project, err := docker.LoadCompose(*ctx, workingDir, deployConfig.Name, deployConfig.ComposeFiles)
 	if err != nil {
-		errMsg = "failed to load stack"
+		errMsg = "failed to load compose config"
 		stackLog.Error(errMsg,
 			logger.ErrAttr(err),
 			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
