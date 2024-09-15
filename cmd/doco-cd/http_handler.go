@@ -289,11 +289,6 @@ func deployStack(
 		stackLog.Error(errMsg,
 			logger.ErrAttr(err),
 			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-		JSONError(*w,
-			errMsg,
-			err.Error(),
-			jobID,
-			http.StatusInternalServerError)
 
 		return err
 	}
