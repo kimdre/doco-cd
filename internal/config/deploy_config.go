@@ -68,8 +68,8 @@ func (c *DeployConfig) validateConfig() error {
 	return nil
 }
 
-// GetDeployConfig returns either the deployment configuration from the repository or the default configuration
-func GetDeployConfig(repoDir, name string) (*DeployConfig, error) {
+// GetDeployConfigs returns either the deployment configuration from the repository or the default configuration
+func GetDeployConfigs(repoDir, name string) ([]*DeployConfig, error) {
 	files, err := os.ReadDir(repoDir)
 	if err != nil {
 		return nil, err
@@ -79,7 +79,7 @@ func GetDeployConfig(repoDir, name string) (*DeployConfig, error) {
 	DeploymentConfigFileNames := append(DefaultDeploymentConfigFileNames, DeprecatedDeploymentConfigFileNames...)
 
 	for _, configFile := range DeploymentConfigFileNames {
-		config, err := getDeployConfigFile(repoDir, files, configFile)
+		configs, err := getDeployConfigsFromFile(repoDir, files, configFile)
 		if err != nil {
 			if errors.Is(err, ErrConfigFileNotFound) {
 				continue
@@ -88,27 +88,27 @@ func GetDeployConfig(repoDir, name string) (*DeployConfig, error) {
 			}
 		}
 
-		if config != nil {
-			if err := validator.Validate(config); err != nil {
+		if configs != nil {
+			if err := validator.Validate(configs); err != nil {
 				return nil, err
 			}
 
 			// Check if the config file name is deprecated
 			for _, deprecatedConfigFile := range DeprecatedDeploymentConfigFileNames {
 				if configFile == deprecatedConfigFile {
-					return config, fmt.Errorf("%w: %s", ErrDeprecatedConfig, configFile)
+					return configs, fmt.Errorf("%w: %s", ErrDeprecatedConfig, configFile)
 				}
 			}
 
-			return config, nil
+			return configs, nil
 		}
 	}
 
-	return DefaultDeployConfig(name), nil
+	return []*DeployConfig{DefaultDeployConfig(name)}, nil
 }
 
-// getDeployConfigFile returns the deployment configuration from the repository or nil if not found
-func getDeployConfigFile(dir string, files []os.DirEntry, configFile string) (*DeployConfig, error) {
+// getDeployConfigsFromFile returns the deployment configurations from the repository or nil if not found
+func getDeployConfigsFromFile(dir string, files []os.DirEntry, configFile string) ([]*DeployConfig, error) {
 	for _, f := range files {
 		if f.IsDir() {
 			continue
@@ -116,17 +116,20 @@ func getDeployConfigFile(dir string, files []os.DirEntry, configFile string) (*D
 
 		if f.Name() == configFile {
 			// Get contents of deploy config file
-			c, err := FromYAML(path.Join(dir, f.Name()))
+			configs, err := FromYAML(path.Join(dir, f.Name()))
 			if err != nil {
 				return nil, err
 			}
 
-			if err = c.validateConfig(); err != nil {
-				return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+			// Validate all deploy configs
+			for _, c := range configs {
+				if err = c.validateConfig(); err != nil {
+					return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+				}
 			}
 
-			if c != nil {
-				return c, nil
+			if configs != nil {
+				return configs, nil
 			}
 		}
 	}
