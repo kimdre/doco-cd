@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -125,25 +126,13 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		}
 	}
 
-	nFailures := 0
-
 	for _, deployConfig := range deployConfigs {
 		err = deployStack(jobLog, jobID, rootDir, &w, &ctx, &dockerCli, &p, deployConfig)
 		if err != nil {
-			nFailures++
+			msg := "deployment failed"
+			jobLog.Error(msg)
+			JSONError(w, err, msg, jobID, http.StatusInternalServerError)
 		}
-	}
-
-	if nFailures == len(deployConfigs) {
-		msg := "deployment failed"
-		jobLog.Error(msg)
-		JSONResponse(w, msg, jobID, http.StatusInternalServerError)
-
-		return
-	} else if nFailures > 0 && nFailures < len(deployConfigs) {
-		msg := "deployment partially successful"
-		jobLog.Warn(msg)
-		JSONResponse(w, msg, jobID, http.StatusInternalServerError)
 
 		return
 	}
@@ -226,13 +215,8 @@ func deployStack(
 	if err != nil {
 		errMsg = "failed to change working directory"
 		jobLog.Error(errMsg, logger.ErrAttr(err), slog.String("path", workingDir))
-		JSONError(*w,
-			errMsg,
-			err.Error(),
-			jobID,
-			http.StatusInternalServerError)
 
-		return err
+		return fmt.Errorf("%s: %w", errMsg, err)
 	}
 
 	// Check if the default compose files are used
@@ -254,13 +238,8 @@ func deployStack(
 			errMsg = "no compose files found"
 			stackLog.Error(errMsg,
 				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-			JSONError(*w,
-				errMsg,
-				err.Error(),
-				jobID,
-				http.StatusInternalServerError)
 
-			return err
+			return fmt.Errorf("%s: %w", errMsg, err)
 		}
 
 		deployConfig.ComposeFiles = tmpComposeFiles
@@ -272,13 +251,8 @@ func deployStack(
 		stackLog.Error(errMsg,
 			logger.ErrAttr(err),
 			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-		JSONError(*w,
-			errMsg,
-			err.Error(),
-			jobID,
-			http.StatusInternalServerError)
 
-		return err
+		return fmt.Errorf("%s: %w", errMsg, err)
 	}
 
 	stackLog.Info("deploying stack")
@@ -290,7 +264,7 @@ func deployStack(
 			logger.ErrAttr(err),
 			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
 
-		return err
+		return fmt.Errorf("%s: %w", errMsg, err)
 	}
 
 	return nil
