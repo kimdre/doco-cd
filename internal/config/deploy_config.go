@@ -92,6 +92,7 @@ func GetDeployConfigs(repoDir, name, customTarget string) ([]*DeployConfig, erro
 		configs, err = getDeployConfigsFromFile(repoDir, files, configFile)
 		if err != nil {
 			if errors.Is(err, ErrConfigFileNotFound) {
+				fmt.Println("continue")
 				continue
 			} else {
 				return nil, err
