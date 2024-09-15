@@ -87,13 +87,9 @@ func GetDeployConfigs(repoDir, name, customTarget string) ([]*DeployConfig, erro
 		DeploymentConfigFileNames = append(DefaultDeploymentConfigFileNames, DeprecatedDeploymentConfigFileNames...)
 	}
 
-	fmt.Println(DeploymentConfigFileNames)
-
 	var configs []*DeployConfig
 	for _, configFile := range DeploymentConfigFileNames {
-		fmt.Println(configFile)
 		configs, err = getDeployConfigsFromFile(repoDir, files, configFile)
-		fmt.Println(configs)
 		if err != nil {
 			if errors.Is(err, ErrConfigFileNotFound) {
 				continue
@@ -103,6 +99,7 @@ func GetDeployConfigs(repoDir, name, customTarget string) ([]*DeployConfig, erro
 		}
 
 		if len(configs) > 0 {
+			fmt.Println("test")
 			if err = validator.Validate(configs); err != nil {
 				return nil, err
 			}
@@ -116,6 +113,7 @@ func GetDeployConfigs(repoDir, name, customTarget string) ([]*DeployConfig, erro
 
 			return configs, nil
 		} else if len(configs) == 0 && customTarget != "" {
+			fmt.Println("test2")
 			return nil, ErrConfigFileNotFound
 		}
 	}
