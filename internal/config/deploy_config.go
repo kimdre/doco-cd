@@ -118,6 +118,8 @@ func GetDeployConfigs(repoDir, name, customTarget string) ([]*DeployConfig, erro
 		}
 	}
 
+	fmt.Println("default")
+
 	return []*DeployConfig{DefaultDeployConfig(name)}, nil
 }
 
