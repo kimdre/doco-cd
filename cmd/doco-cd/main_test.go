@@ -46,7 +46,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusCreated,
-			expectedResponseBody: `{"details":"project deployment successful","job_id":"%s"}`,
+			expectedResponseBody: `{"details":"deployment successful","job_id":"%s"}`,
 			overrideEnv:          nil,
 		},
 		{
@@ -74,7 +74,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   true,
 			},
 			expectedStatusCode:   http.StatusCreated,
-			expectedResponseBody: `{"details":"project deployment successful","job_id":"%s"}`,
+			expectedResponseBody: `{"details":"deployment successful","job_id":"%s"}`,
 			overrideEnv:          nil,
 		},
 		{

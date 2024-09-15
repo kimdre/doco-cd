@@ -72,7 +72,7 @@ func TestHandlerData_HealthCheckHandler(t *testing.T) {
 }
 
 func TestHandlerData_WebhookHandler(t *testing.T) {
-	expectedResponse := `{"details":"project deployment successful","job_id":"[a-f0-9-]{36}"}`
+	expectedResponse := `{"details":"deployment successful","job_id":"[a-f0-9-]{36}"}`
 	expectedStatusCode := http.StatusCreated
 
 	payload, err := os.ReadFile(githubPayloadFile)
