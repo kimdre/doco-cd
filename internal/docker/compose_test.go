@@ -163,7 +163,7 @@ compose_files:
 		t.Fatal(err)
 	}
 
-	deployConf, err := config.GetDeployConfig(dirName, projectName)
+	deployConfigs, err := config.GetDeployConfigs(dirName, projectName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,8 +186,10 @@ compose_files:
 		}
 	})
 
-	err = DeployCompose(ctx, dockerCli, project, deployConf, p)
-	if err != nil {
-		t.Fatal(err)
+	for _, deployConf := range deployConfigs {
+		err = DeployCompose(ctx, dockerCli, project, deployConf, p)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }

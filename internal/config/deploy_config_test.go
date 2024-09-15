@@ -29,7 +29,7 @@ func createTmpDir(t *testing.T) string {
 	return dirName
 }
 
-func TestGetDeployConfig(t *testing.T) {
+func TestGetDeployConfigs(t *testing.T) {
 	t.Run("Valid Config", func(t *testing.T) {
 		fileName := ".doco-cd.yaml"
 		reference := "refs/heads/test"
@@ -58,10 +58,16 @@ compose_files:
 			t.Fatal(err)
 		}
 
-		config, err := GetDeployConfig(dirName, projectName)
+		configs, err := GetDeployConfigs(dirName, projectName)
 		if err != nil {
 			t.Fatal(err)
 		}
+
+		if len(configs) != 1 {
+			t.Fatalf("expected 1 config, got %d", len(configs))
+		}
+
+		config := configs[0]
 
 		if config.Name != projectName {
 			t.Errorf("expected name to be %v, got %s", projectName, config.Name)
@@ -108,10 +114,16 @@ compose_files:
 			t.Fatal(err)
 		}
 
-		config, err := GetDeployConfig(dirName, projectName)
+		configs, err := GetDeployConfigs(dirName, projectName)
 		if err == nil || !errors.Is(err, ErrDeprecatedConfig) {
 			t.Fatalf("expected deprecated config error, got %v", err)
 		}
+
+		if len(configs) != 1 {
+			t.Fatalf("expected 1 config, got %d", len(configs))
+		}
+
+		config := configs[0]
 
 		if config == nil {
 			t.Fatal("expected config to be returned, got nil")
@@ -136,7 +148,7 @@ compose_files:
 	})
 }
 
-func TestGetDeployConfig_DefaultValues(t *testing.T) {
+func TestGetDeployConfigs_DefaultValues(t *testing.T) {
 	defaultConfig := DefaultDeployConfig(projectName)
 
 	dirName := createTmpDir(t)
@@ -147,10 +159,16 @@ func TestGetDeployConfig_DefaultValues(t *testing.T) {
 		}
 	})
 
-	config, err := GetDeployConfig(dirName, projectName)
+	configs, err := GetDeployConfigs(dirName, projectName)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	if len(configs) != 1 {
+		t.Fatalf("expected 1 config, got %d", len(configs))
+	}
+
+	config := configs[0]
 
 	if config.Name != projectName {
 		t.Errorf("expected name to be %v, got %s", projectName, config.Name)

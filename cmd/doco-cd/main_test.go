@@ -46,7 +46,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusCreated,
-			expectedResponseBody: `{"details":"project deployment successful","job_id":"%s"}`,
+			expectedResponseBody: `{"details":"deployment successful","job_id":"%s"}`,
 			overrideEnv:          nil,
 		},
 		{
@@ -74,7 +74,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   true,
 			},
 			expectedStatusCode:   http.StatusCreated,
-			expectedResponseBody: `{"details":"project deployment successful","job_id":"%s"}`,
+			expectedResponseBody: `{"details":"deployment successful","job_id":"%s"}`,
 			overrideEnv:          nil,
 		},
 		{
@@ -104,7 +104,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"no compose files found","details":"stat ` + filepath.Join(os.TempDir(), "kimdre/kimdre/docker-compose.yaml") + `: no such file or directory","job_id":"%s"}`,
+			expectedResponseBody: `{"error":"no compose files found: stat ` + filepath.Join(os.TempDir(), "kimdre/kimdre/docker-compose.yaml") + `: no such file or directory","details":"deployment failed","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 		},
 	}
