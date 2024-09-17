@@ -6,9 +6,9 @@ require (
 	github.com/caarlos0/env/v11 v11.2.2
 	github.com/compose-spec/compose-go/v2 v2.2.0
 	github.com/creasty/defaults v1.8.0
-	github.com/docker/cli v27.2.1+incompatible
-	github.com/docker/compose/v2 v2.29.3
-	github.com/docker/docker v27.2.1+incompatible
+	github.com/docker/cli v27.3.0-rc.1+incompatible
+	github.com/docker/compose/v2 v2.29.4
+	github.com/docker/docker v27.3.0-rc.1+incompatible
 	github.com/go-git/go-git/v5 v5.12.0
 	github.com/golangci/golangci-lint v1.61.0
 	github.com/google/uuid v1.6.0
@@ -88,7 +88,7 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/denis-tingaikin/go-header v0.5.0 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
-	github.com/docker/buildx v0.17.0 // indirect
+	github.com/docker/buildx v0.17.1 // indirect
 	github.com/docker/cli-docs-tool v0.8.0 // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.8.2 // indirect
