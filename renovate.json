@@ -5,7 +5,8 @@
   ],
   "dependencyDashboardLabels": ["dependencies"],
   "labels": ["dependencies"],
-  "schedule": ["after 7am", "before 11:00am"],
+  "timezone": "Europe/Berlin",
+  "schedule": ["after 7am and before 11am"],
   "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
   "packageRules": [
     {
