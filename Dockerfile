@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1@sha256:865e5dd094beca432e8c0a1d5e1c465db5f998dca4e439981029b3b81fb39ed5
-FROM golang:1.23.1@sha256:2fe82a3f3e006b4f2a316c6a21f62b66e1330ae211d039bb8d1128e12ed57bf1 AS build-stage
+FROM golang:1.23.1@sha256:efa59042e5f808134d279113530cf419e939d40dab6475584a13c62aa8497c64 AS build-stage
 
 ARG APP_VERSION=dev
 
