@@ -54,7 +54,7 @@ func TestHandleEvent(t *testing.T) {
 		{
 			name: "Successful Deployment with custom Target",
 			payload: webhook.ParsedPayload{
-				Ref:       "refs/heads/feat/128-one-repo-to-many-servers",
+				Ref:       "refs/heads/main",
 				CommitSHA: "f291bfca73b06814293c1f9c9f3c7f95e4932564",
 				Name:      projectName,
 				FullName:  "kimdre/doco-cd",
