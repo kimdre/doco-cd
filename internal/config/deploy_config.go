@@ -13,6 +13,7 @@ import (
 
 var (
 	DefaultDeploymentConfigFileNames    = []string{".doco-cd.yaml", ".doco-cd.yml"}
+	CustomDeploymentConfigFileNames     = []string{".doco-cd.%s.yaml", ".doco-cd.%s.yml"}
 	DeprecatedDeploymentConfigFileNames = []string{".compose-deploy.yaml", ".compose-deploy.yml"}
 	ErrConfigFileNotFound               = errors.New("configuration file not found in repository")
 	ErrInvalidConfig                    = errors.New("invalid deploy configuration")
@@ -69,17 +70,26 @@ func (c *DeployConfig) validateConfig() error {
 }
 
 // GetDeployConfigs returns either the deployment configuration from the repository or the default configuration
-func GetDeployConfigs(repoDir, name string) ([]*DeployConfig, error) {
+func GetDeployConfigs(repoDir, name, customTarget string) ([]*DeployConfig, error) {
 	files, err := os.ReadDir(repoDir)
 	if err != nil {
 		return nil, err
 	}
 
-	// Merge default and deprecated deployment config file names
-	DeploymentConfigFileNames := append(DefaultDeploymentConfigFileNames, DeprecatedDeploymentConfigFileNames...)
+	var DeploymentConfigFileNames []string
 
+	if customTarget != "" {
+		for _, configFile := range CustomDeploymentConfigFileNames {
+			DeploymentConfigFileNames = append(DeploymentConfigFileNames, fmt.Sprintf(configFile, customTarget))
+		}
+	} else {
+		// Merge default and deprecated deployment config file names
+		DeploymentConfigFileNames = append(DefaultDeploymentConfigFileNames, DeprecatedDeploymentConfigFileNames...)
+	}
+
+	var configs []*DeployConfig
 	for _, configFile := range DeploymentConfigFileNames {
-		configs, err := getDeployConfigsFromFile(repoDir, files, configFile)
+		configs, err = getDeployConfigsFromFile(repoDir, files, configFile)
 		if err != nil {
 			if errors.Is(err, ErrConfigFileNotFound) {
 				continue
@@ -89,7 +99,7 @@ func GetDeployConfigs(repoDir, name string) ([]*DeployConfig, error) {
 		}
 
 		if configs != nil {
-			if err := validator.Validate(configs); err != nil {
+			if err = validator.Validate(configs); err != nil {
 				return nil, err
 			}
 
@@ -102,6 +112,10 @@ func GetDeployConfigs(repoDir, name string) ([]*DeployConfig, error) {
 
 			return configs, nil
 		}
+	}
+
+	if customTarget != "" {
+		return nil, ErrConfigFileNotFound
 	}
 
 	return []*DeployConfig{DefaultDeployConfig(name)}, nil

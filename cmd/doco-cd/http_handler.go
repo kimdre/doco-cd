@@ -27,8 +27,12 @@ type handlerData struct {
 }
 
 // HandleEvent handles the incoming webhook event
-func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, c *config.AppConfig, p webhook.ParsedPayload, jobID string, dockerCli command.Cli) {
+func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, c *config.AppConfig, p webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli) {
 	jobLog = jobLog.With(slog.String("repository", p.FullName))
+
+	if customTarget != "" {
+		jobLog = jobLog.With(slog.String("custom_target", customTarget))
+	}
 
 	jobLog.Info("preparing stack deployment")
 
@@ -86,9 +90,9 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	fs := worktree.Filesystem
-	rootDir := fs.Root()
+	repoDir := fs.Root()
 
-	jobLog.Debug("repository cloned", slog.String("path", rootDir))
+	jobLog.Debug("repository cloned", slog.String("path", repoDir))
 
 	// Defer removal of the repository
 	defer func(workDir string) {
@@ -104,12 +108,12 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				jobID,
 				http.StatusInternalServerError)
 		}
-	}(rootDir)
+	}(repoDir)
 
 	jobLog.Debug("retrieving deployment configuration")
 
 	// Get the deployment configs from the repository
-	deployConfigs, err := config.GetDeployConfigs(rootDir, p.Name)
+	deployConfigs, err := config.GetDeployConfigs(repoDir, p.Name, customTarget)
 	if err != nil {
 		if errors.Is(err, config.ErrDeprecatedConfig) {
 			jobLog.Warn(err.Error())
@@ -127,11 +131,12 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	for _, deployConfig := range deployConfigs {
-		err = deployStack(jobLog, jobID, rootDir, &w, &ctx, &dockerCli, &p, deployConfig)
+		err = deployStack(jobLog, repoDir, &ctx, &dockerCli, &p, deployConfig)
 		if err != nil {
 			msg := "deployment failed"
 			jobLog.Error(msg)
 			JSONError(w, err, msg, jobID, http.StatusInternalServerError)
+
 			return
 		}
 	}
@@ -143,6 +148,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
+
+	customTarget := r.PathValue("customTarget")
 
 	// Add job id to the context to track deployments in the logs
 	jobID := uuid.Must(uuid.NewRandom()).String()
@@ -181,7 +188,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	HandleEvent(ctx, jobLog, w, h.appConfig, payload, jobID, h.dockerCli)
+	HandleEvent(ctx, jobLog, w, h.appConfig, payload, customTarget, jobID, h.dockerCli)
 }
 
 func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request) {
@@ -198,8 +205,7 @@ func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request)
 }
 
 func deployStack(
-	jobLog *slog.Logger, jobID, rootDir string,
-	w *http.ResponseWriter, ctx *context.Context,
+	jobLog *slog.Logger, repoDir string, ctx *context.Context,
 	dockerCli *command.Cli, p *webhook.ParsedPayload, deployConfig *config.DeployConfig,
 ) error {
 	stackLog := jobLog.
@@ -208,7 +214,7 @@ func deployStack(
 
 	stackLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
 
-	workingDir := path.Join(rootDir, deployConfig.WorkingDirectory)
+	workingDir := path.Join(repoDir, deployConfig.WorkingDirectory)
 
 	err := os.Chdir(workingDir)
 	if err != nil {

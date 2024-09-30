@@ -34,6 +34,7 @@ func TestHandleEvent(t *testing.T) {
 		expectedStatusCode   int
 		expectedResponseBody string
 		overrideEnv          map[string]string
+		customTarget         string
 	}{
 		{
 			name: "Successful Deployment",
@@ -48,6 +49,22 @@ func TestHandleEvent(t *testing.T) {
 			expectedStatusCode:   http.StatusCreated,
 			expectedResponseBody: `{"details":"deployment successful","job_id":"%s"}`,
 			overrideEnv:          nil,
+			customTarget:         "",
+		},
+		{
+			name: "Successful Deployment with custom Target",
+			payload: webhook.ParsedPayload{
+				Ref:       "refs/heads/feat/128-one-repo-to-many-servers",
+				CommitSHA: "f291bfca73b06814293c1f9c9f3c7f95e4932564",
+				Name:      projectName,
+				FullName:  "kimdre/doco-cd",
+				CloneURL:  "https://github.com/kimdre/doco-cd",
+				Private:   false,
+			},
+			expectedStatusCode:   http.StatusCreated,
+			expectedResponseBody: `{"details":"deployment successful","job_id":"%s"}`,
+			overrideEnv:          nil,
+			customTarget:         "test",
 		},
 		{
 			name: "Invalid Reference",
@@ -62,6 +79,7 @@ func TestHandleEvent(t *testing.T) {
 			expectedStatusCode:   http.StatusInternalServerError,
 			expectedResponseBody: `{"error":"failed to clone repository","details":"couldn't find remote ref \"` + invalidBranch + `\"","job_id":"%s"}`,
 			overrideEnv:          nil,
+			customTarget:         "",
 		},
 		{
 			name: "Private Repository",
@@ -76,6 +94,7 @@ func TestHandleEvent(t *testing.T) {
 			expectedStatusCode:   http.StatusCreated,
 			expectedResponseBody: `{"details":"deployment successful","job_id":"%s"}`,
 			overrideEnv:          nil,
+			customTarget:         "",
 		},
 		{
 			name: "Private Repository with missing Git Access Token",
@@ -92,6 +111,7 @@ func TestHandleEvent(t *testing.T) {
 			overrideEnv: map[string]string{
 				"GIT_ACCESS_TOKEN": "",
 			},
+			customTarget: "",
 		},
 		{
 			name: "Missing Deployment Configuration",
@@ -106,6 +126,7 @@ func TestHandleEvent(t *testing.T) {
 			expectedStatusCode:   http.StatusInternalServerError,
 			expectedResponseBody: `{"error":"no compose files found: stat ` + filepath.Join(os.TempDir(), "kimdre/kimdre/docker-compose.yaml") + `: no such file or directory","details":"deployment failed","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
+			customTarget:         "",
 		},
 	}
 
@@ -174,6 +195,7 @@ func TestHandleEvent(t *testing.T) {
 				rr,
 				appConfig,
 				tc.payload,
+				tc.customTarget,
 				jobID,
 				dockerCli,
 			)

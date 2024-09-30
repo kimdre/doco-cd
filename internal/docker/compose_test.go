@@ -146,6 +146,7 @@ func TestDeployCompose(t *testing.T) {
 	reference := "refs/heads/test"
 	workingDirectory := "/test"
 	composeFiles := []string{"test.compose.yaml"}
+	customTarget := ""
 
 	deployConfig := fmt.Sprintf(`name: %s
 reference: %s
@@ -163,7 +164,7 @@ compose_files:
 		t.Fatal(err)
 	}
 
-	deployConfigs, err := config.GetDeployConfigs(dirName, projectName)
+	deployConfigs, err := config.GetDeployConfigs(dirName, projectName, customTarget)
 	if err != nil {
 		t.Fatal(err)
 	}

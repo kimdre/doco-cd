@@ -74,6 +74,7 @@ func main() {
 	}
 
 	http.HandleFunc(webhookPath, h.WebhookHandler)
+	http.HandleFunc(webhookPath+"/{customTarget}", h.WebhookHandler)
 
 	http.HandleFunc(healthPath, h.HealthCheckHandler)
 
