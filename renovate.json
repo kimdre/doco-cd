@@ -18,7 +18,7 @@
       "minimumReleaseAge": "1 days"
     },
     {
-      "matchUpdateTypes": ["patch", "pin"],
+      "matchUpdateTypes": ["patch", "pin", "digest"],
       "minimumReleaseAge": "1 days",
       "automerge": true
     }
