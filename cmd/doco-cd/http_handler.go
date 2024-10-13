@@ -95,20 +95,20 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	jobLog.Debug("repository cloned", slog.String("path", repoDir))
 
 	// Defer removal of the repository
-	defer func(workDir string) {
-		jobLog.Debug("cleaning up", slog.String("path", workDir))
-
-		err = os.RemoveAll(workDir)
-		if err != nil {
-			errMsg = "failed to remove temporary directory"
-			jobLog.Error(errMsg, logger.ErrAttr(err))
-			JSONError(w,
-				errMsg,
-				err.Error(),
-				jobID,
-				http.StatusInternalServerError)
-		}
-	}(repoDir)
+	//defer func(workDir string) {
+	//	jobLog.Debug("cleaning up", slog.String("path", workDir))
+	//
+	//	err = os.RemoveAll(workDir)
+	//	if err != nil {
+	//		errMsg = "failed to remove temporary directory"
+	//		jobLog.Error(errMsg, logger.ErrAttr(err))
+	//		JSONError(w,
+	//			errMsg,
+	//			err.Error(),
+	//			jobID,
+	//			http.StatusInternalServerError)
+	//	}
+	//}(repoDir)
 
 	jobLog.Debug("retrieving deployment configuration")
 
