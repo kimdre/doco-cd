@@ -77,6 +77,7 @@ func main() {
 	ctx := context.Background()
 	source, err := docker.GetDataMountPointSource(ctx, dockerCli)
 	if err != nil {
+		log.Critical("failed to get data mount point source", logger.ErrAttr(err))
 		return
 	}
 
