@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/kimdre/doco-cd/internal/git"
 	"io"
 	"net"
 	"net/http"
@@ -30,7 +31,6 @@ import (
 
 const (
 	socketPath = "/var/run/docker.sock"
-	baseLabel  = "doco"
 )
 
 var (
@@ -182,7 +182,7 @@ func addServiceLabels(project *types.Project, payload webhook.ParsedPayload) {
 			api.VersionLabel:               api.ComposeVersion,
 			api.WorkingDirLabel:            project.WorkingDir,
 			api.ConfigFilesLabel:           strings.Join(project.ComposeFiles, ","),
-			api.OneoffLabel:                "False", // default, will be overridden by `run` command
+			api.OneoffLabel:                "False", // default, will be overridden by `run` command,
 		}
 		project.Services[i] = s
 	}
@@ -277,4 +277,27 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	}
 
 	return nil
+}
+
+// GetDataMountPointSource returns the source path for the data volume mount on the docker host
+func GetDataMountPointSource(ctx context.Context, dockerCli command.Cli) (string, error) {
+	ContainerId, err := os.Hostname()
+	if err != nil {
+		return "", err
+	}
+
+	// Get the container
+	container, err := dockerCli.Client().ContainerInspect(ctx, ContainerId)
+	if err != nil {
+		return "", err
+	}
+
+	// Get the mount point
+	for _, mount := range container.Mounts {
+		if mount.Destination == git.BaseDir {
+			return mount.Source, nil
+		}
+	}
+
+	return "", errors.New("failed to find mount point for data volume at " + git.BaseDir)
 }

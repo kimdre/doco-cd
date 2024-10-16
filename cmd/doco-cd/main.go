@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -72,6 +73,14 @@ func main() {
 		appConfig: c,
 		log:       log,
 	}
+
+	ctx := context.Background()
+	source, err := docker.GetDataMountPointSource(ctx, dockerCli)
+	if err != nil {
+		return
+	}
+
+	log.Info("source", slog.String("source", source))
 
 	http.HandleFunc(webhookPath, h.WebhookHandler)
 	http.HandleFunc(webhookPath+"/{customTarget}", h.WebhookHandler)
