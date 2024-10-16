@@ -38,6 +38,8 @@ ENV TZ=UTC \
     HTTP_PORT=80 \
     LOG_LEVEL=info
 
+VOLUME /data
+
 USER nonroot:nonroot
 
 CMD ["/doco-cd"]
