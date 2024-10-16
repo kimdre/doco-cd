@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"fmt"
+	"github.com/kimdre/doco-cd/internal/git"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,7 +16,7 @@ import (
 )
 
 func createTmpDir(t *testing.T) string {
-	dirName, err := os.MkdirTemp(os.TempDir(), "test-*")
+	dirName, err := os.MkdirTemp(git.BaseDir, "test-*")
 	if err != nil {
 		t.Fatal(err)
 	}

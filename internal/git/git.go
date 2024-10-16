@@ -9,9 +9,14 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 )
 
+const (
+	// BaseDir is the base directory for cloned repositories
+	BaseDir = "/data"
+)
+
 // CloneRepository clones a repository from a given URL and reference to a temporary directory
 func CloneRepository(name, url, ref string, skipTLSVerify bool) (*git.Repository, error) {
-	path := filepath.Join(os.TempDir(), "doco-cd", name) // TODO: Test deployment to /var/lib/docker/volumes instead of /tmp to fix bind/mount error
+	path := filepath.Join(BaseDir, name) // TODO: Test deployment to /var/lib/docker/volumes instead of /tmp to fix bind/mount error
 
 	err := os.MkdirAll(path, os.ModePerm)
 	if err != nil {

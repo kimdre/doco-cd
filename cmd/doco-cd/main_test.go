@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/kimdre/doco-cd/internal/git"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -124,7 +125,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"no compose files found: stat ` + filepath.Join(os.TempDir(), "kimdre/kimdre/docker-compose.yaml") + `: no such file or directory","details":"deployment failed","job_id":"%[1]s"}`,
+			expectedResponseBody: `{"error":"no compose files found: stat ` + filepath.Join(git.BaseDir, "kimdre/kimdre/docker-compose.yaml") + `: no such file or directory","details":"deployment failed","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "",
 		},

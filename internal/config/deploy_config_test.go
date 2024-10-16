@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"github.com/kimdre/doco-cd/internal/git"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -21,7 +22,7 @@ func createTestFile(fileName string, content string) error {
 }
 
 func createTmpDir(t *testing.T) string {
-	dirName, err := os.MkdirTemp(os.TempDir(), "test-*")
+	dirName, err := os.MkdirTemp(git.BaseDir, "test-*")
 	if err != nil {
 		t.Fatal(err)
 	}
