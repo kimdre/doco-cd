@@ -4,7 +4,7 @@ go 1.22.5
 
 require (
 	github.com/caarlos0/env/v11 v11.2.2
-	github.com/compose-spec/compose-go/v2 v2.3.0
+	github.com/compose-spec/compose-go/v2 v2.4.0
 	github.com/creasty/defaults v1.8.0
 	github.com/docker/cli v27.3.1+incompatible
 	github.com/docker/compose/v2 v2.29.7
