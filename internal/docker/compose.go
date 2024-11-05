@@ -118,6 +118,7 @@ func VerifySocketConnection(apiVersion string) error {
 	}
 
 	httpClient := NewHttpClient()
+	defer httpClient.CloseIdleConnections()
 
 	err = VerifySocketRead(httpClient, apiVersion)
 	if err != nil {
