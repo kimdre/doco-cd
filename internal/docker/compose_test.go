@@ -50,12 +50,7 @@ var (
 )
 
 func TestVerifySocketConnection(t *testing.T) {
-	c, err := config.GetAppConfig()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = VerifySocketConnection(c.DockerAPIVersion)
+	err := VerifySocketConnection()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +105,7 @@ func TestDeployCompose(t *testing.T) {
 
 	t.Log("Verify socket connection")
 
-	err = VerifySocketConnection(c.DockerAPIVersion)
+	err = VerifySocketConnection()
 	if err != nil {
 		t.Fatal(err)
 	}

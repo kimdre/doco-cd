@@ -20,7 +20,6 @@ func TestGetAppConfig(t *testing.T) {
 				"HTTP_PORT":             "8080",
 				"WEBHOOK_SECRET":        "secret",
 				"AUTH_TYPE":             "oauth2",
-				"DOCKER_API_VERSION":    "v1.40",
 				"GIT_ACCESS_TOKEN":      "token",
 				"SKIP_TLS_VERIFICATION": "false",
 			},
@@ -33,15 +32,6 @@ func TestGetAppConfig(t *testing.T) {
 				"WEBHOOK_SECRET": "secret",
 			},
 			expectedErr: ErrInvalidLogLevel,
-		},
-		{
-			name: "invalid API version",
-			envVars: map[string]string{
-				"LOG_LEVEL":          "info",
-				"WEBHOOK_SECRET":     "secret",
-				"DOCKER_API_VERSION": "1.40",
-			},
-			expectedErr: ErrInvalidDockerAPIVersion,
 		},
 	}
 

@@ -192,7 +192,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request) {
-	err := docker.VerifySocketConnection(h.appConfig.DockerAPIVersion)
+	err := docker.VerifySocketConnection()
 	if err != nil {
 		h.log.Error(docker.ErrDockerSocketConnectionFailed.Error(), logger.ErrAttr(err))
 		JSONError(w, "unhealthy", err.Error(), "", http.StatusServiceUnavailable)

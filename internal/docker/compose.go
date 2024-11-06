@@ -68,13 +68,13 @@ func NewHttpClient() *http.Client {
 }
 
 // VerifySocketRead verifies whether the application can read from the docker socket
-func VerifySocketRead(httpClient *http.Client, apiVersion string) error {
+func VerifySocketRead(httpClient *http.Client) error {
 	reqBody, err := json.Marshal("")
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost/%s/info", apiVersion), bytes.NewReader(reqBody))
+	req, err := http.NewRequest("GET", "http://localhost/info", bytes.NewReader(reqBody))
 	if err != nil {
 		return err
 	}
@@ -97,7 +97,7 @@ func VerifySocketRead(httpClient *http.Client, apiVersion string) error {
 }
 
 // VerifySocketConnection verifies whether the application can connect to the docker socket
-func VerifySocketConnection(apiVersion string) error {
+func VerifySocketConnection() error {
 	// Check if the docker socket file exists
 	if _, err := os.Stat("/var/run/docker.sock"); errors.Is(err, os.ErrNotExist) {
 		return err
@@ -120,7 +120,7 @@ func VerifySocketConnection(apiVersion string) error {
 	httpClient := NewHttpClient()
 	defer httpClient.CloseIdleConnections()
 
-	err = VerifySocketRead(httpClient, apiVersion)
+	err = VerifySocketRead(httpClient)
 	if err != nil {
 		return err
 	}
