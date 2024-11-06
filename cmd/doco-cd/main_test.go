@@ -182,7 +182,7 @@ func TestHandleEvent(t *testing.T) {
 				}
 			})
 
-			err = docker.VerifySocketConnection(appConfig.DockerAPIVersion)
+			err = docker.VerifySocketConnection()
 			if err != nil {
 				t.Fatalf("Failed to verify docker socket connection: %v", err)
 			}

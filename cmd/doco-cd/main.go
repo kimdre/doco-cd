@@ -44,7 +44,7 @@ func main() {
 	log.Info("starting application", slog.String("version", Version), slog.String("log_level", c.LogLevel))
 
 	// Test/verify the connection to the docker socket
-	err = docker.VerifySocketConnection(c.DockerAPIVersion)
+	err = docker.VerifySocketConnection()
 	if err != nil {
 		log.Critical(docker.ErrDockerSocketConnectionFailed.Error(), logger.ErrAttr(err))
 	}

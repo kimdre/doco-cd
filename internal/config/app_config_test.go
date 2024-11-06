@@ -34,15 +34,6 @@ func TestGetAppConfig(t *testing.T) {
 			},
 			expectedErr: ErrInvalidLogLevel,
 		},
-		{
-			name: "invalid API version",
-			envVars: map[string]string{
-				"LOG_LEVEL":          "info",
-				"WEBHOOK_SECRET":     "secret",
-				"DOCKER_API_VERSION": "1.40",
-			},
-			expectedErr: ErrInvalidDockerAPIVersion,
-		},
 	}
 
 	for _, tt := range tests {
