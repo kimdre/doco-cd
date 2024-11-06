@@ -20,7 +20,6 @@ func TestGetAppConfig(t *testing.T) {
 				"HTTP_PORT":             "8080",
 				"WEBHOOK_SECRET":        "secret",
 				"AUTH_TYPE":             "oauth2",
-				"DOCKER_API_VERSION":    "v1.40",
 				"GIT_ACCESS_TOKEN":      "token",
 				"SKIP_TLS_VERIFICATION": "false",
 			},
