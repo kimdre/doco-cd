@@ -4,10 +4,10 @@ go 1.22.5
 
 require (
 	github.com/caarlos0/env/v11 v11.2.2
-	github.com/compose-spec/compose-go/v2 v2.4.3
+	github.com/compose-spec/compose-go/v2 v2.4.4
 	github.com/creasty/defaults v1.8.0
-	github.com/docker/cli 9c01d924fb26
-	github.com/docker/compose/v2 v2.30.2
+	github.com/docker/cli v27.3.2-0.20241008150905-cb3048fbebb1+incompatible
+	github.com/docker/compose/v2 v2.30.3
 	github.com/docker/docker v27.3.1+incompatible
 	github.com/go-git/go-git/v5 v5.12.0
 	github.com/golangci/golangci-lint v1.61.0

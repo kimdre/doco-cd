@@ -155,8 +155,8 @@ github.com/cloudflare/circl v1.4.0 h1:BV7h5MgrktNzytKmWjpOtdYrf0lkkbF8YMlBGPhJQr
 github.com/cloudflare/circl v1.4.0/go.mod h1:PDRU+oXvdD7KCtgKxW95M5Z8BpSCJXQORiZFnBQS5QU=
 github.com/codahale/rfc6979 v0.0.0-20141003034818-6a90f24967eb h1:EDmT6Q9Zs+SbUoc7Ik9EfrFqcylYqgPZ9ANSbTAntnE=
 github.com/codahale/rfc6979 v0.0.0-20141003034818-6a90f24967eb/go.mod h1:ZjrT6AXHbDs86ZSdt/osfBi5qfexBrKUdONk989Wnk4=
-github.com/compose-spec/compose-go/v2 v2.4.3 h1:4+Nd9IqIGobbPles9ZuRS5uJfFfRgBo4Wdcv+8VNex8=
-github.com/compose-spec/compose-go/v2 v2.4.3/go.mod h1:lFN0DrMxIncJGYAXTfWuajfwj5haBJqrBkarHcnjJKc=
+github.com/compose-spec/compose-go/v2 v2.4.4 h1:cvHBl5Jf1iNBmRrZCICmHvaoskYc1etTPEMLKVwokAY=
+github.com/compose-spec/compose-go/v2 v2.4.4/go.mod h1:lFN0DrMxIncJGYAXTfWuajfwj5haBJqrBkarHcnjJKc=
 github.com/containerd/cgroups v1.1.0 h1:v8rEWFl6EoqHB+swVNjVoCJE8o3jX7e8nqBGPLaDFBM=
 github.com/containerd/cgroups v1.1.0/go.mod h1:6ppBcbh/NOOUU+dMKrykgaBnK9lCIBxHqJDGwsa1mIw=
 github.com/containerd/console v1.0.4 h1:F2g4+oChYvBTsASRTz8NP6iIAi97J3TtSAsLbIFn4ro=
@@ -212,8 +212,8 @@ github.com/docker/cli v27.3.2-0.20241008150905-cb3048fbebb1+incompatible h1:fJ3S
 github.com/docker/cli v27.3.2-0.20241008150905-cb3048fbebb1+incompatible/go.mod h1:JLrzqnKDaYBop7H2jaqPtU4hHvMKP+vjCwu2uszcLI8=
 github.com/docker/cli-docs-tool v0.8.0 h1:YcDWl7rQJC3lJ7WVZRwSs3bc9nka97QLWfyJQli8yJU=
 github.com/docker/cli-docs-tool v0.8.0/go.mod h1:8TQQ3E7mOXoYUs811LiPdUnAhXrcVsBIrW21a5pUbdk=
-github.com/docker/compose/v2 v2.30.2 h1:7PypFsyl5wjlSeOyx3LCb8XMcAGkb+D0fqM47OIKe8I=
-github.com/docker/compose/v2 v2.30.2/go.mod h1:ND4+yaNoJ3Jh1OgrEO64uzMq/VKRqBkMS8zpb65Fve8=
+github.com/docker/compose/v2 v2.30.3 h1:e8H7xGLCZOeFo46GEtyDGHlkBbNgXqbXKIXPOSL8cfU=
+github.com/docker/compose/v2 v2.30.3/go.mod h1:ayPsSsRSc5WpVFehPrTDFuljAydxaf8g0aM9UKbaMXk=
 github.com/docker/distribution v2.7.1+incompatible/go.mod h1:J2gT2udsDAN96Uj4KfcMRqY0/ypR+oyYUYmja8H+y+w=
 github.com/docker/distribution v2.8.3+incompatible h1:AtKxIZ36LoNK51+Z6RpzLpddBirtxJnzDrHLEKxTAYk=
 github.com/docker/distribution v2.8.3+incompatible/go.mod h1:J2gT2udsDAN96Uj4KfcMRqY0/ypR+oyYUYmja8H+y+w=
