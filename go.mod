@@ -2,7 +2,7 @@ module github.com/kimdre/doco-cd
 
 go 1.22.10
 
-toolchain go1.23.4
+toolchain go1.23.5
 
 require (
 	github.com/caarlos0/env/v11 v11.3.1
