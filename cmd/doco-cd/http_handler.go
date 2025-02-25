@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"reflect"
+	"sync"
 
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/docker/cli/cli/command"
@@ -19,6 +20,8 @@ import (
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
+
+var once sync.Once
 
 type handlerData struct {
 	dockerCli command.Cli
@@ -41,6 +44,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		"cloning repository to temporary directory",
 		slog.String("url", p.CloneURL))
 
+	// TODO: Check edge case: public repo - empty access token
 	if p.Private {
 		jobLog.Debug("repository is private")
 
@@ -94,21 +98,20 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	jobLog.Debug("repository cloned", slog.String("path", repoDir))
 
-	// Defer removal of the repository
-	defer func(workDir string) {
-		jobLog.Debug("cleaning up", slog.String("path", workDir))
+	// RUN DOCKER HOOKS
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 
-		err = os.RemoveAll(workDir)
-		if err != nil {
-			errMsg = "failed to remove temporary directory"
-			jobLog.Error(errMsg, logger.ErrAttr(err))
-			JSONError(w,
-				errMsg,
-				err.Error(),
-				jobID,
-				http.StatusInternalServerError)
-		}
-	}(repoDir)
+		docker.OnCrash(
+			dockerCli.Client(),
+			func() {
+				jobLog.Info("cleaning up", slog.String("path", repoDir))
+				os.RemoveAll(repoDir)
+			},
+			func(err error) { jobLog.Error("failed to clean up path: " + repoDir, logger.ErrAttr(err)) },
+		)
+	}()
 
 	jobLog.Debug("retrieving deployment configuration")
 

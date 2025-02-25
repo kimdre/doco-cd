@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 
 	"github.com/docker/docker/client"
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -21,6 +22,8 @@ var (
 	Version string
 	errMsg  string
 )
+
+var wg sync.WaitGroup
 
 func main() {
 	// Set default log level to debug
@@ -86,6 +89,8 @@ func main() {
 
 	err = http.ListenAndServe(fmt.Sprintf(":%d", c.HttpPort), nil)
 	if err != nil {
-		return
+		log.Error("failed to listen on port: " + string(c.HttpPort), logger.ErrAttr(err))
 	}
+
+	wg.Wait()
 }

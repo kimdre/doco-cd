@@ -2,11 +2,16 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/kimdre/doco-cd/internal/webhook"
 
 	"github.com/docker/compose/v2/pkg/api"
@@ -21,6 +26,19 @@ func createTmpDir(t *testing.T) string {
 	}
 
 	return dirName
+}
+
+func cloneOnDir(path, url, ref string) (err error) {
+	_, err = git.PlainClone(path, false, &git.CloneOptions{
+		URL:             url,
+		SingleBranch:    true,
+		ReferenceName:   plumbing.ReferenceName(ref),
+		Tags:            git.NoTags,
+		Depth:           1,
+		InsecureSkipTLS: true,
+	})
+
+	return err
 }
 
 func createComposeFile(t *testing.T, filePath, content string) {
@@ -45,7 +63,11 @@ var (
   test:
     image: nginx:latest
     environment:
+      GIT_ACCESS_TOKEN:
+      WEBHOOK_SECRET:
       TZ: Europe/Berlin
+    volumes:
+      - ./html:/usr/share/nginx/html
 `
 )
 
@@ -83,6 +105,12 @@ func TestLoadCompose(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	serialized, err := json.MarshalIndent(project, "", " ")
+	if err != nil {
+		t.Error(err.Error())
+	}
+	t.Log(string(serialized))
+
 	if len(project.Services) != 1 {
 		t.Fatalf("expected 1 service, got %d", len(project.Services))
 	}
@@ -90,6 +118,8 @@ func TestLoadCompose(t *testing.T) {
 
 func TestDeployCompose(t *testing.T) {
 	c, err := config.GetAppConfig()
+
+	// TODO: Create test repo that includes an html folder to test volumes
 	p := webhook.ParsedPayload{
 		Ref:       "/refs/heads/test",
 		CommitSHA: "26263c2b44133367927cd1423d8c8457b5befce5",
@@ -113,12 +143,10 @@ func TestDeployCompose(t *testing.T) {
 	ctx := context.Background()
 
 	dirName := createTmpDir(t)
-	t.Cleanup(func() {
-		err = os.RemoveAll(dirName)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+	err = cloneOnDir(dirName, p.CloneURL, p.Ref)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	filePath := filepath.Join(dirName, "test.compose.yaml")
 
@@ -164,6 +192,24 @@ compose_files:
 		t.Fatal(err)
 	}
 
+	// RUN DOCKER HOOKS
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		OnCrash(
+			dockerCli.Client(),
+			func() {
+				t.Log("cleaning up path: " + dirName)
+				fmt.Println("cleaning up path: " + dirName)
+				os.RemoveAll(dirName)
+			},
+			func(err error) { t.Log("an error ocurred cleaning up: " + err.Error()) },
+		)
+	}()
+
 	service := compose.NewComposeService(dockerCli)
 
 	// Remove test container after test
@@ -183,9 +229,23 @@ compose_files:
 	})
 
 	for _, deployConf := range deployConfigs {
+		t.Log(fmt.Sprintf("Deploying '%s' ...", deployConf.Name))
 		err = DeployCompose(ctx, dockerCli, project, deployConf, p)
 		if err != nil {
 			t.Fatal(err)
 		}
+
+		t.Log("Finished deployment with no errors")
+
+		output, err := Exec(dockerCli.Client(), "test-test-1", "cat", "usr/share/nginx/html/index.html")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if strings.TrimSpace(output) != "Hello world!" {
+			t.Fatal(fmt.Sprintf("failed to mount: content of 'html/index.html' not equal to content of 'usr/share/nginx/html/index.html': %s", output))
+		}
 	}
+
+	wg.Wait()
 }

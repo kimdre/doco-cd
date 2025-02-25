@@ -19,11 +19,12 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config"
 
+	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/flags"
 
 	"github.com/compose-spec/compose-go/v2/cli"
-	"github.com/compose-spec/compose-go/v2/types"
+
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
 )
@@ -99,7 +100,7 @@ func VerifySocketRead(httpClient *http.Client) error {
 // VerifySocketConnection verifies whether the application can connect to the docker socket
 func VerifySocketConnection() error {
 	// Check if the docker socket file exists
-	if _, err := os.Stat("/var/run/docker.sock"); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(socketPath); errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 
@@ -191,6 +192,8 @@ func addServiceLabels(project *types.Project, payload webhook.ParsedPayload) {
 
 // LoadCompose parses and loads Compose files as specified by the Docker Compose specification
 func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles []string) (*types.Project, error) {
+	// TODO: CHECK FOR VOLUME ERROR HERE ON CONFIGURATION OF THE COMPOSE FILES
+	// TODO: DEBUG *types.Project volumes got from configuration
 	options, err := cli.NewProjectOptions(
 		composeFiles,
 		cli.WithName(projectName),
