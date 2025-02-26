@@ -89,7 +89,7 @@ func main() {
 
 	err = http.ListenAndServe(fmt.Sprintf(":%d", c.HttpPort), nil)
 	if err != nil {
-		log.Error("failed to listen on port: " + string(c.HttpPort), logger.ErrAttr(err))
+		log.Error(fmt.Sprintf("failed to listen on port: %v", c.HttpPort), logger.ErrAttr(err))
 	}
 
 	wg.Wait()

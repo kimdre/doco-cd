@@ -9,7 +9,6 @@ import (
 	"os"
 	"path"
 	"reflect"
-	"sync"
 
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/docker/cli/cli/command"
@@ -20,8 +19,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
-
-var once sync.Once
 
 type handlerData struct {
 	dockerCli command.Cli
@@ -98,21 +95,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	jobLog.Debug("repository cloned", slog.String("path", repoDir))
 
-	// RUN DOCKER HOOKS
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
-		docker.OnCrash(
-			dockerCli.Client(),
-			func() {
-				jobLog.Info("cleaning up", slog.String("path", repoDir))
-				os.RemoveAll(repoDir)
-			},
-			func(err error) { jobLog.Error("failed to clean up path: " + repoDir, logger.ErrAttr(err)) },
-		)
-	}()
-
 	jobLog.Debug("retrieving deployment configuration")
 
 	// Get the deployment configs from the repository
@@ -142,6 +124,29 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 			return
 		}
+
+		// RUN DOCKER HOOKS
+		containerID, err := docker.GetContainerID(dockerCli.Client(), deployConfig.Name)
+		if err != nil {
+			jobLog.Error(err.Error())
+			JSONError(w, err, "failed to get container id", jobID, http.StatusInternalServerError)
+		}
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			docker.OnCrash(
+				dockerCli.Client(),
+				containerID,
+				func() {
+					jobLog.Info("cleaning up", slog.String("path", repoDir))
+					os.RemoveAll(repoDir)
+				},
+				func(err error) { jobLog.Error("failed to clean up path: "+repoDir, logger.ErrAttr(err)) },
+			)
+		}()
+
 	}
 
 	msg := "deployment successful"
