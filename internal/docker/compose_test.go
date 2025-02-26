@@ -63,8 +63,8 @@ var (
   test:
     image: nginx:latest
     environment:
-      GIT_ACCESS_TOKEN: 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
-      WEBHOOK_SECRET: secret
+      GIT_ACCESS_TOKEN:
+      WEBHOOK_SECRET:
       TZ: Europe/Berlin
     volumes:
       - ./html:/usr/share/nginx/html
@@ -137,7 +137,7 @@ func TestDeployCompose(t *testing.T) {
 		CommitSHA: "47a1d528f11c4635eaba155c1e6899c6a1af3679",
 		Name:      "test",
 		FullName:  "kimdre/test",
-		CloneURL:  "https://kimdre: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@github.com/kimdre/test.git",
+		CloneURL:  fmt.Sprintf("https://kimdre:%s@github.com/kimdre/test.git", c.GitAccessToken),
 		Private:   true,
 	}
 
