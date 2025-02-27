@@ -226,7 +226,7 @@ compose_files:
 					fmt.Println("cleaning up path: " + dirName)
 					os.RemoveAll(dirName)
 				},
-				func(err error) { t.Log("an error ocurred cleaning up: " + err.Error()) },
+				func(err error) { t.Log("an error occurred cleaning up: " + err.Error()) },
 			)
 		}()
 
