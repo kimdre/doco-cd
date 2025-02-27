@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"reflect"
+	"sync"
 
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/docker/cli/cli/command"
@@ -27,7 +28,7 @@ type handlerData struct {
 }
 
 // HandleEvent handles the incoming webhook event
-func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, c *config.AppConfig, p webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli) {
+func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, c *config.AppConfig, p webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli, wg *sync.WaitGroup) {
 	jobLog = jobLog.With(slog.String("repository", p.FullName))
 
 	if customTarget != "" {
@@ -155,6 +156,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 }
 
 func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
+	var wg sync.WaitGroup
 	ctx := context.Background()
 
 	customTarget := r.PathValue("customTarget")
@@ -196,7 +198,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	HandleEvent(ctx, jobLog, w, h.appConfig, payload, customTarget, jobID, h.dockerCli)
+	HandleEvent(ctx, jobLog, w, h.appConfig, payload, customTarget, jobID, h.dockerCli, &wg)
 }
 
 func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request) {

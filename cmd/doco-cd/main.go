@@ -23,9 +23,9 @@ var (
 	errMsg  string
 )
 
-var wg sync.WaitGroup
 
 func main() {
+	var wg sync.WaitGroup
 	// Set default log level to debug
 	log := logger.New(slog.LevelDebug)
 

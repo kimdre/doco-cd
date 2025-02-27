@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/docker/compose/v2/pkg/api"
@@ -22,12 +23,25 @@ import (
 
 var (
 	validCommitSHA = "26263c2b44133367927cd1423d8c8457b5befce5"
-	projectName    = "doco-cd"
+	projectName    = "compose-webhook"
 	mainBranch     = "refs/heads/main"
 	invalidBranch  = "refs/heads/invalid"
 )
 
 func TestHandleEvent(t *testing.T) {
+	entries, err := os.ReadDir("/tmp/kimdre/doco-cd")
+	if err == nil && len(entries) > 0 {
+		t.Fatalf("Expected empty directory, but found files: %v", entries)
+	}
+
+	path := "/tmp/kimdre/doco-cd"
+
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("Directory should not exist before cloning, but it does: %s", path)
+	} else {
+		t.Logf("Directory does not exist before cloning, proceeding: %s", path)
+	}
+
 	testCases := []struct {
 		name                 string
 		payload              webhook.ParsedPayload
@@ -141,7 +155,10 @@ func TestHandleEvent(t *testing.T) {
 				}
 			}
 
-			appConfig, _ := config.GetAppConfig()
+			appConfig, err := config.GetAppConfig()
+			if err != nil {
+				t.Fatalf("failed to get app config: %s", err.Error())
+			}
 
 			log := logger.New(12)
 			jobID := uuid.Must(uuid.NewRandom()).String()
@@ -165,23 +182,6 @@ func TestHandleEvent(t *testing.T) {
 				}
 			})
 
-			t.Cleanup(func() {
-				service := compose.NewComposeService(dockerCli)
-
-				downOpts := api.DownOptions{
-					RemoveOrphans: true,
-					Images:        "all",
-					Volumes:       true,
-				}
-
-				t.Log("Remove test container")
-
-				err = service.Down(ctx, tc.payload.Name, downOpts)
-				if err != nil {
-					t.Fatal(err)
-				}
-			})
-
 			err = docker.VerifySocketConnection()
 			if err != nil {
 				t.Fatalf("Failed to verify docker socket connection: %v", err)
@@ -189,6 +189,7 @@ func TestHandleEvent(t *testing.T) {
 
 			rr := httptest.NewRecorder()
 
+			var wg sync.WaitGroup
 			HandleEvent(
 				ctx,
 				jobLog,
@@ -198,6 +199,7 @@ func TestHandleEvent(t *testing.T) {
 				tc.customTarget,
 				jobID,
 				dockerCli,
+				&wg,
 			)
 
 			if status := rr.Code; status != tc.expectedStatusCode {
@@ -210,6 +212,22 @@ func TestHandleEvent(t *testing.T) {
 				t.Errorf("handler returned unexpected body: got '%v' want '%v'",
 					rr.Body.String(), expectedReturnMessage)
 			}
+
+			service := compose.NewComposeService(dockerCli)
+
+			downOpts := api.DownOptions{
+				RemoveOrphans: true,
+				Images:        "all",
+				Volumes:       true,
+			}
+
+			t.Log("Remove test container")
+			err = service.Down(ctx, tc.payload.Name, downOpts)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			wg.Wait()
 		})
 	}
 }
