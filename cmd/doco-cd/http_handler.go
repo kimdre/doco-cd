@@ -272,6 +272,15 @@ func deployStack(
 
 	stackLog.Info("deploying stack")
 
+	// INCLUDE LABELS
+	for _, service := range project.Services {
+		if service.Labels == nil {
+			service.Labels = map[string]string{}
+		}
+		service.Labels["owner"] = "doco-cd"
+		service.Labels["dir"] = repoDir
+	}
+
 	err = docker.DeployCompose(*ctx, *dockerCli, project, deployConfig, *p)
 	if err != nil {
 		errMsg = "failed to deploy stack"
