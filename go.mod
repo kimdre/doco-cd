@@ -10,7 +10,7 @@ require (
 	github.com/creasty/defaults v1.8.0
 	github.com/docker/cli v28.0.0+incompatible
 	github.com/docker/compose/v2 v2.33.1
-	github.com/docker/docker v28.0.0+incompatible
+	github.com/docker/docker v28.0.1+incompatible
 	github.com/go-git/go-git/v5 v5.13.2
 	github.com/golangci/golangci-lint v1.64.6
 	github.com/google/uuid v1.6.0
