@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"sync"
 
 	"github.com/docker/docker/client"
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -23,6 +26,7 @@ var (
 )
 
 func main() {
+	var wg sync.WaitGroup
 	// Set default log level to debug
 	log := logger.New(slog.LevelDebug)
 
@@ -84,8 +88,40 @@ func main() {
 		slog.String("path", webhookPath),
 	)
 
+	// RETRIEVE AND RE-LAUNCH CLEANUP PROCESSES IN CASE DOCO HAS RESTARTED
+	dockerClient, _ := client.NewClientWithOpts(client.FromEnv)
+	containers, err := docker.GetLabeledContainers(context.TODO(), dockerClient, "owner", "doco-cd")
+	if err != nil {
+		log.Error(fmt.Sprintf("failed to retrieve doco-cd containers: %s", err.Error()))
+	}
+
+	for _, cont := range containers {
+		dir := cont.Labels["dir"]
+		if len(dir) <= 0 {
+			log.Error(fmt.Sprintf("failed to retrieve container %v tmp directory for cleanup", cont.ID))
+			continue
+		}
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			docker.OnCrash(
+				dockerCli.Client(),
+				cont.ID,
+				func() {
+					log.Info("cleaning up", slog.String("path", dir))
+					os.RemoveAll(dir)
+				},
+				func(err error) { log.Error("failed to clean up path: "+dir, logger.ErrAttr(err)) },
+			)
+		}()
+	}
+
 	err = http.ListenAndServe(fmt.Sprintf(":%d", c.HttpPort), nil)
 	if err != nil {
-		return
+		log.Error(fmt.Sprintf("failed to listen on port: %v", c.HttpPort), logger.ErrAttr(err))
 	}
+
+	wg.Wait()
 }
