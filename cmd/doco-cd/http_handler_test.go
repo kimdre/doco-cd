@@ -106,25 +106,6 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		}
 	})
 
-	t.Cleanup(func() {
-		ctx := context.Background()
-
-		service := compose.NewComposeService(dockerCli)
-
-		downOpts := api.DownOptions{
-			RemoveOrphans: true,
-			Images:        "all",
-			Volumes:       true,
-		}
-
-		t.Log("Remove test container")
-
-		err = service.Down(ctx, "compose-webhook", downOpts)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
-
 	h := handlerData{
 		dockerCli: dockerCli,
 		appConfig: appConfig,
@@ -153,5 +134,22 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 	if !regex.MatchString(rr.Body.String()) {
 		t.Errorf("handler returned unexpected body: got %v want %v", rr.Body.String(), expectedResponse)
+	}
+
+	ctx := context.Background()
+
+	service := compose.NewComposeService(dockerCli)
+
+	downOpts := api.DownOptions{
+		RemoveOrphans: true,
+		Images:        "all",
+		Volumes:       true,
+	}
+
+	t.Log("Remove test container")
+
+	err = service.Down(ctx, "compose-webhook", downOpts)
+	if err != nil {
+		t.Fatal(err)
 	}
 }

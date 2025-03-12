@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"reflect"
+	"sync"
 
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/docker/cli/cli/command"
@@ -27,7 +28,7 @@ type handlerData struct {
 }
 
 // HandleEvent handles the incoming webhook event
-func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, c *config.AppConfig, p webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli) {
+func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, c *config.AppConfig, p webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli, wg *sync.WaitGroup) {
 	jobLog = jobLog.With(slog.String("repository", p.FullName))
 
 	if customTarget != "" {
@@ -41,6 +42,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		"cloning repository to temporary directory",
 		slog.String("url", p.CloneURL))
 
+	// TODO: Check edge case: public repo - empty access token
 	if p.Private {
 		jobLog.Debug("repository is private")
 
@@ -94,22 +96,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	jobLog.Debug("repository cloned", slog.String("path", repoDir))
 
-	// Defer removal of the repository
-	defer func(workDir string) {
-		jobLog.Debug("cleaning up", slog.String("path", workDir))
-
-		err = os.RemoveAll(workDir)
-		if err != nil {
-			errMsg = "failed to remove temporary directory"
-			jobLog.Error(errMsg, logger.ErrAttr(err))
-			JSONError(w,
-				errMsg,
-				err.Error(),
-				jobID,
-				http.StatusInternalServerError)
-		}
-	}(repoDir)
-
 	jobLog.Debug("retrieving deployment configuration")
 
 	// Get the deployment configs from the repository
@@ -139,6 +125,29 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 			return
 		}
+
+		// RUN DOCKER HOOKS
+		containerID, err := docker.GetContainerID(dockerCli.Client(), deployConfig.Name)
+		if err != nil {
+			jobLog.Error(err.Error())
+			JSONError(w, err, "failed to get container id", jobID, http.StatusInternalServerError)
+		}
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			docker.OnCrash(
+				dockerCli.Client(),
+				containerID,
+				func() {
+					jobLog.Info("cleaning up", slog.String("path", repoDir))
+					os.RemoveAll(repoDir)
+				},
+				func(err error) { jobLog.Error("failed to clean up path: "+repoDir, logger.ErrAttr(err)) },
+			)
+		}()
+
 	}
 
 	msg := "deployment successful"
@@ -147,6 +156,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 }
 
 func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
+	var wg sync.WaitGroup
 	ctx := context.Background()
 
 	customTarget := r.PathValue("customTarget")
@@ -188,7 +198,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	HandleEvent(ctx, jobLog, w, h.appConfig, payload, customTarget, jobID, h.dockerCli)
+	HandleEvent(ctx, jobLog, w, h.appConfig, payload, customTarget, jobID, h.dockerCli, &wg)
 }
 
 func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request) {
@@ -261,6 +271,15 @@ func deployStack(
 	}
 
 	stackLog.Info("deploying stack")
+
+	// INCLUDE LABELS
+	for _, service := range project.Services {
+		if service.Labels == nil {
+			service.Labels = map[string]string{}
+		}
+		service.Labels["owner"] = "doco-cd"
+		service.Labels["dir"] = repoDir
+	}
 
 	err = docker.DeployCompose(*ctx, *dockerCli, project, deployConfig, *p)
 	if err != nil {
