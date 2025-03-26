@@ -12,7 +12,7 @@ require (
 	github.com/docker/compose/v2 v2.34.0
 	github.com/docker/docker v28.0.2+incompatible
 	github.com/go-git/go-git/v5 v5.14.0
-	github.com/golangci/golangci-lint v1.64.7
+	github.com/golangci/golangci-lint v1.64.8
 	github.com/google/uuid v1.6.0
 	gopkg.in/validator.v2 v2.0.1
 	gopkg.in/yaml.v3 v3.0.1
