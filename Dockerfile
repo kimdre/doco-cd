@@ -28,7 +28,7 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
     --mount=type=bind,target=. \
     go build -ldflags="-s -w -X main.Version=${APP_VERSION}" -o / ./...
 
-FROM gcr.io/distroless/base-debian12@sha256:125eb09bbd8e818da4f9eac0dfc373892ca75bec4630aa642d315ecf35c1afb7 AS build-release-stage
+FROM gcr.io/distroless/base-debian12@sha256:27769871031f67460f1545a52dfacead6d18a9f197db77110cfc649ca2a91f44 AS build-release-stage
 
 WORKDIR /
 
