@@ -2,11 +2,16 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/kimdre/doco-cd/internal/webhook"
 
 	"github.com/docker/compose/v2/pkg/api"
@@ -21,6 +26,19 @@ func createTmpDir(t *testing.T) string {
 	}
 
 	return dirName
+}
+
+func cloneOnDir(path, url, ref string) (err error) {
+	_, err = git.PlainClone(path, false, &git.CloneOptions{
+		URL:             url,
+		SingleBranch:    true,
+		ReferenceName:   plumbing.ReferenceName(ref),
+		Tags:            git.NoTags,
+		Depth:           1,
+		InsecureSkipTLS: true,
+	})
+
+	return err
 }
 
 func createComposeFile(t *testing.T, filePath, content string) {
@@ -45,7 +63,11 @@ var (
   test:
     image: nginx:latest
     environment:
+      GIT_ACCESS_TOKEN:
+      WEBHOOK_SECRET:
       TZ: Europe/Berlin
+    volumes:
+      - ./html:/usr/share/nginx/html
 `
 )
 
@@ -83,24 +105,40 @@ func TestLoadCompose(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	serialized, err := json.MarshalIndent(project, "", " ")
+	if err != nil {
+		t.Error(err.Error())
+	}
+	t.Log(string(serialized))
+
 	if len(project.Services) != 1 {
 		t.Fatalf("expected 1 service, got %d", len(project.Services))
 	}
 }
 
 func TestDeployCompose(t *testing.T) {
-	c, err := config.GetAppConfig()
-	p := webhook.ParsedPayload{
-		Ref:       "/refs/heads/test",
-		CommitSHA: "26263c2b44133367927cd1423d8c8457b5befce5",
-		Name:      "doco-cd",
-		FullName:  "kimdre/doco-cd",
-		CloneURL:  "https://github.com/kimdre/doco-cd",
-		Private:   false,
+	value := os.Getenv("WEBHOOK_SECRET")
+	if value == "" {
+		os.Setenv("WEBHOOK_SECRET", "notempty")
 	}
 
+	value = os.Getenv("GIT_ACCESS_TOKEN")
+	if value == "" {
+		os.Setenv("GIT_ACCESS_TOKEN", "notempty")
+	}
+
+	c, err := config.GetAppConfig()
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	p := webhook.ParsedPayload{
+		Ref:       "main",
+		CommitSHA: "47a1d528f11c4635eaba155c1e6899c6a1af3679",
+		Name:      "test",
+		FullName:  "kimdre/test",
+		CloneURL:  fmt.Sprintf("https://kimdre:%s@github.com/kimdre/test.git", c.GitAccessToken),
+		Private:   true,
 	}
 
 	t.Log("Verify socket connection")
@@ -113,12 +151,10 @@ func TestDeployCompose(t *testing.T) {
 	ctx := context.Background()
 
 	dirName := createTmpDir(t)
-	t.Cleanup(func() {
-		err = os.RemoveAll(dirName)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+	err = cloneOnDir(dirName, p.CloneURL, p.Ref)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	filePath := filepath.Join(dirName, "test.compose.yaml")
 
@@ -138,7 +174,7 @@ func TestDeployCompose(t *testing.T) {
 	}
 
 	fileName := ".doco-cd.yaml"
-	reference := "refs/heads/test"
+	reference := "refs/heads/main"
 	workingDirectory := "/test"
 	composeFiles := []string{"test.compose.yaml"}
 	customTarget := ""
@@ -164,28 +200,66 @@ compose_files:
 		t.Fatal(err)
 	}
 
-	service := compose.NewComposeService(dockerCli)
-
-	// Remove test container after test
-	t.Cleanup(func() {
-		downOpts := api.DownOptions{
-			RemoveOrphans: true,
-			Images:        "all",
-			Volumes:       true,
-		}
-
-		t.Log("Remove test container")
-
-		err = service.Down(ctx, project.Name, downOpts)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+	var wg sync.WaitGroup
 
 	for _, deployConf := range deployConfigs {
+		t.Logf("Deploying '%s' ...", deployConf.Name)
 		err = DeployCompose(ctx, dockerCli, project, deployConf, p)
 		if err != nil {
 			t.Fatal(err)
 		}
+
+		containerID, err := GetContainerID(dockerCli.Client(), deployConf.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			OnCrash(
+				dockerCli.Client(),
+				containerID,
+				func() {
+					t.Log("cleaning up path: " + dirName)
+					fmt.Println("cleaning up path: " + dirName)
+					os.RemoveAll(dirName)
+				},
+				func(err error) { t.Log("an error occurred cleaning up: " + err.Error()) },
+			)
+		}()
+
+		t.Log("Finished deployment with no errors")
+
+		output, err := Exec(dockerCli.Client(), "test-test-1", "cat", "usr/share/nginx/html/index.html")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if strings.TrimSpace(output) != "Hello world!" {
+			t.Fatalf("failed to mount: content of 'html/index.html' not equal to content of 'usr/share/nginx/html/index.html': %s", output)
+		}
+
+		t.Log("after running cat command")
 	}
+
+	t.Log("before running compose down")
+	service := compose.NewComposeService(dockerCli)
+
+	// Remove test container after test
+	downOpts := api.DownOptions{
+		RemoveOrphans: true,
+		Images:        "all",
+		Volumes:       true,
+	}
+
+	t.Log("Remove test container")
+
+	err = service.Down(ctx, project.Name, downOpts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wg.Wait()
 }
