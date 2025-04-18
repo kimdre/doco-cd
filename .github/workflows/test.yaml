@@ -39,7 +39,7 @@ jobs:
         timeout-minutes: 5
         env:
           WEBHOOK_SECRET: test_Secret1
-          GIT_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_ACCESS_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@ad3126e916f78f00edff4ed0317cf185271ccc2d # v5.4.2
         with:
