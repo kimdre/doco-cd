@@ -6,7 +6,7 @@ toolchain go1.24.2
 
 require (
 	github.com/caarlos0/env/v11 v11.3.1
-	github.com/compose-spec/compose-go/v2 v2.4.9
+	github.com/compose-spec/compose-go/v2 v2.6.1
 	github.com/creasty/defaults v1.8.0
 	github.com/docker/cli v28.0.4+incompatible
 	github.com/docker/compose/v2 v2.34.0
