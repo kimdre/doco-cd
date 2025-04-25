@@ -85,7 +85,7 @@ func VerifySocketRead(httpClient *http.Client) error {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
 
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	responseBody, _ := io.ReadAll(resp.Body)
 
