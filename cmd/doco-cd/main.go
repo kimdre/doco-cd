@@ -88,7 +88,6 @@ func main() {
 		slog.String("path", webhookPath),
 	)
 
-	// RETRIEVE AND RE-LAUNCH CLEANUP PROCESSES IN CASE DOCO HAS RESTARTED
 	dockerClient, _ := client.NewClientWithOpts(client.FromEnv)
 
 	containers, err := docker.GetLabeledContainers(context.TODO(), dockerClient, docker.DocoCDLabels.Deployment.Manager, "doco-cd")
