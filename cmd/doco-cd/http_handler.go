@@ -295,10 +295,6 @@ func deployStack(
 
 	stackLog.Info("deploying stack")
 
-	for _, service := range project.Services {
-		stackLog.Debug("Service", slog.String("name", service.Name), slog.String("volumes", fmt.Sprintf("%v", service.Volumes)))
-	}
-
 	err = docker.DeployCompose(*ctx, *dockerCli, project, deployConfig, *p, repoDir)
 	if err != nil {
 		errMsg = "failed to deploy stack"
