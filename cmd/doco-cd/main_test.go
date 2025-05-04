@@ -32,7 +32,6 @@ func TestHandleEvent(t *testing.T) {
 	path := "/tmp/kimdre/doco-cd"
 
 	if _, err := os.Stat(path); err == nil {
-		t.Logf("removing existing test directory: %s", path)
 		err = os.RemoveAll(path)
 		if err != nil {
 			t.Fatalf("failed to remove test directory: %v", err)
