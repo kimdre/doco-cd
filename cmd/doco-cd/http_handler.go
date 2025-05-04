@@ -147,29 +147,29 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 			return
 		}
-
 		// RUN DOCKER HOOKS
-		containerID, err := docker.GetContainerID(dockerCli.Client(), deployConfig.Name)
-		if err != nil {
-			jobLog.Error(err.Error())
-			JSONError(w, err, "failed to get container id", jobID, http.StatusInternalServerError)
-		}
-
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-
-			docker.OnCrash(
-				dockerCli.Client(),
-				containerID,
-				func() {
-					jobLog.Info("cleaning up", slog.String("path", repoDir))
-					_ = os.RemoveAll(repoDir)
-				},
-				func(err error) { jobLog.Error("failed to clean up path: "+repoDir, logger.ErrAttr(err)) },
-			)
-		}()
+		// containerID, err := docker.GetContainerID(dockerCli.Client(), deployConfig.Name)
+		//
+		//	if err != nil {
+		//		jobLog.Error(err.Error())
+		//		JSONError(w, err, "failed to get container id", jobID, http.StatusInternalServerError)
+		//	}
+		//
+		// wg.Add(1)
+		//
+		//	go func() {
+		//		defer wg.Done()
+		//
+		//		docker.OnCrash(
+		//			dockerCli.Client(),
+		//			containerID,
+		//			func() {
+		//				jobLog.Info("cleaning up", slog.String("path", repoDir))
+		//				_ = os.RemoveAll(repoDir)
+		//			},
+		//			func(err error) { jobLog.Error("failed to clean up path: "+repoDir, logger.ErrAttr(err)) },
+		//		)
+		//	}()
 	}
 
 	msg := "deployment successful"
