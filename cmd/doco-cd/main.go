@@ -98,14 +98,14 @@ func main() {
 	}
 
 	for _, cont := range containers {
-		log.Debug("checking container for cleanup", slog.Group("container",
+		log.Debug("inspecting container", slog.Group("container",
 			slog.String("id", cont.ID),
 			slog.String("name", cont.Names[0]),
 		))
 
 		dir := cont.Labels[docker.DocoCDLabels.Deployment.WorkingDir]
 		if len(dir) <= 0 {
-			log.Error(fmt.Sprintf("failed to retrieve container %v tmp directory for cleanup", cont.ID))
+			log.Error(fmt.Sprintf("failed to retrieve container %v working directory", cont.ID))
 			continue
 		}
 
