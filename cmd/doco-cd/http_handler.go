@@ -74,7 +74,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			jobLog.Debug("repository already exists, checking out commit", slog.String("path", tmpPath), slog.String("commit_sha", p.CommitSHA))
 
-			repo, err = git.CheckoutRepository(tmpPath, p.Ref, p.CommitSHA)
+			repo, err = git.CheckoutRepository(tmpPath, p.Ref, p.CommitSHA, c.SkipTLSVerification)
 			if err != nil {
 				errMsg = "failed to checkout repository"
 				jobLog.Error(errMsg, logger.ErrAttr(err))

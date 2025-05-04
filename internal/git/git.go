@@ -12,11 +12,19 @@ import (
 var ErrRepositoryAlreadyExists = git.ErrRepositoryAlreadyExists
 
 // CheckoutRepository checks out a specific commit in a given repository
-func CheckoutRepository(path, ref, commitSHA string) (*git.Repository, error) {
+func CheckoutRepository(path, ref, commitSHA string, skipTLSVerify bool) (*git.Repository, error) {
 	repo, err := git.PlainOpen(path)
 	if err != nil {
 		return nil, err
 	}
+
+	// Fetch latest commits
+	err = repo.Fetch(&git.FetchOptions{
+		RemoteName:      "origin",
+		Depth:           1,
+		Force:           true,
+		InsecureSkipTLS: skipTLSVerify,
+	})
 
 	// Check if the commit exists
 	_, err = repo.CommitObject(plumbing.NewHash(commitSHA))
