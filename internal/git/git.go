@@ -1,6 +1,7 @@
 package git
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -25,6 +26,9 @@ func CheckoutRepository(path, ref, commitSHA string, skipTLSVerify bool) (*git.R
 		Force:           true,
 		InsecureSkipTLS: skipTLSVerify,
 	})
+	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
+		return nil, fmt.Errorf("failed to fetch repository: %w", err)
+	}
 
 	// Check if the commit exists
 	_, err = repo.CommitObject(plumbing.NewHash(commitSHA))
