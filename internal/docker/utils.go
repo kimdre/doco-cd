@@ -10,6 +10,7 @@ import (
 	"github.com/docker/docker/client"
 )
 
+// GetContainerID retrieves the container ID for a given service name
 func GetContainerID(client client.APIClient, name string) (id string, err error) {
 	containers, err := client.ContainerList(context.TODO(), container.ListOptions{All: true})
 	if err != nil {
@@ -27,6 +28,7 @@ func GetContainerID(client client.APIClient, name string) (id string, err error)
 	return "", errors.New("container id not found")
 }
 
+// GetLabeledContainers retrieves all containers with a specific label key and value
 func GetLabeledContainers(ctx context.Context, cli *client.Client, key, value string) (containers []container.Summary, err error) {
 	containers, err = cli.ContainerList(ctx, container.ListOptions{
 		Filters: filters.NewArgs(filters.Arg("label", key+"="+value)),

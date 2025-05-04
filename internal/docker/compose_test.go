@@ -213,7 +213,7 @@ compose_files:
 	for _, deployConf := range deployConfigs {
 		t.Logf("Deploying '%s' ...", deployConf.Name)
 
-		err = DeployCompose(ctx, dockerCli, project, deployConf, p)
+		err = DeployCompose(ctx, dockerCli, project, deployConf, p, dirName)
 		if err != nil {
 			t.Fatal(err)
 		}

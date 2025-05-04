@@ -27,7 +27,7 @@ var (
 
 func main() {
 	var wg sync.WaitGroup
-	// Set default log level to debug
+	// Set the default log level to debug
 	log := logger.New(slog.LevelDebug)
 
 	// Get the application configuration
@@ -91,13 +91,13 @@ func main() {
 	// RETRIEVE AND RE-LAUNCH CLEANUP PROCESSES IN CASE DOCO HAS RESTARTED
 	dockerClient, _ := client.NewClientWithOpts(client.FromEnv)
 
-	containers, err := docker.GetLabeledContainers(context.TODO(), dockerClient, "owner", "doco-cd")
+	containers, err := docker.GetLabeledContainers(context.TODO(), dockerClient, docker.DocoCDLabels.Deployment.Manager, "doco-cd")
 	if err != nil {
 		log.Error("failed to retrieve doco-cd containers: " + err.Error())
 	}
 
 	for _, cont := range containers {
-		dir := cont.Labels["dir"]
+		dir := cont.Labels[docker.DocoCDLabels.Deployment.WorkingDir]
 		if len(dir) <= 0 {
 			log.Error(fmt.Sprintf("failed to retrieve container %v tmp directory for cleanup", cont.ID))
 			continue
