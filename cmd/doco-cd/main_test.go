@@ -134,6 +134,12 @@ func TestHandleEvent(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			// Cleanup test directory
+			err := os.RemoveAll(testDir)
+			if err != nil {
+				t.Fatalf("Failed to remove test directory: %v", err)
+			}
+
 			if tc.overrideEnv != nil {
 				for k, v := range tc.overrideEnv {
 					err := os.Setenv(k, v)
@@ -218,12 +224,6 @@ func TestHandleEvent(t *testing.T) {
 			}
 
 			wg.Wait()
-
-			// Cleanup test directory
-			err = os.RemoveAll(testDir)
-			if err != nil {
-				t.Fatalf("Failed to remove test directory: %v", err)
-			}
 		})
 	}
 }
