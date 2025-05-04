@@ -16,7 +16,7 @@ func OnCrash(client client.APIClient, containerID string, do func(), onErr func(
 	for {
 		select {
 		case event := <-eventChan:
-			fmt.Printf("received '%v' event: event '%v' requests '%v'", event.Type, event.ID, event.Action)
+			// fmt.Printf("received '%v' event: event '%v' requests '%v'", event.Type, event.ID, event.Action)
 
 			if event.Type == "container" && event.ID == containerID {
 				switch event.Action {
