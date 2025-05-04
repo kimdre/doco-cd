@@ -21,6 +21,10 @@ var (
 	ErrDeprecatedConfig                 = errors.New("configuration file name is deprecated, please use .doco-cd.y(a)ml instead")
 )
 
+const (
+	DataDir = "/data" // Data directory for deployments
+)
+
 // DeployConfig is the structure of the deployment configuration file
 type DeployConfig struct {
 	Name             string   `yaml:"name"`                                                                                                         // Name is the name of the docker-compose deployment / stack
