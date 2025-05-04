@@ -120,12 +120,18 @@ func TestLoadCompose(t *testing.T) {
 func TestDeployCompose(t *testing.T) {
 	value := os.Getenv("WEBHOOK_SECRET")
 	if value == "" {
-		os.Setenv("WEBHOOK_SECRET", "notempty")
+		err := os.Setenv("WEBHOOK_SECRET", "notempty")
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	value = os.Getenv("GIT_ACCESS_TOKEN")
 	if value == "" {
-		os.Setenv("GIT_ACCESS_TOKEN", "notempty")
+		err := os.Setenv("GIT_ACCESS_TOKEN", "notempty")
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	c, err := config.GetAppConfig()
@@ -228,7 +234,7 @@ compose_files:
 				func() {
 					t.Log("cleaning up path: " + dirName)
 					fmt.Println("cleaning up path: " + dirName)
-					os.RemoveAll(dirName)
+					_ = os.RemoveAll(dirName)
 				},
 				func(err error) { t.Log("an error occurred cleaning up: " + err.Error()) },
 			)

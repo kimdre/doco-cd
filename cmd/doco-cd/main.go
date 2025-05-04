@@ -113,7 +113,7 @@ func main() {
 				cont.ID,
 				func() {
 					log.Info("cleaning up", slog.String("path", dir))
-					os.RemoveAll(dir)
+					_ = os.RemoveAll(dir)
 				},
 				func(err error) { log.Error("failed to clean up path: "+dir, logger.ErrAttr(err)) },
 			)

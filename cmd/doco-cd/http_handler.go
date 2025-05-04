@@ -143,7 +143,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				containerID,
 				func() {
 					jobLog.Info("cleaning up", slog.String("path", repoDir))
-					os.RemoveAll(repoDir)
+					_ = os.RemoveAll(repoDir)
 				},
 				func(err error) { jobLog.Error("failed to clean up path: "+repoDir, logger.ErrAttr(err)) },
 			)
