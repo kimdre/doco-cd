@@ -33,8 +33,9 @@ func Exec(client client.APIClient, containerID string, cmd ...string) (out strin
 	defer resp.Close()
 
 	// READ OUTPUT
-// Use buffers to capture stdout and stderr
+	// Use buffers to capture stdout and stderr
 	var stdoutBuf, stderrBuf bytes.Buffer
+
 	_, err = stdcopy.StdCopy(&stdoutBuf, &stderrBuf, resp.Reader)
 	if err != nil {
 		return "", fmt.Errorf("failed to copy output: %w", err)

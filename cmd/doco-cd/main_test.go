@@ -190,6 +190,7 @@ func TestHandleEvent(t *testing.T) {
 			rr := httptest.NewRecorder()
 
 			var wg sync.WaitGroup
+
 			HandleEvent(
 				ctx,
 				jobLog,
@@ -222,6 +223,7 @@ func TestHandleEvent(t *testing.T) {
 			}
 
 			t.Log("Remove test container")
+
 			err = service.Down(ctx, tc.payload.Name, downOpts)
 			if err != nil {
 				t.Fatal(err)

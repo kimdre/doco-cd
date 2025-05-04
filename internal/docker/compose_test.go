@@ -109,6 +109,7 @@ func TestLoadCompose(t *testing.T) {
 	if err != nil {
 		t.Error(err.Error())
 	}
+
 	t.Log(string(serialized))
 
 	if len(project.Services) != 1 {
@@ -151,6 +152,7 @@ func TestDeployCompose(t *testing.T) {
 	ctx := context.Background()
 
 	dirName := createTmpDir(t)
+
 	err = cloneOnDir(dirName, p.CloneURL, p.Ref)
 	if err != nil {
 		t.Fatal(err)
@@ -204,6 +206,7 @@ compose_files:
 
 	for _, deployConf := range deployConfigs {
 		t.Logf("Deploying '%s' ...", deployConf.Name)
+
 		err = DeployCompose(ctx, dockerCli, project, deployConf, p)
 		if err != nil {
 			t.Fatal(err)
@@ -215,6 +218,7 @@ compose_files:
 		}
 
 		wg.Add(1)
+
 		go func() {
 			defer wg.Done()
 
@@ -245,6 +249,7 @@ compose_files:
 	}
 
 	t.Log("before running compose down")
+
 	service := compose.NewComposeService(dockerCli)
 
 	// Remove test container after test

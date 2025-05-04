@@ -134,6 +134,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		}
 
 		wg.Add(1)
+
 		go func() {
 			defer wg.Done()
 
@@ -147,7 +148,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				func(err error) { jobLog.Error("failed to clean up path: "+repoDir, logger.ErrAttr(err)) },
 			)
 		}()
-
 	}
 
 	msg := "deployment successful"
@@ -157,6 +157,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	var wg sync.WaitGroup
+
 	ctx := context.Background()
 
 	customTarget := r.PathValue("customTarget")
@@ -277,6 +278,7 @@ func deployStack(
 		if service.Labels == nil {
 			service.Labels = map[string]string{}
 		}
+
 		service.Labels["owner"] = "doco-cd"
 		service.Labels["dir"] = repoDir
 	}

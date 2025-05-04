@@ -90,9 +90,10 @@ func main() {
 
 	// RETRIEVE AND RE-LAUNCH CLEANUP PROCESSES IN CASE DOCO HAS RESTARTED
 	dockerClient, _ := client.NewClientWithOpts(client.FromEnv)
+
 	containers, err := docker.GetLabeledContainers(context.TODO(), dockerClient, "owner", "doco-cd")
 	if err != nil {
-		log.Error(fmt.Sprintf("failed to retrieve doco-cd containers: %s", err.Error()))
+		log.Error("failed to retrieve doco-cd containers: " + err.Error())
 	}
 
 	for _, cont := range containers {
@@ -103,6 +104,7 @@ func main() {
 		}
 
 		wg.Add(1)
+
 		go func() {
 			defer wg.Done()
 
