@@ -1,6 +1,7 @@
 package git
 
 import (
+	"fmt"
 	"os"
 	"regexp"
 
@@ -17,9 +18,26 @@ func CheckoutRepository(path, ref, commitSHA string) (*git.Repository, error) {
 		return nil, err
 	}
 
+	// Check if the commit exists
+	_, err = repo.CommitObject(plumbing.NewHash(commitSHA))
+	if err != nil {
+		return nil, fmt.Errorf("commit not found: %w", err)
+	}
+
 	worktree, err := repo.Worktree()
 	if err != nil {
 		return nil, err
+	}
+
+	// Validate if the reference exists
+	if ref != "" {
+		err = worktree.Checkout(&git.CheckoutOptions{
+			Branch: plumbing.ReferenceName(ref),
+			Force:  true,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to checkout ref: %w", err)
+		}
 	}
 
 	err = worktree.Checkout(&git.CheckoutOptions{
