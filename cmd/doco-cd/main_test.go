@@ -21,18 +21,17 @@ import (
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
-var (
+const (
 	validCommitSHA = "26263c2b44133367927cd1423d8c8457b5befce5"
 	projectName    = "compose-webhook"
 	mainBranch     = "refs/heads/main"
 	invalidBranch  = "refs/heads/invalid"
+	testDir        = "/tmp/kimdre/doco-cd"
 )
 
 func TestHandleEvent(t *testing.T) {
-	path := "/tmp/kimdre/doco-cd"
-
-	if _, err := os.Stat(path); err == nil {
-		err = os.RemoveAll(path)
+	if _, err := os.Stat(testDir); err == nil {
+		err = os.RemoveAll(testDir)
 		if err != nil {
 			t.Fatalf("failed to remove test directory: %v", err)
 		}
