@@ -102,7 +102,6 @@ func main() {
 		log.Debug("checking container for cleanup", slog.Group("container",
 			slog.String("id", cont.ID),
 			slog.String("name", cont.Names[0]),
-			slog.String("image", cont.Image),
 		))
 		dir := cont.Labels[docker.DocoCDLabels.Deployment.WorkingDir]
 		if len(dir) <= 0 {
