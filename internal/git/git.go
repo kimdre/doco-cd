@@ -23,9 +23,8 @@ func CheckoutRepository(path, ref, commitSHA string) (*git.Repository, error) {
 	}
 
 	err = worktree.Checkout(&git.CheckoutOptions{
-		Hash:   plumbing.NewHash(commitSHA),
-		Branch: plumbing.ReferenceName(ref),
-		Force:  true,
+		Hash:  plumbing.NewHash(commitSHA),
+		Force: true,
 	})
 	if err != nil {
 		return nil, err
