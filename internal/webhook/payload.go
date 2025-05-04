@@ -12,6 +12,7 @@ type GithubPushPayload struct {
 		Name     string `json:"name"`
 		FullName string `json:"full_name"`
 		CloneURL string `json:"clone_url"`
+		WebURL   string `json:"html_url"`
 		Private  bool   `json:"private"`
 	} `json:"repository"`
 }
@@ -24,6 +25,7 @@ type GitlabPushPayload struct {
 		Name              string `json:"name"`
 		PathWithNamespace string `json:"path_with_namespace"`
 		CloneURL          string `json:"http_url"`
+		WebURL            string `json:"web_url"`
 		VisibilityLevel   int64  `json:"visibility_level"`
 	} `json:"project"`
 }
@@ -35,6 +37,7 @@ type ParsedPayload struct {
 	Name      string
 	FullName  string
 	CloneURL  string
+	WebURL    string
 	Private   bool
 }
 
@@ -58,6 +61,7 @@ func parsePayload(payload []byte, provider string) (ParsedPayload, error) {
 			Name:      githubPayload.Repository.Name,
 			FullName:  githubPayload.Repository.FullName,
 			CloneURL:  githubPayload.Repository.CloneURL,
+			WebURL:    githubPayload.Repository.WebURL,
 			Private:   githubPayload.Repository.Private,
 		}
 
@@ -74,6 +78,7 @@ func parsePayload(payload []byte, provider string) (ParsedPayload, error) {
 			Name:      gitlabPayload.Repository.Name,
 			FullName:  gitlabPayload.Repository.PathWithNamespace,
 			CloneURL:  gitlabPayload.Repository.CloneURL,
+			WebURL:    gitlabPayload.Repository.WebURL,
 			Private:   gitlabPayload.Repository.VisibilityLevel == 0,
 		}
 

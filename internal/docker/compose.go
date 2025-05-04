@@ -176,7 +176,7 @@ func addServiceLabels(project *types.Project, payload webhook.ParsedPayload) {
 		s.CustomLabels = map[string]string{
 			"cd.doco.deployed.at":           time.Now().UTC().Format(time.RFC3339),
 			"cd.doco.repository.name":       payload.FullName,
-			"cd.doco.repository.clone-url":  payload.CloneURL,
+			"cd.doco.repository.url":        payload.WebURL,
 			"cd.doco.repository.private":    strconv.FormatBool(payload.Private),
 			"cd.doco.repository.commit.ref": payload.Ref,
 			"cd.doco.repository.commit.sha": payload.CommitSHA,
