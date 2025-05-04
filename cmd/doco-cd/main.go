@@ -97,8 +97,6 @@ func main() {
 		log.Error("failed to retrieve doco-cd containers: " + err.Error())
 	}
 
-	log.Debug("retrieved containers successfully", slog.Int("count", len(containers)))
-
 	for _, cont := range containers {
 		log.Debug("checking container for cleanup", slog.Group("container",
 			slog.String("id", cont.ID),
@@ -127,6 +125,8 @@ func main() {
 			)
 		}()
 	}
+
+	log.Debug("retrieved containers successfully", slog.Int("count", len(containers)))
 
 	err = http.ListenAndServe(fmt.Sprintf(":%d", c.HttpPort), nil)
 	if err != nil {
