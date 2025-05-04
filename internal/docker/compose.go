@@ -174,17 +174,18 @@ containers that are part of a service.
 func addServiceLabels(project *types.Project, payload webhook.ParsedPayload) {
 	for i, s := range project.Services {
 		s.CustomLabels = map[string]string{
-			"cd.doco.deployedAt":           time.Now().UTC().Format(time.RFC3339),
-			"cd.doco.repository.name":      payload.FullName,
-			"cd.doco.repository.private":   strconv.FormatBool(payload.Private),
-			"cd.doco.repository.reference": payload.Ref,
-			"cd.doco.repository.commit":    payload.CommitSHA,
-			api.ProjectLabel:               project.Name,
-			api.ServiceLabel:               s.Name,
-			api.VersionLabel:               api.ComposeVersion,
-			api.WorkingDirLabel:            project.WorkingDir,
-			api.ConfigFilesLabel:           strings.Join(project.ComposeFiles, ","),
-			api.OneoffLabel:                "False", // default, will be overridden by `run` command
+			"cd.doco.deployed.at":           time.Now().UTC().Format(time.RFC3339),
+			"cd.doco.repository.name":       payload.FullName,
+			"cd.doco.repository.clone-url":  payload.CloneURL,
+			"cd.doco.repository.private":    strconv.FormatBool(payload.Private),
+			"cd.doco.repository.commit.ref": payload.Ref,
+			"cd.doco.repository.commit.sha": payload.CommitSHA,
+			api.ProjectLabel:                project.Name,
+			api.ServiceLabel:                s.Name,
+			api.VersionLabel:                api.ComposeVersion,
+			api.WorkingDirLabel:             project.WorkingDir,
+			api.ConfigFilesLabel:            strings.Join(project.ComposeFiles, ","),
+			api.OneoffLabel:                 "False", // default, will be overridden by `run` command
 		}
 		project.Services[i] = s
 	}
