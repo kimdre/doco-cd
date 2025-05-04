@@ -21,7 +21,7 @@ func CheckoutRepository(path, ref, commitSHA string, skipTLSVerify bool) (*git.R
 
 	// Fetch latest commits
 	err = repo.Fetch(&git.FetchOptions{
-		RemoteName:      "origin",
+		RefSpecs:        []git.ConfigRefSpec{git.ConfigRefSpec(ref)},
 		Depth:           1,
 		Force:           true,
 		InsecureSkipTLS: skipTLSVerify,
