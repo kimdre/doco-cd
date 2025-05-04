@@ -32,7 +32,7 @@ func TestCloneRepository(t *testing.T) {
 	cloneUrl := "https://github.com/kimdre/doco-cd.git"
 	ref := "refs/heads/main"
 
-	repo, err := CloneRepository(uuid.New().String(), cloneUrl, ref, true)
+	repo, err := CloneRepository(uuid.New().String(), cloneUrl, ref, false)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}

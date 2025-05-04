@@ -2,17 +2,40 @@ package git
 
 import (
 	"os"
-	"path/filepath"
 	"regexp"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 )
 
-// CloneRepository clones a repository from a given URL and reference to a temporary directory
-func CloneRepository(name, url, ref string, skipTLSVerify bool) (*git.Repository, error) {
-	path := filepath.Join(os.TempDir(), name)
+var ErrRepositoryAlreadyExists = git.ErrRepositoryAlreadyExists
 
+// CheckoutRepository checks out a specific commit in a given repository
+func CheckoutRepository(path, ref, commitSHA string) (*git.Repository, error) {
+	repo, err := git.PlainOpen(path)
+	if err != nil {
+		return nil, err
+	}
+
+	worktree, err := repo.Worktree()
+	if err != nil {
+		return nil, err
+	}
+
+	err = worktree.Checkout(&git.CheckoutOptions{
+		Hash:   plumbing.NewHash(commitSHA),
+		Branch: plumbing.ReferenceName(ref),
+		Force:  true,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return repo, nil
+}
+
+// CloneRepository clones a repository from a given URL and reference to a temporary directory
+func CloneRepository(path, url, ref string, skipTLSVerify bool) (*git.Repository, error) {
 	err := os.MkdirAll(path, os.ModePerm)
 	if err != nil {
 		return nil, err

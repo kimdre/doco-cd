@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"reflect"
 	"sync"
 
@@ -64,17 +65,37 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		p.CloneURL = git.GetAuthUrl(p.CloneURL, c.AuthType, c.GitAccessToken)
 	}
 
-	repo, err := git.CloneRepository(p.FullName, p.CloneURL, p.Ref, c.SkipTLSVerification)
-	if err != nil {
-		errMsg = "failed to clone repository"
-		jobLog.Error(errMsg, logger.ErrAttr(err))
-		JSONError(w,
-			errMsg,
-			err.Error(),
-			jobID,
-			http.StatusInternalServerError)
+	tmpPath := filepath.Join(os.TempDir(), p.FullName)
 
-		return
+	// Try to clone the repository
+	repo, err := git.CloneRepository(tmpPath, p.CloneURL, p.Ref, c.SkipTLSVerification)
+	// If the repository already exists, check it out to the specified commit SHA
+	if err != nil {
+		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
+			jobLog.Debug("repository already exists, checking out commit", slog.String("path", tmpPath), slog.String("commit_sha", p.CommitSHA))
+			repo, err = git.CheckoutRepository(tmpPath, p.Ref, p.CommitSHA)
+			if err != nil {
+				errMsg = "failed to checkout repository"
+				jobLog.Error(errMsg, logger.ErrAttr(err))
+				JSONError(w,
+					errMsg,
+					err.Error(),
+					jobID,
+					http.StatusInternalServerError)
+
+				return
+			}
+		} else {
+			errMsg = "failed to clone repository"
+			jobLog.Error(errMsg, logger.ErrAttr(err))
+			JSONError(w,
+				errMsg,
+				err.Error(),
+				jobID,
+				http.StatusInternalServerError)
+
+			return
+		}
 	}
 
 	// Get the worktree from the repository
@@ -273,7 +294,6 @@ func deployStack(
 
 	stackLog.Info("deploying stack")
 
-	// INCLUDE LABELS
 	for _, service := range project.Services {
 		if service.Labels == nil {
 			service.Labels = map[string]string{}
