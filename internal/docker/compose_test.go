@@ -20,7 +20,7 @@ import (
 )
 
 func createTmpDir(t *testing.T) string {
-	dirName, err := os.MkdirTemp(config.DataDir, "test-*")
+	dirName, err := os.MkdirTemp(os.TempDir(), "test-*")
 	if err != nil {
 		t.Fatal(err)
 	}
