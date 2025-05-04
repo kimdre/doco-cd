@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
@@ -28,11 +27,9 @@ func GetContainerID(client client.APIClient, name string) (id string, err error)
 	return "", errors.New("container id not found")
 }
 
-func GetLabeledContainers(ctx context.Context, cli *client.Client, key, value string) (containers []types.Container, err error) {
-	filters := filters.NewArgs(filters.Arg("label", key+"="+value))
-
+func GetLabeledContainers(ctx context.Context, cli *client.Client, key, value string) (containers []container.Summary, err error) {
 	containers, err = cli.ContainerList(ctx, container.ListOptions{
-		Filters: filters,
+		Filters: filters.NewArgs(filters.Arg("label", key+"="+value)),
 		All:     false,
 	})
 	if err != nil {
