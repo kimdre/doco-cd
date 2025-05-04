@@ -296,9 +296,7 @@ func deployStack(
 	stackLog.Info("deploying stack")
 
 	for _, service := range project.Services {
-		if service.Labels == nil {
-			service.Labels = map[string]string{}
-		}
+		stackLog.Debug("Service", slog.String("name", service.Name), slog.String("volumes", fmt.Sprintf("%v", service.Volumes)))
 	}
 
 	err = docker.DeployCompose(*ctx, *dockerCli, project, deployConfig, *p, repoDir)
