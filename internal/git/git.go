@@ -21,8 +21,10 @@ func CheckoutRepository(path, ref, commitSHA string, skipTLSVerify bool) (*git.R
 	}
 
 	// Fetch latest commits
+	refspec := config.RefSpec(fmt.Sprintf("%v:%v", plumbing.NewHash(commitSHA), ref))
+
 	err = repo.Fetch(&git.FetchOptions{
-		RefSpecs:        []config.RefSpec{config.RefSpec(ref)},
+		RefSpecs:        []config.RefSpec{refspec},
 		Depth:           1,
 		Force:           true,
 		InsecureSkipTLS: skipTLSVerify,
