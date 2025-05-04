@@ -29,17 +29,11 @@ var (
 )
 
 func TestHandleEvent(t *testing.T) {
-	entries, err := os.ReadDir("/tmp/kimdre/doco-cd")
-	if err == nil && len(entries) > 0 {
-		t.Fatalf("Expected empty directory, but found files: %v", entries)
-	}
-
 	path := "/tmp/kimdre/doco-cd"
 
 	if _, err := os.Stat(path); err == nil {
-		t.Fatalf("Directory should not exist before cloning, but it does: %s", path)
-	} else {
-		t.Logf("Directory does not exist before cloning, proceeding: %s", path)
+		t.Logf("removing existing test directory: %s", path)
+		err = os.RemoveAll(path)
 	}
 
 	testCases := []struct {
