@@ -1,7 +1,6 @@
 package git
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -18,8 +17,6 @@ func CloneRepository(name, url, ref string, skipTLSVerify bool) (*git.Repository
 	if err != nil {
 		return nil, err
 	}
-
-	fmt.Printf("cloning on path: %s", path)
 
 	return git.PlainClone(path, false, &git.CloneOptions{
 		URL:             url,
