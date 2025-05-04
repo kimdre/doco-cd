@@ -173,19 +173,19 @@ containers that are part of a service.
 func addServiceLabels(project *types.Project, payload webhook.ParsedPayload, repoDir string) {
 	for i, s := range project.Services {
 		s.CustomLabels = map[string]string{
-			DocoCDLabels.Deployment.Manager:   "doco-cd",
-			DocoCDLabels.Deployment.Timestamp: time.Now().UTC().Format(time.RFC3339),
-			DocoCDLabels.Deployment.Timestamp: repoDir,
-			DocoCDLabels.Deployment.CommitSHA: payload.CommitSHA,
-			DocoCDLabels.Deployment.CommitRef: payload.Ref,
-			DocoCDLabels.Repository.Name:      payload.FullName,
-			DocoCDLabels.Repository.URL:       payload.WebURL,
-			api.ProjectLabel:                  project.Name,
-			api.ServiceLabel:                  s.Name,
-			api.VersionLabel:                  api.ComposeVersion,
-			api.WorkingDirLabel:               project.WorkingDir,
-			api.ConfigFilesLabel:              strings.Join(project.ComposeFiles, ","),
-			api.OneoffLabel:                   "False", // default, will be overridden by `run` command
+			DocoCDLabels.Deployment.Manager:    "doco-cd",
+			DocoCDLabels.Deployment.Timestamp:  time.Now().UTC().Format(time.RFC3339),
+			DocoCDLabels.Deployment.WorkingDir: repoDir,
+			DocoCDLabels.Deployment.CommitSHA:  payload.CommitSHA,
+			DocoCDLabels.Deployment.CommitRef:  payload.Ref,
+			DocoCDLabels.Repository.Name:       payload.FullName,
+			DocoCDLabels.Repository.URL:        payload.WebURL,
+			api.ProjectLabel:                   project.Name,
+			api.ServiceLabel:                   s.Name,
+			api.VersionLabel:                   api.ComposeVersion,
+			api.WorkingDirLabel:                project.WorkingDir,
+			api.ConfigFilesLabel:               strings.Join(project.ComposeFiles, ","),
+			api.OneoffLabel:                    "False", // default, will be overridden by `run` command
 		}
 		project.Services[i] = s
 	}
