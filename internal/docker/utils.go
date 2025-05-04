@@ -17,8 +17,8 @@ func GetContainerID(client client.APIClient, name string) (id string, err error)
 	}
 
 	for _, container := range containers {
-		for _, contname := range container.Names {
-			if strings.Contains(contname, name) { // Match by service name
+		for _, containerName := range container.Names {
+			if strings.Contains(containerName, name) { // Match by service name
 				return container.ID, nil
 			}
 		}
