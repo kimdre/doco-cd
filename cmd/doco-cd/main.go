@@ -91,6 +91,7 @@ func main() {
 	dockerClient, _ := client.NewClientWithOpts(client.FromEnv)
 
 	log.Debug("retrieving containers that are managed by doco-cd")
+
 	containers, err := docker.GetLabeledContainers(context.TODO(), dockerClient, docker.DocoCDLabels.Deployment.Manager, "doco-cd")
 	if err != nil {
 		log.Error("failed to retrieve doco-cd containers: " + err.Error())
@@ -103,6 +104,7 @@ func main() {
 			slog.String("id", cont.ID),
 			slog.String("name", cont.Names[0]),
 		))
+
 		dir := cont.Labels[docker.DocoCDLabels.Deployment.WorkingDir]
 		if len(dir) <= 0 {
 			log.Error(fmt.Sprintf("failed to retrieve container %v tmp directory for cleanup", cont.ID))
