@@ -7,6 +7,7 @@ import (
 	"regexp"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 )
 
@@ -21,7 +22,7 @@ func CheckoutRepository(path, ref, commitSHA string, skipTLSVerify bool) (*git.R
 
 	// Fetch latest commits
 	err = repo.Fetch(&git.FetchOptions{
-		RefSpecs:        []git.ConfigRefSpec{git.ConfigRefSpec(ref)},
+		RefSpecs:        []config.RefSpec{config.RefSpec(ref)},
 		Depth:           1,
 		Force:           true,
 		InsecureSkipTLS: skipTLSVerify,
