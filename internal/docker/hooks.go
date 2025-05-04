@@ -8,6 +8,7 @@ import (
 	"github.com/docker/docker/client"
 )
 
+// OnCrash listens for container events and executes a callback function when the specified container crashes or stops.
 func OnCrash(client client.APIClient, containerID string, do func(), onErr func(err error)) {
 	client.NegotiateAPIVersion(context.TODO())
 
