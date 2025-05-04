@@ -30,13 +30,6 @@ const (
 )
 
 func TestHandleEvent(t *testing.T) {
-	if _, err := os.Stat(testDir); err == nil {
-		err = os.RemoveAll(testDir)
-		if err != nil {
-			t.Fatalf("failed to remove test directory: %v", err)
-		}
-	}
-
 	testCases := []struct {
 		name                 string
 		payload              webhook.ParsedPayload
@@ -63,7 +56,7 @@ func TestHandleEvent(t *testing.T) {
 		{
 			name: "Successful Deployment with custom Target",
 			payload: webhook.ParsedPayload{
-				Ref:       "refs/heads/main",
+				Ref:       mainBranch,
 				CommitSHA: "f291bfca73b06814293c1f9c9f3c7f95e4932564",
 				Name:      projectName,
 				FullName:  "kimdre/doco-cd",
@@ -225,6 +218,12 @@ func TestHandleEvent(t *testing.T) {
 			}
 
 			wg.Wait()
+
+			// Cleanup test directory
+			err = os.RemoveAll(testDir)
+			if err != nil {
+				t.Fatalf("Failed to remove test directory: %v", err)
+			}
 		})
 	}
 }
