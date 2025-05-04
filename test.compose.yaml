@@ -1,7 +1,6 @@
 # NOTE: This is just for testing deployments
 services:
   app:
-    container_name: doco-cd
     image: nginx:latest
     environment:
       test: true
