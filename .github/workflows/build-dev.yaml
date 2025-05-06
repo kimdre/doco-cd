@@ -45,7 +45,7 @@ jobs:
           context: .
           provenance: false
           build-args: |
-            APP_VERSION=dev-build.${{ steps.vars.outputs.short_sha }}_${{ steps.vars.outputs.timestamp }}
+            APP_VERSION=dev-build.${{ steps.vars.outputs.short_sha }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
