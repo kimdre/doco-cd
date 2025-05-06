@@ -193,8 +193,6 @@ func addServiceLabels(project *types.Project, payload webhook.ParsedPayload, rep
 
 // LoadCompose parses and loads Compose files as specified by the Docker Compose specification
 func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles []string) (*types.Project, error) {
-	// TODO: CHECK FOR VOLUME ERROR HERE ON CONFIGURATION OF THE COMPOSE FILES
-	// TODO: DEBUG *types.Project volumes got from configuration
 	options, err := cli.NewProjectOptions(
 		composeFiles,
 		cli.WithName(projectName),
