@@ -72,8 +72,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	// Try to clone the repository
 	repo, err := git.CloneRepository(repoPath, p.CloneURL, p.Ref, c.SkipTLSVerification)
-	// If the repository already exists, check it out to the specified commit SHA
 	if err != nil {
+		// If the repository already exists, check it out to the specified commit SHA
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			jobLog.Debug("repository already exists, checking out commit "+p.CommitSHA, slog.String("path", repoPath))
 
