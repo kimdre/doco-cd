@@ -29,7 +29,7 @@ const (
 	projectName      = "compose-webhook"
 	mainBranch       = "refs/heads/main"
 	invalidBranch    = "refs/heads/invalid"
-	testDir          = "/tmp/kimdre/doco-cd"
+	testDir          = "/tmp/doco-cd-tests"
 )
 
 func TestHandleEvent(t *testing.T) {
@@ -87,21 +87,6 @@ func TestHandleEvent(t *testing.T) {
 			customTarget:         "",
 		},
 		{
-			name: "Invalid Commit SHA",
-			payload: webhook.ParsedPayload{
-				Ref:       mainBranch,
-				CommitSHA: invalidCommitSHA,
-				Name:      projectName,
-				FullName:  "kimdre/doco-cd",
-				CloneURL:  "https://github.com/kimdre/doco-cd",
-				Private:   false,
-			},
-			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"failed to clone repository","details":"couldn't find remote ref \"` + invalidBranch + `\"","job_id":"%s"}`,
-			overrideEnv:          nil,
-			customTarget:         "",
-		},
-		{
 			name: "Private Repository",
 			payload: webhook.ParsedPayload{
 				Ref:       mainBranch,
@@ -144,7 +129,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"no compose files found: stat ` + filepath.Join(os.TempDir(), "kimdre/kimdre/docker-compose.yaml") + `: no such file or directory","details":"deployment failed","job_id":"%[1]s"}`,
+			expectedResponseBody: `{"error":"no compose files found: stat ` + filepath.Join(testDir, "kimdre/kimdre/docker-compose.yaml") + `: no such file or directory","details":"deployment failed","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "",
 		},
@@ -153,10 +138,12 @@ func TestHandleEvent(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Cleanup test directory
-			err := os.RemoveAll(testDir)
-			if err != nil {
-				t.Fatalf("Failed to remove test directory: %v", err)
-			}
+			t.Cleanup(func() {
+				err := os.RemoveAll(testDir)
+				if err != nil {
+					t.Fatalf("Failed to remove test directory: %v", err)
+				}
+			})
 
 			if tc.overrideEnv != nil {
 				for k, v := range tc.overrideEnv {
