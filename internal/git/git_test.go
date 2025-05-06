@@ -101,8 +101,8 @@ func TestCheckoutRepository(t *testing.T) {
 	})
 
 	repo, err = CheckoutRepository(worktree.Filesystem.Root(), validRef, validCommitSHA, true)
-	if err == nil {
-		t.Fatal("Expected error for invalid commit SHA, got nil")
+	if err != nil {
+		t.Fatalf("Failed to checkout repository: %v", err)
 	}
 
 	if repo == nil {
