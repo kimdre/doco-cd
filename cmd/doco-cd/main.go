@@ -154,15 +154,15 @@ func main() {
 		go func() {
 			defer wg.Done()
 
-			docker.OnCrash(
-				dockerCli.Client(),
-				cont.ID,
-				func() {
-					log.Info("cleaning up", slog.String("path", dir))
-					_ = os.RemoveAll(dir)
-				},
-				func(err error) { log.Error("failed to clean up path: "+dir, logger.ErrAttr(err)) },
-			)
+			//docker.OnCrash(
+			//	dockerCli.Client(),
+			//	cont.ID,
+			//	func() {
+			//		log.Info("cleaning up", slog.String("path", dir))
+			//		_ = os.RemoveAll(dir)
+			//	},
+			//	func(err error) { log.Error("failed to clean up path: "+dir, logger.ErrAttr(err)) },
+			//)
 		}()
 	}
 
