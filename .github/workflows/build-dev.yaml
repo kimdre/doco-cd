@@ -37,6 +37,7 @@ jobs:
         run: |
           calculatedSha=$(git rev-parse --short ${{ github.sha }})
           echo "::set-output name=short_sha::$calculatedSha"
+            echo "::set-output name=timestamp::$(date +%Y-%m-%dT%H%:M:%S)"
             
       - name: Build and push
         uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6
@@ -44,7 +45,7 @@ jobs:
           context: .
           provenance: false
           build-args: |
-            APP_VERSION=dev-${{ steps.vars.outputs.short_sha }}
+            APP_VERSION=dev-build.${{ steps.vars.outputs.short_sha }}_${{ steps.vars.outputs.timestamp }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
