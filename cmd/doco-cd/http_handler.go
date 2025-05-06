@@ -121,8 +121,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	fs := worktree.Filesystem
 	repoDir := fs.Root()
 
-	jobLog.Debug("repository cloned", slog.String("path", repoDir))
-
 	jobLog.Debug("retrieving deployment configuration")
 
 	// Get the deployment configs from the repository
