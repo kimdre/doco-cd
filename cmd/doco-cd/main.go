@@ -110,6 +110,8 @@ func main() {
 		log.Critical(fmt.Sprintf("failed to check if %s mount point is writable", dataPath), logger.ErrAttr(err))
 	}
 
+	log.Debug("data mount point is writable")
+
 	h := handlerData{
 		appConfig:      c,
 		dataMountPoint: dataMountPoint,
