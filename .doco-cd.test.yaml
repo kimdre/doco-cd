@@ -1,0 +1,6 @@
+# Configuration for CI test with custom target: TestHandleEvent/Successful_Deployment_with_custom_Target
+name: compose-webhook
+reference: refs/heads/main
+working_dir: test
+compose_files:
+  - test.compose.yaml
