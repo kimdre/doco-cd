@@ -137,7 +137,7 @@ func TestHandleEvent(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Cleanup test directory
-			err := os.RemoveAll(testDir)
+			err := os.RemoveAll(testDir + "/" + projectName)
 			if err != nil {
 				t.Fatalf("Failed to remove test directory: %v", err)
 			}
@@ -190,7 +190,7 @@ func TestHandleEvent(t *testing.T) {
 			testMountPoint := container.MountPoint{
 				Type:        "bind",
 				Source:      testDir,
-				Destination: "/data",
+				Destination: testDir,
 				Mode:        "rw",
 			}
 
