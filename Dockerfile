@@ -38,9 +38,6 @@ FROM gcr.io/distroless/base-debian12@sha256:27769871031f67460f1545a52dfacead6d18
 
 WORKDIR /
 
-# /data volume required to deploy from cloned Git repos
-VOLUME /data
-
 COPY --from=build-stage /doco-cd /doco-cd
 # COPY --from=busybox-binaries /wget /usr/bin/wget
 
