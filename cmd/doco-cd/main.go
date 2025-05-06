@@ -18,12 +18,18 @@ import (
 const (
 	webhookPath = "/v1/webhook"
 	healthPath  = "/v1/health"
+	dataPath    = "/data"
 )
 
 var (
 	Version string
 	errMsg  string
 )
+
+// getAppContainerID retrieves the container ID of the application
+func getAppContainerID() string {
+	return os.Getenv("HOSTNAME")
+}
 
 func main() {
 	var wg sync.WaitGroup
@@ -71,10 +77,43 @@ func main() {
 
 	log.Debug("docker client created")
 
+	dockerClient, _ := client.NewClientWithOpts(
+		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
+	)
+
+	log.Debug("negotiated docker versions to use",
+		slog.Group("versions",
+			slog.String("docker_client", dockerClient.ClientVersion()),
+			slog.String("docker_api", dockerCli.CurrentVersion()),
+		))
+
+	// Check if the application has a data mount point and get the host path
+	appContainerID := getAppContainerID()
+	log.Debug("retrieved application container id", slog.String("container_id", appContainerID))
+
+	dataMountPoint, err := docker.GetMountPointByDestination(dockerClient, appContainerID, dataPath)
+	if err != nil {
+		log.Critical(fmt.Sprintf("failed to retrieve %s mount point for container %s", dataPath, appContainerID), logger.ErrAttr(err))
+	}
+
+	log.Debug("retrieved data mount point",
+		slog.Group("mount_point",
+			slog.String("source", dataMountPoint.Source),
+			slog.String("destination", dataMountPoint.Destination),
+		),
+	)
+
+	// Check if data mount point is writable
+	if !dataMountPoint.RW {
+		log.Critical(fmt.Sprintf("%s: %s", docker.ErrMountPointNotWriteable, dataMountPoint.Destination))
+	}
+
 	h := handlerData{
-		dockerCli: dockerCli,
-		appConfig: c,
-		log:       log,
+		appConfig:      c,
+		dataMountPoint: dataMountPoint,
+		dockerCli:      dockerCli,
+		log:            log,
 	}
 
 	http.HandleFunc(webhookPath, h.WebhookHandler)
@@ -88,13 +127,11 @@ func main() {
 		slog.String("path", webhookPath),
 	)
 
-	dockerClient, _ := client.NewClientWithOpts(client.FromEnv)
-
 	log.Debug("retrieving containers that are managed by doco-cd")
 
 	containers, err := docker.GetLabeledContainers(context.TODO(), dockerClient, docker.DocoCDLabels.Deployment.Manager, "doco-cd")
 	if err != nil {
-		log.Error("failed to retrieve doco-cd containers: " + err.Error())
+		log.Error("failed to retrieve doco-cd containers", logger.ErrAttr(err))
 	}
 
 	for _, cont := range containers {
@@ -126,7 +163,11 @@ func main() {
 		}()
 	}
 
-	log.Debug("retrieved containers successfully", slog.Int("count", len(containers)))
+	if len(containers) <= 0 {
+		log.Debug("no containers found that are managed by doco-cd", slog.Int("count", len(containers)))
+	} else {
+		log.Debug("retrieved containers successfully", slog.Int("count", len(containers)))
+	}
 
 	err = http.ListenAndServe(fmt.Sprintf(":%d", c.HttpPort), nil)
 	if err != nil {

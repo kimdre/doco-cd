@@ -11,6 +11,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/docker/docker/api/types/container"
+
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
 
@@ -185,11 +187,19 @@ func TestHandleEvent(t *testing.T) {
 
 			var wg sync.WaitGroup
 
+			testMountPoint := container.MountPoint{
+				Type:        "bind",
+				Source:      testDir,
+				Destination: "/data",
+				Mode:        "rw",
+			}
+
 			HandleEvent(
 				ctx,
 				jobLog,
 				rr,
 				appConfig,
+				testMountPoint,
 				tc.payload,
 				tc.customTarget,
 				jobID,

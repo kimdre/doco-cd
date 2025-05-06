@@ -12,6 +12,8 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/docker/docker/api/types/container"
+
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/docker/cli/cli/command"
 	"github.com/google/uuid"
@@ -23,13 +25,14 @@ import (
 )
 
 type handlerData struct {
-	dockerCli command.Cli
-	appConfig *config.AppConfig
-	log       *logger.Logger
+	appConfig      *config.AppConfig    // Application configuration
+	dataMountPoint container.MountPoint // Mount point for the data directory
+	dockerCli      command.Cli          // Docker CLI client
+	log            *logger.Logger       // Logger for logging messages
 }
 
 // HandleEvent handles the incoming webhook event
-func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, c *config.AppConfig, p webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli, wg *sync.WaitGroup) {
+func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, c *config.AppConfig, appData container.MountPoint, p webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli, wg *sync.WaitGroup) {
 	jobLog = jobLog.With(slog.String("repository", p.FullName))
 
 	if customTarget != "" {
@@ -65,7 +68,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		p.CloneURL = git.GetAuthUrl(p.CloneURL, c.AuthType, c.GitAccessToken)
 	}
 
-	tmpPath := filepath.Join(os.TempDir(), p.FullName)
+	tmpPath := filepath.Join(appData.Destination, p.FullName)
 
 	// Try to clone the repository
 	repo, err := git.CloneRepository(tmpPath, p.CloneURL, p.Ref, c.SkipTLSVerification)
@@ -221,7 +224,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	HandleEvent(ctx, jobLog, w, h.appConfig, payload, customTarget, jobID, h.dockerCli, &wg)
+	HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, &wg)
 }
 
 func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request) {
