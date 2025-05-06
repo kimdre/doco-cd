@@ -3,9 +3,10 @@ package git
 import (
 	"errors"
 	"fmt"
-	"github.com/go-git/go-git/v5/config"
 	"os"
 	"regexp"
+
+	"github.com/go-git/go-git/v5/config"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -21,7 +22,6 @@ func CheckoutRepository(path, ref, commitSHA string, skipTLSVerify bool) (*git.R
 	}
 
 	// Fetch latest commits
-	// TODO: Check if this works when checking out a commit
 	refSpec := config.RefSpec(fmt.Sprintf("%v:%v", plumbing.NewHash(commitSHA), ref))
 
 	err = repo.Fetch(&git.FetchOptions{
@@ -44,8 +44,8 @@ func CheckoutRepository(path, ref, commitSHA string, skipTLSVerify bool) (*git.R
 		return nil, err
 	}
 
+	// Checkout the branch if ref is provided
 	if ref != "" {
-		// Checkout the branch if ref is provided
 		err = worktree.Checkout(&git.CheckoutOptions{
 			Branch: plumbing.ReferenceName(ref),
 			Force:  true,
@@ -79,7 +79,6 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool) (*git.Repository
 		SingleBranch:    true,
 		ReferenceName:   plumbing.ReferenceName(ref),
 		Tags:            git.NoTags,
-		Depth:           1,
 		InsecureSkipTLS: skipTLSVerify,
 	})
 }
