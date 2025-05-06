@@ -67,6 +67,7 @@ func GetMountPointByDestination(cli *client.Client, containerID, Destination str
 	return container.MountPoint{}, fmt.Errorf("%w: %s", ErrMountPointNotFound, Destination)
 }
 
+// CheckMountPointWriteable checks if a mount point is writable by attempting to create a file in it
 func CheckMountPointWriteable(mountPoint container.MountPoint) error {
 	if !mountPoint.RW {
 		return fmt.Errorf("%w: %s", ErrMountPointNotWriteable, mountPoint.Destination)
