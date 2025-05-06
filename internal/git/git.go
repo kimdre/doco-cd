@@ -3,11 +3,11 @@ package git
 import (
 	"errors"
 	"fmt"
+	"github.com/go-git/go-git/v5/config"
 	"os"
 	"regexp"
 
 	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 )
 
@@ -24,7 +24,7 @@ func CheckoutRepository(path, ref, commitSHA string, skipTLSVerify bool) (*git.R
 	// refSpec := config.RefSpec(fmt.Sprintf("%v:%v", plumbing.NewHash(commitSHA), ref))
 
 	err = repo.Fetch(&git.FetchOptions{
-		RefSpecs:        []config.RefSpec{"refs/*:refs/*"},
+		RefSpecs:        []config.RefSpec{"+refs/heads/*:refs/remotes/origin/*"},
 		Force:           true,
 		InsecureSkipTLS: skipTLSVerify,
 	})
