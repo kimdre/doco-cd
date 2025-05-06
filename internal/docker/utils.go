@@ -75,6 +75,7 @@ func CheckMountPointWriteable(mountPoint container.MountPoint) error {
 	// Create a test file to check if the mount point is writable
 	testFilePath := filepath.Join(mountPoint.Destination, ".test")
 	_, err := os.Create(testFilePath)
+
 	if err != nil {
 		return fmt.Errorf("failed to create file in %s: %w", testFilePath, err)
 	}
