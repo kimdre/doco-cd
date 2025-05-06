@@ -24,11 +24,12 @@ import (
 )
 
 const (
-	validCommitSHA = "26263c2b44133367927cd1423d8c8457b5befce5"
-	projectName    = "compose-webhook"
-	mainBranch     = "refs/heads/main"
-	invalidBranch  = "refs/heads/invalid"
-	testDir        = "/tmp/kimdre/doco-cd"
+	validCommitSHA   = "26263c2b44133367927cd1423d8c8457b5befce5"
+	invalidCommitSHA = "1111111111111111111111111111111111111111"
+	projectName      = "compose-webhook"
+	mainBranch       = "refs/heads/main"
+	invalidBranch    = "refs/heads/invalid"
+	testDir          = "/tmp/kimdre/doco-cd"
 )
 
 func TestHandleEvent(t *testing.T) {
@@ -71,10 +72,25 @@ func TestHandleEvent(t *testing.T) {
 			customTarget:         "test",
 		},
 		{
-			name: "Invalid Reference",
+			name: "Invalid Branch",
 			payload: webhook.ParsedPayload{
 				Ref:       invalidBranch,
 				CommitSHA: validCommitSHA,
+				Name:      projectName,
+				FullName:  "kimdre/doco-cd",
+				CloneURL:  "https://github.com/kimdre/doco-cd",
+				Private:   false,
+			},
+			expectedStatusCode:   http.StatusInternalServerError,
+			expectedResponseBody: `{"error":"failed to clone repository","details":"couldn't find remote ref \"` + invalidBranch + `\"","job_id":"%s"}`,
+			overrideEnv:          nil,
+			customTarget:         "",
+		},
+		{
+			name: "Invalid Commit SHA",
+			payload: webhook.ParsedPayload{
+				Ref:       mainBranch,
+				CommitSHA: invalidCommitSHA,
 				Name:      projectName,
 				FullName:  "kimdre/doco-cd",
 				CloneURL:  "https://github.com/kimdre/doco-cd",
@@ -137,7 +153,7 @@ func TestHandleEvent(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Cleanup test directory
-			err := os.RemoveAll(testDir + "/" + projectName)
+			err := os.RemoveAll(testDir)
 			if err != nil {
 				t.Fatalf("Failed to remove test directory: %v", err)
 			}
