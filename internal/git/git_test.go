@@ -15,7 +15,7 @@ const (
 	cloneUrl         = "https://github.com/kimdre/doco-cd.git"
 	validRef         = "refs/heads/main"
 	invalidRef       = "refs/heads/invalid"
-	validCommitSHA   = "26263c2b44133367927cd1423d8c8457b5befce5"
+	validCommitSHA   = "903b270da7505fe8b13b42d3b191b08fb9ca3247"
 	invalidCommitSHA = "1111111111111111111111111111111111111111"
 	testDir          = "/tmp/doco-cd-tests/"
 )
