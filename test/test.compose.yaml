@@ -7,7 +7,4 @@ services:
     ports:
       - "80:80"
     volumes:
-      - test:/var/www/html
-
-volumes:
-  test:
+      - ./:/usr/share/nginx/html
