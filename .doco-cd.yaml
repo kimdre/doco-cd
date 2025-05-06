@@ -1,4 +1,0 @@
-name: compose-webhook
-reference: refs/heads/main
-compose_files:
-  - test.compose.yaml
