@@ -48,8 +48,6 @@ ENV TZ=UTC \
     HTTP_PORT=80 \
     LOG_LEVEL=info
 
-USER nonroot:nonroot
-
 CMD ["/doco-cd"]
 
 #HEALTHCHECK --interval=30s --timeout=5s \
