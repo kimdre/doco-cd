@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
@@ -63,4 +65,26 @@ func GetMountPointByDestination(cli *client.Client, containerID, Destination str
 	}
 
 	return container.MountPoint{}, fmt.Errorf("%w: %s", ErrMountPointNotFound, Destination)
+}
+
+func CheckMountPointWriteable(mountPoint container.MountPoint) error {
+	if !mountPoint.RW {
+		return fmt.Errorf("%w: %s", ErrMountPointNotWriteable, mountPoint.Destination)
+	}
+
+	// Create a test file to check if the mount point is writable
+	testFilePath := filepath.Join(mountPoint.Source, ".test")
+	_, err := os.Create(testFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to create test file in %s: %w", mountPoint.Source, err)
+	}
+
+	defer func() {
+		err = os.Remove(testFilePath)
+		if err != nil {
+			fmt.Printf("failed to remove test file %s: %v\n", testFilePath, err)
+		}
+	}()
+
+	return nil
 }

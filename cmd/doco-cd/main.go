@@ -105,8 +105,9 @@ func main() {
 	)
 
 	// Check if data mount point is writable
-	if !dataMountPoint.RW {
-		log.Critical(fmt.Sprintf("%s: %s", docker.ErrMountPointNotWriteable, dataMountPoint.Destination))
+	err = docker.CheckMountPointWriteable(dataMountPoint)
+	if err != nil {
+		log.Critical(fmt.Sprintf("failed to check if %s mount point is writable", dataPath), logger.ErrAttr(err))
 	}
 
 	h := handlerData{
