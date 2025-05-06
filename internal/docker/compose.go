@@ -104,16 +104,7 @@ func VerifySocketConnection() error {
 	}
 
 	c, err := ConnectToSocket()
-
-	// If ErrPermissionDenied is returned, return the required permissions
-	if errors.Is(err, os.ErrPermission) {
-		gid, err := GetSocketGroupOwner()
-		if err != nil {
-			return err
-		}
-
-		return fmt.Errorf("%v: current user needs group id %v", os.ErrPermission, gid)
-	} else if err != nil {
+	if err != nil {
 		return err
 	}
 
