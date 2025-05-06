@@ -43,7 +43,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	// Clone the repository
 	jobLog.Debug(
-		"cloning repository to temporary directory",
+		"get repository",
 		slog.String("url", p.CloneURL))
 
 	// TODO: Check edge case: public repo - empty access token
@@ -75,7 +75,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	// If the repository already exists, check it out to the specified commit SHA
 	if err != nil {
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
-			jobLog.Debug("repository already exists, checking out commit", slog.String("path", repoPath), slog.String("commit_sha", p.CommitSHA))
+			jobLog.Debug("repository already exists, checking out commit "+p.CommitSHA, slog.String("path", repoPath))
 
 			repo, err = git.CheckoutRepository(repoPath, p.Ref, p.CommitSHA, c.SkipTLSVerification)
 			if err != nil {
@@ -100,6 +100,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 			return
 		}
+	} else {
+		jobLog.Debug("repository cloned", slog.String("path", repoPath))
 	}
 
 	// Get the worktree from the repository
