@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,36 +11,14 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/kimdre/doco-cd/internal/git"
+
 	"github.com/kimdre/doco-cd/internal/webhook"
 
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
 	"github.com/kimdre/doco-cd/internal/config"
 )
-
-func createTmpDir(t *testing.T) string {
-	dirName, err := os.MkdirTemp(os.TempDir(), "test-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return dirName
-}
-
-func cloneOnDir(path, url, ref string) (err error) {
-	_, err = git.PlainClone(path, false, &git.CloneOptions{
-		URL:             url,
-		SingleBranch:    true,
-		ReferenceName:   plumbing.ReferenceName(ref),
-		Tags:            git.NoTags,
-		Depth:           1,
-		InsecureSkipTLS: true,
-	})
-
-	return err
-}
 
 func createComposeFile(t *testing.T, filePath, content string) {
 	err := os.WriteFile(filePath, []byte(content), 0o600)
@@ -88,19 +67,12 @@ func TestGetSocketGroupOwner(t *testing.T) {
 func TestLoadCompose(t *testing.T) {
 	ctx := context.Background()
 
-	dirName := createTmpDir(t)
-	t.Cleanup(func() {
-		err := os.RemoveAll(dirName)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
-
-	filePath := filepath.Join(dirName, "test.compose.yaml")
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "test.compose.yaml")
 
 	createComposeFile(t, filePath, composeContents)
 
-	project, err := LoadCompose(ctx, dirName, projectName, []string{filePath})
+	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,19 +129,27 @@ func TestDeployCompose(t *testing.T) {
 
 	ctx := context.Background()
 
-	dirName := createTmpDir(t)
+	tmpDir := t.TempDir()
 
-	err = cloneOnDir(dirName, p.CloneURL, p.Ref)
+	repo, err := git.CloneRepository(tmpDir, p.CloneURL, p.Ref, c.SkipTLSVerification)
+	if err != nil {
+		if !errors.Is(err, git.ErrRepositoryAlreadyExists) {
+			t.Fatal(err)
+		}
+	}
+
+	worktree, err := repo.Worktree()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	filePath := filepath.Join(dirName, "test.compose.yaml")
+	repoPath := worktree.Filesystem.Root()
+	filePath := filepath.Join(repoPath, "test.compose.yaml")
 
 	t.Log("Load compose file")
 	createComposeFile(t, filePath, composeContents)
 
-	project, err := LoadCompose(ctx, dirName, projectName, []string{filePath})
+	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,14 +176,14 @@ compose_files:
   - %s
 `, projectName, reference, workingDirectory, composeFiles[0])
 
-	filePath = filepath.Join(dirName, fileName)
+	filePath = filepath.Join(repoPath, fileName)
 
 	err = createTestFile(filePath, deployConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	deployConfigs, err := config.GetDeployConfigs(dirName, projectName, customTarget)
+	deployConfigs, err := config.GetDeployConfigs(tmpDir, projectName, customTarget)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +193,7 @@ compose_files:
 	for _, deployConf := range deployConfigs {
 		t.Logf("Deploying '%s' ...", deployConf.Name)
 
-		err = DeployCompose(ctx, dockerCli, project, deployConf, p, dirName)
+		err = DeployCompose(ctx, dockerCli, project, deployConf, p, tmpDir)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -232,9 +212,9 @@ compose_files:
 				dockerCli.Client(),
 				containerID,
 				func() {
-					t.Log("cleaning up path: " + dirName)
-					fmt.Println("cleaning up path: " + dirName)
-					_ = os.RemoveAll(dirName)
+					t.Log("cleaning up path: " + tmpDir)
+					fmt.Println("cleaning up path: " + tmpDir)
+					_ = os.RemoveAll(tmpDir)
 				},
 				func(err error) { t.Log("an error occurred cleaning up: " + err.Error()) },
 			)

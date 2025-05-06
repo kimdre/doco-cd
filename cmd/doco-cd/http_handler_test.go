@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/docker/docker/api/types/container"
+
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
 	"github.com/kimdre/doco-cd/internal/config"
@@ -106,10 +108,17 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		}
 	})
 
+	tmpDir := t.TempDir()
 	h := handlerData{
 		dockerCli: dockerCli,
 		appConfig: appConfig,
-		log:       log,
+		dataMountPoint: container.MountPoint{
+			Type:        "bind",
+			Source:      tmpDir,
+			Destination: tmpDir,
+			Mode:        "rw",
+		},
+		log: log,
 	}
 
 	req, err := http.NewRequest("POST", webhookPath, bytes.NewReader(payload))

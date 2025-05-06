@@ -29,7 +29,6 @@ const (
 	projectName      = "compose-webhook"
 	mainBranch       = "refs/heads/main"
 	invalidBranch    = "refs/heads/invalid"
-	testDir          = "/tmp/doco-cd-tests"
 )
 
 func TestHandleEvent(t *testing.T) {
@@ -52,7 +51,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusCreated,
-			expectedResponseBody: `{"details":"deployment successful","job_id":"%s"}`,
+			expectedResponseBody: `{"details":"deployment successful","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "",
 		},
@@ -67,7 +66,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusCreated,
-			expectedResponseBody: `{"details":"deployment successful","job_id":"%s"}`,
+			expectedResponseBody: `{"details":"deployment successful","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "test",
 		},
@@ -82,7 +81,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"failed to clone repository","details":"couldn't find remote ref \"` + invalidBranch + `\"","job_id":"%s"}`,
+			expectedResponseBody: `{"error":"failed to clone repository","details":"couldn't find remote ref \"` + invalidBranch + `\"","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "",
 		},
@@ -97,7 +96,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   true,
 			},
 			expectedStatusCode:   http.StatusCreated,
-			expectedResponseBody: `{"details":"deployment successful","job_id":"%s"}`,
+			expectedResponseBody: `{"details":"deployment successful","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "",
 		},
@@ -112,7 +111,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   true,
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"missing access token for private repository","job_id":"%s"}`,
+			expectedResponseBody: `{"error":"missing access token for private repository","job_id":"%[1]s"}`,
 			overrideEnv: map[string]string{
 				"GIT_ACCESS_TOKEN": "",
 			},
@@ -129,7 +128,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"no compose files found: stat ` + filepath.Join(testDir, "kimdre/kimdre/docker-compose.yaml") + `: no such file or directory","details":"deployment failed","job_id":"%[1]s"}`,
+			expectedResponseBody: `{"error":"no compose files found: stat %[2]s: no such file or directory","details":"deployment failed","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "",
 		},
@@ -137,13 +136,7 @@ func TestHandleEvent(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Cleanup test directory
-			t.Cleanup(func() {
-				err := os.RemoveAll(testDir)
-				if err != nil {
-					t.Fatalf("Failed to remove test directory: %v", err)
-				}
-			})
+			tmpDir := t.TempDir()
 
 			if tc.overrideEnv != nil {
 				for k, v := range tc.overrideEnv {
@@ -192,8 +185,8 @@ func TestHandleEvent(t *testing.T) {
 
 			testMountPoint := container.MountPoint{
 				Type:        "bind",
-				Source:      testDir,
-				Destination: testDir,
+				Source:      tmpDir,
+				Destination: tmpDir,
 				Mode:        "rw",
 			}
 
@@ -215,7 +208,7 @@ func TestHandleEvent(t *testing.T) {
 					status, tc.expectedStatusCode)
 			}
 
-			expectedReturnMessage := fmt.Sprintf(tc.expectedResponseBody, jobID) + "\n"
+			expectedReturnMessage := fmt.Sprintf(tc.expectedResponseBody, jobID, filepath.Join(tmpDir, "kimdre/kimdre/docker-compose.yaml")) + "\n"
 			if rr.Body.String() != expectedReturnMessage {
 				t.Errorf("handler returned unexpected body: got '%v' want '%v'",
 					rr.Body.String(), expectedReturnMessage)

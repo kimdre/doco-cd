@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing"
 
-	"github.com/google/uuid"
 	"github.com/kimdre/doco-cd/internal/config"
 )
 
@@ -17,7 +16,6 @@ const (
 	invalidRef       = "refs/heads/invalid"
 	validCommitSHA   = "903b270da7505fe8b13b42d3b191b08fb9ca3247"
 	invalidCommitSHA = "1111111111111111111111111111111111111111"
-	testDir          = "/tmp/doco-cd-tests/"
 )
 
 func TestGetAuthUrl(t *testing.T) {
@@ -40,7 +38,7 @@ func TestGetAuthUrl(t *testing.T) {
 }
 
 func TestCloneRepository(t *testing.T) {
-	repo, err := CloneRepository(testDir+uuid.New().String(), cloneUrl, validRef, false)
+	repo, err := CloneRepository(t.TempDir(), cloneUrl, validRef, false)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -79,7 +77,7 @@ func TestCloneRepository(t *testing.T) {
 
 // TestCheckoutRepository tests the CheckoutRepository function on an already cloned repository
 func TestCheckoutRepository(t *testing.T) {
-	repo, err := CloneRepository(testDir+uuid.New().String(), cloneUrl, validRef, false)
+	repo, err := CloneRepository(t.TempDir(), cloneUrl, validRef, false)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -93,13 +91,6 @@ func TestCheckoutRepository(t *testing.T) {
 		t.Fatalf("Failed to get worktree: %v", err)
 	}
 
-	t.Cleanup(func() {
-		err = os.RemoveAll(worktree.Filesystem.Root())
-		if err != nil {
-			t.Fatalf("Failed to remove repository: %v", err)
-		}
-	})
-
 	repo, err = CheckoutRepository(worktree.Filesystem.Root(), validRef, validCommitSHA, true)
 	if err != nil {
 		t.Fatalf("Failed to checkout repository: %v", err)
@@ -107,12 +98,6 @@ func TestCheckoutRepository(t *testing.T) {
 
 	if repo == nil {
 		t.Fatal("Repository is nil")
-	}
-
-	// Check if the commit exists
-	_, err = repo.CommitObject(plumbing.NewHash(validCommitSHA))
-	if err != nil {
-		t.Fatalf("Failed to get commit object: %v", err)
 	}
 
 	// Check if the commit is checked out
@@ -123,5 +108,15 @@ func TestCheckoutRepository(t *testing.T) {
 
 	if worktree.Filesystem.Root() == "" {
 		t.Fatal("Repository is not checked out")
+	}
+
+	// Check if the commit is checked out
+	commit, err := repo.CommitObject(plumbing.NewHash(validCommitSHA))
+	if err != nil {
+		t.Fatalf("Failed to get commit object: %v", err)
+	}
+
+	if commit.Hash.String() != validCommitSHA {
+		t.Fatalf("Expected commit %s, got %s", validCommitSHA, commit.Hash.String())
 	}
 }
