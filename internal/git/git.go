@@ -21,10 +21,10 @@ func CheckoutRepository(path, ref, commitSHA string, skipTLSVerify bool) (*git.R
 	}
 
 	// Fetch latest commits
-	refspec := config.RefSpec(fmt.Sprintf("%v:%v", plumbing.NewHash(commitSHA), ref))
+	refSpec := config.RefSpec(fmt.Sprintf("%v:%v", plumbing.NewHash(commitSHA), ref))
 
 	err = repo.Fetch(&git.FetchOptions{
-		RefSpecs:        []config.RefSpec{refspec},
+		RefSpecs:        []config.RefSpec{refSpec},
 		Depth:           1,
 		Force:           true,
 		InsecureSkipTLS: skipTLSVerify,
@@ -44,8 +44,8 @@ func CheckoutRepository(path, ref, commitSHA string, skipTLSVerify bool) (*git.R
 		return nil, err
 	}
 
-	// Validate if the reference exists
 	if ref != "" {
+		// Checkout the branch if ref is provided
 		err = worktree.Checkout(&git.CheckoutOptions{
 			Branch: plumbing.ReferenceName(ref),
 			Force:  true,
@@ -55,6 +55,7 @@ func CheckoutRepository(path, ref, commitSHA string, skipTLSVerify bool) (*git.R
 		}
 	}
 
+	// Checkout the specific commit
 	err = worktree.Checkout(&git.CheckoutOptions{
 		Hash:  plumbing.NewHash(commitSHA),
 		Force: true,
