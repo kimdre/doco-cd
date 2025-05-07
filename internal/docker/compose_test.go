@@ -11,6 +11,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/docker/docker/client"
+
 	"github.com/kimdre/doco-cd/internal/git"
 
 	"github.com/kimdre/doco-cd/internal/webhook"
@@ -106,7 +108,7 @@ func TestDeployCompose(t *testing.T) {
 
 	p := webhook.ParsedPayload{
 		Ref:       "main",
-		CommitSHA: "47a1d528f11c4635eaba155c1e6899c6a1af3679",
+		CommitSHA: "4d877107dfa2e3b582bd8f8f803befbd3a1d867e",
 		Name:      "test",
 		FullName:  "kimdre/test",
 		CloneURL:  fmt.Sprintf("https://kimdre:%s@github.com/kimdre/test.git", c.GitAccessToken),
@@ -154,6 +156,11 @@ func TestDeployCompose(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	dockerClient, _ := client.NewClientWithOpts(
+		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
+	)
+
 	fileName := ".doco-cd.yaml"
 	reference := "refs/heads/main"
 	workingDirectory := "/test"
@@ -191,9 +198,22 @@ compose_files:
 			t.Fatal(err)
 		}
 
+		containers, err := GetLabeledContainers(ctx, dockerClient, DocoCDLabels.Deployment.Manager, "doco-cd")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(containers) == 0 {
+			t.Fatal("expected at least one labeled container, got none")
+		}
+
 		containerID, err := GetContainerID(dockerCli.Client(), deployConf.Name)
 		if err != nil {
 			t.Fatal(err)
+		}
+
+		if containerID == "" {
+			t.Fatal("expected container ID, got empty string")
 		}
 
 		wg.Add(1)
@@ -215,7 +235,25 @@ compose_files:
 
 		t.Log("Finished deployment with no errors")
 
-		output, err := Exec(dockerCli.Client(), "test-test-1", "cat", "usr/share/nginx/html/index.html")
+		mountPoint, err := GetMountPointByDestination(dockerClient, containerID, "/usr/share/nginx/html")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if mountPoint.Source != filepath.Join(repoPath, "html") {
+			t.Fatalf("failed to mount: source '%s' not equal to destination '%s'", mountPoint.Source, filepath.Join(repoPath, "html"))
+		}
+
+		t.Logf("Mount point source: %s, destination: %s", mountPoint.Source, mountPoint.Destination)
+
+		err = CheckMountPointWriteable(mountPoint)
+		if err != nil {
+			t.Fatalf("failed to check if mount point is writable: %s", err)
+		}
+
+		t.Log("Mount point is writable")
+
+		output, err := Exec(dockerCli.Client(), containerID, "cat", "usr/share/nginx/html/index.html")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -223,11 +261,7 @@ compose_files:
 		if strings.TrimSpace(output) != "Hello world!" {
 			t.Fatalf("failed to mount: content of 'html/index.html' not equal to content of 'usr/share/nginx/html/index.html': %s", output)
 		}
-
-		t.Log("after running cat command")
 	}
-
-	t.Log("before running compose down")
 
 	service := compose.NewComposeService(dockerCli)
 
