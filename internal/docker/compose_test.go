@@ -198,7 +198,7 @@ compose_files:
 			t.Fatal(err)
 		}
 
-		containers, err := GetLabeledContainers(ctx, dockerClient, DocoCDLabels.Deployment.Manager, "doco-cd")
+		containers, err := GetLabeledContainers(ctx, dockerClient, DocoCDLabels.Metadata.Manager, "doco-cd")
 		if err != nil {
 			t.Fatal(err)
 		}

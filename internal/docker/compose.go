@@ -150,10 +150,11 @@ addServiceLabels adds the labels docker compose expects to exist on services.
 This is required for future compose operations to work, such as finding
 containers that are part of a service.
 */
-func addServiceLabels(project *types.Project, payload webhook.ParsedPayload, repoDir string) {
+func addServiceLabels(project *types.Project, payload webhook.ParsedPayload, repoDir, appVersion string) {
 	for i, s := range project.Services {
 		s.CustomLabels = map[string]string{
-			DocoCDLabels.Deployment.Manager:    "doco-cd",
+			DocoCDLabels.Metadata.Manager:      "doco-cd",
+			DocoCDLabels.Metadata.Version:      appVersion,
 			DocoCDLabels.Deployment.Timestamp:  time.Now().UTC().Format(time.RFC3339),
 			DocoCDLabels.Deployment.WorkingDir: repoDir,
 			DocoCDLabels.Deployment.CommitSHA:  payload.CommitSHA,
@@ -168,6 +169,24 @@ func addServiceLabels(project *types.Project, payload webhook.ParsedPayload, rep
 			api.OneoffLabel:                    "False", // default, will be overridden by `run` command
 		}
 		project.Services[i] = s
+	}
+}
+
+func addVolumeLabels(project *types.Project, payload webhook.ParsedPayload, appVersion string) {
+	for i, v := range project.Volumes {
+		v.CustomLabels = map[string]string{
+			DocoCDLabels.Metadata.Manager:     "doco-cd",
+			DocoCDLabels.Metadata.Version:     appVersion,
+			DocoCDLabels.Deployment.Timestamp: time.Now().UTC().Format(time.RFC3339),
+			DocoCDLabels.Deployment.CommitSHA: payload.CommitSHA,
+			DocoCDLabels.Deployment.CommitRef: payload.Ref,
+			DocoCDLabels.Repository.Name:      payload.FullName,
+			DocoCDLabels.Repository.URL:       payload.WebURL,
+			api.ProjectLabel:                  project.Name,
+			api.VolumeLabel:                   v.Name,
+			api.VersionLabel:                  api.ComposeVersion,
+		}
+		project.Volumes[i] = v
 	}
 }
 
@@ -193,10 +212,11 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 }
 
 // DeployCompose deploys a project as specified by the Docker Compose specification (LoadCompose)
-func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project, deployConfig *config.DeployConfig, payload webhook.ParsedPayload, repoDir string) error {
+func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project, deployConfig *config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion string) error {
 	service := compose.NewComposeService(dockerCli)
 
-	addServiceLabels(project, payload, repoDir)
+	addServiceLabels(project, payload, repoDir, appVersion)
+	addVolumeLabels(project, payload, appVersion)
 
 	if deployConfig.ForceImagePull {
 		err := service.Pull(ctx, project, api.PullOptions{

@@ -132,7 +132,7 @@ func main() {
 
 	log.Debug("retrieving containers that are managed by doco-cd")
 
-	containers, err := docker.GetLabeledContainers(context.TODO(), dockerClient, docker.DocoCDLabels.Deployment.Manager, "doco-cd")
+	containers, err := docker.GetLabeledContainers(context.TODO(), dockerClient, docker.DocoCDLabels.Metadata.Manager, "doco-cd")
 	if err != nil {
 		log.Error("failed to retrieve doco-cd containers", logger.ErrAttr(err))
 	}

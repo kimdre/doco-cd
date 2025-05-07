@@ -283,7 +283,7 @@ func deployStack(
 
 	stackLog.Info("deploying stack")
 
-	err = docker.DeployCompose(*ctx, *dockerCli, project, deployConfig, *p, externalWorkingDir)
+	err = docker.DeployCompose(*ctx, *dockerCli, project, deployConfig, *p, externalWorkingDir, Version)
 	if err != nil {
 		errMsg = "failed to deploy stack"
 		stackLog.Error(errMsg,
