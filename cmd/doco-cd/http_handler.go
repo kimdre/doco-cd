@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 
 	"github.com/docker/docker/api/types/container"
@@ -66,6 +67,15 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	} else if appConfig.GitAccessToken != "" {
 		// Always use the access token for public repositories if it is set to avoid rate limiting
 		payload.CloneURL = git.GetAuthUrl(payload.CloneURL, appConfig.AuthType, appConfig.GitAccessToken)
+	}
+
+	// Validate payload.FullName to prevent directory traversal
+	if strings.Contains(payload.FullName, "..") {
+		errMsg = "invalid repository name"
+		jobLog.Error(errMsg, slog.String("repository", payload.FullName))
+		JSONError(w, errMsg, "", jobID, http.StatusBadRequest)
+
+		return
 	}
 
 	internalRepoPath := filepath.Join(dataMountPoint.Destination, payload.FullName) // Path inside the container
@@ -234,10 +244,37 @@ func deployStack(
 
 	stackLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
 
-	internalWorkingDir := path.Join(internalRepoPath, deployConfig.WorkingDirectory)
-	externalWorkingDir := path.Join(externalRepoPath, deployConfig.WorkingDirectory)
+	// Validate and sanitize the working directory
+	if strings.Contains(deployConfig.WorkingDirectory, "..") || path.IsAbs(deployConfig.WorkingDirectory) {
+		errMsg = "invalid working directory: potential path traversal detected"
+		jobLog.Error(errMsg, slog.String("working_directory", deployConfig.WorkingDirectory))
 
-	err := os.Chdir(internalWorkingDir)
+		return fmt.Errorf("%s: %w", errMsg, errors.New("validation error"))
+	}
+
+	// Path inside the container
+	internalWorkingDir := path.Join(internalRepoPath, deployConfig.WorkingDirectory)
+	internalWorkingDir, err := filepath.Abs(internalWorkingDir)
+
+	if err != nil || !strings.HasPrefix(internalWorkingDir, internalRepoPath) {
+		errMsg = "invalid working directory: resolved path is outside the allowed base directory"
+		jobLog.Error(errMsg, slog.String("resolved_path", internalWorkingDir))
+
+		return fmt.Errorf("%s", errMsg)
+	}
+
+	// Path on the host
+	externalWorkingDir := path.Join(externalRepoPath, deployConfig.WorkingDirectory)
+	externalWorkingDir, err = filepath.Abs(externalWorkingDir)
+
+	if err != nil || !strings.HasPrefix(externalWorkingDir, externalRepoPath) {
+		errMsg = "invalid working directory: resolved path is outside the allowed base directory"
+		jobLog.Error(errMsg, slog.String("resolved_path", externalWorkingDir))
+
+		return fmt.Errorf("%s", errMsg)
+	}
+
+	err = os.Chdir(internalWorkingDir)
 	if err != nil {
 		errMsg = "failed to change internal working directory"
 		jobLog.Error(errMsg, logger.ErrAttr(err), slog.String("path", internalWorkingDir))
