@@ -48,7 +48,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	// TODO: Check edge case: public repo - empty access token
 	if p.Private {
-		jobLog.Debug("repository is private")
+		jobLog.Debug("authenticating to private repository")
 
 		if c.GitAccessToken == "" {
 			errMsg = "missing access token for private repository"
