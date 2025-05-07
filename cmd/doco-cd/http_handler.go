@@ -32,7 +32,7 @@ type handlerData struct {
 }
 
 // HandleEvent handles the incoming webhook event
-func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, c *config.AppConfig, appData container.MountPoint, p webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli, wg *sync.WaitGroup) {
+func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, c *config.AppConfig, dataMountPoint container.MountPoint, p webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli, wg *sync.WaitGroup) {
 	jobLog = jobLog.With(slog.String("repository", p.FullName))
 
 	if customTarget != "" {
@@ -68,7 +68,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		p.CloneURL = git.GetAuthUrl(p.CloneURL, c.AuthType, c.GitAccessToken)
 	}
 
-	repoPath := filepath.Join(appData.Source, p.FullName)
+	repoPath := filepath.Join(dataMountPoint.Destination, p.FullName)
 
 	// Try to clone the repository
 	repo, err := git.CloneRepository(repoPath, p.CloneURL, p.Ref, c.SkipTLSVerification)
