@@ -1,7 +1,7 @@
 {
   "ref": "refs/heads/main",
-  "before": "66f3cc0e85c6c1c33f3dc3dfaead2c1ff0694dc9",
-  "after": "ca9ff070a66c751a4fcc2ebc2c8cedac7185babc",
+  "before": "ea83e49e436fe8712548c52046bda4a7f87e85cc",
+  "after": "ebe8be9f3dd800674d7a197a2d55b63d44d82d75",
   "repository": {
     "id": 830615327,
     "node_id": "R_kgDOMYIvHw",
@@ -28,12 +28,13 @@
       "events_url": "https://api.github.com/users/kimdre/events{/privacy}",
       "received_events_url": "https://api.github.com/users/kimdre/received_events",
       "type": "User",
+      "user_view_type": "public",
       "site_admin": false
     },
     "html_url": "https://github.com/kimdre/doco-cd",
     "description": "Docker Compose Continuous Deployment",
     "fork": false,
-    "url": "https://github.com/kimdre/doco-cd",
+    "url": "https://api.github.com/repos/kimdre/doco-cd",
     "forks_url": "https://api.github.com/repos/kimdre/doco-cd/forks",
     "keys_url": "https://api.github.com/repos/kimdre/doco-cd/keys{/key_id}",
     "collaborators_url": "https://api.github.com/repos/kimdre/doco-cd/collaborators{/collaborator}",
@@ -71,16 +72,16 @@
     "releases_url": "https://api.github.com/repos/kimdre/doco-cd/releases{/id}",
     "deployments_url": "https://api.github.com/repos/kimdre/doco-cd/deployments",
     "created_at": 1721318604,
-    "updated_at": "2024-08-05T17:13:58Z",
-    "pushed_at": 1722883994,
+    "updated_at": "2025-05-07T06:28:46Z",
+    "pushed_at": 1746601259,
     "git_url": "git://github.com/kimdre/doco-cd.git",
     "ssh_url": "git@github.com:kimdre/doco-cd.git",
     "clone_url": "https://github.com/kimdre/doco-cd.git",
     "svn_url": "https://github.com/kimdre/doco-cd",
     "homepage": "https://github.com/kimdre/doco-cd/wiki",
-    "size": 197,
-    "stargazers_count": 0,
-    "watchers_count": 0,
+    "size": 756,
+    "stargazers_count": 77,
+    "watchers_count": 77,
     "language": "Go",
     "has_issues": true,
     "has_projects": false,
@@ -92,7 +93,7 @@
     "mirror_url": null,
     "archived": false,
     "disabled": false,
-    "open_issues_count": 1,
+    "open_issues_count": 7,
     "license": {
       "key": "apache-2.0",
       "name": "Apache License 2.0",
@@ -118,10 +119,10 @@
     ],
     "visibility": "public",
     "forks": 0,
-    "open_issues": 1,
-    "watchers": 0,
+    "open_issues": 7,
+    "watchers": 77,
     "default_branch": "main",
-    "stargazers": 0,
+    "stargazers": 77,
     "master_branch": "main"
   },
   "pusher": {
@@ -146,21 +147,22 @@
     "events_url": "https://api.github.com/users/kimdre/events{/privacy}",
     "received_events_url": "https://api.github.com/users/kimdre/received_events",
     "type": "User",
+    "user_view_type": "public",
     "site_admin": false
   },
   "created": false,
   "deleted": false,
   "forced": false,
   "base_ref": null,
-  "compare": "https://github.com/kimdre/doco-cd/compare/66f3cc0e85c6...ca9ff070a66c",
+  "compare": "https://github.com/kimdre/doco-cd/compare/ea83e49e436f...ebe8be9f3dd8",
   "commits": [
     {
-      "id": "ca9ff070a66c751a4fcc2ebc2c8cedac7185babc",
-      "tree_id": "db5b3ae9e7a02fe1db1d09f28ef187d59141ed4f",
+      "id": "ebe8be9f3dd800674d7a197a2d55b63d44d82d75",
+      "tree_id": "70de13f04d3e659e9ee45ce65bc72b3c8a9d0a71",
       "distinct": true,
-      "message": "feat: add deployment meta as docker labels to container (#68)\n\n* feat: add deployment meta as docker labels to container",
-      "timestamp": "2024-08-05T20:53:14+02:00",
-      "url": "https://github.com/kimdre/doco-cd/commit/ca9ff070a66c751a4fcc2ebc2c8cedac7185babc",
+      "message": "test: adjust test.compose.yaml",
+      "timestamp": "2025-05-07T09:00:59+02:00",
+      "url": "https://github.com/kimdre/doco-cd/commit/ebe8be9f3dd800674d7a197a2d55b63d44d82d75",
       "author": {
         "name": "Kim Oliver Drechsel",
         "email": "redacted",
@@ -178,26 +180,17 @@
 
       ],
       "modified": [
-        ".github/workflows/test.yaml",
-        "cmd/doco-cd/main.go",
-        "internal/config/app_config.go",
-        "internal/config/app_config_test.go",
-        "internal/config/deploy_config.go",
-        "internal/docker/compose.go",
-        "internal/docker/compose_test.go",
-        "internal/git/git_test.go",
-        "internal/logger/logger_test.go",
-        "internal/webhook/payload.go"
+        "test/test.compose.yaml"
       ]
     }
   ],
   "head_commit": {
-    "id": "ca9ff070a66c751a4fcc2ebc2c8cedac7185babc",
-    "tree_id": "db5b3ae9e7a02fe1db1d09f28ef187d59141ed4f",
+    "id": "ebe8be9f3dd800674d7a197a2d55b63d44d82d75",
+    "tree_id": "70de13f04d3e659e9ee45ce65bc72b3c8a9d0a71",
     "distinct": true,
-    "message": "feat: add deployment meta as docker labels to container (#68)\n\n* feat: add deployment meta as docker labels to container",
-    "timestamp": "2024-08-05T20:53:14+02:00",
-    "url": "https://github.com/kimdre/doco-cd/commit/ca9ff070a66c751a4fcc2ebc2c8cedac7185babc",
+    "message": "test: adjust test.compose.yaml",
+    "timestamp": "2025-05-07T09:00:59+02:00",
+    "url": "https://github.com/kimdre/doco-cd/commit/ebe8be9f3dd800674d7a197a2d55b63d44d82d75",
     "author": {
       "name": "Kim Oliver Drechsel",
       "email": "redacted",
@@ -215,16 +208,7 @@
 
     ],
     "modified": [
-      ".github/workflows/test.yaml",
-      "cmd/doco-cd/main.go",
-      "internal/config/app_config.go",
-      "internal/config/app_config_test.go",
-      "internal/config/deploy_config.go",
-      "internal/docker/compose.go",
-      "internal/docker/compose_test.go",
-      "internal/git/git_test.go",
-      "internal/logger/logger_test.go",
-      "internal/webhook/payload.go"
+      "test/test.compose.yaml"
     ]
   }
 }
