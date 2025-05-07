@@ -1,0 +1,22 @@
+services:
+  app:
+    container_name: doco-cd
+    # You can also pin to a specific tag (version)
+    # Available tags can be found here: https://github.com/kimdre/doco-cd/pkgs/container/doco-cd
+    image: ghcr.io/kimdre/doco-cd:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    # For all available environment variables and explanations, see https://github.com/kimdre/doco-cd/wiki/App-Settings
+    environment:
+      TZ: Europe/Berlin
+      GIT_ACCESS_TOKEN: xxx
+      WEBHOOK_SECRET: xxx
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # The data volume (left side) can also be replaced with a bind mount to a local directory, for example:
+      # - ./data:/data
+      - data:/data
+
+volumes:
+  data:
