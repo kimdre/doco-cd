@@ -2,7 +2,16 @@ BINARY_DIR=bin
 BINARY_NAME=doco-cd
 .PHONY: test build run lint fmt update update-all submodule-commit generate-coverage
 
+ifneq (,$(wildcard ./.env))
+    include .env
+    export
+endif
+
 test:
+	@echo "Running tests..."
+	@WEBHOOK_SECRET="test_Secret1" go test -cover -p 1 ./... -timeout 5m
+
+test-verbose:
 	@echo "Running tests..."
 	@WEBHOOK_SECRET="test_Secret1" go test -v -cover -p 1 ./... -timeout 5m
 

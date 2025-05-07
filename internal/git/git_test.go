@@ -5,8 +5,17 @@ import (
 	"os"
 	"testing"
 
-	"github.com/google/uuid"
+	"github.com/go-git/go-git/v5/plumbing"
+
 	"github.com/kimdre/doco-cd/internal/config"
+)
+
+const (
+	cloneUrl         = "https://github.com/kimdre/doco-cd.git"
+	validRef         = "refs/heads/main"
+	invalidRef       = "refs/heads/invalid"
+	validCommitSHA   = "903b270da7505fe8b13b42d3b191b08fb9ca3247"
+	invalidCommitSHA = "1111111111111111111111111111111111111111"
 )
 
 func TestGetAuthUrl(t *testing.T) {
@@ -29,10 +38,7 @@ func TestGetAuthUrl(t *testing.T) {
 }
 
 func TestCloneRepository(t *testing.T) {
-	cloneUrl := "https://github.com/kimdre/doco-cd.git"
-	ref := "refs/heads/main"
-
-	repo, err := CloneRepository(uuid.New().String(), cloneUrl, ref, true)
+	repo, err := CloneRepository(t.TempDir(), cloneUrl, validRef, false)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -66,5 +72,51 @@ func TestCloneRepository(t *testing.T) {
 	// Check if the repository is cloned
 	if worktree.Filesystem.Root() == "" {
 		t.Fatal("Repository is not cloned")
+	}
+}
+
+// TestCheckoutRepository tests the CheckoutRepository function on an already cloned repository
+func TestCheckoutRepository(t *testing.T) {
+	repo, err := CloneRepository(t.TempDir(), cloneUrl, validRef, false)
+	if err != nil {
+		t.Fatalf("Failed to clone repository: %v", err)
+	}
+
+	if repo == nil {
+		t.Fatal("Repository is nil")
+	}
+
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("Failed to get worktree: %v", err)
+	}
+
+	repo, err = CheckoutRepository(worktree.Filesystem.Root(), validRef, validCommitSHA, true)
+	if err != nil {
+		t.Fatalf("Failed to checkout repository: %v", err)
+	}
+
+	if repo == nil {
+		t.Fatal("Repository is nil")
+	}
+
+	// Check if the commit is checked out
+	worktree, err = repo.Worktree()
+	if err != nil {
+		t.Fatalf("Failed to get worktree: %v", err)
+	}
+
+	if worktree.Filesystem.Root() == "" {
+		t.Fatal("Repository is not checked out")
+	}
+
+	// Check if the commit is checked out
+	commit, err := repo.CommitObject(plumbing.NewHash(validCommitSHA))
+	if err != nil {
+		t.Fatalf("Failed to get commit object: %v", err)
+	}
+
+	if commit.Hash.String() != validCommitSHA {
+		t.Fatalf("Expected commit %s, got %s", validCommitSHA, commit.Hash.String())
 	}
 }

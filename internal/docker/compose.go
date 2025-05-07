@@ -10,27 +10,25 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/kimdre/doco-cd/internal/webhook"
 
 	"github.com/kimdre/doco-cd/internal/config"
 
+	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/flags"
 
 	"github.com/compose-spec/compose-go/v2/cli"
-	"github.com/compose-spec/compose-go/v2/types"
+
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
 )
 
 const (
 	socketPath = "/var/run/docker.sock"
-	baseLabel  = "doco"
 )
 
 var (
@@ -46,15 +44,6 @@ func ConnectToSocket() (net.Conn, error) {
 	}
 
 	return c, nil
-}
-
-func GetSocketGroupOwner() (string, error) {
-	fi, err := os.Stat(socketPath)
-	if err != nil {
-		return "", err
-	}
-
-	return strconv.Itoa(int(fi.Sys().(*syscall.Stat_t).Gid)), nil
 }
 
 func NewHttpClient() *http.Client {
@@ -99,21 +88,12 @@ func VerifySocketRead(httpClient *http.Client) error {
 // VerifySocketConnection verifies whether the application can connect to the docker socket
 func VerifySocketConnection() error {
 	// Check if the docker socket file exists
-	if _, err := os.Stat("/var/run/docker.sock"); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(socketPath); errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 
 	c, err := ConnectToSocket()
-
-	// If ErrPermissionDenied is returned, return the required permissions
-	if errors.Is(err, os.ErrPermission) {
-		gid, err := GetSocketGroupOwner()
-		if err != nil {
-			return err
-		}
-
-		return fmt.Errorf("%v: current user needs group id %v", os.ErrPermission, gid)
-	} else if err != nil {
+	if err != nil {
 		return err
 	}
 
@@ -170,22 +150,41 @@ addServiceLabels adds the labels docker compose expects to exist on services.
 This is required for future compose operations to work, such as finding
 containers that are part of a service.
 */
-func addServiceLabels(project *types.Project, payload webhook.ParsedPayload) {
+func addServiceLabels(project *types.Project, payload webhook.ParsedPayload, repoDir, appVersion, timestamp string) {
 	for i, s := range project.Services {
 		s.CustomLabels = map[string]string{
-			"cd.doco.deployedAt":           time.Now().UTC().Format(time.RFC3339),
-			"cd.doco.repository.name":      payload.FullName,
-			"cd.doco.repository.private":   strconv.FormatBool(payload.Private),
-			"cd.doco.repository.reference": payload.Ref,
-			"cd.doco.repository.commit":    payload.CommitSHA,
-			api.ProjectLabel:               project.Name,
-			api.ServiceLabel:               s.Name,
-			api.VersionLabel:               api.ComposeVersion,
-			api.WorkingDirLabel:            project.WorkingDir,
-			api.ConfigFilesLabel:           strings.Join(project.ComposeFiles, ","),
-			api.OneoffLabel:                "False", // default, will be overridden by `run` command
+			DocoCDLabels.Metadata.Manager:      "doco-cd",
+			DocoCDLabels.Metadata.Version:      appVersion,
+			DocoCDLabels.Deployment.Timestamp:  timestamp,
+			DocoCDLabels.Deployment.WorkingDir: repoDir,
+			DocoCDLabels.Deployment.CommitSHA:  payload.CommitSHA,
+			DocoCDLabels.Deployment.CommitRef:  payload.Ref,
+			DocoCDLabels.Repository.Name:       payload.FullName,
+			DocoCDLabels.Repository.URL:        payload.WebURL,
+			api.ProjectLabel:                   project.Name,
+			api.ServiceLabel:                   s.Name,
+			api.WorkingDirLabel:                project.WorkingDir,
+			api.ConfigFilesLabel:               strings.Join(project.ComposeFiles, ","),
+			api.OneoffLabel:                    "False", // default, will be overridden by `run` command
 		}
 		project.Services[i] = s
+	}
+}
+
+func addVolumeLabels(project *types.Project, payload webhook.ParsedPayload, appVersion, timestamp string) {
+	for i, v := range project.Volumes {
+		v.CustomLabels = map[string]string{
+			DocoCDLabels.Metadata.Manager:     "doco-cd",
+			DocoCDLabels.Metadata.Version:     appVersion,
+			DocoCDLabels.Deployment.Timestamp: timestamp,
+			DocoCDLabels.Deployment.CommitSHA: payload.CommitSHA,
+			DocoCDLabels.Deployment.CommitRef: payload.Ref,
+			DocoCDLabels.Repository.Name:      payload.FullName,
+			DocoCDLabels.Repository.URL:       payload.WebURL,
+			api.ProjectLabel:                  project.Name,
+			api.VolumeLabel:                   v.Name,
+		}
+		project.Volumes[i] = v
 	}
 }
 
@@ -211,10 +210,13 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 }
 
 // DeployCompose deploys a project as specified by the Docker Compose specification (LoadCompose)
-func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project, deployConfig *config.DeployConfig, payload webhook.ParsedPayload) error {
+func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project, deployConfig *config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion string) error {
 	service := compose.NewComposeService(dockerCli)
 
-	addServiceLabels(project, payload)
+	timestamp := time.Now().UTC().Format(time.RFC3339)
+
+	addServiceLabels(project, payload, repoDir, appVersion, timestamp)
+	addVolumeLabels(project, payload, appVersion, timestamp)
 
 	if deployConfig.ForceImagePull {
 		err := service.Pull(ctx, project, api.PullOptions{

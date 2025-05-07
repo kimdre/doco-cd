@@ -8,7 +8,12 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"reflect"
+	"strings"
+	"sync"
+
+	"github.com/docker/docker/api/types/container"
 
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/docker/cli/cli/command"
@@ -21,14 +26,15 @@ import (
 )
 
 type handlerData struct {
-	dockerCli command.Cli
-	appConfig *config.AppConfig
-	log       *logger.Logger
+	appConfig      *config.AppConfig    // Application configuration
+	dataMountPoint container.MountPoint // Mount point for the data directory
+	dockerCli      command.Cli          // Docker CLI client
+	log            *logger.Logger       // Logger for logging messages
 }
 
 // HandleEvent handles the incoming webhook event
-func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, c *config.AppConfig, p webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli) {
-	jobLog = jobLog.With(slog.String("repository", p.FullName))
+func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *config.AppConfig, dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli, wg *sync.WaitGroup) {
+	jobLog = jobLog.With(slog.String("repository", payload.FullName))
 
 	if customTarget != "" {
 		jobLog = jobLog.With(slog.String("custom_target", customTarget))
@@ -38,13 +44,14 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	// Clone the repository
 	jobLog.Debug(
-		"cloning repository to temporary directory",
-		slog.String("url", p.CloneURL))
+		"get repository",
+		slog.String("url", payload.CloneURL))
 
-	if p.Private {
-		jobLog.Debug("repository is private")
+	// TODO: Check edge case: public repo - empty access token
+	if payload.Private {
+		jobLog.Debug("authenticating to private repository")
 
-		if c.GitAccessToken == "" {
+		if appConfig.GitAccessToken == "" {
 			errMsg = "missing access token for private repository"
 			jobLog.Error(errMsg)
 			JSONError(w,
@@ -56,64 +63,62 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			return
 		}
 
-		p.CloneURL = git.GetAuthUrl(p.CloneURL, c.AuthType, c.GitAccessToken)
-	} else if c.GitAccessToken != "" {
+		payload.CloneURL = git.GetAuthUrl(payload.CloneURL, appConfig.AuthType, appConfig.GitAccessToken)
+	} else if appConfig.GitAccessToken != "" {
 		// Always use the access token for public repositories if it is set to avoid rate limiting
-		p.CloneURL = git.GetAuthUrl(p.CloneURL, c.AuthType, c.GitAccessToken)
+		payload.CloneURL = git.GetAuthUrl(payload.CloneURL, appConfig.AuthType, appConfig.GitAccessToken)
 	}
 
-	repo, err := git.CloneRepository(p.FullName, p.CloneURL, p.Ref, c.SkipTLSVerification)
-	if err != nil {
-		errMsg = "failed to clone repository"
-		jobLog.Error(errMsg, logger.ErrAttr(err))
-		JSONError(w,
-			errMsg,
-			err.Error(),
-			jobID,
-			http.StatusInternalServerError)
+	// Validate payload.FullName to prevent directory traversal
+	if strings.Contains(payload.FullName, "..") {
+		errMsg = "invalid repository name"
+		jobLog.Error(errMsg, slog.String("repository", payload.FullName))
+		JSONError(w, errMsg, "", jobID, http.StatusBadRequest)
 
 		return
 	}
 
-	// Get the worktree from the repository
-	worktree, err := repo.Worktree()
+	internalRepoPath := filepath.Join(dataMountPoint.Destination, payload.FullName) // Path inside the container
+	externalRepoPath := filepath.Join(dataMountPoint.Source, payload.FullName)      // Path on the host
+
+	// Try to clone the repository
+	_, err := git.CloneRepository(internalRepoPath, payload.CloneURL, payload.Ref, appConfig.SkipTLSVerification)
 	if err != nil {
-		errMsg = "failed to get worktree"
-		jobLog.Error(errMsg, logger.ErrAttr(err))
-		JSONError(w,
-			errMsg,
-			err.Error(),
-			jobID,
-			http.StatusInternalServerError)
+		// If the repository already exists, check it out to the specified commit SHA
+		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
+			jobLog.Debug("repository already exists, checking out commit "+payload.CommitSHA, slog.String("host_path", externalRepoPath))
 
-		return
-	}
+			_, err = git.CheckoutRepository(internalRepoPath, payload.Ref, payload.CommitSHA, appConfig.SkipTLSVerification)
+			if err != nil {
+				errMsg = "failed to checkout repository"
+				jobLog.Error(errMsg, logger.ErrAttr(err))
+				JSONError(w,
+					errMsg,
+					err.Error(),
+					jobID,
+					http.StatusInternalServerError)
 
-	fs := worktree.Filesystem
-	repoDir := fs.Root()
-
-	jobLog.Debug("repository cloned", slog.String("path", repoDir))
-
-	// Defer removal of the repository
-	defer func(workDir string) {
-		jobLog.Debug("cleaning up", slog.String("path", workDir))
-
-		err = os.RemoveAll(workDir)
-		if err != nil {
-			errMsg = "failed to remove temporary directory"
+				return
+			}
+		} else {
+			errMsg = "failed to clone repository"
 			jobLog.Error(errMsg, logger.ErrAttr(err))
 			JSONError(w,
 				errMsg,
 				err.Error(),
 				jobID,
 				http.StatusInternalServerError)
+
+			return
 		}
-	}(repoDir)
+	} else {
+		jobLog.Debug("repository cloned", slog.String("path", externalRepoPath))
+	}
 
 	jobLog.Debug("retrieving deployment configuration")
 
 	// Get the deployment configs from the repository
-	deployConfigs, err := config.GetDeployConfigs(repoDir, p.Name, customTarget)
+	deployConfigs, err := config.GetDeployConfigs(internalRepoPath, payload.Name, customTarget)
 	if err != nil {
 		if errors.Is(err, config.ErrDeprecatedConfig) {
 			jobLog.Warn(err.Error())
@@ -131,7 +136,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	for _, deployConfig := range deployConfigs {
-		err = deployStack(jobLog, repoDir, &ctx, &dockerCli, &p, deployConfig)
+		err = deployStack(jobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, &payload, deployConfig)
 		if err != nil {
 			msg := "deployment failed"
 			jobLog.Error(msg)
@@ -139,6 +144,29 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 			return
 		}
+		// RUN DOCKER HOOKS
+		// containerID, err := docker.GetContainerID(dockerCli.Client(), deployConfig.Name)
+		//
+		//	if err != nil {
+		//		jobLog.Error(err.Error())
+		//		JSONError(w, err, "failed to get container id", jobID, http.StatusInternalServerError)
+		//	}
+		//
+		// wg.Add(1)
+		//
+		//	go func() {
+		//		defer wg.Done()
+		//
+		//		docker.OnCrash(
+		//			dockerCli.Client(),
+		//			containerID,
+		//			func() {
+		//				jobLog.Info("cleaning up", slog.String("path", repoDir))
+		//				_ = os.RemoveAll(repoDir)
+		//			},
+		//			func(err error) { jobLog.Error("failed to clean up path: "+repoDir, logger.ErrAttr(err)) },
+		//		)
+		//	}()
 	}
 
 	msg := "deployment successful"
@@ -147,6 +175,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 }
 
 func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
+	var wg sync.WaitGroup
+
 	ctx := context.Background()
 
 	customTarget := r.PathValue("customTarget")
@@ -188,7 +218,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	HandleEvent(ctx, jobLog, w, h.appConfig, payload, customTarget, jobID, h.dockerCli)
+	HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, &wg)
 }
 
 func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request) {
@@ -205,7 +235,7 @@ func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request)
 }
 
 func deployStack(
-	jobLog *slog.Logger, repoDir string, ctx *context.Context,
+	jobLog *slog.Logger, internalRepoPath, externalRepoPath string, ctx *context.Context,
 	dockerCli *command.Cli, p *webhook.ParsedPayload, deployConfig *config.DeployConfig,
 ) error {
 	stackLog := jobLog.
@@ -214,12 +244,40 @@ func deployStack(
 
 	stackLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
 
-	workingDir := path.Join(repoDir, deployConfig.WorkingDirectory)
+	// Validate and sanitize the working directory
+	if strings.Contains(deployConfig.WorkingDirectory, "..") || path.IsAbs(deployConfig.WorkingDirectory) {
+		errMsg = "invalid working directory: potential path traversal detected"
+		jobLog.Error(errMsg, slog.String("working_directory", deployConfig.WorkingDirectory))
 
-	err := os.Chdir(workingDir)
+		return fmt.Errorf("%s: %w", errMsg, errors.New("validation error"))
+	}
+
+	// Path inside the container
+	internalWorkingDir := path.Join(internalRepoPath, deployConfig.WorkingDirectory)
+	internalWorkingDir, err := filepath.Abs(internalWorkingDir)
+
+	if err != nil || !strings.HasPrefix(internalWorkingDir, internalRepoPath) {
+		errMsg = "invalid working directory: resolved path is outside the allowed base directory"
+		jobLog.Error(errMsg, slog.String("resolved_path", internalWorkingDir))
+
+		return fmt.Errorf("%s", errMsg)
+	}
+
+	// Path on the host
+	externalWorkingDir := path.Join(externalRepoPath, deployConfig.WorkingDirectory)
+	externalWorkingDir, err = filepath.Abs(externalWorkingDir)
+
+	if err != nil || !strings.HasPrefix(externalWorkingDir, externalRepoPath) {
+		errMsg = "invalid working directory: resolved path is outside the allowed base directory"
+		jobLog.Error(errMsg, slog.String("resolved_path", externalWorkingDir))
+
+		return fmt.Errorf("%s", errMsg)
+	}
+
+	err = os.Chdir(internalWorkingDir)
 	if err != nil {
-		errMsg = "failed to change working directory"
-		jobLog.Error(errMsg, logger.ErrAttr(err), slog.String("path", workingDir))
+		errMsg = "failed to change internal working directory"
+		jobLog.Error(errMsg, logger.ErrAttr(err), slog.String("path", internalWorkingDir))
 
 		return fmt.Errorf("%s: %w", errMsg, err)
 	}
@@ -232,7 +290,7 @@ func deployStack(
 
 		// Check if the default compose files exist
 		for _, f := range deployConfig.ComposeFiles {
-			if _, err = os.Stat(path.Join(workingDir, f)); errors.Is(err, os.ErrNotExist) {
+			if _, err = os.Stat(path.Join(internalWorkingDir, f)); errors.Is(err, os.ErrNotExist) {
 				continue
 			}
 
@@ -250,7 +308,7 @@ func deployStack(
 		deployConfig.ComposeFiles = tmpComposeFiles
 	}
 
-	project, err := docker.LoadCompose(*ctx, workingDir, deployConfig.Name, deployConfig.ComposeFiles)
+	project, err := docker.LoadCompose(*ctx, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles)
 	if err != nil {
 		errMsg = "failed to load compose config"
 		stackLog.Error(errMsg,
@@ -262,7 +320,7 @@ func deployStack(
 
 	stackLog.Info("deploying stack")
 
-	err = docker.DeployCompose(*ctx, *dockerCli, project, deployConfig, *p)
+	err = docker.DeployCompose(*ctx, *dockerCli, project, deployConfig, *p, externalWorkingDir, Version)
 	if err != nil {
 		errMsg = "failed to deploy stack"
 		stackLog.Error(errMsg,

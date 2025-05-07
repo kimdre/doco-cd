@@ -8,7 +8,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+
+	"github.com/docker/docker/api/types/container"
 
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
@@ -20,11 +23,12 @@ import (
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
-var (
-	validCommitSHA = "26263c2b44133367927cd1423d8c8457b5befce5"
-	projectName    = "doco-cd"
-	mainBranch     = "refs/heads/main"
-	invalidBranch  = "refs/heads/invalid"
+const (
+	validCommitSHA   = "26263c2b44133367927cd1423d8c8457b5befce5"
+	invalidCommitSHA = "1111111111111111111111111111111111111111"
+	projectName      = "compose-webhook"
+	mainBranch       = "refs/heads/main"
+	invalidBranch    = "refs/heads/invalid"
 )
 
 func TestHandleEvent(t *testing.T) {
@@ -47,14 +51,14 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusCreated,
-			expectedResponseBody: `{"details":"deployment successful","job_id":"%s"}`,
+			expectedResponseBody: `{"details":"deployment successful","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "",
 		},
 		{
 			name: "Successful Deployment with custom Target",
 			payload: webhook.ParsedPayload{
-				Ref:       "refs/heads/main",
+				Ref:       mainBranch,
 				CommitSHA: "f291bfca73b06814293c1f9c9f3c7f95e4932564",
 				Name:      projectName,
 				FullName:  "kimdre/doco-cd",
@@ -62,12 +66,12 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusCreated,
-			expectedResponseBody: `{"details":"deployment successful","job_id":"%s"}`,
+			expectedResponseBody: `{"details":"deployment successful","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "test",
 		},
 		{
-			name: "Invalid Reference",
+			name: "Invalid Branch",
 			payload: webhook.ParsedPayload{
 				Ref:       invalidBranch,
 				CommitSHA: validCommitSHA,
@@ -77,7 +81,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"failed to clone repository","details":"couldn't find remote ref \"` + invalidBranch + `\"","job_id":"%s"}`,
+			expectedResponseBody: `{"error":"failed to clone repository","details":"couldn't find remote ref \"` + invalidBranch + `\"","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "",
 		},
@@ -92,7 +96,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   true,
 			},
 			expectedStatusCode:   http.StatusCreated,
-			expectedResponseBody: `{"details":"deployment successful","job_id":"%s"}`,
+			expectedResponseBody: `{"details":"deployment successful","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "",
 		},
@@ -107,7 +111,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   true,
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"missing access token for private repository","job_id":"%s"}`,
+			expectedResponseBody: `{"error":"missing access token for private repository","job_id":"%[1]s"}`,
 			overrideEnv: map[string]string{
 				"GIT_ACCESS_TOKEN": "",
 			},
@@ -124,7 +128,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"no compose files found: stat ` + filepath.Join(os.TempDir(), "kimdre/kimdre/docker-compose.yaml") + `: no such file or directory","details":"deployment failed","job_id":"%[1]s"}`,
+			expectedResponseBody: `{"error":"no compose files found: stat %[2]s: no such file or directory","details":"deployment failed","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "",
 		},
@@ -132,6 +136,8 @@ func TestHandleEvent(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+
 			if tc.overrideEnv != nil {
 				for k, v := range tc.overrideEnv {
 					err := os.Setenv(k, v)
@@ -141,7 +147,10 @@ func TestHandleEvent(t *testing.T) {
 				}
 			}
 
-			appConfig, _ := config.GetAppConfig()
+			appConfig, err := config.GetAppConfig()
+			if err != nil {
+				t.Fatalf("failed to get app config: %s", err.Error())
+			}
 
 			log := logger.New(12)
 			jobID := uuid.Must(uuid.NewRandom()).String()
@@ -165,23 +174,6 @@ func TestHandleEvent(t *testing.T) {
 				}
 			})
 
-			t.Cleanup(func() {
-				service := compose.NewComposeService(dockerCli)
-
-				downOpts := api.DownOptions{
-					RemoveOrphans: true,
-					Images:        "all",
-					Volumes:       true,
-				}
-
-				t.Log("Remove test container")
-
-				err = service.Down(ctx, tc.payload.Name, downOpts)
-				if err != nil {
-					t.Fatal(err)
-				}
-			})
-
 			err = docker.VerifySocketConnection()
 			if err != nil {
 				t.Fatalf("Failed to verify docker socket connection: %v", err)
@@ -189,15 +181,26 @@ func TestHandleEvent(t *testing.T) {
 
 			rr := httptest.NewRecorder()
 
+			var wg sync.WaitGroup
+
+			testMountPoint := container.MountPoint{
+				Type:        "bind",
+				Source:      tmpDir,
+				Destination: tmpDir,
+				Mode:        "rw",
+			}
+
 			HandleEvent(
 				ctx,
 				jobLog,
 				rr,
 				appConfig,
+				testMountPoint,
 				tc.payload,
 				tc.customTarget,
 				jobID,
 				dockerCli,
+				&wg,
 			)
 
 			if status := rr.Code; status != tc.expectedStatusCode {
@@ -205,11 +208,28 @@ func TestHandleEvent(t *testing.T) {
 					status, tc.expectedStatusCode)
 			}
 
-			expectedReturnMessage := fmt.Sprintf(tc.expectedResponseBody, jobID) + "\n"
+			expectedReturnMessage := fmt.Sprintf(tc.expectedResponseBody, jobID, filepath.Join(tmpDir, "kimdre/kimdre/docker-compose.yaml")) + "\n"
 			if rr.Body.String() != expectedReturnMessage {
 				t.Errorf("handler returned unexpected body: got '%v' want '%v'",
 					rr.Body.String(), expectedReturnMessage)
 			}
+
+			service := compose.NewComposeService(dockerCli)
+
+			downOpts := api.DownOptions{
+				RemoveOrphans: true,
+				Images:        "all",
+				Volumes:       true,
+			}
+
+			t.Log("Remove test container")
+
+			err = service.Down(ctx, tc.payload.Name, downOpts)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			wg.Wait()
 		})
 	}
 }

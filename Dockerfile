@@ -28,16 +28,27 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
     --mount=type=bind,target=. \
     go build -ldflags="-s -w -X main.Version=${APP_VERSION}" -o / ./...
 
+#FROM busybox AS busybox-binaries
+#
+#ARG BUSYBOX_VERSION=1.31.0-i686-uclibc
+#ADD https://busybox.net/downloads/binaries/$BUSYBOX_VERSION/busybox_WGET /wget
+#RUN chmod a+x /wget
+
 FROM gcr.io/distroless/base-debian12@sha256:27769871031f67460f1545a52dfacead6d18a9f197db77110cfc649ca2a91f44 AS build-release-stage
 
 WORKDIR /
 
+# /data volume required to deploy from cloned Git repos
+VOLUME /data
+
 COPY --from=build-stage /doco-cd /doco-cd
+# COPY --from=busybox-binaries /wget /usr/bin/wget
 
 ENV TZ=UTC \
     HTTP_PORT=80 \
     LOG_LEVEL=info
 
-USER nonroot:nonroot
-
 CMD ["/doco-cd"]
+
+#HEALTHCHECK --interval=30s --timeout=5s \
+#  CMD ["/usr/bin/wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/v1/health"]
