@@ -153,8 +153,8 @@ func main() {
 
 		go func() {
 			defer wg.Done()
-
-			//docker.OnCrash(
+			// docker.OnCrash(
+			//
 			//	dockerCli.Client(),
 			//	cont.ID,
 			//	func() {
@@ -162,7 +162,8 @@ func main() {
 			//		_ = os.RemoveAll(dir)
 			//	},
 			//	func(err error) { log.Error("failed to clean up path: "+dir, logger.ErrAttr(err)) },
-			//)
+			//
+			// )
 		}()
 	}
 

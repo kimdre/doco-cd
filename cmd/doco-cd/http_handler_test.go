@@ -5,8 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/docker/compose/v2/pkg/api"
-	"github.com/docker/compose/v2/pkg/compose"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +12,9 @@ import (
 	"path"
 	"regexp"
 	"testing"
+
+	"github.com/docker/compose/v2/pkg/api"
+	"github.com/docker/compose/v2/pkg/compose"
 
 	"github.com/docker/docker/api/types/container"
 
@@ -194,7 +195,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 	// Check if test container returns the expected response on its published port
 	testContainerPort := testContainer.NetworkSettings.Ports["80/tcp"][0].HostPort
-	testURL := fmt.Sprintf("http://localhost:%s", testContainerPort)
+	testURL := "http://localhost:" + testContainerPort
 
 	resp, err := http.Get(testURL)
 	if err != nil {
@@ -217,9 +218,11 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	bodyString := string(bodyBytes)
 
 	indexFile := path.Join(repoDir, "test", "index.html")
+
 	fileContent, err := os.ReadFile(indexFile)
 	if err != nil {
 		t.Fatalf("Failed to read index.html file: %v", err)
