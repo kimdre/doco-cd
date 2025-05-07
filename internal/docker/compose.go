@@ -10,9 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/kimdre/doco-cd/internal/webhook"
@@ -46,15 +44,6 @@ func ConnectToSocket() (net.Conn, error) {
 	}
 
 	return c, nil
-}
-
-func GetSocketGroupOwner() (string, error) {
-	fi, err := os.Stat(socketPath)
-	if err != nil {
-		return "", err
-	}
-
-	return strconv.Itoa(int(fi.Sys().(*syscall.Stat_t).Gid)), nil
 }
 
 func NewHttpClient() *http.Client {

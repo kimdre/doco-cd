@@ -57,13 +57,6 @@ func TestVerifySocketConnection(t *testing.T) {
 	}
 }
 
-func TestGetSocketGroupOwner(t *testing.T) {
-	_, err := GetSocketGroupOwner()
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestLoadCompose(t *testing.T) {
 	ctx := context.Background()
 
