@@ -68,16 +68,17 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		payload.CloneURL = git.GetAuthUrl(payload.CloneURL, appConfig.AuthType, appConfig.GitAccessToken)
 	}
 
-	repoPath := filepath.Join(dataMountPoint.Destination, payload.FullName)
+	internalRepoPath := filepath.Join(dataMountPoint.Destination, payload.FullName) // Path inside the container
+	externalRepoPath := filepath.Join(dataMountPoint.Source, payload.FullName)      // Path on the host
 
 	// Try to clone the repository
-	repo, err := git.CloneRepository(repoPath, payload.CloneURL, payload.Ref, appConfig.SkipTLSVerification)
+	repo, err := git.CloneRepository(internalRepoPath, payload.CloneURL, payload.Ref, appConfig.SkipTLSVerification)
 	if err != nil {
 		// If the repository already exists, check it out to the specified commit SHA
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
-			jobLog.Debug("repository already exists, checking out commit "+payload.CommitSHA, slog.String("path", repoPath))
+			jobLog.Debug("repository already exists, checking out commit "+payload.CommitSHA, slog.String("host_path", externalRepoPath))
 
-			repo, err = git.CheckoutRepository(repoPath, payload.Ref, payload.CommitSHA, appConfig.SkipTLSVerification)
+			repo, err = git.CheckoutRepository(internalRepoPath, payload.Ref, payload.CommitSHA, appConfig.SkipTLSVerification)
 			if err != nil {
 				errMsg = "failed to checkout repository"
 				jobLog.Error(errMsg, logger.ErrAttr(err))
@@ -101,7 +102,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			return
 		}
 	} else {
-		jobLog.Debug("repository cloned", slog.String("path", repoPath))
+		jobLog.Debug("repository cloned", slog.String("path", externalRepoPath))
 	}
 
 	// Get the worktree from the repository
