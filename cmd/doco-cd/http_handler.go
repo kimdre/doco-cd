@@ -32,8 +32,8 @@ type handlerData struct {
 }
 
 // HandleEvent handles the incoming webhook event
-func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, c *config.AppConfig, dataMountPoint container.MountPoint, p webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli, wg *sync.WaitGroup) {
-	jobLog = jobLog.With(slog.String("repository", p.FullName))
+func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *config.AppConfig, dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli, wg *sync.WaitGroup) {
+	jobLog = jobLog.With(slog.String("repository", payload.FullName))
 
 	if customTarget != "" {
 		jobLog = jobLog.With(slog.String("custom_target", customTarget))
@@ -44,13 +44,13 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	// Clone the repository
 	jobLog.Debug(
 		"get repository",
-		slog.String("url", p.CloneURL))
+		slog.String("url", payload.CloneURL))
 
 	// TODO: Check edge case: public repo - empty access token
-	if p.Private {
+	if payload.Private {
 		jobLog.Debug("authenticating to private repository")
 
-		if c.GitAccessToken == "" {
+		if appConfig.GitAccessToken == "" {
 			errMsg = "missing access token for private repository"
 			jobLog.Error(errMsg)
 			JSONError(w,
@@ -62,22 +62,22 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			return
 		}
 
-		p.CloneURL = git.GetAuthUrl(p.CloneURL, c.AuthType, c.GitAccessToken)
-	} else if c.GitAccessToken != "" {
+		payload.CloneURL = git.GetAuthUrl(payload.CloneURL, appConfig.AuthType, appConfig.GitAccessToken)
+	} else if appConfig.GitAccessToken != "" {
 		// Always use the access token for public repositories if it is set to avoid rate limiting
-		p.CloneURL = git.GetAuthUrl(p.CloneURL, c.AuthType, c.GitAccessToken)
+		payload.CloneURL = git.GetAuthUrl(payload.CloneURL, appConfig.AuthType, appConfig.GitAccessToken)
 	}
 
-	repoPath := filepath.Join(dataMountPoint.Destination, p.FullName)
+	repoPath := filepath.Join(dataMountPoint.Destination, payload.FullName)
 
 	// Try to clone the repository
-	repo, err := git.CloneRepository(repoPath, p.CloneURL, p.Ref, c.SkipTLSVerification)
+	repo, err := git.CloneRepository(repoPath, payload.CloneURL, payload.Ref, appConfig.SkipTLSVerification)
 	if err != nil {
 		// If the repository already exists, check it out to the specified commit SHA
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
-			jobLog.Debug("repository already exists, checking out commit "+p.CommitSHA, slog.String("path", repoPath))
+			jobLog.Debug("repository already exists, checking out commit "+payload.CommitSHA, slog.String("path", repoPath))
 
-			repo, err = git.CheckoutRepository(repoPath, p.Ref, p.CommitSHA, c.SkipTLSVerification)
+			repo, err = git.CheckoutRepository(repoPath, payload.Ref, payload.CommitSHA, appConfig.SkipTLSVerification)
 			if err != nil {
 				errMsg = "failed to checkout repository"
 				jobLog.Error(errMsg, logger.ErrAttr(err))
@@ -124,7 +124,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	jobLog.Debug("retrieving deployment configuration")
 
 	// Get the deployment configs from the repository
-	deployConfigs, err := config.GetDeployConfigs(repoDir, p.Name, customTarget)
+	deployConfigs, err := config.GetDeployConfigs(repoDir, payload.Name, customTarget)
 	if err != nil {
 		if errors.Is(err, config.ErrDeprecatedConfig) {
 			jobLog.Warn(err.Error())
@@ -142,7 +142,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	for _, deployConfig := range deployConfigs {
-		err = deployStack(jobLog, repoDir, &ctx, &dockerCli, &p, deployConfig)
+		err = deployStack(jobLog, repoDir, &ctx, &dockerCli, &payload, deployConfig)
 		if err != nil {
 			msg := "deployment failed"
 			jobLog.Error(msg)
