@@ -1,10 +1,9 @@
 # NOTE: This is just for testing deployments
 services:
   app:
+    container_name: test
     image: nginx:latest
-    environment:
-      test: true
     ports:
-      - "80:80"
+      - "8080:80"
     volumes:
       - ./:/usr/share/nginx/html
