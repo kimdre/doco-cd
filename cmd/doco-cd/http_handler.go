@@ -72,13 +72,13 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	externalRepoPath := filepath.Join(dataMountPoint.Source, payload.FullName)      // Path on the host
 
 	// Try to clone the repository
-	repo, err := git.CloneRepository(internalRepoPath, payload.CloneURL, payload.Ref, appConfig.SkipTLSVerification)
+	_, err := git.CloneRepository(internalRepoPath, payload.CloneURL, payload.Ref, appConfig.SkipTLSVerification)
 	if err != nil {
 		// If the repository already exists, check it out to the specified commit SHA
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			jobLog.Debug("repository already exists, checking out commit "+payload.CommitSHA, slog.String("host_path", externalRepoPath))
 
-			repo, err = git.CheckoutRepository(internalRepoPath, payload.Ref, payload.CommitSHA, appConfig.SkipTLSVerification)
+			_, err = git.CheckoutRepository(internalRepoPath, payload.Ref, payload.CommitSHA, appConfig.SkipTLSVerification)
 			if err != nil {
 				errMsg = "failed to checkout repository"
 				jobLog.Error(errMsg, logger.ErrAttr(err))
@@ -105,27 +105,10 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		jobLog.Debug("repository cloned", slog.String("path", externalRepoPath))
 	}
 
-	// Get the worktree from the repository
-	worktree, err := repo.Worktree()
-	if err != nil {
-		errMsg = "failed to get worktree"
-		jobLog.Error(errMsg, logger.ErrAttr(err))
-		JSONError(w,
-			errMsg,
-			err.Error(),
-			jobID,
-			http.StatusInternalServerError)
-
-		return
-	}
-
-	fs := worktree.Filesystem
-	repoDir := fs.Root()
-
 	jobLog.Debug("retrieving deployment configuration")
 
 	// Get the deployment configs from the repository
-	deployConfigs, err := config.GetDeployConfigs(repoDir, payload.Name, customTarget)
+	deployConfigs, err := config.GetDeployConfigs(internalRepoPath, payload.Name, customTarget)
 	if err != nil {
 		if errors.Is(err, config.ErrDeprecatedConfig) {
 			jobLog.Warn(err.Error())
@@ -143,7 +126,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	for _, deployConfig := range deployConfigs {
-		err = deployStack(jobLog, repoDir, &ctx, &dockerCli, &payload, deployConfig)
+		err = deployStack(jobLog, externalRepoPath, &ctx, &dockerCli, &payload, deployConfig)
 		if err != nil {
 			msg := "deployment failed"
 			jobLog.Error(msg)
