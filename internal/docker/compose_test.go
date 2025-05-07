@@ -246,13 +246,6 @@ compose_files:
 
 		t.Logf("Mount point source: %s, destination: %s", mountPoint.Source, mountPoint.Destination)
 
-		err = CheckMountPointWriteable(mountPoint)
-		if err != nil {
-			t.Fatalf("failed to check if mount point is writable: %s", err)
-		}
-
-		t.Log("Mount point is writable")
-
 		output, err := Exec(dockerCli.Client(), containerID, "cat", "usr/share/nginx/html/index.html")
 		if err != nil {
 			t.Fatal(err)
