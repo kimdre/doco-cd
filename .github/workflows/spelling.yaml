@@ -1,5 +1,8 @@
 name: Spell checking
 
+permissions:
+  contents: read
+
 on:
   push:
     branches:

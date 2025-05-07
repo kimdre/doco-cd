@@ -1,11 +1,16 @@
 name: Tests
 
+permissions:
+  contents: read
+
 on:
   workflow_dispatch:
   push:
     paths-ignore:
-      - 'README.md'
+      - '**/*.md'
       - 'docs/**'
+      - 'LICENSE'
+      - 'renovate.json'
 
 jobs:
   lint:
