@@ -5,16 +5,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/docker/compose/v2/pkg/api"
+	"github.com/docker/compose/v2/pkg/compose"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"regexp"
 	"testing"
 
 	"github.com/docker/docker/api/types/container"
 
-	"github.com/docker/compose/v2/pkg/api"
-	"github.com/docker/compose/v2/pkg/compose"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/logger"
@@ -77,6 +79,9 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	expectedResponse := `{"details":"deployment successful","job_id":"[a-f0-9-]{36}"}`
 	expectedStatusCode := http.StatusCreated
 
+	tmpDir := t.TempDir()
+	repoDir := path.Join(tmpDir, "kimdre", "doco-cd")
+
 	payload, err := os.ReadFile(githubPayloadFile)
 	if err != nil {
 		t.Fatal(err)
@@ -108,7 +113,6 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		}
 	})
 
-	tmpDir := t.TempDir()
 	h := handlerData{
 		dockerCli: dockerCli,
 		appConfig: appConfig,
@@ -155,10 +159,73 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		Volumes:       true,
 	}
 
-	t.Log("Remove test container")
+	t.Cleanup(func() {
+		t.Log("Remove doco-cd container")
 
-	err = service.Down(ctx, "compose-webhook", downOpts)
+		err = service.Down(ctx, "compose-webhook", downOpts)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	// Check if the deployed test container is running
+	testContainerID, err := docker.GetContainerID(dockerCli.Client(), "test")
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	t.Cleanup(func() {
+		t.Log("Remove test container")
+
+		err = service.Down(ctx, "test", downOpts)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	testContainer, err := dockerCli.Client().ContainerInspect(ctx, testContainerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if testContainer.State.Running != true {
+		t.Errorf("Test container is not running: %v", testContainer.State)
+	}
+
+	// Check if test container returns the expected response on its published port
+	testContainerPort := testContainer.NetworkSettings.Ports["80/tcp"][0].HostPort
+	testURL := fmt.Sprintf("http://localhost:%s", testContainerPort)
+
+	resp, err := http.Get(testURL)
+	if err != nil {
+		t.Fatalf("Failed to make GET request to test container: %v", err)
+	}
+
+	t.Cleanup(
+		func() {
+			err = resp.Body.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Test container returned unexpected status code: got %v want %v", resp.StatusCode, http.StatusOK)
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bodyString := string(bodyBytes)
+
+	indexFile := path.Join(repoDir, "test", "index.html")
+	fileContent, err := os.ReadFile(indexFile)
+	if err != nil {
+		t.Fatalf("Failed to read index.html file: %v", err)
+	}
+
+	if bodyString != string(fileContent) {
+		t.Fatalf("Test container returned unexpected body: got '%v' but want '%v'", bodyString, string(fileContent))
 	}
 }
