@@ -1,6 +1,7 @@
 # NOTE: This is just for testing deployments
 services:
   app:
+    container_name: test
     image: nginx:latest
     ports:
       - "8080:80"
