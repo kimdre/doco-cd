@@ -6,7 +6,7 @@ services:
       dockerfile: Dockerfile
       args:
         - APP_VERSION=dev
-    restart: no
+    restart: unless-stopped
     ports:
       - "80:80"
     env_file:
