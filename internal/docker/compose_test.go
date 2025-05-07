@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/docker/docker/client"
 
@@ -193,7 +194,9 @@ compose_files:
 	for _, deployConf := range deployConfigs {
 		t.Logf("Deploying '%s' ...", deployConf.Name)
 
-		err = DeployCompose(ctx, dockerCli, project, deployConf, p, tmpDir)
+		timestamp := time.Now().UTC().Format(time.RFC3339)
+
+		err = DeployCompose(ctx, dockerCli, project, deployConf, p, tmpDir, timestamp)
 		if err != nil {
 			t.Fatal(err)
 		}

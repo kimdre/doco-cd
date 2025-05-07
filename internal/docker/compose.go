@@ -150,12 +150,12 @@ addServiceLabels adds the labels docker compose expects to exist on services.
 This is required for future compose operations to work, such as finding
 containers that are part of a service.
 */
-func addServiceLabels(project *types.Project, payload webhook.ParsedPayload, repoDir, appVersion string) {
+func addServiceLabels(project *types.Project, payload webhook.ParsedPayload, repoDir, appVersion, timestamp string) {
 	for i, s := range project.Services {
 		s.CustomLabels = map[string]string{
 			DocoCDLabels.Metadata.Manager:      "doco-cd",
 			DocoCDLabels.Metadata.Version:      appVersion,
-			DocoCDLabels.Deployment.Timestamp:  time.Now().UTC().Format(time.RFC3339),
+			DocoCDLabels.Deployment.Timestamp:  timestamp,
 			DocoCDLabels.Deployment.WorkingDir: repoDir,
 			DocoCDLabels.Deployment.CommitSHA:  payload.CommitSHA,
 			DocoCDLabels.Deployment.CommitRef:  payload.Ref,
@@ -163,7 +163,6 @@ func addServiceLabels(project *types.Project, payload webhook.ParsedPayload, rep
 			DocoCDLabels.Repository.URL:        payload.WebURL,
 			api.ProjectLabel:                   project.Name,
 			api.ServiceLabel:                   s.Name,
-			api.VersionLabel:                   api.ComposeVersion,
 			api.WorkingDirLabel:                project.WorkingDir,
 			api.ConfigFilesLabel:               strings.Join(project.ComposeFiles, ","),
 			api.OneoffLabel:                    "False", // default, will be overridden by `run` command
@@ -172,19 +171,18 @@ func addServiceLabels(project *types.Project, payload webhook.ParsedPayload, rep
 	}
 }
 
-func addVolumeLabels(project *types.Project, payload webhook.ParsedPayload, appVersion string) {
+func addVolumeLabels(project *types.Project, payload webhook.ParsedPayload, appVersion, timestamp string) {
 	for i, v := range project.Volumes {
 		v.CustomLabels = map[string]string{
 			DocoCDLabels.Metadata.Manager:     "doco-cd",
 			DocoCDLabels.Metadata.Version:     appVersion,
-			DocoCDLabels.Deployment.Timestamp: time.Now().UTC().Format(time.RFC3339),
+			DocoCDLabels.Deployment.Timestamp: timestamp,
 			DocoCDLabels.Deployment.CommitSHA: payload.CommitSHA,
 			DocoCDLabels.Deployment.CommitRef: payload.Ref,
 			DocoCDLabels.Repository.Name:      payload.FullName,
 			DocoCDLabels.Repository.URL:       payload.WebURL,
 			api.ProjectLabel:                  project.Name,
 			api.VolumeLabel:                   v.Name,
-			api.VersionLabel:                  api.ComposeVersion,
 		}
 		project.Volumes[i] = v
 	}
@@ -215,8 +213,10 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project, deployConfig *config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion string) error {
 	service := compose.NewComposeService(dockerCli)
 
-	addServiceLabels(project, payload, repoDir, appVersion)
-	addVolumeLabels(project, payload, appVersion)
+	timestamp := time.Now().UTC().Format(time.RFC3339)
+
+	addServiceLabels(project, payload, repoDir, appVersion, timestamp)
+	addVolumeLabels(project, payload, appVersion, timestamp)
 
 	if deployConfig.ForceImagePull {
 		err := service.Pull(ctx, project, api.PullOptions{
