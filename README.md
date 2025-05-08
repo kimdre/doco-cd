@@ -9,6 +9,7 @@
 [![Spell checking](https://github.com/kimdre/doco-cd/actions/workflows/spelling.yaml/badge.svg)](https://github.com/kimdre/doco-cd/actions/workflows/spelling.yaml)
 [![codecov](https://codecov.io/gh/kimdre/doco-cd/graph/badge.svg?token=TR4H8ATPL0)](https://codecov.io/gh/kimdre/doco-cd)
 [![Build Image](https://github.com/kimdre/doco-cd/actions/workflows/build.yaml/badge.svg)](https://github.com/kimdre/doco-cd/actions/workflows/build.yaml)
+[![Container Image Vulnerability Scanning](https://github.com/kimdre/doco-cd/actions/workflows/image-vulnerability-scanning.yml/badge.svg?event=schedule)](https://github.com/kimdre/doco-cd/actions/workflows/image-vulnerability-scanning.yml)
 
 
 Doco CD is a lightweight GitOps tool that automatically deploys and updates Docker Compose projects/services using webhooks, that are triggered by your Git repository.
