@@ -1,0 +1,29 @@
+name: "💡 Feature Request"
+description: Suggest a new feature or improvement.
+title: "<title>"
+labels: ["feature"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: "Description"
+      description: Please enter an explicit description of your feature request
+      placeholder: Short and explicit description of your feature request...
+    validations:
+      required: true
+  - type: textarea
+    id: use-case
+    attributes:
+      label: "Use Case"
+      description: Please describe the use case for this feature.
+      placeholder: Why do you need this feature?
+    validations:
+      required: true
+  - type: textarea
+    id: additional-info
+    attributes:
+      label: "Additional Information"
+      description: Please provide any additional information that may be helpful.
+      placeholder: Any additional information that may be helpful...
+    validations:
+      required: false

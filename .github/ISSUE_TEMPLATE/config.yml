@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Discussions & Community
+    url: https://github.com/kimdre/doco-cd/discussions
+    about: Ask and answer questions, share ideas, discuss features, and more.
+  - name: Wiki
+    url: https://github.com/kimdre/doco-cd/wiki
+    about: Find documentation, guides, and other resources.

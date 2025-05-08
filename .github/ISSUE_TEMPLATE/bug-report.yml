@@ -1,0 +1,62 @@
+name: "🐛 Bug Report"
+description: Report a bug.
+title: "<title>"
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: "Description"
+      description: Please enter an explicit description of your issue
+      placeholder: Short and explicit description of your incident...
+    validations:
+      required: true
+  - type: textarea
+    id: reprod
+    attributes:
+      label: "Steps to reproduce the issue"
+      description: Please enter an explicit description of your issue
+      value: |
+        1. Configure this '....'
+        2. Deploy to '....'
+        3. See error
+      render: bash
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: "Operating System"
+      description: What operating system are you using?
+      multiple: true
+      options:
+        - Windows
+        - Linux
+        - Mac
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: docker-compose
+    attributes:
+      label: "Docker Compose File"
+      description: Please provide your docker-compose file and your .env file, if env variables are not inside the docker-compose file.
+      render: yaml
+    validations:
+      required: true
+  - type: textarea
+    id: deploy-config
+    attributes:
+      label: "Deployment Config"
+      description: Please provide your settings for the deployment, if your issue is related to a deployment.
+      render: yaml
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: "Logs"
+      description: Please provide any relevant log output.
+      render: bash
+    validations:
+      required: false
