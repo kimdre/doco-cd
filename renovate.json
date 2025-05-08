@@ -21,6 +21,11 @@
       "matchUpdateTypes": ["patch", "pin", "digest"],
       "minimumReleaseAge": "1 days",
       "automerge": true
+    },
+    {
+      "matchDatasources": ["docker"],
+      "matchFileNames": ["docker-compose.yml"],
+      "pinDigests": false
     }
   ]
 }
