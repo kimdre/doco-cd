@@ -1,5 +1,5 @@
-name: "Feature Request"
-description: Suggest a new feature or improvement.
+name: Request a Feature or Improvement
+description: Suggest a new feature or improvement to the project.
 title: "Feature: "
 labels: ["feature"]
 body:
