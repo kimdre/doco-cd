@@ -34,8 +34,9 @@ func TestGetAppConfig(t *testing.T) {
 		{
 			name: "invalid log level",
 			envVars: map[string]string{
-				"LOG_LEVEL":      "invalid",
-				"WEBHOOK_SECRET": "secret",
+				"LOG_LEVEL":        "invalid",
+				"WEBHOOK_SECRET":   "secret",
+				"GIT_ACCESS_TOKEN": "token",
 			},
 			dockerSecrets: nil,
 			expectedErr:   ErrInvalidLogLevel,
