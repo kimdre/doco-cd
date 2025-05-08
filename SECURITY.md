@@ -2,19 +2,28 @@
 
 ## Supported Versions
 
-Only the latest version is supported. 
-Patches are only released for the latest version.
-
 [![GitHub Release](https://img.shields.io/github/v/release/kimdre/doco-cd?display_name=tag&label=Release)](https://github.com/kimdre/doco-cd/releases)
-[![GitHub Release Date](https://img.shields.io/github/release-date/kimdre/doco-cd?style=flat-square&label=Release%20Date&color=%234CBB17)](https://github.com/kimdre/doco-cd/releases)
+
+Only the latest version is supported.
+
+Patches are only released for the latest version.
 
 ## Reporting a Vulnerability
 
-If you found a vulnerability, please report it by [opening an issue](https://github.com/kimdre/doco-cd/issues/new). 
-Please provide as much information as possible:
-- Configuration
-- Logs
-- Steps to reproduce the issue
-- Any other detail that might help
+If you believe you have found a security vulnerability, please report it to us through coordinated disclosure.
 
-If you are able to do so, you can also [send a pull request](https://github.com/kimdre/doco-cd/pulls) with a fix.
+**Please do not report security vulnerabilities through public GitHub issues, discussions, or pull requests.**
+
+Instead, please send an email to opensource[@]drechsel.xyz.
+
+Please include as much of the information listed below as you can to help us better understand and resolve the issue:
+
+- The type of issue (e.g., buffer overflow, SQL injection, or cross-site scripting)
+- Full paths of source file(s) related to the manifestation of the issue
+- The location of the affected source code (tag/branch/commit or direct URL)
+- Any special configuration required to reproduce the issue
+- Step-by-step instructions to reproduce the issue
+- Proof-of-concept or exploit code (if possible)
+- Impact of the issue, including how an attacker might exploit the issue
+
+This information will help us triage your report more quickly.
