@@ -37,7 +37,7 @@ func main() {
 	log := logger.New(slog.LevelDebug)
 
 	// Get the application configuration
-	c, err := config.GetAppConfig()
+	c, err := config.GetAppConfig(config.DockerSecretsPath)
 	if err != nil {
 		log.Critical("failed to get application configuration", logger.ErrAttr(err))
 	}
