@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -86,6 +87,8 @@ func TestLoadCompose(t *testing.T) {
 }
 
 func TestDeployCompose(t *testing.T) {
+	secretsPath := path.Join(t.TempDir(), config.DockerSecretsPath)
+
 	value := os.Getenv("WEBHOOK_SECRET")
 	if value == "" {
 		err := os.Setenv("WEBHOOK_SECRET", "notempty")
@@ -102,7 +105,7 @@ func TestDeployCompose(t *testing.T) {
 		}
 	}
 
-	c, err := config.GetAppConfig()
+	c, err := config.GetAppConfig(secretsPath)
 	if err != nil {
 		t.Fatal(err)
 	}

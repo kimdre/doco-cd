@@ -3,6 +3,7 @@ package git
 import (
 	"fmt"
 	"os"
+	"path"
 	"testing"
 
 	"github.com/go-git/go-git/v5/plumbing"
@@ -19,7 +20,9 @@ const (
 )
 
 func TestGetAuthUrl(t *testing.T) {
-	c, err := config.GetAppConfig()
+	secretsPath := path.Join(t.TempDir(), config.DockerSecretsPath)
+
+	c, err := config.GetAppConfig(secretsPath)
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
 	}

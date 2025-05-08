@@ -19,11 +19,20 @@ type AppConfig struct {
 	DockerQuietDeploy   bool   `env:"DOCKER_QUIET_DEPLOY" envDefault:"true"`                         // DockerQuietDeploy suppresses the status output of dockerCli in deployments (e.g. pull, create, start)
 }
 
+const DockerSecretsPath = "/run/secrets"
+
 var ErrInvalidLogLevel = validator.TextErr{Err: errors.New("invalid log level, must be one of debug, info, warn, error")}
 
 // GetAppConfig returns the configuration
-func GetAppConfig() (*AppConfig, error) {
+func GetAppConfig(secretsPath string) (*AppConfig, error) {
 	cfg := AppConfig{}
+
+	// Load env vars from Docker secrets if used
+	if err := loadEnvFromDockerSecrets(secretsPath); err != nil {
+		return nil, err
+	}
+
+	// Parse app config from environment variables
 	if err := env.Parse(&cfg); err != nil {
 		return nil, err
 	}
