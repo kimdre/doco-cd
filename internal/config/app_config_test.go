@@ -6,6 +6,8 @@ import (
 	"path"
 	"strconv"
 	"testing"
+
+	"github.com/caarlos0/env/v11"
 )
 
 func TestGetAppConfig(t *testing.T) {
@@ -52,6 +54,20 @@ func TestGetAppConfig(t *testing.T) {
 			},
 			expectedErr: nil,
 		},
+		{
+			name: "invalid config with docker secrets",
+			envVars: map[string]string{
+				"LOG_LEVEL":             "info",
+				"HTTP_PORT":             "8080",
+				"AUTH_TYPE":             "oauth2",
+				"SKIP_TLS_VERIFICATION": "false",
+			},
+			dockerSecrets: map[string]string{
+				// "WEBHOOK_SECRET": "", // Testing for missing secret
+				"GIT_ACCESS_TOKEN": "token",
+			},
+			expectedErr: env.VarIsNotSetError{Key: "WEBHOOK_SECRET"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -66,6 +82,12 @@ func TestGetAppConfig(t *testing.T) {
 			t.Cleanup(func() {
 				// Clean up the environment
 				for k := range tt.envVars {
+					if err := os.Unsetenv(k); err != nil {
+						t.Fatalf("failed to unset environment variable: %v", err)
+					}
+				}
+
+				for k := range tt.dockerSecrets {
 					if err := os.Unsetenv(k); err != nil {
 						t.Fatalf("failed to unset environment variable: %v", err)
 					}
@@ -89,7 +111,11 @@ func TestGetAppConfig(t *testing.T) {
 			// Run the test
 			cfg, err := GetAppConfig(secretsPath)
 			if !errors.Is(err, tt.expectedErr) {
-				t.Errorf("expected error to be '%v', got '%v'", tt.expectedErr, err)
+				t.Fatalf("expected error to be '%v', got '%v'", tt.expectedErr, err)
+			}
+
+			if tt.expectedErr != nil {
+				return
 			}
 
 			if tt.dockerSecrets != nil {
