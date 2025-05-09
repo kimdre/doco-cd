@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"strings"
 
 	"github.com/caarlos0/env/v11"
@@ -21,8 +20,6 @@ type AppConfig struct {
 	SkipTLSVerification bool   `env:"SKIP_TLS_VERIFICATION" envDefault:"false"`                      // SkipTLSVerification skips the TLS verification when cloning repositories.
 	DockerQuietDeploy   bool   `env:"DOCKER_QUIET_DEPLOY" envDefault:"true"`                         // DockerQuietDeploy suppresses the status output of dockerCli in deployments (e.g. pull, create, start)
 }
-
-var ErrInvalidLogLevel = validator.TextErr{Err: errors.New("invalid log level, must be one of debug, info, warn, error")}
 
 // GetAppConfig returns the configuration
 func GetAppConfig() (*AppConfig, error) {

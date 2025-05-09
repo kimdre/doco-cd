@@ -32,6 +32,11 @@ const (
 )
 
 func TestHandleEvent(t *testing.T) {
+	defaultEnvVars := map[string]string{
+		"GIT_ACCESS_TOKEN": os.Getenv("GIT_ACCESS_TOKEN"),
+		"WEBHOOK_SECRET":   os.Getenv("WEBHOOK_SECRET"),
+	}
+
 	testCases := []struct {
 		name                 string
 		payload              webhook.ParsedPayload
@@ -101,23 +106,6 @@ func TestHandleEvent(t *testing.T) {
 			customTarget:         "",
 		},
 		{
-			name: "Private Repository with missing Git Access Token",
-			payload: webhook.ParsedPayload{
-				Ref:       mainBranch,
-				CommitSHA: validCommitSHA,
-				Name:      projectName,
-				FullName:  "kimdre/doco-cd",
-				CloneURL:  "https://github.com/kimdre/doco-cd",
-				Private:   true,
-			},
-			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"missing access token for private repository","job_id":"%[1]s"}`,
-			overrideEnv: map[string]string{
-				"GIT_ACCESS_TOKEN": "",
-			},
-			customTarget: "",
-		},
-		{
 			name: "Missing Deployment Configuration",
 			payload: webhook.ParsedPayload{
 				Ref:       mainBranch,
@@ -134,9 +122,35 @@ func TestHandleEvent(t *testing.T) {
 		},
 	}
 
+	// Restore environment variables after the test
+	for _, k := range []string{"LOG_LEVEL", "HTTP_PORT", "WEBHOOK_SECRET", "GIT_ACCESS_TOKEN", "AUTH_TYPE", "SKIP_TLS_VERIFICATION"} {
+		if v, ok := os.LookupEnv(k); ok {
+			t.Cleanup(func() {
+				err := os.Setenv(k, v)
+				if err != nil {
+					t.Fatalf("failed to restore environment variable %s: %v", k, err)
+				}
+			})
+		}
+	}
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
+
+			for k, v := range defaultEnvVars {
+				err := os.Setenv(k, v)
+				if err != nil {
+					t.Fatalf("Failed to set environment variable: %v", err)
+				}
+
+				t.Cleanup(func() {
+					err = os.Unsetenv(k)
+					if err != nil {
+						t.Fatalf("Failed to unset environment variable: %v", err)
+					}
+				})
+			}
 
 			if tc.overrideEnv != nil {
 				for k, v := range tc.overrideEnv {

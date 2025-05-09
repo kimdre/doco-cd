@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"reflect"
+	"regexp"
 	"strings"
 
 	"github.com/creasty/defaults"
@@ -64,28 +64,36 @@ func FromYAML(f string) ([]*DeployConfig, error) {
 
 // loadFileBasedEnvVars loads environment variables from files if the corresponding file-based environment variable is set.
 func loadFileBasedEnvVars(cfg *AppConfig) error {
-	v := reflect.ValueOf(cfg).Elem()
-	t := v.Type()
-
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		if strings.HasSuffix(field.Name, "File") {
-			fileField := field
-			// Get the corresponding non-File field
-			normalFieldName := strings.TrimSuffix(fileField.Name, "File")
-			normalField := v.FieldByName(normalFieldName)
-
-			if !normalField.IsValid() {
-				continue
-			}
-
-			if normalField.String() != "" && v.Field(i).String() != "" {
-				return errors.New("both " + normalFieldName + " and " + fileField.Name + " are set, please set only one")
-			}
-
-			normalField.SetString(strings.TrimSpace(v.Field(i).String()))
+	if cfg.WebhookSecretFile != "" {
+		if cfg.WebhookSecret != "" && cfg.WebhookSecretFile != "" {
+			return fmt.Errorf("%w: %s or %s", ErrBothSecretsSet, "WEBHOOK_SECRET", "WEBHOOK_SECRET_FILE")
 		}
+
+		cfg.WebhookSecret = cfg.WebhookSecretFile
+	} else if cfg.WebhookSecret == "" {
+		return fmt.Errorf("%w: %s or %s", ErrBothSecretsNotSet, "WEBHOOK_SECRET", "WEBHOOK_SECRET_FILE")
+	}
+
+	if cfg.GitAccessTokenFile != "" {
+		if cfg.GitAccessToken != "" && cfg.GitAccessTokenFile != "" {
+			return fmt.Errorf("%w: %s or %s", ErrBothSecretsSet, "GIT_ACCESS_TOKEN", "GIT_ACCESS_TOKEN_FILE")
+		}
+
+		cfg.GitAccessToken = cfg.GitAccessTokenFile
+	} else if cfg.GitAccessToken == "" {
+		return fmt.Errorf("%w: %s or %s", ErrBothSecretsSet, "GIT_ACCESS_TOKEN", "GIT_ACCESS_TOKEN_FILE")
 	}
 
 	return nil
+}
+
+// CamelCaseToSnakeCase converts a string from camelCase to snake_case.
+func CamelCaseToSnakeCase(str string) string {
+	matchFirstCap := regexp.MustCompile("(.)([A-Z][a-z]+)")
+	matchAllCap := regexp.MustCompile("([a-z0-9])([A-Z])")
+
+	snake := matchFirstCap.ReplaceAllString(str, "${1}_${2}")
+	snake = matchAllCap.ReplaceAllString(snake, "${1}_${2}")
+
+	return strings.ToLower(snake)
 }

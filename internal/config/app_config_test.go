@@ -6,8 +6,6 @@ import (
 	"path"
 	"strconv"
 	"testing"
-
-	"github.com/caarlos0/env/v11"
 )
 
 func TestGetAppConfig(t *testing.T) {
@@ -67,8 +65,20 @@ func TestGetAppConfig(t *testing.T) {
 				// "WEBHOOK_SECRET": "", // Testing for missing secret
 				"GIT_ACCESS_TOKEN": "t0ken",
 			},
-			expectedErr: env.VarIsNotSetError{Key: "WEBHOOK_SECRET"},
+			expectedErr: ErrBothSecretsNotSet,
 		},
+	}
+
+	// Restore environment variables after the test
+	for _, k := range []string{"LOG_LEVEL", "HTTP_PORT", "WEBHOOK_SECRET", "GIT_ACCESS_TOKEN", "AUTH_TYPE", "SKIP_TLS_VERIFICATION"} {
+		if v, ok := os.LookupEnv(k); ok {
+			t.Cleanup(func() {
+				err := os.Setenv(k, v)
+				if err != nil {
+					t.Fatalf("failed to restore environment variable %s: %v", k, err)
+				}
+			})
+		}
 	}
 
 	for _, tt := range tests {
