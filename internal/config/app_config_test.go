@@ -54,6 +54,21 @@ func TestGetAppConfig(t *testing.T) {
 			expectedErr: nil,
 		},
 		{
+			name: "config with duplicate secrets",
+			envVars: map[string]string{
+				"LOG_LEVEL":             "info",
+				"HTTP_PORT":             "8080",
+				"AUTH_TYPE":             "oauth2",
+				"SKIP_TLS_VERIFICATION": "false",
+				"WEBHOOK_SECRET":        "webh00k_secret",
+			},
+			dockerSecrets: map[string]string{
+				"WEBHOOK_SECRET":   "webh00k_secret",
+				"GIT_ACCESS_TOKEN": "t0ken",
+			},
+			expectedErr: ErrBothSecretsSet,
+		},
+		{
 			name: "invalid config with docker secrets",
 			envVars: map[string]string{
 				"LOG_LEVEL":             "info",

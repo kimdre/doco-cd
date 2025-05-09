@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/creasty/defaults"
 	"io"
 	"os"
+
+	"github.com/creasty/defaults"
 
 	"gopkg.in/yaml.v3"
 )
@@ -61,24 +62,25 @@ func FromYAML(f string) ([]*DeployConfig, error) {
 
 // loadFileBasedEnvVars loads environment variables from files if the corresponding file-based environment variable is set.
 func loadFileBasedEnvVars(cfg *AppConfig) error {
-	if cfg.WebhookSecretFile != "" {
-		if cfg.WebhookSecret != "" && cfg.WebhookSecretFile != "" {
-			return fmt.Errorf("%w: %s or %s", ErrBothSecretsSet, "WEBHOOK_SECRET", "WEBHOOK_SECRET_FILE")
-		}
-
-		cfg.WebhookSecret = cfg.WebhookSecretFile
-	} else if cfg.WebhookSecret == "" {
-		return fmt.Errorf("%w: %s or %s", ErrBothSecretsNotSet, "WEBHOOK_SECRET", "WEBHOOK_SECRET_FILE")
+	fields := []struct {
+		fileField string
+		value     *string
+		name      string
+	}{
+		{cfg.WebhookSecretFile, &cfg.WebhookSecret, "WEBHOOK_SECRET"},
+		{cfg.GitAccessTokenFile, &cfg.GitAccessToken, "GIT_ACCESS_TOKEN"},
 	}
 
-	if cfg.GitAccessTokenFile != "" {
-		if cfg.GitAccessToken != "" && cfg.GitAccessTokenFile != "" {
-			return fmt.Errorf("%w: %s or %s", ErrBothSecretsSet, "GIT_ACCESS_TOKEN", "GIT_ACCESS_TOKEN_FILE")
-		}
+	for _, field := range fields {
+		if field.fileField != "" {
+			if *field.value != "" {
+				return fmt.Errorf("%w: %s or %s", ErrBothSecretsSet, field.name, field.name+"_FILE")
+			}
 
-		cfg.GitAccessToken = cfg.GitAccessTokenFile
-	} else if cfg.GitAccessToken == "" {
-		return fmt.Errorf("%w: %s or %s", ErrBothSecretsSet, "GIT_ACCESS_TOKEN", "GIT_ACCESS_TOKEN_FILE")
+			*field.value = field.fileField
+		} else if *field.value == "" {
+			return fmt.Errorf("%w: %s or %s", ErrBothSecretsNotSet, field.name, field.name+"_FILE")
+		}
 	}
 
 	return nil
