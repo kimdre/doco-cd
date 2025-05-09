@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
 	"github.com/creasty/defaults"
 
@@ -61,29 +60,26 @@ func FromYAML(f string) ([]*DeployConfig, error) {
 	return configs, nil
 }
 
-// loadEnvFromDockerSecrets loads app configuration values from Docker Secrets to environment variables.
-func loadEnvFromDockerSecrets(secretsPath string) error {
-	files, err := os.ReadDir(secretsPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// If the directory does not exist, docker secrets are not used.
-			return nil
-		}
-
-		return fmt.Errorf("failed to read Docker secrets: %v", err)
+// loadFileBasedEnvVars loads environment variables from files if the corresponding file-based environment variable is set.
+func loadFileBasedEnvVars(cfg *AppConfig) error {
+	fields := []struct {
+		fileField string
+		value     *string
+		name      string
+	}{
+		{cfg.WebhookSecretFile, &cfg.WebhookSecret, "WEBHOOK_SECRET"},
+		{cfg.GitAccessTokenFile, &cfg.GitAccessToken, "GIT_ACCESS_TOKEN"},
 	}
 
-	for _, file := range files {
-		secretName := file.Name()
+	for _, field := range fields {
+		if field.fileField != "" {
+			if *field.value != "" {
+				return fmt.Errorf("%w: %s or %s", ErrBothSecretsSet, field.name, field.name+"_FILE")
+			}
 
-		secretValue, err := os.ReadFile(fmt.Sprintf("%s/%s", secretsPath, secretName))
-		if err != nil {
-			return fmt.Errorf("failed to read secret %s: %v", secretName, err)
-		}
-
-		err = os.Setenv(strings.ToUpper(secretName), strings.TrimSpace(string(secretValue)))
-		if err != nil {
-			return fmt.Errorf("failed to set environment variable %s: %v", secretName, err)
+			*field.value = field.fileField
+		} else if *field.value == "" {
+			return fmt.Errorf("%w: %s or %s", ErrBothSecretsNotSet, field.name, field.name+"_FILE")
 		}
 	}
 
