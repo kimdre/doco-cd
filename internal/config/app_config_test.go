@@ -50,8 +50,8 @@ func TestGetAppConfig(t *testing.T) {
 				"SKIP_TLS_VERIFICATION": "false",
 			},
 			dockerSecrets: map[string]string{
-				"WEBHOOK_SECRET":   "secret",
-				"GIT_ACCESS_TOKEN": "token",
+				"WEBHOOK_SECRET":   "webh00k_secret",
+				"GIT_ACCESS_TOKEN": "t0ken",
 			},
 			expectedErr: nil,
 		},
@@ -65,7 +65,7 @@ func TestGetAppConfig(t *testing.T) {
 			},
 			dockerSecrets: map[string]string{
 				// "WEBHOOK_SECRET": "", // Testing for missing secret
-				"GIT_ACCESS_TOKEN": "token",
+				"GIT_ACCESS_TOKEN": "t0ken",
 			},
 			expectedErr: env.VarIsNotSetError{Key: "WEBHOOK_SECRET"},
 		},
@@ -73,11 +73,40 @@ func TestGetAppConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			secretsPath := path.Join(t.TempDir(), DockerSecretsPath)
+			if tt.dockerSecrets != nil {
+				secretsPath := path.Join(t.TempDir(), "/run/secrets/")
 
-			// Create the Docker secrets directory
-			if err := os.MkdirAll(secretsPath, 0o755); err != nil {
-				t.Fatalf("failed to create Docker secrets directory: %v", err)
+				// Create the Docker secrets directory
+				if err := os.MkdirAll(secretsPath, 0o755); err != nil {
+					t.Fatalf("failed to create Docker secrets directory: %v", err)
+				}
+
+				// Set up Docker secrets as environment variables
+				for k, v := range tt.dockerSecrets {
+					secretFileEnvVar := k + "_FILE"
+					secretFilePath := path.Join(secretsPath, k)
+
+					t.Cleanup(func() {
+						err := os.Unsetenv(secretFileEnvVar)
+						if err != nil {
+							return
+						}
+					})
+
+					// Set the app config *_FILE environment variable
+					t.Logf("Set environment variable %s to %s", secretFileEnvVar, secretFilePath)
+
+					err := os.Setenv(secretFileEnvVar, secretFilePath)
+					if err != nil {
+						t.Fatalf("failed to set environment variable: %v", err)
+					}
+
+					t.Logf("Set Docker secret %s to %s", k, v)
+
+					if err = os.WriteFile(secretFilePath, []byte(v), 0o644); err != nil {
+						t.Fatalf("failed to write Docker secret: %v", err)
+					}
+				}
 			}
 
 			t.Cleanup(func() {
@@ -87,20 +116,7 @@ func TestGetAppConfig(t *testing.T) {
 						t.Fatalf("failed to unset environment variable: %v", err)
 					}
 				}
-
-				for k := range tt.dockerSecrets {
-					if err := os.Unsetenv(k); err != nil {
-						t.Fatalf("failed to unset environment variable: %v", err)
-					}
-				}
 			})
-
-			// Set up Docker secrets
-			for k, v := range tt.dockerSecrets {
-				if err := os.WriteFile(path.Join(secretsPath, k), []byte(v), 0o644); err != nil {
-					t.Fatalf("failed to write Docker secret: %v", err)
-				}
-			}
 
 			// Set up the environment
 			for k, v := range tt.envVars {
@@ -110,7 +126,7 @@ func TestGetAppConfig(t *testing.T) {
 			}
 
 			// Run the test
-			cfg, err := GetAppConfig(secretsPath)
+			cfg, err := GetAppConfig()
 			if !errors.Is(err, tt.expectedErr) {
 				t.Fatalf("expected error to be '%v', got '%v'", tt.expectedErr, err)
 			}

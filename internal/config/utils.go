@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"strings"
 
 	"github.com/creasty/defaults"
@@ -61,29 +62,28 @@ func FromYAML(f string) ([]*DeployConfig, error) {
 	return configs, nil
 }
 
-// loadEnvFromDockerSecrets loads app configuration values from Docker Secrets to environment variables.
-func loadEnvFromDockerSecrets(secretsPath string) error {
-	files, err := os.ReadDir(secretsPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// If the directory does not exist, docker secrets are not used.
-			return nil
-		}
+// loadFileBasedEnvVars loads environment variables from files if the corresponding file-based environment variable is set.
+func loadFileBasedEnvVars(cfg *AppConfig) error {
+	v := reflect.ValueOf(cfg).Elem()
+	t := v.Type()
 
-		return fmt.Errorf("failed to read Docker secrets: %v", err)
-	}
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		if strings.HasSuffix(field.Name, "File") {
+			fileField := field
+			// Get the corresponding non-File field
+			normalFieldName := strings.TrimSuffix(fileField.Name, "File")
+			normalField := v.FieldByName(normalFieldName)
 
-	for _, file := range files {
-		secretName := file.Name()
+			if !normalField.IsValid() {
+				continue
+			}
 
-		secretValue, err := os.ReadFile(fmt.Sprintf("%s/%s", secretsPath, secretName))
-		if err != nil {
-			return fmt.Errorf("failed to read secret %s: %v", secretName, err)
-		}
+			if normalField.String() != "" && v.Field(i).String() != "" {
+				return errors.New("both " + normalFieldName + " and " + fileField.Name + " are set, please set only one")
+			}
 
-		err = os.Setenv(strings.ToUpper(secretName), strings.TrimSpace(string(secretValue)))
-		if err != nil {
-			return fmt.Errorf("failed to set environment variable %s: %v", secretName, err)
+			normalField.SetString(strings.TrimSpace(v.Field(i).String()))
 		}
 	}
 

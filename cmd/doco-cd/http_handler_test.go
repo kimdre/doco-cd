@@ -32,9 +32,8 @@ const (
 func TestHandlerData_HealthCheckHandler(t *testing.T) {
 	expectedResponse := fmt.Sprintln(`{"details":"healthy"}`)
 	expectedStatusCode := http.StatusOK
-	secretsPath := path.Join(t.TempDir(), config.DockerSecretsPath)
 
-	appConfig, err := config.GetAppConfig(secretsPath)
+	appConfig, err := config.GetAppConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +79,6 @@ func TestHandlerData_HealthCheckHandler(t *testing.T) {
 func TestHandlerData_WebhookHandler(t *testing.T) {
 	expectedResponse := `{"details":"deployment successful","job_id":"[a-f0-9-]{36}"}`
 	expectedStatusCode := http.StatusCreated
-	secretsPath := path.Join(t.TempDir(), config.DockerSecretsPath)
 	tmpDir := t.TempDir()
 
 	repoDir := path.Join(tmpDir, "kimdre", "doco-cd")
@@ -97,7 +95,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	appConfig, err := config.GetAppConfig(secretsPath)
+	appConfig, err := config.GetAppConfig()
 	if err != nil {
 		t.Fatal(err)
 	}

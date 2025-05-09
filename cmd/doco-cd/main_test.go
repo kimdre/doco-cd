@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -138,7 +137,6 @@ func TestHandleEvent(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
-			secretsPath := path.Join(t.TempDir(), config.DockerSecretsPath)
 
 			if tc.overrideEnv != nil {
 				for k, v := range tc.overrideEnv {
@@ -149,7 +147,7 @@ func TestHandleEvent(t *testing.T) {
 				}
 			}
 
-			appConfig, err := config.GetAppConfig(secretsPath)
+			appConfig, err := config.GetAppConfig()
 			if err != nil {
 				t.Fatalf("failed to get app config: %s", err.Error())
 			}
