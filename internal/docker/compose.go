@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/kimdre/doco-cd/internal/utils"
 	"io"
 	"net"
 	"net/http"
@@ -151,6 +152,12 @@ This is required for future compose operations to work, such as finding
 containers that are part of a service.
 */
 func addServiceLabels(project *types.Project, payload webhook.ParsedPayload, repoDir, appVersion, timestamp string) {
+	ComposeVersion, err := utils.GetModuleVersion("github.com/docker/compose/v2")
+	if err != nil {
+		fmt.Printf("Error getting module version: %v\n", err)
+		return
+	}
+
 	for i, s := range project.Services {
 		s.CustomLabels = map[string]string{
 			DocoCDLabels.Metadata.Manager:      "doco-cd",
@@ -165,6 +172,7 @@ func addServiceLabels(project *types.Project, payload webhook.ParsedPayload, rep
 			api.ServiceLabel:                   s.Name,
 			api.WorkingDirLabel:                project.WorkingDir,
 			api.ConfigFilesLabel:               strings.Join(project.ComposeFiles, ","),
+			api.VersionLabel:                   ComposeVersion,
 			api.OneoffLabel:                    "False", // default, will be overridden by `run` command
 		}
 		project.Services[i] = s
@@ -172,6 +180,12 @@ func addServiceLabels(project *types.Project, payload webhook.ParsedPayload, rep
 }
 
 func addVolumeLabels(project *types.Project, payload webhook.ParsedPayload, appVersion, timestamp string) {
+	ComposeVersion, err := utils.GetModuleVersion("github.com/docker/compose/v2")
+	if err != nil {
+		fmt.Printf("Error getting module version: %v\n", err)
+		return
+	}
+
 	for i, v := range project.Volumes {
 		v.CustomLabels = map[string]string{
 			DocoCDLabels.Metadata.Manager:     "doco-cd",
@@ -183,6 +197,7 @@ func addVolumeLabels(project *types.Project, payload webhook.ParsedPayload, appV
 			DocoCDLabels.Repository.URL:       payload.WebURL,
 			api.ProjectLabel:                  project.Name,
 			api.VolumeLabel:                   v.Name,
+			api.VersionLabel:                  ComposeVersion,
 		}
 		project.Volumes[i] = v
 	}
