@@ -188,3 +188,21 @@ func TestGetDeployConfigs_DefaultValues(t *testing.T) {
 		t.Errorf("expected compose files to be %v, got %v", defaultConfig.ComposeFiles, config.ComposeFiles)
 	}
 }
+
+// TestGetDeployConfigs_DuplicateProjectName checks if the function returns an error
+// when there are duplicate project names in the config files
+func TestGetDeployConfigs_DuplicateProjectName(t *testing.T) {
+	config := DeployConfig{
+		Name:             "test",
+		Reference:        "refs/heads/test",
+		WorkingDirectory: "/test",
+		ComposeFiles:     []string{"test.compose.yaml"},
+	}
+
+	configs := []*DeployConfig{&config, &config}
+
+	err := validateUniqueProjectNames(configs)
+	if !errors.Is(err, ErrDuplicateProjectName) {
+		t.Fatal("expected error for duplicate project names, got nil")
+	}
+}
