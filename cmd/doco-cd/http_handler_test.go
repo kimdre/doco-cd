@@ -53,9 +53,10 @@ func TestHandlerData_HealthCheckHandler(t *testing.T) {
 	})
 
 	h := handlerData{
-		dockerCli: dockerCli,
-		appConfig: appConfig,
-		log:       log,
+		dockerCli:  dockerCli,
+		appConfig:  appConfig,
+		appVersion: Version,
+		log:        log,
 	}
 
 	req, err := http.NewRequest("GET", healthPath, nil)
@@ -115,8 +116,9 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	})
 
 	h := handlerData{
-		dockerCli: dockerCli,
-		appConfig: appConfig,
+		dockerCli:  dockerCli,
+		appConfig:  appConfig,
+		appVersion: Version,
 		dataMountPoint: container.MountPoint{
 			Type:        "bind",
 			Source:      tmpDir,

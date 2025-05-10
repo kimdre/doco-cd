@@ -3,22 +3,15 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"sync"
 
-	"github.com/docker/compose/v2/pkg/api"
-	"github.com/docker/compose/v2/pkg/compose"
-
 	"github.com/docker/docker/api/types/container"
 
-	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/docker/cli/cli/command"
 	"github.com/google/uuid"
 	"github.com/kimdre/doco-cd/internal/config"
@@ -30,6 +23,7 @@ import (
 
 type handlerData struct {
 	appConfig      *config.AppConfig    // Application configuration
+	appVersion     string               // Application version
 	dataMountPoint container.MountPoint // Mount point for the data directory
 	dockerCli      command.Cli          // Docker CLI client
 	log            *logger.Logger       // Logger for logging messages
@@ -142,7 +136,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		if deployConfig.Destroy {
 			jobLog.Debug("destroying stack", slog.String("stack", deployConfig.Name))
 
-			err = destroyStack(jobLog, &ctx, &dockerCli, deployConfig)
+			err = docker.DestroyStack(jobLog, &ctx, &dockerCli, deployConfig)
 			if err != nil {
 				errMsg = "failed to destroy stack"
 				jobLog.Error(errMsg, logger.ErrAttr(err))
@@ -197,7 +191,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				}
 			}
 		} else {
-			err = deployStack(jobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, &payload, deployConfig)
+			err = docker.DeployStack(jobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, &payload, deployConfig, Version)
 			if err != nil {
 				msg := "deployment failed"
 				jobLog.Error(msg)
@@ -294,139 +288,4 @@ func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request)
 
 	h.log.Debug("health check successful")
 	JSONResponse(w, "healthy", "", http.StatusOK)
-}
-
-// deployStack deploys the stack using the provided deployment configuration
-func deployStack(
-	jobLog *slog.Logger, internalRepoPath, externalRepoPath string, ctx *context.Context,
-	dockerCli *command.Cli, p *webhook.ParsedPayload, deployConfig *config.DeployConfig,
-) error {
-	stackLog := jobLog.
-		With(slog.String("stack", deployConfig.Name))
-
-	stackLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
-
-	// Validate and sanitize the working directory
-	if strings.Contains(deployConfig.WorkingDirectory, "..") || path.IsAbs(deployConfig.WorkingDirectory) {
-		errMsg = "invalid working directory: potential path traversal detected"
-		jobLog.Error(errMsg, slog.String("working_directory", deployConfig.WorkingDirectory))
-
-		return fmt.Errorf("%s: %w", errMsg, errors.New("validation error"))
-	}
-
-	// Path inside the container
-	internalWorkingDir := path.Join(internalRepoPath, deployConfig.WorkingDirectory)
-	internalWorkingDir, err := filepath.Abs(internalWorkingDir)
-
-	if err != nil || !strings.HasPrefix(internalWorkingDir, internalRepoPath) {
-		errMsg = "invalid working directory: resolved path is outside the allowed base directory"
-		jobLog.Error(errMsg, slog.String("resolved_path", internalWorkingDir))
-
-		return fmt.Errorf("%s", errMsg)
-	}
-
-	// Path on the host
-	externalWorkingDir := path.Join(externalRepoPath, deployConfig.WorkingDirectory)
-	externalWorkingDir, err = filepath.Abs(externalWorkingDir)
-
-	if err != nil || !strings.HasPrefix(externalWorkingDir, externalRepoPath) {
-		errMsg = "invalid working directory: resolved path is outside the allowed base directory"
-		jobLog.Error(errMsg, slog.String("resolved_path", externalWorkingDir))
-
-		return fmt.Errorf("%s", errMsg)
-	}
-
-	err = os.Chdir(internalWorkingDir)
-	if err != nil {
-		errMsg = "failed to change internal working directory"
-		jobLog.Error(errMsg, logger.ErrAttr(err), slog.String("path", internalWorkingDir))
-
-		return fmt.Errorf("%s: %w", errMsg, err)
-	}
-
-	// Check if the default compose files are used
-	if reflect.DeepEqual(deployConfig.ComposeFiles, cli.DefaultFileNames) {
-		var tmpComposeFiles []string
-
-		jobLog.Debug("checking for default compose files")
-
-		// Check if the default compose files exist
-		for _, f := range deployConfig.ComposeFiles {
-			if _, err = os.Stat(path.Join(internalWorkingDir, f)); errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-
-			tmpComposeFiles = append(tmpComposeFiles, f)
-		}
-
-		if len(tmpComposeFiles) == 0 {
-			errMsg = "no compose files found"
-			stackLog.Error(errMsg,
-				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-
-			return fmt.Errorf("%s: %w", errMsg, err)
-		}
-
-		deployConfig.ComposeFiles = tmpComposeFiles
-	}
-
-	project, err := docker.LoadCompose(*ctx, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles)
-	if err != nil {
-		errMsg = "failed to load compose config"
-		stackLog.Error(errMsg,
-			logger.ErrAttr(err),
-			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-
-		return fmt.Errorf("%s: %w", errMsg, err)
-	}
-
-	stackLog.Info("deploying stack")
-
-	err = docker.DeployCompose(*ctx, *dockerCli, project, deployConfig, *p, externalWorkingDir, Version)
-	if err != nil {
-		errMsg = "failed to deploy stack"
-		stackLog.Error(errMsg,
-			logger.ErrAttr(err),
-			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-
-		return fmt.Errorf("%s: %w", errMsg, err)
-	}
-
-	return nil
-}
-
-// destroyStack destroys the stack using the provided deployment configuration
-func destroyStack(
-	jobLog *slog.Logger, ctx *context.Context,
-	dockerCli *command.Cli, deployConfig *config.DeployConfig,
-) error {
-	stackLog := jobLog.
-		With(slog.String("stack", deployConfig.Name))
-
-	stackLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
-
-	stackLog.Info("destroying stack")
-
-	service := compose.NewComposeService(*dockerCli)
-
-	downOpts := api.DownOptions{
-		RemoveOrphans: deployConfig.RemoveOrphans,
-		Volumes:       deployConfig.DestroyOpts.RemoveVolumes,
-	}
-
-	if deployConfig.DestroyOpts.RemoveImages {
-		downOpts.Images = "all"
-	}
-
-	err := service.Down(*ctx, deployConfig.Name, downOpts)
-	if err != nil {
-		errMsg = "failed to destroy stack"
-		stackLog.Error(errMsg,
-			logger.ErrAttr(err),
-		)
-
-		return fmt.Errorf("%s: %w", errMsg, err)
-	}
-
-	return nil
 }
