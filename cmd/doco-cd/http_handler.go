@@ -169,7 +169,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		//	}()
 	}
 
-	msg := "deployment successful"
+	msg := "job completed successfully"
 	jobLog.Info(msg)
 	JSONResponse(w, msg, jobID, http.StatusCreated)
 }
