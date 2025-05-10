@@ -2,31 +2,28 @@ package utils
 
 import (
 	"errors"
+	"fmt"
 	"runtime/debug"
 	"strings"
 )
 
+var (
+	ErrModuleNotFound       = errors.New("module not found in build info")
+	ErrBuildInfoUnavailable = errors.New("build info unavailable")
+)
+
 // GetModuleVersion retrieves the version of a specified module from the build info.
 func GetModuleVersion(module string) (string, error) {
-	var version string
-
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
-		return "", errors.New("could not read build info")
+		return "", ErrBuildInfoUnavailable
 	}
 
 	for _, dep := range info.Deps {
 		if dep.Path == module {
-			version = dep.Version
-			break
+			return strings.TrimPrefix(dep.Version, "v"), nil
 		}
 	}
 
-	if version == "" {
-		return "", errors.New("module not found in build info")
-	}
-
-	version = strings.TrimPrefix(version, "v")
-
-	return version, nil
+	return "", fmt.Errorf("%w: %s", ErrModuleNotFound, module)
 }

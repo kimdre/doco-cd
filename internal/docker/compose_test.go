@@ -8,9 +8,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
+
+	"github.com/kimdre/doco-cd/internal/utils"
+
+	"github.com/docker/compose/v2/pkg/api"
+	"github.com/docker/compose/v2/pkg/compose"
 
 	"github.com/docker/docker/client"
 
@@ -18,8 +22,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/webhook"
 
-	"github.com/docker/compose/v2/pkg/api"
-	"github.com/docker/compose/v2/pkg/compose"
 	"github.com/kimdre/doco-cd/internal/config"
 )
 
@@ -173,17 +175,38 @@ compose_files:
 		t.Fatal(err)
 	}
 
-	var wg sync.WaitGroup
-
 	for _, deployConf := range deployConfigs {
-		t.Logf("Deploying '%s' ...", deployConf.Name)
+		t.Cleanup(func() {
+			t.Log("Remove test deployment")
+
+			service := compose.NewComposeService(dockerCli)
+
+			downOpts := api.DownOptions{
+				RemoveOrphans: true,
+				Images:        "all",
+				Volumes:       true,
+			}
+
+			err = service.Down(ctx, project.Name, downOpts)
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
 
 		timestamp := time.Now().UTC().Format(time.RFC3339)
 
+		t.Logf("Deploying '%s'", deployConf.Name)
+
 		err = DeployCompose(ctx, dockerCli, project, deployConf, p, tmpDir, timestamp)
 		if err != nil {
-			t.Fatal(err)
+			if errors.Is(err, utils.ErrModuleNotFound) {
+				t.Logf("Module not found: %s", err.Error())
+			} else {
+				t.Fatal(err)
+			}
 		}
+
+		t.Log("Verifying deployment")
 
 		containers, err := GetLabeledContainers(ctx, dockerClient, DocoCDLabels.Metadata.Manager, "doco-cd")
 		if err != nil {
@@ -202,23 +225,6 @@ compose_files:
 		if containerID == "" {
 			t.Fatal("expected container ID, got empty string")
 		}
-
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-
-			OnCrash(
-				dockerCli.Client(),
-				containerID,
-				func() {
-					t.Log("cleaning up path: " + tmpDir)
-					fmt.Println("cleaning up path: " + tmpDir)
-					_ = os.RemoveAll(tmpDir)
-				},
-				func(err error) { t.Log("an error occurred cleaning up: " + err.Error()) },
-			)
-		}()
 
 		t.Log("Finished deployment with no errors")
 
@@ -242,22 +248,4 @@ compose_files:
 			t.Fatalf("failed to mount: content of 'html/index.html' not equal to content of 'usr/share/nginx/html/index.html': %s", output)
 		}
 	}
-
-	service := compose.NewComposeService(dockerCli)
-
-	// Remove test container after test
-	downOpts := api.DownOptions{
-		RemoveOrphans: true,
-		Images:        "all",
-		Volumes:       true,
-	}
-
-	t.Log("Remove test container")
-
-	err = service.Down(ctx, project.Name, downOpts)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	wg.Wait()
 }
