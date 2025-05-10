@@ -41,7 +41,7 @@ func createTestFile(fileName string, content string) error {
 	return nil
 }
 
-var (
+const (
 	projectName     = "test"
 	composeContents = `services:
   test:
