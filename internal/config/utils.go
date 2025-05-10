@@ -85,3 +85,17 @@ func loadFileBasedEnvVars(cfg *AppConfig) error {
 
 	return nil
 }
+
+// validateUniqueProjectNames checks if the project names in the configs are unique.
+func validateUniqueProjectNames(configs []*DeployConfig) error {
+	names := make(map[string]bool)
+	for _, config := range configs {
+		if names[config.Name] {
+			return fmt.Errorf("%w: %s", ErrDuplicateProjectName, config.Name)
+		}
+
+		names[config.Name] = true
+	}
+
+	return nil
+}

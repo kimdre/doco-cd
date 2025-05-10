@@ -16,6 +16,7 @@ var (
 	CustomDeploymentConfigFileNames     = []string{".doco-cd.%s.yaml", ".doco-cd.%s.yml"}
 	DeprecatedDeploymentConfigFileNames = []string{".compose-deploy.yaml", ".compose-deploy.yml"}
 	ErrConfigFileNotFound               = errors.New("configuration file not found in repository")
+	ErrDuplicateProjectName             = errors.New("duplicate project/stack name found in configuration file")
 	ErrInvalidConfig                    = errors.New("invalid deploy configuration")
 	ErrKeyNotFound                      = errors.New("key not found")
 	ErrDeprecatedConfig                 = errors.New("configuration file name is deprecated, please use .doco-cd.y(a)ml instead")
@@ -108,6 +109,12 @@ func GetDeployConfigs(repoDir, name, customTarget string) ([]*DeployConfig, erro
 				if configFile == deprecatedConfigFile {
 					return configs, fmt.Errorf("%w: %s", ErrDeprecatedConfig, configFile)
 				}
+			}
+
+			// Check if the stack/project names are not unique
+			err = validateUniqueProjectNames(configs)
+			if err != nil {
+				return nil, err
 			}
 
 			return configs, nil
