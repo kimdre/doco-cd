@@ -31,6 +31,19 @@ const (
 	invalidBranch    = "refs/heads/invalid"
 )
 
+func TestMain(m *testing.M) {
+	// Set up any necessary environment variables or configurations here
+	// For example, you might want to set a default log level or HTTP port
+
+	// Run the tests
+	exitCode := m.Run()
+
+	// Clean up any resources or configurations here
+
+	// Exit with the appropriate code
+	os.Exit(exitCode)
+}
+
 func TestHandleEvent(t *testing.T) {
 	defaultEnvVars := map[string]string{
 		"GIT_ACCESS_TOKEN": os.Getenv("GIT_ACCESS_TOKEN"),
