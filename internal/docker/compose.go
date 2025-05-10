@@ -6,13 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/kimdre/doco-cd/internal/utils"
 	"io"
 	"net"
 	"net/http"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/kimdre/doco-cd/internal/utils"
 
 	"github.com/kimdre/doco-cd/internal/webhook"
 
@@ -35,6 +36,7 @@ const (
 var (
 	ErrDockerSocketConnectionFailed = errors.New("failed to connect to docker socket")
 	ErrNoContainerToStart           = errors.New("no container to start")
+	ComposeVersion                  string
 )
 
 // ConnectToSocket connects to the docker socket
@@ -151,13 +153,7 @@ addServiceLabels adds the labels docker compose expects to exist on services.
 This is required for future compose operations to work, such as finding
 containers that are part of a service.
 */
-func addServiceLabels(project *types.Project, payload webhook.ParsedPayload, repoDir, appVersion, timestamp string) {
-	ComposeVersion, err := utils.GetModuleVersion("github.com/docker/compose/v2")
-	if err != nil {
-		fmt.Printf("Error getting module version: %v\n", err)
-		return
-	}
-
+func addServiceLabels(project *types.Project, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, composeVersion string) {
 	for i, s := range project.Services {
 		s.CustomLabels = map[string]string{
 			DocoCDLabels.Metadata.Manager:      "doco-cd",
@@ -172,20 +168,14 @@ func addServiceLabels(project *types.Project, payload webhook.ParsedPayload, rep
 			api.ServiceLabel:                   s.Name,
 			api.WorkingDirLabel:                project.WorkingDir,
 			api.ConfigFilesLabel:               strings.Join(project.ComposeFiles, ","),
-			api.VersionLabel:                   ComposeVersion,
+			api.VersionLabel:                   composeVersion,
 			api.OneoffLabel:                    "False", // default, will be overridden by `run` command
 		}
 		project.Services[i] = s
 	}
 }
 
-func addVolumeLabels(project *types.Project, payload webhook.ParsedPayload, appVersion, timestamp string) {
-	ComposeVersion, err := utils.GetModuleVersion("github.com/docker/compose/v2")
-	if err != nil {
-		fmt.Printf("Error getting module version: %v\n", err)
-		return
-	}
-
+func addVolumeLabels(project *types.Project, payload webhook.ParsedPayload, appVersion, timestamp, composeVersion string) {
 	for i, v := range project.Volumes {
 		v.CustomLabels = map[string]string{
 			DocoCDLabels.Metadata.Manager:     "doco-cd",
@@ -197,7 +187,7 @@ func addVolumeLabels(project *types.Project, payload webhook.ParsedPayload, appV
 			DocoCDLabels.Repository.URL:       payload.WebURL,
 			api.ProjectLabel:                  project.Name,
 			api.VolumeLabel:                   v.Name,
-			api.VersionLabel:                  ComposeVersion,
+			api.VersionLabel:                  composeVersion,
 		}
 		project.Volumes[i] = v
 	}
@@ -226,12 +216,26 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 
 // DeployCompose deploys a project as specified by the Docker Compose specification (LoadCompose)
 func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project, deployConfig *config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion string) error {
+	var err error
+
 	service := compose.NewComposeService(dockerCli)
 
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 
-	addServiceLabels(project, payload, repoDir, appVersion, timestamp)
-	addVolumeLabels(project, payload, appVersion, timestamp)
+	if ComposeVersion == "" {
+		ComposeVersion, err = utils.GetModuleVersion("github.com/docker/compose/v2")
+		if err != nil {
+			if errors.Is(err, utils.ErrModuleNotFound) {
+				// Placeholder for when the module is not found
+				ComposeVersion = "unknown"
+			} else {
+				return fmt.Errorf("failed to get module version: %w", err)
+			}
+		}
+	}
+
+	addServiceLabels(project, payload, repoDir, appVersion, timestamp, ComposeVersion)
+	addVolumeLabels(project, payload, appVersion, timestamp, ComposeVersion)
 
 	if deployConfig.ForceImagePull {
 		err := service.Pull(ctx, project, api.PullOptions{
@@ -261,7 +265,7 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		NoCache:  deployConfig.BuildOpts.NoCache,
 	}
 
-	err := service.Build(ctx, project, buildOpts)
+	err = service.Build(ctx, project, buildOpts)
 	if err != nil {
 		return err
 	}
