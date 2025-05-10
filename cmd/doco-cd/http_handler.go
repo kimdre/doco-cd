@@ -34,13 +34,13 @@ type handlerData struct {
 
 // HandleEvent handles the incoming webhook event
 func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *config.AppConfig, dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli, wg *sync.WaitGroup) {
-	jobLog = jobLog.With(slog.String("repository", payload.FullName))
+	jobLog = jobLog.With(slog.String("repository", payload.FullName), slog.String("reference", payload.Ref), slog.String("commit_sha", payload.CommitSHA))
 
 	if customTarget != "" {
 		jobLog = jobLog.With(slog.String("custom_target", customTarget))
 	}
 
-	jobLog.Info("preparing stack deployment")
+	jobLog.Info("preparing deployment")
 
 	// Clone the repository
 	jobLog.Debug(
@@ -239,8 +239,7 @@ func deployStack(
 	dockerCli *command.Cli, p *webhook.ParsedPayload, deployConfig *config.DeployConfig,
 ) error {
 	stackLog := jobLog.
-		With(slog.String("stack", deployConfig.Name)).
-		With(slog.String("reference", deployConfig.Reference))
+		With(slog.String("stack", deployConfig.Name))
 
 	stackLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
 
