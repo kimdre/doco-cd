@@ -38,6 +38,12 @@ type DeployConfig struct {
 		Args           map[string]string `yaml:"args"`                             // BuildArgs is a map of build-time arguments to pass to the build process
 		NoCache        bool              `yaml:"no_cache" default:"false"`         // NoCache disables the use of the cache when building images
 	} `yaml:"build_opts"` // BuildOpts is the build options for the deployment
+	Destroy     bool `yaml:"destroy" default:"false"` // Destroy removes the deployment and all its resources from the Docker host
+	DestroyOpts struct {
+		RemoveVolumes bool `yaml:"remove_volumes" default:"true"` // RemoveVolumes removes the volumes used by the deployment
+		RemoveImages  bool `yaml:"remove_images" default:"true"`  // RemoveImages removes the images used by the deployment
+		RemoveRepoDir bool `yaml:"remove_dir" default:"true"`     // RemoveRepoDir removes the repository directory after the deployment is destroyed
+	} `yaml:"destroy_opts"` // DestroyOpts is the destroy options for the deployment
 }
 
 // DefaultDeployConfig creates a DeployConfig with default values

@@ -13,6 +13,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/docker/compose/v2/pkg/api"
+	"github.com/docker/compose/v2/pkg/compose"
+
 	"github.com/docker/docker/api/types/container"
 
 	"github.com/compose-spec/compose-go/v2/cli"
@@ -40,7 +43,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		jobLog = jobLog.With(slog.String("custom_target", customTarget))
 	}
 
-	jobLog.Info("preparing deployment")
+	jobLog.Info("received new job")
 
 	// Clone the repository
 	jobLog.Debug(
@@ -136,37 +139,96 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	for _, deployConfig := range deployConfigs {
-		err = deployStack(jobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, &payload, deployConfig)
-		if err != nil {
-			msg := "deployment failed"
-			jobLog.Error(msg)
-			JSONError(w, err, msg, jobID, http.StatusInternalServerError)
+		if deployConfig.Destroy {
+			jobLog.Debug("destroying stack", slog.String("stack", deployConfig.Name))
 
-			return
+			err = destroyStack(jobLog, &ctx, &dockerCli, deployConfig)
+			if err != nil {
+				errMsg = "failed to destroy stack"
+				jobLog.Error(errMsg, logger.ErrAttr(err))
+				JSONError(w,
+					errMsg,
+					err.Error(),
+					jobID,
+					http.StatusInternalServerError)
+
+				return
+			}
+
+			if deployConfig.DestroyOpts.RemoveRepoDir {
+				// Remove the repository directory after destroying the stack
+				jobLog.Debug("removing deployment directory", slog.String("path", externalRepoPath))
+				// Check if the parent directory has multiple subdirectories/repos
+				parentDir := filepath.Dir(internalRepoPath)
+
+				subDirs, err := os.ReadDir(parentDir)
+				if err != nil {
+					jobLog.Error("failed to read parent directory", logger.ErrAttr(err))
+					JSONError(w, "failed to read parent directory", err.Error(), jobID, http.StatusInternalServerError)
+
+					return
+				}
+
+				jobLog.Debug("parent directory has multiple subdirectories", slog.Group("subdirs", slog.Any("subdirs", subDirs)))
+
+				if len(subDirs) > 1 {
+					// Do not remove the parent directory if it has multiple subdirectories
+					jobLog.Debug("remove deployment directory but keep parent directory as it has multiple subdirectories", slog.String("path", internalRepoPath))
+
+					// Remove only the repository directory
+					err = os.RemoveAll(internalRepoPath)
+					if err != nil {
+						jobLog.Error("failed to remove deployment directory", logger.ErrAttr(err))
+						JSONError(w, "failed to remove deployment directory", err.Error(), jobID, http.StatusInternalServerError)
+
+						return
+					}
+				} else {
+					// Remove the parent directory if it has only one subdirectory
+					err = os.RemoveAll(parentDir)
+					if err != nil {
+						jobLog.Error("failed to remove deployment directory", logger.ErrAttr(err))
+						JSONError(w, "failed to remove deployment directory", err.Error(), jobID, http.StatusInternalServerError)
+
+						return
+					}
+
+					jobLog.Debug("removed directory", slog.String("path", parentDir))
+				}
+			}
+		} else {
+			err = deployStack(jobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, &payload, deployConfig)
+			if err != nil {
+				msg := "deployment failed"
+				jobLog.Error(msg)
+				JSONError(w, err, msg, jobID, http.StatusInternalServerError)
+
+				return
+			}
+			// RUN DOCKER HOOKS
+			// containerID, err := docker.GetContainerID(dockerCli.Client(), deployConfig.Name)
+			//
+			//	if err != nil {
+			//		jobLog.Error(err.Error())
+			//		JSONError(w, err, "failed to get container id", jobID, http.StatusInternalServerError)
+			//	}
+			//
+			// wg.Add(1)
+			//
+			//	go func() {
+			//		defer wg.Done()
+			//
+			//		docker.OnCrash(
+			//			dockerCli.Client(),
+			//			containerID,
+			//			func() {
+			//				jobLog.Info("cleaning up", slog.String("path", repoDir))
+			//				_ = os.RemoveAll(repoDir)
+			//			},
+			//			func(err error) { jobLog.Error("failed to clean up path: "+repoDir, logger.ErrAttr(err)) },
+			//		)
+			//	}()
 		}
-		// RUN DOCKER HOOKS
-		// containerID, err := docker.GetContainerID(dockerCli.Client(), deployConfig.Name)
-		//
-		//	if err != nil {
-		//		jobLog.Error(err.Error())
-		//		JSONError(w, err, "failed to get container id", jobID, http.StatusInternalServerError)
-		//	}
-		//
-		// wg.Add(1)
-		//
-		//	go func() {
-		//		defer wg.Done()
-		//
-		//		docker.OnCrash(
-		//			dockerCli.Client(),
-		//			containerID,
-		//			func() {
-		//				jobLog.Info("cleaning up", slog.String("path", repoDir))
-		//				_ = os.RemoveAll(repoDir)
-		//			},
-		//			func(err error) { jobLog.Error("failed to clean up path: "+repoDir, logger.ErrAttr(err)) },
-		//		)
-		//	}()
 	}
 
 	msg := "job completed successfully"
@@ -234,6 +296,7 @@ func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request)
 	JSONResponse(w, "healthy", "", http.StatusOK)
 }
 
+// deployStack deploys the stack using the provided deployment configuration
 func deployStack(
 	jobLog *slog.Logger, internalRepoPath, externalRepoPath string, ctx *context.Context,
 	dockerCli *command.Cli, p *webhook.ParsedPayload, deployConfig *config.DeployConfig,
@@ -325,6 +388,42 @@ func deployStack(
 		stackLog.Error(errMsg,
 			logger.ErrAttr(err),
 			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+
+		return fmt.Errorf("%s: %w", errMsg, err)
+	}
+
+	return nil
+}
+
+// destroyStack destroys the stack using the provided deployment configuration
+func destroyStack(
+	jobLog *slog.Logger, ctx *context.Context,
+	dockerCli *command.Cli, deployConfig *config.DeployConfig,
+) error {
+	stackLog := jobLog.
+		With(slog.String("stack", deployConfig.Name))
+
+	stackLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
+
+	stackLog.Info("destroying stack")
+
+	service := compose.NewComposeService(*dockerCli)
+
+	downOpts := api.DownOptions{
+		RemoveOrphans: deployConfig.RemoveOrphans,
+		Volumes:       deployConfig.DestroyOpts.RemoveVolumes,
+	}
+
+	if deployConfig.DestroyOpts.RemoveImages {
+		downOpts.Images = "all"
+	}
+
+	err := service.Down(*ctx, deployConfig.Name, downOpts)
+	if err != nil {
+		errMsg = "failed to destroy stack"
+		stackLog.Error(errMsg,
+			logger.ErrAttr(err),
+		)
 
 		return fmt.Errorf("%s: %w", errMsg, err)
 	}
