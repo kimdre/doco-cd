@@ -34,7 +34,6 @@ const (
 func TestMain(m *testing.M) {
 	// Set up any necessary environment variables or configurations here
 	// For example, you might want to set a default log level or HTTP port
-
 	// Run the tests
 	exitCode := m.Run()
 
@@ -69,7 +68,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusCreated,
-			expectedResponseBody: `{"details":"deployment successful","job_id":"%[1]s"}`,
+			expectedResponseBody: `{"details":"job completed successfully","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "",
 		},
@@ -84,7 +83,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusCreated,
-			expectedResponseBody: `{"details":"deployment successful","job_id":"%[1]s"}`,
+			expectedResponseBody: `{"details":"job completed successfully","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "test",
 		},
@@ -114,7 +113,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   true,
 			},
 			expectedStatusCode:   http.StatusCreated,
-			expectedResponseBody: `{"details":"deployment successful","job_id":"%[1]s"}`,
+			expectedResponseBody: `{"details":"job completed successfully","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "",
 		},
@@ -210,6 +209,23 @@ func TestHandleEvent(t *testing.T) {
 
 			var wg sync.WaitGroup
 
+			t.Cleanup(func() {
+				service := compose.NewComposeService(dockerCli)
+
+				downOpts := api.DownOptions{
+					RemoveOrphans: true,
+					Images:        "all",
+					Volumes:       true,
+				}
+
+				t.Log("Remove test container")
+
+				err = service.Down(ctx, tc.payload.Name, downOpts)
+				if err != nil {
+					t.Fatal(err)
+				}
+			})
+
 			testMountPoint := container.MountPoint{
 				Type:        "bind",
 				Source:      tmpDir,
@@ -239,21 +255,6 @@ func TestHandleEvent(t *testing.T) {
 			if rr.Body.String() != expectedReturnMessage {
 				t.Errorf("handler returned unexpected body: got '%v' want '%v'",
 					rr.Body.String(), expectedReturnMessage)
-			}
-
-			service := compose.NewComposeService(dockerCli)
-
-			downOpts := api.DownOptions{
-				RemoveOrphans: true,
-				Images:        "all",
-				Volumes:       true,
-			}
-
-			t.Log("Remove test container")
-
-			err = service.Down(ctx, tc.payload.Name, downOpts)
-			if err != nil {
-				t.Fatal(err)
 			}
 
 			wg.Wait()

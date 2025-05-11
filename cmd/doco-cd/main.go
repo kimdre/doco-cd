@@ -114,6 +114,7 @@ func main() {
 
 	h := handlerData{
 		appConfig:      c,
+		appVersion:     Version,
 		dataMountPoint: dataMountPoint,
 		dockerCli:      dockerCli,
 		log:            log,

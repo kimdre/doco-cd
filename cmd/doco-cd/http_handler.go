@@ -3,19 +3,15 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"sync"
 
 	"github.com/docker/docker/api/types/container"
 
-	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/docker/cli/cli/command"
 	"github.com/google/uuid"
 	"github.com/kimdre/doco-cd/internal/config"
@@ -27,6 +23,7 @@ import (
 
 type handlerData struct {
 	appConfig      *config.AppConfig    // Application configuration
+	appVersion     string               // Application version
 	dataMountPoint container.MountPoint // Mount point for the data directory
 	dockerCli      command.Cli          // Docker CLI client
 	log            *logger.Logger       // Logger for logging messages
@@ -40,7 +37,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		jobLog = jobLog.With(slog.String("custom_target", customTarget))
 	}
 
-	jobLog.Info("preparing deployment")
+	jobLog.Info("received new job")
 
 	// Clone the repository
 	jobLog.Debug(
@@ -136,40 +133,99 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	for _, deployConfig := range deployConfigs {
-		err = deployStack(jobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, &payload, deployConfig)
-		if err != nil {
-			msg := "deployment failed"
-			jobLog.Error(msg)
-			JSONError(w, err, msg, jobID, http.StatusInternalServerError)
+		if deployConfig.Destroy {
+			jobLog.Debug("destroying stack", slog.String("stack", deployConfig.Name))
 
-			return
+			err = docker.DestroyStack(jobLog, &ctx, &dockerCli, deployConfig)
+			if err != nil {
+				errMsg = "failed to destroy stack"
+				jobLog.Error(errMsg, logger.ErrAttr(err))
+				JSONError(w,
+					errMsg,
+					err.Error(),
+					jobID,
+					http.StatusInternalServerError)
+
+				return
+			}
+
+			if deployConfig.DestroyOpts.RemoveRepoDir {
+				// Remove the repository directory after destroying the stack
+				jobLog.Debug("removing deployment directory", slog.String("path", externalRepoPath))
+				// Check if the parent directory has multiple subdirectories/repos
+				parentDir := filepath.Dir(internalRepoPath)
+
+				subDirs, err := os.ReadDir(parentDir)
+				if err != nil {
+					jobLog.Error("failed to read parent directory", logger.ErrAttr(err))
+					JSONError(w, "failed to read parent directory", err.Error(), jobID, http.StatusInternalServerError)
+
+					return
+				}
+
+				jobLog.Debug("parent directory has multiple subdirectories", slog.Group("subdirs", slog.Any("subdirs", subDirs)))
+
+				if len(subDirs) > 1 {
+					// Do not remove the parent directory if it has multiple subdirectories
+					jobLog.Debug("remove deployment directory but keep parent directory as it has multiple subdirectories", slog.String("path", internalRepoPath))
+
+					// Remove only the repository directory
+					err = os.RemoveAll(internalRepoPath)
+					if err != nil {
+						jobLog.Error("failed to remove deployment directory", logger.ErrAttr(err))
+						JSONError(w, "failed to remove deployment directory", err.Error(), jobID, http.StatusInternalServerError)
+
+						return
+					}
+				} else {
+					// Remove the parent directory if it has only one subdirectory
+					err = os.RemoveAll(parentDir)
+					if err != nil {
+						jobLog.Error("failed to remove deployment directory", logger.ErrAttr(err))
+						JSONError(w, "failed to remove deployment directory", err.Error(), jobID, http.StatusInternalServerError)
+
+						return
+					}
+
+					jobLog.Debug("removed directory", slog.String("path", parentDir))
+				}
+			}
+		} else {
+			err = docker.DeployStack(jobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, &payload, deployConfig, Version)
+			if err != nil {
+				msg := "deployment failed"
+				jobLog.Error(msg)
+				JSONError(w, err, msg, jobID, http.StatusInternalServerError)
+
+				return
+			}
+			// RUN DOCKER HOOKS
+			// containerID, err := docker.GetContainerID(dockerCli.Client(), deployConfig.Name)
+			//
+			//	if err != nil {
+			//		jobLog.Error(err.Error())
+			//		JSONError(w, err, "failed to get container id", jobID, http.StatusInternalServerError)
+			//	}
+			//
+			// wg.Add(1)
+			//
+			//	go func() {
+			//		defer wg.Done()
+			//
+			//		docker.OnCrash(
+			//			dockerCli.Client(),
+			//			containerID,
+			//			func() {
+			//				jobLog.Info("cleaning up", slog.String("path", repoDir))
+			//				_ = os.RemoveAll(repoDir)
+			//			},
+			//			func(err error) { jobLog.Error("failed to clean up path: "+repoDir, logger.ErrAttr(err)) },
+			//		)
+			//	}()
 		}
-		// RUN DOCKER HOOKS
-		// containerID, err := docker.GetContainerID(dockerCli.Client(), deployConfig.Name)
-		//
-		//	if err != nil {
-		//		jobLog.Error(err.Error())
-		//		JSONError(w, err, "failed to get container id", jobID, http.StatusInternalServerError)
-		//	}
-		//
-		// wg.Add(1)
-		//
-		//	go func() {
-		//		defer wg.Done()
-		//
-		//		docker.OnCrash(
-		//			dockerCli.Client(),
-		//			containerID,
-		//			func() {
-		//				jobLog.Info("cleaning up", slog.String("path", repoDir))
-		//				_ = os.RemoveAll(repoDir)
-		//			},
-		//			func(err error) { jobLog.Error("failed to clean up path: "+repoDir, logger.ErrAttr(err)) },
-		//		)
-		//	}()
 	}
 
-	msg := "deployment successful"
+	msg := "job completed successfully"
 	jobLog.Info(msg)
 	JSONResponse(w, msg, jobID, http.StatusCreated)
 }
@@ -232,102 +288,4 @@ func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request)
 
 	h.log.Debug("health check successful")
 	JSONResponse(w, "healthy", "", http.StatusOK)
-}
-
-func deployStack(
-	jobLog *slog.Logger, internalRepoPath, externalRepoPath string, ctx *context.Context,
-	dockerCli *command.Cli, p *webhook.ParsedPayload, deployConfig *config.DeployConfig,
-) error {
-	stackLog := jobLog.
-		With(slog.String("stack", deployConfig.Name))
-
-	stackLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
-
-	// Validate and sanitize the working directory
-	if strings.Contains(deployConfig.WorkingDirectory, "..") || path.IsAbs(deployConfig.WorkingDirectory) {
-		errMsg = "invalid working directory: potential path traversal detected"
-		jobLog.Error(errMsg, slog.String("working_directory", deployConfig.WorkingDirectory))
-
-		return fmt.Errorf("%s: %w", errMsg, errors.New("validation error"))
-	}
-
-	// Path inside the container
-	internalWorkingDir := path.Join(internalRepoPath, deployConfig.WorkingDirectory)
-	internalWorkingDir, err := filepath.Abs(internalWorkingDir)
-
-	if err != nil || !strings.HasPrefix(internalWorkingDir, internalRepoPath) {
-		errMsg = "invalid working directory: resolved path is outside the allowed base directory"
-		jobLog.Error(errMsg, slog.String("resolved_path", internalWorkingDir))
-
-		return fmt.Errorf("%s", errMsg)
-	}
-
-	// Path on the host
-	externalWorkingDir := path.Join(externalRepoPath, deployConfig.WorkingDirectory)
-	externalWorkingDir, err = filepath.Abs(externalWorkingDir)
-
-	if err != nil || !strings.HasPrefix(externalWorkingDir, externalRepoPath) {
-		errMsg = "invalid working directory: resolved path is outside the allowed base directory"
-		jobLog.Error(errMsg, slog.String("resolved_path", externalWorkingDir))
-
-		return fmt.Errorf("%s", errMsg)
-	}
-
-	err = os.Chdir(internalWorkingDir)
-	if err != nil {
-		errMsg = "failed to change internal working directory"
-		jobLog.Error(errMsg, logger.ErrAttr(err), slog.String("path", internalWorkingDir))
-
-		return fmt.Errorf("%s: %w", errMsg, err)
-	}
-
-	// Check if the default compose files are used
-	if reflect.DeepEqual(deployConfig.ComposeFiles, cli.DefaultFileNames) {
-		var tmpComposeFiles []string
-
-		jobLog.Debug("checking for default compose files")
-
-		// Check if the default compose files exist
-		for _, f := range deployConfig.ComposeFiles {
-			if _, err = os.Stat(path.Join(internalWorkingDir, f)); errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-
-			tmpComposeFiles = append(tmpComposeFiles, f)
-		}
-
-		if len(tmpComposeFiles) == 0 {
-			errMsg = "no compose files found"
-			stackLog.Error(errMsg,
-				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-
-			return fmt.Errorf("%s: %w", errMsg, err)
-		}
-
-		deployConfig.ComposeFiles = tmpComposeFiles
-	}
-
-	project, err := docker.LoadCompose(*ctx, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles)
-	if err != nil {
-		errMsg = "failed to load compose config"
-		stackLog.Error(errMsg,
-			logger.ErrAttr(err),
-			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-
-		return fmt.Errorf("%s: %w", errMsg, err)
-	}
-
-	stackLog.Info("deploying stack")
-
-	err = docker.DeployCompose(*ctx, *dockerCli, project, deployConfig, *p, externalWorkingDir, Version)
-	if err != nil {
-		errMsg = "failed to deploy stack"
-		stackLog.Error(errMsg,
-			logger.ErrAttr(err),
-			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-
-		return fmt.Errorf("%s: %w", errMsg, err)
-	}
-
-	return nil
 }

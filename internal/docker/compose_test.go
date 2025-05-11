@@ -5,16 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/kimdre/doco-cd/internal/utils"
 
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
+	"github.com/google/uuid"
+	"github.com/kimdre/doco-cd/internal/logger"
 
 	"github.com/docker/docker/client"
 
@@ -41,7 +41,7 @@ func createTestFile(fileName string, content string) error {
 	return nil
 }
 
-var (
+const (
 	projectName     = "test"
 	composeContents = `services:
   test:
@@ -53,6 +53,23 @@ var (
     volumes:
       - ./html:/usr/share/nginx/html
 `
+)
+
+var (
+	fileName         = ".doco-cd.yaml"
+	reference        = "refs/heads/main"
+	workingDirectory = "."
+	composeFiles     = []string{"test.compose.yaml"}
+	customTarget     = ""
+
+	deployConfig = fmt.Sprintf(`name: %s
+reference: %s
+working_dir: %s
+force_image_pull: true
+force_recreate: true
+compose_files:
+  - %s
+`, projectName, reference, workingDirectory, composeFiles[0])
 )
 
 func TestVerifySocketConnection(t *testing.T) {
@@ -148,21 +165,6 @@ func TestDeployCompose(t *testing.T) {
 		client.WithAPIVersionNegotiation(),
 	)
 
-	fileName := ".doco-cd.yaml"
-	reference := "refs/heads/main"
-	workingDirectory := "/test"
-	composeFiles := []string{"test.compose.yaml"}
-	customTarget := ""
-
-	deployConfig := fmt.Sprintf(`name: %s
-reference: %s
-working_dir: %s
-force_image_pull: true
-force_recreate: true
-compose_files:
-  - %s
-`, projectName, reference, workingDirectory, composeFiles[0])
-
 	filePath = filepath.Join(repoPath, fileName)
 
 	err = createTestFile(filePath, deployConfig)
@@ -193,16 +195,17 @@ compose_files:
 			}
 		})
 
-		timestamp := time.Now().UTC().Format(time.RFC3339)
-
 		t.Logf("Deploying '%s'", deployConf.Name)
 
-		err = DeployCompose(ctx, dockerCli, project, deployConf, p, tmpDir, timestamp)
+		jobID := uuid.Must(uuid.NewRandom()).String()
+
+		log := logger.New(slog.LevelInfo)
+		jobLog := log.With(slog.String("job_id", jobID))
+
+		err = DeployStack(jobLog, repoPath, repoPath, &ctx, &dockerCli, &p, deployConf, "test")
 		if err != nil {
-			if errors.Is(err, utils.ErrModuleNotFound) {
-				t.Logf("Module not found: %s", err.Error())
-			} else {
-				t.Fatal(err)
+			if errors.Is(err, config.ErrDeprecatedConfig) {
+				t.Log(err.Error())
 			}
 		}
 
@@ -239,13 +242,45 @@ compose_files:
 
 		t.Logf("Mount point source: %s, destination: %s", mountPoint.Source, mountPoint.Destination)
 
-		output, err := Exec(dockerCli.Client(), containerID, "cat", "usr/share/nginx/html/index.html")
+		txtOutput, err := Exec(dockerCli.Client(), containerID, "cat", "usr/share/nginx/html/index.html")
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if strings.TrimSpace(output) != "Hello world!" {
-			t.Fatalf("failed to mount: content of 'html/index.html' not equal to content of 'usr/share/nginx/html/index.html': %s", output)
+		const expectedString = "Hello world!"
+
+		if strings.TrimSpace(txtOutput) != expectedString {
+			t.Fatalf("failed to mount: content of 'html/index.html' not equal to content of 'usr/share/nginx/html/index.html': %s", txtOutput)
 		}
+
+		// Get output of web server
+		htmlOutput, err := Exec(dockerCli.Client(), containerID, "curl", "localhost")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if strings.TrimSpace(htmlOutput) != expectedString {
+			t.Fatalf("failed to mount: content of 'html/index.html' not equal to content of 'usr/share/nginx/html/index.html': %s", htmlOutput)
+		}
+
+		t.Log("Destroying deployment")
+
+		err = DestroyStack(jobLog, &ctx, &dockerCli, deployConf)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		t.Log("Verifying destruction")
+
+		containers, err = GetLabeledContainers(ctx, dockerClient, DocoCDLabels.Metadata.Manager, "doco-cd")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(containers) != 0 {
+			t.Fatalf("expected no labeled containers after destruction, got %d", len(containers))
+		}
+
+		t.Log("Finished destroying deployment with no errors")
 	}
 }
