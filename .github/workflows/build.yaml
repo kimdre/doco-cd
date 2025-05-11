@@ -57,7 +57,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           platforms: |
             linux/amd64
-            linux/arm64
+          # linux/arm64 # Buildx will fail on loading multi-platform images, so we only build for linux/amd64 for the vulnerability scan
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
