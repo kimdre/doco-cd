@@ -326,11 +326,6 @@ func DeployStack(
 		return fmt.Errorf("%s: %w", errMsg, errors.New("validation error"))
 	}
 
-	// If deployConfig.WorkingDirectory is an absolute path, append it to the internal repo path
-	if path.IsAbs(deployConfig.WorkingDirectory) {
-		deployConfig.WorkingDirectory = path.Join(internalRepoPath, deployConfig.WorkingDirectory)
-	}
-
 	// Path inside the container
 	internalWorkingDir := path.Join(internalRepoPath, deployConfig.WorkingDirectory)
 	internalWorkingDir, err := filepath.Abs(internalWorkingDir)
