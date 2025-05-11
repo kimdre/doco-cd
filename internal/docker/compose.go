@@ -319,11 +319,16 @@ func DeployStack(
 	stackLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
 
 	// Validate and sanitize the working directory
-	if strings.Contains(deployConfig.WorkingDirectory, "..") || path.IsAbs(deployConfig.WorkingDirectory) {
+	if strings.Contains(deployConfig.WorkingDirectory, "..") {
 		errMsg := "invalid working directory: potential path traversal detected"
 		jobLog.Error(errMsg, slog.String("working_directory", deployConfig.WorkingDirectory))
 
 		return fmt.Errorf("%s: %w", errMsg, errors.New("validation error"))
+	}
+
+	// If deployConfig.WorkingDirectory is an absolute path, append it to the internal repo path
+	if path.IsAbs(deployConfig.WorkingDirectory) {
+		deployConfig.WorkingDirectory = path.Join(internalRepoPath, deployConfig.WorkingDirectory)
 	}
 
 	// Path inside the container
