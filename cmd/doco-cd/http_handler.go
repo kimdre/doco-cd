@@ -174,12 +174,12 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			}
 
 			if !managed {
-				jobLog.Warn("stack is not managed by doco-cd, skipping destroy", slog.String("stack", deployConfig.Name))
+				jobLog.Warn("stack is not managed by doco-cd, skipping destruction", slog.String("stack", deployConfig.Name))
 				continue
 			}
 
 			if !correctRepo {
-				errMsg = "stack is not managed by this repository, skipping destroy"
+				errMsg = "stack is not managed by this repository, skipping destruction"
 				jobLog.Error(errMsg)
 				JSONError(w,
 					errMsg,
