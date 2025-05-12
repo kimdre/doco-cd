@@ -179,7 +179,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			}
 
 			if !correctRepo {
-				errMsg = "stack is not managed by the correct repository, skipping destroy"
+				errMsg = "stack is not managed by this repository, skipping destroy"
 				jobLog.Error(errMsg)
 				JSONError(w,
 					errMsg,
