@@ -11,6 +11,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/docker/docker/client"
+
 	"github.com/docker/docker/api/types/container"
 
 	"github.com/docker/compose/v2/pkg/api"
@@ -178,6 +180,11 @@ func TestHandleEvent(t *testing.T) {
 				t.Fatalf("failed to get app config: %s", err.Error())
 			}
 
+			dockerClient, _ := client.NewClientWithOpts(
+				client.FromEnv,
+				client.WithAPIVersionNegotiation(),
+			)
+
 			log := logger.New(12)
 			jobID := uuid.Must(uuid.NewRandom()).String()
 			jobLog := log.With(slog.String("job_id", jobID))
@@ -243,7 +250,7 @@ func TestHandleEvent(t *testing.T) {
 				tc.customTarget,
 				jobID,
 				dockerCli,
-				&wg,
+				dockerClient,
 			)
 
 			if status := rr.Code; status != tc.expectedStatusCode {

@@ -117,6 +117,7 @@ func main() {
 		appVersion:     Version,
 		dataMountPoint: dataMountPoint,
 		dockerCli:      dockerCli,
+		dockerClient:   dockerClient,
 		log:            log,
 	}
 
