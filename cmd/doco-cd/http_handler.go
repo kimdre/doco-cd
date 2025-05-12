@@ -219,6 +219,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 				jobLog.Debug("parent directory has multiple subdirectories", slog.Group("subdirs", slog.Any("subdirs", subDirs)))
 
+				jobLog.Debug("directories", slog.Group("dirs", slog.String("parent_dir", parentDir), slog.Any("subdirs", subDirs)))
+
 				if len(subDirs) > 1 {
 					// Do not remove the parent directory if it has multiple subdirectories
 					jobLog.Debug("remove deployment directory but keep parent directory as it has multiple subdirectories", slog.String("path", internalRepoPath))
