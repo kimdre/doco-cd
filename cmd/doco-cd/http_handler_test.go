@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/docker/docker/client"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -108,6 +109,11 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		t.Fatalf("Failed to create docker client: %v", err)
 	}
 
+	dockerClient, _ := client.NewClientWithOpts(
+		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
+	)
+
 	t.Cleanup(func() {
 		err = dockerCli.Client().Close()
 		if err != nil {
@@ -116,9 +122,10 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	})
 
 	h := handlerData{
-		dockerCli:  dockerCli,
-		appConfig:  appConfig,
-		appVersion: Version,
+		dockerCli:    dockerCli,
+		dockerClient: dockerClient,
+		appConfig:    appConfig,
+		appVersion:   Version,
 		dataMountPoint: container.MountPoint{
 			Type:        "bind",
 			Source:      tmpDir,
