@@ -8,9 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/client"
 
 	"github.com/docker/cli/cli/command"
 	"github.com/google/uuid"
@@ -26,11 +26,12 @@ type handlerData struct {
 	appVersion     string               // Application version
 	dataMountPoint container.MountPoint // Mount point for the data directory
 	dockerCli      command.Cli          // Docker CLI client
+	dockerClient   *client.Client       // Docker client
 	log            *logger.Logger       // Logger for logging messages
 }
 
 // HandleEvent handles the incoming webhook event
-func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *config.AppConfig, dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli, wg *sync.WaitGroup) {
+func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *config.AppConfig, dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli, dockerClient *client.Client) {
 	jobLog = jobLog.With(slog.String("repository", payload.FullName), slog.String("reference", payload.Ref), slog.String("commit_sha", payload.CommitSHA))
 
 	if customTarget != "" {
@@ -136,6 +137,59 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		if deployConfig.Destroy {
 			jobLog.Debug("destroying stack", slog.String("stack", deployConfig.Name))
 
+			// Check if doco-cd manages the project before destroying the stack
+			containers, err := docker.GetLabeledContainers(ctx, dockerClient, "com.docker.compose.project", deployConfig.Name)
+			if err != nil {
+				errMsg = "failed to retrieve containers"
+				jobLog.Error(errMsg, logger.ErrAttr(err))
+				JSONError(w,
+					errMsg,
+					err.Error(),
+					jobID,
+					http.StatusInternalServerError)
+
+				return
+			}
+
+			// If no containers are found, skip the destruction step
+			if len(containers) == 0 {
+				jobLog.Debug("no containers found for stack, skipping...", slog.String("stack", deployConfig.Name))
+				continue
+			}
+
+			// Check if doco-cd manages the stack
+			managed := false
+			correctRepo := false
+
+			for _, cont := range containers {
+				if cont.Labels[docker.DocoCDLabels.Metadata.Manager] == "doco-cd" {
+					managed = true
+
+					if cont.Labels[docker.DocoCDLabels.Repository.Name] == payload.FullName {
+						correctRepo = true
+					}
+
+					break
+				}
+			}
+
+			if !managed {
+				jobLog.Warn("stack is not managed by doco-cd, skipping destroy", slog.String("stack", deployConfig.Name))
+				continue
+			}
+
+			if !correctRepo {
+				errMsg = "stack is not managed by the correct repository, skipping destroy"
+				jobLog.Error(errMsg)
+				JSONError(w,
+					errMsg,
+					"",
+					jobID,
+					http.StatusInternalServerError)
+
+				return
+			}
+
 			err = docker.DestroyStack(jobLog, &ctx, &dockerCli, deployConfig)
 			if err != nil {
 				errMsg = "failed to destroy stack"
@@ -199,29 +253,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 				return
 			}
-			// RUN DOCKER HOOKS
-			// containerID, err := docker.GetContainerID(dockerCli.Client(), deployConfig.Name)
-			//
-			//	if err != nil {
-			//		jobLog.Error(err.Error())
-			//		JSONError(w, err, "failed to get container id", jobID, http.StatusInternalServerError)
-			//	}
-			//
-			// wg.Add(1)
-			//
-			//	go func() {
-			//		defer wg.Done()
-			//
-			//		docker.OnCrash(
-			//			dockerCli.Client(),
-			//			containerID,
-			//			func() {
-			//				jobLog.Info("cleaning up", slog.String("path", repoDir))
-			//				_ = os.RemoveAll(repoDir)
-			//			},
-			//			func(err error) { jobLog.Error("failed to clean up path: "+repoDir, logger.ErrAttr(err)) },
-			//		)
-			//	}()
 		}
 	}
 
@@ -231,8 +262,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 }
 
 func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
-	var wg sync.WaitGroup
-
 	ctx := context.Background()
 
 	customTarget := r.PathValue("customTarget")
@@ -274,7 +303,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, &wg)
+	HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, h.dockerClient)
 }
 
 func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request) {
