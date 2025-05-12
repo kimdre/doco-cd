@@ -259,11 +259,12 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				return
 			}
 
-			// Check if containers do not belong to this repository
+			// Check if containers do not belong to this repository or if doco-cd does not manage the stack
 			correctRepo := true
 
 			for _, cont := range containers {
-				if cont.Labels[docker.DocoCDLabels.Repository.Name] != payload.FullName {
+				repoName, ok := cont.Labels[docker.DocoCDLabels.Repository.Name]
+				if !ok || repoName != payload.FullName {
 					correctRepo = false
 					break
 				}
