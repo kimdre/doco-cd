@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/docker/compose/v2/pkg/api"
+
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 
@@ -134,11 +136,13 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	for _, deployConfig := range deployConfigs {
+		jobLog = jobLog.With("stack", deployConfig.Name)
+
 		if deployConfig.Destroy {
-			jobLog.Debug("destroying stack", slog.String("stack", deployConfig.Name))
+			jobLog.Debug("destroying stack")
 
 			// Check if doco-cd manages the project before destroying the stack
-			containers, err := docker.GetLabeledContainers(ctx, dockerClient, "com.docker.compose.project", deployConfig.Name)
+			containers, err := docker.GetLabeledContainers(ctx, dockerClient, api.ProjectLabel, deployConfig.Name)
 			if err != nil {
 				errMsg = "failed to retrieve containers"
 				jobLog.Error(errMsg, logger.ErrAttr(err))
@@ -153,7 +157,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 			// If no containers are found, skip the destruction step
 			if len(containers) == 0 {
-				jobLog.Debug("no containers found for stack, skipping...", slog.String("stack", deployConfig.Name))
+				jobLog.Debug("no containers found for stack, skipping...")
 				continue
 			}
 
@@ -174,12 +178,19 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			}
 
 			if !managed {
-				jobLog.Warn("stack is not managed by doco-cd, skipping destruction", slog.String("stack", deployConfig.Name))
-				continue
+				errMsg = "stack is not managed by doco-cd, aborting destruction"
+				jobLog.Error(errMsg)
+				JSONError(w,
+					errMsg,
+					"",
+					jobID,
+					http.StatusInternalServerError)
+
+				return
 			}
 
 			if !correctRepo {
-				errMsg = "stack is not managed by this repository, skipping destruction"
+				errMsg = "stack is not managed by this repository, aborting destruction"
 				jobLog.Error(errMsg)
 				JSONError(w,
 					errMsg,
@@ -243,6 +254,43 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				}
 			}
 		} else {
+			// Skip deployment if another project with the same name already exists
+			containers, err := docker.GetLabeledContainers(ctx, dockerClient, api.ProjectLabel, deployConfig.Name)
+			if err != nil {
+				errMsg = "failed to retrieve containers"
+				jobLog.Error(errMsg, logger.ErrAttr(err))
+				JSONError(w,
+					errMsg,
+					err.Error(),
+					jobID,
+					http.StatusInternalServerError)
+
+				return
+			}
+
+			// Check if containers do not belong to this repository or if doco-cd does not manage the stack
+			correctRepo := true
+
+			for _, cont := range containers {
+				repoName, ok := cont.Labels[docker.DocoCDLabels.Repository.Name]
+				if !ok || repoName != payload.FullName {
+					correctRepo = false
+					break
+				}
+			}
+
+			if !correctRepo {
+				errMsg = "another stack with the same name already exists, aborting deployment"
+				jobLog.Error(errMsg)
+				JSONError(w,
+					errMsg,
+					"",
+					jobID,
+					http.StatusInternalServerError)
+
+				return
+			}
+
 			err = docker.DeployStack(jobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, &payload, deployConfig, Version)
 			if err != nil {
 				msg := "deployment failed"
