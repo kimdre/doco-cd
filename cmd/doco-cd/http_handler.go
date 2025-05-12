@@ -136,8 +136,10 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	for _, deployConfig := range deployConfigs {
+		jobLog = jobLog.With("stack", deployConfig.Name)
+
 		if deployConfig.Destroy {
-			jobLog.Debug("destroying stack", slog.String("stack", deployConfig.Name))
+			jobLog.Debug("destroying stack")
 
 			// Check if doco-cd manages the project before destroying the stack
 			containers, err := docker.GetLabeledContainers(ctx, dockerClient, api.ProjectLabel, deployConfig.Name)
@@ -155,7 +157,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 			// If no containers are found, skip the destruction step
 			if len(containers) == 0 {
-				jobLog.Debug("no containers found for stack, skipping...", slog.String("stack", deployConfig.Name))
+				jobLog.Debug("no containers found for stack, skipping...")
 				continue
 			}
 
@@ -176,7 +178,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			}
 
 			if !managed {
-				jobLog.Warn("stack is not managed by doco-cd, skipping destruction", slog.String("stack", deployConfig.Name))
+				jobLog.Warn("stack is not managed by doco-cd, skipping destruction")
 				continue
 			}
 
