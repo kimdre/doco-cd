@@ -182,7 +182,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				jobLog.Error(errMsg)
 				JSONError(w,
 					errMsg,
-					"",
+					`"stack": `+deployConfig.Name,
 					jobID,
 					http.StatusInternalServerError)
 
@@ -194,7 +194,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				jobLog.Error(errMsg)
 				JSONError(w,
 					errMsg,
-					"",
+					`"stack": `+deployConfig.Name,
 					jobID,
 					http.StatusInternalServerError)
 
@@ -284,7 +284,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				jobLog.Error(errMsg)
 				JSONError(w,
 					errMsg,
-					"",
+					`"stack": `+deployConfig.Name,
 					jobID,
 					http.StatusInternalServerError)
 
