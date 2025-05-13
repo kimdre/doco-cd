@@ -178,7 +178,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			}
 
 			if !managed {
-				errMsg = "stack is not managed by doco-cd, aborting destruction"
+				errMsg = "stack " + deployConfig.Name + " is not managed by doco-cd, aborting destruction"
 				jobLog.Error(errMsg)
 				JSONError(w,
 					errMsg,
@@ -190,7 +190,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			}
 
 			if !correctRepo {
-				errMsg = "stack is not managed by this repository, aborting destruction"
+				errMsg = "stack " + deployConfig.Name + " is not managed by this repository, aborting destruction"
 				jobLog.Error(errMsg)
 				JSONError(w,
 					errMsg,
@@ -280,7 +280,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			}
 
 			if !correctRepo {
-				errMsg = "another stack with the same name already exists, aborting deployment"
+				errMsg = "another stack with the name " + deployConfig.Name + " already exists, skipping deployment"
 				jobLog.Error(errMsg)
 				JSONError(w,
 					errMsg,
