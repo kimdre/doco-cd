@@ -18,7 +18,7 @@ type jsonError struct {
 }
 
 // JSONError writes an error response to the client in JSON format
-func JSONError(w http.ResponseWriter, err interface{}, details any, jobId string, code int) {
+func JSONError(w http.ResponseWriter, err, details any, jobId string, code int) {
 	if _, ok := err.(error); ok {
 		err = fmt.Sprintf("%v", err)
 	}
