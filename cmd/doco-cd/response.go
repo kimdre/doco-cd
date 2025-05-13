@@ -41,7 +41,7 @@ func JSONError(w http.ResponseWriter, err, details any, jobId string, code int) 
 	}
 }
 
-func JSONResponse(w http.ResponseWriter, details, jobId string, code int) {
+func JSONResponse(w http.ResponseWriter, details any, jobId string, code int) {
 	resp := jsonResponse{
 		Details: details,
 		JobID:   jobId,
