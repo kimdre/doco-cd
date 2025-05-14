@@ -24,7 +24,7 @@ var (
 	ErrRepositoryAlreadyExists = git.ErrRepositoryAlreadyExists
 	ErrCommitNotFound          = errors.New("commit not found")
 	ErrCheckoutCommitFailed    = errors.New("failed to checkout commit")
-	ErrCheckoutRefFailed       = errors.New("failed to checkout ref")
+	ErrCheckoutRefFailed       = errors.New("failed to checkout reference")
 )
 
 // CheckoutRepository checks out a specific commit in a given repository
@@ -57,16 +57,20 @@ func CheckoutRepository(path, ref, commitSHA string, skipTLSVerify bool) (*git.R
 		}
 
 		var refCandidates []plumbing.ReferenceName
-		if strings.HasPrefix(ref, "refs/heads/") || strings.HasPrefix(ref, "refs/tags/") {
+		if strings.HasPrefix(ref, BranchPrefix) || strings.HasPrefix(ref, TagPrefix) {
 			refCandidates = append(refCandidates, plumbing.ReferenceName(ref))
 		} else {
 			refCandidates = append(refCandidates,
-				plumbing.ReferenceName("refs/heads/"+ref),
-				plumbing.ReferenceName("refs/tags/"+ref))
+				plumbing.ReferenceName(BranchPrefix+ref),
+				plumbing.ReferenceName(TagPrefix+ref))
 		}
 
-		var checkoutErr error
-		for _, refName := range refCandidates {
+		var (
+			checkoutErr error
+			refName     plumbing.ReferenceName
+		)
+
+		for _, refName = range refCandidates {
 			checkoutErr = worktree.Checkout(&git.CheckoutOptions{
 				Branch: refName,
 				Force:  true,
@@ -77,7 +81,7 @@ func CheckoutRepository(path, ref, commitSHA string, skipTLSVerify bool) (*git.R
 		}
 
 		if checkoutErr != nil {
-			return nil, fmt.Errorf("%w: %s", ErrCheckoutRefFailed, checkoutErr)
+			return nil, fmt.Errorf("%w - %s: %s", ErrCheckoutRefFailed, checkoutErr, refName)
 		}
 	} else {
 		hash := plumbing.NewHash(commitSHA)
