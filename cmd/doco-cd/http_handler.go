@@ -140,6 +140,24 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 		jobLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
 
+		// TODO: fix this
+		if deployConfig.Reference != "" && deployConfig.Reference != payload.Ref {
+			jobLog.Debug("checking out reference "+deployConfig.Reference, slog.String("host_path", externalRepoPath))
+
+			_, err = git.CheckoutRepository(internalRepoPath, deployConfig.Reference, "", appConfig.SkipTLSVerification)
+			if err != nil {
+				errMsg = "failed to checkout repository"
+				jobLog.Error(errMsg, logger.ErrAttr(err))
+				JSONError(w,
+					errMsg,
+					err.Error(),
+					jobID,
+					http.StatusInternalServerError)
+
+				return
+			}
+		}
+
 		if deployConfig.Destroy {
 			jobLog.Debug("destroying stack")
 
