@@ -140,7 +140,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 		jobLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
 
-		// TODO: fix this
 		if deployConfig.Reference != "" && deployConfig.Reference != payload.Ref {
 			jobLog.Debug("checking out reference "+deployConfig.Reference, slog.String("host_path", externalRepoPath))
 
