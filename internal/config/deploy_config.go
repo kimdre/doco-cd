@@ -50,7 +50,7 @@ type DeployConfig struct {
 func DefaultDeployConfig(name string) *DeployConfig {
 	return &DeployConfig{
 		Name:             name,
-		Reference:        "/ref/heads/main",
+		Reference:        "refs/heads/main",
 		WorkingDirectory: ".",
 		ComposeFiles:     cli.DefaultFileNames,
 	}
