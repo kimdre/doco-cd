@@ -71,6 +71,19 @@ func CheckoutRepository(path, ref, commitSHA string, skipTLSVerify bool) (*git.R
 		)
 
 		for _, refName = range refCandidates {
+			// Fetch the branch if it doesn't exist locally
+			if _, err = repo.Reference(refName, true); err != nil {
+				err = repo.Fetch(&git.FetchOptions{
+					RemoteName:      RemoteName,
+					RefSpecs:        []config.RefSpec{"+refs/heads/*:refs/remotes/origin/*"},
+					Force:           true,
+					InsecureSkipTLS: skipTLSVerify,
+				})
+				if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
+					return nil, fmt.Errorf("failed to fetch branch: %w", err)
+				}
+			}
+
 			checkoutErr = worktree.Checkout(&git.CheckoutOptions{
 				Branch: refName,
 				Force:  true,
