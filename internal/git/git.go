@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 
 	"github.com/go-git/go-git/v5/config"
 
@@ -12,7 +13,14 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 )
 
-var ErrRepositoryAlreadyExists = git.ErrRepositoryAlreadyExists
+const RemoteName = "origin"
+
+var (
+	ErrRepositoryAlreadyExists = git.ErrRepositoryAlreadyExists
+	ErrCommitNotFound          = errors.New("commit not found")
+	ErrCheckoutCommitFailed    = errors.New("failed to checkout commit")
+	ErrCheckoutRefFailed       = errors.New("failed to checkout ref")
+)
 
 // CheckoutRepository checks out a specific commit in a given repository
 func CheckoutRepository(path, ref, commitSHA string, skipTLSVerify bool) (*git.Repository, error) {
@@ -21,22 +29,16 @@ func CheckoutRepository(path, ref, commitSHA string, skipTLSVerify bool) (*git.R
 		return nil, err
 	}
 
-	// Fetch latest commits
-	refSpec := config.RefSpec(fmt.Sprintf("%v:%v", plumbing.NewHash(commitSHA), ref))
-
 	err = repo.Fetch(&git.FetchOptions{
-		RefSpecs:        []config.RefSpec{refSpec},
+		RemoteName:      RemoteName,
+		RefSpecs:        []config.RefSpec{"+refs/heads/*:refs/remotes/origin/*", "+refs/tags/*:refs/tags/*"},
 		Force:           true,
+		Tags:            git.AllTags,
 		InsecureSkipTLS: skipTLSVerify,
+		Progress:        nil,
 	})
 	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
 		return nil, fmt.Errorf("failed to fetch repository: %w", err)
-	}
-
-	// Check if the commit exists
-	_, err = repo.CommitObject(plumbing.NewHash(commitSHA))
-	if err != nil {
-		return nil, fmt.Errorf("commit not found: %w", err)
 	}
 
 	worktree, err := repo.Worktree()
@@ -44,24 +46,49 @@ func CheckoutRepository(path, ref, commitSHA string, skipTLSVerify bool) (*git.R
 		return nil, err
 	}
 
-	// Checkout the branch if ref is provided
-	if ref != "" {
+	if commitSHA == "" {
+		if ref == "" {
+			return nil, errors.New("ref is not set")
+		}
+
+		var refCandidates []plumbing.ReferenceName
+		if strings.HasPrefix(ref, "refs/heads/") || strings.HasPrefix(ref, "refs/tags/") {
+			refCandidates = append(refCandidates, plumbing.ReferenceName(ref))
+		} else {
+			refCandidates = append(refCandidates,
+				plumbing.ReferenceName("refs/heads/"+ref),
+				plumbing.ReferenceName("refs/tags/"+ref))
+		}
+
+		var checkoutErr error
+		for _, refName := range refCandidates {
+			checkoutErr = worktree.Checkout(&git.CheckoutOptions{
+				Branch: refName,
+				Force:  true,
+			})
+			if checkoutErr == nil {
+				break
+			}
+		}
+
+		if checkoutErr != nil {
+			return nil, fmt.Errorf("%w: %s", ErrCheckoutRefFailed, checkoutErr)
+		}
+	} else {
+		hash := plumbing.NewHash(commitSHA)
+
+		_, err = repo.CommitObject(hash)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrCommitNotFound, err)
+		}
+
 		err = worktree.Checkout(&git.CheckoutOptions{
-			Branch: plumbing.ReferenceName(ref),
-			Force:  true,
+			Hash:  hash,
+			Force: true,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to checkout ref: %w", err)
+			return nil, fmt.Errorf("%w: %w", ErrCheckoutCommitFailed, err)
 		}
-	}
-
-	// Checkout the specific commit
-	err = worktree.Checkout(&git.CheckoutOptions{
-		Hash:  plumbing.NewHash(commitSHA),
-		Force: true,
-	})
-	if err != nil {
-		return nil, err
 	}
 
 	return repo, nil
@@ -75,11 +102,13 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool) (*git.Repository
 	}
 
 	return git.PlainClone(path, false, &git.CloneOptions{
+		RemoteName:      RemoteName,
 		URL:             url,
 		SingleBranch:    true,
 		ReferenceName:   plumbing.ReferenceName(ref),
 		Tags:            git.NoTags,
 		InsecureSkipTLS: skipTLSVerify,
+		Progress:        nil,
 	})
 }
 
