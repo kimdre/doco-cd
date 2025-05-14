@@ -316,8 +316,6 @@ func DeployStack(
 	stackLog := jobLog.
 		With(slog.String("stack", deployConfig.Name))
 
-	stackLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
-
 	// Validate and sanitize the working directory
 	if strings.Contains(deployConfig.WorkingDirectory, "..") {
 		errMsg := "invalid working directory: potential path traversal detected"
@@ -414,8 +412,6 @@ func DestroyStack(
 ) error {
 	stackLog := jobLog.
 		With(slog.String("stack", deployConfig.Name))
-
-	stackLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
 
 	stackLog.Info("destroying stack")
 

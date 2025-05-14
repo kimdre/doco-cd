@@ -138,6 +138,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	for _, deployConfig := range deployConfigs {
 		jobLog = jobLog.With("stack", deployConfig.Name)
 
+		jobLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
+
 		if deployConfig.Destroy {
 			jobLog.Debug("destroying stack")
 
