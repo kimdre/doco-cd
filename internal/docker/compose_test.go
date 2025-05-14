@@ -57,7 +57,7 @@ const (
 
 var (
 	fileName         = ".doco-cd.yaml"
-	reference        = "refs/heads/main"
+	reference        = git.MainBranch
 	workingDirectory = "."
 	composeFiles     = []string{"test.compose.yaml"}
 	customTarget     = ""

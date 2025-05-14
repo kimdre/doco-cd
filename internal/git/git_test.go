@@ -13,7 +13,7 @@ import (
 
 const (
 	cloneUrl            = "https://github.com/kimdre/doco-cd.git"
-	validBranchRef      = "refs/heads/main"
+	validBranchRef      = MainBranch
 	validBranchRefShort = "main"
 	validTagRef         = "refs/tags/v0.15.0"
 	validTagRefShort    = "v0.15.0"
@@ -201,7 +201,6 @@ func TestCheckoutRepository(t *testing.T) {
 				if ref.Name().String() != tc.expectedRef {
 					t.Fatalf("Expected reference %s, got %s", tc.expectedRef, ref.Name().String())
 				}
-
 			} else {
 				_, err = repo.Reference(refName, true)
 				if err == nil {

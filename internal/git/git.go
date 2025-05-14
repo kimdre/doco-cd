@@ -13,7 +13,12 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 )
 
-const RemoteName = "origin"
+const (
+	RemoteName   = "origin"
+	TagPrefix    = "refs/tags/"
+	BranchPrefix = "refs/heads/"
+	MainBranch   = "refs/heads/main"
+)
 
 var (
 	ErrRepositoryAlreadyExists = git.ErrRepositoryAlreadyExists
