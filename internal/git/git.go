@@ -40,7 +40,6 @@ func CheckoutRepository(path, ref, commitSHA string, skipTLSVerify bool) (*git.R
 		Force:           true,
 		Tags:            git.AllTags,
 		InsecureSkipTLS: skipTLSVerify,
-		Progress:        nil,
 	})
 	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
 		return nil, fmt.Errorf("failed to fetch repository: %w", err)
