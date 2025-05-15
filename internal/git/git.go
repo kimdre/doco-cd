@@ -38,11 +38,8 @@ var (
 //  4. returning the updated repository
 //
 // Allowed reference forma
-//   - refs/heads/main
-//   - main
-//   - refs/tags/v1.0.0
-//   - v1.0.0
-//  - v1.0.0
+//   - Branches: refs/heads/main or main
+//   - Tags: refs/tags/v1.0.0 or v1.0.0
 func UpdateRepository(path, ref string, skipTLSVerify bool) (*git.Repository, error) {
 	repo, err := git.PlainOpen(path)
 	if err != nil {
