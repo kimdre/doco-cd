@@ -101,7 +101,10 @@ func UpdateRepository(path, ref string, skipTLSVerify bool) (*git.Repository, er
 		)
 	}
 
-	var loopError error
+	var (
+		loopError        error
+		successCandidate refCandidate
+	)
 
 	for _, candidate := range refCandidates {
 		if candidate.localRef.IsBranch() {
@@ -120,6 +123,7 @@ func UpdateRepository(path, ref string, skipTLSVerify bool) (*git.Repository, er
 		})
 		if err == nil {
 			loopError = nil
+			successCandidate = candidate
 
 			break
 		}
@@ -129,6 +133,19 @@ func UpdateRepository(path, ref string, skipTLSVerify bool) (*git.Repository, er
 
 	if loopError != nil {
 		return nil, loopError
+	}
+
+	// Pull the latest changes from the remote
+	err = worktree.Pull(&git.PullOptions{
+		RemoteName:      RemoteName,
+		ReferenceName:   successCandidate.localRef,
+		SingleBranch:    true,
+		InsecureSkipTLS: skipTLSVerify,
+		Force:           true,
+	})
+
+	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
+		return nil, fmt.Errorf("%w: %w", ErrPullFailed, err)
 	}
 
 	return repo, nil
