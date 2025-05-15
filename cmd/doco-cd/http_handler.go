@@ -86,7 +86,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	if err != nil {
 		// If the repository already exists, check it out to the specified commit SHA
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
-			jobLog.Debug("repository already exists, checking out commit "+payload.CommitSHA, slog.String("host_path", externalRepoPath))
+			jobLog.Debug("repository already exists, checking out reference "+payload.Ref, slog.String("host_path", externalRepoPath))
 
 			_, err = git.UpdateRepository(internalRepoPath, payload.Ref, appConfig.SkipTLSVerification)
 			if err != nil {
