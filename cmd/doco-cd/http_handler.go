@@ -3,15 +3,16 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/docker/compose/v2/pkg/api"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/docker/compose/v2/pkg/api"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/client"
 
 	"github.com/docker/cli/cli/command"
 	"github.com/google/uuid"
