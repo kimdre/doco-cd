@@ -123,9 +123,10 @@ func UpdateRepository(path, ref string, skipTLSVerify bool) (*git.Repository, er
 		}
 
 		// Checkout the reference
+		// TODO: FIXME This removes local changes
 		err = worktree.Checkout(&git.CheckoutOptions{
 			Branch: candidate.localRef,
-			Keep:   true,
+			Force:  true,
 		})
 		if err != nil {
 			loopError = fmt.Errorf("%w: %w: %s", ErrCheckoutFailed, err, candidate.localRef)
