@@ -34,13 +34,13 @@ type handlerData struct {
 // HandleEvent handles the incoming webhook event
 func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *config.AppConfig, dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli, dockerClient *client.Client) {
 	startTime := time.Now()
-	jobLog = jobLog.With(slog.String("repository", payload.FullName), slog.Group("trigger", slog.String("commit", payload.CommitSHA), slog.String("ref", payload.Ref)))
+	jobLog = jobLog.With(slog.String("repository", payload.FullName))
 
 	if customTarget != "" {
 		jobLog = jobLog.With(slog.String("custom_target", customTarget))
 	}
 
-	jobLog.Info("received new job")
+	jobLog.Info("received new job", slog.Group("trigger", slog.String("commit", payload.CommitSHA), slog.String("ref", payload.Ref)))
 
 	// Clone the repository
 	jobLog.Debug(
