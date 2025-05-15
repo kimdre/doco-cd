@@ -13,6 +13,7 @@ import (
 
 const (
 	cloneUrl            = "https://github.com/kimdre/doco-cd.git"
+	remoteMainBranch    = "refs/remotes/origin/main"
 	validBranchRef      = MainBranch
 	validBranchRefShort = "main"
 	validTagRef         = "refs/tags/v0.15.0"
@@ -94,14 +95,14 @@ func TestUpdateRepository(t *testing.T) {
 			cloneUrl:    cloneUrl,
 			privateRepo: false,
 			branchRef:   validBranchRef,
-			expectedRef: validBranchRef,
+			expectedRef: remoteMainBranch,
 			expectedErr: nil,
 		},
 		{
 			name:        "Valid short branch ref",
 			cloneUrl:    cloneUrl,
 			branchRef:   validBranchRefShort,
-			expectedRef: validBranchRef,
+			expectedRef: remoteMainBranch,
 			expectedErr: nil,
 		},
 		{
@@ -126,7 +127,7 @@ func TestUpdateRepository(t *testing.T) {
 			privateRepo: false,
 			branchRef:   invalidRef,
 			expectedRef: "",
-			expectedErr: ErrCheckoutFailed,
+			expectedErr: ErrPullFailed,
 		},
 		{
 			name:        "Invalid tag ref",
@@ -134,7 +135,7 @@ func TestUpdateRepository(t *testing.T) {
 			privateRepo: false,
 			branchRef:   invalidTagRef,
 			expectedRef: "",
-			expectedErr: ErrCheckoutFailed,
+			expectedErr: ErrPullFailed,
 		},
 		{
 			name:        "Private Repository",
