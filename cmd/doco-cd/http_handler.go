@@ -3,16 +3,15 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/docker/compose/v2/pkg/api"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/client"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/docker/compose/v2/pkg/api"
-
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"time"
 
 	"github.com/docker/cli/cli/command"
 	"github.com/google/uuid"
@@ -34,6 +33,7 @@ type handlerData struct {
 
 // HandleEvent handles the incoming webhook event
 func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *config.AppConfig, dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli, dockerClient *client.Client) {
+	startTime := time.Now()
 	jobLog = jobLog.With(slog.String("repository", payload.FullName), slog.Group("trigger", slog.String("commit", payload.CommitSHA), slog.String("ref", payload.Ref)))
 
 	if customTarget != "" {
@@ -328,7 +328,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	msg := "job completed successfully"
-	jobLog.Info(msg)
+	duration := time.Since(startTime)
+	jobLog.Info(msg, slog.String("elapsed_time", duration.String()))
 	JSONResponse(w, msg, jobID, http.StatusCreated)
 }
 
