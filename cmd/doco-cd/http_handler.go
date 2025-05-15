@@ -88,7 +88,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			jobLog.Debug("repository already exists, checking out commit "+payload.CommitSHA, slog.String("host_path", externalRepoPath))
 
-			_, err = git.CheckoutRepository(internalRepoPath, payload.Ref, payload.CommitSHA, appConfig.SkipTLSVerification)
+			_, err = git.UpdateRepository(internalRepoPath, payload.Ref, appConfig.SkipTLSVerification)
 			if err != nil {
 				errMsg = "failed to checkout repository"
 				jobLog.Error(errMsg, logger.ErrAttr(err))
@@ -143,7 +143,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		if deployConfig.Reference != "" && deployConfig.Reference != payload.Ref {
 			jobLog.Debug("checking out reference "+deployConfig.Reference, slog.String("host_path", externalRepoPath))
 
-			_, err = git.CheckoutRepository(internalRepoPath, deployConfig.Reference, "", appConfig.SkipTLSVerification)
+			_, err = git.UpdateRepository(internalRepoPath, deployConfig.Reference, appConfig.SkipTLSVerification)
 			if err != nil {
 				errMsg = "failed to checkout repository"
 				jobLog.Error(errMsg, logger.ErrAttr(err))

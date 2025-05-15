@@ -80,29 +80,21 @@ func TestCloneRepository(t *testing.T) {
 	}
 }
 
-func TestCheckoutRepository(t *testing.T) {
+func TestUpdateRepository(t *testing.T) {
 	testCases := []struct {
 		name        string
 		cloneUrl    string
+		privateRepo bool
 		branchRef   string
 		expectedRef string
-		commitSHA   string
 		expectedErr error
 	}{
 		{
-			name:        "Valid commit SHA",
-			cloneUrl:    cloneUrl,
-			branchRef:   validBranchRef,
-			expectedRef: validBranchRef,
-			commitSHA:   validCommitSHA,
-			expectedErr: nil,
-		},
-		{
 			name:        "Valid branch ref",
 			cloneUrl:    cloneUrl,
+			privateRepo: false,
 			branchRef:   validBranchRef,
 			expectedRef: validBranchRef,
-			commitSHA:   "",
 			expectedErr: nil,
 		},
 		{
@@ -110,68 +102,80 @@ func TestCheckoutRepository(t *testing.T) {
 			cloneUrl:    cloneUrl,
 			branchRef:   validBranchRefShort,
 			expectedRef: validBranchRef,
-			commitSHA:   "",
 			expectedErr: nil,
 		},
 		{
 			name:        "Valid tag ref",
 			cloneUrl:    cloneUrl,
+			privateRepo: false,
 			branchRef:   validTagRef,
 			expectedRef: validTagRef,
-			commitSHA:   "",
 			expectedErr: nil,
 		},
 		{
-			name:        "Valid tag ref",
+			name:        "Valid short tag ref",
 			cloneUrl:    cloneUrl,
+			privateRepo: false,
 			branchRef:   validTagRefShort,
 			expectedRef: validTagRef,
-			commitSHA:   "",
 			expectedErr: nil,
-		},
-		{
-			name:        "Invalid commit SHA",
-			cloneUrl:    cloneUrl,
-			branchRef:   validBranchRef,
-			expectedRef: "",
-			commitSHA:   invalidCommitSHA,
-			expectedErr: ErrCommitNotFound,
 		},
 		{
 			name:        "Invalid branch ref",
 			cloneUrl:    cloneUrl,
+			privateRepo: false,
 			branchRef:   invalidRef,
 			expectedRef: "",
-			commitSHA:   "",
-			expectedErr: ErrCheckoutRefFailed,
+			expectedErr: ErrCheckoutFailed,
 		},
 		{
 			name:        "Invalid tag ref",
 			cloneUrl:    cloneUrl,
+			privateRepo: false,
 			branchRef:   invalidTagRef,
 			expectedRef: "",
-			commitSHA:   "",
-			expectedErr: ErrCheckoutRefFailed,
+			expectedErr: ErrCheckoutFailed,
 		},
-	}
-
-	repo, err := CloneRepository(t.TempDir(), cloneUrl, validBranchRef, false)
-	if err != nil {
-		t.Fatalf("Failed to clone repository: %v", err)
-	}
-
-	if repo == nil {
-		t.Fatal("Repository is nil")
-	}
-
-	worktree, err := repo.Worktree()
-	if err != nil {
-		t.Fatalf("Failed to get worktree: %v", err)
+		{
+			name:        "Private Repository",
+			cloneUrl:    "https://github.com/kimdre/test.git",
+			privateRepo: true,
+			branchRef:   "destroy",
+			expectedRef: "refs/heads/destroy",
+			expectedErr: nil,
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			repo, err = CheckoutRepository(worktree.Filesystem.Root(), tc.branchRef, tc.commitSHA, true)
+			if tc.privateRepo {
+				c, err := config.GetAppConfig()
+				if err != nil {
+					t.Fatalf("Failed to get app config: %v", err)
+				}
+
+				tc.cloneUrl = GetAuthUrl(
+					tc.cloneUrl,
+					c.AuthType,
+					c.GitAccessToken,
+				)
+			}
+
+			repo, err := CloneRepository(t.TempDir(), tc.cloneUrl, MainBranch, false)
+			if err != nil {
+				t.Fatalf("Failed to clone repository: %v", err)
+			}
+
+			if repo == nil {
+				t.Fatal("Repository is nil")
+			}
+
+			worktree, err := repo.Worktree()
+			if err != nil {
+				t.Fatalf("Failed to get worktree: %v", err)
+			}
+
+			repo, err = UpdateRepository(worktree.Filesystem.Root(), tc.branchRef, true)
 			if err != nil {
 				if !errors.Is(err, tc.expectedErr) {
 					t.Fatalf("Expected error %v, got %v", tc.expectedErr, err)
@@ -185,7 +189,7 @@ func TestCheckoutRepository(t *testing.T) {
 			}
 
 			if repo != nil {
-				worktree, err = repo.Worktree()
+				_, err = repo.Worktree()
 				if err != nil {
 					t.Fatalf("Failed to get worktree: %v", err)
 				}
@@ -205,17 +209,6 @@ func TestCheckoutRepository(t *testing.T) {
 				_, err = repo.Reference(refName, true)
 				if err == nil {
 					t.Fatalf("Expected error for invalid reference %s, got nil", tc.expectedRef)
-				}
-			}
-
-			if tc.commitSHA != "" {
-				commit, err := repo.CommitObject(plumbing.NewHash(tc.commitSHA))
-				if err != nil {
-					t.Fatalf("Failed to get commit object: %v", err)
-				}
-
-				if commit.Hash.String() != tc.commitSHA {
-					t.Fatalf("Expected commit %s, got %s", tc.commitSHA, commit.Hash.String())
 				}
 			}
 		})
