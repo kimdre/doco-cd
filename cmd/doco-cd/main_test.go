@@ -134,6 +134,21 @@ func TestHandleEvent(t *testing.T) {
 			overrideEnv:          nil,
 			customTarget:         "",
 		},
+		{
+			name: "With Remote Repository",
+			payload: webhook.ParsedPayload{
+				Ref:       "remote",
+				CommitSHA: validCommitSHA,
+				Name:      projectName,
+				FullName:  "kimdre/test",
+				CloneURL:  "https://github.com/kimdre/test",
+				Private:   true,
+			},
+			expectedStatusCode:   http.StatusCreated,
+			expectedResponseBody: `{"details":"job completed successfully","job_id":"%[1]s"}`,
+			overrideEnv:          nil,
+			customTarget:         "",
+		},
 	}
 
 	// Restore environment variables after the test
