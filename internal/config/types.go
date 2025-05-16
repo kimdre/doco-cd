@@ -12,10 +12,10 @@ type HttpUrl string // HttpUrl is a type for strings that represent HTTP URLs
 
 // Initialize the validator at package import
 func init() {
-	// Registriere die Validierungsfunktion für HttpUrl
+	// Register the custom validation function for HttpUrl
 	err := validator.SetValidationFunc("httpUrl", validateHttpUrl)
 	if err != nil {
-		panic("error registering httpurl validator: " + err.Error())
+		panic("error registering httpUrl validator: " + err.Error())
 	}
 }
 
@@ -31,7 +31,7 @@ func validateHttpUrl(v interface{}, param string) error {
 	}
 
 	if str == "" {
-		return nil // Leere Strings sind erlaubt, falls das gewünscht ist
+		return nil // Empty string is considered valid
 	}
 
 	u, err := url.Parse(str)
