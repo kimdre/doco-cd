@@ -131,21 +131,12 @@ func UpdateRepository(path, ref string, skipTLSVerify bool) (*git.Repository, er
 		return nil, fmt.Errorf("%w: %s", ErrInvalidReference, ref)
 	}
 
-	// Checkout the reference
-	// Do checkout when the reference is different from the current one
-	currentRef, err := repo.Head()
+	err = worktree.Checkout(&git.CheckoutOptions{
+		Branch: successCandidate.localRef,
+		Force:  true,
+	})
 	if err != nil {
-		return nil, err
-	}
-
-	if currentRef.Name() != successCandidate.remoteRef {
-		err = worktree.Checkout(&git.CheckoutOptions{
-			Branch: successCandidate.localRef,
-			Force:  true,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("%w: %w: %s", ErrCheckoutFailed, err, successCandidate.localRef)
-		}
+		return nil, fmt.Errorf("%w: %w: %s", ErrCheckoutFailed, err, successCandidate.localRef)
 	}
 
 	// Pull the latest changes from the remote
