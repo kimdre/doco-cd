@@ -139,19 +139,6 @@ func UpdateRepository(path, ref string, skipTLSVerify bool) (*git.Repository, er
 		return nil, fmt.Errorf("%w: %w: %s", ErrCheckoutFailed, err, successCandidate.localRef)
 	}
 
-	// Pull the latest changes from the remote
-	err = worktree.Pull(&git.PullOptions{
-		RemoteName:      RemoteName,
-		ReferenceName:   successCandidate.localRef,
-		Depth:           1,
-		SingleBranch:    true,
-		InsecureSkipTLS: skipTLSVerify,
-		Force:           true,
-	})
-	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
-		return nil, fmt.Errorf("%w: %w: %s", ErrPullFailed, err, successCandidate.localRef)
-	}
-
 	return repo, nil
 }
 
