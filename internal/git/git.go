@@ -29,6 +29,7 @@ var (
 	ErrFetchFailed             = errors.New("failed to fetch repository")
 	ErrPullFailed              = errors.New("failed to pull repository")
 	ErrRepositoryAlreadyExists = git.ErrRepositoryAlreadyExists
+	ErrInvalidReference        = git.ErrInvalidReference
 )
 
 // UpdateRepository updates a local repository by
@@ -101,7 +102,7 @@ func UpdateRepository(path, ref string, skipTLSVerify bool) (*git.Repository, er
 		)
 	}
 
-	var loopError error
+	var successCandidate refCandidate
 
 	for _, candidate := range refCandidates {
 		if candidate.localRef.IsBranch() {
@@ -119,40 +120,44 @@ func UpdateRepository(path, ref string, skipTLSVerify bool) (*git.Repository, er
 				// If the reference does not exist, continue to the next candidate
 				continue
 			}
+
 			return nil, fmt.Errorf("%w: %s", err, candidate.localRef)
 		}
 
-		// Checkout the reference
-		// TODO: FIXME This removes local changes
-		err = worktree.Checkout(&git.CheckoutOptions{
-			Branch: candidate.localRef,
-			Force:  true,
-		})
-		if err != nil {
-			loopError = fmt.Errorf("%w: %w: %s", ErrCheckoutFailed, err, candidate.localRef)
-			continue
-		}
-
-		// Pull the latest changes from the remote
-		err = worktree.Pull(&git.PullOptions{
-			RemoteName:      RemoteName,
-			ReferenceName:   candidate.localRef,
-			Depth:           1,
-			SingleBranch:    true,
-			InsecureSkipTLS: skipTLSVerify,
-			Force:           true,
-		})
-		if err == nil || errors.Is(err, git.NoErrAlreadyUpToDate) {
-			loopError = nil
-
-			break
-		}
-
-		loopError = fmt.Errorf("%w: %w: %s", ErrPullFailed, err, candidate.localRef)
+		successCandidate = candidate
 	}
 
-	if loopError != nil {
-		return nil, loopError
+	if successCandidate.localRef == "" {
+		return nil, fmt.Errorf("%w: %s", ErrInvalidReference, ref)
+	}
+
+	// Checkout the reference
+	// Do checkout when the reference is different from the current one
+	currentRef, err := repo.Head()
+	if err != nil {
+		return nil, err
+	}
+
+	if currentRef.Name() != successCandidate.remoteRef {
+		err = worktree.Checkout(&git.CheckoutOptions{
+			Branch: successCandidate.localRef,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w: %s", ErrCheckoutFailed, err, successCandidate.localRef)
+		}
+	}
+
+	// Pull the latest changes from the remote
+	err = worktree.Pull(&git.PullOptions{
+		RemoteName:      RemoteName,
+		ReferenceName:   successCandidate.localRef,
+		Depth:           1,
+		SingleBranch:    true,
+		InsecureSkipTLS: skipTLSVerify,
+		Force:           true,
+	})
+	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
+		return nil, fmt.Errorf("%w: %w: %s", ErrPullFailed, err, successCandidate.localRef)
 	}
 
 	return repo, nil

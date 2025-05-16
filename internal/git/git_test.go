@@ -127,7 +127,7 @@ func TestUpdateRepository(t *testing.T) {
 			privateRepo: false,
 			branchRef:   invalidRef,
 			expectedRef: "",
-			expectedErr: ErrPullFailed,
+			expectedErr: ErrInvalidReference,
 		},
 		{
 			name:        "Invalid tag ref",
@@ -135,7 +135,7 @@ func TestUpdateRepository(t *testing.T) {
 			privateRepo: false,
 			branchRef:   invalidTagRef,
 			expectedRef: "",
-			expectedErr: ErrPullFailed,
+			expectedErr: ErrInvalidReference,
 		},
 		{
 			name:        "Private Repository",
