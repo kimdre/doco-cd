@@ -139,7 +139,7 @@ func TestUpdateRepository(t *testing.T) {
 		},
 		{
 			name:        "Private Repository",
-			cloneUrl:    "https://github.com/kimdre/test.git",
+			cloneUrl:    "https://github.com/kimdre/doco-cd_tests.git",
 			privateRepo: true,
 			branchRef:   "destroy",
 			expectedRef: "refs/heads/destroy",

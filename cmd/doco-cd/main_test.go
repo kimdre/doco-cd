@@ -139,9 +139,9 @@ func TestHandleEvent(t *testing.T) {
 			payload: webhook.ParsedPayload{
 				Ref:       "remote",
 				CommitSHA: validCommitSHA,
-				Name:      projectName,
-				FullName:  "kimdre/test",
-				CloneURL:  "https://github.com/kimdre/test",
+				Name:      "test",
+				FullName:  "kimdre/doco-cd_tests",
+				CloneURL:  "https://github.com/kimdre/doco-cd_tests",
 				Private:   true,
 			},
 			expectedStatusCode:   http.StatusCreated,
