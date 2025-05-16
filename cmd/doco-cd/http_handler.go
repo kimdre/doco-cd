@@ -167,9 +167,14 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		jobLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
 
 		if deployConfig.RepositoryUrl != "" {
+			cloneUrl := string(deployConfig.RepositoryUrl)
+			if appConfig.GitAccessToken != "" {
+				cloneUrl = git.GetAuthUrl(string(deployConfig.RepositoryUrl), appConfig.AuthType, appConfig.GitAccessToken)
+			}
+
 			jobLog.Debug("repository URL provided, cloning remote repository")
 			// Try to clone the remote repository
-			_, err = git.CloneRepository(internalRepoPath, string(deployConfig.RepositoryUrl), deployConfig.Reference, appConfig.SkipTLSVerification)
+			_, err = git.CloneRepository(internalRepoPath, cloneUrl, deployConfig.Reference, appConfig.SkipTLSVerification)
 			if err != nil && !errors.Is(err, git.ErrRepositoryAlreadyExists) {
 				errMsg = "failed to clone remote repository"
 				jobLog.Error(errMsg, logger.ErrAttr(err))
