@@ -84,7 +84,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	expectedStatusCode := http.StatusCreated
 	tmpDir := t.TempDir()
 
-	repoDir := path.Join(tmpDir, "kimdre", "doco-cd")
+	repoDir := path.Join(tmpDir, getRepoName("https://github.com/kimdre/doco-cd.git"))
 
 	payload, err := os.ReadFile(githubPayloadFile)
 	if err != nil {
