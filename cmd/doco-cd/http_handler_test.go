@@ -84,7 +84,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	expectedStatusCode := http.StatusCreated
 	tmpDir := t.TempDir()
 
-	repoDir := path.Join(tmpDir, "kimdre", "doco-cd")
+	repoDir := path.Join(tmpDir, getRepoName("https://github.com/kimdre/doco-cd.git"))
 
 	payload, err := os.ReadFile(githubPayloadFile)
 	if err != nil {
@@ -173,7 +173,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	t.Cleanup(func() {
 		t.Log("Remove doco-cd container")
 
-		err = service.Down(ctx, "compose-webhook", downOpts)
+		err = service.Down(ctx, "test-deploy", downOpts)
 		if err != nil {
 			t.Fatal(err)
 		}

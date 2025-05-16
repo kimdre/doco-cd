@@ -114,8 +114,8 @@ func TestDeployCompose(t *testing.T) {
 		Ref:       "main",
 		CommitSHA: "4d877107dfa2e3b582bd8f8f803befbd3a1d867e",
 		Name:      "test",
-		FullName:  "kimdre/test",
-		CloneURL:  fmt.Sprintf("https://kimdre:%s@github.com/kimdre/test.git", c.GitAccessToken),
+		FullName:  "kimdre/doco-cd_tests",
+		CloneURL:  fmt.Sprintf("https://kimdre:%s@github.com/kimdre/doco-cd_tests.git", c.GitAccessToken),
 		Private:   true,
 	}
 

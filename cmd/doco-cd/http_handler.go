@@ -32,10 +32,23 @@ type handlerData struct {
 	log            *logger.Logger       // Logger for logging messages
 }
 
+// getRepoName extracts the repository name from the clone URL
+func getRepoName(cloneURL string) string {
+	repoName := strings.SplitAfter(cloneURL, "://")[1]
+
+	if strings.Contains(repoName, "@") {
+		repoName = strings.SplitAfter(repoName, "@")[1]
+	}
+
+	return strings.TrimSuffix(repoName, ".git")
+}
+
 // HandleEvent handles the incoming webhook event
 func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *config.AppConfig, dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli, dockerClient *client.Client) {
 	startTime := time.Now()
-	jobLog = jobLog.With(slog.String("repository", payload.FullName))
+	repoName := getRepoName(payload.CloneURL)
+
+	jobLog = jobLog.With(slog.String("repository", repoName))
 
 	if customTarget != "" {
 		jobLog = jobLog.With(slog.String("custom_target", customTarget))
@@ -79,8 +92,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		return
 	}
 
-	internalRepoPath := filepath.Join(dataMountPoint.Destination, payload.FullName) // Path inside the container
-	externalRepoPath := filepath.Join(dataMountPoint.Source, payload.FullName)      // Path on the host
+	internalRepoPath := filepath.Join(dataMountPoint.Destination, repoName) // Path inside the container
+	externalRepoPath := filepath.Join(dataMountPoint.Source, repoName)      // Path on the host
 
 	// Try to clone the repository
 	_, err := git.CloneRepository(internalRepoPath, payload.CloneURL, payload.Ref, appConfig.SkipTLSVerification)
@@ -137,16 +150,28 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	for _, deployConfig := range deployConfigs {
-		jobLog = jobLog.With("stack", deployConfig.Name, slog.String("reference", deployConfig.Reference))
+		repoName = getRepoName(payload.CloneURL)
+		if deployConfig.RepositoryUrl != "" {
+			repoName = getRepoName(string(deployConfig.RepositoryUrl))
+		}
+
+		internalRepoPath = filepath.Join(dataMountPoint.Destination, repoName) // Path inside the container
+		externalRepoPath = filepath.Join(dataMountPoint.Source, repoName)      // Path on the host
+
+		jobLog = jobLog.With(
+			slog.String("stack", deployConfig.Name),
+			slog.String("reference", deployConfig.Reference),
+			slog.String("repository", repoName),
+		)
 
 		jobLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
 
-		if deployConfig.Reference != "" && deployConfig.Reference != payload.Ref {
-			jobLog.Debug("checking out reference "+deployConfig.Reference, slog.String("host_path", externalRepoPath))
-
-			_, err = git.UpdateRepository(internalRepoPath, deployConfig.Reference, appConfig.SkipTLSVerification)
-			if err != nil {
-				errMsg = "failed to checkout repository"
+		if deployConfig.RepositoryUrl != "" {
+			jobLog.Debug("repository URL provided, cloning remote repository")
+			// Try to clone the remote repository
+			_, err = git.CloneRepository(internalRepoPath, string(deployConfig.RepositoryUrl), deployConfig.Reference, appConfig.SkipTLSVerification)
+			if err != nil && !errors.Is(err, git.ErrRepositoryAlreadyExists) {
+				errMsg = "failed to clone remote repository"
 				jobLog.Error(errMsg, logger.ErrAttr(err))
 				JSONError(w,
 					errMsg,
@@ -156,6 +181,23 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 				return
 			}
+
+			jobLog.Debug("remote repository cloned", slog.String("path", externalRepoPath))
+		}
+
+		jobLog.Debug("checking out reference "+deployConfig.Reference, slog.String("host_path", externalRepoPath))
+
+		_, err = git.UpdateRepository(internalRepoPath, deployConfig.Reference, appConfig.SkipTLSVerification)
+		if err != nil {
+			errMsg = "failed to checkout repository"
+			jobLog.Error(errMsg, logger.ErrAttr(err))
+			JSONError(w,
+				errMsg,
+				err.Error(),
+				jobID,
+				http.StatusInternalServerError)
+
+			return
 		}
 
 		if deployConfig.Destroy {
@@ -189,7 +231,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				if cont.Labels[docker.DocoCDLabels.Metadata.Manager] == "doco-cd" {
 					managed = true
 
-					if cont.Labels[docker.DocoCDLabels.Repository.Name] == payload.FullName {
+					if cont.Labels[docker.DocoCDLabels.Repository.Name] == repoName {
 						correctRepo = true
 					}
 
@@ -296,8 +338,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			correctRepo := true
 
 			for _, cont := range containers {
-				repoName, ok := cont.Labels[docker.DocoCDLabels.Repository.Name]
-				if !ok || repoName != payload.FullName {
+				name, ok := cont.Labels[docker.DocoCDLabels.Repository.Name]
+				if !ok || name != repoName {
 					correctRepo = false
 					break
 				}
