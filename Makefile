@@ -20,6 +20,11 @@ test-coverage:
 	@WEBHOOK_SECRET="test_Secret1" go test -v -coverprofile cover.out ./...
 	@go tool cover -html cover.out -o cover.html
 
+# Run specified tests from arguments
+test-run:
+	@echo "Running tests: $(filter-out $@,$(MAKECMDGOALS))"
+	@WEBHOOK_SECRET="test_Secret1" go test -cover -p 1 ./... -timeout 5m -run $(filter-out $@,$(MAKECMDGOALS))
+
 build:
 	mkdir -p $(BINARY_DIR)
 	go build -o $(BINARY_DIR) ./...

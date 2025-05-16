@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 
 	"github.com/go-git/go-git/v5/config"
 
@@ -12,31 +13,38 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 )
 
-var ErrRepositoryAlreadyExists = git.ErrRepositoryAlreadyExists
+const (
+	RemoteName          = "origin"
+	TagPrefix           = "refs/tags/"
+	BranchPrefix        = "refs/heads/"
+	MainBranch          = "refs/heads/main"
+	refSpecAllBranches  = "+refs/heads/*:refs/remotes/origin/*"
+	refSpecSingleBranch = "+refs/heads/%s:refs/remotes/origin/%s"
+	refSpecAllTags      = "+refs/tags/*:refs/tags/*"
+	refSpecSingleTag    = "+refs/tags/%s:refs/tags/%s"
+)
 
-// CheckoutRepository checks out a specific commit in a given repository
-func CheckoutRepository(path, ref, commitSHA string, skipTLSVerify bool) (*git.Repository, error) {
+var (
+	ErrCheckoutFailed          = errors.New("failed to checkout repository")
+	ErrFetchFailed             = errors.New("failed to fetch repository")
+	ErrPullFailed              = errors.New("failed to pull repository")
+	ErrRepositoryAlreadyExists = git.ErrRepositoryAlreadyExists
+	ErrInvalidReference        = git.ErrInvalidReference
+)
+
+// UpdateRepository updates a local repository by
+//  1. fetching the latest changes from the remote
+//  2. checking out the specified reference (branch or tag)
+//  3. pulling the latest changes from the remote
+//  4. returning the updated repository
+//
+// Allowed reference forma
+//   - Branches: refs/heads/main or main
+//   - Tags: refs/tags/v1.0.0 or v1.0.0
+func UpdateRepository(path, ref string, skipTLSVerify bool) (*git.Repository, error) {
 	repo, err := git.PlainOpen(path)
 	if err != nil {
 		return nil, err
-	}
-
-	// Fetch latest commits
-	refSpec := config.RefSpec(fmt.Sprintf("%v:%v", plumbing.NewHash(commitSHA), ref))
-
-	err = repo.Fetch(&git.FetchOptions{
-		RefSpecs:        []config.RefSpec{refSpec},
-		Force:           true,
-		InsecureSkipTLS: skipTLSVerify,
-	})
-	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
-		return nil, fmt.Errorf("failed to fetch repository: %w", err)
-	}
-
-	// Check if the commit exists
-	_, err = repo.CommitObject(plumbing.NewHash(commitSHA))
-	if err != nil {
-		return nil, fmt.Errorf("commit not found: %w", err)
 	}
 
 	worktree, err := repo.Worktree()
@@ -44,24 +52,91 @@ func CheckoutRepository(path, ref, commitSHA string, skipTLSVerify bool) (*git.R
 		return nil, err
 	}
 
-	// Checkout the branch if ref is provided
-	if ref != "" {
-		err = worktree.Checkout(&git.CheckoutOptions{
-			Branch: plumbing.ReferenceName(ref),
-			Force:  true,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to checkout ref: %w", err)
-		}
+	// Fetch remote branches and tags
+	err = repo.Fetch(&git.FetchOptions{
+		RemoteName:      RemoteName,
+		RefSpecs:        []config.RefSpec{refSpecAllBranches, refSpecAllTags},
+		InsecureSkipTLS: skipTLSVerify,
+		Prune:           true,
+	})
+	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
+		return nil, fmt.Errorf("%w: %w", ErrFetchFailed, err)
 	}
 
-	// Checkout the specific commit
+	// Prepare the reference names for local and remote branches/tags
+	type refCandidate struct {
+		localRef  plumbing.ReferenceName
+		remoteRef plumbing.ReferenceName
+	}
+
+	var refCandidates []refCandidate
+
+	// Check if the reference is a branch or tag
+	if strings.HasPrefix(ref, BranchPrefix) {
+		name := strings.TrimPrefix(ref, BranchPrefix)
+
+		refCandidates = append(refCandidates, refCandidate{
+			localRef:  plumbing.NewBranchReferenceName(name),
+			remoteRef: plumbing.NewRemoteReferenceName(RemoteName, name),
+		})
+	} else if strings.HasPrefix(ref, TagPrefix) {
+		name := strings.TrimPrefix(ref, TagPrefix)
+
+		refCandidates = append(refCandidates, refCandidate{
+			localRef:  plumbing.NewTagReferenceName(name),
+			remoteRef: plumbing.NewTagReferenceName(name),
+		})
+	} else {
+		// Create ref candidate for branch and tag
+		refCandidates = append(refCandidates,
+			refCandidate{
+				// Create ref candidate for branch
+				localRef:  plumbing.NewBranchReferenceName(ref),
+				remoteRef: plumbing.NewRemoteReferenceName(RemoteName, ref),
+			},
+			// Create ref candidate for tag
+			refCandidate{
+				localRef:  plumbing.NewTagReferenceName(ref),
+				remoteRef: plumbing.NewTagReferenceName(ref),
+			},
+		)
+	}
+
+	var successCandidate refCandidate
+
+	for _, candidate := range refCandidates {
+		if candidate.localRef.IsBranch() {
+			newRef := plumbing.NewSymbolicReference(candidate.localRef, candidate.remoteRef)
+
+			err = repo.Storer.SetReference(newRef)
+			if err != nil {
+				return nil, err
+			}
+		}
+		// Check if localRef exists remotely
+		_, err = repo.Reference(candidate.remoteRef, true)
+		if err != nil {
+			if errors.Is(err, plumbing.ErrReferenceNotFound) {
+				// If the reference does not exist, continue to the next candidate
+				continue
+			}
+
+			return nil, fmt.Errorf("%w: %s", err, candidate.localRef)
+		}
+
+		successCandidate = candidate
+	}
+
+	if successCandidate.localRef == "" {
+		return nil, fmt.Errorf("%w: %s", ErrInvalidReference, ref)
+	}
+
 	err = worktree.Checkout(&git.CheckoutOptions{
-		Hash:  plumbing.NewHash(commitSHA),
-		Force: true,
+		Branch: successCandidate.localRef,
+		Force:  true,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w: %s", ErrCheckoutFailed, err, successCandidate.localRef)
 	}
 
 	return repo, nil
@@ -75,6 +150,7 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool) (*git.Repository
 	}
 
 	return git.PlainClone(path, false, &git.CloneOptions{
+		RemoteName:      RemoteName,
 		URL:             url,
 		SingleBranch:    true,
 		ReferenceName:   plumbing.ReferenceName(ref),

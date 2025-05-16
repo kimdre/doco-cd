@@ -8,10 +8,11 @@ type docoCDLabelNamesMetadata struct {
 
 // DocoCDLabelNamesDeployment contains the labels used by DocoCD to identify deployed containers
 type docoCdLabelNamesDeployment struct {
-	Timestamp  string // Timestamp of deployment in RFC3339 format
-	WorkingDir string // Working Directory where the deployment gets executed
-	CommitSHA  string // SHA of the commit that triggered the deployment
-	CommitRef  string // Reference/Branch of the commit that triggered the deployment
+	Name          string // Name of the deployment
+	Timestamp     string // Timestamp of deployment in RFC3339 format
+	WorkingDir    string // Working Directory where the deployment gets executed
+	TargetRef     string // Target reference (branch/tag) of the deployment
+	TriggerCommit string // SHA of the commit that triggered the deployment
 }
 
 // docoCdLabelNamesRepository contains the labels used by DocoCD to identify the repository
@@ -34,10 +35,11 @@ var DocoCDLabels = docoCdLabelNames{
 		Version: "cd.doco.metadata.version",
 	},
 	Deployment: docoCdLabelNamesDeployment{
-		Timestamp:  "cd.doco.deployment.timestamp",
-		WorkingDir: "cd.doco.deployment.working_dir",
-		CommitSHA:  "cd.doco.deployment.commit.sha",
-		CommitRef:  "cd.doco.deployment.commit.ref",
+		Name:          "cd.doco.deployment.name",
+		Timestamp:     "cd.doco.deployment.timestamp",
+		WorkingDir:    "cd.doco.deployment.working_dir",
+		TargetRef:     "cd.doco.deployment.target.ref",
+		TriggerCommit: "cd.doco.deployment.trigger.commit",
 	},
 	Repository: docoCdLabelNamesRepository{
 		Name: "cd.doco.repository.name",

@@ -1,6 +1,7 @@
 package git
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -11,11 +12,16 @@ import (
 )
 
 const (
-	cloneUrl         = "https://github.com/kimdre/doco-cd.git"
-	validRef         = "refs/heads/main"
-	invalidRef       = "refs/heads/invalid"
-	validCommitSHA   = "903b270da7505fe8b13b42d3b191b08fb9ca3247"
-	invalidCommitSHA = "1111111111111111111111111111111111111111"
+	cloneUrl            = "https://github.com/kimdre/doco-cd.git"
+	remoteMainBranch    = "refs/remotes/origin/main"
+	validBranchRef      = MainBranch
+	validBranchRefShort = "main"
+	validTagRef         = "refs/tags/v0.15.0"
+	validTagRefShort    = "v0.15.0"
+	invalidRef          = "refs/heads/invalid"
+	invalidTagRef       = "refs/tags/invalid"
+	validCommitSHA      = "903b270da7505fe8b13b42d3b191b08fb9ca3247"
+	invalidCommitSHA    = "1111111111111111111111111111111111111111"
 )
 
 func TestGetAuthUrl(t *testing.T) {
@@ -38,7 +44,7 @@ func TestGetAuthUrl(t *testing.T) {
 }
 
 func TestCloneRepository(t *testing.T) {
-	repo, err := CloneRepository(t.TempDir(), cloneUrl, validRef, false)
+	repo, err := CloneRepository(t.TempDir(), cloneUrl, validBranchRef, false)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -75,48 +81,137 @@ func TestCloneRepository(t *testing.T) {
 	}
 }
 
-// TestCheckoutRepository tests the CheckoutRepository function on an already cloned repository
-func TestCheckoutRepository(t *testing.T) {
-	repo, err := CloneRepository(t.TempDir(), cloneUrl, validRef, false)
-	if err != nil {
-		t.Fatalf("Failed to clone repository: %v", err)
+func TestUpdateRepository(t *testing.T) {
+	testCases := []struct {
+		name        string
+		cloneUrl    string
+		privateRepo bool
+		branchRef   string
+		expectedRef string
+		expectedErr error
+	}{
+		{
+			name:        "Valid branch ref",
+			cloneUrl:    cloneUrl,
+			privateRepo: false,
+			branchRef:   validBranchRef,
+			expectedRef: remoteMainBranch,
+			expectedErr: nil,
+		},
+		{
+			name:        "Valid short branch ref",
+			cloneUrl:    cloneUrl,
+			branchRef:   validBranchRefShort,
+			expectedRef: remoteMainBranch,
+			expectedErr: nil,
+		},
+		{
+			name:        "Valid tag ref",
+			cloneUrl:    cloneUrl,
+			privateRepo: false,
+			branchRef:   validTagRef,
+			expectedRef: validTagRef,
+			expectedErr: nil,
+		},
+		{
+			name:        "Valid short tag ref",
+			cloneUrl:    cloneUrl,
+			privateRepo: false,
+			branchRef:   validTagRefShort,
+			expectedRef: validTagRef,
+			expectedErr: nil,
+		},
+		{
+			name:        "Invalid branch ref",
+			cloneUrl:    cloneUrl,
+			privateRepo: false,
+			branchRef:   invalidRef,
+			expectedRef: "",
+			expectedErr: ErrInvalidReference,
+		},
+		{
+			name:        "Invalid tag ref",
+			cloneUrl:    cloneUrl,
+			privateRepo: false,
+			branchRef:   invalidTagRef,
+			expectedRef: "",
+			expectedErr: ErrInvalidReference,
+		},
+		{
+			name:        "Private Repository",
+			cloneUrl:    "https://github.com/kimdre/test.git",
+			privateRepo: true,
+			branchRef:   "destroy",
+			expectedRef: "refs/heads/destroy",
+			expectedErr: nil,
+		},
 	}
 
-	if repo == nil {
-		t.Fatal("Repository is nil")
-	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.privateRepo {
+				c, err := config.GetAppConfig()
+				if err != nil {
+					t.Fatalf("Failed to get app config: %v", err)
+				}
 
-	worktree, err := repo.Worktree()
-	if err != nil {
-		t.Fatalf("Failed to get worktree: %v", err)
-	}
+				tc.cloneUrl = GetAuthUrl(
+					tc.cloneUrl,
+					c.AuthType,
+					c.GitAccessToken,
+				)
+			}
 
-	repo, err = CheckoutRepository(worktree.Filesystem.Root(), validRef, validCommitSHA, true)
-	if err != nil {
-		t.Fatalf("Failed to checkout repository: %v", err)
-	}
+			repo, err := CloneRepository(t.TempDir(), tc.cloneUrl, MainBranch, false)
+			if err != nil {
+				t.Fatalf("Failed to clone repository: %v", err)
+			}
 
-	if repo == nil {
-		t.Fatal("Repository is nil")
-	}
+			if repo == nil {
+				t.Fatal("Repository is nil")
+			}
 
-	// Check if the commit is checked out
-	worktree, err = repo.Worktree()
-	if err != nil {
-		t.Fatalf("Failed to get worktree: %v", err)
-	}
+			worktree, err := repo.Worktree()
+			if err != nil {
+				t.Fatalf("Failed to get worktree: %v", err)
+			}
 
-	if worktree.Filesystem.Root() == "" {
-		t.Fatal("Repository is not checked out")
-	}
+			repo, err = UpdateRepository(worktree.Filesystem.Root(), tc.branchRef, true)
+			if err != nil {
+				if !errors.Is(err, tc.expectedErr) {
+					t.Fatalf("Expected error %v, got %v", tc.expectedErr, err)
+				}
 
-	// Check if the commit is checked out
-	commit, err := repo.CommitObject(plumbing.NewHash(validCommitSHA))
-	if err != nil {
-		t.Fatalf("Failed to get commit object: %v", err)
-	}
+				return
+			}
 
-	if commit.Hash.String() != validCommitSHA {
-		t.Fatalf("Expected commit %s, got %s", validCommitSHA, commit.Hash.String())
+			if repo == nil && tc.expectedErr == nil {
+				t.Fatal("Repository is nil")
+			}
+
+			if repo != nil {
+				_, err = repo.Worktree()
+				if err != nil {
+					t.Fatalf("Failed to get worktree: %v", err)
+				}
+			}
+
+			refName := plumbing.ReferenceName(tc.expectedRef)
+			if tc.expectedRef != "" {
+				ref, err := repo.Reference(refName, true)
+				if err != nil {
+					t.Fatalf("Failed to get reference: %v", err)
+				}
+
+				if ref.Name().String() != tc.expectedRef {
+					t.Fatalf("Expected reference %s, got %s", tc.expectedRef, ref.Name().String())
+				}
+			} else {
+				_, err = repo.Reference(refName, true)
+				if err == nil {
+					t.Fatalf("Expected error for invalid reference %s, got nil", tc.expectedRef)
+				}
+			}
+		})
 	}
 }

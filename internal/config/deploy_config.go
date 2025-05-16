@@ -25,7 +25,7 @@ var (
 // DeployConfig is the structure of the deployment configuration file
 type DeployConfig struct {
 	Name             string   `yaml:"name"`                                                                                                         // Name is the name of the docker-compose deployment / stack
-	Reference        string   `yaml:"reference" default:"refs/heads/main"`                                                                          // Reference is the Git reference to the deployment, e.g. refs/heads/main or refs/tags/v1.0.0
+	Reference        string   `yaml:"reference" default:"refs/heads/main"`                                                                          // Reference is the Git reference to the deployment, e.g., refs/heads/main, main, refs/tags/v1.0.0 or v1.0.0
 	WorkingDirectory string   `yaml:"working_dir" default:"."`                                                                                      // WorkingDirectory is the working directory for the deployment
 	ComposeFiles     []string `yaml:"compose_files" default:"[\"compose.yaml\", \"compose.yml\", \"docker-compose.yml\", \"docker-compose.yaml\"]"` // ComposeFiles is the list of docker-compose files to use
 	RemoveOrphans    bool     `yaml:"remove_orphans" default:"true"`                                                                                // RemoveOrphans removes containers for services not defined in the Compose file
@@ -50,7 +50,7 @@ type DeployConfig struct {
 func DefaultDeployConfig(name string) *DeployConfig {
 	return &DeployConfig{
 		Name:             name,
-		Reference:        "/ref/heads/main",
+		Reference:        "refs/heads/main",
 		WorkingDirectory: ".",
 		ComposeFiles:     cli.DefaultFileNames,
 	}

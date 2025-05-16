@@ -159,41 +159,43 @@ addServiceLabels adds the labels docker compose expects to exist on services.
 This is required for future compose operations to work, such as finding
 containers that are part of a service.
 */
-func addServiceLabels(project *types.Project, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, composeVersion string) {
+func addServiceLabels(project *types.Project, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, composeVersion string) {
 	for i, s := range project.Services {
 		s.CustomLabels = map[string]string{
-			DocoCDLabels.Metadata.Manager:      "doco-cd",
-			DocoCDLabels.Metadata.Version:      appVersion,
-			DocoCDLabels.Deployment.Timestamp:  timestamp,
-			DocoCDLabels.Deployment.WorkingDir: repoDir,
-			DocoCDLabels.Deployment.CommitSHA:  payload.CommitSHA,
-			DocoCDLabels.Deployment.CommitRef:  payload.Ref,
-			DocoCDLabels.Repository.Name:       payload.FullName,
-			DocoCDLabels.Repository.URL:        payload.WebURL,
-			api.ProjectLabel:                   project.Name,
-			api.ServiceLabel:                   s.Name,
-			api.WorkingDirLabel:                project.WorkingDir,
-			api.ConfigFilesLabel:               strings.Join(project.ComposeFiles, ","),
-			api.VersionLabel:                   composeVersion,
-			api.OneoffLabel:                    "False", // default, will be overridden by `run` command
+			DocoCDLabels.Metadata.Manager:         "doco-cd",
+			DocoCDLabels.Metadata.Version:         appVersion,
+			DocoCDLabels.Deployment.Name:          deployConfig.Name,
+			DocoCDLabels.Deployment.Timestamp:     timestamp,
+			DocoCDLabels.Deployment.WorkingDir:    repoDir,
+			DocoCDLabels.Deployment.TriggerCommit: payload.CommitSHA,
+			DocoCDLabels.Deployment.TargetRef:     deployConfig.Reference,
+			DocoCDLabels.Repository.Name:          payload.FullName,
+			DocoCDLabels.Repository.URL:           payload.WebURL,
+			api.ProjectLabel:                      project.Name,
+			api.ServiceLabel:                      s.Name,
+			api.WorkingDirLabel:                   project.WorkingDir,
+			api.ConfigFilesLabel:                  strings.Join(project.ComposeFiles, ","),
+			api.VersionLabel:                      composeVersion,
+			api.OneoffLabel:                       "False", // default, will be overridden by docker compose
 		}
 		project.Services[i] = s
 	}
 }
 
-func addVolumeLabels(project *types.Project, payload webhook.ParsedPayload, appVersion, timestamp, composeVersion string) {
+func addVolumeLabels(project *types.Project, deployConfig config.DeployConfig, payload webhook.ParsedPayload, appVersion, timestamp, composeVersion string) {
 	for i, v := range project.Volumes {
 		v.CustomLabels = map[string]string{
-			DocoCDLabels.Metadata.Manager:     "doco-cd",
-			DocoCDLabels.Metadata.Version:     appVersion,
-			DocoCDLabels.Deployment.Timestamp: timestamp,
-			DocoCDLabels.Deployment.CommitSHA: payload.CommitSHA,
-			DocoCDLabels.Deployment.CommitRef: payload.Ref,
-			DocoCDLabels.Repository.Name:      payload.FullName,
-			DocoCDLabels.Repository.URL:       payload.WebURL,
-			api.ProjectLabel:                  project.Name,
-			api.VolumeLabel:                   v.Name,
-			api.VersionLabel:                  composeVersion,
+			DocoCDLabels.Metadata.Manager:         "doco-cd",
+			DocoCDLabels.Metadata.Version:         appVersion,
+			DocoCDLabels.Deployment.Name:          deployConfig.Name,
+			DocoCDLabels.Deployment.Timestamp:     timestamp,
+			DocoCDLabels.Deployment.TriggerCommit: payload.CommitSHA,
+			DocoCDLabels.Deployment.TargetRef:     deployConfig.Reference,
+			DocoCDLabels.Repository.Name:          payload.FullName,
+			DocoCDLabels.Repository.URL:           payload.WebURL,
+			api.ProjectLabel:                      project.Name,
+			api.VolumeLabel:                       v.Name,
+			api.VersionLabel:                      composeVersion,
 		}
 		project.Volumes[i] = v
 	}
@@ -240,8 +242,8 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		}
 	}
 
-	addServiceLabels(project, payload, repoDir, appVersion, timestamp, ComposeVersion)
-	addVolumeLabels(project, payload, appVersion, timestamp, ComposeVersion)
+	addServiceLabels(project, *deployConfig, payload, repoDir, appVersion, timestamp, ComposeVersion)
+	addVolumeLabels(project, *deployConfig, payload, appVersion, timestamp, ComposeVersion)
 
 	if deployConfig.ForceImagePull {
 		err := service.Pull(ctx, project, api.PullOptions{
@@ -315,8 +317,6 @@ func DeployStack(
 ) error {
 	stackLog := jobLog.
 		With(slog.String("stack", deployConfig.Name))
-
-	stackLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
 
 	// Validate and sanitize the working directory
 	if strings.Contains(deployConfig.WorkingDirectory, "..") {
@@ -414,8 +414,6 @@ func DestroyStack(
 ) error {
 	stackLog := jobLog.
 		With(slog.String("stack", deployConfig.Name))
-
-	stackLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
 
 	stackLog.Info("destroying stack")
 

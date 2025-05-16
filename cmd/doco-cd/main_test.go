@@ -11,6 +11,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/kimdre/doco-cd/internal/git"
+
 	"github.com/docker/docker/client"
 
 	"github.com/docker/docker/api/types/container"
@@ -29,7 +31,6 @@ const (
 	validCommitSHA   = "26263c2b44133367927cd1423d8c8457b5befce5"
 	invalidCommitSHA = "1111111111111111111111111111111111111111"
 	projectName      = "compose-webhook"
-	mainBranch       = "refs/heads/main"
 	invalidBranch    = "refs/heads/invalid"
 )
 
@@ -62,7 +63,7 @@ func TestHandleEvent(t *testing.T) {
 		{
 			name: "Successful Deployment",
 			payload: webhook.ParsedPayload{
-				Ref:       mainBranch,
+				Ref:       git.MainBranch,
 				CommitSHA: validCommitSHA,
 				Name:      projectName,
 				FullName:  "kimdre/doco-cd",
@@ -77,7 +78,7 @@ func TestHandleEvent(t *testing.T) {
 		{
 			name: "Successful Deployment with custom Target",
 			payload: webhook.ParsedPayload{
-				Ref:       mainBranch,
+				Ref:       git.MainBranch,
 				CommitSHA: "f291bfca73b06814293c1f9c9f3c7f95e4932564",
 				Name:      projectName,
 				FullName:  "kimdre/doco-cd",
@@ -107,7 +108,7 @@ func TestHandleEvent(t *testing.T) {
 		{
 			name: "Private Repository",
 			payload: webhook.ParsedPayload{
-				Ref:       mainBranch,
+				Ref:       git.MainBranch,
 				CommitSHA: validCommitSHA,
 				Name:      projectName,
 				FullName:  "kimdre/doco-cd",
@@ -122,7 +123,7 @@ func TestHandleEvent(t *testing.T) {
 		{
 			name: "Missing Deployment Configuration",
 			payload: webhook.ParsedPayload{
-				Ref:       mainBranch,
+				Ref:       git.MainBranch,
 				CommitSHA: "efefb4111f3c363692a2526f9be9b24560e6511f",
 				Name:      projectName,
 				FullName:  "kimdre/kimdre",

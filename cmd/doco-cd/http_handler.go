@@ -8,9 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/docker/compose/v2/pkg/api"
-
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 
@@ -34,13 +34,14 @@ type handlerData struct {
 
 // HandleEvent handles the incoming webhook event
 func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *config.AppConfig, dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli, dockerClient *client.Client) {
-	jobLog = jobLog.With(slog.String("repository", payload.FullName), slog.String("reference", payload.Ref), slog.String("commit_sha", payload.CommitSHA))
+	startTime := time.Now()
+	jobLog = jobLog.With(slog.String("repository", payload.FullName))
 
 	if customTarget != "" {
 		jobLog = jobLog.With(slog.String("custom_target", customTarget))
 	}
 
-	jobLog.Info("received new job")
+	jobLog.Info("received new job", slog.Group("trigger", slog.String("commit", payload.CommitSHA), slog.String("ref", payload.Ref)))
 
 	// Clone the repository
 	jobLog.Debug(
@@ -86,9 +87,9 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	if err != nil {
 		// If the repository already exists, check it out to the specified commit SHA
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
-			jobLog.Debug("repository already exists, checking out commit "+payload.CommitSHA, slog.String("host_path", externalRepoPath))
+			jobLog.Debug("repository already exists, checking out reference "+payload.Ref, slog.String("host_path", externalRepoPath))
 
-			_, err = git.CheckoutRepository(internalRepoPath, payload.Ref, payload.CommitSHA, appConfig.SkipTLSVerification)
+			_, err = git.UpdateRepository(internalRepoPath, payload.Ref, appConfig.SkipTLSVerification)
 			if err != nil {
 				errMsg = "failed to checkout repository"
 				jobLog.Error(errMsg, logger.ErrAttr(err))
@@ -136,7 +137,26 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	for _, deployConfig := range deployConfigs {
-		jobLog = jobLog.With("stack", deployConfig.Name)
+		jobLog = jobLog.With("stack", deployConfig.Name, slog.String("reference", deployConfig.Reference))
+
+		jobLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
+
+		if deployConfig.Reference != "" && deployConfig.Reference != payload.Ref {
+			jobLog.Debug("checking out reference "+deployConfig.Reference, slog.String("host_path", externalRepoPath))
+
+			_, err = git.UpdateRepository(internalRepoPath, deployConfig.Reference, appConfig.SkipTLSVerification)
+			if err != nil {
+				errMsg = "failed to checkout repository"
+				jobLog.Error(errMsg, logger.ErrAttr(err))
+				JSONError(w,
+					errMsg,
+					err.Error(),
+					jobID,
+					http.StatusInternalServerError)
+
+				return
+			}
+		}
 
 		if deployConfig.Destroy {
 			jobLog.Debug("destroying stack")
@@ -309,7 +329,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	msg := "job completed successfully"
-	jobLog.Info(msg)
+	duration := time.Since(startTime)
+	jobLog.Info(msg, slog.String("elapsed_time", duration.String()))
 	JSONResponse(w, msg, jobID, http.StatusCreated)
 }
 
