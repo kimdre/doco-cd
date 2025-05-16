@@ -1,4 +1,4 @@
-name: compose-webhook
+name: test-deploy
 reference: refs/heads/main
 working_dir: test
 compose_files:

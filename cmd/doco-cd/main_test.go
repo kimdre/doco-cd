@@ -29,7 +29,7 @@ import (
 const (
 	validCommitSHA   = "26263c2b44133367927cd1423d8c8457b5befce5"
 	invalidCommitSHA = "1111111111111111111111111111111111111111"
-	projectName      = "compose-webhook"
+	projectName      = "test-deploy"
 	invalidBranch    = "refs/heads/invalid"
 )
 
@@ -139,7 +139,7 @@ func TestHandleEvent(t *testing.T) {
 			payload: webhook.ParsedPayload{
 				Ref:       "remote",
 				CommitSHA: validCommitSHA,
-				Name:      "test",
+				Name:      projectName,
 				FullName:  "kimdre/doco-cd_tests",
 				CloneURL:  "https://github.com/kimdre/doco-cd_tests",
 				Private:   true,

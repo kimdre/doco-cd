@@ -173,7 +173,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	t.Cleanup(func() {
 		t.Log("Remove doco-cd container")
 
-		err = service.Down(ctx, "compose-webhook", downOpts)
+		err = service.Down(ctx, "test-deploy", downOpts)
 		if err != nil {
 			t.Fatal(err)
 		}
