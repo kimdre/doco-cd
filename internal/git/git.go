@@ -141,6 +141,7 @@ func UpdateRepository(path, ref string, skipTLSVerify bool) (*git.Repository, er
 	if currentRef.Name() != successCandidate.remoteRef {
 		err = worktree.Checkout(&git.CheckoutOptions{
 			Branch: successCandidate.localRef,
+			Force:  true,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w: %s", ErrCheckoutFailed, err, successCandidate.localRef)
