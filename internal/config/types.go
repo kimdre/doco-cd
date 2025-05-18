@@ -11,20 +11,12 @@ import (
 
 type HttpUrl string // HttpUrl is a type for strings that represent HTTP URLs
 
-// InitializeHttpUrlValidator registers a custom validation function for HTTP URLs.
-func InitializeHttpUrlValidator() error {
+// init is called when the package is initialized.
+func init() {
+	// Register the custom validation function for HttpUrl
 	err := validator.SetValidationFunc("httpUrl", validateHttpUrl)
 	if err != nil {
-		return fmt.Errorf("error registering httpUrl validator: %w", err)
-	}
-
-	return nil
-}
-
-func init() {
-	if err := InitializeHttpUrlValidator(); err != nil {
-		// Log the error or handle it appropriately
-		fmt.Println("Failed to initialize HttpUrl validator:", err)
+		panic("error registering httpUrl validator: " + err.Error())
 	}
 }
 
