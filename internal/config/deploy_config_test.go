@@ -6,7 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
+
+	"gopkg.in/validator.v2"
 )
 
 var projectName = "test"
@@ -204,5 +207,54 @@ func TestGetDeployConfigs_DuplicateProjectName(t *testing.T) {
 	err := validateUniqueProjectNames(configs)
 	if !errors.Is(err, ErrDuplicateProjectName) {
 		t.Fatal("expected error for duplicate project names, got nil")
+	}
+}
+
+// TestGetDeployConfigs_InvalidRepositoryURL checks if the function returns an error when the repository URL is an SSH URL
+// The init function panics if the validator for HttpUrl is not registered correctly
+func TestGetDeployConfigs_RepositoryURL(t *testing.T) {
+	testCases := []struct {
+		name        string
+		repoUrl     HttpUrl
+		expectedErr error
+	}{
+		{
+			name:        "Valid HTTP URL",
+			repoUrl:     "https://github.com/kimdre/doco-cd.git",
+			expectedErr: nil,
+		},
+		{
+			name:        "Valid HTTPS URL",
+			repoUrl:     "https://github.com/kimdre/doco-cd.git",
+			expectedErr: nil,
+		},
+		{
+			name:        "Invalid HTTP URL",
+			repoUrl:     "github.com/kimdre/doco-cd",
+			expectedErr: fmt.Errorf("RepositoryUrl: %w", ErrInvalidHttpUrl),
+		},
+		{
+			name:        "Invalid SSH URL", // SSH Urls are not supported
+			repoUrl:     "git@github.com:kimdre/doco-cd.git",
+			expectedErr: fmt.Errorf("RepositoryUrl: %w", ErrInvalidHttpUrl),
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			config := DeployConfig{
+				Name:          tc.name,
+				RepositoryUrl: tc.repoUrl,
+			}
+
+			err := validator.Validate(config)
+
+			if err == nil && tc.expectedErr != nil {
+				t.Fatalf("expected error %v, got nil", tc.expectedErr)
+			}
+
+			if err != nil && strings.Contains(tc.expectedErr.Error(), err.Error()) {
+				t.Fatalf("expected error %v, got %v", tc.expectedErr, err)
+			}
+		})
 	}
 }
