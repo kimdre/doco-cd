@@ -16,10 +16,8 @@ func init() {
 	// Register the custom validation function for HttpUrl
 	err := validator.SetValidationFunc("httpUrl", validateHttpUrl)
 	if err != nil {
-		return fmt.Errorf("error registering httpUrl validator: %w", err)
+		panic("error registering httpUrl validator: " + err.Error())
 	}
-
-	return nil
 }
 
 // validateHttpUrl checks if the given value is a valid HTTP or HTTPS URL.
