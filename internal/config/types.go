@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 
@@ -10,12 +11,20 @@ import (
 
 type HttpUrl string // HttpUrl is a type for strings that represent HTTP URLs
 
-// Initialize the validator at package import
-func init() {
-	// Register the custom validation function for HttpUrl
+// InitializeHttpUrlValidator registers a custom validation function for HTTP URLs.
+func InitializeHttpUrlValidator() error {
 	err := validator.SetValidationFunc("httpUrl", validateHttpUrl)
 	if err != nil {
-		panic("error registering httpUrl validator: " + err.Error())
+		return fmt.Errorf("error registering httpUrl validator: %w", err)
+	}
+
+	return nil
+}
+
+func init() {
+	if err := InitializeHttpUrlValidator(); err != nil {
+		// Log the error or handle it appropriately
+		fmt.Println("Failed to initialize HttpUrl validator:", err)
 	}
 }
 
@@ -36,11 +45,11 @@ func validateHttpUrl(v interface{}, param string) error {
 
 	u, err := url.Parse(str)
 	if err != nil {
-		return errors.New("invalid url syntax: " + err.Error())
+		return fmt.Errorf("%w: failed to parse URL '%s'", ErrInvalidHttpUrl, str)
 	}
 
 	if !strings.HasPrefix(u.Scheme, "http") {
-		return ErrInvalidUrl
+		return fmt.Errorf("%w: URL must start with http or https, got '%s'", ErrInvalidHttpUrl, str)
 	}
 
 	return nil

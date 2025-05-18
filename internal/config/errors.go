@@ -10,5 +10,5 @@ var (
 	ErrInvalidLogLevel   = validator.TextErr{Err: errors.New("invalid log level, must be one of debug, info, warn, error")}
 	ErrBothSecretsSet    = errors.New("both secrets are set, please use one or the other")
 	ErrBothSecretsNotSet = errors.New("neither secrets are set, please use one or the other")
-	ErrInvalidUrl        = errors.New("invalid URL, must start with http or https")
+	ErrInvalidHttpUrl    = errors.New("invalid HTTP URL, must begin with http or https")
 )
