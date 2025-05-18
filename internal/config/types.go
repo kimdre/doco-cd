@@ -22,13 +22,6 @@ func init() {
 	return nil
 }
 
-func init() {
-	if err := InitializeHttpUrlValidator(); err != nil {
-		// Log the error or handle it appropriately
-		fmt.Println("Failed to initialize HttpUrl validator:", err)
-	}
-}
-
 // validateHttpUrl checks if the given value is a valid HTTP or HTTPS URL.
 func validateHttpUrl(v interface{}, param string) error {
 	str, ok := v.(string)
