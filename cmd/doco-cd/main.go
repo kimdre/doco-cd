@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 
 	"github.com/docker/docker/client"
@@ -24,6 +27,22 @@ var (
 	Version string
 	errMsg  string
 )
+
+// getAppContainerID retrieves the application container ID from the cpuset file
+func getAppContainerID() (string, error) {
+	data, err := os.ReadFile("/proc/1/cpuset")
+	if err != nil {
+		return "", err
+	}
+
+	// The container ID is the last part of the cpuset path (after the last '/')
+	parts := strings.Split(string(data), "/")
+	if len(parts) == 0 {
+		return "", errors.New("failed to parse container ID from cpuset path")
+	}
+
+	return parts[len(parts)-1], nil
+}
 
 func main() {
 	var wg sync.WaitGroup
@@ -82,8 +101,8 @@ func main() {
 			slog.String("docker_api", dockerCli.CurrentVersion()),
 		))
 
-	// Check if the application has a data mount point and get the host path
-	appContainerID, err := docker.GetContainerID(dockerCli.Client(), config.AppName)
+	// Get container id of this application
+	appContainerID, err := getAppContainerID()
 	if err != nil {
 		log.Critical("failed to retrieve application container id", logger.ErrAttr(err))
 		return
@@ -91,6 +110,7 @@ func main() {
 
 	log.Debug("retrieved application container id", slog.String("container_id", appContainerID))
 
+	// Check if the application has a data mount point and get the host path
 	dataMountPoint, err := docker.GetMountPointByDestination(dockerClient, appContainerID, dataPath)
 	if err != nil {
 		log.Critical(fmt.Sprintf("failed to retrieve %s mount point for container %s", dataPath, appContainerID), logger.ErrAttr(err))
