@@ -41,7 +41,10 @@ func getAppContainerID() (string, error) {
 		return "", errors.New("failed to parse container ID from cpuset path")
 	}
 
-	return parts[len(parts)-1], nil
+	containerID := parts[len(parts)-1]
+	containerID = strings.TrimSpace(containerID)
+
+	return containerID, nil
 }
 
 func main() {
