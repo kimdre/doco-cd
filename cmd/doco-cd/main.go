@@ -83,7 +83,7 @@ func main() {
 		))
 
 	// Check if the application has a data mount point and get the host path
-	appContainerID, err := docker.GetContainerID(dockerCli.Client(), "doco-cd")
+	appContainerID, err := docker.GetContainerID(dockerCli.Client(), config.AppName)
 	if err != nil {
 		log.Critical("failed to retrieve application container id", logger.ErrAttr(err))
 		return
@@ -133,7 +133,7 @@ func main() {
 
 	log.Debug("retrieving containers that are managed by doco-cd")
 
-	containers, err := docker.GetLabeledContainers(context.TODO(), dockerClient, docker.DocoCDLabels.Metadata.Manager, "doco-cd")
+	containers, err := docker.GetLabeledContainers(context.TODO(), dockerClient, docker.DocoCDLabels.Metadata.Manager, config.AppName)
 	if err != nil {
 		log.Error("failed to retrieve doco-cd containers", logger.ErrAttr(err))
 	}

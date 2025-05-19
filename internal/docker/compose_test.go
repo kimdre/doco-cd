@@ -211,7 +211,7 @@ func TestDeployCompose(t *testing.T) {
 
 		t.Log("Verifying deployment")
 
-		containers, err := GetLabeledContainers(ctx, dockerClient, DocoCDLabels.Metadata.Manager, "doco-cd")
+		containers, err := GetLabeledContainers(ctx, dockerClient, DocoCDLabels.Metadata.Manager, config.AppName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -272,7 +272,7 @@ func TestDeployCompose(t *testing.T) {
 
 		t.Log("Verifying destruction")
 
-		containers, err = GetLabeledContainers(ctx, dockerClient, DocoCDLabels.Metadata.Manager, "doco-cd")
+		containers, err = GetLabeledContainers(ctx, dockerClient, DocoCDLabels.Metadata.Manager, config.AppName)
 		if err != nil {
 			t.Fatal(err)
 		}

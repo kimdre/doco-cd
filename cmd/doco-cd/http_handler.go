@@ -233,7 +233,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			correctRepo := false
 
 			for _, cont := range containers {
-				if cont.Labels[docker.DocoCDLabels.Metadata.Manager] == "doco-cd" {
+				if cont.Labels[docker.DocoCDLabels.Metadata.Manager] == config.AppName {
 					managed = true
 
 					if cont.Labels[docker.DocoCDLabels.Repository.Name] == repoName {
