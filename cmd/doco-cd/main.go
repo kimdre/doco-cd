@@ -161,6 +161,12 @@ func main() {
 		log.Error("failed to retrieve doco-cd containers", logger.ErrAttr(err))
 	}
 
+	if len(containers) <= 0 {
+		log.Debug("no containers found that are managed by doco-cd", slog.Int("count", len(containers)))
+	} else {
+		log.Debug("retrieved containers successfully", slog.Int("count", len(containers)))
+	}
+
 	for _, cont := range containers {
 		log.Debug("inspecting container", slog.Group("container",
 			slog.String("id", cont.ID),
@@ -189,12 +195,6 @@ func main() {
 			//
 			// )
 		}()
-	}
-
-	if len(containers) <= 0 {
-		log.Debug("no containers found that are managed by doco-cd", slog.Int("count", len(containers)))
-	} else {
-		log.Debug("retrieved containers successfully", slog.Int("count", len(containers)))
 	}
 
 	err = http.ListenAndServe(fmt.Sprintf(":%d", c.HttpPort), nil)
