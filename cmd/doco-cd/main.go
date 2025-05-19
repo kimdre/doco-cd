@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
 	"sync"
 
 	"github.com/docker/docker/client"
@@ -25,11 +24,6 @@ var (
 	Version string
 	errMsg  string
 )
-
-// getAppContainerID retrieves the container ID of the application
-func getAppContainerID() string {
-	return os.Getenv("HOSTNAME")
-}
 
 func main() {
 	var wg sync.WaitGroup
@@ -89,7 +83,12 @@ func main() {
 		))
 
 	// Check if the application has a data mount point and get the host path
-	appContainerID := getAppContainerID()
+	appContainerID, err := docker.GetContainerID(dockerCli.Client(), "doco-cd")
+	if err != nil {
+		log.Critical("failed to retrieve application container id", logger.ErrAttr(err))
+		return
+	}
+
 	log.Debug("retrieved application container id", slog.String("container_id", appContainerID))
 
 	dataMountPoint, err := docker.GetMountPointByDestination(dockerClient, appContainerID, dataPath)
