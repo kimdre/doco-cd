@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/docker/docker/client"
@@ -26,9 +28,23 @@ var (
 	errMsg  string
 )
 
-// getAppContainerID retrieves the container ID of the application
-func getAppContainerID() string {
-	return os.Getenv("HOSTNAME")
+// getAppContainerID retrieves the application container ID from the cpuset file
+func getAppContainerID() (string, error) {
+	data, err := os.ReadFile("/proc/1/cpuset")
+	if err != nil {
+		return "", err
+	}
+
+	// The container ID is the last part of the cpuset path (after the last '/')
+	parts := strings.Split(string(data), "/")
+	if len(parts) == 0 {
+		return "", errors.New("failed to parse container ID from cpuset path")
+	}
+
+	containerID := parts[len(parts)-1]
+	containerID = strings.TrimSpace(containerID)
+
+	return containerID, nil
 }
 
 func main() {
@@ -88,10 +104,16 @@ func main() {
 			slog.String("docker_api", dockerCli.CurrentVersion()),
 		))
 
-	// Check if the application has a data mount point and get the host path
-	appContainerID := getAppContainerID()
+	// Get container id of this application
+	appContainerID, err := getAppContainerID()
+	if err != nil {
+		log.Critical("failed to retrieve application container id", logger.ErrAttr(err))
+		return
+	}
+
 	log.Debug("retrieved application container id", slog.String("container_id", appContainerID))
 
+	// Check if the application has a data mount point and get the host path
 	dataMountPoint, err := docker.GetMountPointByDestination(dockerClient, appContainerID, dataPath)
 	if err != nil {
 		log.Critical(fmt.Sprintf("failed to retrieve %s mount point for container %s", dataPath, appContainerID), logger.ErrAttr(err))
@@ -134,7 +156,7 @@ func main() {
 
 	log.Debug("retrieving containers that are managed by doco-cd")
 
-	containers, err := docker.GetLabeledContainers(context.TODO(), dockerClient, docker.DocoCDLabels.Metadata.Manager, "doco-cd")
+	containers, err := docker.GetLabeledContainers(context.TODO(), dockerClient, docker.DocoCDLabels.Metadata.Manager, config.AppName)
 	if err != nil {
 		log.Error("failed to retrieve doco-cd containers", logger.ErrAttr(err))
 	}

@@ -162,7 +162,7 @@ containers that are part of a service.
 func addServiceLabels(project *types.Project, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, composeVersion string) {
 	for i, s := range project.Services {
 		s.CustomLabels = map[string]string{
-			DocoCDLabels.Metadata.Manager:         "doco-cd",
+			DocoCDLabels.Metadata.Manager:         config.AppName,
 			DocoCDLabels.Metadata.Version:         appVersion,
 			DocoCDLabels.Deployment.Name:          deployConfig.Name,
 			DocoCDLabels.Deployment.Timestamp:     timestamp,
@@ -185,7 +185,7 @@ func addServiceLabels(project *types.Project, deployConfig config.DeployConfig, 
 func addVolumeLabels(project *types.Project, deployConfig config.DeployConfig, payload webhook.ParsedPayload, appVersion, timestamp, composeVersion string) {
 	for i, v := range project.Volumes {
 		v.CustomLabels = map[string]string{
-			DocoCDLabels.Metadata.Manager:         "doco-cd",
+			DocoCDLabels.Metadata.Manager:         config.AppName,
 			DocoCDLabels.Metadata.Version:         appVersion,
 			DocoCDLabels.Deployment.Name:          deployConfig.Name,
 			DocoCDLabels.Deployment.Timestamp:     timestamp,

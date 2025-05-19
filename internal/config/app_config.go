@@ -7,6 +7,8 @@ import (
 	"gopkg.in/validator.v2"
 )
 
+const AppName = "doco-cd" // Name of the application
+
 // AppConfig is used to configure this application
 // https://github.com/caarlos0/env?tab=readme-ov-file#env-tag-options
 type AppConfig struct {
