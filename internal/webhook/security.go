@@ -10,6 +10,7 @@ import (
 )
 
 var (
+	ErrIncorrectSecretKey            = errors.New("incorrect secret key")
 	ErrHMACVerificationFailed        = errors.New("HMAC verification failed")
 	ErrGitlabTokenVerificationFailed = errors.New("gitlab token verification failed")
 	ErrMissingSecurityHeader         = errors.New("missing signature or token header")
