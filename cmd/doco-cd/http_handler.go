@@ -34,6 +34,15 @@ type handlerData struct {
 	log            *logger.Logger       // Logger for logging messages
 }
 
+func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any, jobID string, statusCode int) {
+	log.Error(errMsg)
+	JSONError(w,
+		errMsg,
+		details,
+		jobID,
+		statusCode)
+}
+
 // getRepoName extracts the repository name from the clone URL
 func getRepoName(cloneURL string) string {
 	repoName := strings.SplitAfter(cloneURL, "://")[1]
@@ -67,14 +76,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		jobLog.Debug("authenticating to private repository")
 
 		if appConfig.GitAccessToken == "" {
-			errMsg = "missing access token for private repository"
-			jobLog.Error(errMsg)
-			JSONError(w,
-				errMsg,
-				"",
-				jobID,
-				http.StatusInternalServerError)
-
+			onError(w, jobLog, "missing access token for private repository", "", jobID, http.StatusInternalServerError)
 			return
 		}
 
@@ -86,36 +88,19 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	// Validate payload.FullName to prevent directory traversal
 	if strings.Contains(payload.FullName, "..") {
-		errMsg = "invalid repository name"
-		jobLog.Error(errMsg, slog.String("repository", payload.FullName))
-		JSONError(w, errMsg, "", jobID, http.StatusBadRequest)
-
+		onError(w, jobLog.With(slog.String("repository", payload.FullName)), "invalid repository name", "", jobID, http.StatusBadRequest)
 		return
 	}
 
 	internalRepoPath, err := utils.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
 	if err != nil {
-		errMsg = "invalid repository name"
-		jobLog.Error(errMsg, logger.ErrAttr(err))
-		JSONError(w,
-			errMsg,
-			err.Error(),
-			jobID,
-			http.StatusBadRequest)
-
+		onError(w, jobLog.With(logger.ErrAttr(err)), "invalid repository name", err.Error(), jobID, http.StatusBadRequest)
 		return
 	}
 
 	externalRepoPath, err := utils.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path on the host
 	if err != nil {
-		errMsg = "invalid repository name"
-		jobLog.Error(errMsg, logger.ErrAttr(err))
-		JSONError(w,
-			errMsg,
-			err.Error(),
-			jobID,
-			http.StatusBadRequest)
-
+		onError(w, jobLog.With(logger.ErrAttr(err)), "invalid repository name", err.Error(), jobID, http.StatusBadRequest)
 		return
 	}
 
@@ -128,25 +113,11 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 			_, err = git.UpdateRepository(internalRepoPath, payload.Ref, appConfig.SkipTLSVerification)
 			if err != nil {
-				errMsg = "failed to checkout repository"
-				jobLog.Error(errMsg, logger.ErrAttr(err))
-				JSONError(w,
-					errMsg,
-					err.Error(),
-					jobID,
-					http.StatusInternalServerError)
-
+				onError(w, jobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), jobID, http.StatusInternalServerError)
 				return
 			}
 		} else {
-			errMsg = "failed to clone repository"
-			jobLog.Error(errMsg, logger.ErrAttr(err))
-			JSONError(w,
-				errMsg,
-				err.Error(),
-				jobID,
-				http.StatusInternalServerError)
-
+			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to clone repository", err.Error(), jobID, http.StatusInternalServerError)
 			return
 		}
 	} else {
@@ -161,14 +132,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		if errors.Is(err, config.ErrDeprecatedConfig) {
 			jobLog.Warn(err.Error())
 		} else {
-			errMsg = "failed to get deploy configuration"
-			jobLog.Error(errMsg, logger.ErrAttr(err))
-			JSONError(w,
-				errMsg,
-				err.Error(),
-				jobID,
-				http.StatusInternalServerError)
-
+			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to get deploy configuration", err.Error(), jobID, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -181,27 +145,13 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 		internalRepoPath, err = utils.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
 		if err != nil {
-			errMsg = "invalid repository name"
-			jobLog.Error(errMsg, logger.ErrAttr(err))
-			JSONError(w,
-				errMsg,
-				err.Error(),
-				jobID,
-				http.StatusBadRequest)
-
+			onError(w, jobLog.With(logger.ErrAttr(err)), "invalid repository name", err.Error(), jobID, http.StatusBadRequest)
 			return
 		}
 
 		externalRepoPath, err = utils.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Source, repoName), dataMountPoint.Source) // Path on the host
 		if err != nil {
-			errMsg = "invalid repository name"
-			jobLog.Error(errMsg, logger.ErrAttr(err))
-			JSONError(w,
-				errMsg,
-				err.Error(),
-				jobID,
-				http.StatusBadRequest)
-
+			onError(w, jobLog.With(logger.ErrAttr(err)), "invalid repository name", err.Error(), jobID, http.StatusBadRequest)
 			return
 		}
 
@@ -223,14 +173,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			// Try to clone the remote repository
 			_, err = git.CloneRepository(internalRepoPath, cloneUrl, deployConfig.Reference, appConfig.SkipTLSVerification)
 			if err != nil && !errors.Is(err, git.ErrRepositoryAlreadyExists) {
-				errMsg = "failed to clone remote repository"
-				jobLog.Error(errMsg, logger.ErrAttr(err))
-				JSONError(w,
-					errMsg,
-					err.Error(),
-					jobID,
-					http.StatusInternalServerError)
-
+				onError(w, jobLog.With(logger.ErrAttr(err)), "failed to clone remote repository", err.Error(), jobID, http.StatusInternalServerError)
 				return
 			}
 
@@ -241,14 +184,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 		_, err = git.UpdateRepository(internalRepoPath, deployConfig.Reference, appConfig.SkipTLSVerification)
 		if err != nil {
-			errMsg = "failed to checkout repository"
-			jobLog.Error(errMsg, logger.ErrAttr(err))
-			JSONError(w,
-				errMsg,
-				err.Error(),
-				jobID,
-				http.StatusInternalServerError)
-
+			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), jobID, http.StatusInternalServerError)
 			return
 		}
 
@@ -258,14 +194,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			// Check if doco-cd manages the project before destroying the stack
 			containers, err := docker.GetLabeledContainers(ctx, dockerClient, api.ProjectLabel, deployConfig.Name)
 			if err != nil {
-				errMsg = "failed to retrieve containers"
-				jobLog.Error(errMsg, logger.ErrAttr(err))
-				JSONError(w,
-					errMsg,
-					err.Error(),
-					jobID,
-					http.StatusInternalServerError)
-
+				onError(w, jobLog.With(logger.ErrAttr(err)), "failed to retrieve containers", err.Error(), jobID, http.StatusInternalServerError)
 				return
 			}
 
@@ -292,43 +221,19 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			}
 
 			if !managed {
-				errMsg = "stack " + deployConfig.Name + " is not managed by doco-cd, aborting destruction"
-				jobLog.Error(errMsg)
-				JSONError(w,
-					errMsg,
-					map[string]string{
-						"stack": deployConfig.Name,
-					},
-					jobID,
-					http.StatusInternalServerError)
-
+				onError(w, jobLog, "stack "+deployConfig.Name+" is not managed by doco-cd, aborting destruction", "", jobID, http.StatusInternalServerError)
 				return
 			}
 
 			if !correctRepo {
-				errMsg = "stack " + deployConfig.Name + " is not managed by this repository, aborting destruction"
-				jobLog.Error(errMsg)
-				JSONError(w,
-					errMsg,
-					map[string]string{
-						"stack": deployConfig.Name,
-					},
-					jobID,
-					http.StatusInternalServerError)
-
+				onError(w, jobLog, "stack "+deployConfig.Name+" is not managed by this repository, aborting destruction",
+					map[string]string{"stack": deployConfig.Name}, jobID, http.StatusInternalServerError)
 				return
 			}
 
 			err = docker.DestroyStack(jobLog, &ctx, &dockerCli, deployConfig)
 			if err != nil {
-				errMsg = "failed to destroy stack"
-				jobLog.Error(errMsg, logger.ErrAttr(err))
-				JSONError(w,
-					errMsg,
-					err.Error(),
-					jobID,
-					http.StatusInternalServerError)
-
+				onError(w, jobLog.With(logger.ErrAttr(err)), "failed to destroy stack", err.Error(), jobID, http.StatusInternalServerError)
 				return
 			}
 
@@ -375,14 +280,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			// Skip deployment if another project with the same name already exists
 			containers, err := docker.GetLabeledContainers(ctx, dockerClient, api.ProjectLabel, deployConfig.Name)
 			if err != nil {
-				errMsg = "failed to retrieve containers"
-				jobLog.Error(errMsg, logger.ErrAttr(err))
-				JSONError(w,
-					errMsg,
-					err.Error(),
-					jobID,
-					http.StatusInternalServerError)
-
+				onError(w, jobLog.With(logger.ErrAttr(err)), "failed to retrieve containers", err.Error(), jobID, http.StatusInternalServerError)
 				return
 			}
 
@@ -398,16 +296,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			}
 
 			if !correctRepo {
-				errMsg = "another stack with the name " + deployConfig.Name + " already exists, skipping deployment"
-				jobLog.Error(errMsg)
-				JSONError(w,
-					errMsg,
-					map[string]string{
-						"stack": deployConfig.Name,
-					},
-					jobID,
-					http.StatusInternalServerError)
-
+				onError(w, jobLog, "stack "+deployConfig.Name+" is not managed by this repository, skipping deployment",
+					map[string]string{"stack": deployConfig.Name}, jobID, http.StatusInternalServerError)
 				return
 			}
 
@@ -441,31 +331,30 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 	payload, err := webhook.Parse(r, h.appConfig.WebhookSecret)
 	if err != nil {
+		var statusCode int
+
 		switch {
 		case errors.Is(err, webhook.ErrHMACVerificationFailed):
-			errMsg = "incorrect webhook secret"
-			jobLog.Debug(errMsg, slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
-			JSONError(w, errMsg, err.Error(), jobID, http.StatusUnauthorized)
+			errMsg = webhook.ErrIncorrectSecretKey.Error()
+			statusCode = http.StatusUnauthorized
 		case errors.Is(err, webhook.ErrGitlabTokenVerificationFailed):
 			errMsg = webhook.ErrGitlabTokenVerificationFailed.Error()
-			jobLog.Debug(errMsg, slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
-			JSONError(w, errMsg, err.Error(), jobID, http.StatusUnauthorized)
+			statusCode = http.StatusUnauthorized
 		case errors.Is(err, webhook.ErrMissingSecurityHeader):
 			errMsg = webhook.ErrMissingSecurityHeader.Error()
-			jobLog.Debug(errMsg, slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
-			JSONError(w, errMsg, err.Error(), jobID, http.StatusBadRequest)
+			statusCode = http.StatusBadRequest
 		case errors.Is(err, webhook.ErrParsingPayload):
 			errMsg = webhook.ErrParsingPayload.Error()
-			jobLog.Debug(errMsg, slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
-			JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
+			statusCode = http.StatusInternalServerError
 		case errors.Is(err, webhook.ErrInvalidHTTPMethod):
 			errMsg = webhook.ErrInvalidHTTPMethod.Error()
-			jobLog.Debug(errMsg, slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
-			JSONError(w, errMsg, "", jobID, http.StatusMethodNotAllowed)
+			statusCode = http.StatusMethodNotAllowed
 		default:
-			jobLog.Debug(webhook.ErrParsingPayload.Error(), slog.String("ip", r.RemoteAddr), logger.ErrAttr(err))
-			JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
+			errMsg = webhook.ErrParsingPayload.Error()
+			statusCode = http.StatusInternalServerError
 		}
+
+		onError(w, jobLog.With(slog.String("ip", r.RemoteAddr), logger.ErrAttr(err)), errMsg, err.Error(), jobID, statusCode)
 
 		return
 	}
@@ -476,9 +365,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request) {
 	err := docker.VerifySocketConnection()
 	if err != nil {
-		h.log.Error(docker.ErrDockerSocketConnectionFailed.Error(), logger.ErrAttr(err))
-		JSONError(w, "unhealthy", err.Error(), "", http.StatusServiceUnavailable)
-
+		onError(w, h.log.With(logger.ErrAttr(err)), docker.ErrDockerSocketConnectionFailed.Error(), err.Error(), "", http.StatusServiceUnavailable)
 		return
 	}
 
