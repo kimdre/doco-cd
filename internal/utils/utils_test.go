@@ -29,15 +29,23 @@ func TestVerifyAndSanitizePath(t *testing.T) {
 			expectError: ErrPathTraversal,
 		},
 		{
-			name:        "Path traversal",
+			name:        "Absolute Path traversal",
 			path:        "/valid/../../invalid/path",
 			trustedRoot: "/valid",
-			expected:    filepath.Clean("/valid/../../invalid/path"),
+			expected:    "/valid/../../invalid/path",
+			expectError: ErrPathTraversal,
+		},
+		{
+			name:        "Relative Path traversal",
+			path:        "../invalid/path",
+			trustedRoot: "/valid",
+			expected:    "../invalid/path",
 			expectError: ErrPathTraversal,
 		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			tc.expected, _ = filepath.Abs(tc.expected)
 			result, err := VerifyAndSanitizePath(tc.path, tc.trustedRoot)
 			if result != tc.expected {
 				t.Fatalf("expected %s, got %s", tc.expected, result)
