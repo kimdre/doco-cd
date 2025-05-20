@@ -245,9 +245,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 				subDirs, err := os.ReadDir(parentDir)
 				if err != nil {
-					jobLog.Error("failed to read parent directory", logger.ErrAttr(err))
-					JSONError(w, "failed to read parent directory", err.Error(), jobID, http.StatusInternalServerError)
-
+					onError(w, jobLog.With(logger.ErrAttr(err)), "failed to read parent directory", err.Error(), jobID, http.StatusInternalServerError)
 					return
 				}
 
@@ -258,18 +256,14 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 					// Remove only the repository directory
 					err = os.RemoveAll(internalRepoPath)
 					if err != nil {
-						jobLog.Error("failed to remove deployment directory", logger.ErrAttr(err))
-						JSONError(w, "failed to remove deployment directory", err.Error(), jobID, http.StatusInternalServerError)
-
+						onError(w, jobLog.With(logger.ErrAttr(err)), "failed to remove deployment directory", err.Error(), jobID, http.StatusInternalServerError)
 						return
 					}
 				} else {
 					// Remove the parent directory if it has only one subdirectory
 					err = os.RemoveAll(parentDir)
 					if err != nil {
-						jobLog.Error("failed to remove deployment directory", logger.ErrAttr(err))
-						JSONError(w, "failed to remove deployment directory", err.Error(), jobID, http.StatusInternalServerError)
-
+						onError(w, jobLog.With(logger.ErrAttr(err)), "failed to remove deployment directory", err.Error(), jobID, http.StatusInternalServerError)
 						return
 					}
 
@@ -303,10 +297,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 			err = docker.DeployStack(jobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, &payload, deployConfig, Version)
 			if err != nil {
-				msg := "deployment failed"
-				jobLog.Error(msg)
-				JSONError(w, err, msg, jobID, http.StatusInternalServerError)
-
+				onError(w, jobLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), jobID, http.StatusInternalServerError)
 				return
 			}
 		}
