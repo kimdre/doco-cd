@@ -81,7 +81,7 @@ compose_files:
 			t.Errorf("expected reference to be %v, got %s", reference, config.Reference)
 		}
 
-		if config.WorkingDirectory != workingDirectory {
+		if config.WorkingDirectory != filepath.Join(".", workingDirectory) {
 			t.Errorf("expected working directory to be '%v', got '%s'", workingDirectory, config.WorkingDirectory)
 		}
 
@@ -143,7 +143,7 @@ compose_files:
 			t.Errorf("expected reference to be %v, got %s", reference, config.Reference)
 		}
 
-		if config.WorkingDirectory != workingDirectory {
+		if config.WorkingDirectory != filepath.Join(".", workingDirectory) {
 			t.Errorf("expected working directory to be '%v', got '%s'", workingDirectory, config.WorkingDirectory)
 		}
 

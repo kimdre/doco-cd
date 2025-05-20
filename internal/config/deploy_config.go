@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 
 	"gopkg.in/validator.v2"
 
@@ -20,6 +21,7 @@ var (
 	ErrInvalidConfig                    = errors.New("invalid deploy configuration")
 	ErrKeyNotFound                      = errors.New("key not found")
 	ErrDeprecatedConfig                 = errors.New("configuration file name is deprecated, please use .doco-cd.y(a)ml instead")
+	ErrInvalidFilePath                  = errors.New("invalid file path")
 )
 
 // DeployConfig is the structure of the deployment configuration file
@@ -66,13 +68,32 @@ func (c *DeployConfig) validateConfig() error {
 		return fmt.Errorf("%w: reference", ErrKeyNotFound)
 	}
 
-	if c.WorkingDirectory == "" {
-		return fmt.Errorf("%w: working_dir", ErrKeyNotFound)
+	c.WorkingDirectory = filepath.Clean(c.WorkingDirectory)
+	if !filepath.IsLocal(c.WorkingDirectory) {
+		c.WorkingDirectory = filepath.Join(".", c.WorkingDirectory)
 	}
 
 	if len(c.ComposeFiles) == 0 {
 		return fmt.Errorf("%w: compose_files", ErrKeyNotFound)
 	}
+
+	cleanComposeFiles := make([]string, 0, len(c.ComposeFiles))
+	// Sanitize the compose file path
+	for _, file := range c.ComposeFiles {
+		cleaned := filepath.Clean(file)
+		if !filepath.IsLocal(cleaned) {
+			return fmt.Errorf("%w: %s", ErrInvalidFilePath, file)
+		}
+
+		// Check if the filename contains any path
+		if filepath.Base(cleaned) != cleaned {
+			return fmt.Errorf("%w: %s", ErrInvalidFilePath, file)
+		}
+
+		cleanComposeFiles = append(cleanComposeFiles, cleaned)
+	}
+
+	c.ComposeFiles = cleanComposeFiles
 
 	return nil
 }
