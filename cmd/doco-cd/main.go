@@ -36,7 +36,7 @@ func getAppContainerID() (string, error) {
 	}
 
 	// The container ID is the last part of the cpuset path (after the last '/')
-	parts := strings.Split(string(data), "/")
+	parts := strings.Split(string(data), string(os.PathSeparator))
 	if len(parts) == 0 {
 		return "", errors.New("failed to parse container ID from cpuset path")
 	}
