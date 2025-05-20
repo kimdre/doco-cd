@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/utils"
+
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
@@ -61,7 +63,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		"get repository",
 		slog.String("url", payload.CloneURL))
 
-	// TODO: Check edge case: public repo - empty access token
 	if payload.Private {
 		jobLog.Debug("authenticating to private repository")
 
@@ -92,11 +93,34 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		return
 	}
 
-	internalRepoPath := filepath.Join(dataMountPoint.Destination, repoName) // Path inside the container
-	externalRepoPath := filepath.Join(dataMountPoint.Source, repoName)      // Path on the host
+	internalRepoPath, err := utils.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
+	if err != nil {
+		errMsg = "invalid repository name"
+		jobLog.Error(errMsg, logger.ErrAttr(err))
+		JSONError(w,
+			errMsg,
+			err.Error(),
+			jobID,
+			http.StatusBadRequest)
+
+		return
+	}
+
+	externalRepoPath, err := utils.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path on the host
+	if err != nil {
+		errMsg = "invalid repository name"
+		jobLog.Error(errMsg, logger.ErrAttr(err))
+		JSONError(w,
+			errMsg,
+			err.Error(),
+			jobID,
+			http.StatusBadRequest)
+
+		return
+	}
 
 	// Try to clone the repository
-	_, err := git.CloneRepository(internalRepoPath, payload.CloneURL, payload.Ref, appConfig.SkipTLSVerification)
+	_, err = git.CloneRepository(internalRepoPath, payload.CloneURL, payload.Ref, appConfig.SkipTLSVerification)
 	if err != nil {
 		// If the repository already exists, check it out to the specified commit SHA
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
@@ -155,8 +179,31 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			repoName = getRepoName(string(deployConfig.RepositoryUrl))
 		}
 
-		internalRepoPath = filepath.Join(dataMountPoint.Destination, repoName) // Path inside the container
-		externalRepoPath = filepath.Join(dataMountPoint.Source, repoName)      // Path on the host
+		internalRepoPath, err = utils.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
+		if err != nil {
+			errMsg = "invalid repository name"
+			jobLog.Error(errMsg, logger.ErrAttr(err))
+			JSONError(w,
+				errMsg,
+				err.Error(),
+				jobID,
+				http.StatusBadRequest)
+
+			return
+		}
+
+		externalRepoPath, err = utils.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Source, repoName), dataMountPoint.Source) // Path on the host
+		if err != nil {
+			errMsg = "invalid repository name"
+			jobLog.Error(errMsg, logger.ErrAttr(err))
+			JSONError(w,
+				errMsg,
+				err.Error(),
+				jobID,
+				http.StatusBadRequest)
+
+			return
+		}
 
 		jobLog = jobLog.With(
 			slog.String("stack", deployConfig.Name),
