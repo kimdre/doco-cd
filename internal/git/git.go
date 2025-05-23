@@ -137,28 +137,31 @@ func UpdateRepository(path, ref string, skipTLSVerify bool) (*git.Repository, er
 		return nil, err
 	}
 
-	if checkedOutRef.Name() != successCandidate.localRef && checkedOutRef.Name() != successCandidate.remoteRef {
-		fmt.Println("Checking out new reference", successCandidate.localRef)
+	if checkedOutRef.Name() == successCandidate.localRef || checkedOutRef.Name() == successCandidate.remoteRef {
+		// If the reference is already checked out, do a pull and return
+		fmt.Println("Already checked out", successCandidate.localRef, ", pulling latest changes")
 
-		err = worktree.Checkout(&git.CheckoutOptions{
-			Branch: successCandidate.localRef,
-			Keep:   true,
-			// Force:  true,
+		err = worktree.Pull(&git.PullOptions{
+			RemoteName:      RemoteName,
+			InsecureSkipTLS: skipTLSVerify,
+			SingleBranch:    true,
 		})
-		if err != nil {
-			return nil, fmt.Errorf("%w: %w: %s", ErrCheckoutFailed, err, successCandidate.localRef)
+		if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
+			return nil, fmt.Errorf("%w: %w", ErrPullFailed, err)
 		}
+
+		return repo, nil
 	}
 
-	fmt.Println("Pulling latest changes")
+	fmt.Println("Checking out new reference", successCandidate.localRef)
 
-	err = worktree.Pull(&git.PullOptions{
-		RemoteName:      RemoteName,
-		InsecureSkipTLS: skipTLSVerify,
-		SingleBranch:    true,
+	err = worktree.Checkout(&git.CheckoutOptions{
+		Branch: successCandidate.localRef,
+		Keep:   true,
+		// Force:  true,
 	})
-	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
-		return nil, fmt.Errorf("%w: %w", ErrPullFailed, err)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w: %s", ErrCheckoutFailed, err, successCandidate.localRef)
 	}
 
 	return repo, nil
