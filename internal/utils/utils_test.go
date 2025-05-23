@@ -47,6 +47,7 @@ func TestVerifyAndSanitizePath(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.expected, _ = filepath.Abs(tc.expected)
 			result, err := VerifyAndSanitizePath(tc.path, tc.trustedRoot)
+
 			if result != tc.expected {
 				t.Fatalf("expected %s, got %s", tc.expected, result)
 			}
