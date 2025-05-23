@@ -131,9 +131,34 @@ func UpdateRepository(path, ref string, skipTLSVerify bool) (*git.Repository, er
 		return nil, fmt.Errorf("%w: %s", ErrInvalidReference, ref)
 	}
 
+	// Check if the reference is already checked out
+	checkedOutRef, err := repo.Head()
+	if err != nil {
+		return nil, err
+	}
+
+	if checkedOutRef.Name() == successCandidate.localRef || checkedOutRef.Name() == successCandidate.remoteRef {
+		// If the reference is already checked out, do a pull and return
+		fmt.Println("Already checked out", successCandidate.localRef, ", pulling latest changes")
+
+		err = worktree.Pull(&git.PullOptions{
+			RemoteName:      RemoteName,
+			InsecureSkipTLS: skipTLSVerify,
+			SingleBranch:    true,
+		})
+		if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
+			return nil, fmt.Errorf("%w: %w", ErrPullFailed, err)
+		}
+
+		return repo, nil
+	}
+
+	fmt.Println("Checking out new reference", successCandidate.localRef)
+
 	err = worktree.Checkout(&git.CheckoutOptions{
 		Branch: successCandidate.localRef,
-		Force:  true,
+		Keep:   true,
+		// Force:  true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w: %s", ErrCheckoutFailed, err, successCandidate.localRef)
