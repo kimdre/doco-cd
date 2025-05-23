@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/go-git/go-git/v5/plumbing"
@@ -176,6 +177,21 @@ func TestUpdateRepository(t *testing.T) {
 				t.Fatalf("Failed to get worktree: %v", err)
 			}
 
+			// Create test file
+			testDir := filepath.Join(worktree.Filesystem.Root(), "dir")
+			testFileName := filepath.Join(testDir, "testfile.txt")
+			testFileContent := "This is a test file."
+
+			err = os.MkdirAll(testDir, 0o755)
+			if err != nil {
+				t.Fatalf("Failed to create test directory: %v", err)
+			}
+
+			err = os.WriteFile(testFileName, []byte(testFileContent), 0o644)
+			if err != nil {
+				t.Fatalf("Failed to create test file: %v", err)
+			}
+
 			repo, err = UpdateRepository(worktree.Filesystem.Root(), tc.branchRef, true)
 			if err != nil {
 				if !errors.Is(err, tc.expectedErr) {
@@ -210,6 +226,16 @@ func TestUpdateRepository(t *testing.T) {
 				_, err = repo.Reference(refName, true)
 				if err == nil {
 					t.Fatalf("Expected error for invalid reference %s, got nil", tc.expectedRef)
+				}
+			}
+
+			// Check if the test file still exists
+			_, err = os.Stat(testFileName)
+			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("Test file %s does not exist after update", testFileName)
+				} else {
+					t.Fatalf("Failed to stat test file: %v", err)
 				}
 			}
 		})
