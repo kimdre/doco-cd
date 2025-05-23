@@ -144,7 +144,6 @@ func UpdateRepository(path, ref string, skipTLSVerify bool) (*git.Repository, er
 		err = worktree.Pull(&git.PullOptions{
 			RemoteName:      RemoteName,
 			InsecureSkipTLS: skipTLSVerify,
-			SingleBranch:    true,
 		})
 		if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
 			return nil, fmt.Errorf("%w: %w", ErrPullFailed, err)
