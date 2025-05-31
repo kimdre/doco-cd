@@ -231,8 +231,8 @@ github.com/dlclark/regexp2 v1.11.5 h1:Q/sSnsKerHeCkc/jSTNq1oCm7KiVgUMZRDUoRu0JQZ
 github.com/dlclark/regexp2 v1.11.5/go.mod h1:DHkYz0B9wPfa6wondMfaivmHpzrQ3v9q8cnmRbL6yW8=
 github.com/docker/buildx v0.24.0 h1:qiD+xktY+Fs3R79oz8M+7pbhip78qGLx6LBuVmyb+64=
 github.com/docker/buildx v0.24.0/go.mod h1:vYkdBUBjFo/i5vUE0mkajGlk03gE0T/HaGXXhgIxo8E=
-github.com/docker/cli v28.1.1+incompatible h1:eyUemzeI45DY7eDPuwUcmDyDj1pM98oD5MdSpiItp8k=
-github.com/docker/cli v28.1.1+incompatible/go.mod h1:JLrzqnKDaYBop7H2jaqPtU4hHvMKP+vjCwu2uszcLI8=
+github.com/docker/cli v28.2.1+incompatible h1:AYyTcuwvhl9dXdyCiXlOGXiIqSNYzTmaDNpxIISPGsM=
+github.com/docker/cli v28.2.1+incompatible/go.mod h1:JLrzqnKDaYBop7H2jaqPtU4hHvMKP+vjCwu2uszcLI8=
 github.com/docker/cli-docs-tool v0.9.0 h1:CVwQbE+ZziwlPqrJ7LRyUF6GvCA+6gj7MTCsayaK9t0=
 github.com/docker/cli-docs-tool v0.9.0/go.mod h1:ClrwlNW+UioiRyH9GiAOe1o3J/TsY3Tr1ipoypjAUtc=
 github.com/docker/compose/v2 v2.36.2 h1:rxk1PUUbhbAS6HkGsYo9xUmMBpKtVwFMNCQjE4+i5fk=

@@ -8,7 +8,7 @@ require (
 	github.com/caarlos0/env/v11 v11.3.1
 	github.com/compose-spec/compose-go/v2 v2.6.4
 	github.com/creasty/defaults v1.8.0
-	github.com/docker/cli v28.1.1+incompatible
+	github.com/docker/cli v28.2.1+incompatible
 	github.com/docker/compose/v2 v2.36.2
 	github.com/docker/docker v28.2.1+incompatible
 	github.com/go-git/go-git/v5 v5.16.0
