@@ -7,13 +7,13 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 
 	"github.com/docker/docker/client"
-	"github.com/kimdre/doco-cd/internal/docker"
-
 	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/logger"
 )
 
@@ -30,21 +30,35 @@ var (
 
 // getAppContainerID retrieves the application container ID from the cpuset file
 func getAppContainerID() (string, error) {
-	data, err := os.ReadFile("/proc/1/cpuset")
+	const (
+		cgroupMounts = "/proc/self/mountinfo"
+	)
+
+	pattern := regexp.MustCompile(`/docker/containers/([a-z0-9]+)`)
+
+	data, err := os.ReadFile(cgroupMounts)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to read %s: %w", cgroupMounts, err)
 	}
 
-	// The container ID is the last part of the cpuset path (after the last '/')
-	parts := strings.Split(string(data), string(os.PathSeparator))
-	if len(parts) == 0 {
-		return "", errors.New("failed to parse container ID from cpuset path")
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "/docker/containers/") && strings.Contains(line, "/etc/hostname") {
+			fields := strings.Fields(line)
+
+			matches := pattern.FindStringSubmatch(fields[3])
+			if len(matches) > 1 {
+				containerID := matches[1]
+				if len(containerID) > 0 {
+					return containerID, nil
+				}
+			} else {
+				return "", fmt.Errorf("container ID not found in %s: %s", cgroupMounts, line)
+			}
+		}
 	}
 
-	containerID := parts[len(parts)-1]
-	containerID = strings.TrimSpace(containerID)
-
-	return containerID, nil
+	return "", errors.New("container ID not found")
 }
 
 func main() {
