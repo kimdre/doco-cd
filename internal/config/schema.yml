@@ -1,5 +1,6 @@
-# YAML schema for doco-cd deployment configuration file
 # See also https://github.com/kimdre/doco-cd/wiki/Deploy-Settings
+title: "YAML schema for doco-cd deployment configuration file"
+$schema: "https://json-schema.org/draft/2020-12/schema"
 type: object
 properties:
   name:
@@ -81,3 +82,5 @@ properties:
         type: boolean
         description: Remove the cloned repository in the data directory after the deployment is removed (Setting this to false is useful e.g. when you use bind mounts and want to keep the data).
         default: true
+required:
+  - name
