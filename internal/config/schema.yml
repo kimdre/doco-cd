@@ -1,0 +1,83 @@
+# YAML schema for doco-cd deployment configuration file
+# See also https://github.com/kimdre/doco-cd/wiki/Deploy-Settings
+type: object
+properties:
+  name:
+    type: string
+    description: Name of docker compose project/stack
+  reference:
+    type: string
+    description: Git reference to the deployment, must be either a branch (e.g. main or refs/heads/main) or tag (e.g. v1.0.0. or refs/tags/v1.0.0)
+    default: refs/heads/main
+  repository_url:
+    type: string
+    description: HTTP clone URL of another repository that contains the docker compose files to be deployed. If specified, the deployment runs from there.
+    default: ""
+  working_dir:
+    type: string
+    description: The working directory for the deployment. If not specified, the base directory of the cloned repository is used.
+    default: .
+  compose_files:
+    type: array
+    items:
+      type: string
+    description: List of docker-compose and overwrite files to use (in descending order, first file gets read first and following files overwrite previous configs). Unknown/Non-existing files get skipped.
+    default: [compose.yaml, compose.yml, docker-compose.yml, docker-compose.yaml]
+  remove_orphans:
+    type: boolean
+    description: Remove orphaned containers that are not defined in the compose files.
+    default: true
+  force_recreate:
+    type: boolean
+    description: Forces the recreation/redeployment of containers even if the configuration has not changed.
+    default: false
+  force_image_pull:
+    type: boolean
+    description: Always attempt to pull a newer version of the image.
+    default: false
+  timeout:
+    type: integer
+    description: Timeout in seconds for the deployment.
+    default: 180
+  build_opts:
+    type: object
+    description: Additional options when building images before deployment.
+    properties:
+      force_image_pull:
+        type: boolean
+        description: Always attempt to pull a newer version of the image.
+        default: false
+      quiet:
+        type: boolean
+        description: Suppress output from the build process.
+        default: false
+      args:
+        type: object
+        description: Build arguments to pass to the build process.
+        additionalProperties:
+          type: string
+        default: {}
+      no_cache:
+        type: boolean
+        description: Do not use cache when building images.
+        default: false
+  destroy:
+    type: boolean
+    description: Destroy the deplyoed project/stack and its resources. Can be further configured using the destroy_opts.
+    default: false
+  destroy_opts:
+    type: object
+    description: Additional options when destroying the deployed project/stack.
+    properties:
+      remove_volumes:
+        type: boolean
+        description: Remove all volumes associated with the project/stack.
+        default: true
+      remove_images:
+        type: boolean
+        description: Remove all images associated with the project/stack.
+        default: true
+      remove_dir:
+        type: boolean
+        description: Remove the cloned repository in the data directory after the deployment is removed (Setting this to false is useful e.g. when you use bind mounts and want to keep the data).
+        default: true
