@@ -26,6 +26,7 @@ func getLatestAppReleaseVersion() (string, error) {
 	var releases []struct {
 		TagName      string `json:"tag_name"`
 		IsPreRelease bool   `json:"prerelease"`
+		IsDraft      bool   `json:"draft"`
 	}
 
 	if err = json.NewDecoder(resp.Body).Decode(&releases); err != nil {
@@ -33,7 +34,7 @@ func getLatestAppReleaseVersion() (string, error) {
 	}
 
 	for _, release := range releases {
-		if !release.IsPreRelease {
+		if !release.IsPreRelease && !release.IsDraft {
 			return release.TagName, nil
 		}
 	}
