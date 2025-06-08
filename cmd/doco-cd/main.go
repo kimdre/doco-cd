@@ -168,6 +168,13 @@ func main() {
 		slog.String("path", webhookPath),
 	)
 
+	go func() {
+		err = logAppVersion(Version, log)
+		if err != nil {
+			log.Error("failed to log application version", logger.ErrAttr(err))
+		}
+	}()
+
 	log.Debug("retrieving containers that are managed by doco-cd")
 
 	containers, err := docker.GetLabeledContainers(context.TODO(), dockerClient, docker.DocoCDLabels.Metadata.Manager, config.AppName)
