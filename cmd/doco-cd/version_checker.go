@@ -36,7 +36,7 @@ func getLatestAppReleaseVersion() (string, error) {
 
 	for _, release := range releases {
 		if !release.IsPreRelease && strings.HasPrefix(release.TagName, "v") {
-			return strings.TrimPrefix(release.TagName, "v"), nil
+			return release.TagName, nil
 		}
 	}
 
