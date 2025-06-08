@@ -4,10 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"strings"
-
 	"github.com/kimdre/doco-cd/internal/logger"
+	"net/http"
 )
 
 // getLatestAppVersion gets the latest application version from the GitHub releases API.
@@ -35,7 +33,7 @@ func getLatestAppReleaseVersion() (string, error) {
 	}
 
 	for _, release := range releases {
-		if !release.IsPreRelease && strings.HasPrefix(release.TagName, "v") {
+		if !release.IsPreRelease {
 			return release.TagName, nil
 		}
 	}
