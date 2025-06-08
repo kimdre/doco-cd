@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-	"github.com/kimdre/doco-cd/internal/logger"
 	"net/http"
 	"strings"
+
+	"github.com/kimdre/doco-cd/internal/logger"
 )
 
 // getLatestAppVersion gets the latest application version from the GitHub releases API.
@@ -17,7 +19,8 @@ func getLatestAppReleaseVersion() (string, error) {
 		return "", err
 	}
 
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
+
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("failed to fetch releases: %s", resp.Status)
 	}
@@ -37,7 +40,7 @@ func getLatestAppReleaseVersion() (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("no stable release found")
+	return "", errors.New("no stable release found")
 }
 
 func logAppVersion(currentVersion string, log *logger.Logger) error {
