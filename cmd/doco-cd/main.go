@@ -83,6 +83,22 @@ func main() {
 
 	log.Info("starting application", slog.String("version", Version), slog.String("log_level", c.LogLevel))
 
+	go func() {
+		latestVersion, err := getLatestAppReleaseVersion()
+		if err != nil {
+			log.Error("failed to get latest application release version", logger.ErrAttr(err))
+		} else {
+			if Version != latestVersion {
+				log.Warn("new application version available",
+					slog.String("current", Version),
+					slog.String("latest", latestVersion),
+				)
+			} else {
+				log.Debug("application is up to date", slog.String("version", Version))
+			}
+		}
+	}()
+
 	// Test/verify the connection to the docker socket
 	err = docker.VerifySocketConnection()
 	if err != nil {
@@ -167,13 +183,6 @@ func main() {
 		slog.Int("http_port", int(c.HttpPort)),
 		slog.String("path", webhookPath),
 	)
-
-	go func() {
-		err = logAppVersion(Version, log)
-		if err != nil {
-			log.Error("failed to log application version", logger.ErrAttr(err))
-		}
-	}()
 
 	log.Debug("retrieving containers that are managed by doco-cd")
 

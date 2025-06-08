@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/kimdre/doco-cd/internal/logger"
 	"net/http"
 )
 
@@ -40,19 +39,4 @@ func getLatestAppReleaseVersion() (string, error) {
 	}
 
 	return "", errors.New("no stable release found")
-}
-
-func logAppVersion(currentVersion string, log *logger.Logger) error {
-	latestVersion, err := getLatestAppReleaseVersion()
-	if err != nil {
-		return fmt.Errorf("failed to get latest version: %w", err)
-	}
-
-	if currentVersion == latestVersion {
-		log.Debug("Application is up to date", "version", currentVersion)
-	} else {
-		log.Warn("Application version mismatch", "current", currentVersion, "latest", latestVersion)
-	}
-
-	return nil
 }
