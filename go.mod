@@ -11,7 +11,7 @@ require (
 	github.com/docker/cli v28.2.2+incompatible
 	github.com/docker/compose/v2 v2.36.2
 	github.com/docker/docker v28.2.1+incompatible
-	github.com/go-git/go-git/v5 v5.16.0
+	github.com/go-git/go-git/v5 v5.16.2
 	github.com/golangci/golangci-lint/v2 v2.1.6
 	github.com/google/uuid v1.6.0
 	gopkg.in/validator.v2 v2.0.1
