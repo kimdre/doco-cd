@@ -9,7 +9,7 @@ require (
 	github.com/compose-spec/compose-go/v2 v2.6.4
 	github.com/creasty/defaults v1.8.0
 	github.com/docker/cli v28.2.2+incompatible
-	github.com/docker/compose/v2 v2.36.2
+	github.com/docker/compose/v2 v2.37.0
 	github.com/docker/docker v28.2.2+incompatible
 	github.com/go-git/go-git/v5 v5.16.2
 	github.com/golangci/golangci-lint/v2 v2.1.6
@@ -102,7 +102,7 @@ require (
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/docker/buildx v0.24.0 // indirect
-	github.com/docker/cli-docs-tool v0.9.0 // indirect
+	github.com/docker/cli-docs-tool v0.10.0 // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.3 // indirect
 	github.com/docker/go v1.5.1-1.0.20160303222718-d30aec9fd63c // indirect
@@ -348,7 +348,6 @@ require (
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.24.0 // indirect
 	golang.org/x/crypto v0.37.0 // indirect
-	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20250210185358-939b2ce775ac // indirect
 	golang.org/x/mod v0.24.0 // indirect
 	golang.org/x/net v0.39.0 // indirect
@@ -361,7 +360,7 @@ require (
 	golang.org/x/tools v0.32.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250218202821-56aae31c358a // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250313205543-e70fdf4c4cb4 // indirect
-	google.golang.org/grpc v1.72.1 // indirect
+	google.golang.org/grpc v1.72.2 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
