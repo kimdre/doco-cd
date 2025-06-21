@@ -1,0 +1,6 @@
+- url: https://example.com
+  branch: main
+- url: https://other-example.com
+  interval: 120
+- url: https://yet-another-example.com
+  branch: dev

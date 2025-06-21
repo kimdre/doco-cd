@@ -1,11 +1,16 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
+
+	"github.com/creasty/defaults"
+	"gopkg.in/yaml.v3"
 
 	"gopkg.in/validator.v2"
 
@@ -98,6 +103,54 @@ func (c *DeployConfig) validateConfig() error {
 	return nil
 }
 
+func (c *DeployConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	err := defaults.Set(c)
+	if err != nil {
+		return err
+	}
+
+	type Plain DeployConfig
+
+	if err := unmarshal((*Plain)(c)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func GetDeployConfigFromYAML(f string) ([]*DeployConfig, error) {
+	b, err := os.ReadFile(f)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file: %v", err)
+	}
+
+	// Read all yaml documents in the file and unmarshal them into a slice of DeployConfig structs
+	dec := yaml.NewDecoder(bytes.NewReader(b))
+
+	var configs []*DeployConfig
+
+	for {
+		var c DeployConfig
+
+		err = dec.Decode(&c)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+
+			return nil, fmt.Errorf("failed to decode yaml: %v", err)
+		}
+
+		configs = append(configs, &c)
+	}
+
+	if len(configs) == 0 {
+		return nil, errors.New("no yaml documents found in file")
+	}
+
+	return configs, nil
+}
+
 // GetDeployConfigs returns either the deployment configuration from the repository or the default configuration
 func GetDeployConfigs(repoDir, name, customTarget string) ([]*DeployConfig, error) {
 	files, err := os.ReadDir(repoDir)
@@ -165,7 +218,7 @@ func getDeployConfigsFromFile(dir string, files []os.DirEntry, configFile string
 
 		if f.Name() == configFile {
 			// Get contents of deploy config file
-			configs, err := FromYAML(path.Join(dir, f.Name()))
+			configs, err := GetDeployConfigFromYAML(path.Join(dir, f.Name()))
 			if err != nil {
 				return nil, err
 			}
@@ -184,4 +237,18 @@ func getDeployConfigsFromFile(dir string, files []os.DirEntry, configFile string
 	}
 
 	return nil, ErrConfigFileNotFound
+}
+
+// validateUniqueProjectNames checks if the project names in the configs are unique.
+func validateUniqueProjectNames(configs []*DeployConfig) error {
+	names := make(map[string]bool)
+	for _, config := range configs {
+		if names[config.Name] {
+			return fmt.Errorf("%w: %s", ErrDuplicateProjectName, config.Name)
+		}
+
+		names[config.Name] = true
+	}
+
+	return nil
 }

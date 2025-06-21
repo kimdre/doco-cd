@@ -3,8 +3,9 @@ package config
 import (
 	"errors"
 	"fmt"
-	"gopkg.in/validator.v2"
 	"net/url"
+
+	"gopkg.in/validator.v2"
 )
 
 type HttpUrl string // HttpUrl is a type for strings that represent HTTP URLs
