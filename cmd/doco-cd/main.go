@@ -185,12 +185,12 @@ func main() {
 	)
 
 	if len(c.PollConfig) > 0 {
-		log.Info("poll configuration found, start polling")
+		log.Info("poll configuration found, scheduling polling jobs")
 
 		for _, pollConfig := range c.PollConfig {
 			err = StartPoll(&h, pollConfig, &wg)
 			if err != nil {
-				log.Critical("failed to start polling", logger.ErrAttr(err))
+				log.Critical("failed to scheduling polling jobs", logger.ErrAttr(err))
 				return
 			}
 		}
