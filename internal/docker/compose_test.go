@@ -137,6 +137,11 @@ func TestDeployCompose(t *testing.T) {
 		}
 	}
 
+	latestCommit, err := git.GetLatestCommit(repo, p.Ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	worktree, err := repo.Worktree()
 	if err != nil {
 		t.Fatal(err)
@@ -202,7 +207,7 @@ func TestDeployCompose(t *testing.T) {
 		log := logger.New(slog.LevelInfo)
 		jobLog := log.With(slog.String("job_id", jobID))
 
-		err = DeployStack(jobLog, repoPath, repoPath, &ctx, &dockerCli, &p, deployConf, "test")
+		err = DeployStack(jobLog, repoPath, repoPath, &ctx, &dockerCli, &p, deployConf, latestCommit, "test", false)
 		if err != nil {
 			if errors.Is(err, config.ErrDeprecatedConfig) {
 				t.Log(err.Error())

@@ -185,10 +185,14 @@ func main() {
 	)
 
 	if len(c.PollConfig) > 0 {
-		log.Info("poll configuration found, starting polling")
+		log.Info("poll configuration found, start polling")
 
 		for _, pollConfig := range c.PollConfig {
-			log.Info(pollConfig.String())
+			err = StartPoll(&h, pollConfig, &wg)
+			if err != nil {
+				log.Critical("failed to start polling", logger.ErrAttr(err))
+				return
+			}
 		}
 	}
 

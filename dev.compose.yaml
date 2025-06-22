@@ -1,11 +1,8 @@
 x-poll-config: &poll-config
   POLL_CONFIG: |
-    - url: https://example.com
+    - url: https://github.com/kimdre/doco-cd.git
       branch: main
-    - url: https://other-example.com
-      interval: 120
-    - url: https://yet-another-example.com
-      branch: dev
+      interval: 15 # seconds
 
 services:
   app:
@@ -25,7 +22,7 @@ services:
       HTTP_PORT: 80
       LOG_LEVEL: info
       # DOCKER_API_VERSION: 1.47
-      #<<: *poll-config
+      <<: *poll-config
       #POLL_CONFIG_FILE: /poll.yml
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

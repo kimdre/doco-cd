@@ -13,25 +13,26 @@ var (
 )
 
 type PollConfig struct {
-	Url      HttpUrl `yaml:"url" validate:"httpUrl"` // Url is the URL to the Git repository to poll for changes
-	Branch   string  `yaml:"branch" default:"main"`  // Branch is the branch to poll for changes
-	Interval int     `yaml:"interval" default:"180"` // IntervalSeconds is the interval in seconds to poll for changes
+	CloneUrl     HttpUrl `yaml:"url" validate:"httpUrl"`   // CloneUrl is the URL to clone the Git repository that is used to poll for changes
+	Reference    string  `yaml:"reference" default:"main"` // Reference is the Git reference to the deployment, e.g., refs/heads/main, main, refs/tags/v1.0.0 or v1.0.0
+	Interval     int     `yaml:"interval" default:"180"`   // Interval is the interval in seconds to poll for changes
+	CustomTarget string  `yaml:"target" default:""`        // CustomTarget is the name of an optional custom deployment config file, e.g. ".doco-cd.custom-name.yaml"
+	Private      bool    `yaml:"private" default:"false"`  // Private indicates if the repository is private, which requires authentication
 }
 
 type PollInstance struct {
-	Config   *PollConfig  // config is the PollConfig for this instance
-	NextRun  int64        // NextRun is the next time this instance should run
-	LastRun  int64        // LastRun is the last time this instance ran
-	PollFunc func() error // PollFunc is the function to call to poll the repository for changes
+	Config  PollConfig // config is the PollConfig for this instance
+	LastRun int64      // LastRun is the last time this instance ran
+	NextRun int64      // NextRun is the next time this instance should run
 }
 
 // Validate checks if the PollConfig is valid
 func (c *PollConfig) Validate() error {
-	if c.Url == "" {
+	if c.CloneUrl == "" {
 		return fmt.Errorf("%w: url", ErrKeyNotFound)
 	}
 
-	if c.Branch == "" {
+	if c.Reference == "" {
 		return fmt.Errorf("%w: branch", ErrKeyNotFound)
 	}
 
@@ -39,12 +40,16 @@ func (c *PollConfig) Validate() error {
 		return fmt.Errorf("%w: interval", ErrKeyNotFound)
 	}
 
+	if c.Interval < 10 {
+		return fmt.Errorf("%w: interval must be at least 10 seconds", ErrInvalidPollConfig)
+	}
+
 	return nil
 }
 
 // String returns a string representation of the PollConfig
 func (c *PollConfig) String() string {
-	return fmt.Sprintf("PollConfig{Url: %s, Branch: %s, Interval: %d}", c.Url, c.Branch, c.Interval)
+	return fmt.Sprintf("PollConfig{CloneUrl: %s, Reference: %s, Interval: %d}", c.CloneUrl, c.Reference, c.Interval)
 }
 
 func (c *PollConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
