@@ -1,3 +1,12 @@
+## Uncomment the poll configuration section here and in the service `environment:` section if you want to enable polling of a repository.
+#x-poll-config: &poll-config
+#  POLL_CONFIG: |
+#    - url: https://github.com/kimdre/doco-cd.git  # This is the repository to poll
+#      reference: main  # Optional: specify the branch or tag to poll, defaults to 'main'
+#      interval: 180  # Optional: specify the interval in seconds to poll the repository, defaults to 180 seconds (3 minutes)
+#      target: ""  # Optional: use to target a specific deployment config file, e.g., "test" -> .doco-cd.test.yaml
+#      private: false  # Optional: set to true if the repository is private and requires authentication
+
 services:
   app:
     container_name: doco-cd
@@ -12,6 +21,8 @@ services:
       TZ: Europe/Berlin
       GIT_ACCESS_TOKEN: xxx
       WEBHOOK_SECRET: xxx
+      # Uncomment this line to use the poll configuration from above (the `x-poll-config` section).
+      # <<: *poll-config
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # The data volume (left side) can also be replaced with a bind mount to a local directory, for example:
