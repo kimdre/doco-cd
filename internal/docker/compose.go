@@ -159,43 +159,45 @@ addServiceLabels adds the labels docker compose expects to exist on services.
 This is required for future compose operations to work, such as finding
 containers that are part of a service.
 */
-func addServiceLabels(project *types.Project, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, composeVersion string) {
+func addServiceLabels(project *types.Project, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, composeVersion, latestCommit string) {
 	for i, s := range project.Services {
 		s.CustomLabels = map[string]string{
-			DocoCDLabels.Metadata.Manager:         config.AppName,
-			DocoCDLabels.Metadata.Version:         appVersion,
-			DocoCDLabels.Deployment.Name:          deployConfig.Name,
-			DocoCDLabels.Deployment.Timestamp:     timestamp,
-			DocoCDLabels.Deployment.WorkingDir:    repoDir,
-			DocoCDLabels.Deployment.TriggerCommit: payload.CommitSHA,
-			DocoCDLabels.Deployment.TargetRef:     deployConfig.Reference,
-			DocoCDLabels.Repository.Name:          payload.FullName,
-			DocoCDLabels.Repository.URL:           payload.WebURL,
-			api.ProjectLabel:                      project.Name,
-			api.ServiceLabel:                      s.Name,
-			api.WorkingDirLabel:                   project.WorkingDir,
-			api.ConfigFilesLabel:                  strings.Join(project.ComposeFiles, ","),
-			api.VersionLabel:                      composeVersion,
-			api.OneoffLabel:                       "False", // default, will be overridden by docker compose
+			DocoCDLabels.Metadata.Manager:      config.AppName,
+			DocoCDLabels.Metadata.Version:      appVersion,
+			DocoCDLabels.Deployment.Name:       deployConfig.Name,
+			DocoCDLabels.Deployment.Timestamp:  timestamp,
+			DocoCDLabels.Deployment.WorkingDir: repoDir,
+			DocoCDLabels.Deployment.Trigger:    payload.CommitSHA,
+			DocoCDLabels.Deployment.CommitSHA:  latestCommit,
+			DocoCDLabels.Deployment.TargetRef:  deployConfig.Reference,
+			DocoCDLabels.Repository.Name:       payload.FullName,
+			DocoCDLabels.Repository.URL:        payload.WebURL,
+			api.ProjectLabel:                   project.Name,
+			api.ServiceLabel:                   s.Name,
+			api.WorkingDirLabel:                project.WorkingDir,
+			api.ConfigFilesLabel:               strings.Join(project.ComposeFiles, ","),
+			api.VersionLabel:                   composeVersion,
+			api.OneoffLabel:                    "False", // default, will be overridden by docker compose
 		}
 		project.Services[i] = s
 	}
 }
 
-func addVolumeLabels(project *types.Project, deployConfig config.DeployConfig, payload webhook.ParsedPayload, appVersion, timestamp, composeVersion string) {
+func addVolumeLabels(project *types.Project, deployConfig config.DeployConfig, payload webhook.ParsedPayload, appVersion, timestamp, composeVersion, latestCommit string) {
 	for i, v := range project.Volumes {
 		v.CustomLabels = map[string]string{
-			DocoCDLabels.Metadata.Manager:         config.AppName,
-			DocoCDLabels.Metadata.Version:         appVersion,
-			DocoCDLabels.Deployment.Name:          deployConfig.Name,
-			DocoCDLabels.Deployment.Timestamp:     timestamp,
-			DocoCDLabels.Deployment.TriggerCommit: payload.CommitSHA,
-			DocoCDLabels.Deployment.TargetRef:     deployConfig.Reference,
-			DocoCDLabels.Repository.Name:          payload.FullName,
-			DocoCDLabels.Repository.URL:           payload.WebURL,
-			api.ProjectLabel:                      project.Name,
-			api.VolumeLabel:                       v.Name,
-			api.VersionLabel:                      composeVersion,
+			DocoCDLabels.Metadata.Manager:     config.AppName,
+			DocoCDLabels.Metadata.Version:     appVersion,
+			DocoCDLabels.Deployment.Name:      deployConfig.Name,
+			DocoCDLabels.Deployment.Timestamp: timestamp,
+			DocoCDLabels.Deployment.Trigger:   payload.CommitSHA,
+			DocoCDLabels.Deployment.TargetRef: deployConfig.Reference,
+			DocoCDLabels.Deployment.CommitSHA: latestCommit,
+			DocoCDLabels.Repository.Name:      payload.FullName,
+			DocoCDLabels.Repository.URL:       payload.WebURL,
+			api.ProjectLabel:                  project.Name,
+			api.VolumeLabel:                   v.Name,
+			api.VersionLabel:                  composeVersion,
 		}
 		project.Volumes[i] = v
 	}
@@ -223,7 +225,10 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 }
 
 // DeployCompose deploys a project as specified by the Docker Compose specification (LoadCompose)
-func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project, deployConfig *config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion string) error {
+func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project,
+	deployConfig *config.DeployConfig, payload webhook.ParsedPayload,
+	repoDir, latestCommit, appVersion string, forceDeploy bool,
+) error {
 	var err error
 
 	service := compose.NewComposeService(dockerCli)
@@ -242,8 +247,8 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		}
 	}
 
-	addServiceLabels(project, *deployConfig, payload, repoDir, appVersion, timestamp, ComposeVersion)
-	addVolumeLabels(project, *deployConfig, payload, appVersion, timestamp, ComposeVersion)
+	addServiceLabels(project, *deployConfig, payload, repoDir, appVersion, timestamp, ComposeVersion, latestCommit)
+	addVolumeLabels(project, *deployConfig, payload, appVersion, timestamp, ComposeVersion, latestCommit)
 
 	if deployConfig.ForceImagePull {
 		err := service.Pull(ctx, project, api.PullOptions{
@@ -255,7 +260,7 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	}
 
 	recreateType := api.RecreateDiverged
-	if deployConfig.ForceRecreate {
+	if deployConfig.ForceRecreate || forceDeploy {
 		recreateType = api.RecreateForce
 	}
 
@@ -312,8 +317,8 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 // DeployStack deploys the stack using the provided deployment configuration
 func DeployStack(
 	jobLog *slog.Logger, internalRepoPath, externalRepoPath string, ctx *context.Context,
-	dockerCli *command.Cli, p *webhook.ParsedPayload, deployConfig *config.DeployConfig,
-	appVersion string,
+	dockerCli *command.Cli, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
+	latestCommit, appVersion string, forceDeploy bool,
 ) error {
 	stackLog := jobLog.
 		With(slog.String("stack", deployConfig.Name))
@@ -394,7 +399,7 @@ func DeployStack(
 
 	stackLog.Info("deploying stack")
 
-	err = DeployCompose(*ctx, *dockerCli, project, deployConfig, *p, externalWorkingDir, appVersion)
+	err = DeployCompose(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion, forceDeploy)
 	if err != nil {
 		errMsg := "failed to deploy stack"
 		stackLog.Error(errMsg,
