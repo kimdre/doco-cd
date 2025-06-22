@@ -36,11 +36,7 @@ func (c *PollConfig) Validate() error {
 		return fmt.Errorf("%w: branch", ErrKeyNotFound)
 	}
 
-	if c.Interval == 0 {
-		return fmt.Errorf("%w: interval", ErrKeyNotFound)
-	}
-
-	if c.Interval < 10 {
+	if c.Interval < 10 && c.Interval != 0 {
 		return fmt.Errorf("%w: interval must be at least 10 seconds", ErrInvalidPollConfig)
 	}
 
