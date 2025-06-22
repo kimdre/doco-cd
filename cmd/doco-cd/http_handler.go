@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -65,7 +66,10 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		jobLog = jobLog.With(slog.String("custom_target", customTarget))
 	}
 
-	jobLog.Info("received new job", slog.Group("trigger", slog.String("commit", payload.CommitSHA), slog.String("ref", payload.Ref)))
+	jobLog.Info("received new job",
+		slog.Group("trigger",
+			slog.String("commit", payload.CommitSHA), slog.String("ref", payload.Ref),
+			slog.String("event", "webhook")))
 
 	// Clone the repository
 	jobLog.Debug(
@@ -94,13 +98,13 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	internalRepoPath, err := utils.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
 	if err != nil {
-		onError(w, jobLog.With(logger.ErrAttr(err)), "invalid repository name", err.Error(), jobID, http.StatusBadRequest)
+		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to verify and sanitize internal filesystem path", err.Error(), jobID, http.StatusBadRequest)
 		return
 	}
 
 	externalRepoPath, err := utils.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path on the host
 	if err != nil {
-		onError(w, jobLog.With(logger.ErrAttr(err)), "invalid repository name", err.Error(), jobID, http.StatusBadRequest)
+		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to verify and sanitize external filesystem path", err.Error(), jobID, http.StatusBadRequest)
 		return
 	}
 
@@ -182,9 +186,15 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 		jobLog.Debug("checking out reference "+deployConfig.Reference, slog.String("host_path", externalRepoPath))
 
-		_, err = git.UpdateRepository(internalRepoPath, deployConfig.Reference, appConfig.SkipTLSVerification)
+		repo, err := git.UpdateRepository(internalRepoPath, deployConfig.Reference, appConfig.SkipTLSVerification)
 		if err != nil {
 			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), jobID, http.StatusInternalServerError)
+			return
+		}
+
+		latestCommit, err := git.GetLatestCommit(repo, deployConfig.Reference)
+		if err != nil {
+			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to get latest commit", err.Error(), jobID, http.StatusInternalServerError)
 			return
 		}
 
@@ -212,7 +222,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				if cont.Labels[docker.DocoCDLabels.Metadata.Manager] == config.AppName {
 					managed = true
 
-					if cont.Labels[docker.DocoCDLabels.Repository.Name] == repoName {
+					if cont.Labels[docker.DocoCDLabels.Repository.Name] == payload.FullName {
 						correctRepo = true
 					}
 
@@ -221,12 +231,13 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			}
 
 			if !managed {
-				onError(w, jobLog, "stack "+deployConfig.Name+" is not managed by doco-cd, aborting destruction", "", jobID, http.StatusInternalServerError)
+				onError(w, jobLog, fmt.Errorf("%w: %s: aborting destruction", ErrNotManagedByDocoCD, deployConfig.Name).Error(),
+					"", jobID, http.StatusInternalServerError)
 				return
 			}
 
 			if !correctRepo {
-				onError(w, jobLog, "stack "+deployConfig.Name+" is not managed by this repository, aborting destruction",
+				onError(w, jobLog, fmt.Errorf("%w: %s: aborting destruction", ErrDeploymentConflict, deployConfig.Name).Error(),
 					map[string]string{"stack": deployConfig.Name}, jobID, http.StatusInternalServerError)
 				return
 			}
@@ -283,19 +294,19 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 			for _, cont := range containers {
 				name, ok := cont.Labels[docker.DocoCDLabels.Repository.Name]
-				if !ok || name != repoName {
+				if !ok || name != payload.FullName {
 					correctRepo = false
 					break
 				}
 			}
 
 			if !correctRepo {
-				onError(w, jobLog, "stack "+deployConfig.Name+" is not managed by this repository, skipping deployment",
+				onError(w, jobLog, fmt.Errorf("%w: %s: skipping deployment", ErrDeploymentConflict, deployConfig.Name).Error(),
 					map[string]string{"stack": deployConfig.Name}, jobID, http.StatusInternalServerError)
 				return
 			}
 
-			err = docker.DeployStack(jobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, &payload, deployConfig, Version)
+			err = docker.DeployStack(jobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, &payload, deployConfig, latestCommit, Version, false)
 			if err != nil {
 				onError(w, jobLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), jobID, http.StatusInternalServerError)
 				return
