@@ -215,3 +215,53 @@ func TestUpdateRepository(t *testing.T) {
 		})
 	}
 }
+
+func TestGetReferenceSet(t *testing.T) {
+	repo, err := CloneRepository(t.TempDir(), cloneUrl, MainBranch, false)
+	if err != nil {
+		t.Fatalf("Failed to clone repository: %v", err)
+	}
+
+	if repo == nil {
+		t.Fatal("Repository is nil")
+	}
+
+	refSet, err := GetReferenceSet(repo, MainBranch)
+	if err != nil {
+		t.Fatalf("Failed to get reference set: %v", err)
+	}
+
+	if refSet.localRef == "" || refSet.remoteRef == "" {
+		t.Fatal("Reference set is incomplete")
+	}
+
+	if refSet.localRef.String() != MainBranch {
+		t.Fatalf("Expected local reference %s, got %s", MainBranch, refSet.localRef.String())
+	}
+
+	if refSet.remoteRef.String() != remoteMainBranch {
+		t.Fatalf("Expected remote reference %s, got %s", remoteMainBranch, refSet.remoteRef.String())
+	}
+}
+
+func TestGetLatestCommit(t *testing.T) {
+	repo, err := CloneRepository(t.TempDir(), cloneUrl, MainBranch, false)
+	if err != nil {
+		t.Fatalf("Failed to clone repository: %v", err)
+	}
+
+	if repo == nil {
+		t.Fatal("Repository is nil")
+	}
+
+	commit, err := GetLatestCommit(repo, MainBranch)
+	if err != nil {
+		t.Fatalf("Failed to get latest commit: %v", err)
+	}
+
+	if commit == "" {
+		t.Fatal("Commit hash is empty")
+	}
+
+	t.Log(commit)
+}
