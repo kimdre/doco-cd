@@ -30,9 +30,9 @@ var (
 	ErrDeploymentConflict = errors.New("another stack with the same name already exists and is not managed by this repository")
 )
 
-// StartPoll initializes PollInstance with the provided configuration and starts the PollHandler goroutine.
+// StartPoll initializes PollJob with the provided configuration and starts the PollHandler goroutine.
 func StartPoll(h *handlerData, pollConfig config.PollConfig, wg *sync.WaitGroup) error {
-	pollInstance := &config.PollInstance{
+	pollJob := &config.PollJob{
 		Config:  pollConfig,
 		LastRun: 0,
 		NextRun: 0,
@@ -43,32 +43,32 @@ func StartPoll(h *handlerData, pollConfig config.PollConfig, wg *sync.WaitGroup)
 
 	go func() {
 		defer wg.Done()
-		h.PollHandler(pollInstance)
-		h.log.Debug("Poll handler stopped", "config", pollConfig)
+		h.PollHandler(pollJob)
+		h.log.Debug("PollJob handler stopped", "config", pollConfig)
 	}()
 
 	return nil
 }
 
 // PollHandler is a function that handles polling for changes in a repository
-func (h *handlerData) PollHandler(pollInstance *config.PollInstance) {
+func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 	logger := h.log.With()
 
 	logger.Debug("Start poll handler")
 
 	for {
-		if pollInstance.LastRun == 0 || time.Now().Unix() >= pollInstance.NextRun {
+		if pollJob.LastRun == 0 || time.Now().Unix() >= pollJob.NextRun {
 			logger.Debug("Running poll for repository")
 
-			RunPoll(context.Background(), pollInstance.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.dockerClient, logger)
+			RunPoll(context.Background(), pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.dockerClient, logger)
 
-			pollInstance.NextRun = time.Now().Unix() + int64(pollInstance.Config.Interval)
+			pollJob.NextRun = time.Now().Unix() + int64(pollJob.Config.Interval)
 		} else {
 			logger.Debug("Skipping poll, waiting for next run")
 		}
 
-		pollInstance.LastRun = time.Now().Unix()
-		time.Sleep(time.Duration(pollInstance.Config.Interval) * time.Second)
+		pollJob.LastRun = time.Now().Unix()
+		time.Sleep(time.Duration(pollJob.Config.Interval) * time.Second)
 	}
 }
 

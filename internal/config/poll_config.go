@@ -20,7 +20,7 @@ type PollConfig struct {
 	Private      bool    `yaml:"private" default:"false"`  // Private indicates if the repository is private, which requires authentication
 }
 
-type PollInstance struct {
+type PollJob struct {
 	Config  PollConfig // config is the PollConfig for this instance
 	LastRun int64      // LastRun is the last time this instance ran
 	NextRun int64      // NextRun is the next time this instance should run
