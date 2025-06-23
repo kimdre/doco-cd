@@ -58,13 +58,13 @@ func TestRunPoll(t *testing.T) {
 	// Run initial poll
 	err = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With())
 	if err != nil {
-		t.Fatalf("RunPoll failed: %v", err)
+		t.Fatalf("Initial poll failed: %v", err)
 	}
 
 	// Run the second poll
 	err = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With())
 	if err != nil {
-		t.Fatalf("RunPoll failed: %v", err)
+		t.Fatalf("Second poll failed: %v", err)
 	}
 
 	// Check if the deployed test container is running
