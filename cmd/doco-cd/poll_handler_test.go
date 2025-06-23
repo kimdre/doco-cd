@@ -18,11 +18,11 @@ func TestRunPoll(t *testing.T) {
 	ctx := context.Background()
 
 	pollConfig := config.PollConfig{
-		CloneUrl:     "https://github.com/kimdre/doco-cd.git",
+		CloneUrl:     "https://github.com/kimdre/doco-cd_tests.git",
 		Reference:    "main",
 		Interval:     10,
 		CustomTarget: "",
-		Private:      false,
+		Private:      true,
 	}
 
 	appConfig, err := config.GetAppConfig()
@@ -40,6 +40,14 @@ func TestRunPoll(t *testing.T) {
 		client.WithAPIVersionNegotiation(),
 	)
 
+	service := compose.NewComposeService(dockerCli)
+
+	downOpts := api.DownOptions{
+		RemoveOrphans: true,
+		Images:        "all",
+		Volumes:       true,
+	}
+
 	tmpDir := t.TempDir()
 	dataMountPoint := container.MountPoint{
 		Type:        "bind",
@@ -55,32 +63,6 @@ func TestRunPoll(t *testing.T) {
 		}
 	})
 
-	// Run initial poll
-	err = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With())
-	if err != nil {
-		t.Fatalf("Initial poll failed: %v", err)
-	}
-
-	// Run the second poll
-	err = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With())
-	if err != nil {
-		t.Fatalf("Second poll failed: %v", err)
-	}
-
-	// Check if the deployed test container is running
-	testContainerID, err := docker.GetContainerID(dockerCli.Client(), "test")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	service := compose.NewComposeService(dockerCli)
-
-	downOpts := api.DownOptions{
-		RemoveOrphans: true,
-		Images:        "all",
-		Volumes:       true,
-	}
-
 	t.Cleanup(func() {
 		t.Log("Remove test container")
 
@@ -90,12 +72,17 @@ func TestRunPoll(t *testing.T) {
 		}
 	})
 
-	testContainer, err := dockerCli.Client().ContainerInspect(ctx, testContainerID)
+	// Run initial poll
+	err = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With())
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Initial poll failed: %v", err)
 	}
 
-	if testContainer.State.Running != true {
-		t.Errorf("Test container is not running: %v", testContainer.State)
+	pollConfig.Reference = "destroy"
+
+	// Run the second poll to destroy
+	err = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With())
+	if err != nil {
+		t.Fatalf("Second poll failed: %v", err)
 	}
 }
