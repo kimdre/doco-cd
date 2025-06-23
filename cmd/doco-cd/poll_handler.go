@@ -64,7 +64,7 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 		if pollJob.LastRun == 0 || time.Now().Unix() >= pollJob.NextRun {
 			logger.Debug("Running poll for repository")
 
-			RunPoll(context.Background(), pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.dockerClient, logger)
+			_ = RunPoll(context.Background(), pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.dockerClient, logger)
 
 			pollJob.NextRun = time.Now().Unix() + int64(pollJob.Config.Interval)
 		} else {
@@ -77,7 +77,7 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 }
 
 // RunPoll deploys compose projects based on the provided configuration
-func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *config.AppConfig, dataMountPoint container.MountPoint, dockerCli command.Cli, dockerClient *client.Client, logger *slog.Logger) {
+func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *config.AppConfig, dataMountPoint container.MountPoint, dockerCli command.Cli, dockerClient *client.Client, logger *slog.Logger) error {
 	startTime := time.Now()
 	cloneUrl := string(pollConfig.CloneUrl)
 	jobID := uuid.Must(uuid.NewRandom()).String()
@@ -88,7 +88,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 
 	if strings.Contains(repoName, "..") {
 		jobLog.Error("invalid repository name, contains '..'")
-		return
+		return fmt.Errorf("invalid repository name: %s", repoName)
 	}
 
 	if pollConfig.CustomTarget != "" {
@@ -105,7 +105,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 
 		if appConfig.GitAccessToken == "" {
 			jobLog.Error("missing access token for private repository")
-			return
+			return fmt.Errorf("missing access token for private repository: %s", repoName)
 		}
 
 		cloneUrl = git.GetAuthUrl(cloneUrl, appConfig.AuthType, appConfig.GitAccessToken)
@@ -117,13 +117,13 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	internalRepoPath, err := utils.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
 	if err != nil {
 		jobLog.Error("failed to verify and sanitize internal filesystem path", log.ErrAttr(err))
-		return
+		return fmt.Errorf("failed to verify and sanitize internal filesystem path: %w", err)
 	}
 
 	externalRepoPath, err := utils.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path on the host
 	if err != nil {
 		jobLog.Error("failed to verify and sanitize external filesystem path", log.ErrAttr(err))
-		return
+		return fmt.Errorf("failed to verify and sanitize external filesystem path: %w", err)
 	}
 
 	jobLog.Debug("cloning repository",
@@ -139,11 +139,11 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			_, err = git.UpdateRepository(internalRepoPath, pollConfig.Reference, appConfig.SkipTLSVerification)
 			if err != nil {
 				jobLog.Error("failed to checkout repository", log.ErrAttr(err))
-				return
+				return fmt.Errorf("failed to checkout repository: %w", err)
 			}
 		} else {
 			jobLog.Error("failed to clone repository", log.ErrAttr(err))
-			return
+			return fmt.Errorf("failed to clone repository: %w", err)
 		}
 	} else {
 		jobLog.Debug("repository cloned", slog.String("path", externalRepoPath))
@@ -161,7 +161,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			jobLog.Warn(err.Error())
 		} else {
 			jobLog.Error("failed to get deploy configuration", log.ErrAttr(err))
-			return
+			return fmt.Errorf("failed to get deploy configuration: %w", err)
 		}
 	}
 
@@ -186,13 +186,13 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		internalRepoPath, err = utils.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
 		if err != nil {
 			jobLog.Error("failed to verify and sanitize internal filesystem path", log.ErrAttr(err))
-			return
+			return fmt.Errorf("failed to verify and sanitize internal filesystem path: %w", err)
 		}
 
 		externalRepoPath, err = utils.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Source, repoName), dataMountPoint.Source) // Path on the host
 		if err != nil {
 			jobLog.Error("failed to verify and sanitize external filesystem path", log.ErrAttr(err))
-			return
+			return fmt.Errorf("failed to verify and sanitize external filesystem path: %w", err)
 		}
 
 		jobLog = jobLog.With(
@@ -214,7 +214,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			_, err = git.CloneRepository(internalRepoPath, cloneUrl, deployConfig.Reference, appConfig.SkipTLSVerification)
 			if err != nil && !errors.Is(err, git.ErrRepositoryAlreadyExists) {
 				jobLog.Error("failed to clone repository", log.ErrAttr(err))
-				return
+				return fmt.Errorf("failed to clone repository: %w", err)
 			}
 
 			jobLog.Debug("remote repository cloned", slog.String("path", externalRepoPath))
@@ -225,13 +225,13 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		repo, err := git.UpdateRepository(internalRepoPath, deployConfig.Reference, appConfig.SkipTLSVerification)
 		if err != nil {
 			jobLog.Error("failed to checkout repository", log.ErrAttr(err))
-			return
+			return fmt.Errorf("failed to checkout repository: %w", err)
 		}
 
 		latestCommit, err := git.GetLatestCommit(repo, deployConfig.Reference)
 		if err != nil {
 			jobLog.Error("failed to get latest commit", log.ErrAttr(err))
-			return
+			return fmt.Errorf("failed to get latest commit: %w", err)
 		}
 
 		if deployConfig.Destroy {
@@ -241,7 +241,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			containers, err := docker.GetLabeledContainers(ctx, dockerClient, api.ProjectLabel, deployConfig.Name)
 			if err != nil {
 				jobLog.Error("failed to retrieve containers", log.ErrAttr(err))
-				return
+				return fmt.Errorf("failed to retrieve containers: %w", err)
 			}
 
 			// If no containers are found, skip the destruction step
@@ -268,18 +268,18 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 
 			if !managed {
 				jobLog.Error(fmt.Errorf("%w: %s: aborting destruction", ErrNotManagedByDocoCD, deployConfig.Name).Error())
-				return
+				return fmt.Errorf("%w: %s: aborting destruction", ErrNotManagedByDocoCD, deployConfig.Name)
 			}
 
 			if !correctRepo {
 				jobLog.Error(fmt.Errorf("%w: %s: aborting destruction", ErrDeploymentConflict, deployConfig.Name).Error())
-				return
+				return fmt.Errorf("%w: %s: aborting destruction", ErrDeploymentConflict, deployConfig.Name)
 			}
 
 			err = docker.DestroyStack(jobLog, &ctx, &dockerCli, deployConfig)
 			if err != nil {
 				jobLog.Error("failed to destroy stack", log.ErrAttr(err))
-				return
+				return fmt.Errorf("failed to destroy stack: %w", err)
 			}
 
 			if deployConfig.DestroyOpts.RemoveRepoDir {
@@ -291,7 +291,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 				subDirs, err := os.ReadDir(parentDir)
 				if err != nil {
 					jobLog.Error("failed to read parent directory", log.ErrAttr(err))
-					return
+					return fmt.Errorf("failed to read parent directory: %w", err)
 				}
 
 				if len(subDirs) > 1 {
@@ -302,14 +302,14 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 					err = os.RemoveAll(internalRepoPath)
 					if err != nil {
 						jobLog.Error("failed to remove deployment directory", log.ErrAttr(err))
-						return
+						return fmt.Errorf("failed to remove deployment directory: %w", err)
 					}
 				} else {
 					// Remove the parent directory if it has only one subdirectory
 					err = os.RemoveAll(parentDir)
 					if err != nil {
 						jobLog.Error("failed to remove deployment directory", log.ErrAttr(err))
-						return
+						return fmt.Errorf("failed to remove deployment directory: %w", err)
 					}
 
 					jobLog.Debug("removed directory", slog.String("path", parentDir))
@@ -320,7 +320,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			containers, err := docker.GetLabeledContainers(ctx, dockerClient, api.ProjectLabel, deployConfig.Name)
 			if err != nil {
 				jobLog.Error("failed to retrieve containers", log.ErrAttr(err))
-				return
+				return fmt.Errorf("failed to retrieve containers: %w", err)
 			}
 
 			// Check if containers do not belong to this repository or if doco-cd does not manage the stack
@@ -339,7 +339,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 
 			if !correctRepo {
 				jobLog.Error(fmt.Errorf("%w: %s: skipping deployment", ErrDeploymentConflict, deployConfig.Name).Error())
-				return
+				return fmt.Errorf("%w: %s: skipping deployment", ErrDeploymentConflict, deployConfig.Name)
 			}
 
 			if latestCommit == deployedCommit {
@@ -360,11 +360,13 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			err = docker.DeployStack(jobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, &payload, deployConfig, latestCommit, Version, true)
 			if err != nil {
 				jobLog.Error("failed to deploy stack", log.ErrAttr(err))
-				return
+				return fmt.Errorf("failed to deploy stack: %w", err)
 			}
 		}
 	}
 
 	nextRun := time.Now().Add(time.Duration(pollConfig.Interval) * time.Second).Format(time.RFC3339)
 	jobLog.Info("job completed successfully", slog.String("elapsed_time", time.Since(startTime).String()), slog.String("next_run", nextRun))
+
+	return nil
 }
