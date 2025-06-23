@@ -90,7 +90,7 @@ func TestHandleEvent(t *testing.T) {
 			customTarget:         "test",
 		},
 		{
-			name: "Invalid Branch",
+			name: "Invalid Reference",
 			payload: webhook.ParsedPayload{
 				Ref:       invalidBranch,
 				CommitSHA: validCommitSHA,

@@ -16,6 +16,7 @@ import (
 var (
 	ErrMountPointNotFound     = errors.New("mount point not found")
 	ErrMountPointNotWriteable = errors.New("mount point is not writeable")
+	ErrContainerIDNotFound    = errors.New("container ID not found")
 )
 
 // GetContainerID retrieves the container ID for a given service name
@@ -33,7 +34,7 @@ func GetContainerID(client client.APIClient, name string) (id string, err error)
 		}
 	}
 
-	return "", errors.New("container id not found")
+	return "", fmt.Errorf("%w: %s", ErrContainerIDNotFound, name)
 }
 
 // GetLabeledContainers retrieves all containers with a specific label key and value

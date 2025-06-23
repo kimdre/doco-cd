@@ -184,6 +184,18 @@ func main() {
 		slog.String("path", webhookPath),
 	)
 
+	if len(c.PollConfig) > 0 {
+		log.Info("poll configuration found, scheduling polling jobs")
+
+		for _, pollConfig := range c.PollConfig {
+			err = StartPoll(&h, pollConfig, &wg)
+			if err != nil {
+				log.Critical("failed to scheduling polling jobs", logger.ErrAttr(err))
+				return
+			}
+		}
+	}
+
 	log.Debug("retrieving containers that are managed by doco-cd")
 
 	containers, err := docker.GetLabeledContainers(context.TODO(), dockerClient, docker.DocoCDLabels.Metadata.Manager, config.AppName)

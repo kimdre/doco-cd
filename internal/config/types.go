@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"strings"
 
 	"gopkg.in/validator.v2"
 )
@@ -40,8 +39,12 @@ func validateHttpUrl(v interface{}, param string) error {
 		return fmt.Errorf("%w: failed to parse URL '%s'", ErrInvalidHttpUrl, str)
 	}
 
-	if !strings.HasPrefix(u.Scheme, "http") {
+	if u.Scheme != "http" && u.Scheme != "https" {
 		return fmt.Errorf("%w: URL must start with http or https, got '%s'", ErrInvalidHttpUrl, str)
+	}
+
+	if u.Host == "" {
+		return fmt.Errorf("%w: URL must have a host, got '%s'", ErrInvalidHttpUrl, str)
 	}
 
 	return nil

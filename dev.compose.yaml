@@ -1,3 +1,11 @@
+x-poll-config: &poll-config
+  POLL_CONFIG: |
+    - url: https://github.com/kimdre/doco-cd.git
+      reference: main
+      interval: 15
+      target: "" # "test"
+      private: true
+
 services:
   app:
     container_name: doco-cd
@@ -14,11 +22,14 @@ services:
     environment:
       TZ: Europe/Berlin
       HTTP_PORT: 80
-      LOG_LEVEL: debug
+      LOG_LEVEL: info
       # DOCKER_API_VERSION: 1.47
+      <<: *poll-config
+      #POLL_CONFIG_FILE: /poll.yml
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - data:/data
+      #- ./poll.yml:/poll.yml:ro
 
 volumes:
   data:
