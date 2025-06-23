@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -366,5 +365,6 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		}
 	}
 
-	jobLog.Info("job completed successfully", slog.String("elapsed_time", time.Since(startTime).String()), slog.String("next_run", strconv.Itoa(pollConfig.Interval)+"s"))
+	nextRun := time.Now().Add(time.Duration(pollConfig.Interval) * time.Second).Format(time.RFC3339)
+	jobLog.Info("job completed successfully", slog.String("elapsed_time", time.Since(startTime).String()), slog.String("next_run", nextRun))
 }
