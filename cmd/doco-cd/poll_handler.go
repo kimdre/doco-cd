@@ -366,7 +366,8 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	}
 
 	nextRun := time.Now().Add(time.Duration(pollConfig.Interval) * time.Second).Format(time.RFC3339)
-	jobLog.Info("job completed successfully", slog.String("elapsed_time", time.Since(startTime).String()), slog.String("next_run", nextRun))
+	elapsedTime := time.Since(startTime).Truncate(time.Millisecond).String()
+	jobLog.Info("job completed successfully", slog.String("elapsed_time", elapsedTime), slog.String("next_run", nextRun))
 
 	return nil
 }
