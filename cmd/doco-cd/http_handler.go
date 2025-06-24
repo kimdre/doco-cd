@@ -315,8 +315,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	msg := "job completed successfully"
-	duration := time.Since(startTime)
-	jobLog.Info(msg, slog.String("elapsed_time", duration.String()))
+	elapsedTime := time.Since(startTime).Truncate(time.Millisecond).String()
+	jobLog.Info(msg, slog.String("elapsed_time", elapsedTime))
 	JSONResponse(w, msg, jobID, http.StatusCreated)
 }
 
