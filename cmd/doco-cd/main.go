@@ -62,6 +62,19 @@ func getAppContainerID() (string, error) {
 	return "", errors.New("container ID not found")
 }
 
+// GetProxyUrlRedacted takes a proxy URL string and redacts the password if it exists.
+func GetProxyUrlRedacted(proxyUrl string) string {
+	// Hide password in the proxy URL if it exists (between the second ':' and the @)
+	if strings.Contains(proxyUrl, "@") {
+		re := regexp.MustCompile(`://([^:]+):([^@]+)@`)
+		proxyUrl = re.ReplaceAllString(proxyUrl, "://$1:***@")
+	} else {
+		re := regexp.MustCompile(`://([^@]+)@`)
+		proxyUrl = re.ReplaceAllString(proxyUrl, "://$1@")
+	}
+	return proxyUrl
+}
+
 func main() {
 	var wg sync.WaitGroup
 	// Set the default log level to debug
@@ -86,16 +99,7 @@ func main() {
 
 	// Log if proxy is used
 	if c.HttpProxy != (transport.ProxyOptions{}) {
-		proxyUrl := c.HttpProxy.URL
-		// Hide password in the proxy URL if it exists (between the second ':' and the @)
-		if strings.Contains(proxyUrl, "@") {
-			re := regexp.MustCompile(`://([^:]+):([^@]+)@`)
-			proxyUrl = re.ReplaceAllString(proxyUrl, "://$1:<redacted>@")
-		} else {
-			re := regexp.MustCompile(`://([^@]+)@`)
-			proxyUrl = re.ReplaceAllString(proxyUrl, "://$1@")
-		}
-		log.Info("using HTTP proxy", slog.String("url", proxyUrl))
+		log.Info("using HTTP proxy", slog.String("url", GetProxyUrlRedacted(c.HttpProxy.URL)))
 	} else {
 		log.Debug("no HTTP proxy configured")
 	}
