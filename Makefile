@@ -58,3 +58,11 @@ download:
 install-devtools: download
 	@echo Installing tools from tools.go
 	@cat tools/tools.go | grep _ | awk -F'"' '{print $$2}' | xargs -tI % go install %
+
+compose-up:
+	@echo "Starting dev docker-compose..."
+	@docker compose -f dev.compose.yaml up -d --build
+
+compose-down:
+	@echo "Stopping dev docker-compose..."
+	@docker compose -f dev.compose.yaml down

@@ -26,10 +26,41 @@ services:
       # DOCKER_API_VERSION: 1.47
       <<: *poll-config
       #POLL_CONFIG_FILE: /poll.yml
+      HTTP_PROXY: http://username:password@proxy:8888
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - data:/data
-      #- ./poll.yml:/poll.yml:ro
+#    configs: # Use with POLL_CONFIG_FILE
+#      - source: poll.yml
+#        target: /poll.yml
+
+  proxy:
+    image: vimagick/tinyproxy:latest
+    restart: unless-stopped
+    ports:
+      - "8888:8888"
+    environment:
+      TZ: Europe/Berlin
+    configs:
+      - source: tinyproxy.conf
+        target: /etc/tinyproxy/tinyproxy.conf
 
 volumes:
   data:
+
+configs:
+  poll.yml:
+    content: |
+      - url: https://example.com
+        branch: main
+      - url: https://other-example.com
+        interval: 120
+      - url: https://yet-another-example.com
+        branch: dev
+  tinyproxy.conf:
+    content: |
+      # https://tinyproxy.github.io/
+      LogLevel Connect
+      Port 8888
+      Timeout 600
+      BasicAuth username password

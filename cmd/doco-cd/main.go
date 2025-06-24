@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	"log/slog"
 	"net/http"
 	"os"
@@ -82,6 +83,22 @@ func main() {
 	log = logger.New(logLevel)
 
 	log.Info("starting application", slog.String("version", Version), slog.String("log_level", c.LogLevel))
+
+	// Log if proxy is used
+	if c.HttpProxy != (transport.ProxyOptions{}) {
+		proxyUrl := c.HttpProxy.URL
+		// Hide password in the proxy URL if it exists (between the second ':' and the @)
+		if strings.Contains(proxyUrl, "@") {
+			re := regexp.MustCompile(`://([^:]+):([^@]+)@`)
+			proxyUrl = re.ReplaceAllString(proxyUrl, "://$1:<redacted>@")
+		} else {
+			re := regexp.MustCompile(`://([^@]+)@`)
+			proxyUrl = re.ReplaceAllString(proxyUrl, "://$1@")
+		}
+		log.Info("using HTTP proxy", slog.String("url", proxyUrl))
+	} else {
+		log.Debug("no HTTP proxy configured")
+	}
 
 	go func() {
 		latestVersion, err := getLatestAppReleaseVersion()

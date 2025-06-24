@@ -3,6 +3,7 @@ package git
 import (
 	"errors"
 	"fmt"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	"os"
 	"regexp"
 	"strings"
@@ -107,7 +108,7 @@ func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 // Allowed reference forma
 //   - Branches: refs/heads/main or main
 //   - Tags: refs/tags/v1.0.0 or v1.0.0
-func UpdateRepository(path, ref string, skipTLSVerify bool) (*git.Repository, error) {
+func UpdateRepository(path, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions) (*git.Repository, error) {
 	repo, err := git.PlainOpen(path)
 	if err != nil {
 		return nil, err
@@ -118,13 +119,19 @@ func UpdateRepository(path, ref string, skipTLSVerify bool) (*git.Repository, er
 		return nil, err
 	}
 
-	// Fetch remote branches and tags
-	err = repo.Fetch(&git.FetchOptions{
+	opts := &git.FetchOptions{
 		RemoteName:      RemoteName,
 		RefSpecs:        []config.RefSpec{refSpecAllBranches, refSpecAllTags},
 		InsecureSkipTLS: skipTLSVerify,
 		Prune:           true,
-	})
+	}
+
+	if proxyOpts != (transport.ProxyOptions{}) {
+		opts.ProxyOptions = proxyOpts
+	}
+
+	// Fetch remote branches and tags
+	err = repo.Fetch(opts)
 	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
 		return nil, fmt.Errorf("%w: %w", ErrFetchFailed, err)
 	}
@@ -150,20 +157,26 @@ func UpdateRepository(path, ref string, skipTLSVerify bool) (*git.Repository, er
 }
 
 // CloneRepository clones a repository from a given URL and reference to a temporary directory
-func CloneRepository(path, url, ref string, skipTLSVerify bool) (*git.Repository, error) {
+func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions) (*git.Repository, error) {
 	err := os.MkdirAll(path, os.ModePerm)
 	if err != nil {
 		return nil, err
 	}
 
-	return git.PlainClone(path, false, &git.CloneOptions{
+	opts := &git.CloneOptions{
 		RemoteName:      RemoteName,
 		URL:             url,
 		SingleBranch:    true,
 		ReferenceName:   plumbing.ReferenceName(ref),
 		Tags:            git.NoTags,
 		InsecureSkipTLS: skipTLSVerify,
-	})
+	}
+
+	if proxyOpts != (transport.ProxyOptions{}) {
+		opts.ProxyOptions = proxyOpts
+	}
+
+	return git.PlainClone(path, false, opts)
 }
 
 // GetAuthUrl returns a clone URL with an access token for private repositories
