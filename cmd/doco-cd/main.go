@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	"log/slog"
 	"net/http"
 	"os"
@@ -61,6 +62,19 @@ func getAppContainerID() (string, error) {
 	return "", errors.New("container ID not found")
 }
 
+// GetProxyUrlRedacted takes a proxy URL string and redacts the password if it exists.
+func GetProxyUrlRedacted(proxyUrl string) string {
+	// Hide password in the proxy URL if it exists (between the second ':' and the @)
+	if strings.Contains(proxyUrl, "@") {
+		re := regexp.MustCompile(`://([^:]+):([^@]+)@`)
+		proxyUrl = re.ReplaceAllString(proxyUrl, "://$1:***@")
+	} else {
+		re := regexp.MustCompile(`://([^@]+)@`)
+		proxyUrl = re.ReplaceAllString(proxyUrl, "://$1@")
+	}
+	return proxyUrl
+}
+
 func main() {
 	var wg sync.WaitGroup
 	// Set the default log level to debug
@@ -82,6 +96,13 @@ func main() {
 	log = logger.New(logLevel)
 
 	log.Info("starting application", slog.String("version", Version), slog.String("log_level", c.LogLevel))
+
+	// Log if proxy is used
+	if c.HttpProxy != (transport.ProxyOptions{}) {
+		log.Info("using HTTP proxy", slog.String("url", GetProxyUrlRedacted(c.HttpProxy.URL)))
+	} else {
+		log.Debug("no HTTP proxy configured")
+	}
 
 	go func() {
 		latestVersion, err := getLatestAppReleaseVersion()

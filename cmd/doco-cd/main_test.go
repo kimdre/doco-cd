@@ -279,3 +279,51 @@ func TestHandleEvent(t *testing.T) {
 		})
 	}
 }
+
+func TestGetProxyUrlRedacted(t *testing.T) {
+	// Test cases with different proxy URLs
+	testCases := []struct {
+		name     string
+		proxyURL string
+		expected string
+	}{
+		{
+			name:     "Valid HTTP Proxy",
+			proxyURL: "http://user:password@proxy:8080",
+			expected: "http://user:***@proxy:8080",
+		},
+		{
+			name:     "Valid HTTPS Proxy",
+			proxyURL: "https://user:password@proxy:8443",
+			expected: "https://user:***@proxy:8443",
+		},
+		{
+			name:     "No Proxy URL",
+			proxyURL: "",
+			expected: "",
+		},
+		{
+			name:     "Invalid Proxy URL",
+			proxyURL: "not-a-valid-url",
+			expected: "not-a-valid-url",
+		},
+		{
+			name:     "Proxy URL with no credentials",
+			proxyURL: "http://proxy:8080",
+			expected: "http://proxy:8080",
+		},
+		{
+			name:     "Proxy URL with empty credentials",
+			proxyURL: "http://:@proxy:8080",
+			expected: "http://:@proxy:8080",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := GetProxyUrlRedacted(tc.proxyURL)
+			if result != tc.expected {
+				t.Errorf("GetProxyUrlRedacted(%q) = %q; want %q", tc.proxyURL, result, tc.expected)
+			}
+		})
+	}
+}

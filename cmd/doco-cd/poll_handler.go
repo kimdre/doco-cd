@@ -130,13 +130,13 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		slog.String("container_path", internalRepoPath),
 		slog.String("host_path", externalRepoPath))
 
-	_, err = git.CloneRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification)
+	_, err = git.CloneRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 	if err != nil {
 		// If the repository already exists, check it out to the specified commit SHA
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			jobLog.Debug("repository already exists, checking out reference "+pollConfig.Reference, slog.String("host_path", externalRepoPath))
 
-			_, err = git.UpdateRepository(internalRepoPath, pollConfig.Reference, appConfig.SkipTLSVerification)
+			_, err = git.UpdateRepository(internalRepoPath, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 			if err != nil {
 				jobLog.Error("failed to checkout repository", log.ErrAttr(err))
 				return fmt.Errorf("failed to checkout repository: %w", err)
@@ -211,7 +211,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 
 			jobLog.Debug("repository URL provided, cloning remote repository")
 			// Try to clone the remote repository
-			_, err = git.CloneRepository(internalRepoPath, cloneUrl, deployConfig.Reference, appConfig.SkipTLSVerification)
+			_, err = git.CloneRepository(internalRepoPath, cloneUrl, deployConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 			if err != nil && !errors.Is(err, git.ErrRepositoryAlreadyExists) {
 				jobLog.Error("failed to clone repository", log.ErrAttr(err))
 				return fmt.Errorf("failed to clone repository: %w", err)
@@ -222,7 +222,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 
 		jobLog.Debug("checking out reference "+deployConfig.Reference, slog.String("host_path", externalRepoPath))
 
-		repo, err := git.UpdateRepository(internalRepoPath, deployConfig.Reference, appConfig.SkipTLSVerification)
+		repo, err := git.UpdateRepository(internalRepoPath, deployConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 		if err != nil {
 			jobLog.Error("failed to checkout repository", log.ErrAttr(err))
 			return fmt.Errorf("failed to checkout repository: %w", err)

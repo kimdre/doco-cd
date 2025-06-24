@@ -44,7 +44,12 @@ func TestGetAuthUrl(t *testing.T) {
 }
 
 func TestCloneRepository(t *testing.T) {
-	repo, err := CloneRepository(t.TempDir(), cloneUrl, validBranchRef, false)
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("Failed to get app config: %v", err)
+	}
+
+	repo, err := CloneRepository(t.TempDir(), cloneUrl, validBranchRef, false, c.HttpProxy)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -149,11 +154,12 @@ func TestUpdateRepository(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			c, err := config.GetAppConfig()
+			if err != nil {
+				t.Fatalf("Failed to get app config: %v", err)
+			}
+
 			if tc.privateRepo {
-				c, err := config.GetAppConfig()
-				if err != nil {
-					t.Fatalf("Failed to get app config: %v", err)
-				}
 
 				tc.cloneUrl = GetAuthUrl(
 					tc.cloneUrl,
@@ -162,7 +168,7 @@ func TestUpdateRepository(t *testing.T) {
 				)
 			}
 
-			repo, err := CloneRepository(t.TempDir(), tc.cloneUrl, MainBranch, false)
+			repo, err := CloneRepository(t.TempDir(), tc.cloneUrl, MainBranch, false, c.HttpProxy)
 			if err != nil {
 				t.Fatalf("Failed to clone repository: %v", err)
 			}
@@ -176,7 +182,7 @@ func TestUpdateRepository(t *testing.T) {
 				t.Fatalf("Failed to get worktree: %v", err)
 			}
 
-			repo, err = UpdateRepository(worktree.Filesystem.Root(), tc.branchRef, true)
+			repo, err = UpdateRepository(worktree.Filesystem.Root(), tc.branchRef, true, c.HttpProxy)
 			if err != nil {
 				if !errors.Is(err, tc.expectedErr) {
 					t.Fatalf("Expected error %v, got %v", tc.expectedErr, err)
@@ -217,7 +223,12 @@ func TestUpdateRepository(t *testing.T) {
 }
 
 func TestGetReferenceSet(t *testing.T) {
-	repo, err := CloneRepository(t.TempDir(), cloneUrl, MainBranch, false)
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("Failed to get app config: %v", err)
+	}
+
+	repo, err := CloneRepository(t.TempDir(), cloneUrl, MainBranch, false, c.HttpProxy)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -245,7 +256,12 @@ func TestGetReferenceSet(t *testing.T) {
 }
 
 func TestGetLatestCommit(t *testing.T) {
-	repo, err := CloneRepository(t.TempDir(), cloneUrl, MainBranch, false)
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("Failed to get app config: %v", err)
+	}
+
+	repo, err := CloneRepository(t.TempDir(), cloneUrl, MainBranch, false, c.HttpProxy)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
