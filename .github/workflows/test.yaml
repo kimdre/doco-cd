@@ -46,11 +46,11 @@ jobs:
       - name: Copy tinyproxy config to docker service
         uses: docker://docker
         with:
-          args: docker cp .github/workflows/testdata/tinyproxy.conf proxy:/etc/tinyproxy/tinyproxy.conf
+          args: docker cp .github/workflows/testdata/tinyproxy.conf ${{ job.services.proxy.id }}:/etc/tinyproxy/tinyproxy.conf
       - name: Restart tinyproxy service
         uses: docker://docker
         with:
-          args: docker restart proxy
+          args: docker restart ${{ job.services.proxy.id }}
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version-file: 'go.mod'
