@@ -39,7 +39,7 @@ jobs:
         ports:
           - 8888:8888
         volumes:
-          - ${{ github.workspace }}/.github/testdata/tinyproxy.conf:/etc/tinyproxy/tinyproxy.conf
+          - ${{ github.workspace }}/.github/testdata:/etc/tinyproxy
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
