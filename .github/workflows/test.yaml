@@ -44,8 +44,9 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Copy tinyproxy config to docker service
-        run: |
-          docker cp .github/workflows/testdata/tinyproxy.conf proxy:/etc/tinyproxy/tinyproxy.conf
+        uses: docker://docker
+        with:
+          args: docker cp .github/workflows/testdata/tinyproxy.conf proxy:/etc/tinyproxy/tinyproxy.conf
       - name: Restart tinyproxy service
         uses: docker://docker
         with:
