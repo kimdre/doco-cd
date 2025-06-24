@@ -53,7 +53,7 @@ jobs:
           provenance: false
           build-args: |
             APP_VERSION=${{ github.ref_name }}
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: |
