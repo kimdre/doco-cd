@@ -34,23 +34,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
-      proxy:
-        image: vimagick/tinyproxy:latest
+      squid-proxy:
+        image: ubuntu/squid:latest
         ports:
-          - 8888:8888
-        volumes:
-          - config:/etc/tinyproxy
+          - 3128:3128
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: Copy tinyproxy config to docker service
-        uses: docker://docker
-        with:
-          args: docker cp .github/workflows/testdata/tinyproxy.conf ${{ job.services.proxy.id }}:/etc/tinyproxy/tinyproxy.conf
-      - name: Restart tinyproxy service
-        uses: docker://docker
-        with:
-          args: docker restart ${{ job.services.proxy.id }}
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version-file: 'go.mod'
@@ -61,7 +51,7 @@ jobs:
         env:
           WEBHOOK_SECRET: test_Secret1
           GIT_ACCESS_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
-          HTTP_PROXY: http://username:password@proxy:8888
+          HTTP_PROXY: http://squid-proxy:3128
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24 # v5.4.3
         with:
