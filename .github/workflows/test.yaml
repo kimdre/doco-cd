@@ -35,7 +35,7 @@ jobs:
     timeout-minutes: 10
     services:
       squid-proxy:
-        image: ubuntu/squid:latest
+        image: ubuntu/squid:latest@sha256:98f98aaa024e4a58433450f8adde48ef5748f1ae05133b2367d64317cc881a3a
         ports:
           - 3128:3128
 
