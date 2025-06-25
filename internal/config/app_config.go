@@ -2,8 +2,9 @@ package config
 
 import (
 	"fmt"
-	"github.com/go-git/go-git/v5/plumbing/transport"
 	"strings"
+
+	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"gopkg.in/yaml.v3"
 
