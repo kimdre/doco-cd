@@ -160,7 +160,6 @@ func TestUpdateRepository(t *testing.T) {
 			}
 
 			if tc.privateRepo {
-
 				tc.cloneUrl = GetAuthUrl(
 					tc.cloneUrl,
 					c.AuthType,

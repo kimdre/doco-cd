@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
+	"testing"
+
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
-	"testing"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"

@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/go-git/go-git/v5/plumbing/transport"
 	"log/slog"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/docker/docker/client"
 	"github.com/kimdre/doco-cd/internal/config"
@@ -72,6 +73,7 @@ func GetProxyUrlRedacted(proxyUrl string) string {
 		re := regexp.MustCompile(`://([^@]+)@`)
 		proxyUrl = re.ReplaceAllString(proxyUrl, "://$1@")
 	}
+
 	return proxyUrl
 }
 
