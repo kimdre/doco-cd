@@ -34,9 +34,12 @@ var (
 func getAppContainerID() (string, error) {
 	const (
 		cgroupMounts = "/proc/self/mountinfo"
+		dockerPath   = "/docker/containers/"
+		podmanPath   = "/containers/storage/overlay-containers/"
 	)
 
-	pattern := regexp.MustCompile(`/docker/containers/([a-z0-9]+)`)
+	dockerPattern := regexp.MustCompile(dockerPath + `([a-z0-9]+)`)
+	podmanPattern := regexp.MustCompile(podmanPath + `([a-z0-9]+)`)
 
 	data, err := os.ReadFile(cgroupMounts)
 	if err != nil {
@@ -45,17 +48,23 @@ func getAppContainerID() (string, error) {
 
 	lines := strings.Split(string(data), "\n")
 	for _, line := range lines {
-		if strings.Contains(line, "/docker/containers/") && strings.Contains(line, "/etc/hostname") {
-			fields := strings.Fields(line)
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+		path := fields[3]
 
-			matches := pattern.FindStringSubmatch(fields[3])
-			if len(matches) > 1 {
-				containerID := matches[1]
-				if len(containerID) > 0 {
-					return containerID, nil
+		if strings.Contains(line, "/etc/hostname") {
+			if strings.Contains(path, dockerPath) {
+				if matches := dockerPattern.FindStringSubmatch(path); len(matches) > 1 {
+					return matches[1], nil
 				}
-			} else {
-				return "", fmt.Errorf("container ID not found in %s: %s", cgroupMounts, line)
+			}
+
+			if strings.Contains(path, podmanPath) {
+				if matches := podmanPattern.FindStringSubmatch(path); len(matches) > 1 {
+					return matches[1], nil
+				}
 			}
 		}
 	}
