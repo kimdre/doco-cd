@@ -52,6 +52,7 @@ func getAppContainerID() (string, error) {
 		if len(fields) < 4 {
 			continue
 		}
+
 		path := fields[3]
 
 		if strings.Contains(line, "/etc/hostname") {
