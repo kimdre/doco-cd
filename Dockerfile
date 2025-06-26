@@ -34,7 +34,7 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
 #ADD https://busybox.net/downloads/binaries/$BUSYBOX_VERSION/busybox_WGET /wget
 #RUN chmod a+x /wget
 
-FROM gcr.io/distroless/base-debian12:debug AS build-release-stage
+FROM gcr.io/distroless/base-debian12@sha256:201ef9125ff3f55fda8e0697eff0b3ce9078366503ef066653635a3ac3ed9c26 AS build-release-stage
 
 WORKDIR /
 
