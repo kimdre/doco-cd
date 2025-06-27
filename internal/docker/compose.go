@@ -409,7 +409,7 @@ func DeployStack(
 	defer close(done)
 
 	go func() {
-		ticker := time.NewTicker(1 * time.Second)
+		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 
 		for {
@@ -432,7 +432,7 @@ func DeployStack(
 		return fmt.Errorf("%s: %w", errMsg, err)
 	}
 
-	time.Sleep(3 * time.Second)
+	time.Sleep(10 * time.Second)
 
 	return nil
 }
