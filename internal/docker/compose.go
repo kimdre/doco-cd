@@ -405,6 +405,20 @@ func DeployStack(
 
 	stackLog.Info("deploying stack")
 
+	deploymentState := true
+	go func(deploying *bool) {
+		for *deploying {
+			time.Sleep(1 * time.Second)
+			stackLog.Info("still deploying stack", slog.String("stack", deployConfig.Name))
+		}
+
+		stackLog.Info("stack deployment completed", slog.String("stack", deployConfig.Name))
+	}(&deploymentState)
+
+	defer func(deploying *bool) {
+		*deploying = false
+	}(&deploymentState)
+
 	err = DeployCompose(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion, forceDeploy)
 	if err != nil {
 		errMsg := "failed to deploy stack"
