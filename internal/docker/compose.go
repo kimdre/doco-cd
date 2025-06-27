@@ -204,13 +204,13 @@ func addVolumeLabels(project *types.Project, deployConfig config.DeployConfig, p
 }
 
 // LoadCompose parses and loads Compose files as specified by the Docker Compose specification
-func LoadCompose(ctx context.Context, internalWorkingDir, externalWorkingDir, projectName string, composeFiles []string) (*types.Project, error) {
+func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles []string) (*types.Project, error) {
 	options, err := cli.NewProjectOptions(
 		composeFiles,
 		cli.WithName(projectName),
-		cli.WithWorkingDirectory(internalWorkingDir),
+		cli.WithWorkingDirectory(workingDir),
 		cli.WithInterpolation(true),
-		cli.WithResolvedPaths(true),
+		cli.WithResolvedPaths(false),
 		cli.WithDotEnv,
 	)
 	if err != nil {
@@ -226,8 +226,6 @@ func LoadCompose(ctx context.Context, internalWorkingDir, externalWorkingDir, pr
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve services environment: %w", err)
 	}
-
-	project.WorkingDir = externalWorkingDir
 
 	return project, nil
 }
@@ -395,7 +393,7 @@ func DeployStack(
 		deployConfig.ComposeFiles = tmpComposeFiles
 	}
 
-	project, err := LoadCompose(*ctx, internalWorkingDir, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles)
+	project, err := LoadCompose(*ctx, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles)
 	if err != nil {
 		errMsg := "failed to load compose config"
 		stackLog.Error(errMsg,
