@@ -210,7 +210,7 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 		cli.WithName(projectName),
 		cli.WithWorkingDirectory(workingDir),
 		cli.WithInterpolation(true),
-		cli.WithResolvedPaths(true),
+		//cli.WithResolvedPaths(true),
 		cli.WithDotEnv,
 	)
 	if err != nil {
@@ -225,12 +225,6 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 	project, err = project.WithServicesEnvironmentResolved(false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve services environment: %w", err)
-	}
-
-	services := project.Services
-	for _, s := range services {
-		envFiles := s.EnvFiles
-		fmt.Println(envFiles)
 	}
 
 	return project, nil
