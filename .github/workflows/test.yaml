@@ -5,6 +5,12 @@ permissions:
 
 on:
   workflow_dispatch:
+  pull_request_target:  # Required for dependabot PRs
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - 'renovate.json'
   push:
     paths-ignore:
       - '**/*.md'
