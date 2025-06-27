@@ -209,8 +209,6 @@ func main() {
 		return
 	}
 
-	log.Debug("data mount point is writable")
-
 	h := handlerData{
 		appConfig:      c,
 		appVersion:     Version,
