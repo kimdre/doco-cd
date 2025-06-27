@@ -197,9 +197,15 @@ func main() {
 
 	// create Symlink for data mount point to reflect the data path in the container
 	// required so that the docker cli client is able to read/parse certain files in docker.LoadCompose (like .env files)
+	err = os.MkdirAll(dataMountPoint.Source, 0o755)
+	if err != nil {
+		log.Critical(fmt.Sprintf("failed to create %s mount point", dataMountPoint.Source), logger.ErrAttr(err))
+		return
+	}
+
 	err = os.Symlink(dataMountPoint.Destination, dataMountPoint.Source)
 	if err != nil {
-		log.Critical(fmt.Sprintf("failed to create symlink for %s mount point", dataPath), logger.ErrAttr(err))
+		log.Critical(fmt.Sprintf("failed to create symlink for %s mount point", dataMountPoint.Destination), logger.ErrAttr(err))
 		return
 	}
 
