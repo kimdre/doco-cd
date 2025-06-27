@@ -393,7 +393,7 @@ func DeployStack(
 		deployConfig.ComposeFiles = tmpComposeFiles
 	}
 
-	project, err := LoadCompose(*ctx, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles)
+	project, err := LoadCompose(*ctx, internalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles)
 	if err != nil {
 		errMsg := "failed to load compose config"
 		stackLog.Error(errMsg,
