@@ -210,7 +210,7 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 		cli.WithName(projectName),
 		cli.WithWorkingDirectory(workingDir),
 		cli.WithInterpolation(true),
-		//cli.WithResolvedPaths(true),
+		cli.WithResolvedPaths(false),
 		cli.WithDotEnv,
 	)
 	if err != nil {
