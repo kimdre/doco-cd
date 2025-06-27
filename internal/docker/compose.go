@@ -432,6 +432,8 @@ func DeployStack(
 		return fmt.Errorf("%s: %w", errMsg, err)
 	}
 
+	time.Sleep(3 * time.Second)
+
 	return nil
 }
 
