@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -323,6 +324,39 @@ func TestGetProxyUrlRedacted(t *testing.T) {
 			result := GetProxyUrlRedacted(tc.proxyURL)
 			if result != tc.expected {
 				t.Errorf("GetProxyUrlRedacted(%q) = %q; want %q", tc.proxyURL, result, tc.expected)
+			}
+		})
+	}
+}
+
+func TestCreateMountpointSymlink(t *testing.T) {
+	testCases := []struct {
+		name        string
+		source      string
+		destination string
+		expectError error
+	}{
+		{
+			name:        "Valid Symlink Creation",
+			source:      "source",
+			destination: "destination",
+			expectError: nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+
+			err := CreateMountpointSymlink(container.MountPoint{
+				Type:        "bind",
+				Source:      filepath.Join(tmpDir, tc.source),
+				Destination: filepath.Join(tmpDir, tc.destination),
+				Mode:        "rw",
+			})
+
+			if !errors.Is(err, tc.expectError) {
+				t.Errorf("symlink creation error: got %v, want %v", err, tc.expectError)
 			}
 		})
 	}
