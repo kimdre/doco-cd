@@ -90,9 +90,9 @@ func GetProxyUrlRedacted(proxyUrl string) string {
 	return proxyUrl
 }
 
-// createDataSymlink creates the Symlink for the data mount point to reflect the data volume path in the container.
+// CreateMountpointSymlink creates the Symlink for the data mount point to reflect the data volume path in the container.
 // Required so that the docker cli client is able to read/parse certain files (like .env files) in docker.LoadCompose
-func createDataSymlink(m container.MountPoint) error {
+func CreateMountpointSymlink(m container.MountPoint) error {
 	// prepare the symlink parent directory
 	symlinkParentDir := path.Dir(m.Source)
 	err := os.MkdirAll(symlinkParentDir, 0o755)
@@ -217,7 +217,7 @@ func main() {
 		log.Critical(fmt.Sprintf("failed to check if %s mount point is writable", dataPath), logger.ErrAttr(err))
 	}
 
-	err = createDataSymlink(dataMountPoint)
+	err = CreateMountpointSymlink(dataMountPoint)
 	if err != nil {
 		log.Critical(fmt.Sprintf("failed to create symlink for %s mount point", dataMountPoint.Destination), logger.ErrAttr(err))
 		return
