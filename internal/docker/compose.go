@@ -415,7 +415,7 @@ func DeployStack(
 		for {
 			select {
 			case <-ticker.C:
-				stackLog.Info("stack deployment in progress")
+				stackLog.Info("deployment in progress")
 			case <-done:
 				return
 			}
