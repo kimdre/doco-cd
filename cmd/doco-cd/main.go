@@ -195,6 +195,14 @@ func main() {
 		log.Critical(fmt.Sprintf("failed to check if %s mount point is writable", dataPath), logger.ErrAttr(err))
 	}
 
+	// create Symlink for data mount point to reflect the data path in the container
+	// required so that the docker cli client is able to read/parse certain files in docker.LoadCompose (like .env files)
+	err = os.Symlink(dataMountPoint.Destination, dataMountPoint.Source)
+	if err != nil {
+		log.Critical(fmt.Sprintf("failed to create symlink for %s mount point", dataPath), logger.ErrAttr(err))
+		return
+	}
+
 	log.Debug("data mount point is writable")
 
 	h := handlerData{
