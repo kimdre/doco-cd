@@ -244,7 +244,7 @@ func main() {
 	)
 
 	if len(c.PollConfig) > 0 {
-		log.Info("poll configuration found, scheduling polling jobs")
+		log.Info("poll configuration found, scheduling polling jobs", slog.Any("poll_config", c.PollConfig))
 
 		for _, pollConfig := range c.PollConfig {
 			err = StartPoll(&h, pollConfig, &wg)
