@@ -197,9 +197,10 @@ func main() {
 	}
 
 	// prepare the symlink parent directory
-	err = os.MkdirAll(path.Dir(dataMountPoint.Source), 0o755)
+	symlinkParentDir := path.Dir(dataMountPoint.Source)
+	err = os.MkdirAll(symlinkParentDir, 0o755)
 	if err != nil {
-		log.Critical(fmt.Sprintf("failed to create directory %s", dataMountPoint.Source), logger.ErrAttr(err))
+		log.Critical(fmt.Sprintf("failed to create directory %s", symlinkParentDir), logger.ErrAttr(err))
 		return
 	}
 
