@@ -214,12 +214,12 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 		cli.WithDotEnv,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create project options: %w", err)
 	}
 
 	project, err := options.LoadProject(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to load compose project: %w", err)
 	}
 
 	project, err = project.WithServicesEnvironmentResolved(false)
