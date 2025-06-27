@@ -405,6 +405,23 @@ func DeployStack(
 
 	stackLog.Info("deploying stack")
 
+	done := make(chan struct{})
+	defer close(done)
+
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				stackLog.Info("deployment in progress")
+			case <-done:
+				return
+			}
+		}
+	}()
+
 	err = DeployCompose(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion, forceDeploy)
 	if err != nil {
 		errMsg := "failed to deploy stack"
