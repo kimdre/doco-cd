@@ -50,7 +50,7 @@ ENV TZ=UTC \
     LOG_LEVEL=info
 
 #CMD ["/doco-cd"]
-CMD "/doco-cd"
+ENTRYPOINT ["/doco-cd"]
 
 #HEALTHCHECK --interval=30s --timeout=5s \
 #  CMD ["/usr/bin/wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/v1/health"]
