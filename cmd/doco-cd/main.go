@@ -199,7 +199,7 @@ func main() {
 	// required so that the docker cli client is able to read/parse certain files in docker.LoadCompose (like .env files)
 	err = os.MkdirAll(dataMountPoint.Source, 0o755)
 	if err != nil {
-		log.Critical(fmt.Sprintf("failed to create %s mount point", dataMountPoint.Source), logger.ErrAttr(err))
+		log.Critical(fmt.Sprintf("failed to create directory %s", dataMountPoint.Source), logger.ErrAttr(err))
 		return
 	}
 
