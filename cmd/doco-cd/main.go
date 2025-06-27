@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/docker/docker/api/types/container"
+
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/docker/docker/client"
@@ -86,6 +88,25 @@ func GetProxyUrlRedacted(proxyUrl string) string {
 	}
 
 	return proxyUrl
+}
+
+// createDataSymlink creates the Symlink for the data mount point to reflect the data volume path in the container.
+// Required so that the docker cli client is able to read/parse certain files (like .env files) in docker.LoadCompose
+func createDataSymlink(m container.MountPoint) error {
+	// prepare the symlink parent directory
+	symlinkParentDir := path.Dir(m.Source)
+	err := os.MkdirAll(symlinkParentDir, 0o755)
+
+	if err != nil {
+		return fmt.Errorf("failed to create parent directory %s: %w", symlinkParentDir, err)
+	}
+
+	err = os.Symlink(m.Destination, m.Source)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func main() {
@@ -196,17 +217,7 @@ func main() {
 		log.Critical(fmt.Sprintf("failed to check if %s mount point is writable", dataPath), logger.ErrAttr(err))
 	}
 
-	// prepare the symlink parent directory
-	symlinkParentDir := path.Dir(dataMountPoint.Source)
-	err = os.MkdirAll(symlinkParentDir, 0o755)
-	if err != nil {
-		log.Critical(fmt.Sprintf("failed to create directory %s", symlinkParentDir), logger.ErrAttr(err))
-		return
-	}
-
-	// create Symlink for data mount point to reflect the data path in the container
-	// required so that the docker cli client is able to read/parse certain files in docker.LoadCompose (like .env files)
-	err = os.Symlink(dataMountPoint.Destination, dataMountPoint.Source)
+	err = createDataSymlink(dataMountPoint)
 	if err != nil {
 		log.Critical(fmt.Sprintf("failed to create symlink for %s mount point", dataMountPoint.Destination), logger.ErrAttr(err))
 		return
