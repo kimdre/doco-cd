@@ -87,7 +87,7 @@ func TestLoadCompose(t *testing.T) {
 
 	createComposeFile(t, filePath, composeContents)
 
-	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath})
+	project, err := LoadCompose(ctx, tmpDir, tmpDir, projectName, []string{filePath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestDeployCompose(t *testing.T) {
 	t.Log("Load compose file")
 	createComposeFile(t, filePath, composeContents)
 
-	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath})
+	project, err := LoadCompose(ctx, tmpDir, tmpDir, projectName, []string{filePath})
 	if err != nil {
 		t.Fatal(err)
 	}
