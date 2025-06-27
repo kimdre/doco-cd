@@ -227,6 +227,12 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 		return nil, fmt.Errorf("failed to resolve services environment: %w", err)
 	}
 
+	services := project.Services
+	for _, s := range services {
+		envFiles := s.EnvFiles
+		fmt.Println(envFiles)
+	}
+
 	return project, nil
 }
 
