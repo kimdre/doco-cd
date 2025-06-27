@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path"
 	"regexp"
 	"strings"
 	"sync"
@@ -195,14 +196,15 @@ func main() {
 		log.Critical(fmt.Sprintf("failed to check if %s mount point is writable", dataPath), logger.ErrAttr(err))
 	}
 
-	// create Symlink for data mount point to reflect the data path in the container
-	// required so that the docker cli client is able to read/parse certain files in docker.LoadCompose (like .env files)
-	err = os.MkdirAll(dataMountPoint.Source, 0o755)
+	// prepare the symlink parent directory
+	err = os.MkdirAll(path.Dir(dataMountPoint.Source), 0o755)
 	if err != nil {
 		log.Critical(fmt.Sprintf("failed to create directory %s", dataMountPoint.Source), logger.ErrAttr(err))
 		return
 	}
 
+	// create Symlink for data mount point to reflect the data path in the container
+	// required so that the docker cli client is able to read/parse certain files in docker.LoadCompose (like .env files)
 	err = os.Symlink(dataMountPoint.Destination, dataMountPoint.Source)
 	if err != nil {
 		log.Critical(fmt.Sprintf("failed to create symlink for %s mount point", dataMountPoint.Destination), logger.ErrAttr(err))
