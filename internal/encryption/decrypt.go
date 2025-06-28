@@ -10,8 +10,8 @@ import (
 	"github.com/getsops/sops/v3/decrypt"
 )
 
-// DecryptSopsFile decrypts a SOPS-encrypted file at the given path and returns its contents as a byte slice.
-func DecryptSopsFile(path string) ([]byte, error) {
+// DecryptFile decrypts a SOPS-encrypted file at the given path and returns its contents as a byte slice.
+func DecryptFile(path string) ([]byte, error) {
 	format := "binary" // default
 	if formats.IsYAMLFile(path) {
 		format = "yaml"
@@ -26,8 +26,8 @@ func DecryptSopsFile(path string) ([]byte, error) {
 	return decrypt.File(path, format)
 }
 
-// IsSopsEncryptedFile checks if the file at the given path is a SOPS-encrypted file.
-func IsSopsEncryptedFile(path string) (bool, error) {
+// IsEncryptedFile checks if the file at the given path is a SOPS-encrypted file.
+func IsEncryptedFile(path string) (bool, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return false, err

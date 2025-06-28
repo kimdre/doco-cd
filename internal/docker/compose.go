@@ -404,14 +404,14 @@ func DeployStack(
 
 		p := filepath.Join(internalWorkingDir, file.Name())
 
-		isEncrypted, err := encryption.IsSopsEncryptedFile(p)
+		isEncrypted, err := encryption.IsEncryptedFile(p)
 		if err != nil {
 			return err
 		}
 
 		if isEncrypted {
 			if !encryption.SopsKeyIsSet {
-				errMsg := "SOPS key is not set, cannot decrypt SOPS encrypted file"
+				errMsg := "SOPS secret key is not set, cannot decrypt file"
 				stackLog.Error(errMsg,
 					slog.String("file", file.Name()),
 					slog.String("working_directory", deployConfig.WorkingDirectory))
@@ -419,14 +419,13 @@ func DeployStack(
 				return fmt.Errorf("%s: %w", errMsg, errors.New("SOPS key not set"))
 			}
 
-			// TODO: Change this to Debug level
-			stackLog.Debug("SOPS encrypted file detected, decrypting",
+			stackLog.Debug("encrypted file detected, decrypting",
 				slog.String("file", file.Name()),
 				slog.String("working_directory", deployConfig.WorkingDirectory))
 
-			decryptedContent, err := encryption.DecryptSopsFile(p)
+			decryptedContent, err := encryption.DecryptFile(p)
 			if err != nil {
-				errMsg := "failed to decrypt SOPS file"
+				errMsg := "failed to decrypt file"
 				stackLog.Error(errMsg,
 					logger.ErrAttr(err),
 					slog.String("file", file.Name()))

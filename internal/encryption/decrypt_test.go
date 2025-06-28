@@ -23,7 +23,7 @@ func TestIsSopsEncryptedFile(t *testing.T) {
 
 	for _, file := range files {
 		t.Run(file.path, func(t *testing.T) {
-			isEncrypted, err := IsSopsEncryptedFile(file.path)
+			isEncrypted, err := IsEncryptedFile(file.path)
 			if err != nil {
 				t.Fatalf("Error checking if file is encrypted: %v", err)
 			}
@@ -52,7 +52,7 @@ func TestDecryptSopsFile(t *testing.T) {
 
 	for _, file := range files {
 		t.Run(file.path, func(t *testing.T) {
-			decryptedContent, err := DecryptSopsFile(file.path)
+			decryptedContent, err := DecryptFile(file.path)
 			if err != nil {
 				if file.error == nil {
 					t.Fatalf("Unexpected error decrypting file %s: %v", file.path, err)
