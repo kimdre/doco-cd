@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/kimdre/doco-cd/internal/encryption"
+
 	"github.com/kimdre/doco-cd/internal/git"
 
 	"github.com/docker/docker/client"
@@ -163,6 +165,8 @@ func TestHandleEvent(t *testing.T) {
 			})
 		}
 	}
+
+	encryption.SetupAgeKeyEnvVar(t)
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {

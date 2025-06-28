@@ -6,6 +6,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/kimdre/doco-cd/internal/encryption"
+
 	"github.com/go-git/go-git/v5/plumbing"
 
 	"github.com/kimdre/doco-cd/internal/config"
@@ -151,6 +153,8 @@ func TestUpdateRepository(t *testing.T) {
 			expectedErr: nil,
 		},
 	}
+
+	encryption.SetupAgeKeyEnvVar(t)
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {

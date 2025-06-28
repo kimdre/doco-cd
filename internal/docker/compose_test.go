@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kimdre/doco-cd/internal/encryption"
+
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
 	"github.com/google/uuid"
@@ -105,6 +107,8 @@ func TestLoadCompose(t *testing.T) {
 }
 
 func TestDeployCompose(t *testing.T) {
+	encryption.SetupAgeKeyEnvVar(t)
+
 	c, err := config.GetAppConfig()
 	if err != nil {
 		t.Fatal(err)

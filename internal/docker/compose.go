@@ -17,6 +17,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/encryption"
+
 	"github.com/kimdre/doco-cd/internal/logger"
 
 	"github.com/kimdre/doco-cd/internal/utils"
@@ -391,6 +393,56 @@ func DeployStack(
 		}
 
 		deployConfig.ComposeFiles = tmpComposeFiles
+	}
+
+	// Check if files in the working directory are SOPS encrypted
+	files, _ := os.ReadDir(internalWorkingDir)
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+
+		p := filepath.Join(internalWorkingDir, file.Name())
+
+		isEncrypted, err := encryption.IsEncryptedFile(p)
+		if err != nil {
+			return err
+		}
+
+		if isEncrypted {
+			if !encryption.SopsKeyIsSet() {
+				errMsg := "SOPS secret key is not set, cannot decrypt file"
+				stackLog.Error(errMsg,
+					slog.String("file", file.Name()),
+					slog.String("working_directory", deployConfig.WorkingDirectory))
+
+				return fmt.Errorf("%s: %w", errMsg, errors.New("SOPS key not set"))
+			}
+
+			stackLog.Debug("encrypted file detected, decrypting",
+				slog.String("file", file.Name()),
+				slog.String("working_directory", deployConfig.WorkingDirectory))
+
+			decryptedContent, err := encryption.DecryptFile(p)
+			if err != nil {
+				errMsg := "failed to decrypt file"
+				stackLog.Error(errMsg,
+					logger.ErrAttr(err),
+					slog.String("file", file.Name()))
+
+				return fmt.Errorf("%s: %w", errMsg, err)
+			}
+
+			err = os.WriteFile(p, decryptedContent, 0o644)
+			if err != nil {
+				errMsg := "failed to write decrypted content to file"
+				stackLog.Error(errMsg,
+					logger.ErrAttr(err),
+					slog.String("file", file.Name()))
+
+				return fmt.Errorf("%s: %w", errMsg, err)
+			}
+		}
 	}
 
 	project, err := LoadCompose(*ctx, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles)
