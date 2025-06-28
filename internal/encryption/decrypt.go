@@ -1,6 +1,7 @@
 package encryption
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -8,8 +9,20 @@ import (
 	"github.com/getsops/sops/v3/decrypt"
 )
 
+var supportedSopsFormats = map[string]struct{}{
+	"yaml":   {},
+	"json":   {},
+	"dotenv": {},
+	"ini":    {},
+	"binary": {},
+}
+
 // DecryptSopsFile decrypts a SOPS-encrypted file at the given path and returns its contents as a byte slice.
 func DecryptSopsFile(path, format string) ([]byte, error) {
+	if _, ok := supportedSopsFormats[format]; !ok {
+		return nil, fmt.Errorf("not a supported SOPS format: %s", format)
+	}
+
 	return decrypt.File(path, format)
 }
 
@@ -30,5 +43,5 @@ func IsSopsEncryptedFile(path string) (bool, error) {
 
 	content := string(buf[:n])
 	// Check for SOPS-specific markers
-	return strings.Contains(content, "sops") || strings.Contains(content, "ENC["), nil
+	return strings.Contains(content, "sops") && strings.Contains(content, "ENC["), nil
 }
