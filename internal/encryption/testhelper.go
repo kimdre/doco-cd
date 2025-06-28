@@ -4,29 +4,36 @@ package encryption
 
 import (
 	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 )
+
+var sopsAgeKeyPath = func() string {
+	_, filename, _, _ := runtime.Caller(0)
+	return filepath.Join(filepath.Dir(filename), "testdata", "age-key.txt")
+}()
+
+const sopsAgeKeyEnv = "SOPS_AGE_KEY_FILE"
 
 // SetupAgeKeyEnvVar sets the SOPS_AGE_KEY environment variable for testing purposes.
 func SetupAgeKeyEnvVar(t *testing.T) {
 	t.Helper()
 
-	const envVarName = "SOPS_AGE_KEY"
+	t.Logf("Set %s environment variable to %s,", sopsAgeKeyEnv, sopsAgeKeyPath)
 
-	t.Logf("Set %s environment variable for testing", envVarName)
-
-	err := os.Setenv(envVarName, "AGE-SECRET-KEY-1U2W28TTH2KSRD0K0J36U93S2C5UW4RXRYGGQ8NPGCDG7RKFCT5SQEKNGQK")
+	err := os.Setenv(sopsAgeKeyEnv, sopsAgeKeyPath)
 	if err != nil {
-		t.Fatalf("Failed to set %s environment variable: %v", envVarName, err)
+		t.Fatalf("Failed to set %s environment variable: %v", sopsAgeKeyEnv, err)
 	}
 
 	t.Cleanup(func() {
 		// Clean up the environment variable after the test
-		t.Logf("Unset %s environment variable after test", envVarName)
+		t.Logf("Unset %s environment variable after test", sopsAgeKeyEnv)
 
-		err = os.Unsetenv(envVarName)
+		err = os.Unsetenv(sopsAgeKeyEnv)
 		if err != nil {
-			t.Errorf("Failed to unset %s environment variable: %v", envVarName, err)
+			t.Errorf("Failed to unset %s environment variable: %v", sopsAgeKeyEnv, err)
 		}
 	})
 }
