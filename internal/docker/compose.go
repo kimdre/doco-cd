@@ -412,7 +412,7 @@ func DeployStack(
 
 			if isEncrypted {
 				// TODO: Change this to Debug level
-				stackLog.Info("SOPS encrypted file detected, decrypting",
+				stackLog.Debug("SOPS encrypted file detected, decrypting",
 					slog.String("file", file.Name()),
 					slog.String("working_directory", deployConfig.WorkingDirectory))
 
