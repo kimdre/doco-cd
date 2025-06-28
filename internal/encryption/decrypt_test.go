@@ -13,8 +13,10 @@ func TestIsSopsEncryptedFile(t *testing.T) {
 		expected bool
 	}{
 		{"testdata/encrypted.yaml", true},
+		{"testdata/encrypted.json", true},
 		{"testdata/encrypted.env", true},
 		{"testdata/unencrypted.yaml", false},
+		{"testdata/unencrypted.json", false},
 		{"testdata/unencrypted.env", false},
 		{"testdata/empty.yaml", false},
 	}
