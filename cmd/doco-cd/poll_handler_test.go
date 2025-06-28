@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/kimdre/doco-cd/internal/encryption"
+
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
 
@@ -15,6 +17,8 @@ import (
 )
 
 func TestRunPoll(t *testing.T) {
+	encryption.SetupAgeKeyEnvVar(t)
+
 	log := logger.New(12)
 	ctx := context.Background()
 

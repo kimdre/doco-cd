@@ -2,42 +2,10 @@ package encryption
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/getsops/sops/v3"
 )
-
-// SetAgeKeyFileEnvVar sets the SOPS_AGE_KEY_FILE environment variable to the path of the test key file.
-func setupAgeKeyFileEnvVar(t *testing.T) {
-	t.Helper()
-
-	const envVarName = "SOPS_AGE_KEY_FILE"
-
-	t.Logf("Set %s environment variable for testing", envVarName)
-
-	// Set the environment variable to the test key file
-	currentDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Failed to get current working directory: %v", err)
-	}
-
-	err = os.Setenv(envVarName, filepath.Join(currentDir, "testdata/age-key.txt"))
-	if err != nil {
-		t.Fatalf("Failed to set %s environment variable: %v", envVarName, err)
-	}
-
-	t.Cleanup(func() {
-		// Clean up the environment variable after the test
-		t.Logf("Unset %s environment variable after test", envVarName)
-
-		err = os.Unsetenv(envVarName)
-		if err != nil {
-			t.Errorf("Failed to unset %s environment variable: %v", envVarName, err)
-		}
-	})
-}
 
 func TestIsSopsEncryptedFile(t *testing.T) {
 	files := []struct {
@@ -51,7 +19,7 @@ func TestIsSopsEncryptedFile(t *testing.T) {
 		{"testdata/empty.yaml", false},
 	}
 
-	setupAgeKeyFileEnvVar(t)
+	SetupAgeKeyEnvVar(t)
 
 	for _, file := range files {
 		t.Run(file.path, func(t *testing.T) {
@@ -70,22 +38,21 @@ func TestIsSopsEncryptedFile(t *testing.T) {
 func TestDecryptSopsFile(t *testing.T) {
 	files := []struct {
 		path     string
-		format   string
 		expected string
 		error    error
 	}{
-		{"testdata/encrypted.yaml", "yaml", "this.is.encrypted: \"yes\"\n", nil},
-		{"testdata/encrypted.env", "dotenv", "THIS_IS_ENCRYPTED=yes\n", nil},
-		{"testdata/unencrypted.yaml", "yaml", "this.is.encrypted: \"yes\"\n", sops.MetadataNotFound},
-		{"testdata/unencrypted.env", "dotenv", "THIS_IS_ENCRYPTED=yes\n", errors.New("parsing time \"\" as \"2006-01-02T15:04:05Z07:00\": cannot parse \"\" as \"2006\"")},
-		{"testdata/empty.yaml", "yaml", "", sops.MetadataNotFound},
+		{"testdata/encrypted.yaml", "this.is.encrypted: \"yes\"\n", nil},
+		{"testdata/encrypted.env", "THIS_IS_ENCRYPTED=yes\n", nil},
+		{"testdata/unencrypted.yaml", "this.is.encrypted: \"yes\"\n", sops.MetadataNotFound},
+		{"testdata/unencrypted.env", "THIS_IS_ENCRYPTED=yes\n", errors.New("parsing time \"\" as \"2006-01-02T15:04:05Z07:00\": cannot parse \"\" as \"2006\"")},
+		{"testdata/empty.yaml", "", sops.MetadataNotFound},
 	}
 
-	setupAgeKeyFileEnvVar(t)
+	SetupAgeKeyEnvVar(t)
 
 	for _, file := range files {
 		t.Run(file.path, func(t *testing.T) {
-			decryptedContent, err := DecryptSopsFile(file.path, file.format)
+			decryptedContent, err := DecryptSopsFile(file.path)
 			if err != nil {
 				if file.error == nil {
 					t.Fatalf("Unexpected error decrypting file %s: %v", file.path, err)
