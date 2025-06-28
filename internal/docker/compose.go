@@ -395,46 +395,53 @@ func DeployStack(
 		deployConfig.ComposeFiles = tmpComposeFiles
 	}
 
-	if encryption.SopsKeyIsSet {
-		// Check if files in the working directory are SOPS encrypted
-		files, _ := os.ReadDir(internalWorkingDir)
-		for _, file := range files {
-			if file.IsDir() {
-				continue
-			}
+	// Check if files in the working directory are SOPS encrypted
+	files, _ := os.ReadDir(internalWorkingDir)
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
 
-			p := filepath.Join(internalWorkingDir, file.Name())
+		p := filepath.Join(internalWorkingDir, file.Name())
 
-			isEncrypted, err := encryption.IsSopsEncryptedFile(p)
-			if err != nil {
-				return err
-			}
+		isEncrypted, err := encryption.IsSopsEncryptedFile(p)
+		if err != nil {
+			return err
+		}
 
-			if isEncrypted {
-				// TODO: Change this to Debug level
-				stackLog.Debug("SOPS encrypted file detected, decrypting",
+		if isEncrypted {
+			if !encryption.SopsKeyIsSet {
+				errMsg := "SOPS key is not set, cannot decrypt SOPS encrypted file"
+				stackLog.Error(errMsg,
 					slog.String("file", file.Name()),
 					slog.String("working_directory", deployConfig.WorkingDirectory))
 
-				decryptedContent, err := encryption.DecryptSopsFile(p)
-				if err != nil {
-					errMsg := "failed to decrypt SOPS file"
-					stackLog.Error(errMsg,
-						logger.ErrAttr(err),
-						slog.String("file", file.Name()))
+				return fmt.Errorf("%s: %w", errMsg, errors.New("SOPS key not set"))
+			}
 
-					return fmt.Errorf("%s: %w", errMsg, err)
-				}
+			// TODO: Change this to Debug level
+			stackLog.Debug("SOPS encrypted file detected, decrypting",
+				slog.String("file", file.Name()),
+				slog.String("working_directory", deployConfig.WorkingDirectory))
 
-				err = os.WriteFile(p, decryptedContent, 0o644)
-				if err != nil {
-					errMsg := "failed to write decrypted content to file"
-					stackLog.Error(errMsg,
-						logger.ErrAttr(err),
-						slog.String("file", file.Name()))
+			decryptedContent, err := encryption.DecryptSopsFile(p)
+			if err != nil {
+				errMsg := "failed to decrypt SOPS file"
+				stackLog.Error(errMsg,
+					logger.ErrAttr(err),
+					slog.String("file", file.Name()))
 
-					return fmt.Errorf("%s: %w", errMsg, err)
-				}
+				return fmt.Errorf("%s: %w", errMsg, err)
+			}
+
+			err = os.WriteFile(p, decryptedContent, 0o644)
+			if err != nil {
+				errMsg := "failed to write decrypted content to file"
+				stackLog.Error(errMsg,
+					logger.ErrAttr(err),
+					slog.String("file", file.Name()))
+
+				return fmt.Errorf("%s: %w", errMsg, err)
 			}
 		}
 	}
