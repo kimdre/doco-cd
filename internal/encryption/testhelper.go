@@ -20,7 +20,7 @@ const sopsAgeKeyEnv = "SOPS_AGE_KEY_FILE"
 func SetupAgeKeyEnvVar(t *testing.T) {
 	t.Helper()
 
-	t.Logf("Set %s environment variable to %s,", sopsAgeKeyEnv, sopsAgeKeyPath)
+	t.Logf("Set %s environment variable to %s", sopsAgeKeyEnv, sopsAgeKeyPath)
 
 	err := os.Setenv(sopsAgeKeyEnv, sopsAgeKeyPath)
 	if err != nil {
