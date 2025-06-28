@@ -410,7 +410,7 @@ func DeployStack(
 		}
 
 		if isEncrypted {
-			if !encryption.SopsKeyIsSet {
+			if !encryption.SopsKeyIsSet() {
 				errMsg := "SOPS secret key is not set, cannot decrypt file"
 				stackLog.Error(errMsg,
 					slog.String("file", file.Name()),
