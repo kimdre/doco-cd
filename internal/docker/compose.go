@@ -416,7 +416,7 @@ func DeployStack(
 					slog.String("file", file.Name()),
 					slog.String("working_directory", deployConfig.WorkingDirectory))
 
-				decryptedContent, err := encryption.DecryptSopsFile(p, "yaml")
+				decryptedContent, err := encryption.DecryptSopsFile(p)
 				if err != nil {
 					errMsg := "failed to decrypt SOPS file"
 					stackLog.Error(errMsg,

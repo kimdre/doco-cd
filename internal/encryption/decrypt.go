@@ -1,26 +1,26 @@
 package encryption
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"strings"
 
+	"github.com/getsops/sops/v3/cmd/sops/formats"
+
 	"github.com/getsops/sops/v3/decrypt"
 )
 
-var supportedSopsFormats = map[string]struct{}{
-	"yaml":   {},
-	"json":   {},
-	"dotenv": {},
-	"ini":    {},
-	"binary": {},
-}
-
 // DecryptSopsFile decrypts a SOPS-encrypted file at the given path and returns its contents as a byte slice.
-func DecryptSopsFile(path, format string) ([]byte, error) {
-	if _, ok := supportedSopsFormats[format]; !ok {
-		return nil, fmt.Errorf("not a supported SOPS format: %s", format)
+func DecryptSopsFile(path string) ([]byte, error) {
+	format := "binary" // default
+	if formats.IsYAMLFile(path) {
+		format = "yaml"
+	} else if formats.IsJSONFile(path) {
+		format = "json"
+	} else if formats.IsEnvFile(path) {
+		format = "dotenv"
+	} else if formats.IsIniFile(path) {
+		format = "ini"
 	}
 
 	return decrypt.File(path, format)
