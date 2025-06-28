@@ -103,6 +103,10 @@ func CreateMountpointSymlink(m container.MountPoint) error {
 
 	err = os.Symlink(m.Destination, m.Source)
 	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			// If the symlink already exists, we can ignore the error
+			err = nil
+		}
 		return err
 	}
 
