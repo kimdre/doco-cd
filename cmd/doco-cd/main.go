@@ -95,8 +95,8 @@ func GetProxyUrlRedacted(proxyUrl string) string {
 func CreateMountpointSymlink(m container.MountPoint) error {
 	// prepare the symlink parent directory
 	symlinkParentDir := path.Dir(m.Source)
-	err := os.MkdirAll(symlinkParentDir, 0o755)
 
+	err := os.MkdirAll(symlinkParentDir, 0o755)
 	if err != nil {
 		return fmt.Errorf("failed to create parent directory %s: %w", symlinkParentDir, err)
 	}
