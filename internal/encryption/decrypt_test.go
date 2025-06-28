@@ -2,10 +2,42 @@ package encryption
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/getsops/sops/v3"
 )
+
+// SetAgeKeyFileEnvVar sets the SOPS_AGE_KEY_FILE environment variable to the path of the test key file.
+func setupAgeKeyFileEnvVar(t *testing.T) {
+	t.Helper()
+
+	const envVarName = "SOPS_AGE_KEY_FILE"
+
+	t.Logf("Set %s environment variable for testing", envVarName)
+
+	// Set the environment variable to the test key file
+	currentDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get current working directory: %v", err)
+	}
+
+	err = os.Setenv(envVarName, filepath.Join(currentDir, "testdata/age-key.txt"))
+	if err != nil {
+		t.Fatalf("Failed to set %s environment variable: %v", envVarName, err)
+	}
+
+	t.Cleanup(func() {
+		// Clean up the environment variable after the test
+		t.Logf("Unset %s environment variable after test", envVarName)
+
+		err = os.Unsetenv(envVarName)
+		if err != nil {
+			t.Errorf("Failed to unset %s environment variable: %v", envVarName, err)
+		}
+	})
+}
 
 func TestIsSopsEncryptedFile(t *testing.T) {
 	files := []struct {
@@ -18,6 +50,9 @@ func TestIsSopsEncryptedFile(t *testing.T) {
 		{"testdata/unencrypted.env", false},
 		{"testdata/empty.yaml", false},
 	}
+
+	setupAgeKeyFileEnvVar(t)
+
 	for _, file := range files {
 		t.Run(file.path, func(t *testing.T) {
 			isEncrypted, err := IsSopsEncryptedFile(file.path)
@@ -45,6 +80,8 @@ func TestDecryptSopsFile(t *testing.T) {
 		{"testdata/unencrypted.env", "dotenv", "THIS_IS_ENCRYPTED=yes\n", errors.New("parsing time \"\" as \"2006-01-02T15:04:05Z07:00\": cannot parse \"\" as \"2006\"")},
 		{"testdata/empty.yaml", "yaml", "", sops.MetadataNotFound},
 	}
+
+	setupAgeKeyFileEnvVar(t)
 
 	for _, file := range files {
 		t.Run(file.path, func(t *testing.T) {
