@@ -10,6 +10,16 @@ import (
 	"github.com/getsops/sops/v3/decrypt"
 )
 
+// IgnoreDirs is a list of directories that will be ignored when checking for SOPS-encrypted files.
+// These directories typically contain configuration or metadata files that are not relevant for encryption.
+var IgnoreDirs = []string{
+	".git",
+	".github",
+	".vscode",
+	".idea",
+	"node_modules",
+}
+
 // DecryptFile decrypts a SOPS-encrypted file at the given path and returns its contents as a byte slice.
 func DecryptFile(path string) ([]byte, error) {
 	format := "binary" // default
