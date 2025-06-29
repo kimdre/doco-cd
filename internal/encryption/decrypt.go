@@ -10,8 +10,8 @@ import (
 	"github.com/getsops/sops/v3/decrypt"
 )
 
-// IgnorePaths is a list/array of paths that should be ignored when checking for SOPS-encrypted files.
-var IgnorePaths = []string{
+// IgnoreDirs is a list/array of paths that should be ignored when checking for SOPS-encrypted files.
+var IgnoreDirs = []string{
 	".git/",
 	".github/",
 }

@@ -402,7 +402,7 @@ func DeployStack(
 			return fmt.Errorf("failed to walk directory %s: %w", path, err)
 		}
 
-		for _, ignorePath := range encryption.IgnorePaths {
+		for _, ignorePath := range encryption.IgnoreDirs {
 			if strings.Contains(path, ignorePath) {
 				return filepath.SkipDir
 			}
