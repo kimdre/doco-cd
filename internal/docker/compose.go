@@ -398,6 +398,10 @@ func DeployStack(
 
 	// Check if files in the working directory are SOPS encrypted and decrypt them if necessary
 	err = filepath.WalkDir(internalWorkingDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return fmt.Errorf("failed to walk directory %s: %w", path, err)
+		}
+
 		if d.IsDir() {
 			return nil
 		}
