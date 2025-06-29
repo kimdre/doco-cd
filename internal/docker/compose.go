@@ -403,10 +403,12 @@ func DeployStack(
 			return fmt.Errorf("failed to walk directory %s: %w", path, err)
 		}
 
+		dirPath := filepath.Dir(path)
+		dirName := filepath.Base(dirPath)
+
 		// Check if dirPath is part of the paths to ignore
-		dirName := filepath.Base(filepath.Dir(path))
 		if slices.Contains(encryption.IgnoreDirs, dirName) {
-			stackLog.Debug("skipping directory", slog.String("path", path), slog.String("ignore_path", dirName))
+			stackLog.Debug("skipping directory", slog.String("path", dirPath), slog.String("ignore_path", dirName))
 			return filepath.SkipDir
 		}
 
