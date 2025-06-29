@@ -404,6 +404,7 @@ func DeployStack(
 
 		for _, ignorePath := range encryption.IgnoreDirs {
 			if strings.Contains(path, ignorePath) {
+				stackLog.Debug("skipping directory", slog.String("path", path), slog.String("ignore_path", ignorePath))
 				return filepath.SkipDir
 			}
 		}
