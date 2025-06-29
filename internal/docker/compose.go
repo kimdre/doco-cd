@@ -15,6 +15,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -402,11 +403,11 @@ func DeployStack(
 			return fmt.Errorf("failed to walk directory %s: %w", path, err)
 		}
 
-		for _, ignorePath := range encryption.IgnoreDirs {
-			if strings.Contains(path, ignorePath) {
-				stackLog.Debug("skipping directory", slog.String("path", path), slog.String("ignore_path", ignorePath))
-				return filepath.SkipDir
-			}
+		// Check if dirPath is part of the paths to ignore
+		dirName := filepath.Base(filepath.Dir(path))
+		if slices.Contains(encryption.IgnoreDirs, dirName) {
+			stackLog.Debug("skipping directory", slog.String("path", path), slog.String("ignore_path", dirName))
+			return filepath.SkipDir
 		}
 
 		if d.IsDir() {
