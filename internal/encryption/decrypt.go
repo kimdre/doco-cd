@@ -10,6 +10,12 @@ import (
 	"github.com/getsops/sops/v3/decrypt"
 )
 
+// IgnorePaths is a list/array of paths that should be ignored when checking for SOPS-encrypted files.
+var IgnorePaths = []string{
+	".git",
+	".github",
+}
+
 // DecryptFile decrypts a SOPS-encrypted file at the given path and returns its contents as a byte slice.
 func DecryptFile(path string) ([]byte, error) {
 	format := "binary" // default

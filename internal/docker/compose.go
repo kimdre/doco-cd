@@ -14,6 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -398,9 +399,11 @@ func DeployStack(
 	// Check if files in the working directory are SOPS encrypted
 	files, _ := os.ReadDir(internalWorkingDir)
 	for _, file := range files {
-		if file.IsDir() {
+		if file.IsDir() || slices.Contains(encryption.IgnorePaths, file.Name()) {
 			continue
 		}
+
+		stackLog.Info("checking file for encryption", slog.String("file", file.Name()))
 
 		p := filepath.Join(internalWorkingDir, file.Name())
 
