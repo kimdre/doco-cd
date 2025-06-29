@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -14,7 +15,6 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"strings"
 	"time"
 
@@ -396,56 +396,52 @@ func DeployStack(
 		deployConfig.ComposeFiles = tmpComposeFiles
 	}
 
-	// Check if files in the working directory are SOPS encrypted
-	files, _ := os.ReadDir(internalWorkingDir)
-	for _, file := range files {
-		if file.IsDir() || slices.Contains(encryption.IgnorePaths, file.Name()) {
-			continue
+	// Check if files in the working directory are SOPS encrypted and decrypt them if necessary
+	err = filepath.WalkDir(internalWorkingDir, func(path string, d fs.DirEntry, err error) error {
+		if d.IsDir() {
+			return nil
 		}
 
-		stackLog.Info("checking file for encryption", slog.String("file", file.Name()))
+		for _, ignorePath := range encryption.IgnorePaths {
+			if strings.Contains(path, ignorePath) {
+				stackLog.Debug("ignoring file in encryption check", slog.String("file", path))
+				return nil
+			}
+		}
 
-		p := filepath.Join(internalWorkingDir, file.Name())
+		stackLog.Info("checking file for encryption", slog.String("file", path))
 
-		isEncrypted, err := encryption.IsEncryptedFile(p)
+		isEncrypted, err := encryption.IsEncryptedFile(path)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to check if file is encrypted: %w", err)
 		}
 
 		if isEncrypted {
 			if !encryption.SopsKeyIsSet() {
-				errMsg := "SOPS secret key is not set, cannot decrypt file"
-				stackLog.Error(errMsg,
-					slog.String("file", file.Name()),
-					slog.String("working_directory", deployConfig.WorkingDirectory))
-
-				return fmt.Errorf("%s: %w", errMsg, errors.New("SOPS key not set"))
+				return fmt.Errorf("SOPS secret key is not set, cannot decrypt file: %s", path)
 			}
 
-			stackLog.Debug("encrypted file detected, decrypting",
-				slog.String("file", file.Name()),
-				slog.String("working_directory", deployConfig.WorkingDirectory))
+			stackLog.Debug("encrypted file detected, decrypting", slog.String("file", path))
 
-			decryptedContent, err := encryption.DecryptFile(p)
+			decryptedContent, err := encryption.DecryptFile(path)
 			if err != nil {
-				errMsg := "failed to decrypt file"
-				stackLog.Error(errMsg,
-					logger.ErrAttr(err),
-					slog.String("file", file.Name()))
-
-				return fmt.Errorf("%s: %w", errMsg, err)
+				return fmt.Errorf("failed to decrypt file %s: %w", path, err)
 			}
 
-			err = os.WriteFile(p, decryptedContent, 0o644)
+			err = os.WriteFile(path, decryptedContent, 0o644)
 			if err != nil {
-				errMsg := "failed to write decrypted content to file"
-				stackLog.Error(errMsg,
-					logger.ErrAttr(err),
-					slog.String("file", file.Name()))
-
-				return fmt.Errorf("%s: %w", errMsg, err)
+				return fmt.Errorf("failed to write decrypted content to file %s: %w", path, err)
 			}
+
+			stackLog.Debug("file decrypted successfully", slog.String("file", path))
+		} else {
+			stackLog.Debug("file is not encrypted", slog.String("file", path))
 		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("file decryption failed: %w", err)
 	}
 
 	project, err := LoadCompose(*ctx, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles)
