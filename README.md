@@ -12,8 +12,17 @@
 [![Container Image Vulnerability Scanning](https://github.com/kimdre/doco-cd/actions/workflows/image-vulnerability-scanning.yml/badge.svg?event=schedule)](https://github.com/kimdre/doco-cd/actions/workflows/image-vulnerability-scanning.yml)
 
 
-Doco CD is a lightweight GitOps tool that automatically deploys and updates Docker Compose projects/services using webhooks, that are triggered by your Git repository.
+Doco CD is a lightweight GitOps tool that automatically deploys and updates Docker Compose projects/services using polling and webhooks.
+
 You can think of it as a simple Portainer or ArgoCD alternative for Docker.
+
+## Features
+
+- **Simple setup**: Doco CD is easy to set up and use.
+- **Secure**: The application runs with a minimal (distroless) image and supports webhook authentication and data encryption with [SOPS](https://getsops.io/).
+- **Customizable**: The application can be configured using [environment variables](App-Settings).
+- **Flexible**: The deployments can be configured using a [deployment configuration](Deploy-Settings) file.
+- **Lightweight**: The application is built in Go and has tiny memory and CPU requirements.
 
 ## Documentation
 
