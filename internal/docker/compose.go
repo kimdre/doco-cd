@@ -402,18 +402,15 @@ func DeployStack(
 			return fmt.Errorf("failed to walk directory %s: %w", path, err)
 		}
 
-		if d.IsDir() {
-			return nil
-		}
-
 		for _, ignorePath := range encryption.IgnorePaths {
 			if strings.Contains(path, ignorePath) {
-				stackLog.Debug("ignoring file in encryption check", slog.String("file", path))
-				return nil
+				return filepath.SkipDir
 			}
 		}
 
-		stackLog.Info("checking file for encryption", slog.String("file", path))
+		if d.IsDir() {
+			return nil
+		}
 
 		isEncrypted, err := encryption.IsEncryptedFile(path)
 		if err != nil {
