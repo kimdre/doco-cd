@@ -62,7 +62,7 @@ compose_files:
 			t.Fatal(err)
 		}
 
-		configs, err := GetDeployConfigs(dirName, projectName, customTarget)
+		configs, err := GetDeployConfigs(dirName, projectName, customTarget, reference)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -119,7 +119,7 @@ compose_files:
 			t.Fatal(err)
 		}
 
-		configs, err := GetDeployConfigs(dirName, projectName, customTarget)
+		configs, err := GetDeployConfigs(dirName, projectName, customTarget, reference)
 		if err == nil || !errors.Is(err, ErrDeprecatedConfig) {
 			t.Fatalf("expected deprecated config error, got %v", err)
 		}
@@ -154,7 +154,7 @@ compose_files:
 }
 
 func TestGetDeployConfigs_DefaultValues(t *testing.T) {
-	defaultConfig := DefaultDeployConfig(projectName)
+	defaultConfig := DefaultDeployConfig(projectName, DefaultReference)
 
 	dirName := createTmpDir(t)
 	t.Cleanup(func() {
@@ -164,7 +164,7 @@ func TestGetDeployConfigs_DefaultValues(t *testing.T) {
 		}
 	})
 
-	configs, err := GetDeployConfigs(dirName, projectName, "")
+	configs, err := GetDeployConfigs(dirName, projectName, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

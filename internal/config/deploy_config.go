@@ -29,11 +29,13 @@ var (
 	ErrInvalidFilePath                  = errors.New("invalid file path")
 )
 
+const DefaultReference = "refs/heads/main"
+
 // DeployConfig is the structure of the deployment configuration file
 type DeployConfig struct {
 	Name             string   `yaml:"name"`                                                                                                         // Name is the name of the docker-compose deployment / stack
 	RepositoryUrl    HttpUrl  `yaml:"repository_url" default:"" validate:"httpUrl"`                                                                 // RepositoryUrl is the http URL of the Git repository to deploy
-	Reference        string   `yaml:"reference" default:"refs/heads/main"`                                                                          // Reference is the Git reference to the deployment, e.g., refs/heads/main, main, refs/tags/v1.0.0 or v1.0.0
+	Reference        string   `yaml:"reference" default:""`                                                                                         // Reference is the Git reference to the deployment, e.g., refs/heads/main, main, refs/tags/v1.0.0 or v1.0.0
 	WorkingDirectory string   `yaml:"working_dir" default:"."`                                                                                      // WorkingDirectory is the working directory for the deployment
 	ComposeFiles     []string `yaml:"compose_files" default:"[\"compose.yaml\", \"compose.yml\", \"docker-compose.yml\", \"docker-compose.yaml\"]"` // ComposeFiles is the list of docker-compose files to use
 	RemoveOrphans    bool     `yaml:"remove_orphans" default:"true"`                                                                                // RemoveOrphans removes containers for services not defined in the Compose file
@@ -55,10 +57,10 @@ type DeployConfig struct {
 }
 
 // DefaultDeployConfig creates a DeployConfig with default values
-func DefaultDeployConfig(name string) *DeployConfig {
+func DefaultDeployConfig(name, reference string) *DeployConfig {
 	return &DeployConfig{
 		Name:             name,
-		Reference:        "refs/heads/main",
+		Reference:        reference,
 		WorkingDirectory: ".",
 		ComposeFiles:     cli.DefaultFileNames,
 	}
@@ -67,10 +69,6 @@ func DefaultDeployConfig(name string) *DeployConfig {
 func (c *DeployConfig) validateConfig() error {
 	if c.Name == "" {
 		return fmt.Errorf("%w: name", ErrKeyNotFound)
-	}
-
-	if c.Reference == "" {
-		return fmt.Errorf("%w: reference", ErrKeyNotFound)
 	}
 
 	c.WorkingDirectory = filepath.Clean(c.WorkingDirectory)
@@ -152,13 +150,17 @@ func GetDeployConfigFromYAML(f string) ([]*DeployConfig, error) {
 }
 
 // GetDeployConfigs returns either the deployment configuration from the repository or the default configuration
-func GetDeployConfigs(repoDir, name, customTarget string) ([]*DeployConfig, error) {
+func GetDeployConfigs(repoDir, name, customTarget, reference string) ([]*DeployConfig, error) {
 	files, err := os.ReadDir(repoDir)
 	if err != nil {
 		return nil, err
 	}
 
 	var DeploymentConfigFileNames []string
+
+	if reference == "" {
+		reference = DefaultReference
+	}
 
 	if customTarget != "" {
 		for _, configFile := range CustomDeploymentConfigFileNames {
@@ -198,6 +200,13 @@ func GetDeployConfigs(repoDir, name, customTarget string) ([]*DeployConfig, erro
 				return nil, err
 			}
 
+			for _, c := range configs {
+				// If the reference is not already set in the deployment config file, set it to the current reference
+				if c.Reference == "" {
+					c.Reference = reference
+				}
+			}
+
 			return configs, nil
 		}
 	}
@@ -206,7 +215,7 @@ func GetDeployConfigs(repoDir, name, customTarget string) ([]*DeployConfig, erro
 		return nil, ErrConfigFileNotFound
 	}
 
-	return []*DeployConfig{DefaultDeployConfig(name)}, nil
+	return []*DeployConfig{DefaultDeployConfig(name, reference)}, nil
 }
 
 // getDeployConfigsFromFile returns the deployment configurations from the repository or nil if not found

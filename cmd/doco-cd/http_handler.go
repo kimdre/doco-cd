@@ -131,7 +131,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	jobLog.Debug("retrieving deployment configuration")
 
 	// Get the deployment configs from the repository
-	deployConfigs, err := config.GetDeployConfigs(internalRepoPath, payload.Name, customTarget)
+	deployConfigs, err := config.GetDeployConfigs(internalRepoPath, payload.Name, customTarget, payload.Ref)
 	if err != nil {
 		if errors.Is(err, config.ErrDeprecatedConfig) {
 			jobLog.Warn(err.Error())

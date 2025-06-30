@@ -13,11 +13,11 @@ var (
 )
 
 type PollConfig struct {
-	CloneUrl     HttpUrl `yaml:"url" validate:"httpUrl"`   // CloneUrl is the URL to clone the Git repository that is used to poll for changes
-	Reference    string  `yaml:"reference" default:"main"` // Reference is the Git reference to the deployment, e.g., refs/heads/main, main, refs/tags/v1.0.0 or v1.0.0
-	Interval     int     `yaml:"interval" default:"180"`   // Interval is the interval in seconds to poll for changes
-	CustomTarget string  `yaml:"target" default:""`        // CustomTarget is the name of an optional custom deployment config file, e.g. ".doco-cd.custom-name.yaml"
-	Private      bool    `yaml:"private" default:"false"`  // Private indicates if the repository is private, which requires authentication
+	CloneUrl     HttpUrl `yaml:"url" validate:"httpUrl"`              // CloneUrl is the URL to clone the Git repository that is used to poll for changes
+	Reference    string  `yaml:"reference" default:"refs/heads/main"` // Reference is the Git reference to the deployment, e.g., refs/heads/main, main, refs/tags/v1.0.0 or v1.0.0
+	Interval     int     `yaml:"interval" default:"180"`              // Interval is the interval in seconds to poll for changes
+	CustomTarget string  `yaml:"target" default:""`                   // CustomTarget is the name of an optional custom deployment config file, e.g. ".doco-cd.custom-name.yaml"
+	Private      bool    `yaml:"private" default:"false"`             // Private indicates if the repository is private, which requires authentication
 }
 
 type PollJob struct {
@@ -33,7 +33,7 @@ func (c *PollConfig) Validate() error {
 	}
 
 	if c.Reference == "" {
-		return fmt.Errorf("%w: branch", ErrKeyNotFound)
+		return fmt.Errorf("%w: reference", ErrKeyNotFound)
 	}
 
 	if c.Interval < 10 && c.Interval != 0 {
