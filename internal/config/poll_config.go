@@ -33,7 +33,7 @@ func (c *PollConfig) Validate() error {
 	}
 
 	if c.Reference == "" {
-		return fmt.Errorf("%w: branch", ErrKeyNotFound)
+		return fmt.Errorf("%w: reference", ErrKeyNotFound)
 	}
 
 	if c.Interval < 10 && c.Interval != 0 {
