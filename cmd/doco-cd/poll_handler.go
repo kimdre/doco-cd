@@ -95,7 +95,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		jobLog = jobLog.With(slog.String("custom_target", pollConfig.CustomTarget))
 	}
 
-	jobLog.Info("polling repository", slog.Group("trigger", slog.String("event", "poll")))
+	jobLog.Info("polling repository", slog.Group("trigger", slog.String("event", "poll"), slog.Any("config", pollConfig)))
 
 	jobLog.Debug("get repository",
 		slog.String("url", cloneUrl))
