@@ -155,7 +155,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	shortName := filepath.Base(repoName)
 
 	// Get the deployment configs from the repository
-	deployConfigs, err := config.GetDeployConfigs(internalRepoPath, shortName, pollConfig.CustomTarget)
+	deployConfigs, err := config.GetDeployConfigs(internalRepoPath, shortName, pollConfig.CustomTarget, pollConfig.Reference)
 	if err != nil {
 		if errors.Is(err, config.ErrDeprecatedConfig) {
 			jobLog.Warn(err.Error())
