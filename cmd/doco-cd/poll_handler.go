@@ -84,7 +84,8 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	repoName := getRepoName(cloneUrl)
 	jobLog := logger.With(
 		slog.String("repository", repoName),
-		slog.String("job_id", jobID))
+		slog.String("job_id", jobID),
+		slog.Any("poll_config", pollConfig))
 
 	if strings.Contains(repoName, "..") {
 		jobLog.Error("invalid repository name, contains '..'")
