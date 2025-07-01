@@ -6,6 +6,8 @@ permissions:
 on:
   workflow_dispatch:
   push:
+    tags-ignore:
+      - '**'
     paths-ignore:
       - '**/*.md'
       - 'docs/**'
