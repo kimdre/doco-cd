@@ -13,7 +13,7 @@ require (
 	github.com/docker/docker v28.3.0+incompatible
 	github.com/getsops/sops/v3 v3.10.2
 	github.com/go-git/go-git/v5 v5.16.2
-	github.com/golangci/golangci-lint/v2 v2.2.0
+	github.com/golangci/golangci-lint/v2 v2.2.1
 	github.com/google/uuid v1.6.0
 	golang.org/x/net v0.41.0
 	gopkg.in/validator.v2 v2.0.1
