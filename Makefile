@@ -56,7 +56,7 @@ download:
 	@echo Download go.mod dependencies
 	@go mod download
 
-tools: download
+tools:
 	mkdir -p ${GO_BIN}
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b ${GO_BIN}/bin v2.2.1
 	GOBIN=${GO_BIN} go install tool
