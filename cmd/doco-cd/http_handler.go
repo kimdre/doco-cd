@@ -331,9 +331,8 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 	jobLog.Debug("received webhook event")
 
-	r.Body = http.MaxBytesReader(nil, r.Body, 500*1024) // Limit to 500 KB
-
-	jobLog.Info("payload size", slog.Int64("size", r.ContentLength))
+	// Limit the request body size
+	r.Body = http.MaxBytesReader(w, r.Body, 500*1024)
 
 	payload, err := webhook.Parse(r, h.appConfig.WebhookSecret)
 	if err != nil {
