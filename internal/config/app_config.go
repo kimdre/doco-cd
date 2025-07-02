@@ -31,6 +31,7 @@ type AppConfig struct {
 	PollConfigYAML      string                 `env:"POLL_CONFIG"`                                       // PollConfigYAML is the unparsed string containing the PollConfig in YAML format
 	PollConfigFile      string                 `env:"POLL_CONFIG_FILE,file"`                             // PollConfigFile is the file containing the PollConfig in YAML format
 	PollConfig          []PollConfig           `yaml:"-"`                                                // PollConfig is the YAML configuration for polling Git repositories for changes
+	MaxPayloadSize      int64                  `env:"MAX_PAYLOAD_SIZE,notEmpty" envDefault:"1048576"`    // MaxPayloadSize is the maximum size of the payload in bytes that the HTTP server will accept (default 1MB = 1048576 bytes)
 }
 
 // GetAppConfig returns the configuration
