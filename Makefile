@@ -1,3 +1,4 @@
+GO_BIN?=$(shell pwd)/.bin
 BINARY_DIR=bin
 BINARY_NAME=doco-cd
 .PHONY: test build run lint fmt update update-all submodule-commit generate-coverage
@@ -30,14 +31,14 @@ build:
 	go build -o $(BINARY_DIR) ./...
 
 lint:
-	golangci-lint run ./...
+	go tool golangci-lint run ./...
 
 fmt:
 	go fmt ./...
-	-go run mvdan.cc/gofumpt@latest -l -w .
-	-go run golang.org/x/tools/cmd/goimports@latest -l -w .
-	-go run github.com/bombsimon/wsl/v4/cmd...@latest -strict-append -test=true -fix ./...
-	-go run github.com/catenacyber/perfsprint@latest -fix ./...
+	-go tool gofumpt -l -w .
+	-go tool goimports -l -w .
+	-go tool wsl -strict-append -test=true -fix ./...
+	-go tool perfsprint -fix ./...
 
 update:
 	git pull origin main
@@ -55,9 +56,10 @@ download:
 	@echo Download go.mod dependencies
 	@go mod download
 
-install-devtools: download
-	@echo Installing tools from tools.go
-	@cat tools/tools.go | grep _ | awk -F'"' '{print $$2}' | xargs -tI % go install %
+tools: download
+	mkdir -p ${GO_BIN}
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b ${GO_BIN}/bin v2.2.1
+	GOBIN=${GO_BIN} go install tool
 
 compose-up:
 	@echo "Starting dev docker-compose..."
