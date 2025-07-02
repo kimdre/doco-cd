@@ -14,8 +14,6 @@ var (
 
 // Parse parses the payload and returns the parsed payload data
 func Parse(r *http.Request, secretKey string) (ParsedPayload, error) {
-	r.Body = http.MaxBytesReader(nil, r.Body, 500*1024) // Limit to 500 KB
-
 	if r.Body == nil {
 		return ParsedPayload{}, fmt.Errorf("%w: request body is empty", ErrParsingPayload)
 	}
