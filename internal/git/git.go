@@ -265,6 +265,7 @@ func CompareCommitsInSubdir(repo *git.Repository, commitHash1, commitHash2 plumb
 	// Check if any file in the patch is in the specified subdirectory
 	for _, file := range patch.FilePatches() {
 		from, to := file.Files()
+
 		var paths []string
 
 		if from != nil {
