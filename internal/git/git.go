@@ -148,10 +148,15 @@ func UpdateRepository(path, ref string, skipTLSVerify bool, proxyOpts transport.
 
 	err = worktree.Checkout(&git.CheckoutOptions{
 		Branch: refSet.localRef,
-		Force:  true,
+		Keep:   true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w: %s", ErrCheckoutFailed, err, refSet.localRef)
+	}
+
+	err = ResetTrackedFiles(worktree)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reset tracked files: %w", err)
 	}
 
 	return repo, nil
@@ -207,4 +212,33 @@ func GetLatestCommit(repo *git.Repository, ref string) (string, error) {
 	}
 
 	return commit.Hash.String(), nil
+}
+
+// ResetTrackedFiles resets all tracked files in the worktree to their last committed state
+// while leaving untracked files intact.
+func ResetTrackedFiles(worktree *git.Worktree) error {
+	changedFiles, err := worktree.Status()
+	if err != nil {
+		return fmt.Errorf("failed to get worktree status: %w", err)
+	}
+
+	resetFiles := make([]string, 0, len(changedFiles))
+
+	for file, status := range changedFiles {
+		if status.Staging != git.Untracked {
+			resetFiles = append(resetFiles, file)
+		}
+	}
+
+	if len(resetFiles) > 0 {
+		err = worktree.Reset(&git.ResetOptions{
+			Mode:  git.HardReset,
+			Files: resetFiles,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to reset worktree: %w", err)
+		}
+	}
+
+	return nil
 }

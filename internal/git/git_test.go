@@ -15,6 +15,7 @@ import (
 
 const (
 	cloneUrl            = "https://github.com/kimdre/doco-cd.git"
+	cloneUrlTest        = "https://github.com/kimdre/doco-cd_tests.git"
 	remoteMainBranch    = "refs/remotes/origin/main"
 	validBranchRef      = MainBranch
 	validBranchRefShort = "main"
@@ -255,6 +256,64 @@ func TestGetReferenceSet(t *testing.T) {
 
 	if refSet.remoteRef.String() != remoteMainBranch {
 		t.Fatalf("Expected remote reference %s, got %s", remoteMainBranch, refSet.remoteRef.String())
+	}
+}
+
+func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("Failed to get app config: %v", err)
+	}
+
+	url := GetAuthUrl(cloneUrlTest, c.AuthType, c.GitAccessToken)
+
+	repo, err := CloneRepository(t.TempDir(), url, MainBranch, false, c.HttpProxy)
+	if err != nil {
+		t.Fatalf("Failed to clone repository: %v", err)
+	}
+
+	if repo == nil {
+		t.Fatal("Repository is nil")
+	}
+
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("Failed to get worktree: %v", err)
+	}
+
+	// Add a new file to the cloned repository
+	newFileName := "new.txt"
+
+	_, err = worktree.Filesystem.Create(newFileName)
+	if err != nil {
+		t.Fatalf("Failed to create new file: %v", err)
+	}
+
+	repo, err = UpdateRepository(worktree.Filesystem.Root(), "alternative", true, c.HttpProxy)
+	if err != nil {
+		t.Fatalf("Failed to update repository: %v", err)
+	}
+
+	if repo == nil {
+		t.Fatal("Repository is nil after update")
+	}
+
+	files, err := worktree.Filesystem.ReadDir(".")
+	if err != nil {
+		t.Fatalf("Failed to read directory: %v", err)
+	}
+
+	foundNewFile := false
+
+	for _, file := range files {
+		if file.Name() == newFileName {
+			foundNewFile = true
+			break
+		}
+	}
+
+	if !foundNewFile {
+		t.Fatal("Untracked file was removed during update")
 	}
 }
 
