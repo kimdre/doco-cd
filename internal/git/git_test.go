@@ -260,16 +260,14 @@ func TestGetReferenceSet(t *testing.T) {
 }
 
 func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
-	tmpDir := t.TempDir()
-
 	c, err := config.GetAppConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
 
-	cloneUrl := GetAuthUrl(cloneUrlTest, c.AuthType, c.GitAccessToken)
+	url := GetAuthUrl(cloneUrlTest, c.AuthType, c.GitAccessToken)
 
-	repo, err := CloneRepository(tmpDir, cloneUrl, MainBranch, false, c.HttpProxy)
+	repo, err := CloneRepository(t.TempDir(), url, MainBranch, false, c.HttpProxy)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
