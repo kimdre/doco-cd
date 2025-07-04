@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-git/go-git/v5/plumbing"
+
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/docker/api/types/container"
@@ -345,6 +347,28 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			if latestCommit == deployedCommit {
 				jobLog.Debug("no changes detected, skipping deployment", slog.String("last_commit", latestCommit))
 				continue
+			}
+
+			if deployedCommit != "" {
+				changed, err := git.CompareCommitsInSubdir(repo, plumbing.NewHash(deployedCommit), plumbing.NewHash(latestCommit), deployConfig.WorkingDirectory)
+				if err != nil {
+					subJobLog.Error("failed to compare commits in subdirectory", log.ErrAttr(err))
+					return fmt.Errorf("failed to compare commits in subdirectory: %w", err)
+				}
+
+				if !changed {
+					jobLog.Debug("no changes detected in subdirectory, skipping deployment",
+						slog.String("directory", deployConfig.WorkingDirectory),
+						slog.String("last_commit", latestCommit),
+						slog.String("deployed_commit", deployedCommit))
+
+					continue
+				} else {
+					subJobLog.Debug("changes detected in subdirectory, proceeding with deployment",
+						slog.String("directory", deployConfig.WorkingDirectory),
+						slog.String("last_commit", latestCommit),
+						slog.String("deployed_commit", deployedCommit))
+				}
 			}
 
 			payload := webhook.ParsedPayload{
