@@ -148,7 +148,7 @@ func UpdateRepository(path, ref string, skipTLSVerify bool, proxyOpts transport.
 
 	err = worktree.Checkout(&git.CheckoutOptions{
 		Branch: refSet.localRef,
-		Force:  true,
+		Keep:   true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w: %s", ErrCheckoutFailed, err, refSet.localRef)
