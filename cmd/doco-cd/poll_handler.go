@@ -168,6 +168,8 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	}
 
 	for _, deployConfig := range deployConfigs {
+		subJobLog := jobLog.With()
+
 		repoName = getRepoName(string(pollConfig.CloneUrl))
 		if deployConfig.RepositoryUrl != "" {
 			repoName = getRepoName(string(deployConfig.RepositoryUrl))
@@ -187,23 +189,23 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 
 		internalRepoPath, err = utils.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
 		if err != nil {
-			jobLog.Error("failed to verify and sanitize internal filesystem path", log.ErrAttr(err))
+			subJobLog.Error("failed to verify and sanitize internal filesystem path", log.ErrAttr(err))
 			return fmt.Errorf("failed to verify and sanitize internal filesystem path: %w", err)
 		}
 
 		externalRepoPath, err = utils.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Source, repoName), dataMountPoint.Source) // Path on the host
 		if err != nil {
-			jobLog.Error("failed to verify and sanitize external filesystem path", log.ErrAttr(err))
+			subJobLog.Error("failed to verify and sanitize external filesystem path", log.ErrAttr(err))
 			return fmt.Errorf("failed to verify and sanitize external filesystem path: %w", err)
 		}
 
-		jobLog = jobLog.With(
+		subJobLog = subJobLog.With(
 			slog.String("stack", deployConfig.Name),
 			slog.String("reference", deployConfig.Reference),
 			slog.String("repository", repoName),
 		)
 
-		jobLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
+		subJobLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
 
 		if deployConfig.RepositoryUrl != "" {
 			cloneUrl = string(deployConfig.RepositoryUrl)
@@ -211,44 +213,44 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 				cloneUrl = git.GetAuthUrl(string(deployConfig.RepositoryUrl), appConfig.AuthType, appConfig.GitAccessToken)
 			}
 
-			jobLog.Debug("repository URL provided, cloning remote repository")
+			subJobLog.Debug("repository URL provided, cloning remote repository")
 			// Try to clone the remote repository
 			_, err = git.CloneRepository(internalRepoPath, cloneUrl, deployConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 			if err != nil && !errors.Is(err, git.ErrRepositoryAlreadyExists) {
-				jobLog.Error("failed to clone repository", log.ErrAttr(err))
+				subJobLog.Error("failed to clone repository", log.ErrAttr(err))
 				return fmt.Errorf("failed to clone repository: %w", err)
 			}
 
-			jobLog.Debug("remote repository cloned", slog.String("path", externalRepoPath))
+			subJobLog.Debug("remote repository cloned", slog.String("path", externalRepoPath))
 		}
 
-		jobLog.Debug("checking out reference "+deployConfig.Reference, slog.String("host_path", externalRepoPath))
+		subJobLog.Debug("checking out reference "+deployConfig.Reference, slog.String("host_path", externalRepoPath))
 
 		repo, err := git.UpdateRepository(internalRepoPath, deployConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 		if err != nil {
-			jobLog.Error("failed to checkout repository", log.ErrAttr(err))
+			subJobLog.Error("failed to checkout repository", log.ErrAttr(err))
 			return fmt.Errorf("failed to checkout repository: %w", err)
 		}
 
 		latestCommit, err := git.GetLatestCommit(repo, deployConfig.Reference)
 		if err != nil {
-			jobLog.Error("failed to get latest commit", log.ErrAttr(err))
+			subJobLog.Error("failed to get latest commit", log.ErrAttr(err))
 			return fmt.Errorf("failed to get latest commit: %w", err)
 		}
 
 		if deployConfig.Destroy {
-			jobLog.Debug("destroying stack")
+			subJobLog.Debug("destroying stack")
 
 			// Check if doco-cd manages the project before destroying the stack
 			containers, err := docker.GetLabeledContainers(ctx, dockerClient, api.ProjectLabel, deployConfig.Name)
 			if err != nil {
-				jobLog.Error("failed to retrieve containers", log.ErrAttr(err))
+				subJobLog.Error("failed to retrieve containers", log.ErrAttr(err))
 				return fmt.Errorf("failed to retrieve containers: %w", err)
 			}
 
 			// If no containers are found, skip the destruction step
 			if len(containers) == 0 {
-				jobLog.Debug("no containers found for stack, skipping...")
+				subJobLog.Debug("no containers found for stack, skipping...")
 				continue
 			}
 
@@ -269,59 +271,59 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			}
 
 			if !managed {
-				jobLog.Error(fmt.Errorf("%w: %s: aborting destruction", ErrNotManagedByDocoCD, deployConfig.Name).Error())
+				subJobLog.Error(fmt.Errorf("%w: %s: aborting destruction", ErrNotManagedByDocoCD, deployConfig.Name).Error())
 				return fmt.Errorf("%w: %s: aborting destruction", ErrNotManagedByDocoCD, deployConfig.Name)
 			}
 
 			if !correctRepo {
-				jobLog.Error(fmt.Errorf("%w: %s: aborting destruction", ErrDeploymentConflict, deployConfig.Name).Error())
+				subJobLog.Error(fmt.Errorf("%w: %s: aborting destruction", ErrDeploymentConflict, deployConfig.Name).Error())
 				return fmt.Errorf("%w: %s: aborting destruction", ErrDeploymentConflict, deployConfig.Name)
 			}
 
-			err = docker.DestroyStack(jobLog, &ctx, &dockerCli, deployConfig)
+			err = docker.DestroyStack(subJobLog, &ctx, &dockerCli, deployConfig)
 			if err != nil {
-				jobLog.Error("failed to destroy stack", log.ErrAttr(err))
+				subJobLog.Error("failed to destroy stack", log.ErrAttr(err))
 				return fmt.Errorf("failed to destroy stack: %w", err)
 			}
 
 			if deployConfig.DestroyOpts.RemoveRepoDir {
 				// Remove the repository directory after destroying the stack
-				jobLog.Debug("removing deployment directory", slog.String("path", externalRepoPath))
+				subJobLog.Debug("removing deployment directory", slog.String("path", externalRepoPath))
 				// Check if the parent directory has multiple subdirectories/repos
 				parentDir := filepath.Dir(internalRepoPath)
 
 				subDirs, err := os.ReadDir(parentDir)
 				if err != nil {
-					jobLog.Error("failed to read parent directory", log.ErrAttr(err))
+					subJobLog.Error("failed to read parent directory", log.ErrAttr(err))
 					return fmt.Errorf("failed to read parent directory: %w", err)
 				}
 
 				if len(subDirs) > 1 {
 					// Do not remove the parent directory if it has multiple subdirectories
-					jobLog.Debug("remove deployment directory but keep parent directory as it has multiple subdirectories", slog.String("path", internalRepoPath))
+					subJobLog.Debug("remove deployment directory but keep parent directory as it has multiple subdirectories", slog.String("path", internalRepoPath))
 
 					// Remove only the repository directory
 					err = os.RemoveAll(internalRepoPath)
 					if err != nil {
-						jobLog.Error("failed to remove deployment directory", log.ErrAttr(err))
+						subJobLog.Error("failed to remove deployment directory", log.ErrAttr(err))
 						return fmt.Errorf("failed to remove deployment directory: %w", err)
 					}
 				} else {
 					// Remove the parent directory if it has only one subdirectory
 					err = os.RemoveAll(parentDir)
 					if err != nil {
-						jobLog.Error("failed to remove deployment directory", log.ErrAttr(err))
+						subJobLog.Error("failed to remove deployment directory", log.ErrAttr(err))
 						return fmt.Errorf("failed to remove deployment directory: %w", err)
 					}
 
-					jobLog.Debug("removed directory", slog.String("path", parentDir))
+					subJobLog.Debug("removed directory", slog.String("path", parentDir))
 				}
 			}
 		} else {
 			// Skip deployment if another project with the same name already exists
 			containers, err := docker.GetLabeledContainers(ctx, dockerClient, api.ProjectLabel, deployConfig.Name)
 			if err != nil {
-				jobLog.Error("failed to retrieve containers", log.ErrAttr(err))
+				subJobLog.Error("failed to retrieve containers", log.ErrAttr(err))
 				return fmt.Errorf("failed to retrieve containers: %w", err)
 			}
 
@@ -340,12 +342,12 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			}
 
 			if !correctRepo {
-				jobLog.Error(fmt.Errorf("%w: %s: skipping deployment", ErrDeploymentConflict, deployConfig.Name).Error())
+				subJobLog.Error(fmt.Errorf("%w: %s: skipping deployment", ErrDeploymentConflict, deployConfig.Name).Error())
 				return fmt.Errorf("%w: %s: skipping deployment", ErrDeploymentConflict, deployConfig.Name)
 			}
 
 			if latestCommit == deployedCommit {
-				jobLog.Debug("no changes detected, skipping deployment", slog.String("last_commit", latestCommit))
+				subJobLog.Debug("no new commit found, skipping deployment", slog.String("last_commit", latestCommit))
 				continue
 			}
 
@@ -381,9 +383,9 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 				Private:   pollConfig.Private,
 			}
 
-			err = docker.DeployStack(jobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, &payload, deployConfig, latestCommit, Version, true)
+			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, &payload, deployConfig, latestCommit, Version, true)
 			if err != nil {
-				jobLog.Error("failed to deploy stack", log.ErrAttr(err))
+				subJobLog.Error("failed to deploy stack", log.ErrAttr(err))
 				return fmt.Errorf("failed to deploy stack: %w", err)
 			}
 		}
