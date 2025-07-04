@@ -15,6 +15,7 @@ import (
 
 const (
 	cloneUrl            = "https://github.com/kimdre/doco-cd.git"
+	cloneUrlTest        = "https://github.com/kimdre/doco-cd_tests.git"
 	remoteMainBranch    = "refs/remotes/origin/main"
 	validBranchRef      = MainBranch
 	validBranchRefShort = "main"
@@ -266,6 +267,8 @@ func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
 
+	cloneUrl := GetAuthUrl(cloneUrlTest, c.AuthType, c.GitAccessToken)
+
 	repo, err := CloneRepository(tmpDir, cloneUrl, MainBranch, false, c.HttpProxy)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
@@ -288,7 +291,7 @@ func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 		t.Fatalf("Failed to create new file: %v", err)
 	}
 
-	repo, err = UpdateRepository(worktree.Filesystem.Root(), MainBranch, true, c.HttpProxy)
+	repo, err = UpdateRepository(worktree.Filesystem.Root(), "alternative", true, c.HttpProxy)
 	if err != nil {
 		t.Fatalf("Failed to update repository: %v", err)
 	}
