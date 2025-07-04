@@ -258,6 +258,64 @@ func TestGetReferenceSet(t *testing.T) {
 	}
 }
 
+func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("Failed to get app config: %v", err)
+	}
+
+	repo, err := CloneRepository(tmpDir, cloneUrl, MainBranch, false, c.HttpProxy)
+	if err != nil {
+		t.Fatalf("Failed to clone repository: %v", err)
+	}
+
+	if repo == nil {
+		t.Fatal("Repository is nil")
+	}
+
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("Failed to get worktree: %v", err)
+	}
+
+	// Add a new file to the cloned repository
+	newFileName := "new.txt"
+
+	_, err = worktree.Filesystem.Create(newFileName)
+	if err != nil {
+		t.Fatalf("Failed to create new file: %v", err)
+	}
+
+	repo, err = UpdateRepository(worktree.Filesystem.Root(), MainBranch, true, c.HttpProxy)
+	if err != nil {
+		t.Fatalf("Failed to update repository: %v", err)
+	}
+
+	if repo == nil {
+		t.Fatal("Repository is nil after update")
+	}
+
+	files, err := worktree.Filesystem.ReadDir(".")
+	if err != nil {
+		t.Fatalf("Failed to read directory: %v", err)
+	}
+
+	foundNewFile := false
+
+	for _, file := range files {
+		if file.Name() == newFileName {
+			foundNewFile = true
+			break
+		}
+	}
+
+	if !foundNewFile {
+		t.Fatal("Untracked file was removed during update")
+	}
+}
+
 func TestGetLatestCommit(t *testing.T) {
 	c, err := config.GetAppConfig()
 	if err != nil {
