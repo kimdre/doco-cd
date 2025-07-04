@@ -223,6 +223,7 @@ func ResetTrackedFiles(worktree *git.Worktree) error {
 	}
 
 	resetFiles := make([]string, 0, len(changedFiles))
+
 	for file, status := range changedFiles {
 		if status.Staging != git.Untracked {
 			resetFiles = append(resetFiles, file)
