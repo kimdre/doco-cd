@@ -154,6 +154,13 @@ func UpdateRepository(path, ref string, skipTLSVerify bool, proxyOpts transport.
 		return nil, fmt.Errorf("%w: %w: %s", ErrCheckoutFailed, err, refSet.localRef)
 	}
 
+	err = worktree.Reset(&git.ResetOptions{
+		Mode: git.HardReset,
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	return repo, nil
 }
 
