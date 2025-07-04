@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -241,4 +242,47 @@ func ResetTrackedFiles(worktree *git.Worktree) error {
 	}
 
 	return nil
+}
+
+// CompareCommitsInSubdir compares two commits in a specific subdirectory of a repository for changes.
+func CompareCommitsInSubdir(repo *git.Repository, commitHash1, commitHash2 plumbing.Hash, subdir string) (bool, error) {
+	commit1, err := repo.CommitObject(commitHash1)
+	if err != nil {
+		return false, fmt.Errorf("failed to get commit from commitHash1 %s: %w", commitHash1, err)
+	}
+
+	commit2, err := repo.CommitObject(commitHash2)
+	if err != nil {
+		return false, fmt.Errorf("failed to get commit from commitHash2 %s: %w", commitHash2, err)
+	}
+
+	// Create a patch between the two commits
+	patch, err := commit1.Patch(commit2)
+	if err != nil {
+		return false, fmt.Errorf("failed to create patch: %w", err)
+	}
+
+	// Check if any file in the patch is in the specified subdirectory
+	for _, file := range patch.FilePatches() {
+		from, to := file.Files()
+
+		var paths []string
+
+		if from != nil {
+			paths = append(paths, from.Path())
+		}
+
+		if to != nil {
+			paths = append(paths, to.Path())
+		}
+
+		for _, p := range paths {
+			rel, err := filepath.Rel(subdir, p)
+			if err == nil && (rel == "." || !strings.HasPrefix(rel, "..")) {
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
 }
