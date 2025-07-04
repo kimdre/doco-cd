@@ -242,3 +242,32 @@ func ResetTrackedFiles(worktree *git.Worktree) error {
 
 	return nil
 }
+
+// CompareCommitsInSubdir compares two commits in a specific subdirectory of a repository
+func CompareCommitsInSubdir(repo *git.Repository, commitHash1, commitHash2, subdir string) (bool, error) {
+	commit1, err := repo.CommitObject(plumbing.NewHash(commitHash1))
+	if err != nil {
+		return false, fmt.Errorf("failed to get commit %s: %w", commitHash1, err)
+	}
+
+	commit2, err := repo.CommitObject(plumbing.NewHash(commitHash2))
+	if err != nil {
+		return false, fmt.Errorf("failed to get commit %s: %w", commitHash2, err)
+	}
+
+	// Create a patch between the two commits
+	patch, err := commit1.Patch(commit2)
+	if err != nil {
+		return false, fmt.Errorf("failed to create patch: %w", err)
+	}
+
+	// Check if any file in the patch is in the specified subdirectory
+	for _, file := range patch.FilePatches() {
+		from, to := file.Files()
+		if (from != nil && strings.HasPrefix(from.Path(), subdir)) || (to != nil && strings.HasPrefix(to.Path(), subdir)) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
