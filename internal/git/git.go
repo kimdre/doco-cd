@@ -154,6 +154,28 @@ func UpdateRepository(path, ref string, skipTLSVerify bool, proxyOpts transport.
 		return nil, fmt.Errorf("%w: %w: %s", ErrCheckoutFailed, err, refSet.localRef)
 	}
 
+	changedFiles, err := worktree.Status()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get worktree status: %w", err)
+	}
+
+	resetFiles := make([]string, 0, len(changedFiles))
+	for file, status := range changedFiles {
+		if status.Staging != git.Untracked {
+			resetFiles = append(resetFiles, file)
+		}
+	}
+
+	if len(resetFiles) > 0 {
+		err = worktree.Reset(&git.ResetOptions{
+			Mode:  git.HardReset,
+			Files: resetFiles,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to reset worktree: %w", err)
+		}
+	}
+
 	return repo, nil
 }
 
