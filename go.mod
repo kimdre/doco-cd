@@ -292,7 +292,7 @@ require (
 )
 
 tool (
-	github.com/bombsimon/wsl/v4/cmd/wsl
+	github.com/bombsimon/wsl/v5/cmd/wsl
 	github.com/catenacyber/perfsprint
 	golang.org/x/tools/cmd/goimports
 	mvdan.cc/gofumpt
