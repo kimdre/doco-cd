@@ -70,7 +70,7 @@ require (
 	github.com/aws/smithy-go v1.22.3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
-	github.com/bombsimon/wsl/v4 v4.7.0 // indirect
+	github.com/bombsimon/wsl/v5 v5.1.0 // indirect
 	github.com/buger/goterm v1.0.4 // indirect
 	github.com/catenacyber/perfsprint v0.9.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
