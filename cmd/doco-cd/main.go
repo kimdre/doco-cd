@@ -11,6 +11,9 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/kimdre/doco-cd/internal/utils"
 
 	"github.com/docker/docker/api/types/container"
 
@@ -97,7 +100,7 @@ func CreateMountpointSymlink(m container.MountPoint) error {
 	// prepare the symlink parent directory
 	symlinkParentDir := path.Dir(m.Source)
 
-	err := os.MkdirAll(symlinkParentDir, 0o755)
+	err := os.MkdirAll(symlinkParentDir, utils.PermDir)
 	if err != nil {
 		return fmt.Errorf("failed to create parent directory %s: %w", symlinkParentDir, err)
 	}
@@ -304,7 +307,12 @@ func main() {
 		}()
 	}
 
-	err = http.ListenAndServe(fmt.Sprintf(":%d", c.HttpPort), nil)
+	server := &http.Server{
+		Addr:              fmt.Sprintf(":%d", c.HttpPort),
+		ReadHeaderTimeout: 3 * time.Second,
+	}
+
+	err = server.ListenAndServe()
 	if err != nil {
 		log.Error(fmt.Sprintf("failed to listen on port: %v", c.HttpPort), logger.ErrAttr(err))
 	}

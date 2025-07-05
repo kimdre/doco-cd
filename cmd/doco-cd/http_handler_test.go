@@ -207,7 +207,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	testContainerPort := testContainer.NetworkSettings.Ports["80/tcp"][0].HostPort
 	testURL := "http://localhost:" + testContainerPort
 
-	resp, err := http.Get(testURL)
+	resp, err := http.Get(testURL) // #nosec G107
 	if err != nil {
 		t.Fatalf("Failed to make GET request to test container: %v", err)
 	}
@@ -233,7 +233,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 	indexFile := path.Join(repoDir, "test", "index.html")
 
-	fileContent, err := os.ReadFile(indexFile)
+	fileContent, err := os.ReadFile(indexFile) // #nosec G304
 	if err != nil {
 		t.Fatalf("Failed to read index.html file: %v", err)
 	}

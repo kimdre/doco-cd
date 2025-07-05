@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/kimdre/doco-cd/internal/utils"
+
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/go-git/go-git/v5/config"
@@ -165,7 +167,7 @@ func UpdateRepository(path, ref string, skipTLSVerify bool, proxyOpts transport.
 
 // CloneRepository clones a repository from a given URL and reference to a temporary directory
 func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions) (*git.Repository, error) {
-	err := os.MkdirAll(path, os.ModePerm)
+	err := os.MkdirAll(path, utils.PermDir)
 	if err != nil {
 		return nil, err
 	}

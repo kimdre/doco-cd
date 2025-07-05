@@ -433,7 +433,7 @@ func DeployStack(
 				return fmt.Errorf("failed to decrypt file %s: %w", path, err)
 			}
 
-			err = os.WriteFile(path, decryptedContent, 0o644)
+			err = os.WriteFile(path, decryptedContent, utils.PermOwner)
 			if err != nil {
 				return fmt.Errorf("failed to write decrypted content to file %s: %w", path, err)
 			}

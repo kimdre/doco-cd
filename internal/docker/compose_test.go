@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kimdre/doco-cd/internal/utils"
+
 	"github.com/kimdre/doco-cd/internal/encryption"
 
 	"github.com/docker/compose/v2/pkg/api"
@@ -29,14 +31,14 @@ import (
 )
 
 func createComposeFile(t *testing.T, filePath, content string) {
-	err := os.WriteFile(filePath, []byte(content), 0o600)
+	err := os.WriteFile(filePath, []byte(content), utils.PermOwner)
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
 func createTestFile(fileName string, content string) error {
-	err := os.WriteFile(fileName, []byte(content), 0o600)
+	err := os.WriteFile(fileName, []byte(content), utils.PermOwner)
 	if err != nil {
 		return err
 	}

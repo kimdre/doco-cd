@@ -9,13 +9,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kimdre/doco-cd/internal/utils"
+
 	"gopkg.in/validator.v2"
 )
 
 var projectName = "test"
 
 func createTestFile(fileName string, content string) error {
-	err := os.WriteFile(fileName, []byte(content), 0o600)
+	err := os.WriteFile(fileName, []byte(content), utils.PermOwner)
 	if err != nil {
 		return err
 	}

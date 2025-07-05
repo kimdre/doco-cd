@@ -19,7 +19,7 @@ var (
 const (
 	GithubSignatureHeader = "X-Hub-Signature-256"
 	GiteaSignatureHeader  = "X-Gitea-Signature"
-	GitlabTokenHeader     = "X-Gitlab-Token"
+	GitlabTokenHeader     = "X-Gitlab-Token" // #nosec G101
 )
 
 func GenerateHMAC(payload []byte, secretKey string) string {

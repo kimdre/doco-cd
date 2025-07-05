@@ -38,7 +38,7 @@ func DecryptFile(path string) ([]byte, error) {
 
 // IsEncryptedFile checks if the file at the given path is a SOPS-encrypted file.
 func IsEncryptedFile(path string) (bool, error) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304
 	if err != nil {
 		return false, err
 	}

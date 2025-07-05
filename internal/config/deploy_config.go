@@ -117,7 +117,7 @@ func (c *DeployConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 func GetDeployConfigFromYAML(f string) ([]*DeployConfig, error) {
-	b, err := os.ReadFile(f)
+	b, err := os.ReadFile(f) // #nosec G304
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %v", err)
 	}
