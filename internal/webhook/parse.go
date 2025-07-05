@@ -12,7 +12,7 @@ var (
 	ErrParsingPayload    = errors.New("failed to parse payload")
 )
 
-// Parse parses the payload and returns the parsed payload data
+// Parse parses the payload and returns the parsed payload data.
 func Parse(r *http.Request, secretKey string) (ParsedPayload, error) {
 	if r.Body == nil {
 		return ParsedPayload{}, fmt.Errorf("%w: request body is empty", ErrParsingPayload)

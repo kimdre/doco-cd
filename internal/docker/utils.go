@@ -19,7 +19,7 @@ var (
 	ErrContainerIDNotFound    = errors.New("container ID not found")
 )
 
-// GetContainerID retrieves the container ID for a given service name
+// GetContainerID retrieves the container ID for a given service name.
 func GetContainerID(client client.APIClient, name string) (id string, err error) {
 	containers, err := client.ContainerList(context.TODO(), container.ListOptions{All: true})
 	if err != nil {
@@ -37,7 +37,7 @@ func GetContainerID(client client.APIClient, name string) (id string, err error)
 	return "", fmt.Errorf("%w: %s", ErrContainerIDNotFound, name)
 }
 
-// GetLabeledContainers retrieves all containers with a specific label key and value
+// GetLabeledContainers retrieves all containers with a specific label key and value.
 func GetLabeledContainers(ctx context.Context, cli *client.Client, key, value string) (containers []container.Summary, err error) {
 	containers, err = cli.ContainerList(ctx, container.ListOptions{
 		Filters: filters.NewArgs(filters.Arg("label", key+"="+value)),
@@ -50,8 +50,8 @@ func GetLabeledContainers(ctx context.Context, cli *client.Client, key, value st
 	return containers, nil
 }
 
-// GetMountPointByDestination retrieves the mount point of a container volume/bind mount by its destination (mount point inside the container)
-func GetMountPointByDestination(cli *client.Client, containerID, Destination string) (container.MountPoint, error) {
+// GetMountPointByDestination retrieves the mount point of a container volume/bind mount by its destination (mount point inside the container).
+func GetMountPointByDestination(cli *client.Client, containerID, destination string) (container.MountPoint, error) {
 	// Get the container info
 	cont, err := cli.ContainerInspect(context.TODO(), containerID)
 	if err != nil {
@@ -60,15 +60,15 @@ func GetMountPointByDestination(cli *client.Client, containerID, Destination str
 
 	// Get the volume path
 	for _, mount := range cont.Mounts {
-		if mount.Destination == Destination {
+		if mount.Destination == destination {
 			return mount, nil
 		}
 	}
 
-	return container.MountPoint{}, fmt.Errorf("%w: %s", ErrMountPointNotFound, Destination)
+	return container.MountPoint{}, fmt.Errorf("%w: %s", ErrMountPointNotFound, destination)
 }
 
-// CheckMountPointWriteable checks if a mount point is writable by attempting to create a file in it
+// CheckMountPointWriteable checks if a mount point is writable by attempting to create a file in it.
 func CheckMountPointWriteable(mountPoint container.MountPoint) error {
 	if !mountPoint.RW {
 		return fmt.Errorf("%w: %s", ErrMountPointNotWriteable, mountPoint.Destination)

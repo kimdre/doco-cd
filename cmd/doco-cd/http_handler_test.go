@@ -30,7 +30,7 @@ const (
 	githubPayloadFile = "testdata/github_payload.json"
 )
 
-// Make http call to HealthCheckHandler
+// Make http call to HealthCheckHandler.
 func TestHandlerData_HealthCheckHandler(t *testing.T) {
 	expectedResponse := fmt.Sprintln(`{"details":"healthy"}`)
 	expectedStatusCode := http.StatusOK

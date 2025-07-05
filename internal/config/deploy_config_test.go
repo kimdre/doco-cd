@@ -134,6 +134,7 @@ compose_files:
 
 		if config == nil {
 			t.Fatal("expected config to be returned, got nil")
+
 			return
 		}
 

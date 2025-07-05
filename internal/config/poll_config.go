@@ -26,7 +26,7 @@ type PollJob struct {
 	NextRun int64      // NextRun is the next time this instance should run
 }
 
-// Validate checks if the PollConfig is valid
+// Validate checks if the PollConfig is valid.
 func (c *PollConfig) Validate() error {
 	if c.CloneUrl == "" {
 		return fmt.Errorf("%w: url", ErrKeyNotFound)
@@ -43,7 +43,7 @@ func (c *PollConfig) Validate() error {
 	return nil
 }
 
-// String returns a string representation of the PollConfig
+// String returns a string representation of the PollConfig.
 func (c *PollConfig) String() string {
 	return fmt.Sprintf("PollConfig{CloneUrl: %s, Reference: %s, Interval: %d}", c.CloneUrl, c.Reference, c.Interval)
 }

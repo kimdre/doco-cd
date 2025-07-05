@@ -49,6 +49,7 @@ func TestParseLevel(t *testing.T) {
 			got, err := ParseLevel(tt.level)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseLevel() error = %v, wantErr %v", err, tt.wantErr)
+
 				return
 			}
 
@@ -124,6 +125,7 @@ func TestLogger_ParseLevel(t *testing.T) {
 			got, err := ParseLevel(tt.level)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Logger.ParseLevel() error = %v, wantErr %v", err, tt.wantErr)
+
 				return
 			}
 

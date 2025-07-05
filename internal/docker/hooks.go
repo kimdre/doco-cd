@@ -24,11 +24,13 @@ func OnCrash(client client.APIClient, containerID string, do func(), onErr func(
 					containerData, err := client.ContainerInspect(context.TODO(), containerID)
 					if err != nil {
 						onErr(fmt.Errorf("failed to inspect container: %w", err))
+
 						return
 					}
 
 					if !containerData.State.Restarting {
 						do()
+
 						return
 					}
 				}

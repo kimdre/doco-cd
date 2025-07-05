@@ -37,7 +37,7 @@ var (
 	errMsg  string
 )
 
-// getAppContainerID retrieves the application container ID from the cpuset file
+// getAppContainerID retrieves the application container ID from the cpuset file.
 func getAppContainerID() (string, error) {
 	const (
 		cgroupMounts = "/proc/self/mountinfo"
@@ -174,6 +174,7 @@ func main() {
 	dockerCli, err := docker.CreateDockerCli(c.DockerQuietDeploy, !c.SkipTLSVerification)
 	if err != nil {
 		log.Critical("failed to create docker client", logger.ErrAttr(err))
+
 		return
 	}
 	defer func(client client.APIClient) {
@@ -202,6 +203,7 @@ func main() {
 	appContainerID, err := getAppContainerID()
 	if err != nil {
 		log.Critical("failed to retrieve application container id", logger.ErrAttr(err))
+
 		return
 	}
 
@@ -229,6 +231,7 @@ func main() {
 	err = CreateMountpointSymlink(dataMountPoint)
 	if err != nil {
 		log.Critical(fmt.Sprintf("failed to create symlink for %s mount point", dataMountPoint.Destination), logger.ErrAttr(err))
+
 		return
 	}
 
@@ -259,6 +262,7 @@ func main() {
 			err = StartPoll(&h, pollConfig, &wg)
 			if err != nil {
 				log.Critical("failed to scheduling polling jobs", logger.ErrAttr(err))
+
 				return
 			}
 		}
@@ -271,7 +275,7 @@ func main() {
 		log.Error("failed to retrieve doco-cd containers", logger.ErrAttr(err))
 	}
 
-	if len(containers) <= 0 {
+	if len(containers) == 0 {
 		log.Debug("no containers found that are managed by doco-cd", slog.Int("count", len(containers)))
 	} else {
 		log.Debug("retrieved containers successfully", slog.Int("count", len(containers)))
@@ -284,8 +288,9 @@ func main() {
 		))
 
 		dir := cont.Labels[docker.DocoCDLabels.Deployment.WorkingDir]
-		if len(dir) <= 0 {
+		if len(dir) == 0 {
 			log.Error(fmt.Sprintf("failed to retrieve container %v working directory", cont.ID))
+
 			continue
 		}
 
