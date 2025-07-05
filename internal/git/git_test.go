@@ -308,6 +308,7 @@ func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 	for _, file := range files {
 		if file.Name() == newFileName {
 			foundNewFile = true
+
 			break
 		}
 	}

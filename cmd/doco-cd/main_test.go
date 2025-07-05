@@ -23,6 +23,7 @@ import (
 	"github.com/docker/compose/v2/pkg/compose"
 
 	"github.com/google/uuid"
+
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/logger"
@@ -358,7 +359,6 @@ func TestCreateMountpointSymlink(t *testing.T) {
 				Destination: filepath.Join(tmpDir, tc.destination),
 				Mode:        "rw",
 			})
-
 			if !errors.Is(err, tc.expectError) {
 				t.Errorf("symlink creation error: got %v, want %v", err, tc.expectError)
 			}

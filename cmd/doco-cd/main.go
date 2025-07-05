@@ -11,12 +11,16 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/kimdre/doco-cd/internal/utils"
 
 	"github.com/docker/docker/api/types/container"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/docker/docker/client"
+
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/logger"
@@ -33,7 +37,7 @@ var (
 	errMsg  string
 )
 
-// getAppContainerID retrieves the application container ID from the cpuset file
+// getAppContainerID retrieves the application container ID from the cpuset file.
 func getAppContainerID() (string, error) {
 	const (
 		cgroupMounts = "/proc/self/mountinfo"
@@ -91,12 +95,12 @@ func GetProxyUrlRedacted(proxyUrl string) string {
 }
 
 // CreateMountpointSymlink creates the Symlink for the data mount point to reflect the data volume path in the container.
-// Required so that the docker cli client is able to read/parse certain files (like .env files) in docker.LoadCompose
+// Required so that the docker cli client is able to read/parse certain files (like .env files) in docker.LoadCompose.
 func CreateMountpointSymlink(m container.MountPoint) error {
 	// prepare the symlink parent directory
 	symlinkParentDir := path.Dir(m.Source)
 
-	err := os.MkdirAll(symlinkParentDir, 0o755)
+	err := os.MkdirAll(symlinkParentDir, utils.PermDir)
 	if err != nil {
 		return fmt.Errorf("failed to create parent directory %s: %w", symlinkParentDir, err)
 	}
@@ -170,6 +174,7 @@ func main() {
 	dockerCli, err := docker.CreateDockerCli(c.DockerQuietDeploy, !c.SkipTLSVerification)
 	if err != nil {
 		log.Critical("failed to create docker client", logger.ErrAttr(err))
+
 		return
 	}
 	defer func(client client.APIClient) {
@@ -198,6 +203,7 @@ func main() {
 	appContainerID, err := getAppContainerID()
 	if err != nil {
 		log.Critical("failed to retrieve application container id", logger.ErrAttr(err))
+
 		return
 	}
 
@@ -225,6 +231,7 @@ func main() {
 	err = CreateMountpointSymlink(dataMountPoint)
 	if err != nil {
 		log.Critical(fmt.Sprintf("failed to create symlink for %s mount point", dataMountPoint.Destination), logger.ErrAttr(err))
+
 		return
 	}
 
@@ -255,6 +262,7 @@ func main() {
 			err = StartPoll(&h, pollConfig, &wg)
 			if err != nil {
 				log.Critical("failed to scheduling polling jobs", logger.ErrAttr(err))
+
 				return
 			}
 		}
@@ -267,7 +275,7 @@ func main() {
 		log.Error("failed to retrieve doco-cd containers", logger.ErrAttr(err))
 	}
 
-	if len(containers) <= 0 {
+	if len(containers) == 0 {
 		log.Debug("no containers found that are managed by doco-cd", slog.Int("count", len(containers)))
 	} else {
 		log.Debug("retrieved containers successfully", slog.Int("count", len(containers)))
@@ -280,8 +288,9 @@ func main() {
 		))
 
 		dir := cont.Labels[docker.DocoCDLabels.Deployment.WorkingDir]
-		if len(dir) <= 0 {
+		if len(dir) == 0 {
 			log.Error(fmt.Sprintf("failed to retrieve container %v working directory", cont.ID))
+
 			continue
 		}
 
@@ -303,7 +312,12 @@ func main() {
 		}()
 	}
 
-	err = http.ListenAndServe(fmt.Sprintf(":%d", c.HttpPort), nil)
+	server := &http.Server{
+		Addr:              fmt.Sprintf(":%d", c.HttpPort),
+		ReadHeaderTimeout: 3 * time.Second,
+	}
+
+	err = server.ListenAndServe()
 	if err != nil {
 		log.Error(fmt.Sprintf("failed to listen on port: %v", c.HttpPort), logger.ErrAttr(err))
 	}

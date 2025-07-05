@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 )
 
-// GithubPushPayload is a struct that represents the payload sent by GitHub or Gitea, as they have the same structure
+// GithubPushPayload is a struct that represents the payload sent by GitHub or Gitea, as they have the same structure.
 type GithubPushPayload struct {
 	Ref        string `json:"ref"`
 	CommitSHA  string `json:"after"`
@@ -17,7 +17,7 @@ type GithubPushPayload struct {
 	} `json:"repository"`
 }
 
-// GitlabPushPayload is a struct that represents the payload sent by GitLab
+// GitlabPushPayload is a struct that represents the payload sent by GitLab.
 type GitlabPushPayload struct {
 	Ref        string `json:"ref"`
 	CommitSHA  string `json:"after"`
@@ -30,7 +30,7 @@ type GitlabPushPayload struct {
 	} `json:"project"`
 }
 
-// ParsedPayload is a struct that contains the parsed payload data
+// ParsedPayload is a struct that contains the parsed payload data.
 type ParsedPayload struct {
 	Ref       string // Ref is the branch or tag that triggered the webhook
 	CommitSHA string // CommitSHA is the SHA of the commit that triggered the webhook
@@ -41,7 +41,7 @@ type ParsedPayload struct {
 	Private   bool   // Private indicates whether the repository is private or public
 }
 
-// ParsePayload parses the payload and returns a ParsedPayload struct
+// ParsePayload parses the payload and returns a ParsedPayload struct.
 func parsePayload(payload []byte, provider string) (ParsedPayload, error) {
 	var (
 		githubPayload GithubPushPayload

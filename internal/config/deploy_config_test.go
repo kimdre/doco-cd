@@ -9,13 +9,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kimdre/doco-cd/internal/utils"
+
 	"gopkg.in/validator.v2"
 )
 
 var projectName = "test"
 
 func createTestFile(fileName string, content string) error {
-	err := os.WriteFile(fileName, []byte(content), 0o600)
+	err := os.WriteFile(fileName, []byte(content), utils.PermOwner)
 	if err != nil {
 		return err
 	}
@@ -132,6 +134,7 @@ compose_files:
 
 		if config == nil {
 			t.Fatal("expected config to be returned, got nil")
+
 			return
 		}
 
@@ -193,7 +196,7 @@ func TestGetDeployConfigs_DefaultValues(t *testing.T) {
 }
 
 // TestGetDeployConfigs_DuplicateProjectName checks if the function returns an error
-// when there are duplicate project names in the config files
+// when there are duplicate project names in the config files.
 func TestGetDeployConfigs_DuplicateProjectName(t *testing.T) {
 	config := DeployConfig{
 		Name:             "test",
@@ -211,7 +214,7 @@ func TestGetDeployConfigs_DuplicateProjectName(t *testing.T) {
 }
 
 // TestGetDeployConfigs_InvalidRepositoryURL checks if the function returns an error when the repository URL is an SSH URL
-// The init function panics if the validator for HttpUrl is not registered correctly
+// The init function panics if the validator for HttpUrl is not registered correctly.
 func TestGetDeployConfigs_RepositoryURL(t *testing.T) {
 	testCases := []struct {
 		name        string
@@ -247,7 +250,6 @@ func TestGetDeployConfigs_RepositoryURL(t *testing.T) {
 			}
 
 			err := validator.Validate(config)
-
 			if err == nil && tc.expectedErr != nil {
 				t.Fatalf("expected error %v, got nil", tc.expectedErr)
 			}

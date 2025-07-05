@@ -19,7 +19,7 @@ var (
 const (
 	GithubSignatureHeader = "X-Hub-Signature-256"
 	GiteaSignatureHeader  = "X-Gitea-Signature"
-	GitlabTokenHeader     = "X-Gitlab-Token"
+	GitlabTokenHeader     = "X-Gitlab-Token" // #nosec G101
 )
 
 func GenerateHMAC(payload []byte, secretKey string) string {
@@ -38,15 +38,17 @@ func verifySignature(payload []byte, signature, secretKey string) error {
 	}
 }
 
-// VerifyProviderSecret checks and verifies the security header and returns the provider if verification is successful
+// VerifyProviderSecret checks and verifies the security header and returns the provider if verification is successful.
 func verifyProviderSecret(r *http.Request, payload []byte, secretKey string) (string, error) {
 	switch {
 	case r.Header.Get(GithubSignatureHeader) != "":
 		signature := strings.TrimPrefix(r.Header.Get(GithubSignatureHeader), "sha256=")
+
 		return "github", verifySignature(payload, signature, secretKey)
 
 	case r.Header.Get(GiteaSignatureHeader) != "":
 		signature := r.Header.Get(GiteaSignatureHeader)
+
 		return "gitea", verifySignature(payload, signature, secretKey)
 
 	case r.Header.Get(GitlabTokenHeader) != "":

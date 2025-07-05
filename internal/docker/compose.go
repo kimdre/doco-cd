@@ -49,7 +49,7 @@ var (
 	ComposeVersion                  string
 )
 
-// ConnectToSocket connects to the docker socket
+// ConnectToSocket connects to the docker socket.
 func ConnectToSocket() (net.Conn, error) {
 	c, err := net.Dial("unix", socketPath)
 	if err != nil {
@@ -69,7 +69,7 @@ func NewHttpClient() *http.Client {
 	}
 }
 
-// VerifySocketRead verifies whether the application can read from the docker socket
+// VerifySocketRead verifies whether the application can read from the docker socket.
 func VerifySocketRead(httpClient *http.Client) error {
 	reqBody, err := json.Marshal("")
 	if err != nil {
@@ -98,7 +98,7 @@ func VerifySocketRead(httpClient *http.Client) error {
 	return nil
 }
 
-// VerifySocketConnection verifies whether the application can connect to the docker socket
+// VerifySocketConnection verifies whether the application can connect to the docker socket.
 func VerifySocketConnection() error {
 	// Check if the docker socket file exists
 	if _, err := os.Stat(socketPath); errors.Is(err, os.ErrNotExist) {
@@ -207,7 +207,7 @@ func addVolumeLabels(project *types.Project, deployConfig config.DeployConfig, p
 	}
 }
 
-// LoadCompose parses and loads Compose files as specified by the Docker Compose specification
+// LoadCompose parses and loads Compose files as specified by the Docker Compose specification.
 func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles []string) (*types.Project, error) {
 	options, err := cli.NewProjectOptions(
 		composeFiles,
@@ -234,7 +234,7 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 	return project, nil
 }
 
-// DeployCompose deploys a project as specified by the Docker Compose specification (LoadCompose)
+// DeployCompose deploys a project as specified by the Docker Compose specification (LoadCompose).
 func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project,
 	deployConfig *config.DeployConfig, payload webhook.ParsedPayload,
 	repoDir, latestCommit, appVersion string, forceDeploy bool,
@@ -324,7 +324,7 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	return nil
 }
 
-// DeployStack deploys the stack using the provided deployment configuration
+// DeployStack deploys the stack using the provided deployment configuration.
 func DeployStack(
 	jobLog *slog.Logger, internalRepoPath, externalRepoPath string, ctx *context.Context,
 	dockerCli *command.Cli, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
@@ -343,8 +343,8 @@ func DeployStack(
 
 	// Path inside the container
 	internalWorkingDir := path.Join(internalRepoPath, deployConfig.WorkingDirectory)
-	internalWorkingDir, err := filepath.Abs(internalWorkingDir)
 
+	internalWorkingDir, err := filepath.Abs(internalWorkingDir)
 	if err != nil || !strings.HasPrefix(internalWorkingDir, internalRepoPath) {
 		errMsg := "invalid working directory: resolved path is outside the allowed base directory"
 		jobLog.Error(errMsg, slog.String("resolved_path", internalWorkingDir))
@@ -354,8 +354,8 @@ func DeployStack(
 
 	// Path on the host
 	externalWorkingDir := path.Join(externalRepoPath, deployConfig.WorkingDirectory)
-	externalWorkingDir, err = filepath.Abs(externalWorkingDir)
 
+	externalWorkingDir, err = filepath.Abs(externalWorkingDir)
 	if err != nil || !strings.HasPrefix(externalWorkingDir, externalRepoPath) {
 		errMsg := "invalid working directory: resolved path is outside the allowed base directory"
 		jobLog.Error(errMsg, slog.String("resolved_path", externalWorkingDir))
@@ -409,6 +409,7 @@ func DeployStack(
 		// Check if dirPath is part of the paths to ignore
 		if slices.Contains(encryption.IgnoreDirs, dirName) {
 			stackLog.Debug("skipping directory", slog.String("path", dirPath), slog.String("ignore_path", dirName))
+
 			return filepath.SkipDir
 		}
 
@@ -433,7 +434,7 @@ func DeployStack(
 				return fmt.Errorf("failed to decrypt file %s: %w", path, err)
 			}
 
-			err = os.WriteFile(path, decryptedContent, 0o644)
+			err = os.WriteFile(path, decryptedContent, utils.PermOwner)
 			if err != nil {
 				return fmt.Errorf("failed to write decrypted content to file %s: %w", path, err)
 			}
@@ -491,7 +492,7 @@ func DeployStack(
 	return nil
 }
 
-// DestroyStack destroys the stack using the provided deployment configuration
+// DestroyStack destroys the stack using the provided deployment configuration.
 func DestroyStack(
 	jobLog *slog.Logger, ctx *context.Context,
 	dockerCli *command.Cli, deployConfig *config.DeployConfig,

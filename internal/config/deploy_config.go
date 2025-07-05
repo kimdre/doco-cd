@@ -31,7 +31,7 @@ var (
 
 const DefaultReference = "refs/heads/main"
 
-// DeployConfig is the structure of the deployment configuration file
+// DeployConfig is the structure of the deployment configuration file.
 type DeployConfig struct {
 	Name             string   `yaml:"name"`                                                                                                         // Name is the name of the docker-compose deployment / stack
 	RepositoryUrl    HttpUrl  `yaml:"repository_url" default:"" validate:"httpUrl"`                                                                 // RepositoryUrl is the http URL of the Git repository to deploy
@@ -56,7 +56,7 @@ type DeployConfig struct {
 	} `yaml:"destroy_opts"` // DestroyOpts is the destroy options for the deployment
 }
 
-// DefaultDeployConfig creates a DeployConfig with default values
+// DefaultDeployConfig creates a DeployConfig with default values.
 func DefaultDeployConfig(name, reference string) *DeployConfig {
 	return &DeployConfig{
 		Name:             name,
@@ -116,8 +116,9 @@ func (c *DeployConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
+// GetDeployConfigFromYAML reads a YAML file and unmarshals it into a slice of DeployConfig structs.
 func GetDeployConfigFromYAML(f string) ([]*DeployConfig, error) {
-	b, err := os.ReadFile(f)
+	b, err := os.ReadFile(f) // #nosec G304
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %v", err)
 	}
@@ -149,7 +150,7 @@ func GetDeployConfigFromYAML(f string) ([]*DeployConfig, error) {
 	return configs, nil
 }
 
-// GetDeployConfigs returns either the deployment configuration from the repository or the default configuration
+// GetDeployConfigs returns either the deployment configuration from the repository or the default configuration.
 func GetDeployConfigs(repoDir, name, customTarget, reference string) ([]*DeployConfig, error) {
 	files, err := os.ReadDir(repoDir)
 	if err != nil {
@@ -168,7 +169,7 @@ func GetDeployConfigs(repoDir, name, customTarget, reference string) ([]*DeployC
 		}
 	} else {
 		// Merge default and deprecated deployment config file names
-		DeploymentConfigFileNames = append(DefaultDeploymentConfigFileNames, DeprecatedDeploymentConfigFileNames...)
+		DeploymentConfigFileNames = append(DefaultDeploymentConfigFileNames, DeprecatedDeploymentConfigFileNames...) //nolint:gocritic
 	}
 
 	var configs []*DeployConfig
@@ -177,9 +178,9 @@ func GetDeployConfigs(repoDir, name, customTarget, reference string) ([]*DeployC
 		if err != nil {
 			if errors.Is(err, ErrConfigFileNotFound) {
 				continue
-			} else {
-				return nil, err
 			}
+
+			return nil, err
 		}
 
 		if configs != nil {
@@ -218,7 +219,7 @@ func GetDeployConfigs(repoDir, name, customTarget, reference string) ([]*DeployC
 	return []*DeployConfig{DefaultDeployConfig(name, reference)}, nil
 }
 
-// getDeployConfigsFromFile returns the deployment configurations from the repository or nil if not found
+// getDeployConfigsFromFile returns the deployment configurations from the repository or nil if not found.
 func getDeployConfigsFromFile(dir string, files []os.DirEntry, configFile string) ([]*DeployConfig, error) {
 	for _, f := range files {
 		if f.IsDir() {

@@ -1,12 +1,12 @@
 package docker
 
-// docoCDLabelNamesMetadata contains the metadata labels used by DocoCD
+// docoCDLabelNamesMetadata contains the metadata labels used by DocoCD.
 type docoCDLabelNamesMetadata struct {
 	Manager string // Name of the deployment manager (e.g., DocoCD)
 	Version string // Doco-CD version used at the time of deployment
 }
 
-// DocoCDLabelNamesDeployment contains the labels used by DocoCD to identify deployed containers
+// DocoCDLabelNamesDeployment contains the labels used by DocoCD to identify deployed containers.
 type docoCdLabelNamesDeployment struct {
 	Name       string // Name of the deployment
 	Timestamp  string // Timestamp of deployment in RFC3339 format
@@ -16,20 +16,20 @@ type docoCdLabelNamesDeployment struct {
 	CommitSHA  string // SHA of the commit that is currently deployed
 }
 
-// docoCdLabelNamesRepository contains the labels used by DocoCD to identify the repository
+// docoCdLabelNamesRepository contains the labels used by DocoCD to identify the repository.
 type docoCdLabelNamesRepository struct {
 	Name string
 	URL  string
 }
 
-// docoCdLabelNames contains the labels used by DocoCD to identify deployed containers and their metadata
+// docoCdLabelNames contains the labels used by DocoCD to identify deployed containers and their metadata.
 type docoCdLabelNames struct {
 	Metadata   docoCDLabelNamesMetadata   // Metadata about the deployment manager
 	Deployment docoCdLabelNamesDeployment // Labels related to the deployment
 	Repository docoCdLabelNamesRepository // Labels related to the repository
 }
 
-// DocoCDLabels contains the label key names used by DocoCD to identify deployed containers and their metadata
+// DocoCDLabels contains the label key names used by DocoCD to identify deployed containers and their metadata.
 var DocoCDLabels = docoCdLabelNames{
 	Metadata: docoCDLabelNamesMetadata{
 		Manager: "cd.doco.metadata.manager",

@@ -1,0 +1,41 @@
+version: "2"
+linters:
+  default: standard
+  enable:
+    - asciicheck
+    - bodyclose
+    - contextcheck
+    - copyloopvar
+    - dupword
+    - durationcheck
+    - errname
+    - gosec
+    - misspell
+    - nilerr
+    - unconvert
+    - godot
+    - gocritic
+    - makezero
+    - perfsprint
+    - wsl_v5
+  settings:
+    wsl_v5:
+      allow-first-in-block: true
+      allow-whole-block: false
+      branch-max-lines: 2
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+  settings:
+    #    gofmt:
+    #      extra-rules: true
+    goimports:
+      local-prefixes:
+        - github.com/kimdre/doco-cd
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+run:
+  timeout: 5m

@@ -22,15 +22,19 @@ var IgnoreDirs = []string{
 
 // DecryptFile decrypts a SOPS-encrypted file at the given path and returns its contents as a byte slice.
 func DecryptFile(path string) ([]byte, error) {
-	format := "binary" // default
-	if formats.IsYAMLFile(path) {
+	var format string
+
+	switch {
+	case formats.IsYAMLFile(path):
 		format = "yaml"
-	} else if formats.IsJSONFile(path) {
+	case formats.IsJSONFile(path):
 		format = "json"
-	} else if formats.IsEnvFile(path) {
+	case formats.IsEnvFile(path):
 		format = "dotenv"
-	} else if formats.IsIniFile(path) {
+	case formats.IsIniFile(path):
 		format = "ini"
+	default:
+		format = "binary"
 	}
 
 	return decrypt.File(path, format)
@@ -38,7 +42,7 @@ func DecryptFile(path string) ([]byte, error) {
 
 // IsEncryptedFile checks if the file at the given path is a SOPS-encrypted file.
 func IsEncryptedFile(path string) (bool, error) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304
 	if err != nil {
 		return false, err
 	}

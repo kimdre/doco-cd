@@ -16,6 +16,14 @@ var (
 	ErrPathTraversal        = errors.New("path traversal detected")
 )
 
+const (
+	PermDir      = 0o755 // Directory permission
+	PermOwner    = 0o600 // Owner permission
+	PermGroup    = 0o640 // Group permission
+	PermPublic   = 0o644 // Public permission
+	PermReadOnly = 0o444 // Read-only permission
+)
+
 // GetModuleVersion retrieves the version of a specified module from the build info.
 func GetModuleVersion(module string) (string, error) {
 	info, ok := debug.ReadBuildInfo()

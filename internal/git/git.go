@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/kimdre/doco-cd/internal/utils"
+
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/go-git/go-git/v5/config"
@@ -45,21 +47,22 @@ func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 	var refCandidates []RefSet
 
 	// Check if the reference is a branch or tag
-	if strings.HasPrefix(ref, BranchPrefix) {
+	switch {
+	case strings.HasPrefix(ref, BranchPrefix):
 		name := strings.TrimPrefix(ref, BranchPrefix)
 
 		refCandidates = append(refCandidates, RefSet{
 			localRef:  plumbing.NewBranchReferenceName(name),
 			remoteRef: plumbing.NewRemoteReferenceName(RemoteName, name),
 		})
-	} else if strings.HasPrefix(ref, TagPrefix) {
+	case strings.HasPrefix(ref, TagPrefix):
 		name := strings.TrimPrefix(ref, TagPrefix)
 
 		refCandidates = append(refCandidates, RefSet{
 			localRef:  plumbing.NewTagReferenceName(name),
 			remoteRef: plumbing.NewTagReferenceName(name),
 		})
-	} else {
+	default:
 		// Create ref candidate for branch and tag
 		refCandidates = append(refCandidates,
 			RefSet{
@@ -163,9 +166,9 @@ func UpdateRepository(path, ref string, skipTLSVerify bool, proxyOpts transport.
 	return repo, nil
 }
 
-// CloneRepository clones a repository from a given URL and reference to a temporary directory
+// CloneRepository clones a repository from a given URL and reference to a temporary directory.
 func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions) (*git.Repository, error) {
-	err := os.MkdirAll(path, os.ModePerm)
+	err := os.MkdirAll(path, utils.PermDir)
 	if err != nil {
 		return nil, err
 	}
@@ -186,14 +189,15 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 	return git.PlainClone(path, false, opts)
 }
 
-// GetAuthUrl returns a clone URL with an access token for private repositories
+// GetAuthUrl returns a clone URL with an access token for private repositories.
 func GetAuthUrl(url, authType, token string) string {
 	// Retrieve the protocol from the clone URL (e.g. https://, http://, git://
 	protocol := regexp.MustCompile("^(https?|git)://").FindString(url)
+
 	return protocol + authType + ":" + token + "@" + url[len(protocol):]
 }
 
-// GetLatestCommit retrieves the last commit hash for a given reference in a repository
+// GetLatestCommit retrieves the last commit hash for a given reference in a repository.
 func GetLatestCommit(repo *git.Repository, ref string) (string, error) {
 	// Get the reference for the specified ref
 	refSet, err := GetReferenceSet(repo, ref)

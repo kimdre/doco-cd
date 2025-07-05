@@ -34,7 +34,7 @@ type AppConfig struct {
 	MaxPayloadSize      int64                  `env:"MAX_PAYLOAD_SIZE,notEmpty" envDefault:"1048576"`    // MaxPayloadSize is the maximum size of the payload in bytes that the HTTP server will accept (default 1MB = 1048576 bytes)
 }
 
-// GetAppConfig returns the configuration
+// GetAppConfig returns the configuration.
 func GetAppConfig() (*AppConfig, error) {
 	cfg := AppConfig{}
 
