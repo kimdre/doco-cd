@@ -23,6 +23,7 @@ import (
 	"github.com/docker/compose/v2/pkg/compose"
 
 	"github.com/google/uuid"
+
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/logger"

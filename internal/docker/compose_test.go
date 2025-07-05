@@ -16,6 +16,7 @@ import (
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
 	"github.com/google/uuid"
+
 	"github.com/kimdre/doco-cd/internal/logger"
 
 	"github.com/docker/docker/client"
