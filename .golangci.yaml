@@ -6,6 +6,10 @@ linters:
     - gosec
     - misspell
     - nilerr
+    - unconvert
+    - godot
+    - gocritic
+    - makezero
     - perfsprint
     - wsl
 formatters:
