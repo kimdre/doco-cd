@@ -30,15 +30,8 @@ build:
 	mkdir -p $(BINARY_DIR)
 	go build -o $(BINARY_DIR) ./...
 
-lint:
+lint fmt:
 	golangci-lint run --fix ./...
-
-fmt:
-	go fmt ./...
-	-go tool gofumpt -l -w .
-	-go tool goimports -l -w .
-	-go tool wsl -test=true -fix ./...
-	-go tool perfsprint -fix ./...
 
 update:
 	git pull origin main

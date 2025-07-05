@@ -1,6 +1,11 @@
 version: "2"
 linters:
+  default: standard
   enable:
+    - dupword
+    - gosec
+    - misspell
+    - nilerr
     - perfsprint
     - wsl
 formatters:
