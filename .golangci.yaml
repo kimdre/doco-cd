@@ -1,0 +1,21 @@
+version: "2"
+linters:
+  enable:
+    - perfsprint
+    - wsl
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+  settings:
+    #    gofmt:
+    #      extra-rules: true
+    goimports:
+      local-prefixes:
+        - github.com/kimdre/doco-cd
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+run:
+  timeout: 5m
