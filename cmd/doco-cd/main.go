@@ -95,7 +95,7 @@ func GetProxyUrlRedacted(proxyUrl string) string {
 }
 
 // CreateMountpointSymlink creates the Symlink for the data mount point to reflect the data volume path in the container.
-// Required so that the docker cli client is able to read/parse certain files (like .env files) in docker.LoadCompose
+// Required so that the docker cli client is able to read/parse certain files (like .env files) in docker.LoadCompose.
 func CreateMountpointSymlink(m container.MountPoint) error {
 	// prepare the symlink parent directory
 	symlinkParentDir := path.Dir(m.Source)

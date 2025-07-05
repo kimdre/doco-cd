@@ -196,7 +196,7 @@ func TestGetDeployConfigs_DefaultValues(t *testing.T) {
 }
 
 // TestGetDeployConfigs_DuplicateProjectName checks if the function returns an error
-// when there are duplicate project names in the config files
+// when there are duplicate project names in the config files.
 func TestGetDeployConfigs_DuplicateProjectName(t *testing.T) {
 	config := DeployConfig{
 		Name:             "test",
@@ -214,7 +214,7 @@ func TestGetDeployConfigs_DuplicateProjectName(t *testing.T) {
 }
 
 // TestGetDeployConfigs_InvalidRepositoryURL checks if the function returns an error when the repository URL is an SSH URL
-// The init function panics if the validator for HttpUrl is not registered correctly
+// The init function panics if the validator for HttpUrl is not registered correctly.
 func TestGetDeployConfigs_RepositoryURL(t *testing.T) {
 	testCases := []struct {
 		name        string
