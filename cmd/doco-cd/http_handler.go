@@ -237,12 +237,14 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			if !managed {
 				onError(w, subJobLog, fmt.Errorf("%w: %s: aborting destruction", ErrNotManagedByDocoCD, deployConfig.Name).Error(),
 					"", jobID, http.StatusInternalServerError)
+
 				return
 			}
 
 			if !correctRepo {
 				onError(w, subJobLog, fmt.Errorf("%w: %s: aborting destruction", ErrDeploymentConflict, deployConfig.Name).Error(),
 					map[string]string{"stack": deployConfig.Name}, jobID, http.StatusInternalServerError)
+
 				return
 			}
 
@@ -310,6 +312,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			if !correctRepo {
 				onError(w, subJobLog, fmt.Errorf("%w: %s: skipping deployment", ErrDeploymentConflict, deployConfig.Name).Error(),
 					map[string]string{"stack": deployConfig.Name}, jobID, http.StatusInternalServerError)
+
 				return
 			}
 
@@ -318,6 +321,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				if err != nil {
 					onError(w, subJobLog, fmt.Errorf("failed to compare commits in subdirectory: %w", err).Error(),
 						map[string]string{"stack": deployConfig.Name}, jobID, http.StatusInternalServerError)
+
 					return
 				}
 

@@ -49,6 +49,7 @@ func StartPoll(h *handlerData, pollConfig config.PollConfig, wg *sync.WaitGroup)
 
 	go func() {
 		defer wg.Done()
+
 		h.PollHandler(pollJob)
 		h.log.Debug("PollJob handler stopped", "config", pollConfig)
 	}()
