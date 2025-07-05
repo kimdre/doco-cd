@@ -343,8 +343,8 @@ func DeployStack(
 
 	// Path inside the container
 	internalWorkingDir := path.Join(internalRepoPath, deployConfig.WorkingDirectory)
-	internalWorkingDir, err := filepath.Abs(internalWorkingDir)
 
+	internalWorkingDir, err := filepath.Abs(internalWorkingDir)
 	if err != nil || !strings.HasPrefix(internalWorkingDir, internalRepoPath) {
 		errMsg := "invalid working directory: resolved path is outside the allowed base directory"
 		jobLog.Error(errMsg, slog.String("resolved_path", internalWorkingDir))
@@ -354,8 +354,8 @@ func DeployStack(
 
 	// Path on the host
 	externalWorkingDir := path.Join(externalRepoPath, deployConfig.WorkingDirectory)
-	externalWorkingDir, err = filepath.Abs(externalWorkingDir)
 
+	externalWorkingDir, err = filepath.Abs(externalWorkingDir)
 	if err != nil || !strings.HasPrefix(externalWorkingDir, externalRepoPath) {
 		errMsg := "invalid working directory: resolved path is outside the allowed base directory"
 		jobLog.Error(errMsg, slog.String("resolved_path", externalWorkingDir))

@@ -359,7 +359,6 @@ func TestCreateMountpointSymlink(t *testing.T) {
 				Destination: filepath.Join(tmpDir, tc.destination),
 				Mode:        "rw",
 			})
-
 			if !errors.Is(err, tc.expectError) {
 				t.Errorf("symlink creation error: got %v, want %v", err, tc.expectError)
 			}

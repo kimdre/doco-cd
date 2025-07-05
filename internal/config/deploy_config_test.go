@@ -250,7 +250,6 @@ func TestGetDeployConfigs_RepositoryURL(t *testing.T) {
 			}
 
 			err := validator.Validate(config)
-
 			if err == nil && tc.expectedErr != nil {
 				t.Fatalf("expected error %v, got nil", tc.expectedErr)
 			}
