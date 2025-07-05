@@ -116,6 +116,7 @@ func (c *DeployConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
+// GetDeployConfigFromYAML reads a YAML file and unmarshals it into a slice of DeployConfig structs.
 func GetDeployConfigFromYAML(f string) ([]*DeployConfig, error) {
 	b, err := os.ReadFile(f) // #nosec G304
 	if err != nil {
@@ -177,9 +178,9 @@ func GetDeployConfigs(repoDir, name, customTarget, reference string) ([]*DeployC
 		if err != nil {
 			if errors.Is(err, ErrConfigFileNotFound) {
 				continue
-			} else {
-				return nil, err
 			}
+
+			return nil, err
 		}
 
 		if configs != nil {

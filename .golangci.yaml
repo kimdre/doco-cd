@@ -8,6 +8,7 @@ linters:
     - copyloopvar
     - dupword
     - durationcheck
+    - errname
     - gosec
     - misspell
     - nilerr
