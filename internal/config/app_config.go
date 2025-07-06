@@ -67,6 +67,10 @@ func GetAppConfig() (*AppConfig, error) {
 		return nil, err
 	}
 
+	if cfg.HttpPort == cfg.MetricsPort {
+		return nil, fmt.Errorf("HTTP_PORT and METRICS_PORT cannot be the same port number: %d", cfg.HttpPort)
+	}
+
 	if cfg.HttpProxyString != "" {
 		cfg.HttpProxy = transport.ProxyOptions{
 			URL: cfg.HttpProxyString,
