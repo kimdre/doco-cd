@@ -9,12 +9,10 @@ import (
 	"path"
 	"path/filepath"
 
-	"github.com/creasty/defaults"
-	"gopkg.in/yaml.v3"
-
-	"gopkg.in/validator.v2"
-
 	"github.com/compose-spec/compose-go/v2/cli"
+	"github.com/creasty/defaults"
+	"gopkg.in/validator.v2"
+	"gopkg.in/yaml.v3"
 )
 
 var (
