@@ -13,17 +13,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kimdre/doco-cd/internal/utils"
-
 	"github.com/docker/docker/api/types/container"
-
-	"github.com/go-git/go-git/v5/plumbing/transport"
-
 	"github.com/docker/docker/client"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/logger"
+	"github.com/kimdre/doco-cd/internal/prometheus"
+	"github.com/kimdre/doco-cd/internal/utils"
 )
 
 const (
@@ -139,6 +137,8 @@ func main() {
 	log = logger.New(logLevel)
 
 	log.Info("starting application", slog.String("version", Version), slog.String("log_level", c.LogLevel))
+
+	prometheus.AppInfo.WithLabelValues(Version, c.LogLevel, time.Now().Format(time.RFC3339)).Set(1)
 
 	// Log if proxy is used
 	if c.HttpProxy != (transport.ProxyOptions{}) {
@@ -311,6 +311,16 @@ func main() {
 			// )
 		}()
 	}
+
+	go func() {
+		log.Info("serving prometheus metrics", slog.Int("http_port", int(c.MetricsPort)), slog.String("path", prometheus.MetricsPath))
+
+		if err = prometheus.Serve(c.MetricsPort); err != nil {
+			log.Error("failed to start Prometheus metrics server", logger.ErrAttr(err))
+		} else {
+			log.Debug("Prometheus metrics server started successfully", slog.Int("port", int(c.MetricsPort)))
+		}
+	}()
 
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", c.HttpPort),

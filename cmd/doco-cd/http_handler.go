@@ -11,21 +11,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-git/go-git/v5/plumbing"
-
-	"github.com/kimdre/doco-cd/internal/utils"
-
+	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
-
-	"github.com/docker/cli/cli/command"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/google/uuid"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
+	"github.com/kimdre/doco-cd/internal/prometheus"
+	"github.com/kimdre/doco-cd/internal/utils"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -39,6 +37,7 @@ type handlerData struct {
 }
 
 func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any, jobID string, statusCode int) {
+	prometheus.WebhookErrorsTotal.Inc()
 	log.Error(errMsg)
 	JSONError(w,
 		errMsg,
@@ -371,9 +370,12 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	msg := "job completed successfully"
-	elapsedTime := time.Since(startTime).Truncate(time.Millisecond).String()
-	jobLog.Info(msg, slog.String("elapsed_time", elapsedTime))
+	elapsedTime := time.Since(startTime)
+	jobLog.Info(msg, slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()))
 	JSONResponse(w, msg, jobID, http.StatusCreated)
+
+	prometheus.WebhookRequestsTotal.Inc()
+	prometheus.WebhookDuration.Observe(elapsedTime.Seconds())
 }
 
 func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {

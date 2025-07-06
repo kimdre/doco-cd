@@ -10,12 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-git/go-git/v5/plumbing"
-
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/google/uuid"
 	"golang.org/x/net/context"
 
@@ -23,6 +22,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/git"
 	log "github.com/kimdre/doco-cd/internal/logger"
+	"github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/utils"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
@@ -69,7 +69,10 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 		if pollJob.LastRun == 0 || time.Now().Unix() >= pollJob.NextRun {
 			logger.Debug("Running poll for repository")
 
-			_ = RunPoll(context.Background(), pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.dockerClient, logger)
+			err := RunPoll(context.Background(), pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.dockerClient, logger)
+			if err != nil {
+				prometheus.PollErrors.Inc()
+			}
 
 			pollJob.NextRun = time.Now().Unix() + int64(pollJob.Config.Interval)
 		} else {
@@ -421,8 +424,11 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	}
 
 	nextRun := time.Now().Add(time.Duration(pollConfig.Interval) * time.Second).Format(time.RFC3339)
-	elapsedTime := time.Since(startTime).Truncate(time.Millisecond).String()
-	jobLog.Info("job completed successfully", slog.String("elapsed_time", elapsedTime), slog.String("next_run", nextRun))
+	elapsedTime := time.Since(startTime)
+	jobLog.Info("job completed successfully", slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()), slog.String("next_run", nextRun))
+
+	prometheus.PollTotal.Inc()
+	prometheus.PollDuration.Observe(elapsedTime.Seconds())
 
 	return nil
 }
