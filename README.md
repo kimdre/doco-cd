@@ -20,8 +20,8 @@ You can think of it as a simple Portainer or ArgoCD alternative for Docker.
 
 - **Simple setup**: Doco CD is easy to set up and use.
 - **Secure**: The application runs with a minimal (distroless) image and supports webhook authentication and data encryption with [SOPS](https://getsops.io/).
-- **Customizable**: The application can be configured using [environment variables](App-Settings).
-- **Flexible**: The deployments can be configured using a [deployment configuration](Deploy-Settings) file.
+- **Customizable**: The application can be configured using [environment variables](wiki/App-Settings).
+- **Flexible**: The deployments can be configured using a [deployment configuration](wiki/Deploy-Settings) file.
 - **Lightweight**: The application is built in Go and has tiny memory and CPU requirements.
 
 ## Documentation
