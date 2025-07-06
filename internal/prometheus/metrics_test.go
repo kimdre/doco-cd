@@ -1,7 +1,6 @@
 package prometheus
 
 import (
-	"github.com/kimdre/doco-cd/internal/config"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,6 +8,8 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"github.com/kimdre/doco-cd/internal/config"
 )
 
 // TestServe tests the metrics endpoint serving functionality.
