@@ -316,7 +316,7 @@ func main() {
 		log.Info("serving prometheus metrics", slog.Int("http_port", int(c.MetricsPort)), slog.String("path", prometheus.MetricsPath))
 
 		if err = prometheus.Serve(c.MetricsPort); err != nil {
-			log.Error("failed to start Prometheus metrics server", logger.ErrAttr(err))
+			log.Critical("failed to start Prometheus metrics server", logger.ErrAttr(err))
 		} else {
 			log.Debug("Prometheus metrics server started successfully", slog.Int("port", int(c.MetricsPort)))
 		}
