@@ -19,24 +19,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kimdre/doco-cd/internal/encryption"
-
-	"github.com/kimdre/doco-cd/internal/logger"
-
-	"github.com/kimdre/doco-cd/internal/utils"
-
-	"github.com/kimdre/doco-cd/internal/webhook"
-
-	"github.com/kimdre/doco-cd/internal/config"
-
+	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/flags"
-
-	"github.com/compose-spec/compose-go/v2/cli"
-
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
+
+	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/encryption"
+	"github.com/kimdre/doco-cd/internal/logger"
+	"github.com/kimdre/doco-cd/internal/prometheus"
+	"github.com/kimdre/doco-cd/internal/utils"
+	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
 const (
@@ -330,6 +325,8 @@ func DeployStack(
 	dockerCli *command.Cli, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
 	latestCommit, appVersion string, forceDeploy bool,
 ) error {
+	startTime := time.Now()
+
 	stackLog := jobLog.
 		With(slog.String("stack", deployConfig.Name))
 
@@ -481,6 +478,8 @@ func DeployStack(
 
 	err = DeployCompose(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion, forceDeploy)
 	if err != nil {
+		prometheus.DeploymentErrorsTotal.Inc()
+
 		errMsg := "failed to deploy stack"
 		stackLog.Error(errMsg,
 			logger.ErrAttr(err),
@@ -488,6 +487,9 @@ func DeployStack(
 
 		return fmt.Errorf("%s: %w", errMsg, err)
 	}
+
+	prometheus.DeploymentsTotal.Inc()
+	prometheus.WebhookDuration.Observe(time.Since(startTime).Seconds())
 
 	return nil
 }

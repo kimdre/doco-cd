@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/getsops/sops/v3/cmd/sops/formats"
-
 	"github.com/getsops/sops/v3/decrypt"
 )
 

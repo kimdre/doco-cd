@@ -6,11 +6,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/kimdre/doco-cd/internal/encryption"
-
 	"github.com/go-git/go-git/v5/plumbing"
 
 	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/encryption"
 )
 
 const (

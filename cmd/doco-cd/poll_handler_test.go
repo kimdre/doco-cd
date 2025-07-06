@@ -4,16 +4,14 @@ import (
 	"context"
 	"testing"
 
-	"github.com/kimdre/doco-cd/internal/encryption"
-
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
-
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/logger"
 )
 

@@ -4,12 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/go-git/go-git/v5/plumbing/transport"
-
-	"gopkg.in/yaml.v3"
-
 	"github.com/caarlos0/env/v11"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	"gopkg.in/validator.v2"
+	"gopkg.in/yaml.v3"
 )
 
 const AppName = "doco-cd" // Name of the application
@@ -21,17 +19,18 @@ type AppConfig struct {
 	HttpPort            uint16                 `env:"HTTP_PORT,notEmpty" envDefault:"80" validate:"min=1,max=65535"` // HttpPort is the port the HTTP server will listen on
 	HttpProxyString     string                 `env:"HTTP_PROXY"`                                                    // HttpProxyString is the HTTP proxy URL as a string
 	HttpProxy           transport.ProxyOptions // HttpProxy is the HTTP proxy configuration parsed from the HttpProxyString
-	WebhookSecret       string                 `env:"WEBHOOK_SECRET"`                                    // WebhookSecret is the secret used to authenticate the webhook
-	WebhookSecretFile   string                 `env:"WEBHOOK_SECRET_FILE,file"`                          // WebhookSecretFile is the file containing the WebhookSecret
-	GitAccessToken      string                 `env:"GIT_ACCESS_TOKEN"`                                  // GitAccessToken is the access token used to authenticate with the Git server (e.g. GitHub) for private repositories
-	GitAccessTokenFile  string                 `env:"GIT_ACCESS_TOKEN_FILE,file"`                        // GitAccessTokenFile is the file containing the GitAccessToken
-	AuthType            string                 `env:"AUTH_TYPE,notEmpty" envDefault:"oauth2"`            // AuthType is the type of authentication to use when cloning repositories
-	SkipTLSVerification bool                   `env:"SKIP_TLS_VERIFICATION,notEmpty" envDefault:"false"` // SkipTLSVerification skips the TLS verification when cloning repositories.
-	DockerQuietDeploy   bool                   `env:"DOCKER_QUIET_DEPLOY,notEmpty" envDefault:"true"`    // DockerQuietDeploy suppresses the status output of dockerCli in deployments (e.g. pull, create, start)
-	PollConfigYAML      string                 `env:"POLL_CONFIG"`                                       // PollConfigYAML is the unparsed string containing the PollConfig in YAML format
-	PollConfigFile      string                 `env:"POLL_CONFIG_FILE,file"`                             // PollConfigFile is the file containing the PollConfig in YAML format
-	PollConfig          []PollConfig           `yaml:"-"`                                                // PollConfig is the YAML configuration for polling Git repositories for changes
-	MaxPayloadSize      int64                  `env:"MAX_PAYLOAD_SIZE,notEmpty" envDefault:"1048576"`    // MaxPayloadSize is the maximum size of the payload in bytes that the HTTP server will accept (default 1MB = 1048576 bytes)
+	WebhookSecret       string                 `env:"WEBHOOK_SECRET"`                                                     // WebhookSecret is the secret used to authenticate the webhook
+	WebhookSecretFile   string                 `env:"WEBHOOK_SECRET_FILE,file"`                                           // WebhookSecretFile is the file containing the WebhookSecret
+	GitAccessToken      string                 `env:"GIT_ACCESS_TOKEN"`                                                   // GitAccessToken is the access token used to authenticate with the Git server (e.g. GitHub) for private repositories
+	GitAccessTokenFile  string                 `env:"GIT_ACCESS_TOKEN_FILE,file"`                                         // GitAccessTokenFile is the file containing the GitAccessToken
+	AuthType            string                 `env:"AUTH_TYPE,notEmpty" envDefault:"oauth2"`                             // AuthType is the type of authentication to use when cloning repositories
+	SkipTLSVerification bool                   `env:"SKIP_TLS_VERIFICATION,notEmpty" envDefault:"false"`                  // SkipTLSVerification skips the TLS verification when cloning repositories.
+	DockerQuietDeploy   bool                   `env:"DOCKER_QUIET_DEPLOY,notEmpty" envDefault:"true"`                     // DockerQuietDeploy suppresses the status output of dockerCli in deployments (e.g. pull, create, start)
+	PollConfigYAML      string                 `env:"POLL_CONFIG"`                                                        // PollConfigYAML is the unparsed string containing the PollConfig in YAML format
+	PollConfigFile      string                 `env:"POLL_CONFIG_FILE,file"`                                              // PollConfigFile is the file containing the PollConfig in YAML format
+	PollConfig          []PollConfig           `yaml:"-"`                                                                 // PollConfig is the YAML configuration for polling Git repositories for changes
+	MaxPayloadSize      int64                  `env:"MAX_PAYLOAD_SIZE,notEmpty" envDefault:"1048576"`                     // MaxPayloadSize is the maximum size of the payload in bytes that the HTTP server will accept (default 1MB = 1048576 bytes)
+	MetricsPort         uint16                 `env:"METRICS_PORT,notEmpty" envDefault:"9090" validate:"min=1,max=65535"` // MetricsPort is the port the prometheus metrics server will listen on
 }
 
 // GetAppConfig returns the configuration.

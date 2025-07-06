@@ -1,6 +1,6 @@
 x-poll-config: &poll-config
   POLL_CONFIG: |
-    - url: https://github.com/kimdre/doco-cd.git
+    - url: https://github.com/kimdre/doco-cd_tests.git
       reference: main
       interval: 15
       target: "" # "test"
@@ -17,6 +17,7 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+      - "9090:9090"
     env_file:
       - .env
     environment:
