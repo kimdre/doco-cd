@@ -1,0 +1,26 @@
+name: Housekeeping
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 4 * * 1'
+
+jobs:
+  image-cleanup:
+    name: Cleanup Container Images
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Delete untagged images
+        uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          dry-run: true
+          delete-untagged: true
+          keep-n-untagged: 10
+      - name: Delete old release candidate images
+        uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          dry-run: true
+          delete-tags: '*-rc*'
+          keep-n-tagged: 3
