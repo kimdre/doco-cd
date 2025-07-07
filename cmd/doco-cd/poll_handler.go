@@ -67,11 +67,12 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 
 	for {
 		if pollJob.LastRun == 0 || time.Now().Unix() >= pollJob.NextRun {
-			logger.Debug("Running poll for repository")
+			repoName := getRepoName(string(pollJob.Config.CloneUrl))
+			logger.Debug("Running poll for repository", slog.String("repoName", repoName))
 
 			err := RunPoll(context.Background(), pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.dockerClient, logger)
 			if err != nil {
-				prometheus.PollErrors.Inc()
+				prometheus.PollErrors.WithLabelValues(repoName).Inc()
 			}
 
 			pollJob.NextRun = time.Now().Unix() + int64(pollJob.Config.Interval)
@@ -427,8 +428,8 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	elapsedTime := time.Since(startTime)
 	jobLog.Info("job completed successfully", slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()), slog.String("next_run", nextRun))
 
-	prometheus.PollTotal.Inc()
-	prometheus.PollDuration.Observe(elapsedTime.Seconds())
+	prometheus.PollTotal.WithLabelValues(repoName).Inc()
+	prometheus.PollDuration.WithLabelValues(repoName).Observe(elapsedTime.Seconds())
 
 	return nil
 }
