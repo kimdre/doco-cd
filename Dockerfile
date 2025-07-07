@@ -46,7 +46,7 @@ COPY --from=build-stage /doco-cd /doco-cd
 
 ENV TZ=UTC \
     HTTP_PORT=80 \
-    METRICS_PORT=9090 \
+    METRICS_PORT=9120 \
     LOG_LEVEL=info
 
 ENTRYPOINT ["/doco-cd"]

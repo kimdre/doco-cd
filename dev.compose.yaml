@@ -17,7 +17,7 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
-      - "9090:9090"
+      - "9120:9120"
     env_file:
       - .env
     environment:

@@ -30,7 +30,7 @@ type AppConfig struct {
 	PollConfigFile      string                 `env:"POLL_CONFIG_FILE,file"`                                              // PollConfigFile is the file containing the PollConfig in YAML format
 	PollConfig          []PollConfig           `yaml:"-"`                                                                 // PollConfig is the YAML configuration for polling Git repositories for changes
 	MaxPayloadSize      int64                  `env:"MAX_PAYLOAD_SIZE,notEmpty" envDefault:"1048576"`                     // MaxPayloadSize is the maximum size of the payload in bytes that the HTTP server will accept (default 1MB = 1048576 bytes)
-	MetricsPort         uint16                 `env:"METRICS_PORT,notEmpty" envDefault:"9090" validate:"min=1,max=65535"` // MetricsPort is the port the prometheus metrics server will listen on
+	MetricsPort         uint16                 `env:"METRICS_PORT,notEmpty" envDefault:"9120" validate:"min=1,max=65535"` // MetricsPort is the port the prometheus metrics server will listen on
 }
 
 // GetAppConfig returns the configuration.
