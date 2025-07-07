@@ -478,7 +478,7 @@ func DeployStack(
 
 	err = DeployCompose(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion, forceDeploy)
 	if err != nil {
-		prometheus.DeploymentErrorsTotal.Inc()
+		prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 
 		errMsg := "failed to deploy stack"
 		stackLog.Error(errMsg,
@@ -488,8 +488,8 @@ func DeployStack(
 		return fmt.Errorf("%s: %w", errMsg, err)
 	}
 
-	prometheus.DeploymentsTotal.Inc()
-	prometheus.DeploymentDuration.Observe(time.Since(startTime).Seconds())
+	prometheus.DeploymentsTotal.WithLabelValues(deployConfig.Name).Inc()
+	prometheus.DeploymentDuration.WithLabelValues(deployConfig.Name).Observe(time.Since(startTime).Seconds())
 
 	return nil
 }
