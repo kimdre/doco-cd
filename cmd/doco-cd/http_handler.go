@@ -273,7 +273,11 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				// Remove the repository directory after destroying the stack
 				subJobLog.Debug("removing deployment directory", slog.String("path", externalRepoPath))
 				// Check if the parent directory has multiple subdirectories/repos
-				parentDir := filepath.Dir(internalRepoPath)
+				parentDir, err := utils.VerifyAndSanitizePath(filepath.Dir(internalRepoPath), dataMountPoint.Destination)
+				if err != nil {
+					onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to verify and sanitize parent directory", err.Error(), jobID, http.StatusInternalServerError)
+					return
+				}
 
 				subDirs, err := os.ReadDir(parentDir)
 				if err != nil {
