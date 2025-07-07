@@ -24,7 +24,7 @@ var (
 	)
 	PollTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: MetricsNamespace,
-		Name:      "poll_total",
+		Name:      "polls_total",
 		Help:      "Number of successful polls",
 	})
 	PollErrors = prometheus.NewCounter(prometheus.CounterOpts{
