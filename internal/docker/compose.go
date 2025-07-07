@@ -489,7 +489,7 @@ func DeployStack(
 	}
 
 	prometheus.DeploymentsTotal.Inc()
-	prometheus.WebhookDuration.Observe(time.Since(startTime).Seconds())
+	prometheus.DeploymentDuration.Observe(time.Since(startTime).Seconds())
 
 	return nil
 }
