@@ -21,9 +21,11 @@ func TestSetConfigHashPrefixes(t *testing.T) {
 	createComposeFile(t, filePath, composeContents)
 
 	oldDir, _ := os.Getwd()
-	t.Logf("oldDir: %s", oldDir)
-	os.Chdir(tmpDir)
-	defer os.Chdir(oldDir)
+	_ = os.Chdir(tmpDir)
+
+	defer func(dir string) {
+		_ = os.Chdir(dir)
+	}(oldDir)
 
 	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath})
 	if err != nil {
@@ -117,8 +119,11 @@ secrets:
 	createComposeFile(t, filePath, composeContentsWithSecrets)
 
 	oldDir, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(oldDir)
+	_ = os.Chdir(tmpDir)
+
+	defer func(dir string) {
+		_ = os.Chdir(dir)
+	}(oldDir)
 
 	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath})
 	if err != nil {
