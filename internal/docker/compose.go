@@ -457,24 +457,26 @@ func DeployStack(
 		return fmt.Errorf("%s: %w", errMsg, err)
 	}
 
-	err = SetConfigHashPrefixes(project)
-	if err != nil {
-		errMsg := "failed to set config hash prefixes"
-		stackLog.Error(errMsg,
-			logger.ErrAttr(err),
-			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+	if !deployConfig.DisableNameSuffixHash {
+		err = SetConfigHashPrefixes(project)
+		if err != nil {
+			errMsg := "failed to set config hash prefixes"
+			stackLog.Error(errMsg,
+				logger.ErrAttr(err),
+				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
 
-		return fmt.Errorf("%s: %w", errMsg, err)
-	}
+			return fmt.Errorf("%s: %w", errMsg, err)
+		}
 
-	err = SetSecretHashPrefixes(project)
-	if err != nil {
-		errMsg := "failed to set secret hash prefixes"
-		stackLog.Error(errMsg,
-			logger.ErrAttr(err),
-			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+		err = SetSecretHashPrefixes(project)
+		if err != nil {
+			errMsg := "failed to set secret hash prefixes"
+			stackLog.Error(errMsg,
+				logger.ErrAttr(err),
+				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
 
-		return fmt.Errorf("%s: %w", errMsg, err)
+			return fmt.Errorf("%s: %w", errMsg, err)
+		}
 	}
 
 	stackLog.Info("deploying stack")
