@@ -47,8 +47,6 @@ services:
   test:
     image: nginx:latest
     environment:
-      GIT_ACCESS_TOKEN:
-      WEBHOOK_SECRET:
       TZ: Europe/Berlin
     volumes:
       - ./html:/usr/share/nginx/html
