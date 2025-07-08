@@ -24,7 +24,7 @@ test-coverage:
 # Run specified tests from arguments
 test-run:
 	@echo "Running tests: $(filter-out $@,$(MAKECMDGOALS))"
-	@WEBHOOK_SECRET="test_Secret1" go test -cover -p 1 ./... -timeout 5m -run $(filter-out $@,$(MAKECMDGOALS))
+	@WEBHOOK_SECRET="test_Secret1" go test -cover -v -p 1 ./... -timeout 5m -run $(filter-out $@,$(MAKECMDGOALS))
 
 build:
 	mkdir -p $(BINARY_DIR)
