@@ -2,11 +2,16 @@ package docker
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/compose-spec/compose-go/v2/types"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -90,4 +95,139 @@ func CheckMountPointWriteable(mountPoint container.MountPoint) error {
 	}()
 
 	return nil
+}
+
+// SetConfigHashPrefixes generates hashes for the config definitions in the compose project
+// and adds them to the config names as suffixes to trigger a redeployment when they change (Only works in Docker Swarm mode).
+func SetConfigHashPrefixes(project *types.Project) error {
+	for i, c := range project.Configs {
+		if c.External {
+			// Skip external configs, they are not managed by compose
+			continue
+		}
+
+		var content io.Reader
+
+		switch {
+		case c.File != "":
+			// Config content is created from a file
+			contentBytes, err := os.ReadFile(c.File)
+			if err != nil {
+				return fmt.Errorf("failed to read config file %s: %w", c.File, err)
+			}
+
+			content = strings.NewReader(string(contentBytes))
+
+		case c.Content != "":
+			// Config content is created with the inlined value
+			content = strings.NewReader(c.Content)
+
+		case c.Environment != "":
+			// Config content is created from environment variables.
+			// Not supported because doco-cd cannot reach env from the docker host.
+			return fmt.Errorf("config %s uses a environment variable, which is not supported by doco-cd: %s", c.Name, c.Environment)
+
+		default:
+			continue // Skip configs without content
+		}
+
+		hash, err := generateShortHash(content)
+		if err != nil {
+			return fmt.Errorf("failed to generate hash for config %s: %w", c.Name, err)
+		}
+
+		nameWithHash := fmt.Sprintf("%s_%s", c.Name, hash)
+		c.Name = nameWithHash
+		project.Configs[i] = c
+
+		// Check for services that use this config and update their config references
+		for j, service := range project.Services {
+			for k, config := range service.Configs {
+				if config.Source == c.Name {
+					// Update the config reference in the service
+					project.Services[j].Configs[k].Source = nameWithHash
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// SetSecretHashPrefixes generates hashes for the secret definitions in the compose project
+// and adds them to the secret names as suffixes to trigger a redeployment when they change (Only works in Docker Swarm mode).
+func SetSecretHashPrefixes(project *types.Project) error {
+	for i, s := range project.Secrets {
+		if s.External {
+			// Skip external secrets, they are not managed by compose
+			continue
+		}
+
+		var content io.Reader
+
+		switch {
+		case s.File != "":
+			// Secret content is created from a file
+			contentBytes, err := os.ReadFile(s.File)
+			if err != nil {
+				return fmt.Errorf("failed to read secret file %s: %w", s.File, err)
+			}
+
+			content = strings.NewReader(string(contentBytes))
+
+		case s.Content != "":
+			// Secret content is created with the inlined value
+			content = strings.NewReader(s.Content)
+
+		case s.Environment != "":
+			// Secret content is created from environment variables.
+			// Not supported because doco-cd cannot reach env from the docker host.
+			return fmt.Errorf("secret %s uses a environment variable, which is not supported by doco-cd: %s", s.Name, s.Environment)
+
+		default:
+			continue // Skip secrets without content
+		}
+
+		hash, err := generateShortHash(content)
+		if err != nil {
+			return fmt.Errorf("failed to generate hash for secret %s: %w", s.Name, err)
+		}
+
+		nameWithHash := fmt.Sprintf("%s_%s", s.Name, hash)
+		s.Name = nameWithHash
+		project.Secrets[i] = s
+
+		// Check for services that use this secret and update their secret references
+		for j, service := range project.Services {
+			for k, secret := range service.Secrets {
+				if secret.Source == s.Name {
+					// Update the secret reference in the service
+					project.Services[j].Secrets[k].Source = nameWithHash
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// generateShortHash generates a short hash from the provided data reader.
+func generateShortHash(data io.Reader) (hash string, err error) {
+	const length = 10 // Desired length of the hash
+
+	h := sha256.New()
+
+	_, err = io.Copy(h, data)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate hash: %w", err)
+	}
+
+	hash = hex.EncodeToString(h.Sum(nil))
+	if len(hash) > length {
+		hash = hash[:length] // Shorten hash to n characters
+	} else if hash == "" {
+		return "", errors.New("hash is empty")
+	}
+
+	return hash, nil
 }

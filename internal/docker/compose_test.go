@@ -42,7 +42,8 @@ func createTestFile(fileName string, content string) error {
 
 const (
 	projectName     = "test"
-	composeContents = `services:
+	composeContents = `
+services:
   test:
     image: nginx:latest
     environment:
@@ -51,6 +52,12 @@ const (
       TZ: Europe/Berlin
     volumes:
       - ./html:/usr/share/nginx/html
+    configs:
+      - source: nginx_config
+        target: /nginx.conf
+configs:
+  nginx_config:
+    content: Hello world!
 `
 )
 
