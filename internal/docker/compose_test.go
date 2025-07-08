@@ -50,12 +50,6 @@ services:
       TZ: Europe/Berlin
     volumes:
       - ./html:/usr/share/nginx/html
-    configs:
-      - source: nginx_config
-        target: /nginx.conf
-configs:
-  nginx_config:
-    content: Hello world!
 `
 )
 

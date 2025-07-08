@@ -18,7 +18,17 @@ func TestSetConfigHashPrefixes(t *testing.T) {
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "test.compose.yaml")
 
-	createComposeFile(t, filePath, composeContents)
+	composeContentsWithConfigs := fmt.Sprintf("%s\n%s",
+		composeContents, `
+    configs:
+      - source: nginx_config
+        target: /nginx.conf
+configs:
+  nginx_config:
+    content: Hello world!
+`)
+
+	createComposeFile(t, filePath, composeContentsWithConfigs)
 
 	oldDir, _ := os.Getwd()
 	_ = os.Chdir(tmpDir)
@@ -101,7 +111,6 @@ func TestSetSecretHashPrefixes(t *testing.T) {
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "test.compose.yaml")
 
-	// secrets definition in compose file
 	composeContentsWithSecrets := fmt.Sprintf("%s\n%s",
 		composeContents, `
 secrets:
