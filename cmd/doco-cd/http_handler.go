@@ -336,8 +336,16 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				return
 			}
 
+			var changedFiles []git.ChangedFile
 			if deployedCommit != "" {
-				changed, err := git.CompareCommitsInSubdir(repo, plumbing.NewHash(deployedCommit), plumbing.NewHash(latestCommit), deployConfig.WorkingDirectory)
+				changedFiles, err = git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(deployedCommit), plumbing.NewHash(latestCommit))
+				if err != nil {
+					onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to get changed files between commits", err.Error(), jobID, http.StatusInternalServerError)
+
+					return
+				}
+
+				changed, err := git.HasSubdirChangedBetweenCommits(changedFiles, deployConfig.WorkingDirectory)
 				if err != nil {
 					onError(repoName, w, subJobLog, fmt.Errorf("failed to compare commits in subdirectory: %w", err).Error(),
 						map[string]string{"stack": deployConfig.Name}, jobID, http.StatusInternalServerError)
@@ -360,7 +368,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				}
 			}
 
-			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, &payload, deployConfig, latestCommit, Version, false)
+			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, &payload,
+				deployConfig, changedFiles, latestCommit, Version, false)
 			if err != nil {
 				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), jobID, http.StatusInternalServerError)
 

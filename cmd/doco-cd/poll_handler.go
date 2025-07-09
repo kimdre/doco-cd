@@ -382,8 +382,18 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 				continue
 			}
 
+			var changedFiles []git.ChangedFile
 			if deployedCommit != "" {
-				changed, err := git.CompareCommitsInSubdir(repo, plumbing.NewHash(deployedCommit), plumbing.NewHash(latestCommit), deployConfig.WorkingDirectory)
+				changedFiles, err = git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(deployedCommit), plumbing.NewHash(latestCommit))
+				if err != nil {
+					subJobLog.Error("failed to get changed files between commits", log.ErrAttr(err))
+
+					return fmt.Errorf("failed to get changed files between commits: %w", err)
+				}
+
+				jobLog.Debug("retrieved changed files between commits", slog.Any("changed_files", changedFiles))
+
+				changed, err := git.HasSubdirChangedBetweenCommits(changedFiles, deployConfig.WorkingDirectory)
 				if err != nil {
 					subJobLog.Error("failed to compare commits in subdirectory", log.ErrAttr(err))
 
@@ -415,7 +425,8 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 				Private:   pollConfig.Private,
 			}
 
-			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, &payload, deployConfig, latestCommit, Version, true)
+			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, &payload,
+				deployConfig, changedFiles, latestCommit, Version, true)
 			if err != nil {
 				subJobLog.Error("failed to deploy stack", log.ErrAttr(err))
 

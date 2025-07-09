@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/go-git/go-git/v5/plumbing/format/diff"
+
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -28,12 +30,20 @@ const (
 )
 
 var (
-	ErrCheckoutFailed          = errors.New("failed to checkout repository")
-	ErrFetchFailed             = errors.New("failed to fetch repository")
-	ErrPullFailed              = errors.New("failed to pull repository")
+	ErrCheckoutFailed          = errors.New("failed To checkout repository")
+	ErrFetchFailed             = errors.New("failed To fetch repository")
+	ErrPullFailed              = errors.New("failed To pull repository")
 	ErrRepositoryAlreadyExists = git.ErrRepositoryAlreadyExists
 	ErrInvalidReference        = git.ErrInvalidReference
 )
+
+// ChangedFile represents a file that has changed between two commits.
+type ChangedFile struct {
+	// From represents the file state before the change.
+	From diff.File
+	// To represents the file state after the change.
+	To diff.File
+}
 
 type RefSet struct {
 	localRef  plumbing.ReferenceName
@@ -89,7 +99,7 @@ func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 		_, err := repo.Reference(candidate.remoteRef, true)
 		if err != nil {
 			if errors.Is(err, plumbing.ErrReferenceNotFound) {
-				// If the reference does not exist, continue to the next candidate
+				// If the reference does not exist, continue To the next candidate
 				continue
 			}
 
@@ -103,9 +113,9 @@ func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 }
 
 // UpdateRepository updates a local repository by
-//  1. fetching the latest changes from the remote
+//  1. fetching the latest changes From the remote
 //  2. checking out the specified reference (branch or tag)
-//  3. pulling the latest changes from the remote
+//  3. pulling the latest changes From the remote
 //  4. returning the updated repository
 //
 // Allowed reference forma
@@ -158,13 +168,13 @@ func UpdateRepository(path, ref string, skipTLSVerify bool, proxyOpts transport.
 
 	err = ResetTrackedFiles(worktree)
 	if err != nil {
-		return nil, fmt.Errorf("failed to reset tracked files: %w", err)
+		return nil, fmt.Errorf("failed To reset tracked files: %w", err)
 	}
 
 	return repo, nil
 }
 
-// CloneRepository clones a repository from a given URL and reference to a temporary directory.
+// CloneRepository clones a repository From a given URL and reference To a temporary directory.
 func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions) (*git.Repository, error) {
 	err := os.MkdirAll(path, utils.PermDir)
 	if err != nil {
@@ -189,7 +199,7 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 
 // GetAuthUrl returns a clone URL with an access token for private repositories.
 func GetAuthUrl(url, authType, token string) string {
-	// Retrieve the protocol from the clone URL (e.g. https://, http://, git://
+	// Retrieve the protocol From the clone URL (e.g. https://, http://, git://
 	protocol := regexp.MustCompile("^(https?|git)://").FindString(url)
 
 	return protocol + authType + ":" + token + "@" + url[len(protocol):]
@@ -205,24 +215,24 @@ func GetLatestCommit(repo *git.Repository, ref string) (string, error) {
 
 	r, err := repo.Reference(refSet.remoteRef, true)
 	if err != nil {
-		return plumbing.ZeroHash.String(), fmt.Errorf("failed to get reference %s: %w", ref, err)
+		return plumbing.ZeroHash.String(), fmt.Errorf("failed To get reference %s: %w", ref, err)
 	}
 
 	// Get the commit object for the reference
 	commit, err := repo.CommitObject(r.Hash())
 	if err != nil {
-		return plumbing.ZeroHash.String(), fmt.Errorf("failed to get commit object for %s: %w", r.Hash(), err)
+		return plumbing.ZeroHash.String(), fmt.Errorf("failed To get commit object for %s: %w", r.Hash(), err)
 	}
 
 	return commit.Hash.String(), nil
 }
 
-// ResetTrackedFiles resets all tracked files in the worktree to their last committed state
+// ResetTrackedFiles resets all tracked files in the worktree To their last committed state
 // while leaving untracked files intact.
 func ResetTrackedFiles(worktree *git.Worktree) error {
 	changedFiles, err := worktree.Status()
 	if err != nil {
-		return fmt.Errorf("failed to get worktree status: %w", err)
+		return fmt.Errorf("failed To get worktree status: %w", err)
 	}
 
 	resetFiles := make([]string, 0, len(changedFiles))
@@ -239,43 +249,51 @@ func ResetTrackedFiles(worktree *git.Worktree) error {
 			Files: resetFiles,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to reset worktree: %w", err)
+			return fmt.Errorf("failed To reset worktree: %w", err)
 		}
 	}
 
 	return nil
 }
 
-// CompareCommitsInSubdir compares two commits in a specific subdirectory of a repository for changes.
-func CompareCommitsInSubdir(repo *git.Repository, commitHash1, commitHash2 plumbing.Hash, subdir string) (bool, error) {
+// GetChangedFilesBetweenCommits retrieves a list of changed files between two commits in a repository.
+func GetChangedFilesBetweenCommits(repo *git.Repository, commitHash1, commitHash2 plumbing.Hash) ([]ChangedFile, error) {
 	commit1, err := repo.CommitObject(commitHash1)
 	if err != nil {
-		return false, fmt.Errorf("failed to get commit from commitHash1 %s: %w", commitHash1, err)
+		return nil, fmt.Errorf("failed To get commit From commitHash1 %s: %w", commitHash1, err)
 	}
 
 	commit2, err := repo.CommitObject(commitHash2)
 	if err != nil {
-		return false, fmt.Errorf("failed to get commit from commitHash2 %s: %w", commitHash2, err)
+		return nil, fmt.Errorf("failed To get commit From commitHash2 %s: %w", commitHash2, err)
 	}
 
 	// Create a patch between the two commits
 	patch, err := commit1.Patch(commit2)
 	if err != nil {
-		return false, fmt.Errorf("failed to create patch: %w", err)
+		return nil, fmt.Errorf("failed To create patch: %w", err)
 	}
 
-	// Check if any file in the patch is in the specified subdirectory
+	changedFiles := make([]ChangedFile, 0, len(patch.FilePatches()))
 	for _, file := range patch.FilePatches() {
 		from, to := file.Files()
+		changedFiles = append(changedFiles, ChangedFile{From: from, To: to})
+	}
 
+	return changedFiles, nil // FIXME: changedFiles returns empty even if there are changes
+}
+
+// HasSubdirChangedBetweenCommits checks if any files in a specific subdirectory have changed between two commits.
+func HasSubdirChangedBetweenCommits(changedFiles []ChangedFile, subdir string) (bool, error) {
+	for _, file := range changedFiles {
 		var paths []string
 
-		if from != nil {
-			paths = append(paths, from.Path())
+		if file.From != nil {
+			paths = append(paths, file.From.Path())
 		}
 
-		if to != nil {
-			paths = append(paths, to.Path())
+		if file.To != nil {
+			paths = append(paths, file.To.Path())
 		}
 
 		for _, p := range paths {

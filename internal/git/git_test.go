@@ -29,7 +29,7 @@ const (
 func TestGetAuthUrl(t *testing.T) {
 	c, err := config.GetAppConfig()
 	if err != nil {
-		t.Fatalf("Failed to get app config: %v", err)
+		t.Fatalf("Failed To get app config: %v", err)
 	}
 
 	expectedUrl := fmt.Sprintf("https://%s:%s@github.com/kimdre/doco-cd.git", c.AuthType, c.GitAccessToken)
@@ -48,12 +48,12 @@ func TestGetAuthUrl(t *testing.T) {
 func TestCloneRepository(t *testing.T) {
 	c, err := config.GetAppConfig()
 	if err != nil {
-		t.Fatalf("Failed to get app config: %v", err)
+		t.Fatalf("Failed To get app config: %v", err)
 	}
 
 	repo, err := CloneRepository(t.TempDir(), cloneUrl, validBranchRef, false, c.HttpProxy)
 	if err != nil {
-		t.Fatalf("Failed to clone repository: %v", err)
+		t.Fatalf("Failed To clone repository: %v", err)
 	}
 
 	if repo == nil {
@@ -63,19 +63,19 @@ func TestCloneRepository(t *testing.T) {
 	// Check files in the repository
 	worktree, err := repo.Worktree()
 	if err != nil {
-		t.Fatalf("Failed to get worktree: %v", err)
+		t.Fatalf("Failed To get worktree: %v", err)
 	}
 
 	t.Cleanup(func() {
 		err = os.RemoveAll(worktree.Filesystem.Root())
 		if err != nil {
-			t.Fatalf("Failed to remove repository: %v", err)
+			t.Fatalf("Failed To remove repository: %v", err)
 		}
 	})
 
 	files, err := worktree.Filesystem.ReadDir(".")
 	if err != nil {
-		t.Fatalf("Failed to read directory: %v", err)
+		t.Fatalf("Failed To read directory: %v", err)
 	}
 
 	if len(files) == 0 {
@@ -160,7 +160,7 @@ func TestUpdateRepository(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			c, err := config.GetAppConfig()
 			if err != nil {
-				t.Fatalf("Failed to get app config: %v", err)
+				t.Fatalf("Failed To get app config: %v", err)
 			}
 
 			if tc.privateRepo {
@@ -173,7 +173,7 @@ func TestUpdateRepository(t *testing.T) {
 
 			repo, err := CloneRepository(t.TempDir(), tc.cloneUrl, MainBranch, false, c.HttpProxy)
 			if err != nil {
-				t.Fatalf("Failed to clone repository: %v", err)
+				t.Fatalf("Failed To clone repository: %v", err)
 			}
 
 			if repo == nil {
@@ -182,7 +182,7 @@ func TestUpdateRepository(t *testing.T) {
 
 			worktree, err := repo.Worktree()
 			if err != nil {
-				t.Fatalf("Failed to get worktree: %v", err)
+				t.Fatalf("Failed To get worktree: %v", err)
 			}
 
 			repo, err = UpdateRepository(worktree.Filesystem.Root(), tc.branchRef, true, c.HttpProxy)
@@ -201,7 +201,7 @@ func TestUpdateRepository(t *testing.T) {
 			if repo != nil {
 				_, err = repo.Worktree()
 				if err != nil {
-					t.Fatalf("Failed to get worktree: %v", err)
+					t.Fatalf("Failed To get worktree: %v", err)
 				}
 			}
 
@@ -209,7 +209,7 @@ func TestUpdateRepository(t *testing.T) {
 			if tc.expectedRef != "" {
 				ref, err := repo.Reference(refName, true)
 				if err != nil {
-					t.Fatalf("Failed to get reference: %v", err)
+					t.Fatalf("Failed To get reference: %v", err)
 				}
 
 				if ref.Name().String() != tc.expectedRef {
@@ -228,12 +228,12 @@ func TestUpdateRepository(t *testing.T) {
 func TestGetReferenceSet(t *testing.T) {
 	c, err := config.GetAppConfig()
 	if err != nil {
-		t.Fatalf("Failed to get app config: %v", err)
+		t.Fatalf("Failed To get app config: %v", err)
 	}
 
 	repo, err := CloneRepository(t.TempDir(), cloneUrl, MainBranch, false, c.HttpProxy)
 	if err != nil {
-		t.Fatalf("Failed to clone repository: %v", err)
+		t.Fatalf("Failed To clone repository: %v", err)
 	}
 
 	if repo == nil {
@@ -242,7 +242,7 @@ func TestGetReferenceSet(t *testing.T) {
 
 	refSet, err := GetReferenceSet(repo, MainBranch)
 	if err != nil {
-		t.Fatalf("Failed to get reference set: %v", err)
+		t.Fatalf("Failed To get reference set: %v", err)
 	}
 
 	if refSet.localRef == "" || refSet.remoteRef == "" {
@@ -261,14 +261,14 @@ func TestGetReferenceSet(t *testing.T) {
 func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 	c, err := config.GetAppConfig()
 	if err != nil {
-		t.Fatalf("Failed to get app config: %v", err)
+		t.Fatalf("Failed To get app config: %v", err)
 	}
 
 	url := GetAuthUrl(cloneUrlTest, c.AuthType, c.GitAccessToken)
 
 	repo, err := CloneRepository(t.TempDir(), url, MainBranch, false, c.HttpProxy)
 	if err != nil {
-		t.Fatalf("Failed to clone repository: %v", err)
+		t.Fatalf("Failed To clone repository: %v", err)
 	}
 
 	if repo == nil {
@@ -277,20 +277,20 @@ func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 
 	worktree, err := repo.Worktree()
 	if err != nil {
-		t.Fatalf("Failed to get worktree: %v", err)
+		t.Fatalf("Failed To get worktree: %v", err)
 	}
 
-	// Add a new file to the cloned repository
+	// Add a new file To the cloned repository
 	newFileName := "new.txt"
 
 	_, err = worktree.Filesystem.Create(newFileName)
 	if err != nil {
-		t.Fatalf("Failed to create new file: %v", err)
+		t.Fatalf("Failed To create new file: %v", err)
 	}
 
 	repo, err = UpdateRepository(worktree.Filesystem.Root(), "alternative", true, c.HttpProxy)
 	if err != nil {
-		t.Fatalf("Failed to update repository: %v", err)
+		t.Fatalf("Failed To update repository: %v", err)
 	}
 
 	if repo == nil {
@@ -299,7 +299,7 @@ func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 
 	files, err := worktree.Filesystem.ReadDir(".")
 	if err != nil {
-		t.Fatalf("Failed to read directory: %v", err)
+		t.Fatalf("Failed To read directory: %v", err)
 	}
 
 	foundNewFile := false
@@ -320,12 +320,12 @@ func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 func TestGetLatestCommit(t *testing.T) {
 	c, err := config.GetAppConfig()
 	if err != nil {
-		t.Fatalf("Failed to get app config: %v", err)
+		t.Fatalf("Failed To get app config: %v", err)
 	}
 
 	repo, err := CloneRepository(t.TempDir(), cloneUrl, MainBranch, false, c.HttpProxy)
 	if err != nil {
-		t.Fatalf("Failed to clone repository: %v", err)
+		t.Fatalf("Failed To clone repository: %v", err)
 	}
 
 	if repo == nil {
@@ -334,7 +334,7 @@ func TestGetLatestCommit(t *testing.T) {
 
 	commit, err := GetLatestCommit(repo, MainBranch)
 	if err != nil {
-		t.Fatalf("Failed to get latest commit: %v", err)
+		t.Fatalf("Failed To get latest commit: %v", err)
 	}
 
 	if commit == "" {
