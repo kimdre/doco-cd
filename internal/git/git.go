@@ -280,7 +280,7 @@ func GetChangedFilesBetweenCommits(repo *git.Repository, commitHash1, commitHash
 		changedFiles = append(changedFiles, ChangedFile{From: from, To: to})
 	}
 
-	return changedFiles, nil // FIXME: changedFiles returns empty even if there are changes
+	return changedFiles, nil
 }
 
 // HasChangesInSubdir checks if any of the changed files are in a specified subdirectory.
