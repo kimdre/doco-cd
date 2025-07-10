@@ -7,3 +7,19 @@ services:
       - "80"  # use random published port
     volumes:
       - ./:/usr/share/nginx/html
+    environment:
+      TEST_ENV_VAR: example_value
+    env_file:
+      - test.env
+    secrets:
+      - test_secret
+    configs:
+      - test_config
+
+secrets:
+  test_secret:
+    file: ./test_secret.txt
+
+configs:
+  test_config:
+    file: ./test_config.txt

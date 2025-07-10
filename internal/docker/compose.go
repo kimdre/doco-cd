@@ -19,6 +19,8 @@ import (
 	"strings"
 	"time"
 
+	gitInternal "github.com/kimdre/doco-cd/internal/git"
+
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
@@ -210,7 +212,6 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 		cli.WithWorkingDirectory(workingDir),
 		cli.WithInterpolation(true),
 		cli.WithResolvedPaths(true),
-		cli.WithDotEnv,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create project options: %w", err)
@@ -323,7 +324,7 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 func DeployStack(
 	jobLog *slog.Logger, internalRepoPath, externalRepoPath string, ctx *context.Context,
 	dockerCli *command.Cli, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
-	latestCommit, appVersion string, forceDeploy bool,
+	changedFiles []gitInternal.ChangedFile, latestCommit, appVersion string, forceDeploy bool,
 ) error {
 	startTime := time.Now()
 
@@ -437,8 +438,6 @@ func DeployStack(
 			}
 
 			stackLog.Debug("file decrypted successfully", slog.String("file", path))
-		} else {
-			stackLog.Debug("file is not encrypted", slog.String("file", path))
 		}
 
 		return nil
@@ -450,11 +449,23 @@ func DeployStack(
 	project, err := LoadCompose(*ctx, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles)
 	if err != nil {
 		errMsg := "failed to load compose config"
-		stackLog.Error(errMsg,
-			logger.ErrAttr(err),
-			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+		stackLog.Error(errMsg, logger.ErrAttr(err), slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
 
 		return fmt.Errorf("%s: %w", errMsg, err)
+	}
+
+	hasChanges, err := MountedFilesHaveChanges(changedFiles, project)
+	if err != nil {
+		errMsg := "failed to check for changed project files"
+		stackLog.Error(errMsg, logger.ErrAttr(err), slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+
+		return fmt.Errorf("%s: %w", errMsg, err)
+	}
+
+	if hasChanges {
+		stackLog.Info("mounted files have changed, forcing recreation of the stack")
+
+		deployConfig.ForceRecreate = true
 	}
 
 	stackLog.Info("deploying stack")
@@ -526,4 +537,169 @@ func DestroyStack(
 	}
 
 	return nil
+}
+
+// HasChangedConfigs checks if any files used in docker compose `configs:` definitions have changed using the Git status.
+func HasChangedConfigs(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
+	for _, c := range project.Configs {
+		configPath := c.File
+		if configPath == "" {
+			continue
+		}
+
+		if !path.IsAbs(configPath) {
+			configPath = filepath.Join(project.WorkingDir, configPath)
+		}
+
+		for _, f := range changedFiles {
+			var paths []string
+
+			if f.From != nil {
+				fromPath := f.From.Path()
+				if !path.IsAbs(fromPath) {
+					fromPath = filepath.Join(project.WorkingDir, fromPath)
+				}
+
+				paths = append(paths, fromPath)
+			}
+
+			if f.To != nil {
+				toPath := f.To.Path()
+				if !path.IsAbs(toPath) {
+					toPath = filepath.Join(project.WorkingDir, toPath)
+				}
+
+				paths = append(paths, toPath)
+			}
+
+			for _, p := range paths {
+				if p == configPath {
+					return true, nil
+				}
+			}
+		}
+	}
+
+	return false, nil
+}
+
+// HasChangedSecrets checks if any files used in docker compose `secrets:` definitions have changed using the Git status.
+func HasChangedSecrets(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
+	for _, s := range project.Secrets {
+		secretPath := s.File
+		if secretPath == "" {
+			continue
+		}
+
+		if !path.IsAbs(secretPath) {
+			secretPath = filepath.Join(project.WorkingDir, secretPath)
+		}
+
+		for _, f := range changedFiles {
+			var paths []string
+
+			if f.From != nil {
+				fromPath := f.From.Path()
+				if !path.IsAbs(fromPath) {
+					fromPath = filepath.Join(project.WorkingDir, fromPath)
+				}
+
+				paths = append(paths, fromPath)
+			}
+
+			if f.To != nil {
+				toPath := f.To.Path()
+				if !path.IsAbs(toPath) {
+					toPath = filepath.Join(project.WorkingDir, toPath)
+				}
+
+				paths = append(paths, toPath)
+			}
+
+			for _, p := range paths {
+				if p == secretPath {
+					return true, nil
+				}
+			}
+		}
+	}
+
+	return false, nil
+}
+
+// HasChangedBindMounts checks if any files used in docker compose `volumes:` definitions with type `bind` have changed using the Git status.
+func HasChangedBindMounts(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
+	for _, s := range project.Services {
+		for _, v := range s.Volumes {
+			if v.Type == "bind" && v.Source != "" {
+				bindPath := v.Source
+				if !path.IsAbs(bindPath) {
+					bindPath = filepath.Join(project.WorkingDir, bindPath)
+				}
+
+				for _, f := range changedFiles {
+					var paths []string
+
+					if f.From != nil {
+						fromPath := f.From.Path()
+						if !path.IsAbs(fromPath) {
+							fromPath = filepath.Join(project.WorkingDir, fromPath)
+						}
+
+						paths = append(paths, fromPath)
+					}
+
+					if f.To != nil {
+						toPath := f.To.Path()
+						if !path.IsAbs(toPath) {
+							toPath = filepath.Join(project.WorkingDir, toPath)
+						}
+
+						paths = append(paths, toPath)
+					}
+
+					for _, p := range paths {
+						// Check if bindPath is in the changed file path
+						if strings.HasPrefix(p, bindPath) {
+							return true, nil
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return false, nil
+}
+
+// MountedFilesHaveChanges checks if any files from config, secret or bind mounts have changed in the project.
+func MountedFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
+	changedConfigs, err := HasChangedConfigs(changedFiles, project)
+	if err != nil {
+		return false, fmt.Errorf("failed to check changed configs: %w", err)
+	}
+
+	if changedConfigs {
+		return true, nil
+	}
+
+	changedSecrets, err := HasChangedSecrets(changedFiles, project)
+	if err != nil {
+		return false, fmt.Errorf("failed to check changed secrets: %w", err)
+	}
+
+	if changedSecrets {
+		return true, nil
+	}
+
+	changedBindMounts, err := HasChangedBindMounts(changedFiles, project)
+	if err != nil {
+		return false, fmt.Errorf("failed to check changed bind mounts: %w", err)
+	}
+
+	if changedBindMounts {
+		return true, nil
+	}
+
+	return false, nil
 }

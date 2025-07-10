@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-git/go-git/v5/plumbing"
+
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
 	"github.com/docker/docker/client"
@@ -41,6 +43,7 @@ func createTestFile(fileName string, content string) error {
 }
 
 const (
+	cloneUrlTest    = "https://github.com/kimdre/doco-cd_tests.git"
 	projectName     = "test"
 	composeContents = `services:
   test:
@@ -208,7 +211,7 @@ func TestDeployCompose(t *testing.T) {
 		log := logger.New(slog.LevelInfo)
 		jobLog := log.With(slog.String("job_id", jobID))
 
-		err = DeployStack(jobLog, repoPath, repoPath, &ctx, &dockerCli, &p, deployConf, latestCommit, "test", false)
+		err = DeployStack(jobLog, repoPath, repoPath, &ctx, &dockerCli, &p, deployConf, []git.ChangedFile{}, latestCommit, "test", false)
 		if err != nil {
 			if errors.Is(err, config.ErrDeprecatedConfig) {
 				t.Log(err.Error())
@@ -288,5 +291,200 @@ func TestDeployCompose(t *testing.T) {
 		}
 
 		t.Log("Finished destroying deployment with no errors")
+	}
+}
+
+func TestHasChangedConfigs(t *testing.T) {
+	testCases := []struct {
+		name            string
+		oldCommit       string
+		newCommit       string
+		ExpectedChanges bool
+	}{
+		{
+			name:            "Has changes",
+			oldCommit:       "182520d6b0c574c319de69d05ba79858712e335e",
+			newCommit:       "87344f0f87250cd2b5d82d2483d3a62ee1d18e93",
+			ExpectedChanges: true,
+		},
+		{
+			name:            "Has no changes",
+			oldCommit:       "72f1a4e88fdeffec3241d6da2ee19757eee3a0fd",
+			newCommit:       "151642a5c4f1b16b543d06c60fa9c95e2c7704a2",
+			ExpectedChanges: false,
+		},
+	}
+
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("Failed to get app config: %v", err)
+	}
+
+	url := git.GetAuthUrl(cloneUrlTest, c.AuthType, c.GitAccessToken)
+
+	tmpDir := t.TempDir()
+
+	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy)
+	if err != nil {
+		t.Fatalf("Failed to clone repository: %v", err)
+	}
+
+	if err = os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Failed to change to tmpDir: %v", err)
+	}
+
+	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"})
+	if err != nil {
+		t.Fatalf("Failed to load compose file: %v", err)
+	}
+
+	for _, tc := range testCases {
+		changedFiles, err := git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(tc.oldCommit), plumbing.NewHash(tc.newCommit))
+		if err != nil {
+			t.Fatalf("Failed to get changed files: %v", err)
+		}
+
+		if tc.ExpectedChanges && len(changedFiles) == 0 {
+			t.Fatalf("Expectec changed files, but found none found")
+		}
+
+		hasChanged, err := HasChangedConfigs(changedFiles, project)
+		if err != nil {
+			t.Fatalf("Failed to check for changed configs: %v", err)
+		}
+
+		if !hasChanged && tc.ExpectedChanges {
+			t.Error("Expected changed configs, but found none")
+		}
+	}
+}
+
+func TestHasChangedSecrets(t *testing.T) {
+	testCases := []struct {
+		name            string
+		oldCommit       string
+		newCommit       string
+		ExpectedChanges bool
+	}{
+		{
+			name:            "Has changes",
+			oldCommit:       "e4bd98139b81fd80938687edc7f9a1a001654e92",
+			newCommit:       "d47101db6f9a07b0d36a6245b257c3690782ae69",
+			ExpectedChanges: true,
+		},
+		{
+			name:            "Has no changes",
+			oldCommit:       "72f1a4e88fdeffec3241d6da2ee19757eee3a0fd",
+			newCommit:       "151642a5c4f1b16b543d06c60fa9c95e2c7704a2",
+			ExpectedChanges: false,
+		},
+	}
+
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("Failed to get app config: %v", err)
+	}
+
+	url := git.GetAuthUrl(cloneUrlTest, c.AuthType, c.GitAccessToken)
+
+	tmpDir := t.TempDir()
+
+	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy)
+	if err != nil {
+		t.Fatalf("Failed to clone repository: %v", err)
+	}
+
+	if err = os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Failed to change to tmpDir: %v", err)
+	}
+
+	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"})
+	if err != nil {
+		t.Fatalf("Failed to load compose file: %v", err)
+	}
+
+	for _, tc := range testCases {
+		changedFiles, err := git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(tc.oldCommit), plumbing.NewHash(tc.newCommit))
+		if err != nil {
+			t.Fatalf("Failed to get changed files: %v", err)
+		}
+
+		if tc.ExpectedChanges && len(changedFiles) == 0 {
+			t.Fatalf("Expectec changed files, but found none found")
+		}
+
+		hasChanged, err := HasChangedSecrets(changedFiles, project)
+		if err != nil {
+			t.Fatalf("Failed to check for changed secrets: %v", err)
+		}
+
+		if !hasChanged && tc.ExpectedChanges {
+			t.Error("Expected changed secrets, but found none")
+		}
+	}
+}
+
+func TestHasChangedBindMounts(t *testing.T) {
+	testCases := []struct {
+		name            string
+		oldCommit       string
+		newCommit       string
+		ExpectedChanges bool
+	}{
+		{
+			name:            "Has changes",
+			oldCommit:       "72f1a4e88fdeffec3241d6da2ee19757eee3a0fd",
+			newCommit:       "151642a5c4f1b16b543d06c60fa9c95e2c7704a2",
+			ExpectedChanges: true,
+		},
+		{
+			name:            "Has no changes",
+			oldCommit:       "e4bd98139b81fd80938687edc7f9a1a001654e92",
+			newCommit:       "d47101db6f9a07b0d36a6245b257c3690782ae69",
+			ExpectedChanges: false,
+		},
+	}
+
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("Failed to get app config: %v", err)
+	}
+
+	url := git.GetAuthUrl(cloneUrlTest, c.AuthType, c.GitAccessToken)
+
+	tmpDir := t.TempDir()
+
+	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy)
+	if err != nil {
+		t.Fatalf("Failed to clone repository: %v", err)
+	}
+
+	if err = os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Failed to change to tmpDir: %v", err)
+	}
+
+	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"})
+	if err != nil {
+		t.Fatalf("Failed to load compose file: %v", err)
+	}
+
+	for _, tc := range testCases {
+		changedFiles, err := git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(tc.oldCommit), plumbing.NewHash(tc.newCommit))
+		if err != nil {
+			t.Fatalf("Failed to get changed files: %v", err)
+		}
+
+		if tc.ExpectedChanges && len(changedFiles) == 0 {
+			t.Fatalf("Expectec changed files, but found none found")
+		}
+
+		hasChanged, err := HasChangedBindMounts(changedFiles, project)
+		if err != nil {
+			t.Fatalf("Failed to check for changed bind mounts: %v", err)
+		}
+
+		if !hasChanged && tc.ExpectedChanges {
+			t.Error("Expected changed bind mounts, but found none")
+		}
 	}
 }

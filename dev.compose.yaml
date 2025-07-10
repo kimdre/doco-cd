@@ -23,7 +23,7 @@ services:
     environment:
       TZ: Europe/Berlin
       HTTP_PORT: 80
-      LOG_LEVEL: info
+      LOG_LEVEL: debug
       # DOCKER_API_VERSION: 1.47
       <<: *poll-config
       #POLL_CONFIG_FILE: /poll.yml
@@ -61,7 +61,7 @@ configs:
   tinyproxy.conf:
     content: |
       # https://tinyproxy.github.io/
-      LogLevel Connect
+      LogLevel Warning
       Port 8888
       Timeout 600
       BasicAuth username password
