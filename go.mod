@@ -7,7 +7,7 @@ require (
 	github.com/compose-spec/compose-go/v2 v2.7.1
 	github.com/creasty/defaults v1.8.0
 	github.com/docker/cli v28.3.1+incompatible
-	github.com/docker/compose/v2 v2.38.1
+	github.com/docker/compose/v2 v2.38.2
 	github.com/docker/docker v28.3.1+incompatible
 	github.com/getsops/sops/v3 v3.10.2
 	github.com/go-git/go-git/v5 v5.16.2
@@ -173,7 +173,7 @@ require (
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
-	github.com/moby/buildkit v0.23.1 // indirect
+	github.com/moby/buildkit v0.23.2 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/go-archive v0.1.0 // indirect
 	github.com/moby/locker v1.0.1 // indirect
