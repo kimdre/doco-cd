@@ -283,8 +283,8 @@ func GetChangedFilesBetweenCommits(repo *git.Repository, commitHash1, commitHash
 	return changedFiles, nil // FIXME: changedFiles returns empty even if there are changes
 }
 
-// HasSubdirChangedBetweenCommits checks if any files in a specific subdirectory have changed between two commits.
-func HasSubdirChangedBetweenCommits(changedFiles []ChangedFile, subdir string) (bool, error) {
+// HasChangesInSubdir checks if any of the changed files are in a specified subdirectory.
+func HasChangesInSubdir(changedFiles []ChangedFile, subdir string) (bool, error) {
 	for _, file := range changedFiles {
 		var paths []string
 

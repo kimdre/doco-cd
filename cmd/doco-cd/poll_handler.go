@@ -393,7 +393,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 
 				jobLog.Debug("retrieved changed files between commits", slog.Any("changed_files", changedFiles))
 
-				changed, err := git.HasSubdirChangedBetweenCommits(changedFiles, deployConfig.WorkingDirectory)
+				changed, err := git.HasChangesInSubdir(changedFiles, deployConfig.WorkingDirectory)
 				if err != nil {
 					subJobLog.Error("failed to compare commits in subdirectory", log.ErrAttr(err))
 
