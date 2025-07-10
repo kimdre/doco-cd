@@ -449,9 +449,7 @@ func DeployStack(
 	project, err := LoadCompose(*ctx, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles)
 	if err != nil {
 		errMsg := "failed to load compose config"
-		stackLog.Error(errMsg,
-			logger.ErrAttr(err),
-			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+		stackLog.Error(errMsg, logger.ErrAttr(err), slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
 
 		return fmt.Errorf("%s: %w", errMsg, err)
 	}
@@ -459,9 +457,7 @@ func DeployStack(
 	hasChanges, err := MountedFilesHaveChanges(changedFiles, project)
 	if err != nil {
 		errMsg := "failed to check for changed project files"
-		stackLog.Error(errMsg,
-			logger.ErrAttr(err),
-			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+		stackLog.Error(errMsg, logger.ErrAttr(err), slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
 
 		return fmt.Errorf("%s: %w", errMsg, err)
 	}
