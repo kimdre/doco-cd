@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/go-git/go-git/v5/plumbing"
@@ -342,4 +343,53 @@ func TestGetLatestCommit(t *testing.T) {
 	}
 
 	t.Log(commit)
+}
+
+func TestGetChangedFilesBetweenCommits(t *testing.T) {
+	var (
+		commitOld                = plumbing.NewHash("f8c5992297bf70eb01f0ba40d062896b1f48dc65")
+		commitNew                = plumbing.NewHash("e72ef851774e50b82c173fd36cfcf9a88355c592")
+		expectedChangedDirectory = "html"
+		expectedChangedFile      = filepath.Join(expectedChangedDirectory, "index.html")
+	)
+
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("Failed To get app config: %v", err)
+	}
+
+	url := GetAuthUrl(cloneUrlTest, c.AuthType, c.GitAccessToken)
+
+	repo, err := CloneRepository(t.TempDir(), url, MainBranch, false, c.HttpProxy)
+	if err != nil {
+		t.Fatalf("Failed To clone repository: %v", err)
+	}
+
+	changedFiles, err := GetChangedFilesBetweenCommits(repo, commitOld, commitNew)
+	if err != nil {
+		t.Fatalf("Failed To get changed files: %v", err)
+	}
+
+	if len(changedFiles) == 0 {
+		t.Fatal("No changed files found, but expected one changed file")
+	}
+
+	for _, file := range changedFiles {
+		if file.From.Path() != expectedChangedFile {
+			t.Errorf("Expected file %s, got %s", expectedChangedFile, file.From.Path())
+		}
+
+		if file.To.Path() != expectedChangedFile {
+			t.Errorf("Expected file %s, got %s", expectedChangedFile, file.To.Path())
+		}
+	}
+
+	hasChanged, err := HasChangesInSubdir(changedFiles, expectedChangedDirectory)
+	if err != nil {
+		t.Fatalf("Failed To check changes in subdir: %v", err)
+	}
+
+	if !hasChanged {
+		t.Errorf("Expected changes in subdir %s, but found none", expectedChangedDirectory)
+	}
 }
