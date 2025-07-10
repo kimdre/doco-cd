@@ -345,7 +345,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 					return
 				}
 
-				changed, err := git.HasChangesInSubdir(changedFiles, deployConfig.WorkingDirectory)
+				hasChanged, err := git.HasChangesInSubdir(changedFiles, deployConfig.WorkingDirectory)
 				if err != nil {
 					onError(repoName, w, subJobLog, fmt.Errorf("failed to compare commits in subdirectory: %w", err).Error(),
 						map[string]string{"stack": deployConfig.Name}, jobID, http.StatusInternalServerError)
@@ -353,7 +353,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 					return
 				}
 
-				if !changed {
+				if !hasChanged {
 					jobLog.Debug("no changes detected in subdirectory, skipping deployment",
 						slog.String("directory", deployConfig.WorkingDirectory),
 						slog.String("last_commit", latestCommit),
