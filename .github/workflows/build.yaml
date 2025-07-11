@@ -50,6 +50,8 @@ jobs:
           provenance: false
           build-args: |
             APP_VERSION=${{ github.ref_name }}
+            TARGETOS=${{ matrix.os }}
+            TARGETARCH=${{ matrix.arch }}
           push: ${{ startsWith(github.ref, 'refs/tags/') }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
