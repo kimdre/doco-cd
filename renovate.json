@@ -3,35 +3,57 @@
   "extends": [
     "config:best-practices"
   ],
-  "dependencyDashboardLabels": ["dependencies"],
-  "labels": ["dependencies"],
+  "dependencyDashboardLabels": [
+    "dependencies"
+  ],
+  "labels": [
+    "dependencies"
+  ],
   "timezone": "Europe/Berlin",
-  "schedule": ["after 7am and before 11am"],
-  "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
+  "schedule": [
+    "after 7am and before 11am"
+  ],
+  "postUpdateOptions": [
+    "gomodTidy",
+    "gomodUpdateImportPaths"
+  ],
   "packageRules": [
     {
-      "matchUpdateTypes": ["major"],
+      "matchUpdateTypes": [
+        "major"
+      ],
       "minimumReleaseAge": "2 days"
     },
     {
-      "matchUpdateTypes": ["minor"],
+      "matchUpdateTypes": [
+        "minor"
+      ],
       "minimumReleaseAge": "1 days"
     },
     {
-      "matchUpdateTypes": ["patch", "pin", "digest"],
+      "matchUpdateTypes": [
+        "patch",
+        "pin",
+        "digest"
+      ],
       "minimumReleaseAge": "1 days",
       "automerge": true
     },
     {
-      "matchDatasources": ["docker"],
-      "matchFileNames": ["docker-compose.yml"],
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchFileNames": [
+        "docker-compose.yml"
+      ],
       "pinDigests": false
     }
   ],
-  "regexManagers": [
+  "customManagers": [
     {
-      "fileMatch": [
-        "go.mod$"
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/go.mod$/"
       ],
       "matchStrings": [
         "\\sgo (?<currentValue>.+?)\\s"
