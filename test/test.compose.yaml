@@ -18,8 +18,8 @@ services:
 
 secrets:
   test_secret:
-    file: ./test_secret.txt
+    file: ./secret.txt
 
 configs:
   test_config:
-    file: ./test_config.txt
+    file: ./config.conf
