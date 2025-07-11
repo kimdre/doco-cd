@@ -34,7 +34,7 @@
       "managerFilePatterns": ["/go.mod$/"],
       "matchStrings": ["\\sgo (?<currentValue>.+?)\\s"],
       "depNameTemplate": "golang",
-      "datasourceTemplate": "docker"
+      "datasourceTemplate": "golang"
     }
   ]
 }
