@@ -28,14 +28,11 @@
       "pinDigests": false
     }
   ],
-  "regexManagers": [
+  "customManagers": [
     {
-      "fileMatch": [
-        "go.mod$"
-      ],
-      "matchStrings": [
-        "\\sgo (?<currentValue>.+?)\\s"
-      ],
+      "customType": "regex",
+      "managerFilePatterns": ["/go.mod$/"],
+      "matchStrings": ["\\sgo (?<currentValue>.+?)\\s"],
       "depNameTemplate": "golang",
       "datasourceTemplate": "docker"
     }
