@@ -23,7 +23,7 @@ COPY . ./
 ENV GOCACHE=/root/.cache/go-build \
     CGO_ENABLED=0 \
     GOOS=${TARGETOS} \
-    GOARCH=${TARGETARCH} \
+    GOARCH=${TARGETARCH}
 
 # Build and strip binary
 RUN --mount=type=cache,target=/go/pkg/mod/ \
