@@ -20,10 +20,10 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
 	log "github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/prometheus"
-	"github.com/kimdre/doco-cd/internal/utils"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -125,14 +125,14 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		cloneUrl = git.GetAuthUrl(cloneUrl, appConfig.AuthType, appConfig.GitAccessToken)
 	}
 
-	internalRepoPath, err := utils.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
+	internalRepoPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
 	if err != nil {
 		jobLog.Error("failed to verify and sanitize internal filesystem path", log.ErrAttr(err))
 
 		return fmt.Errorf("failed to verify and sanitize internal filesystem path: %w", err)
 	}
 
-	externalRepoPath, err := utils.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path on the host
+	externalRepoPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path on the host
 	if err != nil {
 		jobLog.Error("failed to verify and sanitize external filesystem path", log.ErrAttr(err))
 
@@ -201,14 +201,14 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			fullName = parts[1]
 		}
 
-		internalRepoPath, err = utils.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
+		internalRepoPath, err = filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
 		if err != nil {
 			subJobLog.Error("failed to verify and sanitize internal filesystem path", log.ErrAttr(err))
 
 			return fmt.Errorf("failed to verify and sanitize internal filesystem path: %w", err)
 		}
 
-		externalRepoPath, err = utils.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Source, repoName), dataMountPoint.Source) // Path on the host
+		externalRepoPath, err = filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Source, repoName), dataMountPoint.Source) // Path on the host
 		if err != nil {
 			subJobLog.Error("failed to verify and sanitize external filesystem path", log.ErrAttr(err))
 
@@ -405,12 +405,12 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 						slog.String("deployed_commit", deployedCommit))
 
 					continue
-				} else {
-					subJobLog.Debug("changes detected in subdirectory, proceeding with deployment",
-						slog.String("directory", deployConfig.WorkingDirectory),
-						slog.String("last_commit", latestCommit),
-						slog.String("deployed_commit", deployedCommit))
 				}
+
+				subJobLog.Debug("changes detected in subdirectory, proceeding with deployment",
+					slog.String("directory", deployConfig.WorkingDirectory),
+					slog.String("last_commit", latestCommit),
+					slog.String("deployed_commit", deployedCommit))
 			}
 
 			payload := webhook.ParsedPayload{

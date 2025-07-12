@@ -15,7 +15,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
-	"github.com/kimdre/doco-cd/internal/utils"
+	"github.com/kimdre/doco-cd/internal/filesystem"
 )
 
 const (
@@ -176,7 +176,7 @@ func UpdateRepository(path, ref string, skipTLSVerify bool, proxyOpts transport.
 
 // CloneRepository clones a repository From a given URL and reference To a temporary directory.
 func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions) (*git.Repository, error) {
-	err := os.MkdirAll(path, utils.PermDir)
+	err := os.MkdirAll(path, filesystem.PermDir)
 	if err != nil {
 		return nil, err
 	}

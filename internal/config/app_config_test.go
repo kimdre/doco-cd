@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/kimdre/doco-cd/internal/utils"
+	"github.com/kimdre/doco-cd/internal/filesystem"
 )
 
 func TestGetAppConfig(t *testing.T) {
@@ -104,7 +104,7 @@ func TestGetAppConfig(t *testing.T) {
 				secretsPath := path.Join(t.TempDir(), "/run/secrets/")
 
 				// Create the Docker secrets directory
-				if err := os.MkdirAll(secretsPath, utils.PermDir); err != nil {
+				if err := os.MkdirAll(secretsPath, filesystem.PermDir); err != nil {
 					t.Fatalf("failed to create Docker secrets directory: %v", err)
 				}
 
@@ -130,7 +130,7 @@ func TestGetAppConfig(t *testing.T) {
 
 					t.Logf("Set Docker secret %s to %s", k, v)
 
-					if err = os.WriteFile(secretFilePath, []byte(v), utils.PermOwner); err != nil {
+					if err = os.WriteFile(secretFilePath, []byte(v), filesystem.PermOwner); err != nil {
 						t.Fatalf("failed to write Docker secret: %v", err)
 					}
 				}

@@ -20,7 +20,7 @@ func init() {
 }
 
 // validateHttpUrl checks if the given value is a valid HTTP or HTTPS URL.
-func validateHttpUrl(v interface{}, param string) error {
+func validateHttpUrl(v interface{}, _ string) error {
 	str, ok := v.(string)
 	if !ok {
 		if httpUrl, ok := v.(HttpUrl); ok {

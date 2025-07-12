@@ -47,7 +47,7 @@ func New(logLevel slog.Level) *Logger {
 				&slog.HandlerOptions{
 					// AddSource: true,
 					Level: logLevel,
-					ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+					ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
 						// Customize the name of the time key.
 						if a.Key == slog.TimeKey {
 							a.Key = "time"
