@@ -2,6 +2,8 @@
 FROM golang:1.24.5@sha256:14fd8a55e59a560704e5fc44970b301d00d344e45d6b914dda228e09f359a088 AS build-stage
 
 ARG APP_VERSION=dev
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
 
 # Set destination for COPY
 WORKDIR /app
@@ -20,7 +22,8 @@ COPY . ./
 # Set build environment
 ENV GOCACHE=/root/.cache/go-build \
     CGO_ENABLED=0 \
-    GOOS=linux
+    GOOS=${TARGETOS} \
+    GOARCH=${TARGETARCH}
 
 # Build and strip binary
 RUN --mount=type=cache,target=/go/pkg/mod/ \
