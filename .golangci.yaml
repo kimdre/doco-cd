@@ -31,6 +31,7 @@ linters:
         - name: blank-imports
         - name: context-as-argument
         - name: context-keys-type
+        - name: defer
         - name: dot-imports
         - name: empty-block
         - name: error-naming
