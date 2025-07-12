@@ -20,6 +20,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ linux ]
+        arch: [ amd64 ]
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -59,10 +63,13 @@ jobs:
           provenance: false
           build-args: |
             APP_VERSION=dev-build.${{ steps.vars.outputs.short_sha }}
+            TARGET_OS=${{ matrix.os }}
+            TARGET_ARCH=${{ matrix.arch }}
           push: false
           load: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          platforms: ${{ matrix.os }}/${{ matrix.arch }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -86,8 +93,11 @@ jobs:
           provenance: false
           build-args: |
             APP_VERSION=dev-build.${{ steps.vars.outputs.short_sha }}
+            TARGET_OS=${{ matrix.os }}
+            TARGET_ARCH=${{ matrix.arch }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          platforms: ${{ matrix.os }}/${{ matrix.arch }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
