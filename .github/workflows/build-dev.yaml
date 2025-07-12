@@ -59,13 +59,10 @@ jobs:
           provenance: false
           build-args: |
             APP_VERSION=dev-build.${{ steps.vars.outputs.short_sha }}
-            TARGETOS=${{ matrix.os }}
-            TARGETARCH=${{ matrix.arch }}
           push: false
           load: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -89,11 +86,8 @@ jobs:
           provenance: false
           build-args: |
             APP_VERSION=dev-build.${{ steps.vars.outputs.short_sha }}
-            TARGETOS=${{ matrix.os }}
-            TARGETARCH=${{ matrix.arch }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max
