@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
@@ -17,6 +18,8 @@ var (
 	ErrMountPointNotFound     = errors.New("mount point not found")
 	ErrMountPointNotWriteable = errors.New("mount point is not writeable")
 	ErrContainerIDNotFound    = errors.New("container ID not found")
+	ErrBuildInfoUnavailable   = errors.New("build info unavailable")
+	ErrModuleNotFound         = errors.New("module not found in build info")
 )
 
 // GetContainerID retrieves the container ID for a given service name.
@@ -90,4 +93,20 @@ func CheckMountPointWriteable(mountPoint container.MountPoint) error {
 	}()
 
 	return nil
+}
+
+// GetModuleVersion retrieves the version of a specified module from the build info.
+func GetModuleVersion(module string) (string, error) {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "", ErrBuildInfoUnavailable
+	}
+
+	for _, dep := range info.Deps {
+		if dep.Path == module {
+			return strings.TrimPrefix(dep.Version, "v"), nil
+		}
+	}
+
+	return "", fmt.Errorf("%w: %s", ErrModuleNotFound, module)
 }

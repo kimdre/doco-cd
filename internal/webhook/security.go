@@ -33,9 +33,9 @@ func verifySignature(payload []byte, signature, secretKey string) error {
 	expectedMAC := GenerateHMAC(payload, secretKey)
 	if !hmac.Equal([]byte(signature), []byte(expectedMAC)) {
 		return ErrHMACVerificationFailed
-	} else {
-		return nil
 	}
+
+	return nil
 }
 
 // VerifyProviderSecret checks and verifies the security header and returns the provider if verification is successful.

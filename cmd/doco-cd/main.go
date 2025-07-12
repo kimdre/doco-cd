@@ -19,9 +19,9 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/prometheus"
-	"github.com/kimdre/doco-cd/internal/utils"
 )
 
 const (
@@ -98,7 +98,7 @@ func CreateMountpointSymlink(m container.MountPoint) error {
 	// prepare the symlink parent directory
 	symlinkParentDir := path.Dir(m.Source)
 
-	err := os.MkdirAll(symlinkParentDir, utils.PermDir)
+	err := os.MkdirAll(symlinkParentDir, filesystem.PermDir)
 	if err != nil {
 		return fmt.Errorf("failed to create parent directory %s: %w", symlinkParentDir, err)
 	}

@@ -20,21 +20,21 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/encryption"
+	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
-	"github.com/kimdre/doco-cd/internal/utils"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
 func createComposeFile(t *testing.T, filePath, content string) {
-	err := os.WriteFile(filePath, []byte(content), utils.PermOwner)
+	err := os.WriteFile(filePath, []byte(content), filesystem.PermOwner)
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
 func createTestFile(fileName string, content string) error {
-	err := os.WriteFile(fileName, []byte(content), utils.PermOwner)
+	err := os.WriteFile(fileName, []byte(content), filesystem.PermOwner)
 	if err != nil {
 		return err
 	}

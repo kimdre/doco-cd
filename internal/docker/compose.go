@@ -30,9 +30,9 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/encryption"
+	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/prometheus"
-	"github.com/kimdre/doco-cd/internal/utils"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -59,7 +59,7 @@ func ConnectToSocket() (net.Conn, error) {
 func NewHttpClient() *http.Client {
 	return &http.Client{
 		Transport: &http.Transport{
-			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
 				return net.Dial("unix", socketPath)
 			},
 		},
@@ -242,9 +242,9 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 
 	if ComposeVersion == "" {
-		ComposeVersion, err = utils.GetModuleVersion("github.com/docker/compose/v2")
+		ComposeVersion, err = GetModuleVersion("github.com/docker/compose/v2")
 		if err != nil {
-			if errors.Is(err, utils.ErrModuleNotFound) {
+			if errors.Is(err, ErrModuleNotFound) {
 				// Placeholder for when the module is not found
 				ComposeVersion = "unknown"
 			} else {
@@ -432,7 +432,7 @@ func DeployStack(
 				return fmt.Errorf("failed to decrypt file %s: %w", path, err)
 			}
 
-			err = os.WriteFile(path, decryptedContent, utils.PermOwner)
+			err = os.WriteFile(path, decryptedContent, filesystem.PermOwner)
 			if err != nil {
 				return fmt.Errorf("failed to write decrypted content to file %s: %w", path, err)
 			}
