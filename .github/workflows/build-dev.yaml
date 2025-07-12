@@ -54,7 +54,7 @@ jobs:
         id: vars
         run: |
           calculatedSha=$(git rev-parse --short ${{ github.sha }})
-          echo "::set-output name=short_sha::$calculatedSha"
+          echo "short_sha=$calculatedSha" >> $GITHUB_OUTPUT
 
       - name: Build and export to local Docker
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
