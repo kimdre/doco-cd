@@ -34,7 +34,6 @@ linters:
         - name: defer
         - name: dot-imports
         - name: empty-block
-        - name: early-return
         - name: error-naming
         - name: error-return
         - name: error-strings
