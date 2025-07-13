@@ -80,7 +80,7 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 			locked := lock.TryLock()
 
 			if !locked {
-				h.log.Info("Another poll job is still in progress, skipping this run")
+				logger.Warn("Another poll job is still in progress, skipping this run")
 			} else {
 				logger.Debug("Start poll job")
 
