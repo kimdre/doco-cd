@@ -47,6 +47,12 @@ linters:
         - name: superfluous-else
         - name: time-naming
         - name: unexported-return
+        - name: unhandled-error
+          arguments: # Disable for these only
+            - fmt.Printf
+            - fmt.Print
+            - fmt.Println
+            - io.Writer.Write
         - name: unreachable-code
         - name: unused-parameter
         - name: var-declaration
