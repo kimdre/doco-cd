@@ -398,6 +398,8 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 	jobLog.Debug("received webhook event")
 
+	repoName := "unknown"
+
 	// Limit the request body size
 	r.Body = http.MaxBytesReader(w, r.Body, h.appConfig.MaxPayloadSize)
 
@@ -426,10 +428,25 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 			statusCode = http.StatusInternalServerError
 		}
 
-		onError(getRepoName(payload.CloneURL), w, jobLog.With(slog.String("ip", r.RemoteAddr), logger.ErrAttr(err)), errMsg, err.Error(), jobID, statusCode)
+		if payload.CloneURL != "" {
+			repoName = getRepoName(payload.CloneURL)
+		}
+
+		onError(repoName, w, jobLog.With(slog.String("ip", r.RemoteAddr), logger.ErrAttr(err)), errMsg, err.Error(), jobID, statusCode)
 
 		return
 	}
+
+	repoName = getRepoName(payload.CloneURL)
+	lock := getRepoLock(repoName)
+	locked := lock.TryLock()
+
+	if !locked {
+		onError(repoName, w, jobLog, "Another job is still in progress for this repository", nil, jobID, http.StatusTooManyRequests)
+		return
+	}
+
+	defer lock.Unlock()
 
 	HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, h.dockerClient)
 }
