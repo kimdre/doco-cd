@@ -30,7 +30,14 @@ import (
 var (
 	ErrNotManagedByDocoCD = errors.New("stack is not managed by doco-cd")
 	ErrDeploymentConflict = errors.New("another stack with the same name already exists and is not managed by this repository")
+	repoLocks             sync.Map // Map to hold locks for each repository
 )
+
+// getRepoLock retrieves a mutex lock for the given repository name.
+func getRepoLock(repoName string) *sync.Mutex {
+	lockIface, _ := repoLocks.LoadOrStore(repoName, &sync.Mutex{})
+	return lockIface.(*sync.Mutex)
+}
 
 // StartPoll initializes PollJob with the provided configuration and starts the PollHandler goroutine.
 func StartPoll(h *handlerData, pollConfig config.PollConfig, wg *sync.WaitGroup) error {
@@ -61,18 +68,28 @@ func StartPoll(h *handlerData, pollConfig config.PollConfig, wg *sync.WaitGroup)
 
 // PollHandler is a function that handles polling for changes in a repository.
 func (h *handlerData) PollHandler(pollJob *config.PollJob) {
-	logger := h.log.With()
+	repoName := getRepoName(string(pollJob.Config.CloneUrl))
 
+	logger := h.log.With(slog.String("repository", repoName))
 	logger.Debug("Start poll handler")
+
+	lock := getRepoLock(repoName)
 
 	for {
 		if pollJob.LastRun == 0 || time.Now().Unix() >= pollJob.NextRun {
-			repoName := getRepoName(string(pollJob.Config.CloneUrl))
-			logger.Debug("Running poll for repository", slog.String("repoName", repoName))
+			locked := lock.TryLock()
 
-			err := RunPoll(context.Background(), pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.dockerClient, logger)
-			if err != nil {
-				prometheus.PollErrors.WithLabelValues(repoName).Inc()
+			if !locked {
+				h.log.Info("Another poll job is still in progress, skipping this run")
+			} else {
+				logger.Debug("Start poll job")
+
+				err := RunPoll(context.Background(), pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.dockerClient, logger)
+				if err != nil {
+					prometheus.PollErrors.WithLabelValues(repoName).Inc()
+				}
+
+				lock.Unlock()
 			}
 
 			pollJob.NextRun = time.Now().Unix() + int64(pollJob.Config.Interval)
@@ -91,9 +108,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	cloneUrl := string(pollConfig.CloneUrl)
 	jobID := uuid.Must(uuid.NewRandom()).String()
 	repoName := getRepoName(cloneUrl)
-	jobLog := logger.With(
-		slog.String("repository", repoName),
-		slog.String("job_id", jobID))
+	jobLog := logger.With(slog.String("job_id", jobID))
 
 	if strings.Contains(repoName, "..") {
 		jobLog.Error("invalid repository name, contains '..'")
