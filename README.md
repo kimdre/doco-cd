@@ -2,7 +2,7 @@
 
 ## GitOps for Docker Compose
 
-<img src="https://github.com/kimdre/doco-cd/wiki/images/doco-cd_logo.svg" alt="Doco CD Logo" height="48px" />
+<img src="https://github.com/kimdre/doco-cd/wiki/images/doco-cd_logo.svg?t=20250714" alt="Doco CD Logo" height="48px" />
 
 [![GitHub Release](https://img.shields.io/github/v/release/kimdre/doco-cd?display_name=tag&label=Release)](https://github.com/kimdre/doco-cd/releases)
 [![Go Report Card](https://goreportcard.com/badge/github.com/kimdre/doco-cd)](https://goreportcard.com/report/github.com/kimdre/doco-cd)
