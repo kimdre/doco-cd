@@ -188,16 +188,39 @@ func main() {
 
 	log.Debug("docker client created")
 
-	dockerClient, _ := client.NewClientWithOpts(
+	dockerClient, err := client.NewClientWithOpts(
 		client.FromEnv,
 		client.WithAPIVersionNegotiation(),
 	)
+	if err != nil {
+		log.Critical("failed to create docker client", logger.ErrAttr(err))
+
+		return
+	}
 
 	log.Debug("negotiated docker versions to use",
 		slog.Group("versions",
 			slog.String("docker_client", dockerClient.ClientVersion()),
 			slog.String("docker_api", dockerCli.CurrentVersion()),
 		))
+
+	// Check if docker host is running in swarm mode
+	_, err = dockerClient.SwarmInspect(context.Background())
+	if err != nil {
+		docker.SwarmModeEnabled = false
+
+		if strings.Contains(err.Error(), "This node is not a swarm manager") {
+			log.Debug("docker host is not a swarm manager")
+		} else {
+			log.Critical("failed to inspect docker swarm mode", logger.ErrAttr(err))
+
+			return
+		}
+	} else {
+		log.Debug("docker host is running in swarm mode, enabling swarm mode features")
+
+		docker.SwarmModeEnabled = true
+	}
 
 	// Get container id of this application
 	appContainerID, err := getAppContainerID()

@@ -43,7 +43,8 @@ const (
 var (
 	ErrDockerSocketConnectionFailed = errors.New("failed to connect to docker socket")
 	ErrNoContainerToStart           = errors.New("no container to start")
-	ComposeVersion                  string
+	ComposeVersion                  string // Version of the docker compose module, will be set at runtime
+	SwarmModeEnabled                bool   // Whether the docker host is running in swarm mode
 )
 
 // ConnectToSocket connects to the docker socket.
