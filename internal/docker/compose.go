@@ -303,6 +303,15 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		WaitTimeout: time.Duration(deployConfig.Timeout) * time.Second,
 	}
 
+	if SwarmModeEnabled {
+		err = deploySwarmStack(ctx, dockerCli, project, deployConfig)
+		if err != nil {
+			return fmt.Errorf("failed to deploy swarm stack: %w", err)
+		}
+
+		return nil
+	}
+
 	err = service.Up(ctx, project, api.UpOptions{
 		Create: createOpts,
 		Start:  startOpts,
@@ -527,12 +536,22 @@ func DestroyStack(
 		downOpts.Images = "all"
 	}
 
+	if SwarmModeEnabled {
+		err := removeSwarmStack(*ctx, *dockerCli, deployConfig)
+		if err != nil {
+			errMsg := "failed to destroy swarm stack"
+			stackLog.Error(errMsg, logger.ErrAttr(err))
+
+			return fmt.Errorf("%s: %w", errMsg, err)
+		}
+
+		return nil
+	}
+
 	err := service.Down(*ctx, deployConfig.Name, downOpts)
 	if err != nil {
 		errMsg := "failed to destroy stack"
-		stackLog.Error(errMsg,
-			logger.ErrAttr(err),
-		)
+		stackLog.Error(errMsg, logger.ErrAttr(err))
 
 		return fmt.Errorf("%s: %w", errMsg, err)
 	}
