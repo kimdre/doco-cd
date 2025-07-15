@@ -31,7 +31,7 @@ const DefaultReference = "refs/heads/main"
 
 // DeployConfig is the structure of the deployment configuration file.
 type DeployConfig struct {
-	Name             string   `yaml:"name"`                                                                                                         // Name is the name of the docker-compose deployment / stack
+	Name             string   `yaml:"name"`                                                                                                         // Name of the docker-compose deployment / stack
 	RepositoryUrl    HttpUrl  `yaml:"repository_url" default:"" validate:"httpUrl"`                                                                 // RepositoryUrl is the http URL of the Git repository to deploy
 	Reference        string   `yaml:"reference" default:""`                                                                                         // Reference is the Git reference to the deployment, e.g., refs/heads/main, main, refs/tags/v1.0.0 or v1.0.0
 	WorkingDirectory string   `yaml:"working_dir" default:"."`                                                                                      // WorkingDirectory is the working directory for the deployment
