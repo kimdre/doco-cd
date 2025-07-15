@@ -210,7 +210,7 @@ func main() {
 		docker.SwarmModeEnabled = false
 
 		if strings.Contains(err.Error(), "This node is not a swarm manager") {
-			log.Debug("docker host is not a swarm manager")
+			log.Debug("docker host is not running in swarm mode")
 		} else {
 			log.Critical("failed to inspect docker swarm mode", logger.ErrAttr(err))
 
