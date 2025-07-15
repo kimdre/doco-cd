@@ -257,6 +257,15 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	addServiceLabels(project, *deployConfig, payload, repoDir, appVersion, timestamp, ComposeVersion, latestCommit)
 	addVolumeLabels(project, *deployConfig, payload, appVersion, timestamp, ComposeVersion, latestCommit)
 
+	if SwarmModeEnabled {
+		err = deploySwarmStack(ctx, dockerCli, project, deployConfig)
+		if err != nil {
+			return fmt.Errorf("failed to deploy swarm stack: %w", err)
+		}
+
+		return nil
+	}
+
 	if deployConfig.ForceImagePull {
 		err := service.Pull(ctx, project, api.PullOptions{
 			Quiet: true,
@@ -301,15 +310,6 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		Project:     project,
 		Wait:        true,
 		WaitTimeout: time.Duration(deployConfig.Timeout) * time.Second,
-	}
-
-	if SwarmModeEnabled {
-		err = deploySwarmStack(ctx, dockerCli, project, deployConfig)
-		if err != nil {
-			return fmt.Errorf("failed to deploy swarm stack: %w", err)
-		}
-
-		return nil
 	}
 
 	err = service.Up(ctx, project, api.UpOptions{
