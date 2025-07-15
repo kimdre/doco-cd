@@ -23,7 +23,7 @@ services:
     environment:
       TZ: Europe/Berlin
       HTTP_PORT: 80
-      LOG_LEVEL: debug
+      LOG_LEVEL: info
       # DOCKER_API_VERSION: 1.47
       <<: *poll-config
       #POLL_CONFIG_FILE: /poll.yml
@@ -31,6 +31,9 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - data:/data
+#    secrets:
+#      - source: docker-config
+#        target: /root/.docker/config.json
 #    configs: # Use with POLL_CONFIG_FILE
 #      - source: poll.yml
 #        target: /poll.yml
@@ -48,6 +51,10 @@ services:
 
 volumes:
   data:
+
+#secrets:
+#  docker-config:
+#    file: docker-config.json
 
 configs:
   poll.yml:
