@@ -28,3 +28,5 @@ go.work.sum
 
 cover.out
 cover.html
+
+docker-config.json
