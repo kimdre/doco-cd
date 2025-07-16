@@ -37,8 +37,6 @@ jobs:
       - name: Extract metadata for the Docker image
         id: meta
         uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5
-#        env:
-#          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
         with:
           images: |
             ghcr.io/${{ github.repository }}
