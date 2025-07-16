@@ -53,6 +53,7 @@ jobs:
           push: ${{ startsWith(github.ref, 'refs/tags/') }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
           platforms: |
             linux/amd64
             linux/arm64

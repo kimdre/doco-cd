@@ -53,13 +53,15 @@ jobs:
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
         with:
           context: .
-          provenance: false
           build-args: |
             APP_VERSION=dev-build.${{ steps.vars.outputs.short_sha }}
           push: false
           load: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          provenance: false
+          sbom: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -80,11 +82,13 @@ jobs:
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
         with:
           context: .
-          provenance: false
           build-args: |
             APP_VERSION=dev-build.${{ steps.vars.outputs.short_sha }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          provenance: false
+          sbom: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
