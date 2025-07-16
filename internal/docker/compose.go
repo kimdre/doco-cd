@@ -157,11 +157,11 @@ func CreateDockerCli(quiet, verifyTLS bool) (command.Cli, error) {
 }
 
 /*
-addServiceLabels adds the labels docker compose expects to exist on services.
+addComposeServiceLabels adds the labels docker compose expects to exist on services.
 This is required for future compose operations to work, such as finding
 containers that are part of a service.
 */
-func addServiceLabels(project *types.Project, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, composeVersion, latestCommit string) {
+func addComposeServiceLabels(project *types.Project, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, composeVersion, latestCommit string) {
 	for i, s := range project.Services {
 		s.CustomLabels = map[string]string{
 			DocoCDLabels.Metadata.Manager:      config.AppName,
@@ -185,7 +185,7 @@ func addServiceLabels(project *types.Project, deployConfig config.DeployConfig, 
 	}
 }
 
-func addVolumeLabels(project *types.Project, deployConfig config.DeployConfig, payload webhook.ParsedPayload, appVersion, timestamp, composeVersion, latestCommit string) {
+func addComposeVolumeLabels(project *types.Project, deployConfig config.DeployConfig, payload webhook.ParsedPayload, appVersion, timestamp, composeVersion, latestCommit string) {
 	for i, v := range project.Volumes {
 		v.CustomLabels = map[string]string{
 			DocoCDLabels.Metadata.Manager:     config.AppName,
@@ -231,8 +231,8 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 	return project, nil
 }
 
-// DeployCompose deploys a project as specified by the Docker Compose specification (LoadCompose).
-func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project,
+// deployCompose deploys a project as specified by the Docker Compose specification (LoadCompose).
+func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project,
 	deployConfig *config.DeployConfig, payload webhook.ParsedPayload,
 	repoDir, latestCommit, appVersion string, forceDeploy bool,
 ) error {
@@ -254,17 +254,8 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		}
 	}
 
-	addServiceLabels(project, *deployConfig, payload, repoDir, appVersion, timestamp, ComposeVersion, latestCommit)
-	addVolumeLabels(project, *deployConfig, payload, appVersion, timestamp, ComposeVersion, latestCommit)
-
-	if SwarmModeEnabled {
-		err = deploySwarmStack(ctx, dockerCli, project, deployConfig)
-		if err != nil {
-			return fmt.Errorf("failed to deploy swarm stack: %w", err)
-		}
-
-		return nil
-	}
+	addComposeServiceLabels(project, *deployConfig, payload, repoDir, appVersion, timestamp, ComposeVersion, latestCommit)
+	addComposeVolumeLabels(project, *deployConfig, payload, appVersion, timestamp, ComposeVersion, latestCommit)
 
 	if deployConfig.ForceImagePull {
 		err := service.Pull(ctx, project, api.PullOptions{
@@ -497,16 +488,29 @@ func DeployStack(
 		}
 	}()
 
-	err = DeployCompose(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion, forceDeploy)
-	if err != nil {
-		prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
+	// When SwarmModeEnabled is true, we deploy the stack using Docker Swarm.
+	if SwarmModeEnabled {
+		err = deploySwarmStack(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion)
+		if err != nil {
+			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 
-		errMsg := "failed to deploy stack"
-		stackLog.Error(errMsg,
-			logger.ErrAttr(err),
-			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+			errMsg := "failed to deploy swarm stack"
+			stackLog.Error(errMsg, logger.ErrAttr(err),
+				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
 
-		return fmt.Errorf("%s: %w", errMsg, err)
+			return fmt.Errorf("%s: %w", errMsg, err)
+		}
+	} else {
+		err = deployCompose(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion, forceDeploy)
+		if err != nil {
+			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
+
+			errMsg := "failed to deploy stack"
+			stackLog.Error(errMsg, logger.ErrAttr(err),
+				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+
+			return fmt.Errorf("%s: %w", errMsg, err)
+		}
 	}
 
 	prometheus.DeploymentsTotal.WithLabelValues(deployConfig.Name).Inc()
