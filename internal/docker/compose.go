@@ -491,6 +491,18 @@ func DeployStack(
 
 	// When SwarmModeEnabled is true, we deploy the stack using Docker Swarm.
 	if SwarmModeEnabled {
+		// Check if the project has bind mounts with swarm mode and fail if it does.
+		for _, service := range project.Services {
+			for _, volume := range service.Volumes {
+				if volume.Type == "bind" {
+					prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
+
+					errMsg := "swarm mode does not support bind mounts, please use volumes, configs or secrets instead"
+					return fmt.Errorf("%s: service: %s", errMsg, service.Name)
+				}
+			}
+		}
+
 		err = deploySwarmStack(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion)
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
