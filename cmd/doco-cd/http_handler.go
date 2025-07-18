@@ -214,11 +214,16 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			return
 		}
 
+		filterLabel := api.ProjectLabel
+		if docker.SwarmModeEnabled {
+			filterLabel = docker.StackNamespaceLabel
+		}
+
 		if deployConfig.Destroy {
 			subJobLog.Debug("destroying stack")
 
 			// Check if doco-cd manages the project before destroying the stack
-			containers, err := docker.GetLabeledContainers(ctx, dockerClient, api.ProjectLabel, deployConfig.Name)
+			containers, err := docker.GetLabeledContainers(ctx, dockerClient, filterLabel, deployConfig.Name)
 			if err != nil {
 				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to retrieve containers", err.Error(), jobID, http.StatusInternalServerError)
 
@@ -307,7 +312,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			}
 		} else {
 			// Skip deployment if another project with the same name already exists
-			containers, err := docker.GetLabeledContainers(ctx, dockerClient, api.ProjectLabel, deployConfig.Name)
+			containers, err := docker.GetLabeledContainers(ctx, dockerClient, filterLabel, deployConfig.Name)
 			if err != nil {
 				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to retrieve containers", err.Error(), jobID, http.StatusInternalServerError)
 

@@ -18,6 +18,10 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 )
 
+const (
+	StackNamespaceLabel = "com.docker.stack.namespace"
+)
+
 // deploySwarmStack deploys a Docker Swarm stack using the provided project and deploy configuration.
 func deploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types.Project, deployConfig *config.DeployConfig,
 	payload webhook.ParsedPayload, repoDir, latestCommit, appVersion string,

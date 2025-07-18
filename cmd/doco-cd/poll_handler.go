@@ -272,11 +272,16 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			return fmt.Errorf("failed to get latest commit: %w", err)
 		}
 
+		filterLabel := api.ProjectLabel
+		if docker.SwarmModeEnabled {
+			filterLabel = docker.StackNamespaceLabel
+		}
+
 		if deployConfig.Destroy {
 			subJobLog.Debug("destroying stack")
 
 			// Check if doco-cd manages the project before destroying the stack
-			containers, err := docker.GetLabeledContainers(ctx, dockerClient, api.ProjectLabel, deployConfig.Name)
+			containers, err := docker.GetLabeledContainers(ctx, dockerClient, filterLabel, deployConfig.Name)
 			if err != nil {
 				subJobLog.Error("failed to retrieve containers", log.ErrAttr(err))
 
@@ -363,7 +368,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			}
 		} else {
 			// Skip deployment if another project with the same name already exists
-			containers, err := docker.GetLabeledContainers(ctx, dockerClient, api.ProjectLabel, deployConfig.Name)
+			containers, err := docker.GetLabeledContainers(ctx, dockerClient, filterLabel, deployConfig.Name)
 			if err != nil {
 				subJobLog.Error("failed to retrieve containers", log.ErrAttr(err))
 
