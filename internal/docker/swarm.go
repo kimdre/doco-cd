@@ -2,7 +2,14 @@ package docker
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/compose-spec/compose-go/v2/types"
@@ -47,6 +54,14 @@ func deploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types
 	addSwarmVolumeLabels(cfg, *deployConfig, payload, repoDir, appVersion, timestamp, latestCommit)
 	addSwarmConfigLabels(cfg, *deployConfig, payload, repoDir, appVersion, timestamp, latestCommit)
 	addSwarmSecretLabels(cfg, *deployConfig, payload, repoDir, appVersion, timestamp, latestCommit)
+
+	if err = SetConfigHashPrefixes(cfg, opts.Namespace); err != nil {
+		return fmt.Errorf("failed to set config hash prefixes: %w", err)
+	}
+
+	if err = SetSecretHashPrefixes(cfg, opts.Namespace); err != nil {
+		return fmt.Errorf("failed to set secret hash prefixes: %w", err)
+	}
 
 	return swarm.RunDeploy(ctx, dockerCli, &pflag.FlagSet{}, &opts, cfg)
 }
@@ -170,4 +185,117 @@ func addSwarmSecretLabels(stack *composetypes.Config, deployConfig config.Deploy
 
 		stack.Secrets[i] = s
 	}
+}
+
+// SetConfigHashPrefixes generates hashes for the config definitions in the stack config
+// and adds them to the config names as suffixes to trigger a redeployment when they change (Only works in Docker Swarm mode).
+func SetConfigHashPrefixes(stack *composetypes.Config, namespace string) error {
+	for i, c := range stack.Configs {
+		if c.External.External {
+			// Skip external configs, they are not managed by the stack
+			continue
+		}
+
+		var content io.Reader
+
+		contentBytes, err := os.ReadFile(c.File)
+		if err != nil {
+			return fmt.Errorf("failed to read config file %s: %w", c.File, err)
+		}
+
+		content = strings.NewReader(string(contentBytes))
+
+		hash, err := generateShortHash(content)
+		if err != nil {
+			return fmt.Errorf("failed to generate hash for config %s: %w", c.Name, err)
+		}
+
+		if c.Name == "" {
+			c.Name = fmt.Sprintf("%s_%s", namespace, filepath.Base(c.File))
+		}
+
+		oldName := c.Name
+		nameWithHash := fmt.Sprintf("%s_%s", c.Name, hash)
+		c.Name = nameWithHash
+		stack.Configs[i] = c
+
+		// Check for services that use this config and update their config references
+		for j, service := range stack.Services {
+			for k, cfg := range service.Configs {
+				if cfg.Source == oldName {
+					// Update the config reference in the service
+					stack.Services[j].Configs[k].Source = nameWithHash
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// SetSecretHashPrefixes generates hashes for the secret definitions in the stack config
+// and adds them to the secret names as suffixes to trigger a redeployment when they change (Only works in Docker Swarm mode).
+func SetSecretHashPrefixes(stack *composetypes.Config, namespace string) error {
+	for i, s := range stack.Secrets {
+		if s.External.External {
+			// Skip external secrets, they are not managed by the stack
+			continue
+		}
+
+		var content io.Reader
+
+		contentBytes, err := os.ReadFile(s.File)
+		if err != nil {
+			return fmt.Errorf("failed to read secret file %s: %w", s.File, err)
+		}
+
+		content = strings.NewReader(string(contentBytes))
+
+		hash, err := generateShortHash(content)
+		if err != nil {
+			return fmt.Errorf("failed to generate hash for secret %s: %w", s.Name, err)
+		}
+
+		if s.Name == "" {
+			s.Name = fmt.Sprintf("%s_%s", namespace, filepath.Base(s.File))
+		}
+
+		oldName := s.Name
+		nameWithHash := fmt.Sprintf("%s_%s", s.Name, hash)
+		s.Name = nameWithHash
+		stack.Secrets[i] = s
+
+		// Check for services that use this secret and update their secret references
+		for j, service := range stack.Services {
+			for k, secret := range service.Secrets {
+				if secret.Source == oldName {
+					// Update the secret reference in the service
+					stack.Services[j].Secrets[k].Source = nameWithHash
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// generateShortHash generates a short hash from the provided data reader.
+func generateShortHash(data io.Reader) (hash string, err error) {
+	const length = 8
+
+	h := sha256.New()
+
+	_, err = io.Copy(h, data)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate hash: %w", err)
+	}
+
+	hash = hex.EncodeToString(h.Sum(nil))
+	if len(hash) > length {
+		hash = hash[:length] // Shorten hash to n characters
+	} else if hash == "" {
+		return "", errors.New("empty hash")
+	}
+
+	return hash, nil
 }
