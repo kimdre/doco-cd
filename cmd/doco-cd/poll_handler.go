@@ -330,6 +330,15 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 				return fmt.Errorf("failed to destroy stack: %w", err)
 			}
 
+			if docker.SwarmModeEnabled && deployConfig.DestroyOpts.RemoveVolumes {
+				err = docker.RemoveLabeledVolumes(ctx, dockerClient, deployConfig.Name, filterLabel)
+				if err != nil {
+					subJobLog.Error("failed to remove volumes", log.ErrAttr(err))
+
+					return fmt.Errorf("failed to remove volumes: %w", err)
+				}
+			}
+
 			if deployConfig.DestroyOpts.RemoveRepoDir {
 				// Remove the repository directory after destroying the stack
 				subJobLog.Debug("removing deployment directory", slog.String("path", externalRepoPath))

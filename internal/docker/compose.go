@@ -43,6 +43,7 @@ const (
 var (
 	ErrDockerSocketConnectionFailed = errors.New("failed to connect to docker socket")
 	ErrNoContainerToStart           = errors.New("no container to start")
+	ErrVolumeIsInUse                = errors.New("volume is in use")
 	ComposeVersion                  string // Version of the docker compose module, will be set at runtime
 	SwarmModeEnabled                bool   // Whether the docker host is running in swarm mode
 )
@@ -529,17 +530,6 @@ func DestroyStack(
 
 	stackLog.Info("destroying stack")
 
-	service := compose.NewComposeService(*dockerCli)
-
-	downOpts := api.DownOptions{
-		RemoveOrphans: deployConfig.RemoveOrphans,
-		Volumes:       deployConfig.DestroyOpts.RemoveVolumes,
-	}
-
-	if deployConfig.DestroyOpts.RemoveImages {
-		downOpts.Images = "all"
-	}
-
 	if SwarmModeEnabled {
 		err := removeSwarmStack(*ctx, *dockerCli, deployConfig)
 		if err != nil {
@@ -550,6 +540,17 @@ func DestroyStack(
 		}
 
 		return nil
+	}
+
+	service := compose.NewComposeService(*dockerCli)
+
+	downOpts := api.DownOptions{
+		RemoveOrphans: deployConfig.RemoveOrphans,
+		Volumes:       deployConfig.DestroyOpts.RemoveVolumes,
+	}
+
+	if deployConfig.DestroyOpts.RemoveImages {
+		downOpts.Images = "all"
 	}
 
 	err := service.Down(*ctx, deployConfig.Name, downOpts)

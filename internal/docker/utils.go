@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"strings"
+	"time"
+
+	"github.com/docker/docker/api/types/volume"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -46,6 +49,18 @@ func GetLabeledContainers(ctx context.Context, cli *client.Client, key, value st
 		Filters: filters.NewArgs(filters.Arg("label", key+"="+value)),
 		All:     false,
 	})
+}
+
+// GetLabeledVolumes retrieves all volumes with a specific label key and value.
+func GetLabeledVolumes(ctx context.Context, cli *client.Client, key, value string) (volumes []*volume.Volume, err error) {
+	volResp, err := cli.VolumeList(ctx, volume.ListOptions{
+		Filters: filters.NewArgs(filters.Arg("label", key+"="+value)),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list volumes with label %s=%s: %w", key, value, err)
+	}
+
+	return volResp.Volumes, nil
 }
 
 // GetMountPointByDestination retrieves the mount point of a container volume/bind mount by its destination (mount point inside the container).
@@ -104,4 +119,31 @@ func GetModuleVersion(module string) (string, error) {
 	}
 
 	return "", fmt.Errorf("%w: %s", ErrModuleNotFound, module)
+}
+
+func RemoveLabeledVolumes(ctx context.Context, dockerClient *client.Client, stackName, filterLabel string) error {
+	volumes, err := GetLabeledVolumes(ctx, dockerClient, filterLabel, stackName)
+	if err != nil {
+		return fmt.Errorf("failed to get labeled volumes: %w", err)
+	}
+
+	for _, vol := range volumes {
+		retries := 5
+
+		for i := 0; i < retries; i++ {
+			err = dockerClient.VolumeRemove(ctx, vol.Name, true)
+			if err != nil {
+				if strings.Contains(err.Error(), ErrVolumeIsInUse.Error()) {
+					time.Sleep(2 * time.Second)
+					continue
+				}
+
+				return fmt.Errorf("failed to remove volume %s: %w", vol.Name, err)
+			}
+
+			break
+		}
+	}
+
+	return nil
 }

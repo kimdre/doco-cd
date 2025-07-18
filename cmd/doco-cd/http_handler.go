@@ -274,6 +274,17 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				return
 			}
 
+			if docker.SwarmModeEnabled && deployConfig.DestroyOpts.RemoveVolumes {
+				err = docker.RemoveLabeledVolumes(ctx, dockerClient, deployConfig.Name, filterLabel)
+				if err != nil {
+					onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to remove volumes", err.Error(), jobID, http.StatusInternalServerError)
+
+					return
+				}
+
+				subJobLog.Debug("failed to remove volumes", slog.String("stack", deployConfig.Name))
+			}
+
 			if deployConfig.DestroyOpts.RemoveRepoDir {
 				// Remove the repository directory after destroying the stack
 				subJobLog.Debug("removing deployment directory", slog.String("path", externalRepoPath))
