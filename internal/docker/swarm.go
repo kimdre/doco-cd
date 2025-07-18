@@ -61,7 +61,7 @@ func removeSwarmStack(ctx context.Context, dockerCli command.Cli, deployConfig *
 	return swarm.RunRemove(ctx, dockerCli, opts)
 }
 
-// addSwarmServiceLabels adds custom labels to the services in a Docker Swarm stack.
+// addSwarmServiceLabels adds custom labels to the service containers in a Docker Swarm stack.
 func addSwarmServiceLabels(stack *composetypes.Config, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, latestCommit string) {
 	customLabels := map[string]string{
 		DocoCDLabels.Metadata.Manager:      config.AppName,
