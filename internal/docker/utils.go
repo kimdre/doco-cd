@@ -42,15 +42,10 @@ func GetContainerID(client client.APIClient, name string) (id string, err error)
 
 // GetLabeledContainers retrieves all containers with a specific label key and value.
 func GetLabeledContainers(ctx context.Context, cli *client.Client, key, value string) (containers []container.Summary, err error) {
-	containers, err = cli.ContainerList(ctx, container.ListOptions{
+	return cli.ContainerList(ctx, container.ListOptions{
 		Filters: filters.NewArgs(filters.Arg("label", key+"="+value)),
 		All:     false,
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return containers, nil
 }
 
 // GetMountPointByDestination retrieves the mount point of a container volume/bind mount by its destination (mount point inside the container).
