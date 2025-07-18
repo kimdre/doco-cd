@@ -498,6 +498,7 @@ func DeployStack(
 					prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 
 					errMsg := "swarm mode does not support bind mounts, please use volumes, configs or secrets instead"
+
 					return fmt.Errorf("%s: service: %s", errMsg, service.Name)
 				}
 			}
