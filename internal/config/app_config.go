@@ -26,6 +26,7 @@ type AppConfig struct {
 	AuthType            string                 `env:"AUTH_TYPE,notEmpty" envDefault:"oauth2"`                             // AuthType is the type of authentication to use when cloning repositories
 	SkipTLSVerification bool                   `env:"SKIP_TLS_VERIFICATION,notEmpty" envDefault:"false"`                  // SkipTLSVerification skips the TLS verification when cloning repositories.
 	DockerQuietDeploy   bool                   `env:"DOCKER_QUIET_DEPLOY,notEmpty" envDefault:"true"`                     // DockerQuietDeploy suppresses the status output of dockerCli in deployments (e.g. pull, create, start)
+	DockerSwarmFeatures bool                   `env:"DOCKER_SWARM_FEATURES,notEmpty" envDefault:"true"`                   // DockerSwarmFeatures enables the usage Docker Swarm features in the application if it has detected that it is running in a Docker Swarm environment
 	PollConfigYAML      string                 `env:"POLL_CONFIG"`                                                        // PollConfigYAML is the unparsed string containing the PollConfig in YAML format
 	PollConfigFile      string                 `env:"POLL_CONFIG_FILE,file"`                                              // PollConfigFile is the file containing the PollConfig in YAML format
 	PollConfig          []PollConfig           `yaml:"-"`                                                                 // PollConfig is the YAML configuration for polling Git repositories for changes

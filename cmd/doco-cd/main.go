@@ -195,21 +195,22 @@ func main() {
 
 		return
 	}
-
-	// Check if docker host is running in swarm mode
-	_, err = dockerClient.SwarmInspect(context.Background())
-	if err != nil {
-		docker.SwarmModeEnabled = false
-
-		if strings.Contains(err.Error(), "This node is not a swarm manager") {
+	if c.DockerSwarmFeatures {
+		// Check if docker host is running in swarm mode
+		_, err = dockerClient.SwarmInspect(context.Background())
+		if err != nil {
 			docker.SwarmModeEnabled = false
-		} else {
-			log.Critical("failed to inspect docker swarm mode", logger.ErrAttr(err))
 
-			return
+			if strings.Contains(err.Error(), "This node is not a swarm manager") {
+				docker.SwarmModeEnabled = false
+			} else {
+				log.Critical("failed to inspect docker swarm mode", logger.ErrAttr(err))
+
+				return
+			}
+		} else {
+			docker.SwarmModeEnabled = true
 		}
-	} else {
-		docker.SwarmModeEnabled = true
 	}
 
 	log.Debug("negotiated docker versions to use",
