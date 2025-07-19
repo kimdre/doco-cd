@@ -195,6 +195,7 @@ func main() {
 
 		return
 	}
+
 	if c.DockerSwarmFeatures {
 		// Check if docker host is running in swarm mode
 		_, err = dockerClient.SwarmInspect(context.Background())
