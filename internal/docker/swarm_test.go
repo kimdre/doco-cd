@@ -49,20 +49,18 @@ func TestDeploySwarmStack(t *testing.T) {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
 
-	url := git.GetAuthUrl(cloneUrlTest, c.AuthType, c.GitAccessToken)
-
 	p := webhook.ParsedPayload{
 		Ref:       git.SwarmModeBranch,
 		CommitSHA: "244b6f9a5b3dc546ab3822d9c0744846f539c6ef",
 		Name:      "test",
 		FullName:  "kimdre/doco-cd_tests",
-		CloneURL:  url,
+		CloneURL:  git.GetAuthUrl(cloneUrlTest, c.AuthType, c.GitAccessToken),
 		Private:   true,
 	}
 
 	t.Chdir(tmpDir)
 
-	repo, err := git.CloneRepository(tmpDir, url, git.SwarmModeBranch, c.SkipTLSVerification, c.HttpProxy)
+	repo, err := git.CloneRepository(tmpDir, p.CloneURL, git.SwarmModeBranch, c.SkipTLSVerification, c.HttpProxy)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
