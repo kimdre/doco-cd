@@ -505,7 +505,7 @@ func DeployStack(
 			}
 		}
 
-		err = deploySwarmStack(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion)
+		err = DeploySwarmStack(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion)
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 
@@ -567,7 +567,7 @@ func DestroyStack(
 	stackLog.Info("destroying stack")
 
 	if SwarmModeEnabled {
-		err := removeSwarmStack(*ctx, *dockerCli, deployConfig)
+		err := RemoveSwarmStack(*ctx, *dockerCli, deployConfig)
 		if err != nil {
 			errMsg := "failed to destroy swarm stack"
 			stackLog.Error(errMsg, logger.ErrAttr(err))

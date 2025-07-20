@@ -33,8 +33,8 @@ const (
 
 var SwarmModeEnabled bool // Whether the docker host is running in swarm mode
 
-// deploySwarmStack deploys a Docker Swarm stack using the provided project and deploy configuration.
-func deploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types.Project, deployConfig *config.DeployConfig,
+// DeploySwarmStack deploys a Docker Swarm stack using the provided project and deploy configuration.
+func DeploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types.Project, deployConfig *config.DeployConfig,
 	payload webhook.ParsedPayload, repoDir, latestCommit, appVersion string,
 ) error {
 	opts := options.Deploy{
@@ -70,8 +70,8 @@ func deploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types
 	return swarm.RunDeploy(ctx, dockerCli, &pflag.FlagSet{}, &opts, cfg)
 }
 
-// removeSwarmStack removes a Docker Swarm stack using the provided deploy configuration.
-func removeSwarmStack(ctx context.Context, dockerCli command.Cli, deployConfig *config.DeployConfig) error {
+// RemoveSwarmStack removes a Docker Swarm stack using the provided deploy configuration.
+func RemoveSwarmStack(ctx context.Context, dockerCli command.Cli, deployConfig *config.DeployConfig) error {
 	opts := options.Remove{
 		Namespaces: []string{deployConfig.Name},
 		Detach:     false,
