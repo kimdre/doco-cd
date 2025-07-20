@@ -16,10 +16,6 @@ import (
 )
 
 func TestRunPoll(t *testing.T) {
-	if docker.SwarmModeEnabled {
-		t.Skip("Skipping test in Swarm mode")
-	}
-
 	encryption.SetupAgeKeyEnvVar(t)
 
 	log := logger.New(12)
@@ -31,6 +27,12 @@ func TestRunPoll(t *testing.T) {
 		Interval:     10,
 		CustomTarget: "",
 		Private:      true,
+	}
+
+	if docker.SwarmModeEnabled {
+		pollConfig.Reference = "swarm-mode"
+
+		t.Log("Testing in Swarm mode, using 'swarm-mode' reference")
 	}
 
 	appConfig, err := config.GetAppConfig()
