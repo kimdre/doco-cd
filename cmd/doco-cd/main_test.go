@@ -35,6 +35,7 @@ const (
 
 func TestMain(m *testing.M) {
 	ctx := context.Background()
+
 	dockerCli, err := docker.CreateDockerCli(false, false)
 	if err != nil {
 		log.Fatalf("Failed to create docker client: %v", err)
@@ -45,17 +46,17 @@ func TestMain(m *testing.M) {
 		log.Fatalf("Failed to verify docker socket connection: %v", err)
 	}
 
+	docker.SwarmModeEnabled, err = docker.CheckDaemonIsSwarmManager(ctx, dockerCli)
+	if err != nil {
+		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
+	}
+
 	// Ensure the Docker client is closed after tests
 	defer func() {
 		if err := dockerCli.Client().Close(); err != nil {
 			log.Printf("Failed to close Docker client: %v", err)
 		}
 	}()
-
-	docker.SwarmModeEnabled, err = docker.CheckDaemonIsSwarmManager(ctx, dockerCli)
-	if err != nil {
-		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
-	}
 
 	m.Run()
 }
@@ -208,6 +209,7 @@ func TestHandleEvent(t *testing.T) {
 			if docker.SwarmModeEnabled && !tc.swarmMode {
 				t.Skipf("Skipping test %s because it requires Swarm mode to be disabled", tc.name)
 			}
+
 			if !docker.SwarmModeEnabled && tc.swarmMode {
 				t.Skipf("Skipping test %s because it requires Swarm mode to be enabled", tc.name)
 			}
