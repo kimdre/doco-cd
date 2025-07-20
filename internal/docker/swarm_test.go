@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"log"
 	"path/filepath"
 	"testing"
 
@@ -25,16 +26,21 @@ func TestCheckDaemonIsSwarmManager(t *testing.T) {
 }
 
 func TestDeploySwarmStack(t *testing.T) {
+	dockerCli, err := CreateDockerCli(false, false)
+	if err != nil {
+		t.Fatalf("Failed to create Docker CLI: %v", err)
+	}
+
+	SwarmModeEnabled, err = CheckDaemonIsSwarmManager(t.Context(), dockerCli)
+	if err != nil {
+		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
+	}
+
 	if !SwarmModeEnabled {
 		t.Skip("Swarm mode is not enabled, skipping test")
 	}
 
 	tmpDir := t.TempDir()
-
-	dockerCli, err := CreateDockerCli(false, false)
-	if err != nil {
-		t.Fatalf("Failed to create Docker CLI: %v", err)
-	}
 
 	c, err := config.GetAppConfig()
 	if err != nil {
