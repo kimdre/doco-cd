@@ -78,6 +78,10 @@ func TestHandlerData_HealthCheckHandler(t *testing.T) {
 }
 
 func TestHandlerData_WebhookHandler(t *testing.T) {
+	if docker.SwarmModeEnabled {
+		t.Skip("Skipping test in Swarm mode")
+	}
+
 	expectedResponse := `{"details":"job completed successfully","job_id":"[a-f0-9-]{36}"}`
 	expectedStatusCode := http.StatusCreated
 	tmpDir := t.TempDir()

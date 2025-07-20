@@ -211,7 +211,8 @@ func TestDeployCompose(t *testing.T) {
 		log := logger.New(slog.LevelInfo)
 		jobLog := log.With(slog.String("job_id", jobID))
 
-		err = DeployStack(jobLog, repoPath, repoPath, &ctx, &dockerCli, &p, deployConf, []git.ChangedFile{}, latestCommit, "test", false)
+		err = DeployStack(jobLog, repoPath, repoPath, &ctx, &dockerCli, dockerClient,
+			&p, deployConf, []git.ChangedFile{}, latestCommit, "test", false)
 		if err != nil {
 			if errors.Is(err, config.ErrDeprecatedConfig) {
 				t.Log(err.Error())

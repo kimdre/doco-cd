@@ -16,6 +16,10 @@ import (
 )
 
 func TestRunPoll(t *testing.T) {
+	if docker.SwarmModeEnabled {
+		t.Skip("Skipping test in Swarm mode")
+	}
+
 	encryption.SetupAgeKeyEnvVar(t)
 
 	log := logger.New(12)

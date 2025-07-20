@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -33,15 +34,30 @@ const (
 )
 
 func TestMain(m *testing.M) {
-	// Set up any necessary environment variables or configurations here
-	// For example, you might want to set a default log level or HTTP port
-	// Run the tests
-	exitCode := m.Run()
+	ctx := context.Background()
+	dockerCli, err := docker.CreateDockerCli(false, false)
+	if err != nil {
+		log.Fatalf("Failed to create docker client: %v", err)
+	}
 
-	// Clean up any resources or configurations here
+	err = docker.VerifySocketConnection()
+	if err != nil {
+		log.Fatalf("Failed to verify docker socket connection: %v", err)
+	}
 
-	// Exit with the appropriate code
-	os.Exit(exitCode)
+	// Ensure the Docker client is closed after tests
+	defer func() {
+		if err := dockerCli.Client().Close(); err != nil {
+			log.Printf("Failed to close Docker client: %v", err)
+		}
+	}()
+
+	docker.SwarmModeEnabled, err = docker.CheckDaemonIsSwarmManager(ctx, dockerCli)
+	if err != nil {
+		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
+	}
+
+	m.Run()
 }
 
 func TestHandleEvent(t *testing.T) {
@@ -57,6 +73,7 @@ func TestHandleEvent(t *testing.T) {
 		expectedResponseBody string
 		overrideEnv          map[string]string
 		customTarget         string
+		swarmMode            bool
 	}{
 		{
 			name: "Successful Deployment",
@@ -72,6 +89,7 @@ func TestHandleEvent(t *testing.T) {
 			expectedResponseBody: `{"details":"job completed successfully","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "",
+			swarmMode:            false,
 		},
 		{
 			name: "Successful Deployment with custom Target",
@@ -87,6 +105,7 @@ func TestHandleEvent(t *testing.T) {
 			expectedResponseBody: `{"details":"job completed successfully","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "test",
+			swarmMode:            false,
 		},
 		{
 			name: "Invalid Reference",
@@ -102,6 +121,7 @@ func TestHandleEvent(t *testing.T) {
 			expectedResponseBody: `{"error":"failed to clone repository","details":"couldn't find remote ref \"` + invalidBranch + `\"","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "",
+			swarmMode:            false,
 		},
 		{
 			name: "Private Repository",
@@ -117,9 +137,10 @@ func TestHandleEvent(t *testing.T) {
 			expectedResponseBody: `{"details":"job completed successfully","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "",
+			swarmMode:            false,
 		},
 		{
-			name: "Missing Deployment Configuration",
+			name: "Missing Compose Configuration",
 			payload: webhook.ParsedPayload{
 				Ref:       git.MainBranch,
 				CommitSHA: "efefb4111f3c363692a2526f9be9b24560e6511f",
@@ -132,6 +153,7 @@ func TestHandleEvent(t *testing.T) {
 			expectedResponseBody: `{"error":"deployment failed","details":"no compose files found: stat %[2]s/docker-compose.yaml: no such file or directory","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "",
+			swarmMode:            false,
 		},
 		{
 			name: "With Remote Repository",
@@ -147,6 +169,23 @@ func TestHandleEvent(t *testing.T) {
 			expectedResponseBody: `{"details":"job completed successfully","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "",
+			swarmMode:            false,
+		},
+		{
+			name: "With Remote Repository and Swarm Mode",
+			payload: webhook.ParsedPayload{
+				Ref:       "swarm-mode",
+				CommitSHA: "e82246851a624b3906527764196e9d072da99762",
+				Name:      projectName,
+				FullName:  "kimdre/doco-cd_tests",
+				CloneURL:  "https://github.com/kimdre/doco-cd_tests",
+				Private:   true,
+			},
+			expectedStatusCode:   http.StatusCreated,
+			expectedResponseBody: `{"details":"job completed successfully","job_id":"%[1]s"}`,
+			overrideEnv:          nil,
+			customTarget:         "",
+			swarmMode:            true,
 		},
 	}
 
@@ -166,6 +205,13 @@ func TestHandleEvent(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			if docker.SwarmModeEnabled && !tc.swarmMode {
+				t.Skipf("Skipping test %s because it requires Swarm mode to be disabled", tc.name)
+			}
+			if !docker.SwarmModeEnabled && tc.swarmMode {
+				t.Skipf("Skipping test %s because it requires Swarm mode to be enabled", tc.name)
+			}
+
 			tmpDir := t.TempDir()
 
 			for k, v := range defaultEnvVars {
