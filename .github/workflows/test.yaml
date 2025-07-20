@@ -56,7 +56,16 @@ jobs:
           WEBHOOK_SECRET: test_Secret1
           GIT_ACCESS_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
           HTTP_PROXY: http://localhost:3128
+      - name: Enable swarm mode
+        run: docker swarm init
+      - run: go test -p 1 -v -coverprofile=coverage-swarm.out -covermode=atomic ./... -timeout 5m
+        timeout-minutes: 5
+        env:
+          WEBHOOK_SECRET: test_Secret1
+          GIT_ACCESS_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
+          HTTP_PROXY: http://localhost:3128
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24 # v5.4.3
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.out,coverage-swarm.out
