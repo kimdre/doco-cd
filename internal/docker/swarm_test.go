@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/docker/docker/client"
+
 	"github.com/kimdre/doco-cd/internal/git"
 
 	"github.com/kimdre/doco-cd/internal/config"
@@ -88,6 +90,32 @@ func TestDeploySwarmStack(t *testing.T) {
 		t.Fatalf("Failed to deploy swarm stack: %v", err)
 	} else {
 		t.Logf("Swarm stack deployed successfully")
+	}
+
+	dockerClient, _ := client.NewClientWithOpts(
+		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
+	)
+
+	t.Cleanup(func() {
+		err = dockerClient.Close()
+		if err != nil {
+			t.Logf("Failed to close Docker client: %v", err)
+		}
+	})
+
+	err = PruneStackConfigs(t.Context(), dockerClient, projectName)
+	if err != nil {
+		t.Fatalf("Failed to prune stack configs: %v", err)
+	} else {
+		t.Logf("Stack configs pruned successfully")
+	}
+
+	err = PruneStackSecrets(t.Context(), dockerClient, projectName)
+	if err != nil {
+		t.Fatalf("Failed to prune stack secrets: %v", err)
+	} else {
+		t.Logf("Stack secrets pruned successfully")
 	}
 
 	err = RemoveSwarmStack(t.Context(), dockerCli, deployConfigs[0])
