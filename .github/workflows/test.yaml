@@ -34,7 +34,7 @@ jobs:
           args: --timeout=5m
 
   test_compose:
-    name: Acceptance Tests
+    name: Test Docker Compose
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
@@ -64,7 +64,7 @@ jobs:
           files: coverage.out
 
   test_swarm:
-    name: Acceptance Tests
+    name: Tests Docker Swarm Mode
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
