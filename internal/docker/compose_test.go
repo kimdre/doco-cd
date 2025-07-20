@@ -330,9 +330,7 @@ func TestHasChangedConfigs(t *testing.T) {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
 
-	if err = os.Chdir(tmpDir); err != nil {
-		t.Fatalf("Failed to change to tmpDir: %v", err)
-	}
+	t.Chdir(tmpDir)
 
 	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"})
 	if err != nil {
@@ -395,9 +393,7 @@ func TestHasChangedSecrets(t *testing.T) {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
 
-	if err = os.Chdir(tmpDir); err != nil {
-		t.Fatalf("Failed to change to tmpDir: %v", err)
-	}
+	t.Chdir(tmpDir)
 
 	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"})
 	if err != nil {
@@ -460,9 +456,7 @@ func TestHasChangedBindMounts(t *testing.T) {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
 
-	if err = os.Chdir(tmpDir); err != nil {
-		t.Fatalf("Failed to change to tmpDir: %v", err)
-	}
+	t.Chdir(tmpDir)
 
 	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"})
 	if err != nil {
