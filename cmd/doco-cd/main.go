@@ -282,50 +282,6 @@ func main() {
 		}
 	}
 
-	log.Debug("retrieving containers that are managed by doco-cd")
-
-	containers, err := docker.GetLabeledContainers(context.TODO(), dockerClient, docker.DocoCDLabels.Metadata.Manager, config.AppName)
-	if err != nil {
-		log.Error("failed to retrieve doco-cd containers", logger.ErrAttr(err))
-	}
-
-	if len(containers) == 0 {
-		log.Debug("no containers found that are managed by doco-cd", slog.Int("count", len(containers)))
-	} else {
-		log.Debug("retrieved containers successfully", slog.Int("count", len(containers)))
-	}
-
-	for _, cont := range containers {
-		log.Debug("inspecting container", slog.Group("container",
-			slog.String("id", cont.ID),
-			slog.String("name", cont.Names[0]),
-		))
-
-		dir := cont.Labels[docker.DocoCDLabels.Deployment.WorkingDir]
-		if len(dir) == 0 {
-			log.Error(fmt.Sprintf("failed to retrieve container %v working directory", cont.ID))
-
-			continue
-		}
-
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-			// docker.OnCrash(
-			//
-			//	dockerCli.Client(),
-			//	cont.ID,
-			//	func() {
-			//		log.Info("cleaning up", slog.String("path", dir))
-			//		_ = os.RemoveAll(dir)
-			//	},
-			//	func(err error) { log.Error("failed to clean up path: "+dir, logger.ErrAttr(err)) },
-			//
-			// )
-		}()
-	}
-
 	go func() {
 		log.Info("serving prometheus metrics", slog.Int("http_port", int(c.MetricsPort)), slog.String("path", prometheus.MetricsPath))
 
