@@ -19,6 +19,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/docker/client"
+
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 
 	"github.com/compose-spec/compose-go/v2/cli"
@@ -43,7 +45,8 @@ const (
 var (
 	ErrDockerSocketConnectionFailed = errors.New("failed to connect to docker socket")
 	ErrNoContainerToStart           = errors.New("no container to start")
-	ComposeVersion                  string
+	ErrIsInUse                      = errors.New("is in use")
+	ComposeVersion                  string // Version of the docker compose module, will be set at runtime
 )
 
 // ConnectToSocket connects to the docker socket.
@@ -156,11 +159,11 @@ func CreateDockerCli(quiet, verifyTLS bool) (command.Cli, error) {
 }
 
 /*
-addServiceLabels adds the labels docker compose expects to exist on services.
+addComposeServiceLabels adds the labels docker compose expects to exist on services.
 This is required for future compose operations to work, such as finding
 containers that are part of a service.
 */
-func addServiceLabels(project *types.Project, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, composeVersion, latestCommit string) {
+func addComposeServiceLabels(project *types.Project, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, composeVersion, latestCommit string) {
 	for i, s := range project.Services {
 		s.CustomLabels = map[string]string{
 			DocoCDLabels.Metadata.Manager:      config.AppName,
@@ -184,7 +187,7 @@ func addServiceLabels(project *types.Project, deployConfig config.DeployConfig, 
 	}
 }
 
-func addVolumeLabels(project *types.Project, deployConfig config.DeployConfig, payload webhook.ParsedPayload, appVersion, timestamp, composeVersion, latestCommit string) {
+func addComposeVolumeLabels(project *types.Project, deployConfig config.DeployConfig, payload webhook.ParsedPayload, appVersion, timestamp, composeVersion, latestCommit string) {
 	for i, v := range project.Volumes {
 		v.CustomLabels = map[string]string{
 			DocoCDLabels.Metadata.Manager:     config.AppName,
@@ -230,8 +233,8 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 	return project, nil
 }
 
-// DeployCompose deploys a project as specified by the Docker Compose specification (LoadCompose).
-func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project,
+// deployCompose deploys a project as specified by the Docker Compose specification (LoadCompose).
+func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project,
 	deployConfig *config.DeployConfig, payload webhook.ParsedPayload,
 	repoDir, latestCommit, appVersion string, forceDeploy bool,
 ) error {
@@ -253,8 +256,8 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		}
 	}
 
-	addServiceLabels(project, *deployConfig, payload, repoDir, appVersion, timestamp, ComposeVersion, latestCommit)
-	addVolumeLabels(project, *deployConfig, payload, appVersion, timestamp, ComposeVersion, latestCommit)
+	addComposeServiceLabels(project, *deployConfig, payload, repoDir, appVersion, timestamp, ComposeVersion, latestCommit)
+	addComposeVolumeLabels(project, *deployConfig, payload, appVersion, timestamp, ComposeVersion, latestCommit)
 
 	if deployConfig.ForceImagePull {
 		err := service.Pull(ctx, project, api.PullOptions{
@@ -323,7 +326,7 @@ func DeployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 // DeployStack deploys the stack using the provided deployment configuration.
 func DeployStack(
 	jobLog *slog.Logger, internalRepoPath, externalRepoPath string, ctx *context.Context,
-	dockerCli *command.Cli, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
+	dockerCli *command.Cli, dockerClient *client.Client, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
 	changedFiles []gitInternal.ChangedFile, latestCommit, appVersion string, forceDeploy bool,
 ) error {
 	startTime := time.Now()
@@ -487,16 +490,64 @@ func DeployStack(
 		}
 	}()
 
-	err = DeployCompose(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion, forceDeploy)
-	if err != nil {
-		prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
+	// When SwarmModeEnabled is true, we deploy the stack using Docker Swarm.
+	if SwarmModeEnabled {
+		// Check if the project has bind mounts with swarm mode and fail if it does.
+		for _, service := range project.Services {
+			for _, volume := range service.Volumes {
+				if volume.Type == "bind" {
+					prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 
-		errMsg := "failed to deploy stack"
-		stackLog.Error(errMsg,
-			logger.ErrAttr(err),
-			slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+					errMsg := "swarm mode does not support bind mounts, please use volumes, configs or secrets instead"
 
-		return fmt.Errorf("%s: %w", errMsg, err)
+					return fmt.Errorf("%s: service: %s", errMsg, service.Name)
+				}
+			}
+		}
+
+		err = DeploySwarmStack(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion)
+		if err != nil {
+			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
+
+			errMsg := "failed to deploy swarm stack"
+			stackLog.Error(errMsg, logger.ErrAttr(err),
+				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+
+			return fmt.Errorf("%s: %w", errMsg, err)
+		}
+
+		err = PruneStackConfigs(*ctx, dockerClient, deployConfig.Name)
+		if err != nil {
+			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
+
+			errMsg := "failed to prune stack configs"
+			stackLog.Error(errMsg, logger.ErrAttr(err),
+				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+
+			return fmt.Errorf("%s: %w", errMsg, err)
+		}
+
+		err = PruneStackSecrets(*ctx, dockerClient, deployConfig.Name)
+		if err != nil {
+			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
+
+			errMsg := "failed to prune stack secrets"
+			stackLog.Error(errMsg, logger.ErrAttr(err),
+				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+
+			return fmt.Errorf("%s: %w", errMsg, err)
+		}
+	} else {
+		err = deployCompose(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion, forceDeploy)
+		if err != nil {
+			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
+
+			errMsg := "failed to deploy stack"
+			stackLog.Error(errMsg, logger.ErrAttr(err),
+				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+
+			return fmt.Errorf("%s: %w", errMsg, err)
+		}
 	}
 
 	prometheus.DeploymentsTotal.WithLabelValues(deployConfig.Name).Inc()
@@ -515,6 +566,18 @@ func DestroyStack(
 
 	stackLog.Info("destroying stack")
 
+	if SwarmModeEnabled {
+		err := RemoveSwarmStack(*ctx, *dockerCli, deployConfig)
+		if err != nil {
+			errMsg := "failed to destroy swarm stack"
+			stackLog.Error(errMsg, logger.ErrAttr(err))
+
+			return fmt.Errorf("%s: %w", errMsg, err)
+		}
+
+		return nil
+	}
+
 	service := compose.NewComposeService(*dockerCli)
 
 	downOpts := api.DownOptions{
@@ -529,9 +592,7 @@ func DestroyStack(
 	err := service.Down(*ctx, deployConfig.Name, downOpts)
 	if err != nil {
 		errMsg := "failed to destroy stack"
-		stackLog.Error(errMsg,
-			logger.ErrAttr(err),
-		)
+		stackLog.Error(errMsg, logger.ErrAttr(err))
 
 		return fmt.Errorf("%s: %w", errMsg, err)
 	}
