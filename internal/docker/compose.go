@@ -19,6 +19,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/docker/client"
+
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 
 	"github.com/compose-spec/compose-go/v2/cli"
@@ -43,9 +45,8 @@ const (
 var (
 	ErrDockerSocketConnectionFailed = errors.New("failed to connect to docker socket")
 	ErrNoContainerToStart           = errors.New("no container to start")
-	ErrVolumeIsInUse                = errors.New("volume is in use")
+	ErrIsInUse                      = errors.New("is in use")
 	ComposeVersion                  string // Version of the docker compose module, will be set at runtime
-	SwarmModeEnabled                bool   // Whether the docker host is running in swarm mode
 )
 
 // ConnectToSocket connects to the docker socket.
@@ -325,7 +326,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 // DeployStack deploys the stack using the provided deployment configuration.
 func DeployStack(
 	jobLog *slog.Logger, internalRepoPath, externalRepoPath string, ctx *context.Context,
-	dockerCli *command.Cli, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
+	dockerCli *command.Cli, dockerClient *client.Client, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
 	changedFiles []gitInternal.ChangedFile, latestCommit, appVersion string, forceDeploy bool,
 ) error {
 	startTime := time.Now()
@@ -509,6 +510,28 @@ func DeployStack(
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 
 			errMsg := "failed to deploy swarm stack"
+			stackLog.Error(errMsg, logger.ErrAttr(err),
+				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+
+			return fmt.Errorf("%s: %w", errMsg, err)
+		}
+
+		err = PruneStackConfigs(*ctx, dockerClient, deployConfig.Name)
+		if err != nil {
+			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
+
+			errMsg := "failed to prune stack configs"
+			stackLog.Error(errMsg, logger.ErrAttr(err),
+				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+
+			return fmt.Errorf("%s: %w", errMsg, err)
+		}
+
+		err = PruneStackSecrets(*ctx, dockerClient, deployConfig.Name)
+		if err != nil {
+			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
+
+			errMsg := "failed to prune stack secrets"
 			stackLog.Error(errMsg, logger.ErrAttr(err),
 				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
 

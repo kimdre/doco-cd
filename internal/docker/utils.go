@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/docker/api/types/swarm"
+
 	"github.com/docker/docker/api/types/volume"
 
 	"github.com/docker/docker/api/types/container"
@@ -61,6 +63,30 @@ func GetLabeledVolumes(ctx context.Context, cli *client.Client, key, value strin
 	}
 
 	return volResp.Volumes, nil
+}
+
+// GetLabeledConfigs retrieves all configs with a specific label key and value.
+func GetLabeledConfigs(ctx context.Context, cli *client.Client, key, value string) (configs []swarm.Config, err error) {
+	configs, err = cli.ConfigList(ctx, swarm.ConfigListOptions{
+		Filters: filters.NewArgs(filters.Arg("label", key+"="+value)),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list configs with label %s=%s: %w", key, value, err)
+	}
+
+	return configs, nil
+}
+
+// GetLabeledSecrets retrieves all secrets with a specific label key and value.
+func GetLabeledSecrets(ctx context.Context, cli *client.Client, key, value string) (secrets []swarm.Secret, err error) {
+	secrets, err = cli.SecretList(ctx, swarm.SecretListOptions{
+		Filters: filters.NewArgs(filters.Arg("label", key+"="+value)),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list secrets with label %s=%s: %w", key, value, err)
+	}
+
+	return secrets, nil
 }
 
 // GetMountPointByDestination retrieves the mount point of a container volume/bind mount by its destination (mount point inside the container).
@@ -133,7 +159,7 @@ func RemoveLabeledVolumes(ctx context.Context, dockerClient *client.Client, stac
 		for i := 0; i < retries; i++ {
 			err = dockerClient.VolumeRemove(ctx, vol.Name, true)
 			if err != nil {
-				if strings.Contains(err.Error(), ErrVolumeIsInUse.Error()) {
+				if strings.Contains(err.Error(), ErrIsInUse.Error()) {
 					time.Sleep(2 * time.Second)
 					continue
 				}

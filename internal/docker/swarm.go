@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/docker/client"
+
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/command/stack/loader"
@@ -28,6 +30,8 @@ import (
 const (
 	StackNamespaceLabel = "com.docker.stack.namespace"
 )
+
+var SwarmModeEnabled bool // Whether the docker host is running in swarm mode
 
 // deploySwarmStack deploys a Docker Swarm stack using the provided project and deploy configuration.
 func deploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types.Project, deployConfig *config.DeployConfig,
@@ -298,4 +302,67 @@ func generateShortHash(data io.Reader) (hash string, err error) {
 	}
 
 	return hash, nil
+}
+
+func CheckDaemonIsSwarmManager(ctx context.Context, dockerCli command.Cli) (bool, error) {
+	info, err := dockerCli.Client().Info(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	if !info.Swarm.ControlAvailable {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+func PruneStackConfigs(ctx context.Context, client *client.Client, namespace string) error {
+	// List all configs in the swarm
+	configs, err := GetLabeledConfigs(ctx, client, StackNamespaceLabel, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to list configs: %w", err)
+	}
+
+	for _, c := range configs {
+		if c.Spec.Labels[StackNamespaceLabel] == namespace {
+			// Remove the c if it belongs to the specified namespace
+			err = client.ConfigRemove(ctx, c.ID)
+			if err != nil {
+				if strings.Contains(err.Error(), ErrIsInUse.Error()) {
+					// If the config is in use, we can skip it
+					continue
+				}
+
+				return fmt.Errorf("failed to remove c %s: %w", c.ID, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+func PruneStackSecrets(ctx context.Context, client *client.Client, namespace string) error {
+	// List all secrets in the swarm
+	secrets, err := GetLabeledSecrets(ctx, client, StackNamespaceLabel, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to list secrets: %w", err)
+	}
+
+	for _, s := range secrets {
+		if s.Spec.Labels[StackNamespaceLabel] == namespace {
+			// Remove the secret if it belongs to the specified namespace
+			err = client.SecretRemove(ctx, s.ID)
+			if err != nil {
+				if strings.Contains(err.Error(), ErrIsInUse.Error()) {
+					// If the config is in use, we can skip it
+					continue
+				}
+
+				return fmt.Errorf("failed to remove secret %s: %w", s.ID, err)
+			}
+		}
+	}
+
+	return nil
 }

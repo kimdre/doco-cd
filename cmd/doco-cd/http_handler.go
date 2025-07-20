@@ -384,8 +384,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 					slog.String("deployed_commit", deployedCommit))
 			}
 
-			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, &payload,
-				deployConfig, changedFiles, latestCommit, Version, false)
+			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, dockerClient,
+				&payload, deployConfig, changedFiles, latestCommit, Version, false)
 			if err != nil {
 				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), jobID, http.StatusInternalServerError)
 
