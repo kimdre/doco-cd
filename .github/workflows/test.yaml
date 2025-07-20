@@ -50,15 +50,18 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
       - run: go mod download
-      - run: go test -p 1 -v -coverprofile=coverage.out -covermode=atomic ./... -timeout 5m
+      - name: Test Compose
+        run: go test -p 1 -v -coverprofile=coverage.out -covermode=atomic ./... -timeout 5m
         timeout-minutes: 5
         env:
           WEBHOOK_SECRET: test_Secret1
           GIT_ACCESS_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
           HTTP_PROXY: http://localhost:3128
-      - name: Enable swarm mode
-        run: docker swarm init
-      - run: go test -p 1 -v -coverprofile=coverage-swarm.out -covermode=atomic ./... -timeout 5m
+
+      - name: Test Swarm Mode
+        run: |
+          docker swarm init
+          go test -p 1 -v -coverprofile=coverage-swarm.out -covermode=atomic ./... -timeout 5m
         timeout-minutes: 5
         env:
           WEBHOOK_SECRET: test_Secret1
