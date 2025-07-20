@@ -59,6 +59,8 @@ func getRepoName(cloneURL string) string {
 
 // HandleEvent handles the incoming webhook event.
 func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *config.AppConfig, dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli, dockerClient *client.Client) {
+	var err error
+
 	startTime := time.Now()
 	repoName := getRepoName(payload.CloneURL)
 
@@ -72,6 +74,15 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		slog.Group("trigger",
 			slog.String("commit", payload.CommitSHA), slog.String("ref", payload.Ref),
 			slog.String("event", "webhook")))
+
+	if appConfig.DockerSwarmFeatures {
+		// Check if docker host is running in swarm mode
+		docker.SwarmModeEnabled, err = docker.CheckDaemonIsSwarmManager(ctx, dockerCli)
+		if err != nil {
+			jobLog.Error("failed to check if docker host is running in swarm mode")
+			onError(repoName, w, jobLog.With(logger.ErrAttr(err)), "failed to check if docker host is running in swarm mode", err.Error(), jobID, http.StatusInternalServerError)
+		}
+	}
 
 	// Clone the repository
 	jobLog.Debug(

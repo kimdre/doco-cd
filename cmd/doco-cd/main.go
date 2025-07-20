@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -194,16 +193,6 @@ func main() {
 		log.Critical("failed to create docker client", logger.ErrAttr(err))
 
 		return
-	}
-
-	if c.DockerSwarmFeatures {
-		// Check if docker host is running in swarm mode
-		docker.SwarmModeEnabled, err = docker.CheckDaemonIsSwarmManager(context.Background(), dockerCli)
-		if err != nil {
-			log.Critical("failed to check if docker host is running in swarm mode", logger.ErrAttr(err))
-
-			return
-		}
 	}
 
 	log.Debug("negotiated docker versions to use",

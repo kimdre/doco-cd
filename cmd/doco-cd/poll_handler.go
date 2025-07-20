@@ -104,11 +104,23 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 
 // RunPoll deploys compose projects based on the provided configuration.
 func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *config.AppConfig, dataMountPoint container.MountPoint, dockerCli command.Cli, dockerClient *client.Client, logger *slog.Logger) error {
+	var err error
+
 	startTime := time.Now()
 	cloneUrl := string(pollConfig.CloneUrl)
 	jobID := uuid.Must(uuid.NewRandom()).String()
 	repoName := getRepoName(cloneUrl)
 	jobLog := logger.With(slog.String("job_id", jobID))
+
+	if appConfig.DockerSwarmFeatures {
+		// Check if docker host is running in swarm mode
+		docker.SwarmModeEnabled, err = docker.CheckDaemonIsSwarmManager(ctx, dockerCli)
+		if err != nil {
+			jobLog.Error("failed to check if docker host is running in swarm mode")
+
+			return fmt.Errorf("failed to check if docker host is running in swarm mode: %w", err)
+		}
+	}
 
 	if strings.Contains(repoName, "..") {
 		jobLog.Error("invalid repository name, contains '..'")
