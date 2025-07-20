@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/kimdre/doco-cd/internal/git"
+
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
 	"github.com/docker/docker/api/types/container"
@@ -27,6 +29,12 @@ func TestRunPoll(t *testing.T) {
 		Interval:     10,
 		CustomTarget: "",
 		Private:      true,
+	}
+
+	if docker.SwarmModeEnabled {
+		pollConfig.Reference = git.SwarmModeBranch
+
+		t.Log("Testing in Swarm mode, using 'swarm-mode' reference")
 	}
 
 	appConfig, err := config.GetAppConfig()

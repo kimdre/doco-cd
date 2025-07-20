@@ -11,7 +11,11 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"strconv"
 	"testing"
+	"time"
+
+	"github.com/docker/docker/api/types/swarm"
 
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
@@ -25,7 +29,8 @@ import (
 )
 
 const (
-	githubPayloadFile = "testdata/github_payload.json"
+	githubPayloadFile          = "testdata/github_payload.json"
+	githubPayloadFileSwarmMode = "testdata/github_payload_swarm_mode.json"
 )
 
 // Make http call to HealthCheckHandler.
@@ -82,9 +87,19 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	expectedStatusCode := http.StatusCreated
 	tmpDir := t.TempDir()
 
-	repoDir := path.Join(tmpDir, getRepoName("https://github.com/kimdre/doco-cd.git"))
+	payloadFile := githubPayloadFile
+	cloneUrl := "https://github.com/kimdre/doco-cd.git"
+	indexPath := path.Join("test", "index.html")
 
-	payload, err := os.ReadFile(githubPayloadFile)
+	if docker.SwarmModeEnabled {
+		payloadFile = githubPayloadFileSwarmMode
+		cloneUrl = "https://github.com/kimdre/doco-cd_tests.git"
+		indexPath = path.Join("html", "index.html")
+	}
+
+	indexPath = path.Join(tmpDir, getRepoName(cloneUrl), indexPath)
+
+	payload, err := os.ReadFile(payloadFile)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,22 +207,74 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		}
 	})
 
-	testContainer, err := dockerCli.Client().ContainerInspect(ctx, testContainerID)
-	if err != nil {
-		t.Fatal(err)
+	testContainerPort := ""
+
+	if docker.SwarmModeEnabled {
+		t.Log("Testing in Swarm mode, using service inspect")
+
+		svc, _, err := dockerCli.Client().ServiceInspectWithRaw(ctx, "test-deploy_test", swarm.ServiceInspectOptions{
+			InsertDefaults: true,
+		})
+		if err != nil {
+			t.Fatalf("Failed to inspect test container: %v", err)
+		}
+
+		if len(svc.Endpoint.Ports) == 0 {
+			t.Fatal("Test container has no published ports")
+		}
+
+		testContainerPort = strconv.FormatUint(uint64(svc.Endpoint.Ports[0].PublishedPort), 10)
+
+		defer func() {
+			err = dockerCli.Client().ServiceRemove(ctx, "test-deploy_test")
+			if err != nil {
+				t.Fatalf("Failed to remove test container service: %v", err)
+			}
+		}()
+	} else {
+		testContainer, err := dockerCli.Client().ContainerInspect(ctx, testContainerID)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if testContainer.State.Running != true {
+			t.Errorf("Test container is not running: %v", testContainer.State)
+		}
+
+		// Check if test container returns the expected response on its published port
+		networkPort := testContainer.NetworkSettings.Ports["80/tcp"]
+
+		testContainerPort = networkPort[0].HostPort
 	}
 
-	if testContainer.State.Running != true {
-		t.Errorf("Test container is not running: %v", testContainer.State)
-	}
+	testURL := "http://127.0.0.1:" + testContainerPort
+	t.Logf("Test URL: %s", testURL)
 
-	// Check if test container returns the expected response on its published port
-	testContainerPort := testContainer.NetworkSettings.Ports["80/tcp"][0].HostPort
-	testURL := "http://localhost:" + testContainerPort
+	httpClient := &http.Client{Timeout: 3 * time.Second}
 
-	resp, err := http.Get(testURL) // #nosec G107
-	if err != nil {
-		t.Fatalf("Failed to make GET request to test container: %v", err)
+	resp := &http.Response{}
+	for i := 0; i < 10; i++ {
+		resp, err = httpClient.Get(testURL) // #nosec G107
+		if err != nil {
+			t.Logf("Failed to make GET request to test container (attempt %d): %v", i+1, err)
+			time.Sleep(3 * time.Second) // Wait before retrying
+
+			continue
+		}
+
+		if resp.StatusCode == http.StatusOK {
+			t.Logf("Successfully connected to test container on attempt %d", i+1)
+			break
+		}
+
+		t.Logf("Test container returned status code %d on attempt %d", resp.StatusCode, i+1)
+
+		err = resp.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		time.Sleep(3 * time.Second) // Wait before retrying
 	}
 
 	t.Cleanup(
@@ -229,9 +296,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 	bodyString := string(bodyBytes)
 
-	indexFile := path.Join(repoDir, "test", "index.html")
-
-	fileContent, err := os.ReadFile(indexFile) // #nosec G304
+	fileContent, err := os.ReadFile(indexPath) // #nosec G304
 	if err != nil {
 		t.Fatalf("Failed to read index.html file: %v", err)
 	}

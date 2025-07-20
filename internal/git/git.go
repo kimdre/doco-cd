@@ -23,6 +23,7 @@ const (
 	TagPrefix           = "refs/tags/"
 	BranchPrefix        = "refs/heads/"
 	MainBranch          = "refs/heads/main"
+	SwarmModeBranch     = "refs/heads/swarm-mode"
 	refSpecAllBranches  = "+refs/heads/*:refs/remotes/origin/*"
 	refSpecSingleBranch = "+refs/heads/%s:refs/remotes/origin/%s"
 	refSpecAllTags      = "+refs/tags/*:refs/tags/*"

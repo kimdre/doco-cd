@@ -214,11 +214,16 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			return
 		}
 
+		filterLabel := api.ProjectLabel
+		if docker.SwarmModeEnabled {
+			filterLabel = docker.StackNamespaceLabel
+		}
+
 		if deployConfig.Destroy {
 			subJobLog.Debug("destroying stack")
 
 			// Check if doco-cd manages the project before destroying the stack
-			containers, err := docker.GetLabeledContainers(ctx, dockerClient, api.ProjectLabel, deployConfig.Name)
+			containers, err := docker.GetLabeledContainers(ctx, dockerClient, filterLabel, deployConfig.Name)
 			if err != nil {
 				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to retrieve containers", err.Error(), jobID, http.StatusInternalServerError)
 
@@ -269,6 +274,17 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				return
 			}
 
+			if docker.SwarmModeEnabled && deployConfig.DestroyOpts.RemoveVolumes {
+				err = docker.RemoveLabeledVolumes(ctx, dockerClient, deployConfig.Name, filterLabel)
+				if err != nil {
+					onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to remove volumes", err.Error(), jobID, http.StatusInternalServerError)
+
+					return
+				}
+
+				subJobLog.Debug("failed to remove volumes", slog.String("stack", deployConfig.Name))
+			}
+
 			if deployConfig.DestroyOpts.RemoveRepoDir {
 				// Remove the repository directory after destroying the stack
 				subJobLog.Debug("removing deployment directory", slog.String("path", externalRepoPath))
@@ -307,7 +323,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			}
 		} else {
 			// Skip deployment if another project with the same name already exists
-			containers, err := docker.GetLabeledContainers(ctx, dockerClient, api.ProjectLabel, deployConfig.Name)
+			containers, err := docker.GetLabeledContainers(ctx, dockerClient, filterLabel, deployConfig.Name)
 			if err != nil {
 				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to retrieve containers", err.Error(), jobID, http.StatusInternalServerError)
 
@@ -368,8 +384,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 					slog.String("deployed_commit", deployedCommit))
 			}
 
-			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, &payload,
-				deployConfig, changedFiles, latestCommit, Version, false)
+			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, dockerClient,
+				&payload, deployConfig, changedFiles, latestCommit, Version, false)
 			if err != nil {
 				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), jobID, http.StatusInternalServerError)
 
