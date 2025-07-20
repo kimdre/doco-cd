@@ -175,7 +175,7 @@ func TestHandleEvent(t *testing.T) {
 		{
 			name: "With Remote Repository and Swarm Mode",
 			payload: webhook.ParsedPayload{
-				Ref:       "swarm-mode",
+				Ref:       git.SwarmModeBranch,
 				CommitSHA: "e82246851a624b3906527764196e9d072da99762",
 				Name:      projectName,
 				FullName:  "kimdre/doco-cd_tests",
