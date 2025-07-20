@@ -62,7 +62,6 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.out
-          flags: carryforward
 
   test_swarm:
     name: Tests Docker Swarm Mode
@@ -94,4 +93,3 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage-swarm.out
-          flags: carryforward
