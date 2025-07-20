@@ -1,0 +1,93 @@
+package docker
+
+import (
+	"path/filepath"
+	"testing"
+
+	"github.com/kimdre/doco-cd/internal/git"
+
+	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/webhook"
+)
+
+func TestCheckDaemonIsSwarmManager(t *testing.T) {
+	dockerCli, err := CreateDockerCli(false, false)
+	if err != nil {
+		t.Fatalf("Failed to create Docker CLI: %v", err)
+	}
+
+	_, err = CheckDaemonIsSwarmManager(t.Context(), dockerCli)
+	if err != nil {
+		t.Fatalf("Failed to check if Docker daemon is a swarm manager: %v", err)
+	}
+
+	t.Logf("Docker daemon is a swarm manager: %v", err == nil)
+}
+
+func TestDeploySwarmStack(t *testing.T) {
+	if !SwarmModeEnabled {
+		t.Skip("Swarm mode is not enabled, skipping test")
+	}
+
+	tmpDir := t.TempDir()
+
+	dockerCli, err := CreateDockerCli(false, false)
+	if err != nil {
+		t.Fatalf("Failed to create Docker CLI: %v", err)
+	}
+
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("Failed to get app config: %v", err)
+	}
+
+	url := git.GetAuthUrl(cloneUrlTest, c.AuthType, c.GitAccessToken)
+
+	p := webhook.ParsedPayload{
+		Ref:       git.SwarmModeBranch,
+		CommitSHA: "244b6f9a5b3dc546ab3822d9c0744846f539c6ef",
+		Name:      "test",
+		FullName:  "kimdre/doco-cd_tests",
+		CloneURL:  url,
+		Private:   true,
+	}
+
+	t.Chdir(tmpDir)
+
+	repo, err := git.CloneRepository(tmpDir, url, git.SwarmModeBranch, c.SkipTLSVerification, c.HttpProxy)
+	if err != nil {
+		t.Fatalf("Failed to clone repository: %v", err)
+	}
+
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repoPath := worktree.Filesystem.Root()
+	filePath := filepath.Join(repoPath, "docker-compose.yml")
+
+	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{filePath})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	deployConfigs, err := config.GetDeployConfigs(tmpDir, projectName, customTarget, p.Ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = DeploySwarmStack(t.Context(), dockerCli, project, deployConfigs[0], p, tmpDir, "e8e2d31f0fa0c924400b3bac751b6c2c6930adb1", "dev")
+	if err != nil {
+		t.Fatalf("Failed to deploy swarm stack: %v", err)
+	} else {
+		t.Logf("Swarm stack deployed successfully")
+	}
+
+	err = RemoveSwarmStack(t.Context(), dockerCli, deployConfigs[0])
+	if err != nil {
+		t.Fatalf("Failed to remove swarm stack: %v", err)
+	} else {
+		t.Logf("Swarm stack removed successfully")
+	}
+}
