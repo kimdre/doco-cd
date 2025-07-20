@@ -108,6 +108,8 @@ func TestLoadCompose(t *testing.T) {
 }
 
 func TestDeployCompose(t *testing.T) {
+	ctx := context.Background()
+
 	encryption.SetupAgeKeyEnvVar(t)
 
 	c, err := config.GetAppConfig()
@@ -115,12 +117,31 @@ func TestDeployCompose(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy, !c.SkipTLSVerification)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dockerClient, _ := client.NewClientWithOpts(
+		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
+	)
+
+	SwarmModeEnabled, err = CheckDaemonIsSwarmManager(ctx, dockerCli)
+	if err != nil {
+		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
+	}
+
+	if SwarmModeEnabled {
+		t.Skip("Swarm mode is enabled, skipping test")
+	}
+
 	p := webhook.ParsedPayload{
-		Ref:       "main",
+		Ref:       git.MainBranch,
 		CommitSHA: "4d877107dfa2e3b582bd8f8f803befbd3a1d867e",
 		Name:      "test",
 		FullName:  "kimdre/doco-cd_tests",
-		CloneURL:  fmt.Sprintf("https://kimdre:%s@github.com/kimdre/doco-cd_tests.git", c.GitAccessToken),
+		CloneURL:  git.GetAuthUrl(cloneUrlTest, c.AuthType, c.GitAccessToken),
 		Private:   true,
 	}
 
@@ -130,8 +151,6 @@ func TestDeployCompose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	ctx := context.Background()
 
 	tmpDir := t.TempDir()
 
@@ -164,21 +183,6 @@ func TestDeployCompose(t *testing.T) {
 	}
 
 	t.Log("Deploy compose")
-
-	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy, !c.SkipTLSVerification)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	dockerClient, _ := client.NewClientWithOpts(
-		client.FromEnv,
-		client.WithAPIVersionNegotiation(),
-	)
-
-	SwarmModeEnabled, err = CheckDaemonIsSwarmManager(ctx, dockerCli)
-	if err != nil {
-		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
-	}
 
 	filePath = filepath.Join(repoPath, fileName)
 
