@@ -202,6 +202,16 @@ func TestHandleEvent(t *testing.T) {
 		}
 	}
 
+	dockerCli, err := docker.CreateDockerCli(false, false)
+	if err != nil {
+		t.Fatalf("Failed to create Docker CLI: %v", err)
+	}
+
+	docker.SwarmModeEnabled, err = docker.CheckDaemonIsSwarmManager(t.Context(), dockerCli)
+	if err != nil {
+		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
+	}
+
 	encryption.SetupAgeKeyEnvVar(t)
 
 	for _, tc := range testCases {
