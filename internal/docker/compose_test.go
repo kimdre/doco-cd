@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -173,6 +174,11 @@ func TestDeployCompose(t *testing.T) {
 		client.FromEnv,
 		client.WithAPIVersionNegotiation(),
 	)
+
+	SwarmModeEnabled, err = CheckDaemonIsSwarmManager(ctx, dockerCli)
+	if err != nil {
+		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
+	}
 
 	filePath = filepath.Join(repoPath, fileName)
 
