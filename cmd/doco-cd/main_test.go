@@ -263,7 +263,7 @@ func TestHandleEvent(t *testing.T) {
 			jobID := uuid.Must(uuid.NewRandom()).String()
 			jobLog := log.With(slog.String("job_id", jobID))
 
-			ctx := t.Context()
+			ctx := context.Background()
 
 			dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy, !appConfig.SkipTLSVerification)
 			if err != nil {

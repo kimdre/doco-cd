@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -172,7 +173,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		t.Errorf("handler returned unexpected body: got %v want %v", rr.Body.String(), expectedResponse)
 	}
 
-	ctx := t.Context()
+	ctx := context.Background()
 
 	service := compose.NewComposeService(dockerCli)
 

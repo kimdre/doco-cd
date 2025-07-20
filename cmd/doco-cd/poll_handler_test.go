@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	"github.com/kimdre/doco-cd/internal/git"
@@ -20,7 +21,7 @@ func TestRunPoll(t *testing.T) {
 	encryption.SetupAgeKeyEnvVar(t)
 
 	log := logger.New(12)
-	ctx := t.Context()
+	ctx := context.Background()
 
 	pollConfig := config.PollConfig{
 		CloneUrl:     "https://github.com/kimdre/doco-cd_tests.git",

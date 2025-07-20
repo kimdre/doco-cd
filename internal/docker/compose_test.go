@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -81,7 +82,7 @@ func TestVerifySocketConnection(t *testing.T) {
 }
 
 func TestLoadCompose(t *testing.T) {
-	ctx := t.Context()
+	ctx := context.Background()
 
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "test.compose.yaml")
@@ -129,7 +130,7 @@ func TestDeployCompose(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx := t.Context()
+	ctx := context.Background()
 
 	tmpDir := t.TempDir()
 
