@@ -329,7 +329,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 func DeployStack(
 	jobLog *slog.Logger, internalRepoPath, externalRepoPath string, ctx *context.Context,
 	dockerCli *command.Cli, dockerClient *client.Client, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
-	changedFiles []gitInternal.ChangedFile, latestCommit, appVersion string, forceDeploy bool,
+	changedFiles []gitInternal.ChangedFile, latestCommit, appVersion, triggerEvent string, forceDeploy bool,
 ) error {
 	startTime := time.Now()
 
@@ -459,7 +459,7 @@ func DeployStack(
 		return fmt.Errorf("%s: %w", errMsg, err)
 	}
 
-	changed, err := ProjectFilesHaveChanges(changedFiles, project)
+	hasChangedFiles, err := ProjectFilesHaveChanges(changedFiles, project)
 	if err != nil {
 		errMsg := "failed to check for changed project files"
 		stackLog.Error(errMsg, logger.ErrAttr(err), slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
@@ -467,7 +467,7 @@ func DeployStack(
 		return fmt.Errorf("%s: %w", errMsg, err)
 	}
 
-	changedCompose, err := HasChangedComposeFiles(changedFiles, project)
+	hasChangedCompose, err := HasChangedComposeFiles(changedFiles, project)
 	if err != nil {
 		errMsg := "failed to check for changed compose files"
 		stackLog.Error(errMsg, logger.ErrAttr(err), slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
@@ -476,12 +476,14 @@ func DeployStack(
 	}
 
 	switch {
-	case changed || forceDeploy:
+	case hasChangedFiles || (hasChangedCompose && triggerEvent == "poll"):
 		deployConfig.ForceRecreate = true
-	case changedCompose:
-		deployConfig.ForceRecreate = false
+
+		stackLog.Debug("changed project files detected, forcing deployment")
+	case hasChangedCompose:
+		stackLog.Debug("changed compose files detected, continue normal deployment")
 	default:
-		stackLog.Debug("no changed project files detected, skipping redeploy")
+		stackLog.Debug("no changed project files detected, skipping deployment")
 		return nil
 	}
 
@@ -759,8 +761,16 @@ func HasChangedComposeFiles(changedFiles []gitInternal.ChangedFile, project *typ
 			composeFile = filepath.Join(project.WorkingDir, composeFile)
 		}
 
+		// Get the last 4 parts of the composeFile path
+		composeFileParts := strings.Split(composeFile, string(os.PathSeparator))
+
+		pathSuffix := path.Join(composeFileParts...)
+		if len(composeFileParts) > 4 {
+			pathSuffix = path.Join(composeFileParts[len(composeFileParts)-4:]...)
+		}
+
 		for _, p := range paths {
-			if p == composeFile {
+			if strings.HasSuffix(p, pathSuffix) {
 				return true, nil
 			}
 		}
@@ -775,7 +785,7 @@ func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *ty
 		HasChangedConfigs,
 		HasChangedSecrets,
 		HasChangedBindMounts,
-		// HasChangedEnvFiles,
+		HasChangedEnvFiles,
 	}
 
 	for _, check := range checks {
