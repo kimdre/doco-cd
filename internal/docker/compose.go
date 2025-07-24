@@ -459,33 +459,6 @@ func DeployStack(
 		return fmt.Errorf("%s: %w", errMsg, err)
 	}
 
-	hasChangedFiles, err := ProjectFilesHaveChanges(changedFiles, project)
-	if err != nil {
-		errMsg := "failed to check for changed project files"
-		stackLog.Error(errMsg, logger.ErrAttr(err), slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-
-		return fmt.Errorf("%s: %w", errMsg, err)
-	}
-
-	hasChangedCompose, err := HasChangedComposeFiles(changedFiles, project)
-	if err != nil {
-		errMsg := "failed to check for changed compose files"
-		stackLog.Error(errMsg, logger.ErrAttr(err), slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-
-		return fmt.Errorf("%s: %w", errMsg, err)
-	}
-
-	switch {
-	case hasChangedFiles || (hasChangedCompose && triggerEvent == "poll"):
-		deployConfig.ForceRecreate = true
-
-		stackLog.Debug("changed mounted files detected, forcing recreate of all services")
-	case hasChangedCompose:
-		stackLog.Debug("changed compose files detected, continue normal deployment")
-	}
-
-	stackLog.Info("deploying stack", slog.Bool("forced", deployConfig.ForceRecreate))
-
 	done := make(chan struct{})
 	defer close(done)
 
@@ -517,6 +490,8 @@ func DeployStack(
 				}
 			}
 		}
+
+		stackLog.Info("deploying swarm stack")
 
 		err = DeploySwarmStack(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion)
 		if err != nil {
@@ -551,6 +526,33 @@ func DeployStack(
 			return fmt.Errorf("%s: %w", errMsg, err)
 		}
 	} else {
+		hasChangedFiles, err := ProjectFilesHaveChanges(changedFiles, project)
+		if err != nil {
+			errMsg := "failed to check for changed project files"
+			stackLog.Error(errMsg, logger.ErrAttr(err), slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+
+			return fmt.Errorf("%s: %w", errMsg, err)
+		}
+
+		hasChangedCompose, err := HasChangedComposeFiles(changedFiles, project)
+		if err != nil {
+			errMsg := "failed to check for changed compose files"
+			stackLog.Error(errMsg, logger.ErrAttr(err), slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
+
+			return fmt.Errorf("%s: %w", errMsg, err)
+		}
+
+		switch {
+		case hasChangedFiles || (hasChangedCompose && triggerEvent == "poll"):
+			deployConfig.ForceRecreate = true
+
+			stackLog.Debug("changed mounted files detected, forcing recreate of all services")
+		case hasChangedCompose:
+			stackLog.Debug("changed compose files detected, continue normal deployment")
+		}
+
+		stackLog.Info("deploying stack", slog.Bool("forced", deployConfig.ForceRecreate))
+
 		err = deployCompose(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion, forceDeploy)
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
