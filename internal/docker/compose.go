@@ -479,15 +479,12 @@ func DeployStack(
 	case hasChangedFiles || (hasChangedCompose && triggerEvent == "poll"):
 		deployConfig.ForceRecreate = true
 
-		stackLog.Debug("changed project files detected, forcing deployment")
+		stackLog.Debug("changed mounted files detected, forcing recreate of all services")
 	case hasChangedCompose:
 		stackLog.Debug("changed compose files detected, continue normal deployment")
-	default:
-		stackLog.Debug("no changed project files detected, skipping deployment")
-		return nil
 	}
 
-	stackLog.Info("deploying stack")
+	stackLog.Info("deploying stack", slog.Bool("forced", deployConfig.ForceRecreate))
 
 	done := make(chan struct{})
 	defer close(done)
@@ -709,6 +706,10 @@ func HasChangedBindMounts(changedFiles []gitInternal.ChangedFile, project *types
 				for _, p := range paths {
 					info, err := os.Stat(p)
 					if err != nil {
+						if errors.Is(err, os.ErrNotExist) {
+							continue
+						}
+
 						return false, fmt.Errorf("failed to stat bind mount source %s: %w", p, err)
 					}
 
@@ -781,17 +782,17 @@ func HasChangedComposeFiles(changedFiles []gitInternal.ChangedFile, project *typ
 
 // ProjectFilesHaveChanges checks if any files related to the compose project have changed.
 func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
-	checks := []func([]gitInternal.ChangedFile, *types.Project) (bool, error){
-		HasChangedConfigs,
-		HasChangedSecrets,
-		HasChangedBindMounts,
-		HasChangedEnvFiles,
+	checks := map[string]func([]gitInternal.ChangedFile, *types.Project) (bool, error){
+		"configs":    HasChangedConfigs,
+		"secrets":    HasChangedSecrets,
+		"bindMounts": HasChangedBindMounts,
+		"envFiles":   HasChangedEnvFiles,
 	}
 
-	for _, check := range checks {
+	for name, check := range checks {
 		hasChanges, err := check(changedFiles, project)
 		if err != nil {
-			return false, fmt.Errorf("failed to check for changes: %w", err)
+			return false, fmt.Errorf("failed to check %s for changes: %w", name, err)
 		}
 
 		if hasChanges {
