@@ -417,6 +417,10 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 				return fmt.Errorf("%w: %s: skipping deployment", ErrDeploymentConflict, deployConfig.Name)
 			}
 
+			subJobLog.Debug("comparing commits",
+				slog.String("deployed_commit", deployedCommit),
+				slog.String("latest_commit", latestCommit))
+
 			if latestCommit == deployedCommit {
 				subJobLog.Debug("no new commit found, skipping deployment", slog.String("last_commit", latestCommit))
 

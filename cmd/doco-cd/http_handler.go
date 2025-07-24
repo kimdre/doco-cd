@@ -363,6 +363,10 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				return
 			}
 
+			subJobLog.Debug("comparing commits",
+				slog.String("deployed_commit", deployedCommit),
+				slog.String("latest_commit", latestCommit))
+
 			var changedFiles []git.ChangedFile
 			if deployedCommit != "" {
 				changedFiles, err = git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(deployedCommit), plumbing.NewHash(latestCommit))
