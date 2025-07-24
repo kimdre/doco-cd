@@ -8,7 +8,6 @@ permissions:
   actions: read # only required for a private repository by github/codeql-action/upload-sarif to get the Action run status
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - '**'
@@ -84,8 +83,8 @@ jobs:
           annotations: ${{ steps.meta.outputs.annotations }}
           provenance: false
           sbom: false
-#          cache-from: type=gha
-#          cache-to: type=gha,mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           platforms: linux/amd64
 
       - name: Run Trivy vulnerability scanner
@@ -113,11 +112,9 @@ jobs:
           annotations: ${{ steps.meta.outputs.annotations }}
           provenance: false
           sbom: false
-#          cache-from: type=gha
-#          cache-to: type=gha,mode=max
-          platforms: |
-            linux/amd64
-            linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
 
   delete-runner:
     name: Delete Hcloud Runner
