@@ -226,6 +226,8 @@ func TestDeployCompose(t *testing.T) {
 		if err != nil {
 			if errors.Is(err, config.ErrDeprecatedConfig) {
 				t.Log(err.Error())
+			} else {
+				t.Fatalf("failed to deploy stack: %v", err)
 			}
 		}
 
