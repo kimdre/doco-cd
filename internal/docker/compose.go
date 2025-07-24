@@ -459,7 +459,7 @@ func DeployStack(
 		return fmt.Errorf("%s: %w", errMsg, err)
 	}
 
-	hasChanges, err := MountedFilesHaveChanges(changedFiles, project)
+	changed, err := ProjectFilesHaveChanges(changedFiles, project)
 	if err != nil {
 		errMsg := "failed to check for changed project files"
 		stackLog.Error(errMsg, logger.ErrAttr(err), slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
@@ -467,10 +467,22 @@ func DeployStack(
 		return fmt.Errorf("%s: %w", errMsg, err)
 	}
 
-	if hasChanges {
-		stackLog.Info("mounted files have changed, forcing recreation of the stack")
+	changedCompose, err := HasChangedComposeFiles(changedFiles, project)
+	if err != nil {
+		errMsg := "failed to check for changed compose files"
+		stackLog.Error(errMsg, logger.ErrAttr(err), slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
 
+		return fmt.Errorf("%s: %w", errMsg, err)
+	}
+
+	switch {
+	case changed || forceDeploy:
 		deployConfig.ForceRecreate = true
+	case changedCompose:
+		deployConfig.ForceRecreate = false
+	default:
+		stackLog.Debug("no changed project files detected, skipping redeploy")
+		return nil
 	}
 
 	stackLog.Info("deploying stack")
@@ -714,33 +726,67 @@ func HasChangedBindMounts(changedFiles []gitInternal.ChangedFile, project *types
 	return false, nil
 }
 
-// MountedFilesHaveChanges checks if any files from config, secret or bind mounts have changed in the project.
-func MountedFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
-	changedConfigs, err := HasChangedConfigs(changedFiles, project)
-	if err != nil {
-		return false, fmt.Errorf("failed to check changed configs: %w", err)
+// HasChangedEnvFiles checks if any files used in docker compose `env_file:` definitions have changed using the Git status.
+func HasChangedEnvFiles(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
+	paths := getAbsolutePaths(changedFiles, project.WorkingDir)
+
+	for _, s := range project.Services {
+		for _, envFile := range s.EnvFiles {
+			envFilePath := envFile.Path
+
+			if !path.IsAbs(envFilePath) {
+				envFilePath = filepath.Join(project.WorkingDir, envFilePath)
+			}
+
+			for _, p := range paths {
+				if p == envFilePath {
+					return true, nil
+				}
+			}
+		}
 	}
 
-	if changedConfigs {
-		return true, nil
+	return false, nil
+}
+
+// HasChangedComposeFiles checks if any of the compose files have changed using the Git status.
+func HasChangedComposeFiles(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
+	// Get absolute paths of changed files
+	paths := getAbsolutePaths(changedFiles, project.WorkingDir)
+
+	for _, composeFile := range project.ComposeFiles {
+		if !path.IsAbs(composeFile) {
+			composeFile = filepath.Join(project.WorkingDir, composeFile)
+		}
+
+		for _, p := range paths {
+			if p == composeFile {
+				return true, nil
+			}
+		}
 	}
 
-	changedSecrets, err := HasChangedSecrets(changedFiles, project)
-	if err != nil {
-		return false, fmt.Errorf("failed to check changed secrets: %w", err)
+	return false, nil
+}
+
+// ProjectFilesHaveChanges checks if any files related to the compose project have changed.
+func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
+	checks := []func([]gitInternal.ChangedFile, *types.Project) (bool, error){
+		HasChangedConfigs,
+		HasChangedSecrets,
+		HasChangedBindMounts,
+		// HasChangedEnvFiles,
 	}
 
-	if changedSecrets {
-		return true, nil
-	}
+	for _, check := range checks {
+		hasChanges, err := check(changedFiles, project)
+		if err != nil {
+			return false, fmt.Errorf("failed to check for changes: %w", err)
+		}
 
-	changedBindMounts, err := HasChangedBindMounts(changedFiles, project)
-	if err != nil {
-		return false, fmt.Errorf("failed to check changed bind mounts: %w", err)
-	}
-
-	if changedBindMounts {
-		return true, nil
+		if hasChanges {
+			return true, nil
+		}
 	}
 
 	return false, nil
