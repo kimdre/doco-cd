@@ -32,10 +32,12 @@ jobs:
           hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
           server_type: cpx31
           location: fsn1
-          image: ubuntu-24.04
+          image: docker-ce
 
   build:
-    runs-on: ubuntu-latest
+    needs:
+      - create-runner
+    runs-on: ${{ needs.create-runner.outputs.label }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
