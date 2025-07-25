@@ -363,6 +363,10 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				return
 			}
 
+			subJobLog.Debug("comparing commits",
+				slog.String("deployed_commit", deployedCommit),
+				slog.String("latest_commit", latestCommit))
+
 			var changedFiles []git.ChangedFile
 			if deployedCommit != "" {
 				changedFiles, err = git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(deployedCommit), plumbing.NewHash(latestCommit))
@@ -396,7 +400,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			}
 
 			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, dockerClient,
-				&payload, deployConfig, changedFiles, latestCommit, Version, false)
+				&payload, deployConfig, changedFiles, latestCommit, Version, "webhook", false)
 			if err != nil {
 				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), jobID, http.StatusInternalServerError)
 
