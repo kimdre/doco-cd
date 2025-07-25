@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/notification"
+
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/docker/api/types/container"
@@ -87,6 +89,11 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 				err := RunPoll(context.Background(), pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.dockerClient, logger)
 				if err != nil {
 					prometheus.PollErrors.WithLabelValues(repoName).Inc()
+
+					err = notification.Send(notification.Failure, "Deployment Failed", err.Error())
+					if err != nil {
+						logger.Error("failed to send notification", log.ErrAttr(err))
+					}
 				}
 
 				lock.Unlock()

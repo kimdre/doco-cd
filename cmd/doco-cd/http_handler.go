@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/notification"
+
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/docker/api/types/container"
@@ -44,6 +46,8 @@ func onError(repoName string, w http.ResponseWriter, log *slog.Logger, errMsg st
 		details,
 		jobID,
 		statusCode)
+
+	_ = notification.Send(notification.Failure, "Deployment ßFailed", errMsg)
 }
 
 // getRepoName extracts the repository name from the clone URL.
