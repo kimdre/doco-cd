@@ -19,7 +19,6 @@
     },
     {
       "matchUpdateTypes": ["patch", "pin", "digest"],
-      "minimumReleaseAge": "1 days",
       "automerge": true
     },
     {
