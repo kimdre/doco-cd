@@ -4,7 +4,7 @@ go 1.24.5
 
 require (
 	github.com/caarlos0/env/v11 v11.3.1
-	github.com/compose-spec/compose-go/v2 v2.8.0
+	github.com/compose-spec/compose-go/v2 v2.8.1
 	github.com/creasty/defaults v1.8.0
 	github.com/docker/cli v28.3.2+incompatible
 	github.com/docker/compose/v2 v2.39.0
@@ -72,7 +72,7 @@ require (
 	github.com/aws/smithy-go v1.22.3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
-	github.com/bombsimon/wsl/v5 v5.1.0 // indirect
+	github.com/bombsimon/wsl/v5 v5.1.1 // indirect
 	github.com/buger/goterm v1.0.4 // indirect
 	github.com/catenacyber/perfsprint v0.9.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
