@@ -37,7 +37,7 @@ type AppConfig struct {
 	AppriseApiURL         HttpUrl                `env:"APPRISE_API_URL" validate:"httpUrl"`                                 // AppriseApiURL is the URL of the Apprise notification service
 	AppriseNotifyUrls     string                 `env:"APPRISE_NOTIFY_URLS"`                                                // AppriseNotifyUrls is a comma-separated list of URLs to notify via the Apprise notification service
 	AppriseNotifyUrlsFile string                 `env:"APPRISE_NOTIFY_URLS_FILE,file"`                                      // AppriseNotifyUrlsFile is the file containing the AppriseNotifyUrls
-	AppriseNotifyLevel    string                 `env:"APPRISE_NOTIFY_LEVEL,notEmpty" envDefault:"info"`                    // AppriseNotifyLevel is the level of notifications to send via the Apprise notification service
+	AppriseNotifyLevel    string                 `env:"APPRISE_NOTIFY_LEVEL,notEmpty" envDefault:"success"`                 // AppriseNotifyLevel is the level of notifications to send via the Apprise notification service
 }
 
 // GetAppConfig returns the configuration.
