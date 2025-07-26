@@ -47,7 +47,7 @@ func onError(repoName string, w http.ResponseWriter, log *slog.Logger, errMsg st
 		jobID,
 		statusCode)
 
-	_ = notification.Send(notification.Failure, "Deployment ßFailed", errMsg)
+	_ = notification.Send(notification.Failure, "Deployment Failed", errMsg)
 }
 
 // getRepoName extracts the repository name from the clone URL.
