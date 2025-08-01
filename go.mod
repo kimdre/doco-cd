@@ -12,7 +12,7 @@ require (
 	github.com/getsops/sops/v3 v3.10.2
 	github.com/go-git/go-git/v5 v5.16.2
 	github.com/google/uuid v1.6.0
-	github.com/prometheus/client_golang v1.22.0
+	github.com/prometheus/client_golang v1.23.0
 	github.com/spf13/pflag v1.0.7
 	golang.org/x/net v0.42.0
 	gopkg.in/validator.v2 v2.0.1
