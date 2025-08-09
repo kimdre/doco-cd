@@ -19,6 +19,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/notification"
+
 	"github.com/go-git/go-git/v5/plumbing/format/diff"
 
 	"github.com/docker/docker/client"
@@ -567,6 +569,11 @@ func DeployStack(
 
 	prometheus.DeploymentsTotal.WithLabelValues(deployConfig.Name).Inc()
 	prometheus.DeploymentDuration.WithLabelValues(deployConfig.Name).Observe(time.Since(startTime).Seconds())
+
+	err = notification.Send(notification.Success, "Deployment Successful", "Successfully deployed stack "+deployConfig.Name)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
