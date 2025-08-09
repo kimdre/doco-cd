@@ -103,7 +103,7 @@ func loadFileBasedEnvVars(cfg *AppConfig) error {
 				return fmt.Errorf("%w: %s or %s", ErrBothSecretsSet, field.name, field.name+"_FILE")
 			}
 
-			*field.value = field.fileField
+			*field.value = strings.TrimSpace(field.fileField)
 		} else if *field.value == "" {
 			return fmt.Errorf("%w: %s or %s", ErrBothSecretsNotSet, field.name, field.name+"_FILE")
 		}
