@@ -132,7 +132,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			jobLog.Debug("repository already exists, checking out reference "+payload.Ref, slog.String("host_path", externalRepoPath))
 
-			_, err = git.UpdateRepository(internalRepoPath, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy)
+			_, err = git.UpdateRepository(internalRepoPath, payload.CloneURL, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 			if err != nil {
 				onError(repoName, w, jobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), jobID, http.StatusInternalServerError)
 
@@ -191,8 +191,10 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 		subJobLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
 
+		var cloneUrl string
+
 		if deployConfig.RepositoryUrl != "" {
-			cloneUrl := string(deployConfig.RepositoryUrl)
+			cloneUrl = string(deployConfig.RepositoryUrl)
 			if appConfig.GitAccessToken != "" {
 				cloneUrl = git.GetAuthUrl(string(deployConfig.RepositoryUrl), appConfig.AuthType, appConfig.GitAccessToken)
 			}
@@ -211,7 +213,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 		subJobLog.Debug("checking out reference "+deployConfig.Reference, slog.String("host_path", externalRepoPath))
 
-		repo, err := git.UpdateRepository(internalRepoPath, deployConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
+		repo, err := git.UpdateRepository(internalRepoPath, cloneUrl, deployConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 		if err != nil {
 			onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), jobID, http.StatusInternalServerError)
 

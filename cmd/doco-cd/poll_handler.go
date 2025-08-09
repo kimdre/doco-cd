@@ -176,7 +176,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			jobLog.Debug("repository already exists, checking out reference "+pollConfig.Reference, slog.String("host_path", externalRepoPath))
 
-			_, err = git.UpdateRepository(internalRepoPath, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
+			_, err = git.UpdateRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 			if err != nil {
 				jobLog.Error("failed to checkout repository", log.ErrAttr(err))
 
@@ -270,7 +270,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 
 		subJobLog.Debug("checking out reference "+deployConfig.Reference, slog.String("host_path", externalRepoPath))
 
-		repo, err := git.UpdateRepository(internalRepoPath, deployConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
+		repo, err := git.UpdateRepository(internalRepoPath, cloneUrl, deployConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 		if err != nil {
 			subJobLog.Error("failed to checkout repository", log.ErrAttr(err))
 
