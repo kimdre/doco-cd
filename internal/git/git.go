@@ -122,7 +122,7 @@ func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 // Allowed reference forma
 //   - Branches: refs/heads/main or main
 //   - Tags: refs/tags/v1.0.0 or v1.0.0
-func UpdateRepository(path, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions) (*git.Repository, error) {
+func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions) (*git.Repository, error) {
 	repo, err := git.PlainOpen(path)
 	if err != nil {
 		return nil, err
@@ -135,6 +135,7 @@ func UpdateRepository(path, ref string, skipTLSVerify bool, proxyOpts transport.
 
 	opts := &git.FetchOptions{
 		RemoteName:      RemoteName,
+		RemoteURL:       url,
 		RefSpecs:        []config.RefSpec{refSpecAllBranches, refSpecAllTags},
 		InsecureSkipTLS: skipTLSVerify,
 		Prune:           true,
