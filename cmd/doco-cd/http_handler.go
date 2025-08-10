@@ -38,7 +38,7 @@ type handlerData struct {
 	log            *logger.Logger       // Logger for logging messages
 }
 
-func onError(repoName string, w http.ResponseWriter, log *slog.Logger, errMsg string, details any, jobID string, statusCode int) {
+func onError(repoName string, w http.ResponseWriter, log *slog.Logger, errMsg string, details any, jobID, revision string, statusCode int) {
 	prometheus.WebhookErrorsTotal.WithLabelValues(repoName).Inc()
 	log.Error(errMsg)
 	JSONError(w,
@@ -47,7 +47,7 @@ func onError(repoName string, w http.ResponseWriter, log *slog.Logger, errMsg st
 		jobID,
 		statusCode)
 
-	_ = notification.Send(notification.Failure, "Deployment Failed", errMsg)
+	_ = notification.Send(notification.Failure, "Deployment Failed", errMsg+"\nrevision: "+revision)
 }
 
 // getRepoName extracts the repository name from the clone URL.
