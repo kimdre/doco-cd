@@ -217,9 +217,15 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 		cli.WithWorkingDirectory(workingDir),
 		cli.WithInterpolation(true),
 		cli.WithResolvedPaths(true),
+		cli.WithEnvFiles(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create project options: %w", err)
+	}
+
+	err = cli.WithDotEnv(options)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get .env file for interpolation: %w", err)
 	}
 
 	project, err := options.LoadProject(ctx)
