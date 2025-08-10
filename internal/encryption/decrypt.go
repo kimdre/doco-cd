@@ -1,7 +1,6 @@
 package encryption
 
 import (
-	"io"
 	"os"
 	"strings"
 
@@ -41,20 +40,13 @@ func DecryptFile(path string) ([]byte, error) {
 
 // IsEncryptedFile checks if the file at the given path is a SOPS-encrypted file.
 func IsEncryptedFile(path string) (bool, error) {
-	f, err := os.Open(path) // #nosec G304
+	bytes, err := os.ReadFile(path) // #nosec G304
 	if err != nil {
 		return false, err
 	}
-	defer f.Close() //nolint:errcheck
 
-	buf := make([]byte, 4096)
+	content := string(bytes)
 
-	n, err := f.Read(buf)
-	if err != nil && err != io.EOF {
-		return false, err
-	}
-
-	content := string(buf[:n])
 	// Check for SOPS-specific markers
 	return strings.Contains(content, "sops") && strings.Contains(content, "ENC["), nil
 }
