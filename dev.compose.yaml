@@ -1,7 +1,7 @@
 x-poll-config: &poll-config
   POLL_CONFIG: |
     - url: https://github.com/kimdre/doco-cd_tests.git
-      reference: test
+      reference: 541-interpolation
       interval: 10
       target: ""
       private: true

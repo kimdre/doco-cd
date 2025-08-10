@@ -64,7 +64,6 @@ jobs:
           sbom: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@77137e9dc3ab1b329b7c8a38c2eb7475850a14e8
@@ -93,4 +92,3 @@ jobs:
           sbom: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64
