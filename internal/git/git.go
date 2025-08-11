@@ -31,9 +31,9 @@ const (
 )
 
 var (
-	ErrCheckoutFailed          = errors.New("failed To checkout repository")
-	ErrFetchFailed             = errors.New("failed To fetch repository")
-	ErrPullFailed              = errors.New("failed To pull repository")
+	ErrCheckoutFailed          = errors.New("failed to checkout repository")
+	ErrFetchFailed             = errors.New("failed to fetch repository")
+	ErrPullFailed              = errors.New("failed to pull repository")
 	ErrRepositoryAlreadyExists = git.ErrRepositoryAlreadyExists
 	ErrInvalidReference        = git.ErrInvalidReference
 )
