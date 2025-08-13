@@ -84,3 +84,46 @@ func TestSend(t *testing.T) {
 		})
 	}
 }
+
+func TestGetRevision(t *testing.T) {
+	testCases := []struct {
+		name      string
+		reference string
+		commitSha string
+		expected  string
+	}{
+		{
+			name:      "Valid Revision",
+			reference: "main",
+			commitSha: "1234567890abcdef",
+			expected:  "main (1234567890abcdef)",
+		},
+		{
+			name:      "Empty Reference",
+			reference: "",
+			commitSha: "1234567890abcdef",
+			expected:  "1234567890abcdef",
+		},
+		{
+			name:      "Empty Commit SHA",
+			reference: "main",
+			commitSha: "",
+			expected:  "main",
+		},
+		{
+			name:      "Empty Both",
+			reference: "",
+			commitSha: "",
+			expected:  "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := GetRevision(tc.reference, tc.commitSha)
+			if result != tc.expected {
+				t.Errorf("expected %s, got %s", tc.expected, result)
+			}
+		})
+	}
+}
