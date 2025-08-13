@@ -339,6 +339,7 @@ func DeployStack(
 	jobLog *slog.Logger, internalRepoPath, externalRepoPath string, ctx *context.Context,
 	dockerCli *command.Cli, dockerClient *client.Client, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
 	changedFiles []gitInternal.ChangedFile, latestCommit, appVersion, triggerEvent string, forceDeploy bool,
+	metadata notification.Metadata,
 ) error {
 	startTime := time.Now()
 
@@ -578,9 +579,8 @@ func DeployStack(
 	prometheus.DeploymentDuration.WithLabelValues(deployConfig.Name).Observe(time.Since(startTime).Seconds())
 
 	msg := "Successfully deployed stack " + deployConfig.Name
-	revision := notification.GetRevision(deployConfig.Reference, latestCommit)
 
-	err = notification.Send(notification.Success, "Deployment Successful", msg, revision)
+	err = notification.Send(notification.Success, "Deployment Successful", msg, metadata)
 	if err != nil {
 		return err
 	}

@@ -77,6 +77,12 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 
 	lock := getRepoLock(repoName)
 
+	metadata := notification.Metadata{
+		Repository: repoName,
+		Stack:      "",
+		Revision:   notification.GetRevision(pollJob.Config.Reference, ""),
+	}
+
 	for {
 		if pollJob.LastRun == 0 || time.Now().Unix() >= pollJob.NextRun {
 			locked := lock.TryLock()
@@ -86,13 +92,13 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 			} else {
 				logger.Debug("Start poll job")
 
-				err := RunPoll(context.Background(), pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.dockerClient, logger)
+				metadata.JobID = uuid.Must(uuid.NewRandom()).String()
+
+				err := RunPoll(context.Background(), pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.dockerClient, logger, metadata)
 				if err != nil {
 					prometheus.PollErrors.WithLabelValues(repoName).Inc()
 
-					msg := fmt.Sprintf("%s\nrevision: %s", err.Error(), pollJob.Config.Reference)
-
-					err = notification.Send(notification.Failure, "Poll Job failed", msg, pollJob.Config.Reference)
+					err = notification.Send(notification.Failure, "Poll Job failed", err.Error(), metadata)
 					if err != nil {
 						logger.Error("failed to send notification", log.ErrAttr(err))
 					}
@@ -112,14 +118,15 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 }
 
 // RunPoll deploys compose projects based on the provided configuration.
-func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *config.AppConfig, dataMountPoint container.MountPoint, dockerCli command.Cli, dockerClient *client.Client, logger *slog.Logger) error {
+func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *config.AppConfig, dataMountPoint container.MountPoint,
+	dockerCli command.Cli, dockerClient *client.Client, logger *slog.Logger, metadata notification.Metadata,
+) error {
 	var err error
 
 	startTime := time.Now()
 	cloneUrl := string(pollConfig.CloneUrl)
-	jobID := uuid.Must(uuid.NewRandom()).String()
 	repoName := getRepoName(cloneUrl)
-	jobLog := logger.With(slog.String("job_id", jobID))
+	jobLog := logger.With(slog.String("job_id", metadata.JobID))
 
 	if appConfig.DockerSwarmFeatures {
 		// Check if docker host is running in swarm mode
@@ -225,6 +232,10 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			repoName = getRepoName(string(deployConfig.RepositoryUrl))
 		}
 
+		metadata.Repository = repoName
+		metadata.Stack = deployConfig.Name
+		metadata.Revision = notification.GetRevision(deployConfig.Reference, "")
+
 		// fullName is the repoName without the domain part,
 		// e.g. "github.com/kimdre/doco-cd" becomes "kimdre/doco-cd"
 		// or "git.example.com/doco-cd" becomes "doco-cd"
@@ -292,6 +303,8 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 
 			return fmt.Errorf("failed to get latest commit: %w", err)
 		}
+
+		metadata.Revision = notification.GetRevision(deployConfig.Reference, latestCommit)
 
 		filterLabel := api.ProjectLabel
 		if docker.SwarmModeEnabled {
@@ -478,7 +491,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			}
 
 			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, dockerClient,
-				&payload, deployConfig, changedFiles, latestCommit, Version, "poll", false)
+				&payload, deployConfig, changedFiles, latestCommit, Version, "poll", false, metadata)
 			if err != nil {
 				subJobLog.Error("failed to deploy stack", log.ErrAttr(err))
 

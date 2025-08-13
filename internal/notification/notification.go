@@ -45,6 +45,13 @@ type appriseRequest struct {
 	Type       string `json:"type,omitempty"` // Optional field for specifying the type of notification (info, success, error, failure)
 }
 
+type Metadata struct {
+	Repository string
+	Stack      string
+	Revision   string
+	JobID      string
+}
+
 // parseLevel converts a string representation of a log level to the level type.
 func parseLevel(level string) level {
 	switch level {
@@ -95,7 +102,7 @@ func SetAppriseConfig(apiURL, notifyUrls, notifyLevel string) {
 }
 
 // Send sends a notification using the Apprise service based on the provided configuration and parameters.
-func Send(level level, title, message, revision string) error {
+func Send(level level, title, message string, metadata Metadata) error {
 	if appriseApiURL == "" || appriseNotifyUrls == "" {
 		return nil
 	}
@@ -106,7 +113,7 @@ func Send(level level, title, message, revision string) error {
 
 	title = levelEmojis[level] + " " + title
 
-	message = formatMessage(message, revision)
+	message = formatMessage(message, metadata)
 
 	err := send(appriseApiURL, appriseNotifyUrls, title, message, logLevels[level])
 	if err != nil {
@@ -117,11 +124,23 @@ func Send(level level, title, message, revision string) error {
 }
 
 // formatMessage formats the message by adding a newline after the first colon and appending the revision if provided.
-func formatMessage(message, revision string) string {
+func formatMessage(message string, m Metadata) string {
 	message = strings.Replace(message, ": ", ":\n", 1)
 
-	if revision != "" {
-		return fmt.Sprintf("%s\nRevision: %s", message, revision)
+	if m.Repository != "" {
+		message = fmt.Sprintf("%s\nrepository: %s", message, m.Repository)
+	}
+
+	if m.Stack != "" {
+		message = fmt.Sprintf("%s\nstack: %s", message, m.Stack)
+	}
+
+	if m.Revision != "" {
+		message = fmt.Sprintf("%s\nrevision: %s", message, m.Revision)
+	}
+
+	if m.JobID != "" {
+		message = fmt.Sprintf("%s\njob_id: %s", message, m.JobID)
 	}
 
 	return message
