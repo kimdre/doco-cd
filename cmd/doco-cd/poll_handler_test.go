@@ -93,7 +93,7 @@ func TestRunPoll(t *testing.T) {
 	}
 
 	// Run initial poll
-	err = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With(), metadata)
+	_, err = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With(), metadata)
 	if err != nil {
 		t.Fatalf("Initial poll failed: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestRunPoll(t *testing.T) {
 	pollConfig.Reference = "destroy"
 
 	// Run the second poll to destroy
-	err = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With(), metadata)
+	_, err = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With(), metadata)
 	if err != nil {
 		t.Fatalf("Second poll failed: %v", err)
 	}

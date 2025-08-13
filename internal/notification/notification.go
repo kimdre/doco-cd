@@ -127,23 +127,23 @@ func Send(level level, title, message string, metadata Metadata) error {
 func formatMessage(message string, m Metadata) string {
 	message = strings.Replace(message, ": ", ":\n", 1)
 
-	if m.Repository != "" {
-		message = fmt.Sprintf("%s\nrepository: %s", message, m.Repository)
+	var metadataInfo string
+
+	fields := []struct {
+		key, value string
+	}{
+		{"repository", m.Repository},
+		{"stack", m.Stack},
+		{"revision", m.Revision},
+		{"job_id", m.JobID},
+	}
+	for _, f := range fields {
+		if f.value != "" {
+			metadataInfo += fmt.Sprintf("\n%s: %s", f.key, f.value)
+		}
 	}
 
-	if m.Stack != "" {
-		message = fmt.Sprintf("%s\nstack: %s", message, m.Stack)
-	}
-
-	if m.Revision != "" {
-		message = fmt.Sprintf("%s\nrevision: %s", message, m.Revision)
-	}
-
-	if m.JobID != "" {
-		message = fmt.Sprintf("%s\njob_id: %s", message, m.JobID)
-	}
-
-	return message
+	return fmt.Sprintf("%s\n%s", message, metadataInfo)
 }
 
 func GetRevision(reference, commitSHA string) string {

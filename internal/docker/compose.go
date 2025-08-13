@@ -578,7 +578,7 @@ func DeployStack(
 	prometheus.DeploymentsTotal.WithLabelValues(deployConfig.Name).Inc()
 	prometheus.DeploymentDuration.WithLabelValues(deployConfig.Name).Observe(time.Since(startTime).Seconds())
 
-	msg := "Successfully deployed stack " + deployConfig.Name
+	msg := "successfully deployed stack " + deployConfig.Name
 
 	err = notification.Send(notification.Success, "Deployment Successful", msg, metadata)
 	if err != nil {
