@@ -47,7 +47,7 @@ func onError(repoName string, w http.ResponseWriter, log *slog.Logger, errMsg st
 		jobID,
 		statusCode)
 
-	_ = notification.Send(notification.Failure, "Deployment Failed", errMsg+"\nrevision: "+revision)
+	_ = notification.Send(notification.Failure, "Deployment Failed", errMsg, revision)
 }
 
 // getRepoName extracts the repository name from the clone URL.
@@ -79,12 +79,14 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			slog.String("commit", payload.CommitSHA), slog.String("ref", payload.Ref),
 			slog.String("event", "webhook")))
 
+	revision := notification.GetRevision(payload.Ref, payload.CommitSHA)
+
 	if appConfig.DockerSwarmFeatures {
 		// Check if docker host is running in swarm mode
 		docker.SwarmModeEnabled, err = docker.CheckDaemonIsSwarmManager(ctx, dockerCli)
 		if err != nil {
 			jobLog.Error("failed to check if docker host is running in swarm mode")
-			onError(repoName, w, jobLog.With(logger.ErrAttr(err)), "failed to check if docker host is running in swarm mode", err.Error(), jobID, http.StatusInternalServerError)
+			onError(repoName, w, jobLog.With(logger.ErrAttr(err)), "failed to check if docker host is running in swarm mode", err.Error(), jobID, revision, http.StatusInternalServerError)
 		}
 	}
 
@@ -97,7 +99,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		jobLog.Debug("authenticating to private repository")
 
 		if appConfig.GitAccessToken == "" {
-			onError(repoName, w, jobLog, "missing access token for private repository", "", jobID, http.StatusInternalServerError)
+			onError(repoName, w, jobLog, "missing access token for private repository", "", jobID, revision, http.StatusInternalServerError)
 
 			return
 		}
@@ -110,21 +112,21 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	// Validate payload.FullName to prevent directory traversal
 	if strings.Contains(payload.FullName, "..") {
-		onError(repoName, w, jobLog.With(slog.String("repository", payload.FullName)), "invalid repository name", "", jobID, http.StatusBadRequest)
+		onError(repoName, w, jobLog.With(slog.String("repository", payload.FullName)), "invalid repository name", "", jobID, revision, http.StatusBadRequest)
 
 		return
 	}
 
 	internalRepoPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
 	if err != nil {
-		onError(repoName, w, jobLog.With(logger.ErrAttr(err)), "failed to verify and sanitize internal filesystem path", err.Error(), jobID, http.StatusBadRequest)
+		onError(repoName, w, jobLog.With(logger.ErrAttr(err)), "failed to verify and sanitize internal filesystem path", err.Error(), jobID, revision, http.StatusBadRequest)
 
 		return
 	}
 
 	externalRepoPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path on the host
 	if err != nil {
-		onError(repoName, w, jobLog.With(logger.ErrAttr(err)), "failed to verify and sanitize external filesystem path", err.Error(), jobID, http.StatusBadRequest)
+		onError(repoName, w, jobLog.With(logger.ErrAttr(err)), "failed to verify and sanitize external filesystem path", err.Error(), jobID, revision, http.StatusBadRequest)
 
 		return
 	}
@@ -138,12 +140,12 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 			_, err = git.UpdateRepository(internalRepoPath, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 			if err != nil {
-				onError(repoName, w, jobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), jobID, http.StatusInternalServerError)
+				onError(repoName, w, jobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), jobID, revision, http.StatusInternalServerError)
 
 				return
 			}
 		} else {
-			onError(repoName, w, jobLog.With(logger.ErrAttr(err)), "failed to clone repository", err.Error(), jobID, http.StatusInternalServerError)
+			onError(repoName, w, jobLog.With(logger.ErrAttr(err)), "failed to clone repository", err.Error(), jobID, revision, http.StatusInternalServerError)
 
 			return
 		}
@@ -159,7 +161,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		if errors.Is(err, config.ErrDeprecatedConfig) {
 			jobLog.Warn(err.Error())
 		} else {
-			onError(repoName, w, jobLog.With(logger.ErrAttr(err)), "failed to get deploy configuration", err.Error(), jobID, http.StatusInternalServerError)
+			onError(repoName, w, jobLog.With(logger.ErrAttr(err)), "failed to get deploy configuration", err.Error(), jobID, revision, http.StatusInternalServerError)
 
 			return
 		}
@@ -168,6 +170,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	for _, deployConfig := range deployConfigs {
 		subJobLog := jobLog.With()
 
+		revision = notification.GetRevision(deployConfig.Reference, payload.CommitSHA)
+
 		repoName = getRepoName(payload.CloneURL)
 		if deployConfig.RepositoryUrl != "" {
 			repoName = getRepoName(string(deployConfig.RepositoryUrl))
@@ -175,14 +179,14 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 		internalRepoPath, err = filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
 		if err != nil {
-			onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "invalid repository name", err.Error(), jobID, http.StatusBadRequest)
+			onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "invalid repository name", err.Error(), jobID, revision, http.StatusBadRequest)
 
 			return
 		}
 
 		externalRepoPath, err = filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Source, repoName), dataMountPoint.Source) // Path on the host
 		if err != nil {
-			onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "invalid repository name", err.Error(), jobID, http.StatusBadRequest)
+			onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "invalid repository name", err.Error(), jobID, revision, http.StatusBadRequest)
 
 			return
 		}
@@ -205,7 +209,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			// Try to clone the remote repository
 			_, err = git.CloneRepository(internalRepoPath, cloneUrl, deployConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 			if err != nil && !errors.Is(err, git.ErrRepositoryAlreadyExists) {
-				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to clone remote repository", err.Error(), jobID, http.StatusInternalServerError)
+				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to clone remote repository", err.Error(), jobID, revision, http.StatusInternalServerError)
 
 				return
 			}
@@ -217,17 +221,19 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 		repo, err := git.UpdateRepository(internalRepoPath, deployConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 		if err != nil {
-			onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), jobID, http.StatusInternalServerError)
+			onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), jobID, revision, http.StatusInternalServerError)
 
 			return
 		}
 
 		latestCommit, err := git.GetLatestCommit(repo, deployConfig.Reference)
 		if err != nil {
-			onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to get latest commit", err.Error(), jobID, http.StatusInternalServerError)
+			onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to get latest commit", err.Error(), jobID, revision, http.StatusInternalServerError)
 
 			return
 		}
+
+		revision = notification.GetRevision(deployConfig.Reference, latestCommit)
 
 		filterLabel := api.ProjectLabel
 		if docker.SwarmModeEnabled {
@@ -240,7 +246,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			// Check if doco-cd manages the project before destroying the stack
 			containers, err := docker.GetLabeledContainers(ctx, dockerClient, filterLabel, deployConfig.Name)
 			if err != nil {
-				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to retrieve containers", err.Error(), jobID, http.StatusInternalServerError)
+				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to retrieve containers", err.Error(), jobID, revision, http.StatusInternalServerError)
 
 				return
 			}
@@ -270,21 +276,21 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 			if !managed {
 				onError(repoName, w, subJobLog, fmt.Errorf("%w: %s: aborting destruction", ErrNotManagedByDocoCD, deployConfig.Name).Error(),
-					"", jobID, http.StatusInternalServerError)
+					"", jobID, revision, http.StatusInternalServerError)
 
 				return
 			}
 
 			if !correctRepo {
 				onError(repoName, w, subJobLog, fmt.Errorf("%w: %s: aborting destruction", ErrDeploymentConflict, deployConfig.Name).Error(),
-					map[string]string{"stack": deployConfig.Name}, jobID, http.StatusInternalServerError)
+					map[string]string{"stack": deployConfig.Name}, jobID, revision, http.StatusInternalServerError)
 
 				return
 			}
 
 			err = docker.DestroyStack(subJobLog, &ctx, &dockerCli, deployConfig)
 			if err != nil {
-				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to destroy stack", err.Error(), jobID, http.StatusInternalServerError)
+				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to destroy stack", err.Error(), jobID, revision, http.StatusInternalServerError)
 
 				return
 			}
@@ -292,7 +298,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			if docker.SwarmModeEnabled && deployConfig.DestroyOpts.RemoveVolumes {
 				err = docker.RemoveLabeledVolumes(ctx, dockerClient, deployConfig.Name, filterLabel)
 				if err != nil {
-					onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to remove volumes", err.Error(), jobID, http.StatusInternalServerError)
+					onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to remove volumes", err.Error(), jobID, revision, http.StatusInternalServerError)
 
 					return
 				}
@@ -308,7 +314,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 				subDirs, err := os.ReadDir(parentDir)
 				if err != nil {
-					onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to read parent directory", err.Error(), jobID, http.StatusInternalServerError)
+					onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to read parent directory", err.Error(), jobID, revision, http.StatusInternalServerError)
 
 					return
 				}
@@ -320,7 +326,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 					// Remove only the repository directory
 					err = os.RemoveAll(internalRepoPath)
 					if err != nil {
-						onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to remove deployment directory", err.Error(), jobID, http.StatusInternalServerError)
+						onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to remove deployment directory", err.Error(), jobID, revision, http.StatusInternalServerError)
 
 						return
 					}
@@ -328,7 +334,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 					// Remove the parent directory if it has only one subdirectory
 					err = os.RemoveAll(parentDir)
 					if err != nil {
-						onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to remove deployment directory", err.Error(), jobID, http.StatusInternalServerError)
+						onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to remove deployment directory", err.Error(), jobID, revision, http.StatusInternalServerError)
 
 						return
 					}
@@ -340,7 +346,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			// Skip deployment if another project with the same name already exists
 			containers, err := docker.GetLabeledContainers(ctx, dockerClient, filterLabel, deployConfig.Name)
 			if err != nil {
-				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to retrieve containers", err.Error(), jobID, http.StatusInternalServerError)
+				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to retrieve containers", err.Error(), jobID, revision, http.StatusInternalServerError)
 
 				return
 			}
@@ -362,7 +368,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 			if !correctRepo {
 				onError(repoName, w, subJobLog, fmt.Errorf("%w: %s: skipping deployment", ErrDeploymentConflict, deployConfig.Name).Error(),
-					map[string]string{"stack": deployConfig.Name}, jobID, http.StatusInternalServerError)
+					map[string]string{"stack": deployConfig.Name}, jobID, revision, http.StatusInternalServerError)
 
 				return
 			}
@@ -375,7 +381,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			if deployedCommit != "" {
 				changedFiles, err = git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(deployedCommit), plumbing.NewHash(latestCommit))
 				if err != nil {
-					onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to get changed files between commits", err.Error(), jobID, http.StatusInternalServerError)
+					onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to get changed files between commits", err.Error(), jobID, revision, http.StatusInternalServerError)
 
 					return
 				}
@@ -383,7 +389,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				hasChanged, err := git.HasChangesInSubdir(changedFiles, deployConfig.WorkingDirectory)
 				if err != nil {
 					onError(repoName, w, subJobLog, fmt.Errorf("failed to compare commits in subdirectory: %w", err).Error(),
-						map[string]string{"stack": deployConfig.Name}, jobID, http.StatusInternalServerError)
+						map[string]string{"stack": deployConfig.Name}, jobID, revision, http.StatusInternalServerError)
 
 					return
 				}
@@ -406,7 +412,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, dockerClient,
 				&payload, deployConfig, changedFiles, latestCommit, Version, "webhook", false)
 			if err != nil {
-				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), jobID, http.StatusInternalServerError)
+				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), jobID, revision, http.StatusInternalServerError)
 
 				return
 			}
@@ -467,7 +473,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 			repoName = getRepoName(payload.CloneURL)
 		}
 
-		onError(repoName, w, jobLog.With(slog.String("ip", r.RemoteAddr), logger.ErrAttr(err)), errMsg, err.Error(), jobID, statusCode)
+		onError(repoName, w, jobLog.With(slog.String("ip", r.RemoteAddr), logger.ErrAttr(err)), errMsg, err.Error(), jobID, "", statusCode)
 
 		return
 	}
@@ -477,7 +483,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	locked := lock.TryLock()
 
 	if !locked {
-		onError(repoName, w, jobLog, "Another job is still in progress for this repository", nil, jobID, http.StatusTooManyRequests)
+		onError(repoName, w, jobLog, "Another job is still in progress for this repository", nil, jobID, "", http.StatusTooManyRequests)
 		return
 	}
 
@@ -489,7 +495,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request) {
 	err := docker.VerifySocketConnection()
 	if err != nil {
-		onError("healthcheck", w, h.log.With(logger.ErrAttr(err)), docker.ErrDockerSocketConnectionFailed.Error(), err.Error(), "", http.StatusServiceUnavailable)
+		onError("healthcheck", w, h.log.With(logger.ErrAttr(err)), docker.ErrDockerSocketConnectionFailed.Error(), err.Error(), "", "", http.StatusServiceUnavailable)
 
 		return
 	}

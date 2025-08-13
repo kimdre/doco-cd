@@ -91,7 +91,7 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 					prometheus.PollErrors.WithLabelValues(repoName).Inc()
 
 					msg := fmt.Sprintf("%s\nrevision: %s", err.Error(), pollJob.Config.Reference)
-					err = notification.Send(notification.Failure, "Deployment Failed", msg)
+					err = notification.Send(notification.Failure, "Poll Job failed", msg, pollJob.Config.Reference)
 					if err != nil {
 						logger.Error("failed to send notification", log.ErrAttr(err))
 					}

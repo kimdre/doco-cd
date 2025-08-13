@@ -95,7 +95,7 @@ func SetAppriseConfig(apiURL, notifyUrls, notifyLevel string) {
 }
 
 // Send sends a notification using the Apprise service based on the provided configuration and parameters.
-func Send(level level, title, message string) error {
+func Send(level level, title, message, revision string) error {
 	if appriseApiURL == "" || appriseNotifyUrls == "" {
 		return nil
 	}
@@ -106,7 +106,7 @@ func Send(level level, title, message string) error {
 
 	title = levelEmojis[level] + " " + title
 
-	message = strings.Replace(message, ": ", ":\n", 1)
+	message = formatMessage(message, revision)
 
 	err := send(appriseApiURL, appriseNotifyUrls, title, message, logLevels[level])
 	if err != nil {
@@ -114,4 +114,29 @@ func Send(level level, title, message string) error {
 	}
 
 	return nil
+}
+
+// formatMessage formats the message by adding a newline after the first colon and appending the revision if provided.
+func formatMessage(message, revision string) string {
+	message = strings.Replace(message, ": ", ":\n", 1)
+
+	if revision != "" {
+		return fmt.Sprintf("%s\nRevision: %s", message, revision)
+	}
+	return message
+}
+
+func GetRevision(reference, commitSHA string) string {
+	if reference == "" && commitSHA == "" {
+		return ""
+	}
+
+	switch "" {
+	case reference:
+		return commitSHA
+	case commitSHA:
+		return reference
+	default:
+		return fmt.Sprintf("%s (%s)", reference, commitSHA)
+	}
 }
