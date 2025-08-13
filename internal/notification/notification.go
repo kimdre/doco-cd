@@ -123,6 +123,7 @@ func formatMessage(message, revision string) string {
 	if revision != "" {
 		return fmt.Sprintf("%s\nRevision: %s", message, revision)
 	}
+
 	return message
 }
 
