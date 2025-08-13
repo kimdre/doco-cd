@@ -52,6 +52,7 @@ type DeployConfig struct {
 		RemoveImages  bool `yaml:"remove_images" default:"true"`  // RemoveImages removes the images used by the deployment (currently not supported in docker swarm mode)
 		RemoveRepoDir bool `yaml:"remove_dir" default:"true"`     // RemoveRepoDir removes the repository directory after the deployment is destroyed
 	} `yaml:"destroy_opts"` // DestroyOpts is the destroy options for the deployment
+	Profiles []string `yaml:"profiles" default:"[]"` // Profiles is a list of profiles to use for the deployment, e.g., ["dev", "prod"]. See https://docs.docker.com/compose/how-tos/profiles/
 }
 
 // DefaultDeployConfig creates a DeployConfig with default values.

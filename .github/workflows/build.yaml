@@ -13,35 +13,14 @@ on:
       - 'v*'
 
 jobs:
-  create-runner:
-    name: Create Hcloud Runner
-    runs-on: ubuntu-latest
-    outputs:
-      label: ${{ steps.create-hcloud-runner.outputs.label }}
-      server_id: ${{ steps.create-hcloud-runner.outputs.server_id }}
-    steps:
-      - name: Create runner
-        id: create-hcloud-runner
-        uses: Cyclenerd/hcloud-github-runner@5545b710131576fb4f4f84e9a4565dd8f7503eb9 # v1
-        with:
-          mode: create
-          github_token: ${{ secrets.HETZNER_RUNNER_GITHUB_PAT }}
-          hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
-          server_type: cpx31
-          location: fsn1
-          image: docker-ce
-          ssh_key: 100522719
-
   build:
-    needs:
-      - create-runner
-    runs-on: ${{ needs.create-runner.outputs.label }}
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
 
       - name: Log in to the GitHub Container Registry
-        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -55,7 +34,7 @@ jobs:
 
       - name: Extract metadata for the Docker image
         id: meta
-        uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5
+        uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f # v5
         with:
           images: |
             ghcr.io/${{ github.repository }}
@@ -78,22 +57,5 @@ jobs:
           platforms: |
             linux/amd64
             linux/arm64
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max
-
-  delete-runner:
-    name: Delete Hcloud Runner
-    needs:
-      - create-runner
-      - build
-    runs-on: ubuntu-latest
-    if: ${{ always() }} # required to stop the runner even if the error happened in the previous jobs
-    steps:
-      - name: Delete runner
-        uses: Cyclenerd/hcloud-github-runner@5545b710131576fb4f4f84e9a4565dd8f7503eb9 # v1
-        with:
-          mode: delete
-          github_token: ${{ secrets.HETZNER_RUNNER_GITHUB_PAT }}
-          hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
-          name: ${{ needs.create-runner.outputs.label }}
-          server_id: ${{ needs.create-runner.outputs.server_id }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

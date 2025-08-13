@@ -186,7 +186,7 @@ func TestUpdateRepository(t *testing.T) {
 				t.Fatalf("Failed To get worktree: %v", err)
 			}
 
-			repo, err = UpdateRepository(worktree.Filesystem.Root(), tc.branchRef, true, c.HttpProxy)
+			repo, err = UpdateRepository(worktree.Filesystem.Root(), tc.cloneUrl, tc.branchRef, true, c.HttpProxy)
 			if err != nil {
 				if !errors.Is(err, tc.expectedErr) {
 					t.Fatalf("Expected error %v, got %v", tc.expectedErr, err)
@@ -289,7 +289,7 @@ func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 		t.Fatalf("Failed To create new file: %v", err)
 	}
 
-	repo, err = UpdateRepository(worktree.Filesystem.Root(), "alternative", true, c.HttpProxy)
+	repo, err = UpdateRepository(worktree.Filesystem.Root(), url, "alternative", true, c.HttpProxy)
 	if err != nil {
 		t.Fatalf("Failed To update repository: %v", err)
 	}

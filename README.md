@@ -14,7 +14,7 @@
 [![Container Image Vulnerability Scanning](https://github.com/kimdre/doco-cd/actions/workflows/image-vulnerability-scanning.yml/badge.svg?event=schedule)](https://github.com/kimdre/doco-cd/actions/workflows/image-vulnerability-scanning.yml)
 
 
-Doco CD is a lightweight GitOps tool that automatically deploys and updates Docker Compose projects/services using polling and webhooks.
+Doco-CD is a lightweight GitOps tool that automatically deploys and updates Docker Compose projects/services and Swarm stacks using polling and webhooks.
 
 You can think of it as a simple Portainer or ArgoCD alternative for Docker.
 
@@ -26,6 +26,8 @@ You can think of it as a simple Portainer or ArgoCD alternative for Docker.
 - **Flexible**: The deployments can be configured using a [deployment configuration](https://github.com/kimdre/doco-cd/wiki/Deploy-Settings) file.
 - **Lightweight**: The application is built in Go and has tiny memory and CPU requirements.
 
+Doco-CD supports both Docker Compose projects and Swarm stacks in [Swarm mode](https://github.com/kimdre/doco-cd/wiki/Swarm-Mode).
+
 ## Documentation
 
 You can find the documentation in the [Wiki](https://github.com/kimdre/doco-cd/wiki).
@@ -35,3 +37,13 @@ You can find the documentation in the [Wiki](https://github.com/kimdre/doco-cd/w
 - Ask questions on [GitHub Discussions](https://github.com/kimdre/doco-cd/discussions)
 - Report bugs or suggest features by [opening an issue](https://github.com/kimdre/doco-cd/issues/new)
 - Contribute by [opening a pull request](https://github.com/kimdre/doco-cd/pulls)
+
+## Star History
+
+<a href="https://www.star-history.com/#kimdre/doco-cd&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=kimdre/doco-cd&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=kimdre/doco-cd&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=kimdre/doco-cd&type=Date" />
+ </picture>
+</a>
