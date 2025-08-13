@@ -87,11 +87,14 @@ func send(apiUrl, notifyUrls, title, message, level string) error {
 
 	defer resp.Body.Close() // nolint:errcheck
 
-	if resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return nil
+	case http.StatusNoContent:
+		return nil
+	default:
 		return fmt.Errorf("apprise request failed with status: %s", resp.Status)
 	}
-
-	return nil
 }
 
 // SetAppriseConfig sets the configuration for the Apprise notification service.
