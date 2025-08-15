@@ -5,15 +5,26 @@ go 1.24.6
 require (
 	github.com/caarlos0/env/v11 v11.3.1
 	github.com/compose-spec/compose-go/v2 v2.8.1
+	github.com/cpuguy83/dockercfg v0.3.2 // indirect
 	github.com/creasty/defaults v1.8.0
 	github.com/docker/cli v28.3.3+incompatible
 	github.com/docker/compose/v2 v2.39.2
 	github.com/docker/docker v28.3.3+incompatible
+	github.com/ebitengine/purego v0.8.4 // indirect
 	github.com/getsops/sops/v3 v3.10.2
 	github.com/go-git/go-git/v5 v5.16.2
+	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/google/uuid v1.6.0
+	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
+	github.com/magiconair/properties v1.8.10 // indirect
+	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/prometheus/client_golang v1.23.0
+	github.com/shirou/gopsutil/v4 v4.25.5 // indirect
 	github.com/spf13/pflag v1.0.7
+	github.com/testcontainers/testcontainers-go v0.38.0
+	github.com/tklauser/go-sysconf v0.3.12 // indirect
+	github.com/tklauser/numcpus v0.6.1 // indirect
+	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	golang.org/x/net v0.43.0
 	gopkg.in/validator.v2 v2.0.1
 	gopkg.in/yaml.v3 v3.0.1

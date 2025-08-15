@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kimdre/doco-cd/internal/notification"
+
 	"github.com/go-git/go-git/v5/plumbing"
 
 	"github.com/docker/compose/v2/pkg/api"
@@ -221,8 +223,15 @@ func TestDeployCompose(t *testing.T) {
 		log := logger.New(slog.LevelInfo)
 		jobLog := log.With(slog.String("job_id", jobID))
 
-		err = DeployStack(jobLog, repoPath, repoPath, &ctx, &dockerCli, dockerClient,
-			&p, deployConf, []git.ChangedFile{}, latestCommit, "test", "poll", false)
+		metadata := notification.Metadata{
+			Repository: p.FullName,
+			Stack:      deployConf.Name,
+			Revision:   notification.GetRevision(deployConf.Reference, latestCommit),
+			JobID:      jobID,
+		}
+
+		err = DeployStack(jobLog, repoPath, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
+			[]git.ChangedFile{}, latestCommit, "test", "poll", false, metadata)
 		if err != nil {
 			if errors.Is(err, config.ErrDeprecatedConfig) {
 				t.Log(err.Error())

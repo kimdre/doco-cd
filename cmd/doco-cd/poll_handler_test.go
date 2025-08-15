@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/kimdre/doco-cd/internal/notification"
+
 	"github.com/kimdre/doco-cd/internal/git"
 
 	"github.com/docker/compose/v2/pkg/api"
@@ -84,8 +86,14 @@ func TestRunPoll(t *testing.T) {
 		}
 	})
 
+	metadata := notification.Metadata{
+		Repository: getRepoName(string(pollConfig.CloneUrl)),
+		Stack:      "test-deploy",
+		Revision:   notification.GetRevision(pollConfig.Reference, ""),
+	}
+
 	// Run initial poll
-	err = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With())
+	_, err = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With(), metadata)
 	if err != nil {
 		t.Fatalf("Initial poll failed: %v", err)
 	}
@@ -93,7 +101,7 @@ func TestRunPoll(t *testing.T) {
 	pollConfig.Reference = "destroy"
 
 	// Run the second poll to destroy
-	err = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With())
+	_, err = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With(), metadata)
 	if err != nil {
 		t.Fatalf("Second poll failed: %v", err)
 	}
