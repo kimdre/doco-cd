@@ -19,6 +19,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/notification"
+
 	"github.com/go-git/go-git/v5/plumbing/format/diff"
 
 	"github.com/docker/docker/client"
@@ -337,6 +339,7 @@ func DeployStack(
 	jobLog *slog.Logger, internalRepoPath, externalRepoPath string, ctx *context.Context,
 	dockerCli *command.Cli, dockerClient *client.Client, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
 	changedFiles []gitInternal.ChangedFile, latestCommit, appVersion, triggerEvent string, forceDeploy bool,
+	metadata notification.Metadata,
 ) error {
 	startTime := time.Now()
 
@@ -574,6 +577,13 @@ func DeployStack(
 
 	prometheus.DeploymentsTotal.WithLabelValues(deployConfig.Name).Inc()
 	prometheus.DeploymentDuration.WithLabelValues(deployConfig.Name).Observe(time.Since(startTime).Seconds())
+
+	msg := "successfully deployed stack " + deployConfig.Name
+
+	err = notification.Send(notification.Success, "Deployment Successful", msg, metadata)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

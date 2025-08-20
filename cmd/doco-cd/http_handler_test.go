@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -35,7 +34,7 @@ const (
 
 // Make http call to HealthCheckHandler.
 func TestHandlerData_HealthCheckHandler(t *testing.T) {
-	expectedResponse := fmt.Sprintln(`{"details":"healthy"}`)
+	expectedResponse := `{"details":"healthy","job_id":"[a-f0-9-]{36}"}`
 	expectedStatusCode := http.StatusOK
 
 	appConfig, err := config.GetAppConfig()
@@ -77,7 +76,12 @@ func TestHandlerData_HealthCheckHandler(t *testing.T) {
 		t.Errorf("handler returned wrong status code: got %v want %v", status, expectedStatusCode)
 	}
 
-	if rr.Body.String() != expectedResponse {
+	regex, err := regexp.Compile(expectedResponse)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !regex.MatchString(rr.Body.String()) {
 		t.Errorf("handler returned unexpected body: got %v want %v", rr.Body.String(), expectedResponse)
 	}
 }

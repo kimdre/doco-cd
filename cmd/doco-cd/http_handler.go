@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/notification"
+
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/docker/api/types/container"
@@ -36,14 +38,24 @@ type handlerData struct {
 	log            *logger.Logger       // Logger for logging messages
 }
 
-func onError(repoName string, w http.ResponseWriter, log *slog.Logger, errMsg string, details any, jobID string, statusCode int) {
-	prometheus.WebhookErrorsTotal.WithLabelValues(repoName).Inc()
+func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any, statusCode int, metadata notification.Metadata) {
+	prometheus.WebhookErrorsTotal.WithLabelValues(metadata.Repository).Inc()
 	log.Error(errMsg)
 	JSONError(w,
 		errMsg,
 		details,
-		jobID,
+		metadata.JobID,
 		statusCode)
+
+	if _, ok := details.(error); ok {
+		details = fmt.Sprintf("%v", details)
+	}
+
+	if details != "" {
+		errMsg = fmt.Sprintf("%s\n%s", errMsg, details)
+	}
+
+	_ = notification.Send(notification.Failure, "Deployment Failed", errMsg, metadata)
 }
 
 // getRepoName extracts the repository name from the clone URL.
@@ -75,12 +87,19 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			slog.String("commit", payload.CommitSHA), slog.String("ref", payload.Ref),
 			slog.String("event", "webhook")))
 
+	metadata := notification.Metadata{
+		JobID:      jobID,
+		Repository: repoName,
+		Stack:      "",
+		Revision:   notification.GetRevision(payload.Ref, payload.CommitSHA),
+	}
+
 	if appConfig.DockerSwarmFeatures {
 		// Check if docker host is running in swarm mode
 		docker.SwarmModeEnabled, err = docker.CheckDaemonIsSwarmManager(ctx, dockerCli)
 		if err != nil {
 			jobLog.Error("failed to check if docker host is running in swarm mode")
-			onError(repoName, w, jobLog.With(logger.ErrAttr(err)), "failed to check if docker host is running in swarm mode", err.Error(), jobID, http.StatusInternalServerError)
+			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to check if docker host is running in swarm mode", err.Error(), http.StatusInternalServerError, metadata)
 		}
 	}
 
@@ -93,7 +112,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		jobLog.Debug("authenticating to private repository")
 
 		if appConfig.GitAccessToken == "" {
-			onError(repoName, w, jobLog, "missing access token for private repository", "", jobID, http.StatusInternalServerError)
+			onError(w, jobLog, "missing access token for private repository", "", http.StatusInternalServerError, metadata)
 
 			return
 		}
@@ -106,21 +125,21 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	// Validate payload.FullName to prevent directory traversal
 	if strings.Contains(payload.FullName, "..") {
-		onError(repoName, w, jobLog.With(slog.String("repository", payload.FullName)), "invalid repository name", "", jobID, http.StatusBadRequest)
+		onError(w, jobLog.With(slog.String("repository", payload.FullName)), "invalid repository name", "", http.StatusBadRequest, metadata)
 
 		return
 	}
 
 	internalRepoPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
 	if err != nil {
-		onError(repoName, w, jobLog.With(logger.ErrAttr(err)), "failed to verify and sanitize internal filesystem path", err.Error(), jobID, http.StatusBadRequest)
+		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to verify and sanitize internal filesystem path", err.Error(), http.StatusBadRequest, metadata)
 
 		return
 	}
 
 	externalRepoPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path on the host
 	if err != nil {
-		onError(repoName, w, jobLog.With(logger.ErrAttr(err)), "failed to verify and sanitize external filesystem path", err.Error(), jobID, http.StatusBadRequest)
+		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to verify and sanitize external filesystem path", err.Error(), http.StatusBadRequest, metadata)
 
 		return
 	}
@@ -134,12 +153,12 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 			_, err = git.UpdateRepository(internalRepoPath, payload.CloneURL, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 			if err != nil {
-				onError(repoName, w, jobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), jobID, http.StatusInternalServerError)
+				onError(w, jobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), http.StatusInternalServerError, metadata)
 
 				return
 			}
 		} else {
-			onError(repoName, w, jobLog.With(logger.ErrAttr(err)), "failed to clone repository", err.Error(), jobID, http.StatusInternalServerError)
+			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to clone repository", err.Error(), http.StatusInternalServerError, metadata)
 
 			return
 		}
@@ -155,7 +174,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		if errors.Is(err, config.ErrDeprecatedConfig) {
 			jobLog.Warn(err.Error())
 		} else {
-			onError(repoName, w, jobLog.With(logger.ErrAttr(err)), "failed to get deploy configuration", err.Error(), jobID, http.StatusInternalServerError)
+			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to get deploy configuration", err.Error(), http.StatusInternalServerError, metadata)
 
 			return
 		}
@@ -169,16 +188,20 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			repoName = getRepoName(string(deployConfig.RepositoryUrl))
 		}
 
+		metadata.Repository = repoName
+		metadata.Revision = notification.GetRevision(deployConfig.Reference, "")
+		metadata.Stack = deployConfig.Name
+
 		internalRepoPath, err = filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
 		if err != nil {
-			onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "invalid repository name", err.Error(), jobID, http.StatusBadRequest)
+			onError(w, subJobLog.With(logger.ErrAttr(err)), "invalid repository name", err.Error(), http.StatusBadRequest, metadata)
 
 			return
 		}
 
 		externalRepoPath, err = filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Source, repoName), dataMountPoint.Source) // Path on the host
 		if err != nil {
-			onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "invalid repository name", err.Error(), jobID, http.StatusBadRequest)
+			onError(w, subJobLog.With(logger.ErrAttr(err)), "invalid repository name", err.Error(), http.StatusBadRequest, metadata)
 
 			return
 		}
@@ -203,7 +226,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			// Try to clone the remote repository
 			_, err = git.CloneRepository(internalRepoPath, cloneUrl, deployConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 			if err != nil && !errors.Is(err, git.ErrRepositoryAlreadyExists) {
-				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to clone remote repository", err.Error(), jobID, http.StatusInternalServerError)
+				onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to clone remote repository", err.Error(), http.StatusInternalServerError, metadata)
 
 				return
 			}
@@ -215,17 +238,19 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 		repo, err := git.UpdateRepository(internalRepoPath, cloneUrl, deployConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 		if err != nil {
-			onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), jobID, http.StatusInternalServerError)
+			onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), http.StatusInternalServerError, metadata)
 
 			return
 		}
 
 		latestCommit, err := git.GetLatestCommit(repo, deployConfig.Reference)
 		if err != nil {
-			onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to get latest commit", err.Error(), jobID, http.StatusInternalServerError)
+			onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to get latest commit", err.Error(), http.StatusInternalServerError, metadata)
 
 			return
 		}
+
+		metadata.Revision = notification.GetRevision(deployConfig.Reference, latestCommit)
 
 		filterLabel := api.ProjectLabel
 		if docker.SwarmModeEnabled {
@@ -238,7 +263,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			// Check if doco-cd manages the project before destroying the stack
 			containers, err := docker.GetLabeledContainers(ctx, dockerClient, filterLabel, deployConfig.Name)
 			if err != nil {
-				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to retrieve containers", err.Error(), jobID, http.StatusInternalServerError)
+				onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to retrieve containers", err.Error(), http.StatusInternalServerError, metadata)
 
 				return
 			}
@@ -267,22 +292,22 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			}
 
 			if !managed {
-				onError(repoName, w, subJobLog, fmt.Errorf("%w: %s: aborting destruction", ErrNotManagedByDocoCD, deployConfig.Name).Error(),
-					"", jobID, http.StatusInternalServerError)
+				onError(w, subJobLog, fmt.Errorf("%w: %s: aborting destruction", ErrNotManagedByDocoCD, deployConfig.Name).Error(),
+					"", http.StatusInternalServerError, metadata)
 
 				return
 			}
 
 			if !correctRepo {
-				onError(repoName, w, subJobLog, fmt.Errorf("%w: %s: aborting destruction", ErrDeploymentConflict, deployConfig.Name).Error(),
-					map[string]string{"stack": deployConfig.Name}, jobID, http.StatusInternalServerError)
+				onError(w, subJobLog, fmt.Errorf("%w: %s: aborting destruction", ErrDeploymentConflict, deployConfig.Name).Error(),
+					map[string]string{"stack": deployConfig.Name}, http.StatusInternalServerError, metadata)
 
 				return
 			}
 
 			err = docker.DestroyStack(subJobLog, &ctx, &dockerCli, deployConfig)
 			if err != nil {
-				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to destroy stack", err.Error(), jobID, http.StatusInternalServerError)
+				onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to destroy stack", err.Error(), http.StatusInternalServerError, metadata)
 
 				return
 			}
@@ -290,7 +315,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			if docker.SwarmModeEnabled && deployConfig.DestroyOpts.RemoveVolumes {
 				err = docker.RemoveLabeledVolumes(ctx, dockerClient, deployConfig.Name, filterLabel)
 				if err != nil {
-					onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to remove volumes", err.Error(), jobID, http.StatusInternalServerError)
+					onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to remove volumes", err.Error(), http.StatusInternalServerError, metadata)
 
 					return
 				}
@@ -306,7 +331,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 				subDirs, err := os.ReadDir(parentDir)
 				if err != nil {
-					onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to read parent directory", err.Error(), jobID, http.StatusInternalServerError)
+					onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to read parent directory", err.Error(), http.StatusInternalServerError, metadata)
 
 					return
 				}
@@ -318,7 +343,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 					// Remove only the repository directory
 					err = os.RemoveAll(internalRepoPath)
 					if err != nil {
-						onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to remove deployment directory", err.Error(), jobID, http.StatusInternalServerError)
+						onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to remove deployment directory", err.Error(), http.StatusInternalServerError, metadata)
 
 						return
 					}
@@ -326,7 +351,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 					// Remove the parent directory if it has only one subdirectory
 					err = os.RemoveAll(parentDir)
 					if err != nil {
-						onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to remove deployment directory", err.Error(), jobID, http.StatusInternalServerError)
+						onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to remove deployment directory", err.Error(), http.StatusInternalServerError, metadata)
 
 						return
 					}
@@ -338,7 +363,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			// Skip deployment if another project with the same name already exists
 			containers, err := docker.GetLabeledContainers(ctx, dockerClient, filterLabel, deployConfig.Name)
 			if err != nil {
-				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to retrieve containers", err.Error(), jobID, http.StatusInternalServerError)
+				onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to retrieve containers", err.Error(), http.StatusInternalServerError, metadata)
 
 				return
 			}
@@ -359,8 +384,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			}
 
 			if !correctRepo {
-				onError(repoName, w, subJobLog, fmt.Errorf("%w: %s: skipping deployment", ErrDeploymentConflict, deployConfig.Name).Error(),
-					map[string]string{"stack": deployConfig.Name}, jobID, http.StatusInternalServerError)
+				onError(w, subJobLog, fmt.Errorf("%w: %s: skipping deployment", ErrDeploymentConflict, deployConfig.Name).Error(),
+					map[string]string{"stack": deployConfig.Name}, http.StatusInternalServerError, metadata)
 
 				return
 			}
@@ -373,15 +398,15 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			if deployedCommit != "" {
 				changedFiles, err = git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(deployedCommit), plumbing.NewHash(latestCommit))
 				if err != nil {
-					onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "failed to get changed files between commits", err.Error(), jobID, http.StatusInternalServerError)
+					onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to get changed files between commits", err.Error(), http.StatusInternalServerError, metadata)
 
 					return
 				}
 
 				hasChanged, err := git.HasChangesInSubdir(changedFiles, deployConfig.WorkingDirectory)
 				if err != nil {
-					onError(repoName, w, subJobLog, fmt.Errorf("failed to compare commits in subdirectory: %w", err).Error(),
-						map[string]string{"stack": deployConfig.Name}, jobID, http.StatusInternalServerError)
+					onError(w, subJobLog, fmt.Errorf("failed to compare commits in subdirectory: %w", err).Error(),
+						map[string]string{"stack": deployConfig.Name}, http.StatusInternalServerError, metadata)
 
 					return
 				}
@@ -402,9 +427,9 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			}
 
 			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, dockerClient,
-				&payload, deployConfig, changedFiles, latestCommit, Version, "webhook", false)
+				&payload, deployConfig, changedFiles, latestCommit, Version, "webhook", false, metadata)
 			if err != nil {
-				onError(repoName, w, subJobLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), jobID, http.StatusInternalServerError)
+				onError(w, subJobLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), http.StatusInternalServerError, metadata)
 
 				return
 			}
@@ -430,6 +455,13 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	jobLog := h.log.With(slog.String("job_id", jobID))
 
 	jobLog.Debug("received webhook event")
+
+	metadata := notification.Metadata{
+		JobID:      jobID,
+		Repository: "",
+		Stack:      "",
+		Revision:   "",
+	}
 
 	repoName := "unknown"
 
@@ -463,19 +495,20 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 		if payload.CloneURL != "" {
 			repoName = getRepoName(payload.CloneURL)
+			metadata.Repository = repoName
+			metadata.Revision = notification.GetRevision(payload.Ref, payload.CommitSHA)
 		}
 
-		onError(repoName, w, jobLog.With(slog.String("ip", r.RemoteAddr), logger.ErrAttr(err)), errMsg, err.Error(), jobID, statusCode)
+		onError(w, jobLog.With(slog.String("ip", r.RemoteAddr), logger.ErrAttr(err)), errMsg, err.Error(), statusCode, metadata)
 
 		return
 	}
 
-	repoName = getRepoName(payload.CloneURL)
 	lock := getRepoLock(repoName)
 	locked := lock.TryLock()
 
 	if !locked {
-		onError(repoName, w, jobLog, "Another job is still in progress for this repository", nil, jobID, http.StatusTooManyRequests)
+		onError(w, jobLog, "Another job is still in progress for this repository", nil, http.StatusTooManyRequests, metadata)
 		return
 	}
 
@@ -485,13 +518,22 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request) {
+	jobID := uuid.Must(uuid.NewRandom()).String()
+
+	metadata := notification.Metadata{
+		JobID:      jobID,
+		Repository: "healthcheck",
+		Stack:      "",
+		Revision:   "",
+	}
+
 	err := docker.VerifySocketConnection()
 	if err != nil {
-		onError("healthcheck", w, h.log.With(logger.ErrAttr(err)), docker.ErrDockerSocketConnectionFailed.Error(), err.Error(), "", http.StatusServiceUnavailable)
+		onError(w, h.log.With(logger.ErrAttr(err)), docker.ErrDockerSocketConnectionFailed.Error(), err.Error(), http.StatusServiceUnavailable, metadata)
 
 		return
 	}
 
 	h.log.Debug("health check successful")
-	JSONResponse(w, "healthy", "", http.StatusOK)
+	JSONResponse(w, "healthy", jobID, http.StatusOK)
 }
