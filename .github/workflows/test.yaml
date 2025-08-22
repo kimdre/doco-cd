@@ -58,7 +58,7 @@ jobs:
           HTTP_PROXY: http://localhost:3128
           SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24 # v5.4.3
+        uses: codecov/codecov-action@fdcc8476540edceab3de004e990f80d881c6cc00 # v5.5.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.out
@@ -89,7 +89,7 @@ jobs:
           HTTP_PROXY: http://localhost:3128
           SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24 # v5.4.3
+        uses: codecov/codecov-action@fdcc8476540edceab3de004e990f80d881c6cc00 # v5.5.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage-swarm.out
