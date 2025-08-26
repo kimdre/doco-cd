@@ -257,7 +257,8 @@ func main() {
 	log.Info(
 		"listening for events",
 		slog.Int("http_port", int(c.HttpPort)),
-		slog.String("path", webhookPath),
+		slog.String("webhook_path", webhookPath),
+		slog.String("api_path", apiPath),
 	)
 
 	if len(c.PollConfig) > 0 {
