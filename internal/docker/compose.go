@@ -821,3 +821,57 @@ func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *ty
 
 	return false, nil
 }
+
+// RestartProject restarts all services in the specified project.
+func RestartProject(ctx context.Context, dockerCli command.Cli, projectName string, timeout time.Duration) error {
+	service := compose.NewComposeService(dockerCli)
+
+	return service.Restart(ctx, projectName, api.RestartOptions{
+		Timeout: &timeout,
+	})
+}
+
+// StopProject stops all services in the specified project.
+func StopProject(ctx context.Context, dockerCli command.Cli, projectName string, timeout time.Duration) error {
+	service := compose.NewComposeService(dockerCli)
+
+	return service.Stop(ctx, projectName, api.StopOptions{
+		Timeout: &timeout,
+	})
+}
+
+// StartProject starts all services in the specified project.
+func StartProject(ctx context.Context, dockerCli command.Cli, projectName string, timeout time.Duration) error {
+	service := compose.NewComposeService(dockerCli)
+
+	return service.Start(ctx, projectName, api.StartOptions{
+		Wait:        true,
+		WaitTimeout: timeout,
+	})
+}
+
+// RemoveProject removes the entire project including containers, networks, volumes and images.
+func RemoveProject(ctx context.Context, dockerCli command.Cli, projectName string, timeout time.Duration, removeVolumes, removeImages bool) error {
+	service := compose.NewComposeService(dockerCli)
+
+	return service.Down(ctx, projectName, api.DownOptions{
+		RemoveOrphans: true,
+		Timeout:       &timeout,
+		Volumes:       removeVolumes,
+		Images: func() string {
+			if removeImages {
+				return "all"
+			}
+			return "none"
+		}(),
+	})
+}
+
+// StatusProject returns the status of all services in the specified project.
+func StatusProject(ctx context.Context, dockerCli command.Cli, projectName string) ([]api.ContainerSummary, error) {
+	service := compose.NewComposeService(dockerCli)
+
+	return service.Ps(ctx, projectName, api.PsOptions{
+		All: true,
+	})
+}

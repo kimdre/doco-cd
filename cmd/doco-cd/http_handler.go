@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
+	apiInternal "github.com/kimdre/doco-cd/internal/api"
 	"github.com/kimdre/doco-cd/internal/notification"
 
 	"github.com/docker/cli/cli/command"
@@ -38,6 +40,7 @@ type handlerData struct {
 	log            *logger.Logger       // Logger for logging messages
 }
 
+// onError handles errors by logging them, sending a JSON error response, and sending a notification.
 func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any, statusCode int, metadata notification.Metadata) {
 	prometheus.WebhookErrorsTotal.WithLabelValues(metadata.Repository).Inc()
 	log.Error(errMsg)
@@ -55,7 +58,12 @@ func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any
 		errMsg = fmt.Sprintf("%s\n%s", errMsg, details)
 	}
 
-	_ = notification.Send(notification.Failure, "Deployment Failed", errMsg, metadata)
+	go func() {
+		err := notification.Send(notification.Failure, "Deployment Failed", errMsg, metadata)
+		if err != nil {
+			log.Error("failed to send notification", logger.ErrAttr(err))
+		}
+	}()
 }
 
 // getRepoName extracts the repository name from the clone URL.
@@ -69,7 +77,7 @@ func getRepoName(cloneURL string) string {
 	return strings.TrimSuffix(repoName, ".git")
 }
 
-// HandleEvent handles the incoming webhook event.
+// HandleEvent executes the deployment process for a given webhook event.
 func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *config.AppConfig, dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli, dockerClient *client.Client) {
 	var err error
 
@@ -445,6 +453,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	prometheus.WebhookDuration.WithLabelValues(repoName).Observe(elapsedTime.Seconds())
 }
 
+// WebhookHandler handles incoming webhook requests.
 func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -517,6 +526,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, h.dockerClient)
 }
 
+// HealthCheckHandler handles health check requests.
 func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request) {
 	jobID := uuid.Must(uuid.NewRandom()).String()
 
@@ -536,4 +546,114 @@ func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request)
 
 	h.log.Debug("health check successful")
 	JSONResponse(w, "healthy", jobID, http.StatusOK)
+}
+
+// ApiHandler handles API requests to manage Docker Compose projects.
+func (h *handlerData) ApiHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Add a job id to the context to track deployments in the logs
+	jobID := uuid.Must(uuid.NewRandom()).String()
+	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
+
+	jobLog.Debug("received api request")
+
+	if !apiInternal.ValidateApiKey(r, h.appConfig.WebhookSecret) {
+		onError(w, jobLog, "invalid api key", "", http.StatusUnauthorized, notification.Metadata{JobID: jobID})
+
+		return
+	}
+
+	projectName := r.PathValue("projectName")
+	if projectName == "" {
+		onError(w, jobLog, "missing project name", nil, http.StatusBadRequest, notification.Metadata{JobID: jobID})
+
+		return
+	}
+
+	timeoutSec := 30 // Timeout in seconds
+
+	timeoutQueryParam := r.URL.Query().Get("timeout")
+	if timeoutQueryParam != "" {
+		timeoutSec, err := strconv.Atoi(timeoutQueryParam)
+		if err != nil || timeoutSec <= 0 {
+			onError(w, jobLog, "invalid timeout parameter", "timeout parameter must be a positive integer", http.StatusBadRequest, notification.Metadata{JobID: jobID, Stack: projectName})
+			return
+		}
+	}
+
+	timeout := time.Duration(timeoutSec) * time.Second
+
+	action := r.PathValue("action")
+	switch action {
+	case "start":
+		jobLog.Info("starting project", slog.String("project", projectName))
+
+		err := docker.StartProject(ctx, h.dockerCli, projectName, timeout)
+		if err != nil {
+			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to start project", err.Error(), http.StatusInternalServerError, notification.Metadata{JobID: jobID, Stack: projectName})
+			return
+		}
+	case "stop":
+		jobLog.Info("stopping project", slog.String("project", projectName))
+
+		err := docker.StopProject(ctx, h.dockerCli, projectName, timeout)
+		if err != nil {
+			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to stop project", err.Error(), http.StatusInternalServerError, notification.Metadata{JobID: jobID, Stack: projectName})
+			return
+		}
+	case "restart":
+		jobLog.Info("restarting project", slog.String("project", projectName))
+
+		err := docker.RestartProject(ctx, h.dockerCli, projectName, timeout)
+		if err != nil {
+			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to restart project", err.Error(), http.StatusInternalServerError, notification.Metadata{JobID: jobID, Stack: projectName})
+			return
+		}
+	case "remove":
+		removeVolumes := true
+		removeImages := true
+
+		queryParamVolumes := r.URL.Query().Get("volumes")
+		if queryParamVolumes != "" {
+			if queryParamVolumes != "true" && queryParamVolumes != "false" {
+				onError(w, jobLog, "invalid volumes parameter", "volumes parameter must be true or false", http.StatusBadRequest, notification.Metadata{JobID: jobID, Stack: projectName})
+				return
+			}
+
+			removeVolumes = queryParamVolumes == "true"
+		}
+
+		queryParamImages := r.URL.Query().Get("images")
+		if queryParamImages != "" {
+			if queryParamImages != "true" && queryParamImages != "false" {
+				onError(w, jobLog, "invalid images parameter", "images parameter must be true or false", http.StatusBadRequest, notification.Metadata{JobID: jobID, Stack: projectName})
+				return
+			}
+
+			removeImages = queryParamImages == "true"
+		}
+
+		jobLog.Info("removing project", slog.String("project", projectName), slog.Bool("remove_volumes", removeVolumes), slog.Bool("remove_images", removeImages))
+
+		err := docker.RemoveProject(ctx, h.dockerCli, projectName, timeout, removeVolumes, removeImages)
+		if err != nil {
+			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to remove project", err.Error(), http.StatusInternalServerError, notification.Metadata{JobID: jobID, Stack: projectName})
+			return
+		}
+	case "status":
+		jobLog.Info("retrieving project status", slog.String("project", projectName))
+
+		containers, err := docker.StatusProject(ctx, h.dockerCli, projectName)
+		if err != nil {
+			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to retrieve project status", err.Error(), http.StatusInternalServerError, notification.Metadata{JobID: jobID, Stack: projectName})
+			return
+		}
+
+		JSONResponse(w, containers, jobID, http.StatusOK)
+
+		return
+	default:
+		onError(w, jobLog, "invalid action", "action not supported: "+action, http.StatusBadRequest, notification.Metadata{JobID: jobID, Stack: projectName})
+	}
 }

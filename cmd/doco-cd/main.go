@@ -24,6 +24,7 @@ import (
 )
 
 const (
+	apiPath     = "/v1/api"
 	webhookPath = "/v1/webhook"
 	healthPath  = "/v1/health"
 	dataPath    = "/data"
@@ -249,6 +250,7 @@ func main() {
 
 	http.HandleFunc(webhookPath, h.WebhookHandler)
 	http.HandleFunc(webhookPath+"/{customTarget}", h.WebhookHandler)
+	http.HandleFunc(apiPath+"/project/{projectName}/{action}", h.ApiHandler)
 
 	http.HandleFunc(healthPath, h.HealthCheckHandler)
 
