@@ -862,7 +862,7 @@ func RemoveProject(ctx context.Context, dockerCli command.Cli, projectName strin
 			if removeImages {
 				return "all"
 			}
-			return "none"
+			return "local"
 		}(),
 	})
 }
