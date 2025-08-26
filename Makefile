@@ -1,7 +1,7 @@
 GO_BIN?=$(shell pwd)/.bin
 BINARY_DIR=bin
 BINARY_NAME=doco-cd
-.PHONY: test build run lint fmt update update-all submodule-commit generate-coverage
+.PHONY: test test-verbose test-coverage test-run build fmt lint update update-all wiki-commit download tools compose-up compose-down
 
 ifneq (,$(wildcard ./.env))
     include .env
