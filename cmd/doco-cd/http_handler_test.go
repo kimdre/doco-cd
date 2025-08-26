@@ -34,7 +34,7 @@ const (
 
 // Make http call to HealthCheckHandler.
 func TestHandlerData_HealthCheckHandler(t *testing.T) {
-	expectedResponse := `{"details":"healthy","job_id":"[a-f0-9-]{36}"}`
+	expectedResponse := `{"content":"healthy","job_id":"[a-f0-9-]{36}"}`
 	expectedStatusCode := http.StatusOK
 
 	appConfig, err := config.GetAppConfig()
@@ -87,7 +87,7 @@ func TestHandlerData_HealthCheckHandler(t *testing.T) {
 }
 
 func TestHandlerData_WebhookHandler(t *testing.T) {
-	expectedResponse := `{"details":"job completed successfully","job_id":"[a-f0-9-]{36}"}`
+	expectedResponse := `{"content":"job completed successfully","job_id":"[a-f0-9-]{36}"}`
 	expectedStatusCode := http.StatusCreated
 	tmpDir := t.TempDir()
 
