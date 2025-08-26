@@ -58,17 +58,17 @@ func getAppContainerID() (string, error) {
 			continue
 		}
 
-		path := fields[3]
+		mountPath := fields[3]
 
 		if strings.Contains(line, "/etc/hostname") {
-			if strings.Contains(path, dockerPath) {
-				if matches := dockerPattern.FindStringSubmatch(path); len(matches) > 1 {
+			if strings.Contains(mountPath, dockerPath) {
+				if matches := dockerPattern.FindStringSubmatch(mountPath); len(matches) > 1 {
 					return matches[1], nil
 				}
 			}
 
-			if strings.Contains(path, podmanPath) {
-				if matches := podmanPattern.FindStringSubmatch(path); len(matches) > 1 {
+			if strings.Contains(mountPath, podmanPath) {
+				if matches := podmanPattern.FindStringSubmatch(mountPath); len(matches) > 1 {
 					return matches[1], nil
 				}
 			}
