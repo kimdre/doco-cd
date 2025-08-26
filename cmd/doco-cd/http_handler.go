@@ -572,6 +572,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 		err = errors.New("missing project name")
 		jobLog.Error(err.Error())
 		JSONError(w, err, "", jobID, http.StatusBadRequest)
+
 		return
 	}
 
@@ -585,6 +586,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 			errMsg = "timeout parameter must be a positive integer"
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 			JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
+
 			return
 		}
 	}
@@ -601,6 +603,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 			errMsg = "failed to start project"
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 			JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
+
 			return
 		}
 	case "stop":
@@ -611,6 +614,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 			errMsg = "failed to stop project"
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 			JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
+
 			return
 		}
 	case "restart":
@@ -621,6 +625,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 			errMsg = "failed to restart project"
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 			JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
+
 			return
 		}
 	case "remove":
@@ -634,6 +639,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 				errMsg = "volumes parameter must be true or false"
 				jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 				JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
+
 				return
 			}
 
@@ -647,6 +653,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 				errMsg = "images parameter must be true or false"
 				jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 				JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
+
 				return
 			}
 
@@ -660,6 +667,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 			errMsg = "failed to remove project: " + projectName
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 			JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
+
 			return
 		}
 	case "status":
@@ -670,6 +678,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 			errMsg = "failed to retrieve status of project: " + projectName
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 			JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
+
 			return
 		}
 
