@@ -248,7 +248,7 @@ func main() {
 		log:            log,
 	}
 
-	http.HandleFunc(apiPath+"/project/{projectName}/{action}", h.ApiHandler)
+	http.HandleFunc(apiPath+"/project/{projectName}/{action}", h.ProjectApiHandler)
 	http.HandleFunc(healthPath, h.HealthCheckHandler)
 	http.HandleFunc(webhookPath, h.WebhookHandler)
 	http.HandleFunc(webhookPath+"/{customTarget}", h.WebhookHandler)

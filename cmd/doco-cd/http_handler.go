@@ -548,8 +548,8 @@ func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request)
 	JSONResponse(w, "healthy", jobID, http.StatusOK)
 }
 
-// ApiHandler handles API requests to manage Docker Compose projects.
-func (h *handlerData) ApiHandler(w http.ResponseWriter, r *http.Request) {
+// ProjectApiHandler handles API requests to manage Docker Compose projects.
+func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Add a job id to the context to track deployments in the logs
