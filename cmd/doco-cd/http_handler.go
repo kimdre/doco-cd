@@ -561,15 +561,17 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 	jobLog.Debug("received api request")
 
 	if !apiInternal.ValidateApiKey(r, h.appConfig.WebhookSecret) {
-		onError(w, jobLog, "invalid api key", "", http.StatusUnauthorized, notification.Metadata{JobID: jobID})
+		jobLog.Error(apiInternal.ErrInvalidApiKey.Error())
+		JSONError(w, apiInternal.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
 
 		return
 	}
 
 	projectName := r.PathValue("projectName")
 	if projectName == "" {
-		onError(w, jobLog, "missing project name", nil, http.StatusBadRequest, notification.Metadata{JobID: jobID})
-
+		err = errors.New("missing project name")
+		jobLog.Error(err.Error())
+		JSONError(w, err, "", jobID, http.StatusBadRequest)
 		return
 	}
 
@@ -579,7 +581,10 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 	if timeoutQueryParam != "" {
 		timeoutSec, err = strconv.Atoi(timeoutQueryParam)
 		if err != nil || timeoutSec <= 0 {
-			onError(w, jobLog, "invalid timeout parameter", "timeout parameter must be a positive integer", http.StatusBadRequest, notification.Metadata{JobID: jobID, Stack: projectName})
+			err = errors.New("invalid timeout parameter")
+			errMsg = "timeout parameter must be a positive integer"
+			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+			JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
 			return
 		}
 	}
@@ -593,7 +598,9 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 		err := docker.StartProject(ctx, h.dockerCli, projectName, timeout)
 		if err != nil {
-			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to start project", err.Error(), http.StatusInternalServerError, notification.Metadata{JobID: jobID, Stack: projectName})
+			errMsg = "failed to start project"
+			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+			JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
 			return
 		}
 	case "stop":
@@ -601,7 +608,9 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 		err := docker.StopProject(ctx, h.dockerCli, projectName, timeout)
 		if err != nil {
-			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to stop project", err.Error(), http.StatusInternalServerError, notification.Metadata{JobID: jobID, Stack: projectName})
+			errMsg = "failed to stop project"
+			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+			JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
 			return
 		}
 	case "restart":
@@ -609,7 +618,9 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 		err := docker.RestartProject(ctx, h.dockerCli, projectName, timeout)
 		if err != nil {
-			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to restart project", err.Error(), http.StatusInternalServerError, notification.Metadata{JobID: jobID, Stack: projectName})
+			errMsg = "failed to restart project"
+			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+			JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
 			return
 		}
 	case "remove":
@@ -619,7 +630,10 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 		queryParamVolumes := r.URL.Query().Get("volumes")
 		if queryParamVolumes != "" {
 			if queryParamVolumes != "true" && queryParamVolumes != "false" {
-				onError(w, jobLog, "invalid volumes parameter", "volumes parameter must be true or false", http.StatusBadRequest, notification.Metadata{JobID: jobID, Stack: projectName})
+				err = errors.New("invalid volumes parameter")
+				errMsg = "volumes parameter must be true or false"
+				jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+				JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
 				return
 			}
 
@@ -629,7 +643,10 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 		queryParamImages := r.URL.Query().Get("images")
 		if queryParamImages != "" {
 			if queryParamImages != "true" && queryParamImages != "false" {
-				onError(w, jobLog, "invalid images parameter", "images parameter must be true or false", http.StatusBadRequest, notification.Metadata{JobID: jobID, Stack: projectName})
+				err = errors.New("invalid images parameter")
+				errMsg = "images parameter must be true or false"
+				jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+				JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
 				return
 			}
 
@@ -640,7 +657,9 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 		err := docker.RemoveProject(ctx, h.dockerCli, projectName, timeout, removeVolumes, removeImages)
 		if err != nil {
-			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to remove project", err.Error(), http.StatusInternalServerError, notification.Metadata{JobID: jobID, Stack: projectName})
+			errMsg = "failed to remove project: " + projectName
+			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+			JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
 			return
 		}
 	case "status":
@@ -648,7 +667,9 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 		containers, err := docker.StatusProject(ctx, h.dockerCli, projectName)
 		if err != nil {
-			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to retrieve project status", err.Error(), http.StatusInternalServerError, notification.Metadata{JobID: jobID, Stack: projectName})
+			errMsg = "failed to retrieve status of project: " + projectName
+			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+			JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
 			return
 		}
 
@@ -656,7 +677,9 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 		return
 	default:
-		onError(w, jobLog, "invalid action", "action not supported: "+action, http.StatusBadRequest, notification.Metadata{JobID: jobID, Stack: projectName})
+		jobLog.Error(apiInternal.ErrInvalidAction.Error())
+		JSONError(w, apiInternal.ErrInvalidAction.Error(), "action not supported: "+action, jobID, http.StatusBadRequest)
+
 		return
 	}
 }
