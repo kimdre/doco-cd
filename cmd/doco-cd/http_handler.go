@@ -550,6 +550,8 @@ func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request)
 
 // ProjectApiHandler handles API requests to manage Docker Compose projects.
 func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+
 	ctx := r.Context()
 
 	// Add a job id to the context to track deployments in the logs
@@ -575,7 +577,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 	timeoutQueryParam := r.URL.Query().Get("timeout")
 	if timeoutQueryParam != "" {
-		timeoutSec, err := strconv.Atoi(timeoutQueryParam)
+		timeoutSec, err = strconv.Atoi(timeoutQueryParam)
 		if err != nil || timeoutSec <= 0 {
 			onError(w, jobLog, "invalid timeout parameter", "timeout parameter must be a positive integer", http.StatusBadRequest, notification.Metadata{JobID: jobID, Stack: projectName})
 			return
@@ -655,5 +657,6 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	default:
 		onError(w, jobLog, "invalid action", "action not supported: "+action, http.StatusBadRequest, notification.Metadata{JobID: jobID, Stack: projectName})
+		return
 	}
 }
