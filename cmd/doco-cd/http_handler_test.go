@@ -330,23 +330,30 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 		t.Logf("Testing API endpoint: %s", endpointPattern)
 
-		req, err = http.NewRequest(endpoint.method, endpointPath, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		req.Header.Set(apiInternal.KeyHeader, appConfig.ApiSecret)
-
 		rr = httptest.NewRecorder()
 		mux := http.NewServeMux()
 		mux.HandleFunc(endpointPattern, endpoint.handler)
-		mux.ServeHTTP(rr, req)
 
-		if status := rr.Code; status != http.StatusOK {
-			t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
+		first := true
+		for i := 0; i < 3; i++ {
+			req, err = http.NewRequest(endpoint.method, endpointPath, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			req.Header.Set(apiInternal.KeyHeader, appConfig.ApiSecret)
+			mux.ServeHTTP(rr, req)
+
+			if status := rr.Code; status != http.StatusOK {
+				t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
+			}
+
+			t.Logf("Project API response: %s", rr.Body.String())
+
+			if first {
+				first = false
+				time.Sleep(2 * time.Second)
+			}
 		}
-
-		t.Logf("Project API response: %s", rr.Body.String())
-		time.Sleep(3 * time.Second)
 	}
 }
