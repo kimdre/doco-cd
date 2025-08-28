@@ -328,13 +328,14 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		endpointPath := path.Join(apiPath, endpoint.path)
 		endpointPattern := path.Join(apiPath, endpoint.pattern)
 
-		t.Logf("Testing API endpoint: %s", endpointPattern)
+		t.Logf("Testing API endpoint: %s", endpointPath)
 
 		rr = httptest.NewRecorder()
 		mux := http.NewServeMux()
 		mux.HandleFunc(endpointPattern, endpoint.handler)
 
 		first := true
+
 		for i := 0; i < 3; i++ {
 			req, err = http.NewRequest(endpoint.method, endpointPath, nil)
 			if err != nil {
@@ -352,6 +353,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 			if first {
 				first = false
+
 				time.Sleep(2 * time.Second)
 			}
 		}
