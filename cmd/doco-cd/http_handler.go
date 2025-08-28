@@ -558,6 +558,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 		err = ErrInvalidHTTPMethod
 		h.log.Error(err.Error())
 		JSONError(w, err.Error(), "requires POST method", "", http.StatusMethodNotAllowed)
+
 		return
 	}
 
@@ -694,6 +695,7 @@ func (h *handlerData) GetProjectApiHandler(w http.ResponseWriter, r *http.Reques
 		err = ErrInvalidHTTPMethod
 		h.log.Error(err.Error())
 		JSONError(w, err.Error(), "requires GET method", "", http.StatusMethodNotAllowed)
+
 		return
 	}
 
@@ -745,6 +747,7 @@ func (h *handlerData) GetProjectsApiHandler(w http.ResponseWriter, r *http.Reque
 		err = ErrInvalidHTTPMethod
 		h.log.Error(err.Error())
 		JSONError(w, err.Error(), "requires GET method", "", http.StatusMethodNotAllowed)
+
 		return
 	}
 
@@ -762,6 +765,7 @@ func (h *handlerData) GetProjectsApiHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	showAll := false
+
 	showAllParam := r.URL.Query().Get("all")
 	if showAllParam != "" {
 		showAll, err = strconv.ParseBool(showAllParam)

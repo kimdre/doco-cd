@@ -344,6 +344,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		if status := rr.Code; status != http.StatusOK {
 			t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
 		}
+
 		t.Logf("Project API response: %s", rr.Body.String())
 	}
 }
