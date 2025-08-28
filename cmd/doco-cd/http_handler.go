@@ -31,6 +31,8 @@ import (
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
+var ErrInvalidParamValue = errors.New("invalid parameter value")
+
 type handlerData struct {
 	appConfig      *config.AppConfig    // Application configuration
 	appVersion     string               // Application version
@@ -634,30 +636,28 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 		queryParamVolumes := r.URL.Query().Get("volumes")
 		if queryParamVolumes != "" {
-			if queryParamVolumes != "true" && queryParamVolumes != "false" {
-				err = errors.New("invalid volumes parameter")
-				errMsg = "volumes parameter must be true or false"
+			removeVolumes, err = strconv.ParseBool(queryParamVolumes)
+			if err != nil {
+				err = errors.New("invalid 'volumes' parameter")
+				errMsg = "'volumes' parameter must be true or false"
 				jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 				JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
 
 				return
 			}
-
-			removeVolumes = queryParamVolumes == "true"
 		}
 
 		queryParamImages := r.URL.Query().Get("images")
 		if queryParamImages != "" {
-			if queryParamImages != "true" && queryParamImages != "false" {
-				err = errors.New("invalid images parameter")
-				errMsg = "images parameter must be true or false"
+			removeImages, err = strconv.ParseBool(queryParamImages)
+			if err != nil {
+				err = errors.New("invalid 'images' parameter")
+				errMsg = "'images' parameter must be true or false"
 				jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 				JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
 
 				return
 			}
-
-			removeImages = queryParamImages == "true"
 		}
 
 		jobLog.Info("removing project", slog.String("project", projectName), slog.Bool("remove_volumes", removeVolumes), slog.Bool("remove_images", removeImages))
@@ -740,7 +740,21 @@ func (h *handlerData) GetProjectsApiHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	projects, err := docker.GetProjects(ctx, h.dockerCli)
+	showAll := false
+	showAllParam := r.URL.Query().Get("all")
+	if showAllParam != "" {
+		showAll, err = strconv.ParseBool(showAllParam)
+		if err != nil {
+			err = errors.New("invalid 'all' parameter")
+			errMsg = "'all' parameter must be true or false"
+			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+			JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
+
+			return
+		}
+	}
+
+	projects, err := docker.GetProjects(ctx, h.dockerCli, showAll)
 	if err != nil {
 		errMsg := "failed to get projects"
 		jobLog.With(logger.ErrAttr(err)).Error(errMsg)

@@ -877,10 +877,10 @@ func GetProject(ctx context.Context, dockerCli command.Cli, projectName string) 
 }
 
 // GetProjects returns a list of all projects.
-func GetProjects(ctx context.Context, dockerCli command.Cli) ([]api.Stack, error) {
+func GetProjects(ctx context.Context, dockerCli command.Cli, showDisabled bool) ([]api.Stack, error) {
 	service := compose.NewComposeService(dockerCli)
 
 	return service.List(ctx, api.ListOptions{
-		All: true,
+		All: showDisabled,
 	})
 }
