@@ -324,37 +324,40 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		{"/project/{projectName}/{action}", "/project/test-deploy/remove?volumes=true&images=false", "POST", h.ProjectApiHandler},
 	}
 
-	for _, endpoint := range apiEndpoints {
-		endpointPath := path.Join(apiPath, endpoint.path)
-		endpointPattern := path.Join(apiPath, endpoint.pattern)
+	// Test API endpoints only if not in Swarm mode
+	if !docker.SwarmModeEnabled {
+		for _, endpoint := range apiEndpoints {
+			endpointPath := path.Join(apiPath, endpoint.path)
+			endpointPattern := path.Join(apiPath, endpoint.pattern)
 
-		t.Logf("Testing API endpoint: %s", endpointPath)
+			t.Logf("Testing API endpoint: %s", endpointPath)
 
-		rr = httptest.NewRecorder()
-		mux := http.NewServeMux()
-		mux.HandleFunc(endpointPattern, endpoint.handler)
+			rr = httptest.NewRecorder()
+			mux := http.NewServeMux()
+			mux.HandleFunc(endpointPattern, endpoint.handler)
 
-		first := true
+			first := true
 
-		for i := 0; i < 3; i++ {
-			req, err = http.NewRequest(endpoint.method, endpointPath, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
+			for i := 0; i < 4; i++ {
+				req, err = http.NewRequest(endpoint.method, endpointPath, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
 
-			req.Header.Set(apiInternal.KeyHeader, appConfig.ApiSecret)
-			mux.ServeHTTP(rr, req)
+				req.Header.Set(apiInternal.KeyHeader, appConfig.ApiSecret)
+				mux.ServeHTTP(rr, req)
 
-			if status := rr.Code; status != http.StatusOK {
-				t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
-			}
+				if status := rr.Code; status != http.StatusOK {
+					t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
+				}
 
-			t.Logf("Project API response: %s", rr.Body.String())
+				t.Logf("Project API response: %s", rr.Body.String())
 
-			if first {
-				first = false
+				if first {
+					first = false
 
-				time.Sleep(2 * time.Second)
+					time.Sleep(2 * time.Second)
+				}
 			}
 		}
 	}
