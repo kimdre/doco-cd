@@ -19,6 +19,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
+
 	apiInternal "github.com/kimdre/doco-cd/internal/api"
 
 	"github.com/kimdre/doco-cd/internal/config"
@@ -346,5 +347,6 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		}
 
 		t.Logf("Project API response: %s", rr.Body.String())
+		time.Sleep(3 * time.Second)
 	}
 }
