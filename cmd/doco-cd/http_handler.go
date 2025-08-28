@@ -31,7 +31,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
-var ErrInvalidParamValue = errors.New("invalid parameter value")
+var ErrInvalidHTTPMethod = errors.New("invalid http method")
 
 type handlerData struct {
 	appConfig      *config.AppConfig    // Application configuration
@@ -554,6 +554,13 @@ func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request)
 func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
 
+	if r.Method != http.MethodPost {
+		err = ErrInvalidHTTPMethod
+		h.log.Error(err.Error())
+		JSONError(w, err.Error(), "requires POST method", "", http.StatusMethodNotAllowed)
+		return
+	}
+
 	ctx := r.Context()
 
 	// Add a job id to the context to track deployments in the logs
@@ -683,6 +690,13 @@ func (h *handlerData) GetProjectApiHandler(w http.ResponseWriter, r *http.Reques
 
 	ctx := r.Context()
 
+	if r.Method != http.MethodGet {
+		err = ErrInvalidHTTPMethod
+		h.log.Error(err.Error())
+		JSONError(w, err.Error(), "requires GET method", "", http.StatusMethodNotAllowed)
+		return
+	}
+
 	// Add a job id to the context to track deployments in the logs
 	jobID := uuid.Must(uuid.NewRandom()).String()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
@@ -726,6 +740,13 @@ func (h *handlerData) GetProjectsApiHandler(w http.ResponseWriter, r *http.Reque
 	var err error
 
 	ctx := r.Context()
+
+	if r.Method != http.MethodGet {
+		err = ErrInvalidHTTPMethod
+		h.log.Error(err.Error())
+		JSONError(w, err.Error(), "requires GET method", "", http.StatusMethodNotAllowed)
+		return
+	}
 
 	// Add a job id to the context to track deployments in the logs
 	jobID := uuid.Must(uuid.NewRandom()).String()

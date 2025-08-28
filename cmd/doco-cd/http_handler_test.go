@@ -14,12 +14,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/swarm"
-
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
+	apiInternal "github.com/kimdre/doco-cd/internal/api"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -307,5 +307,43 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 	if bodyString != string(fileContent) {
 		t.Fatalf("Test container returned unexpected body: got '%v' but want '%v'", bodyString, string(fileContent))
+	}
+
+	apiEndpoints := []struct {
+		pattern string
+		path    string
+		method  string
+		handler http.HandlerFunc
+	}{
+		{"/projects", "/projects", "GET", h.GetProjectsApiHandler},
+		{"/project/{projectName}", "/project/test-deploy", "GET", h.GetProjectApiHandler},
+		{"/project/{projectName}/{action}", "/project/test-deploy/restart", "POST", h.ProjectApiHandler},
+		{"/project/{projectName}/{action}", "/project/test-deploy/stop", "POST", h.ProjectApiHandler},
+		{"/project/{projectName}/{action}", "/project/test-deploy/start", "POST", h.ProjectApiHandler},
+		{"/project/{projectName}/{action}", "/project/test-deploy/remove?volumes=true&images=false", "POST", h.ProjectApiHandler},
+	}
+
+	for _, endpoint := range apiEndpoints {
+		endpointPath := path.Join(apiPath, endpoint.path)
+		endpointPattern := path.Join(apiPath, endpoint.pattern)
+
+		t.Logf("Testing API endpoint: %s", endpointPattern)
+
+		req, err = http.NewRequest(endpoint.method, endpointPath, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		req.Header.Set(apiInternal.KeyHeader, appConfig.ApiSecret)
+
+		rr = httptest.NewRecorder()
+		mux := http.NewServeMux()
+		mux.HandleFunc(endpointPattern, endpoint.handler)
+		mux.ServeHTTP(rr, req)
+
+		if status := rr.Code; status != http.StatusOK {
+			t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
+		}
+		t.Logf("Project API response: %s", rr.Body.String())
 	}
 }
