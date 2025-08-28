@@ -560,7 +560,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 	jobLog.Debug("received api request")
 
-	if !apiInternal.ValidateApiKey(r, h.appConfig.WebhookSecret) {
+	if !apiInternal.ValidateApiKey(r, h.appConfig.ApiSecret) {
 		jobLog.Error(apiInternal.ErrInvalidApiKey.Error())
 		JSONError(w, apiInternal.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
 
@@ -670,25 +670,143 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 			return
 		}
-	case "status":
-		jobLog.Info("retrieving project status", slog.String("project", projectName))
-
-		containers, err := docker.StatusProject(ctx, h.dockerCli, projectName)
-		if err != nil {
-			errMsg = "failed to retrieve status of project: " + projectName
-			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
-			JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
-
-			return
-		}
-
-		JSONResponse(w, containers, jobID, http.StatusOK)
-
-		return
 	default:
 		jobLog.Error(apiInternal.ErrInvalidAction.Error())
 		JSONError(w, apiInternal.ErrInvalidAction.Error(), "action not supported: "+action, jobID, http.StatusBadRequest)
 
 		return
 	}
+}
+
+func (h *handlerData) GetProjectApiHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+
+	ctx := r.Context()
+
+	// Add a job id to the context to track deployments in the logs
+	jobID := uuid.Must(uuid.NewRandom()).String()
+	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
+
+	jobLog.Debug("received api request")
+
+	if !apiInternal.ValidateApiKey(r, h.appConfig.ApiSecret) {
+		jobLog.Error(apiInternal.ErrInvalidApiKey.Error())
+		JSONError(w, apiInternal.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
+
+		return
+	}
+
+	projectName := r.PathValue("projectName")
+	if projectName == "" {
+		err = errors.New("missing project name")
+		jobLog.Error(err.Error())
+		JSONError(w, err, "", jobID, http.StatusBadRequest)
+
+		return
+	}
+
+	containers, err := docker.GetProject(ctx, h.dockerCli, projectName)
+	if err != nil {
+		errMsg = "failed to get project: " + projectName
+		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+		JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
+
+		return
+	}
+
+	if len(containers) == 0 {
+		JSONError(w, "project not found: "+projectName, "", jobID, http.StatusNotFound)
+		return
+	}
+
+	JSONResponse(w, containers, jobID, http.StatusOK)
+}
+
+func (h *handlerData) GetProjectsApiHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+
+	ctx := r.Context()
+
+	// Add a job id to the context to track deployments in the logs
+	jobID := uuid.Must(uuid.NewRandom()).String()
+	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
+
+	jobLog.Debug("received api request")
+
+	if !apiInternal.ValidateApiKey(r, h.appConfig.ApiSecret) {
+		jobLog.Error(apiInternal.ErrInvalidApiKey.Error())
+		JSONError(w, apiInternal.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
+
+		return
+	}
+
+	projects, err := docker.GetProjects(ctx, h.dockerCli)
+	if err != nil {
+		errMsg := "failed to get projects"
+		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+		JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
+
+		return
+	}
+
+	if len(projects) == 0 {
+		JSONError(w, "no projects found", "", jobID, http.StatusNotFound)
+		return
+	}
+
+	JSONResponse(w, projects, jobID, http.StatusOK)
+}
+
+// registerHttpEndpoints registers the HTTP endpoints based on the application configuration and
+// returns a list of all enabled endpoints.
+func registerHttpEndpoints(c *config.AppConfig, h *handlerData, log *logger.Logger) []string {
+	var enabledEndpoints []string
+
+	type endpoint struct {
+		path    string
+		handler http.HandlerFunc
+	}
+
+	// Register health endpoint
+	enabledEndpoints = append(enabledEndpoints, healthPath)
+	http.HandleFunc(healthPath, h.HealthCheckHandler)
+	log.Debug("register health endpoint", slog.String("path", healthPath))
+
+	// Register HTTP handlers based on configuration
+	if c.ApiSecret != "" {
+		// Register API endpoints
+		enabledEndpoints = append(enabledEndpoints, apiPath)
+
+		endpoints := []endpoint{
+			{apiPath + "/projects", h.GetProjectsApiHandler},
+			{apiPath + "/project/{projectName}", h.GetProjectApiHandler},
+			{apiPath + "/project/{projectName}/{action}", h.ProjectApiHandler},
+		}
+
+		for _, ep := range endpoints {
+			http.HandleFunc(ep.path, ep.handler)
+			log.Debug("register api endpoint", slog.String("path", ep.path))
+		}
+	} else {
+		log.Info("api endpoints disabled, no api secret configured")
+	}
+
+	if c.WebhookSecret != "" {
+		// Register webhook endpoints
+		enabledEndpoints = append(enabledEndpoints, webhookPath)
+
+		endpoints := []endpoint{
+			{webhookPath, h.WebhookHandler},
+			{webhookPath + "/{customTarget}", h.WebhookHandler},
+		}
+
+		for _, ep := range endpoints {
+			http.HandleFunc(ep.path, ep.handler)
+			log.Debug("register webhook endpoint", slog.String("path", ep.path))
+		}
+	} else {
+		log.Info("webhook endpoints disabled, no webhook secret configured")
+	}
+
+	return enabledEndpoints
 }

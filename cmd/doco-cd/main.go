@@ -248,17 +248,13 @@ func main() {
 		log:            log,
 	}
 
-	http.HandleFunc(apiPath+"/project/{projectName}/{action}", h.ProjectApiHandler)
-	http.HandleFunc(healthPath, h.HealthCheckHandler)
-	http.HandleFunc(webhookPath, h.WebhookHandler)
-	http.HandleFunc(webhookPath+"/{customTarget}", h.WebhookHandler)
+	// Register HTTP endpoints
+	enabledEndpoints := registerHttpEndpoints(c, &h, log)
 
 	log.Info(
 		"listening for events",
 		slog.Int("http_port", int(c.HttpPort)),
-		slog.String("api_path", apiPath),
-		slog.String("health_path", healthPath),
-		slog.String("webhook_path", webhookPath),
+		slog.Any("enabled_endpoints", enabledEndpoints),
 	)
 
 	if len(c.PollConfig) > 0 {

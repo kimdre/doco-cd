@@ -867,11 +867,20 @@ func RemoveProject(ctx context.Context, dockerCli command.Cli, projectName strin
 	})
 }
 
-// StatusProject returns the status of all services in the specified project.
-func StatusProject(ctx context.Context, dockerCli command.Cli, projectName string) ([]api.ContainerSummary, error) {
+// GetProject returns the status of all services in the specified project.
+func GetProject(ctx context.Context, dockerCli command.Cli, projectName string) ([]api.ContainerSummary, error) {
 	service := compose.NewComposeService(dockerCli)
 
 	return service.Ps(ctx, projectName, api.PsOptions{
+		All: true,
+	})
+}
+
+// GetProjects returns a list of all projects.
+func GetProjects(ctx context.Context, dockerCli command.Cli) ([]api.Stack, error) {
+	service := compose.NewComposeService(dockerCli)
+
+	return service.List(ctx, api.ListOptions{
 		All: true,
 	})
 }
