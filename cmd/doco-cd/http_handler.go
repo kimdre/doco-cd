@@ -616,6 +616,8 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 			return
 		}
+
+		JSONResponse(w, "project started: "+projectName, jobID, http.StatusOK)
 	case "stop":
 		jobLog.Info("stopping project", slog.String("project", projectName))
 
@@ -627,6 +629,8 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 			return
 		}
+
+		JSONResponse(w, "project stopped: "+projectName, jobID, http.StatusOK)
 	case "restart":
 		jobLog.Info("restarting project", slog.String("project", projectName))
 
@@ -638,6 +642,8 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 			return
 		}
+
+		JSONResponse(w, "project restarted: "+projectName, jobID, http.StatusOK)
 	case "remove":
 		removeVolumes := true
 		removeImages := true
@@ -678,6 +684,8 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 			return
 		}
+
+		JSONResponse(w, "project removed: "+projectName, jobID, http.StatusOK)
 	default:
 		jobLog.Error(apiInternal.ErrInvalidAction.Error())
 		JSONError(w, apiInternal.ErrInvalidAction.Error(), "action not supported: "+action, jobID, http.StatusBadRequest)

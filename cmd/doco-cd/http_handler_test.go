@@ -11,6 +11,7 @@ import (
 	"path"
 	"regexp"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,6 +20,8 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
+	testCompose "github.com/testcontainers/testcontainers-go/modules/compose"
+	"github.com/testcontainers/testcontainers-go/wait"
 
 	apiInternal "github.com/kimdre/doco-cd/internal/api"
 
@@ -31,6 +34,12 @@ import (
 const (
 	githubPayloadFile          = "testdata/github_payload.json"
 	githubPayloadFileSwarmMode = "testdata/github_payload_swarm_mode.json"
+	composeContent             = `services:
+  nginx:
+    image: nginx:latest
+    ports:
+      - "80:80"
+`
 )
 
 // Make http call to HealthCheckHandler.
@@ -309,37 +318,112 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	if bodyString != string(fileContent) {
 		t.Fatalf("Test container returned unexpected body: got '%v' but want '%v'", bodyString, string(fileContent))
 	}
+}
 
-	apiEndpoints := []struct {
+func TestHandlerData_ProjectApiHandler(t *testing.T) {
+	appConfig, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	log := logger.New(12)
+
+	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy, !appConfig.SkipTLSVerification)
+	if err != nil {
+		t.Fatalf("Failed to create docker client: %v", err)
+	}
+
+	dockerClient, _ := client.NewClientWithOpts(
+		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
+	)
+
+	t.Cleanup(func() {
+		err = dockerCli.Client().Close()
+		if err != nil {
+			return
+		}
+	})
+
+	tmpDir := t.TempDir()
+
+	h := handlerData{
+		dockerCli:    dockerCli,
+		dockerClient: dockerClient,
+		appConfig:    appConfig,
+		appVersion:   Version,
+		dataMountPoint: container.MountPoint{
+			Type:        "bind",
+			Source:      tmpDir,
+			Destination: tmpDir,
+			Mode:        "rw",
+		},
+		log: log,
+	}
+
+	testCases := []struct {
+		name    string
 		pattern string
 		path    string
 		method  string
 		handler http.HandlerFunc
 	}{
-		{"/projects", "/projects", "GET", h.GetProjectsApiHandler},
-		{"/project/{projectName}", "/project/test-deploy", "GET", h.GetProjectApiHandler},
-		{"/project/{projectName}/{action}", "/project/test-deploy/restart", "POST", h.ProjectApiHandler},
-		{"/project/{projectName}/{action}", "/project/test-deploy/stop", "POST", h.ProjectApiHandler},
-		{"/project/{projectName}/{action}", "/project/test-deploy/start", "POST", h.ProjectApiHandler},
-		{"/project/{projectName}/{action}", "/project/test-deploy/remove?volumes=true&images=false", "POST", h.ProjectApiHandler},
+		{"Get all Projects", "/projects", "/projects", "GET", h.GetProjectsApiHandler},
+		{"Get Project", "/project/{projectName}", "/project/test", "GET", h.GetProjectApiHandler},
+		{"Restart Project", "/project/{projectName}/{action}", "/project/test/restart", "POST", h.ProjectApiHandler},
+		{"Stop Project", "/project/{projectName}/{action}", "/project/test/stop", "POST", h.ProjectApiHandler},
+		{"Start Project", "/project/{projectName}/{action}", "/project/test/start", "POST", h.ProjectApiHandler},
+		{"Remove Project", "/project/{projectName}/{action}", "/project/test/remove?volumes=true&images=false", "POST", h.ProjectApiHandler},
 	}
 
-	// Test API endpoints only if not in Swarm mode
-	if !docker.SwarmModeEnabled {
-		for _, endpoint := range apiEndpoints {
-			endpointPath := path.Join(apiPath, endpoint.path)
-			endpointPattern := path.Join(apiPath, endpoint.pattern)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if docker.SwarmModeEnabled {
+				t.Skip("Skipping Project API tests in Swarm mode")
+			}
+
+			ctx := context.Background()
+
+			var stack *testCompose.DockerCompose
+
+			stack, err = testCompose.NewDockerComposeWith(
+				testCompose.StackIdentifier("test"),
+				testCompose.WithStackReaders(strings.NewReader(composeContent)),
+			)
+			if err != nil {
+				t.Fatalf("failed to create stack: %v", err)
+			}
+
+			err = stack.
+				WaitForService("nginx", wait.ForListeningPort("80/tcp")).
+				Up(ctx, testCompose.Wait(true))
+			if err != nil {
+				t.Fatalf("failed to start stack: %v", err)
+			}
+
+			t.Cleanup(func() {
+				err = stack.Down(
+					context.Background(),
+					testCompose.RemoveOrphans(true),
+					testCompose.RemoveVolumes(true),
+					testCompose.RemoveImagesLocal,
+				)
+				if err != nil {
+					t.Fatalf("Failed to stop stack: %v", err)
+				}
+			})
+
+			endpointPath := path.Join(apiPath, tc.path)
+			endpointPattern := path.Join(apiPath, tc.pattern)
 
 			t.Logf("Testing API endpoint: %s", endpointPath)
 
-			rr = httptest.NewRecorder()
+			rr := httptest.NewRecorder()
 			mux := http.NewServeMux()
-			mux.HandleFunc(endpointPattern, endpoint.handler)
-
-			first := true
+			mux.HandleFunc(endpointPattern, tc.handler)
 
 			for i := 0; i < 4; i++ {
-				req, err = http.NewRequest(endpoint.method, endpointPath, nil)
+				req, err := http.NewRequest(tc.method, endpointPath, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -347,18 +431,17 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 				req.Header.Set(apiInternal.KeyHeader, appConfig.ApiSecret)
 				mux.ServeHTTP(rr, req)
 
+				t.Logf("API response: %s", rr.Body.String())
+
 				if status := rr.Code; status != http.StatusOK {
 					t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
-				}
-
-				t.Logf("Project API response: %s", rr.Body.String())
-
-				if first {
-					first = false
 
 					time.Sleep(2 * time.Second)
+					continue
 				}
+
+				break
 			}
-		}
+		})
 	}
 }
