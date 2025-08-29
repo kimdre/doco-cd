@@ -437,6 +437,7 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 					t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
 
 					time.Sleep(2 * time.Second)
+
 					continue
 				}
 
