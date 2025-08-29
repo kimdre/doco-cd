@@ -625,6 +625,8 @@ func TestStartProject(t *testing.T) {
 		t.Fatalf("failed to stop project: %v", err)
 	}
 
+	time.Sleep(3 * time.Second)
+
 	t.Log("Starting project")
 
 	err = StartProject(ctx, dockerCli, "test", timeout)
