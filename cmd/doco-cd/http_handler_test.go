@@ -386,6 +386,7 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 			if err != nil {
 				t.Fatalf("getwd failed: %v", err)
 			}
+
 			t.Cleanup(func() { _ = os.Chdir(origWD) })
 
 			// In ein garantiert existierendes Verzeichnis wechseln (z. B. Projektwurzel oder /tmp)
