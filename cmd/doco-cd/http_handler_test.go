@@ -383,7 +383,7 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 			}
 
 			// In ein garantiert existierendes Verzeichnis wechseln (z. B. Projektwurzel oder /tmp)
-			if err := os.Chdir(tmpDir); err != nil {
+			if err = os.Chdir(tmpDir); err != nil {
 				t.Fatalf("chdir failed: %v", err)
 			}
 
