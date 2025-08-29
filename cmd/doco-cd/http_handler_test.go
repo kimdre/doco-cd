@@ -376,10 +376,14 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 		{"Restart Project", "/project/{projectName}/{action}", "/project/test/restart", "POST", h.ProjectApiHandler, http.StatusOK},
 		{"Restart Project - Non-existent Project", "/project/{projectName}/{action}", "/project/nonexistent/restart", "POST", h.ProjectApiHandler, http.StatusNotFound},
 		{"Restart Project - With Timeout", "/project/{projectName}/{action}", "/project/test/restart?timeout=60", "POST", h.ProjectApiHandler, http.StatusOK},
+		{"Restart Project - Invalid Timeout", "/project/{projectName}/{action}", "/project/test/restart?timeout=x", "POST", h.ProjectApiHandler, http.StatusBadRequest},
+		{"Restart Project - Invalid Method", "/project/{projectName}/{action}", "/project/test/restart", "GET", h.ProjectApiHandler, http.StatusMethodNotAllowed},
 		{"Stop Project", "/project/{projectName}/{action}", "/project/test/stop", "POST", h.ProjectApiHandler, http.StatusOK},
 		{"Stop Project - Non-existent Project", "/project/{projectName}/{action}", "/project/nonexistent/stop", "POST", h.ProjectApiHandler, http.StatusNotFound},
 		{"Start Project", "/project/{projectName}/{action}", "/project/test/start", "POST", h.ProjectApiHandler, http.StatusOK},
 		{"Remove Project", "/project/{projectName}/{action}", "/project/test/remove?volumes=true&images=false", "POST", h.ProjectApiHandler, http.StatusOK},
+		{"Remove Project - Invalid images Param", "/project/{projectName}/{action}", "/project/test/remove?&images=x", "POST", h.ProjectApiHandler, http.StatusBadRequest},
+		{"Remove Project - Invalid volumes Param", "/project/{projectName}/{action}", "/project/test/remove?volumes=x", "POST", h.ProjectApiHandler, http.StatusBadRequest},
 	}
 
 	for _, tc := range testCases {
