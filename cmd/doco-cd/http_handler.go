@@ -603,6 +603,20 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 	timeout := time.Duration(timeoutSec) * time.Second
 
+	containers, err := docker.GetProject(ctx, h.dockerCli, projectName)
+	if err != nil {
+		errMsg = "failed to get project: " + projectName
+		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+		JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
+
+		return
+	}
+
+	if len(containers) == 0 {
+		JSONError(w, "project not found: "+projectName, "", jobID, http.StatusNotFound)
+		return
+	}
+
 	action := r.PathValue("action")
 	switch action {
 	case "start":
