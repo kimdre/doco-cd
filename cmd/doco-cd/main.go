@@ -74,7 +74,7 @@ func getAppContainerID() (string, error) {
 		}
 	}
 
-	return "", errors.New("container ID not found")
+	return "", docker.ErrContainerIDNotFound
 }
 
 // GetProxyUrlRedacted takes a proxy URL string and redacts the password if it exists.
