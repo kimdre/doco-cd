@@ -369,7 +369,7 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 		handler        http.HandlerFunc
 		expectedStatus int
 	}{
-		{"Get all Projects", "/projects", "/projects", "GET", h.GetProjectsApiHandler, http.StatusOK},
+		{"Get all Projects", "/projects", "/projects?all=true", "GET", h.GetProjectsApiHandler, http.StatusOK},
 		{"Get Project", "/project/{projectName}", "/project/test", "GET", h.GetProjectApiHandler, http.StatusOK},
 		{"Get Project - Non-existent Project", "/project/{projectName}", "/project/nonexistent", "GET", h.GetProjectApiHandler, http.StatusNotFound},
 		{"Get Project - Missing Path Param", "/project/{projectName}", "/project/", "GET", h.GetProjectApiHandler, http.StatusNotFound},
