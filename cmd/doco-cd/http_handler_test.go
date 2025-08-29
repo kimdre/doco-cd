@@ -382,13 +382,6 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 				t.Skip("Skipping Project API tests in Swarm mode")
 			}
 
-			origWD, err := os.Getwd()
-			if err != nil {
-				t.Fatalf("getwd failed: %v", err)
-			}
-
-			t.Cleanup(func() { _ = os.Chdir(origWD) })
-
 			// In ein garantiert existierendes Verzeichnis wechseln (z. B. Projektwurzel oder /tmp)
 			if err := os.Chdir(tmpDir); err != nil {
 				t.Fatalf("chdir failed: %v", err)
