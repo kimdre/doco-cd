@@ -40,6 +40,7 @@ func getAppContainerID() (string, error) {
 		cgroupMounts = "/proc/self/mountinfo"
 		dockerPath   = "/docker/containers/"
 		podmanPath   = "/containers/storage/overlay-containers/"
+		truenasPath  = "/containers/"
 	)
 
 	dockerPattern := regexp.MustCompile(dockerPath + `([a-z0-9]+)`)
@@ -70,6 +71,12 @@ func getAppContainerID() (string, error) {
 				if matches := podmanPattern.FindStringSubmatch(path); len(matches) > 1 {
 					return matches[1], nil
 				}
+			}
+			
+			if strings.Contains(path, truenasPath) {
+					if matches := truenasPattern.FindStringSubmatch(path); len(matches) > 1 {
+							return matches[1], nil
+					}
 			}
 		}
 	}
