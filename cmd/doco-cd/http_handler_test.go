@@ -362,18 +362,24 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 	}
 
 	testCases := []struct {
-		name    string
-		pattern string
-		path    string
-		method  string
-		handler http.HandlerFunc
+		name           string
+		pattern        string
+		path           string
+		method         string
+		handler        http.HandlerFunc
+		expectedStatus int
 	}{
-		{"Get all Projects", "/projects", "/projects", "GET", h.GetProjectsApiHandler},
-		{"Get Project", "/project/{projectName}", "/project/test", "GET", h.GetProjectApiHandler},
-		{"Restart Project", "/project/{projectName}/{action}", "/project/test/restart", "POST", h.ProjectApiHandler},
-		{"Stop Project", "/project/{projectName}/{action}", "/project/test/stop", "POST", h.ProjectApiHandler},
-		{"Start Project", "/project/{projectName}/{action}", "/project/test/start", "POST", h.ProjectApiHandler},
-		{"Remove Project", "/project/{projectName}/{action}", "/project/test/remove?volumes=true&images=false", "POST", h.ProjectApiHandler},
+		{"Get all Projects", "/projects", "/projects", "GET", h.GetProjectsApiHandler, http.StatusOK},
+		{"Get Project", "/project/{projectName}", "/project/test", "GET", h.GetProjectApiHandler, http.StatusOK},
+		{"Get Project - Non-existent Project", "/project/{projectName}", "/project/nonexistent", "GET", h.GetProjectApiHandler, http.StatusNotFound},
+		{"Get Project - Missing Path Param", "/project/{projectName}", "/project/", "GET", h.GetProjectApiHandler, http.StatusNotFound},
+		{"Restart Project", "/project/{projectName}/{action}", "/project/test/restart", "POST", h.ProjectApiHandler, http.StatusOK},
+		{"Restart Project - Non-existent Project", "/project/{projectName}/{action}", "/project/nonexistent/restart", "POST", h.ProjectApiHandler, http.StatusNotFound},
+		{"Restart Project - With Timeout", "/project/{projectName}/{action}", "/project/test/restart?timeout=60", "POST", h.ProjectApiHandler, http.StatusOK},
+		{"Stop Project", "/project/{projectName}/{action}", "/project/test/stop", "POST", h.ProjectApiHandler, http.StatusOK},
+		{"Stop Project - Non-existent Project", "/project/{projectName}/{action}", "/project/nonexistent/stop", "POST", h.ProjectApiHandler, http.StatusNotFound},
+		{"Start Project", "/project/{projectName}/{action}", "/project/test/start", "POST", h.ProjectApiHandler, http.StatusOK},
+		{"Remove Project", "/project/{projectName}/{action}", "/project/test/remove?volumes=true&images=false", "POST", h.ProjectApiHandler, http.StatusOK},
 	}
 
 	for _, tc := range testCases {
@@ -426,26 +432,18 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 			mux := http.NewServeMux()
 			mux.HandleFunc(endpointPattern, tc.handler)
 
-			for i := 0; i < 4; i++ {
-				req, err := http.NewRequest(tc.method, endpointPath, nil)
-				if err != nil {
-					t.Fatal(err)
-				}
+			req, err := http.NewRequest(tc.method, endpointPath, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-				req.Header.Set(apiInternal.KeyHeader, appConfig.ApiSecret)
-				mux.ServeHTTP(rr, req)
+			req.Header.Set(apiInternal.KeyHeader, appConfig.ApiSecret)
+			mux.ServeHTTP(rr, req)
 
-				t.Logf("API response: %s", rr.Body.String())
+			t.Logf("API response: %s", rr.Body.String())
 
-				if status := rr.Code; status != http.StatusOK {
-					t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
-
-					time.Sleep(2 * time.Second)
-
-					continue
-				}
-
-				break
+			if status := rr.Code; status != tc.expectedStatus {
+				t.Errorf("handler returned wrong status code: got %v want %v", status, tc.expectedStatus)
 			}
 		})
 	}
