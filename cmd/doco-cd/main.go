@@ -59,8 +59,8 @@ func getAppContainerID() (string, error) {
 		mountPath := fields[3]
 
 		if strings.Contains(line, "/etc/hostname") {
-			if strings.Contains(path, containerPath) {
-				if matches := containerPattern.FindStringSubmatch(path); len(matches) > 1 {
+			if strings.Contains(mountPath, containerPath) {
+				if matches := containerPattern.FindStringSubmatch(mountPath); len(matches) > 1 {
 					return matches[1], nil
 				}
 			}
