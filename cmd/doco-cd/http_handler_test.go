@@ -392,9 +392,7 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 				t.Skip("Skipping Project API tests in Swarm mode")
 			}
 
-			if err = os.Chdir(tmpDir); err != nil {
-				t.Fatalf("chdir failed: %v", err)
-			}
+			t.Chdir(tmpDir)
 
 			ctx := context.Background()
 
