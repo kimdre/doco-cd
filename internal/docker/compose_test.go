@@ -512,6 +512,11 @@ func TestHasChangedBindMounts(t *testing.T) {
 }
 
 func startTestContainer(ctx context.Context, t *testing.T) (*testCompose.DockerCompose, error) {
+	err := os.Chdir(t.TempDir())
+	if err != nil {
+		t.Fatalf("failed to change directory: %v", err)
+	}
+
 	stack, err := testCompose.NewDockerComposeWith(
 		testCompose.StackIdentifier("test"),
 		testCompose.WithStackReaders(strings.NewReader(composeContents)),
