@@ -13,17 +13,14 @@ func TestValidateApiKey(t *testing.T) {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
 
-	validKey := appConfig.ApiSecret
-	invalidKey := "invalid_key"
-
 	testCases := []struct {
 		name       string
 		apiKey     string
 		checkKey   string
 		shouldPass bool
 	}{
-		{"Valid API Key", appConfig.ApiSecret, validKey, true},
-		{"Invalid API Key", appConfig.ApiSecret, invalidKey, false},
+		{"Valid API Key", appConfig.ApiSecret, appConfig.ApiSecret, true},
+		{"Invalid API Key", appConfig.ApiSecret, "invalid_key", false},
 		{"Missing API Key", appConfig.ApiSecret, "", false},
 		{"Unset API Key", "", "", true}, // If no API key is set in config, all requests should pass
 	}
