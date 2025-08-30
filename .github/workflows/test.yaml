@@ -54,6 +54,7 @@ jobs:
         timeout-minutes: 5
         env:
           WEBHOOK_SECRET: test_Secret1
+          API_SECRET: api_Secret1
           GIT_ACCESS_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
           HTTP_PROXY: http://localhost:3128
           SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
@@ -85,6 +86,7 @@ jobs:
         timeout-minutes: 5
         env:
           WEBHOOK_SECRET: test_Secret1
+          API_SECRET: api_Secret1
           GIT_ACCESS_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
           HTTP_PROXY: http://localhost:3128
           SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}

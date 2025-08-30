@@ -7,7 +7,7 @@ import (
 )
 
 type jsonResponse struct {
-	Details any    `json:"details,omitempty"`
+	Content any    `json:"content,omitempty"`
 	JobID   string `json:"job_id,omitempty"`
 }
 
@@ -26,7 +26,7 @@ func JSONError(w http.ResponseWriter, err, details any, jobId string, code int) 
 	resp := jsonError{
 		Error: err.(string),
 		jsonResponse: jsonResponse{
-			Details: details,
+			Content: details,
 			JobID:   jobId,
 		},
 	}
@@ -41,9 +41,9 @@ func JSONError(w http.ResponseWriter, err, details any, jobId string, code int) 
 	}
 }
 
-func JSONResponse(w http.ResponseWriter, details any, jobId string, code int) {
+func JSONResponse(w http.ResponseWriter, content any, jobId string, code int) {
 	resp := jsonResponse{
-		Details: details,
+		Content: content,
 		JobID:   jobId,
 	}
 

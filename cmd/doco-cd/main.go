@@ -24,6 +24,7 @@ import (
 )
 
 const (
+	apiPath     = "/v1/api"
 	webhookPath = "/v1/webhook"
 	healthPath  = "/v1/health"
 	dataPath    = "/data"
@@ -55,11 +56,11 @@ func getAppContainerID() (string, error) {
 			continue
 		}
 
-		path := fields[3]
+		mountPath := fields[3]
 
 		if strings.Contains(line, "/etc/hostname") {
-			if strings.Contains(path, containerPath) {
-				if matches := containerPattern.FindStringSubmatch(path); len(matches) > 1 {
+			if strings.Contains(mountPath, containerPath) {
+				if matches := containerPattern.FindStringSubmatch(mountPath); len(matches) > 1 {
 					return matches[1], nil
 				}
 			}
@@ -239,15 +240,13 @@ func main() {
 		log:            log,
 	}
 
-	http.HandleFunc(webhookPath, h.WebhookHandler)
-	http.HandleFunc(webhookPath+"/{customTarget}", h.WebhookHandler)
-
-	http.HandleFunc(healthPath, h.HealthCheckHandler)
+	// Register HTTP endpoints
+	enabledEndpoints := registerHttpEndpoints(c, &h, log)
 
 	log.Info(
 		"listening for events",
 		slog.Int("http_port", int(c.HttpPort)),
-		slog.String("path", webhookPath),
+		slog.Any("enabled_endpoints", enabledEndpoints),
 	)
 
 	if len(c.PollConfig) > 0 {

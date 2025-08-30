@@ -21,7 +21,7 @@ func TestJSONResponse(t *testing.T) {
 			rr.Code, http.StatusOK)
 	}
 
-	expectedReturnMessage := fmt.Sprintf(`{"details":"this is a test","job_id":"%s"}%s`, jobId, "\n")
+	expectedReturnMessage := fmt.Sprintf(`{"content":"this is a test","job_id":"%s"}%s`, jobId, "\n")
 	if rr.Body.String() != expectedReturnMessage {
 		t.Errorf("handler returned unexpected body: got '%v' want '%v'",
 			rr.Body.String(), expectedReturnMessage)
@@ -40,7 +40,7 @@ func TestJSONError(t *testing.T) {
 			rr.Code, http.StatusInternalServerError)
 	}
 
-	expectedReturnMessage := fmt.Sprintf(`{"error":"this is a error","details":"this is a detail","job_id":"%s"}%s`, jobId, "\n")
+	expectedReturnMessage := fmt.Sprintf(`{"error":"this is a error","content":"this is a detail","job_id":"%s"}%s`, jobId, "\n")
 	if rr.Body.String() != expectedReturnMessage {
 		t.Errorf("handler returned unexpected body: got '%v' want '%v'",
 			rr.Body.String(), expectedReturnMessage)
