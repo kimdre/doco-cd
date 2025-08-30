@@ -19,11 +19,13 @@ func TestValidateApiKey(t *testing.T) {
 	testCases := []struct {
 		name       string
 		apiKey     string
+		checkKey   string
 		shouldPass bool
 	}{
-		{"Valid API Key", validKey, true},
-		{"Invalid API Key", invalidKey, false},
-		{"Missing API Key", "", false},
+		{"Valid API Key", appConfig.ApiSecret, validKey, true},
+		{"Invalid API Key", appConfig.ApiSecret, invalidKey, false},
+		{"Missing API Key", appConfig.ApiSecret, "", false},
+		{"Unset API Key", "", "", true}, // If no API key is set in config, all requests should pass
 	}
 
 	for _, tc := range testCases {
@@ -34,10 +36,10 @@ func TestValidateApiKey(t *testing.T) {
 			}
 
 			if tc.apiKey != "" {
-				req.Header.Add(KeyHeader, tc.apiKey)
+				req.Header.Add(KeyHeader, tc.checkKey)
 			}
 
-			valid := ValidateApiKey(req, appConfig.ApiSecret)
+			valid := ValidateApiKey(req, tc.apiKey)
 			if valid != tc.shouldPass {
 				t.Errorf("Expected validation to be %v, got %v", tc.shouldPass, valid)
 			}
