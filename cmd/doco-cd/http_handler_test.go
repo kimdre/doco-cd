@@ -384,6 +384,7 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 		{"Remove Project", "/project/{projectName}/{action}", "/project/test/remove?volumes=true&images=false", "POST", h.ProjectApiHandler, http.StatusOK},
 		{"Remove Project - Invalid images Param", "/project/{projectName}/{action}", "/project/test/remove?&images=x", "POST", h.ProjectApiHandler, http.StatusBadRequest},
 		{"Remove Project - Invalid volumes Param", "/project/{projectName}/{action}", "/project/test/remove?volumes=x", "POST", h.ProjectApiHandler, http.StatusBadRequest},
+		{"Invalid Action", "/project/{projectName}/{action}", "/project/test/invalid", "POST", h.ProjectApiHandler, http.StatusBadRequest},
 	}
 
 	for _, tc := range testCases {
