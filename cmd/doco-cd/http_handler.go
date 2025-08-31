@@ -596,19 +596,24 @@ func getQueryParam(r *http.Request, w http.ResponseWriter, log *slog.Logger, job
 	}
 }
 
+// requireMethod checks if the HTTP request method matches the required method and sends an error response if it does not.
+func requireMethod(w http.ResponseWriter, log *slog.Logger, r *http.Request, jobID, method string) bool {
+	if r.Method == method {
+		return true
+	}
+
+	err := ErrInvalidHTTPMethod
+	log.Error(err.Error())
+	JSONError(w, err.Error(), "requires method: "+method, "", http.StatusMethodNotAllowed)
+
+	return false
+}
+
 // ProjectApiHandler handles API requests to manage Docker Compose projects.
 func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	var err error
-
-	if r.Method != http.MethodPost {
-		err = ErrInvalidHTTPMethod
-		h.log.Error(err.Error())
-		JSONError(w, err.Error(), "requires POST method", "", http.StatusMethodNotAllowed)
-
-		return
-	}
 
 	// Add a job id to the context to track deployments in the logs
 	jobID := uuid.Must(uuid.NewRandom()).String()
@@ -652,6 +657,8 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 	action := r.PathValue("action")
 	switch action {
 	case "start":
+		requireMethod(w, jobLog, r, jobID, http.MethodPost)
+
 		jobLog.Info("starting project", slog.String("project", projectName))
 
 		err := docker.StartProject(ctx, h.dockerCli, projectName, timeout)
@@ -665,6 +672,10 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 		JSONResponse(w, "project started: "+projectName, jobID, http.StatusOK)
 	case "stop":
+		if !requireMethod(w, jobLog, r, jobID, http.MethodPost) {
+			return
+		}
+
 		jobLog.Info("stopping project", slog.String("project", projectName))
 
 		err := docker.StopProject(ctx, h.dockerCli, projectName, timeout)
@@ -678,6 +689,10 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 		JSONResponse(w, "project stopped: "+projectName, jobID, http.StatusOK)
 	case "restart":
+		if !requireMethod(w, jobLog, r, jobID, http.MethodPost) {
+			return
+		}
+
 		jobLog.Info("restarting project", slog.String("project", projectName))
 
 		err := docker.RestartProject(ctx, h.dockerCli, projectName, timeout)
@@ -691,6 +706,10 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 		JSONResponse(w, "project restarted: "+projectName, jobID, http.StatusOK)
 	case "remove":
+		if !requireMethod(w, jobLog, r, jobID, http.MethodDelete) {
+			return
+		}
+
 		removeVolumes := getQueryParam(r, w, jobLog, jobID, "volumes", "bool", true).(bool)
 		removeImages := getQueryParam(r, w, jobLog, jobID, "images", "bool", true).(bool)
 
