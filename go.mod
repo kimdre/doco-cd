@@ -306,6 +306,8 @@ require (
 	tags.cncf.io/container-device-interface v1.0.1 // indirect
 )
 
+require github.com/testcontainers/testcontainers-go/modules/compose v0.38.0
+
 tool (
 	github.com/bombsimon/wsl/v5/cmd/wsl
 	github.com/catenacyber/perfsprint

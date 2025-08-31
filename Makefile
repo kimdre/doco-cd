@@ -1,7 +1,7 @@
 GO_BIN?=$(shell pwd)/.bin
 BINARY_DIR=bin
 BINARY_NAME=doco-cd
-.PHONY: test build run lint fmt update update-all submodule-commit generate-coverage
+.PHONY: test test-verbose test-coverage test-run build fmt lint update update-all wiki-commit download tools compose-up compose-down
 
 ifneq (,$(wildcard ./.env))
     include .env
@@ -10,21 +10,21 @@ endif
 
 test:
 	@echo "Running tests..."
-	@WEBHOOK_SECRET="test_Secret1" go test -cover -p 1 ./... -timeout 5m
+	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test -cover -p 1 ./... -timeout 5m
 
 test-verbose:
 	@echo "Running tests..."
-	@WEBHOOK_SECRET="test_Secret1" go test -v -cover -p 1 ./... -timeout 5m
+	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test -v -cover -p 1 ./... -timeout 5m
 
 test-coverage:
 	@echo "Running tests with coverage..."
-	@WEBHOOK_SECRET="test_Secret1" go test -v -coverprofile cover.out ./...
+	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test -v -coverprofile cover.out ./...
 	@go tool cover -html cover.out -o cover.html
 
 # Run specified tests from arguments
 test-run:
 	@echo "Running tests: $(filter-out $@,$(MAKECMDGOALS))"
-	@WEBHOOK_SECRET="test_Secret1" go test -cover -p 1 ./... -timeout 5m -run $(filter-out $@,$(MAKECMDGOALS))
+	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test -cover -p 1 ./... -timeout 5m -run $(filter-out $@,$(MAKECMDGOALS))
 
 build:
 	mkdir -p $(BINARY_DIR)
