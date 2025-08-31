@@ -609,8 +609,8 @@ func requireMethod(w http.ResponseWriter, log *slog.Logger, r *http.Request, met
 	return false
 }
 
-// ProjectApiHandler handles API requests to manage Docker Compose projects.
-func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) {
+// ProjectActionApiHandler handles API requests to manage Docker Compose projects.
+func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	var err error
@@ -707,26 +707,6 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 		}
 
 		JSONResponse(w, "project restarted: "+projectName, jobID, http.StatusOK)
-	case "remove":
-		if !requireMethod(w, jobLog, r, http.MethodDelete) {
-			return
-		}
-
-		removeVolumes := getQueryParam(r, w, jobLog, jobID, "volumes", "bool", true).(bool)
-		removeImages := getQueryParam(r, w, jobLog, jobID, "images", "bool", true).(bool)
-
-		jobLog.Info("removing project", slog.String("project", projectName), slog.Bool("remove_volumes", removeVolumes), slog.Bool("remove_images", removeImages))
-
-		err := docker.RemoveProject(ctx, h.dockerCli, projectName, timeout, removeVolumes, removeImages)
-		if err != nil {
-			errMsg = "failed to remove project: " + projectName
-			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
-			JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
-
-			return
-		}
-
-		JSONResponse(w, "project removed: "+projectName, jobID, http.StatusOK)
 	default:
 		jobLog.Error(apiInternal.ErrInvalidAction.Error())
 		JSONError(w, apiInternal.ErrInvalidAction.Error(), "action not supported: "+action, jobID, http.StatusBadRequest)
@@ -735,18 +715,8 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-func (h *handlerData) GetProjectApiHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-
+func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-
-	if r.Method != http.MethodGet {
-		err = ErrInvalidHTTPMethod
-		h.log.Error(err.Error())
-		JSONError(w, err.Error(), "requires GET method", "", http.StatusMethodNotAllowed)
-
-		return
-	}
 
 	// Add a job id to the context to track deployments in the logs
 	jobID := uuid.Must(uuid.NewRandom()).String()
@@ -763,28 +733,55 @@ func (h *handlerData) GetProjectApiHandler(w http.ResponseWriter, r *http.Reques
 
 	projectName := r.PathValue("projectName")
 	if projectName == "" {
-		err = errors.New("missing project name")
+		err := errors.New("missing project name")
 		jobLog.Error(err.Error())
 		JSONError(w, err, "", jobID, http.StatusBadRequest)
 
 		return
 	}
 
-	containers, err := docker.GetProject(ctx, h.dockerCli, projectName)
-	if err != nil {
-		errMsg = "failed to get project: " + projectName
-		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
-		JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
+	switch r.Method {
+	case http.MethodGet:
+		containers, err := docker.GetProject(ctx, h.dockerCli, projectName)
+		if err != nil {
+			errMsg = "failed to get project: " + projectName
+			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+			JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
+
+			return
+		}
+
+		if len(containers) == 0 {
+			JSONError(w, "project not found: "+projectName, "", jobID, http.StatusNotFound)
+			return
+		}
+
+		JSONResponse(w, containers, jobID, http.StatusOK)
+	case http.MethodDelete:
+		timeoutSec := getQueryParam(r, w, jobLog, jobID, "timeout", "int", 30).(int)
+		timeout := time.Duration(timeoutSec) * time.Second
+		removeVolumes := getQueryParam(r, w, jobLog, jobID, "volumes", "bool", true).(bool)
+		removeImages := getQueryParam(r, w, jobLog, jobID, "images", "bool", true).(bool)
+
+		jobLog.Info("removing project", slog.String("project", projectName), slog.Bool("remove_volumes", removeVolumes), slog.Bool("remove_images", removeImages))
+
+		err := docker.RemoveProject(ctx, h.dockerCli, projectName, timeout, removeVolumes, removeImages)
+		if err != nil {
+			errMsg = "failed to remove project: " + projectName
+			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+			JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
+
+			return
+		}
+
+		JSONResponse(w, "project removed: "+projectName, jobID, http.StatusOK)
+	default:
+		err := ErrInvalidHTTPMethod
+		h.log.Error(err.Error())
+		JSONError(w, err.Error(), "", "", http.StatusMethodNotAllowed)
 
 		return
 	}
-
-	if len(containers) == 0 {
-		JSONError(w, "project not found: "+projectName, "", jobID, http.StatusNotFound)
-		return
-	}
-
-	JSONResponse(w, containers, jobID, http.StatusOK)
 }
 
 func (h *handlerData) GetProjectsApiHandler(w http.ResponseWriter, r *http.Request) {
@@ -854,8 +851,8 @@ func registerHttpEndpoints(c *config.AppConfig, h *handlerData, log *logger.Logg
 
 		endpoints := []endpoint{
 			{apiPath + "/projects", h.GetProjectsApiHandler},
-			{apiPath + "/project/{projectName}", h.GetProjectApiHandler},
-			{apiPath + "/project/{projectName}/{action}", h.ProjectApiHandler},
+			{apiPath + "/project/{projectName}", h.ProjectApiHandler},
+			{apiPath + "/project/{projectName}/{action}", h.ProjectActionApiHandler},
 		}
 
 		for _, ep := range endpoints {
