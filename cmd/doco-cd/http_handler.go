@@ -557,7 +557,7 @@ func getQueryParam(r *http.Request, w http.ResponseWriter, log *slog.Logger, job
 		return defaultVal
 	}
 
-	var ErrInvalidParam = errors.New("invalid parameter")
+	ErrInvalidParam := errors.New("invalid parameter")
 
 	switch keyType {
 	case "bool":
@@ -597,7 +597,7 @@ func getQueryParam(r *http.Request, w http.ResponseWriter, log *slog.Logger, job
 }
 
 // requireMethod checks if the HTTP request method matches the required method and sends an error response if it does not.
-func requireMethod(w http.ResponseWriter, log *slog.Logger, r *http.Request, jobID, method string) bool {
+func requireMethod(w http.ResponseWriter, log *slog.Logger, r *http.Request, method string) bool {
 	if r.Method == method {
 		return true
 	}
@@ -657,7 +657,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 	action := r.PathValue("action")
 	switch action {
 	case "start":
-		requireMethod(w, jobLog, r, jobID, http.MethodPost)
+		requireMethod(w, jobLog, r, http.MethodPost)
 
 		jobLog.Info("starting project", slog.String("project", projectName))
 
@@ -672,7 +672,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 		JSONResponse(w, "project started: "+projectName, jobID, http.StatusOK)
 	case "stop":
-		if !requireMethod(w, jobLog, r, jobID, http.MethodPost) {
+		if !requireMethod(w, jobLog, r, http.MethodPost) {
 			return
 		}
 
@@ -689,7 +689,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 		JSONResponse(w, "project stopped: "+projectName, jobID, http.StatusOK)
 	case "restart":
-		if !requireMethod(w, jobLog, r, jobID, http.MethodPost) {
+		if !requireMethod(w, jobLog, r, http.MethodPost) {
 			return
 		}
 
@@ -706,7 +706,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 		JSONResponse(w, "project restarted: "+projectName, jobID, http.StatusOK)
 	case "remove":
-		if !requireMethod(w, jobLog, r, jobID, http.MethodDelete) {
+		if !requireMethod(w, jobLog, r, http.MethodDelete) {
 			return
 		}
 
