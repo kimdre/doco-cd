@@ -657,7 +657,9 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 	action := r.PathValue("action")
 	switch action {
 	case "start":
-		requireMethod(w, jobLog, r, http.MethodPost)
+		if !requireMethod(w, jobLog, r, http.MethodPost) {
+			return
+		}
 
 		jobLog.Info("starting project", slog.String("project", projectName))
 
