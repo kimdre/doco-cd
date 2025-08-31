@@ -550,8 +550,56 @@ func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request)
 	JSONResponse(w, "healthy", jobID, http.StatusOK)
 }
 
+// getQueryParam retrieves and validates a query parameter from the HTTP request.
+func getQueryParam(r *http.Request, w http.ResponseWriter, log *slog.Logger, jobID, key, keyType string, defaultVal any) any {
+	queryParam := r.URL.Query().Get(key)
+	if queryParam == "" {
+		return defaultVal
+	}
+
+	var ErrInvalidParam = errors.New("invalid parameter")
+
+	switch keyType {
+	case "bool":
+		value, err := strconv.ParseBool(queryParam)
+		if err != nil {
+			err = fmt.Errorf("%w: %s", ErrInvalidParam, key)
+			errMsg = "'" + key + "' parameter must be true or false"
+			log.With(logger.ErrAttr(err)).Error(errMsg)
+			JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
+
+			return defaultVal
+		}
+
+		return value
+	case "int":
+		value, err := strconv.Atoi(queryParam)
+		if err != nil {
+			err = fmt.Errorf("%w: %s", ErrInvalidParam, key)
+			errMsg = "'" + key + "' parameter must be a integer"
+			log.With(logger.ErrAttr(err)).Error(errMsg)
+			JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
+
+			return defaultVal
+		}
+
+		return value
+	case "string":
+		return queryParam
+	default:
+		err := errors.New("invalid key type")
+		errMsg = "key type must be 'bool', 'int' or 'string'"
+		log.With(logger.ErrAttr(err)).Error(errMsg)
+		JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
+
+		return defaultVal
+	}
+}
+
 // ProjectApiHandler handles API requests to manage Docker Compose projects.
 func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	var err error
 
 	if r.Method != http.MethodPost {
@@ -561,8 +609,6 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 		return
 	}
-
-	ctx := r.Context()
 
 	// Add a job id to the context to track deployments in the logs
 	jobID := uuid.Must(uuid.NewRandom()).String()
@@ -586,21 +632,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	timeoutSec := 30 // Timeout in seconds
-
-	timeoutQueryParam := r.URL.Query().Get("timeout")
-	if timeoutQueryParam != "" {
-		timeoutSec, err = strconv.Atoi(timeoutQueryParam)
-		if err != nil || timeoutSec <= 0 {
-			err = errors.New("invalid timeout parameter")
-			errMsg = "timeout parameter must be a positive integer"
-			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
-			JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
-
-			return
-		}
-	}
-
+	timeoutSec := getQueryParam(r, w, jobLog, jobID, "timeout", "int", 30).(int)
 	timeout := time.Duration(timeoutSec) * time.Second
 
 	containers, err := docker.GetProject(ctx, h.dockerCli, projectName)
@@ -659,34 +691,8 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 		JSONResponse(w, "project restarted: "+projectName, jobID, http.StatusOK)
 	case "remove":
-		removeVolumes := true
-		removeImages := true
-
-		queryParamVolumes := r.URL.Query().Get("volumes")
-		if queryParamVolumes != "" {
-			removeVolumes, err = strconv.ParseBool(queryParamVolumes)
-			if err != nil {
-				err = errors.New("invalid 'volumes' parameter")
-				errMsg = "'volumes' parameter must be true or false"
-				jobLog.With(logger.ErrAttr(err)).Error(errMsg)
-				JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
-
-				return
-			}
-		}
-
-		queryParamImages := r.URL.Query().Get("images")
-		if queryParamImages != "" {
-			removeImages, err = strconv.ParseBool(queryParamImages)
-			if err != nil {
-				err = errors.New("invalid 'images' parameter")
-				errMsg = "'images' parameter must be true or false"
-				jobLog.With(logger.ErrAttr(err)).Error(errMsg)
-				JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
-
-				return
-			}
-		}
+		removeVolumes := getQueryParam(r, w, jobLog, jobID, "volumes", "bool", true).(bool)
+		removeImages := getQueryParam(r, w, jobLog, jobID, "images", "bool", true).(bool)
 
 		jobLog.Info("removing project", slog.String("project", projectName), slog.Bool("remove_volumes", removeVolumes), slog.Bool("remove_images", removeImages))
 
@@ -786,24 +792,11 @@ func (h *handlerData) GetProjectsApiHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	showAll := false
-
-	showAllParam := r.URL.Query().Get("all")
-	if showAllParam != "" {
-		showAll, err = strconv.ParseBool(showAllParam)
-		if err != nil {
-			err = errors.New("invalid 'all' parameter")
-			errMsg = "'all' parameter must be true or false"
-			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
-			JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
-
-			return
-		}
-	}
+	showAll := getQueryParam(r, w, jobLog, jobID, "all", "bool", false).(bool)
 
 	projects, err := docker.GetProjects(ctx, h.dockerCli, showAll)
 	if err != nil {
-		errMsg := "failed to get projects"
+		errMsg = "failed to get projects"
 		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 		JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
 
