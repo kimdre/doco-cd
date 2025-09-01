@@ -1,3 +1,6 @@
 [submodule "docs"]
 	path = docs
 	url = git@github.com:kimdre/doco-cd.wiki.git
+[submodule "test-cases"]
+	path = test-cases
+	url = git@github.com:kimdre/doco-cd_tests.git
