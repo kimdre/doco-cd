@@ -37,7 +37,7 @@ You can find the documentation in the [Wiki](https://github.com/kimdre/doco-cd/w
 
 ## Contributing
 
-Contributions are welcome! Please see the [contributing guidelines](https://github.com/kimdre/doco-cd/tree/main?tab=contributing-ov-file) for more information.
+Contributions are welcome! Please see the [contributing guidelines](https://github.com/kimdre/doco-cd/blob/main/CONTRIBUTING.md) for more information.
 
 ## Star History
 
