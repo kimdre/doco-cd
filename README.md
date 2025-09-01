@@ -34,7 +34,10 @@ You can find the documentation in the [Wiki](https://github.com/kimdre/doco-cd/w
 
 - Ask questions on [GitHub Discussions](https://github.com/kimdre/doco-cd/discussions)
 - Report bugs or suggest features by [opening an issue](https://github.com/kimdre/doco-cd/issues/new)
-- Contribute by [opening a pull request](https://github.com/kimdre/doco-cd/pulls)
+
+## Contributing
+
+Contributions are welcome! Please see the [contributing guidelines](https://github.com/kimdre/doco-cd/tree/main?tab=contributing-ov-file) for more information.
 
 ## Star History
 
