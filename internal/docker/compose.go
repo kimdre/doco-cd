@@ -169,6 +169,15 @@ containers that are part of a service.
 */
 func addComposeServiceLabels(project *types.Project, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, composeVersion, latestCommit string) {
 	for i, s := range project.Services {
+
+		// Extract service dependencies (depends_on)
+		dependencies := make([]string, 0, len(s.DependsOn))
+		for dep := range s.DependsOn {
+			// https://docs.docker.com/compose/how-tos/startup-order/#control-startup
+			// Example: <service>:<condition>:<restart>
+			dependencies = append(dependencies, dep)
+		}
+
 		s.CustomLabels = map[string]string{
 			DocoCDLabels.Metadata.Manager:      config.AppName,
 			DocoCDLabels.Metadata.Version:      appVersion,
@@ -186,6 +195,7 @@ func addComposeServiceLabels(project *types.Project, deployConfig config.DeployC
 			api.ConfigFilesLabel:               strings.Join(project.ComposeFiles, ","),
 			api.VersionLabel:                   composeVersion,
 			api.OneoffLabel:                    "False", // default, will be overridden by docker compose
+			api.DependenciesLabel:              strings.Join(dependencies, ","),
 		}
 		project.Services[i] = s
 	}
