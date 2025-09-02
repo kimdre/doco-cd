@@ -5,6 +5,8 @@ services:
     image: nginx:latest
     ports:
       - "80"  # use random published port
+    depends_on:
+      - dep
     volumes:
       - ./:/usr/share/nginx/html
     environment:
@@ -15,6 +17,9 @@ services:
       - test_secret
     configs:
       - test_config
+
+  dep:
+    image: nginx:latest
 
 secrets:
   test_secret:
