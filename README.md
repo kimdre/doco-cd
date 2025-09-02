@@ -32,7 +32,7 @@ You can find the documentation in the [Wiki](https://github.com/kimdre/doco-cd/w
 
 ## Community
 
-- Ask questions on [GitHub Discussions](https://github.com/kimdre/doco-cd/discussions)
+- Ask questions or discuss ideas on [GitHub Discussions](https://github.com/kimdre/doco-cd/discussions)
 - Report bugs or suggest features by [opening an issue](https://github.com/kimdre/doco-cd/issues/new)
 
 ## Contributing
