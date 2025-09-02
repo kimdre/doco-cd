@@ -169,7 +169,6 @@ containers that are part of a service.
 */
 func addComposeServiceLabels(project *types.Project, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, composeVersion, latestCommit string) {
 	for i, s := range project.Services {
-
 		// Extract service dependencies (depends_on)
 		dependencies := make([]string, 0, len(s.DependsOn))
 		for dep := range s.DependsOn {
