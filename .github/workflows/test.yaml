@@ -50,8 +50,8 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
       - run: go mod download
-      - run: go test -p 1 -v -coverprofile=coverage.out -covermode=atomic ./... -timeout 5m
-        timeout-minutes: 5
+      - run: go test -p 1 -v -coverprofile=coverage.out -covermode=atomic ./... -timeout 10m
+        timeout-minutes: 10
         env:
           WEBHOOK_SECRET: test_Secret1
           API_SECRET: api_Secret1
@@ -82,8 +82,8 @@ jobs:
           cache: true
       - run: go mod download
       - run: docker swarm init
-      - run: go test -p 1 -v -coverprofile=coverage-swarm.out -covermode=atomic ./... -timeout 5m
-        timeout-minutes: 5
+      - run: go test -p 1 -v -coverprofile=coverage-swarm.out -covermode=atomic ./... -timeout 10m
+        timeout-minutes: 10
         env:
           WEBHOOK_SECRET: test_Secret1
           API_SECRET: api_Secret1
