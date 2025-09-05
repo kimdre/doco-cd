@@ -4,7 +4,6 @@ x-poll-config: &poll-config
       reference: main
       interval: 10
       target: ""
-      private: true
 
 services:
   app:
