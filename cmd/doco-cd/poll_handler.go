@@ -152,17 +152,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	jobLog.Debug("get repository",
 		slog.String("url", cloneUrl))
 
-	if pollConfig.Private {
-		jobLog.Debug("authenticating to private repository")
-
-		if appConfig.GitAccessToken == "" {
-			jobLog.Error("missing access token for private repository")
-
-			return metadata, fmt.Errorf("missing access token for private repository: %s", repoName)
-		}
-
-		cloneUrl = git.GetAuthUrl(cloneUrl, appConfig.AuthType, appConfig.GitAccessToken)
-	} else if appConfig.GitAccessToken != "" {
+	if appConfig.GitAccessToken != "" {
 		// Always use the access token for public repositories if it is set to avoid rate limiting
 		cloneUrl = git.GetAuthUrl(cloneUrl, appConfig.AuthType, appConfig.GitAccessToken)
 	}
@@ -486,7 +476,6 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 				FullName:  fullName,
 				CloneURL:  string(pollConfig.CloneUrl),
 				WebURL:    string(pollConfig.CloneUrl),
-				Private:   pollConfig.Private,
 			}
 
 			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, dockerClient,
