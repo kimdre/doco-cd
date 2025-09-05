@@ -106,11 +106,11 @@ func loadFileBasedEnvVars(cfg *AppConfig) error {
 		fileField  string
 		value      *string
 		name       string
-		allowUnset bool
+		allowUnset bool // allowUnset indicates if both the fileField and value can be unset
 	}{
 		{cfg.ApiSecretFile, &cfg.ApiSecret, "API_SECRET", true},
 		{cfg.WebhookSecretFile, &cfg.WebhookSecret, "WEBHOOK_SECRET", true},
-		{cfg.GitAccessTokenFile, &cfg.GitAccessToken, "GIT_ACCESS_TOKEN", false},
+		{cfg.GitAccessTokenFile, &cfg.GitAccessToken, "GIT_ACCESS_TOKEN", true},
 		{cfg.AppriseNotifyUrlsFile, &cfg.AppriseNotifyUrls, "APPRISE_NOTIFY_URLS", true},
 	}
 
