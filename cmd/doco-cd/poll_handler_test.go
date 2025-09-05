@@ -30,7 +30,6 @@ func TestRunPoll(t *testing.T) {
 		Reference:    "main",
 		Interval:     10,
 		CustomTarget: "",
-		Private:      true,
 	}
 
 	if docker.SwarmModeEnabled {
