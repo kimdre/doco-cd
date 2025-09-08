@@ -21,9 +21,8 @@ services:
     environment:
       TZ: Europe/Berlin
       GIT_ACCESS_TOKEN: xxx
-      WEBHOOK_SECRET: xxx
-      # Uncomment this line to use the poll configuration from above (the `x-poll-config` section).
-      # <<: *poll-config
+      # WEBHOOK_SECRET: xxx  # Uncomment this line and the webhook port above and set a secure secret if you want to use webhooks.
+      # <<: *poll-config  # Uncomment this line to use the poll configuration from above (the `x-poll-config` section).
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # The data volume (left side) can also be replaced with a bind mount to a local directory, for example:
