@@ -7,25 +7,13 @@ import (
 
 	"github.com/docker/docker/client"
 
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
+
 	"github.com/kimdre/doco-cd/internal/git"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
-
-func TestCheckDaemonIsSwarmManager(t *testing.T) {
-	dockerCli, err := CreateDockerCli(false, false)
-	if err != nil {
-		t.Fatalf("Failed to create Docker CLI: %v", err)
-	}
-
-	_, err = CheckDaemonIsSwarmManager(t.Context(), dockerCli)
-	if err != nil {
-		t.Fatalf("Failed to check if Docker daemon is a swarm manager: %v", err)
-	}
-
-	t.Logf("Docker daemon is a swarm manager: %v", err == nil)
-}
 
 func TestDeploySwarmStack(t *testing.T) {
 	dockerCli, err := CreateDockerCli(false, false)
@@ -33,7 +21,7 @@ func TestDeploySwarmStack(t *testing.T) {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
 	}
 
-	SwarmModeEnabled, err = CheckDaemonIsSwarmManager(t.Context(), dockerCli)
+	SwarmModeEnabled, err = swarm.CheckDaemonIsSwarmManager(t.Context(), dockerCli)
 	if err != nil {
 		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}

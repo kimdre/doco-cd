@@ -18,10 +18,12 @@ import (
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/swarm"
+	swarmTypes "github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
 	testCompose "github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
 
 	apiInternal "github.com/kimdre/doco-cd/internal/api"
 
@@ -105,7 +107,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	cloneUrl := "https://github.com/kimdre/doco-cd.git"
 	indexPath := path.Join("test", "index.html")
 
-	if docker.SwarmModeEnabled {
+	if swarm.ModeEnabled {
 		payloadFile = githubPayloadFileSwarmMode
 		cloneUrl = "https://github.com/kimdre/doco-cd_tests.git"
 		indexPath = path.Join("html", "index.html")
@@ -223,10 +225,10 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 	testContainerPort := ""
 
-	if docker.SwarmModeEnabled {
+	if swarm.ModeEnabled {
 		t.Log("Testing in Swarm mode, using service inspect")
 
-		svc, _, err := dockerCli.Client().ServiceInspectWithRaw(ctx, "test-deploy_test", swarm.ServiceInspectOptions{
+		svc, _, err := dockerCli.Client().ServiceInspectWithRaw(ctx, "test-deploy_test", swarmTypes.ServiceInspectOptions{
 			InsertDefaults: true,
 		})
 		if err != nil {
@@ -390,7 +392,7 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			if docker.SwarmModeEnabled {
+			if swarm.ModeEnabled {
 				t.Skip("Skipping Project API tests in Swarm mode")
 			}
 

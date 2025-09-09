@@ -16,6 +16,8 @@ import (
 	testCompose "github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
+
 	"github.com/kimdre/doco-cd/internal/notification"
 
 	"github.com/go-git/go-git/v5/plumbing"
@@ -135,7 +137,7 @@ func TestDeployCompose(t *testing.T) {
 		client.WithAPIVersionNegotiation(),
 	)
 
-	SwarmModeEnabled, err = CheckDaemonIsSwarmManager(ctx, dockerCli)
+	SwarmModeEnabled, err = swarm.CheckDaemonIsSwarmManager(ctx, dockerCli)
 	if err != nil {
 		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}

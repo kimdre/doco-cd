@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
 
 	"github.com/kimdre/doco-cd/internal/git"
@@ -32,7 +33,7 @@ func TestRunPoll(t *testing.T) {
 		CustomTarget: "",
 	}
 
-	if docker.SwarmModeEnabled {
+	if swarm.ModeEnabled {
 		pollConfig.Reference = git.SwarmModeBranch
 
 		t.Log("Testing in Swarm mode, using 'swarm-mode' reference")

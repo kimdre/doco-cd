@@ -18,6 +18,8 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/google/uuid"
 
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
+
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/encryption"
@@ -46,7 +48,7 @@ func TestMain(m *testing.M) {
 		log.Fatalf("Failed to verify docker socket connection: %v", err)
 	}
 
-	docker.SwarmModeEnabled, err = docker.CheckDaemonIsSwarmManager(ctx, dockerCli)
+	swarm.ModeEnabled, err = swarm.CheckDaemonIsSwarmManager(ctx, dockerCli)
 	if err != nil {
 		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
@@ -207,7 +209,7 @@ func TestHandleEvent(t *testing.T) {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
 	}
 
-	docker.SwarmModeEnabled, err = docker.CheckDaemonIsSwarmManager(t.Context(), dockerCli)
+	swarm.ModeEnabled, err = swarm.CheckDaemonIsSwarmManager(t.Context(), dockerCli)
 	if err != nil {
 		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
@@ -216,11 +218,11 @@ func TestHandleEvent(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			if docker.SwarmModeEnabled && !tc.swarmMode {
+			if swarm.ModeEnabled && !tc.swarmMode {
 				t.Skipf("Skipping test %s because it requires Swarm mode to be disabled", tc.name)
 			}
 
-			if !docker.SwarmModeEnabled && tc.swarmMode {
+			if !swarm.ModeEnabled && tc.swarmMode {
 				t.Skipf("Skipping test %s because it requires Swarm mode to be enabled", tc.name)
 			}
 

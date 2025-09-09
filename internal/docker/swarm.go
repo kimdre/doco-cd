@@ -14,13 +14,15 @@ import (
 
 	"github.com/docker/docker/client"
 
+	swarmInternal "github.com/kimdre/doco-cd/internal/docker/swarm"
+
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
-	"github.com/docker/cli/cli/command/stack/loader"
-	"github.com/docker/cli/cli/command/stack/options"
 	"github.com/docker/cli/cli/command/stack/swarm"
 	composetypes "github.com/docker/cli/cli/compose/types"
 	"github.com/spf13/pflag"
+
+	"github.com/kimdre/doco-cd/internal/docker/options"
 
 	"github.com/kimdre/doco-cd/internal/webhook"
 
@@ -49,7 +51,7 @@ func DeploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types
 
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 
-	cfg, err := loader.LoadComposefile(dockerCli, opts)
+	cfg, err := swarmInternal.LoadComposefile(dockerCli, opts)
 	if err != nil {
 		return fmt.Errorf("failed to load compose file: %w", err)
 	}
@@ -67,7 +69,7 @@ func DeploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types
 		return fmt.Errorf("failed to set secret hash prefixes: %w", err)
 	}
 
-	return swarm.RunDeploy(ctx, dockerCli, &pflag.FlagSet{}, &opts, cfg)
+	return swarmInternal.RunDeploy(ctx, dockerCli, &pflag.FlagSet{}, &opts, cfg)
 }
 
 // RemoveSwarmStack removes a Docker Swarm stack using the provided deploy configuration.
@@ -77,7 +79,7 @@ func RemoveSwarmStack(ctx context.Context, dockerCli command.Cli, deployConfig *
 		Detach:     false,
 	}
 
-	return swarm.RunRemove(ctx, dockerCli, opts)
+	return swarmInternal.RunRemove(ctx, dockerCli, opts)
 }
 
 // addSwarmServiceLabels adds custom labels to the service containers in a Docker Swarm stack.
@@ -302,19 +304,6 @@ func generateShortHash(data io.Reader) (hash string, err error) {
 	}
 
 	return hash, nil
-}
-
-func CheckDaemonIsSwarmManager(ctx context.Context, dockerCli command.Cli) (bool, error) {
-	info, err := dockerCli.Client().Info(ctx)
-	if err != nil {
-		return false, err
-	}
-
-	if !info.Swarm.ControlAvailable {
-		return false, nil
-	}
-
-	return true, nil
 }
 
 func PruneStackConfigs(ctx context.Context, client *client.Client, namespace string) error {
