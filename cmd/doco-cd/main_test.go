@@ -260,7 +260,7 @@ func TestHandleEvent(t *testing.T) {
 			)
 
 			log := logger.New(12)
-			jobID := uuid.Must(uuid.NewRandom()).String()
+			jobID := uuid.Must(uuid.NewV7()).String()
 			jobLog := log.With(slog.String("job_id", jobID))
 
 			ctx := context.Background()
