@@ -18,7 +18,7 @@ require (
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
-	github.com/prometheus/client_golang v1.23.1
+	github.com/prometheus/client_golang v1.23.2
 	github.com/shirou/gopsutil/v4 v4.25.5 // indirect
 	github.com/spf13/pflag v1.0.10
 	github.com/testcontainers/testcontainers-go v0.38.0
@@ -218,7 +218,7 @@ require (
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
-	github.com/prometheus/common v0.66.0 // indirect
+	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
@@ -308,10 +308,7 @@ require (
 
 require github.com/testcontainers/testcontainers-go/modules/compose v0.38.0
 
-require (
-	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
-)
+require go.yaml.in/yaml/v2 v2.4.2 // indirect
 
 tool (
 	github.com/bombsimon/wsl/v5/cmd/wsl
