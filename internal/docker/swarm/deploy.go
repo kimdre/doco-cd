@@ -10,6 +10,7 @@ import (
 	composetypes "github.com/docker/cli/cli/compose/types"
 	swarmTypes "github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/api/types/versions"
+
 	"github.com/kimdre/doco-cd/internal/docker/options"
 )
 

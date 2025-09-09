@@ -20,6 +20,7 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/command/stack/swarm"
 	composetypes "github.com/docker/cli/cli/compose/types"
+
 	"github.com/kimdre/doco-cd/internal/docker/options"
 
 	"github.com/kimdre/doco-cd/internal/webhook"
