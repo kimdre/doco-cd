@@ -69,3 +69,4 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage-${{ matrix.mode }}.out
+          flags: unittests
