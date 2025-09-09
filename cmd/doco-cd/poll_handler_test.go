@@ -33,6 +33,8 @@ func TestRunPoll(t *testing.T) {
 		CustomTarget: "",
 	}
 
+	const name = "test-deploy"
+
 	if swarm.ModeEnabled {
 		pollConfig.Reference = git.SwarmModeBranch
 
@@ -80,7 +82,11 @@ func TestRunPoll(t *testing.T) {
 	t.Cleanup(func() {
 		t.Log("Remove test container")
 
-		err = service.Down(ctx, "test-deploy", downOpts)
+		if swarm.ModeEnabled {
+			err = docker.RemoveSwarmStack(ctx, dockerCli, name)
+		} else {
+			err = service.Down(ctx, name, downOpts)
+		}
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -88,7 +94,7 @@ func TestRunPoll(t *testing.T) {
 
 	metadata := notification.Metadata{
 		Repository: getRepoName(string(pollConfig.CloneUrl)),
-		Stack:      "test-deploy",
+		Stack:      name,
 		Revision:   notification.GetRevision(pollConfig.Reference, ""),
 	}
 

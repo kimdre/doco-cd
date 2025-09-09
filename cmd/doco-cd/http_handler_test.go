@@ -103,6 +103,8 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	expectedStatusCode := http.StatusCreated
 	tmpDir := t.TempDir()
 
+	const name = "test-deploy"
+
 	payloadFile := githubPayloadFile
 	cloneUrl := "https://github.com/kimdre/doco-cd.git"
 	indexPath := path.Join("test", "index.html")
@@ -202,7 +204,11 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	t.Cleanup(func() {
 		t.Log("Remove doco-cd container")
 
-		err = service.Down(ctx, "test-deploy", downOpts)
+		if swarm.ModeEnabled {
+			err = docker.RemoveSwarmStack(ctx, dockerCli, name)
+		} else {
+			err = service.Down(ctx, name, downOpts)
+		}
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -217,7 +223,11 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	t.Cleanup(func() {
 		t.Log("Remove test container")
 
-		err = service.Down(ctx, "test", downOpts)
+		if swarm.ModeEnabled {
+			err = docker.RemoveSwarmStack(ctx, dockerCli, "test")
+		} else {
+			err = service.Down(ctx, "test", downOpts)
+		}
 		if err != nil {
 			t.Fatal(err)
 		}

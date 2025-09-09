@@ -301,7 +301,11 @@ func TestHandleEvent(t *testing.T) {
 
 				t.Log("Remove test container")
 
-				err = service.Down(ctx, tc.payload.Name, downOpts)
+				if swarm.ModeEnabled {
+					err = docker.RemoveSwarmStack(ctx, dockerCli, tc.payload.Name)
+				} else {
+					err = service.Down(ctx, tc.payload.Name, downOpts)
+				}
 				if err != nil {
 					t.Fatal(err)
 				}
