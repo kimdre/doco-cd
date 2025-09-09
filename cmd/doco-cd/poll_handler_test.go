@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
 
 	"github.com/kimdre/doco-cd/internal/git"
@@ -32,7 +33,9 @@ func TestRunPoll(t *testing.T) {
 		CustomTarget: "",
 	}
 
-	if docker.SwarmModeEnabled {
+	const name = "test-deploy"
+
+	if swarm.ModeEnabled {
 		pollConfig.Reference = git.SwarmModeBranch
 
 		t.Log("Testing in Swarm mode, using 'swarm-mode' reference")
@@ -79,7 +82,12 @@ func TestRunPoll(t *testing.T) {
 	t.Cleanup(func() {
 		t.Log("Remove test container")
 
-		err = service.Down(ctx, "test-deploy", downOpts)
+		if swarm.ModeEnabled {
+			err = docker.RemoveSwarmStack(ctx, dockerCli, name)
+		} else {
+			err = service.Down(ctx, name, downOpts)
+		}
+
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -87,7 +95,7 @@ func TestRunPoll(t *testing.T) {
 
 	metadata := notification.Metadata{
 		Repository: getRepoName(string(pollConfig.CloneUrl)),
-		Stack:      "test-deploy",
+		Stack:      name,
 		Revision:   notification.GetRevision(pollConfig.Reference, ""),
 	}
 

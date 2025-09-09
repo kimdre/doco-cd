@@ -16,6 +16,8 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
+
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/filesystem"
@@ -192,7 +194,7 @@ func main() {
 		slog.Group("versions",
 			slog.String("docker_client", dockerClient.ClientVersion()),
 			slog.String("docker_api", dockerCli.CurrentVersion()),
-			slog.Bool("swarm_mode", docker.SwarmModeEnabled),
+			slog.Bool("swarm_mode", swarm.ModeEnabled),
 		))
 
 	// Get container id of this application

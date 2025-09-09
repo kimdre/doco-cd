@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
 
 	"github.com/docker/cli/cli/command"
@@ -129,7 +130,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 
 	if appConfig.DockerSwarmFeatures {
 		// Check if docker host is running in swarm mode
-		docker.SwarmModeEnabled, err = docker.CheckDaemonIsSwarmManager(ctx, dockerCli)
+		swarm.ModeEnabled, err = swarm.CheckDaemonIsSwarmManager(ctx, dockerCli)
 		if err != nil {
 			jobLog.Error("failed to check if docker host is running in swarm mode")
 
@@ -296,8 +297,8 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		metadata.Revision = notification.GetRevision(deployConfig.Reference, latestCommit)
 
 		filterLabel := api.ProjectLabel
-		if docker.SwarmModeEnabled {
-			filterLabel = docker.StackNamespaceLabel
+		if swarm.ModeEnabled {
+			filterLabel = swarm.StackNamespaceLabel
 		}
 
 		if deployConfig.Destroy {
@@ -353,7 +354,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 				return metadata, fmt.Errorf("failed to destroy stack: %w", err)
 			}
 
-			if docker.SwarmModeEnabled && deployConfig.DestroyOpts.RemoveVolumes {
+			if swarm.ModeEnabled && deployConfig.DestroyOpts.RemoveVolumes {
 				err = docker.RemoveLabeledVolumes(ctx, dockerClient, deployConfig.Name, filterLabel)
 				if err != nil {
 					subJobLog.Error("failed to remove volumes", log.ErrAttr(err))

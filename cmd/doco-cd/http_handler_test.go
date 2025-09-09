@@ -18,10 +18,12 @@ import (
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/swarm"
+	swarmTypes "github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
 	testCompose "github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
 
 	apiInternal "github.com/kimdre/doco-cd/internal/api"
 
@@ -101,11 +103,16 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	expectedStatusCode := http.StatusCreated
 	tmpDir := t.TempDir()
 
+	const (
+		containerName = "test"
+		stackName     = "test-deploy"
+	)
+
 	payloadFile := githubPayloadFile
 	cloneUrl := "https://github.com/kimdre/doco-cd.git"
 	indexPath := path.Join("test", "index.html")
 
-	if docker.SwarmModeEnabled {
+	if swarm.ModeEnabled {
 		payloadFile = githubPayloadFileSwarmMode
 		cloneUrl = "https://github.com/kimdre/doco-cd_tests.git"
 		indexPath = path.Join("html", "index.html")
@@ -198,35 +205,28 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	}
 
 	t.Cleanup(func() {
-		t.Log("Remove doco-cd container")
+		t.Log("Remove " + stackName)
 
-		err = service.Down(ctx, "test-deploy", downOpts)
+		err = service.Down(ctx, stackName, downOpts)
 		if err != nil {
 			t.Fatal(err)
 		}
 	})
 
 	// Check if the deployed test container is running
-	testContainerID, err := docker.GetContainerID(dockerCli.Client(), "test")
+	testContainerID, err := docker.GetContainerID(dockerCli.Client(), containerName)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	t.Cleanup(func() {
-		t.Log("Remove test container")
-
-		err = service.Down(ctx, "test", downOpts)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
-
 	testContainerPort := ""
 
-	if docker.SwarmModeEnabled {
+	if swarm.ModeEnabled {
 		t.Log("Testing in Swarm mode, using service inspect")
 
-		svc, _, err := dockerCli.Client().ServiceInspectWithRaw(ctx, "test-deploy_test", swarm.ServiceInspectOptions{
+		inspectName := stackName + "_" + containerName
+
+		svc, _, err := dockerCli.Client().ServiceInspectWithRaw(ctx, inspectName, swarmTypes.ServiceInspectOptions{
 			InsertDefaults: true,
 		})
 		if err != nil {
@@ -239,12 +239,12 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 		testContainerPort = strconv.FormatUint(uint64(svc.Endpoint.Ports[0].PublishedPort), 10)
 
-		defer func() {
-			err = dockerCli.Client().ServiceRemove(ctx, "test-deploy_test")
+		t.Cleanup(func() {
+			err = dockerCli.Client().ServiceRemove(ctx, inspectName)
 			if err != nil {
 				t.Fatalf("Failed to remove test container service: %v", err)
 			}
-		}()
+		})
 	} else {
 		testContainer, err := dockerCli.Client().ContainerInspect(ctx, testContainerID)
 		if err != nil {
@@ -390,7 +390,7 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			if docker.SwarmModeEnabled {
+			if swarm.ModeEnabled {
 				t.Skip("Skipping Project API tests in Swarm mode")
 			}
 
