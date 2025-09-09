@@ -33,10 +33,15 @@ jobs:
           version: latest
           args: --timeout=5m
 
-  test_compose:
-    name: Test Docker Compose
+  test:
+    name: Test
     runs-on: ubuntu-latest
     timeout-minutes: 10
+
+    strategy:
+      matrix:
+        mode: [standalone, swarm]
+
     services:
       squid-proxy:
         image: ubuntu/squid:latest@sha256:98f98aaa024e4a58433450f8adde48ef5748f1ae05133b2367d64317cc881a3a
@@ -50,7 +55,8 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
       - run: go mod download
-      - run: go test -p 1 -v -coverprofile=coverage.out -covermode=atomic ./... -timeout 10m
+      - run: if [ "${{ matrix.mode }}" = "swarm" ]; then docker swarm init; fi
+      - run: go test -p 1 -v -coverprofile=coverage-${{ matrix.mode }}.out -covermode=atomic -timeout 10m ./...
         timeout-minutes: 10
         env:
           WEBHOOK_SECRET: test_Secret1
@@ -62,36 +68,5 @@ jobs:
         uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7 # v5.5.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage.out
-
-  test_swarm:
-    name: Tests Docker Swarm Mode
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    services:
-      squid-proxy:
-        image: ubuntu/squid:latest@sha256:98f98aaa024e4a58433450f8adde48ef5748f1ae05133b2367d64317cc881a3a
-        ports:
-          - 3128:3128
-
-    steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
-        with:
-          go-version-file: 'go.mod'
-          cache: true
-      - run: go mod download
-      - run: docker swarm init
-      - run: go test -p 1 -v -coverprofile=coverage-swarm.out -covermode=atomic ./... -timeout 10m
-        timeout-minutes: 10
-        env:
-          WEBHOOK_SECRET: test_Secret1
-          API_SECRET: api_Secret1
-          GIT_ACCESS_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
-          HTTP_PROXY: http://localhost:3128
-          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7 # v5.5.1
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage-swarm.out
+          files: coverage-${{ matrix.mode }}.out
+          flags: unittests
