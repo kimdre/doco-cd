@@ -42,6 +42,12 @@ The CI pipeline will fail, if the code is not formatted correctly.
 Always add unit tests to verify your code. 
 Run the tests with `make test` or `make test-verbose` and run specific tests with `make test-run <testName>` (Verbose with `make test-run "-v <testName>"`).
 
+#### With registry credentials
+
+You can provide container registry credentials to avoid rate limiting issues when running tests.
+
+Follow the [Accessing private container registries](https://github.com/kimdre/doco-cd/wiki/Tips-and-Tricks#accessing-private-container-registries) Guide in the Wiki for more information.
+
 ### Building from Source
 
 Create a `.env` file and add any environment variables required for your development environment.
