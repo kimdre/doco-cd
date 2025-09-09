@@ -54,7 +54,7 @@ const (
 	projectName     = "test"
 	composeContents = `services:
   test:
-    image: public.ecr.aws/nginx/nginx:latest
+    image: nginx:latest
     environment:
       TZ: Europe/Berlin
     ports:
