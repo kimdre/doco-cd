@@ -2,7 +2,7 @@
 services:
   app:
     container_name: test
-    image: nginx:latest
+    image: public.ecr.aws/nginx/nginx:latest
     ports:
       - "80"  # use random published port
     depends_on:
@@ -19,7 +19,7 @@ services:
       - test_config
 
   dep:
-    image: nginx:latest
+    image: public.ecr.aws/nginx/nginx:latest
 
 secrets:
   test_secret:
