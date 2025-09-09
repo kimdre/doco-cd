@@ -36,7 +36,7 @@ const (
 	githubPayloadFileSwarmMode = "testdata/github_payload_swarm_mode.json"
 	composeContent             = `services:
   nginx:
-    image: nginx:latest
+    image: ghcr.io/linuxserver/nginx:latest
     ports:
       - "80:80"
 `
