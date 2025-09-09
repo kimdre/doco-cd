@@ -73,9 +73,9 @@ func DeploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types
 }
 
 // RemoveSwarmStack removes a Docker Swarm stack using the provided deploy configuration.
-func RemoveSwarmStack(ctx context.Context, dockerCli command.Cli, deployConfig *config.DeployConfig) error {
+func RemoveSwarmStack(ctx context.Context, dockerCli command.Cli, namespace string) error {
 	opts := options.Remove{
-		Namespaces: []string{deployConfig.Name},
+		Namespaces: []string{namespace},
 		Detach:     false,
 	}
 

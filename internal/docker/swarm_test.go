@@ -104,7 +104,7 @@ func TestDeploySwarmStack(t *testing.T) {
 		t.Logf("Stack secrets pruned successfully")
 	}
 
-	err = RemoveSwarmStack(t.Context(), dockerCli, deployConfigs[0])
+	err = RemoveSwarmStack(t.Context(), dockerCli, deployConfigs[0].Name)
 	if err != nil {
 		t.Fatalf("Failed to remove swarm stack: %v", err)
 	} else {
