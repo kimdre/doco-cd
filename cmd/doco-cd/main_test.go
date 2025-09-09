@@ -306,6 +306,7 @@ func TestHandleEvent(t *testing.T) {
 				} else {
 					err = service.Down(ctx, tc.payload.Name, downOpts)
 				}
+
 				if err != nil {
 					t.Fatal(err)
 				}

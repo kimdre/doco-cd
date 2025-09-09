@@ -209,6 +209,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		} else {
 			err = service.Down(ctx, name, downOpts)
 		}
+
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -228,6 +229,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		} else {
 			err = service.Down(ctx, "test", downOpts)
 		}
+
 		if err != nil {
 			t.Fatal(err)
 		}

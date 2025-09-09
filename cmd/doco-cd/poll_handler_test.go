@@ -87,6 +87,7 @@ func TestRunPoll(t *testing.T) {
 		} else {
 			err = service.Down(ctx, name, downOpts)
 		}
+
 		if err != nil {
 			t.Fatal(err)
 		}
