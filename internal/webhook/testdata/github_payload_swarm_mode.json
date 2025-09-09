@@ -1,7 +1,7 @@
 {
   "ref": "refs/heads/swarm-mode",
-  "before": "f13699147dcbc60619423c3c7c18e1b8bf43466a",
-  "after": "e82246851a624b3906527764196e9d072da99762",
+  "before": "ef5cc9cede1c6062291bc089f8376fa503a7627c",
+  "after": "01435dad4e7ff8f7da70202ca1ca77bccca9eb62",
   "repository": {
     "id": 841042673,
     "node_id": "R_kgDOMiFK8Q",
@@ -141,12 +141,12 @@
   "compare": "https://github.com/kimdre/doco-cd_tests/compare/f13699147dcb...e82246851a62",
   "commits": [
     {
-      "id": "e82246851a624b3906527764196e9d072da99762",
+      "id": "01435dad4e7ff8f7da70202ca1ca77bccca9eb62",
       "tree_id": "11e81605a99ecab74b33ca02a7bcda717820dd41",
       "distinct": true,
       "message": "Update .doco-cd.yml",
       "timestamp": "2025-07-20T12:05:30+02:00",
-      "url": "https://github.com/kimdre/doco-cd_tests/commit/e82246851a624b3906527764196e9d072da99762",
+      "url": "https://github.com/kimdre/doco-cd_tests/commit/01435dad4e7ff8f7da70202ca1ca77bccca9eb62",
       "author": {
         "name": "Kim Oliver Drechsel",
         "email": "redacted",
@@ -169,12 +169,12 @@
     }
   ],
   "head_commit": {
-    "id": "e82246851a624b3906527764196e9d072da99762",
+    "id": "01435dad4e7ff8f7da70202ca1ca77bccca9eb62",
     "tree_id": "11e81605a99ecab74b33ca02a7bcda717820dd41",
     "distinct": true,
     "message": "Update .doco-cd.yml",
     "timestamp": "2025-07-20T12:05:30+02:00",
-    "url": "https://github.com/kimdre/doco-cd_tests/commit/e82246851a624b3906527764196e9d072da99762",
+    "url": "https://github.com/kimdre/doco-cd_tests/commit/01435dad4e7ff8f7da70202ca1ca77bccca9eb62",
     "author": {
       "name": "Kim Oliver Drechsel",
       "email": "redacted",
