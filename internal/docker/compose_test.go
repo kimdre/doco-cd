@@ -56,7 +56,7 @@ const (
   test:
     image: ghcr.io/linuxserver/nginx:latest
     environment:
-			PUID: 1000
+      PUID: 1000
       PGID: 1000
       TZ: Europe/Berlin
     ports:
