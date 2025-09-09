@@ -103,7 +103,10 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	expectedStatusCode := http.StatusCreated
 	tmpDir := t.TempDir()
 
-	const name = "test-deploy"
+	const (
+		containerName = "test"
+		stackName     = "test-deploy"
+	)
 
 	payloadFile := githubPayloadFile
 	cloneUrl := "https://github.com/kimdre/doco-cd.git"
@@ -202,45 +205,28 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	}
 
 	t.Cleanup(func() {
-		t.Log("Remove doco-cd container")
+		t.Log("Remove " + stackName)
 
-		if swarm.ModeEnabled {
-			err = docker.RemoveSwarmStack(ctx, dockerCli, name)
-		} else {
-			err = service.Down(ctx, name, downOpts)
-		}
-
+		err = service.Down(ctx, stackName, downOpts)
 		if err != nil {
 			t.Fatal(err)
 		}
 	})
 
 	// Check if the deployed test container is running
-	testContainerID, err := docker.GetContainerID(dockerCli.Client(), "test")
+	testContainerID, err := docker.GetContainerID(dockerCli.Client(), containerName)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	t.Cleanup(func() {
-		t.Log("Remove test container")
-
-		if swarm.ModeEnabled {
-			err = docker.RemoveSwarmStack(ctx, dockerCli, "test")
-		} else {
-			err = service.Down(ctx, "test", downOpts)
-		}
-
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
 
 	testContainerPort := ""
 
 	if swarm.ModeEnabled {
 		t.Log("Testing in Swarm mode, using service inspect")
 
-		svc, _, err := dockerCli.Client().ServiceInspectWithRaw(ctx, "test-deploy_test", swarmTypes.ServiceInspectOptions{
+		inspectName := stackName + "_" + containerName
+
+		svc, _, err := dockerCli.Client().ServiceInspectWithRaw(ctx, inspectName, swarmTypes.ServiceInspectOptions{
 			InsertDefaults: true,
 		})
 		if err != nil {
@@ -253,12 +239,12 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 		testContainerPort = strconv.FormatUint(uint64(svc.Endpoint.Ports[0].PublishedPort), 10)
 
-		defer func() {
-			err = dockerCli.Client().ServiceRemove(ctx, "test-deploy_test")
+		t.Cleanup(func() {
+			err = dockerCli.Client().ServiceRemove(ctx, inspectName)
 			if err != nil {
 				t.Fatalf("Failed to remove test container service: %v", err)
 			}
-		}()
+		})
 	} else {
 		testContainer, err := dockerCli.Client().ContainerInspect(ctx, testContainerID)
 		if err != nil {
