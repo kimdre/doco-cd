@@ -141,8 +141,8 @@ github.com/bitly/go-simplejson v0.5.0/go.mod h1:cXHtHw4XUPsvGaxgjIAn8PhEWG9NfngE
 github.com/blang/semver v3.5.1+incompatible h1:cQNTCjp13qL8KC3Nbxr/y2Bqb63oX6wdnnjpJbkM4JQ=
 github.com/blang/semver v3.5.1+incompatible/go.mod h1:kRBLl5iJ+tD4TcOOxsy/0fnwebNt5EWlYSAyrTnjyyk=
 github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869/go.mod h1:Ekp36dRnpXw/yCqJaO+ZrUyxD+3VXMFFr56k5XYrpB4=
-github.com/bombsimon/wsl/v5 v5.1.1 h1:cQg5KJf9FlctAH4cpL9vLKnziYknoCMCdqXl0wjl72Q=
-github.com/bombsimon/wsl/v5 v5.1.1/go.mod h1:Gp8lD04z27wm3FANIUPZycXp+8huVsn0oxc+n4qfV9I=
+github.com/bombsimon/wsl/v5 v5.2.0 h1:PyCCwd3Q7abGs3e34IW4jLYlBS+FbsU6iK+Tb3NnDp4=
+github.com/bombsimon/wsl/v5 v5.2.0/go.mod h1:Gp8lD04z27wm3FANIUPZycXp+8huVsn0oxc+n4qfV9I=
 github.com/buger/goterm v1.0.4 h1:Z9YvGmOih81P0FbVtEYTFF6YsSgxSUKEhf/f9bTMXbY=
 github.com/buger/goterm v1.0.4/go.mod h1:HiFWV3xnkolgrBV3mY8m0X0Pumt4zg4QhbdOzQtB8tE=
 github.com/bugsnag/bugsnag-go v1.0.5-0.20150529004307-13fd6b8acda0 h1:s7+5BfS4WFJoVF9pnB8kBk03S7pZXRdKamnV0FOl5Sc=
