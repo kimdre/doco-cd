@@ -54,15 +54,13 @@ const (
 	projectName     = "test"
 	composeContents = `services:
   test:
-    image: ghcr.io/linuxserver/nginx:latest
+    image: public.ecr.aws/nginx/nginx:latest
     environment:
-      PUID: 1000
-      PGID: 1000
       TZ: Europe/Berlin
     ports:
       - "80:80"
     volumes:
-      - ./html:/config/www
+      - ./html:/usr/share/nginx/html
 `
 )
 
