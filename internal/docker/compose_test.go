@@ -54,15 +54,13 @@ const (
 	projectName     = "test"
 	composeContents = `services:
   test:
-    image: nginx:latest
+    image: ghcr.io/linuxserver/nginx:latest
     environment:
-      GIT_ACCESS_TOKEN:
-      WEBHOOK_SECRET:
       TZ: Europe/Berlin
     ports:
       - "80:80"
     volumes:
-      - ./html:/usr/share/nginx/html
+      - ./html:/config/www
 `
 )
 
@@ -268,7 +266,7 @@ func TestDeployCompose(t *testing.T) {
 
 		t.Log("Finished deployment with no errors")
 
-		mountPoint, err := GetMountPointByDestination(dockerClient, containerID, "/usr/share/nginx/html")
+		mountPoint, err := GetMountPointByDestination(dockerClient, containerID, "/config/www")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -279,7 +277,7 @@ func TestDeployCompose(t *testing.T) {
 
 		t.Logf("Mount point source: %s, destination: %s", mountPoint.Source, mountPoint.Destination)
 
-		txtOutput, err := Exec(dockerCli.Client(), containerID, "cat", "usr/share/nginx/html/index.html")
+		txtOutput, err := Exec(dockerCli.Client(), containerID, "cat", "/config/www/index.html")
 		if err != nil {
 			t.Fatal(err)
 		}
