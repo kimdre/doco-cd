@@ -88,7 +88,7 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 					Repository: repoName,
 					Stack:      "",
 					Revision:   notification.GetRevision(pollJob.Config.Reference, ""),
-					JobID:      uuid.Must(uuid.NewRandom()).String(),
+					JobID:      uuid.Must(uuid.NewV7()).String(),
 				}
 
 				logger.Debug("Start poll job")
