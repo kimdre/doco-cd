@@ -53,6 +53,12 @@ func TestMain(m *testing.M) {
 		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 
+	if swarm.ModeEnabled {
+		log.Println("Testing in Docker Swarm mode")
+	} else {
+		log.Println("Testing in Docker Compose mode")
+	}
+
 	// Ensure the Docker client is closed after tests
 	defer func() {
 		if err := dockerCli.Client().Close(); err != nil {

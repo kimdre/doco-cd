@@ -298,7 +298,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 
 		filterLabel := api.ProjectLabel
 		if swarm.ModeEnabled {
-			filterLabel = docker.StackNamespaceLabel
+			filterLabel = swarm.StackNamespaceLabel
 		}
 
 		if deployConfig.Destroy {

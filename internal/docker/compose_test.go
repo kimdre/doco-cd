@@ -137,12 +137,12 @@ func TestDeployCompose(t *testing.T) {
 		client.WithAPIVersionNegotiation(),
 	)
 
-	SwarmModeEnabled, err = swarm.CheckDaemonIsSwarmManager(ctx, dockerCli)
+	swarm.ModeEnabled, err = swarm.CheckDaemonIsSwarmManager(ctx, dockerCli)
 	if err != nil {
 		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 
-	if SwarmModeEnabled {
+	if swarm.ModeEnabled {
 		t.Skip("Swarm mode is enabled, skipping test")
 	}
 

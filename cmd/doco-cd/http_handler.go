@@ -265,7 +265,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 		filterLabel := api.ProjectLabel
 		if swarm.ModeEnabled {
-			filterLabel = docker.StackNamespaceLabel
+			filterLabel = swarm.StackNamespaceLabel
 		}
 
 		if deployConfig.Destroy {

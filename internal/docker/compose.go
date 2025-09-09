@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
 
 	"github.com/go-git/go-git/v5/plumbing/format/diff"
@@ -496,7 +497,7 @@ func DeployStack(
 	}()
 
 	// When SwarmModeEnabled is true, we deploy the stack using Docker Swarm.
-	if SwarmModeEnabled {
+	if swarm.ModeEnabled {
 		// Check if the project has bind mounts with swarm mode and fail if it does.
 		for _, service := range project.Services {
 			for _, volume := range service.Volumes {
@@ -607,7 +608,7 @@ func DestroyStack(
 
 	stackLog.Info("destroying stack")
 
-	if SwarmModeEnabled {
+	if swarm.ModeEnabled {
 		err := RemoveSwarmStack(*ctx, *dockerCli, deployConfig.Name)
 		if err != nil {
 			errMsg := "failed to destroy swarm stack"

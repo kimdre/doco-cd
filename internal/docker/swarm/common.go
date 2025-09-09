@@ -10,6 +10,12 @@ import (
 	"github.com/docker/docker/client"
 )
 
+const (
+	StackNamespaceLabel = "com.docker.stack.namespace"
+)
+
+var ModeEnabled bool // Whether the docker host is running in swarm mode
+
 func getStackFilter(namespace string) filters.Args {
 	filter := filters.NewArgs()
 	filter.Add("label", convert.LabelNamespace+"="+namespace)
