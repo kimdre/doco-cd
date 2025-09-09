@@ -224,7 +224,7 @@ func TestDeployCompose(t *testing.T) {
 
 		t.Logf("Deploying '%s'", deployConf.Name)
 
-		jobID := uuid.Must(uuid.NewRandom()).String()
+		jobID := uuid.Must(uuid.NewV7()).String()
 
 		log := logger.New(slog.LevelInfo)
 		jobLog := log.With(slog.String("job_id", jobID))

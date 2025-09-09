@@ -462,7 +462,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	customTarget := r.PathValue("customTarget")
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := uuid.Must(uuid.NewRandom()).String()
+	jobID := uuid.Must(uuid.NewV7()).String()
 	jobLog := h.log.With(slog.String("job_id", jobID))
 
 	jobLog.Debug("received webhook event")
@@ -530,7 +530,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 // HealthCheckHandler handles health check requests.
 func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request) {
-	jobID := uuid.Must(uuid.NewRandom()).String()
+	jobID := uuid.Must(uuid.NewV7()).String()
 
 	metadata := notification.Metadata{
 		JobID:      jobID,
@@ -616,7 +616,7 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 	var err error
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := uuid.Must(uuid.NewRandom()).String()
+	jobID := uuid.Must(uuid.NewV7()).String()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")
@@ -719,7 +719,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := uuid.Must(uuid.NewRandom()).String()
+	jobID := uuid.Must(uuid.NewV7()).String()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")
@@ -798,7 +798,7 @@ func (h *handlerData) GetProjectsApiHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := uuid.Must(uuid.NewRandom()).String()
+	jobID := uuid.Must(uuid.NewV7()).String()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")
