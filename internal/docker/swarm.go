@@ -20,7 +20,6 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/command/stack/swarm"
 	composetypes "github.com/docker/cli/cli/compose/types"
-	"github.com/spf13/pflag"
 
 	"github.com/kimdre/doco-cd/internal/docker/options"
 
@@ -63,7 +62,7 @@ func DeploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types
 		return fmt.Errorf("failed to set secret hash prefixes: %w", err)
 	}
 
-	return swarmInternal.RunDeploy(ctx, dockerCli, &pflag.FlagSet{}, &opts, cfg)
+	return swarmInternal.RunDeploy(ctx, dockerCli, &opts, cfg)
 }
 
 // RemoveSwarmStack removes a Docker Swarm stack using the provided deploy configuration.

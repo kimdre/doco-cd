@@ -10,7 +10,6 @@ import (
 	composetypes "github.com/docker/cli/cli/compose/types"
 	swarmTypes "github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/api/types/versions"
-	"github.com/spf13/pflag"
 
 	"github.com/kimdre/doco-cd/internal/docker/options"
 )
@@ -18,7 +17,7 @@ import (
 const defaultNetworkDriver = "overlay"
 
 // RunDeploy is the swarm implementation of docker stack deploy.
-func RunDeploy(ctx context.Context, dockerCLI command.Cli, flags *pflag.FlagSet, opts *options.Deploy, cfg *composetypes.Config) error {
+func RunDeploy(ctx context.Context, dockerCLI command.Cli, opts *options.Deploy, cfg *composetypes.Config) error {
 	if err := validateResolveImageFlag(opts); err != nil {
 		return err
 	}
@@ -26,11 +25,6 @@ func RunDeploy(ctx context.Context, dockerCLI command.Cli, flags *pflag.FlagSet,
 	// server version is older than 1.30
 	if versions.LessThan(dockerCLI.Client().ClientVersion(), "1.30") {
 		opts.ResolveImage = swarm.ResolveImageNever
-	}
-
-	if opts.Detach && !flags.Changed("detach") {
-		_, _ = fmt.Fprintln(dockerCLI.Err(), "Since --detach=false was not specified, tasks will be created in the background.\n"+
-			"In a future release, --detach=false will become the default.")
 	}
 
 	return deployCompose(ctx, dockerCLI, opts, cfg)
