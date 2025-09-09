@@ -285,7 +285,7 @@ func TestDeployCompose(t *testing.T) {
 		const expectedString = "Hello world!"
 
 		if strings.TrimSpace(txtOutput) != expectedString {
-			t.Fatalf("failed to mount: content of 'html/index.html' not equal to content of 'usr/share/nginx/html/index.html': %s", txtOutput)
+			t.Fatalf("failed to mount: content of 'html/index.html' not equal to content of '/config/www/index.html': %s", txtOutput)
 		}
 
 		// Get output of web server
@@ -295,7 +295,7 @@ func TestDeployCompose(t *testing.T) {
 		}
 
 		if strings.TrimSpace(htmlOutput) != expectedString {
-			t.Fatalf("failed to mount: content of 'html/index.html' not equal to content of 'usr/share/nginx/html/index.html': %s", htmlOutput)
+			t.Fatalf("failed to mount: content of 'html/index.html' not equal to content of '/config/www/index.html': %s", htmlOutput)
 		}
 
 		t.Log("Destroying deployment")
