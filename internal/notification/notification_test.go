@@ -33,7 +33,7 @@ func TestSend(t *testing.T) {
 		Repository: "test",
 		Stack:      "test-stack",
 		Revision:   "main",
-		JobID:      uuid.Must(uuid.NewRandom()).String(),
+		JobID:      uuid.Must(uuid.NewV7()).String(),
 	}
 
 	ctr, err := testcontainers.Run(

@@ -12,7 +12,7 @@ import (
 func TestJSONResponse(t *testing.T) {
 	rr := httptest.NewRecorder()
 
-	jobId := uuid.Must(uuid.NewRandom()).String()
+	jobId := uuid.Must(uuid.NewV7()).String()
 
 	JSONResponse(rr, "this is a test", jobId, http.StatusOK)
 
@@ -31,7 +31,7 @@ func TestJSONResponse(t *testing.T) {
 func TestJSONError(t *testing.T) {
 	rr := httptest.NewRecorder()
 
-	jobId := uuid.Must(uuid.NewRandom()).String()
+	jobId := uuid.Must(uuid.NewV7()).String()
 
 	JSONError(rr, "this is a error", "this is a detail", jobId, http.StatusInternalServerError)
 
