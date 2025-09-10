@@ -207,23 +207,23 @@ func main() {
 			slog.Bool("swarm_mode", swarm.ModeEnabled),
 		))
 
-	// Get container id of this application
+	// Get doco-cd container id
 	appContainerID, err := getAppContainerID()
 	if err != nil {
-		log.Critical("failed to retrieve application container id", logger.ErrAttr(err))
+		log.Critical("failed to retrieve doco-cd container id", logger.ErrAttr(err))
 
 		return
 	}
 
-	log.Debug("retrieved application container id", slog.String("container_id", appContainerID))
+	log.Debug("retrieved doco-cd container id", slog.String("container_id", appContainerID))
 
-	// Check if the application has a data mount point and get the host path
+	// Check if the doco-cd container has a data mount point and get the host path
 	dataMountPoint, err := docker.GetMountPointByDestination(dockerClient, appContainerID, dataPath)
 	if err != nil {
 		log.Critical(fmt.Sprintf("failed to retrieve %s mount point for container %s", dataPath, appContainerID), logger.ErrAttr(err))
 	}
 
-	log.Debug("retrieved data mount point",
+	log.Debug("retrieved doco-cd data mount point",
 		slog.Group("mount_point",
 			slog.String("source", dataMountPoint.Source),
 			slog.String("destination", dataMountPoint.Destination),
