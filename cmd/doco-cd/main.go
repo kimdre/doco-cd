@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -111,6 +112,8 @@ func CreateMountpointSymlink(m container.MountPoint) error {
 }
 
 func main() {
+	ctx := context.Background()
+
 	var wg sync.WaitGroup
 	// Set the default log level to debug
 	log := logger.New(slog.LevelDebug)
@@ -186,6 +189,13 @@ func main() {
 	)
 	if err != nil {
 		log.Critical("failed to create docker client", logger.ErrAttr(err))
+
+		return
+	}
+
+	swarm.ModeEnabled, err = swarm.CheckDaemonIsSwarmManager(ctx, dockerCli)
+	if err != nil {
+		log.Critical("failed to check if docker daemon is a swarm manager", logger.ErrAttr(err))
 
 		return
 	}
