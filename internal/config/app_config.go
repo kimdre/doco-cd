@@ -6,7 +6,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/notification"
 
-	"github.com/caarlos0/env/v11"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"gopkg.in/validator.v2"
 	"gopkg.in/yaml.v3"
@@ -46,24 +45,19 @@ type AppConfig struct {
 func GetAppConfig() (*AppConfig, error) {
 	cfg := AppConfig{}
 
-	// Parse app config from environment variables
-	if err := env.Parse(&cfg); err != nil {
-		return nil, err
-	}
-
 	mappings := []EnvVarFileMapping{
-		{EnvName: "API_SECRET", EnvValue: &cfg.ApiSecret, FileValue: cfg.ApiSecretFile, AllowUnset: true},
-		{EnvName: "WEBHOOK_SECRET", EnvValue: &cfg.WebhookSecret, FileValue: cfg.WebhookSecretFile, AllowUnset: true},
-		{EnvName: "GIT_ACCESS_TOKEN", EnvValue: &cfg.GitAccessToken, FileValue: cfg.GitAccessTokenFile, AllowUnset: true},
-		{EnvName: "APPRISE_NOTIFY_URLS", EnvValue: &cfg.AppriseNotifyUrls, FileValue: cfg.AppriseNotifyUrlsFile, AllowUnset: true},
+		{EnvName: "API_SECRET", EnvValue: &cfg.ApiSecret, FileValue: &cfg.ApiSecretFile, AllowUnset: true},
+		{EnvName: "WEBHOOK_SECRET", EnvValue: &cfg.WebhookSecret, FileValue: &cfg.WebhookSecretFile, AllowUnset: true},
+		{EnvName: "GIT_ACCESS_TOKEN", EnvValue: &cfg.GitAccessToken, FileValue: &cfg.GitAccessTokenFile, AllowUnset: true},
+		{EnvName: "APPRISE_NOTIFY_URLS", EnvValue: &cfg.AppriseNotifyUrls, FileValue: &cfg.AppriseNotifyUrlsFile, AllowUnset: true},
 	}
 
-	// Load file-based environment variables
-	if err := LoadFileBasedEnvVars(&mappings); err != nil {
-		return nil, err
+	err := ParseConfigFromEnv(&cfg, &mappings)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse config from environment: %w", err)
 	}
 
-	err := cfg.ParsePollConfig()
+	err = cfg.ParsePollConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse poll config: %w", err)
 	}
