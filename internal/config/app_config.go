@@ -51,8 +51,15 @@ func GetAppConfig() (*AppConfig, error) {
 		return nil, err
 	}
 
+	mappings := []EnvVarFileMapping{
+		{EnvName: "API_SECRET", EnvValue: &cfg.ApiSecret, FileValue: cfg.ApiSecretFile, AllowUnset: true},
+		{EnvName: "WEBHOOK_SECRET", EnvValue: &cfg.WebhookSecret, FileValue: cfg.WebhookSecretFile, AllowUnset: true},
+		{EnvName: "GIT_ACCESS_TOKEN", EnvValue: &cfg.GitAccessToken, FileValue: cfg.GitAccessTokenFile, AllowUnset: true},
+		{EnvName: "APPRISE_NOTIFY_URLS", EnvValue: &cfg.AppriseNotifyUrls, FileValue: cfg.AppriseNotifyUrlsFile, AllowUnset: true},
+	}
+
 	// Load file-based environment variables
-	if err := loadFileBasedEnvVars(&cfg); err != nil {
+	if err := LoadFileBasedEnvVars(&mappings); err != nil {
 		return nil, err
 	}
 
@@ -98,35 +105,6 @@ func GetAppConfig() (*AppConfig, error) {
 	)
 
 	return &cfg, nil
-}
-
-// loadFileBasedEnvVars loads environment variables from files if the corresponding file-based environment variable is set.
-func loadFileBasedEnvVars(cfg *AppConfig) error {
-	fields := []struct {
-		fileField  string
-		value      *string
-		name       string
-		allowUnset bool // allowUnset indicates if both the fileField and value can be unset
-	}{
-		{cfg.ApiSecretFile, &cfg.ApiSecret, "API_SECRET", true},
-		{cfg.WebhookSecretFile, &cfg.WebhookSecret, "WEBHOOK_SECRET", true},
-		{cfg.GitAccessTokenFile, &cfg.GitAccessToken, "GIT_ACCESS_TOKEN", true},
-		{cfg.AppriseNotifyUrlsFile, &cfg.AppriseNotifyUrls, "APPRISE_NOTIFY_URLS", true},
-	}
-
-	for _, field := range fields {
-		if field.fileField != "" {
-			if *field.value != "" {
-				return fmt.Errorf("%w: %s or %s", ErrBothSecretsSet, field.name, field.name+"_FILE")
-			}
-
-			*field.value = strings.TrimSpace(field.fileField)
-		} else if *field.value == "" && !field.allowUnset {
-			return fmt.Errorf("%w: %s or %s", ErrBothSecretsNotSet, field.name, field.name+"_FILE")
-		}
-	}
-
-	return nil
 }
 
 // ParsePollConfig parses the PollConfig from either the PollConfigYAML string or the PollConfigFile.
