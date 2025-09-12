@@ -42,4 +42,4 @@ func Initialize(ctx context.Context, provider, version string) (SecretProvider, 
 	}
 }
 
-// TODO: Inject resolved external secrets into docker compose project as env variables and into stacks as secrets
+// TODO: Inject resolved external secrets into docker compose project/swarm stacks
