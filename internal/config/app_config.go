@@ -55,7 +55,7 @@ func GetAppConfig() (*AppConfig, error) {
 
 	err := ParseConfigFromEnv(&cfg, &mappings)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse config from environment: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrParseConfigFailed, err)
 	}
 
 	err = cfg.ParsePollConfig()
