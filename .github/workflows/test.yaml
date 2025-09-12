@@ -69,6 +69,8 @@ jobs:
           HTTP_PROXY: http://localhost:3128
           SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
           # Required for Bitwarden Go SDK, see CONTRIBUTING.md
+          CGO_ENABLED: 1
+          CC: musl-gcc
           BW_SDK_BUILD_FLAGS: "-linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'"
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7 # v5.5.1
