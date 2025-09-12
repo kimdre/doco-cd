@@ -72,6 +72,10 @@ jobs:
           CGO_ENABLED: 1
           CC: musl-gcc
           BW_SDK_BUILD_FLAGS: "-linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'"
+          SECRET_PROVIDER_ACCESS_TOKEN: ${{ secrets.SECRET_PROVIDER_ACCESS_TOKEN }}
+          SECRET_PROVIDER: bitwarden_sm
+          SECRET_PROVIDER_API_URL: https://vault.bitwarden.eu/api
+          SECRET_PROVIDER_IDENTITY_URL: https://vault.bitwarden.eu/identity
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7 # v5.5.1
         with:
