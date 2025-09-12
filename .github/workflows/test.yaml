@@ -49,6 +49,10 @@ jobs:
         ports:
           - 3128:3128
 
+    env:
+      # Required for Bitwarden Go SDK
+      BW_SDK_BUILD_FLAGS: "-linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'"
+
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
@@ -57,7 +61,7 @@ jobs:
           cache: true
       - run: go mod download
       - run: if [ "${{ matrix.mode }}" = "swarm" ]; then docker swarm init; fi
-      - run: go test -p 1 -v -coverprofile=coverage-${{ matrix.mode }}.out -covermode=atomic -timeout 10m ./...
+      - run: go test ${{ BW_SDK_BUILD_FLAGS }} -p 1 -v -coverprofile=coverage-${{ matrix.mode }}.out -covermode=atomic -timeout 10m ./...
         timeout-minutes: 10
         env:
           WEBHOOK_SECRET: test_Secret1
