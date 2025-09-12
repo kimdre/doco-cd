@@ -15,6 +15,7 @@ type SecretProvider interface {
 	GetSecret(ctx context.Context, id string) (string, error)
 	GetSecrets(ctx context.Context, ids []string) (map[string]string, error)
 	Close()
+	// Inject(project *types.Project, config config.DeployConfig) error
 }
 
 var ErrUnknownProvider = errors.New("unknown secret provider")
@@ -40,3 +41,5 @@ func Initialize(ctx context.Context, provider, version string) (SecretProvider, 
 		return nil, fmt.Errorf("%w: %s", ErrUnknownProvider, provider)
 	}
 }
+
+// TODO: Inject resolved external secrets into docker compose project as env variables and into stacks as secrets
