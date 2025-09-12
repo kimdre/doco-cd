@@ -17,6 +17,9 @@ ENV GOCACHE=/root/.cache/go-build \
     CC=musl-gcc \
     GOOS=linux
 
+# Bitwarden SDK build flags https://github.com/bitwarden/sdk-go/blob/main/INSTRUCTIONS.md
+ARG BW_SDK_BUILD_FLAGS="-linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'"
+
 # Download Go modules
 COPY go.mod go.sum ./
 
@@ -32,7 +35,7 @@ COPY . ./
 RUN --mount=type=cache,target=/go/pkg/mod/ \
     --mount=type=cache,target="/root/.cache/go-build" \
     --mount=type=bind,target=. \
-    go build -ldflags="-s -w -X main.Version=${APP_VERSION} -linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'" -o / ./...
+    go build -ldflags="-s -w -X main.Version=${APP_VERSION} ${BW_SDK_BUILD_FLAGS}" -o / ./...
 
 #FROM busybox AS busybox-binaries
 #
