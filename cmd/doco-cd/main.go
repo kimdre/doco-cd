@@ -255,7 +255,7 @@ func main() {
 	}
 
 	// Initialize the secret provider
-	secretProvider, err := secretprovider.Initialize(c.SecretProvider)
+	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, Version)
 	if err != nil {
 		log.Critical("failed to initialize secret provider", logger.ErrAttr(err))
 

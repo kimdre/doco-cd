@@ -156,7 +156,7 @@ func TestProvider_GetSecret(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			secretValue, err := provider.GetSecret(tc.secretID)
+			secretValue, err := provider.GetSecret(t.Context(), tc.secretID)
 			if tc.expectError != "" {
 				if err == nil {
 					t.Errorf("Expected error but got none")
@@ -225,7 +225,7 @@ func TestProvider_GetSecrets(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			secrets, err := provider.GetSecrets(tc.secretIDs)
+			secrets, err := provider.GetSecrets(t.Context(), tc.secretIDs)
 			if tc.expectError != "" {
 				if err == nil {
 					t.Errorf("Expected error but got none")

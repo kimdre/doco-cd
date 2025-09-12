@@ -1,6 +1,7 @@
 package bitwardensecretsmanager
 
 import (
+	"context"
 	"path/filepath"
 
 	"github.com/bitwarden/sdk-go"
@@ -43,7 +44,7 @@ func NewProvider(apiUrl, identityURL, accessToken string) (*Provider, error) {
 }
 
 // GetSecret retrieves a secret value from the Bitwarden Secrets Manager using the provided secret ID.
-func (p *Provider) GetSecret(id string) (string, error) {
+func (p *Provider) GetSecret(_ context.Context, id string) (string, error) {
 	secret, err := p.Client.Secrets().Get(id)
 	if err != nil {
 		return "", err
@@ -53,7 +54,7 @@ func (p *Provider) GetSecret(id string) (string, error) {
 }
 
 // GetSecrets retrieves multiple secrets from Bitwarden Secrets Manager using the provided list of secret IDs.
-func (p *Provider) GetSecrets(ids []string) (map[string]string, error) {
+func (p *Provider) GetSecrets(_ context.Context, ids []string) (map[string]string, error) {
 	secrets, err := p.Client.Secrets().GetByIDS(ids)
 	if err != nil {
 		return nil, err
