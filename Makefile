@@ -8,7 +8,7 @@ ifneq (,$(wildcard ./.env))
     export
 endif
 
-BUILD_FLAGS=-ldflags="-s -w -X main.Version=dev -linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'"
+BUILD_FLAGS=-ldflags="-X main.Version=dev -linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'"
 
 test:
 	@echo "Running tests..."
