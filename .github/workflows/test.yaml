@@ -55,6 +55,9 @@ jobs:
         with:
           go-version-file: 'go.mod'
           cache: true
+      - name: Install packages
+        run: |
+          sudo apt install musl-tools
       - run: go mod download
       - run: if [ "${{ matrix.mode }}" = "swarm" ]; then docker swarm init; fi
       - run: go test -ldflags="$BW_SDK_BUILD_FLAGS" -p 1 -v -coverprofile=coverage-${{ matrix.mode }}.out -covermode=atomic -timeout 10m ./...
