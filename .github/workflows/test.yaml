@@ -57,7 +57,7 @@ jobs:
           cache: true
       - run: go mod download
       - run: if [ "${{ matrix.mode }}" = "swarm" ]; then docker swarm init; fi
-      - run: go test $BW_SDK_BUILD_FLAGS -p 1 -v -coverprofile=coverage-${{ matrix.mode }}.out -covermode=atomic -timeout 10m ./...
+      - run: go test -ldflags="$BW_SDK_BUILD_FLAGS" -p 1 -v -coverprofile=coverage-${{ matrix.mode }}.out -covermode=atomic -timeout 10m ./...
         timeout-minutes: 10
         env:
           WEBHOOK_SECRET: test_Secret1
