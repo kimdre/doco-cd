@@ -39,6 +39,7 @@ type AppConfig struct {
 	AppriseNotifyUrls     string                 `env:"APPRISE_NOTIFY_URLS"`                                                // AppriseNotifyUrls is a comma-separated list of URLs to notify via the Apprise notification service
 	AppriseNotifyUrlsFile string                 `env:"APPRISE_NOTIFY_URLS_FILE,file"`                                      // AppriseNotifyUrlsFile is the file containing the AppriseNotifyUrls
 	AppriseNotifyLevel    string                 `env:"APPRISE_NOTIFY_LEVEL,notEmpty" envDefault:"success"`                 // AppriseNotifyLevel is the level of notifications to send via the Apprise notification service
+	SecretProvider        string                 `env:"SECRET_PROVIDER"`                                                    // SecretProvider is the secret provider/manager to use for retrieving secrets (e.g. bitwarden secrets manager)
 }
 
 // GetAppConfig returns the configuration.

@@ -7,16 +7,16 @@ import (
 )
 
 const (
-	ProviderName  = "bitwarden_sm"
-	stateFileName = "~/bitwarden-sm-state.json"
+	Name          = "bitwarden_sm"
+	stateFilePath = "/tmp/bitwarden-sm-state.json"
 )
 
 type Provider struct {
 	Client sdk.BitwardenClientInterface
 }
 
-func (p *Provider) Provider() string {
-	return ProviderName
+func (p *Provider) Name() string {
+	return Name
 }
 
 // NewProvider creates a new Provider instance for Bitwarden Secrets Manager and performs login using the provided access token.
@@ -28,13 +28,13 @@ func NewProvider(apiUrl, identityURL, accessToken string) (*Provider, error) {
 
 	provider := &Provider{Client: client}
 
-	stateFileName, err := filepath.Abs(stateFileName)
+	stateFile, err := filepath.Abs(stateFilePath)
 	if err != nil {
 		return nil, err
 	}
 
 	// Perform login with the provided access token
-	err = provider.Client.AccessTokenLogin(accessToken, &stateFileName)
+	err = provider.Client.AccessTokenLogin(accessToken, &stateFile)
 	if err != nil {
 		return nil, err
 	}

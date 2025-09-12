@@ -6,6 +6,12 @@ import (
 	"github.com/bitwarden/sdk-go"
 )
 
+const (
+	validSecretID   = "138e3697-ed58-431c-b866-b3550066343a" // #nosec G101
+	wrongSecretID   = "c42b74b2-1cde-45ef-83fe-19d86240ef47" // #nosec G101
+	invalidSecretID = "invalid-secret-id"
+)
+
 func TestNewProvider(t *testing.T) {
 	cfg, err := GetConfig()
 	if err != nil {
@@ -133,17 +139,17 @@ func TestProvider_GetSecret(t *testing.T) {
 	}{
 		{
 			name:        "Valid Secret ID",
-			secretID:    "138e3697-ed58-431c-b866-b3550066343a",
+			secretID:    validSecretID,
 			expectError: "",
 		},
 		{
 			name:        "Invalid Secret ID",
-			secretID:    "invalid-secret-id",
+			secretID:    invalidSecretID,
 			expectError: "API error: Invalid command value: UUID parsing failed: invalid character: expected an optional prefix of `urn:uuid:` followed by [0-9a-fA-F-], found `i` at 1",
 		},
 		{
 			name:        "Wrong Secret ID",
-			secretID:    "c42b74b2-1cde-45ef-83fe-19d86240ef47",
+			secretID:    wrongSecretID,
 			expectError: " API error: Received error message from server: [404 Not Found] {\"message\":\"Resource not found.\",\"validationErrors\":null,\"exceptionMessage\":null,\"exceptionStackTrace\":null,\"innerExceptionMessage\":null,\"object\":\"error\"}",
 		},
 	}
@@ -164,6 +170,83 @@ func TestProvider_GetSecret(t *testing.T) {
 
 				if secretValue == "" {
 					t.Errorf("Expected non-empty secret value")
+				}
+			}
+		})
+	}
+}
+
+func TestProvider_GetSecrets(t *testing.T) {
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("unable to get config: %v", err)
+	}
+
+	provider, err := NewProvider(cfg.ApiUrl, cfg.IdentityUrl, cfg.AccessToken)
+	if err != nil {
+		t.Fatalf("Failed to create Bitwarden provider: %v", err)
+	}
+
+	t.Cleanup(func() {
+		provider.Close()
+	})
+
+	testCases := []struct {
+		name        string
+		secretIDs   []string
+		expectError string
+	}{
+		{
+			name:        "Valid Secret IDs",
+			secretIDs:   []string{validSecretID},
+			expectError: "",
+		},
+		{
+			name:        "Valid and wrong Secret ID",
+			secretIDs:   []string{validSecretID, wrongSecretID},
+			expectError: "API error: Received error message from server: [404 Not Found] {\"message\":\"Resource not found.\",\"validationErrors\":null,\"exceptionMessage\":null,\"exceptionStackTrace\":null,\"innerExceptionMessage\":null,\"object\":\"error\"}",
+		},
+		{
+			name:        "One Invalid Secret ID",
+			secretIDs:   []string{validSecretID, invalidSecretID},
+			expectError: "API error: Invalid command value: UUID parsing failed: invalid character: expected an optional prefix of `urn:uuid:` followed by [0-9a-fA-F-], found `i` at 1",
+		},
+		{
+			name:        "All Invalid Secret IDs",
+			secretIDs:   []string{invalidSecretID + "1", invalidSecretID + "2"},
+			expectError: "API error: Invalid command value: UUID parsing failed: invalid character: expected an optional prefix of `urn:uuid:` followed by [0-9a-fA-F-], found `i` at 1",
+		},
+		{
+			name:        "Empty Secret IDs",
+			secretIDs:   []string{},
+			expectError: "API error: Received error message from server: [404 Not Found] {\"message\":\"Resource not found.\",\"validationErrors\":null,\"exceptionMessage\":null,\"exceptionStackTrace\":null,\"innerExceptionMessage\":null,\"object\":\"error\"}",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			secrets, err := provider.GetSecrets(tc.secretIDs)
+			if tc.expectError != "" {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+				}
+			} else {
+				if err != nil {
+					if err.Error() != tc.expectError {
+						t.Errorf("Expected error: %v, but got: %v", tc.expectError, err)
+					}
+				}
+
+				if len(secrets) == 0 && len(tc.secretIDs) > 0 {
+					t.Errorf("Expected non-empty secrets map")
+				}
+
+				for id, val := range secrets {
+					if val == "" {
+						t.Errorf("Expected non-empty secret value")
+					}
+
+					t.Logf("Retrieved secret ID: %s, Value: %s", id, val)
 				}
 			}
 		})
