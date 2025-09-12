@@ -16,7 +16,7 @@ func GetConfig() (*Config, error) {
 	cfg := Config{}
 
 	mappings := []config.EnvVarFileMapping{
-		{EnvName: "SECRET_PROVIDER_ACCESS_TOKEN", EnvValue: &cfg.AccessToken, FileValue: &cfg.AccessTokenFile, AllowUnset: true},
+		{EnvName: "SECRET_PROVIDER_ACCESS_TOKEN", EnvValue: &cfg.AccessToken, FileValue: &cfg.AccessTokenFile, AllowUnset: false},
 	}
 
 	err := config.ParseConfigFromEnv(&cfg, &mappings)
