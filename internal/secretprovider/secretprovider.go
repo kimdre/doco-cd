@@ -2,10 +2,12 @@ package secretprovider
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
 )
 
+// SecretProvider defines the interface for secret providers.
 type SecretProvider interface {
 	Name() string
 	GetSecret(id string) (string, error)
@@ -13,7 +15,7 @@ type SecretProvider interface {
 	Close()
 }
 
-var ErrUnknownProvider = errors.New("unknown secret-provider")
+var ErrUnknownProvider = errors.New("unknown secret provider")
 
 // Initialize initializes the secret provider based on the provided configuration.
 func Initialize(provider string) (SecretProvider, error) {
@@ -26,6 +28,6 @@ func Initialize(provider string) (SecretProvider, error) {
 
 		return bitwardensecretsmanager.NewProvider(cfg.ApiUrl, cfg.IdentityUrl, cfg.AccessToken)
 	default:
-		return nil, ErrUnknownProvider
+		return nil, fmt.Errorf("%w: %s", ErrUnknownProvider, provider)
 	}
 }
