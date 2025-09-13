@@ -21,6 +21,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
+	"github.com/kimdre/doco-cd/internal/secretprovider"
 
 	"github.com/go-git/go-git/v5/plumbing/format/diff"
 
@@ -349,7 +350,7 @@ func DeployStack(
 	jobLog *slog.Logger, internalRepoPath, externalRepoPath string, ctx *context.Context,
 	dockerCli *command.Cli, dockerClient *client.Client, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
 	changedFiles []gitInternal.ChangedFile, latestCommit, appVersion, triggerEvent string, forceDeploy bool,
-	metadata notification.Metadata,
+	metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
 ) error {
 	startTime := time.Now()
 
@@ -477,6 +478,11 @@ func DeployStack(
 		stackLog.Error(errMsg, logger.ErrAttr(err), slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
 
 		return fmt.Errorf("%s: %w", errMsg, err)
+	}
+
+	err = secretprovider.InjectSecretsToProject(*ctx, secretProvider, project, deployConfig.ExternalSecrets)
+	if err != nil {
+		return fmt.Errorf("failed to inject external secrets: %w", err)
 	}
 
 	done := make(chan struct{})

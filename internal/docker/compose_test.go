@@ -16,6 +16,8 @@ import (
 	testCompose "github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/kimdre/doco-cd/internal/secretprovider"
+
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -137,6 +139,19 @@ func TestDeployCompose(t *testing.T) {
 		client.WithAPIVersionNegotiation(),
 	)
 
+	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, "v0.0.0-test")
+	if err != nil {
+		t.Fatalf("failed to initialize secret provider: %s", err.Error())
+
+		return
+	}
+
+	if secretProvider != nil {
+		t.Cleanup(func() {
+			secretProvider.Close()
+		})
+	}
+
 	swarm.ModeEnabled, err = swarm.CheckDaemonIsSwarmManager(ctx, dockerCli)
 	if err != nil {
 		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
@@ -239,7 +254,7 @@ func TestDeployCompose(t *testing.T) {
 		}
 
 		err = DeployStack(jobLog, repoPath, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
-			[]git.ChangedFile{}, latestCommit, "test", "poll", false, metadata)
+			[]git.ChangedFile{}, latestCommit, "test", "poll", false, metadata, &secretProvider)
 		if err != nil {
 			if errors.Is(err, config.ErrDeprecatedConfig) {
 				t.Log(err.Error())
@@ -739,4 +754,123 @@ func TestGetProjects(t *testing.T) {
 	}
 
 	t.Logf("Found %d projects", len(projects))
+}
+
+func TestInjectSecretsToProject(t *testing.T) {
+	const varName = "TEST_PASSWORD"
+
+	testCases := []struct {
+		name                 string
+		externalSecrets      map[string]string
+		expectedSecretValues map[string]string
+		expectedErr          string
+	}{
+		{
+			name: "Bitwarden Secrets Manager with correct UUID",
+			externalSecrets: map[string]string{
+				varName: "138e3697-ed58-431c-b866-b3550066343a",
+			},
+			expectedSecretValues: map[string]string{
+				varName: "secret007!",
+			},
+		},
+		{
+			name: "Bitwarden Secrets Manager with incorrect UUID",
+			externalSecrets: map[string]string{
+				varName: "138e3697-ed58-431c-b866-b35500663dddd",
+			},
+			expectedSecretValues: map[string]string{
+				varName: "secret007!",
+			},
+			expectedErr: "failed to resolve secrets: API error: Invalid command value: UUID parsing failed: invalid group length in group 4: expected 12, found 13",
+		},
+		// Disabled because I don't have a 1Password account to test with
+		//{
+		//	name: "Test with 1Password",
+		//	externalSecrets: map[string]string{
+		//		varName: "op://DocoCD Tests/Secret/Test Password",
+		//	},
+		//	expectedSecretValues: map[string]string{
+		//		varName: "secret007!",
+		//	},
+		// },
+	}
+
+	ctx := t.Context()
+
+	tmpDir := t.TempDir()
+	t.Chdir(tmpDir)
+
+	filePath := filepath.Join(tmpDir, "test.compose.yaml")
+	createComposeFile(t, filePath, composeContents)
+
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, "v0.0.0-test")
+	if err != nil {
+		t.Fatalf("failed to initialize secret provider: %s", err.Error())
+
+		return
+	}
+
+	if secretProvider != nil {
+		t.Cleanup(func() {
+			secretProvider.Close()
+		})
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			err = secretprovider.InjectSecretsToProject(ctx, &secretProvider, project, tc.externalSecrets)
+			if err != nil {
+				if tc.expectedErr != "" {
+					if !strings.Contains(err.Error(), tc.expectedErr) {
+						t.Fatalf("expected error to contain '%s', got '%s'", tc.expectedErr, err.Error())
+					}
+
+					return
+				}
+
+				t.Fatalf("failed to inject secrets: %s", err.Error())
+			}
+
+			for _, service := range project.Services {
+				if service.Environment == nil {
+					t.Fatal("expected environment variables, got nil")
+				}
+
+				if len(service.Environment) == 0 {
+					t.Fatal("expected at least 1 environment variable, got 0")
+				}
+
+				found := false
+
+				for envVar, val := range service.Environment {
+					if envVar == "TEST_PASSWORD" {
+						found = true
+
+						if val == nil {
+							t.Fatal("expected environment variable value, got nil")
+						}
+
+						if *val != tc.expectedSecretValues["TEST_PASSWORD"] {
+							t.Fatalf("expected environment variable value '%s', got '%s'", tc.expectedSecretValues["TEST_PASSWORD"], *val)
+						}
+					}
+				}
+
+				if !found {
+					t.Fatal("expected to find environment variable 'TEST_PASSWORD', but did not")
+				}
+			}
+		})
+	}
 }

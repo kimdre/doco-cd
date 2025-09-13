@@ -17,6 +17,8 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
+	"github.com/kimdre/doco-cd/internal/secretprovider"
+
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 
 	"github.com/kimdre/doco-cd/internal/config"
@@ -243,6 +245,20 @@ func main() {
 		return
 	}
 
+	// Initialize the secret provider
+	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, Version)
+	if err != nil {
+		log.Critical("failed to initialize secret provider", logger.ErrAttr(err))
+
+		return
+	}
+
+	if secretProvider != nil {
+		defer secretProvider.Close()
+
+		log.Info("secret provider initialized", slog.String("provider", secretProvider.Name()))
+	}
+
 	h := handlerData{
 		appConfig:      c,
 		appVersion:     Version,
@@ -250,6 +266,7 @@ func main() {
 		dockerCli:      dockerCli,
 		dockerClient:   dockerClient,
 		log:            log,
+		secretProvider: &secretProvider,
 	}
 
 	// Register HTTP endpoints

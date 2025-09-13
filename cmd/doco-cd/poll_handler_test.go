@@ -6,6 +6,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
+	"github.com/kimdre/doco-cd/internal/secretprovider"
 
 	"github.com/kimdre/doco-cd/internal/git"
 
@@ -44,6 +45,19 @@ func TestRunPoll(t *testing.T) {
 	appConfig, err := config.GetAppConfig()
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	secretProvider, err := secretprovider.Initialize(ctx, appConfig.SecretProvider, "v0.0.0-test")
+	if err != nil {
+		t.Fatalf("failed to initialize secret provider: %s", err.Error())
+
+		return
+	}
+
+	if secretProvider != nil {
+		t.Cleanup(func() {
+			secretProvider.Close()
+		})
 	}
 
 	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy, !appConfig.SkipTLSVerification)
@@ -100,7 +114,7 @@ func TestRunPoll(t *testing.T) {
 	}
 
 	// Run initial poll
-	_, err = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With(), metadata)
+	_, err = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With(), metadata, &secretProvider)
 	if err != nil {
 		t.Fatalf("Initial poll failed: %v", err)
 	}
@@ -108,7 +122,7 @@ func TestRunPoll(t *testing.T) {
 	pollConfig.Reference = "destroy"
 
 	// Run the second poll to destroy
-	_, err = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With(), metadata)
+	_, err = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With(), metadata, &secretProvider)
 	if err != nil {
 		t.Fatalf("Second poll failed: %v", err)
 	}

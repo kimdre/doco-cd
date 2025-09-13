@@ -55,9 +55,12 @@ jobs:
         with:
           go-version-file: 'go.mod'
           cache: true
+      - name: Install packages
+        run: |
+          sudo apt install -y musl-tools
       - run: go mod download
       - run: if [ "${{ matrix.mode }}" = "swarm" ]; then docker swarm init; fi
-      - run: go test -p 1 -v -coverprofile=coverage-${{ matrix.mode }}.out -covermode=atomic -timeout 10m ./...
+      - run: go test -ldflags="$BW_SDK_BUILD_FLAGS" -p 1 -v -coverprofile=coverage-${{ matrix.mode }}.out -covermode=atomic -timeout 10m ./...
         timeout-minutes: 10
         env:
           WEBHOOK_SECRET: test_Secret1
@@ -65,6 +68,14 @@ jobs:
           GIT_ACCESS_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
           HTTP_PROXY: http://localhost:3128
           SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+          # Required for Bitwarden Go SDK, see CONTRIBUTING.md
+          CGO_ENABLED: 1
+          CC: musl-gcc
+          BW_SDK_BUILD_FLAGS: "-linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'"
+          SECRET_PROVIDER_ACCESS_TOKEN: ${{ secrets.SECRET_PROVIDER_ACCESS_TOKEN }}
+          SECRET_PROVIDER: bitwarden_sm
+          SECRET_PROVIDER_API_URL: https://vault.bitwarden.eu/api
+          SECRET_PROVIDER_IDENTITY_URL: https://vault.bitwarden.eu/identity
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7 # v5.5.1
         with:

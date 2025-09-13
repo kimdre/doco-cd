@@ -6,6 +6,20 @@ ARG APP_VERSION=dev
 # Set destination for COPY
 WORKDIR /app
 
+# Install prerequisites for Bitwarden SDK
+RUN apt-get update && apt-get install -y \
+    musl-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set build environment
+ENV GOCACHE=/root/.cache/go-build \
+    CGO_ENABLED=1 \
+    CC=musl-gcc \
+    GOOS=linux
+
+# Bitwarden SDK build flags https://github.com/bitwarden/sdk-go/blob/main/INSTRUCTIONS.md
+ARG BW_SDK_BUILD_FLAGS="-linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'"
+
 # Download Go modules
 COPY go.mod go.sum ./
 
@@ -17,16 +31,11 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
 # Copy source code
 COPY . ./
 
-# Set build environment
-ENV GOCACHE=/root/.cache/go-build \
-    CGO_ENABLED=0 \
-    GOOS=linux
-
 # Build and strip binary
 RUN --mount=type=cache,target=/go/pkg/mod/ \
     --mount=type=cache,target="/root/.cache/go-build" \
     --mount=type=bind,target=. \
-    go build -ldflags="-s -w -X main.Version=${APP_VERSION}" -o / ./...
+    go build -ldflags="-s -w -X main.Version=${APP_VERSION} ${BW_SDK_BUILD_FLAGS}" -o / ./...
 
 #FROM busybox AS busybox-binaries
 #
