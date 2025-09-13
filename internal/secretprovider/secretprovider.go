@@ -57,8 +57,12 @@ func Initialize(ctx context.Context, provider, version string) (SecretProvider, 
 // InjectSecretsToProject resolves and injects external secrets into the environment variables of the given project.
 func InjectSecretsToProject(ctx context.Context, provider *SecretProvider, project *types.Project, secrets map[string]string) error {
 	// If no provider is set or no secrets are provided we skip the secret injection
-	if provider == nil || len(secrets) == 0 {
+	if len(secrets) == 0 {
 		return nil
+	}
+
+	if provider == nil || *provider == nil {
+		return fmt.Errorf("no secret provider configured, but secrets are defined")
 	}
 
 	// Resolve external secrets
