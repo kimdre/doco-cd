@@ -18,6 +18,8 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/google/uuid"
 
+	"github.com/kimdre/doco-cd/internal/secretprovider"
+
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 
 	"github.com/kimdre/doco-cd/internal/config"
@@ -294,6 +296,19 @@ func TestHandleEvent(t *testing.T) {
 				t.Fatalf("Failed to verify docker socket connection: %v", err)
 			}
 
+			secretProvider, err := secretprovider.Initialize(ctx, appConfig.SecretProvider, "v0.0.0-test")
+			if err != nil {
+				t.Fatalf("failed to initialize secret provider: %s", err.Error())
+
+				return
+			}
+
+			if secretProvider != nil {
+				t.Cleanup(func() {
+					secretProvider.Close()
+				})
+			}
+
 			rr := httptest.NewRecorder()
 
 			t.Cleanup(func() {
@@ -336,6 +351,7 @@ func TestHandleEvent(t *testing.T) {
 				jobID,
 				dockerCli,
 				dockerClient,
+				&secretProvider,
 			)
 
 			if status := rr.Code; status != tc.expectedStatusCode {

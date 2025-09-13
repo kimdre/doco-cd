@@ -16,6 +16,7 @@ type Provider struct {
 	Client sdk.BitwardenClientInterface
 }
 
+// Name returns the name of the secret provider.
 func (p *Provider) Name() string {
 	return Name
 }
@@ -66,6 +67,28 @@ func (p *Provider) GetSecrets(_ context.Context, ids []string) (map[string]strin
 	}
 
 	return result, nil
+}
+
+// ResolveSecretReferences resolves the provided map of environment variable names to secret IDs
+// by fetching the corresponding secret values from the secret provider.
+func (p *Provider) ResolveSecretReferences(ctx context.Context, secrets map[string]string) (map[string]string, error) {
+	ids := make([]string, 0, len(secrets))
+	for _, id := range secrets {
+		ids = append(ids, id)
+	}
+
+	resolved, err := p.GetSecrets(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	for envVar, secretID := range secrets {
+		if val, ok := resolved[secretID]; ok {
+			secrets[envVar] = val
+		}
+	}
+
+	return secrets, nil
 }
 
 // Close cleans up resources used by the Provider.

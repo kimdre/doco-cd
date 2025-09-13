@@ -252,3 +252,91 @@ func TestProvider_GetSecrets(t *testing.T) {
 		})
 	}
 }
+
+func TestProvider_ResolveSecretReferences(t *testing.T) {
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("unable to get config: %v", err)
+	}
+
+	provider, err := NewProvider(cfg.ApiUrl, cfg.IdentityUrl, cfg.AccessToken)
+	if err != nil {
+		t.Fatalf("Failed to create Bitwarden provider: %v", err)
+	}
+
+	t.Cleanup(func() {
+		provider.Close()
+	})
+
+	testCases := []struct {
+		name        string
+		secrets     map[string]string
+		expectError string
+	}{
+		{
+			name: "Valid Secret References",
+			secrets: map[string]string{
+				"DB_PASSWORD": validSecretID,
+			},
+			expectError: "",
+		},
+		{
+			name: "Valid and wrong Secret References",
+			secrets: map[string]string{
+				"DB_PASSWORD": validSecretID,
+				"API_KEY":     wrongSecretID,
+			},
+			expectError: "API error: Received error message from server: [404 Not Found] {\"message\":\"Resource not found.\",\"validationErrors\":null,\"exceptionMessage\":null,\"exceptionStackTrace\":null,\"innerExceptionMessage\":null,\"object\":\"error\"}",
+		},
+		{
+			name: "One Invalid Secret Reference",
+			secrets: map[string]string{
+				"DB_PASSWORD": validSecretID,
+				"API_KEY":     invalidSecretID,
+			},
+			expectError: "API error: Invalid command value: UUID parsing failed: invalid character: expected an optional prefix of `urn:uuid:` followed by [0-9a-fA-F-], found `i` at 1",
+		},
+		{
+			name: "All Invalid Secret References",
+			secrets: map[string]string{
+				"DB_PASSWORD": invalidSecretID + "1",
+				"API_KEY":     invalidSecretID + "2",
+			},
+			expectError: "API error: Invalid command value: UUID parsing failed: invalid character: expected an optional prefix of `urn:uuid:` followed by [0-9a-fA-F-], found `i` at 1",
+		},
+		{
+			name:        "Empty Secret References",
+			secrets:     map[string]string{},
+			expectError: "API error: Received error message from server: [404 Not Found] {\"message\":\"Resource not found.\",\"validationErrors\":null,\"exceptionMessage\":null,\"exceptionStackTrace\":null,\"innerExceptionMessage\":null,\"object\":\"error\"}",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			resolvedSecrets, err := provider.ResolveSecretReferences(t.Context(), tc.secrets)
+			if tc.expectError != "" {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+				}
+			} else {
+				if err != nil {
+					if err.Error() != tc.expectError {
+						t.Errorf("Expected error: %v, but got: %v", tc.expectError, err)
+					}
+				}
+
+				if len(resolvedSecrets) == 0 && len(tc.secrets) > 0 {
+					t.Errorf("Expected non-empty resolved secrets map")
+				}
+
+				for key, val := range resolvedSecrets {
+					if val == "" {
+						t.Errorf("Expected non-empty secret value for key: %s", key)
+					}
+
+					t.Logf("Resolved secret key: %s, Value: %s", key, val)
+				}
+			}
+		})
+	}
+}

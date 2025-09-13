@@ -15,6 +15,7 @@ import (
 	apiInternal "github.com/kimdre/doco-cd/internal/api"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
+	"github.com/kimdre/doco-cd/internal/secretprovider"
 
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v2/pkg/api"
@@ -41,6 +42,7 @@ type handlerData struct {
 	dockerCli      command.Cli          // Docker CLI client
 	dockerClient   *client.Client       // Docker client
 	log            *logger.Logger       // Logger for logging messages
+	secretProvider *secretprovider.SecretProvider
 }
 
 // onError handles errors by logging them, sending a JSON error response, and sending a notification.
@@ -81,7 +83,10 @@ func getRepoName(cloneURL string) string {
 }
 
 // HandleEvent executes the deployment process for a given webhook event.
-func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *config.AppConfig, dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli, dockerClient *client.Client) {
+func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *config.AppConfig,
+	dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget, jobID string,
+	dockerCli command.Cli, dockerClient *client.Client, secretProvider *secretprovider.SecretProvider,
+) {
 	var err error
 
 	startTime := time.Now()
@@ -438,7 +443,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			}
 
 			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, dockerClient,
-				&payload, deployConfig, changedFiles, latestCommit, Version, "webhook", false, metadata)
+				&payload, deployConfig, changedFiles, latestCommit, Version, "webhook", false, metadata,
+				secretProvider)
 			if err != nil {
 				onError(w, subJobLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), http.StatusInternalServerError, metadata)
 
@@ -526,7 +532,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 	defer lock.Unlock()
 
-	HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, h.dockerClient)
+	HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, h.dockerClient, h.secretProvider)
 }
 
 // HealthCheckHandler handles health check requests.

@@ -12,6 +12,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
+	"github.com/kimdre/doco-cd/internal/secretprovider"
 
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v2/pkg/api"
@@ -94,7 +95,7 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 
 				logger.Debug("Start poll job")
 
-				metadata, err := RunPoll(context.Background(), pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.dockerClient, logger, metadata)
+				metadata, err := RunPoll(context.Background(), pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.dockerClient, logger, metadata, h.secretProvider)
 				if err != nil {
 					prometheus.PollErrors.WithLabelValues(repoName).Inc()
 
@@ -119,7 +120,7 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 
 // RunPoll deploys compose projects based on the provided configuration.
 func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *config.AppConfig, dataMountPoint container.MountPoint,
-	dockerCli command.Cli, dockerClient *client.Client, logger *slog.Logger, metadata notification.Metadata,
+	dockerCli command.Cli, dockerClient *client.Client, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
 ) (notification.Metadata, error) {
 	var err error
 
@@ -480,7 +481,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			}
 
 			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, dockerClient,
-				&payload, deployConfig, changedFiles, latestCommit, Version, "poll", false, metadata)
+				&payload, deployConfig, changedFiles, latestCommit, Version, "poll", false, metadata, secretProvider)
 			if err != nil {
 				subJobLog.Error("failed to deploy stack "+deployConfig.Name, log.ErrAttr(err))
 

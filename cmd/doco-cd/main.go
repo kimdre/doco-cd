@@ -245,15 +245,6 @@ func main() {
 		return
 	}
 
-	h := handlerData{
-		appConfig:      c,
-		appVersion:     Version,
-		dataMountPoint: dataMountPoint,
-		dockerCli:      dockerCli,
-		dockerClient:   dockerClient,
-		log:            log,
-	}
-
 	// Initialize the secret provider
 	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, Version)
 	if err != nil {
@@ -262,7 +253,21 @@ func main() {
 		return
 	}
 
-	log.Info("secret provider initialized", slog.String("provider", secretProvider.Name()))
+	if secretProvider != nil {
+		defer secretProvider.Close()
+
+		log.Info("secret provider initialized", slog.String("provider", secretProvider.Name()))
+	}
+
+	h := handlerData{
+		appConfig:      c,
+		appVersion:     Version,
+		dataMountPoint: dataMountPoint,
+		dockerCli:      dockerCli,
+		dockerClient:   dockerClient,
+		log:            log,
+		secretProvider: &secretProvider,
+	}
 
 	// Register HTTP endpoints
 	enabledEndpoints := registerHttpEndpoints(c, &h, log)
