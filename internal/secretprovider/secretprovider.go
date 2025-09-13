@@ -62,7 +62,7 @@ func InjectSecretsToProject(ctx context.Context, provider *SecretProvider, proje
 	}
 
 	if provider == nil || *provider == nil {
-		return fmt.Errorf("no secret provider configured, but secrets are defined")
+		return errors.New("no secret provider configured, but secrets are defined")
 	}
 
 	// Resolve external secrets
