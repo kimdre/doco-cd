@@ -257,11 +257,6 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 		return nil, fmt.Errorf("failed to resolve services environment: %w", err)
 	}
 
-	// err = injectExternalSecretsToServiceEnv(project, resolvedSecrets)
-	// if err != nil {
-	//	return nil, fmt.Errorf("failed to inject external secrets: %w", err)
-	//}
-
 	return project, nil
 }
 
