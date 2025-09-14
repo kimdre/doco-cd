@@ -14,21 +14,34 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/compose/loader"
 	"github.com/docker/cli/cli/compose/schema"
-	composetypes "github.com/docker/cli/cli/compose/types"
+	"github.com/docker/cli/cli/compose/types"
 
 	"github.com/kimdre/doco-cd/internal/docker/options"
 )
 
 // LoadComposefile parse the composefile specified in the cli and returns its Config and version.
-func LoadComposefile(dockerCli command.Cli, opts options.Deploy) (*composetypes.Config, error) {
+func LoadComposefile(dockerCli command.Cli, opts options.Deploy, resolvedSecrets map[string]string) (*types.Config, error) {
 	configDetails, err := GetConfigDetails(opts.Composefiles, dockerCli.In())
 	if err != nil {
 		return nil, err
 	}
 
+	optsFunc := func(opts *loader.Options) {
+		opts.SkipInterpolation = false
+	}
+
+	if configDetails.Environment == nil {
+		configDetails.Environment = map[string]string{}
+	}
+
+	// Inject external secrets into the environment for variable interpolation
+	for k, v := range resolvedSecrets {
+		configDetails.Environment[k] = v
+	}
+
 	dicts := getDictsFrom(configDetails.ConfigFiles)
 
-	config, err := loader.Load(configDetails)
+	config, err := loader.Load(configDetails, optsFunc)
 	if err != nil {
 		var fpe *loader.ForbiddenPropertiesError
 		if errors.As(err, &fpe) {
@@ -65,7 +78,7 @@ func LoadComposefile(dockerCli command.Cli, opts options.Deploy) (*composetypes.
 	return config, nil
 }
 
-func getDictsFrom(configFiles []composetypes.ConfigFile) []map[string]any {
+func getDictsFrom(configFiles []types.ConfigFile) []map[string]any {
 	var dicts []map[string]any
 
 	for _, configFile := range configFiles {
@@ -87,8 +100,8 @@ func propertyWarnings(properties map[string]string) string {
 }
 
 // GetConfigDetails parse the composefiles specified in the cli and returns their ConfigDetails.
-func GetConfigDetails(composefiles []string, stdin io.Reader) (composetypes.ConfigDetails, error) {
-	var details composetypes.ConfigDetails
+func GetConfigDetails(composefiles []string, stdin io.Reader) (types.ConfigDetails, error) {
+	var details types.ConfigDetails
 
 	if len(composefiles) == 0 {
 		return details, errors.New("no compose file specified")
@@ -150,8 +163,8 @@ func buildEnvironment(env []string) (map[string]string, error) {
 	return result, nil
 }
 
-func loadConfigFiles(filenames []string, stdin io.Reader) ([]composetypes.ConfigFile, error) {
-	configFiles := make([]composetypes.ConfigFile, 0, len(filenames))
+func loadConfigFiles(filenames []string, stdin io.Reader) ([]types.ConfigFile, error) {
+	configFiles := make([]types.ConfigFile, 0, len(filenames))
 
 	for _, filename := range filenames {
 		configFile, err := loadConfigFile(filename, stdin)
@@ -165,7 +178,7 @@ func loadConfigFiles(filenames []string, stdin io.Reader) ([]composetypes.Config
 	return configFiles, nil
 }
 
-func loadConfigFile(filename string, stdin io.Reader) (*composetypes.ConfigFile, error) {
+func loadConfigFile(filename string, stdin io.Reader) (*types.ConfigFile, error) {
 	var (
 		bytes []byte
 		err   error
@@ -186,7 +199,7 @@ func loadConfigFile(filename string, stdin io.Reader) (*composetypes.ConfigFile,
 		return nil, err
 	}
 
-	return &composetypes.ConfigFile{
+	return &types.ConfigFile{
 		Filename: filename,
 		Config:   config,
 	}, nil

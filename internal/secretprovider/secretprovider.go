@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/compose-spec/compose-go/v2/types"
-
 	onepassword "github.com/kimdre/doco-cd/internal/secretprovider/1password"
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
 )
@@ -52,37 +50,4 @@ func Initialize(ctx context.Context, provider, version string) (SecretProvider, 
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnknownProvider, provider)
 	}
-}
-
-// InjectSecretsToProject resolves and injects external secrets into the environment variables of the given project.
-func InjectSecretsToProject(ctx context.Context, provider *SecretProvider, project *types.Project, secrets map[string]string) error {
-	// If no provider is set or no secrets are provided we skip the secret injection
-	if len(secrets) == 0 {
-		return nil
-	}
-
-	if provider == nil || *provider == nil {
-		return errors.New("no secret provider configured, but secrets are defined")
-	}
-
-	// Resolve external secrets
-	resolvedSecrets, err := (*provider).ResolveSecretReferences(ctx, secrets)
-	if err != nil {
-		return fmt.Errorf("failed to resolve secrets: %w", err)
-	}
-
-	// Inject resolved secrets into each service's environment
-	for i, service := range project.Services {
-		if service.Environment == nil {
-			service.Environment = types.MappingWithEquals{}
-		}
-
-		for envVar, secretValue := range resolvedSecrets {
-			service.Environment[envVar] = &secretValue
-		}
-
-		project.Services[i] = service
-	}
-
-	return nil
 }

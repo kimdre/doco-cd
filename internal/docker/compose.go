@@ -223,7 +223,7 @@ func addComposeVolumeLabels(project *types.Project, deployConfig config.DeployCo
 }
 
 // LoadCompose parses and loads Compose files as specified by the Docker Compose specification.
-func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles, profiles []string) (*types.Project, error) {
+func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles, profiles []string, resolvedSecrets map[string]string) (*types.Project, error) {
 	options, err := cli.NewProjectOptions(
 		composeFiles,
 		cli.WithName(projectName),
@@ -235,6 +235,11 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create project options: %w", err)
+	}
+
+	// Inject external secrets into the environment for variable interpolation
+	for k, v := range resolvedSecrets {
+		options.Environment[k] = v
 	}
 
 	err = cli.WithDotEnv(options)
@@ -251,6 +256,11 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve services environment: %w", err)
 	}
+
+	// err = injectExternalSecretsToServiceEnv(project, resolvedSecrets)
+	// if err != nil {
+	//	return nil, fmt.Errorf("failed to inject external secrets: %w", err)
+	//}
 
 	return project, nil
 }
@@ -472,17 +482,21 @@ func DeployStack(
 		return fmt.Errorf("file decryption failed: %w", err)
 	}
 
-	project, err := LoadCompose(*ctx, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles, deployConfig.Profiles)
+	resolvedSecrets := make(map[string]string)
+	if secretProvider != nil && *secretProvider != nil && len(deployConfig.ExternalSecrets) > 0 {
+		// Resolve external secrets
+		resolvedSecrets, err = (*secretProvider).ResolveSecretReferences(*ctx, deployConfig.ExternalSecrets)
+		if err != nil {
+			return fmt.Errorf("failed to resolve secrets: %w", err)
+		}
+	}
+
+	project, err := LoadCompose(*ctx, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles, deployConfig.Profiles, resolvedSecrets)
 	if err != nil {
 		errMsg := "failed to load compose config"
 		stackLog.Error(errMsg, logger.ErrAttr(err), slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
 
 		return fmt.Errorf("%s: %w", errMsg, err)
-	}
-
-	err = secretprovider.InjectSecretsToProject(*ctx, secretProvider, project, deployConfig.ExternalSecrets)
-	if err != nil {
-		return fmt.Errorf("failed to inject external secrets: %w", err)
 	}
 
 	done := make(chan struct{})
@@ -519,7 +533,7 @@ func DeployStack(
 
 		stackLog.Info("deploying swarm stack")
 
-		err = DeploySwarmStack(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion)
+		err = DeploySwarmStack(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion, resolvedSecrets)
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 

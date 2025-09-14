@@ -102,7 +102,7 @@ func TestLoadCompose(t *testing.T) {
 
 	createComposeFile(t, filePath, composeContents)
 
-	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{})
+	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestDeployCompose(t *testing.T) {
 	t.Log("Load compose file")
 	createComposeFile(t, filePath, composeContents)
 
-	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{})
+	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -376,7 +376,7 @@ func TestHasChangedConfigs(t *testing.T) {
 
 	t.Chdir(tmpDir)
 
-	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{})
+	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatalf("Failed to load compose file: %v", err)
 	}
@@ -439,7 +439,7 @@ func TestHasChangedSecrets(t *testing.T) {
 
 	t.Chdir(tmpDir)
 
-	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{})
+	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatalf("Failed to load compose file: %v", err)
 	}
@@ -502,7 +502,7 @@ func TestHasChangedBindMounts(t *testing.T) {
 
 	t.Chdir(tmpDir)
 
-	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{})
+	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatalf("Failed to load compose file: %v", err)
 	}
@@ -756,14 +756,35 @@ func TestGetProjects(t *testing.T) {
 	t.Logf("Found %d projects", len(projects))
 }
 
+// TestInjectSecretsToProject tests resolving and injecting secrets from external secret managers into a Docker Compose project.
 func TestInjectSecretsToProject(t *testing.T) {
-	const varName = "TEST_PASSWORD"
+	const (
+		varName         = "TEST_PASSWORD"
+		projectName     = "test"
+		composeContents = `services:
+  test:
+    image: nginx:latest
+    environment:
+      MY_PASSWORD: "x${TEST_PASSWORD}x"
+      IGNORED: "$$NOT_A_SECRET"
+    labels:
+      MY_LABEL: injected.${TEST_PASSWORD}
+`
+	)
+
+	// errorCases defines which step should produce an error
+	type errorCases struct {
+		initialization   bool
+		secretResolution bool
+	}
 
 	testCases := []struct {
 		name                 string
 		externalSecrets      map[string]string
 		expectedSecretValues map[string]string
-		expectedErr          string
+		expectError          errorCases
+		expectedEnvironment  map[string]string
+		expectedLabels       map[string]string
 	}{
 		{
 			name: "Bitwarden Secrets Manager with correct UUID",
@@ -772,6 +793,13 @@ func TestInjectSecretsToProject(t *testing.T) {
 			},
 			expectedSecretValues: map[string]string{
 				varName: "secret007!",
+			},
+			expectedEnvironment: map[string]string{
+				"MY_PASSWORD": "xsecret007!x",
+				"IGNORED":     "$NOT_A_SECRET",
+			},
+			expectedLabels: map[string]string{
+				"MY_LABEL": "injected.secret007!",
 			},
 		},
 		{
@@ -782,7 +810,9 @@ func TestInjectSecretsToProject(t *testing.T) {
 			expectedSecretValues: map[string]string{
 				varName: "secret007!",
 			},
-			expectedErr: "failed to resolve secrets: API error: Invalid command value: UUID parsing failed: invalid group length in group 4: expected 12, found 13",
+			expectError: errorCases{
+				secretResolution: true,
+			},
 		},
 		// Disabled because I don't have a 1Password account to test with
 		//{
@@ -809,46 +839,65 @@ func TestInjectSecretsToProject(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, "v0.0.0-test")
-	if err != nil {
-		t.Fatalf("failed to initialize secret provider: %s", err.Error())
-
-		return
-	}
-
-	if secretProvider != nil {
-		t.Cleanup(func() {
-			secretProvider.Close()
-		})
-	}
-
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{})
+			secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, "v0.0.0-test")
 			if err != nil {
-				t.Fatal(err)
-			}
-
-			err = secretprovider.InjectSecretsToProject(ctx, &secretProvider, project, tc.externalSecrets)
-			if err != nil {
-				if tc.expectedErr != "" {
-					if !strings.Contains(err.Error(), tc.expectedErr) {
-						t.Fatalf("expected error to contain '%s', got '%s'", tc.expectedErr, err.Error())
-					}
+				if tc.expectError.initialization {
+					t.Logf("expected initialization error: %s", err.Error())
 
 					return
 				}
 
-				t.Fatalf("failed to inject secrets: %s", err.Error())
+				t.Fatalf("failed to initialize secret provider: %s", err.Error())
+
+				return
+			}
+
+			if secretProvider != nil {
+				t.Cleanup(func() {
+					secretProvider.Close()
+				})
+			}
+
+			// Resolve external secrets
+			resolvedSecrets, err := secretProvider.ResolveSecretReferences(ctx, tc.externalSecrets)
+			if err != nil {
+				if tc.expectError.secretResolution {
+					t.Logf("expected retrieval error: %s", err.Error())
+
+					return
+				}
+
+				t.Fatalf("failed to resolve external secrets: %s", err.Error())
+			}
+
+			t.Log("Resolved secrets:", resolvedSecrets)
+
+			project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{}, resolvedSecrets)
+			if err != nil {
+				t.Fatal(err)
 			}
 
 			for _, service := range project.Services {
+				for k, v := range tc.expectedLabels {
+					if service.Labels[k] != v {
+						t.Fatalf("expected label '%s' to be '%s', got '%s'", k, v, service.Labels[k])
+					}
+
+					t.Log("Found label:", service.Labels[k])
+				}
+
 				if service.Environment == nil {
 					t.Fatal("expected environment variables, got nil")
 				}
 
-				if len(service.Environment) == 0 {
-					t.Fatal("expected at least 1 environment variable, got 0")
+				for k, v := range tc.expectedEnvironment {
+					if *service.Environment[k] != v {
+						t.Fatalf("expected environment variable '%s' to be '%s', got '%s'", k, v, *service.Environment[k])
+					}
+
+					t.Log("Found environment variable:", service.Environment[k])
 				}
 
 				found := false

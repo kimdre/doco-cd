@@ -1,9 +1,10 @@
-package secretprovider
+package secretprovider_test
 
 import (
 	"testing"
 
 	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/secretprovider"
 )
 
 func TestInitialize(t *testing.T) {
@@ -14,7 +15,7 @@ func TestInitialize(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	secretProvider, err := Initialize(ctx, c.SecretProvider, "v0.0.0-test")
+	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, "v0.0.0-test")
 	if err != nil {
 		t.Fatalf("failed to initialize secret provider: %s", err.Error())
 

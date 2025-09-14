@@ -30,7 +30,7 @@ import (
 
 // DeploySwarmStack deploys a Docker Swarm stack using the provided project and deploy configuration.
 func DeploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types.Project, deployConfig *config.DeployConfig,
-	payload webhook.ParsedPayload, repoDir, latestCommit, appVersion string,
+	payload webhook.ParsedPayload, repoDir, latestCommit, appVersion string, resolvedSecrets map[string]string,
 ) error {
 	opts := options.Deploy{
 		Composefiles:     project.ComposeFiles,
@@ -44,7 +44,7 @@ func DeploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types
 
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 
-	cfg, err := swarmInternal.LoadComposefile(dockerCli, opts)
+	cfg, err := swarmInternal.LoadComposefile(dockerCli, opts, resolvedSecrets)
 	if err != nil {
 		return fmt.Errorf("failed to load compose file: %w", err)
 	}
