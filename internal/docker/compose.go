@@ -22,6 +22,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
+	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
 	"github.com/go-git/go-git/v5/plumbing/format/diff"
 
@@ -223,7 +224,7 @@ func addComposeVolumeLabels(project *types.Project, deployConfig config.DeployCo
 }
 
 // LoadCompose parses and loads Compose files as specified by the Docker Compose specification.
-func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles, profiles []string, resolvedSecrets map[string]string) (*types.Project, error) {
+func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles, profiles []string, resolvedSecrets secrettypes.ResolvedSecrets) (*types.Project, error) {
 	options, err := cli.NewProjectOptions(
 		composeFiles,
 		cli.WithName(projectName),
@@ -477,7 +478,7 @@ func DeployStack(
 		return fmt.Errorf("file decryption failed: %w", err)
 	}
 
-	resolvedSecrets := make(map[string]string)
+	resolvedSecrets := make(secrettypes.ResolvedSecrets)
 	if secretProvider != nil && *secretProvider != nil && len(deployConfig.ExternalSecrets) > 0 {
 		// Resolve external secrets
 		resolvedSecrets, err = (*secretProvider).ResolveSecretReferences(*ctx, deployConfig.ExternalSecrets)

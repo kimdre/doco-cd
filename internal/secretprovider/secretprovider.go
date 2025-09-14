@@ -7,6 +7,7 @@ import (
 
 	onepassword "github.com/kimdre/doco-cd/internal/secretprovider/1password"
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
+	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
 
 // SecretProvider defines the interface for secret providers.
@@ -19,7 +20,7 @@ type SecretProvider interface {
 	GetSecrets(ctx context.Context, ids []string) (map[string]string, error)
 	// ResolveSecretReferences resolves the provided map of environment variable names to secret IDs
 	// by fetching the corresponding secret values from the secret provider.
-	ResolveSecretReferences(ctx context.Context, secrets map[string]string) (map[string]string, error)
+	ResolveSecretReferences(ctx context.Context, secrets map[string]string) (secrettypes.ResolvedSecrets, error)
 	// Close cleans up resources used by the Provider.
 	Close()
 }

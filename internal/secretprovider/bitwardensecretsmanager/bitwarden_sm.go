@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 
 	"github.com/bitwarden/sdk-go"
+
+	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
 
 const (
@@ -71,7 +73,7 @@ func (p *Provider) GetSecrets(_ context.Context, ids []string) (map[string]strin
 
 // ResolveSecretReferences resolves the provided map of environment variable names to secret IDs
 // by fetching the corresponding secret values from the secret provider.
-func (p *Provider) ResolveSecretReferences(ctx context.Context, secrets map[string]string) (map[string]string, error) {
+func (p *Provider) ResolveSecretReferences(ctx context.Context, secrets map[string]string) (secrettypes.ResolvedSecrets, error) {
 	ids := make([]string, 0, len(secrets))
 	for _, id := range secrets {
 		ids = append(ids, id)

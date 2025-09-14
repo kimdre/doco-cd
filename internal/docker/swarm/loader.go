@@ -16,11 +16,13 @@ import (
 	"github.com/docker/cli/cli/compose/schema"
 	"github.com/docker/cli/cli/compose/types"
 
+	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
+
 	"github.com/kimdre/doco-cd/internal/docker/options"
 )
 
 // LoadComposefile parse the composefile specified in the cli and returns its Config and version.
-func LoadComposefile(dockerCli command.Cli, opts options.Deploy, resolvedSecrets map[string]string) (*types.Config, error) {
+func LoadComposefile(dockerCli command.Cli, opts options.Deploy, resolvedSecrets secrettypes.ResolvedSecrets) (*types.Config, error) {
 	configDetails, err := GetConfigDetails(opts.Composefiles, dockerCli.In())
 	if err != nil {
 		return nil, err

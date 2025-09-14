@@ -14,6 +14,8 @@ import (
 
 	"github.com/docker/docker/client"
 
+	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
+
 	swarmInternal "github.com/kimdre/doco-cd/internal/docker/swarm"
 
 	"github.com/compose-spec/compose-go/v2/types"
@@ -30,7 +32,7 @@ import (
 
 // DeploySwarmStack deploys a Docker Swarm stack using the provided project and deploy configuration.
 func DeploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types.Project, deployConfig *config.DeployConfig,
-	payload webhook.ParsedPayload, repoDir, latestCommit, appVersion string, resolvedSecrets map[string]string,
+	payload webhook.ParsedPayload, repoDir, latestCommit, appVersion string, resolvedSecrets secrettypes.ResolvedSecrets,
 ) error {
 	opts := options.Deploy{
 		Composefiles:     project.ComposeFiles,
