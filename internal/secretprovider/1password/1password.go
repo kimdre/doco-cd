@@ -71,7 +71,7 @@ func (p *Provider) GetSecrets(ctx context.Context, uris []string) (map[string]st
 	result := make(map[string]string, len(secrets.IndividualResponses))
 	for uri, secret := range secrets.IndividualResponses {
 		if secret.Error != nil {
-			return nil, fmt.Errorf("error resolving secret: %s", secret.Error)
+			return nil, fmt.Errorf("error resolving secret: %s", secret.Error.Type)
 		}
 
 		result[uri] = secret.Content.Secret
