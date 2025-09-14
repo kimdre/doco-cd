@@ -30,12 +30,6 @@ func NewProvider(ctx context.Context, accessToken, version string) (*Provider, e
 		return nil, err
 	}
 
-	// Test the client by fetching the current user's details
-	_, err = client.VaultsAPI.List(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to authenticate with 1Password: %w", err)
-	}
-
 	provider := &Provider{Client: *client}
 
 	return provider, nil
