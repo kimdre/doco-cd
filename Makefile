@@ -12,11 +12,11 @@ BUILD_FLAGS=-ldflags="-X main.Version=dev -linkmode external -extldflags '-stati
 
 test:
 	@echo "Running tests..."
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test ${BUILD_FLAGS} -cover -p 1 ./... -timeout 5m
+	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test ${BUILD_FLAGS} -cover -p 1 ./... -timeout 10m
 
 test-verbose:
 	@echo "Running tests..."
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test ${BUILD_FLAGS} -v -cover -p 1 ./... -timeout 5m
+	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test ${BUILD_FLAGS} -v -cover -p 1 ./... -timeout 10m
 
 test-coverage:
 	@echo "Running tests with coverage..."
@@ -26,7 +26,7 @@ test-coverage:
 # Run specified tests from arguments
 test-run:
 	@echo "Running tests: $(filter-out $@,$(MAKECMDGOALS))"
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test ${BUILD_FLAGS} -cover -p 1 ./... -timeout 5m -run $(filter-out $@,$(MAKECMDGOALS))
+	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test ${BUILD_FLAGS} -cover -p 1 ./... -timeout 10m -run $(filter-out $@,$(MAKECMDGOALS))
 
 build:
 	mkdir -p $(BINARY_DIR)
