@@ -2,7 +2,9 @@ package onepassword
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/1password/onepassword-sdk-go"
 
@@ -13,8 +15,12 @@ const (
 	Name = "1password"
 )
 
+var ErrInvalidClientID = errors.New("invalid client id")
+
 type Provider struct {
-	Client onepassword.Client
+	Client      onepassword.Client
+	accessToken string
+	version     string
 }
 
 func (p *Provider) Name() string {
@@ -32,9 +38,24 @@ func NewProvider(ctx context.Context, accessToken, version string) (*Provider, e
 		return nil, err
 	}
 
-	provider := &Provider{Client: *client}
+	provider := &Provider{Client: *client, accessToken: accessToken, version: version}
 
 	return provider, nil
+}
+
+// renewSession renews the session for the Provider Client by creating a new Client instance with the same access token and version.
+func renewSession(ctx context.Context, p *Provider) error {
+	fmt.Println("renewSession")
+
+	newProvider, err := NewProvider(ctx, p.accessToken, p.version)
+	if err != nil {
+		return fmt.Errorf("failed to renew secret provider client session: %w", err)
+	}
+
+	// Set new client
+	p.Client = newProvider.Client
+
+	return nil
 }
 
 // GetSecret retrieves a secret value from 1Password using the provided URI.
@@ -45,13 +66,25 @@ func (p *Provider) GetSecret(ctx context.Context, uri string) (string, error) {
 
 	secret, err := p.Client.Secrets().Resolve(ctx, uri)
 	if err != nil {
-		return "", err
+		if strings.Contains(err.Error(), ErrInvalidClientID.Error()) {
+			// Attempt to renew session and retry
+			if err = renewSession(ctx, p); err != nil {
+				return "", fmt.Errorf("failed to renew secret provider client session: %w", err)
+			}
+
+			secret, err = p.Client.Secrets().Resolve(ctx, uri)
+			if err != nil {
+				return "", fmt.Errorf("failed to resolve secret after renewing session: %w", err)
+			}
+		} else {
+			return "", err
+		}
 	}
 
 	return secret, nil
 }
 
-// GetSecrets retrieves multiple secrets from Bitwarden Secrets Manager using the provided list of secret IDs.
+// GetSecrets retrieves multiple secrets from 1Password using the provided list of secret references.
 func (p *Provider) GetSecrets(ctx context.Context, uris []string) (map[string]string, error) {
 	for _, uri := range uris {
 		if err := onepassword.Secrets.ValidateSecretReference(ctx, uri); err != nil {
@@ -61,7 +94,19 @@ func (p *Provider) GetSecrets(ctx context.Context, uris []string) (map[string]st
 
 	secrets, err := p.Client.Secrets().ResolveAll(ctx, uris)
 	if err != nil {
-		return nil, err
+		if strings.Contains(err.Error(), ErrInvalidClientID.Error()) {
+			// Attempt to renew session and retry
+			if err = renewSession(ctx, p); err != nil {
+				return nil, fmt.Errorf("failed to renew secret provider client session: %w", err)
+			}
+
+			secrets, err = p.Client.Secrets().ResolveAll(ctx, uris)
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve secrets after renewing session: %w", err)
+			}
+		} else {
+			return nil, err
+		}
 	}
 
 	result := make(map[string]string, len(secrets.IndividualResponses))
