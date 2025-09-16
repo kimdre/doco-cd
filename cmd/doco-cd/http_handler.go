@@ -16,6 +16,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
+	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v2/pkg/api"
@@ -387,6 +388,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			// Check if containers do not belong to this repository or if doco-cd does not manage the stack
 			correctRepo := true
 			deployedCommit := ""
+			deployedSecretHash := ""
 
 			for _, cont := range containers {
 				name, ok := cont.Labels[docker.DocoCDLabels.Repository.Name]
@@ -397,6 +399,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				}
 
 				deployedCommit = cont.Labels[docker.DocoCDLabels.Deployment.CommitSHA]
+				deployedSecretHash = cont.Labels[docker.DocoCDLabels.Deployment.ExternalSecretsHash]
 			}
 
 			if !correctRepo {
@@ -404,6 +407,28 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 					map[string]string{"stack": deployConfig.Name}, http.StatusInternalServerError, metadata)
 
 				return
+			}
+
+			secretsChanged := false // Flag to indicate if external secrets have changed
+
+			resolvedSecrets := make(secrettypes.ResolvedSecrets)
+			if secretProvider != nil && *secretProvider != nil && len(deployConfig.ExternalSecrets) > 0 {
+				subJobLog.Debug("resolving external secrets", slog.Any("external_secrets", deployConfig.ExternalSecrets))
+
+				// Resolve external secrets
+				resolvedSecrets, err = (*secretProvider).ResolveSecretReferences(ctx, deployConfig.ExternalSecrets)
+				if err != nil {
+					onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to resolve external secrets", err.Error(), http.StatusInternalServerError, metadata)
+
+					return
+				}
+
+				secretHash := secretprovider.Hash(resolvedSecrets)
+				if deployedSecretHash != "" && deployedSecretHash != secretHash {
+					subJobLog.Debug("external secrets have changed, proceeding with deployment")
+
+					secretsChanged = true
+				}
 			}
 
 			subJobLog.Debug("comparing commits",
@@ -444,7 +469,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, dockerClient,
 				&payload, deployConfig, changedFiles, latestCommit, Version, "webhook", false, metadata,
-				secretProvider)
+				resolvedSecrets, secretsChanged)
 			if err != nil {
 				onError(w, subJobLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), http.StatusInternalServerError, metadata)
 

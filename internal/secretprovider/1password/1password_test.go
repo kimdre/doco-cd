@@ -4,7 +4,7 @@ package onepassword
 
 // TestProvider_GetSecrets_LongLifetime tests the GetSecrets method over an extended period to check if the client
 // is able to retrieve secrets without re-initialization even after a while.
-//func TestProvider_GetSecrets_LongLifetime(t *testing.T) {
+// func TestProvider_GetSecrets_LongLifetime(t *testing.T) {
 //	ctx := t.Context()
 //	startTime := time.Now()
 //

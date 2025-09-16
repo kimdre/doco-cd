@@ -13,8 +13,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
 	testCompose "github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 
@@ -253,8 +256,16 @@ func TestDeployCompose(t *testing.T) {
 			JobID:      jobID,
 		}
 
+		resolvedSecrets := make(secrettypes.ResolvedSecrets)
+		if secretProvider != nil && len(deployConf.ExternalSecrets) > 0 {
+			resolvedSecrets, err = secretProvider.ResolveSecretReferences(ctx, deployConf.ExternalSecrets)
+			if err != nil {
+				t.Fatalf("failed to resolve external secrets: %s", err.Error())
+			}
+		}
+
 		err = DeployStack(jobLog, repoPath, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
-			[]git.ChangedFile{}, latestCommit, "test", "poll", false, metadata, &secretProvider)
+			[]git.ChangedFile{}, latestCommit, "test", "poll", false, metadata, resolvedSecrets, false)
 		if err != nil {
 			if errors.Is(err, config.ErrDeprecatedConfig) {
 				t.Log(err.Error())
@@ -780,6 +791,7 @@ func TestInjectSecretsToProject(t *testing.T) {
 
 	testCases := []struct {
 		name                 string
+		secretProvider       string
 		externalSecrets      map[string]string
 		expectedSecretValues map[string]string
 		expectError          errorCases
@@ -787,7 +799,8 @@ func TestInjectSecretsToProject(t *testing.T) {
 		expectedLabels       map[string]string
 	}{
 		{
-			name: "Bitwarden Secrets Manager with correct UUID",
+			name:           "Bitwarden Secrets Manager with correct UUID",
+			secretProvider: bitwardensecretsmanager.Name,
 			externalSecrets: map[string]string{
 				varName: "138e3697-ed58-431c-b866-b3550066343a",
 			},
@@ -803,7 +816,8 @@ func TestInjectSecretsToProject(t *testing.T) {
 			},
 		},
 		{
-			name: "Bitwarden Secrets Manager with incorrect UUID",
+			name:           "Bitwarden Secrets Manager with incorrect UUID",
+			secretProvider: bitwardensecretsmanager.Name,
 			externalSecrets: map[string]string{
 				varName: "138e3697-ed58-431c-b866-b35500663dddd",
 			},
@@ -817,6 +831,7 @@ func TestInjectSecretsToProject(t *testing.T) {
 		// Disabled because I don't have a 1Password account to test with
 		//{
 		//	name: "Test with 1Password",
+		//  secretProvider: onepassword.Name,
 		//	externalSecrets: map[string]string{
 		//		varName: "op://DocoCD Tests/Secret/Test Password",
 		//	},
@@ -841,6 +856,10 @@ func TestInjectSecretsToProject(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			if c.SecretProvider != tc.secretProvider {
+				t.Skip("Skipping test because secret provider is not configured in app config")
+			}
+
 			secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, "v0.0.0-test")
 			if err != nil {
 				if tc.expectError.initialization {

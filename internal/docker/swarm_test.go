@@ -71,7 +71,7 @@ func TestDeploySwarmStack(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = DeploySwarmStack(t.Context(), dockerCli, project, deployConfigs[0], p, tmpDir, "e8e2d31f0fa0c924400b3bac751b6c2c6930adb1", "dev", map[string]string{})
+	err = DeploySwarmStack(t.Context(), dockerCli, project, deployConfigs[0], p, tmpDir, "e8e2d31f0fa0c924400b3bac751b6c2c6930adb1", "dev", "", map[string]string{})
 	if err != nil {
 		t.Fatalf("Failed to deploy swarm stack: %v", err)
 	} else {

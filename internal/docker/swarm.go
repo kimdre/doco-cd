@@ -32,7 +32,7 @@ import (
 
 // DeploySwarmStack deploys a Docker Swarm stack using the provided project and deploy configuration.
 func DeploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types.Project, deployConfig *config.DeployConfig,
-	payload webhook.ParsedPayload, repoDir, latestCommit, appVersion string, resolvedSecrets secrettypes.ResolvedSecrets,
+	payload webhook.ParsedPayload, repoDir, latestCommit, appVersion, secretHash string, resolvedSecrets secrettypes.ResolvedSecrets,
 ) error {
 	opts := options.Deploy{
 		Composefiles:     project.ComposeFiles,
@@ -51,7 +51,7 @@ func DeploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types
 		return fmt.Errorf("failed to load compose file: %w", err)
 	}
 
-	addSwarmServiceLabels(cfg, *deployConfig, payload, repoDir, appVersion, timestamp, latestCommit)
+	addSwarmServiceLabels(cfg, *deployConfig, payload, repoDir, appVersion, timestamp, latestCommit, secretHash)
 	addSwarmVolumeLabels(cfg, *deployConfig, payload, repoDir, appVersion, timestamp, latestCommit)
 	addSwarmConfigLabels(cfg, *deployConfig, payload, repoDir, appVersion, timestamp, latestCommit)
 	addSwarmSecretLabels(cfg, *deployConfig, payload, repoDir, appVersion, timestamp, latestCommit)
@@ -78,18 +78,19 @@ func RemoveSwarmStack(ctx context.Context, dockerCli command.Cli, namespace stri
 }
 
 // addSwarmServiceLabels adds custom labels to the service containers in a Docker Swarm stack.
-func addSwarmServiceLabels(stack *composetypes.Config, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, latestCommit string) {
+func addSwarmServiceLabels(stack *composetypes.Config, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, latestCommit, secretHash string) {
 	customLabels := map[string]string{
-		DocoCDLabels.Metadata.Manager:      config.AppName,
-		DocoCDLabels.Metadata.Version:      appVersion,
-		DocoCDLabels.Deployment.Name:       deployConfig.Name,
-		DocoCDLabels.Deployment.Timestamp:  timestamp,
-		DocoCDLabels.Deployment.WorkingDir: repoDir,
-		DocoCDLabels.Deployment.Trigger:    payload.CommitSHA,
-		DocoCDLabels.Deployment.CommitSHA:  latestCommit,
-		DocoCDLabels.Deployment.TargetRef:  deployConfig.Reference,
-		DocoCDLabels.Repository.Name:       payload.FullName,
-		DocoCDLabels.Repository.URL:        payload.WebURL,
+		DocoCDLabels.Metadata.Manager:               config.AppName,
+		DocoCDLabels.Metadata.Version:               appVersion,
+		DocoCDLabels.Deployment.Name:                deployConfig.Name,
+		DocoCDLabels.Deployment.Timestamp:           timestamp,
+		DocoCDLabels.Deployment.WorkingDir:          repoDir,
+		DocoCDLabels.Deployment.Trigger:             payload.CommitSHA,
+		DocoCDLabels.Deployment.CommitSHA:           latestCommit,
+		DocoCDLabels.Deployment.TargetRef:           deployConfig.Reference,
+		DocoCDLabels.Deployment.ExternalSecretsHash: secretHash,
+		DocoCDLabels.Repository.Name:                payload.FullName,
+		DocoCDLabels.Repository.URL:                 payload.WebURL,
 	}
 
 	for i, s := range stack.Services {

@@ -2,8 +2,12 @@ package secretprovider
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 
 	onepassword "github.com/kimdre/doco-cd/internal/secretprovider/1password"
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
@@ -51,4 +55,26 @@ func Initialize(ctx context.Context, provider, version string) (SecretProvider, 
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnknownProvider, provider)
 	}
+}
+
+// Hash returns a SHA256 hash of the ExternalSecrets map.
+func Hash(secrets secrettypes.ResolvedSecrets) string {
+	keys := make([]string, 0, len(secrets))
+	for k := range secrets {
+		keys = append(keys, k)
+	}
+
+	sort.Strings(keys)
+
+	var sb strings.Builder
+	for _, k := range keys {
+		_, _ = sb.WriteString(k)
+		_, _ = sb.WriteString("=")
+		_, _ = sb.WriteString(secrets[k])
+		_, _ = sb.WriteString(";")
+	}
+
+	sum := sha256.Sum256([]byte(sb.String()))
+
+	return hex.EncodeToString(sum[:])
 }
