@@ -13,9 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
 	testCompose "github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 

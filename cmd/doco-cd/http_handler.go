@@ -412,6 +412,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			secretsChanged := false // Flag to indicate if external secrets have changed
 
 			resolvedSecrets := make(secrettypes.ResolvedSecrets)
+
 			if secretProvider != nil && *secretProvider != nil && len(deployConfig.ExternalSecrets) > 0 {
 				subJobLog.Debug("resolving external secrets", slog.Any("external_secrets", deployConfig.ExternalSecrets))
 
