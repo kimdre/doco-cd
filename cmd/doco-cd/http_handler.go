@@ -15,6 +15,8 @@ import (
 	apiInternal "github.com/kimdre/doco-cd/internal/api"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
+	"github.com/kimdre/doco-cd/internal/secretprovider"
+	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v2/pkg/api"
@@ -41,6 +43,7 @@ type handlerData struct {
 	dockerCli      command.Cli          // Docker CLI client
 	dockerClient   *client.Client       // Docker client
 	log            *logger.Logger       // Logger for logging messages
+	secretProvider *secretprovider.SecretProvider
 }
 
 // onError handles errors by logging them, sending a JSON error response, and sending a notification.
@@ -81,7 +84,10 @@ func getRepoName(cloneURL string) string {
 }
 
 // HandleEvent executes the deployment process for a given webhook event.
-func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *config.AppConfig, dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget, jobID string, dockerCli command.Cli, dockerClient *client.Client) {
+func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *config.AppConfig,
+	dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget, jobID string,
+	dockerCli command.Cli, dockerClient *client.Client, secretProvider *secretprovider.SecretProvider,
+) {
 	var err error
 
 	startTime := time.Now()
@@ -382,6 +388,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			// Check if containers do not belong to this repository or if doco-cd does not manage the stack
 			correctRepo := true
 			deployedCommit := ""
+			deployedSecretHash := ""
 
 			for _, cont := range containers {
 				name, ok := cont.Labels[docker.DocoCDLabels.Repository.Name]
@@ -392,6 +399,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				}
 
 				deployedCommit = cont.Labels[docker.DocoCDLabels.Deployment.CommitSHA]
+				deployedSecretHash = cont.Labels[docker.DocoCDLabels.Deployment.ExternalSecretsHash]
 			}
 
 			if !correctRepo {
@@ -399,6 +407,29 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 					map[string]string{"stack": deployConfig.Name}, http.StatusInternalServerError, metadata)
 
 				return
+			}
+
+			secretsChanged := false // Flag to indicate if external secrets have changed
+
+			resolvedSecrets := make(secrettypes.ResolvedSecrets)
+
+			if secretProvider != nil && *secretProvider != nil && len(deployConfig.ExternalSecrets) > 0 {
+				subJobLog.Debug("resolving external secrets", slog.Any("external_secrets", deployConfig.ExternalSecrets))
+
+				// Resolve external secrets
+				resolvedSecrets, err = (*secretProvider).ResolveSecretReferences(ctx, deployConfig.ExternalSecrets)
+				if err != nil {
+					onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to resolve external secrets", err.Error(), http.StatusInternalServerError, metadata)
+
+					return
+				}
+
+				secretHash := secretprovider.Hash(resolvedSecrets)
+				if deployedSecretHash != "" && deployedSecretHash != secretHash {
+					subJobLog.Debug("external secrets have changed, proceeding with deployment")
+
+					secretsChanged = true
+				}
 			}
 
 			subJobLog.Debug("comparing commits",
@@ -438,7 +469,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			}
 
 			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, dockerClient,
-				&payload, deployConfig, changedFiles, latestCommit, Version, "webhook", false, metadata)
+				&payload, deployConfig, changedFiles, latestCommit, Version, "webhook", false, metadata,
+				resolvedSecrets, secretsChanged)
 			if err != nil {
 				onError(w, subJobLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), http.StatusInternalServerError, metadata)
 
@@ -458,7 +490,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 // WebhookHandler handles incoming webhook requests.
 func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	ctx := context.WithoutCancel(r.Context())
 
 	customTarget := r.PathValue("customTarget")
 
@@ -526,7 +558,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 	defer lock.Unlock()
 
-	HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, h.dockerClient)
+	HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, h.dockerClient, h.secretProvider)
 }
 
 // HealthCheckHandler handles health check requests.

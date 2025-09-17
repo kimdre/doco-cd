@@ -18,6 +18,12 @@ The following tools need to be installed:
 - Golang (see the [`go.mod`](https://github.com/kimdre/doco-cd/blob/main/go.mod#L3) file for the currently used version.
 - [Make](https://www.gnu.org/software/make/)
 
+### Additional steps
+
+Follow the installation instructions for the following dependencies:
+
+- [Bitwarden Go SDK](https://github.com/bitwarden/sdk-go/tree/main?tab=readme-ov-file#installation)
+
 ### Getting started
 
 1. Set up [Git Commit Signing](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits) if you haven't already done so. Please always sign your commits!

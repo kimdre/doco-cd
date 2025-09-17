@@ -21,6 +21,8 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
+	"github.com/kimdre/doco-cd/internal/secretprovider"
+	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
 	"github.com/go-git/go-git/v5/plumbing/format/diff"
 
@@ -168,7 +170,7 @@ addComposeServiceLabels adds the labels docker compose expects to exist on servi
 This is required for future compose operations to work, such as finding
 containers that are part of a service.
 */
-func addComposeServiceLabels(project *types.Project, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, composeVersion, latestCommit string) {
+func addComposeServiceLabels(project *types.Project, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, composeVersion, latestCommit, secretHash string) {
 	for i, s := range project.Services {
 		// Extract service dependencies (depends_on)
 		dependencies := make([]string, 0, len(s.DependsOn))
@@ -179,23 +181,24 @@ func addComposeServiceLabels(project *types.Project, deployConfig config.DeployC
 		}
 
 		s.CustomLabels = map[string]string{
-			DocoCDLabels.Metadata.Manager:      config.AppName,
-			DocoCDLabels.Metadata.Version:      appVersion,
-			DocoCDLabels.Deployment.Name:       deployConfig.Name,
-			DocoCDLabels.Deployment.Timestamp:  timestamp,
-			DocoCDLabels.Deployment.WorkingDir: repoDir,
-			DocoCDLabels.Deployment.Trigger:    payload.CommitSHA,
-			DocoCDLabels.Deployment.CommitSHA:  latestCommit,
-			DocoCDLabels.Deployment.TargetRef:  deployConfig.Reference,
-			DocoCDLabels.Repository.Name:       payload.FullName,
-			DocoCDLabels.Repository.URL:        payload.WebURL,
-			api.ProjectLabel:                   project.Name,
-			api.ServiceLabel:                   s.Name,
-			api.WorkingDirLabel:                project.WorkingDir,
-			api.ConfigFilesLabel:               strings.Join(project.ComposeFiles, ","),
-			api.VersionLabel:                   composeVersion,
-			api.OneoffLabel:                    "False", // default, will be overridden by docker compose
-			api.DependenciesLabel:              strings.Join(dependencies, ","),
+			DocoCDLabels.Metadata.Manager:               config.AppName,
+			DocoCDLabels.Metadata.Version:               appVersion,
+			DocoCDLabels.Deployment.Name:                deployConfig.Name,
+			DocoCDLabels.Deployment.Timestamp:           timestamp,
+			DocoCDLabels.Deployment.WorkingDir:          repoDir,
+			DocoCDLabels.Deployment.Trigger:             payload.CommitSHA,
+			DocoCDLabels.Deployment.CommitSHA:           latestCommit,
+			DocoCDLabels.Deployment.TargetRef:           deployConfig.Reference,
+			DocoCDLabels.Deployment.ExternalSecretsHash: secretHash,
+			DocoCDLabels.Repository.Name:                payload.FullName,
+			DocoCDLabels.Repository.URL:                 payload.WebURL,
+			api.ProjectLabel:                            project.Name,
+			api.ServiceLabel:                            s.Name,
+			api.WorkingDirLabel:                         project.WorkingDir,
+			api.ConfigFilesLabel:                        strings.Join(project.ComposeFiles, ","),
+			api.VersionLabel:                            composeVersion,
+			api.OneoffLabel:                             "False", // default, will be overridden by docker compose
+			api.DependenciesLabel:                       strings.Join(dependencies, ","),
 		}
 		project.Services[i] = s
 	}
@@ -222,7 +225,7 @@ func addComposeVolumeLabels(project *types.Project, deployConfig config.DeployCo
 }
 
 // LoadCompose parses and loads Compose files as specified by the Docker Compose specification.
-func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles, profiles []string) (*types.Project, error) {
+func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles, profiles []string, resolvedSecrets secrettypes.ResolvedSecrets) (*types.Project, error) {
 	options, err := cli.NewProjectOptions(
 		composeFiles,
 		cli.WithName(projectName),
@@ -234,6 +237,11 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create project options: %w", err)
+	}
+
+	// Inject external secrets into the environment for variable interpolation
+	for k, v := range resolvedSecrets {
+		options.Environment[k] = v
 	}
 
 	err = cli.WithDotEnv(options)
@@ -257,7 +265,7 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 // deployCompose deploys a project as specified by the Docker Compose specification (LoadCompose).
 func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project,
 	deployConfig *config.DeployConfig, payload webhook.ParsedPayload,
-	repoDir, latestCommit, appVersion string, forceDeploy bool,
+	repoDir, latestCommit, appVersion, secretHash string, forceDeploy bool,
 ) error {
 	var err error
 
@@ -277,7 +285,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		}
 	}
 
-	addComposeServiceLabels(project, *deployConfig, payload, repoDir, appVersion, timestamp, ComposeVersion, latestCommit)
+	addComposeServiceLabels(project, *deployConfig, payload, repoDir, appVersion, timestamp, ComposeVersion, latestCommit, secretHash)
 	addComposeVolumeLabels(project, *deployConfig, payload, appVersion, timestamp, ComposeVersion, latestCommit)
 
 	if deployConfig.ForceImagePull {
@@ -349,7 +357,7 @@ func DeployStack(
 	jobLog *slog.Logger, internalRepoPath, externalRepoPath string, ctx *context.Context,
 	dockerCli *command.Cli, dockerClient *client.Client, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
 	changedFiles []gitInternal.ChangedFile, latestCommit, appVersion, triggerEvent string, forceDeploy bool,
-	metadata notification.Metadata,
+	metadata notification.Metadata, resolvedSecrets secrettypes.ResolvedSecrets, secretsChanged bool,
 ) error {
 	startTime := time.Now()
 
@@ -471,7 +479,9 @@ func DeployStack(
 		return fmt.Errorf("file decryption failed: %w", err)
 	}
 
-	project, err := LoadCompose(*ctx, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles, deployConfig.Profiles)
+	secretHash := secretprovider.Hash(resolvedSecrets)
+
+	project, err := LoadCompose(*ctx, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles, deployConfig.Profiles, resolvedSecrets)
 	if err != nil {
 		errMsg := "failed to load compose config"
 		stackLog.Error(errMsg, logger.ErrAttr(err), slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
@@ -513,7 +523,7 @@ func DeployStack(
 
 		stackLog.Info("deploying swarm stack")
 
-		err = DeploySwarmStack(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion)
+		err = DeploySwarmStack(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion, secretHash, resolvedSecrets)
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 
@@ -563,6 +573,10 @@ func DeployStack(
 		}
 
 		switch {
+		case secretsChanged:
+			deployConfig.ForceRecreate = true
+
+			stackLog.Debug("changed external secrets detected, forcing recreate of all services")
 		case hasChangedFiles || (hasChangedCompose && triggerEvent == "poll"):
 			deployConfig.ForceRecreate = true
 
@@ -573,7 +587,7 @@ func DeployStack(
 
 		stackLog.Info("deploying stack", slog.Bool("forced", deployConfig.ForceRecreate))
 
-		err = deployCompose(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion, forceDeploy)
+		err = deployCompose(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion, secretHash, forceDeploy)
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 

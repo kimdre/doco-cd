@@ -12,6 +12,8 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
+	"github.com/kimdre/doco-cd/internal/secretprovider"
+	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v2/pkg/api"
@@ -94,7 +96,7 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 
 				logger.Debug("Start poll job")
 
-				metadata, err := RunPoll(context.Background(), pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.dockerClient, logger, metadata)
+				metadata, err := RunPoll(context.Background(), pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.dockerClient, logger, metadata, h.secretProvider)
 				if err != nil {
 					prometheus.PollErrors.WithLabelValues(repoName).Inc()
 
@@ -119,7 +121,7 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 
 // RunPoll deploys compose projects based on the provided configuration.
 func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *config.AppConfig, dataMountPoint container.MountPoint,
-	dockerCli command.Cli, dockerClient *client.Client, logger *slog.Logger, metadata notification.Metadata,
+	dockerCli command.Cli, dockerClient *client.Client, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
 ) (notification.Metadata, error) {
 	var err error
 
@@ -411,6 +413,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			// Check if containers do not belong to this repository or if doco-cd does not manage the stack
 			correctRepo := true
 			deployedCommit := ""
+			deployedSecretHash := ""
 
 			for _, cont := range containers {
 				name, ok := cont.Labels[docker.DocoCDLabels.Repository.Name]
@@ -421,6 +424,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 				}
 
 				deployedCommit = cont.Labels[docker.DocoCDLabels.Deployment.CommitSHA]
+				deployedSecretHash = cont.Labels[docker.DocoCDLabels.Deployment.ExternalSecretsHash]
 			}
 
 			if !correctRepo {
@@ -429,11 +433,34 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 				return metadata, fmt.Errorf("%w: %s: skipping deployment", ErrDeploymentConflict, deployConfig.Name)
 			}
 
+			secretsChanged := false // Flag to indicate if external secrets have changed
+
+			resolvedSecrets := make(secrettypes.ResolvedSecrets)
+
+			if secretProvider != nil && *secretProvider != nil && len(deployConfig.ExternalSecrets) > 0 {
+				subJobLog.Debug("resolving external secrets", slog.Any("external_secrets", deployConfig.ExternalSecrets))
+
+				// Resolve external secrets
+				resolvedSecrets, err = (*secretProvider).ResolveSecretReferences(ctx, deployConfig.ExternalSecrets)
+				if err != nil {
+					subJobLog.Error(fmt.Errorf("failed to resolve external secrets: %w", err).Error())
+
+					return metadata, fmt.Errorf("failed to resolve external secrets: %w", err)
+				}
+
+				secretHash := secretprovider.Hash(resolvedSecrets)
+				if deployedSecretHash != "" && deployedSecretHash != secretHash {
+					subJobLog.Debug("external secrets have changed, proceeding with deployment")
+
+					secretsChanged = true
+				}
+			}
+
 			subJobLog.Debug("comparing commits",
 				slog.String("deployed_commit", deployedCommit),
 				slog.String("latest_commit", latestCommit))
 
-			if latestCommit == deployedCommit {
+			if latestCommit == deployedCommit && !secretsChanged {
 				subJobLog.Debug("no new commit found, skipping deployment", slog.String("last_commit", latestCommit))
 
 				continue
@@ -448,14 +475,14 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 					return metadata, fmt.Errorf("failed to get changed files between commits: %w", err)
 				}
 
-				hasChanged, err := git.HasChangesInSubdir(changedFiles, deployConfig.WorkingDirectory)
+				filesChanged, err := git.HasChangesInSubdir(changedFiles, deployConfig.WorkingDirectory)
 				if err != nil {
 					subJobLog.Error("failed to compare commits in subdirectory", log.ErrAttr(err))
 
 					return metadata, fmt.Errorf("failed to compare commits in subdirectory: %w", err)
 				}
 
-				if !hasChanged {
+				if !filesChanged && !secretsChanged {
 					jobLog.Debug("no changes detected in subdirectory, skipping deployment",
 						slog.String("directory", deployConfig.WorkingDirectory),
 						slog.String("last_commit", latestCommit),
@@ -464,10 +491,12 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 					continue
 				}
 
-				subJobLog.Debug("changes detected in subdirectory, proceeding with deployment",
-					slog.String("directory", deployConfig.WorkingDirectory),
-					slog.String("last_commit", latestCommit),
-					slog.String("deployed_commit", deployedCommit))
+				if filesChanged {
+					subJobLog.Debug("changes detected in subdirectory, proceeding with deployment",
+						slog.String("directory", deployConfig.WorkingDirectory),
+						slog.String("last_commit", latestCommit),
+						slog.String("deployed_commit", deployedCommit))
+				}
 			}
 
 			payload := webhook.ParsedPayload{
@@ -480,7 +509,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			}
 
 			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, dockerClient,
-				&payload, deployConfig, changedFiles, latestCommit, Version, "poll", false, metadata)
+				&payload, deployConfig, changedFiles, latestCommit, Version, "poll", false, metadata, resolvedSecrets, secretsChanged)
 			if err != nil {
 				subJobLog.Error("failed to deploy stack "+deployConfig.Name, log.ErrAttr(err))
 

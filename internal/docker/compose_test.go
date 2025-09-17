@@ -16,6 +16,12 @@ import (
 	testCompose "github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
+
+	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
+
+	"github.com/kimdre/doco-cd/internal/secretprovider"
+
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -100,7 +106,7 @@ func TestLoadCompose(t *testing.T) {
 
 	createComposeFile(t, filePath, composeContents)
 
-	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{})
+	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,6 +142,19 @@ func TestDeployCompose(t *testing.T) {
 		client.FromEnv,
 		client.WithAPIVersionNegotiation(),
 	)
+
+	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, "v0.0.0-test")
+	if err != nil {
+		t.Fatalf("failed to initialize secret provider: %s", err.Error())
+
+		return
+	}
+
+	if secretProvider != nil {
+		t.Cleanup(func() {
+			secretProvider.Close()
+		})
+	}
 
 	swarm.ModeEnabled, err = swarm.CheckDaemonIsSwarmManager(ctx, dockerCli)
 	if err != nil {
@@ -187,7 +206,7 @@ func TestDeployCompose(t *testing.T) {
 	t.Log("Load compose file")
 	createComposeFile(t, filePath, composeContents)
 
-	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{})
+	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,8 +257,16 @@ func TestDeployCompose(t *testing.T) {
 			JobID:      jobID,
 		}
 
+		resolvedSecrets := make(secrettypes.ResolvedSecrets)
+		if secretProvider != nil && len(deployConf.ExternalSecrets) > 0 {
+			resolvedSecrets, err = secretProvider.ResolveSecretReferences(ctx, deployConf.ExternalSecrets)
+			if err != nil {
+				t.Fatalf("failed to resolve external secrets: %s", err.Error())
+			}
+		}
+
 		err = DeployStack(jobLog, repoPath, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
-			[]git.ChangedFile{}, latestCommit, "test", "poll", false, metadata)
+			[]git.ChangedFile{}, latestCommit, "test", "poll", false, metadata, resolvedSecrets, false)
 		if err != nil {
 			if errors.Is(err, config.ErrDeprecatedConfig) {
 				t.Log(err.Error())
@@ -361,7 +388,7 @@ func TestHasChangedConfigs(t *testing.T) {
 
 	t.Chdir(tmpDir)
 
-	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{})
+	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatalf("Failed to load compose file: %v", err)
 	}
@@ -424,7 +451,7 @@ func TestHasChangedSecrets(t *testing.T) {
 
 	t.Chdir(tmpDir)
 
-	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{})
+	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatalf("Failed to load compose file: %v", err)
 	}
@@ -487,7 +514,7 @@ func TestHasChangedBindMounts(t *testing.T) {
 
 	t.Chdir(tmpDir)
 
-	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{})
+	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatalf("Failed to load compose file: %v", err)
 	}
@@ -739,4 +766,170 @@ func TestGetProjects(t *testing.T) {
 	}
 
 	t.Logf("Found %d projects", len(projects))
+}
+
+// TestInjectSecretsToProject tests resolving and injecting secrets from external secret managers into a Docker Compose project.
+func TestInjectSecretsToProject(t *testing.T) {
+	const (
+		varName         = "TEST_PASSWORD"
+		projectName     = "test"
+		composeContents = `services:
+  test:
+    image: nginx:latest
+    environment:
+      MY_PASSWORD: "x${TEST_PASSWORD}x"
+      IGNORED: "$$NOT_A_SECRET"
+    labels:
+      MY_LABEL: injected.${TEST_PASSWORD}
+`
+	)
+
+	// errorCases defines which step should produce an error
+	type errorCases struct {
+		initialization   bool
+		secretResolution bool
+	}
+
+	testCases := []struct {
+		name                 string
+		secretProvider       string
+		externalSecrets      map[string]string
+		expectedSecretValues map[string]string
+		expectError          errorCases
+		expectedEnvironment  map[string]string
+		expectedLabels       map[string]string
+	}{
+		{
+			name:           "Bitwarden Secrets Manager with correct UUID",
+			secretProvider: bitwardensecretsmanager.Name,
+			externalSecrets: map[string]string{
+				varName: "138e3697-ed58-431c-b866-b3550066343a",
+			},
+			expectedSecretValues: map[string]string{
+				varName: "secret007!",
+			},
+			expectedEnvironment: map[string]string{
+				"MY_PASSWORD": "xsecret007!x",
+				"IGNORED":     "$NOT_A_SECRET",
+			},
+			expectedLabels: map[string]string{
+				"MY_LABEL": "injected.secret007!",
+			},
+		},
+		{
+			name:           "Bitwarden Secrets Manager with incorrect UUID",
+			secretProvider: bitwardensecretsmanager.Name,
+			externalSecrets: map[string]string{
+				varName: "138e3697-ed58-431c-b866-b35500663dddd",
+			},
+			expectedSecretValues: map[string]string{
+				varName: "secret007!",
+			},
+			expectError: errorCases{
+				secretResolution: true,
+			},
+		},
+		// Disabled because I don't have a 1Password account to test with
+		//{
+		//	name: "Test with 1Password",
+		//  secretProvider: onepassword.Name,
+		//	externalSecrets: map[string]string{
+		//		varName: "op://DocoCD Tests/Secret/Test Password",
+		//	},
+		//	expectedSecretValues: map[string]string{
+		//		varName: "secret007!",
+		//	},
+		// },
+	}
+
+	ctx := t.Context()
+
+	tmpDir := t.TempDir()
+	t.Chdir(tmpDir)
+
+	filePath := filepath.Join(tmpDir, "test.compose.yaml")
+	createComposeFile(t, filePath, composeContents)
+
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if c.SecretProvider != tc.secretProvider {
+				t.Skip("Skipping test because secret provider is not configured in app config")
+			}
+
+			secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, "v0.0.0-test")
+			if err != nil {
+				if tc.expectError.initialization {
+					t.Logf("expected initialization error: %s", err.Error())
+
+					return
+				}
+
+				t.Fatalf("failed to initialize secret provider: %s", err.Error())
+
+				return
+			}
+
+			if secretProvider != nil {
+				t.Cleanup(func() {
+					secretProvider.Close()
+				})
+			}
+
+			// Resolve external secrets
+			resolvedSecrets, err := secretProvider.ResolveSecretReferences(ctx, tc.externalSecrets)
+			if err != nil {
+				if tc.expectError.secretResolution {
+					t.Logf("expected retrieval error: %s", err.Error())
+
+					return
+				}
+
+				t.Fatalf("failed to resolve external secrets: %s", err.Error())
+			}
+
+			t.Log("Resolved secrets:", resolvedSecrets)
+
+			project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{}, resolvedSecrets)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			for _, service := range project.Services {
+				for k, v := range tc.expectedLabels {
+					if service.Labels[k] != v {
+						t.Fatalf("expected label '%s' to be '%s', got '%s'", k, v, service.Labels[k])
+					}
+
+					t.Log("Found label:", service.Labels[k])
+				}
+
+				if service.Environment == nil {
+					t.Fatal("expected environment variables, got nil")
+				}
+
+				for k, v := range tc.expectedEnvironment {
+					if *service.Environment[k] != v {
+						t.Fatalf("expected environment variable '%s' to be '%s', got '%s'", k, v, *service.Environment[k])
+					}
+
+					t.Log("Found environment variable:", *service.Environment[k])
+				}
+
+				for k, v := range tc.expectedSecretValues {
+					for _, envVal := range service.Environment {
+						if strings.Contains(*envVal, v) {
+							t.Logf("Secret value for '%s' successfully injected into environment variable", k)
+
+							break
+						}
+					}
+				}
+			}
+		})
+	}
 }

@@ -6,7 +6,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/notification"
 
-	"github.com/caarlos0/env/v11"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"gopkg.in/validator.v2"
 	"gopkg.in/yaml.v3"
@@ -40,23 +39,26 @@ type AppConfig struct {
 	AppriseNotifyUrls     string                 `env:"APPRISE_NOTIFY_URLS"`                                                // AppriseNotifyUrls is a comma-separated list of URLs to notify via the Apprise notification service
 	AppriseNotifyUrlsFile string                 `env:"APPRISE_NOTIFY_URLS_FILE,file"`                                      // AppriseNotifyUrlsFile is the file containing the AppriseNotifyUrls
 	AppriseNotifyLevel    string                 `env:"APPRISE_NOTIFY_LEVEL,notEmpty" envDefault:"success"`                 // AppriseNotifyLevel is the level of notifications to send via the Apprise notification service
+	SecretProvider        string                 `env:"SECRET_PROVIDER"`                                                    // SecretProvider is the secret provider/manager to use for retrieving secrets (e.g. bitwarden secrets manager)
 }
 
 // GetAppConfig returns the configuration.
 func GetAppConfig() (*AppConfig, error) {
 	cfg := AppConfig{}
 
-	// Parse app config from environment variables
-	if err := env.Parse(&cfg); err != nil {
-		return nil, err
+	mappings := []EnvVarFileMapping{
+		{EnvName: "API_SECRET", EnvValue: &cfg.ApiSecret, FileValue: &cfg.ApiSecretFile, AllowUnset: true},
+		{EnvName: "WEBHOOK_SECRET", EnvValue: &cfg.WebhookSecret, FileValue: &cfg.WebhookSecretFile, AllowUnset: true},
+		{EnvName: "GIT_ACCESS_TOKEN", EnvValue: &cfg.GitAccessToken, FileValue: &cfg.GitAccessTokenFile, AllowUnset: true},
+		{EnvName: "APPRISE_NOTIFY_URLS", EnvValue: &cfg.AppriseNotifyUrls, FileValue: &cfg.AppriseNotifyUrlsFile, AllowUnset: true},
 	}
 
-	// Load file-based environment variables
-	if err := loadFileBasedEnvVars(&cfg); err != nil {
-		return nil, err
+	err := ParseConfigFromEnv(&cfg, &mappings)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrParseConfigFailed, err)
 	}
 
-	err := cfg.ParsePollConfig()
+	err = cfg.ParsePollConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse poll config: %w", err)
 	}
@@ -98,35 +100,6 @@ func GetAppConfig() (*AppConfig, error) {
 	)
 
 	return &cfg, nil
-}
-
-// loadFileBasedEnvVars loads environment variables from files if the corresponding file-based environment variable is set.
-func loadFileBasedEnvVars(cfg *AppConfig) error {
-	fields := []struct {
-		fileField  string
-		value      *string
-		name       string
-		allowUnset bool // allowUnset indicates if both the fileField and value can be unset
-	}{
-		{cfg.ApiSecretFile, &cfg.ApiSecret, "API_SECRET", true},
-		{cfg.WebhookSecretFile, &cfg.WebhookSecret, "WEBHOOK_SECRET", true},
-		{cfg.GitAccessTokenFile, &cfg.GitAccessToken, "GIT_ACCESS_TOKEN", true},
-		{cfg.AppriseNotifyUrlsFile, &cfg.AppriseNotifyUrls, "APPRISE_NOTIFY_URLS", true},
-	}
-
-	for _, field := range fields {
-		if field.fileField != "" {
-			if *field.value != "" {
-				return fmt.Errorf("%w: %s or %s", ErrBothSecretsSet, field.name, field.name+"_FILE")
-			}
-
-			*field.value = strings.TrimSpace(field.fileField)
-		} else if *field.value == "" && !field.allowUnset {
-			return fmt.Errorf("%w: %s or %s", ErrBothSecretsNotSet, field.name, field.name+"_FILE")
-		}
-	}
-
-	return nil
 }
 
 // ParsePollConfig parses the PollConfig from either the PollConfigYAML string or the PollConfigFile.
