@@ -45,8 +45,6 @@ func NewProvider(ctx context.Context, accessToken, version string) (*Provider, e
 
 // renewSession renews the session for the Provider Client by creating a new Client instance with the same access token and version.
 func renewSession(ctx context.Context, p *Provider) error {
-	fmt.Println("renewSession")
-
 	newProvider, err := NewProvider(ctx, p.accessToken, p.version)
 	if err != nil {
 		return fmt.Errorf("failed to renew secret provider client session: %w", err)
