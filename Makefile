@@ -8,7 +8,14 @@ ifneq (,$(wildcard ./.env))
     export
 endif
 
-BUILD_FLAGS=-ldflags="-X main.Version=dev -linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'"
+BUILD_FLAGS:=
+ifeq ($(shell uname), Linux)
+    BUILD_FLAGS:="-linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'"
+else ifeq ($(shell uname), Darwin)
+		BUILD_FLAGS:=""
+endif
+
+BUILD_FLAGS:=-ldflags="-X main.Version=dev $(BUILD_FLAGS)"
 
 test:
 	@echo "Running tests..."
@@ -16,21 +23,21 @@ test:
 
 test-verbose:
 	@echo "Running tests..."
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test ${BUILD_FLAGS} -v -cover -p 1 ./... -timeout 10m
+	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test ${BUILD_FLAGS_LINUX} -v -cover -p 1 ./... -timeout 10m
 
 test-coverage:
 	@echo "Running tests with coverage..."
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test ${BUILD_FLAGS} -v -coverprofile cover.out ./...
+	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test ${BUILD_FLAGS_LINUX} -v -coverprofile cover.out ./...
 	@go tool cover -html cover.out -o cover.html
 
 # Run specified tests from arguments
 test-run:
 	@echo "Running tests: $(filter-out $@,$(MAKECMDGOALS))"
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test ${BUILD_FLAGS} -cover -p 1 ./... -timeout 10m -run $(filter-out $@,$(MAKECMDGOALS))
+	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test ${BUILD_FLAGS_LINUX} -cover -p 1 ./... -timeout 10m -run $(filter-out $@,$(MAKECMDGOALS))
 
 build:
 	mkdir -p $(BINARY_DIR)
-	go build ${BUILD_FLAGS} -o $(BINARY_DIR) ./...
+	go build ${BUILD_FLAGS_LINUX} -o $(BINARY_DIR) ./...
 
 lint fmt:
 	${GO_BIN}/golangci-lint run --fix ./...
