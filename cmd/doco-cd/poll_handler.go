@@ -443,7 +443,9 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 				// Resolve external secrets
 				resolvedSecrets, err = (*secretProvider).ResolveSecretReferences(ctx, deployConfig.ExternalSecrets)
 				if err != nil {
-					return metadata, fmt.Errorf("failed to resolve secrets: %w", err)
+					subJobLog.Error(fmt.Errorf("failed to resolve external secrets: %w", err).Error())
+
+					return metadata, fmt.Errorf("failed to resolve external secrets: %w", err)
 				}
 
 				secretHash := secretprovider.Hash(resolvedSecrets)
