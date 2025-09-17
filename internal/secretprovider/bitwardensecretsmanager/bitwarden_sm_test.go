@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/bitwarden/sdk-go"
+
+	"github.com/kimdre/doco-cd/internal/config"
 )
 
 const (
@@ -12,7 +14,20 @@ const (
 	invalidSecretID = "invalid-secret-id"
 )
 
+func checkSecretProvider(t *testing.T) {
+	appConfig, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("unable to get app config: %v", err)
+	}
+
+	if appConfig.SecretProvider != Name {
+		t.Skipf("skipping test because secret provider type is not %s", Name)
+	}
+}
+
 func TestNewProvider(t *testing.T) {
+	checkSecretProvider(t)
+
 	cfg, err := GetConfig()
 	if err != nil {
 		t.Fatalf("unable to get config: %v", err)
@@ -118,6 +133,8 @@ func TestNewProvider(t *testing.T) {
 }
 
 func TestProvider_GetSecret(t *testing.T) {
+	checkSecretProvider(t)
+
 	cfg, err := GetConfig()
 	if err != nil {
 		t.Fatalf("unable to get config: %v", err)
@@ -177,6 +194,8 @@ func TestProvider_GetSecret(t *testing.T) {
 }
 
 func TestProvider_GetSecrets(t *testing.T) {
+	checkSecretProvider(t)
+
 	cfg, err := GetConfig()
 	if err != nil {
 		t.Fatalf("unable to get config: %v", err)
@@ -254,6 +273,8 @@ func TestProvider_GetSecrets(t *testing.T) {
 }
 
 func TestProvider_ResolveSecretReferences(t *testing.T) {
+	checkSecretProvider(t)
+
 	cfg, err := GetConfig()
 	if err != nil {
 		t.Fatalf("unable to get config: %v", err)
