@@ -490,7 +490,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 // WebhookHandler handles incoming webhook requests.
 func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := context.Background()
+	ctx := context.WithoutCancel(r.Context())
 
 	customTarget := r.PathValue("customTarget")
 
