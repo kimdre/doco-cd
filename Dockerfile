@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Set build environment
+# CGO_ENABLED=1 and CC=musl-gcc are required for Bitwarden SDK
 ENV GOCACHE=/root/.cache/go-build \
     CGO_ENABLED=1 \
     CC=musl-gcc \
