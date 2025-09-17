@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	onepassword "github.com/kimdre/doco-cd/internal/secretprovider/1password"
+	"github.com/kimdre/doco-cd/internal/secretprovider/awssecretsmanager"
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
@@ -38,6 +39,13 @@ func Initialize(ctx context.Context, provider, version string) (SecretProvider, 
 	}
 
 	switch provider {
+	case awssecretsmanager.Name:
+		cfg, err := awssecretsmanager.GetConfig()
+		if err != nil {
+			return nil, err
+		}
+
+		return awssecretsmanager.NewProvider(ctx, cfg.Region, cfg.AccessKeyID, cfg.SecretAccessKey)
 	case bitwardensecretsmanager.Name:
 		cfg, err := bitwardensecretsmanager.GetConfig()
 		if err != nil {

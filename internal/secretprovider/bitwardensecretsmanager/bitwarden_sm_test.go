@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/bitwarden/sdk-go"
+
+	"github.com/kimdre/doco-cd/internal/config"
 )
 
 const (
@@ -12,7 +14,20 @@ const (
 	invalidSecretID = "invalid-secret-id"
 )
 
-func TestNewProvider(t *testing.T) {
+func skipWrongProvider(t *testing.T) {
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("unable to get app config: %v", err)
+	}
+
+	if c.SecretProvider != Name {
+		t.Skipf("Skipping provider tests since SECRET_PROVIDER is not set to '%s'", Name)
+	}
+}
+
+func TestNewProvider_BitwardenSecretManager(t *testing.T) {
+	skipWrongProvider(t)
+
 	cfg, err := GetConfig()
 	if err != nil {
 		t.Fatalf("unable to get config: %v", err)
@@ -117,7 +132,9 @@ func TestNewProvider(t *testing.T) {
 	}
 }
 
-func TestProvider_GetSecret(t *testing.T) {
+func TestProvider_GetSecret_BitwardenSecretManager(t *testing.T) {
+	skipWrongProvider(t)
+
 	cfg, err := GetConfig()
 	if err != nil {
 		t.Fatalf("unable to get config: %v", err)
@@ -176,7 +193,9 @@ func TestProvider_GetSecret(t *testing.T) {
 	}
 }
 
-func TestProvider_GetSecrets(t *testing.T) {
+func TestProvider_GetSecrets_BitwardenSecretManager(t *testing.T) {
+	skipWrongProvider(t)
+
 	cfg, err := GetConfig()
 	if err != nil {
 		t.Fatalf("unable to get config: %v", err)
@@ -253,7 +272,9 @@ func TestProvider_GetSecrets(t *testing.T) {
 	}
 }
 
-func TestProvider_ResolveSecretReferences(t *testing.T) {
+func TestProvider_ResolveSecretReferences_BitwardenSecretManager(t *testing.T) {
+	skipWrongProvider(t)
+
 	cfg, err := GetConfig()
 	if err != nil {
 		t.Fatalf("unable to get config: %v", err)
