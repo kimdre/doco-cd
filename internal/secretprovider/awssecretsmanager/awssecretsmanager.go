@@ -81,7 +81,7 @@ func (p *Provider) getSecretValueWithOptionalPath(ctx context.Context, secretID 
 	}
 
 	var secretMap map[string]string
-	if err := json.Unmarshal([]byte(val), &secretMap); err != nil {
+	if err = json.Unmarshal([]byte(val), &secretMap); err != nil {
 		return "", err
 	}
 
