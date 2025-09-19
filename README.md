@@ -18,11 +18,14 @@ You can think of it as a simple Portainer or ArgoCD alternative for Docker.
 
 ## Features
 
-- **Simple setup**: Doco CD is easy to set up and use.
-- **Secure**: The application runs with a minimal (distroless) image and supports webhook authentication and data encryption with [SOPS](https://getsops.io/).
-- **Customizable**: The application can be configured using [environment variables](https://github.com/kimdre/doco-cd/wiki/App-Settings).
-- **Flexible**: The deployments can be configured using a [deployment configuration](https://github.com/kimdre/doco-cd/wiki/Deploy-Settings) file.
-- **Lightweight**: The application is built in Go and has tiny memory and CPU requirements.
+- Easy to set up and use.
+- Runs with a minimal (distroless) image
+- Built in Go with tiny RAM and CPU requirements.
+- Supports various [external secret management providers](https://github.com/kimdre/doco-cd/wiki/External-Secrets) and data encryption with [SOPS](https://getsops.io/)
+- Can deploy applications via webhooks and/or polling.
+- Supports various Git providers
+- Supports both Docker Compose projects and Swarm stacks in [Swarm mode](https://github.com/kimdre/doco-cd/wiki/Swarm-Mode).
+- Provides [notifications](https://github.com/kimdre/doco-cd/wiki/Notifications) and [Prometheus metrics](https://github.com/kimdre/doco-cd/wiki/Endpoints#prometheus-metrics) for monitoring.
 
 Doco-CD supports both Docker Compose projects and Swarm stacks in [Swarm mode](https://github.com/kimdre/doco-cd/wiki/Swarm-Mode).
 
