@@ -50,15 +50,23 @@ func NewProvider(ctx context.Context, region, accessKeyID, secretAccessKey strin
 // getPathFromARN extracts the path from the ARN if it exists and returns the base ARN and the path separately.
 // Example ARN with path: arn:aws:secretsmanager:region:account-id:secret:secret-name/path.
 func getPathFromARN(id string) (string, string) {
-	if strings.Contains(id, PathDelimiter) {
-		// Get the part starting with the first "/"
-		parts := strings.SplitN(id, PathDelimiter, 2)
-		if len(parts) == 2 {
-			return parts[0], parts[1] // Return base ARN and path
-		}
-	}
+	// Find the last occurrence of ":secret:" to ensure we only split after the secret name
+	secretPrefix := ":secret:"
 
-	return "", ""
+	idx := strings.Index(id, secretPrefix)
+	if idx == -1 {
+		return id, ""
+	}
+	// Find the first "/" after ":secret:"
+	slashIdx := strings.Index(id[idx+len(secretPrefix):], PathDelimiter)
+	if slashIdx == -1 {
+		return id, ""
+	}
+	// The base ARN is up to the slash, the path is after
+	base := id[:idx+len(secretPrefix)+slashIdx]
+	path := id[idx+len(secretPrefix)+slashIdx+1:]
+
+	return base, path
 }
 
 // getSecretValueWithOptionalPath retrieves a secret value from AWS Secrets Manager.
@@ -75,7 +83,7 @@ func (p *Provider) getSecretValueWithOptionalPath(ctx context.Context, secretID 
 	}
 
 	var secretMap map[string]string
-	if err := json.Unmarshal([]byte(val), &secretMap); err != nil {
+	if err = json.Unmarshal([]byte(val), &secretMap); err != nil {
 		return "", err
 	}
 
