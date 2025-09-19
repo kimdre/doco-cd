@@ -22,8 +22,8 @@ func skipWrongProvider(t *testing.T) {
 func TestProvider_GetSecret_AWSSecretManager(t *testing.T) {
 	skipWrongProvider(t)
 
-	secretARN := "arn:aws:secretsmanager:eu-west-1:243238513853:secret:doco-cd_test-NDVGN4" // #nosec G101
-	expectedValue := "{\"TEST_PASSWORD\":\"p4ssw0rd\"}"
+	secretARN := "arn:aws:secretsmanager:eu-west-1:243238513853:secret:test-RAbPpz" // #nosec G101
+	expectedValue := "{\"username\":\"ulli\",\"password\":\"irgendwas\"}"
 
 	cfg, err := GetConfig()
 	if err != nil {
@@ -61,19 +61,23 @@ func TestProvider_ResolveSecretReferences_AWSSecretManager(t *testing.T) {
 		{
 			name: "Without Path in ARN",
 			secretsToResolve: map[string]string{
-				"TEST_SECRET": "arn:aws:secretsmanager:eu-west-1:243238513853:secret:doco-cd_test-NDVGN4",
+				"TEST_SECRET": "arn:aws:secretsmanager:eu-west-1:243238513853:secret:test-RAbPpz",
 			},
 			expectedResolved: secrettypes.ResolvedSecrets{
-				"TEST_SECRET": "{\"username\":\"foo\",\"password\":\"bar\"}",
+				"TEST_SECRET": "{\"username\":\"ulli\",\"password\":\"irgendwas\"}",
 			},
 		},
 		{
 			name: "With Path in ARN",
 			secretsToResolve: map[string]string{
-				"TEST_SECRET": "arn:aws:secretsmanager:eu-west-1:243238513853:secret:doco-cd_test-NDVGN4/password",
+				"TEST_SECRET": "arn:aws:secretsmanager:eu-west-1:243238513853:secret:test-RAbPpz/password",
+				"USERNAME":    "arn:aws:secretsmanager:eu-west-1:243238513853:secret:test-RAbPpz/username",
+				"ALL":         "arn:aws:secretsmanager:eu-west-1:243238513853:secret:test-RAbPpz",
 			},
 			expectedResolved: secrettypes.ResolvedSecrets{
-				"TEST_SECRET": "bar",
+				"TEST_SECRET": "irgendwas",
+				"USERNAME":    "ulli",
+				"ALL":         "{\"username\":\"ulli\",\"password\":\"irgendwas\"}",
 			},
 		},
 	}
