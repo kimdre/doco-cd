@@ -52,6 +52,7 @@ func NewProvider(ctx context.Context, region, accessKeyID, secretAccessKey strin
 func getPathFromARN(id string) (string, string) {
 	// Find the last occurrence of ":secret:" to ensure we only split after the secret name
 	secretPrefix := ":secret:"
+
 	idx := strings.Index(id, secretPrefix)
 	if idx == -1 {
 		return id, ""
@@ -64,6 +65,7 @@ func getPathFromARN(id string) (string, string) {
 	// The base ARN is up to the slash, the path is after
 	base := id[:idx+len(secretPrefix)+slashIdx]
 	path := id[idx+len(secretPrefix)+slashIdx+1:]
+
 	return base, path
 }
 
