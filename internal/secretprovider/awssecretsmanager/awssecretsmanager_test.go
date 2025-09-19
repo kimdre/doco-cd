@@ -64,20 +64,20 @@ func TestProvider_ResolveSecretReferences_AWSSecretManager(t *testing.T) {
 				"TEST_SECRET": "arn:aws:secretsmanager:eu-west-1:243238513853:secret:test-RAbPpz",
 			},
 			expectedResolved: secrettypes.ResolvedSecrets{
-				"TEST_SECRET": "{\"username\":\"ulli\",\"password\":\"irgendwas\"}",
+				"TEST_SECRET": "{\"username\":\"ulli\",\"password\":\"something\",\"with/delimiter\":\"some/value\"}",
 			},
 		},
 		{
 			name: "With Path in ARN",
 			secretsToResolve: map[string]string{
-				"TEST_SECRET": "arn:aws:secretsmanager:eu-west-1:243238513853:secret:test-RAbPpz/password",
-				"USERNAME":    "arn:aws:secretsmanager:eu-west-1:243238513853:secret:test-RAbPpz/username",
-				"ALL":         "arn:aws:secretsmanager:eu-west-1:243238513853:secret:test-RAbPpz",
+				"TEST_SECRET":    "arn:aws:secretsmanager:eu-west-1:243238513853:secret:test-RAbPpz/password",
+				"USERNAME":       "arn:aws:secretsmanager:eu-west-1:243238513853:secret:test-RAbPpz/username",
+				"WITH_DELIMITER": "arn:aws:secretsmanager:eu-west-1:243238513853:secret:test-RAbPpz/with/delimiter",
 			},
 			expectedResolved: secrettypes.ResolvedSecrets{
-				"TEST_SECRET": "irgendwas",
-				"USERNAME":    "ulli",
-				"ALL":         "{\"username\":\"ulli\",\"password\":\"irgendwas\"}",
+				"TEST_SECRET":    "something",
+				"USERNAME":       "ulli",
+				"WITH_DELIMITER": "some/value",
 			},
 		},
 	}
