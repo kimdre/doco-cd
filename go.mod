@@ -4,11 +4,11 @@ go 1.25.1
 
 require (
 	github.com/caarlos0/env/v11 v11.3.1
-	github.com/compose-spec/compose-go/v2 v2.8.2
+	github.com/compose-spec/compose-go/v2 v2.9.0
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
 	github.com/creasty/defaults v1.8.0
 	github.com/docker/cli v28.4.0+incompatible
-	github.com/docker/compose/v2 v2.39.3
+	github.com/docker/compose/v2 v2.39.4
 	github.com/docker/docker v28.4.0+incompatible
 	github.com/ebitengine/purego v0.8.4 // indirect
 	github.com/getsops/sops/v3 v3.10.2
