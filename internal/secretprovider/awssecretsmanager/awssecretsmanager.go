@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 
@@ -69,32 +70,6 @@ func getPathFromARN(id string) (string, string) {
 	return base, path
 }
 
-// getSecretValueWithOptionalPath retrieves a secret value from AWS Secrets Manager.
-// If the secret ID contains a path, it fetches the secret and extracts the value at the specified path.
-func (p *Provider) getSecretValueWithOptionalPath(ctx context.Context, secretID string) (string, error) {
-	arn, path := getPathFromARN(secretID)
-	if path == "" {
-		return p.GetSecret(ctx, secretID)
-	}
-
-	val, err := p.GetSecret(ctx, arn)
-	if err != nil {
-		return "", err
-	}
-
-	var secretMap map[string]string
-	if err = json.Unmarshal([]byte(val), &secretMap); err != nil {
-		return "", err
-	}
-
-	v, ok := secretMap[path]
-	if !ok {
-		return "", errors.New("secret path not found in JSON: " + path)
-	}
-
-	return v, nil
-}
-
 // GetSecret retrieves a secret value from AWS Secrets Manager using the provided ARN.
 func (p *Provider) GetSecret(ctx context.Context, id string) (string, error) {
 	result, err := p.client.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
@@ -109,7 +84,15 @@ func (p *Provider) GetSecret(ctx context.Context, id string) (string, error) {
 
 // GetSecrets retrieves multiple secrets from AWS Secrets Manager using the provided list of ARNs.
 func (p *Provider) GetSecrets(ctx context.Context, ids []string) (map[string]string, error) {
-	result := make(map[string]string)
+	// Deduplicate Secret ARNs to minimize API calls
+	var uniqueSecretARNS []string
+
+	for _, id := range ids {
+		arn, _ := getPathFromARN(id)
+		if !slices.Contains(uniqueSecretARNS, arn) {
+			uniqueSecretARNS = append(uniqueSecretARNS, arn)
+		}
+	}
 
 	var (
 		mu sync.Mutex
@@ -118,18 +101,15 @@ func (p *Provider) GetSecrets(ctx context.Context, ids []string) (map[string]str
 
 	errCh := make(chan error, len(ids))
 
-	for _, id := range ids {
+	// Fetch all unique Secret ARNs concurrently and store secret values
+	secretValues := make(map[string]string, len(uniqueSecretARNS))
+	for _, id := range uniqueSecretARNS {
 		wg.Add(1)
 
 		go func(secretID string) {
 			defer wg.Done()
 
-			val, err := p.getSecretValueWithOptionalPath(ctx, secretID)
-			if err != nil {
-				errCh <- err
-				return
-			}
-
+			val, err := p.GetSecret(ctx, id)
 			if err != nil {
 				errCh <- err
 				return
@@ -137,7 +117,7 @@ func (p *Provider) GetSecrets(ctx context.Context, ids []string) (map[string]str
 
 			mu.Lock()
 
-			result[secretID] = val
+			secretValues[secretID] = val
 
 			mu.Unlock()
 		}(id)
@@ -148,6 +128,36 @@ func (p *Provider) GetSecrets(ctx context.Context, ids []string) (map[string]str
 
 	if err, ok := <-errCh; ok {
 		return nil, err
+	}
+
+	// Map back to original IDs, handling paths if necessary
+	result := make(map[string]string, len(ids))
+	for _, id := range ids {
+		arn, path := getPathFromARN(id)
+
+		val, ok := secretValues[arn]
+		if !ok {
+			return nil, errors.New("missing secret for ARN: " + arn)
+		}
+
+		if path == "" {
+			result[id] = val
+			continue
+		}
+
+		// If a path is specified, assume the secret value is a JSON object and extract the value at the path
+		// Example: if path is "db_password", expect the secret value to be {"db_password": "actual_password"}
+		var secretMap map[string]string
+		if err := json.Unmarshal([]byte(val), &secretMap); err != nil {
+			return nil, err
+		}
+
+		v, ok := secretMap[path]
+		if !ok {
+			return nil, errors.New("secret path not found in JSON: " + path)
+		}
+
+		result[id] = v
 	}
 
 	return result, nil
