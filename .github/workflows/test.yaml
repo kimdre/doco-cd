@@ -45,7 +45,7 @@ jobs:
 
     services:
       squid-proxy:
-        image: ubuntu/squid:latest@sha256:98f98aaa024e4a58433450f8adde48ef5748f1ae05133b2367d64317cc881a3a
+        image: ubuntu/squid:latest@sha256:91a686b4d5866e8c1d63015955d8ee3a5a23e263ebd4ac15291a6b495a7bef9c
         ports:
           - 3128:3128
 
