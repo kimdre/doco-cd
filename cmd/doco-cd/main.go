@@ -40,7 +40,7 @@ var (
 	errMsg  string
 )
 
-// getAppContainerID retrieves the application container ID from the cpuset file.
+// getAppContainerID retrieves the application container ID from the cgroup mounts.
 func getAppContainerID() (string, error) {
 	const (
 		cgroupMounts = "/proc/self/mountinfo"
