@@ -40,14 +40,13 @@ var (
 	errMsg  string
 )
 
-// getAppContainerID retrieves the application container ID from the cpuset file.
+// getAppContainerID retrieves the application container ID from the cgroup mounts.
 func getAppContainerID() (string, error) {
 	const (
-		cgroupMounts  = "/proc/self/mountinfo"
-		containerPath = "/containers/"
+		cgroupMounts = "/proc/self/mountinfo"
 	)
 
-	containerPattern := regexp.MustCompile(containerPath + `([a-z0-9]+)`)
+	containerIdPattern := regexp.MustCompile(`[a-z0-9]{64}`)
 
 	data, err := os.ReadFile(cgroupMounts)
 	if err != nil {
@@ -63,11 +62,9 @@ func getAppContainerID() (string, error) {
 
 		mountPath := fields[3]
 
-		if strings.Contains(line, "/etc/hostname") {
-			if strings.Contains(mountPath, containerPath) {
-				if matches := containerPattern.FindStringSubmatch(mountPath); len(matches) > 1 {
-					return matches[1], nil
-				}
+		if strings.Contains(line, "/etc/hostname") && strings.Contains(mountPath, "/containers/") {
+			if matches := containerIdPattern.FindStringSubmatch(mountPath); len(matches) > 0 {
+				return matches[0], nil
 			}
 		}
 	}
