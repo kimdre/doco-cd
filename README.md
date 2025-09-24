@@ -21,7 +21,7 @@ You can think of it as a simple Portainer or ArgoCD alternative for Docker.
 - Easy to set up and use.
 - Runs with a minimal (distroless) image
 - Built in Go with tiny RAM and CPU requirements.
-- Supports various [external secret management providers](https://github.com/kimdre/doco-cd/wiki/External-Secrets) and data encryption with [SOPS](https://getsops.io/)
+- Supports various [external secret management providers](https://github.com/kimdre/doco-cd/wiki/External-Secrets) and data encryption with [SOPS](https://github.com/kimdre/doco-cd/wiki/Encryption)
 - Can deploy applications via webhooks and/or polling.
 - Supports various Git providers
 - Supports both Docker Compose projects and Swarm stacks in [Swarm mode](https://github.com/kimdre/doco-cd/wiki/Swarm-Mode).
