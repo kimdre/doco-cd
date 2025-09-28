@@ -63,8 +63,8 @@ jobs:
           annotations: ${{ steps.meta.outputs.annotations }}
           platforms: ${{ matrix.platform }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=build-${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=build-${{ matrix.target }}
 
       - name: Export digest
         run: |
