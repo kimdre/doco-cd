@@ -55,7 +55,8 @@ jobs:
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
         with:
           context: .
-          provenance: false
+          provenance: mode=max
+          sbom: true
           build-args: |
             APP_VERSION=${{ github.ref_name }}
           tags: ghcr.io/${{ github.repository }}
