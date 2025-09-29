@@ -7,8 +7,8 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	"go.yaml.in/yaml/v3"
 	"gopkg.in/validator.v2"
-	"gopkg.in/yaml.v3"
 )
 
 const AppName = "doco-cd" // Name of the application
