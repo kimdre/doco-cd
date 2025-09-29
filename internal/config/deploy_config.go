@@ -11,8 +11,8 @@ import (
 
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/creasty/defaults"
+	"go.yaml.in/yaml/v3"
 	"gopkg.in/validator.v2"
-	"gopkg.in/yaml.v3"
 )
 
 var (
