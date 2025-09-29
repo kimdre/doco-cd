@@ -20,7 +20,7 @@ type GithubPushPayload struct {
 // GitlabPushPayload is a struct that represents the payload sent by GitLab.
 type GitlabPushPayload struct {
 	Ref        string `json:"ref"`
-	CommitSHA  string `json:"after"`
+	CommitSHA  string `json:"checkout_sha"`
 	Repository struct {
 		Name              string `json:"name"`
 		PathWithNamespace string `json:"path_with_namespace"`
