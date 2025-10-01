@@ -41,7 +41,7 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
 FROM busybox:1.37-uclibc@sha256:633928d4d846bc9877337776810c278189d7be3fdd734032e2c75893331d1d78 AS busybox-binaries
 
 FROM gcr.io/distroless/base-debian12@sha256:fa15492938650e1a5b87e34d47dc7d99a2b4e8aefd81b931b3f3eb6bb4c1d2f6 AS build-release-stage
-fix
+
 WORKDIR /
 
 # /data volume required to deploy from cloned Git repos
