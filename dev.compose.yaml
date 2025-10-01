@@ -3,7 +3,7 @@ x-poll-config: &poll-config
     - url: https://github.com/kimdre/doco-cd_tests.git
       reference: secret-provider
       interval: 10
-      target: ""
+      target: "aws-sm"
 
 services:
   app:
@@ -42,6 +42,12 @@ services:
 #    configs: # Use with POLL_CONFIG_FILE
 #      - source: poll.yml
 #        target: /poll.yml
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/v1/health" ]
+      start_period: 15s
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   proxy:
     image: vimagick/tinyproxy:latest

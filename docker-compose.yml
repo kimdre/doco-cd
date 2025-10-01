@@ -28,6 +28,12 @@ services:
       # The data volume (left side) can also be replaced with a bind mount to a local directory, for example:
       # - ./data:/data
       - data:/data
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/v1/health" ]  # Also change the port here if you change the default HTTP_PORT env var
+      start_period: 15s
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
 volumes:
   data:
