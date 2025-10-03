@@ -170,7 +170,7 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 
 	err = ResetTrackedFiles(worktree)
 	if err != nil {
-		return nil, fmt.Errorf("failed To reset tracked files: %w", err)
+		return nil, fmt.Errorf("failed to reset tracked files: %w", err)
 	}
 
 	return repo, nil
@@ -217,13 +217,13 @@ func GetLatestCommit(repo *git.Repository, ref string) (string, error) {
 
 	r, err := repo.Reference(refSet.remoteRef, true)
 	if err != nil {
-		return plumbing.ZeroHash.String(), fmt.Errorf("failed To get reference %s: %w", ref, err)
+		return plumbing.ZeroHash.String(), fmt.Errorf("failed to get reference %s: %w", ref, err)
 	}
 
 	// Get the commit object for the reference
 	commit, err := repo.CommitObject(r.Hash())
 	if err != nil {
-		return plumbing.ZeroHash.String(), fmt.Errorf("failed To get commit object for %s: %w", r.Hash(), err)
+		return plumbing.ZeroHash.String(), fmt.Errorf("failed to get commit object for %s: %w", r.Hash(), err)
 	}
 
 	return commit.Hash.String(), nil
@@ -234,7 +234,7 @@ func GetLatestCommit(repo *git.Repository, ref string) (string, error) {
 func ResetTrackedFiles(worktree *git.Worktree) error {
 	changedFiles, err := worktree.Status()
 	if err != nil {
-		return fmt.Errorf("failed To get worktree status: %w", err)
+		return fmt.Errorf("failed to get worktree status: %w", err)
 	}
 
 	resetFiles := make([]string, 0, len(changedFiles))
@@ -251,7 +251,7 @@ func ResetTrackedFiles(worktree *git.Worktree) error {
 			Files: resetFiles,
 		})
 		if err != nil {
-			return fmt.Errorf("failed To reset worktree: %w", err)
+			return fmt.Errorf("failed to reset worktree: %w", err)
 		}
 	}
 
@@ -262,18 +262,18 @@ func ResetTrackedFiles(worktree *git.Worktree) error {
 func GetChangedFilesBetweenCommits(repo *git.Repository, commitHash1, commitHash2 plumbing.Hash) ([]ChangedFile, error) {
 	commit1, err := repo.CommitObject(commitHash1)
 	if err != nil {
-		return nil, fmt.Errorf("failed To get commit From commitHash1 %s: %w", commitHash1, err)
+		return nil, fmt.Errorf("failed to get commit From commitHash1 %s: %w", commitHash1, err)
 	}
 
 	commit2, err := repo.CommitObject(commitHash2)
 	if err != nil {
-		return nil, fmt.Errorf("failed To get commit From commitHash2 %s: %w", commitHash2, err)
+		return nil, fmt.Errorf("failed to get commit From commitHash2 %s: %w", commitHash2, err)
 	}
 
 	// Create a patch between the two commits
 	patch, err := commit1.Patch(commit2)
 	if err != nil {
-		return nil, fmt.Errorf("failed To create patch: %w", err)
+		return nil, fmt.Errorf("failed to create patch: %w", err)
 	}
 
 	changedFiles := make([]ChangedFile, 0, len(patch.FilePatches()))
