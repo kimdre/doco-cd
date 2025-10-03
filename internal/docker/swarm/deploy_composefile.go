@@ -115,11 +115,11 @@ func validateExternalNetworks(ctx context.Context, apiClient client.NetworkAPICl
 		nw, err := apiClient.NetworkInspect(ctx, networkName, network.InspectOptions{})
 		switch {
 		case errdefs.IsNotFound(err):
-			return fmt.Errorf("network %q is declared as external, but could not be found. You need to create a swarmTypes-scoped network before the stack is deployed", networkName)
+			return fmt.Errorf("network %q is declared as external, but could not be found. You need to create a swarm-scoped network before the stack is deployed", networkName)
 		case err != nil:
 			return err
-		case nw.Scope != "swarmTypes":
-			return fmt.Errorf("network %q is declared as external, but it is not in the right scope: %q instead of \"swarmTypes\"", networkName, nw.Scope)
+		case nw.Scope != "swarm":
+			return fmt.Errorf("network %q is declared as external, but it is not in the right scope: %q instead of \"swarm\"", networkName, nw.Scope)
 		}
 	}
 
