@@ -205,11 +205,11 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		if deployConfig.WebhookEventFilter != "" {
 			filter := regexp.MustCompile(deployConfig.WebhookEventFilter)
 			if !filter.MatchString(payload.Ref) {
-				subJobLog.Debug("skipping deployment: reference does not match the webhook event filter", slog.String("filter", deployConfig.WebhookEventFilter), slog.String("ref", payload.Ref))
+				subJobLog.Debug("reference does not match the webhook event filter, skipping deployment", slog.String("webhook_filter", deployConfig.WebhookEventFilter), slog.String("ref", payload.Ref))
 				continue
 			}
 
-			subJobLog.Debug("reference matches the webhook event filter, proceeding with deployment", slog.String("filter", deployConfig.WebhookEventFilter), slog.String("ref", payload.Ref))
+			subJobLog.Debug("reference matches the webhook event filter, proceeding with deployment", slog.String("webhook_filter", deployConfig.WebhookEventFilter), slog.String("ref", payload.Ref))
 			deployConfig.Reference = payload.Ref
 		}
 
