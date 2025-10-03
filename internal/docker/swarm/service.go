@@ -47,6 +47,9 @@ func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string)
 	errChan := make(chan error, 1)
 	imageNotFoundChan := make(chan string, 1)
 
+	defer close(imageNotFoundChan)
+	defer close(errChan)
+
 	pipeReader, pipeWriter := io.Pipe()
 
 	go func() {
