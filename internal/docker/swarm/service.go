@@ -61,6 +61,7 @@ func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string)
 			if n > 0 {
 				output := string(buf[:n])
 				fmt.Println(output)
+
 				if idx := strings.Index(output, "No such image:"); idx != -1 {
 					// Extract image name
 					line := output[idx:]
@@ -70,6 +71,7 @@ func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string)
 						lastImage = strings.Fields(parts[1])[0]
 					}
 
+					fmt.Println("Hit:", count)
 					count++
 					if count >= 3 {
 						imageNotFoundChan <- lastImage
