@@ -1,7 +1,6 @@
 package swarm
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -60,30 +59,29 @@ func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string)
 	go func() {
 		defer pipeReader.Close() // nolint:errcheck
 
-		scanner := bufio.NewScanner(pipeReader)
+		dec := json.NewDecoder(pipeReader)
 		count := 0
 		var lastImage string
 
-		for scanner.Scan() {
+		for {
 			var line progressLine
-			if err := json.Unmarshal(scanner.Bytes(), &line); err != nil {
+			if err := dec.Decode(&line); err != nil {
+				if err == io.EOF {
+					break
+				}
 				continue // skip malformed lines
 			}
-			fmt.Println(line.Status) // For debugging purposes, can be removed
+			fmt.Println(line.Status) // for debugging
 			if idx := strings.Index(line.Status, "No such image:"); idx != -1 {
-				// Extract image name
 				image := strings.TrimSpace(line.Status[idx+len("No such image:"):])
-				lastImage = strings.Fields(image)[0]
+				lastImage = image
 				count++
-				fmt.Println("Hit:", count) // For debugging purposes, can be removed
+				fmt.Println("Hit: ", count) // for debugging
 				if count >= 3 {
 					imageNotFoundChan <- lastImage
 					return
 				}
 			}
-		}
-		if err := scanner.Err(); err != nil && err != io.EOF {
-			errChan <- err
 		}
 	}()
 
