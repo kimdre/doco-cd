@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -199,6 +200,17 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	for _, deployConfig := range deployConfigs {
 		subJobLog := jobLog.With()
+
+		// Validate the webhook event reference against the WebhookEventFilter in the deployment config
+		if deployConfig.WebhookEventFilter != "" {
+			filter := regexp.MustCompile(deployConfig.WebhookEventFilter)
+			if !filter.MatchString(payload.Ref) {
+				subJobLog.Debug("skipping deployment: reference does not match the webhook event filter", slog.String("filter", deployConfig.WebhookEventFilter), slog.String("ref", payload.Ref))
+				continue
+			}
+
+			deployConfig.Reference = payload.Ref
+		}
 
 		repoName = getRepoName(payload.CloneURL)
 		if deployConfig.RepositoryUrl != "" {
