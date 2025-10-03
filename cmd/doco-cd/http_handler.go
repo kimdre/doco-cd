@@ -209,6 +209,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				continue
 			}
 
+			subJobLog.Debug("reference matches the webhook event filter, proceeding with deployment", slog.String("filter", deployConfig.WebhookEventFilter), slog.String("ref", payload.Ref))
 			deployConfig.Reference = payload.Ref
 		}
 
