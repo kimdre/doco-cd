@@ -13,7 +13,7 @@ import (
 	"github.com/docker/docker/api/types/swarm"
 )
 
-var ErrNoSuchImage = errors.New("no such image")
+var ErrImagePullAccessDenied = errors.New("image pull access denied")
 
 // Service represents a service.
 type Service struct {
@@ -39,7 +39,7 @@ type Service struct {
 // waitOnService waits for the service to converge. It outputs a progress bar,
 // if appropriate based on the CLI flags.
 func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string) error {
-	var noSuchImageRegex = regexp.MustCompile(`No such image:\s*([^\s",]+)`)
+	noSuchImageRegex := regexp.MustCompile(`No such image:\s*([^\s",]+)`)
 
 	errChan := make(chan error, 1)
 	imageNotFoundChan := make(chan string, 1)
@@ -56,28 +56,25 @@ func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string)
 		buf := make([]byte, 4096)
 		count := 0
 
-		var lastImage string
+		var image string
 
 		for {
 			n, err := pipeReader.Read(buf)
 			if n > 0 {
 				output := string(buf[:n])
-				fmt.Println(output)
 
 				if idx := strings.Index(output, "No such image:"); idx != -1 {
 					// Extract image name
 					line := output[idx:]
-					fmt.Println("Line:", line)
 
 					matches := noSuchImageRegex.FindStringSubmatch(line)
 					if len(matches) == 2 {
-						lastImage = matches[1]
+						image = matches[1]
 					}
 
 					count++
-					fmt.Println("Hit:", count)
 					if count >= 3 {
-						imageNotFoundChan <- lastImage
+						imageNotFoundChan <- image
 						return
 					}
 				}
@@ -97,7 +94,7 @@ func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string)
 
 	select {
 	case img := <-imageNotFoundChan:
-		return fmt.Errorf("%w: %s", ErrNoSuchImage, img)
+		return fmt.Errorf("%w: %s, image does not exist or may require authentication", ErrImagePullAccessDenied, img)
 	case err := <-errChan:
 		return err
 	}
