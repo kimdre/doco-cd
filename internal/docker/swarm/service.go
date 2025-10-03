@@ -1,7 +1,9 @@
 package swarm
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -38,6 +40,10 @@ type Service struct {
 // waitOnService waits for the service to converge. It outputs a progress bar,
 // if appropriate based on the CLI flags.
 func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string) error {
+	type progressLine struct {
+		Status string `json:"status"`
+	}
+
 	errChan := make(chan error, 1)
 	imageNotFoundChan := make(chan string, 1)
 
@@ -51,42 +57,30 @@ func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string)
 	go func() {
 		defer pipeReader.Close() // nolint:errcheck
 
-		buf := make([]byte, 4096)
+		scanner := bufio.NewScanner(pipeReader)
 		count := 0
-
 		var lastImage string
 
-		for {
-			n, err := pipeReader.Read(buf)
-			if n > 0 {
-				output := string(buf[:n])
-				fmt.Println(output)
-
-				if idx := strings.Index(output, "No such image:"); idx != -1 {
-					// Extract image name
-					line := output[idx:]
-
-					parts := strings.SplitN(line, "No such image:", 2)
-					if len(parts) == 2 {
-						lastImage = strings.Fields(parts[1])[0]
-					}
-
-					fmt.Println("Hit:", count)
-					count++
-					if count >= 3 {
-						imageNotFoundChan <- lastImage
-						return
-					}
+		for scanner.Scan() {
+			var line progressLine
+			if err := json.Unmarshal(scanner.Bytes(), &line); err != nil {
+				continue // skip malformed lines
+			}
+			fmt.Println(line.Status) // For debugging purposes, can be removed
+			if idx := strings.Index(line.Status, "No such image:"); idx != -1 {
+				// Extract image name
+				image := strings.TrimSpace(line.Status[idx+len("No such image:"):])
+				lastImage = strings.Fields(image)[0]
+				count++
+				fmt.Println("Hit:", count) // For debugging purposes, can be removed
+				if count >= 3 {
+					imageNotFoundChan <- lastImage
+					return
 				}
 			}
-
-			if err != nil {
-				if err != io.EOF {
-					errChan <- err
-				}
-
-				return
-			}
+		}
+		if err := scanner.Err(); err != nil && err != io.EOF {
+			errChan <- err
 		}
 	}()
 
