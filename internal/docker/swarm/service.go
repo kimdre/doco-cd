@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 
 	"github.com/docker/cli/cli/command"
@@ -38,10 +39,13 @@ type Service struct {
 // waitOnService waits for the service to converge. It outputs a progress bar,
 // if appropriate based on the CLI flags.
 func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string) error {
+	var noSuchImageRegex = regexp.MustCompile(`No such image:\s*([^\s",]+)`)
+
 	errChan := make(chan error, 1)
 	imageNotFoundChan := make(chan string, 1)
 
 	pipeReader, pipeWriter := io.Pipe()
+	defer pipeReader.Close() // nolint:errcheck
 
 	go func() {
 		errChan <- progress.ServiceProgress(ctx, dockerCli.Client(), serviceID, pipeWriter)
@@ -49,8 +53,6 @@ func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string)
 
 	// Monitor for "No such image" errors
 	go func() {
-		defer pipeReader.Close() // nolint:errcheck
-
 		buf := make([]byte, 4096)
 		count := 0
 
@@ -67,9 +69,9 @@ func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string)
 					line := output[idx:]
 					fmt.Println("Line:", line)
 
-					parts := strings.SplitN(line, "No such image:", 2)
-					if len(parts) == 2 {
-						lastImage = strings.Fields(parts[1])[0]
+					matches := noSuchImageRegex.FindStringSubmatch(line)
+					if len(matches) == 2 {
+						lastImage = matches[1]
 					}
 
 					count++
