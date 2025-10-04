@@ -82,6 +82,7 @@ jobs:
           retention-days: 1
 
   merge:
+    name: Create and push multi-architecture manifest list
     runs-on: ubuntu-latest
     needs:
       - build
@@ -127,6 +128,13 @@ jobs:
         run: |
           docker buildx imagetools inspect ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}
 
+  generate-sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    needs:
+      - build
+      - merge
+    steps:
       - name: Generate Software Bill of Materials (SBOM)
         uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8
         with:
