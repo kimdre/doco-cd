@@ -24,8 +24,9 @@ type (
 )
 
 var (
-	noSuchImageRegex = regexp.MustCompile(`No such image:\s*([^\s",]+)`)
-	noSuchImageCount = 0
+	ErrImagePullAccessDenied = errors.New("image pull access denied")
+	noSuchImageRegex         = regexp.MustCompile(`No such image:\s*([^\s",]+)`)
+	noSuchImageCount         = 0
 )
 
 // ErrorReader reads JSON messages from the given reader and returns an error
@@ -61,7 +62,7 @@ func ErrorReader(ctx context.Context, in io.Reader) error {
 		if noSuchImageRegex.MatchString(jm.Status) {
 			noSuchImageCount++
 			if noSuchImageCount > 3 {
-				return fmt.Errorf("image not found: %s", noSuchImageRegex.FindStringSubmatch(jm.Status)[1])
+				return fmt.Errorf("%w for '%s', repository does not exist or may require authentication", ErrImagePullAccessDenied, noSuchImageRegex.FindStringSubmatch(jm.Status)[1])
 			}
 		}
 	}

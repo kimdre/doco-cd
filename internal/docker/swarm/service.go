@@ -2,10 +2,7 @@ package swarm
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"io"
-	"strings"
 
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/command/service/progress"
@@ -13,8 +10,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/docker/jsonstream"
 )
-
-var ErrImagePullAccessDenied = errors.New("image pull access denied")
 
 // Service represents a service.
 type Service struct {
@@ -41,7 +36,6 @@ type Service struct {
 // if appropriate based on the CLI flags.
 func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string) error {
 	errChan := make(chan error, 1)
-	imageNotFoundChan := make(chan string, 1)
 
 	pipeReader, pipeWriter := io.Pipe()
 	defer pipeReader.Close() // nolint:errcheck
@@ -50,26 +44,11 @@ func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string)
 		errChan <- progress.ServiceProgress(ctx, dockerCli.Client(), serviceID, pipeWriter)
 	}()
 
-	// Monitor for "No such image" errors
-	go func() {
-		err := jsonstream.ErrorReader(ctx, pipeReader)
-		if err != nil {
-			// Check for "image not found" error and extract image name if needed
-			if strings.HasPrefix(err.Error(), "image not found: ") {
-				image := strings.TrimPrefix(err.Error(), "image not found: ")
-				imageNotFoundChan <- image
-
-				return
-			}
-
-			errChan <- err
-		}
-	}()
-
-	select {
-	case img := <-imageNotFoundChan:
-		return fmt.Errorf("%w for '%s', repository does not exist or may require authentication", ErrImagePullAccessDenied, img)
-	case err := <-errChan:
-		return err
+	// Monitor the output of the progress reader for errors
+	err := jsonstream.ErrorReader(ctx, pipeReader)
+	if err == nil {
+		err = <-errChan
 	}
+
+	return err
 }
