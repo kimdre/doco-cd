@@ -68,7 +68,7 @@ func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string)
 
 	select {
 	case img := <-imageNotFoundChan:
-		return fmt.Errorf("%w: %s, image does not exist or may require authentication", ErrImagePullAccessDenied, img)
+		return fmt.Errorf("%w for '%s', repository does not exist or may require authentication", ErrImagePullAccessDenied, img)
 	case err := <-errChan:
 		return err
 	}

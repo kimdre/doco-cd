@@ -23,7 +23,10 @@ type (
 	JSONProgress = jsonmessage.JSONProgress
 )
 
-var noSuchImageRegex = regexp.MustCompile(`No such image:\s*([^\s",]+)`)
+var (
+	noSuchImageRegex = regexp.MustCompile(`No such image:\s*([^\s",]+)`)
+	noSuchImageCount = 0
+)
 
 // ErrorReader reads JSON messages from the given reader and returns an error
 // if it encounters a JSON error message. It stops reading when the context is done.
@@ -60,7 +63,10 @@ func ErrorReader(ctx context.Context, in io.Reader) error {
 		fmt.Println(jm.Status)
 
 		if noSuchImageRegex.MatchString(jm.Status) {
-			return fmt.Errorf("image not found: %s", noSuchImageRegex.FindStringSubmatch(jm.Status)[1])
+			noSuchImageCount++
+			if noSuchImageCount > 3 {
+				return fmt.Errorf("image not found: %s", noSuchImageRegex.FindStringSubmatch(jm.Status)[1])
+			}
 		}
 	}
 

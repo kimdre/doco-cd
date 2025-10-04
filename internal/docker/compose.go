@@ -527,7 +527,7 @@ func DeployStack(
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 
-			errMsg := "failed to deploy swarm stack"
+			errMsg := "failed to deploy swarm stack " + deployConfig.Name
 			stackLog.Error(errMsg, logger.ErrAttr(err),
 				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
 
