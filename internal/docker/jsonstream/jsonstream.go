@@ -56,10 +56,6 @@ func ErrorReader(ctx context.Context, in io.Reader) error {
 			return errors.New(jm.Error.Message)
 		}
 
-		// if jm.ErrorMessage != "" {
-		//	return errors.New("%s", jm.ErrorMessage)
-		//}
-
 		fmt.Println(jm.Status)
 
 		if noSuchImageRegex.MatchString(jm.Status) {
