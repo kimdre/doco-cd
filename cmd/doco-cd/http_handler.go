@@ -567,6 +567,12 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if metadata.Repository == "" {
+		repoName = getRepoName(payload.CloneURL)
+		metadata.Repository = repoName
+		metadata.Revision = notification.GetRevision(payload.Ref, payload.CommitSHA)
+	}
+
 	lock := getRepoLock(repoName)
 	locked := lock.TryLock()
 
