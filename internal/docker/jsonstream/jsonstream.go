@@ -25,7 +25,6 @@ type (
 
 var (
 	ErrImagePullAccessDenied = errors.New("image pull access denied")
-	ErrServiceUpdatePaused   = errors.New("service update paused")
 	noSuchImageRegex         = regexp.MustCompile(`No such image:\s*([^\s",]+)`)
 	noSuchImageCount         = 0
 )
@@ -55,7 +54,6 @@ func ErrorReader(ctx context.Context, in io.Reader) error {
 		}
 
 		if jm.Error != nil {
-			fmt.Printf("error decected: %v", jm.Error.Message)
 			return errors.New(jm.Error.Message)
 		}
 
