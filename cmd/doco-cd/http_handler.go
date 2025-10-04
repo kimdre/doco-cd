@@ -212,8 +212,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			subJobLog.Debug("reference matches the webhook event filter, proceeding with deployment", slog.String("webhook_filter", deployConfig.WebhookEventFilter), slog.String("ref", payload.Ref))
 		}
 
-		deployConfig.Reference = payload.Ref
-
 		repoName = getRepoName(payload.CloneURL)
 		if deployConfig.RepositoryUrl != "" {
 			repoName = getRepoName(string(deployConfig.RepositoryUrl))
