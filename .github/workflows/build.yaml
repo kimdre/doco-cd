@@ -82,7 +82,7 @@ jobs:
           retention-days: 1
 
   merge:
-    name: Create and push multi-architecture manifest list
+    name: Create and push multi-arch manifest
     runs-on: ubuntu-latest
     needs:
       - build
