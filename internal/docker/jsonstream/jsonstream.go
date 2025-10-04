@@ -57,8 +57,6 @@ func ErrorReader(ctx context.Context, in io.Reader) error {
 			return errors.New(jm.Error.Message)
 		}
 
-		fmt.Println(jm.Status)
-
 		if noSuchImageRegex.MatchString(jm.Status) {
 			noSuchImageCount++
 			if noSuchImageCount > 3 {
