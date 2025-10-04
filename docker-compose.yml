@@ -5,7 +5,6 @@
 #      reference: main  # Optional: specify the branch or tag to poll, defaults to 'main'
 #      interval: 180  # Optional: specify the interval in seconds to poll the repository, defaults to 180 seconds (3 minutes)
 #      target: ""  # Optional: use to target a specific deployment config file, e.g., "test" -> .doco-cd.test.yaml
-#      private: false  # Optional: set to true if the repository is private and requires authentication
 
 services:
   app:
