@@ -5,12 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"regexp"
 	"strings"
 
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/command/service/progress"
 	"github.com/docker/docker/api/types/swarm"
+
+	"github.com/kimdre/doco-cd/internal/docker/jsonstream"
 )
 
 var ErrImagePullAccessDenied = errors.New("image pull access denied")
@@ -39,8 +40,6 @@ type Service struct {
 // waitOnService waits for the service to converge. It outputs a progress bar,
 // if appropriate based on the CLI flags.
 func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string) error {
-	noSuchImageRegex := regexp.MustCompile(`No such image:\s*([^\s",]+)`)
-
 	errChan := make(chan error, 1)
 	imageNotFoundChan := make(chan string, 1)
 
@@ -53,44 +52,19 @@ func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string)
 
 	// Monitor for "No such image" errors
 	go func() {
-		buf := make([]byte, 4096)
-		count := 0
-
-		var image string
-
-		for {
-			n, err := pipeReader.Read(buf)
-			if n > 0 {
-				output := string(buf[:n])
-
-				if idx := strings.Index(output, "No such image:"); idx != -1 {
-					// Extract image name
-					line := output[idx:]
-
-					matches := noSuchImageRegex.FindStringSubmatch(line)
-					if len(matches) == 2 {
-						image = matches[1]
-					}
-
-					count++
-					if count >= 3 {
-						imageNotFoundChan <- image
-						return
-					}
-				}
-			}
-
-			if err != nil {
-				if err != io.EOF {
-					errChan <- err
-				}
+		err := jsonstream.ErrorReader(ctx, pipeReader)
+		if err != nil {
+			// Check for "image not found" error and extract image name if needed
+			if strings.HasPrefix(err.Error(), "image not found: ") {
+				image := strings.TrimPrefix(err.Error(), "image not found: ")
+				imageNotFoundChan <- image
 
 				return
 			}
+
+			errChan <- err
 		}
 	}()
-
-	go io.Copy(io.Discard, pipeReader) // nolint:errcheck
 
 	select {
 	case img := <-imageNotFoundChan:
