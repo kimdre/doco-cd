@@ -139,6 +139,7 @@ jobs:
         run: |
           # Get version without 'v' prefix
           echo "APP_VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+
       - name: Generate Software Bill of Materials (SBOM)
         uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8
         with:
@@ -148,6 +149,10 @@ jobs:
           github-pat: ${{ secrets.GITHUB_TOKEN }}
           output: sbom-cyclonedx-${{ github.ref_name }}.json
           severity: CRITICAL,HIGH
+          vuln-type: os,library
+          scanners: vuln,secret,misconfig,license
+          ignore-unfixed: false
+          exit-code: 0
 
       - name: Upload SBOM as artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
