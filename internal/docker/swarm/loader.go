@@ -36,6 +36,11 @@ func LoadComposefile(dockerCli command.Cli, opts options.Deploy, resolvedSecrets
 		configDetails.Environment = map[string]string{}
 	}
 
+	// Set any environment variables passed in via .env file
+	for k, v := range opts.Environment {
+		configDetails.Environment[k] = v
+	}
+
 	// Inject external secrets into the environment for variable interpolation
 	for k, v := range resolvedSecrets {
 		configDetails.Environment[k] = v

@@ -11,6 +11,7 @@ type Deploy struct {
 	Prune            bool
 	Detach           bool
 	Quiet            bool
+	Environment      map[string]string
 }
 
 // Config holds docker stack config options.
