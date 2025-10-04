@@ -7,7 +7,6 @@ import (
 
 	"github.com/containerd/errdefs"
 	"github.com/docker/cli/cli/command"
-	servicecli "github.com/docker/cli/cli/command/service"
 	"github.com/docker/cli/cli/command/stack/swarm"
 
 	"github.com/kimdre/doco-cd/internal/docker/options"
@@ -84,7 +83,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Dep
 		return nil
 	}
 
-	return waitOnServices(ctx, dockerCli, serviceIDs, opts.Quiet)
+	return waitOnServices(ctx, dockerCli, serviceIDs)
 }
 
 func getServicesDeclaredNetworks(serviceConfigs []composetypes.ServiceConfig) map[string]struct{} {
@@ -304,11 +303,11 @@ func deployServices(ctx context.Context, dockerCLI command.Cli, services map[str
 	return serviceIDs, nil
 }
 
-func waitOnServices(ctx context.Context, dockerCli command.Cli, serviceIDs []string, quiet bool) error {
+func waitOnServices(ctx context.Context, dockerCli command.Cli, serviceIDs []string) error {
 	var errs []error
 
 	for _, serviceID := range serviceIDs {
-		if err := servicecli.WaitOnService(ctx, dockerCli, serviceID, quiet); err != nil {
+		if err := waitOnService(ctx, dockerCli, serviceID); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", serviceID, err))
 		}
 	}

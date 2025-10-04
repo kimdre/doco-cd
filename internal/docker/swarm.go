@@ -41,7 +41,6 @@ func DeploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types
 		SendRegistryAuth: true,
 		Prune:            deployConfig.RemoveOrphans,
 		Detach:           false,
-		Quiet:            true,
 	}
 
 	timestamp := time.Now().UTC().Format(time.RFC3339)
