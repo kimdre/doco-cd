@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -111,12 +112,19 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		Revision:   notification.GetRevision(payload.Ref, payload.CommitSHA),
 	}
 
+	if payload.Ref == "" {
+		onError(w, jobLog, "no reference provided in webhook payload, skipping event", "", http.StatusBadRequest, metadata)
+
+		return
+	}
+
 	if appConfig.DockerSwarmFeatures {
 		// Check if docker host is running in swarm mode
 		swarm.ModeEnabled, err = swarm.CheckDaemonIsSwarmManager(ctx, dockerCli)
 		if err != nil {
-			jobLog.Error("failed to check if docker host is running in swarm mode")
 			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to check if docker host is running in swarm mode", err.Error(), http.StatusInternalServerError, metadata)
+
+			return
 		}
 	}
 
@@ -199,6 +207,17 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	for _, deployConfig := range deployConfigs {
 		subJobLog := jobLog.With()
+
+		// Validate the webhook event reference against the WebhookEventFilter in the deployment config
+		if deployConfig.WebhookEventFilter != "" {
+			filter := regexp.MustCompile(deployConfig.WebhookEventFilter)
+			if !filter.MatchString(payload.Ref) {
+				subJobLog.Debug("reference does not match the webhook event filter, skipping deployment", slog.String("webhook_filter", deployConfig.WebhookEventFilter), slog.String("ref", payload.Ref))
+				continue
+			}
+
+			subJobLog.Debug("reference matches the webhook event filter, proceeding with deployment", slog.String("webhook_filter", deployConfig.WebhookEventFilter), slog.String("ref", payload.Ref))
+		}
 
 		repoName = getRepoName(payload.CloneURL)
 		if deployConfig.RepositoryUrl != "" {
