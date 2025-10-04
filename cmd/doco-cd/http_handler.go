@@ -112,6 +112,11 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		Revision:   notification.GetRevision(payload.Ref, payload.CommitSHA),
 	}
 
+	if payload.Ref == "" {
+		jobLog.Error("no reference provided in webhook payload, skipping event")
+		onError(w, jobLog, "no reference provided in webhook payload, skipping event", "", http.StatusBadRequest, metadata)
+	}
+
 	if appConfig.DockerSwarmFeatures {
 		// Check if docker host is running in swarm mode
 		swarm.ModeEnabled, err = swarm.CheckDaemonIsSwarmManager(ctx, dockerCli)
