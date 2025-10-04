@@ -419,9 +419,6 @@ func DeployStack(
 
 		if len(tmpComposeFiles) == 0 {
 			errMsg := "no compose files found"
-			stackLog.Error(errMsg,
-				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-
 			return fmt.Errorf("%s: %w", errMsg, err)
 		}
 
@@ -484,8 +481,6 @@ func DeployStack(
 	project, err := LoadCompose(*ctx, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles, deployConfig.Profiles, resolvedSecrets)
 	if err != nil {
 		errMsg := "failed to load compose config"
-		stackLog.Error(errMsg, logger.ErrAttr(err), slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-
 		return fmt.Errorf("%s: %w", errMsg, err)
 	}
 
@@ -528,8 +523,6 @@ func DeployStack(
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 
 			errMsg := "failed to deploy swarm stack " + deployConfig.Name
-			stackLog.Error(errMsg, logger.ErrAttr(err),
-				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
 
 			return fmt.Errorf("%s: %w", errMsg, err)
 		}
@@ -539,8 +532,6 @@ func DeployStack(
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 
 			errMsg := "failed to prune stack configs"
-			stackLog.Error(errMsg, logger.ErrAttr(err),
-				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
 
 			return fmt.Errorf("%s: %w", errMsg, err)
 		}
@@ -550,8 +541,6 @@ func DeployStack(
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 
 			errMsg := "failed to prune stack secrets"
-			stackLog.Error(errMsg, logger.ErrAttr(err),
-				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
 
 			return fmt.Errorf("%s: %w", errMsg, err)
 		}
@@ -559,16 +548,12 @@ func DeployStack(
 		hasChangedFiles, err := ProjectFilesHaveChanges(changedFiles, project)
 		if err != nil {
 			errMsg := "failed to check for changed project files"
-			stackLog.Error(errMsg, logger.ErrAttr(err), slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-
 			return fmt.Errorf("%s: %w", errMsg, err)
 		}
 
 		hasChangedCompose, err := HasChangedComposeFiles(changedFiles, project)
 		if err != nil {
 			errMsg := "failed to check for changed compose files"
-			stackLog.Error(errMsg, logger.ErrAttr(err), slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
-
 			return fmt.Errorf("%s: %w", errMsg, err)
 		}
 
@@ -592,8 +577,6 @@ func DeployStack(
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 
 			errMsg := "failed to deploy stack"
-			stackLog.Error(errMsg, logger.ErrAttr(err),
-				slog.Group("compose_files", slog.Any("files", deployConfig.ComposeFiles)))
 
 			return fmt.Errorf("%s: %w", errMsg, err)
 		}
@@ -626,8 +609,6 @@ func DestroyStack(
 		err := RemoveSwarmStack(*ctx, *dockerCli, deployConfig.Name)
 		if err != nil {
 			errMsg := "failed to destroy swarm stack"
-			stackLog.Error(errMsg, logger.ErrAttr(err))
-
 			return fmt.Errorf("%s: %w", errMsg, err)
 		}
 
@@ -648,8 +629,6 @@ func DestroyStack(
 	err := service.Down(*ctx, deployConfig.Name, downOpts)
 	if err != nil {
 		errMsg := "failed to destroy stack"
-		stackLog.Error(errMsg, logger.ErrAttr(err))
-
 		return fmt.Errorf("%s: %w", errMsg, err)
 	}
 
