@@ -38,7 +38,7 @@ func DeploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types
 		Composefiles:     project.ComposeFiles,
 		Namespace:        deployConfig.Name,
 		ResolveImage:     swarm.ResolveImageAlways,
-		SendRegistryAuth: false,
+		SendRegistryAuth: true,
 		Prune:            deployConfig.RemoveOrphans,
 		Detach:           false,
 		Quiet:            true,
