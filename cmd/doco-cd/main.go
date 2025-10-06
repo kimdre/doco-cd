@@ -40,38 +40,6 @@ var (
 	errMsg  string
 )
 
-// getAppContainerID retrieves the application container ID from the cgroup mounts.
-func getAppContainerID() (string, error) {
-	const (
-		cgroupMounts = "/proc/self/mountinfo"
-	)
-
-	containerIdPattern := regexp.MustCompile(`[a-z0-9]{64}`)
-
-	data, err := os.ReadFile(cgroupMounts)
-	if err != nil {
-		return "", fmt.Errorf("failed to read %s: %w", cgroupMounts, err)
-	}
-
-	lines := strings.Split(string(data), "\n")
-	for _, line := range lines {
-		fields := strings.Fields(line)
-		if len(fields) < 4 {
-			continue
-		}
-
-		mountPath := fields[3]
-
-		if strings.Contains(line, "/etc/hostname") && strings.Contains(mountPath, "/containers/") {
-			if matches := containerIdPattern.FindStringSubmatch(mountPath); len(matches) > 0 {
-				return matches[0], nil
-			}
-		}
-	}
-
-	return "", docker.ErrContainerIDNotFound
-}
-
 // GetProxyUrlRedacted takes a proxy URL string and redacts the password if it exists.
 func GetProxyUrlRedacted(proxyUrl string) string {
 	// Hide password in the proxy URL if it exists (between the second ':' and the @)
