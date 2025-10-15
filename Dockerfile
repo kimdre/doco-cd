@@ -38,7 +38,7 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
     --mount=type=bind,target=. \
     go build -ldflags="-s -w -X main.Version=${APP_VERSION} ${BW_SDK_BUILD_FLAGS}" -o / ./...
 
-FROM busybox:1.37-uclibc@sha256:633928d4d846bc9877337776810c278189d7be3fdd734032e2c75893331d1d78 AS busybox-binaries
+FROM busybox:1.37-uclibc@sha256:5ecf7fcb7a9cf7367626eac389cef8033d9fde2853f707cfe14e1610463cf7d8 AS busybox-binaries
 
 FROM gcr.io/distroless/base-debian12@sha256:9e9b50d2048db3741f86a48d939b4e4cc775f5889b3496439343301ff54cdba8 AS build-release-stage
 
