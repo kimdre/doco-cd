@@ -10,6 +10,8 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing/format/diff"
 
+	"github.com/kimdre/doco-cd/internal/encryption"
+
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -168,7 +170,7 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 		return nil, fmt.Errorf("%w: %w: %s", ErrCheckoutFailed, err, refSet.localRef)
 	}
 
-	err = ResetTrackedFiles(worktree)
+	err = ResetTrackedFiles(repo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reset tracked files: %w", err)
 	}
@@ -231,7 +233,14 @@ func GetLatestCommit(repo *git.Repository, ref string) (string, error) {
 
 // ResetTrackedFiles resets all tracked files in the worktree To their last committed state
 // while leaving untracked files intact.
-func ResetTrackedFiles(worktree *git.Worktree) error {
+func ResetTrackedFiles(repo *git.Repository) error {
+	worktree, err := repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("failed to get worktree: %w", err)
+	}
+
+	repoRoot := worktree.Filesystem.Root()
+
 	changedFiles, err := worktree.Status()
 	if err != nil {
 		return fmt.Errorf("failed to get worktree status: %w", err)
@@ -240,7 +249,12 @@ func ResetTrackedFiles(worktree *git.Worktree) error {
 	resetFiles := make([]string, 0, len(changedFiles))
 
 	for file, status := range changedFiles {
-		if status.Staging != git.Untracked {
+		// Do not touch files that are not part of the Git repository (e.g. created by a container process)
+		if status.Staging == git.Untracked {
+			continue
+		}
+
+		if shouldResetDecryptedFile(repo, repoRoot, file) {
 			resetFiles = append(resetFiles, file)
 		}
 	}
@@ -307,4 +321,41 @@ func HasChangesInSubdir(changedFiles []ChangedFile, subdir string) (bool, error)
 	}
 
 	return false, nil
+}
+
+// shouldResetDecryptedFile determines whether a file should be reset based on its decrypted content.
+func shouldResetDecryptedFile(repo *git.Repository, repoRoot, file string) bool {
+	headRef, err := repo.Head()
+	if err != nil {
+		return true
+	}
+
+	commit, err := repo.CommitObject(headRef.Hash())
+	if err != nil {
+		return true
+	}
+	// Get file from commit tree
+	fileObj, err := commit.File(file)
+	if err != nil {
+		return true // Not tracked, default to reset
+	}
+
+	committedBytes, err := fileObj.Contents()
+	if err != nil {
+		return true
+	}
+
+	format := encryption.GetFileFormat(fileObj.Name)
+
+	decryptedContent, err := encryption.DecryptContent([]byte(committedBytes), format)
+	if err != nil {
+		return true
+	}
+
+	workingContent, err := os.ReadFile(filepath.Join(repoRoot, file)) // #nosec G304
+	if err != nil {
+		return true
+	}
+
+	return !strings.EqualFold(string(decryptedContent), string(workingContent))
 }
