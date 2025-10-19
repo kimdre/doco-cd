@@ -77,6 +77,7 @@ func (p *Provider) GetSecrets(ctx context.Context, refs []string) (map[string]st
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
 	errCh := make(chan error, 1)
 
 	for _, ref := range refs {
@@ -92,6 +93,7 @@ func (p *Provider) GetSecrets(ctx context.Context, refs []string) (map[string]st
 					cancel()
 				default:
 				}
+
 				return
 			}
 
