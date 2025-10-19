@@ -12,6 +12,7 @@ import (
 	onepassword "github.com/kimdre/doco-cd/internal/secretprovider/1password"
 	"github.com/kimdre/doco-cd/internal/secretprovider/awssecretsmanager"
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
+	"github.com/kimdre/doco-cd/internal/secretprovider/infisical"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
 
@@ -60,6 +61,13 @@ func Initialize(ctx context.Context, provider, version string) (SecretProvider, 
 		}
 
 		return onepassword.NewProvider(ctx, cfg.AccessToken, version)
+	case infisical.Name:
+		cfg, err := infisical.GetConfig()
+		if err != nil {
+			return nil, err
+		}
+
+		return infisical.NewProvider(ctx, cfg.SiteUrl, cfg.ClientID, cfg.ClientSecret)
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnknownProvider, provider)
 	}
