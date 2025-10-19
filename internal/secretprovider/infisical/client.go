@@ -75,7 +75,10 @@ func (p *Provider) GetSecrets(ctx context.Context, refs []string) (map[string]st
 		wg sync.WaitGroup
 	)
 
-	errCh := make(chan error, len(resolvedSecrets))
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	errCh := make(chan error, 1)
 
 	for _, ref := range refs {
 		wg.Add(1)
@@ -85,7 +88,12 @@ func (p *Provider) GetSecrets(ctx context.Context, refs []string) (map[string]st
 
 			v, err := p.GetSecret(ctx, ref)
 			if err != nil {
-				errCh <- err
+				select {
+				case errCh <- err:
+					cancel()
+				default:
+				}
+
 				return
 			}
 
@@ -100,8 +108,8 @@ func (p *Provider) GetSecrets(ctx context.Context, refs []string) (map[string]st
 	wg.Wait()
 	close(errCh)
 
-	if len(errCh) > 0 {
-		return nil, <-errCh
+	if err, ok := <-errCh; ok {
+		return nil, err
 	}
 
 	return resolvedSecrets, nil
