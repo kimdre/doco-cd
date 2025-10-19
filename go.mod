@@ -1,6 +1,6 @@
 module github.com/kimdre/doco-cd
 
-go 1.25.3
+go 1.25.2
 
 require (
 	github.com/caarlos0/env/v11 v11.3.1
@@ -310,6 +310,7 @@ require (
 	github.com/1password/onepassword-sdk-go v0.3.1
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.39.7
 	github.com/bitwarden/sdk-go v1.0.2
+	github.com/infisical/go-sdk v0.5.100
 	github.com/testcontainers/testcontainers-go/modules/compose v0.39.0
 	gotest.tools/v3 v3.5.2
 )
@@ -317,10 +318,15 @@ require (
 require (
 	github.com/dylibso/observe-sdk/go v0.0.0-20240819160327-2d926c5d788a // indirect
 	github.com/extism/go-sdk v1.7.0 // indirect
+	github.com/go-resty/resty/v2 v2.13.1 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/ianlancetaylor/demangle v0.0.0-20250417193237-f615e6bd150b // indirect
+	github.com/oracle/oci-go-sdk/v65 v65.95.2 // indirect
+	github.com/sony/gobreaker v0.5.0 // indirect
 	github.com/tetratelabs/wabin v0.0.0-20230304001439-f6f874872834 // indirect
 	github.com/tetratelabs/wazero v1.9.0 // indirect
+	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/telemetry v0.0.0-20251008203120-078029d740a8 // indirect
 )

@@ -1,9 +1,9 @@
 x-poll-config: &poll-config
   POLL_CONFIG: |
     - url: https://github.com/kimdre/doco-cd_tests.git
-      reference: secret-provider
+      reference: main
       interval: 10
-      target: "aws-sm"
+      #target: "bitwarden-sm"
 
 services:
   app:
@@ -25,7 +25,7 @@ services:
     environment:
       TZ: Europe/Berlin
       HTTP_PORT: 80
-      LOG_LEVEL: info
+      LOG_LEVEL: debug
       # DOCKER_API_VERSION: 1.47
       <<: *poll-config
       #POLL_CONFIG_FILE: /poll.yml
@@ -42,12 +42,6 @@ services:
 #    configs: # Use with POLL_CONFIG_FILE
 #      - source: poll.yml
 #        target: /poll.yml
-    healthcheck:
-      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/v1/health" ]
-      start_period: 15s
-      interval: 30s
-      timeout: 5s
-      retries: 3
 
   proxy:
     image: vimagick/tinyproxy:latest
