@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -39,7 +38,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/encryption"
-	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/webhook"
@@ -426,54 +424,13 @@ func DeployStack(
 	}
 
 	// Check if files in the working directory are SOPS encrypted and decrypt them if necessary
-	err = filepath.WalkDir(internalWorkingDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return fmt.Errorf("failed to walk directory %s: %w", path, err)
-		}
-
-		dirPath := filepath.Dir(path)
-		dirName := filepath.Base(dirPath)
-
-		// Check if dirPath is part of the paths to ignore
-		if slices.Contains(encryption.IgnoreDirs, dirName) {
-			stackLog.Debug("skipping directory", slog.String("path", dirPath), slog.String("ignore_path", dirName))
-
-			return filepath.SkipDir
-		}
-
-		if d.IsDir() {
-			return nil
-		}
-
-		isEncrypted, err := encryption.IsEncryptedFile(path)
-		if err != nil {
-			return fmt.Errorf("failed to check if file is encrypted: %w", err)
-		}
-
-		if isEncrypted {
-			if !encryption.SopsKeyIsSet() {
-				return fmt.Errorf("SOPS secret key is not set, cannot decrypt file: %s", path)
-			}
-
-			stackLog.Debug("encrypted file detected, decrypting", slog.String("file", path))
-
-			decryptedContent, err := encryption.DecryptFile(path)
-			if err != nil {
-				return fmt.Errorf("failed to decrypt file %s: %w", path, err)
-			}
-
-			err = os.WriteFile(path, decryptedContent, filesystem.PermOwner)
-			if err != nil {
-				return fmt.Errorf("failed to write decrypted content to file %s: %w", path, err)
-			}
-
-			stackLog.Debug("file decrypted successfully", slog.String("file", path))
-		}
-
-		return nil
-	})
+	f, err := encryption.DecryptFilesInDirectory(internalWorkingDir)
 	if err != nil {
 		return fmt.Errorf("file decryption failed: %w", err)
+	}
+
+	if len(f) > 0 {
+		stackLog.Debug("decrypted SOPS-encrypted files", slog.Any("files", f))
 	}
 
 	secretHash := secretprovider.Hash(resolvedSecrets)
