@@ -296,7 +296,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 			Quiet: true,
 		})
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to pull images: %w", err)
 		}
 	}
 
