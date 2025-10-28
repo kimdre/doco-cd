@@ -287,11 +287,16 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	addComposeVolumeLabels(project, *deployConfig, payload, appVersion, timestamp, ComposeVersion, latestCommit)
 
 	if deployConfig.ForceImagePull {
-		err := service.Pull(ctx, project, api.PullOptions{
+		for i, s := range project.Services {
+			s.PullPolicy = types.PullPolicyAlways
+			project.Services[i] = s
+		}
+
+		err = service.Pull(ctx, project, api.PullOptions{
 			Quiet: true,
 		})
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to pull images: %w", err)
 		}
 	}
 

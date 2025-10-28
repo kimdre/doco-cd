@@ -460,7 +460,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 				slog.String("deployed_commit", deployedCommit),
 				slog.String("latest_commit", latestCommit))
 
-			if latestCommit == deployedCommit && !secretsChanged {
+			if latestCommit == deployedCommit && !secretsChanged && !deployConfig.ForceImagePull {
 				subJobLog.Debug("no new commit found, skipping deployment", slog.String("last_commit", latestCommit))
 
 				continue
@@ -482,7 +482,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 					return metadata, fmt.Errorf("failed to compare commits in subdirectory: %w", err)
 				}
 
-				if !filesChanged && !secretsChanged {
+				if !filesChanged && !secretsChanged && !deployConfig.ForceImagePull {
 					jobLog.Debug("no changes detected in subdirectory, skipping deployment",
 						slog.String("directory", deployConfig.WorkingDirectory),
 						slog.String("last_commit", latestCommit),
