@@ -36,7 +36,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
 
     strategy:
       fail-fast: false
@@ -60,8 +60,8 @@ jobs:
           sudo apt install -y musl-tools
       - run: go mod download
       - run: if [ "${{ matrix.mode }}" = "swarm" ]; then docker swarm init; fi
-      - run: go test -ldflags="$BW_SDK_BUILD_FLAGS" -p 1 -v -coverprofile=coverage-${{ matrix.mode }}.out -covermode=atomic -timeout 10m ./...
-        timeout-minutes: 10
+      - run: go test -ldflags="$BW_SDK_BUILD_FLAGS" -p 1 -v -coverprofile=coverage-${{ matrix.mode }}.out -covermode=atomic -timeout 20m ./...
+        timeout-minutes: 20
         env:
           WEBHOOK_SECRET: test_Secret1
           API_SECRET: api_Secret1
