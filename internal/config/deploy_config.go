@@ -16,15 +16,13 @@ import (
 )
 
 var (
-	DefaultDeploymentConfigFileNames    = []string{".doco-cd.yaml", ".doco-cd.yml"}
-	CustomDeploymentConfigFileNames     = []string{".doco-cd.%s.yaml", ".doco-cd.%s.yml"}
-	DeprecatedDeploymentConfigFileNames = []string{".compose-deploy.yaml", ".compose-deploy.yml"}
-	ErrConfigFileNotFound               = errors.New("configuration file not found in repository")
-	ErrDuplicateProjectName             = errors.New("duplicate project/stack name found in configuration file")
-	ErrInvalidConfig                    = errors.New("invalid deploy configuration")
-	ErrKeyNotFound                      = errors.New("key not found")
-	ErrDeprecatedConfig                 = errors.New("configuration file name is deprecated, please use .doco-cd.y(a)ml instead")
-	ErrInvalidFilePath                  = errors.New("invalid file path")
+	DefaultDeploymentConfigFileNames = []string{".doco-cd.yaml", ".doco-cd.yml"}
+	CustomDeploymentConfigFileNames  = []string{".doco-cd.%s.yaml", ".doco-cd.%s.yml"}
+	ErrConfigFileNotFound            = errors.New("configuration file not found in repository")
+	ErrDuplicateProjectName          = errors.New("duplicate project/stack name found in configuration file")
+	ErrInvalidConfig                 = errors.New("invalid deploy configuration")
+	ErrKeyNotFound                   = errors.New("key not found")
+	ErrInvalidFilePath               = errors.New("invalid file path")
 )
 
 const DefaultReference = "refs/heads/main"
@@ -169,8 +167,7 @@ func GetDeployConfigs(repoDir, name, customTarget, reference string) ([]*DeployC
 			DeploymentConfigFileNames = append(DeploymentConfigFileNames, fmt.Sprintf(configFile, customTarget))
 		}
 	} else {
-		// Merge default and deprecated deployment config file names
-		DeploymentConfigFileNames = append(DefaultDeploymentConfigFileNames, DeprecatedDeploymentConfigFileNames...) //nolint:gocritic
+		DeploymentConfigFileNames = DefaultDeploymentConfigFileNames
 	}
 
 	var configs []*DeployConfig
@@ -187,13 +184,6 @@ func GetDeployConfigs(repoDir, name, customTarget, reference string) ([]*DeployC
 		if configs != nil {
 			if err = validator.Validate(configs); err != nil {
 				return nil, err
-			}
-
-			// Check if the config file name is deprecated
-			for _, deprecatedConfigFile := range DeprecatedDeploymentConfigFileNames {
-				if configFile == deprecatedConfigFile {
-					return configs, fmt.Errorf("%w: %s", ErrDeprecatedConfig, configFile)
-				}
 			}
 
 			// Check if the stack/project names are not unique

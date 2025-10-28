@@ -268,11 +268,7 @@ func TestDeployCompose(t *testing.T) {
 		err = DeployStack(jobLog, repoPath, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
 			[]git.ChangedFile{}, latestCommit, "test", "poll", false, metadata, resolvedSecrets, false)
 		if err != nil {
-			if errors.Is(err, config.ErrDeprecatedConfig) {
-				t.Log(err.Error())
-			} else {
-				t.Fatalf("failed to deploy stack: %v", err)
-			}
+			t.Fatalf("failed to deploy stack: %v", err)
 		}
 
 		t.Log("Verifying deployment")

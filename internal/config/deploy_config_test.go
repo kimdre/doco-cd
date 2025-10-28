@@ -91,69 +91,6 @@ compose_files:
 			t.Errorf("expected compose files to be %v, got %v", composeFiles, config.ComposeFiles)
 		}
 	})
-
-	t.Run("Deprecated Config File Name", func(t *testing.T) {
-		fileName := ".compose-deploy.yaml"
-		reference := "refs/heads/test"
-		workingDirectory := "/test"
-		composeFiles := []string{"test.compose.yaml"}
-		customTarget := ""
-
-		deployConfig := fmt.Sprintf(`name: %s
-reference: %s
-working_dir: %s
-compose_files:
-  - %s
-`, projectName, reference, workingDirectory, composeFiles[0])
-
-		dirName := createTmpDir(t)
-		t.Cleanup(func() {
-			err := os.RemoveAll(dirName)
-			if err != nil {
-				t.Fatal(err)
-			}
-		})
-
-		filePath := filepath.Join(dirName, fileName)
-
-		err := createTestFile(filePath, deployConfig)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		configs, err := GetDeployConfigs(dirName, projectName, customTarget, reference)
-		if err == nil || !errors.Is(err, ErrDeprecatedConfig) {
-			t.Fatalf("expected deprecated config error, got %v", err)
-		}
-
-		if len(configs) != 1 {
-			t.Fatalf("expected 1 config, got %d", len(configs))
-		}
-
-		config := configs[0]
-
-		if config == nil {
-			t.Fatal("expected config to be returned, got nil")
-
-			return
-		}
-
-		if config.Name != projectName {
-			t.Errorf("expected name to be %v, got %s", projectName, config.Name)
-		}
-
-		if config.Reference != reference {
-			t.Errorf("expected reference to be %v, got %s", reference, config.Reference)
-		}
-
-		if config.WorkingDirectory != filepath.Join(".", workingDirectory) {
-			t.Errorf("expected working directory to be '%v', got '%s'", workingDirectory, config.WorkingDirectory)
-		}
-
-		if !reflect.DeepEqual(config.ComposeFiles, composeFiles) {
-			t.Errorf("expected compose files to be %v, got %v", composeFiles, config.ComposeFiles)
-		}
-	})
 }
 
 func TestGetDeployConfigs_DefaultValues(t *testing.T) {
