@@ -30,6 +30,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
+replace github.com/testcontainers/testcontainers-go => github.com/testcontainers/testcontainers-go v0.39.1-0.20251024104027-55092dfb1fd6
+
 require (
 	cel.dev/expr v0.24.0 // indirect
 	cloud.google.com/go v0.121.6 // indirect
