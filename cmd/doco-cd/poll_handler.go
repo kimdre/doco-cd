@@ -207,13 +207,9 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	// Get the deployment configs from the repository
 	deployConfigs, err := config.GetDeployConfigs(internalRepoPath, shortName, pollConfig.CustomTarget, pollConfig.Reference)
 	if err != nil {
-		if errors.Is(err, config.ErrDeprecatedConfig) {
-			jobLog.Warn(err.Error())
-		} else {
-			jobLog.Error("failed to get deploy configuration", log.ErrAttr(err))
+		jobLog.Error("failed to get deploy configuration", log.ErrAttr(err))
 
-			return metadata, fmt.Errorf("failed to get deploy configuration: %w", err)
-		}
+		return metadata, fmt.Errorf("failed to get deploy configuration: %w", err)
 	}
 
 	for _, deployConfig := range deployConfigs {
