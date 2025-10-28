@@ -21,7 +21,6 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/shirou/gopsutil/v4 v4.25.6 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
-	github.com/testcontainers/testcontainers-go v0.39.1-0.20251024104027-55092dfb1fd6
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
@@ -307,6 +306,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.39.9
 	github.com/bitwarden/sdk-go v1.0.2
 	github.com/infisical/go-sdk v0.5.100
+	github.com/testcontainers/testcontainers-go v0.39.1-0.20251024104027-55092dfb1fd6
 	github.com/testcontainers/testcontainers-go/modules/compose v0.39.1-0.20251024104027-55092dfb1fd6
 	gotest.tools/v3 v3.5.2
 )
