@@ -21,7 +21,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/shirou/gopsutil/v4 v4.25.6 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
-	github.com/testcontainers/testcontainers-go v0.39.0
+	github.com/testcontainers/testcontainers-go v0.39.1-0.20251024104027-55092dfb1fd6
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
@@ -29,8 +29,6 @@ require (
 	gopkg.in/validator.v2 v2.0.1
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/testcontainers/testcontainers-go => github.com/testcontainers/testcontainers-go v0.39.1-0.20251024104027-55092dfb1fd6
 
 require (
 	cel.dev/expr v0.24.0 // indirect
