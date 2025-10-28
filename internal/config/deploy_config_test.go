@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -13,8 +14,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/filesystem"
 )
-
-var projectName = "test"
 
 func createTestFile(fileName string, content string) error {
 	err := os.WriteFile(fileName, []byte(content), filesystem.PermOwner)
@@ -36,6 +35,7 @@ func createTmpDir(t *testing.T) string {
 
 func TestGetDeployConfigs(t *testing.T) {
 	t.Run("Valid Config", func(t *testing.T) {
+		projectName := fmt.Sprintf("test-%05d", rand.IntN(100000)) // #nosec G404
 		fileName := ".doco-cd.yaml"
 		reference := "refs/heads/test"
 		workingDirectory := "/test"
@@ -93,6 +93,7 @@ compose_files:
 	})
 
 	t.Run("Deprecated Config File Name", func(t *testing.T) {
+		projectName := fmt.Sprintf("test-%05d", rand.IntN(100000)) // #nosec G404
 		fileName := ".compose-deploy.yaml"
 		reference := "refs/heads/test"
 		workingDirectory := "/test"
@@ -157,6 +158,7 @@ compose_files:
 }
 
 func TestGetDeployConfigs_DefaultValues(t *testing.T) {
+	projectName := fmt.Sprintf("test-%05d", rand.IntN(100000)) // #nosec G404
 	defaultConfig := DefaultDeployConfig(projectName, DefaultReference)
 
 	dirName := createTmpDir(t)

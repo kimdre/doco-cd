@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -168,7 +169,7 @@ func TestDeployCompose(t *testing.T) {
 	p := webhook.ParsedPayload{
 		Ref:       git.MainBranch,
 		CommitSHA: "4d877107dfa2e3b582bd8f8f803befbd3a1d867e",
-		Name:      "test",
+		Name:      fmt.Sprintf("test-%05d", rand.IntN(100000)), // #nosec G404
 		FullName:  "kimdre/doco-cd_tests",
 		CloneURL:  git.GetAuthUrl(cloneUrlTest, c.AuthType, c.GitAccessToken),
 		Private:   true,
