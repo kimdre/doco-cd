@@ -62,12 +62,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 	indexPath = path.Join(tmpDir, getRepoName(cloneUrl), indexPath)
 
-	payloadPath, err := filepath.Abs(payloadFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	payload, err := os.ReadFile(payloadPath)
+	payload, err := os.ReadFile(filepath.Join(WorkingDir, payloadFile))
 	if err != nil {
 		t.Fatal(err)
 	}
