@@ -41,6 +41,7 @@ var WorkingDir string
 
 func TestMain(m *testing.M) {
 	var err error
+
 	WorkingDir, err = os.Getwd()
 	if err != nil {
 		log.Fatalf("os.Getwd: %v", err)
