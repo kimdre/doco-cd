@@ -63,6 +63,13 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 	payload, err := os.ReadFile(payloadFile)
 	if err != nil {
+		t.Error("Current directory:", func() string {
+			dir, err := os.Getwd()
+			if err != nil {
+				return "unknown"
+			}
+			return dir
+		}())
 		t.Fatal(err)
 	}
 
