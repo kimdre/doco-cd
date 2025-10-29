@@ -482,15 +482,7 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 
 			jobLog.Info("restarting service", slog.String("service", svcName))
 
-			//err = swarm.ScaleService(ctx, h.dockerCli, svcName, uint64(0), true)
-			//if err != nil {
-			//	errMsg = "failed to scale service"
-			//	jobLog.With(logger.ErrAttr(err)).Error(errMsg)
-			//	JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
-			//
-			//	return
-			//}
-
+			// Update the service with the same number of replicas to force a redeploy
 			err = swarm.ScaleService(ctx, h.dockerCli, svcName, *svc.Spec.Mode.Replicated.Replicas, true, true)
 			if err != nil {
 				errMsg = "failed to scale service"
