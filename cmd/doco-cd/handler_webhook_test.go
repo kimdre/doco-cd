@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"testing"
@@ -61,14 +62,13 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 	indexPath = path.Join(tmpDir, getRepoName(cloneUrl), indexPath)
 
-	payload, err := os.ReadFile(payloadFile)
+	payloadPath, err := filepath.Abs(payloadFile)
 	if err != nil {
-		wd, err := os.Open(".")
-		if err != nil {
-			t.Fatal(err)
-		}
+		t.Fatal(err)
+	}
 
-		t.Errorf("Current working directory: %s", wd.Name())
+	payload, err := os.ReadFile(payloadPath)
+	if err != nil {
 		t.Fatal(err)
 	}
 
