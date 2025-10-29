@@ -22,7 +22,7 @@ func RunRemove(ctx context.Context, dockerCli command.Cli, opts options.Remove) 
 	var errs []error
 
 	for _, namespace := range opts.Namespaces {
-		services, err := getStackServices(ctx, apiClient, namespace)
+		services, err := GetStackServices(ctx, apiClient, namespace)
 		if err != nil {
 			return err
 		}

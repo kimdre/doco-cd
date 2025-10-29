@@ -210,7 +210,7 @@ func deployServices(ctx context.Context, dockerCLI command.Cli, services map[str
 	apiClient := dockerCLI.Client()
 	out := dockerCLI.Out()
 
-	existingServices, err := getStackServices(ctx, apiClient, namespace.Name())
+	existingServices, err := GetStackServices(ctx, apiClient, namespace.Name())
 	if err != nil {
 		return nil, err
 	}

@@ -37,7 +37,18 @@ const (
 	invalidBranch    = "refs/heads/invalid"
 )
 
+var WorkingDir string
+
 func TestMain(m *testing.M) {
+	var err error
+
+	WorkingDir, err = os.Getwd()
+	if err != nil {
+		log.Fatalf("os.Getwd: %v", err)
+	}
+
+	log.Println("working dir:", WorkingDir)
+
 	ctx := context.Background()
 
 	dockerCli, err := docker.CreateDockerCli(false, false)

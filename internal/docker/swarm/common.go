@@ -23,7 +23,7 @@ func getStackFilter(namespace string) filters.Args {
 	return filter
 }
 
-func getStackServices(ctx context.Context, apiclient client.APIClient, namespace string) ([]swarm.Service, error) {
+func GetStackServices(ctx context.Context, apiclient client.APIClient, namespace string) ([]swarm.Service, error) {
 	return apiclient.ServiceList(ctx, swarm.ServiceListOptions{Filters: getStackFilter(namespace)})
 }
 
@@ -41,4 +41,21 @@ func getStackConfigs(ctx context.Context, apiclient client.APIClient, namespace 
 
 func getStackTasks(ctx context.Context, apiclient client.APIClient, namespace string) ([]swarm.Task, error) {
 	return apiclient.TaskList(ctx, swarm.TaskListOptions{Filters: getStackFilter(namespace)})
+}
+
+func GetStacks(ctx context.Context, apiclient client.APIClient) (map[string][]swarm.Service, error) {
+	stacks := make(map[string][]swarm.Service)
+
+	services, err := apiclient.ServiceList(ctx, swarm.ServiceListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	for _, service := range services {
+		if namespace, ok := service.Spec.Labels[StackNamespaceLabel]; ok {
+			stacks[namespace] = append(stacks[namespace], service)
+		}
+	}
+
+	return stacks, nil
 }

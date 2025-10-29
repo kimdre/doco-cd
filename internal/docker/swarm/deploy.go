@@ -61,7 +61,7 @@ func CheckDaemonIsSwarmManager(ctx context.Context, dockerCli command.Cli) (bool
 func pruneServices(ctx context.Context, dockerCCLI command.Cli, namespace convert.Namespace, services map[string]struct{}) {
 	apiClient := dockerCCLI.Client()
 
-	oldServices, err := getStackServices(ctx, apiClient, namespace.Name())
+	oldServices, err := GetStackServices(ctx, apiClient, namespace.Name())
 	if err != nil {
 		_, _ = fmt.Fprintln(dockerCCLI.Err(), "Failed to list services:", err)
 	}
@@ -75,4 +75,40 @@ func pruneServices(ctx context.Context, dockerCCLI command.Cli, namespace conver
 	}
 
 	removeServices(ctx, dockerCCLI, pruneSvcSlice)
+}
+
+func ScaleService(ctx context.Context, dockerCLI command.Cli, serviceName string, replicas uint64, wait, force bool) error {
+	apiClient := dockerCLI.Client()
+
+	service, _, err := apiClient.ServiceInspectWithRaw(ctx, serviceName, swarmTypes.ServiceInspectOptions{})
+	if err != nil {
+		return err
+	}
+
+	if force {
+		service.Spec.TaskTemplate.ForceUpdate++
+	}
+
+	if service.Spec.Mode.Replicated == nil {
+		return fmt.Errorf("service %s is not in replicated mode", serviceName)
+	}
+
+	service.Spec.Mode.Replicated.Replicas = &replicas
+
+	updateOpts := swarmTypes.ServiceUpdateOptions{}
+
+	_, err = apiClient.ServiceUpdate(ctx, service.ID, service.Version, service.Spec, updateOpts)
+	if err != nil {
+		return err
+	}
+
+	if wait {
+		// Wait for the service to scale
+		err = waitOnService(ctx, dockerCLI, serviceName)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
