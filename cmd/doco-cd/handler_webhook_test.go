@@ -29,8 +29,8 @@ import (
 )
 
 const (
-	githubPayloadFile          = "cmd/doco-cd/testdata/github_payload.json"
-	githubPayloadFileSwarmMode = "cmd/doco-cd/testdata/github_payload_swarm_mode.json"
+	githubPayloadFile          = "testdata/github_payload.json"
+	githubPayloadFileSwarmMode = "testdata/github_payload_swarm_mode.json"
 	composeContent             = `services:
   nginx:
     image: nginx:latest
