@@ -29,8 +29,8 @@ import (
 )
 
 const (
-	githubPayloadFile          = "testdata/github_payload.json"
-	githubPayloadFileSwarmMode = "testdata/github_payload_swarm_mode.json"
+	githubPayloadFile          = "cmd/doco-cd/testdata/github_payload.json"
+	githubPayloadFileSwarmMode = "cmd/doco-cd/testdata/github_payload_swarm_mode.json"
 	composeContent             = `services:
   nginx:
     image: nginx:latest
@@ -63,13 +63,6 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 	payload, err := os.ReadFile(payloadFile)
 	if err != nil {
-		t.Error("Current directory:", func() string {
-			dir, err := os.Getwd()
-			if err != nil {
-				return "unknown"
-			}
-			return dir
-		}())
 		t.Fatal(err)
 	}
 
