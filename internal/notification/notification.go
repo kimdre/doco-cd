@@ -140,11 +140,16 @@ func formatMessage(message string, m Metadata) string {
 		{"revision", m.Revision},
 		{"job_id", m.JobID},
 	}
+
+	var sb strings.Builder
+
 	for _, f := range fields {
 		if f.value != "" {
-			metadataInfo += fmt.Sprintf("\n%s: %s", f.key, f.value)
+			sb.WriteString(fmt.Sprintf("\n%s: %s", f.key, f.value))
 		}
 	}
+
+	metadataInfo += sb.String()
 
 	return fmt.Sprintf("%s\n%s", message, metadataInfo)
 }
