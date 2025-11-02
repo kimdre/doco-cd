@@ -115,7 +115,17 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 		}
 
 		pollJob.LastRun = time.Now().Unix()
-		time.Sleep(time.Duration(pollJob.Config.Interval) * time.Second)
+
+		// If interval is negative, treat as "run once" and exit after the initial run.
+		if pollJob.Config.Interval < 0 {
+			logger.Debug("Negative interval configured -> single initial poll completed, exiting poll handler")
+			return
+		}
+
+		// Only sleep when a positive interval is configured. A zero interval is already handled in StartPoll.
+		if pollJob.Config.Interval > 0 {
+			time.Sleep(time.Duration(pollJob.Config.Interval) * time.Second)
+		}
 	}
 }
 
