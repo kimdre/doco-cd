@@ -43,11 +43,11 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Dep
 	serviceNetworks := getServicesDeclaredNetworks(config.Services)
 
 	networks, externalNetworks := convert.Networks(namespace, config.Networks, serviceNetworks)
-	if err := validateExternalNetworks(ctx, dockerCli.Client(), externalNetworks); err != nil {
+	if err = validateExternalNetworks(ctx, dockerCli.Client(), externalNetworks); err != nil {
 		return err
 	}
 
-	if err := createNetworks(ctx, dockerCli, namespace, networks); err != nil {
+	if err = createNetworks(ctx, dockerCli, namespace, networks); err != nil {
 		return err
 	}
 
@@ -56,7 +56,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Dep
 		return err
 	}
 
-	if err := createSecrets(ctx, dockerCli, secrets); err != nil {
+	if err = createSecrets(ctx, dockerCli, secrets); err != nil {
 		return err
 	}
 
@@ -65,7 +65,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Dep
 		return err
 	}
 
-	if err := createConfigs(ctx, dockerCli, configs); err != nil {
+	if err = createConfigs(ctx, dockerCli, configs); err != nil {
 		return err
 	}
 
