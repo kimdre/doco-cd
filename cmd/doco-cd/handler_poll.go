@@ -114,18 +114,14 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 			logger.Debug("Skipping poll, waiting for next run")
 		}
 
-		pollJob.LastRun = time.Now().Unix()
-
 		// If run_once is set, perform a single run and exit after the initial run.
 		if pollJob.Config.RunOnce {
-			logger.Debug("RunOnce configured -> single initial poll completed, exiting poll handler")
+			logger.Debug("RunOnce configured: single initial poll completed, stopped polling")
 			return
 		}
 
-		// Only sleep when a positive interval is configured. A zero interval is already handled in StartPoll.
-		if pollJob.Config.Interval > 0 {
-			time.Sleep(time.Duration(pollJob.Config.Interval) * time.Second)
-		}
+		pollJob.LastRun = time.Now().Unix()
+		time.Sleep(time.Duration(pollJob.Config.Interval) * time.Second)
 	}
 }
 
