@@ -32,7 +32,7 @@ import (
 
 // DeploySwarmStack deploys a Docker Swarm stack using the provided project and deploy configuration.
 func DeploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types.Project, deployConfig *config.DeployConfig,
-	payload webhook.ParsedPayload, repoDir, latestCommit, appVersion, secretHash string, resolvedSecrets secrettypes.ResolvedSecrets,
+	payload webhook.ParsedPayload, externalWorkingDir, latestCommit, appVersion, secretHash string, resolvedSecrets secrettypes.ResolvedSecrets,
 ) error {
 	opts := options.Deploy{
 		Composefiles:     project.ComposeFiles,
@@ -46,15 +46,15 @@ func DeploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types
 
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 
-	cfg, err := swarmInternal.LoadComposefile(dockerCli, opts, resolvedSecrets)
+	cfg, err := swarmInternal.LoadComposefile(dockerCli, opts, resolvedSecrets, externalWorkingDir)
 	if err != nil {
 		return fmt.Errorf("failed to load compose file: %w", err)
 	}
 
-	addSwarmServiceLabels(cfg, *deployConfig, payload, repoDir, appVersion, timestamp, latestCommit, secretHash)
-	addSwarmVolumeLabels(cfg, *deployConfig, payload, repoDir, appVersion, timestamp, latestCommit)
-	addSwarmConfigLabels(cfg, *deployConfig, payload, repoDir, appVersion, timestamp, latestCommit)
-	addSwarmSecretLabels(cfg, *deployConfig, payload, repoDir, appVersion, timestamp, latestCommit)
+	addSwarmServiceLabels(cfg, *deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit, secretHash)
+	addSwarmVolumeLabels(cfg, *deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
+	addSwarmConfigLabels(cfg, *deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
+	addSwarmSecretLabels(cfg, *deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
 
 	if err = SetConfigHashPrefixes(cfg, opts.Namespace); err != nil {
 		return fmt.Errorf("failed to set config hash prefixes: %w", err)
