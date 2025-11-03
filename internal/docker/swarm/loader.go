@@ -22,7 +22,7 @@ import (
 )
 
 // LoadComposefile parse the composefile specified in the cli and returns its Config and version.
-func LoadComposefile(dockerCli command.Cli, opts options.Deploy, resolvedSecrets secrettypes.ResolvedSecrets) (*types.Config, error) {
+func LoadComposefile(dockerCli command.Cli, opts options.Deploy, resolvedSecrets secrettypes.ResolvedSecrets, workingDir string) (*types.Config, error) {
 	configDetails, err := GetConfigDetails(opts.Composefiles, dockerCli.In())
 	if err != nil {
 		return nil, err
@@ -31,6 +31,8 @@ func LoadComposefile(dockerCli command.Cli, opts options.Deploy, resolvedSecrets
 	optsFunc := func(opts *loader.Options) {
 		opts.SkipInterpolation = false
 	}
+
+	configDetails.WorkingDir = workingDir
 
 	if configDetails.Environment == nil {
 		configDetails.Environment = map[string]string{}
