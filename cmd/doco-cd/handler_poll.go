@@ -116,9 +116,9 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 
 		pollJob.LastRun = time.Now().Unix()
 
-		// If interval is negative, treat as "run once" and exit after the initial run.
-		if pollJob.Config.Interval < 0 {
-			logger.Debug("Negative interval configured -> single initial poll completed, exiting poll handler")
+		// If run_once is set, perform a single run and exit after the initial run.
+		if pollJob.Config.RunOnce {
+			logger.Debug("RunOnce configured -> single initial poll completed, exiting poll handler")
 			return
 		}
 
