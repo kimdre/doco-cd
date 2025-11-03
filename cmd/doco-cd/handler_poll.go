@@ -116,7 +116,7 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 
 		// If run_once is set, perform a single run and exit after the initial run.
 		if pollJob.Config.RunOnce {
-			logger.Debug("RunOnce configured: single initial poll completed, stopped polling")
+			logger.Info("RunOnce configured: single initial poll completed, stopped polling", slog.Any("config", pollJob.Config))
 			return
 		}
 
