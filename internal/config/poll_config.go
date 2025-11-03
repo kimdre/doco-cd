@@ -17,6 +17,7 @@ type PollConfig struct {
 	Reference    string  `yaml:"reference" default:"refs/heads/main"` // Reference is the Git reference to the deployment, e.g., refs/heads/main, main, refs/tags/v1.0.0 or v1.0.0
 	Interval     int     `yaml:"interval" default:"180"`              // Interval is the interval in seconds to poll for changes
 	CustomTarget string  `yaml:"target" default:""`                   // CustomTarget is the name of an optional custom deployment config file, e.g. ".doco-cd.custom-name.yaml"
+	RunOnce      bool    `yaml:"run_once" default:"false"`            // RunOnce when true, performs a single run and exits
 }
 
 type PollJob struct {
