@@ -1,7 +1,7 @@
 x-poll-config: &poll-config
   POLL_CONFIG: |
     - url: https://github.com/kimdre/doco-cd_tests.git
-      reference: main
+      reference: swarm-mode
       interval: 10
       #target: "bitwarden-sm"
 
@@ -13,6 +13,7 @@ services:
       dockerfile: Dockerfile
       args:
         - APP_VERSION=dev
+    pull_policy: build
     restart: unless-stopped
     depends_on:
       - proxy
