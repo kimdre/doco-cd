@@ -33,6 +33,25 @@ Doco-CD supports both Docker Compose projects and Swarm stacks in [Swarm mode](h
 
 You can find the documentation in the [Wiki](https://github.com/kimdre/doco-cd/wiki).
 
+## Inline Poll Deployments
+
+Polling configurations (`POLL_CONFIG` or `POLL_CONFIG_FILE`) now support defining deployments in-line without requiring a `.doco-cd.yml` file inside the target repository. Add a `deployments` list to each poll job to describe the stacks Doco-CD should manage:
+
+```yaml
+- url: https://github.com/example/app.git
+  reference: refs/heads/main
+  interval: 300
+  deployments:
+    - name: example-app
+      working_dir: services/app
+      compose_files:
+        - compose.yaml
+      env_files:
+        - .env.production
+```
+
+Inline deployments reuse the same fields as `.doco-cd.yml` files, including support for external secrets and destroy workflows. The poll job `url` is always used as the deployment source.
+
 ## Community
 
 - Ask questions or discuss ideas on [GitHub Discussions](https://github.com/kimdre/doco-cd/discussions)

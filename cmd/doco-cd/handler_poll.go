@@ -125,6 +125,27 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 	}
 }
 
+func resolveDeployConfigs(pollConfig config.PollConfig, repoDir, defaultName string, logger *slog.Logger) ([]*config.DeployConfig, error) {
+	if len(pollConfig.Deployments) > 0 {
+		for _, deploy := range pollConfig.Deployments {
+			if deploy.RepositoryUrl != "" {
+				if logger != nil {
+					logger.Warn("inline deployment repository_url is ignored; using poll url",
+						slog.String("deployment", deploy.Name),
+						slog.String("repository_url", string(deploy.RepositoryUrl)),
+						slog.String("url", string(pollConfig.CloneUrl)))
+				}
+
+				deploy.RepositoryUrl = ""
+			}
+		}
+
+		return pollConfig.Deployments, nil
+	}
+
+	return config.GetDeployConfigs(repoDir, defaultName, pollConfig.CustomTarget, pollConfig.Reference)
+}
+
 // RunPoll deploys compose projects based on the provided configuration.
 func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *config.AppConfig, dataMountPoint container.MountPoint,
 	dockerCli command.Cli, dockerClient *client.Client, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
@@ -210,8 +231,8 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	// shortName is the last part of repoName, which is just the name of the repository
 	shortName := filepath.Base(repoName)
 
-	// Get the deployment configs from the repository
-	deployConfigs, err := config.GetDeployConfigs(internalRepoPath, shortName, pollConfig.CustomTarget, pollConfig.Reference)
+	// Get the deployment configs from either inline definitions or repository files
+	deployConfigs, err := resolveDeployConfigs(pollConfig, internalRepoPath, shortName, jobLog)
 	if err != nil {
 		jobLog.Error("failed to get deploy configuration", log.ErrAttr(err))
 

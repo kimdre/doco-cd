@@ -110,3 +110,46 @@ func TestPollConfig_String(t *testing.T) {
 		})
 	}
 }
+
+func TestPollConfig_ValidateInlineDeployments(t *testing.T) {
+	pollConfig := PollConfig{
+		CloneUrl:  "https://example.com/repo.git",
+		Reference: "main",
+		Deployments: []*DeployConfig{
+			{
+				Name:         "app",
+				ComposeFiles: []string{"compose.yaml"},
+			},
+		},
+	}
+
+	if err := pollConfig.Validate(); err != nil {
+		t.Fatalf("expected inline deployments to validate: %v", err)
+	}
+
+	if pollConfig.Deployments[0].Reference != pollConfig.Reference {
+		t.Fatalf("expected inline deployment reference to default to poll reference, got %s", pollConfig.Deployments[0].Reference)
+	}
+}
+
+func TestPollConfig_ValidateInlineDeploymentsDuplicateNames(t *testing.T) {
+	pollConfig := PollConfig{
+		CloneUrl:  "https://example.com/repo.git",
+		Reference: "main",
+		Deployments: []*DeployConfig{
+			{
+				Name:         "app",
+				ComposeFiles: []string{"compose.yaml"},
+			},
+			{
+				Name:         "app",
+				ComposeFiles: []string{"compose.yaml"},
+			},
+		},
+	}
+
+	err := pollConfig.Validate()
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("expected ErrInvalidConfig when duplicate inline deployment names are provided, got %v", err)
+	}
+}

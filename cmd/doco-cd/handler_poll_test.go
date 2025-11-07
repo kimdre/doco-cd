@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"testing"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -126,4 +128,77 @@ func TestRunPoll(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Second poll failed: %v", err)
 	}
+}
+
+func TestResolveDeployConfigs(t *testing.T) {
+	t.Run("returns inline deployments when provided", func(t *testing.T) {
+		testLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		pollConfig := config.PollConfig{
+			CloneUrl:  "https://example.com/repo.git",
+			Reference: "main",
+			Deployments: []*config.DeployConfig{
+				{
+					Name:         "inline-app",
+					ComposeFiles: []string{"compose.yaml"},
+					RepositoryUrl: config.HttpUrl("https://example.com/runtime.git"),
+				},
+			},
+		}
+
+		if err := pollConfig.Validate(); err != nil {
+			t.Fatalf("expected inline poll config to validate: %v", err)
+		}
+
+		configs, err := resolveDeployConfigs(pollConfig, t.TempDir(), "ignored", testLogger)
+		if err != nil {
+			t.Fatalf("expected inline deployments to be returned: %v", err)
+		}
+
+		if len(configs) != 1 {
+			t.Fatalf("expected 1 deployment, got %d", len(configs))
+		}
+
+		if configs[0].Name != "inline-app" {
+			t.Fatalf("expected deployment name to be inline-app, got %s", configs[0].Name)
+		}
+
+		if configs[0].Reference != pollConfig.Reference {
+			t.Fatalf("expected deployment reference to match poll reference, got %s", configs[0].Reference)
+		}
+
+		if configs[0].RepositoryUrl != "" {
+			t.Fatalf("expected repository_url to be cleared for inline deployments, got %s", configs[0].RepositoryUrl)
+		}
+	})
+
+	t.Run("falls back to repository configuration when inline is absent", func(t *testing.T) {
+		testLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		tmpDir := t.TempDir()
+
+		pollConfig := config.PollConfig{
+			CloneUrl:  "https://example.com/repo.git",
+			Reference: "main",
+		}
+
+		if err := pollConfig.Validate(); err != nil {
+			t.Fatalf("expected poll config without inline deployments to validate: %v", err)
+		}
+
+		configs, err := resolveDeployConfigs(pollConfig, tmpDir, "default", testLogger)
+		if err != nil {
+			t.Fatalf("expected default deployment to be returned: %v", err)
+		}
+
+		if len(configs) != 1 {
+			t.Fatalf("expected 1 deployment, got %d", len(configs))
+		}
+
+		if configs[0].Name != "default" {
+			t.Fatalf("expected default deployment name to be default, got %s", configs[0].Name)
+		}
+
+		if configs[0].Reference != pollConfig.Reference {
+			t.Fatalf("expected default deployment reference to match poll reference, got %s", configs[0].Reference)
+		}
+	})
 }
