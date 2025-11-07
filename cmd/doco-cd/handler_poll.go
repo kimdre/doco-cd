@@ -46,7 +46,7 @@ func getRepoLock(repoName string) *sync.Mutex {
 
 // StartPoll initializes PollJob with the provided configuration and starts the PollHandler goroutine.
 func StartPoll(h *handlerData, pollConfig config.PollConfig, wg *sync.WaitGroup) error {
-	if pollConfig.Interval == 0 {
+	if pollConfig.Interval == 0 && !pollConfig.RunOnce {
 		h.log.Info("polling job disabled by config", "config", pollConfig)
 
 		return nil
