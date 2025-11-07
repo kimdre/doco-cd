@@ -224,7 +224,6 @@ func addComposeVolumeLabels(project *types.Project, deployConfig config.DeployCo
 
 // LoadCompose parses and loads Compose files as specified by the Docker Compose specification.
 func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles, envFiles, profiles []string, resolvedSecrets secrettypes.ResolvedSecrets) (*types.Project, error) {
-
 	// if envFiles only contains ".env", we check if the file exists in the working directory
 	if len(envFiles) == 1 && envFiles[0] == ".env" {
 		envFilePath := path.Join(workingDir, ".env")
