@@ -61,7 +61,7 @@ func TestDeploySwarmStack(t *testing.T) {
 	repoPath := worktree.Filesystem.Root()
 	filePath := filepath.Join(repoPath, "docker-compose.yml")
 
-	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{filePath}, []string{}, map[string]string{})
+	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}

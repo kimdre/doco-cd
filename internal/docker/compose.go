@@ -223,14 +223,14 @@ func addComposeVolumeLabels(project *types.Project, deployConfig config.DeployCo
 }
 
 // LoadCompose parses and loads Compose files as specified by the Docker Compose specification.
-func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles, profiles []string, resolvedSecrets secrettypes.ResolvedSecrets) (*types.Project, error) {
+func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles, envFiles, profiles []string, resolvedSecrets secrettypes.ResolvedSecrets) (*types.Project, error) {
 	options, err := cli.NewProjectOptions(
 		composeFiles,
 		cli.WithName(projectName),
 		cli.WithWorkingDirectory(workingDir),
 		cli.WithInterpolation(true),
 		cli.WithResolvedPaths(true),
-		cli.WithEnvFiles(),
+		cli.WithEnvFiles(envFiles...), // env files for variable interpolation
 		cli.WithProfiles(profiles),
 	)
 	if err != nil {
@@ -440,7 +440,7 @@ func DeployStack(
 
 	secretHash := secretprovider.Hash(resolvedSecrets)
 
-	project, err := LoadCompose(*ctx, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles, deployConfig.Profiles, resolvedSecrets)
+	project, err := LoadCompose(*ctx, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles, deployConfig.EnvFiles, deployConfig.Profiles, resolvedSecrets)
 	if err != nil {
 		errMsg := "failed to load compose config"
 		return fmt.Errorf("%s: %w", errMsg, err)
