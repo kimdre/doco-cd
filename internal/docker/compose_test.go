@@ -206,7 +206,7 @@ func TestDeployCompose(t *testing.T) {
 	t.Log("Load compose file")
 	createComposeFile(t, filePath, composeContents)
 
-	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
+	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
