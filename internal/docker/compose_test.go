@@ -106,7 +106,7 @@ func TestLoadCompose(t *testing.T) {
 
 	createComposeFile(t, filePath, composeContents)
 
-	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{}, map[string]string{})
+	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +206,7 @@ func TestDeployCompose(t *testing.T) {
 	t.Log("Load compose file")
 	createComposeFile(t, filePath, composeContents)
 
-	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{}, map[string]string{})
+	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,7 +384,7 @@ func TestHasChangedConfigs(t *testing.T) {
 
 	t.Chdir(tmpDir)
 
-	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{}, map[string]string{})
+	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{".env"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatalf("Failed to load compose file: %v", err)
 	}
@@ -447,7 +447,7 @@ func TestHasChangedSecrets(t *testing.T) {
 
 	t.Chdir(tmpDir)
 
-	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{}, map[string]string{})
+	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{".env"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatalf("Failed to load compose file: %v", err)
 	}
@@ -510,7 +510,7 @@ func TestHasChangedBindMounts(t *testing.T) {
 
 	t.Chdir(tmpDir)
 
-	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{}, map[string]string{})
+	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{".env"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatalf("Failed to load compose file: %v", err)
 	}
@@ -890,7 +890,7 @@ func TestInjectSecretsToProject(t *testing.T) {
 
 			t.Log("Resolved secrets:", resolvedSecrets)
 
-			project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{}, resolvedSecrets)
+			project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{".env"}, []string{}, resolvedSecrets)
 			if err != nil {
 				t.Fatal(err)
 			}
