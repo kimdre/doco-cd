@@ -147,7 +147,7 @@ func (p *Provider) Close() {}
 
 // parseSecretReference parses the secret reference string into its components: secretEngine, id, and key.
 func parseSecretReference(ref string) (secretEngine, id, key string, err error) {
-	// The reference format is "secretEngine:id:key"
+	// The reference format is "secretEngine:secretName:key"
 	refFormat := `^[^:]+:[^:]+:[^:]+$`
 
 	// Check if reference is in the correct format
