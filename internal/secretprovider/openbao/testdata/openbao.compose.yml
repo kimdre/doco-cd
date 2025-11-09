@@ -1,0 +1,65 @@
+name: openbao-dev
+
+volumes:
+  pg_data:
+  bao_init:
+
+configs:
+  bao.conf:
+    content: |
+      storage "postgresql" {
+        table = "openbao_kv_store"
+        path    = "openbao/"
+      }
+        
+      ui = true
+      
+      listener "tcp" {
+        address = "0.0.0.0:8200"
+        tls_disable = true
+      }
+        
+      api_addr = "http://0.0.0.0:8200"
+      plugin_directory = "/openbao/plugins"
+
+services:
+  db:
+    image: pgautoupgrade/pgautoupgrade:17-alpine
+    environment:
+      - POSTGRES_PASSWORD=postgresPW!
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=openbao
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -h localhost -U postgres -d openbao']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  vault:
+    image: openbao/openbao:2
+    command: ['server', '-config=/openbao/config/bao.conf']
+
+    cap_add:
+      - IPC_LOCK
+    ports:
+      - "8200:8200"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - VAULT_ADDR=http://127.0.0.1:8200
+      - VAULT_DISABLE_MLOCK=true
+      - VAULT_PG_CONNECTION_URL=postgres://postgres:postgresPW!@db:5432/openbao?sslmode=disable
+    healthcheck:
+      interval: 2s
+      retries: 10
+      start_period: 5s
+      test: 'wget --spider  http://127.0.0.1:8200/v1/sys/seal-status || exit 1'
+      timeout: 10s
+    volumes:
+      - bao_init:/init
+    configs:
+      - source: bao.conf
+        target: /openbao/config/bao.conf

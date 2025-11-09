@@ -13,6 +13,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/secretprovider/awssecretsmanager"
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
 	"github.com/kimdre/doco-cd/internal/secretprovider/infisical"
+	"github.com/kimdre/doco-cd/internal/secretprovider/openbao"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
 
@@ -68,6 +69,13 @@ func Initialize(ctx context.Context, provider, version string) (SecretProvider, 
 		}
 
 		return infisical.NewProvider(ctx, cfg.SiteUrl, cfg.ClientID, cfg.ClientSecret)
+	case openbao.Name:
+		cfg, err := openbao.GetConfig()
+		if err != nil {
+			return nil, err
+		}
+
+		return openbao.NewProvider(ctx, cfg.SiteUrl, cfg.AccessToken)
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnknownProvider, provider)
 	}
