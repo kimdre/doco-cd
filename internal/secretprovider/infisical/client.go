@@ -46,9 +46,9 @@ func NewProvider(ctx context.Context, siteUrl, clientId, clientSecret string) (*
 	return provider, nil
 }
 
-// GetSecret retrieves a secret value from the Bitwarden Secrets Manager using the provided secret ID.
-func (p *Provider) GetSecret(_ context.Context, id string) (string, error) {
-	projectId, env, key, path, err := parseSecretReference(id)
+// GetSecret retrieves a secret value from the Secrets Manager using the provided secret ID.
+func (p *Provider) GetSecret(_ context.Context, ref string) (string, error) {
+	projectId, env, key, path, err := parseSecretReference(ref)
 	if err != nil {
 		return "", err
 	}
@@ -66,7 +66,7 @@ func (p *Provider) GetSecret(_ context.Context, id string) (string, error) {
 	return secret.SecretValue, nil
 }
 
-// GetSecrets retrieves multiple secrets from Bitwarden Secrets Manager using the provided list of secret IDs.
+// GetSecrets retrieves multiple secrets from Secrets Manager using the provided list of secret IDs.
 func (p *Provider) GetSecrets(ctx context.Context, refs []string) (map[string]string, error) {
 	resolvedSecrets := make(map[string]string)
 
