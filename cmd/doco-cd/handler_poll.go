@@ -210,8 +210,8 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	// shortName is the last part of repoName, which is just the name of the repository
 	shortName := filepath.Base(repoName)
 
-	// Get the deployment configs from the repository
-	deployConfigs, err := config.GetDeployConfigs(internalRepoPath, shortName, pollConfig.CustomTarget, pollConfig.Reference)
+	// Resolve deployment configs (prefer inline in poll config when present)
+	deployConfigs, err := config.ResolveDeployConfigs(pollConfig, internalRepoPath, shortName)
 	if err != nil {
 		jobLog.Error("failed to get deploy configuration", log.ErrAttr(err))
 

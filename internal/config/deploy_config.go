@@ -254,3 +254,16 @@ func validateUniqueProjectNames(configs []*DeployConfig) error {
 
 	return nil
 }
+
+// ResolveDeployConfigs returns deployment configs for a poll run, preferring inline
+// deployments defined on the PollConfig when provided. Falls back to repository
+// configuration files or default values when no inline deployments are present.
+func ResolveDeployConfigs(poll PollConfig, repoDir, name string) ([]*DeployConfig, error) {
+	// Prefer inline deployments when present
+	if len(poll.Deployments) > 0 {
+		return poll.Deployments, nil
+	}
+
+	// No inline deployments, use repository config discovery
+	return GetDeployConfigs(repoDir, name, poll.CustomTarget, poll.Reference)
+}

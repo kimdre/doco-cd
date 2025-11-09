@@ -197,3 +197,68 @@ func TestGetDeployConfigs_RepositoryURL(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveDeployConfigs_InlineOverride(t *testing.T) {
+	dirName := createTmpDir(t)
+	t.Cleanup(func() {
+		err := os.RemoveAll(dirName)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	poll := PollConfig{
+		CloneUrl:    "https://example.com/repo.git",
+		Reference:   "refs/heads/main",
+		Interval:    60,
+		Deployments: []*DeployConfig{{Name: "inline-stack"}},
+	}
+
+	// Validate poll config to ensure inline deployments are validated
+	if err := poll.Validate(); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+
+	configs, err := ResolveDeployConfigs(poll, dirName, "repo")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if len(configs) != 1 {
+		t.Fatalf("expected 1 config, got %d", len(configs))
+	}
+
+	cfg := configs[0]
+
+	if cfg.Name != "inline-stack" {
+		t.Errorf("expected name to be 'inline-stack', got '%s'", cfg.Name)
+	}
+
+	// Reference defaults to poll reference when unset inline
+	if cfg.Reference != poll.Reference {
+		t.Errorf("expected reference to be '%s', got '%s'", poll.Reference, cfg.Reference)
+	}
+
+	// Verify defaults applied
+	if cfg.WorkingDirectory != "." {
+		t.Errorf("expected working directory '.', got '%s'", cfg.WorkingDirectory)
+	}
+
+	if len(cfg.ComposeFiles) == 0 {
+		t.Errorf("expected default compose files to be set")
+	}
+}
+
+func TestResolveDeployConfigs_InlineMissingName(t *testing.T) {
+	poll := PollConfig{
+		CloneUrl:    "https://example.com/repo.git",
+		Reference:   "refs/heads/main",
+		Interval:    60,
+		Deployments: []*DeployConfig{{}}, // Missing name should error
+	}
+
+	err := poll.Validate()
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("expected error %v, got %v", ErrInvalidConfig, err)
+	}
+}
