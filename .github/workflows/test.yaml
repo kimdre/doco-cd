@@ -15,7 +15,7 @@ on:
       - 'docs/**'
       - 'LICENSE'
       - 'renovate.json'
-  pull_request:
+  pull_request_target:
     branches:
       - '**'
     paths-ignore:
