@@ -8,9 +8,10 @@ import (
 	"testing"
 
 	"github.com/docker/docker/pkg/stdcopy"
-	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 	"github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
 
 var testCredentials = struct {
@@ -24,6 +25,7 @@ var testCredentials = struct {
 // setupOpenBaoContainers sets up the OpenBao test containers and returns the site URL and access token.
 func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 	t.Log("starting OpenBao test container")
+
 	ctx := context.Background()
 
 	// Start OpenBao container, mounting bao.conf
@@ -41,6 +43,7 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 
 	t.Cleanup(func() {
 		t.Log("stopping OpenBao test containers")
+
 		if err = stack.Down(ctx,
 			compose.RemoveOrphans(true),
 			compose.RemoveVolumes(true),
@@ -66,6 +69,7 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 	}
 
 	var stdout, stderr bytes.Buffer
+
 	_, err = stdcopy.StdCopy(&stdout, &stderr, output)
 	if err != nil {
 		t.Fatalf("failed to demultiplex vault init output: %v", err)
@@ -77,6 +81,7 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 	}
 
 	var initData InitOutput
+
 	err = json.Unmarshal(stdout.Bytes(), &initData)
 	if err != nil {
 		t.Fatalf("failed to unmarshal vault init output: %v", err)
@@ -107,6 +112,7 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 	}
 
 	t.Logf("OpenBao container setup complete")
+
 	return "http://localhost:8200", initData.RootToken
 }
 
