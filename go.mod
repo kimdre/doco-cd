@@ -7,7 +7,7 @@ require (
 	github.com/compose-spec/compose-go/v2 v2.9.1
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
 	github.com/creasty/defaults v1.8.0
-	github.com/docker/cli v28.5.1+incompatible
+	github.com/docker/cli v28.5.2+incompatible
 	github.com/docker/compose/v2 v2.40.3
 	github.com/docker/docker v28.5.1+incompatible
 	github.com/ebitengine/purego v0.8.4 // indirect
