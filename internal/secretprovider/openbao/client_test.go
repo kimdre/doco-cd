@@ -219,7 +219,7 @@ func TestProvider_ResolveSecretReferences_OpenBao(t *testing.T) {
 		{
 			name: "Single secret",
 			secretsToResolve: map[string]string{
-				"TEST_PASSWORD": "secret:testSecret:password",
+				"TEST_PASSWORD": "kv:secret:testSecret:password",
 			},
 			expectedResolved: secrettypes.ResolvedSecrets{
 				"TEST_PASSWORD": testCredentials.password,
@@ -228,8 +228,8 @@ func TestProvider_ResolveSecretReferences_OpenBao(t *testing.T) {
 		{
 			name: "Multiple secrets",
 			secretsToResolve: map[string]string{
-				"TEST_PASSWORD": "secret:testSecret:password",
-				"TEST_USERNAME": "secret:testSecret:username",
+				"TEST_PASSWORD": "kv:secret:testSecret:password",
+				"TEST_USERNAME": "kv:secret:testSecret:username",
 			},
 			expectedResolved: secrettypes.ResolvedSecrets{
 				"TEST_PASSWORD": testCredentials.password,
