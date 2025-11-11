@@ -105,6 +105,30 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 		t.Fatalf("failed to enable kv secrets engine: %v", err)
 	}
 
+	// Enable PKI secrets engine at "pki/"
+	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "secrets", "enable", "-path=pki", "pki"})
+	if err != nil || exitStatus != 0 {
+		t.Fatalf("failed to enable pki secrets engine: %v", err)
+	}
+
+	// Create root CA
+	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "write", "pki/root/generate/internal", "common_name=example.com", "ttl=8760h"})
+	if err != nil || exitStatus != 0 {
+		t.Fatalf("failed to create root CA: %v", err)
+	}
+
+	// Create a role to issue certificates
+	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "write", "pki/roles/example-dot-com", "allowed_domains=example.com", "allow_subdomains=true", "max_ttl=72h"})
+	if err != nil || exitStatus != 0 {
+		t.Fatalf("failed to create pki role: %v", err)
+	}
+
+	// Issue a test certificate
+	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "write", "pki/issue/example-dot-com", "common_name=test.example.com", "ttl=24h"})
+	if err != nil || exitStatus != 0 {
+		t.Fatalf("failed to issue test certificate: %v", err)
+	}
+
 	// Add test secrets
 	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "kv", "put", "secret/testSecret", "password=" + testCredentials.password, "username=" + testCredentials.username})
 	if err != nil || exitStatus != 0 {
@@ -137,6 +161,21 @@ func TestProvider_GetSecret_OpenBao(t *testing.T) {
 		{
 			name:      "Non-existent secret",
 			secretRef: "secret:invalid:password",
+			expectErr: true,
+		},
+		{
+			name:      "Valid PKI cert reference",
+			secretRef: "pki:cert:test.example.com",
+			expectErr: false,
+		},
+		{
+			name:      "Invalid PKI cert reference missing parts",
+			secretRef: "pki:cert",
+			expectErr: true,
+		},
+		{
+			name:      "Non-existent PKI cert",
+			secretRef: "pki:cert:nonexistent.example.com",
 			expectErr: true,
 		},
 	}

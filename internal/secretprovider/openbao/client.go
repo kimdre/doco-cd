@@ -17,6 +17,11 @@ const (
 	Name = "openbao"
 )
 
+const (
+	PKIRefFormat    = `^[^:]+:cert:[^:]+$`  // #nosec G101
+	SecretRefFormat = `^[^:]+:[^:]+:[^:]+$` // #nosec G101
+)
+
 var ErrInvalidSecretReference = errors.New("invalid secret reference")
 
 type Provider struct {
@@ -48,24 +53,34 @@ func NewProvider(_ context.Context, address, token string) (*Provider, error) {
 
 // GetSecret retrieves a secret value from the Secrets Manager using the provided secret reference.
 func (p *Provider) GetSecret(ctx context.Context, ref string) (string, error) {
-	secretEngine, id, key, err := parseSecretReference(ref)
+	engineType, engineName, id, key, err := parseReference(ref)
 	if err != nil {
 		return "", err
 	}
 
-	secret, err := p.Client.KVv2(secretEngine).Get(ctx, id)
-	if err != nil {
-		return "", fmt.Errorf("failed to retrieve secret with ID %s: %w", id, err)
-	}
+	var strValue string
 
-	value, ok := secret.Data[key]
-	if !ok {
-		return "", fmt.Errorf("%w: key %s not found in secret %s", ErrInvalidSecretReference, key, id)
-	}
+	switch engineType {
+	case "pki":
+		serial, err := GetCertSerial(ctx, p.Client, engineName, id)
+		if err != nil {
+			return "", fmt.Errorf("failed to retrieve certificate serial for common name %s: %w", id, err)
+		}
 
-	strValue, ok := value.(string)
-	if !ok {
-		return "", fmt.Errorf("value of key %s in secret %s is not a string", key, id)
+		fmt.Println(serial)
+
+		strValue, err = GetCert(ctx, p.Client, engineName, serial)
+		if err != nil {
+			return "", fmt.Errorf("failed to retrieve certificate with serial %s: %w", id, err)
+		}
+
+	case "secret":
+		strValue, err = GetSecret(ctx, p.Client, engineName, id, key)
+		if err != nil {
+			return "", fmt.Errorf("failed to retrieve secret with id %s: %w", id, err)
+		}
+	default:
+		return "", fmt.Errorf("%w: unknown secret engine type %s", ErrInvalidSecretReference, engineType)
 	}
 
 	return strValue, nil
@@ -145,20 +160,24 @@ func (p *Provider) ResolveSecretReferences(ctx context.Context, secrets map[stri
 // Close cleans up resources used by the Provider.
 func (p *Provider) Close() {}
 
-// parseSecretReference parses the secret reference string into its components: secretEngine, id, and key.
-func parseSecretReference(ref string) (secretEngine, id, key string, err error) {
-	// The reference format is "secretEngine:secretName:key"
-	refFormat := `^[^:]+:[^:]+:[^:]+$`
+// parseReference parses the reference string into its components: secretEngine, id, and key.
+func parseReference(ref string) (engineType, secretEngine, id, key string, err error) {
+	matchedPKI, _ := regexp.MatchString(PKIRefFormat, ref)
+	matchedSecret, _ := regexp.MatchString(SecretRefFormat, ref)
 
 	// Check if reference is in the correct format
-	if matched, _ := regexp.MatchString(refFormat, ref); !matched {
-		return "", "", "", fmt.Errorf("%w: %s", ErrInvalidSecretReference, "expected format 'secretEngine:id:key'")
+	if !matchedPKI && !matchedSecret {
+		return "", "", "", "", fmt.Errorf("%w: %s", ErrInvalidSecretReference, "expected format 'secretEngine:id:key'")
 	}
 
 	parts := strings.SplitN(ref, ":", 3)
 	if len(parts) != 3 {
-		return "", "", "", fmt.Errorf("%w: %s", ErrInvalidSecretReference, "expected format 'secretEngine:id:key'")
+		return "", "", "", "", fmt.Errorf("%w: %s", ErrInvalidSecretReference, "expected format 'secretEngine:id:key'")
 	}
 
-	return parts[0], parts[1], parts[2], nil
+	if matchedPKI {
+		return "pki", parts[0], parts[2], "", nil
+	}
+
+	return "secret", parts[0], parts[1], parts[2], nil
 }
