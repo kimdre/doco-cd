@@ -18,8 +18,8 @@ const (
 )
 
 const (
-	PKIRefFormat    = `^[^:]+:cert:[^:]+$`  // #nosec G101
-	SecretRefFormat = `^[^:]+:[^:]+:[^:]+$` // #nosec G101
+	PKIRefFormat    = `^pki:[^:]+:[^:]+$`      // pki:<secretEngine>:<commonName> #nosec G101
+	SecretRefFormat = `^kv:[^:]+:[^:]+:[^:]+$` // kv:<secretEngine>:<secretName>:<key> #nosec G101
 )
 
 var ErrInvalidSecretReference = errors.New("invalid secret reference")
@@ -67,14 +67,12 @@ func (p *Provider) GetSecret(ctx context.Context, ref string) (string, error) {
 			return "", fmt.Errorf("failed to retrieve certificate serial for common name %s: %w", id, err)
 		}
 
-		fmt.Println(serial)
-
 		strValue, err = GetCert(ctx, p.Client, engineName, serial)
 		if err != nil {
 			return "", fmt.Errorf("failed to retrieve certificate with serial %s: %w", id, err)
 		}
 
-	case "secret":
+	case "kv":
 		strValue, err = GetSecret(ctx, p.Client, engineName, id, key)
 		if err != nil {
 			return "", fmt.Errorf("failed to retrieve secret with id %s: %w", id, err)
@@ -160,24 +158,29 @@ func (p *Provider) ResolveSecretReferences(ctx context.Context, secrets map[stri
 // Close cleans up resources used by the Provider.
 func (p *Provider) Close() {}
 
-// parseReference parses the reference string into its components: secretEngine, id, and key.
-func parseReference(ref string) (engineType, secretEngine, id, key string, err error) {
+// parseReference parses the reference string into its components: engineType, engineName, id, and key.
+func parseReference(ref string) (engineType, engineName, id, key string, err error) {
 	matchedPKI, _ := regexp.MatchString(PKIRefFormat, ref)
 	matchedSecret, _ := regexp.MatchString(SecretRefFormat, ref)
 
 	// Check if reference is in the correct format
 	if !matchedPKI && !matchedSecret {
-		return "", "", "", "", fmt.Errorf("%w: %s", ErrInvalidSecretReference, "expected format 'secretEngine:id:key'")
-	}
-
-	parts := strings.SplitN(ref, ":", 3)
-	if len(parts) != 3 {
-		return "", "", "", "", fmt.Errorf("%w: %s", ErrInvalidSecretReference, "expected format 'secretEngine:id:key'")
+		return "", "", "", "", fmt.Errorf("%w: %s", ErrInvalidSecretReference, "unexpected ref format")
 	}
 
 	if matchedPKI {
-		return "pki", parts[0], parts[2], "", nil
+		parts := strings.SplitN(ref, ":", 3)
+		if len(parts) != 3 {
+			return "", "", "", "", fmt.Errorf("%w: %s", ErrInvalidSecretReference, "expected format 'pki:<secretEngine>:<commonName>'")
+		}
+
+		return parts[0], parts[1], parts[2], "", nil
 	}
 
-	return "secret", parts[0], parts[1], parts[2], nil
+	parts := strings.SplitN(ref, ":", 4)
+	if len(parts) != 4 {
+		return "", "", "", "", fmt.Errorf("%w: %s", ErrInvalidSecretReference, "expected format 'kv:<secretEngine>:<secretName>:<key>'")
+	}
+
+	return parts[0], parts[1], parts[2], parts[3], nil
 }

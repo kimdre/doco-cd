@@ -150,32 +150,37 @@ func TestProvider_GetSecret_OpenBao(t *testing.T) {
 	}{
 		{
 			name:      "Valid KV secret reference",
-			secretRef: "secret:testSecret:password",
+			secretRef: "kv:secret:testSecret:password",
 			expectErr: false,
 		},
 		{
 			name:      "Invalid secret reference missing parts",
-			secretRef: "secret:testSecret",
+			secretRef: "kv:secret:testSecret",
 			expectErr: true,
 		},
 		{
 			name:      "Non-existent secret",
-			secretRef: "secret:invalid:password",
+			secretRef: "kv:secret:invalid:password",
 			expectErr: true,
 		},
 		{
 			name:      "Valid PKI cert reference",
-			secretRef: "pki:cert:test.example.com",
+			secretRef: "pki:pki:test.example.com",
 			expectErr: false,
 		},
 		{
-			name:      "Invalid PKI cert reference missing parts",
-			secretRef: "pki:cert",
+			name:      "Invalid reference format",
+			secretRef: "pki:pki",
 			expectErr: true,
 		},
 		{
 			name:      "Non-existent PKI cert",
-			secretRef: "pki:cert:nonexistent.example.com",
+			secretRef: "pki:pki:nonexistent.example.com",
+			expectErr: true,
+		},
+		{
+			name:      "Invalid engine type",
+			secretRef: "invalid:testSecret:password",
 			expectErr: true,
 		},
 	}
@@ -251,5 +256,30 @@ func TestProvider_ResolveSecretReferences_OpenBao(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestProvider_ResolveCertificate_OpenBao(t *testing.T) {
+	siteUrl, accessToken := setupOpenBaoContainers(t)
+
+	provider, err := NewProvider(t.Context(), siteUrl, accessToken)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	certRef := "pki:pki:test.example.com"
+
+	cert, err := provider.GetSecret(t.Context(), certRef)
+	if err != nil {
+		t.Fatalf("Failed to get certificate: %v", err)
+	}
+
+	if cert == "" {
+		t.Errorf("Expected a certificate value but got empty string")
+	}
+
+	// Check if the value looks like a PEM encoded certificate
+	if !bytes.Contains([]byte(cert), []byte("-----BEGIN CERTIFICATE-----")) {
+		t.Errorf("Expected PEM encoded certificate but got: %s", cert)
 	}
 }
