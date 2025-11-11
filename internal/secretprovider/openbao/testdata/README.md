@@ -36,3 +36,23 @@
     ```bash
     docker exec -it openbao-dev-vault-1 sh -c "vault kv get secret/mysecret"
     ```
+
+8. Enable PKI engine
+    ```bash
+    docker exec -it openbao-dev-vault-1 sh -c "vault secrets enable pki"
+    ```
+   
+9. Create a root certificate
+    ```bash
+    docker exec -it openbao-dev-vault-1 sh -c "vault write pki/root/generate/internal common_name='example.internal' ttl=8760h"
+    ```
+   
+10. Create a role for issuing certificates
+    ```bash
+    docker exec -it openbao-dev-vault-1 sh -c "vault write pki/roles/example-dot-internal allowed_domains='example.internal' allow_subdomains=true max_ttl=72h"
+    ```
+    
+11. Issue a test certificate
+    ```bash
+    docker exec -it openbao-dev-vault-1 sh -c "vault write pki/issue/example-dot-internal common_name='test.example.internal' ttl=24h"
+    ```
