@@ -18,8 +18,8 @@ const (
 )
 
 const (
-	PKIRefFormat    = `^pki:[^:]+:[^:]+$`      // pki:<secretEngine>:<commonName> #nosec G101
-	SecretRefFormat = `^kv:[^:]+:[^:]+:[^:]+$` // kv:<secretEngine>:<secretName>:<key> #nosec G101
+	PKIRefFormat    = `^pki:[^:]+:[^:]+$`      // #nosec G101 pki:<secretEngine>:<commonName>
+	SecretRefFormat = `^kv:[^:]+:[^:]+:[^:]+$` // #nosec G101 kv:<secretEngine>:<secretName>:<key>
 )
 
 var ErrInvalidSecretReference = errors.New("invalid secret reference")
