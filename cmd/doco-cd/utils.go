@@ -1,11 +1,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"regexp"
 	"strings"
 
+	"github.com/docker/cli/cli/command"
+	"github.com/docker/docker/client"
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 )
 
@@ -47,4 +52,45 @@ func extractContainerIDFromMountInfo(content string) string {
 	}
 
 	return ""
+}
+
+// cleanupObsoleteAutoDiscoveredContainers removes obsolete auto-discovered containers that are no longer defined in
+// the current deployment configurations but still exist on the Docker host.
+func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.Logger, dockerClient *client.Client, dockerCli command.Cli, cloneUrl string, deployConfigs []*config.DeployConfig) error {
+	autoDiscoveredNames := map[string]struct{}{}
+
+	for _, cfg := range deployConfigs {
+		if cfg.AutoDiscover {
+			autoDiscoveredNames[cfg.Name] = struct{}{}
+		}
+	}
+
+	containers, err := docker.GetLabeledContainers(ctx, dockerClient, docker.DocoCDLabels.Deployment.AutoDiscover, "true")
+	if err == nil {
+		for _, cont := range containers {
+			stackName := cont.Labels[docker.DocoCDLabels.Deployment.Name]
+			if cloneUrl == cont.Labels[docker.DocoCDLabels.Repository.URL] {
+				jobLog.Debug("checking auto-discovered stack for obsolescence", slog.String("stack", stackName))
+
+				if _, found := autoDiscoveredNames[stackName]; !found {
+					jobLog.Info("removing obsolete auto-discovered stack", slog.String("stack", stackName))
+					removeConfig := &config.DeployConfig{Name: stackName, Destroy: true}
+					removeConfig.DestroyOpts.RemoveVolumes = true
+					removeConfig.DestroyOpts.RemoveImages = true
+					removeConfig.DestroyOpts.RemoveRepoDir = false // Do not remove repo dir for auto-discovered stacks
+
+					err = docker.DestroyStack(jobLog, &ctx, &dockerCli, removeConfig)
+					if err != nil {
+						return fmt.Errorf("failed to remove obsolete auto-discovered stack '%s': %w", stackName, err)
+					} else {
+						jobLog.Info("removed obsolete auto-discovered stack", slog.String("stack", stackName))
+					}
+				}
+			}
+		}
+	} else {
+		return fmt.Errorf("failed to retrieve containers for auto-discovery cleanup: %w", err)
+	}
+
+	return nil
 }

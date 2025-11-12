@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -89,6 +90,7 @@ func addSwarmServiceLabels(stack *composetypes.Config, deployConfig config.Deplo
 		DocoCDLabels.Deployment.CommitSHA:           latestCommit,
 		DocoCDLabels.Deployment.TargetRef:           deployConfig.Reference,
 		DocoCDLabels.Deployment.ExternalSecretsHash: secretHash,
+		DocoCDLabels.Deployment.AutoDiscover:        strconv.FormatBool(deployConfig.AutoDiscover),
 		DocoCDLabels.Repository.Name:                payload.FullName,
 		DocoCDLabels.Repository.URL:                 payload.WebURL,
 	}
