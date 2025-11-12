@@ -187,7 +187,6 @@ func GetDeployConfigs(repoDir, name, customTarget, reference string) ([]*DeployC
 		for i, c := range configs {
 			// Check for deployConfigs with AutoDiscover enabled, if true then remove this config and add new configs based on discovered compose files
 			if c.AutoDiscover {
-				c.Reference = reference
 				discoveredConfigs, err := autoDiscoverDeployments(repoDir, c)
 				if err != nil {
 					return nil, fmt.Errorf("failed to auto-discover deployment configurations: %w", err)
@@ -291,6 +290,7 @@ func autoDiscoverDeployments(baseDir string, baseDeployConfig *DeployConfig) ([]
 	var configs []*DeployConfig
 
 	searchPath := path.Join(baseDir, baseDeployConfig.WorkingDirectory)
+
 	err := filepath.WalkDir(searchPath, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
