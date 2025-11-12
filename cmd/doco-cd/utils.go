@@ -59,15 +59,16 @@ func extractContainerIDFromMountInfo(content string) string {
 // cleanupObsoleteAutoDiscoveredContainers removes obsolete auto-discovered containers that are no longer defined in
 // the current deployment configurations but still exist on the Docker host.
 func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.Logger, dockerClient *client.Client, dockerCli command.Cli, cloneUrl string, deployConfigs []*config.DeployConfig) error {
-	autoDiscoveredNames := map[string]struct{}{}
+	var (
+		autoDiscoveredNames map[string]struct{}
+		removedStacks       []string
+	)
 
 	for _, cfg := range deployConfigs {
 		if cfg.AutoDiscover {
 			autoDiscoveredNames[cfg.Name] = struct{}{}
 		}
 	}
-
-	var removedStacks []string
 
 	containers, err := docker.GetLabeledContainers(ctx, dockerClient, docker.DocoCDLabels.Deployment.AutoDiscover, "true")
 	if err == nil {
