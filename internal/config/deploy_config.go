@@ -52,9 +52,9 @@ type DeployConfig struct {
 		RemoveImages  bool `yaml:"remove_images" default:"true"`  // RemoveImages removes the images used by the deployment (currently not supported in docker swarm mode)
 		RemoveRepoDir bool `yaml:"remove_dir" default:"true"`     // RemoveRepoDir removes the repository directory after the deployment is destroyed
 	} `yaml:"destroy_opts"` // DestroyOpts is the destroy options for the deployment
-	Profiles        []string          `yaml:"profiles" default:"[]"`        // Profiles is a list of profiles to use for the deployment, e.g., ["dev", "prod"]. See https://docs.docker.com/compose/how-tos/profiles/
-	ExternalSecrets map[string]string `yaml:"external_secrets"`             // ExternalSecrets maps env vars to secret IDs/keys for injecting secrets from external providers like Bitwarden SM at deployment, e.g. {"DB_PASSWORD": "138e3697-ed58-431c-b866-b3550066343a"}
-	AutoDiscover    bool              `yaml:"autodiscover" default:"false"` // AutoDiscover enables autodiscovery of services to deploy in the working directory by checking for sub-directories with docker-compose files
+	Profiles        []string          `yaml:"profiles" default:"[]"`         // Profiles is a list of profiles to use for the deployment, e.g., ["dev", "prod"]. See https://docs.docker.com/compose/how-tos/profiles/
+	ExternalSecrets map[string]string `yaml:"external_secrets"`              // ExternalSecrets maps env vars to secret IDs/keys for injecting secrets from external providers like Bitwarden SM at deployment, e.g. {"DB_PASSWORD": "138e3697-ed58-431c-b866-b3550066343a"}
+	AutoDiscover    bool              `yaml:"auto_discover" default:"false"` // AutoDiscover enables autodiscovery of services to deploy in the working directory by checking for sub-directories with docker-compose files
 }
 
 // DefaultDeployConfig creates a DeployConfig with default values.
