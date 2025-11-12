@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/docker/cli/cli/command"
@@ -66,10 +67,18 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 		}
 	}
 
+	var removedStacks []string
+
 	containers, err := docker.GetLabeledContainers(ctx, dockerClient, docker.DocoCDLabels.Deployment.AutoDiscover, "true")
 	if err == nil {
 		for _, cont := range containers {
 			stackName := cont.Labels[docker.DocoCDLabels.Deployment.Name]
+
+			// Skip container if it has already been removed in this cleanup run
+			if slices.Contains(removedStacks, stackName) {
+				continue
+			}
+
 			if cloneUrl == cont.Labels[docker.DocoCDLabels.Repository.URL] {
 				jobLog.Debug("checking auto-discovered stack for obsolescence", slog.String("stack", stackName))
 
@@ -86,6 +95,7 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 					}
 
 					jobLog.Info("removed obsolete auto-discovered stack", slog.String("stack", stackName))
+					removedStacks = append(removedStacks, stackName)
 				}
 			}
 		}
