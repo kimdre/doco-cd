@@ -68,7 +68,7 @@ func DefaultDeployConfig(name, reference string) *DeployConfig {
 }
 
 func (c *DeployConfig) validateConfig() error {
-	if c.Name == "" {
+	if c.Name == "" && !c.AutoDiscover {
 		return fmt.Errorf("%w: name", ErrKeyNotFound)
 	}
 
