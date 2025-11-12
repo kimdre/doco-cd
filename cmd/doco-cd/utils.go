@@ -10,6 +10,7 @@ import (
 
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/docker/client"
+
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 )
@@ -82,9 +83,9 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 					err = docker.DestroyStack(jobLog, &ctx, &dockerCli, removeConfig)
 					if err != nil {
 						return fmt.Errorf("failed to remove obsolete auto-discovered stack '%s': %w", stackName, err)
-					} else {
-						jobLog.Info("removed obsolete auto-discovered stack", slog.String("stack", stackName))
 					}
+
+					jobLog.Info("removed obsolete auto-discovered stack", slog.String("stack", stackName))
 				}
 			}
 		}
