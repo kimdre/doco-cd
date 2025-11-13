@@ -34,7 +34,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
-      - uses: codespell-project/actions-codespell@master
+        with:
+          submodules: recursive
+      - uses: codespell-project/actions-codespell@v2
         with:
           check_filenames: true
           skip: ./.git,go.mod,go.sum
