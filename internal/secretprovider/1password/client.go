@@ -18,7 +18,7 @@ const (
 var ErrInvalidClientID = errors.New("invalid client id")
 
 type Provider struct {
-	Client      onepassword.Client
+	Client      *onepassword.Client
 	accessToken string
 	version     string
 }
@@ -38,7 +38,7 @@ func NewProvider(ctx context.Context, accessToken, version string) (*Provider, e
 		return nil, err
 	}
 
-	provider := &Provider{Client: *client, accessToken: accessToken, version: version}
+	provider := &Provider{Client: client, accessToken: accessToken, version: version}
 
 	return provider, nil
 }
