@@ -224,6 +224,14 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		repoName = getRepoName(string(pollConfig.CloneUrl))
 		if deployConfig.RepositoryUrl != "" {
 			repoName = getRepoName(string(deployConfig.RepositoryUrl))
+
+			// Load all local deployConfig.EnvFiles and load their variables
+			err = config.LoadLocalDotEnv(deployConfig, internalRepoPath)
+			if err != nil {
+				subJobLog.Error("failed to parse local env files", log.ErrAttr(err))
+
+				return metadata, fmt.Errorf("failed to parse local env files: %w", err)
+			}
 		}
 
 		metadata.Repository = repoName

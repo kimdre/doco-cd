@@ -2,9 +2,12 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/caarlos0/env/v11"
+	"github.com/joho/godotenv"
 	"gopkg.in/validator.v2"
 )
 
@@ -57,4 +60,63 @@ func ParseConfigFromEnv(config interface{}, mappings *[]EnvVarFileMapping) error
 	}
 
 	return nil
+}
+
+// LoadLocalDotEnv processes local dotenv files and loads their variables into the DeployConfig.Internal.Environment map.
+func LoadLocalDotEnv(deployConfig *DeployConfig, internalRepoPath string) error {
+	const remotePrefix = "remote:"
+
+	var remoteEnvFiles []string // List of env files that are not local and will be processed later
+
+	envVars := make(map[string]string)
+
+	for _, f := range deployConfig.EnvFiles {
+		// Process any env-files that are local and not in the remote repository (see repository_url)
+		if !strings.HasPrefix(f, remotePrefix) {
+			absPath := filepath.Join(internalRepoPath, f)
+
+			e, err := godotenv.Read(absPath)
+			if err != nil {
+				return fmt.Errorf("failed to read local env file %s: %w", absPath, err)
+			}
+
+			for k, v := range e {
+				envVars[k] = v
+			}
+		} else {
+			f = strings.TrimPrefix(f, remotePrefix)
+			remoteEnvFiles = append(remoteEnvFiles, f)
+		}
+	}
+
+	deployConfig.EnvFiles = remoteEnvFiles
+	deployConfig.Internal.Environment = envVars
+
+	return nil
+}
+
+// CreateTmpDotEnvFile creates a temporary dotenv file from the DeployConfig.Internal.Environment map.
+func CreateTmpDotEnvFile(deployConfig *DeployConfig) (string, error) {
+	tmpEnvFile, err := os.CreateTemp(os.TempDir(), deployConfig.Name+".*.env")
+	if err != nil {
+		errMsg := "failed to create temporary env file"
+		return "", fmt.Errorf("%s: %w", errMsg, err)
+	}
+
+	// Write environment variables to the temp env file
+	for k, v := range deployConfig.Internal.Environment {
+		_, err = fmt.Fprintf(tmpEnvFile, "%s=%s\n", k, v)
+		if err != nil {
+			return "", fmt.Errorf("failed to write to temporary env file: %w", err)
+		}
+	}
+
+	if err = tmpEnvFile.Close(); err != nil {
+		return "", fmt.Errorf("failed to close temporary env file: %w", err)
+	}
+
+	// Prepend the temp env file to the list of env files
+	deployConfig.EnvFiles = append([]string{tmpEnvFile.Name()}, deployConfig.EnvFiles...)
+
+	return tmpEnvFile.Name(), nil
 }
