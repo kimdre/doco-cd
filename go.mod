@@ -306,6 +306,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.39.13
 	github.com/bitwarden/sdk-go v1.0.2
 	github.com/infisical/go-sdk v0.5.100
+	github.com/joho/godotenv v1.5.1
 	github.com/openbao/openbao/api/v2 v2.4.0
 	github.com/testcontainers/testcontainers-go v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/compose v0.40.0

@@ -223,13 +223,24 @@ func addComposeVolumeLabels(project *types.Project, deployConfig config.DeployCo
 }
 
 // LoadCompose parses and loads Compose files as specified by the Docker Compose specification.
-func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles, envFiles, profiles []string, resolvedSecrets secrettypes.ResolvedSecrets) (*types.Project, error) {
-	// if envFiles only contains ".env", we check if the file exists in the working directory
-	if len(envFiles) == 1 && envFiles[0] == ".env" {
-		envFilePath := path.Join(workingDir, ".env")
+func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles, envFiles, profiles []string, environment map[string]string) (*types.Project, error) {
+	// .env file is optional
+	for _, f := range envFiles {
+		if f == ".env" {
+			envFilePath := path.Join(workingDir, ".env")
 
-		if _, err := os.Stat(envFilePath); errors.Is(err, os.ErrNotExist) {
-			envFiles = []string{}
+			if _, err := os.Stat(envFilePath); errors.Is(err, os.ErrNotExist) {
+				// Remove .env from envFiles if it doesn't exist
+				var filteredEnvFiles []string
+
+				for _, ef := range envFiles {
+					if ef != ".env" {
+						filteredEnvFiles = append(filteredEnvFiles, ef)
+					}
+				}
+
+				envFiles = filteredEnvFiles
+			}
 		}
 	}
 
@@ -247,7 +258,7 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 	}
 
 	// Inject external secrets into the environment for variable interpolation
-	for k, v := range resolvedSecrets {
+	for k, v := range environment {
 		options.Environment[k] = v
 	}
 
@@ -449,11 +460,30 @@ func DeployStack(
 
 	secretHash := secretprovider.Hash(resolvedSecrets)
 
+	// Create a temporary env file if environment variables are specified in the deployment config
+	if deployConfig.Internal.Environment != nil {
+		tmpEnvFile, err := config.CreateTmpDotEnvFile(deployConfig)
+		if err != nil {
+			errMsg := "failed to create temporary env file"
+			return fmt.Errorf("%s: %w", errMsg, err)
+		}
+
+		// Delete the temp file after deployment
+		defer func(name string) {
+			err = os.Remove(name)
+			if err != nil {
+				stackLog.Warn("failed to delete temporary env file", logger.ErrAttr(err), slog.String("file", name))
+			}
+		}(tmpEnvFile)
+	}
+
 	project, err := LoadCompose(*ctx, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles, deployConfig.EnvFiles, deployConfig.Profiles, resolvedSecrets)
 	if err != nil {
 		errMsg := "failed to load compose config"
 		return fmt.Errorf("%s: %w", errMsg, err)
 	}
+
+	fmt.Println("env vars:", project.Environment)
 
 	done := make(chan struct{})
 	defer close(done)

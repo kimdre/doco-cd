@@ -54,6 +54,9 @@ type DeployConfig struct {
 	} `yaml:"destroy_opts"` // DestroyOpts is the destroy options for the deployment
 	Profiles        []string          `yaml:"profiles" default:"[]"` // Profiles is a list of profiles to use for the deployment, e.g., ["dev", "prod"]. See https://docs.docker.com/compose/how-tos/profiles/
 	ExternalSecrets map[string]string `yaml:"external_secrets"`      // ExternalSecrets maps env vars to secret IDs/keys for injecting secrets from external providers like Bitwarden SM at deployment, e.g. {"DB_PASSWORD": "138e3697-ed58-431c-b866-b3550066343a"}
+	Internal        struct {
+		Environment map[string]string // Environment stores environment variables from local env_files entries (if RepositoryUrl to set) for the deployment for interpolating variables in the compose files
+	} // Internal holds internal configuration values that are not set by the user
 }
 
 // DefaultDeployConfig creates a DeployConfig with default values.
