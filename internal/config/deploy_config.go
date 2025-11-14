@@ -57,7 +57,7 @@ type DeployConfig struct {
 	ExternalSecrets  map[string]string `yaml:"external_secrets"`              // ExternalSecrets maps env vars to secret IDs/keys for injecting secrets from external providers like Bitwarden SM at deployment, e.g. {"DB_PASSWORD": "138e3697-ed58-431c-b866-b3550066343a"}
 	AutoDiscover     bool              `yaml:"auto_discover" default:"false"` // AutoDiscover enables autodiscovery of services to deploy in the working directory by checking for subdirectories with docker-compose files
 	AutoDiscoverOpts struct {
-		ScanDepth int  `yaml:"depth" default:"3"`     // ScanDepth is the maximum depth of subdirectories to scan for docker-compose files
+		ScanDepth int  `yaml:"depth" default:"0"`     // ScanDepth is the maximum depth of subdirectories to scan for docker-compose files
 		Delete    bool `yaml:"delete" default:"true"` // Delete removes obsolete auto-discovered deployments that are no longer present in the repository
 	} `yaml:"auto_discover_opts"` // AutoDiscoverOpts are options for the autodiscovery feature
 }
@@ -295,7 +295,6 @@ func autoDiscoverDeployments(baseDir string, baseDeployConfig *DeployConfig) ([]
 	var configs []*DeployConfig
 
 	searchPath := path.Join(baseDir, baseDeployConfig.WorkingDirectory)
-	maxDepth := baseDeployConfig.AutoDiscoverOpts.ScanDepth
 
 	err := filepath.WalkDir(searchPath, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -313,8 +312,8 @@ func autoDiscoverDeployments(baseDir string, baseDeployConfig *DeployConfig) ([]
 			depth = len(strings.Split(rel, string(os.PathSeparator)))
 		}
 
-		// Skip directories that exceed the maximum depth
-		if d.IsDir() && depth > maxDepth {
+		// Skip directories that exceed the maximum depth if ScanDepth is set greater than 0
+		if d.IsDir() && depth > baseDeployConfig.AutoDiscoverOpts.ScanDepth && baseDeployConfig.AutoDiscoverOpts.ScanDepth > 0 {
 			return filepath.SkipDir
 		}
 
