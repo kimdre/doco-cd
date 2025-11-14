@@ -1,11 +1,19 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 
+	"github.com/docker/cli/cli/command"
+	"github.com/docker/docker/client"
+
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 )
 
@@ -47,4 +55,71 @@ func extractContainerIDFromMountInfo(content string) string {
 	}
 
 	return ""
+}
+
+// cleanupObsoleteAutoDiscoveredContainers removes obsolete auto-discovered containers that are no longer defined in
+// the current deployment configurations but still exist on the Docker host.
+func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.Logger, dockerClient *client.Client, dockerCli command.Cli, cloneUrl string, deployConfigs []*config.DeployConfig) error {
+	autoDiscoveredNames := make(map[string]bool)
+
+	for _, cfg := range deployConfigs {
+		if cfg.AutoDiscover {
+			autoDiscoveredNames[cfg.Name] = cfg.AutoDiscoverOpts.Delete
+		}
+	}
+
+	var processedStacks []string
+
+	containers, err := docker.GetLabeledContainers(ctx, dockerClient, docker.DocoCDLabels.Deployment.AutoDiscover, "true")
+	if err == nil {
+		for _, cont := range containers {
+			stackName := cont.Labels[docker.DocoCDLabels.Deployment.Name]
+
+			// Skip container if it has already been removed in this cleanup run
+			if slices.Contains(processedStacks, stackName) {
+				continue
+			}
+
+			if cloneUrl == cont.Labels[docker.DocoCDLabels.Repository.URL] {
+				jobLog.Debug("checking auto-discovered stack for obsolescence", slog.String("stack", stackName))
+
+				if _, found := autoDiscoveredNames[stackName]; !found {
+					autoDiscoverDelete := cont.Labels[docker.DocoCDLabels.Deployment.AutoDiscoverDelete]
+					if autoDiscoverDelete == "" {
+						autoDiscoverDelete = "true" // Default to true if label is missing
+					}
+
+					deleteEnabled, err := strconv.ParseBool(autoDiscoverDelete)
+					if err != nil {
+						return err
+					}
+
+					if !deleteEnabled {
+						jobLog.Debug("skipping removal of obsolete auto-discovered stack as per configuration", slog.String("stack", stackName))
+						processedStacks = append(processedStacks, stackName)
+
+						continue
+					}
+
+					jobLog.Info("removing obsolete auto-discovered stack", slog.String("stack", stackName))
+					removeConfig := &config.DeployConfig{Name: stackName, Destroy: true}
+					removeConfig.DestroyOpts.RemoveVolumes = true
+					removeConfig.DestroyOpts.RemoveImages = true
+					removeConfig.DestroyOpts.RemoveRepoDir = false // Do not remove repo dir for auto-discovered stacks
+
+					err = docker.DestroyStack(jobLog, &ctx, &dockerCli, removeConfig)
+					if err != nil {
+						return fmt.Errorf("failed to remove obsolete auto-discovered stack '%s': %w", stackName, err)
+					}
+
+					jobLog.Info("removed obsolete auto-discovered stack", slog.String("stack", stackName))
+					processedStacks = append(processedStacks, stackName)
+				}
+			}
+		}
+	} else {
+		return fmt.Errorf("failed to retrieve containers for auto-discovery cleanup: %w", err)
+	}
+
+	return nil
 }
