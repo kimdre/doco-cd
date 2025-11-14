@@ -186,12 +186,13 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 	}
 
 	opts := &git.CloneOptions{
-		RemoteName:      RemoteName,
-		URL:             url,
-		SingleBranch:    true,
-		ReferenceName:   plumbing.ReferenceName(ref),
-		Tags:            git.NoTags,
-		InsecureSkipTLS: skipTLSVerify,
+		RemoteName:        RemoteName,
+		URL:               url,
+		SingleBranch:      true,
+		ReferenceName:     plumbing.ReferenceName(ref),
+		Tags:              git.NoTags,
+		InsecureSkipTLS:   skipTLSVerify,
+		RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
 	}
 
 	if proxyOpts != (transport.ProxyOptions{}) {
