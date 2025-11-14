@@ -16,6 +16,7 @@ type docoCdLabelNamesDeployment struct {
 	CommitSHA           string // SHA of the commit that is currently deployed
 	ExternalSecretsHash string // SHA256 hash of the external secrets used during deployment
 	AutoDiscover        string // Whether the deployment was auto-discovered
+	AutoDiscoverDelete  string // Whether auto-discovered deployment is allowed to be deleted
 }
 
 // docoCdLabelNamesRepository contains the labels used by DocoCD to identify the repository.
@@ -46,6 +47,7 @@ var DocoCDLabels = docoCdLabelNames{
 		Trigger:             "cd.doco.deployment.trigger",
 		ExternalSecretsHash: "cd.doco.deployment.external_secrets_hash",
 		AutoDiscover:        "cd.doco.deployment.auto_discover",
+		AutoDiscoverDelete:  "cd.doco.deployment.auto_discover.delete",
 	},
 	Repository: docoCdLabelNamesRepository{
 		Name: "cd.doco.repository.name",

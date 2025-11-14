@@ -190,6 +190,7 @@ func addComposeServiceLabels(project *types.Project, deployConfig config.DeployC
 			DocoCDLabels.Deployment.TargetRef:           deployConfig.Reference,
 			DocoCDLabels.Deployment.ExternalSecretsHash: secretHash,
 			DocoCDLabels.Deployment.AutoDiscover:        strconv.FormatBool(deployConfig.AutoDiscover),
+			DocoCDLabels.Deployment.AutoDiscoverDelete:  strconv.FormatBool(deployConfig.AutoDiscoverOpts.Delete),
 			DocoCDLabels.Repository.Name:                payload.FullName,
 			DocoCDLabels.Repository.URL:                 payload.WebURL,
 			api.ProjectLabel:                            project.Name,

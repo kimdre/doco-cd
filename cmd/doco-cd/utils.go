@@ -7,6 +7,7 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/docker/cli/cli/command"
@@ -59,15 +60,15 @@ func extractContainerIDFromMountInfo(content string) string {
 // cleanupObsoleteAutoDiscoveredContainers removes obsolete auto-discovered containers that are no longer defined in
 // the current deployment configurations but still exist on the Docker host.
 func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.Logger, dockerClient *client.Client, dockerCli command.Cli, cloneUrl string, deployConfigs []*config.DeployConfig) error {
-	autoDiscoveredNames := map[string]struct{}{}
+	autoDiscoveredNames := make(map[string]bool)
 
 	for _, cfg := range deployConfigs {
 		if cfg.AutoDiscover {
-			autoDiscoveredNames[cfg.Name] = struct{}{}
+			autoDiscoveredNames[cfg.Name] = cfg.AutoDiscoverOpts.Delete
 		}
 	}
 
-	var removedStacks []string
+	var processedStacks []string
 
 	containers, err := docker.GetLabeledContainers(ctx, dockerClient, docker.DocoCDLabels.Deployment.AutoDiscover, "true")
 	if err == nil {
@@ -75,7 +76,7 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 			stackName := cont.Labels[docker.DocoCDLabels.Deployment.Name]
 
 			// Skip container if it has already been removed in this cleanup run
-			if slices.Contains(removedStacks, stackName) {
+			if slices.Contains(processedStacks, stackName) {
 				continue
 			}
 
@@ -83,6 +84,23 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 				jobLog.Debug("checking auto-discovered stack for obsolescence", slog.String("stack", stackName))
 
 				if _, found := autoDiscoveredNames[stackName]; !found {
+					autoDiscoverDelete := cont.Labels[docker.DocoCDLabels.Deployment.AutoDiscoverDelete]
+					if autoDiscoverDelete == "" {
+						autoDiscoverDelete = "true" // Default to true if label is missing
+					}
+
+					deleteEnabled, err := strconv.ParseBool(autoDiscoverDelete)
+					if err != nil {
+						return err
+					}
+
+					if !deleteEnabled {
+						jobLog.Debug("skipping removal of obsolete auto-discovered stack as per configuration", slog.String("stack", stackName))
+						processedStacks = append(processedStacks, stackName)
+
+						continue
+					}
+
 					jobLog.Info("removing obsolete auto-discovered stack", slog.String("stack", stackName))
 					removeConfig := &config.DeployConfig{Name: stackName, Destroy: true}
 					removeConfig.DestroyOpts.RemoveVolumes = true
@@ -95,7 +113,7 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 					}
 
 					jobLog.Info("removed obsolete auto-discovered stack", slog.String("stack", stackName))
-					removedStacks = append(removedStacks, stackName)
+					processedStacks = append(processedStacks, stackName)
 				}
 			}
 		}

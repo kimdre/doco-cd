@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/creasty/defaults"
@@ -52,9 +53,13 @@ type DeployConfig struct {
 		RemoveImages  bool `yaml:"remove_images" default:"true"`  // RemoveImages removes the images used by the deployment (currently not supported in docker swarm mode)
 		RemoveRepoDir bool `yaml:"remove_dir" default:"true"`     // RemoveRepoDir removes the repository directory after the deployment is destroyed
 	} `yaml:"destroy_opts"` // DestroyOpts is the destroy options for the deployment
-	Profiles        []string          `yaml:"profiles" default:"[]"`         // Profiles is a list of profiles to use for the deployment, e.g., ["dev", "prod"]. See https://docs.docker.com/compose/how-tos/profiles/
-	ExternalSecrets map[string]string `yaml:"external_secrets"`              // ExternalSecrets maps env vars to secret IDs/keys for injecting secrets from external providers like Bitwarden SM at deployment, e.g. {"DB_PASSWORD": "138e3697-ed58-431c-b866-b3550066343a"}
-	AutoDiscover    bool              `yaml:"auto_discover" default:"false"` // AutoDiscover enables autodiscovery of services to deploy in the working directory by checking for sub-directories with docker-compose files
+	Profiles         []string          `yaml:"profiles" default:"[]"`         // Profiles is a list of profiles to use for the deployment, e.g., ["dev", "prod"]. See https://docs.docker.com/compose/how-tos/profiles/
+	ExternalSecrets  map[string]string `yaml:"external_secrets"`              // ExternalSecrets maps env vars to secret IDs/keys for injecting secrets from external providers like Bitwarden SM at deployment, e.g. {"DB_PASSWORD": "138e3697-ed58-431c-b866-b3550066343a"}
+	AutoDiscover     bool              `yaml:"auto_discover" default:"false"` // AutoDiscover enables autodiscovery of services to deploy in the working directory by checking for subdirectories with docker-compose files
+	AutoDiscoverOpts struct {
+		ScanDepth int  `yaml:"depth" default:"3"`     // ScanDepth is the maximum depth of subdirectories to scan for docker-compose files
+		Delete    bool `yaml:"delete" default:"true"` // Delete removes obsolete auto-discovered deployments that are no longer present in the repository
+	} `yaml:"auto_discover_opts"` // AutoDiscoverOpts are options for the autodiscovery feature
 }
 
 // DefaultDeployConfig creates a DeployConfig with default values.
@@ -290,10 +295,27 @@ func autoDiscoverDeployments(baseDir string, baseDeployConfig *DeployConfig) ([]
 	var configs []*DeployConfig
 
 	searchPath := path.Join(baseDir, baseDeployConfig.WorkingDirectory)
+	maxDepth := baseDeployConfig.AutoDiscoverOpts.ScanDepth
 
 	err := filepath.WalkDir(searchPath, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+
+		// Calculate the depth of the current path relative to the search path
+		rel, err := filepath.Rel(searchPath, p)
+		if err != nil {
+			return err
+		}
+
+		depth := 0
+		if rel != "." {
+			depth = len(strings.Split(rel, string(os.PathSeparator)))
+		}
+
+		// Skip directories that exceed the maximum depth
+		if d.IsDir() && depth > maxDepth {
+			return filepath.SkipDir
 		}
 
 		if !d.IsDir() {
