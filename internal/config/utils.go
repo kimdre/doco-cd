@@ -9,6 +9,8 @@ import (
 	"github.com/caarlos0/env/v11"
 	"github.com/joho/godotenv"
 	"gopkg.in/validator.v2"
+
+	"github.com/kimdre/doco-cd/internal/encryption"
 )
 
 // EnvVarFileMapping holds the mappings for file-based environment variables.
@@ -75,17 +77,37 @@ func LoadLocalDotEnv(deployConfig *DeployConfig, internalRepoPath string) error 
 		if !strings.HasPrefix(f, remotePrefix) {
 			absPath := filepath.Join(internalRepoPath, f)
 
-			e, err := godotenv.Read(absPath)
+			// Decrypt file if needed
+			isEncrypted, err := encryption.IsEncryptedFile(absPath)
 			if err != nil {
-				if os.IsNotExist(err) && f == ".env" {
-					// It's okay if the default .env file doesn't exist
-					continue
-				}
-
-				return fmt.Errorf("failed to read local env file %s: %w", absPath, err)
+				return fmt.Errorf("failed to check if env file is encrypted %s: %w", absPath, err)
 			}
 
-			for k, v := range e {
+			var envMap map[string]string
+
+			if isEncrypted {
+				decryptedContent, err := encryption.DecryptFile(absPath)
+				if err != nil {
+					return fmt.Errorf("failed to decrypt env file %s: %w", absPath, err)
+				}
+
+				envMap, err = godotenv.UnmarshalBytes(decryptedContent)
+				if err != nil {
+					return fmt.Errorf("failed to parse decrypted env file %s: %w", absPath, err)
+				}
+			} else {
+				envMap, err = godotenv.Read(absPath)
+				if err != nil {
+					if os.IsNotExist(err) && f == ".env" {
+						// It's okay if the default .env file doesn't exist
+						continue
+					}
+
+					return fmt.Errorf("failed to read local env file %s: %w", absPath, err)
+				}
+			}
+
+			for k, v := range envMap {
 				envVars[k] = v
 			}
 		} else {
