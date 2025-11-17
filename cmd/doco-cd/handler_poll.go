@@ -218,6 +218,13 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		return metadata, fmt.Errorf("failed to get deploy configuration: %w", err)
 	}
 
+	err = cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog, dockerClient, dockerCli, string(pollConfig.CloneUrl), deployConfigs)
+	if err != nil {
+		jobLog.Error("failed to cleanup obsolete auto-discovered containers", log.ErrAttr(err))
+
+		return metadata, fmt.Errorf("failed to cleanup obsolete auto-discovered containers: %w", err)
+	}
+
 	for _, deployConfig := range deployConfigs {
 		subJobLog := jobLog.With()
 

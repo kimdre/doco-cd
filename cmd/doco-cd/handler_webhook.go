@@ -199,6 +199,11 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		return
 	}
 
+	err = cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog, dockerClient, dockerCli, payload.CloneURL, deployConfigs)
+	if err != nil {
+		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to clean up obsolete auto-discovered containers", err.Error(), http.StatusInternalServerError, metadata)
+	}
+
 	for _, deployConfig := range deployConfigs {
 		subJobLog := jobLog.With()
 
