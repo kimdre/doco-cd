@@ -472,8 +472,6 @@ func DeployStack(
 		return fmt.Errorf("%s: %w", errMsg, err)
 	}
 
-	fmt.Println("env vars:", project.Environment)
-
 	done := make(chan struct{})
 	defer close(done)
 
