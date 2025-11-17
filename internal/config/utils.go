@@ -88,6 +88,11 @@ func LoadLocalDotEnv(deployConfig *DeployConfig, internalRepoPath string) error 
 			if isEncrypted {
 				decryptedContent, err := encryption.DecryptFile(absPath)
 				if err != nil {
+					if os.IsNotExist(err) && f == ".env" {
+						// It's okay if the default .env file doesn't exist
+						continue
+					}
+
 					return fmt.Errorf("failed to decrypt env file %s: %w", absPath, err)
 				}
 
