@@ -221,6 +221,13 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		repoName = getRepoName(payload.CloneURL)
 		if deployConfig.RepositoryUrl != "" {
 			repoName = getRepoName(string(deployConfig.RepositoryUrl))
+
+			err = config.LoadLocalDotEnv(deployConfig, internalRepoPath)
+			if err != nil {
+				onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to parse local env files", err.Error(), http.StatusInternalServerError, metadata)
+
+				return
+			}
 		}
 
 		metadata.Repository = repoName
