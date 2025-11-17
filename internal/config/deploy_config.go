@@ -60,7 +60,7 @@ type DeployConfig struct {
 		ScanDepth int  `yaml:"depth" default:"0"`     // ScanDepth is the maximum depth of subdirectories to scan for docker-compose files
 		Delete    bool `yaml:"delete" default:"true"` // Delete removes obsolete auto-discovered deployments that are no longer present in the repository
 	} `yaml:"auto_discover_opts"` // AutoDiscoverOpts are options for the autodiscovery feature
-	Internal        struct {
+	Internal struct {
 		Environment map[string]string // Environment stores environment variables from local env_files entries (if RepositoryUrl to set) for the deployment for interpolating variables in the compose files
 	} // Internal holds internal configuration values that are not set by the user
 }
