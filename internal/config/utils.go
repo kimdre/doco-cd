@@ -78,8 +78,7 @@ func LoadLocalDotEnv(deployConfig *DeployConfig, internalRepoPath string) error 
 			e, err := godotenv.Read(absPath)
 			if err != nil {
 				if os.IsNotExist(err) && f == ".env" {
-					// It's okay if the default .env file doesn't exist, we will check for it in the remote repo later again
-					remoteEnvFiles = append(remoteEnvFiles, f)
+					// It's okay if the default .env file doesn't exist
 					continue
 				}
 
