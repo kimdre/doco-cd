@@ -305,7 +305,7 @@ require (
 	github.com/1password/onepassword-sdk-go v0.3.1
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.39.13
 	github.com/bitwarden/sdk-go v1.0.2
-	github.com/infisical/go-sdk v0.5.100
+	github.com/infisical/go-sdk v0.6.0
 	github.com/joho/godotenv v1.5.1
 	github.com/openbao/openbao/api/v2 v2.4.0
 	github.com/testcontainers/testcontainers-go v0.40.0
@@ -321,6 +321,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/ianlancetaylor/demangle v0.0.0-20250417193237-f615e6bd150b // indirect
 	github.com/oracle/oci-go-sdk/v65 v65.95.2 // indirect
+	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/sony/gobreaker v0.5.0 // indirect
 	github.com/tetratelabs/wabin v0.0.0-20230304001439-f6f874872834 // indirect
 	github.com/tetratelabs/wazero v1.9.0 // indirect
