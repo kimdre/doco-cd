@@ -305,7 +305,7 @@ require (
 	github.com/1password/onepassword-sdk-go v0.3.1
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.39.13
 	github.com/bitwarden/sdk-go v1.0.2
-	github.com/infisical/go-sdk v0.6.0
+	github.com/infisical/go-sdk v0.6.1
 	github.com/joho/godotenv v1.5.1
 	github.com/openbao/openbao/api/v2 v2.4.0
 	github.com/testcontainers/testcontainers-go v0.40.0
