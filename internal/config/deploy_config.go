@@ -160,8 +160,8 @@ func GetDeployConfigFromYAML(f string) ([]*DeployConfig, error) {
 }
 
 // GetDeployConfigs returns either the deployment configuration from the repository or the default configuration.
-func GetDeployConfigs(repoDir, name, customTarget, reference string) ([]*DeployConfig, error) {
-	files, err := os.ReadDir(repoDir)
+func GetDeployConfigs(configDir, name, customTarget, reference string) ([]*DeployConfig, error) {
+	files, err := os.ReadDir(configDir)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +182,7 @@ func GetDeployConfigs(repoDir, name, customTarget, reference string) ([]*DeployC
 
 	var configs []*DeployConfig
 	for _, configFile := range DeploymentConfigFileNames {
-		configs, err = getDeployConfigsFromFile(repoDir, files, configFile)
+		configs, err = getDeployConfigsFromFile(configDir, files, configFile)
 		if err != nil {
 			if errors.Is(err, ErrConfigFileNotFound) {
 				continue
@@ -195,7 +195,7 @@ func GetDeployConfigs(repoDir, name, customTarget, reference string) ([]*DeployC
 		for i, c := range configs {
 			// Check for deployConfigs with AutoDiscover enabled, if true then remove this config and add new configs based on discovered compose files
 			if c.AutoDiscover {
-				discoveredConfigs, err := autoDiscoverDeployments(repoDir, c)
+				discoveredConfigs, err := autoDiscoverDeployments(configDir, c)
 				if err != nil {
 					return nil, fmt.Errorf("failed to auto-discover deployment configurations: %w", err)
 				}
@@ -282,14 +282,14 @@ func validateUniqueProjectNames(configs []*DeployConfig) error {
 // ResolveDeployConfigs returns deployment configs for a poll run, preferring inline
 // deployments defined on the PollConfig when provided. Falls back to repository
 // configuration files or default values when no inline deployments are present.
-func ResolveDeployConfigs(poll PollConfig, repoDir, name string) ([]*DeployConfig, error) {
+func ResolveDeployConfigs(poll PollConfig, configDir, name string) ([]*DeployConfig, error) {
 	// Prefer inline deployments when present
 	if len(poll.Deployments) > 0 {
 		return poll.Deployments, nil
 	}
 
-	// No inline deployments, use repository config discovery
-	return GetDeployConfigs(repoDir, name, poll.CustomTarget, poll.Reference)
+	// No inline deployments, use repository config discovery from configDir
+	return GetDeployConfigs(configDir, name, poll.CustomTarget, poll.Reference)
 }
 
 // autoDiscoverDeployments scans the base directory for subdirectories
