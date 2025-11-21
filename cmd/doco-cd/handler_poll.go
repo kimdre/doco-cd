@@ -211,15 +211,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	shortName := filepath.Base(repoName)
 
 	// Resolve deployment configs (prefer inline in poll config when present)
-	configDir := internalRepoPath
-
-	if appConfig.DeployConfigBaseDir != "" {
-		if !filepath.IsAbs(appConfig.DeployConfigBaseDir) {
-			configDir = filepath.Join(internalRepoPath, appConfig.DeployConfigBaseDir)
-		} else {
-			configDir = appConfig.DeployConfigBaseDir
-		}
-	}
+	configDir := filepath.Join(internalRepoPath, appConfig.DeployConfigBaseDir)
 
 	deployConfigs, err := config.ResolveDeployConfigs(pollConfig, configDir, shortName)
 	if err != nil {
