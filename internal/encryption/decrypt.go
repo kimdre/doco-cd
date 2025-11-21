@@ -55,7 +55,7 @@ func DecryptContent(content []byte, format string) ([]byte, error) {
 }
 
 // DecryptFilesInDirectory walks through the specified directory and decrypts all SOPS-encrypted files.
-func DecryptFilesInDirectory(dirPath string) ([]string, error) {
+func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
 	var decryptedFiles []string
 
 	err := filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
@@ -82,8 +82,17 @@ func DecryptFilesInDirectory(dirPath string) ([]string, error) {
 				absTarget = filepath.Join(filepath.Dir(path), target)
 			}
 
+			// Prevent absTarget to escape the repoPath
+			relPath, err := filepath.Rel(repoPath, absTarget)
+			if err != nil {
+				return fmt.Errorf("failed to get relative path for symlink target %s: %w", absTarget, err)
+			}
+			if strings.HasPrefix(relPath, "..") {
+				return fmt.Errorf("symlink target %s escapes the repository root %s", absTarget, repoPath)
+			}
+
 			// Recursively walk the symlink target
-			_, err = DecryptFilesInDirectory(absTarget)
+			_, err = DecryptFilesInDirectory(repoPath, absTarget)
 
 			return err
 		}

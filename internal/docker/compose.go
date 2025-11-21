@@ -441,7 +441,7 @@ func DeployStack(
 	}
 
 	// Check if files in the working directory are SOPS encrypted and decrypt them if necessary
-	f, err := encryption.DecryptFilesInDirectory(internalWorkingDir)
+	f, err := encryption.DecryptFilesInDirectory(internalRepoPath, internalWorkingDir)
 	if err != nil {
 		return fmt.Errorf("file decryption failed: %w", err)
 	}
