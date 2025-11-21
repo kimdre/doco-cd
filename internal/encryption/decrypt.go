@@ -87,6 +87,7 @@ func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
 			if err != nil {
 				return fmt.Errorf("failed to get relative path for symlink target %s: %w", absTarget, err)
 			}
+
 			if strings.HasPrefix(relPath, "..") {
 				return fmt.Errorf("symlink target %s escapes the repository root %s", absTarget, repoPath)
 			}
