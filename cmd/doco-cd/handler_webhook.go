@@ -193,6 +193,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	// Get the deployment configs from the repository
 	configDir := internalRepoPath
+
 	if appConfig.DeployConfigBaseDir != "" {
 		if !filepath.IsAbs(appConfig.DeployConfigBaseDir) {
 			configDir = filepath.Join(internalRepoPath, appConfig.DeployConfigBaseDir)
