@@ -211,7 +211,9 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	shortName := filepath.Base(repoName)
 
 	// Resolve deployment configs (prefer inline in poll config when present)
-	deployConfigs, err := config.ResolveDeployConfigs(pollConfig, internalRepoPath, shortName)
+	configDir := filepath.Join(internalRepoPath, appConfig.DeployConfigBaseDir)
+
+	deployConfigs, err := config.ResolveDeployConfigs(pollConfig, configDir, shortName)
 	if err != nil {
 		jobLog.Error("failed to get deploy configuration", log.ErrAttr(err))
 

@@ -192,7 +192,9 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	jobLog.Debug("retrieving deployment configuration")
 
 	// Get the deployment configs from the repository
-	deployConfigs, err := config.GetDeployConfigs(internalRepoPath, payload.Name, customTarget, payload.Ref)
+	configDir := filepath.Join(internalRepoPath, appConfig.DeployConfigBaseDir)
+
+	deployConfigs, err := config.GetDeployConfigs(configDir, payload.Name, customTarget, payload.Ref)
 	if err != nil {
 		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to get deploy configuration", err.Error(), http.StatusInternalServerError, metadata)
 
