@@ -63,12 +63,29 @@ func DecryptFilesInDirectory(dirPath string) ([]string, error) {
 			return fmt.Errorf("failed to walk directory %s: %w", path, err)
 		}
 
-		dirPath = filepath.Dir(path)
-		dirName := filepath.Base(dirPath)
+		dirName := filepath.Base(filepath.Dir(path))
 
-		// Check if dirPath is part of the paths to ignore
+		// Check if dirName is part of the paths to ignore
 		if slices.Contains(IgnoreDirs, dirName) {
 			return filepath.SkipDir
+		}
+
+		// Follow symlinks
+		if d.Type()&fs.ModeSymlink != 0 {
+			target, err := os.Readlink(path)
+			if err != nil {
+				return fmt.Errorf("failed to read symlink %s: %w", path, err)
+			}
+
+			absTarget := target
+			if !filepath.IsAbs(target) {
+				absTarget = filepath.Join(filepath.Dir(path), target)
+			}
+
+			// Recursively walk the symlink target
+			_, err = DecryptFilesInDirectory(absTarget)
+
+			return err
 		}
 
 		if d.IsDir() {
