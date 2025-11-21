@@ -75,6 +75,11 @@ func DecryptFilesInDirectory(dirPath string) ([]string, error) {
 			return nil
 		}
 
+		fileInfo, err := os.Lstat(path)
+		if fileInfo.Mode()&os.ModeSymlink == os.ModeSymlink {
+				return nil
+		}
+
 		isEncrypted, err := IsEncryptedFile(path)
 		if err != nil {
 			return fmt.Errorf("failed to check if file is encrypted: %w", err)
