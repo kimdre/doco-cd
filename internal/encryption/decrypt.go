@@ -55,7 +55,7 @@ func DecryptContent(content []byte, format string) ([]byte, error) {
 }
 
 // DecryptFilesInDirectory walks through the specified directory and decrypts all SOPS-encrypted files.
-func DecryptFilesInDirectory(dirPath string) ([]string, error) {
+func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
 	var decryptedFiles []string
 
 	err := filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
@@ -63,12 +63,39 @@ func DecryptFilesInDirectory(dirPath string) ([]string, error) {
 			return fmt.Errorf("failed to walk directory %s: %w", path, err)
 		}
 
-		dirPath = filepath.Dir(path)
-		dirName := filepath.Base(dirPath)
+		dirName := filepath.Base(filepath.Dir(path))
 
-		// Check if dirPath is part of the paths to ignore
+		// Check if dirName is part of the paths to ignore
 		if slices.Contains(IgnoreDirs, dirName) {
 			return filepath.SkipDir
+		}
+
+		// Follow symlinks
+		if d.Type()&fs.ModeSymlink != 0 {
+			target, err := os.Readlink(path)
+			if err != nil {
+				return fmt.Errorf("failed to read symlink %s: %w", path, err)
+			}
+
+			absTarget := target
+			if !filepath.IsAbs(target) {
+				absTarget = filepath.Join(filepath.Dir(path), target)
+			}
+
+			// Prevent absTarget to escape the repoPath
+			relPath, err := filepath.Rel(repoPath, absTarget)
+			if err != nil {
+				return fmt.Errorf("failed to get relative path for symlink target %s: %w", absTarget, err)
+			}
+
+			if strings.HasPrefix(relPath, "..") {
+				return fmt.Errorf("symlink target %s escapes the repository root %s", absTarget, repoPath)
+			}
+
+			// Recursively walk the symlink target
+			_, err = DecryptFilesInDirectory(repoPath, absTarget)
+
+			return err
 		}
 
 		if d.IsDir() {
