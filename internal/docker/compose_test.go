@@ -220,7 +220,7 @@ func TestDeployCompose(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	deployConfigs, err := config.GetDeployConfigs(tmpDir, projectName, customTarget, p.Ref)
+	deployConfigs, err := config.GetDeployConfigs(tmpDir, c.DeployConfigBaseDir, projectName, customTarget, p.Ref)
 	if err != nil {
 		t.Fatal(err)
 	}
