@@ -276,9 +276,10 @@ func TestResolveDeployConfigs_InlineAutoDiscover(t *testing.T) {
 	serviceTwoDir := filepath.Join(servicesDir, "service-two")
 
 	for _, dir := range []string{serviceOneDir, serviceTwoDir} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
 			t.Fatalf("failed to create service dir %s: %v", dir, err)
 		}
+
 		composeFile := filepath.Join(dir, "compose.yaml")
 		if err := createTestFile(composeFile, "services:\n  app:\n    image: alpine"); err != nil {
 			t.Fatalf("failed to write compose file for %s: %v", dir, err)
@@ -318,6 +319,7 @@ func TestResolveDeployConfigs_InlineAutoDiscover(t *testing.T) {
 	if !found["service-one"] {
 		t.Errorf("expected to discover service-one deployment")
 	}
+
 	if !found["service-two"] {
 		t.Errorf("expected to discover service-two deployment")
 	}
@@ -344,13 +346,15 @@ reference: %s
 
 	// Create subdirectory for configs
 	configDir := filepath.Join(repoRoot, deployConfigBaseDir)
-	err := os.MkdirAll(configDir, 0755)
+
+	err := os.MkdirAll(configDir, 0o750)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Create config file in subdirectory
 	filePath := filepath.Join(configDir, fileName)
+
 	err = createTestFile(filePath, deployConfig)
 	if err != nil {
 		t.Fatal(err)
@@ -395,6 +399,7 @@ reference: %s
 	})
 
 	filePath := filepath.Join(repoRoot, fileName)
+
 	err := createTestFile(filePath, deployConfig)
 	if err != nil {
 		t.Fatal(err)
@@ -434,12 +439,14 @@ reference: %s
 	})
 
 	configDir := filepath.Join(repoRoot, deployConfigBaseDir)
-	err := os.MkdirAll(configDir, 0755)
+
+	err := os.MkdirAll(configDir, 0o750)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	filePath := filepath.Join(configDir, fileName)
+
 	err = createTestFile(filePath, deployConfig)
 	if err != nil {
 		t.Fatal(err)
@@ -477,20 +484,24 @@ func TestAutoDiscoverDeployments_BasicDiscovery(t *testing.T) {
 	// Create subdirectories with compose files
 	service1Dir := filepath.Join(repoRoot, "service1")
 	service2Dir := filepath.Join(repoRoot, "service2")
-	err := os.MkdirAll(service1Dir, 0755)
+
+	err := os.MkdirAll(service1Dir, 0o750)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = os.MkdirAll(service2Dir, 0755)
+
+	err = os.MkdirAll(service2Dir, 0o750)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Create compose files
+
 	err = createTestFile(filepath.Join(service1Dir, "compose.yaml"), "services:\n  web:\n    image: nginx")
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	err = createTestFile(filepath.Join(service2Dir, "docker-compose.yml"), "services:\n  db:\n    image: postgres")
 	if err != nil {
 		t.Fatal(err)
@@ -514,15 +525,19 @@ func TestAutoDiscoverDeployments_BasicDiscovery(t *testing.T) {
 	// Check that both services were discovered
 	foundService1 := false
 	foundService2 := false
+
 	for _, cfg := range configs {
 		if cfg.Name == "service1" {
 			foundService1 = true
+
 			if cfg.WorkingDirectory != "service1" {
 				t.Errorf("expected working directory to be 'service1', got '%s'", cfg.WorkingDirectory)
 			}
 		}
+
 		if cfg.Name == "service2" {
 			foundService2 = true
+
 			if cfg.WorkingDirectory != "service2" {
 				t.Errorf("expected working directory to be 'service2', got '%s'", cfg.WorkingDirectory)
 			}
@@ -532,6 +547,7 @@ func TestAutoDiscoverDeployments_BasicDiscovery(t *testing.T) {
 	if !foundService1 {
 		t.Error("service1 was not discovered")
 	}
+
 	if !foundService2 {
 		t.Error("service2 was not discovered")
 	}
@@ -549,7 +565,8 @@ func TestAutoDiscoverDeployments_WithWorkingDirectory(t *testing.T) {
 	// Create a services subdirectory
 	servicesDir := filepath.Join(repoRoot, "services")
 	service1Dir := filepath.Join(servicesDir, "service1")
-	err := os.MkdirAll(service1Dir, 0755)
+
+	err := os.MkdirAll(service1Dir, 0o750)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -597,20 +614,24 @@ func TestAutoDiscoverDeployments_WithDepthLimit(t *testing.T) {
 	level1Dir := filepath.Join(repoRoot, "level1")
 	level2Dir := filepath.Join(level1Dir, "level2")
 	level3Dir := filepath.Join(level2Dir, "level3")
-	err := os.MkdirAll(level3Dir, 0755)
+
+	err := os.MkdirAll(level3Dir, 0o750)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Create compose files at different levels
+
 	err = createTestFile(filepath.Join(level1Dir, "compose.yaml"), "services:\n  web:\n    image: nginx")
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	err = createTestFile(filepath.Join(level2Dir, "compose.yaml"), "services:\n  db:\n    image: postgres")
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	err = createTestFile(filepath.Join(level3Dir, "compose.yaml"), "services:\n  cache:\n    image: redis")
 	if err != nil {
 		t.Fatal(err)
@@ -634,6 +655,7 @@ func TestAutoDiscoverDeployments_WithDepthLimit(t *testing.T) {
 	}
 
 	foundLevel3 := false
+
 	for _, cfg := range configs {
 		if cfg.Name == "level3" {
 			foundLevel3 = true
@@ -656,7 +678,8 @@ func TestAutoDiscoverDeployments_NoComposeFiles(t *testing.T) {
 
 	// Create subdirectories without compose files
 	service1Dir := filepath.Join(repoRoot, "service1")
-	err := os.MkdirAll(service1Dir, 0755)
+
+	err := os.MkdirAll(service1Dir, 0o750)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -687,7 +710,8 @@ func TestAutoDiscoverDeployments_InheritBaseConfig(t *testing.T) {
 	})
 
 	serviceDir := filepath.Join(repoRoot, "service1")
-	err := os.MkdirAll(serviceDir, 0755)
+
+	err := os.MkdirAll(serviceDir, 0o750)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -723,15 +747,19 @@ func TestAutoDiscoverDeployments_InheritBaseConfig(t *testing.T) {
 	if cfg.Reference != baseConfig.Reference {
 		t.Errorf("expected reference to be inherited: %s, got %s", baseConfig.Reference, cfg.Reference)
 	}
+
 	if cfg.RemoveOrphans != baseConfig.RemoveOrphans {
 		t.Errorf("expected RemoveOrphans to be inherited: %v, got %v", baseConfig.RemoveOrphans, cfg.RemoveOrphans)
 	}
+
 	if cfg.ForceRecreate != baseConfig.ForceRecreate {
 		t.Errorf("expected ForceRecreate to be inherited: %v, got %v", baseConfig.ForceRecreate, cfg.ForceRecreate)
 	}
+
 	if cfg.Timeout != baseConfig.Timeout {
 		t.Errorf("expected Timeout to be inherited: %d, got %d", baseConfig.Timeout, cfg.Timeout)
 	}
+
 	if !reflect.DeepEqual(cfg.Profiles, baseConfig.Profiles) {
 		t.Errorf("expected Profiles to be inherited: %v, got %v", baseConfig.Profiles, cfg.Profiles)
 	}

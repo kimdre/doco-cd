@@ -162,6 +162,7 @@ func GetDeployConfigFromYAML(f string) ([]*DeployConfig, error) {
 // GetDeployConfigs returns either the deployment configuration from the repository or the default configuration.
 func GetDeployConfigs(repoRoot, deployConfigBaseDir, name, customTarget, reference string) ([]*DeployConfig, error) {
 	configDir := filepath.Join(repoRoot, deployConfigBaseDir)
+
 	files, err := os.ReadDir(configDir)
 	if err != nil {
 		return nil, err
