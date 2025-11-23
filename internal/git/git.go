@@ -306,13 +306,13 @@ func HasChangesInSubdir(changedFiles []ChangedFile, subdir string) (bool, error)
 
 	err := filepath.Walk(subdir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to walk subdir %s: %w", subdir, err)
 		}
 
 		if info.Mode()&os.ModeSymlink != 0 {
 			target, err := os.Readlink(path)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to read symlink: %w", err)
 			}
 
 			absTarget := target
