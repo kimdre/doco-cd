@@ -131,6 +131,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		"get repository",
 		slog.String("url", payload.CloneURL))
 
+	// Determine the authenticated clone URL if needed
+	authCloneUrl := payload.CloneURL
 	if payload.Private {
 		jobLog.Debug("authenticating to private repository")
 
@@ -140,10 +142,10 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			return
 		}
 
-		payload.CloneURL = git.GetAuthUrl(payload.CloneURL, appConfig.AuthType, appConfig.GitAccessToken)
+		authCloneUrl = git.GetAuthUrl(payload.CloneURL, appConfig.AuthType, appConfig.GitAccessToken)
 	} else if appConfig.GitAccessToken != "" {
 		// Always use the access token for public repositories if it is set to avoid rate limiting
-		payload.CloneURL = git.GetAuthUrl(payload.CloneURL, appConfig.AuthType, appConfig.GitAccessToken)
+		authCloneUrl = git.GetAuthUrl(payload.CloneURL, appConfig.AuthType, appConfig.GitAccessToken)
 	}
 
 	// Validate payload.FullName to prevent directory traversal
@@ -168,13 +170,13 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	// Try to clone the repository
-	_, err = git.CloneRepository(internalRepoPath, payload.CloneURL, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy)
+	_, err = git.CloneRepository(internalRepoPath, authCloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 	if err != nil {
 		// If the repository already exists, check it out to the specified commit SHA
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			jobLog.Debug("repository already exists, checking out reference "+payload.Ref, slog.String("host_path", externalRepoPath))
 
-			_, err = git.UpdateRepository(internalRepoPath, payload.CloneURL, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy)
+			_, err = git.UpdateRepository(internalRepoPath, authCloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 			if err != nil {
 				onError(w, jobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), http.StatusInternalServerError, metadata)
 
