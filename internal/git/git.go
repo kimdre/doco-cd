@@ -309,6 +309,7 @@ func HasChangesInSubdir(changedFiles []ChangedFile, subdir string) (bool, error)
 			return fmt.Errorf("failed to walk subdir %s: %w", subdir, err)
 		}
 
+		// Check if the file is a symlink
 		if info.Mode()&os.ModeSymlink != 0 {
 			target, err := os.Readlink(path)
 			if err != nil {
@@ -342,6 +343,8 @@ func HasChangesInSubdir(changedFiles []ChangedFile, subdir string) (bool, error)
 
 		for _, p := range paths {
 			rel, err := filepath.Rel(subdir, p)
+			fmt.Println("rel:", rel, "p:", p, "subdir:", subdir)
+
 			if err == nil && (rel == "." || !strings.HasPrefix(rel, "..")) {
 				return true, nil
 			}
