@@ -14,12 +14,20 @@ import (
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
 
+var rootCredentials = struct {
+	username string
+	password string
+}{
+	username: "root",
+	password: "root123",
+}
+
 var testCredentials = struct {
 	username string
 	password string
 }{
-	username: "admin",
-	password: "password123",
+	username: "test",
+	password: "test123",
 }
 
 // setupOpenBaoContainers sets up the OpenBao test containers and returns the site URL and access token.
@@ -99,8 +107,8 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 		t.Fatalf("failed to login to vault: %v", err)
 	}
 
-	// Enable KV secrets engine at "secret/"
-	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "secrets", "enable", "-path=secret", "kv-v2"})
+	// Enable KV secrets engine at "rootSecret/" in root namespace
+	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "secrets", "enable", "-path=rootSecret", "kv-v2"})
 	if err != nil || exitStatus != 0 {
 		t.Fatalf("failed to enable kv secrets engine: %v", err)
 	}
@@ -129,10 +137,28 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 		t.Fatalf("failed to issue test certificate: %v", err)
 	}
 
-	// Add test secrets
-	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "kv", "put", "secret/testSecret", "password=" + testCredentials.password, "username=" + testCredentials.username})
+	// Add test secrets to root namespace
+	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "kv", "put", "rootSecret/creds", "password=" + rootCredentials.password, "username=" + rootCredentials.username})
 	if err != nil || exitStatus != 0 {
 		t.Fatalf("failed to add test secret: %v", err)
+	}
+
+	// Create additional namespace "test"
+	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "namespace", "create", "test"})
+	if err != nil || exitStatus != 0 {
+		t.Fatalf("failed to create namespace: %v", err)
+	}
+
+	// Enable KV secrets engine at "testSecret/" in "test" namespace
+	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "secrets", "enable", "-namespace=test", "-path=testSecret", "kv-v2"})
+	if err != nil || exitStatus != 0 {
+		t.Fatalf("failed to enable kv secrets engine in namespace: %v", err)
+	}
+
+	// Add test secrets to "test" namespace
+	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "kv", "put", "-namespace=test", "testSecret/creds", "password=" + testCredentials.password, "username=" + testCredentials.username})
+	if err != nil || exitStatus != 0 {
+		t.Fatalf("failed to add test secret to namespace: %v", err)
 	}
 
 	t.Logf("OpenBao container setup complete")
@@ -149,18 +175,38 @@ func TestProvider_GetSecret_OpenBao(t *testing.T) {
 		expectErr bool
 	}{
 		{
-			name:      "Valid KV secret reference",
-			secretRef: "kv:secret:testSecret:password",
+			name:      "Valid KV secret reference in default namespace",
+			secretRef: "kv:rootSecret:creds:password",
+			expectErr: false,
+		},
+		{
+			name:      "Valid KV secret reference in root namespace with slash",
+			secretRef: "kv:/:rootSecret:creds:password",
+			expectErr: false,
+		},
+		{
+			name:      "Valid KV secret reference in root namespace",
+			secretRef: "kv:root:rootSecret:creds:password",
+			expectErr: false,
+		},
+		{
+			name:      "Valid KV secret reference in test namespace",
+			secretRef: "kv:test:testSecret:creds:password",
 			expectErr: false,
 		},
 		{
 			name:      "Invalid secret reference missing parts",
-			secretRef: "kv:secret:testSecret",
+			secretRef: "kv:rootSecret:creds",
 			expectErr: true,
 		},
 		{
 			name:      "Non-existent secret",
-			secretRef: "kv:secret:invalid:password",
+			secretRef: "kv:rootSecret:invalid:password",
+			expectErr: true,
+		},
+		{
+			name:      "Non-existent namespace",
+			secretRef: "kv:invalid:rootSecret:creds:password",
 			expectErr: true,
 		},
 		{
@@ -180,7 +226,7 @@ func TestProvider_GetSecret_OpenBao(t *testing.T) {
 		},
 		{
 			name:      "Invalid engine type",
-			secretRef: "invalid:testSecret:password",
+			secretRef: "invalid:creds:password",
 			expectErr: true,
 		},
 	}
@@ -217,23 +263,45 @@ func TestProvider_ResolveSecretReferences_OpenBao(t *testing.T) {
 		expectedResolved secrettypes.ResolvedSecrets
 	}{
 		{
-			name: "Single secret",
+			name: "Single secret from default namespace",
 			secretsToResolve: map[string]string{
-				"TEST_PASSWORD": "kv:secret:testSecret:password",
+				"ROOT_PASSWORD": "kv:rootSecret:creds:password",
 			},
 			expectedResolved: secrettypes.ResolvedSecrets{
-				"TEST_PASSWORD": testCredentials.password,
+				"ROOT_PASSWORD": rootCredentials.password,
 			},
 		},
 		{
-			name: "Multiple secrets",
+			name: "Multiple secrets from root namespace",
 			secretsToResolve: map[string]string{
-				"TEST_PASSWORD": "kv:secret:testSecret:password",
-				"TEST_USERNAME": "kv:secret:testSecret:username",
+				"ROOT_PASSWORD": "kv:root:rootSecret:creds:password",
+				"ROOT_USERNAME": "kv:root:rootSecret:creds:username",
+			},
+			expectedResolved: secrettypes.ResolvedSecrets{
+				"ROOT_PASSWORD": rootCredentials.password,
+				"ROOT_USERNAME": rootCredentials.username,
+			},
+		},
+		{
+			name: "Multiple secrets from test namespace",
+			secretsToResolve: map[string]string{
+				"TEST_PASSWORD": "kv:test:testSecret:creds:password",
+				"TEST_USERNAME": "kv:test:testSecret:creds:username",
 			},
 			expectedResolved: secrettypes.ResolvedSecrets{
 				"TEST_PASSWORD": testCredentials.password,
 				"TEST_USERNAME": testCredentials.username,
+			},
+		},
+		{
+			name: "Multiple secrets from root and test namespace",
+			secretsToResolve: map[string]string{
+				"ROOT_PASSWORD": "kv:root:rootSecret:creds:password",
+				"TEST_PASSWORD": "kv:test:testSecret:creds:password",
+			},
+			expectedResolved: secrettypes.ResolvedSecrets{
+				"ROOT_PASSWORD": rootCredentials.password,
+				"TEST_PASSWORD": testCredentials.password,
 			},
 		},
 	}

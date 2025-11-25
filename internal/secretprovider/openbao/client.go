@@ -18,8 +18,8 @@ const (
 )
 
 const (
-	PKIRefFormat    = `^pki:[^:]+:[^:]+$`      // #nosec G101 pki:<secretEngine>:<commonName>
-	SecretRefFormat = `^kv:[^:]+:[^:]+:[^:]+$` // #nosec G101 kv:<secretEngine>:<secretName>:<key>
+	PKIRefFormat    = `^pki:(?:[^:]+:)?[^:]+:[^:]+$`      // #nosec G101 pki:<namespace(optional)>:<secretEngine>:<commonName>
+	SecretRefFormat = `^kv:(?:[^:]+:)?[^:]+:[^:]+:[^:]+$` // #nosec G101 kv:<namespace(optional)>:<secretEngine>:<secretName>:<key>
 )
 
 var ErrInvalidSecretReference = errors.New("invalid secret reference")
@@ -53,27 +53,29 @@ func NewProvider(_ context.Context, address, token string) (*Provider, error) {
 
 // GetSecret retrieves a secret value from the Secrets Manager using the provided secret reference.
 func (p *Provider) GetSecret(ctx context.Context, ref string) (string, error) {
-	engineType, engineName, id, key, err := parseReference(ref)
+	namespace, engineType, engineName, id, key, err := parseReference(ref)
 	if err != nil {
 		return "", err
 	}
+
+	c := p.Client.WithNamespace(namespace)
 
 	var strValue string
 
 	switch engineType {
 	case "pki":
-		serial, err := GetCertSerial(ctx, p.Client, engineName, id)
+		serial, err := GetCertSerial(ctx, c, engineName, id)
 		if err != nil {
 			return "", fmt.Errorf("failed to retrieve certificate serial for common name %s: %w", id, err)
 		}
 
-		strValue, err = GetCert(ctx, p.Client, engineName, serial)
+		strValue, err = GetCert(ctx, c, engineName, serial)
 		if err != nil {
 			return "", fmt.Errorf("failed to retrieve certificate with serial %s: %w", id, err)
 		}
 
 	case "kv":
-		strValue, err = GetSecret(ctx, p.Client, engineName, id, key)
+		strValue, err = GetSecret(ctx, c, engineName, id, key)
 		if err != nil {
 			return "", fmt.Errorf("failed to retrieve secret with id %s: %w", id, err)
 		}
@@ -159,28 +161,40 @@ func (p *Provider) ResolveSecretReferences(ctx context.Context, secrets map[stri
 func (p *Provider) Close() {}
 
 // parseReference parses the reference string into its components: engineType, engineName, id, and key.
-func parseReference(ref string) (engineType, engineName, id, key string, err error) {
+func parseReference(ref string) (namespace, engineType, engineName, id, key string, err error) {
+	const defaultNamespace = "root"
+
 	matchedPKI, _ := regexp.MatchString(PKIRefFormat, ref)
 	matchedSecret, _ := regexp.MatchString(SecretRefFormat, ref)
 
 	// Check if reference is in the correct format
 	if !matchedPKI && !matchedSecret {
-		return "", "", "", "", fmt.Errorf("%w: %s", ErrInvalidSecretReference, "unexpected ref format")
+		return "", "", "", "", "", fmt.Errorf("%w: %s", ErrInvalidSecretReference, "unexpected ref format")
 	}
 
+	// Handle PKI reference
 	if matchedPKI {
-		parts := strings.SplitN(ref, ":", 3)
-		if len(parts) != 3 {
-			return "", "", "", "", fmt.Errorf("%w: %s", ErrInvalidSecretReference, "expected format 'pki:<secretEngine>:<commonName>'")
+		parts := strings.Split(ref, ":")
+		if len(parts) == 3 {
+			// pki:<engineType>:<commonName>
+			return defaultNamespace, parts[0], parts[1], parts[2], "", nil
+		} else if len(parts) == 4 {
+			// pki:<namespace>:<engineType>:<commonName>
+			return parts[1], parts[0], parts[2], parts[3], "", nil
 		}
 
-		return parts[0], parts[1], parts[2], "", nil
+		return "", "", "", "", "", fmt.Errorf("%w: %s", ErrInvalidSecretReference, "expected format 'pki:<namespace(optional)>:<secretEngine>:<commonName>'")
 	}
 
-	parts := strings.SplitN(ref, ":", 4)
-	if len(parts) != 4 {
-		return "", "", "", "", fmt.Errorf("%w: %s", ErrInvalidSecretReference, "expected format 'kv:<secretEngine>:<secretName>:<key>'")
+	// Handle Secret reference
+	parts := strings.Split(ref, ":")
+	if len(parts) == 4 {
+		// kv:<engineType>:<secretName>:<key>
+		return defaultNamespace, parts[0], parts[1], parts[2], parts[3], nil
+	} else if len(parts) == 5 {
+		// kv:<namespace>:<engineType>:<secretName>:<key>
+		return parts[1], parts[0], parts[2], parts[3], parts[4], nil
 	}
 
-	return parts[0], parts[1], parts[2], parts[3], nil
+	return "", "", "", "", "", fmt.Errorf("%w: %s", ErrInvalidSecretReference, "expected format 'kv:<namespace(optional)>:<secretEngine>:<secretName>:<key>'")
 }
