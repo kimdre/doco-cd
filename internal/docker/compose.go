@@ -565,9 +565,9 @@ func DeployStack(
 
 	msg := "successfully deployed stack " + deployConfig.Name
 
-	err = notification.Send(notification.Success, "Deployment Successful", msg, metadata)
+	err = notification.Send(notification.Success, "Stack deployed", msg, metadata)
 	if err != nil {
-		return err
+		jobLog.Error("failed to send notification", logger.ErrAttr(err))
 	}
 
 	return nil
@@ -576,7 +576,7 @@ func DeployStack(
 // DestroyStack destroys the stack using the provided deployment configuration.
 func DestroyStack(
 	jobLog *slog.Logger, ctx *context.Context,
-	dockerCli *command.Cli, deployConfig *config.DeployConfig,
+	dockerCli *command.Cli, deployConfig *config.DeployConfig, metadata notification.Metadata,
 ) error {
 	stackLog := jobLog.
 		With(slog.String("stack", deployConfig.Name))
@@ -608,6 +608,11 @@ func DestroyStack(
 	if err != nil {
 		errMsg := "failed to destroy stack"
 		return fmt.Errorf("%s: %w", errMsg, err)
+	}
+
+	err = notification.Send(notification.Success, "Stack destroyed", "successfully destroyed stack "+deployConfig.Name, metadata)
+	if err != nil {
+		stackLog.Error("failed to send notification", logger.ErrAttr(err))
 	}
 
 	return nil
