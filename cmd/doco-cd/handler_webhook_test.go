@@ -117,7 +117,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req.Header.Set(webhook.GithubSignatureHeader, "sha256="+webhook.GenerateHMAC(payload, appConfig.WebhookSecret))
+	req.Header.Set(webhook.ScmProviderHeaders[webhook.Github], "sha256="+webhook.GenerateHMAC(payload, appConfig.WebhookSecret))
 
 	rr := httptest.NewRecorder()
 	handler := http.HandlerFunc(h.WebhookHandler)

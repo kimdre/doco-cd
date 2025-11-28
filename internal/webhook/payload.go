@@ -42,14 +42,14 @@ type ParsedPayload struct {
 }
 
 // ParsePayload parses the payload and returns a ParsedPayload struct.
-func parsePayload(payload []byte, provider string) (ParsedPayload, error) {
+func parsePayload(payload []byte, provider ScmProvider) (ParsedPayload, error) {
 	var (
 		githubPayload GithubPushPayload
 		gitlabPayload GitlabPushPayload
 	)
 
 	switch provider {
-	case "github", "gitea":
+	case Github, Gitea, Gogs:
 		err := json.Unmarshal(payload, &githubPayload)
 		if err != nil {
 			return ParsedPayload{}, err
@@ -66,7 +66,7 @@ func parsePayload(payload []byte, provider string) (ParsedPayload, error) {
 		}
 
 		return parsedPayload, nil
-	case "gitlab":
+	case Gitlab:
 		err := json.Unmarshal(payload, &gitlabPayload)
 		if err != nil {
 			return ParsedPayload{}, err
@@ -83,7 +83,7 @@ func parsePayload(payload []byte, provider string) (ParsedPayload, error) {
 		}
 
 		return parsedPayload, nil
+	default:
+		return ParsedPayload{}, ErrParsingPayload
 	}
-
-	return ParsedPayload{}, ErrParsingPayload
 }
