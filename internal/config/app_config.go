@@ -41,7 +41,7 @@ type AppConfig struct {
 	AppriseNotifyUrlsFile  string                 `env:"APPRISE_NOTIFY_URLS_FILE,file"`                                      // AppriseNotifyUrlsFile is the file containing the AppriseNotifyUrls
 	AppriseNotifyLevel     string                 `env:"APPRISE_NOTIFY_LEVEL,notEmpty" envDefault:"success"`                 // AppriseNotifyLevel is the level of notifications to send via the Apprise notification service
 	SecretProvider         string                 `env:"SECRET_PROVIDER"`                                                    // SecretProvider is the secret provider/manager to use for retrieving secrets (e.g. bitwarden secrets manager)
-	MaxDeploymentLoopCount uint                   `env:"MAX_DEPLOYMENT_LOOP_COUNT,notEmpty" envDefault:"3" validate:"min=0"` // Maximum allowed deployment loops before force deploy
+	MaxDeploymentLoopCount uint                   `env:"MAX_DEPLOYMENT_LOOP_COUNT,notEmpty" envDefault:"2" validate:"min=0"` // Maximum allowed deployment loops before a forced deployment is triggered
 }
 
 // GetAppConfig returns the configuration.
