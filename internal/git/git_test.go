@@ -353,6 +353,8 @@ func TestGetChangedFilesBetweenCommits(t *testing.T) {
 		expectedChangedFile      = filepath.Join(expectedChangedDirectory, "index.html")
 	)
 
+	tmpDir := t.TempDir()
+
 	c, err := config.GetAppConfig()
 	if err != nil {
 		t.Fatalf("Failed To get app config: %v", err)
@@ -360,7 +362,7 @@ func TestGetChangedFilesBetweenCommits(t *testing.T) {
 
 	url := GetAuthUrl(cloneUrlTest, c.AuthType, c.GitAccessToken)
 
-	repo, err := CloneRepository(t.TempDir(), url, MainBranch, false, c.HttpProxy)
+	repo, err := CloneRepository(tmpDir, url, MainBranch, false, c.HttpProxy)
 	if err != nil {
 		t.Fatalf("Failed To clone repository: %v", err)
 	}
@@ -384,7 +386,15 @@ func TestGetChangedFilesBetweenCommits(t *testing.T) {
 		}
 	}
 
-	hasChanged, err := HasChangesInSubdir(changedFiles, expectedChangedDirectory)
+	var changedFilePaths []string
+	for _, file := range changedFiles {
+		changedFilePaths = append(changedFilePaths, file.To.Path())
+	}
+
+	t.Logf("Changed files: %v", changedFilePaths)
+	t.Logf("testDir: %s", expectedChangedDirectory)
+
+	hasChanged, err := HasChangesInSubdir(changedFiles, tmpDir, expectedChangedDirectory)
 	if err != nil {
 		t.Fatalf("Failed To check changes in subdir: %v", err)
 	}
