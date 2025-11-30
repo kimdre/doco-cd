@@ -23,7 +23,7 @@ You can think of it as a simple Portainer or ArgoCD alternative for Docker.
 - Built in Go with tiny RAM and CPU requirements.
 - Supports various [external secret management providers](https://github.com/kimdre/doco-cd/wiki/External-Secrets) and data encryption with [SOPS](https://github.com/kimdre/doco-cd/wiki/Encryption)
 - Can deploy applications via webhooks and/or polling.
-- Supports various Git providers
+- Supports various [Git providers](https://github.com/kimdre/doco-cd/wiki#supported-git-providers)
 - Supports both Docker Compose projects and Swarm stacks in [Swarm mode](https://github.com/kimdre/doco-cd/wiki/Swarm-Mode).
 - Provides [notifications](https://github.com/kimdre/doco-cd/wiki/Notifications) and [Prometheus metrics](https://github.com/kimdre/doco-cd/wiki/Endpoints#prometheus-metrics) for monitoring.
 

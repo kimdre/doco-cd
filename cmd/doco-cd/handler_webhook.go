@@ -131,6 +131,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		"get repository",
 		slog.String("url", payload.CloneURL))
 
+	// Determine the authenticated clone URL if needed
+	authCloneUrl := payload.CloneURL
 	if payload.Private {
 		jobLog.Debug("authenticating to private repository")
 
@@ -140,10 +142,10 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			return
 		}
 
-		payload.CloneURL = git.GetAuthUrl(payload.CloneURL, appConfig.AuthType, appConfig.GitAccessToken)
+		authCloneUrl = git.GetAuthUrl(payload.CloneURL, appConfig.AuthType, appConfig.GitAccessToken)
 	} else if appConfig.GitAccessToken != "" {
 		// Always use the access token for public repositories if it is set to avoid rate limiting
-		payload.CloneURL = git.GetAuthUrl(payload.CloneURL, appConfig.AuthType, appConfig.GitAccessToken)
+		authCloneUrl = git.GetAuthUrl(payload.CloneURL, appConfig.AuthType, appConfig.GitAccessToken)
 	}
 
 	// Validate payload.FullName to prevent directory traversal
@@ -168,13 +170,13 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	// Try to clone the repository
-	_, err = git.CloneRepository(internalRepoPath, payload.CloneURL, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy)
+	_, err = git.CloneRepository(internalRepoPath, authCloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 	if err != nil {
 		// If the repository already exists, check it out to the specified commit SHA
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			jobLog.Debug("repository already exists, checking out reference "+payload.Ref, slog.String("host_path", externalRepoPath))
 
-			_, err = git.UpdateRepository(internalRepoPath, payload.CloneURL, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy)
+			_, err = git.UpdateRepository(internalRepoPath, authCloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 			if err != nil {
 				onError(w, jobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), http.StatusInternalServerError, metadata)
 
@@ -199,7 +201,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		return
 	}
 
-	err = cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog, dockerClient, dockerCli, payload.CloneURL, deployConfigs)
+	err = cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog, dockerClient, dockerCli, payload.CloneURL, deployConfigs, metadata)
 	if err != nil {
 		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to clean up obsolete auto-discovered containers", err.Error(), http.StatusInternalServerError, metadata)
 	}
@@ -347,7 +349,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				return
 			}
 
-			err = docker.DestroyStack(subJobLog, &ctx, &dockerCli, deployConfig)
+			err = docker.DestroyStack(subJobLog, &ctx, &dockerCli, deployConfig, metadata)
 			if err != nil {
 				onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to destroy stack", err.Error(), http.StatusInternalServerError, metadata)
 
@@ -470,7 +472,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 					return
 				}
 
-				hasChanged, err := git.HasChangesInSubdir(changedFiles, deployConfig.WorkingDirectory)
+				hasChanged, err := git.HasChangesInSubdir(changedFiles, internalRepoPath, deployConfig.WorkingDirectory)
 				if err != nil {
 					onError(w, subJobLog, fmt.Errorf("failed to compare commits in subdirectory: %w", err).Error(),
 						map[string]string{"stack": deployConfig.Name}, http.StatusInternalServerError, metadata)
@@ -493,8 +495,15 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 					slog.String("deployed_commit", deployedCommit))
 			}
 
+			forceDeploy := shouldForceDeploy(deployConfig.Name, latestCommit, appConfig.MaxDeploymentLoopCount)
+			if forceDeploy {
+				subJobLog.Warn("deployment loop detected for stack, forcing deployment",
+					slog.String("stack", deployConfig.Name),
+					slog.String("commit", latestCommit))
+			}
+
 			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, dockerClient,
-				&payload, deployConfig, changedFiles, latestCommit, Version, "webhook", false, metadata,
+				&payload, deployConfig, changedFiles, latestCommit, Version, "webhook", forceDeploy, metadata,
 				resolvedSecrets, secretsChanged)
 			if err != nil {
 				onError(w, subJobLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), http.StatusInternalServerError, metadata)

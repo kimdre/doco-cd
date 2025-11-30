@@ -13,6 +13,8 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/docker/client"
 
+	"github.com/kimdre/doco-cd/internal/notification"
+
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 )
@@ -59,7 +61,10 @@ func extractContainerIDFromMountInfo(content string) string {
 
 // cleanupObsoleteAutoDiscoveredContainers removes obsolete auto-discovered containers that are no longer defined in
 // the current deployment configurations but still exist on the Docker host.
-func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.Logger, dockerClient *client.Client, dockerCli command.Cli, cloneUrl string, deployConfigs []*config.DeployConfig) error {
+func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.Logger,
+	dockerClient *client.Client, dockerCli command.Cli,
+	cloneUrl string, deployConfigs []*config.DeployConfig, metadata notification.Metadata,
+) error {
 	autoDiscoveredNames := make(map[string]bool)
 
 	for _, cfg := range deployConfigs {
@@ -107,7 +112,7 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 					removeConfig.DestroyOpts.RemoveImages = true
 					removeConfig.DestroyOpts.RemoveRepoDir = false // Do not remove repo dir for auto-discovered stacks
 
-					err = docker.DestroyStack(jobLog, &ctx, &dockerCli, removeConfig)
+					err = docker.DestroyStack(jobLog, &ctx, &dockerCli, removeConfig, metadata)
 					if err != nil {
 						return fmt.Errorf("failed to remove obsolete auto-discovered stack '%s': %w", stackName, err)
 					}

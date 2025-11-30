@@ -327,7 +327,7 @@ func TestDeployCompose(t *testing.T) {
 
 		t.Log("Destroying deployment")
 
-		err = DestroyStack(jobLog, &ctx, &dockerCli, deployConf)
+		err = DestroyStack(jobLog, &ctx, &dockerCli, deployConf, metadata)
 		if err != nil {
 			t.Fatal(err)
 		}
