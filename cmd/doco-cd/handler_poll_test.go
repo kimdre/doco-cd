@@ -114,16 +114,21 @@ func TestRunPoll(t *testing.T) {
 	}
 
 	// Run initial poll
-	_, err = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With(), metadata, &secretProvider)
-	if err != nil {
-		t.Fatalf("Initial poll failed: %v", err)
+	results := RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With(), metadata, &secretProvider)
+
+	for _, result := range results {
+		if result.Err != nil {
+			t.Fatalf("Initial poll deployment failed: %v", result.Err)
+		}
 	}
 
 	pollConfig.Reference = "destroy"
 
 	// Run the second poll to destroy
-	_, err = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With(), metadata, &secretProvider)
-	if err != nil {
-		t.Fatalf("Second poll failed: %v", err)
+	results = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With(), metadata, &secretProvider)
+	for _, result := range results {
+		if result.Err != nil {
+			t.Fatalf("Second poll deployment failed: %v", result.Err)
+		}
 	}
 }
