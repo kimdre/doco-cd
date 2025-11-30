@@ -275,7 +275,7 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 // deployCompose deploys a project as specified by the Docker Compose specification (LoadCompose).
 func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project,
 	deployConfig *config.DeployConfig, payload webhook.ParsedPayload,
-	repoDir, latestCommit, appVersion, secretHash string, forceDeploy bool,
+	repoDir, latestCommit, appVersion, secretHash string,
 ) error {
 	var err error
 
@@ -313,7 +313,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	}
 
 	recreateType := api.RecreateDiverged
-	if deployConfig.ForceRecreate || forceDeploy {
+	if deployConfig.ForceRecreate {
 		recreateType = api.RecreateForce
 	}
 
@@ -536,6 +536,10 @@ func DeployStack(
 		}
 
 		switch {
+		case forceDeploy:
+			deployConfig.ForceRecreate = true
+
+			stackLog.Debug("force deploy enabled, forcing recreate of all services")
 		case secretsChanged:
 			deployConfig.ForceRecreate = true
 
@@ -550,7 +554,7 @@ func DeployStack(
 
 		stackLog.Info("deploying stack", slog.Bool("forced", deployConfig.ForceRecreate))
 
-		err = deployCompose(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion, secretHash, forceDeploy)
+		err = deployCompose(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion, secretHash)
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 
@@ -621,6 +625,8 @@ func DestroyStack(
 func getAbsolutePaths(changedFiles []gitInternal.ChangedFile, workingDir string) []string {
 	var absPaths []string
 
+	w := filepath.Clean(workingDir)
+
 	for _, f := range changedFiles {
 		checkPaths := []diff.File{f.From, f.To}
 
@@ -632,15 +638,11 @@ func getAbsolutePaths(changedFiles []gitInternal.ChangedFile, workingDir string)
 			p := filepath.Clean(checkPath.Path())
 
 			if !filepath.IsAbs(p) {
-				w := filepath.Clean(workingDir)
-
-				for {
-					if strings.HasPrefix(p, filepath.Base(w)) {
-						w = filepath.Dir(w)
-					} else {
-						p = filepath.Join(w, p)
-						break
-					}
+				// Check if base of working directory ends with directory path of changed file
+				if strings.HasSuffix(filepath.Dir(p), filepath.Base(w)) {
+					p = filepath.Join(w, filepath.Base(p))
+				} else {
+					p = filepath.Join(workingDir, p)
 				}
 			}
 
