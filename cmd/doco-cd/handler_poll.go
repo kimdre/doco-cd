@@ -564,8 +564,15 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 				WebURL:    string(pollConfig.CloneUrl),
 			}
 
+			forceDeploy := shouldForceDeploy(deployConfig.Name, latestCommit, appConfig.MaxDeploymentLoopCount)
+			if forceDeploy {
+				subJobLog.Warn("deployment loop detected for stack, forcing deployment",
+					slog.String("stack", deployConfig.Name),
+					slog.String("commit", latestCommit))
+			}
+
 			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, dockerClient,
-				&payload, deployConfig, changedFiles, latestCommit, Version, "poll", false, metadata, resolvedSecrets, secretsChanged)
+				&payload, deployConfig, changedFiles, latestCommit, Version, "poll", forceDeploy, metadata, resolvedSecrets, secretsChanged)
 			if err != nil {
 				results = append(results, pollResult{Metadata: metadata, Err: err})
 				pollError(subJobLog, metadata, fmt.Errorf("failed to deploy stack %s: %w", deployConfig.Name, err))
