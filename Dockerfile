@@ -39,7 +39,7 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
 
 FROM busybox:1.37-uclibc@sha256:e58014df10240c35c7b1df7ff8e859ad6a54d061bde77c249f96880e15d83049 AS busybox-binaries
 
-FROM gcr.io/distroless/base-debian12@sha256:9e9b50d2048db3741f86a48d939b4e4cc775f5889b3496439343301ff54cdba8 AS release
+FROM gcr.io/distroless/base-debian13@sha256:7036888a095283fc1490690c9f15ae84e1489523ff608ff9fa11de8c8c8944c0 AS release
 
 WORKDIR /
 
