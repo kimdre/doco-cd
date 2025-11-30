@@ -203,7 +203,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		return
 	}
 
-	err = cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog, dockerClient, dockerCli, payload.CloneURL, deployConfigs)
+	err = cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog, dockerClient, dockerCli, payload.CloneURL, deployConfigs, metadata)
 	if err != nil {
 		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to clean up obsolete auto-discovered containers", err.Error(), http.StatusInternalServerError, metadata)
 	}
@@ -351,7 +351,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				return
 			}
 
-			err = docker.DestroyStack(subJobLog, &ctx, &dockerCli, deployConfig)
+			err = docker.DestroyStack(subJobLog, &ctx, &dockerCli, deployConfig, metadata)
 			if err != nil {
 				onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to destroy stack", err.Error(), http.StatusInternalServerError, metadata)
 
@@ -497,8 +497,15 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 					slog.String("deployed_commit", deployedCommit))
 			}
 
+			forceDeploy := shouldForceDeploy(deployConfig.Name, latestCommit, appConfig.MaxDeploymentLoopCount)
+			if forceDeploy {
+				subJobLog.Warn("deployment loop detected for stack, forcing deployment",
+					slog.String("stack", deployConfig.Name),
+					slog.String("commit", latestCommit))
+			}
+
 			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, dockerClient,
-				&payload, deployConfig, changedFiles, latestCommit, Version, "webhook", false, metadata,
+				&payload, deployConfig, changedFiles, latestCommit, Version, "webhook", forceDeploy, metadata,
 				resolvedSecrets, secretsChanged)
 			if err != nil {
 				onError(w, subJobLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), http.StatusInternalServerError, metadata)
