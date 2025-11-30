@@ -497,8 +497,15 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 					slog.String("deployed_commit", deployedCommit))
 			}
 
+			forceDeploy := shouldForceDeploy(deployConfig.Name, latestCommit)
+			if forceDeploy {
+				subJobLog.Warn("deployment loop detected for stack, forcing deployment",
+					slog.String("stack", deployConfig.Name),
+					slog.String("commit", latestCommit))
+			}
+
 			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, dockerClient,
-				&payload, deployConfig, changedFiles, latestCommit, Version, "webhook", false, metadata,
+				&payload, deployConfig, changedFiles, latestCommit, Version, "webhook", forceDeploy, metadata,
 				resolvedSecrets, secretsChanged)
 			if err != nil {
 				onError(w, subJobLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), http.StatusInternalServerError, metadata)
