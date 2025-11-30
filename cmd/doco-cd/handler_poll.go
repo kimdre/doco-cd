@@ -564,7 +564,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 				WebURL:    string(pollConfig.CloneUrl),
 			}
 
-			forceDeploy := shouldForceDeploy(deployConfig.Name, latestCommit)
+			forceDeploy := shouldForceDeploy(deployConfig.Name, latestCommit, appConfig.MaxDeploymentLoopCount)
 			if forceDeploy {
 				subJobLog.Warn("deployment loop detected for stack, forcing deployment",
 					slog.String("stack", deployConfig.Name),

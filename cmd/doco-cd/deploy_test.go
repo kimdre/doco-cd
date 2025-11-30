@@ -35,12 +35,12 @@ func TestShouldForceDeploy(t *testing.T) {
 			deploymentLoopTracker.Lock()
 			deploymentLoopTracker.loops = make(map[string]struct {
 				lastCommit string
-				count      int
+				count      uint
 			})
 			deploymentLoopTracker.Unlock()
 
 			for i, commit := range tt.commits {
-				result := shouldForceDeploy(tt.stackName, commit)
+				result := shouldForceDeploy(tt.stackName, commit, 3)
 				if result != tt.expected[i] {
 					t.Errorf("shouldForceDeploy(%s, %s) = %v; want %v", tt.stackName, commit, result, tt.expected[i])
 				}

@@ -2,23 +2,25 @@ package main
 
 import "sync"
 
-const maxDeploymentLoopCount = 3 // Maximum allowed deployment loops before taking action.
-
 // deploymentLoopTracker keeps track of deployment loops for different stacks.
 var deploymentLoopTracker = struct {
 	sync.Mutex
 	loops map[string]struct {
 		lastCommit string
-		count      int
+		count      uint
 	}
 }{loops: make(map[string]struct {
 	lastCommit string
-	count      int
+	count      uint
 })}
 
 // shouldForceDeploy checks if a deployment loop is detected for the given stackName
 // based on the latestCommit. It returns true if the deployment should be forced.
-func shouldForceDeploy(stackName, latestCommit string) bool {
+func shouldForceDeploy(stackName, latestCommit string, maxDeploymentLoopCount uint) bool {
+	if maxDeploymentLoopCount == 0 {
+		return false
+	}
+
 	deploymentLoopTracker.Lock()
 	defer deploymentLoopTracker.Unlock()
 

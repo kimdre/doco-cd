@@ -497,7 +497,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 					slog.String("deployed_commit", deployedCommit))
 			}
 
-			forceDeploy := shouldForceDeploy(deployConfig.Name, latestCommit)
+			forceDeploy := shouldForceDeploy(deployConfig.Name, latestCommit, appConfig.MaxDeploymentLoopCount)
 			if forceDeploy {
 				subJobLog.Warn("deployment loop detected for stack, forcing deployment",
 					slog.String("stack", deployConfig.Name),
