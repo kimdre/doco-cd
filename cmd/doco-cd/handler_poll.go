@@ -530,7 +530,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 					continue
 				}
 
-				filesChanged, err := git.HasChangesInSubdir(changedFiles, deployConfig.WorkingDirectory)
+				filesChanged, err := git.HasChangesInSubdir(changedFiles, internalRepoPath, deployConfig.WorkingDirectory)
 				if err != nil {
 					results = append(results, pollResult{Metadata: metadata, Err: err})
 					pollError(subJobLog, metadata, fmt.Errorf("failed to compare commits in subdirectory: %w", err))

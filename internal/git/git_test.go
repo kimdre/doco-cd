@@ -386,8 +386,6 @@ func TestGetChangedFilesBetweenCommits(t *testing.T) {
 		}
 	}
 
-	// testDir := filepath.Join(tmpDir, expectedChangedDirectory)
-
 	var changedFilePaths []string
 	for _, file := range changedFiles {
 		changedFilePaths = append(changedFilePaths, file.To.Path())
@@ -396,7 +394,7 @@ func TestGetChangedFilesBetweenCommits(t *testing.T) {
 	t.Logf("Changed files: %v", changedFilePaths)
 	t.Logf("testDir: %s", expectedChangedDirectory)
 
-	hasChanged, err := HasChangesInSubdir(changedFiles, expectedChangedDirectory)
+	hasChanged, err := HasChangesInSubdir(changedFiles, tmpDir, expectedChangedDirectory)
 	if err != nil {
 		t.Fatalf("Failed To check changes in subdir: %v", err)
 	}

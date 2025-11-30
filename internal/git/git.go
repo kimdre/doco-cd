@@ -300,11 +300,11 @@ func GetChangedFilesBetweenCommits(repo *git.Repository, commitHash1, commitHash
 }
 
 // HasChangesInSubdir checks if any of the changed files are in a specified subdirectory.
-func HasChangesInSubdir(changedFiles []ChangedFile, subdir string) (bool, error) {
+func HasChangesInSubdir(changedFiles []ChangedFile, workingDir, subdir string) (bool, error) {
 	// Collect all symlinks in subdir
 	symlinks := make(map[string]string)
 
-	err := filepath.Walk(subdir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(filepath.Join(workingDir, subdir), func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return fmt.Errorf("failed to walk subdir %s: %w", subdir, err)
 		}
@@ -343,7 +343,6 @@ func HasChangesInSubdir(changedFiles []ChangedFile, subdir string) (bool, error)
 
 		for _, p := range paths {
 			rel, err := filepath.Rel(subdir, p)
-			fmt.Println("rel:", rel, "p:", p, "subdir:", subdir)
 
 			if err == nil && (rel == "." || !strings.HasPrefix(rel, "..")) {
 				return true, nil
@@ -351,8 +350,12 @@ func HasChangesInSubdir(changedFiles []ChangedFile, subdir string) (bool, error)
 
 			// Check if file is inside any symlink target
 			for _, target := range symlinks {
-				relSymlink, err := filepath.Rel(target, p)
-				if err == nil && (relSymlink == "." || !strings.HasPrefix(relSymlink, "..")) {
+				relSymlink, err := filepath.Rel(target, filepath.Join(target, p))
+				if err != nil {
+					continue
+				}
+
+				if relSymlink == "." || !strings.HasPrefix(relSymlink, "..") {
 					return true, nil
 				}
 			}
