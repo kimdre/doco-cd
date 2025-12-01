@@ -152,11 +152,11 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode JobMode, comma
 
 // RunImagePruneJob runs a Docker Swarm global job to prune unused images on all nodes.
 func RunImagePruneJob(ctx context.Context, dockerCLI command.Cli) error {
-	return RunSwarmJob(ctx, dockerCLI, JobModeGlobal, []string{"docker", "image", "prune", "-f"}, "image-prune")
+	return RunSwarmJob(ctx, dockerCLI, JobModeGlobal, []string{"docker", "image", "prune", "--force"}, "image-prune")
 }
 
 // RunImageRemoveJob runs a Docker Swarm global job to remove specified images.
 func RunImageRemoveJob(ctx context.Context, dockerCLI command.Cli, images []string) error {
-	args := append([]string{"docker", "image", "rm", "-f"}, images...)
+	args := append([]string{"docker", "image", "rm", "--force"}, images...)
 	return RunSwarmJob(ctx, dockerCLI, JobModeGlobal, args, "image-remove")
 }
