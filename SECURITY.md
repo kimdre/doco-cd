@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-[![GitHub Release](https://img.shields.io/github/v/release/kimdre/doco-cd?display_name=tag&label=Release)](https://github.com/kimdre/doco-cd/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/kimdre/doco-cd?display_name=tag&label=Release&color=47c72a&labelColor=404951)](https://github.com/kimdre/doco-cd/releases)
 
 Only the latest version is supported.
 
