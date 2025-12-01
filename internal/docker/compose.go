@@ -47,7 +47,7 @@ import (
 )
 
 const (
-	socketPath = "/var/run/docker.sock"
+	SocketPath = "/var/run/docker.sock"
 )
 
 var (
@@ -59,7 +59,7 @@ var (
 
 // ConnectToSocket connects to the docker socket.
 func ConnectToSocket() (net.Conn, error) {
-	c, err := net.Dial("unix", socketPath)
+	c, err := net.Dial("unix", SocketPath)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func NewHttpClient() *http.Client {
 	return &http.Client{
 		Transport: &http.Transport{
 			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return net.Dial("unix", socketPath)
+				return net.Dial("unix", SocketPath)
 			},
 		},
 	}
@@ -109,7 +109,7 @@ func VerifySocketRead(httpClient *http.Client) error {
 // VerifySocketConnection verifies whether the application can connect to the docker socket.
 func VerifySocketConnection() error {
 	// Check if the docker socket file exists
-	if _, err := os.Stat(socketPath); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(SocketPath); errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 
@@ -557,6 +557,19 @@ func DeployStack(
 			errMsg := "failed to prune stack secrets"
 
 			return fmt.Errorf("%s: %w", errMsg, err)
+		}
+
+		if deployConfig.PruneImages {
+			stackLog.Info("prune images on swarm nodes")
+
+			err = RunImagePruneJob(*ctx, *dockerCli)
+			if err != nil {
+				prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
+
+				errMsg := "failed to run image prune job"
+
+				return fmt.Errorf("%s: %w", errMsg, err)
+			}
 		}
 	} else {
 		hasChangedFiles, err := ProjectFilesHaveChanges(changedFiles, project)

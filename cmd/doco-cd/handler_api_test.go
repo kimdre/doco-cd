@@ -48,7 +48,7 @@ func TestHandlerData_HealthCheckHandler(t *testing.T) {
 	h := handlerData{
 		dockerCli:  dockerCli,
 		appConfig:  appConfig,
-		appVersion: Version,
+		appVersion: config.AppVersion,
 		log:        log,
 	}
 
@@ -106,7 +106,7 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 		dockerCli:    dockerCli,
 		dockerClient: dockerClient,
 		appConfig:    appConfig,
-		appVersion:   Version,
+		appVersion:   config.AppVersion,
 		dataMountPoint: container.MountPoint{
 			Type:        "bind",
 			Source:      tmpDir,

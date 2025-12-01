@@ -572,7 +572,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			}
 
 			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, dockerClient,
-				&payload, deployConfig, changedFiles, latestCommit, Version, "poll", forceDeploy, metadata, resolvedSecrets, secretsChanged)
+				&payload, deployConfig, changedFiles, latestCommit, config.AppVersion, "poll", forceDeploy, metadata, resolvedSecrets, secretsChanged)
 			if err != nil {
 				results = append(results, pollResult{Metadata: metadata, Err: err})
 				pollError(subJobLog, metadata, fmt.Errorf("failed to deploy stack %s: %w", deployConfig.Name, err))

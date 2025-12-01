@@ -83,7 +83,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Dep
 		return nil
 	}
 
-	return waitOnServices(ctx, dockerCli, serviceIDs)
+	return WaitOnServices(ctx, dockerCli, serviceIDs)
 }
 
 func getServicesDeclaredNetworks(serviceConfigs []composetypes.ServiceConfig) map[string]struct{} {
@@ -303,7 +303,8 @@ func deployServices(ctx context.Context, dockerCLI command.Cli, services map[str
 	return serviceIDs, nil
 }
 
-func waitOnServices(ctx context.Context, dockerCli command.Cli, serviceIDs []string) error {
+// WaitOnServices waits for the specified Swarm services to complete.
+func WaitOnServices(ctx context.Context, dockerCli command.Cli, serviceIDs []string) error {
 	var errs []error
 
 	for _, serviceID := range serviceIDs {
