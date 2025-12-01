@@ -57,10 +57,9 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode JobMode, comma
 		Annotations: swarmTypes.Annotations{
 			Name: fmt.Sprintf("%s_%s", "doco-cd", title),
 			Labels: map[string]string{
-				DocoCDLabels.Metadata.Manager:     config.AppName,
-				DocoCDLabels.Metadata.Version:     config.AppVersion,
-				DocoCDLabels.Deployment.Timestamp: time.Now().Format(time.RFC3339),
-				DocoCDLabels.Deployment.Trigger:   title,
+				DocoCDLabels.Metadata.Manager:   config.AppName,
+				DocoCDLabels.Metadata.Version:   config.AppVersion,
+				DocoCDLabels.Deployment.Trigger: title,
 			},
 		},
 		TaskTemplate: swarmTypes.TaskSpec{
@@ -87,6 +86,7 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode JobMode, comma
 	if err == nil {
 		serviceId = response.ID
 	} else {
+		// Update existing service to trigger a new job run
 		if strings.Contains(err.Error(), "already exists") {
 			// Get the existing service ID
 			filter := filters.NewArgs()
@@ -123,6 +123,7 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode JobMode, comma
 			}
 
 			// Update the ForceUpdate to trigger a new job run
+			existingService.Spec.TaskTemplate.ContainerSpec.Command = command
 			existingService.Spec.TaskTemplate.ForceUpdate = uint64(time.Now().Unix()) // #nosec G115
 
 			_, updateErr := apiClient.ServiceUpdate(ctx, serviceId, existingService.Version, existingService.Spec, updateOpts)
