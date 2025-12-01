@@ -13,6 +13,8 @@ import (
 
 const AppName = "doco-cd" // Name of the application
 
+var AppVersion = "dev" // Version of the application, to be set during build time
+
 // AppConfig is used to configure this application
 // https://github.com/caarlos0/env?tab=readme-ov-file#env-tag-options
 type AppConfig struct {

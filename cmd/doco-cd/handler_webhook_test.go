@@ -102,7 +102,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		dockerCli:    dockerCli,
 		dockerClient: dockerClient,
 		appConfig:    appConfig,
-		appVersion:   Version,
+		appVersion:   config.AppVersion,
 		dataMountPoint: container.MountPoint{
 			Type:        "bind",
 			Source:      tmpDir,
