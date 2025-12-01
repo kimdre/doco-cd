@@ -173,3 +173,13 @@ func RemoveLabeledVolumes(ctx context.Context, dockerClient *client.Client, stac
 
 	return nil
 }
+
+// imageDigest extracts the sha256 digest from a Docker image reference.
+func imageDigest(image string) string {
+	parts := strings.Split(image, "@sha256:")
+	if len(parts) == 2 {
+		return parts[1]
+	}
+
+	return ""
+}

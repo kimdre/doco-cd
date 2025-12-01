@@ -558,19 +558,6 @@ func DeployStack(
 
 			return fmt.Errorf("%s: %w", errMsg, err)
 		}
-
-		if deployConfig.PruneImages {
-			stackLog.Info("prune images on swarm nodes")
-
-			err = RunImagePruneJob(*ctx, *dockerCli)
-			if err != nil {
-				prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
-
-				errMsg := "failed to run image prune job"
-
-				return fmt.Errorf("%s: %w", errMsg, err)
-			}
-		}
 	} else {
 		hasChangedFiles, err := ProjectFilesHaveChanges(changedFiles, project)
 		if err != nil {
