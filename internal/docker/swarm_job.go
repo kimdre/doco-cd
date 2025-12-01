@@ -53,7 +53,7 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode JobMode, comma
 		title = "helper-job"
 	}
 
-	serviceSpec := swarmTypes.ServiceSpec{
+	newServiceSpec := swarmTypes.ServiceSpec{
 		Annotations: swarmTypes.Annotations{
 			Name: fmt.Sprintf("%s_%s", "doco-cd", title),
 			Labels: map[string]string{
@@ -82,7 +82,7 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode JobMode, comma
 		Mode: serviceMode,
 	}
 
-	response, err := apiClient.ServiceCreate(ctx, serviceSpec, createOpts)
+	response, err := apiClient.ServiceCreate(ctx, newServiceSpec, createOpts)
 	if err == nil {
 		serviceId = response.ID
 	} else {
@@ -90,7 +90,7 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode JobMode, comma
 		if strings.Contains(err.Error(), "already exists") {
 			// Get the existing service ID
 			filter := filters.NewArgs()
-			filter.Add("name", serviceSpec.Name)
+			filter.Add("name", newServiceSpec.Name)
 
 			services, listErr := apiClient.ServiceList(ctx, swarmTypes.ServiceListOptions{Filters: filter})
 			if listErr != nil {
@@ -102,7 +102,7 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode JobMode, comma
 			}
 
 			for _, service := range services {
-				if service.Spec.Name == serviceSpec.Name {
+				if service.Spec.Name == newServiceSpec.Name {
 					serviceId = service.ID
 					break
 				}
@@ -123,8 +123,9 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode JobMode, comma
 			}
 
 			// Update the ForceUpdate to trigger a new job run
-			existingService.Spec.TaskTemplate.ContainerSpec.Command = command
-			existingService.Spec.TaskTemplate.ForceUpdate = uint64(time.Now().Unix()) // #nosec G115
+			existingService.Spec.TaskTemplate.ContainerSpec.Labels = newServiceSpec.TaskTemplate.ContainerSpec.Labels
+			existingService.Spec.TaskTemplate.ContainerSpec.Command = newServiceSpec.TaskTemplate.ContainerSpec.Command
+			existingService.Spec.TaskTemplate.ForceUpdate = newServiceSpec.TaskTemplate.ForceUpdate
 
 			_, updateErr := apiClient.ServiceUpdate(ctx, serviceId, existingService.Version, existingService.Spec, updateOpts)
 			if updateErr != nil {
