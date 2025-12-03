@@ -71,17 +71,6 @@ func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any
 	}()
 }
 
-// getRepoName extracts the repository name from the clone URL.
-func getRepoName(cloneURL string) string {
-	repoName := strings.SplitAfter(cloneURL, "://")[1]
-
-	if strings.Contains(repoName, "@") {
-		repoName = strings.SplitAfter(repoName, "@")[1]
-	}
-
-	return strings.TrimSuffix(repoName, ".git")
-}
-
 // HandleEvent executes the deployment process for a given webhook event.
 func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *config.AppConfig,
 	dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget, jobID string,

@@ -128,3 +128,14 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 
 	return nil
 }
+
+// getRepoName extracts the repository name from the clone URL.
+func getRepoName(cloneURL string) string {
+	repoName := strings.SplitAfter(cloneURL, "://")[1]
+
+	if strings.Contains(repoName, "@") {
+		repoName = strings.SplitAfter(repoName, "@")[1]
+	}
+
+	return strings.TrimSuffix(repoName, ".git")
+}
