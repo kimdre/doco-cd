@@ -14,11 +14,11 @@ import (
 	testCompose "github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	apiInternal "github.com/kimdre/doco-cd/internal/api"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/logger"
+	restAPI "github.com/kimdre/doco-cd/internal/restapi"
 )
 
 // Make http call to HealthCheckHandler.
@@ -196,7 +196,7 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			req.Header.Set(apiInternal.KeyHeader, appConfig.ApiSecret)
+			req.Header.Set(restAPI.KeyHeader, appConfig.ApiSecret)
 			mux.ServeHTTP(rr, req)
 
 			t.Logf("API response: %s", rr.Body.String())
