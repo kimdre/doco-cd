@@ -12,11 +12,11 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config"
 
-	apiInternal "github.com/kimdre/doco-cd/internal/api"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
+	restAPI "github.com/kimdre/doco-cd/internal/restapi"
 )
 
 // registerHttpEndpoints registers the HTTP endpoints based on the application configuration and
@@ -167,9 +167,9 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 	jobLog.Debug("received api request")
 
-	if !apiInternal.ValidateApiKey(r, h.appConfig.ApiSecret) {
-		jobLog.Error(apiInternal.ErrInvalidApiKey.Error())
-		JSONError(w, apiInternal.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
+	if !restAPI.ValidateApiKey(r, h.appConfig.ApiSecret) {
+		jobLog.Error(restAPI.ErrInvalidApiKey.Error())
+		JSONError(w, restAPI.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
 
 		return
 	}
@@ -247,9 +247,9 @@ func (h *handlerData) GetProjectsApiHandler(w http.ResponseWriter, r *http.Reque
 
 	jobLog.Debug("received api request")
 
-	if !apiInternal.ValidateApiKey(r, h.appConfig.ApiSecret) {
-		jobLog.Error(apiInternal.ErrInvalidApiKey.Error())
-		JSONError(w, apiInternal.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
+	if !restAPI.ValidateApiKey(r, h.appConfig.ApiSecret) {
+		jobLog.Error(restAPI.ErrInvalidApiKey.Error())
+		JSONError(w, restAPI.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
 
 		return
 	}
@@ -285,9 +285,9 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 
 	jobLog.Debug("received api request")
 
-	if !apiInternal.ValidateApiKey(r, h.appConfig.ApiSecret) {
-		jobLog.Error(apiInternal.ErrInvalidApiKey.Error())
-		JSONError(w, apiInternal.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
+	if !restAPI.ValidateApiKey(r, h.appConfig.ApiSecret) {
+		jobLog.Error(restAPI.ErrInvalidApiKey.Error())
+		JSONError(w, restAPI.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
 
 		return
 	}
@@ -372,8 +372,8 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 
 		JSONResponse(w, "project restarted: "+projectName, jobID, http.StatusOK)
 	default:
-		jobLog.Error(apiInternal.ErrInvalidAction.Error())
-		JSONError(w, apiInternal.ErrInvalidAction.Error(), "action not supported: "+action, jobID, http.StatusBadRequest)
+		jobLog.Error(restAPI.ErrInvalidAction.Error())
+		JSONError(w, restAPI.ErrInvalidAction.Error(), "action not supported: "+action, jobID, http.StatusBadRequest)
 
 		return
 	}
@@ -391,9 +391,9 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 
 	jobLog.Debug("received api request")
 
-	if !apiInternal.ValidateApiKey(r, h.appConfig.ApiSecret) {
-		jobLog.Error(apiInternal.ErrInvalidApiKey.Error())
-		JSONError(w, apiInternal.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
+	if !restAPI.ValidateApiKey(r, h.appConfig.ApiSecret) {
+		jobLog.Error(restAPI.ErrInvalidApiKey.Error())
+		JSONError(w, restAPI.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
 
 		return
 	}
@@ -500,8 +500,8 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 
 		JSONResponse(w, "stack restarted: "+stackName, jobID, http.StatusOK)
 	default:
-		jobLog.Error(apiInternal.ErrInvalidAction.Error())
-		JSONError(w, apiInternal.ErrInvalidAction.Error(), "action not supported: "+action, jobID, http.StatusBadRequest)
+		jobLog.Error(restAPI.ErrInvalidAction.Error())
+		JSONError(w, restAPI.ErrInvalidAction.Error(), "action not supported: "+action, jobID, http.StatusBadRequest)
 
 		return
 	}
@@ -517,9 +517,9 @@ func (h *handlerData) StackApiHandler(w http.ResponseWriter, r *http.Request) {
 
 	jobLog.Debug("received api request")
 
-	if !apiInternal.ValidateApiKey(r, h.appConfig.ApiSecret) {
-		jobLog.Error(apiInternal.ErrInvalidApiKey.Error())
-		JSONError(w, apiInternal.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
+	if !restAPI.ValidateApiKey(r, h.appConfig.ApiSecret) {
+		jobLog.Error(restAPI.ErrInvalidApiKey.Error())
+		JSONError(w, restAPI.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
 
 		return
 	}
@@ -592,9 +592,9 @@ func (h *handlerData) GetStacksApiHandler(w http.ResponseWriter, r *http.Request
 
 	jobLog.Debug("received api request")
 
-	if !apiInternal.ValidateApiKey(r, h.appConfig.ApiSecret) {
-		jobLog.Error(apiInternal.ErrInvalidApiKey.Error())
-		JSONError(w, apiInternal.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
+	if !restAPI.ValidateApiKey(r, h.appConfig.ApiSecret) {
+		jobLog.Error(restAPI.ErrInvalidApiKey.Error())
+		JSONError(w, restAPI.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
 
 		return
 	}
