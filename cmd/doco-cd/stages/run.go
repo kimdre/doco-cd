@@ -2,7 +2,7 @@ package stages
 
 import (
 	"errors"
-	"fmt"
+	"log/slog"
 	"time"
 )
 
@@ -23,17 +23,21 @@ func (s *StageManager) GetDefaultStageOrder() StageOrder {
 }
 
 // RunStages executes the stages in the defined order.
-func (s *StageManager) RunStages() error {
+func (s *StageManager) RunStages() {
 	stageOrder := s.GetDefaultStageOrder()
 
 	for stageName, stageFunc := range stageOrder {
+		s.Log.Debug(string("begin stage "+stageName), slog.String("stage", string(stageName)))
+
 		err := stageFunc()
 		if err != nil {
-			return fmt.Errorf("stage %s: %w", stageName, err)
+			s.Fail(stageName, err)
+			return
 		}
+		s.Log.Debug(string("completed stage "+stageName), slog.String("stage", string(stageName)))
 	}
 
-	return nil
+	s.Notify("deployment completed successfully")
 }
 
 func (s *StageManager) RunPreDeployStage() error {
