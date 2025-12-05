@@ -66,7 +66,7 @@ func GetLabeledContainers(ctx context.Context, cli *client.Client, key, value st
 		}
 
 		if len(containerIDs) == 0 {
-			return nil, fmt.Errorf("%w: %s", ErrContainerIDNotFound, key)
+			return nil, nil
 		}
 
 		return cli.ContainerList(ctx, container.ListOptions{
