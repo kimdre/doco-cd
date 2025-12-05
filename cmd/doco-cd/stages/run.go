@@ -1,81 +1,76 @@
 package stages
 
 import (
+	"context"
 	"errors"
-	"log/slog"
-	"time"
 )
 
-var NotImplementedError = errors.New("not implemented")
+// StageOrder holds the ordered list of stage names and their corresponding functions.
+type StageOrder struct {
+	Order []StageName                                   // The order of stages to be executed
+	Funcs map[StageName]func(ctx context.Context) error // Mapping of stage names to their execution functions
+}
 
-// StageOrder defines the order of stages to be executed in the deployment process.
-type StageOrder map[StageName]func() error
-
-// GetDefaultStageOrder returns the default order of stages for the deployment process.
-func (s *StageManager) GetDefaultStageOrder() StageOrder {
+// GetDeployStageOrder returns the order of stages for the deployment process.
+func (s *StageManager) GetDeployStageOrder() StageOrder {
 	return StageOrder{
-		StageInit:       func() error { return s.RunInitStage() },
-		StagePreDeploy:  func() error { return s.RunPreDeployStage() },
-		StageDeploy:     func() error { return s.RunDeployStage() },
-		StagePostDeploy: func() error { return s.RunPostDeployStage() },
-		StageCleanup:    func() error { return s.RunCleanupStage() },
+		Order: []StageName{
+			StageInit,
+			StagePreDeploy,
+			StageDeploy,
+			StagePostDeploy,
+			StageCleanup,
+		},
+		Funcs: map[StageName]func(ctx context.Context) error{
+			StageInit:       func(ctx context.Context) error { return s.RunInitStage(ctx) },
+			StagePreDeploy:  func(ctx context.Context) error { return s.RunPreDeployStage(ctx) },
+			StageDeploy:     func(ctx context.Context) error { return s.RunDeployStage(ctx) },
+			StagePostDeploy: func(ctx context.Context) error { return s.RunPostDeployStage(ctx) },
+			StageCleanup:    func(ctx context.Context) error { return s.RunCleanupStage(ctx) },
+		},
+	}
+}
+
+// GetDestroyStageOrder returns the order of stages for the destroy process.
+func (s *StageManager) GetDestroyStageOrder() StageOrder {
+	return StageOrder{
+		Order: []StageName{
+			StageInit,
+			StageDestroy,
+			StageCleanup,
+		},
+		Funcs: map[StageName]func(ctx context.Context) error{
+			StageInit:    func(ctx context.Context) error { return s.RunInitStage(ctx) },
+			StageDestroy: func(ctx context.Context) error { return s.RunDestroyStage(ctx) },
+			StageCleanup: func(ctx context.Context) error { return s.RunCleanupStage(ctx) },
+		},
 	}
 }
 
 // RunStages executes the stages in the defined order.
-func (s *StageManager) RunStages() {
-	stageOrder := s.GetDefaultStageOrder()
-
-	for stageName, stageFunc := range stageOrder {
-		s.Log.Debug(string("begin stage "+stageName), slog.String("stage", string(stageName)))
-
-		err := stageFunc()
-		if err != nil {
-			s.Fail(stageName, err)
-			return
-		}
-		s.Log.Debug(string("completed stage "+stageName), slog.String("stage", string(stageName)))
+func (s *StageManager) RunStages(ctx context.Context) error {
+	stageOrder := s.GetDeployStageOrder()
+	if s.DeployConfig.Destroy {
+		stageOrder = s.GetDestroyStageOrder()
 	}
 
-	s.Notify("deployment completed successfully")
-}
+	for _, stageName := range stageOrder.Order {
+		s.Log.Debug(string("begin stage: " + stageName))
 
-func (s *StageManager) RunPreDeployStage() error {
-	s.Stages.PreDeploy.MetaData.StartedAt = time.Now()
+		err := stageOrder.Funcs[stageName](ctx)
+		if err != nil {
+			// If the error is ErrSkipDeployment, we don't treat it as a failure
+			if errors.Is(err, ErrSkipDeployment) {
+				return nil
+			}
 
-	defer func() {
-		s.Stages.PreDeploy.MetaData.FinishedAt = time.Now()
-	}()
+			s.NotifyFailure(err)
 
-	return NotImplementedError
-}
+			return err
+		}
 
-func (s *StageManager) RunDeployStage() error {
-	s.Stages.Deploy.MetaData.StartedAt = time.Now()
+		s.Log.Debug(string("completed stage " + stageName))
+	}
 
-	defer func() {
-		s.Stages.Deploy.MetaData.FinishedAt = time.Now()
-	}()
-
-	return NotImplementedError
-}
-
-func (s *StageManager) RunPostDeployStage() error {
-	s.Stages.PostDeploy.MetaData.StartedAt = time.Now()
-
-	defer func() {
-		s.Stages.PostDeploy.MetaData.FinishedAt = time.Now()
-	}()
-
-	return NotImplementedError
-}
-
-func (s *StageManager) RunCleanupStage() error {
-	s.Stages.Cleanup.MetaData.StartedAt = time.Now()
-
-	defer func() {
-		s.Stages.Cleanup.MetaData.FinishedAt = time.Now()
-	}()
-
-	return NotImplementedError
+	return nil
 }

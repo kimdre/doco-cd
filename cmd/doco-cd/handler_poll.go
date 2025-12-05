@@ -5,25 +5,22 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/kimdre/doco-cd/internal/docker/swarm"
-	"github.com/kimdre/doco-cd/internal/notification"
-	"github.com/kimdre/doco-cd/internal/secretprovider"
-	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
-
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
-	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/google/uuid"
 
+	"github.com/kimdre/doco-cd/cmd/doco-cd/stages"
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
+	"github.com/kimdre/doco-cd/internal/notification"
+	"github.com/kimdre/doco-cd/internal/secretprovider"
+
 	"github.com/kimdre/doco-cd/internal/config"
-	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
 	log "github.com/kimdre/doco-cd/internal/logger"
@@ -245,333 +242,42 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	}
 
 	for _, deployConfig := range deployConfigs {
-		subJobLog := jobLog.With()
+		jobLog.Debug("starting stack manager", slog.String("stack", deployConfig.Name))
 
-		repoName = getRepoName(string(pollConfig.CloneUrl))
-		if deployConfig.RepositoryUrl != "" {
-			repoName = getRepoName(string(deployConfig.RepositoryUrl))
-
-			// Load all local deployConfig.EnvFiles and load their variables
-			err = config.LoadLocalDotEnv(deployConfig, internalRepoPath)
-			if err != nil {
-				results = append(results, pollResult{Metadata: metadata, Err: err})
-				pollError(subJobLog, metadata, fmt.Errorf("failed to parse local env files: %w", err))
-
-				continue
-			}
+		failFunc := func(err error, metadata notification.Metadata) {
+			pollError(jobLog, metadata, err)
 		}
 
-		metadata.Repository = repoName
-		metadata.Stack = deployConfig.Name
-		metadata.Revision = notification.GetRevision(deployConfig.Reference, "")
-
-		// fullName is the repoName without the domain part,
-		// e.g. "github.com/kimdre/doco-cd" becomes "kimdre/doco-cd"
-		// or "git.example.com/doco-cd" becomes "doco-cd"
-		parts := strings.Split(repoName, "/")
-		fullName := repoName
-
-		if len(parts) > 2 {
-			fullName = strings.Join(parts[1:], "/")
-		} else if len(parts) == 2 {
-			fullName = parts[1]
-		}
-
-		internalRepoPath, err = filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
-		if err != nil {
-			results = append(results, pollResult{Metadata: metadata, Err: err})
-			pollError(subJobLog, metadata, fmt.Errorf("failed to verify and sanitize internal filesystem path: %w", err))
-
-			continue
-		}
-
-		externalRepoPath, err = filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Source, repoName), dataMountPoint.Source) // Path on the host
-		if err != nil {
-			results = append(results, pollResult{Metadata: metadata, Err: err})
-			pollError(subJobLog, metadata, fmt.Errorf("failed to verify and sanitize external filesystem path: %w", err))
-
-			continue
-		}
-
-		subJobLog = subJobLog.With(
-			slog.String("stack", deployConfig.Name),
-			slog.String("reference", deployConfig.Reference),
-			slog.String("repository", repoName),
+		stageMgr := stages.NewStageManager(
+			metadata.JobID,
+			stages.JobTriggerPoll,
+			jobLog.With(),
+			failFunc,
+			&stages.RepositoryData{
+				CloneURL:     pollConfig.CloneUrl,
+				Name:         repoName,
+				Reference:    pollConfig.Reference,
+				PathInternal: internalRepoPath,
+				PathExternal: externalRepoPath,
+			},
+			&stages.Docker{
+				Cmd:            dockerCli,
+				Client:         dockerClient,
+				DataMountPoint: dataMountPoint,
+			},
+			&webhook.ParsedPayload{},
+			appConfig,
+			deployConfig,
+			secretProvider,
 		)
 
-		subJobLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
-
-		if deployConfig.RepositoryUrl != "" {
-			cloneUrl = string(deployConfig.RepositoryUrl)
-			if appConfig.GitAccessToken != "" {
-				cloneUrl = git.GetAuthUrl(string(deployConfig.RepositoryUrl), appConfig.AuthType, appConfig.GitAccessToken)
-			}
-
-			subJobLog.Debug("repository URL provided, cloning remote repository")
-			// Try to clone the remote repository
-			_, err = git.CloneRepository(internalRepoPath, cloneUrl, deployConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
-			if err != nil && !errors.Is(err, git.ErrRepositoryAlreadyExists) {
-				results = append(results, pollResult{Metadata: metadata, Err: err})
-				pollError(subJobLog, metadata, fmt.Errorf("failed to clone repository: %w", err))
-
-				continue
-			}
-
-			subJobLog.Debug("remote repository cloned", slog.String("path", externalRepoPath))
-		}
-
-		subJobLog.Debug("checking out reference "+deployConfig.Reference, slog.String("host_path", externalRepoPath))
-
-		repo, err := git.UpdateRepository(internalRepoPath, cloneUrl, deployConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
+		err = stageMgr.RunStages(ctx)
 		if err != nil {
+			pollError(jobLog, metadata, fmt.Errorf("failed to deploy stack %s: %w", deployConfig.Name, err))
+
 			results = append(results, pollResult{Metadata: metadata, Err: err})
-			pollError(subJobLog, metadata, fmt.Errorf("failed to checkout repository: %w", err))
 
 			continue
-		}
-
-		latestCommit, err := git.GetLatestCommit(repo, deployConfig.Reference)
-		if err != nil {
-			results = append(results, pollResult{Metadata: metadata, Err: err})
-			pollError(subJobLog, metadata, fmt.Errorf("failed to get latest commit: %w", err))
-
-			continue
-		}
-
-		metadata.Revision = notification.GetRevision(deployConfig.Reference, latestCommit)
-
-		if deployConfig.Destroy {
-			subJobLog.Debug("destroying stack")
-
-			// Check if doco-cd manages the project before destroying the stack
-			serviceLabels, err := docker.GetServiceLabels(ctx, dockerClient, deployConfig.Name)
-			if err != nil {
-				results = append(results, pollResult{Metadata: metadata, Err: err})
-				pollError(subJobLog, metadata, fmt.Errorf("failed to retrieve service labels: %w", err))
-
-				continue
-			}
-
-			// If no containers are found, skip the destruction step
-			if len(serviceLabels) == 0 {
-				subJobLog.Debug("no containers found for stack, skipping...")
-
-				continue
-			}
-
-			// Check if doco-cd manages the stack
-			managed := false
-			correctRepo := false
-
-			for _, labels := range serviceLabels {
-				if labels[docker.DocoCDLabels.Metadata.Manager] == config.AppName {
-					managed = true
-
-					if labels[docker.DocoCDLabels.Repository.Name] == fullName {
-						correctRepo = true
-					}
-
-					break
-				}
-			}
-
-			if !managed {
-				results = append(results, pollResult{Metadata: metadata, Err: err})
-				pollError(subJobLog, metadata, fmt.Errorf("%w: %s: aborting destruction", ErrNotManagedByDocoCD, deployConfig.Name))
-
-				continue
-			}
-
-			if !correctRepo {
-				results = append(results, pollResult{Metadata: metadata, Err: err})
-				pollError(subJobLog, metadata, fmt.Errorf("%w: %s: aborting destruction", ErrDeploymentConflict, deployConfig.Name))
-
-				continue
-			}
-
-			err = docker.DestroyStack(subJobLog, &ctx, &dockerCli, deployConfig, metadata)
-			if err != nil {
-				results = append(results, pollResult{Metadata: metadata, Err: err})
-				pollError(subJobLog, metadata, fmt.Errorf("failed to destroy stack: %w", err))
-
-				continue
-			}
-
-			if swarm.ModeEnabled && deployConfig.DestroyOpts.RemoveVolumes {
-				err = docker.RemoveLabeledVolumes(ctx, dockerClient, deployConfig.Name)
-				if err != nil {
-					results = append(results, pollResult{Metadata: metadata, Err: err})
-					pollError(subJobLog, metadata, fmt.Errorf("failed to remove volumes: %w", err))
-
-					continue
-				}
-			}
-
-			if deployConfig.DestroyOpts.RemoveRepoDir {
-				// Remove the repository directory after destroying the stack
-				subJobLog.Debug("removing deployment directory", slog.String("path", externalRepoPath))
-				// Check if the parent directory has multiple subdirectories/repos
-				parentDir := filepath.Dir(internalRepoPath)
-
-				subDirs, err := os.ReadDir(parentDir)
-				if err != nil {
-					results = append(results, pollResult{Metadata: metadata, Err: err})
-					pollError(subJobLog, metadata, fmt.Errorf("failed to read parent directory: %w", err))
-
-					continue
-				}
-
-				if len(subDirs) > 1 {
-					// Do not remove the parent directory if it has multiple subdirectories
-					subJobLog.Debug("remove deployment directory but keep parent directory as it has multiple subdirectories", slog.String("path", internalRepoPath))
-
-					// Remove only the repository directory
-					err = os.RemoveAll(internalRepoPath)
-					if err != nil {
-						results = append(results, pollResult{Metadata: metadata, Err: err})
-						pollError(subJobLog, metadata, fmt.Errorf("failed to remove deployment directory: %w", err))
-
-						continue
-					}
-				} else {
-					// Remove the parent directory if it has only one subdirectory
-					err = os.RemoveAll(parentDir)
-					if err != nil {
-						results = append(results, pollResult{Metadata: metadata, Err: err})
-						pollError(subJobLog, metadata, fmt.Errorf("failed to remove deployment directory: %w", err))
-
-						continue
-					}
-
-					subJobLog.Debug("removed directory", slog.String("path", parentDir))
-				}
-			}
-		} else {
-			// Skip deployment if another project with the same name already exists
-			// Check if containers do not belong to this repository or if doco-cd does not manage the stack
-			correctRepo := true
-			deployedCommit := ""
-			deployedSecretHash := ""
-
-			serviceLabels, err := docker.GetServiceLabels(ctx, dockerClient, deployConfig.Name)
-			if err != nil {
-				results = append(results, pollResult{Metadata: metadata, Err: err})
-				pollError(subJobLog, metadata, fmt.Errorf("failed to retrieve service labels: %w", err))
-
-				continue
-			}
-
-			for _, labels := range serviceLabels {
-				name, ok := labels[docker.DocoCDLabels.Repository.Name]
-				if !ok || name != fullName {
-					correctRepo = false
-					break
-				}
-
-				deployedCommit = labels[docker.DocoCDLabels.Deployment.CommitSHA]
-				deployedSecretHash = labels[docker.DocoCDLabels.Deployment.ExternalSecretsHash]
-			}
-
-			if !correctRepo {
-				results = append(results, pollResult{Metadata: metadata, Err: err})
-				pollError(subJobLog, metadata, fmt.Errorf("%w: %s: skipping deployment", ErrDeploymentConflict, deployConfig.Name))
-
-				continue
-			}
-
-			secretsChanged := false // Flag to indicate if external secrets have changed
-
-			resolvedSecrets := make(secrettypes.ResolvedSecrets)
-
-			if secretProvider != nil && *secretProvider != nil && len(deployConfig.ExternalSecrets) > 0 {
-				subJobLog.Debug("resolving external secrets", slog.Any("external_secrets", deployConfig.ExternalSecrets))
-
-				// Resolve external secrets
-				resolvedSecrets, err = (*secretProvider).ResolveSecretReferences(ctx, deployConfig.ExternalSecrets)
-				if err != nil {
-					results = append(results, pollResult{Metadata: metadata, Err: err})
-					pollError(subJobLog, metadata, fmt.Errorf("failed to resolve external secrets: %w", err))
-
-					continue
-				}
-
-				secretHash := secretprovider.Hash(resolvedSecrets)
-				if deployedSecretHash != "" && deployedSecretHash != secretHash {
-					subJobLog.Debug("external secrets have changed, proceeding with deployment")
-
-					secretsChanged = true
-				}
-			}
-
-			subJobLog.Debug("comparing commits",
-				slog.String("deployed_commit", deployedCommit),
-				slog.String("latest_commit", latestCommit))
-
-			if latestCommit == deployedCommit && !secretsChanged && !deployConfig.ForceImagePull {
-				subJobLog.Debug("no new commit found, skipping deployment", slog.String("last_commit", latestCommit))
-
-				continue
-			}
-
-			var changedFiles []git.ChangedFile
-			if deployedCommit != "" {
-				changedFiles, err = git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(deployedCommit), plumbing.NewHash(latestCommit))
-				if err != nil {
-					results = append(results, pollResult{Metadata: metadata, Err: err})
-					pollError(subJobLog, metadata, fmt.Errorf("failed to get changed files between commits: %w", err))
-
-					continue
-				}
-
-				filesChanged, err := git.HasChangesInSubdir(changedFiles, internalRepoPath, deployConfig.WorkingDirectory)
-				if err != nil {
-					results = append(results, pollResult{Metadata: metadata, Err: err})
-					pollError(subJobLog, metadata, fmt.Errorf("failed to compare commits in subdirectory: %w", err))
-
-					continue
-				}
-
-				if !filesChanged && !secretsChanged && !deployConfig.ForceImagePull {
-					jobLog.Debug("no changes detected in subdirectory, skipping deployment",
-						slog.String("directory", deployConfig.WorkingDirectory),
-						slog.String("last_commit", latestCommit),
-						slog.String("deployed_commit", deployedCommit))
-
-					continue
-				}
-
-				if filesChanged {
-					subJobLog.Debug("changes detected in subdirectory, proceeding with deployment",
-						slog.String("directory", deployConfig.WorkingDirectory),
-						slog.String("last_commit", latestCommit),
-						slog.String("deployed_commit", deployedCommit))
-				}
-			}
-
-			payload := webhook.ParsedPayload{
-				Ref:       pollConfig.Reference,
-				CommitSHA: "poll",
-				Name:      shortName,
-				FullName:  fullName,
-				CloneURL:  string(pollConfig.CloneUrl),
-				WebURL:    string(pollConfig.CloneUrl),
-			}
-
-			forceDeploy := shouldForceDeploy(deployConfig.Name, latestCommit, appConfig.MaxDeploymentLoopCount)
-			if forceDeploy {
-				subJobLog.Warn("deployment loop detected for stack, forcing deployment",
-					slog.String("stack", deployConfig.Name),
-					slog.String("commit", latestCommit))
-			}
-
-			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, dockerClient,
-				&payload, deployConfig, changedFiles, latestCommit, config.AppVersion, "poll", forceDeploy, metadata, resolvedSecrets, secretsChanged)
-			if err != nil {
-				results = append(results, pollResult{Metadata: metadata, Err: err})
-				pollError(subJobLog, metadata, fmt.Errorf("failed to deploy stack %s: %w", deployConfig.Name, err))
-
-				continue
-			}
 		}
 
 		results = append(results, pollResult{Metadata: metadata, Err: nil})
