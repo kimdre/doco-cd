@@ -14,6 +14,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/google/uuid"
+
 	"github.com/kimdre/doco-cd/cmd/doco-cd/stages"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -213,13 +214,18 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				Client:         dockerClient,
 				DataMountPoint: dataMountPoint,
 			},
-			&webhook.ParsedPayload{},
+			&payload,
 			appConfig,
 			deployConfig,
 			secretProvider,
 		)
 
 		err = stageMgr.RunStages(ctx)
+		if err != nil {
+			onError(w, jobLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), http.StatusInternalServerError, metadata)
+
+			return
+		}
 	}
 
 	msg := "job completed successfully"
