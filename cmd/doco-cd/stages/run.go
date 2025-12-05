@@ -3,6 +3,7 @@ package stages
 import (
 	"context"
 	"errors"
+	"log/slog"
 )
 
 // StageOrder holds the ordered list of stage names and their corresponding functions.
@@ -55,10 +56,11 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 	}
 
 	for _, stageName := range stageOrder.Order {
-		s.Log.Debug(string("begin stage: " + stageName))
+		s.Log.Debug(string("begin stage: "+stageName), slog.String("stage", string(stageName)))
 
 		err := stageOrder.Funcs[stageName](ctx)
 		if err != nil {
+			s.Log.Debug(string("end stage early: "+stageName), slog.String("stage", string(stageName)), slog.String("reason", err.Error()))
 			// If the error is ErrSkipDeployment, we don't treat it as a failure
 			if errors.Is(err, ErrSkipDeployment) {
 				return nil
@@ -69,7 +71,7 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 			return err
 		}
 
-		s.Log.Debug(string("completed stage " + stageName))
+		s.Log.Debug(string("completed stage "+stageName), slog.String("stage", string(stageName)))
 	}
 
 	return nil

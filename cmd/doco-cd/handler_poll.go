@@ -170,7 +170,10 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		jobLog = jobLog.With(slog.String("custom_target", pollConfig.CustomTarget))
 	}
 
-	jobLog.Info("polling repository", slog.Group("trigger", slog.String("event", "poll"), slog.Any("config", pollConfig)))
+	jobLog.Info("polling repository",
+		slog.Group("trigger",
+			slog.String("event", string(stages.JobTriggerPoll)),
+			slog.Any("config", pollConfig)))
 
 	jobLog.Debug("get repository",
 		slog.String("url", cloneUrl))
@@ -242,9 +245,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	}
 
 	for _, deployConfig := range deployConfigs {
-		jobLog.Debug("starting stack manager", slog.String("stack", deployConfig.Name))
-
-		failFunc := func(err error, metadata notification.Metadata) {
+		failNotifyFunc := func(err error, metadata notification.Metadata) {
 			pollError(jobLog, metadata, err)
 		}
 
@@ -252,7 +253,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			metadata.JobID,
 			stages.JobTriggerPoll,
 			jobLog.With(),
-			failFunc,
+			failNotifyFunc,
 			&stages.RepositoryData{
 				CloneURL:     pollConfig.CloneUrl,
 				Name:         repoName,

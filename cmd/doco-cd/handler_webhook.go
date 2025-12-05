@@ -6,25 +6,20 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
-
-	"github.com/kimdre/doco-cd/internal/docker/swarm"
-	"github.com/kimdre/doco-cd/internal/notification"
-	"github.com/kimdre/doco-cd/internal/secretprovider"
-	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
-	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/google/uuid"
+	"github.com/kimdre/doco-cd/cmd/doco-cd/stages"
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
+	"github.com/kimdre/doco-cd/internal/notification"
+	"github.com/kimdre/doco-cd/internal/secretprovider"
 
 	"github.com/kimdre/doco-cd/internal/config"
-	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
@@ -89,7 +84,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	jobLog.Info("received new job",
 		slog.Group("trigger",
 			slog.String("commit", payload.CommitSHA), slog.String("ref", payload.Ref),
-			slog.String("event", "webhook")))
+			slog.String("event", string(stages.JobTriggerWebhook))))
 
 	metadata := notification.Metadata{
 		JobID:      jobID,
@@ -197,305 +192,34 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	for _, deployConfig := range deployConfigs {
-		subJobLog := jobLog.With()
-
-		// Validate the webhook event reference against the WebhookEventFilter in the deployment config
-		if deployConfig.WebhookEventFilter != "" {
-			filter := regexp.MustCompile(deployConfig.WebhookEventFilter)
-			if !filter.MatchString(payload.Ref) {
-				subJobLog.Debug("reference does not match the webhook event filter, skipping deployment", slog.String("webhook_filter", deployConfig.WebhookEventFilter), slog.String("ref", payload.Ref))
-				continue
-			}
-
-			subJobLog.Debug("reference matches the webhook event filter, proceeding with deployment", slog.String("webhook_filter", deployConfig.WebhookEventFilter), slog.String("ref", payload.Ref))
+		failNotifyFunc := func(err error, metadata notification.Metadata) {
+			onError(w, jobLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), http.StatusInternalServerError, metadata)
 		}
 
-		repoName = getRepoName(payload.CloneURL)
-		if deployConfig.RepositoryUrl != "" {
-			repoName = getRepoName(string(deployConfig.RepositoryUrl))
-
-			err = config.LoadLocalDotEnv(deployConfig, internalRepoPath)
-			if err != nil {
-				onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to parse local env files", err.Error(), http.StatusInternalServerError, metadata)
-
-				return
-			}
-		}
-
-		metadata.Repository = repoName
-		metadata.Revision = notification.GetRevision(deployConfig.Reference, "")
-		metadata.Stack = deployConfig.Name
-
-		internalRepoPath, err = filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
-		if err != nil {
-			onError(w, subJobLog.With(logger.ErrAttr(err)), "invalid repository name", err.Error(), http.StatusBadRequest, metadata)
-
-			return
-		}
-
-		externalRepoPath, err = filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Source, repoName), dataMountPoint.Source) // Path on the host
-		if err != nil {
-			onError(w, subJobLog.With(logger.ErrAttr(err)), "invalid repository name", err.Error(), http.StatusBadRequest, metadata)
-
-			return
-		}
-
-		subJobLog = subJobLog.With(
-			slog.String("stack", deployConfig.Name),
-			slog.String("reference", deployConfig.Reference),
-			slog.String("repository", repoName),
+		stageMgr := stages.NewStageManager(
+			metadata.JobID,
+			stages.JobTriggerPoll,
+			jobLog.With(),
+			failNotifyFunc,
+			&stages.RepositoryData{
+				CloneURL:     config.HttpUrl(payload.CloneURL),
+				Name:         repoName,
+				Reference:    payload.Ref,
+				PathInternal: internalRepoPath,
+				PathExternal: externalRepoPath,
+			},
+			&stages.Docker{
+				Cmd:            dockerCli,
+				Client:         dockerClient,
+				DataMountPoint: dataMountPoint,
+			},
+			&webhook.ParsedPayload{},
+			appConfig,
+			deployConfig,
+			secretProvider,
 		)
 
-		subJobLog.Debug("deployment configuration retrieved", slog.Any("config", deployConfig))
-
-		var cloneUrl string
-
-		if deployConfig.RepositoryUrl != "" {
-			cloneUrl = string(deployConfig.RepositoryUrl)
-			if appConfig.GitAccessToken != "" {
-				cloneUrl = git.GetAuthUrl(string(deployConfig.RepositoryUrl), appConfig.AuthType, appConfig.GitAccessToken)
-			}
-
-			subJobLog.Debug("repository URL provided, cloning remote repository")
-			// Try to clone the remote repository
-			_, err = git.CloneRepository(internalRepoPath, cloneUrl, deployConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
-			if err != nil && !errors.Is(err, git.ErrRepositoryAlreadyExists) {
-				onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to clone remote repository", err.Error(), http.StatusInternalServerError, metadata)
-
-				return
-			}
-
-			subJobLog.Debug("remote repository cloned", slog.String("path", externalRepoPath))
-		}
-
-		subJobLog.Debug("checking out reference "+deployConfig.Reference, slog.String("host_path", externalRepoPath))
-
-		repo, err := git.UpdateRepository(internalRepoPath, cloneUrl, deployConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
-		if err != nil {
-			onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), http.StatusInternalServerError, metadata)
-
-			return
-		}
-
-		latestCommit, err := git.GetLatestCommit(repo, deployConfig.Reference)
-		if err != nil {
-			onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to get latest commit", err.Error(), http.StatusInternalServerError, metadata)
-
-			return
-		}
-
-		metadata.Revision = notification.GetRevision(deployConfig.Reference, latestCommit)
-
-		if deployConfig.Destroy {
-			subJobLog.Debug("destroying stack")
-
-			// Check if doco-cd manages the project before destroying the stack
-			serviceLabels, err := docker.GetServiceLabels(ctx, dockerClient, deployConfig.Name)
-			if err != nil {
-				onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to retrieve service labels", err.Error(), http.StatusInternalServerError, metadata)
-
-				return
-			}
-
-			// If no containers are found, skip the destruction step
-			if len(serviceLabels) == 0 {
-				subJobLog.Debug("no containers found for stack, skipping...")
-
-				continue
-			}
-
-			// Check if doco-cd manages the stack
-			managed := false
-			correctRepo := false
-
-			for _, labels := range serviceLabels {
-				if labels[docker.DocoCDLabels.Metadata.Manager] == config.AppName {
-					managed = true
-
-					if labels[docker.DocoCDLabels.Repository.Name] == payload.FullName {
-						correctRepo = true
-					}
-
-					break
-				}
-			}
-
-			if !managed {
-				onError(w, subJobLog, fmt.Errorf("%w: %s: aborting destruction", ErrNotManagedByDocoCD, deployConfig.Name).Error(),
-					"", http.StatusInternalServerError, metadata)
-
-				return
-			}
-
-			if !correctRepo {
-				onError(w, subJobLog, fmt.Errorf("%w: %s: aborting destruction", ErrDeploymentConflict, deployConfig.Name).Error(),
-					map[string]string{"stack": deployConfig.Name}, http.StatusInternalServerError, metadata)
-
-				return
-			}
-
-			err = docker.DestroyStack(subJobLog, &ctx, &dockerCli, deployConfig, metadata)
-			if err != nil {
-				onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to destroy stack", err.Error(), http.StatusInternalServerError, metadata)
-
-				return
-			}
-
-			if swarm.ModeEnabled && deployConfig.DestroyOpts.RemoveVolumes {
-				err = docker.RemoveLabeledVolumes(ctx, dockerClient, deployConfig.Name)
-				if err != nil {
-					onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to remove volumes", err.Error(), http.StatusInternalServerError, metadata)
-
-					return
-				}
-
-				subJobLog.Debug("failed to remove volumes", slog.String("stack", deployConfig.Name))
-			}
-
-			if deployConfig.DestroyOpts.RemoveRepoDir {
-				// Remove the repository directory after destroying the stack
-				subJobLog.Debug("removing deployment directory", slog.String("path", externalRepoPath))
-				// Check if the parent directory has multiple subdirectories/repos
-				parentDir := filepath.Dir(internalRepoPath)
-
-				subDirs, err := os.ReadDir(parentDir)
-				if err != nil {
-					onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to read parent directory", err.Error(), http.StatusInternalServerError, metadata)
-
-					return
-				}
-
-				if len(subDirs) > 1 {
-					// Do not remove the parent directory if it has multiple subdirectories
-					subJobLog.Debug("remove deployment directory but keep parent directory as it has multiple subdirectories", slog.String("path", internalRepoPath))
-
-					// Remove only the repository directory
-					err = os.RemoveAll(internalRepoPath)
-					if err != nil {
-						onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to remove deployment directory", err.Error(), http.StatusInternalServerError, metadata)
-
-						return
-					}
-				} else {
-					// Remove the parent directory if it has only one subdirectory
-					err = os.RemoveAll(parentDir)
-					if err != nil {
-						onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to remove deployment directory", err.Error(), http.StatusInternalServerError, metadata)
-
-						return
-					}
-
-					subJobLog.Debug("removed directory", slog.String("path", parentDir))
-				}
-			}
-		} else {
-			// Skip deployment if another project with the same name already exists
-			// Check if containers do not belong to this repository or if doco-cd does not manage the stack
-			correctRepo := true
-			deployedCommit := ""
-			deployedSecretHash := ""
-
-			serviceLabels, err := docker.GetServiceLabels(ctx, dockerClient, deployConfig.Name)
-			if err != nil {
-				onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to retrieve service labels", err.Error(), http.StatusInternalServerError, metadata)
-
-				return
-			}
-
-			for _, labels := range serviceLabels {
-				name, ok := labels[docker.DocoCDLabels.Repository.Name]
-				if !ok || name != payload.FullName {
-					correctRepo = false
-
-					break
-				}
-
-				deployedCommit = labels[docker.DocoCDLabels.Deployment.CommitSHA]
-				deployedSecretHash = labels[docker.DocoCDLabels.Deployment.ExternalSecretsHash]
-			}
-
-			if !correctRepo {
-				onError(w, subJobLog, fmt.Errorf("%w: %s: skipping deployment", ErrDeploymentConflict, deployConfig.Name).Error(),
-					map[string]string{"stack": deployConfig.Name}, http.StatusInternalServerError, metadata)
-
-				return
-			}
-
-			secretsChanged := false // Flag to indicate if external secrets have changed
-
-			resolvedSecrets := make(secrettypes.ResolvedSecrets)
-
-			if secretProvider != nil && *secretProvider != nil && len(deployConfig.ExternalSecrets) > 0 {
-				subJobLog.Debug("resolving external secrets", slog.Any("external_secrets", deployConfig.ExternalSecrets))
-
-				// Resolve external secrets
-				resolvedSecrets, err = (*secretProvider).ResolveSecretReferences(ctx, deployConfig.ExternalSecrets)
-				if err != nil {
-					onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to resolve external secrets", err.Error(), http.StatusInternalServerError, metadata)
-
-					return
-				}
-
-				secretHash := secretprovider.Hash(resolvedSecrets)
-				if deployedSecretHash != "" && deployedSecretHash != secretHash {
-					subJobLog.Debug("external secrets have changed, proceeding with deployment")
-
-					secretsChanged = true
-				}
-			}
-
-			subJobLog.Debug("comparing commits",
-				slog.String("deployed_commit", deployedCommit),
-				slog.String("latest_commit", latestCommit))
-
-			var changedFiles []git.ChangedFile
-			if deployedCommit != "" {
-				changedFiles, err = git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(deployedCommit), plumbing.NewHash(latestCommit))
-				if err != nil {
-					onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to get changed files between commits", err.Error(), http.StatusInternalServerError, metadata)
-
-					return
-				}
-
-				hasChanged, err := git.HasChangesInSubdir(changedFiles, internalRepoPath, deployConfig.WorkingDirectory)
-				if err != nil {
-					onError(w, subJobLog, fmt.Errorf("failed to compare commits in subdirectory: %w", err).Error(),
-						map[string]string{"stack": deployConfig.Name}, http.StatusInternalServerError, metadata)
-
-					return
-				}
-
-				if !hasChanged {
-					jobLog.Debug("no changes detected in subdirectory, skipping deployment",
-						slog.String("directory", deployConfig.WorkingDirectory),
-						slog.String("last_commit", latestCommit),
-						slog.String("deployed_commit", deployedCommit))
-
-					continue
-				}
-
-				subJobLog.Debug("changes detected in subdirectory, proceeding with deployment",
-					slog.String("directory", deployConfig.WorkingDirectory),
-					slog.String("last_commit", latestCommit),
-					slog.String("deployed_commit", deployedCommit))
-			}
-
-			forceDeploy := shouldForceDeploy(deployConfig.Name, latestCommit, appConfig.MaxDeploymentLoopCount)
-			if forceDeploy {
-				subJobLog.Warn("deployment loop detected for stack, forcing deployment",
-					slog.String("stack", deployConfig.Name),
-					slog.String("commit", latestCommit))
-			}
-
-			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, dockerClient,
-				&payload, deployConfig, changedFiles, latestCommit, config.AppVersion, "webhook", forceDeploy, metadata,
-				resolvedSecrets, secretsChanged)
-			if err != nil {
-				onError(w, subJobLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), http.StatusInternalServerError, metadata)
-
-				return
-			}
-		}
+		err = stageMgr.RunStages(ctx)
 	}
 
 	msg := "job completed successfully"
