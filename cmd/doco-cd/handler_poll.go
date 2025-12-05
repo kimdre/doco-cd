@@ -17,7 +17,6 @@ import (
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
 	"github.com/docker/cli/cli/command"
-	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -341,11 +340,6 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 
 		metadata.Revision = notification.GetRevision(deployConfig.Reference, latestCommit)
 
-		filterLabel := api.ProjectLabel
-		if swarm.ModeEnabled {
-			filterLabel = swarm.StackNamespaceLabel
-		}
-
 		if deployConfig.Destroy {
 			subJobLog.Debug("destroying stack")
 
@@ -404,7 +398,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			}
 
 			if swarm.ModeEnabled && deployConfig.DestroyOpts.RemoveVolumes {
-				err = docker.RemoveLabeledVolumes(ctx, dockerClient, deployConfig.Name, filterLabel)
+				err = docker.RemoveLabeledVolumes(ctx, dockerClient, deployConfig.Name)
 				if err != nil {
 					results = append(results, pollResult{Metadata: metadata, Err: err})
 					pollError(subJobLog, metadata, fmt.Errorf("failed to remove volumes: %w", err))

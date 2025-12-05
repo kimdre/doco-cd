@@ -184,7 +184,12 @@ func GetModuleVersion(module string) (string, error) {
 	return "", fmt.Errorf("%w: %s", ErrModuleNotFound, module)
 }
 
-func RemoveLabeledVolumes(ctx context.Context, dockerClient *client.Client, stackName, filterLabel string) error {
+func RemoveLabeledVolumes(ctx context.Context, dockerClient *client.Client, stackName string) error {
+	filterLabel := api.ProjectLabel
+	if swarmInternal.ModeEnabled {
+		filterLabel = swarmInternal.StackNamespaceLabel
+	}
+
 	volumes, err := GetLabeledVolumes(ctx, dockerClient, filterLabel, stackName)
 	if err != nil {
 		return fmt.Errorf("failed to get labeled volumes: %w", err)

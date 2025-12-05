@@ -18,7 +18,6 @@ import (
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
 	"github.com/docker/cli/cli/command"
-	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -298,11 +297,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 		metadata.Revision = notification.GetRevision(deployConfig.Reference, latestCommit)
 
-		filterLabel := api.ProjectLabel
-		if swarm.ModeEnabled {
-			filterLabel = swarm.StackNamespaceLabel
-		}
-
 		if deployConfig.Destroy {
 			subJobLog.Debug("destroying stack")
 
@@ -359,7 +353,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			}
 
 			if swarm.ModeEnabled && deployConfig.DestroyOpts.RemoveVolumes {
-				err = docker.RemoveLabeledVolumes(ctx, dockerClient, deployConfig.Name, filterLabel)
+				err = docker.RemoveLabeledVolumes(ctx, dockerClient, deployConfig.Name)
 				if err != nil {
 					onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to remove volumes", err.Error(), http.StatusInternalServerError, metadata)
 
@@ -407,28 +401,28 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			}
 		} else {
 			// Skip deployment if another project with the same name already exists
-			containers, err := docker.GetLabeledContainers(ctx, dockerClient, filterLabel, deployConfig.Name)
-			if err != nil {
-				onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to retrieve containers", err.Error(), http.StatusInternalServerError, metadata)
-
-				return
-			}
-
 			// Check if containers do not belong to this repository or if doco-cd does not manage the stack
 			correctRepo := true
 			deployedCommit := ""
 			deployedSecretHash := ""
 
-			for _, cont := range containers {
-				name, ok := cont.Labels[docker.DocoCDLabels.Repository.Name]
+			serviceLabels, err := docker.GetServiceLabels(ctx, dockerClient, deployConfig.Name)
+			if err != nil {
+				onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to retrieve service labels", err.Error(), http.StatusInternalServerError, metadata)
+
+				return
+			}
+
+			for _, labels := range serviceLabels {
+				name, ok := labels[docker.DocoCDLabels.Repository.Name]
 				if !ok || name != payload.FullName {
 					correctRepo = false
 
 					break
 				}
 
-				deployedCommit = cont.Labels[docker.DocoCDLabels.Deployment.CommitSHA]
-				deployedSecretHash = cont.Labels[docker.DocoCDLabels.Deployment.ExternalSecretsHash]
+				deployedCommit = labels[docker.DocoCDLabels.Deployment.CommitSHA]
+				deployedSecretHash = labels[docker.DocoCDLabels.Deployment.ExternalSecretsHash]
 			}
 
 			if !correctRepo {
