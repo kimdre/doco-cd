@@ -27,6 +27,13 @@ func GetStackServices(ctx context.Context, apiclient client.APIClient, namespace
 	return apiclient.ServiceList(ctx, swarm.ServiceListOptions{Filters: getStackFilter(namespace)})
 }
 
+func GetServicesByLabel(ctx context.Context, apiclient client.APIClient, labelKey, labelValue string) ([]swarm.Service, error) {
+	filter := filters.NewArgs()
+	filter.Add("label", labelKey+"="+labelValue)
+
+	return apiclient.ServiceList(ctx, swarm.ServiceListOptions{Filters: filter})
+}
+
 func getStackNetworks(ctx context.Context, apiclient client.APIClient, namespace string) ([]network.Summary, error) {
 	return apiclient.NetworkList(ctx, network.ListOptions{Filters: getStackFilter(namespace)})
 }

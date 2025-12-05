@@ -17,7 +17,6 @@ import (
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
 	"github.com/docker/cli/cli/command"
-	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -341,25 +340,20 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 
 		metadata.Revision = notification.GetRevision(deployConfig.Reference, latestCommit)
 
-		filterLabel := api.ProjectLabel
-		if swarm.ModeEnabled {
-			filterLabel = swarm.StackNamespaceLabel
-		}
-
 		if deployConfig.Destroy {
 			subJobLog.Debug("destroying stack")
 
 			// Check if doco-cd manages the project before destroying the stack
-			containers, err := docker.GetLabeledContainers(ctx, dockerClient, filterLabel, deployConfig.Name)
+			serviceLabels, err := docker.GetServiceLabels(ctx, dockerClient, deployConfig.Name)
 			if err != nil {
 				results = append(results, pollResult{Metadata: metadata, Err: err})
-				pollError(subJobLog, metadata, fmt.Errorf("failed to retrieve containers: %w", err))
+				pollError(subJobLog, metadata, fmt.Errorf("failed to retrieve service labels: %w", err))
 
 				continue
 			}
 
 			// If no containers are found, skip the destruction step
-			if len(containers) == 0 {
+			if len(serviceLabels) == 0 {
 				subJobLog.Debug("no containers found for stack, skipping...")
 
 				continue
@@ -369,11 +363,11 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			managed := false
 			correctRepo := false
 
-			for _, cont := range containers {
-				if cont.Labels[docker.DocoCDLabels.Metadata.Manager] == config.AppName {
+			for _, labels := range serviceLabels {
+				if labels[docker.DocoCDLabels.Metadata.Manager] == config.AppName {
 					managed = true
 
-					if cont.Labels[docker.DocoCDLabels.Repository.Name] == fullName {
+					if labels[docker.DocoCDLabels.Repository.Name] == fullName {
 						correctRepo = true
 					}
 
@@ -404,7 +398,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			}
 
 			if swarm.ModeEnabled && deployConfig.DestroyOpts.RemoveVolumes {
-				err = docker.RemoveLabeledVolumes(ctx, dockerClient, deployConfig.Name, filterLabel)
+				err = docker.RemoveLabeledVolumes(ctx, dockerClient, deployConfig.Name)
 				if err != nil {
 					results = append(results, pollResult{Metadata: metadata, Err: err})
 					pollError(subJobLog, metadata, fmt.Errorf("failed to remove volumes: %w", err))
@@ -454,29 +448,28 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			}
 		} else {
 			// Skip deployment if another project with the same name already exists
-			containers, err := docker.GetLabeledContainers(ctx, dockerClient, filterLabel, deployConfig.Name)
-			if err != nil {
-				results = append(results, pollResult{Metadata: metadata, Err: err})
-				pollError(subJobLog, metadata, fmt.Errorf("failed to retrieve containers: %w", err))
-
-				continue
-			}
-
 			// Check if containers do not belong to this repository or if doco-cd does not manage the stack
 			correctRepo := true
 			deployedCommit := ""
 			deployedSecretHash := ""
 
-			for _, cont := range containers {
-				name, ok := cont.Labels[docker.DocoCDLabels.Repository.Name]
+			serviceLabels, err := docker.GetServiceLabels(ctx, dockerClient, deployConfig.Name)
+			if err != nil {
+				results = append(results, pollResult{Metadata: metadata, Err: err})
+				pollError(subJobLog, metadata, fmt.Errorf("failed to retrieve service labels: %w", err))
+
+				continue
+			}
+
+			for _, labels := range serviceLabels {
+				name, ok := labels[docker.DocoCDLabels.Repository.Name]
 				if !ok || name != fullName {
 					correctRepo = false
-
 					break
 				}
 
-				deployedCommit = cont.Labels[docker.DocoCDLabels.Deployment.CommitSHA]
-				deployedSecretHash = cont.Labels[docker.DocoCDLabels.Deployment.ExternalSecretsHash]
+				deployedCommit = labels[docker.DocoCDLabels.Deployment.CommitSHA]
+				deployedSecretHash = labels[docker.DocoCDLabels.Deployment.ExternalSecretsHash]
 			}
 
 			if !correctRepo {
