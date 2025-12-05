@@ -8,8 +8,8 @@ import (
 	"github.com/docker/cli/cli/command/stack/swarm"
 	"github.com/docker/cli/cli/compose/convert"
 	composetypes "github.com/docker/cli/cli/compose/types"
-	swarmTypes "github.com/docker/docker/api/types/swarm"
-	"github.com/docker/docker/api/types/versions"
+	swarmTypes "github.com/moby/moby/api/types/swarm"
+	"github.com/moby/moby/api/types/versions"
 
 	"github.com/kimdre/doco-cd/internal/docker/options"
 )

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"gotest.tools/v3/assert"
 )
 

@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types/image"
+	"github.com/moby/moby/api/types/image"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -28,7 +28,7 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing/format/diff"
 
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 

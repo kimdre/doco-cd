@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
