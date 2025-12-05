@@ -12,6 +12,8 @@ import (
 
 	"github.com/docker/docker/api/types/swarm"
 
+	swarmInternal "github.com/kimdre/doco-cd/internal/docker/swarm"
+
 	"github.com/docker/docker/api/types/volume"
 
 	"github.com/docker/docker/api/types/container"
@@ -47,6 +49,32 @@ func GetContainerID(client client.APIClient, name string) (id string, err error)
 
 // GetLabeledContainers retrieves all containers with a specific label key and value.
 func GetLabeledContainers(ctx context.Context, cli *client.Client, key, value string) (containers []container.Summary, err error) {
+	if swarmInternal.ModeEnabled {
+		// In swarm mode, we need to look for tasks instead of containers
+		tasks, err := cli.TaskList(ctx, swarm.TaskListOptions{
+			Filters: filters.NewArgs(filters.Arg("label", key+"="+value)),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list tasks with label %s=%s: %w", key, value, err)
+		}
+
+		containerIDs := make([]string, 0, len(tasks))
+		for _, task := range tasks {
+			if task.Status.ContainerStatus != nil {
+				containerIDs = append(containerIDs, task.Status.ContainerStatus.ContainerID)
+			}
+		}
+
+		if len(containerIDs) == 0 {
+			return nil, fmt.Errorf("%w: %s", ErrContainerIDNotFound, key)
+		}
+
+		return cli.ContainerList(ctx, container.ListOptions{
+			Filters: filters.NewArgs(filters.Arg("id", strings.Join(containerIDs, ","))),
+			All:     false,
+		})
+	}
+
 	return cli.ContainerList(ctx, container.ListOptions{
 		Filters: filters.NewArgs(filters.Arg("label", key+"="+value)),
 		All:     false,
