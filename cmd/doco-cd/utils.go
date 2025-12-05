@@ -75,21 +75,21 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 
 	var processedStacks []string
 
-	containers, err := docker.GetLabeledContainers(ctx, dockerClient, docker.DocoCDLabels.Deployment.AutoDiscover, "true")
+	serviceLabels, err := docker.GetLabeledServices(ctx, dockerClient, docker.DocoCDLabels.Deployment.AutoDiscover, "true")
 	if err == nil {
-		for _, cont := range containers {
-			stackName := cont.Labels[docker.DocoCDLabels.Deployment.Name]
+		for _, labels := range serviceLabels {
+			stackName := labels[docker.DocoCDLabels.Deployment.Name]
 
 			// Skip container if it has already been removed in this cleanup run
 			if slices.Contains(processedStacks, stackName) {
 				continue
 			}
 
-			if cloneUrl == cont.Labels[docker.DocoCDLabels.Repository.URL] {
+			if cloneUrl == labels[docker.DocoCDLabels.Repository.URL] {
 				jobLog.Debug("checking auto-discovered stack for obsolescence", slog.String("stack", stackName))
 
 				if _, found := autoDiscoveredNames[stackName]; !found {
-					autoDiscoverDelete := cont.Labels[docker.DocoCDLabels.Deployment.AutoDiscoverDelete]
+					autoDiscoverDelete := labels[docker.DocoCDLabels.Deployment.AutoDiscoverDelete]
 					if autoDiscoverDelete == "" {
 						autoDiscoverDelete = "true" // Default to true if label is missing
 					}
