@@ -307,15 +307,15 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			subJobLog.Debug("destroying stack")
 
 			// Check if doco-cd manages the project before destroying the stack
-			containers, err := docker.GetLabeledContainers(ctx, dockerClient, filterLabel, deployConfig.Name)
+			serviceLabels, err := docker.GetServiceLabels(ctx, dockerClient, deployConfig.Name)
 			if err != nil {
-				onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to retrieve containers", err.Error(), http.StatusInternalServerError, metadata)
+				onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to retrieve service labels", err.Error(), http.StatusInternalServerError, metadata)
 
 				return
 			}
 
 			// If no containers are found, skip the destruction step
-			if len(containers) == 0 {
+			if len(serviceLabels) == 0 {
 				subJobLog.Debug("no containers found for stack, skipping...")
 
 				continue
@@ -325,11 +325,11 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			managed := false
 			correctRepo := false
 
-			for _, cont := range containers {
-				if cont.Labels[docker.DocoCDLabels.Metadata.Manager] == config.AppName {
+			for _, labels := range serviceLabels {
+				if labels[docker.DocoCDLabels.Metadata.Manager] == config.AppName {
 					managed = true
 
-					if cont.Labels[docker.DocoCDLabels.Repository.Name] == payload.FullName {
+					if labels[docker.DocoCDLabels.Repository.Name] == payload.FullName {
 						correctRepo = true
 					}
 

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/docker/api/types/swarm"
 
 	swarmInternal "github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -47,34 +48,42 @@ func GetContainerID(client client.APIClient, name string) (id string, err error)
 	return "", fmt.Errorf("%w: %s", ErrContainerIDNotFound, name)
 }
 
-// GetLabeledContainers retrieves all containers with a specific label key and value.
-func GetLabeledContainers(ctx context.Context, cli *client.Client, key, value string) (containers []container.Summary, err error) {
+type (
+	Service string
+	Labels  map[string]string
+)
+
+// GetServiceLabels retrieves the labels for all services in a given stack.
+func GetServiceLabels(ctx context.Context, cli *client.Client, stackName string) (map[Service]Labels, error) {
 	if swarmInternal.ModeEnabled {
-		// In swarm mode, we need to look for tasks instead of containers
-		tasks, err := cli.TaskList(ctx, swarm.TaskListOptions{
-			Filters: filters.NewArgs(filters.Arg("label", key+"="+value)),
-		})
+		services, err := swarmInternal.GetStackServices(ctx, cli, stackName)
 		if err != nil {
-			return nil, fmt.Errorf("failed to list tasks with label %s=%s: %w", key, value, err)
+			return nil, fmt.Errorf("failed to get services for stack %s: %w", stackName, err)
 		}
 
-		containerIDs := make([]string, 0, len(tasks))
-		for _, task := range tasks {
-			if task.Status.ContainerStatus != nil {
-				containerIDs = append(containerIDs, task.Status.ContainerStatus.ContainerID)
-			}
+		result := make(map[Service]Labels)
+		for _, service := range services {
+			result[Service(service.Spec.Name)] = service.Spec.TaskTemplate.ContainerSpec.Labels
 		}
 
-		if len(containerIDs) == 0 {
-			return nil, nil
-		}
-
-		return cli.ContainerList(ctx, container.ListOptions{
-			Filters: filters.NewArgs(filters.Arg("id", strings.Join(containerIDs, ","))),
-			All:     false,
-		})
+		return result, nil
 	}
 
+	containers, err := GetLabeledContainers(ctx, cli, api.ProjectLabel, stackName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get containers for stack %s: %w", stackName, err)
+	}
+
+	result := make(map[Service]Labels)
+	for _, cont := range containers {
+		result[Service(cont.Names[0])] = cont.Labels
+	}
+
+	return result, nil
+}
+
+// GetLabeledContainers retrieves all containers with a specific label key and value.
+func GetLabeledContainers(ctx context.Context, cli *client.Client, key, value string) (containers []container.Summary, err error) {
 	return cli.ContainerList(ctx, container.ListOptions{
 		Filters: filters.NewArgs(filters.Arg("label", key+"="+value)),
 		All:     false,
@@ -200,4 +209,19 @@ func RemoveLabeledVolumes(ctx context.Context, dockerClient *client.Client, stac
 	}
 
 	return nil
+}
+
+func IsManagedByDocoCd(ctx context.Context, dockerClient *client.Client, stackName string) (bool, error) {
+	serviceLabels, err := GetServiceLabels(ctx, dockerClient, stackName)
+	if err != nil {
+		return false, fmt.Errorf("failed to get service labels for stack %s: %w", stackName, err)
+	}
+
+	for _, labels := range serviceLabels {
+		if _, ok := labels["doco-cd.managed"]; ok {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
