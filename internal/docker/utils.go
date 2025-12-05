@@ -90,6 +90,35 @@ func GetLabeledContainers(ctx context.Context, cli *client.Client, key, value st
 	})
 }
 
+// GetLabeledServices retrieves all services with a specific label key and value, along with their labels.
+func GetLabeledServices(ctx context.Context, cli *client.Client, key, value string) (map[Service]map[string]string, error) {
+	if swarmInternal.ModeEnabled {
+		services, err := swarmInternal.GetServicesByLabel(ctx, cli, key, value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get services with label %s=%s: %w", key, value, err)
+		}
+
+		result := make(map[Service]map[string]string)
+		for _, service := range services {
+			result[Service(service.Spec.Name)] = service.Spec.TaskTemplate.ContainerSpec.Labels
+		}
+
+		return result, nil
+	}
+
+	containers, err := GetLabeledContainers(ctx, cli, key, value)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get containers with label %s=%s: %w", key, value, err)
+	}
+
+	result := make(map[Service]map[string]string)
+	for _, cont := range containers {
+		result[Service(cont.Names[0])] = cont.Labels
+	}
+
+	return result, nil
+}
+
 // GetLabeledVolumes retrieves all volumes with a specific label key and value.
 func GetLabeledVolumes(ctx context.Context, cli *client.Client, key, value string) (volumes []*volume.Volume, err error) {
 	volResp, err := cli.VolumeList(ctx, volume.ListOptions{
@@ -214,19 +243,4 @@ func RemoveLabeledVolumes(ctx context.Context, dockerClient *client.Client, stac
 	}
 
 	return nil
-}
-
-func IsManagedByDocoCd(ctx context.Context, dockerClient *client.Client, stackName string) (bool, error) {
-	serviceLabels, err := GetServiceLabels(ctx, dockerClient, stackName)
-	if err != nil {
-		return false, fmt.Errorf("failed to get service labels for stack %s: %w", stackName, err)
-	}
-
-	for _, labels := range serviceLabels {
-		if _, ok := labels["doco-cd.managed"]; ok {
-			return true, nil
-		}
-	}
-
-	return false, nil
 }
