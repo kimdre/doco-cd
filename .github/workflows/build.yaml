@@ -147,7 +147,7 @@ jobs:
           scan-type: image
           format: cyclonedx
           github-pat: ${{ secrets.GITHUB_TOKEN }}
-          output: sbom-cyclonedx-${{ github.ref_name }}.json
+          output: doco-cd_${{ github.ref_name }}.cdx.json
           severity: CRITICAL,HIGH
           vuln-type: os,library
           scanners: vuln,secret,misconfig,license
@@ -158,11 +158,11 @@ jobs:
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: trivy-sbom-report
-          path: sbom-cyclonedx-${{ github.ref_name }}.json
+          path: doco-cd_${{ github.ref_name }}.cdx.json
           retention-days: 90
 
       - name: Upload Release Assets
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
         with:
           files: |
-            sbom-cyclonedx-${{ github.ref_name }}.json
+            doco-cd_${{ github.ref_name }}.cdx.json
