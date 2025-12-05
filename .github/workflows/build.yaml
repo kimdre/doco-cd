@@ -158,7 +158,7 @@ jobs:
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: trivy-sbom-report
-          path: doco-cd_${{ github.ref_name }}.cdx.json
+          path: doco-cd_${{ github.ref_name }}_sbom.cdx.json
           retention-days: 90
 
       - name: Upload Release Assets
