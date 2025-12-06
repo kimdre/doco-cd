@@ -32,12 +32,13 @@ type StageResult string
 type StageStatus string
 
 const (
-	StageInit       StageName = "init"
-	StagePreDeploy  StageName = "pre-deploy"
-	StageDestroy    StageName = "destroy"
-	StageDeploy     StageName = "deploy"
-	StagePostDeploy StageName = "post-deploy"
-	StageCleanup    StageName = "cleanup"
+	StageInit        StageName = "init"
+	StagePreDeploy   StageName = "pre-deploy"
+	StageDestroy     StageName = "destroy"
+	StageDeploy      StageName = "deploy"
+	StagePostDeploy  StageName = "post-deploy"
+	StagePostDestroy StageName = "post-destroy"
+	StageCleanup     StageName = "cleanup"
 )
 
 type JobTrigger string
@@ -77,6 +78,10 @@ type PostDeployStageData struct {
 	MetaData
 }
 
+type PostDestroyStageData struct {
+	MetaData
+}
+
 // CleanupStageData holds the configuration and data specific to the cleanup stage.
 type CleanupStageData struct {
 	MetaData
@@ -90,12 +95,13 @@ func NewMetaData(name StageName) MetaData {
 
 // Stages holds the data for all stages in the deployment process.
 type Stages struct {
-	Init       *InitStageData
-	PreDeploy  *PreDeployStageData
-	Deploy     *DeployStageData
-	Destroy    *DestroyStageData
-	PostDeploy *PostDeployStageData
-	Cleanup    *CleanupStageData
+	Init        *InitStageData
+	PreDeploy   *PreDeployStageData
+	Deploy      *DeployStageData
+	Destroy     *DestroyStageData
+	PostDeploy  *PostDeployStageData
+	PostDestroy *PostDestroyStageData
+	Cleanup     *CleanupStageData
 }
 
 // RepositoryData holds information about the triggering repository.
@@ -144,10 +150,8 @@ func NewStageManager(jobID string, jobTrigger JobTrigger, log *slog.Logger,
 	appConfig *config.AppConfig, deployConfig *config.DeployConfig,
 	secretProvider *secretprovider.SecretProvider,
 ) *StageManager {
-	stageLog := log.With()
-
 	return &StageManager{
-		Log:               stageLog,
+		Log:               log.With(),
 		JobID:             jobID,
 		JobTrigger:        jobTrigger,
 		NotifyFailureFunc: failNotifyFunc,
@@ -178,6 +182,28 @@ func NewStageManager(jobID string, jobTrigger JobTrigger, log *slog.Logger,
 				MetaData: NewMetaData(StageCleanup),
 			},
 		},
+	}
+}
+
+// GetStageMeta retrieves the metadata for the specified stage.
+func (s *StageManager) GetStageMeta(stageName StageName) (*MetaData, error) {
+	switch stageName {
+	case StageInit:
+		return &s.Stages.Init.MetaData, nil
+	case StagePreDeploy:
+		return &s.Stages.PreDeploy.MetaData, nil
+	case StageDeploy:
+		return &s.Stages.Deploy.MetaData, nil
+	case StageDestroy:
+		return &s.Stages.Destroy.MetaData, nil
+	case StagePostDeploy:
+		return &s.Stages.PostDeploy.MetaData, nil
+	case StagePostDestroy:
+		return &s.Stages.PostDestroy.MetaData, nil
+	case StageCleanup:
+		return &s.Stages.Cleanup.MetaData, nil
+	default:
+		return nil, errors.New("unknown stage name")
 	}
 }
 

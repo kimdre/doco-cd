@@ -10,8 +10,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/git"
-	"github.com/kimdre/doco-cd/internal/logger"
-	"github.com/kimdre/doco-cd/internal/notification"
 )
 
 // deploymentLoopTracker keeps track of deployment loops for different stacks.
@@ -49,7 +47,7 @@ func shouldForceDeploy(stackName, latestCommit string, maxDeploymentLoopCount ui
 	return loopInfo.count >= maxDeploymentLoopCount
 }
 
-func (s *StageManager) RunDeployStage(ctx context.Context) error {
+func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger) error {
 	s.Stages.Deploy.StartedAt = time.Now()
 
 	defer func() {
@@ -63,26 +61,14 @@ func (s *StageManager) RunDeployStage(ctx context.Context) error {
 
 	forceDeploy := shouldForceDeploy(s.DeployConfig.Name, latestCommit, s.AppConfig.MaxDeploymentLoopCount)
 	if forceDeploy {
-		s.Log.Warn("deployment loop detected for stack, forcing deployment", slog.String("commit", latestCommit))
+		stageLog.Warn("deployment loop detected for stack, forcing deployment", slog.String("commit", latestCommit))
 	}
 
-	err = docker.DeployStack(s.Log, s.Repository.PathInternal, s.Repository.PathExternal, &ctx, &s.Docker.Cmd, s.Docker.Client,
+	err = docker.DeployStack(stageLog, s.Repository.PathInternal, s.Repository.PathExternal, &ctx, &s.Docker.Cmd, s.Docker.Client,
 		s.Payload, s.DeployConfig, s.DeployState.ChangedFiles, latestCommit, config.AppVersion,
 		"poll", forceDeploy, s.DeployState.ResolvedSecrets, s.DeployState.SecretsChanged)
 	if err != nil {
 		return fmt.Errorf("failed to deploy stack %s: %w", s.DeployConfig.Name, err)
-	}
-
-	metadata := notification.Metadata{
-		Repository: s.Repository.Name,
-		Stack:      s.DeployConfig.Name,
-		Revision:   notification.GetRevision(s.DeployConfig.Reference, latestCommit),
-		JobID:      s.JobID,
-	}
-
-	err = notification.Send(notification.Success, "Stack deployed", "successfully deployed stack "+s.DeployConfig.Name, metadata)
-	if err != nil {
-		s.Log.Error("failed to send notification", logger.ErrAttr(err))
 	}
 
 	return nil

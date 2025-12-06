@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"time"
 )
+
+type StageFunc func(ctx context.Context, stageLog *slog.Logger) error
 
 // StageOrder holds the ordered list of stage names and their corresponding functions.
 type StageOrder struct {
-	Order []StageName                                   // The order of stages to be executed
-	Funcs map[StageName]func(ctx context.Context) error // Mapping of stage names to their execution functions
+	Order []StageName             // The order of stages to be executed
+	Funcs map[StageName]StageFunc // Mapping of stage names to their execution functions
 }
 
 // GetDeployStageOrder returns the order of stages for the deployment process.
@@ -22,12 +25,12 @@ func (s *StageManager) GetDeployStageOrder() StageOrder {
 			StagePostDeploy,
 			StageCleanup,
 		},
-		Funcs: map[StageName]func(ctx context.Context) error{
-			StageInit:       func(ctx context.Context) error { return s.RunInitStage(ctx) },
-			StagePreDeploy:  func(ctx context.Context) error { return s.RunPreDeployStage(ctx) },
-			StageDeploy:     func(ctx context.Context) error { return s.RunDeployStage(ctx) },
-			StagePostDeploy: func(ctx context.Context) error { return s.RunPostDeployStage(ctx) },
-			StageCleanup:    func(ctx context.Context) error { return s.RunCleanupStage(ctx) },
+		Funcs: map[StageName]StageFunc{
+			StageInit:       func(ctx context.Context, stageLog *slog.Logger) error { return s.RunInitStage(ctx, stageLog) },
+			StagePreDeploy:  func(ctx context.Context, stageLog *slog.Logger) error { return s.RunPreDeployStage(ctx, stageLog) },
+			StageDeploy:     func(ctx context.Context, stageLog *slog.Logger) error { return s.RunDeployStage(ctx, stageLog) },
+			StagePostDeploy: func(ctx context.Context, stageLog *slog.Logger) error { return s.RunPostDeployStage(ctx, stageLog) },
+			StageCleanup:    func(ctx context.Context, stageLog *slog.Logger) error { return s.RunCleanupStage(ctx, stageLog) },
 		},
 	}
 }
@@ -40,10 +43,10 @@ func (s *StageManager) GetDestroyStageOrder() StageOrder {
 			StageDestroy,
 			StageCleanup,
 		},
-		Funcs: map[StageName]func(ctx context.Context) error{
-			StageInit:    func(ctx context.Context) error { return s.RunInitStage(ctx) },
-			StageDestroy: func(ctx context.Context) error { return s.RunDestroyStage(ctx) },
-			StageCleanup: func(ctx context.Context) error { return s.RunCleanupStage(ctx) },
+		Funcs: map[StageName]StageFunc{
+			StageInit:    func(ctx context.Context, stageLog *slog.Logger) error { return s.RunInitStage(ctx, stageLog) },
+			StageDestroy: func(ctx context.Context, stageLog *slog.Logger) error { return s.RunDestroyStage(ctx, stageLog) },
+			StageCleanup: func(ctx context.Context, stageLog *slog.Logger) error { return s.RunCleanupStage(ctx, stageLog) },
 		},
 	}
 }
@@ -56,11 +59,20 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 	}
 
 	for _, stageName := range stageOrder.Order {
-		s.Log.Debug(string("begin stage: "+stageName), slog.String("stage", string(stageName)))
+		stageLog := s.Log.With(slog.String("stage", string(stageName)))
 
-		err := stageOrder.Funcs[stageName](ctx)
+		metadata, err := s.GetStageMeta(stageName)
 		if err != nil {
-			s.Log.Debug(string("end stage early: "+stageName), slog.String("stage", string(stageName)), slog.String("reason", err.Error()))
+			return err
+		}
+
+		stageLog.Debug(string("begin stage: " + stageName))
+
+		err = stageOrder.Funcs[stageName](ctx, stageLog)
+		if err != nil {
+			stageLog.Debug(string("end stage early: "+stageName),
+				slog.String("reason", err.Error()),
+				slog.String("duration", metadata.FinishedAt.Sub(metadata.StartedAt).Truncate(time.Millisecond).String()))
 			// If the error is ErrSkipDeployment, we don't treat it as a failure
 			if errors.Is(err, ErrSkipDeployment) {
 				return nil
@@ -71,7 +83,8 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 			return err
 		}
 
-		s.Log.Debug(string("completed stage "+stageName), slog.String("stage", string(stageName)))
+		stageLog.Debug(string("completed stage "+stageName),
+			slog.String("duration", metadata.FinishedAt.Sub(metadata.StartedAt).Truncate(time.Millisecond).String()))
 	}
 
 	return nil

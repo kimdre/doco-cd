@@ -76,7 +76,8 @@ func StartPoll(h *handlerData, pollConfig config.PollConfig, wg *sync.WaitGroup)
 func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 	repoName := getRepoName(string(pollJob.Config.CloneUrl))
 
-	logger := h.log.With(slog.String("repository", repoName))
+	logger := h.log.WithGroup("poll").
+		With(slog.String("repository", repoName))
 	logger.Debug("Start poll handler")
 
 	lock := getRepoLock(repoName)
@@ -86,7 +87,7 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 			locked := lock.TryLock()
 
 			if !locked {
-				logger.Warn("Another poll job is still in progress, skipping this run")
+				logger.Warn("another poll job is still in progress, skipping this run")
 			} else {
 				metadata := notification.Metadata{
 					Repository: repoName,
@@ -95,7 +96,7 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 					JobID:      uuid.Must(uuid.NewV7()).String(),
 				}
 
-				logger.Debug("Start poll job")
+				logger.Debug("start poll job")
 
 				_ = RunPoll(context.Background(), pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.dockerClient, logger, metadata, h.secretProvider)
 
@@ -104,7 +105,7 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 
 			pollJob.NextRun = time.Now().Unix() + int64(pollJob.Config.Interval)
 		} else {
-			logger.Debug("Skipping poll, waiting for next run")
+			logger.Debug("skipping poll, waiting for next run")
 		}
 
 		// If run_once is set, perform a single run and exit after the initial run.
@@ -245,14 +246,16 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	}
 
 	for _, deployConfig := range deployConfigs {
+		deployLog := jobLog.WithGroup("deploy")
+
 		failNotifyFunc := func(err error, metadata notification.Metadata) {
-			pollError(jobLog, metadata, err)
+			pollError(deployLog, metadata, err)
 		}
 
 		stageMgr := stages.NewStageManager(
 			metadata.JobID,
 			stages.JobTriggerPoll,
-			jobLog.With(),
+			deployLog,
 			failNotifyFunc,
 			&stages.RepositoryData{
 				CloneURL:     pollConfig.CloneUrl,

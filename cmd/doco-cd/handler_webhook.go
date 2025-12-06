@@ -193,14 +193,16 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	for _, deployConfig := range deployConfigs {
+		deployLog := jobLog.WithGroup("deploy")
+
 		failNotifyFunc := func(err error, metadata notification.Metadata) {
-			onError(w, jobLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), http.StatusInternalServerError, metadata)
+			onError(w, deployLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), http.StatusInternalServerError, metadata)
 		}
 
 		stageMgr := stages.NewStageManager(
 			metadata.JobID,
 			stages.JobTriggerPoll,
-			jobLog.With(),
+			deployLog,
 			failNotifyFunc,
 			&stages.RepositoryData{
 				CloneURL:     config.HttpUrl(payload.CloneURL),
@@ -242,7 +244,9 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Add a job id to the context to track deployments in the logs
 	jobID := uuid.Must(uuid.NewV7()).String()
-	jobLog := h.log.With(slog.String("job_id", jobID))
+
+	jobLog := h.log.WithGroup("webhook").
+		With(slog.String("job_id", jobID))
 
 	jobLog.Debug("received webhook event")
 

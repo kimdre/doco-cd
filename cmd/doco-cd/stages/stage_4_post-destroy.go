@@ -11,7 +11,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 )
 
-func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logger) error {
+func (s *StageManager) RunPostDestroyStage(_ context.Context, stageLog *slog.Logger) error {
 	s.Stages.PostDeploy.StartedAt = time.Now()
 
 	defer func() {
@@ -30,7 +30,7 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 		JobID:      s.JobID,
 	}
 
-	err = notification.Send(notification.Success, "Stack deployed", "successfully deployed stack "+s.DeployConfig.Name, metadata)
+	err = notification.Send(notification.Success, "Stack destroyed", "successfully destroyed stack "+s.DeployConfig.Name, metadata)
 	if err != nil {
 		stageLog.Error("failed to send notification", logger.ErrAttr(err))
 	}

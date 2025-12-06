@@ -2,10 +2,11 @@ package stages
 
 import (
 	"context"
+	"log/slog"
 	"time"
 )
 
-func (s *StageManager) RunCleanupStage(_ context.Context) error {
+func (s *StageManager) RunCleanupStage(_ context.Context, _ *slog.Logger) error {
 	s.Stages.Cleanup.StartedAt = time.Now()
 
 	defer func() {

@@ -17,7 +17,7 @@ import (
 )
 
 // RunInitStage executes the initialization stage logic for the deployment process.
-func (s *StageManager) RunInitStage(ctx context.Context) error {
+func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) error {
 	var err error
 
 	s.Stages.Init.StartedAt = time.Now()
@@ -31,13 +31,13 @@ func (s *StageManager) RunInitStage(ctx context.Context) error {
 		if s.DeployConfig.WebhookEventFilter != "" {
 			filter := regexp.MustCompile(s.DeployConfig.WebhookEventFilter)
 			if !filter.MatchString(s.Payload.Ref) {
-				s.Log.Debug("reference does not match the webhook event filter, skipping deployment",
+				stageLog.Debug("reference does not match the webhook event filter, skipping deployment",
 					slog.String("webhook_filter", s.DeployConfig.WebhookEventFilter), slog.String("ref", s.Payload.Ref))
 
 				return ErrSkipDeployment
 			}
 
-			s.Log.Debug("reference matches the webhook event filter, proceeding with deployment",
+			stageLog.Debug("reference matches the webhook event filter, proceeding with deployment",
 				slog.String("webhook_filter", s.DeployConfig.WebhookEventFilter), slog.String("ref", s.Payload.Ref))
 		}
 	}
@@ -62,7 +62,7 @@ func (s *StageManager) RunInitStage(ctx context.Context) error {
 		return fmt.Errorf("failed to verify and sanitize external filesystem path: %w", err)
 	}
 
-	s.Log = s.Log.With(
+	stageLog = stageLog.With(
 		slog.String("stack", s.DeployConfig.Name),
 		slog.String("repository", s.Repository.Name),
 		slog.String("reference", s.DeployConfig.Reference),
@@ -74,14 +74,14 @@ func (s *StageManager) RunInitStage(ctx context.Context) error {
 	}
 
 	if s.DeployConfig.RepositoryUrl != "" {
-		s.Log.Debug("repository URL provided, cloning remote repository")
+		stageLog.Debug("repository URL provided, cloning remote repository")
 
 		_, err = git.CloneRepository(s.Repository.PathInternal, authCloneUrl, s.DeployConfig.Reference, s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy)
 		if err != nil && !errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			return fmt.Errorf("failed to clone repository: %w", err)
 		}
 
-		s.Log.Info("cloned remote repository",
+		stageLog.Info("cloned remote repository",
 			slog.String("url", string(s.Repository.CloneURL)),
 			slog.String("path", s.Repository.PathExternal))
 	}
@@ -110,7 +110,7 @@ func (s *StageManager) RunInitStage(ctx context.Context) error {
 		}
 	}
 
-	s.Log.Debug("checking out reference "+s.DeployConfig.Reference, slog.String("path", s.Repository.PathExternal))
+	stageLog.Debug("checking out reference "+s.DeployConfig.Reference, slog.String("path", s.Repository.PathExternal))
 
 	s.Repository.Git, err = git.UpdateRepository(s.Repository.PathInternal, authCloneUrl, s.DeployConfig.Reference, s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy)
 	if err != nil {
@@ -127,6 +127,12 @@ func (s *StageManager) RunInitStage(ctx context.Context) error {
 			WebURL:    string(s.Repository.CloneURL),
 		}
 	}
+
+	s.Log = s.Log.With(
+		slog.String("stack", s.DeployConfig.Name),
+		slog.String("repository", s.Repository.Name),
+		slog.String("reference", s.DeployConfig.Reference),
+	)
 
 	return nil
 }

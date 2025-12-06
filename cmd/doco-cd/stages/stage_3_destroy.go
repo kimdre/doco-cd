@@ -11,19 +11,16 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
-	"github.com/kimdre/doco-cd/internal/git"
-	"github.com/kimdre/doco-cd/internal/logger"
-	"github.com/kimdre/doco-cd/internal/notification"
 )
 
-func (s *StageManager) RunDestroyStage(ctx context.Context) error {
+func (s *StageManager) RunDestroyStage(ctx context.Context, stageLog *slog.Logger) error {
 	s.Stages.Deploy.StartedAt = time.Now()
 
 	defer func() {
 		s.Stages.Deploy.FinishedAt = time.Now()
 	}()
 
-	s.Log.Debug("destroying stack")
+	stageLog.Debug("destroying stack")
 
 	// Check if doco-cd manages the stack
 	managed := false
@@ -35,7 +32,7 @@ func (s *StageManager) RunDestroyStage(ctx context.Context) error {
 
 	// If no containers are found, skip the destruction step
 	if len(serviceLabels) == 0 {
-		s.Log.Info("no services found for the stack, skipping destruction")
+		stageLog.Info("no services found for the stack, skipping destruction")
 		return ErrSkipDeployment
 	}
 
@@ -51,26 +48,9 @@ func (s *StageManager) RunDestroyStage(ctx context.Context) error {
 		return fmt.Errorf("%w: %s: aborting destruction", ErrNotManagedByDocoCD, s.DeployConfig.Name)
 	}
 
-	latestCommit, err := git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
-	if err != nil {
-		return fmt.Errorf("failed to get latest commit: %w", err)
-	}
-
-	err = docker.DestroyStack(s.Log, &ctx, &s.Docker.Cmd, s.DeployConfig)
+	err = docker.DestroyStack(stageLog, &ctx, &s.Docker.Cmd, s.DeployConfig)
 	if err != nil {
 		return fmt.Errorf("failed to destroy stack: %w", err)
-	}
-
-	metadata := notification.Metadata{
-		Repository: s.Repository.Name,
-		Stack:      s.DeployConfig.Name,
-		Revision:   notification.GetRevision(s.DeployConfig.Reference, latestCommit),
-		JobID:      s.JobID,
-	}
-
-	err = notification.Send(notification.Success, "Stack destroyed", "successfully destroyed stack "+s.DeployConfig.Name, metadata)
-	if err != nil {
-		s.Log.Error("failed to send notification", logger.ErrAttr(err))
 	}
 
 	if swarm.ModeEnabled && s.DeployConfig.DestroyOpts.RemoveVolumes {
@@ -82,7 +62,7 @@ func (s *StageManager) RunDestroyStage(ctx context.Context) error {
 
 	if s.DeployConfig.DestroyOpts.RemoveRepoDir {
 		// Remove the repository directory after destroying the stack
-		s.Log.Debug("removing deployment directory", slog.String("path", s.Repository.PathExternal))
+		stageLog.Debug("removing deployment directory", slog.String("path", s.Repository.PathExternal))
 		// Check if the parent directory has multiple subdirectories/repos
 		parentDir := filepath.Dir(s.Repository.PathInternal)
 
@@ -93,7 +73,7 @@ func (s *StageManager) RunDestroyStage(ctx context.Context) error {
 
 		if len(subDirs) > 1 {
 			// Do not remove the parent directory if it has multiple subdirectories
-			s.Log.Debug("remove deployment directory but keep parent directory as it has multiple subdirectories", slog.String("path", s.Repository.PathInternal))
+			stageLog.Debug("remove deployment directory but keep parent directory as it has multiple subdirectories", slog.String("path", s.Repository.PathInternal))
 
 			// Remove only the repository directory
 			err = os.RemoveAll(s.Repository.PathInternal)

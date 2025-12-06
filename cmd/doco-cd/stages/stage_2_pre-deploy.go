@@ -13,7 +13,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 )
 
-func (s *StageManager) RunPreDeployStage(ctx context.Context) error {
+func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Logger) error {
 	s.Stages.PreDeploy.StartedAt = time.Now()
 
 	defer func() {
@@ -47,7 +47,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context) error {
 	}
 
 	if s.SecretProvider != nil && *s.SecretProvider != nil && len(s.DeployConfig.ExternalSecrets) > 0 {
-		s.Log.Debug("resolving external secrets", slog.Any("external_secrets", s.DeployConfig.ExternalSecrets))
+		stageLog.Debug("resolving external secrets", slog.Any("external_secrets", s.DeployConfig.ExternalSecrets))
 
 		// Resolve external secrets
 		s.DeployState.ResolvedSecrets, err = (*s.SecretProvider).ResolveSecretReferences(ctx, s.DeployConfig.ExternalSecrets)
@@ -57,19 +57,19 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context) error {
 
 		secretHash := secretprovider.Hash(s.DeployState.ResolvedSecrets)
 		if deployedSecretHash != "" && deployedSecretHash != secretHash {
-			s.Log.Debug("external secrets have changed, proceeding with deployment")
+			stageLog.Debug("external secrets have changed, proceeding with deployment")
 
 			secretsChanged = true
 		}
 	}
 
-	s.Log.Debug("comparing commits",
+	stageLog.Debug("comparing commits",
 		slog.String("deployed_commit", deployedCommit),
 		slog.String("latest_commit", latestCommit))
 
 	// If no new commit and secret values have not changed, skip deployment
 	if latestCommit == deployedCommit && !secretsChanged && !s.DeployConfig.ForceImagePull {
-		s.Log.Debug("no new commit found, skipping deployment", slog.String("last_commit", latestCommit))
+		stageLog.Debug("no new commit found, skipping deployment", slog.String("last_commit", latestCommit))
 
 		return ErrSkipDeployment
 	}
@@ -87,14 +87,14 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context) error {
 		}
 
 		if !filesChanged && !secretsChanged && !s.DeployConfig.ForceImagePull {
-			s.Log.Debug("no changes detected in subdirectory, skipping deployment",
+			stageLog.Debug("no changes detected in subdirectory, skipping deployment",
 				slog.String("directory", s.DeployConfig.WorkingDirectory))
 
 			return ErrSkipDeployment
 		}
 
 		if filesChanged {
-			s.Log.Debug("changes detected in subdirectory, proceeding with deployment",
+			stageLog.Debug("changes detected in subdirectory, proceeding with deployment",
 				slog.String("directory", s.DeployConfig.WorkingDirectory))
 		}
 	}
