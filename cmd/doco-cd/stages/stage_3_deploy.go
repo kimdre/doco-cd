@@ -10,6 +10,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/git"
+	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 )
 
@@ -65,7 +66,13 @@ func (s *StageManager) RunDeployStage(ctx context.Context) error {
 		s.Log.Warn("deployment loop detected for stack, forcing deployment", slog.String("commit", latestCommit))
 	}
 
-	// TODO: Change DeployStack args and remove the metadata construction here
+	err = docker.DeployStack(s.Log, s.Repository.PathInternal, s.Repository.PathExternal, &ctx, &s.Docker.Cmd, s.Docker.Client,
+		s.Payload, s.DeployConfig, s.DeployState.ChangedFiles, latestCommit, config.AppVersion,
+		"poll", forceDeploy, s.DeployState.ResolvedSecrets, s.DeployState.SecretsChanged)
+	if err != nil {
+		return fmt.Errorf("failed to deploy stack %s: %w", s.DeployConfig.Name, err)
+	}
+
 	metadata := notification.Metadata{
 		Repository: s.Repository.Name,
 		Stack:      s.DeployConfig.Name,
@@ -73,11 +80,9 @@ func (s *StageManager) RunDeployStage(ctx context.Context) error {
 		JobID:      s.JobID,
 	}
 
-	err = docker.DeployStack(s.Log, s.Repository.PathInternal, s.Repository.PathExternal, &ctx, &s.Docker.Cmd, s.Docker.Client,
-		s.Payload, s.DeployConfig, s.DeployState.ChangedFiles, latestCommit, config.AppVersion,
-		"poll", forceDeploy, metadata, s.DeployState.ResolvedSecrets, s.DeployState.SecretsChanged)
+	err = notification.Send(notification.Success, "Stack deployed", "successfully deployed stack "+s.DeployConfig.Name, metadata)
 	if err != nil {
-		return fmt.Errorf("failed to deploy stack %s: %w", s.DeployConfig.Name, err)
+		s.Log.Error("failed to send notification", logger.ErrAttr(err))
 	}
 
 	return nil

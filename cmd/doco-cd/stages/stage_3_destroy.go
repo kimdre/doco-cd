@@ -12,6 +12,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/git"
+	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 )
 
@@ -55,7 +56,11 @@ func (s *StageManager) RunDestroyStage(ctx context.Context) error {
 		return fmt.Errorf("failed to get latest commit: %w", err)
 	}
 
-	// TODO: Change DestroyStack args and remove the metadata construction here
+	err = docker.DestroyStack(s.Log, &ctx, &s.Docker.Cmd, s.DeployConfig)
+	if err != nil {
+		return fmt.Errorf("failed to destroy stack: %w", err)
+	}
+
 	metadata := notification.Metadata{
 		Repository: s.Repository.Name,
 		Stack:      s.DeployConfig.Name,
@@ -63,9 +68,9 @@ func (s *StageManager) RunDestroyStage(ctx context.Context) error {
 		JobID:      s.JobID,
 	}
 
-	err = docker.DestroyStack(s.Log, &ctx, &s.Docker.Cmd, s.DeployConfig, metadata)
+	err = notification.Send(notification.Success, "Stack destroyed", "successfully destroyed stack "+s.DeployConfig.Name, metadata)
 	if err != nil {
-		return fmt.Errorf("failed to destroy stack: %w", err)
+		s.Log.Error("failed to send notification", logger.ErrAttr(err))
 	}
 
 	if swarm.ModeEnabled && s.DeployConfig.DestroyOpts.RemoveVolumes {

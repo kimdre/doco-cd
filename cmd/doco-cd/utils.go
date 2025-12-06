@@ -13,6 +13,8 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/docker/client"
 
+	"github.com/kimdre/doco-cd/internal/logger"
+
 	"github.com/kimdre/doco-cd/internal/notification"
 
 	"github.com/kimdre/doco-cd/internal/config"
@@ -112,9 +114,14 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 					removeConfig.DestroyOpts.RemoveImages = true
 					removeConfig.DestroyOpts.RemoveRepoDir = false // Do not remove repo dir for auto-discovered stacks
 
-					err = docker.DestroyStack(jobLog, &ctx, &dockerCli, removeConfig, metadata)
+					err = docker.DestroyStack(jobLog, &ctx, &dockerCli, removeConfig)
 					if err != nil {
 						return fmt.Errorf("failed to remove obsolete auto-discovered stack '%s': %w", stackName, err)
+					}
+
+					err = notification.Send(notification.Success, "Stack destroyed", "successfully destroyed stack "+removeConfig.Name, metadata)
+					if err != nil {
+						jobLog.Error("failed to send notification", logger.ErrAttr(err))
 					}
 
 					jobLog.Info("removed obsolete auto-discovered stack", slog.String("stack", stackName))
