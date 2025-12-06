@@ -221,8 +221,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 		err = stageMgr.RunStages(ctx)
 		if err != nil {
-			onError(w, jobLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), http.StatusInternalServerError, metadata)
-
 			return
 		}
 	}

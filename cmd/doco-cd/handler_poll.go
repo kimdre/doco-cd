@@ -273,8 +273,6 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 
 		err = stageMgr.RunStages(ctx)
 		if err != nil {
-			pollError(jobLog, metadata, fmt.Errorf("failed to deploy stack %s: %w", deployConfig.Name, err))
-
 			results = append(results, pollResult{Metadata: metadata, Err: err})
 
 			continue

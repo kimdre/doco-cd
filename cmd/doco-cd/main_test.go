@@ -172,7 +172,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"deployment failed","content":"no compose files found: stat %[2]s/docker-compose.yaml: no such file or directory","job_id":"%[1]s"}`,
+			expectedResponseBody: `{"error":"deployment failed","content":"failed to deploy stack test-deploy: no compose files found: stat %[2]s/docker-compose.yaml: no such file or directory","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "",
 			swarmMode:            false,
