@@ -19,6 +19,7 @@ import (
 // RunInitStage executes the initialization stage logic for the deployment process.
 func (s *StageManager) RunInitStage(ctx context.Context) error {
 	var err error
+
 	s.Stages.Init.StartedAt = time.Now()
 
 	defer func() {

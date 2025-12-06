@@ -257,7 +257,6 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			&stages.RepositoryData{
 				CloneURL:     pollConfig.CloneUrl,
 				Name:         repoName,
-				Reference:    pollConfig.Reference,
 				PathInternal: internalRepoPath,
 				PathExternal: externalRepoPath,
 			},

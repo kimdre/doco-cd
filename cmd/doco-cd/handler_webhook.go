@@ -205,7 +205,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			&stages.RepositoryData{
 				CloneURL:     config.HttpUrl(payload.CloneURL),
 				Name:         repoName,
-				Reference:    payload.Ref,
 				PathInternal: internalRepoPath,
 				PathExternal: externalRepoPath,
 			},
