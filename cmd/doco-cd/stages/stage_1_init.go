@@ -18,6 +18,7 @@ import (
 
 // RunInitStage executes the initialization stage logic for the deployment process.
 func (s *StageManager) RunInitStage(ctx context.Context) error {
+	var err error
 	s.Stages.Init.StartedAt = time.Now()
 
 	defer func() {
@@ -40,9 +41,14 @@ func (s *StageManager) RunInitStage(ctx context.Context) error {
 		}
 	}
 
-	err := config.LoadLocalDotEnv(s.DeployConfig, s.Repository.PathInternal)
-	if err != nil {
-		return fmt.Errorf("failed to parse local env files: %w", err)
+	if s.DeployConfig.RepositoryUrl != "" {
+		s.Repository.CloneURL = s.DeployConfig.RepositoryUrl
+		s.Repository.Name = getRepoName(s.Repository.CloneURL)
+
+		err = config.LoadLocalDotEnv(s.DeployConfig, s.Repository.PathInternal)
+		if err != nil {
+			return fmt.Errorf("failed to parse local env files: %w", err)
+		}
 	}
 
 	s.Repository.PathInternal, err = filesystem.VerifyAndSanitizePath(filepath.Join(s.Docker.DataMountPoint.Destination, s.Repository.Name), s.Docker.DataMountPoint.Destination) // Path inside the container
@@ -68,8 +74,6 @@ func (s *StageManager) RunInitStage(ctx context.Context) error {
 
 	if s.DeployConfig.RepositoryUrl != "" {
 		s.Log.Debug("repository URL provided, cloning remote repository")
-
-		s.Repository.CloneURL = s.DeployConfig.RepositoryUrl
 
 		_, err = git.CloneRepository(s.Repository.PathInternal, authCloneUrl, s.DeployConfig.Reference, s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy)
 		if err != nil && !errors.Is(err, git.ErrRepositoryAlreadyExists) {
