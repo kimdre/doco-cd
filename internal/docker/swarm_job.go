@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/docker/cli/cli/command"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/mount"
-	swarmTypes "github.com/docker/docker/api/types/swarm"
+	"github.com/moby/moby/api/types/filters"
+	"github.com/moby/moby/api/types/mount"
+	swarmTypes "github.com/moby/moby/api/types/swarm"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"

@@ -22,6 +22,8 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/google/uuid"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
