@@ -20,18 +20,6 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context) error {
 		s.Stages.PreDeploy.FinishedAt = time.Now()
 	}()
 
-	if s.Repository.Git == nil {
-		fmt.Println("repository is nil after checkout")
-	} else {
-		fmt.Println("repository is not nil after checkout")
-	}
-
-	if s.DeployConfig == nil {
-		fmt.Println("deploy config is nil in pre-deploy stage")
-	} else {
-		fmt.Println("deploy config is not nil in pre-deploy stage")
-	}
-
 	latestCommit, err := git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
 	if err != nil {
 		return fmt.Errorf("failed to get latest commit: %w", err)

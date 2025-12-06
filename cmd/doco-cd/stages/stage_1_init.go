@@ -94,9 +94,6 @@ func (s *StageManager) RunInitStage(ctx context.Context) error {
 		for _, labels := range serviceLabels {
 			name, ok := labels[docker.DocoCDLabels.Repository.Name]
 
-			fmt.Println("name:", name)
-			fmt.Println("expected name:", getFullName(s.Repository.CloneURL))
-
 			if !ok || name != getFullName(s.Repository.CloneURL) {
 				correctRepo = false
 				break
@@ -125,8 +122,6 @@ func (s *StageManager) RunInitStage(ctx context.Context) error {
 			WebURL:    string(s.Repository.CloneURL),
 		}
 	}
-
-	fmt.Println(s.Payload)
 
 	return nil
 }

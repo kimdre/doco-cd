@@ -73,8 +73,6 @@ func (s *StageManager) RunDeployStage(ctx context.Context) error {
 		JobID:      s.JobID,
 	}
 
-	fmt.Println(s.Payload)
-
 	err = docker.DeployStack(s.Log, s.Repository.PathInternal, s.Repository.PathExternal, &ctx, &s.Docker.Cmd, s.Docker.Client,
 		s.Payload, s.DeployConfig, s.DeployState.ChangedFiles, latestCommit, config.AppVersion,
 		"poll", forceDeploy, metadata, s.DeployState.ResolvedSecrets, s.DeployState.SecretsChanged)
