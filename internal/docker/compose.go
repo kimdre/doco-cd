@@ -22,7 +22,6 @@ import (
 	"github.com/docker/docker/api/types/image"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
-	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
@@ -408,7 +407,7 @@ func DeployStack(
 	jobLog *slog.Logger, internalRepoPath, externalRepoPath string, ctx *context.Context,
 	dockerCli *command.Cli, dockerClient *client.Client, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
 	changedFiles []gitInternal.ChangedFile, latestCommit, appVersion, triggerEvent string, forceDeploy bool,
-	metadata notification.Metadata, resolvedSecrets secrettypes.ResolvedSecrets, secretsChanged bool,
+	resolvedSecrets secrettypes.ResolvedSecrets, secretsChanged bool,
 ) error {
 	startTime := time.Now()
 
@@ -616,20 +615,13 @@ func DeployStack(
 	prometheus.DeploymentsTotal.WithLabelValues(deployConfig.Name).Inc()
 	prometheus.DeploymentDuration.WithLabelValues(deployConfig.Name).Observe(time.Since(startTime).Seconds())
 
-	msg := "successfully deployed stack " + deployConfig.Name
-
-	err = notification.Send(notification.Success, "Stack deployed", msg, metadata)
-	if err != nil {
-		jobLog.Error("failed to send notification", logger.ErrAttr(err))
-	}
-
 	return nil
 }
 
 // DestroyStack destroys the stack using the provided deployment configuration.
 func DestroyStack(
 	jobLog *slog.Logger, ctx *context.Context,
-	dockerCli *command.Cli, deployConfig *config.DeployConfig, metadata notification.Metadata,
+	dockerCli *command.Cli, deployConfig *config.DeployConfig,
 ) error {
 	stackLog := jobLog.
 		With(slog.String("stack", deployConfig.Name))
@@ -661,11 +653,6 @@ func DestroyStack(
 	if err != nil {
 		errMsg := "failed to destroy stack"
 		return fmt.Errorf("%s: %w", errMsg, err)
-	}
-
-	err = notification.Send(notification.Success, "Stack destroyed", "successfully destroyed stack "+deployConfig.Name, metadata)
-	if err != nil {
-		stackLog.Error("failed to send notification", logger.ErrAttr(err))
 	}
 
 	return nil
