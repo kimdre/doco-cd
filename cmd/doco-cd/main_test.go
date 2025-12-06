@@ -69,7 +69,7 @@ func TestMain(m *testing.M) {
 	if swarm.ModeEnabled {
 		log.Println("Testing in Docker Swarm mode")
 	} else {
-		log.Println("Testing in Docker Compose mode")
+		log.Println("Testing in Docker Standalone mode")
 	}
 
 	// Ensure the Docker client is closed after tests
