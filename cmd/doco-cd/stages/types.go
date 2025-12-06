@@ -102,7 +102,6 @@ type Stages struct {
 type RepositoryData struct {
 	CloneURL     config.HttpUrl  // Repository clone URL (e.g., "https://github.com/user/my-repo.git")
 	Name         string          // Repository name (e.g., "user/my-repo")
-	Reference    string          // Branch, tag, or commit hash
 	PathInternal string          // Path to the repository inside the container
 	PathExternal string          // Path to the repository on the host machine
 	Git          *git.Repository // Git repository instance
