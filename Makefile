@@ -44,7 +44,7 @@ lint fmt:
 
 update:
 	git pull origin main
-	git submodule update --init --recursive
+	git submodule update --recursive --remote
 
 update-all: update
 	git submodule foreach git pull origin master

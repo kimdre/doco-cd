@@ -10,7 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/docker/api/types/swarm"
+
+	swarmInternal "github.com/kimdre/doco-cd/internal/docker/swarm"
 
 	"github.com/docker/docker/api/types/volume"
 
@@ -45,12 +48,75 @@ func GetContainerID(client client.APIClient, name string) (id string, err error)
 	return "", fmt.Errorf("%w: %s", ErrContainerIDNotFound, name)
 }
 
+type (
+	Service string
+	Labels  map[string]string
+)
+
+// GetServiceLabels retrieves the labels for all services in a given stack.
+func GetServiceLabels(ctx context.Context, cli *client.Client, stackName string) (map[Service]Labels, error) {
+	if swarmInternal.ModeEnabled {
+		services, err := swarmInternal.GetStackServices(ctx, cli, stackName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get services for stack %s: %w", stackName, err)
+		}
+
+		result := make(map[Service]Labels)
+		for _, service := range services {
+			result[Service(service.Spec.Name)] = service.Spec.TaskTemplate.ContainerSpec.Labels
+		}
+
+		return result, nil
+	}
+
+	containers, err := GetLabeledContainers(ctx, cli, api.ProjectLabel, stackName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get containers for stack %s: %w", stackName, err)
+	}
+
+	result := make(map[Service]Labels)
+	for _, cont := range containers {
+		result[Service(cont.Names[0])] = cont.Labels
+	}
+
+	return result, nil
+}
+
 // GetLabeledContainers retrieves all containers with a specific label key and value.
 func GetLabeledContainers(ctx context.Context, cli *client.Client, key, value string) (containers []container.Summary, err error) {
 	return cli.ContainerList(ctx, container.ListOptions{
 		Filters: filters.NewArgs(filters.Arg("label", key+"="+value)),
 		All:     false,
 	})
+}
+
+// GetLabeledServices retrieves all services with a specific label key and value, along with their labels.
+func GetLabeledServices(ctx context.Context, cli *client.Client, key, value string) (map[Service]map[string]string, error) {
+	if swarmInternal.ModeEnabled {
+		services, err := swarmInternal.GetServicesByLabel(ctx, cli, key, value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get services with label %s=%s: %w", key, value, err)
+		}
+
+		result := make(map[Service]map[string]string)
+		for _, service := range services {
+			result[Service(service.Spec.Name)] = service.Spec.TaskTemplate.ContainerSpec.Labels
+		}
+
+		return result, nil
+	}
+
+	containers, err := GetLabeledContainers(ctx, cli, key, value)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get containers with label %s=%s: %w", key, value, err)
+	}
+
+	result := make(map[Service]map[string]string)
+	for _, cont := range containers {
+		result[Service(cont.Names[0])] = cont.Labels
+	}
+
+	return result, nil
 }
 
 // GetLabeledVolumes retrieves all volumes with a specific label key and value.
@@ -147,7 +213,12 @@ func GetModuleVersion(module string) (string, error) {
 	return "", fmt.Errorf("%w: %s", ErrModuleNotFound, module)
 }
 
-func RemoveLabeledVolumes(ctx context.Context, dockerClient *client.Client, stackName, filterLabel string) error {
+func RemoveLabeledVolumes(ctx context.Context, dockerClient *client.Client, stackName string) error {
+	filterLabel := api.ProjectLabel
+	if swarmInternal.ModeEnabled {
+		filterLabel = swarmInternal.StackNamespaceLabel
+	}
+
 	volumes, err := GetLabeledVolumes(ctx, dockerClient, filterLabel, stackName)
 	if err != nil {
 		return fmt.Errorf("failed to get labeled volumes: %w", err)

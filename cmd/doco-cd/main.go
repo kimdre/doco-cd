@@ -35,10 +35,7 @@ const (
 	dataPath    = "/data"
 )
 
-var (
-	Version string
-	errMsg  string
-)
+var errMsg string
 
 // GetProxyUrlRedacted takes a proxy URL string and redacts the password if it exists.
 func GetProxyUrlRedacted(proxyUrl string) string {
@@ -100,9 +97,9 @@ func main() {
 	// Set the actual log level
 	log = logger.New(logLevel)
 
-	log.Info("starting application", slog.String("version", Version), slog.String("log_level", c.LogLevel))
+	log.Info("starting application", slog.String("version", config.AppVersion), slog.String("log_level", c.LogLevel))
 
-	prometheus.AppInfo.WithLabelValues(Version, c.LogLevel, time.Now().Format(time.RFC3339)).Set(1)
+	prometheus.AppInfo.WithLabelValues(config.AppVersion, c.LogLevel, time.Now().Format(time.RFC3339)).Set(1)
 
 	// Log if proxy is used
 	if c.HttpProxy != (transport.ProxyOptions{}) {
@@ -199,19 +196,19 @@ func main() {
 		if err != nil {
 			log.Error("failed to get latest application release version", logger.ErrAttr(err))
 		} else {
-			if Version != latestVersion {
+			if config.AppVersion != latestVersion {
 				log.Warn("new application version available",
-					slog.String("current", Version),
+					slog.String("current", config.AppVersion),
 					slog.String("latest", latestVersion),
 				)
 			} else {
-				log.Debug("application is up to date", slog.String("version", Version))
+				log.Debug("application is up to date", slog.String("version", config.AppVersion))
 			}
 		}
 	}()
 
 	// Initialize the secret provider
-	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, Version)
+	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, config.AppVersion)
 	if err != nil {
 		log.Critical("failed to initialize secret provider", logger.ErrAttr(err))
 
@@ -226,7 +223,7 @@ func main() {
 
 	h := handlerData{
 		appConfig:      c,
-		appVersion:     Version,
+		appVersion:     config.AppVersion,
 		dataMountPoint: dataMountPoint,
 		dockerCli:      dockerCli,
 		dockerClient:   dockerClient,

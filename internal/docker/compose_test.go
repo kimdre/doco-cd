@@ -247,8 +247,8 @@ func TestDeployCompose(t *testing.T) {
 
 		jobID := uuid.Must(uuid.NewV7()).String()
 
-		log := logger.New(slog.LevelInfo)
-		jobLog := log.With(slog.String("job_id", jobID))
+		testLog := logger.New(slog.LevelInfo)
+		jobLog := testLog.With(slog.String("job_id", jobID))
 
 		metadata := notification.Metadata{
 			Repository: p.FullName,
@@ -273,12 +273,12 @@ func TestDeployCompose(t *testing.T) {
 
 		t.Log("Verifying deployment")
 
-		containers, err := GetLabeledContainers(ctx, dockerClient, DocoCDLabels.Metadata.Manager, config.AppName)
+		serviceLabels, err := GetLabeledServices(ctx, dockerClient, DocoCDLabels.Deployment.Name, deployConf.Name)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if len(containers) == 0 {
+		if len(serviceLabels) == 0 {
 			t.Fatal("expected at least one labeled container, got none")
 		}
 
@@ -334,13 +334,13 @@ func TestDeployCompose(t *testing.T) {
 
 		t.Log("Verifying destruction")
 
-		containers, err = GetLabeledContainers(ctx, dockerClient, DocoCDLabels.Metadata.Manager, config.AppName)
+		serviceLabels, err = GetLabeledServices(ctx, dockerClient, DocoCDLabels.Deployment.Name, deployConf.Name)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if len(containers) != 0 {
-			t.Fatalf("expected no labeled containers after destruction, got %d", len(containers))
+		if len(serviceLabels) != 0 {
+			t.Fatalf("expected no labeled containers after destruction, got %d", len(serviceLabels))
 		}
 
 		t.Log("Finished destroying deployment with no errors")
