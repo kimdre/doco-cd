@@ -618,7 +618,7 @@ func DeployStack(
 
 	msg := "successfully deployed stack " + deployConfig.Name
 
-	err = notification.Send(notification.Success, "Stack deployed", msg, metadata)
+	err = notification.Send(notification.Success, "Stack deployed: "+metadata.Stack, msg, metadata)
 	if err != nil {
 		jobLog.Error("failed to send notification", logger.ErrAttr(err))
 	}
@@ -663,7 +663,7 @@ func DestroyStack(
 		return fmt.Errorf("%s: %w", errMsg, err)
 	}
 
-	err = notification.Send(notification.Success, "Stack destroyed", "successfully destroyed stack "+deployConfig.Name, metadata)
+	err = notification.Send(notification.Success, "Stack destroyed: "+deployConfig.Name, "successfully destroyed stack "+deployConfig.Name, metadata)
 	if err != nil {
 		stackLog.Error("failed to send notification", logger.ErrAttr(err))
 	}
