@@ -26,8 +26,8 @@ const (
 	Gogs
 )
 
-// ScmProviderHeaders maps ScmProvider to their respective security header names.
-var ScmProviderHeaders = map[ScmProvider]string{
+// ScmProviderSecurityHeaders maps ScmProvider to their respective security header names.
+var ScmProviderSecurityHeaders = map[ScmProvider]string{
 	Github: "X-Hub-Signature-256",
 	Gitlab: "X-Gitlab-Token", // #nosec G101
 	Gitea:  "X-Gitea-Signature",
@@ -53,25 +53,25 @@ func verifySignature(payload []byte, signature, secretKey string) error {
 // VerifyProviderSecret checks and verifies the security header and returns the provider if verification is successful.
 func verifyProviderSecret(r *http.Request, payload []byte, secretKey string) (ScmProvider, error) {
 	switch {
-	case r.Header.Get(ScmProviderHeaders[Github]) != "":
-		signature := strings.TrimPrefix(r.Header.Get(ScmProviderHeaders[Github]), "sha256=")
+	case r.Header.Get(ScmProviderSecurityHeaders[Github]) != "":
+		signature := strings.TrimPrefix(r.Header.Get(ScmProviderSecurityHeaders[Github]), "sha256=")
 
 		return Github, verifySignature(payload, signature, secretKey)
 
-	case r.Header.Get(ScmProviderHeaders[Gitea]) != "":
-		signature := r.Header.Get(ScmProviderHeaders[Gitea])
+	case r.Header.Get(ScmProviderSecurityHeaders[Gitea]) != "":
+		signature := r.Header.Get(ScmProviderSecurityHeaders[Gitea])
 
 		return Gitea, verifySignature(payload, signature, secretKey)
 
-	case r.Header.Get(ScmProviderHeaders[Gitlab]) != "":
-		if secretKey != r.Header.Get(ScmProviderHeaders[Gitlab]) {
+	case r.Header.Get(ScmProviderSecurityHeaders[Gitlab]) != "":
+		if secretKey != r.Header.Get(ScmProviderSecurityHeaders[Gitlab]) {
 			return Gitlab, ErrGitlabTokenVerificationFailed
 		}
 
 		return Gitlab, nil
 
-	case r.Header.Get(ScmProviderHeaders[Gogs]) != "":
-		signature := r.Header.Get(ScmProviderHeaders[Gogs])
+	case r.Header.Get(ScmProviderSecurityHeaders[Gogs]) != "":
+		signature := r.Header.Get(ScmProviderSecurityHeaders[Gogs])
 
 		return Gogs, verifySignature(payload, signature, secretKey)
 
