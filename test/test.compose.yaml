@@ -11,6 +11,9 @@ services:
       - ./:/usr/share/nginx/html
     environment:
       TEST_ENV_VAR: example_value
+    labels:
+      - something=${SOMETHING:-none}
+      - base=${BASE:-none}
     env_file:
       - test.env
     secrets:
