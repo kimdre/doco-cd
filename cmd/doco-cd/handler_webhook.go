@@ -154,14 +154,14 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		return
 	}
 
-	internalRepoPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
+	internalTriggerRepoPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
 	if err != nil {
 		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to verify and sanitize internal filesystem path", err.Error(), http.StatusBadRequest, metadata)
 
 		return
 	}
 
-	externalRepoPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Source, repoName), dataMountPoint.Source) // Path on the host
+	externalTriggerRepoPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Source, repoName), dataMountPoint.Source) // Path on the host
 	if err != nil {
 		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to verify and sanitize external filesystem path", err.Error(), http.StatusBadRequest, metadata)
 
@@ -169,13 +169,13 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	// Try to clone the repository
-	_, err = git.CloneRepository(internalRepoPath, authCloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy)
+	_, err = git.CloneRepository(internalTriggerRepoPath, authCloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 	if err != nil {
 		// If the repository already exists, check it out to the specified commit SHA
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
-			jobLog.Debug("repository already exists, checking out reference "+payload.Ref, slog.String("host_path", externalRepoPath))
+			jobLog.Debug("repository already exists, checking out reference "+payload.Ref, slog.String("host_path", externalTriggerRepoPath))
 
-			_, err = git.UpdateRepository(internalRepoPath, authCloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy)
+			_, err = git.UpdateRepository(internalTriggerRepoPath, authCloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 			if err != nil {
 				onError(w, jobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), http.StatusInternalServerError, metadata)
 
@@ -187,13 +187,13 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			return
 		}
 	} else {
-		jobLog.Debug("repository cloned", slog.String("path", externalRepoPath))
+		jobLog.Debug("repository cloned", slog.String("path", externalTriggerRepoPath))
 	}
 
 	jobLog.Debug("retrieving deployment configuration")
 
 	// Get the deployment configs from the repository
-	configDir := filepath.Join(internalRepoPath, appConfig.DeployConfigBaseDir)
+	configDir := filepath.Join(internalTriggerRepoPath, appConfig.DeployConfigBaseDir)
 
 	deployConfigs, err := config.GetDeployConfigs(configDir, payload.Name, customTarget, payload.Ref)
 	if err != nil {
@@ -225,7 +225,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		if deployConfig.RepositoryUrl != "" {
 			repoName = getRepoName(string(deployConfig.RepositoryUrl))
 
-			err = config.LoadLocalDotEnv(deployConfig, internalRepoPath)
+			err = config.LoadLocalDotEnv(deployConfig, internalTriggerRepoPath)
 			if err != nil {
 				onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to parse local env files", err.Error(), http.StatusInternalServerError, metadata)
 
@@ -237,14 +237,14 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		metadata.Revision = notification.GetRevision(deployConfig.Reference, "")
 		metadata.Stack = deployConfig.Name
 
-		internalRepoPath, err = filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
+		internalDeployRepoPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
 		if err != nil {
 			onError(w, subJobLog.With(logger.ErrAttr(err)), "invalid repository name", err.Error(), http.StatusBadRequest, metadata)
 
 			return
 		}
 
-		externalRepoPath, err = filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Source, repoName), dataMountPoint.Source) // Path on the host
+		externalDeployRepoPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Source, repoName), dataMountPoint.Source) // Path on the host
 		if err != nil {
 			onError(w, subJobLog.With(logger.ErrAttr(err)), "invalid repository name", err.Error(), http.StatusBadRequest, metadata)
 
@@ -269,19 +269,19 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 			subJobLog.Debug("repository URL provided, cloning remote repository")
 			// Try to clone the remote repository
-			_, err = git.CloneRepository(internalRepoPath, cloneUrl, deployConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
+			_, err = git.CloneRepository(internalDeployRepoPath, cloneUrl, deployConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 			if err != nil && !errors.Is(err, git.ErrRepositoryAlreadyExists) {
 				onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to clone remote repository", err.Error(), http.StatusInternalServerError, metadata)
 
 				return
 			}
 
-			subJobLog.Debug("remote repository cloned", slog.String("path", externalRepoPath))
+			subJobLog.Debug("remote repository cloned", slog.String("path", externalDeployRepoPath))
 		}
 
-		subJobLog.Debug("checking out reference "+deployConfig.Reference, slog.String("host_path", externalRepoPath))
+		subJobLog.Debug("checking out reference "+deployConfig.Reference, slog.String("host_path", externalDeployRepoPath))
 
-		repo, err := git.UpdateRepository(internalRepoPath, cloneUrl, deployConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
+		repo, err := git.UpdateRepository(internalDeployRepoPath, cloneUrl, deployConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 		if err != nil {
 			onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), http.StatusInternalServerError, metadata)
 
@@ -365,9 +365,9 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 			if deployConfig.DestroyOpts.RemoveRepoDir {
 				// Remove the repository directory after destroying the stack
-				subJobLog.Debug("removing deployment directory", slog.String("path", externalRepoPath))
+				subJobLog.Debug("removing deployment directory", slog.String("path", externalDeployRepoPath))
 				// Check if the parent directory has multiple subdirectories/repos
-				parentDir := filepath.Dir(internalRepoPath)
+				parentDir := filepath.Dir(internalDeployRepoPath)
 
 				subDirs, err := os.ReadDir(parentDir)
 				if err != nil {
@@ -378,10 +378,10 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 				if len(subDirs) > 1 {
 					// Do not remove the parent directory if it has multiple subdirectories
-					subJobLog.Debug("remove deployment directory but keep parent directory as it has multiple subdirectories", slog.String("path", internalRepoPath))
+					subJobLog.Debug("remove deployment directory but keep parent directory as it has multiple subdirectories", slog.String("path", internalDeployRepoPath))
 
 					// Remove only the repository directory
-					err = os.RemoveAll(internalRepoPath)
+					err = os.RemoveAll(internalDeployRepoPath)
 					if err != nil {
 						onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to remove deployment directory", err.Error(), http.StatusInternalServerError, metadata)
 
@@ -468,7 +468,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 					return
 				}
 
-				hasChanged, err := git.HasChangesInSubdir(changedFiles, internalRepoPath, deployConfig.WorkingDirectory)
+				hasChanged, err := git.HasChangesInSubdir(changedFiles, internalDeployRepoPath, deployConfig.WorkingDirectory)
 				if err != nil {
 					onError(w, subJobLog, fmt.Errorf("failed to compare commits in subdirectory: %w", err).Error(),
 						map[string]string{"stack": deployConfig.Name}, http.StatusInternalServerError, metadata)
@@ -498,7 +498,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 					slog.String("commit", latestCommit))
 			}
 
-			err = docker.DeployStack(subJobLog, internalRepoPath, externalRepoPath, &ctx, &dockerCli, dockerClient,
+			err = docker.DeployStack(subJobLog, internalDeployRepoPath, externalDeployRepoPath, &ctx, &dockerCli, dockerClient,
 				&payload, deployConfig, changedFiles, latestCommit, config.AppVersion, "webhook", forceDeploy, metadata,
 				resolvedSecrets, secretsChanged)
 			if err != nil {
