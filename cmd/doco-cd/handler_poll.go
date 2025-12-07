@@ -564,7 +564,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 					slog.String("commit", latestCommit))
 			}
 
-			err = docker.DeployStack(subJobLog, internalTriggerRepoPath, externalDeployRepoPath, &ctx, &dockerCli, dockerClient,
+			err = docker.DeployStack(subJobLog, internalDeployRepoPath, externalDeployRepoPath, &ctx, &dockerCli, dockerClient,
 				&payload, deployConfig, changedFiles, latestCommit, config.AppVersion, "poll", forceDeploy, metadata, resolvedSecrets, secretsChanged)
 			if err != nil {
 				results = append(results, pollResult{Metadata: metadata, Err: err})
