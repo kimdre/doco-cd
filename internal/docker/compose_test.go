@@ -247,8 +247,8 @@ func TestDeployCompose(t *testing.T) {
 
 		jobID := uuid.Must(uuid.NewV7()).String()
 
-		log := logger.New(slog.LevelInfo)
-		jobLog := log.With(slog.String("job_id", jobID))
+		testLog := logger.New(slog.LevelInfo)
+		jobLog := testLog.With(slog.String("job_id", jobID))
 
 		metadata := notification.Metadata{
 			Repository: p.FullName,
@@ -273,7 +273,7 @@ func TestDeployCompose(t *testing.T) {
 
 		t.Log("Verifying deployment")
 
-		serviceLabels, err := GetLabeledServices(ctx, dockerClient, DocoCDLabels.Metadata.Manager, config.AppName)
+		serviceLabels, err := GetLabeledServices(ctx, dockerClient, DocoCDLabels.Deployment.Name, deployConf.Name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -334,7 +334,7 @@ func TestDeployCompose(t *testing.T) {
 
 		t.Log("Verifying destruction")
 
-		serviceLabels, err = GetLabeledServices(ctx, dockerClient, DocoCDLabels.Metadata.Manager, config.AppName)
+		serviceLabels, err = GetLabeledServices(ctx, dockerClient, DocoCDLabels.Deployment.Name, deployConf.Name)
 		if err != nil {
 			t.Fatal(err)
 		}
