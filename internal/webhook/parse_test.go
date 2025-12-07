@@ -51,20 +51,20 @@ func TestParse(t *testing.T) {
 			if tc.expectedError == nil {
 				switch tc.name {
 				case "Github Push Payload":
-					r.Header.Set(ScmProviderHeaders[Github], "sha256="+GenerateHMAC(payload, testSecret))
+					r.Header.Set(ScmProviderSecurityHeaders[Github], "sha256="+GenerateHMAC(payload, testSecret))
 				case "Gitea Push Payload":
-					r.Header.Set(ScmProviderHeaders[Gitea], GenerateHMAC(payload, testSecret))
+					r.Header.Set(ScmProviderSecurityHeaders[Gitea], GenerateHMAC(payload, testSecret))
 				case "Gitlab Push Payload":
-					r.Header.Set(ScmProviderHeaders[Gitlab], testSecret)
+					r.Header.Set(ScmProviderSecurityHeaders[Gitlab], testSecret)
 				}
 			} else {
 				switch {
 				case errors.Is(tc.expectedError, ErrHMACVerificationFailed):
-					r.Header.Set(ScmProviderHeaders[Github], "sha256=invalid")
+					r.Header.Set(ScmProviderSecurityHeaders[Github], "sha256=invalid")
 				case errors.Is(tc.expectedError, ErrMissingSecurityHeader):
 					// do nothing
 				case errors.Is(tc.expectedError, ErrGitlabTokenVerificationFailed):
-					r.Header.Set(ScmProviderHeaders[Gitlab], "invalid")
+					r.Header.Set(ScmProviderSecurityHeaders[Gitlab], "invalid")
 				}
 			}
 
