@@ -15,10 +15,10 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/google/uuid"
 
-	"github.com/kimdre/doco-cd/cmd/doco-cd/stages"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
+	"github.com/kimdre/doco-cd/internal/stages"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/filesystem"
