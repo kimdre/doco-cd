@@ -338,7 +338,15 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			continue
 		}
 
-		metadata.Revision = notification.GetRevision(deployConfig.Reference, latestCommit)
+		shortSHA, err := git.GetShortestUniqueCommitSHA(repo, latestCommit, git.DefaultShortSHALength)
+		if err != nil {
+			results = append(results, pollResult{Metadata: metadata, Err: err})
+			pollError(subJobLog, metadata, fmt.Errorf("failed to get shortest unique commit SHA: %w", err))
+
+			continue
+		}
+
+		metadata.Revision = notification.GetRevision(deployConfig.Reference, shortSHA)
 
 		if deployConfig.Destroy {
 			subJobLog.Debug("destroying stack")
