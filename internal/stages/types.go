@@ -224,7 +224,7 @@ func (s *StageManager) NotifyFailure(err error) {
 		}
 
 		shortCommit, commitErr = gitInternal.GetShortestUniqueCommitSHA(s.Repository.Git, latestCommit, gitInternal.DefaultShortSHALength)
-		if err == nil {
+		if commitErr == nil {
 			shortCommit = latestCommit
 		}
 
