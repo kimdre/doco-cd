@@ -139,7 +139,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		return
 	}
 
-	internalRepoPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
+	internalTriggerRepoPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
 	if err != nil {
 		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to verify and sanitize internal filesystem path", err.Error(), http.StatusBadRequest, metadata)
 
@@ -154,13 +154,13 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	// Try to clone the repository
-	_, err = git.CloneRepository(internalRepoPath, authCloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy)
+	_, err = git.CloneRepository(internalTriggerRepoPath, authCloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 	if err != nil {
 		// If the repository already exists, check it out to the specified commit SHA
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
-			jobLog.Debug("repository already exists, checking out reference "+payload.Ref, slog.String("host_path", externalRepoPath))
+			jobLog.Debug("repository already exists, checking out reference "+payload.Ref, slog.String("host_path", externalTriggerRepoPath))
 
-			_, err = git.UpdateRepository(internalRepoPath, authCloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy)
+			_, err = git.UpdateRepository(internalTriggerRepoPath, authCloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 			if err != nil {
 				onError(w, jobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), http.StatusInternalServerError, metadata)
 
@@ -172,13 +172,13 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			return
 		}
 	} else {
-		jobLog.Debug("repository cloned", slog.String("path", externalRepoPath))
+		jobLog.Debug("repository cloned", slog.String("path", externalTriggerRepoPath))
 	}
 
 	jobLog.Debug("retrieving deployment configuration")
 
 	// Get the deployment configs from the repository
-	configDir := filepath.Join(internalRepoPath, appConfig.DeployConfigBaseDir)
+	configDir := filepath.Join(internalTriggerRepoPath, appConfig.DeployConfigBaseDir)
 
 	deployConfigs, err := config.GetDeployConfigs(configDir, payload.Name, customTarget, payload.Ref)
 	if err != nil {

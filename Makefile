@@ -65,8 +65,18 @@ tools:
 
 compose-up:
 	@echo "Starting dev docker-compose..."
-	@docker compose -f dev.compose.yaml up -d --build
+	@docker compose -f dev.compose.yaml up --build
 
 compose-down:
 	@echo "Stopping dev docker-compose..."
 	@docker compose -f dev.compose.yaml down
+
+cleanup:
+	@CONTAINERS=$$(docker container ls --format "{{.ID}}" --filter "label=cd.doco.metadata.manager"); \
+	if [ -n "$$CONTAINERS" ]; then \
+		for PROJECT in $$(for ID in $$CONTAINERS; do docker container inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' $$ID; done | sort | uniq); do \
+			docker compose -p $$PROJECT down; \
+		done; \
+	else \
+		echo "No containers to clean up."; \
+	fi

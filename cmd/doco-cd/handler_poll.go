@@ -184,7 +184,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		cloneUrl = git.GetAuthUrl(cloneUrl, appConfig.AuthType, appConfig.GitAccessToken)
 	}
 
-	internalRepoPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
+	internalTriggerRepoPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
 	if err != nil {
 		pollError(jobLog, metadata, fmt.Errorf("failed to verify and sanitize internal filesystem path: %w", err))
 
@@ -199,16 +199,16 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	}
 
 	jobLog.Debug("cloning repository",
-		slog.String("container_path", internalRepoPath),
-		slog.String("host_path", externalRepoPath))
+		slog.String("container_path", internalTriggerRepoPath),
+		slog.String("host_path", externalTriggerRepoPath))
 
-	_, err = git.CloneRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
+	_, err = git.CloneRepository(internalTriggerRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 	if err != nil {
 		// If the repository already exists, check it out to the specified commit SHA
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
-			jobLog.Debug("repository already exists, checking out reference "+pollConfig.Reference, slog.String("host_path", externalRepoPath))
+			jobLog.Debug("repository already exists, checking out reference "+pollConfig.Reference, slog.String("host_path", externalTriggerRepoPath))
 
-			_, err = git.UpdateRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
+			_, err = git.UpdateRepository(internalTriggerRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy)
 			if err != nil {
 				pollError(jobLog, metadata, fmt.Errorf("failed to checkout repository: %w", err))
 
@@ -220,7 +220,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			return append(results, pollResult{Metadata: metadata, Err: err})
 		}
 	} else {
-		jobLog.Debug("repository cloned", slog.String("path", externalRepoPath))
+		jobLog.Debug("repository cloned", slog.String("path", externalTriggerRepoPath))
 	}
 
 	jobLog.Debug("retrieving deployment configuration")
@@ -229,7 +229,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	shortName := filepath.Base(repoName)
 
 	// Resolve deployment configs (prefer inline in poll config when present)
-	configDir := filepath.Join(internalRepoPath, appConfig.DeployConfigBaseDir)
+	configDir := filepath.Join(internalTriggerRepoPath, appConfig.DeployConfigBaseDir)
 
 	deployConfigs, err := config.ResolveDeployConfigs(pollConfig, configDir, shortName)
 	if err != nil {

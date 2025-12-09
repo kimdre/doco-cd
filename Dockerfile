@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1@sha256:b6afd42430b15f2d2a4c5a02b919e98a525b785b1aaff16747d2f623364e39b6
-FROM golang:1.25.5@sha256:20b91eda7a9627c127c0225b0d4e8ec927b476fa4130c6760928b849d769c149 AS prerequisites
+FROM golang:1.25.5@sha256:68ee6dfa91a074c6e62a8af3ff0a427a36a78015778247af4f18398f37a5e91b AS prerequisites
 
 ARG APP_VERSION=dev
 
@@ -39,7 +39,7 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
 
 FROM busybox:1.37-uclibc@sha256:e58014df10240c35c7b1df7ff8e859ad6a54d061bde77c249f96880e15d83049 AS busybox-binaries
 
-FROM gcr.io/distroless/base-debian12@sha256:f5a3067027c2b322cd71b844f3d84ad3deada45ceb8a30f301260a602455070e AS release
+FROM gcr.io/distroless/base-debian13@sha256:f8425b0781786abafa2712aeddbcf2441b535e594d105f23a02b502d5501057e AS release
 
 WORKDIR /
 
