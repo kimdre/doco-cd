@@ -2,9 +2,7 @@ package main
 
 import "sync"
 
-var (
-	repoLocks sync.Map // Map to hold locks for each repository
-)
+var repoLocks sync.Map // Map to hold locks for each repository
 
 // getRepoLock retrieves a mutex lock for the given repository name.
 func getRepoLock(repoName string) *sync.Mutex {
