@@ -208,7 +208,7 @@ func (s *StageManager) GetStageMeta(stageName StageName) (*MetaData, error) {
 }
 
 // NotifyFailure sends a failure notification using the provided NotifyFailureFunc.
-func (s *StageManager) NotifyFailure(err error) {
+func (s *StageManager) NotifyFailure(notifyErr error) {
 	var (
 		latestCommit string
 		shortCommit  string
@@ -230,7 +230,7 @@ func (s *StageManager) NotifyFailure(err error) {
 
 		revision := notification.GetRevision(s.DeployConfig.Reference, shortCommit)
 
-		s.NotifyFailureFunc(err, notification.Metadata{
+		s.NotifyFailureFunc(notifyErr, notification.Metadata{
 			Repository: s.Repository.Name,
 			Stack:      s.DeployConfig.Name,
 			Revision:   revision,
