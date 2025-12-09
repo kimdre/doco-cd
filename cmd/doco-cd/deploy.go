@@ -2,6 +2,16 @@ package main
 
 import "sync"
 
+var (
+	repoLocks sync.Map // Map to hold locks for each repository
+)
+
+// getRepoLock retrieves a mutex lock for the given repository name.
+func getRepoLock(repoName string) *sync.Mutex {
+	lockIface, _ := repoLocks.LoadOrStore(repoName, &sync.Mutex{})
+	return lockIface.(*sync.Mutex)
+}
+
 // deploymentLoopTracker keeps track of deployment loops for different stacks.
 var deploymentLoopTracker = struct {
 	sync.Mutex

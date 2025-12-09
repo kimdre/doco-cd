@@ -28,21 +28,9 @@ import (
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
-var (
-	ErrNotManagedByDocoCD = errors.New("stack is not managed by doco-cd")
-	ErrDeploymentConflict = errors.New("another stack with the same name already exists and is not managed by this repository")
-	repoLocks             sync.Map // Map to hold locks for each repository
-)
-
 type pollResult struct {
 	Metadata notification.Metadata
 	Err      error
-}
-
-// getRepoLock retrieves a mutex lock for the given repository name.
-func getRepoLock(repoName string) *sync.Mutex {
-	lockIface, _ := repoLocks.LoadOrStore(repoName, &sync.Mutex{})
-	return lockIface.(*sync.Mutex)
 }
 
 // StartPoll initializes PollJob with the provided configuration and starts the PollHandler goroutine.
