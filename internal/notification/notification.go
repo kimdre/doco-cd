@@ -165,6 +165,6 @@ func GetRevision(reference, commitSHA string) string {
 	case commitSHA:
 		return reference
 	default:
-		return fmt.Sprintf("%s (%s)", reference, commitSHA)
+		return fmt.Sprintf("%s (%.7s)", reference, commitSHA)
 	}
 }
