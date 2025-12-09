@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/go-git/go-git/v5/plumbing/format/diff"
+	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/kimdre/doco-cd/internal/encryption"
 
@@ -21,15 +22,16 @@ import (
 )
 
 const (
-	RemoteName          = "origin"
-	TagPrefix           = "refs/tags/"
-	BranchPrefix        = "refs/heads/"
-	MainBranch          = "refs/heads/main"
-	SwarmModeBranch     = "refs/heads/swarm-mode"
-	refSpecAllBranches  = "+refs/heads/*:refs/remotes/origin/*"
-	refSpecSingleBranch = "+refs/heads/%s:refs/remotes/origin/%s"
-	refSpecAllTags      = "+refs/tags/*:refs/tags/*"
-	refSpecSingleTag    = "+refs/tags/%s:refs/tags/%s"
+	DefaultShortSHALength = 7 // Default length for shortened commit SHAs
+	RemoteName            = "origin"
+	TagPrefix             = "refs/tags/"
+	BranchPrefix          = "refs/heads/"
+	MainBranch            = "refs/heads/main"
+	SwarmModeBranch       = "refs/heads/swarm-mode"
+	refSpecAllBranches    = "+refs/heads/*:refs/remotes/origin/*"
+	refSpecSingleBranch   = "+refs/heads/%s:refs/remotes/origin/%s"
+	refSpecAllTags        = "+refs/tags/*:refs/tags/*"
+	refSpecSingleTag      = "+refs/tags/%s:refs/tags/%s"
 )
 
 var (
@@ -400,4 +402,43 @@ func shouldResetDecryptedFile(repo *git.Repository, repoRoot, file string) bool 
 	}
 
 	return !strings.EqualFold(string(decryptedContent), string(workingContent))
+}
+
+// GetShortestUniqueCommitSHA returns the shortest unique prefix of a commit SHA in the repository.
+// Similar to the git command `git rev-parse --short=<length> <commitSHA>`.
+func GetShortestUniqueCommitSHA(repo *git.Repository, commitSHA string, minLength int) (string, error) {
+	iter, err := repo.CommitObjects()
+	if err != nil {
+		return "", err
+	}
+	defer iter.Close()
+
+	// collect all commit SHAs
+	var allSHAs []string
+
+	err = iter.ForEach(func(c *object.Commit) error {
+		allSHAs = append(allSHAs, c.Hash.String())
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+
+	shaLen := len(commitSHA)
+	for length := minLength; length <= shaLen; length++ {
+		prefixCount := make(map[string]int, len(allSHAs))
+		for _, sha := range allSHAs {
+			if len(sha) >= length {
+				prefix := sha[:length]
+				prefixCount[prefix]++
+			}
+		}
+
+		prefix := commitSHA[:length]
+		if prefixCount[prefix] == 1 {
+			return prefix, nil
+		}
+	}
+
+	return "", fmt.Errorf("no unique prefix found for commit SHA %s", commitSHA)
 }

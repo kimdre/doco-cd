@@ -295,7 +295,14 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			return
 		}
 
-		metadata.Revision = notification.GetRevision(deployConfig.Reference, latestCommit)
+		shortSHA, err := git.GetShortestUniqueCommitSHA(repo, latestCommit, git.DefaultShortSHALength)
+		if err != nil {
+			onError(w, subJobLog.With(logger.ErrAttr(err)), "failed to get shortest unique commit SHA", err.Error(), http.StatusInternalServerError, metadata)
+
+			return
+		}
+
+		metadata.Revision = notification.GetRevision(deployConfig.Reference, shortSHA)
 
 		if deployConfig.Destroy {
 			subJobLog.Debug("destroying stack")
