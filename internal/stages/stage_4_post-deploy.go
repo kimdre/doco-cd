@@ -23,10 +23,15 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 		return fmt.Errorf("failed to get latest commit: %w", err)
 	}
 
+	shortCommit, err := git.GetShortestUniqueCommitSHA(s.Repository.Git, latestCommit, git.DefaultShortSHALength)
+	if err != nil {
+		return fmt.Errorf("failed to get short commit SHA: %w", err)
+	}
+
 	metadata := notification.Metadata{
 		Repository: s.Repository.Name,
 		Stack:      s.DeployConfig.Name,
-		Revision:   notification.GetRevision(s.DeployConfig.Reference, latestCommit),
+		Revision:   notification.GetRevision(s.DeployConfig.Reference, shortCommit),
 		JobID:      s.JobID,
 	}
 
