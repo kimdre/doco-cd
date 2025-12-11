@@ -83,7 +83,7 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 			return err
 		}
 
-		stageLog.Debug(string("completed stage "+stageName),
+		stageLog.Debug(string("completed stage: "+stageName),
 			slog.String("duration", metadata.FinishedAt.Sub(metadata.StartedAt).Truncate(time.Millisecond).String()))
 	}
 
