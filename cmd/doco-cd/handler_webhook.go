@@ -201,7 +201,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 		stageMgr := stages.NewStageManager(
 			metadata.JobID,
-			stages.JobTriggerPoll,
+			stages.JobTriggerWebhook,
 			deployLog,
 			failNotifyFunc,
 			&stages.RepositoryData{
