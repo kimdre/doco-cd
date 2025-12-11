@@ -64,8 +64,7 @@ func StartPoll(h *handlerData, pollConfig config.PollConfig, wg *sync.WaitGroup)
 func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 	repoName := getRepoName(string(pollJob.Config.CloneUrl))
 
-	logger := h.log.WithGroup("poll").
-		With(slog.String("repository", repoName))
+	logger := h.log.With(slog.String("repository", repoName))
 	logger.Debug("Start poll handler")
 
 	lock := getRepoLock(repoName)

@@ -245,8 +245,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	// Add a job id to the context to track deployments in the logs
 	jobID := uuid.Must(uuid.NewV7()).String()
 
-	jobLog := h.log.WithGroup("webhook").
-		With(slog.String("job_id", jobID))
+	jobLog := h.log.With(slog.String("job_id", jobID))
 
 	jobLog.Debug("received webhook event")
 
