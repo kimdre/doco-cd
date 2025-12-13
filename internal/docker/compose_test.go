@@ -24,8 +24,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 
-	"github.com/kimdre/doco-cd/internal/notification"
-
 	"github.com/go-git/go-git/v5/plumbing"
 
 	"github.com/docker/compose/v2/pkg/api"
@@ -250,13 +248,6 @@ func TestDeployCompose(t *testing.T) {
 		testLog := logger.New(slog.LevelInfo)
 		jobLog := testLog.With(slog.String("job_id", jobID))
 
-		metadata := notification.Metadata{
-			Repository: p.FullName,
-			Stack:      deployConf.Name,
-			Revision:   notification.GetRevision(deployConf.Reference, latestCommit),
-			JobID:      jobID,
-		}
-
 		resolvedSecrets := make(secrettypes.ResolvedSecrets)
 		if secretProvider != nil && len(deployConf.ExternalSecrets) > 0 {
 			resolvedSecrets, err = secretProvider.ResolveSecretReferences(ctx, deployConf.ExternalSecrets)
@@ -266,7 +257,7 @@ func TestDeployCompose(t *testing.T) {
 		}
 
 		err = DeployStack(jobLog, repoPath, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
-			[]git.ChangedFile{}, latestCommit, "test", "poll", false, metadata, resolvedSecrets, false)
+			[]git.ChangedFile{}, latestCommit, "test", "poll", false, resolvedSecrets, false)
 		if err != nil {
 			t.Fatalf("failed to deploy stack: %v", err)
 		}
@@ -327,7 +318,7 @@ func TestDeployCompose(t *testing.T) {
 
 		t.Log("Destroying deployment")
 
-		err = DestroyStack(jobLog, &ctx, &dockerCli, deployConf, metadata)
+		err = DestroyStack(jobLog, &ctx, &dockerCli, deployConf)
 		if err != nil {
 			t.Fatal(err)
 		}
