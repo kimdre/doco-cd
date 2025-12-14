@@ -303,7 +303,7 @@ require (
 
 require (
 	github.com/1password/onepassword-sdk-go v0.3.1
-	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.40.5
+	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.0
 	github.com/bitwarden/sdk-go v1.0.2
 	github.com/infisical/go-sdk v0.6.2
 	github.com/joho/godotenv v1.5.1
