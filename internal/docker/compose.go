@@ -966,7 +966,7 @@ func PullImages(ctx context.Context, dockerCli command.Cli, projectName string) 
 }
 
 // GetImages retrieves all image IDs used by the services in the compose project.
-func GetImages(ctx context.Context, dockerCli command.Cli, projectName string) ([]string, error) {
+func GetImages(ctx context.Context, dockerCli command.Cli, projectName string) (map[string]struct{}, error) {
 	service := compose.NewComposeService(dockerCli)
 
 	containers, err := GetProjectContainers(ctx, dockerCli, projectName)
@@ -989,9 +989,9 @@ func GetImages(ctx context.Context, dockerCli command.Cli, projectName string) (
 		return nil, fmt.Errorf("failed to get images: %w", err)
 	}
 
-	images := make([]string, 0, len(imageSummaries))
+	images := make(map[string]struct{})
 	for _, img := range imageSummaries {
-		images = append(images, img.ID)
+		images[img.ID] = struct{}{}
 	}
 
 	return images, nil
