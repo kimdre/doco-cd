@@ -185,8 +185,8 @@ func NewStageManager(jobID string, jobTrigger JobTrigger, log *slog.Logger,
 	}
 }
 
-// GetStageMeta retrieves the metadata for the specified stage.
-func (s *StageManager) GetStageMeta(stageName StageName) (*MetaData, error) {
+// GetStageMetaData retrieves the metadata for the specified stage.
+func (s *StageManager) GetStageMetaData(stageName StageName) (*MetaData, error) {
 	switch stageName {
 	case StageInit:
 		return &s.Stages.Init.MetaData, nil

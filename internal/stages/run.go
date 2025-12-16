@@ -61,7 +61,7 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 	for _, stageName := range stageOrder.Order {
 		stageLog := s.Log.With(slog.String("stage", string(stageName)))
 
-		metadata, err := s.GetStageMeta(stageName)
+		metadata, err := s.GetStageMetaData(stageName)
 		if err != nil {
 			return err
 		}
