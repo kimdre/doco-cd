@@ -15,6 +15,7 @@ func (l *RepoLock) TryLock(jobID string) bool {
 		l.holder = jobID
 		return true
 	}
+
 	return false
 }
 
