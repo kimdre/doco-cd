@@ -67,20 +67,23 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 	logger := h.log.With(slog.String("repository", repoName))
 	logger.Debug("Start poll handler")
 
-	lock := getRepoLock(repoName)
+	lock := GetRepoLock(repoName)
 
 	for {
 		if pollJob.LastRun == 0 || time.Now().Unix() >= pollJob.NextRun {
-			locked := lock.TryLock()
+			jobID := uuid.Must(uuid.NewV7()).String()
+			locked := lock.TryLock(jobID)
 
 			if !locked {
-				logger.Warn("another poll job is still in progress, skipping this run")
+				logger.Warn("another job is still in progress for this repository",
+					slog.String("locked_by_job", lock.Holder()),
+				)
 			} else {
 				metadata := notification.Metadata{
 					Repository: repoName,
 					Stack:      "",
 					Revision:   notification.GetRevision(pollJob.Config.Reference, ""),
-					JobID:      uuid.Must(uuid.NewV7()).String(),
+					JobID:      jobID,
 				}
 
 				logger.Debug("start poll job")
