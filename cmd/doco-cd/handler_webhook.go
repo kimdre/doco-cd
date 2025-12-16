@@ -303,11 +303,21 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		metadata.Revision = notification.GetRevision(payload.Ref, payload.CommitSHA)
 	}
 
-	lock := getRepoLock(repoName)
-	locked := lock.TryLock()
+	lock := GetRepoLock(repoName)
+	locked := lock.TryLock(jobID)
 
 	if !locked {
-		onError(w, jobLog, "Another job is still in progress for this repository", nil, http.StatusTooManyRequests, metadata)
+		errMsg = "another job is still in progress for this repository"
+		h.log.Warn(errMsg,
+			slog.String("repository", repoName),
+			slog.String("locked_by_job", lock.Holder()),
+		)
+		JSONError(w,
+			errMsg,
+			fmt.Sprintf("repsoitory '%s' is currently locked by job '%s'", repoName, lock.Holder()),
+			jobID,
+			http.StatusTooManyRequests)
+
 		return
 	}
 
