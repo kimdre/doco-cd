@@ -114,11 +114,6 @@ func (c *DeployConfig) validateConfig() error {
 			return fmt.Errorf("%w: %s", ErrInvalidFilePath, file)
 		}
 
-		st, err := os.Stat(full)
-		if err != nil || !st.Mode().IsRegular() {
-			return fmt.Errorf("%w: %s", ErrInvalidFilePath, file)
-		}
-
 		cleanComposeFiles = append(cleanComposeFiles, cleaned)
 	}
 
