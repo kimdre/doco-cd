@@ -67,8 +67,10 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	if s.DeployConfig.ForceImagePull {
 		stageLog.Debug("force image pull enabled, checking for image updates")
 
-		var beforeImages []string
-		var afterImages []string
+		var (
+			beforeImages []string
+			afterImages  []string
+		)
 
 		beforeImages, err = docker.GetImages(ctx, s.Docker.Cmd, s.DeployConfig.Name)
 
