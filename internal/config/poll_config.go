@@ -37,7 +37,7 @@ func (c *PollConfig) Validate() error {
 		return fmt.Errorf("%w: reference", ErrKeyNotFound)
 	}
 
-	if c.Interval < 1 && c.Interval != 0 {
+	if c.Interval < 10 && c.Interval != 0 {
 		return errors.New("interval must be at least 10 seconds")
 	}
 
