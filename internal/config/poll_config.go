@@ -8,8 +8,9 @@ import (
 )
 
 var (
-	ErrInvalidPollConfig = errors.New("invalid poll configuration")
-	ErrBothPollConfigSet = errors.New("both POLL_CONFIG and POLL_CONFIG_FILE are set, please use one or the other")
+	ErrInvalidPollConfig  = errors.New("invalid poll configuration")
+	ErrBothPollConfigSet  = errors.New("both POLL_CONFIG and POLL_CONFIG_FILE are set, please use one or the other")
+	ErrPollIntervalTooLow = errors.New("poll interval too low")
 )
 
 type PollConfig struct {
@@ -27,6 +28,8 @@ type PollJob struct {
 	NextRun int64      // NextRun is the next time this instance should run
 }
 
+const MinPollInterval = 10 // Minimum allowed poll interval in seconds
+
 // Validate checks if the PollConfig is valid.
 func (c *PollConfig) Validate() error {
 	if c.CloneUrl == "" {
@@ -37,8 +40,8 @@ func (c *PollConfig) Validate() error {
 		return fmt.Errorf("%w: reference", ErrKeyNotFound)
 	}
 
-	if c.Interval < 10 && c.Interval != 0 {
-		return fmt.Errorf("%w: interval must be at least 10 seconds", ErrInvalidPollConfig)
+	if c.Interval < MinPollInterval && c.Interval != 0 {
+		return fmt.Errorf("%w: must be at least %d seconds", ErrPollIntervalTooLow, MinPollInterval)
 	}
 
 	// If inline deployments are defined, validate them
