@@ -93,8 +93,8 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			if len(beforeImages) != len(afterImages) {
 				imagesChanged = true
 			} else {
-				for i := range beforeImages {
-					if beforeImages[i] != afterImages[i] {
+				for img := range afterImages {
+					if _, exists := beforeImages[img]; !exists {
 						imagesChanged = true
 						break
 					}
