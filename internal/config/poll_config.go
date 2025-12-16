@@ -8,8 +8,9 @@ import (
 )
 
 var (
-	ErrInvalidPollConfig = errors.New("invalid poll configuration")
-	ErrBothPollConfigSet = errors.New("both POLL_CONFIG and POLL_CONFIG_FILE are set, please use one or the other")
+	ErrInvalidPollConfig  = errors.New("invalid poll configuration")
+	ErrBothPollConfigSet  = errors.New("both POLL_CONFIG and POLL_CONFIG_FILE are set, please use one or the other")
+	ErrPollIntervalTooLow = errors.New("poll interval must be at least 10 seconds")
 )
 
 type PollConfig struct {
@@ -38,7 +39,7 @@ func (c *PollConfig) Validate() error {
 	}
 
 	if c.Interval < 10 && c.Interval != 0 {
-		return errors.New("interval must be at least 10 seconds")
+		return ErrPollIntervalTooLow
 	}
 
 	// If inline deployments are defined, validate them

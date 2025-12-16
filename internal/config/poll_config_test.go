@@ -45,7 +45,7 @@ func TestPollConfig_Validate(t *testing.T) {
 				Reference: "main",
 				Interval:  -5,
 			},
-			expected: ErrInvalidPollConfig,
+			expected: ErrPollIntervalTooLow,
 		},
 		{
 			name: "Invalid config - 5s Interval",
@@ -54,7 +54,7 @@ func TestPollConfig_Validate(t *testing.T) {
 				Reference: "main",
 				Interval:  5,
 			},
-			expected: ErrInvalidPollConfig,
+			expected: ErrPollIntervalTooLow,
 		},
 		{
 			name: "Invalid config - zero Interval (Disabled)",
