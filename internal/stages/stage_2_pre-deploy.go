@@ -73,6 +73,9 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		)
 
 		beforeImages, err = docker.GetImages(ctx, s.Docker.Cmd, s.DeployConfig.Name)
+		if err != nil {
+			return fmt.Errorf("failed to get images before pull: %w", err)
+		}
 
 		err = docker.PullImages(ctx, s.Docker.Cmd, s.DeployConfig.Name)
 		if err != nil {
