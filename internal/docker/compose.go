@@ -892,13 +892,6 @@ func RemoveProject(ctx context.Context, dockerCli command.Cli, projectName strin
 	})
 }
 
-// GetProject returns the compose project for the specified project name.
-func GetProject(ctx context.Context, dockerCli command.Cli, projectName string) (*types.Project, error) {
-	service := compose.NewComposeService(dockerCli)
-
-	return service.Generate(ctx, api.GenerateOptions{ProjectName: projectName})
-}
-
 // GetProjects returns a list of all projects.
 func GetProjects(ctx context.Context, dockerCli command.Cli, showDisabled bool) ([]api.Stack, error) {
 	service := compose.NewComposeService(dockerCli)
@@ -952,7 +945,17 @@ func pruneImages(ctx context.Context, dockerCli command.Cli, images []string) ([
 func PullImages(ctx context.Context, dockerCli command.Cli, projectName string) error {
 	service := compose.NewComposeService(dockerCli)
 
-	project, err := service.Generate(ctx, api.GenerateOptions{ProjectName: projectName})
+	containers, err := GetProjectContainers(ctx, dockerCli, projectName)
+	if err != nil {
+		return fmt.Errorf("failed to get project containers: %w", err)
+	}
+
+	containerNames := make([]string, 0, len(containers))
+	for _, c := range containers {
+		containerNames = append(containerNames, c.Name)
+	}
+
+	project, err := service.Generate(ctx, api.GenerateOptions{ProjectName: projectName, Containers: containerNames})
 	if err != nil {
 		return fmt.Errorf("failed to generate project: %w", err)
 	}
@@ -966,7 +969,17 @@ func PullImages(ctx context.Context, dockerCli command.Cli, projectName string) 
 func GetImages(ctx context.Context, dockerCli command.Cli, projectName string) ([]string, error) {
 	service := compose.NewComposeService(dockerCli)
 
-	project, err := service.Generate(ctx, api.GenerateOptions{ProjectName: projectName})
+	containers, err := GetProjectContainers(ctx, dockerCli, projectName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get project containers: %w", err)
+	}
+
+	containerNames := make([]string, 0, len(containers))
+	for _, c := range containers {
+		containerNames = append(containerNames, c.Name)
+	}
+
+	project, err := service.Generate(ctx, api.GenerateOptions{ProjectName: projectName, Containers: containerNames})
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate project: %w", err)
 	}
@@ -982,32 +995,4 @@ func GetImages(ctx context.Context, dockerCli command.Cli, projectName string) (
 	}
 
 	return images, nil
-}
-
-// CompareImages compares two lists of image IDs and returns the added and removed images.
-func CompareImages(before, after []string) (added, removed []string) {
-	beforeSet := make(map[string]struct{})
-	afterSet := make(map[string]struct{})
-
-	for _, img := range before {
-		beforeSet[img] = struct{}{}
-	}
-
-	for _, img := range after {
-		afterSet[img] = struct{}{}
-	}
-
-	for img := range afterSet {
-		if _, exists := beforeSet[img]; !exists {
-			added = append(added, img)
-		}
-	}
-
-	for img := range beforeSet {
-		if _, exists := afterSet[img]; !exists {
-			removed = append(removed, img)
-		}
-	}
-
-	return added, removed
 }
