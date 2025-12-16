@@ -969,22 +969,7 @@ func PullImages(ctx context.Context, dockerCli command.Cli, projectName string) 
 func GetImages(ctx context.Context, dockerCli command.Cli, projectName string) (map[string]struct{}, error) {
 	service := compose.NewComposeService(dockerCli)
 
-	containers, err := GetProjectContainers(ctx, dockerCli, projectName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get project containers: %w", err)
-	}
-
-	containerNames := make([]string, 0, len(containers))
-	for _, c := range containers {
-		containerNames = append(containerNames, c.Name)
-	}
-
-	project, err := service.Generate(ctx, api.GenerateOptions{ProjectName: projectName, Containers: containerNames})
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate project: %w", err)
-	}
-
-	imageSummaries, err := service.Images(ctx, project.Name, api.ImagesOptions{})
+	imageSummaries, err := service.Images(ctx, projectName, api.ImagesOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get images: %w", err)
 	}
