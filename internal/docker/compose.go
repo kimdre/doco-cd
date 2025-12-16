@@ -892,13 +892,11 @@ func RemoveProject(ctx context.Context, dockerCli command.Cli, projectName strin
 	})
 }
 
-// GetProject returns the status of all services in the specified project.
-func GetProject(ctx context.Context, dockerCli command.Cli, projectName string) ([]api.ContainerSummary, error) {
+// GetProject returns the compose project for the specified project name.
+func GetProject(ctx context.Context, dockerCli command.Cli, projectName string) (*types.Project, error) {
 	service := compose.NewComposeService(dockerCli)
 
-	return service.Ps(ctx, projectName, api.PsOptions{
-		All: true,
-	})
+	return service.Generate(ctx, api.GenerateOptions{ProjectName: projectName})
 }
 
 // GetProjects returns a list of all projects.
@@ -907,6 +905,15 @@ func GetProjects(ctx context.Context, dockerCli command.Cli, showDisabled bool) 
 
 	return service.List(ctx, api.ListOptions{
 		All: showDisabled,
+	})
+}
+
+// GetProjectContainers returns the status of all services in the specified project.
+func GetProjectContainers(ctx context.Context, dockerCli command.Cli, projectName string) ([]api.ContainerSummary, error) {
+	service := compose.NewComposeService(dockerCli)
+
+	return service.Ps(ctx, projectName, api.PsOptions{
+		All: true,
 	})
 }
 
@@ -939,4 +946,68 @@ func pruneImages(ctx context.Context, dockerCli command.Cli, images []string) ([
 	}
 
 	return prunedImages, nil
+}
+
+// PullImages pulls all images defined in the compose project.
+func PullImages(ctx context.Context, dockerCli command.Cli, projectName string) error {
+	service := compose.NewComposeService(dockerCli)
+
+	project, err := service.Generate(ctx, api.GenerateOptions{ProjectName: projectName})
+	if err != nil {
+		return fmt.Errorf("failed to generate project: %w", err)
+	}
+
+	return service.Pull(ctx, project, api.PullOptions{
+		Quiet: true,
+	})
+}
+
+// GetImages retrieves all image IDs used by the services in the compose project.
+func GetImages(ctx context.Context, dockerCli command.Cli, projectName string) ([]string, error) {
+	service := compose.NewComposeService(dockerCli)
+
+	project, err := service.Generate(ctx, api.GenerateOptions{ProjectName: projectName})
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate project: %w", err)
+	}
+
+	imageSummaries, err := service.Images(ctx, project.Name, api.ImagesOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get images: %w", err)
+	}
+
+	images := make([]string, 0, len(imageSummaries))
+	for _, img := range imageSummaries {
+		images = append(images, img.ID)
+	}
+
+	return images, nil
+}
+
+// CompareImages compares two lists of image IDs and returns the added and removed images.
+func CompareImages(before, after []string) (added, removed []string) {
+	beforeSet := make(map[string]struct{})
+	afterSet := make(map[string]struct{})
+
+	for _, img := range before {
+		beforeSet[img] = struct{}{}
+	}
+
+	for _, img := range after {
+		afterSet[img] = struct{}{}
+	}
+
+	for img := range afterSet {
+		if _, exists := beforeSet[img]; !exists {
+			added = append(added, img)
+		}
+	}
+
+	for img := range beforeSet {
+		if _, exists := afterSet[img]; !exists {
+			removed = append(removed, img)
+		}
+	}
+
+	return added, removed
 }

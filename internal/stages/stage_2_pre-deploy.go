@@ -27,6 +27,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 
 	// Check for external secret changes and current deployed commit
 	secretsChanged := false // Flag to indicate if external secrets have changed
+	imagesChanged := false  // Flag to indicate if images have changed
 	deployedCommit := ""
 	deployedSecretHash := ""
 
@@ -63,12 +64,48 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		}
 	}
 
+	if s.DeployConfig.ForceImagePull {
+		stageLog.Debug("force image pull enabled, checking for image updates")
+
+		var beforeImages []string
+		var afterImages []string
+
+		beforeImages, err = docker.GetImages(ctx, s.Docker.Cmd, s.DeployConfig.Name)
+
+		err = docker.PullImages(ctx, s.Docker.Cmd, s.DeployConfig.Name)
+		if err != nil {
+			return fmt.Errorf("failed to pull images: %w", err)
+		}
+
+		afterImages, err = docker.GetImages(ctx, s.Docker.Cmd, s.DeployConfig.Name)
+		if err != nil {
+			return fmt.Errorf("failed to get images after pull: %w", err)
+		}
+
+		if len(beforeImages) != len(afterImages) {
+			imagesChanged = true
+		} else {
+			for i := range beforeImages {
+				if beforeImages[i] != afterImages[i] {
+					imagesChanged = true
+					break
+				}
+			}
+		}
+
+		if imagesChanged {
+			stageLog.Debug("images have changed after pull, proceeding with deployment")
+		} else {
+			stageLog.Debug("images have not changed after pull")
+		}
+	}
+
 	stageLog.Debug("comparing commits",
 		slog.String("deployed_commit", deployedCommit),
 		slog.String("latest_commit", latestCommit))
 
 	// If no new commit and secret values have not changed, skip deployment
-	if latestCommit == deployedCommit && !secretsChanged && !s.DeployConfig.ForceImagePull {
+	if latestCommit == deployedCommit && !secretsChanged && !imagesChanged {
 		stageLog.Debug("no new commit found, skipping deployment", slog.String("last_commit", latestCommit))
 
 		return ErrSkipDeployment
@@ -86,7 +123,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			return fmt.Errorf("failed to compare commits in subdirectory: %w", err)
 		}
 
-		if !filesChanged && !secretsChanged && !s.DeployConfig.ForceImagePull {
+		if !filesChanged && !secretsChanged && !imagesChanged {
 			stageLog.Debug("no changes detected in subdirectory, skipping deployment",
 				slog.String("directory", s.DeployConfig.WorkingDirectory))
 

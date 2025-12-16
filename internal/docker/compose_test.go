@@ -681,7 +681,7 @@ func TestRemoveProject(t *testing.T) {
 	}
 
 	// Verify project is removed
-	containers, err := GetProject(ctx, dockerCli, "test")
+	containers, err := GetProjectContainers(ctx, dockerCli, "test")
 	if err != nil {
 		t.Fatalf("failed to get project: %v", err)
 	}
@@ -711,7 +711,7 @@ func TestGetProject(t *testing.T) {
 
 	t.Log("Getting project")
 
-	containers, err := GetProject(ctx, dockerCli, "test")
+	containers, err := GetProjectContainers(ctx, dockerCli, "test")
 	if err != nil {
 		t.Fatalf("failed to get project: %v", err)
 	}

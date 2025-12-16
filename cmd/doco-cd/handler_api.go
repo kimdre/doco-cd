@@ -185,7 +185,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 	switch r.Method {
 	case http.MethodGet:
-		containers, err := docker.GetProject(ctx, h.dockerCli, projectName)
+		containers, err := docker.GetProjectContainers(ctx, h.dockerCli, projectName)
 		if err != nil {
 			errMsg = "failed to get project: " + projectName
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
@@ -304,7 +304,7 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 	timeoutSec := getQueryParam(r, w, jobLog, jobID, "timeout", "int", 30).(int)
 	timeout := time.Duration(timeoutSec) * time.Second
 
-	containers, err := docker.GetProject(ctx, h.dockerCli, projectName)
+	containers, err := docker.GetProjectContainers(ctx, h.dockerCli, projectName)
 	if err != nil {
 		errMsg = "failed to get project: " + projectName
 		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
