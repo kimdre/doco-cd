@@ -73,7 +73,6 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		)
 
 		containers, _ := docker.GetProjectContainers(ctx, s.Docker.Cmd, s.DeployConfig.Name)
-		fmt.Printf("Found %d running containers for deployment '%s'\n", len(containers), s.DeployConfig.Name) // TODO: remove debug print
 
 		if len(containers) > 0 {
 			beforeImages, err = docker.GetImages(ctx, s.Docker.Cmd, s.DeployConfig.Name)
