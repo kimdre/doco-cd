@@ -307,7 +307,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	locked := lock.TryLock()
 
 	if !locked {
-		onError(w, jobLog, "Another job is still in progress for this repository", nil, http.StatusTooManyRequests, metadata)
+		h.log.Warn("another job is still in progress for this repository", slog.String("repository", repoName))
 		return
 	}
 
