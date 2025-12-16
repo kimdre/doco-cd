@@ -90,14 +90,10 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 				return fmt.Errorf("failed to get images after pull: %w", err)
 			}
 
-			if len(beforeImages) != len(afterImages) {
-				imagesChanged = true
-			} else {
-				for img := range afterImages {
-					if _, exists := beforeImages[img]; !exists {
-						imagesChanged = true
-						break
-					}
+			for img := range afterImages {
+				if _, exists := beforeImages[img]; !exists {
+					imagesChanged = true
+					break
 				}
 			}
 
