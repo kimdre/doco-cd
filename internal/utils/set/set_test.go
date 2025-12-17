@@ -3,13 +3,13 @@ package set
 import "testing"
 
 func TestSet(t *testing.T) {
-	s := New[string]()
+	s := New[string]("potato")
 
 	// Test Add and Contains
 	s.Add("apple")
 
-	if !s.Contains("apple") {
-		t.Errorf("expected set to contain 'apple'")
+	if !s.Contains("apple") || !s.Contains("potato") {
+		t.Errorf("expected set to contain 'apple' and 'potato'")
 	}
 
 	// Test Remove
@@ -20,7 +20,6 @@ func TestSet(t *testing.T) {
 	}
 
 	// Test ToSlice
-	s.Add("banana")
 	s.Add("cherry")
 	slice := s.ToSlice()
 
