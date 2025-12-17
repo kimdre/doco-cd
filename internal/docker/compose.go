@@ -279,10 +279,9 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	repoDir, latestCommit, appVersion, secretHash string,
 ) error {
 	var (
-		err            error
-		beforeImages   map[string]api.ImageSummary // Images used by stack before deployment
-		afterImages    map[string]api.ImageSummary // Images used by stack after deployment
-		unusedImageIDs []string                    // Image IDs no longer used by stack after deployment
+		err          error
+		beforeImages map[string]api.ImageSummary // Images used by stack before deployment
+		afterImages  map[string]api.ImageSummary // Images used by stack after deployment
 	)
 
 	service := compose.NewComposeService(dockerCli)
@@ -384,16 +383,22 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		}
 
 		// Determine unused images by comparing image SHAs used by services before and after the deployment
-		unusedImageIDs = make([]string, 0)
+		unusedImageIDs := make(map[string]struct{})
 
 		for svc, beforeImg := range beforeImages {
 			afterImg, exists := afterImages[svc]
 			if !exists || beforeImg.ID != afterImg.ID {
-				unusedImageIDs = append(unusedImageIDs, beforeImg.ID)
+				unusedImageIDs[beforeImg.ID] = struct{}{}
 			}
 		}
 
-		_, err = pruneImages(ctx, dockerCli, unusedImageIDs)
+		// Convert set to slice for pruneImages
+		ids := make([]string, 0, len(unusedImageIDs))
+		for id := range unusedImageIDs {
+			ids = append(ids, id)
+		}
+
+		_, err = pruneImages(ctx, dockerCli, ids)
 		if err != nil {
 			return fmt.Errorf("failed to prune images: %w", err)
 		}
@@ -923,6 +928,11 @@ func pruneImages(ctx context.Context, dockerCli command.Cli, images []string) ([
 		if err != nil {
 			if strings.Contains(err.Error(), "image is being used by running container") {
 				// Ignore error if image is being used by a running container
+				continue
+			}
+
+			if strings.Contains(err.Error(), "no such image") {
+				// Ignore error if image does not exist
 				continue
 			}
 
