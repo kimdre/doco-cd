@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing/format/diff"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
 
 	"github.com/kimdre/doco-cd/internal/encryption"
 
@@ -126,7 +127,7 @@ func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 // Allowed reference forma
 //   - Branches: refs/heads/main or main
 //   - Tags: refs/tags/v1.0.0 or v1.0.0
-func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions) (*git.Repository, error) {
+func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, sshPrivateKey string) (*git.Repository, error) {
 	repo, err := git.PlainOpen(path)
 	if err != nil {
 		return nil, err
@@ -143,6 +144,16 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 		RefSpecs:        []config.RefSpec{refSpecAllBranches, refSpecAllTags},
 		InsecureSkipTLS: skipTLSVerify,
 		Prune:           true,
+	}
+
+	// SSH support for fetch
+	if (strings.HasPrefix(url, "git@") || strings.HasPrefix(url, "ssh://")) && strings.TrimSpace(sshPrivateKey) != "" {
+		publicKey, err := ssh.NewPublicKeys("git", []byte(sshPrivateKey), "")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create SSH auth: %w", err)
+		}
+		// Accept unknown host keys
+		opts.Auth = publicKey
 	}
 
 	if proxyOpts != (transport.ProxyOptions{}) {
@@ -181,7 +192,7 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 }
 
 // CloneRepository clones a repository From a given URL and reference To a temporary directory.
-func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions) (*git.Repository, error) {
+func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, sshPrivateKey string) (*git.Repository, error) {
 	err := os.MkdirAll(path, filesystem.PermDir)
 	if err != nil {
 		return nil, err
@@ -194,6 +205,16 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 		ReferenceName:   plumbing.ReferenceName(ref),
 		Tags:            git.NoTags,
 		InsecureSkipTLS: skipTLSVerify,
+	}
+
+	// SSH support using env-provided private key
+	if (strings.HasPrefix(url, "git@") || strings.HasPrefix(url, "ssh://")) && strings.TrimSpace(sshPrivateKey) != "" {
+		publicKey, err := ssh.NewPublicKeys("git", []byte(sshPrivateKey), "")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create SSH auth: %w", err)
+		}
+
+		opts.Auth = publicKey
 	}
 
 	if proxyOpts != (transport.ProxyOptions{}) {

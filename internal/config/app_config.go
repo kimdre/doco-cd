@@ -28,6 +28,8 @@ type AppConfig struct {
 	WebhookSecretFile      string                 `env:"WEBHOOK_SECRET_FILE,file"`                                           // WebhookSecretFile is the file containing the WebhookSecret
 	GitAccessToken         string                 `env:"GIT_ACCESS_TOKEN"`                                                   // GitAccessToken is the access token used to authenticate with the Git server (e.g. GitHub) for private repositories
 	GitAccessTokenFile     string                 `env:"GIT_ACCESS_TOKEN_FILE,file"`                                         // GitAccessTokenFile is the file containing the GitAccessToken
+	SSHPrivateKey          string                 `env:"SSH_PRIVATE_KEY"`                                                    // SSHPrivateKey is the SSH private key used for SSH authentication with Git repositories
+	SSHPrivateKeyFile      string                 `env:"SSH_PRIVATE_KEY_FILE,file"`                                          // SSHPrivateKeyFile is the file containing the SSHPrivateKey
 	AuthType               string                 `env:"AUTH_TYPE,notEmpty" envDefault:"oauth2"`                             // AuthType is the type of authentication to use when cloning repositories
 	SkipTLSVerification    bool                   `env:"SKIP_TLS_VERIFICATION,notEmpty" envDefault:"false"`                  // SkipTLSVerification skips the TLS verification when cloning repositories.
 	DockerQuietDeploy      bool                   `env:"DOCKER_QUIET_DEPLOY,notEmpty" envDefault:"true"`                     // DockerQuietDeploy suppresses the status output of dockerCli in deployments (e.g. pull, create, start)
@@ -52,9 +54,10 @@ func GetAppConfig() (*AppConfig, error) {
 
 	mappings := []EnvVarFileMapping{
 		{EnvName: "API_SECRET", EnvValue: &cfg.ApiSecret, FileValue: &cfg.ApiSecretFile, AllowUnset: true},
-		{EnvName: "WEBHOOK_SECRET", EnvValue: &cfg.WebhookSecret, FileValue: &cfg.WebhookSecretFile, AllowUnset: true},
-		{EnvName: "GIT_ACCESS_TOKEN", EnvValue: &cfg.GitAccessToken, FileValue: &cfg.GitAccessTokenFile, AllowUnset: true},
 		{EnvName: "APPRISE_NOTIFY_URLS", EnvValue: &cfg.AppriseNotifyUrls, FileValue: &cfg.AppriseNotifyUrlsFile, AllowUnset: true},
+		{EnvName: "GIT_ACCESS_TOKEN", EnvValue: &cfg.GitAccessToken, FileValue: &cfg.GitAccessTokenFile, AllowUnset: true},
+		{EnvName: "SSH_PRIVATE_KEY", EnvValue: &cfg.SSHPrivateKey, FileValue: &cfg.SSHPrivateKeyFile, AllowUnset: true},
+		{EnvName: "WEBHOOK_SECRET", EnvValue: &cfg.WebhookSecret, FileValue: &cfg.WebhookSecretFile, AllowUnset: true},
 	}
 
 	err := ParseConfigFromEnv(&cfg, &mappings)
