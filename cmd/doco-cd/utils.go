@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
+	"path"
 	"regexp"
 	"slices"
 	"strconv"
@@ -136,13 +138,66 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 	return nil
 }
 
-// getRepoName extracts the repository name from the clone URL.
+// getRepoName returns the repository name in the form "owner/repo" for various URL formats.
+// Supports:
+//   - https://github.com/owner/repo(.git)
+//   - http://github.com/owner/repo(.git)
+//   - ssh://github.com/owner/repo(.git)
+//   - git@github.com:owner/repo(.git)
+//   - token-injected https like https://oauth2:TOKEN@github.com/owner/repo(.git)
 func getRepoName(cloneURL string) string {
-	repoName := strings.SplitAfter(cloneURL, "://")[1]
-
-	if strings.Contains(repoName, "@") {
-		repoName = strings.SplitAfter(repoName, "@")[1]
+	u := strings.TrimSpace(cloneURL)
+	if u == "" {
+		return ""
 	}
 
-	return strings.TrimSuffix(repoName, ".git")
+	// Handle classic SCP-like SSH: git@host:owner/repo(.git)
+	if strings.Contains(u, "@") && strings.Contains(u, ":") && !strings.Contains(u, "://") {
+		// Split once at ':' to get path part after host
+		parts := strings.SplitN(u, ":", 2)
+		if len(parts) == 2 {
+			repoPath := parts[1]
+			// Remove possible leading '/'
+			repoPath = strings.TrimPrefix(repoPath, "/")
+
+			return normalizeOwnerRepo(repoPath)
+		}
+	}
+
+	// For URLs with a scheme use net/url
+	parsed, err := url.Parse(u)
+	if err != nil {
+		// Fallback: attempt to normalize directly
+		return normalizeOwnerRepo(u)
+	}
+
+	// Remove any userinfo tokens, queries, or fragments by only using path
+	p := strings.TrimPrefix(parsed.Path, "/")
+
+	return normalizeOwnerRepo(p)
+}
+
+// normalizeOwnerRepo cleans a path and returns "owner/repo" or empty string when not possible.
+func normalizeOwnerRepo(p string) string {
+	// Remove query or fragment if present in raw strings
+	if idx := strings.IndexAny(p, "?#"); idx >= 0 {
+		p = p[:idx]
+	}
+
+	// Trim trailing '.git'
+	p = strings.TrimSuffix(p, ".git")
+
+	// Clean path and split
+	clean := path.Clean(p)
+
+	parts := strings.Split(clean, "/")
+	if len(parts) < 2 {
+		// Not enough segments to form owner/repo
+		return clean // safest fallback; avoids panic
+	}
+
+	owner := parts[len(parts)-2]
+	repo := parts[len(parts)-1]
+
+	return owner + "/" + repo
 }

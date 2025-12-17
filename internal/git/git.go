@@ -10,7 +10,7 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing/format/diff"
 	"github.com/go-git/go-git/v5/plumbing/object"
-	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
+	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
 
 	"github.com/kimdre/doco-cd/internal/encryption"
 
@@ -41,6 +41,7 @@ var (
 	ErrPullFailed              = errors.New("failed to pull repository")
 	ErrRepositoryAlreadyExists = git.ErrRepositoryAlreadyExists
 	ErrInvalidReference        = git.ErrInvalidReference
+	ErrSSHKeyRequired          = errors.New("ssh URL requires SSH_PRIVATE_KEY to be set")
 )
 
 // ChangedFile represents a file that has changed between two commits.
@@ -118,15 +119,7 @@ func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 	return RefSet{}, fmt.Errorf("%w: %s", ErrInvalidReference, ref)
 }
 
-// UpdateRepository updates a local repository by
-//  1. fetching the latest changes From the remote
-//  2. checking out the specified reference (branch or tag)
-//  3. pulling the latest changes From the remote
-//  4. returning the updated repository
-//
-// Allowed reference forma
-//   - Branches: refs/heads/main or main
-//   - Tags: refs/tags/v1.0.0 or v1.0.0
+// UpdateRepository fetches and checks out the requested ref.
 func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, sshPrivateKey string) (*git.Repository, error) {
 	repo, err := git.PlainOpen(path)
 	if err != nil {
@@ -146,23 +139,29 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 		Prune:           true,
 	}
 
-	// SSH support for fetch
-	if (strings.HasPrefix(url, "git@") || strings.HasPrefix(url, "ssh://")) && strings.TrimSpace(sshPrivateKey) != "" {
-		publicKey, err := ssh.NewPublicKeys("git", []byte(sshPrivateKey), "")
+	isSSH := strings.HasPrefix(url, "git@") || strings.HasPrefix(url, "ssh://")
+	hasKey := strings.TrimSpace(sshPrivateKey) != ""
+
+	// If SSH URL is used without a key, fail early to avoid implicit agent usage.
+	if isSSH && !hasKey {
+		return nil, ErrSSHKeyRequired
+	}
+
+	// SSH auth when key is provided
+	if isSSH {
+		pk, err := gitssh.NewPublicKeys("git", []byte(sshPrivateKey), "")
 		if err != nil {
 			return nil, fmt.Errorf("failed to create SSH auth: %w", err)
 		}
-		// Accept unknown host keys
-		opts.Auth = publicKey
+
+		opts.Auth = pk
 	}
 
 	if proxyOpts != (transport.ProxyOptions{}) {
 		opts.ProxyOptions = proxyOpts
 	}
 
-	// Fetch remote branches and tags
-	err = repo.Fetch(opts)
-	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
+	if err = repo.Fetch(opts); err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
 		return nil, fmt.Errorf("%w: %w", ErrFetchFailed, err)
 	}
 
@@ -175,26 +174,20 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 		return nil, fmt.Errorf("%w: %s", ErrInvalidReference, ref)
 	}
 
-	err = worktree.Checkout(&git.CheckoutOptions{
-		Branch: refSet.localRef,
-		Keep:   true,
-	})
-	if err != nil {
+	if err = worktree.Checkout(&git.CheckoutOptions{Branch: refSet.localRef, Keep: true}); err != nil {
 		return nil, fmt.Errorf("%w: %w: %s", ErrCheckoutFailed, err, refSet.localRef)
 	}
 
-	err = ResetTrackedFiles(repo)
-	if err != nil {
+	if err = ResetTrackedFiles(repo); err != nil {
 		return nil, fmt.Errorf("failed to reset tracked files: %w", err)
 	}
 
 	return repo, nil
 }
 
-// CloneRepository clones a repository From a given URL and reference To a temporary directory.
+// CloneRepository clones a repository with HTTP or SSH auth.
 func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, sshPrivateKey string) (*git.Repository, error) {
-	err := os.MkdirAll(path, filesystem.PermDir)
-	if err != nil {
+	if err := os.MkdirAll(path, filesystem.PermDir); err != nil {
 		return nil, err
 	}
 
@@ -207,14 +200,22 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 		InsecureSkipTLS: skipTLSVerify,
 	}
 
-	// SSH support using env-provided private key
-	if (strings.HasPrefix(url, "git@") || strings.HasPrefix(url, "ssh://")) && strings.TrimSpace(sshPrivateKey) != "" {
-		publicKey, err := ssh.NewPublicKeys("git", []byte(sshPrivateKey), "")
+	isSSH := strings.HasPrefix(url, "git@") || strings.HasPrefix(url, "ssh://")
+	hasKey := strings.TrimSpace(sshPrivateKey) != ""
+
+	// If SSH URL is used without a key, fail early to avoid implicit agent usage.
+	if isSSH && !hasKey {
+		return nil, ErrSSHKeyRequired
+	}
+
+	// SSH auth when key is provided
+	if isSSH {
+		pk, err := gitssh.NewPublicKeys("git", []byte(sshPrivateKey), "")
 		if err != nil {
 			return nil, fmt.Errorf("failed to create SSH auth: %w", err)
 		}
 
-		opts.Auth = publicKey
+		opts.Auth = pk
 	}
 
 	if proxyOpts != (transport.ProxyOptions{}) {
