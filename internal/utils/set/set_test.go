@@ -3,13 +3,13 @@ package set
 import "testing"
 
 func TestSet(t *testing.T) {
-	s := New[string]("potato")
+	s := New[string]("banana")
 
 	// Test Add and Contains
 	s.Add("apple")
 
-	if !s.Contains("apple") || !s.Contains("potato") {
-		t.Errorf("expected set to contain 'apple' and 'potato'")
+	if !s.Contains("apple") || !s.Contains("banana") {
+		t.Errorf("expected set to contain 'apple' and 'banana'")
 	}
 
 	// Test Remove
