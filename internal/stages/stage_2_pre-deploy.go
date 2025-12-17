@@ -8,6 +8,8 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing"
 
+	"github.com/kimdre/doco-cd/internal/utils/set"
+
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
@@ -68,8 +70,8 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		stageLog.Debug("force image pull enabled, checking for image updates")
 
 		var (
-			beforeImages map[string]struct{}
-			afterImages  map[string]struct{}
+			beforeImages set.Set[string]
+			afterImages  set.Set[string]
 		)
 
 		containers, _ := docker.GetProjectContainers(ctx, s.Docker.Cmd, s.DeployConfig.Name)
@@ -91,7 +93,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			}
 
 			for img := range afterImages {
-				if _, exists := beforeImages[img]; !exists {
+				if !beforeImages.Contains(img) {
 					imagesChanged = true
 					break
 				}

@@ -24,6 +24,8 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
+	"github.com/kimdre/doco-cd/internal/utils/set"
+	"github.com/kimdre/doco-cd/internal/utils/slice"
 
 	"github.com/go-git/go-git/v5/plumbing/format/diff"
 
@@ -383,22 +385,17 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		}
 
 		// Determine unused images by comparing image SHAs used by services before and after the deployment
-		unusedImageIDs := make(map[string]struct{})
+
+		var ids []string
 
 		for svc, beforeImg := range beforeImages {
 			afterImg, exists := afterImages[svc]
 			if !exists || beforeImg.ID != afterImg.ID {
-				unusedImageIDs[beforeImg.ID] = struct{}{}
+				ids = append(ids, beforeImg.ID)
 			}
 		}
 
-		// Convert set to slice for pruneImages
-		ids := make([]string, 0, len(unusedImageIDs))
-		for id := range unusedImageIDs {
-			ids = append(ids, id)
-		}
-
-		_, err = pruneImages(ctx, dockerCli, ids)
+		_, err = pruneImages(ctx, dockerCli, slice.Unique(ids))
 		if err != nil {
 			return fmt.Errorf("failed to prune images: %w", err)
 		}
@@ -976,7 +973,7 @@ func PullImages(ctx context.Context, dockerCli command.Cli, projectName string) 
 }
 
 // GetImages retrieves all image IDs used by the services in the compose project.
-func GetImages(ctx context.Context, dockerCli command.Cli, projectName string) (map[string]struct{}, error) {
+func GetImages(ctx context.Context, dockerCli command.Cli, projectName string) (set.Set[string], error) {
 	service := compose.NewComposeService(dockerCli)
 
 	imageSummaries, err := service.Images(ctx, projectName, api.ImagesOptions{})
@@ -984,9 +981,9 @@ func GetImages(ctx context.Context, dockerCli command.Cli, projectName string) (
 		return nil, fmt.Errorf("failed to get images: %w", err)
 	}
 
-	images := make(map[string]struct{})
+	images := set.New[string]()
 	for _, img := range imageSummaries {
-		images[img.ID] = struct{}{}
+		images.Add(img.ID)
 	}
 
 	return images, nil
