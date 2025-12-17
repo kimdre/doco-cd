@@ -11,6 +11,8 @@ import (
 	swarmTypes "github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/api/types/versions"
 
+	"github.com/kimdre/doco-cd/internal/utils/set"
+
 	"github.com/kimdre/doco-cd/internal/docker/options"
 )
 
@@ -58,7 +60,7 @@ func CheckDaemonIsSwarmManager(ctx context.Context, dockerCli command.Cli) (bool
 }
 
 // pruneServices removes services that are no longer referenced in the source.
-func pruneServices(ctx context.Context, dockerCCLI command.Cli, namespace convert.Namespace, services map[string]struct{}) {
+func pruneServices(ctx context.Context, dockerCCLI command.Cli, namespace convert.Namespace, services set.Set[string]) {
 	apiClient := dockerCCLI.Client()
 
 	oldServices, err := GetStackServices(ctx, apiClient, namespace.Name())
