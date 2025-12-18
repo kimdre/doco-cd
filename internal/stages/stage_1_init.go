@@ -46,7 +46,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		s.Repository.CloneURL = s.DeployConfig.RepositoryUrl
 		s.Repository.Name = getRepoName(s.Repository.CloneURL)
 
-		err = config.LoadLocalDotEnv(s.DeployConfig, s.Repository.PathInternal)
+		err = config.LoadLocalDotEnv(s.DeployConfig, s.Repository.PathInternal, s.AppConfig.EnvFilesDir)
 		if err != nil {
 			return fmt.Errorf("failed to parse local env files: %w", err)
 		}
