@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func HealthCheck(ctx context.Context, url string) error {
+func Check(ctx context.Context, url string) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 

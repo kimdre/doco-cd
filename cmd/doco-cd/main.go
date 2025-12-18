@@ -98,7 +98,7 @@ func main() {
 
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
 		checkUrl := fmt.Sprintf("http://localhost:%d%s", c.HttpPort, healthPath)
-		err = healthcheck.HealthCheck(ctx, checkUrl)
+		err = healthcheck.Check(ctx, checkUrl)
 		if err != nil {
 			log.Critical("health check failed", logger.ErrAttr(err), slog.String("url", checkUrl))
 			os.Exit(1)
