@@ -16,6 +16,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+
 	"github.com/kimdre/doco-cd/cmd/doco-cd/healthcheck"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 
@@ -98,6 +99,7 @@ func main() {
 
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
 		checkUrl := fmt.Sprintf("http://localhost:%d%s", c.HttpPort, healthPath)
+
 		err = healthcheck.Check(ctx, checkUrl)
 		if err != nil {
 			log.Critical("health check failed", logger.ErrAttr(err), slog.String("url", checkUrl))
