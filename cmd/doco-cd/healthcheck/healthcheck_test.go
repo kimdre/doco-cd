@@ -7,7 +7,6 @@ import (
 
 func TestCheck(t *testing.T) {
 	// Start a local HTTP server for testing
-
 	testCases := []struct {
 		name    string
 		url     string
