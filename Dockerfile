@@ -37,8 +37,6 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
     --mount=type=bind,target=. \
     go build -ldflags="-s -w -X github.com/kimdre/doco-cd/internal/config.AppVersion=${APP_VERSION} ${BW_SDK_BUILD_FLAGS}" -o / ./...
 
-FROM busybox:1.37-uclibc@sha256:48a4462d62e106f6ece30479d2b198714d33cab795b6b1ad365b3f2c04ad360a AS busybox-binaries
-
 FROM gcr.io/distroless/base-debian13@sha256:f8425b0781786abafa2712aeddbcf2441b535e594d105f23a02b502d5501057e AS release
 
 WORKDIR /
@@ -47,7 +45,6 @@ WORKDIR /
 VOLUME /data
 
 COPY --from=build /doco-cd /doco-cd
-COPY --from=busybox-binaries /bin/wget /usr/bin/wget
 
 ENV TZ=UTC \
     HTTP_PORT=80 \
@@ -57,4 +54,4 @@ ENV TZ=UTC \
 ENTRYPOINT ["/doco-cd"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD ["/usr/bin/wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/v1/health"]
+  CMD ["/doco-cd", "healthcheck"]

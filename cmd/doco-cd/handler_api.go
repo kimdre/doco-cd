@@ -94,7 +94,6 @@ func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request)
 		return
 	}
 
-	h.log.Debug("health check successful")
 	JSONResponse(w, "healthy", jobID, http.StatusOK)
 }
 
