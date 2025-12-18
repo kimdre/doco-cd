@@ -102,6 +102,7 @@ func LoadLocalDotEnv(deployConfig *DeployConfig, internalRepoPath, envFilesDir s
 
 			relPath = filepath.Clean(relPath)
 			trustedRoot := filepath.Clean(envFilesDir)
+
 			absPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(trustedRoot, relPath), trustedRoot)
 			if err != nil {
 				if errors.Is(err, filesystem.ErrPathTraversal) {

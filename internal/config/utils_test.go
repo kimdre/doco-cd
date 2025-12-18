@@ -1,43 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 package config
 
 import (
@@ -58,6 +18,7 @@ func TestLoadLocalDotEnvSupportsFilePrefix(t *testing.T) {
 
 	fileEnvDir := t.TempDir()
 	fileEnvName := "host.env"
+
 	fileEnvPath := filepath.Join(fileEnvDir, fileEnvName)
 	if err := os.WriteFile(fileEnvPath, []byte("HOST_KEY=host\n"), 0o600); err != nil {
 		t.Fatalf("failed to write host env file: %v", err)
