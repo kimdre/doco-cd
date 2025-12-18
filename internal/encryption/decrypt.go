@@ -10,6 +10,8 @@ import (
 
 	"github.com/getsops/sops/v3/cmd/sops/formats"
 	"github.com/getsops/sops/v3/decrypt"
+	"github.com/go-git/go-billy/v5/osfs"
+	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
 
 	"github.com/kimdre/doco-cd/internal/filesystem"
 )
@@ -58,9 +60,30 @@ func DecryptContent(content []byte, format string) ([]byte, error) {
 func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
 	var decryptedFiles []string
 
+	var ignoreMatcher gitignore.Matcher
+	if _, err := os.Stat(filepath.Join(repoPath, ".gitignore")); err == nil {
+		ps, err := gitignore.ReadPatterns(osfs.New(repoPath), nil)
+		if err == nil {
+			ignoreMatcher = gitignore.NewMatcher(ps)
+		}
+	}
+
 	err := filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return fmt.Errorf("failed to walk directory %s: %w", path, err)
+		}
+
+		if ignoreMatcher != nil {
+			relPath, err := filepath.Rel(repoPath, path)
+			if err == nil {
+				pathComponents := strings.Split(relPath, string(filepath.Separator))
+				if ignoreMatcher.Match(pathComponents, d.IsDir()) {
+					if d.IsDir() {
+						return filepath.SkipDir
+					}
+					return nil
+				}
+			}
 		}
 
 		dirName := filepath.Base(filepath.Dir(path))
