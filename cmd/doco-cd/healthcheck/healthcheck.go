@@ -3,7 +3,6 @@ package healthcheck
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 )
@@ -21,13 +20,12 @@ func Check(ctx context.Context, url string) error {
 	if err != nil {
 		return fmt.Errorf("health check request failed: %w", err)
 	}
-	defer func(Body io.ReadCloser) {
-		_ = Body.Close()
-	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("health check failed with status: %s", resp.Status)
 	}
+
+	_ = resp.Body.Close()
 
 	return nil
 }
