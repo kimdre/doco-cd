@@ -122,6 +122,20 @@ func isSSH(url string) bool {
 	return strings.HasPrefix(url, "git@") || strings.HasPrefix(url, "ssh://")
 }
 
+// sshAuth creates an SSH authentication method using the provided private key.
+func sshAuth(sshPrivateKey string) (transport.AuthMethod, error) {
+	if strings.TrimSpace(sshPrivateKey) == "" {
+		return nil, ErrSSHKeyRequired
+	}
+
+	auth, err := gitssh.NewPublicKeys("git", []byte(sshPrivateKey), "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create SSH public keys: %w", err)
+	}
+
+	return auth, nil
+}
+
 // UpdateRepository fetches and checks out the requested ref.
 func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, sshPrivateKey string) (*git.Repository, error) {
 	repo, err := git.PlainOpen(path)
@@ -144,13 +158,9 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 
 	// SSH auth when key is provided
 	if isSSH(url) {
-		if strings.TrimSpace(sshPrivateKey) != "" {
-			return nil, ErrSSHKeyRequired
-		}
-
-		opts.Auth, err = gitssh.NewPublicKeys("git", []byte(sshPrivateKey), "")
+		opts.Auth, err = sshAuth(sshPrivateKey)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create SSH public keys: %w", err)
+			return nil, err
 		}
 	}
 
@@ -200,13 +210,9 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 
 	// SSH auth when key is provided
 	if isSSH(url) {
-		if strings.TrimSpace(sshPrivateKey) != "" {
-			return nil, ErrSSHKeyRequired
-		}
-
-		opts.Auth, err = gitssh.NewPublicKeys("git", []byte(sshPrivateKey), "")
+		opts.Auth, err = sshAuth(sshPrivateKey)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create SSH public keys: %w", err)
+			return nil, err
 		}
 	}
 
