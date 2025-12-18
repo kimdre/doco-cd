@@ -15,6 +15,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
+
 	"github.com/kimdre/doco-cd/internal/encryption"
 
 	"github.com/kimdre/doco-cd/internal/filesystem"
