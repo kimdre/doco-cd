@@ -104,7 +104,7 @@ func TestLoadCompose(t *testing.T) {
 
 	createComposeFile(t, filePath, composeContents)
 
-	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
+	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{".env"}, []string{}, map[string]string{}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,6 +118,67 @@ func TestLoadCompose(t *testing.T) {
 
 	if len(project.Services) != 1 {
 		t.Fatalf("expected 1 service, got %d", len(project.Services))
+	}
+}
+
+func TestLoadComposeFilePrefixUsesEnvDir(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+	composePath := filepath.Join(tmpDir, "file-prefix.compose.yaml")
+	composeBody := `services:
+  fileenv:
+    image: nginx:alpine
+    environment:
+      FROM_FILE: ${FROM_FILE}
+`
+	createComposeFile(t, composePath, composeBody)
+
+	envDir := t.TempDir()
+
+	envFileName := "shared.env"
+	if err := os.WriteFile(filepath.Join(envDir, envFileName), []byte("FROM_FILE=from_env\n"), filesystem.PermOwner); err != nil {
+		t.Fatalf("failed to write env file: %v", err)
+	}
+
+	project, err := LoadCompose(ctx, tmpDir, projectName, []string{composePath}, []string{"file:" + envFileName}, []string{}, map[string]string{}, envDir)
+	if err != nil {
+		t.Fatalf("LoadCompose returned error: %v", err)
+	}
+
+	if len(project.Services) != 1 {
+		t.Fatalf("expected 1 service, got %d", len(project.Services))
+	}
+
+	svc, ok := project.Services["fileenv"]
+	if !ok {
+		t.Fatal("expected service 'fileenv' to be present")
+	}
+
+	val := svc.Environment["FROM_FILE"]
+	if val == nil || *val != "from_env" {
+		t.Fatalf("expected FROM_FILE to equal 'from_env', got %v", val)
+	}
+}
+
+func TestLoadComposeFilePrefixRequiresEnvDir(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+	composePath := filepath.Join(tmpDir, "missing-envdir.compose.yaml")
+	composeBody := `services:
+  fileenv:
+    image: nginx:alpine
+    environment:
+      FROM_FILE: ${FROM_FILE}
+`
+	createComposeFile(t, composePath, composeBody)
+
+	_, err := LoadCompose(ctx, tmpDir, projectName, []string{composePath}, []string{"file:missing.env"}, []string{}, map[string]string{}, "")
+	if err == nil || !errors.Is(err, config.ErrInvalidFilePath) {
+		if err == nil {
+			t.Fatal("expected error for file: entry without ENV_DIR, got nil")
+		}
+
+		t.Fatalf("expected ErrInvalidFilePath, got %v", err)
 	}
 }
 
@@ -204,7 +265,7 @@ func TestDeployCompose(t *testing.T) {
 	t.Log("Load compose file")
 	createComposeFile(t, filePath, composeContents)
 
-	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{}, []string{}, map[string]string{})
+	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{}, []string{}, map[string]string{}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +318,7 @@ func TestDeployCompose(t *testing.T) {
 		}
 
 		err = DeployStack(jobLog, repoPath, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
-			[]git.ChangedFile{}, latestCommit, "test", "poll", false, resolvedSecrets, false)
+			[]git.ChangedFile{}, latestCommit, "test", "poll", false, resolvedSecrets, false, "")
 		if err != nil {
 			t.Fatalf("failed to deploy stack: %v", err)
 		}
@@ -375,7 +436,7 @@ func TestHasChangedConfigs(t *testing.T) {
 
 	t.Chdir(tmpDir)
 
-	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{".env"}, []string{}, map[string]string{})
+	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{".env"}, []string{}, map[string]string{}, "")
 	if err != nil {
 		t.Fatalf("Failed to load compose file: %v", err)
 	}
@@ -438,7 +499,7 @@ func TestHasChangedSecrets(t *testing.T) {
 
 	t.Chdir(tmpDir)
 
-	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{".env"}, []string{}, map[string]string{})
+	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{".env"}, []string{}, map[string]string{}, "")
 	if err != nil {
 		t.Fatalf("Failed to load compose file: %v", err)
 	}
@@ -501,7 +562,7 @@ func TestHasChangedBindMounts(t *testing.T) {
 
 	t.Chdir(tmpDir)
 
-	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{".env"}, []string{}, map[string]string{})
+	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{".env"}, []string{}, map[string]string{}, "")
 	if err != nil {
 		t.Fatalf("Failed to load compose file: %v", err)
 	}
@@ -881,7 +942,7 @@ func TestInjectSecretsToProject(t *testing.T) {
 
 			t.Log("Resolved secrets:", resolvedSecrets)
 
-			project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{".env"}, []string{}, resolvedSecrets)
+			project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{".env"}, []string{}, resolvedSecrets, "")
 			if err != nil {
 				t.Fatal(err)
 			}

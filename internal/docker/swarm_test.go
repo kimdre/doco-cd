@@ -2,6 +2,7 @@ package docker
 
 import (
 	"log"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/git"
 
 	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -61,7 +63,7 @@ func TestDeploySwarmStack(t *testing.T) {
 	repoPath := worktree.Filesystem.Root()
 	filePath := filepath.Join(repoPath, "docker-compose.yml")
 
-	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
+	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{filePath}, []string{".env"}, []string{}, map[string]string{}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,5 +111,40 @@ func TestDeploySwarmStack(t *testing.T) {
 		t.Fatalf("Failed to remove swarm stack: %v", err)
 	} else {
 		t.Logf("Swarm stack removed successfully")
+	}
+}
+
+func TestResolveComposeEnvFilesForSwarm(t *testing.T) {
+	envDir := t.TempDir()
+
+	secretName := "secret.env"
+	if err := os.WriteFile(filepath.Join(envDir, secretName), []byte("FROM_FILE=from_env\n"), filesystem.PermOwner); err != nil {
+		t.Fatalf("failed to write env file: %v", err)
+	}
+
+	resolved, err := resolveComposeEnvFiles([]string{"file:" + secretName}, envDir)
+	if err != nil {
+		t.Fatalf("resolveComposeEnvFiles returned error: %v", err)
+	}
+
+	if len(resolved) != 1 {
+		t.Fatalf("expected 1 resolved env file, got %d", len(resolved))
+	}
+
+	if resolved[0] != filepath.Join(envDir, secretName) {
+		t.Fatalf("expected file entry to resolve to %q, got %q", filepath.Join(envDir, secretName), resolved[0])
+	}
+}
+
+func TestResolveComposeEnvFilesSkipsRemoteForSwarm(t *testing.T) {
+	envDir := t.TempDir()
+
+	resolved, err := resolveComposeEnvFiles([]string{"remote:remote.env", ".env"}, envDir)
+	if err != nil {
+		t.Fatalf("resolveComposeEnvFiles returned error: %v", err)
+	}
+
+	if len(resolved) != 1 || resolved[0] != ".env" {
+		t.Fatalf("expected only local entries to remain, got %v", resolved)
 	}
 }

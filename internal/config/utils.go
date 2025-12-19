@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"gopkg.in/validator.v2"
 
 	"github.com/kimdre/doco-cd/internal/encryption"
+	"github.com/kimdre/doco-cd/internal/filesystem"
 )
 
 // EnvVarFileMapping holds the mappings for file-based environment variables.
@@ -65,54 +67,61 @@ func ParseConfigFromEnv(config interface{}, mappings *[]EnvVarFileMapping) error
 }
 
 // LoadLocalDotEnv processes local dotenv files and loads their variables into the DeployConfig.Internal.Environment map.
-func LoadLocalDotEnv(deployConfig *DeployConfig, internalRepoPath string) error {
-	const remotePrefix = "remote:"
+func LoadLocalDotEnv(deployConfig *DeployConfig, internalRepoPath, envFilesDir string) error {
+	const (
+		remotePrefix = "remote:"
+		filePrefix   = "file:"
+	)
 
 	var remoteEnvFiles []string // List of env files that are not local and will be processed later
 
 	envVars := make(map[string]string)
 
 	for _, f := range deployConfig.EnvFiles {
-		// Process any env-files that are local and not in the remote repository (see repository_url)
-		if !strings.HasPrefix(f, remotePrefix) {
-			absPath := filepath.Join(internalRepoPath, f)
+		switch {
+		case strings.HasPrefix(f, remotePrefix):
+			remotePath := strings.TrimSpace(strings.TrimPrefix(f, remotePrefix))
+			if remotePath == "" {
+				return fmt.Errorf("%w: remote env file entry is empty", ErrInvalidFilePath)
+			}
 
-			// Decrypt file if needed
-			isEncrypted, err := encryption.IsEncryptedFile(absPath)
+			remoteEnvFiles = append(remoteEnvFiles, remotePath)
+		case strings.HasPrefix(f, filePrefix):
+			if envFilesDir == "" {
+				return fmt.Errorf("%w: file env file entries require ENV_DIR to be configured", ErrInvalidFilePath)
+			}
+
+			relPath := strings.TrimSpace(strings.TrimPrefix(f, filePrefix))
+			if relPath == "" {
+				return fmt.Errorf("%w: file env file entry is empty", ErrInvalidFilePath)
+			}
+
+			if filepath.IsAbs(relPath) {
+				return fmt.Errorf("%w: file env file paths must be relative: %s", ErrInvalidFilePath, relPath)
+			}
+
+			relPath = filepath.Clean(relPath)
+			trustedRoot := filepath.Clean(envFilesDir)
+
+			absPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(trustedRoot, relPath), trustedRoot)
 			if err != nil {
-				if os.IsNotExist(err) && f == ".env" {
-					// It's okay if the default .env file doesn't exist
-					continue
+				if errors.Is(err, filesystem.ErrPathTraversal) {
+					return fmt.Errorf("%w: %s", ErrInvalidFilePath, relPath)
 				}
 
-				return fmt.Errorf("failed to check if env file is encrypted %s: %w", absPath, err)
+				return fmt.Errorf("failed to verify env file path %s: %w", relPath, err)
 			}
 
-			var envMap map[string]string
-
-			if isEncrypted {
-				decryptedContent, err := encryption.DecryptFile(absPath)
-				if err != nil {
-					return fmt.Errorf("failed to decrypt env file %s: %w", absPath, err)
-				}
-
-				envMap, err = godotenv.UnmarshalBytes(decryptedContent)
-				if err != nil {
-					return fmt.Errorf("failed to parse decrypted env file %s: %w", absPath, err)
-				}
-			} else {
-				envMap, err = godotenv.Read(absPath)
-				if err != nil {
-					return fmt.Errorf("failed to read local env file %s: %w", absPath, err)
-				}
+			if err := mergeEnvFile(absPath, envVars, false); err != nil {
+				return err
 			}
+		default:
+			absPath := filepath.Join(internalRepoPath, f)
+			allowMissing := f == ".env"
 
-			for k, v := range envMap {
-				envVars[k] = v
+			if err := mergeEnvFile(absPath, envVars, allowMissing); err != nil {
+				return err
 			}
-		} else {
-			f = strings.TrimPrefix(f, remotePrefix)
-			remoteEnvFiles = append(remoteEnvFiles, f)
 		}
 	}
 
@@ -120,6 +129,55 @@ func LoadLocalDotEnv(deployConfig *DeployConfig, internalRepoPath string) error 
 	deployConfig.Internal.Environment = envVars
 
 	return nil
+}
+
+func mergeEnvFile(path string, envVars map[string]string, allowMissing bool) error {
+	envMap, err := readEnvFile(path, allowMissing)
+	if err != nil {
+		return err
+	}
+
+	for k, v := range envMap {
+		envVars[k] = v
+	}
+
+	return nil
+}
+
+func readEnvFile(path string, allowMissing bool) (map[string]string, error) {
+	isEncrypted, err := encryption.IsEncryptedFile(path)
+	if err != nil {
+		if allowMissing && os.IsNotExist(err) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("failed to check if env file is encrypted %s: %w", path, err)
+	}
+
+	if isEncrypted {
+		decryptedContent, err := encryption.DecryptFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt env file %s: %w", path, err)
+		}
+
+		envMap, err := godotenv.UnmarshalBytes(decryptedContent)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse decrypted env file %s: %w", path, err)
+		}
+
+		return envMap, nil
+	}
+
+	envMap, err := godotenv.Read(path)
+	if err != nil {
+		if allowMissing && os.IsNotExist(err) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("failed to read env file %s: %w", path, err)
+	}
+
+	return envMap, nil
 }
 
 // CreateTmpDotEnvFile creates a temporary dotenv file from the DeployConfig.Internal.Environment map.
