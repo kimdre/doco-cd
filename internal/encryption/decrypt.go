@@ -1,6 +1,7 @@
 package encryption
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -25,6 +26,8 @@ var IgnoreDirs = []string{
 	".idea",
 	"node_modules",
 }
+
+var ErrSopsKeyNotSet = errors.New("SOPS secret key is not set")
 
 func GetFileFormat(path string) string {
 	var format string
@@ -61,6 +64,7 @@ func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
 	var decryptedFiles []string
 
 	var ignoreMatcher gitignore.Matcher
+
 	if _, err := os.Stat(filepath.Join(repoPath, ".gitignore")); err == nil {
 		ps, err := gitignore.ReadPatterns(osfs.New(repoPath), nil)
 		if err == nil {
@@ -81,6 +85,7 @@ func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
 					if d.IsDir() {
 						return filepath.SkipDir
 					}
+
 					return nil
 				}
 			}
@@ -132,7 +137,7 @@ func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
 
 		if isEncrypted {
 			if !SopsKeyIsSet() {
-				return fmt.Errorf("SOPS secret key is not set, cannot decrypt file: %s", path)
+				return fmt.Errorf("%w, cannot decrypt file: %s", ErrSopsKeyNotSet, path)
 			}
 
 			decryptedContent, err := DecryptFile(path)
