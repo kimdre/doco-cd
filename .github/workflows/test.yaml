@@ -92,7 +92,7 @@ jobs:
           API_SECRET: api_Secret1
           GIT_ACCESS_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
           HTTP_PROXY: http://localhost:3128
-          SOPS_AGE_KEY: AGE-SECRET-KEY-1U2W28TTH2KSRD0K0J36U93S2C5UW4RXRYGGQ8NPGCDG7RKFCT5SQEKNGQK # only used to encrypt/decrypt files in internal/encryption/testdata
+          SOPS_AGE_KEY: ${{ vars.SOPS_AGE_KEY }} # used to encrypt/decrypt files in internal/encryption/testdata
           # Required for Bitwarden Go SDK, see CONTRIBUTING.md
           CGO_ENABLED: 1
           CC: musl-gcc
