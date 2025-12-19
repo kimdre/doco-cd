@@ -9,7 +9,12 @@ import (
 func SopsKeyIsSet() bool {
 	for _, env := range os.Environ() {
 		if strings.HasPrefix(env, "SOPS_") {
-			return true
+			// Check if the SOPS env var has a value
+			parts := strings.SplitN(env, "=", 2)
+			if len(parts) == 2 && strings.TrimSpace(parts[1]) != "" {
+				// SOPS env var is set and has a value
+				return true
+			}
 		}
 	}
 

@@ -2,9 +2,13 @@ package encryption
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/getsops/sops/v3"
+
+	"github.com/kimdre/doco-cd/internal/filesystem"
 )
 
 func TestIsSopsEncryptedFile(t *testing.T) {
@@ -72,4 +76,50 @@ func TestDecryptSopsFile(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDecryptFilesInDirectory_GitIgnore(t *testing.T) {
+	// Ensure SOPS key is not set for both subtests.
+	// This makes behavior deterministic regardless of other tests.
+	testData, err := os.ReadFile("testdata/encrypted.yaml")
+	if err != nil {
+		t.Fatalf("Failed to read %s: %v", testData, err)
+	}
+
+	t.Run("ignores files matched by .gitignore", func(t *testing.T) {
+		t.Setenv("SOPS_AGE_KEY", "")
+		t.Setenv("SOPS_AGE_KEY_FILE", "")
+
+		repoDir := t.TempDir()
+
+		// .gitignore that ignores a folder and an extension
+		gitignoreContent := "ignored_dir/\n*.ignored\n"
+		if err = os.WriteFile(filepath.Join(repoDir, ".gitignore"), []byte(gitignoreContent), filesystem.PermOwner); err != nil {
+			t.Fatalf("Failed to create .gitignore: %v", err)
+		}
+
+		// Create ignored directory + file inside
+		ignoredDir := filepath.Join(repoDir, "ignored_dir")
+		if err = os.MkdirAll(ignoredDir, filesystem.PermDir); err != nil {
+			t.Fatalf("Failed to create ignored_dir: %v", err)
+		}
+
+		if err = os.WriteFile(filepath.Join(ignoredDir, "secret.yaml"), testData, filesystem.PermOwner); err != nil {
+			t.Fatalf("Failed to write ignored secret: %v", err)
+		}
+
+		// Create a root-level file matching *.ignored
+		if err = os.WriteFile(filepath.Join(repoDir, "file.ignored"), testData, filesystem.PermOwner); err != nil {
+			t.Fatalf("Failed to write file.ignored: %v", err)
+		}
+
+		decryptedFiles, err := DecryptFilesInDirectory(repoDir, repoDir)
+		if err != nil {
+			t.Fatalf("DecryptFilesInDirectory failed (likely attempted to decrypt ignored file): %v", err)
+		}
+
+		if len(decryptedFiles) != 0 {
+			t.Errorf("Expected 0 decrypted files, got %d: %v", len(decryptedFiles), decryptedFiles)
+		}
+	})
 }
