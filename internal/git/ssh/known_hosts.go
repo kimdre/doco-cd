@@ -66,9 +66,9 @@ func fetchHostPublicKey(host string) (ssh.PublicKey, error) {
 	return serverKey, nil
 }
 
-// createKnownHostsFile ensures that the known_hosts file exists
+// CreateKnownHostsFile ensures that the known_hosts file exists
 // and sets the SSH_KNOWN_HOSTS environment variable.
-func createKnownHostsFile() error {
+func CreateKnownHostsFile() error {
 	if _, err := os.Stat(KnownHostsFilePath); errors.Is(err, os.ErrNotExist) {
 		file, err := os.Create(KnownHostsFilePath) // #nosec G304
 		if err != nil {

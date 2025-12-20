@@ -141,6 +141,11 @@ func sshAuth(privateKey, keyPassphrase string) (transport.AuthMethod, error) {
 
 // addToKnownHosts adds the host from the SSH URL to the known_hosts file.
 func addToKnownHosts(url string) error {
+	err := ssh.CreateKnownHostsFile()
+	if err != nil {
+		return fmt.Errorf("failed to create known_hosts file: %w", err)
+	}
+
 	host, err := ssh.ExtractHostFromSSHUrl(url)
 	if err != nil {
 		return fmt.Errorf("failed to extract host from SSH URL: %w", err)

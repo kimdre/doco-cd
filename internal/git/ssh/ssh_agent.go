@@ -54,11 +54,6 @@ func ListenSocketAgent(ctx context.Context, socketPath string) error {
 
 	defer cleanupSocketAgentSocket(socketPath)
 
-	err = createKnownHostsFile()
-	if err != nil {
-		return fmt.Errorf("failed to create known_hosts file: %w", err)
-	}
-
 	keyring := agent.NewKeyring()
 
 	// Accept loop with context awareness

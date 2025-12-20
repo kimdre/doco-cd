@@ -28,7 +28,7 @@ func TestAddHostToKnownHosts(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			KnownHostsFilePath = filepath.Join(t.TempDir(), "known_hosts_test")
 
-			err := createKnownHostsFile()
+			err := CreateKnownHostsFile()
 			if err != nil {
 				t.Fatalf("Failed to create known_hosts file: %v", err)
 			}
