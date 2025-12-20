@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/go-git/go-git/v5"
@@ -180,11 +181,19 @@ func updateRemoteURL(repo *git.Repository, url string) error {
 
 	c := remote.Config()
 
+	var newUrl []string
 	if IsSSH(url) {
-		c.URLs = []string{convertSSHUrl(url)}
+		newUrl = []string{convertSSHUrl(url)}
 	} else {
-		c.URLs = []string{url}
+		newUrl = []string{url}
 	}
+
+	if slices.Compare(c.URLs, newUrl) == 0 {
+		// No change in URL
+		return nil
+	}
+
+	c.URLs = newUrl
 
 	err = repo.DeleteRemote(RemoteName)
 	if err != nil {
