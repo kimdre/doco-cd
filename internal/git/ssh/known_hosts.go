@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 
 	"github.com/kimdre/doco-cd/internal/filesystem"
 )
@@ -36,13 +37,18 @@ func fetchHostPublicKey(host string) (ssh.PublicKey, error) {
 	}
 	defer conn.Close() // nolint:errcheck
 
+	hostKeyCallback, err := knownhosts.New(KnownHostsFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create hostkey callback: %w", err)
+	}
+
 	var serverKey ssh.PublicKey
 
 	sshConn, _, _, err := ssh.NewClientConn(conn, addr, &ssh.ClientConfig{
 		User: DefaultGitSSHUser,
-		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error { // nolint:revive
+		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 			serverKey = key
-			return nil
+			return hostKeyCallback(hostname, remote, key)
 		},
 		Timeout: 5 * time.Second,
 	})
