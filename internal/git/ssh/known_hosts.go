@@ -125,19 +125,23 @@ func ExtractHostFromSSHUrl(sshUrl string) (string, error) {
 		if err != nil {
 			return "", err
 		}
+
 		if u.Host == "" {
 			return "", errors.New("invalid SSH URL: missing host")
 		}
+
 		host := u.Host
 		// Remove port if present
 		if idx := strings.Index(host, ":"); idx != -1 {
 			host = host[:idx]
 		}
+
 		return host, nil
 	}
 
 	// Handle [user@]host:path format
 	atIndex := strings.Index(sshUrl, "@")
+
 	colonIndex := strings.Index(sshUrl, ":")
 	if colonIndex == -1 {
 		return "", errors.New("invalid SSH URL: missing ':' after host")

@@ -82,6 +82,7 @@ func TestExtractHostFromSSHUrl(t *testing.T) {
 				if err != nil {
 					t.Errorf("Unexpected error for URL %q: %v", tc.sshURL, err)
 				}
+
 				if host != tc.expected {
 					t.Errorf("Extracted host = %q, want %q", host, tc.expected)
 				}
