@@ -42,6 +42,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/encryption"
+	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/webhook"
@@ -229,7 +230,7 @@ func addComposeVolumeLabels(project *types.Project, deployConfig config.DeployCo
 }
 
 // LoadCompose parses and loads Compose files as specified by the Docker Compose specification.
-func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles, envFiles, profiles []string, environment map[string]string) (*types.Project, error) {
+func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles, envFiles, profiles []string, environment map[string]string, envFilesDir string) (*types.Project, error) {
 	// if envFiles only contains ".env", we check if the file exists in the working directory
 	if len(envFiles) == 1 && envFiles[0] == ".env" {
 		envFilePath := path.Join(workingDir, ".env")
@@ -239,13 +240,18 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 		}
 	}
 
+	resolvedEnvFiles, err := resolveComposeEnvFiles(envFiles, envFilesDir)
+	if err != nil {
+		return nil, err
+	}
+
 	options, err := cli.NewProjectOptions(
 		composeFiles,
 		cli.WithName(projectName),
 		cli.WithWorkingDirectory(workingDir),
 		cli.WithInterpolation(true),
 		cli.WithResolvedPaths(true),
-		cli.WithEnvFiles(envFiles...), // env files for variable interpolation
+		cli.WithEnvFiles(resolvedEnvFiles...), // env files for variable interpolation
 		cli.WithProfiles(profiles),
 	)
 	if err != nil {
@@ -257,8 +263,7 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 		options.Environment[k] = v
 	}
 
-	err = cli.WithDotEnv(options)
-	if err != nil {
+	if err := cli.WithDotEnv(options); err != nil {
 		return nil, fmt.Errorf("failed to get .env file for interpolation: %w", err)
 	}
 
@@ -273,6 +278,54 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 	}
 
 	return project, nil
+}
+
+func resolveComposeEnvFiles(envFiles []string, envFilesDir string) ([]string, error) {
+	const (
+		remotePrefix = "remote:"
+		filePrefix   = "file:"
+	)
+
+	resolved := make([]string, 0, len(envFiles))
+
+	for _, f := range envFiles {
+		f = strings.TrimSpace(f)
+		if f == "" {
+			continue
+		}
+
+		switch {
+		case strings.HasPrefix(f, remotePrefix):
+			continue // remote env files are handled elsewhere
+		case strings.HasPrefix(f, filePrefix):
+			if envFilesDir == "" {
+				return nil, fmt.Errorf("%w: file env file entries require ENV_DIR to be configured", config.ErrInvalidFilePath)
+			}
+
+			relPath := strings.TrimSpace(strings.TrimPrefix(f, filePrefix))
+			if relPath == "" {
+				return nil, fmt.Errorf("%w: file env file entry is empty", config.ErrInvalidFilePath)
+			}
+
+			if filepath.IsAbs(relPath) {
+				return nil, fmt.Errorf("%w: file env file paths must be relative: %s", config.ErrInvalidFilePath, relPath)
+			}
+
+			relPath = filepath.Clean(relPath)
+			trustedRoot := filepath.Clean(envFilesDir)
+
+			absPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(trustedRoot, relPath), trustedRoot)
+			if err != nil {
+				return nil, fmt.Errorf("failed to verify env file path %s: %w", relPath, err)
+			}
+
+			resolved = append(resolved, absPath)
+		default:
+			resolved = append(resolved, f)
+		}
+	}
+
+	return resolved, nil
 }
 
 // deployCompose deploys a project as specified by the Docker Compose specification (LoadCompose).
@@ -409,7 +462,7 @@ func DeployStack(
 	jobLog *slog.Logger, internalRepoPath, externalRepoPath string, ctx *context.Context,
 	dockerCli *command.Cli, dockerClient *client.Client, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
 	changedFiles []gitInternal.ChangedFile, latestCommit, appVersion, triggerEvent string, forceDeploy bool,
-	resolvedSecrets secrettypes.ResolvedSecrets, secretsChanged bool,
+	resolvedSecrets secrettypes.ResolvedSecrets, secretsChanged bool, envFilesDir string,
 ) error {
 	startTime := time.Now()
 
@@ -506,7 +559,7 @@ func DeployStack(
 		}(tmpEnvFile)
 	}
 
-	project, err := LoadCompose(*ctx, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles, deployConfig.EnvFiles, deployConfig.Profiles, resolvedSecrets)
+	project, err := LoadCompose(*ctx, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles, deployConfig.EnvFiles, deployConfig.Profiles, resolvedSecrets, envFilesDir)
 	if err != nil {
 		errMsg := "failed to load compose config"
 		return fmt.Errorf("%s: %w", errMsg, err)

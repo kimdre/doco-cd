@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -44,6 +45,7 @@ type AppConfig struct {
 	AppriseNotifyLevel     string                 `env:"APPRISE_NOTIFY_LEVEL,notEmpty" envDefault:"success"`                 // AppriseNotifyLevel is the level of notifications to send via the Apprise notification service
 	SecretProvider         string                 `env:"SECRET_PROVIDER"`                                                    // SecretProvider is the secret provider/manager to use for retrieving secrets (e.g. bitwarden secrets manager)
 	MaxDeploymentLoopCount uint                   `env:"MAX_DEPLOYMENT_LOOP_COUNT,notEmpty" envDefault:"2" validate:"min=0"` // Maximum allowed deployment loops before a forced deployment is triggered
+	EnvFilesDir            string                 `env:"ENV_DIR"`                                                            // EnvFilesDir is the root directory for env files referenced with the file: prefix in deployment configs
 }
 
 // GetAppConfig returns the configuration.
@@ -95,6 +97,15 @@ func GetAppConfig() (*AppConfig, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to validate HTTP_PROXY: %w", err)
 		}
+	}
+
+	if cfg.EnvFilesDir != "" {
+		absEnvDir, err := filepath.Abs(cfg.EnvFilesDir)
+		if err != nil {
+			return nil, fmt.Errorf("invalid ENV_DIR: %w", err)
+		}
+
+		cfg.EnvFilesDir = filepath.Clean(absEnvDir)
 	}
 
 	notification.SetAppriseConfig(
