@@ -21,7 +21,7 @@ func TestListenSocketAgent(t *testing.T) {
 	errChan := make(chan error, 1)
 
 	go func() {
-		errChan <- ListenSocketAgent(ctx, socketPath)
+		errChan <- StartSSHAgent(ctx, socketPath)
 	}()
 
 	// Wait until the socket appears or timeout

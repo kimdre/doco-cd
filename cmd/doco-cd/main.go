@@ -228,7 +228,7 @@ func main() {
 		defer cancel()
 
 		go func() {
-			err = ssh.ListenSocketAgent(agentCtx, ssh.SocketAgentSocketPath)
+			err = ssh.StartSSHAgent(agentCtx, ssh.SocketAgentSocketPath)
 			if err != nil {
 				log.Critical("failed to start SSH agent", logger.ErrAttr(err)) // nolint:contextcheck
 			} else {

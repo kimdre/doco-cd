@@ -29,8 +29,10 @@ func cleanupSocketAgentSocket(socketPath string) {
 	_ = os.Remove(socketPath)
 }
 
-// ListenSocketAgent starts a UNIX socket SSH agent and listens for incoming connections.
-func ListenSocketAgent(ctx context.Context, socketPath string) error {
+// StartSSHAgent starts an SSH agent that listens on a Unix domain socket at the specified path.
+// If no path is provided, it defaults to SocketAgentSocketPath.
+// The function runs until the provided context is canceled.
+func StartSSHAgent(ctx context.Context, socketPath string) error {
 	if socketPath == "" {
 		socketPath = SocketAgentSocketPath
 	}
