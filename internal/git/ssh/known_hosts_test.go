@@ -58,3 +58,34 @@ func TestAddHostToKnownHosts(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractHostFromSSHUrl(t *testing.T) {
+	testCases := []struct {
+		sshURL   string
+		expected string
+	}{
+		{"git@github.com:user/repo.git", "github.com"},
+		{"ssh://git@github.com/user/repo.git", "github.com"},
+		{"ssh://github.com/user/repo.git", "github.com"},
+		{"github.com:user/repo.git", "github.com"},
+		{"invalid-url", ""},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.sshURL, func(t *testing.T) {
+			host, err := ExtractHostFromSSHUrl(tc.sshURL)
+			if tc.expected == "" {
+				if err == nil {
+					t.Errorf("Expected error for invalid URL %q, got host %q", tc.sshURL, host)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Unexpected error for URL %q: %v", tc.sshURL, err)
+				}
+				if host != tc.expected {
+					t.Errorf("Extracted host = %q, want %q", host, tc.expected)
+				}
+			}
+		})
+	}
+}

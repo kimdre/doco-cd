@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -119,17 +120,38 @@ func AddHostToKnownHosts(host string) error {
 
 // ExtractHostFromSSHUrl extracts the host/domain from an SSH URL.
 func ExtractHostFromSSHUrl(sshUrl string) (string, error) {
-	atIndex := strings.Index(sshUrl, "@")
-	if atIndex == -1 {
-		return "", errors.New("invalid SSH URL: missing '@'")
+	if strings.HasPrefix(sshUrl, "ssh://") {
+		u, err := url.Parse(sshUrl)
+		if err != nil {
+			return "", err
+		}
+		if u.Host == "" {
+			return "", errors.New("invalid SSH URL: missing host")
+		}
+		host := u.Host
+		// Remove port if present
+		if idx := strings.Index(host, ":"); idx != -1 {
+			host = host[:idx]
+		}
+		return host, nil
 	}
 
-	colonIndex := strings.Index(sshUrl[atIndex:], ":")
+	// Handle [user@]host:path format
+	atIndex := strings.Index(sshUrl, "@")
+	colonIndex := strings.Index(sshUrl, ":")
 	if colonIndex == -1 {
 		return "", errors.New("invalid SSH URL: missing ':' after host")
 	}
 
-	host := sshUrl[atIndex+1 : atIndex+colonIndex]
+	if atIndex != -1 && atIndex < colonIndex {
+		// user@host:path
+		host := sshUrl[atIndex+1 : colonIndex]
+		return host, nil
+	} else if atIndex == -1 {
+		// host:path
+		host := sshUrl[:colonIndex]
+		return host, nil
+	}
 
-	return host, nil
+	return "", errors.New("invalid SSH URL format")
 }
