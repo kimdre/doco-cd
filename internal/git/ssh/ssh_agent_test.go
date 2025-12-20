@@ -124,7 +124,7 @@ func TestAddKeyToAgent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to connect to SSH agent socket: %v", err)
 	}
-	defer agentConn.Close()
+	defer agentConn.Close() // nolint:errcheck
 
 	agentClient := agent.NewClient(agentConn)
 
