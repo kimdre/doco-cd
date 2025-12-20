@@ -118,7 +118,7 @@ func AddKeyToAgent(privateKey []byte, keyPassphrase string) error {
 
 	rawKey, err := getRawPrivateKey(privateKey, keyPassphrase)
 	if err != nil {
-		return fmt.Errorf("failed to get private key: %w", err)
+		return err
 	}
 
 	return agentClient.Add(agent.AddedKey{
