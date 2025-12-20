@@ -92,15 +92,11 @@ jobs:
           API_SECRET: api_Secret1
           GIT_ACCESS_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
           HTTP_PROXY: http://localhost:3128
-          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+          SOPS_AGE_KEY: ${{ vars.SOPS_AGE_KEY }} # used to encrypt/decrypt files in internal/encryption/testdata
           # Required for Bitwarden Go SDK, see CONTRIBUTING.md
           CGO_ENABLED: 1
           CC: musl-gcc
           BW_SDK_BUILD_FLAGS: "-linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'"
-          SECRET_PROVIDER_ACCESS_TOKEN: ${{ secrets.SECRET_PROVIDER_ACCESS_TOKEN }}
-          SECRET_PROVIDER: bitwarden_sm
-          SECRET_PROVIDER_API_URL: https://vault.bitwarden.eu/api
-          SECRET_PROVIDER_IDENTITY_URL: https://vault.bitwarden.eu/identity
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
         with:

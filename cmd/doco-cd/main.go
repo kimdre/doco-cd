@@ -19,6 +19,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/git/ssh"
 
+	"github.com/kimdre/doco-cd/cmd/doco-cd/healthcheck"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -80,7 +81,6 @@ func CreateMountpointSymlink(m container.MountPoint) error {
 func main() {
 	ctx := context.Background()
 
-	var wg sync.WaitGroup
 	// Set the default log level to debug
 	log := logger.New(slog.LevelDebug)
 
@@ -98,6 +98,19 @@ func main() {
 
 	// Set the actual log level
 	log = logger.New(logLevel)
+
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		checkUrl := fmt.Sprintf("http://localhost:%d%s", c.HttpPort, healthPath)
+
+		err = healthcheck.Check(ctx, checkUrl)
+		if err != nil {
+			log.Critical("health check failed", logger.ErrAttr(err), slog.String("url", checkUrl))
+			os.Exit(1)
+		}
+
+		log.Info("health check successful", slog.String("url", checkUrl))
+		os.Exit(0)
+	}
 
 	log.Info("starting application", slog.String("version", config.AppVersion), slog.String("log_level", c.LogLevel))
 
@@ -279,6 +292,8 @@ func main() {
 		slog.Int("http_port", int(c.HttpPort)),
 		slog.Any("enabled_endpoints", enabledEndpoints),
 	)
+
+	var wg sync.WaitGroup
 
 	if len(c.PollConfig) > 0 {
 		log.Info("poll configuration found, scheduling polling jobs", slog.Any("poll_config", c.PollConfig))
