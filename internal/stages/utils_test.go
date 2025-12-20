@@ -25,9 +25,9 @@ func TestGetRepoName(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		result := getRepoName(config.HttpUrl(tt.cloneURL))
+		result := GetRepoName(tt.cloneURL)
 		if result != tt.expected {
-			t.Errorf("getRepoName failed for %s: expected %s, got %s", tt.cloneURL, tt.expected, result)
+			t.Errorf("GetRepoName failed for %s: expected %s, got %s", tt.cloneURL, tt.expected, result)
 		}
 	}
 }

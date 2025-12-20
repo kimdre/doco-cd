@@ -18,6 +18,8 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/google/uuid"
 
+	"github.com/kimdre/doco-cd/internal/stages"
+
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -370,7 +372,7 @@ func TestHandleEvent(t *testing.T) {
 					status, tc.expectedStatusCode)
 			}
 
-			expectedReturnMessage := fmt.Sprintf(tc.expectedResponseBody, jobID, filepath.Join(tmpDir, getRepoName(tc.payload.CloneURL))) + "\n"
+			expectedReturnMessage := fmt.Sprintf(tc.expectedResponseBody, jobID, filepath.Join(tmpDir, stages.GetRepoName(tc.payload.CloneURL))) + "\n"
 			if rr.Body.String() != expectedReturnMessage {
 				t.Errorf("handler returned unexpected body: got '%v' want '%v'",
 					rr.Body.String(), expectedReturnMessage)

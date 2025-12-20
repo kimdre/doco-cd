@@ -17,6 +17,8 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
+	"github.com/kimdre/doco-cd/internal/git/ssh"
+
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -206,6 +208,44 @@ func main() {
 			}
 		}
 	}()
+
+	// Initialize SSH agent if SSH private key is provided
+	if c.SSHPrivateKey != "" {
+		agentCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		go func() {
+			err = ssh.ListenSocketAgent(agentCtx, ssh.SocketAgentSocketPath)
+			if err != nil {
+				log.Critical("failed to start SSH agent", logger.ErrAttr(err)) // nolint:contextcheck
+			} else {
+				log.Debug("SSH agent started")
+			}
+		}()
+
+		// Wait for the agent socket to appear (max 2s)
+		deadline := time.Now().Add(2 * time.Second)
+
+		for {
+			if _, err = os.Stat(ssh.SocketAgentSocketPath); err == nil {
+				break
+			}
+
+			if time.Now().After(deadline) {
+				log.Critical("SSH agent socket file does not exist", slog.String("path", ssh.SocketAgentSocketPath))
+				return
+			}
+
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		// Add the SSH private key to the agent
+		err = ssh.AddKeyToAgent([]byte(c.SSHPrivateKey), c.SSHPrivateKeyPassphrase)
+		if err != nil {
+			log.Critical("failed to add SSH private key to agent", logger.ErrAttr(err))
+			return
+		}
+	}
 
 	// Initialize the secret provider
 	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, config.AppVersion)

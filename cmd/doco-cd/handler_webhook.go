@@ -74,7 +74,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	var err error
 
 	startTime := time.Now()
-	repoName := getRepoName(payload.CloneURL)
+	repoName := stages.GetRepoName(payload.CloneURL)
 
 	jobLog = jobLog.With(slog.String("repository", repoName))
 
@@ -120,14 +120,14 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	if payload.Private {
 		jobLog.Debug("authenticating to private repository")
 
-		if appConfig.GitAccessToken == "" {
+		if appConfig.GitAccessToken == "" && !git.IsSSH(payload.CloneURL) {
 			onError(w, jobLog, "missing access token for private repository", "", http.StatusInternalServerError, metadata)
 
 			return
 		}
 
 		authCloneUrl = git.GetAuthUrl(payload.CloneURL, appConfig.AuthType, appConfig.GitAccessToken)
-	} else if appConfig.GitAccessToken != "" {
+	} else if appConfig.GitAccessToken != "" && !git.IsSSH(payload.CloneURL) {
 		// Always use the access token for public repositories if it is set to avoid rate limiting
 		authCloneUrl = git.GetAuthUrl(payload.CloneURL, appConfig.AuthType, appConfig.GitAccessToken)
 	}
@@ -154,13 +154,13 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	// Try to clone the repository
-	_, err = git.CloneRepository(internalRepoPath, authCloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.SSHPrivateKey)
+	_, err = git.CloneRepository(internalRepoPath, authCloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase)
 	if err != nil {
 		// If the repository already exists, check it out to the specified commit SHA
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			jobLog.Debug("repository already exists, checking out reference "+payload.Ref, slog.String("host_path", externalRepoPath))
 
-			_, err = git.UpdateRepository(internalRepoPath, authCloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.SSHPrivateKey)
+			_, err = git.UpdateRepository(internalRepoPath, authCloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase)
 			if err != nil {
 				onError(w, jobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), http.StatusInternalServerError, metadata)
 
@@ -287,7 +287,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if payload.CloneURL != "" {
-			repoName = getRepoName(payload.CloneURL)
+			repoName = stages.GetRepoName(payload.CloneURL)
 			metadata.Repository = repoName
 			metadata.Revision = notification.GetRevision(payload.Ref, payload.CommitSHA)
 		}
@@ -298,7 +298,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if metadata.Repository == "" {
-		repoName = getRepoName(payload.CloneURL)
+		repoName = stages.GetRepoName(payload.CloneURL)
 		metadata.Repository = repoName
 		metadata.Revision = notification.GetRevision(payload.Ref, payload.CommitSHA)
 	}

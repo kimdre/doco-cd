@@ -62,7 +62,7 @@ func StartPoll(h *handlerData, pollConfig config.PollConfig, wg *sync.WaitGroup)
 
 // PollHandler is a function that handles polling for changes in a repository.
 func (h *handlerData) PollHandler(pollJob *config.PollJob) {
-	repoName := getRepoName(string(pollJob.Config.CloneUrl))
+	repoName := stages.GetRepoName(string(pollJob.Config.CloneUrl))
 
 	logger := h.log.With(slog.String("repository", repoName))
 	logger.Debug("Start poll handler")
@@ -138,7 +138,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 
 	startTime := time.Now()
 	cloneUrl := string(pollConfig.CloneUrl)
-	repoName := getRepoName(cloneUrl)
+	repoName := stages.GetRepoName(cloneUrl)
 	jobLog := logger.With(slog.String("job_id", metadata.JobID))
 
 	if appConfig.DockerSwarmFeatures {
@@ -169,7 +169,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	jobLog.Debug("get repository",
 		slog.String("url", cloneUrl))
 
-	if appConfig.GitAccessToken != "" {
+	if appConfig.GitAccessToken != "" && !git.IsSSH(cloneUrl) {
 		// Always use the access token for public repositories if it is set to avoid rate limiting
 		cloneUrl = git.GetAuthUrl(cloneUrl, appConfig.AuthType, appConfig.GitAccessToken)
 	}
@@ -192,13 +192,13 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		slog.String("container_path", internalRepoPath),
 		slog.String("host_path", externalRepoPath))
 
-	_, err = git.CloneRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.SSHPrivateKey)
+	_, err = git.CloneRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase)
 	if err != nil {
 		// If the repository already exists, check it out to the specified commit SHA
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			jobLog.Debug("repository already exists, checking out reference "+pollConfig.Reference, slog.String("host_path", externalRepoPath))
 
-			_, err = git.UpdateRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.SSHPrivateKey)
+			_, err = git.UpdateRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase)
 			if err != nil {
 				pollError(jobLog, metadata, fmt.Errorf("failed to checkout repository: %w", err))
 

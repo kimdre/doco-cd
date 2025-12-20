@@ -17,8 +17,8 @@ import (
 	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
 
 	"github.com/kimdre/doco-cd/internal/encryption"
-
 	"github.com/kimdre/doco-cd/internal/filesystem"
+	"github.com/kimdre/doco-cd/internal/git/ssh"
 )
 
 const (
@@ -118,27 +118,55 @@ func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 	return RefSet{}, fmt.Errorf("%w: %s", ErrInvalidReference, ref)
 }
 
-// isSSH checks if a given URL is an SSH URL.
-func isSSH(url string) bool {
+// IsSSH checks if a given URL is an SSH URL.
+func IsSSH(url string) bool {
 	return strings.HasPrefix(url, "git@") || strings.HasPrefix(url, "ssh://")
 }
 
 // sshAuth creates an SSH authentication method using the provided private key.
-func sshAuth(sshPrivateKey string) (transport.AuthMethod, error) {
-	if strings.TrimSpace(sshPrivateKey) == "" {
+func sshAuth(privateKey, keyPassphrase string) (transport.AuthMethod, error) {
+	if strings.TrimSpace(privateKey) == "" {
 		return nil, ErrSSHKeyRequired
 	}
 
-	auth, err := gitssh.NewPublicKeys("git", []byte(sshPrivateKey), "")
+	auth, err := gitssh.NewPublicKeys(ssh.DefaultGitSSHUser, []byte(privateKey), keyPassphrase)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create SSH public keys: %w", err)
 	}
 
+	// auth.HostKeyCallback = ssh2.InsecureIgnoreHostKey()
+
 	return auth, nil
 }
 
+// addToKnownHosts adds the host from the SSH URL to the known_hosts file.
+func addToKnownHosts(url string) error {
+	host, err := ssh.ExtractHostFromSSHUrl(url)
+	if err != nil {
+		return fmt.Errorf("failed to extract host from SSH URL: %w", err)
+	}
+
+	return ssh.AddHostToKnownHosts(host)
+}
+
+// convertSSHUrl converts SSH URLs to the ssh:// format.
+// e.g. convert git@github.com:user/repo.git to ssh://git@github.com/user/repo.git
+func convertSSHUrl(url string) string {
+	// Check if url starts with git@ and convert to ssh:// format
+	if strings.HasPrefix(url, "git@") {
+		// Replace the first ':' with '/' after the host
+		if idx := strings.Index(url, ":"); idx != -1 {
+			url = url[:idx] + "/" + url[idx+1:]
+		}
+
+		url = "ssh://" + url
+	}
+
+	return url
+}
+
 // UpdateRepository fetches and checks out the requested ref.
-func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, sshPrivateKey string) (*git.Repository, error) {
+func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, sshPrivateKey, sshPrivateKeyPassphrase string) (*git.Repository, error) {
 	repo, err := git.PlainOpen(path)
 	if err != nil {
 		return nil, err
@@ -150,23 +178,28 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 	}
 
 	opts := &git.FetchOptions{
-		RemoteName:      RemoteName,
-		RemoteURL:       url,
-		RefSpecs:        []config.RefSpec{refSpecAllBranches, refSpecAllTags},
-		InsecureSkipTLS: skipTLSVerify,
-		Prune:           true,
+		RemoteName: RemoteName,
+		RefSpecs:   []config.RefSpec{refSpecAllBranches, refSpecAllTags},
+		Prune:      true,
 	}
 
 	// SSH auth when key is provided
-	if isSSH(url) {
-		opts.Auth, err = sshAuth(sshPrivateKey)
+	if IsSSH(url) {
+		err = addToKnownHosts(url)
+		if err != nil {
+			return nil, fmt.Errorf("failed to add host to known_hosts: %w", err)
+		}
+
+		opts.Auth, err = sshAuth(sshPrivateKey, sshPrivateKeyPassphrase)
 		if err != nil {
 			return nil, err
 		}
-	}
+	} else {
+		opts.InsecureSkipTLS = skipTLSVerify
 
-	if proxyOpts != (transport.ProxyOptions{}) {
-		opts.ProxyOptions = proxyOpts
+		if proxyOpts != (transport.ProxyOptions{}) {
+			opts.ProxyOptions = proxyOpts
+		}
 	}
 
 	if err = repo.Fetch(opts); err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
@@ -194,31 +227,39 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 }
 
 // CloneRepository clones a repository with HTTP or SSH auth.
-func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, sshPrivateKey string) (*git.Repository, error) {
+func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, sshPrivateKey, sshPrivateKeyPassphrase string) (*git.Repository, error) {
 	err := os.MkdirAll(path, filesystem.PermDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create directory %s: %w", path, err)
 	}
 
 	opts := &git.CloneOptions{
-		RemoteName:      RemoteName,
-		URL:             url,
-		SingleBranch:    true,
-		ReferenceName:   plumbing.ReferenceName(ref),
-		Tags:            git.NoTags,
-		InsecureSkipTLS: skipTLSVerify,
+		RemoteName:    RemoteName,
+		URL:           url,
+		SingleBranch:  true,
+		ReferenceName: plumbing.ReferenceName(ref),
+		Tags:          git.NoTags,
 	}
 
 	// SSH auth when key is provided
-	if isSSH(url) {
-		opts.Auth, err = sshAuth(sshPrivateKey)
+	if IsSSH(url) {
+		err = addToKnownHosts(url)
+		if err != nil {
+			return nil, fmt.Errorf("failed to add host to known_hosts: %w", err)
+		}
+
+		opts.URL = convertSSHUrl(url)
+
+		opts.Auth, err = sshAuth(sshPrivateKey, sshPrivateKeyPassphrase)
 		if err != nil {
 			return nil, err
 		}
-	}
+	} else {
+		opts.InsecureSkipTLS = skipTLSVerify
 
-	if proxyOpts != (transport.ProxyOptions{}) {
-		opts.ProxyOptions = proxyOpts
+		if proxyOpts != (transport.ProxyOptions{}) {
+			opts.ProxyOptions = proxyOpts
+		}
 	}
 
 	return git.PlainClone(path, false, opts)
