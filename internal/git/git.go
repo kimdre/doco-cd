@@ -170,6 +170,35 @@ func convertSSHUrl(url string) string {
 	return url
 }
 
+// updateRemoteURL updates the remote URL of the repository.
+func updateRemoteURL(repo *git.Repository, url string) error {
+	// Update remote URL in case it has changed
+	remote, err := repo.Remote(RemoteName)
+	if err != nil {
+		return fmt.Errorf("failed to get remote %s: %w", RemoteName, err)
+	}
+
+	c := remote.Config()
+
+	if IsSSH(url) {
+		c.URLs = []string{convertSSHUrl(url)}
+	} else {
+		c.URLs = []string{url}
+	}
+
+	err = repo.DeleteRemote(RemoteName)
+	if err != nil {
+		return fmt.Errorf("failed to delete remote %s: %w", RemoteName, err)
+	}
+
+	_, err = repo.CreateRemote(c)
+	if err != nil {
+		return fmt.Errorf("failed to create remote %s: %w", RemoteName, err)
+	}
+
+	return nil
+}
+
 // UpdateRepository fetches and checks out the requested ref.
 func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, sshPrivateKey, sshPrivateKeyPassphrase string) (*git.Repository, error) {
 	repo, err := git.PlainOpen(path)
@@ -182,8 +211,14 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 		return nil, err
 	}
 
+	err = updateRemoteURL(repo, url)
+	if err != nil {
+		return nil, err
+	}
+
 	opts := &git.FetchOptions{
 		RemoteName: RemoteName,
+		RemoteURL:  url,
 		RefSpecs:   []config.RefSpec{refSpecAllBranches, refSpecAllTags},
 		Prune:      true,
 	}
@@ -194,6 +229,8 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 		if err != nil {
 			return nil, fmt.Errorf("failed to add host to known_hosts: %w", err)
 		}
+
+		opts.RemoteURL = convertSSHUrl(url)
 
 		opts.Auth, err = sshAuth(sshPrivateKey, sshPrivateKeyPassphrase)
 		if err != nil {

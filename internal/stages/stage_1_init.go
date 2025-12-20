@@ -69,7 +69,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 	)
 
 	authCloneUrl := string(s.Repository.CloneURL)
-	if s.AppConfig.GitAccessToken != "" {
+	if s.AppConfig.GitAccessToken != "" && !git.IsSSH(string(s.Repository.CloneURL)) {
 		authCloneUrl = git.GetAuthUrl(string(s.Repository.CloneURL), s.AppConfig.AuthType, s.AppConfig.GitAccessToken)
 	}
 
