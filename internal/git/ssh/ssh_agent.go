@@ -20,8 +20,8 @@ const (
 
 var SocketAgentSocketPath = filepath.Join(os.TempDir(), "ssh_agent.sock")
 
-// cleanupSocketAgentSocket removes the socket file at the specified path.
-func cleanupSocketAgentSocket(socketPath string) {
+// cleanupSocketFile removes the socket file at the specified path.
+func cleanupSocketFile(socketPath string) {
 	if socketPath == "" {
 		socketPath = SocketAgentSocketPath
 	}
@@ -40,7 +40,7 @@ func StartSSHAgent(ctx context.Context, socketPath string) error {
 	socketPath = filepath.Clean(socketPath)
 
 	// Remove stale socket if it exists
-	cleanupSocketAgentSocket(socketPath)
+	cleanupSocketFile(socketPath)
 
 	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
@@ -54,7 +54,7 @@ func StartSSHAgent(ctx context.Context, socketPath string) error {
 		return fmt.Errorf("failed to set %s environment variable: %w", SocketAgentSocketEnvVar, err)
 	}
 
-	defer cleanupSocketAgentSocket(socketPath)
+	defer cleanupSocketFile(socketPath)
 
 	keyring := agent.NewKeyring()
 
