@@ -2,6 +2,8 @@ package ssh
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -126,23 +128,28 @@ func AddKeyToAgent(privateKey []byte, keyPassphrase string) error {
 }
 
 // getRawPrivateKey parses the private key bytes and returns the raw private key object.
-func getRawPrivateKey(privateKey []byte, keyPassphrase string) (interface{}, error) {
-	var (
-		rawKey any
-		err    error
-	)
-
-	if keyPassphrase != "" {
-		rawKey, err = ssh.ParseRawPrivateKeyWithPassphrase(privateKey, []byte(keyPassphrase))
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse encrypted private key: %w", err)
-		}
-	} else {
-		rawKey, err = ssh.ParseRawPrivateKey(privateKey)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse private key: %w", err)
-		}
+func getRawPrivateKey(pemBytes []byte, passphrase string) (interface{}, error) {
+	block, _ := pem.Decode(pemBytes)
+	if block == nil {
+		return nil, errors.New("failed to decode PEM block")
 	}
 
-	return rawKey, nil
+	fmt.Println("Type: ", block.Type)
+
+	switch block.Type {
+	case "ENCRYPTED PRIVATE KEY":
+		der, err := x509.DecryptPEMBlock(block, []byte(passphrase))
+		if err != nil {
+			return nil, err
+		}
+		return x509.ParsePKCS8PrivateKey(der)
+	case "PRIVATE KEY":
+		return x509.ParsePKCS8PrivateKey(block.Bytes)
+	default:
+		// fallback to ssh package for other types
+		if passphrase != "" {
+			return ssh.ParseRawPrivateKeyWithPassphrase(pemBytes, []byte(passphrase))
+		}
+		return ssh.ParseRawPrivateKey(pemBytes)
+	}
 }

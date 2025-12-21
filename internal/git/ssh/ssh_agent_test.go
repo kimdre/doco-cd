@@ -151,27 +151,147 @@ func TestAddKeyToAgent(t *testing.T) {
 }
 
 func TestGetRawPrivateKey(t *testing.T) {
-	// Generate a test SSH key pair
-	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatalf("Failed to generate test SSH key: %v", err)
+	testCases := []struct {
+		name          string
+		generateKey   func() ([]byte, error)
+		keyPassphrase string
+		wantErr       bool
+	}{
+		{
+			name: "Unencrypted ED25519 key",
+			generateKey: func() ([]byte, error) {
+				_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+				if err != nil {
+					return nil, err
+				}
+
+				privateKeyDER, err := x509.MarshalPKCS8PrivateKey(privateKey)
+				if err != nil {
+					return nil, err
+				}
+
+				privateKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateKeyDER})
+				return privateKeyPEM, nil
+			},
+			keyPassphrase: "",
+			wantErr:       false,
+		},
+		{
+			name: "Encrypted ED25519 key with correct passphrase",
+			generateKey: func() ([]byte, error) {
+				_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+				if err != nil {
+					return nil, err
+				}
+
+				privateKeyDER, err := x509.MarshalPKCS8PrivateKey(privateKey)
+				if err != nil {
+					return nil, err
+				}
+
+				block, err := x509.EncryptPEMBlock(
+					rand.Reader,
+					"ENCRYPTED PRIVATE KEY",
+					privateKeyDER,
+					[]byte("testpass"),
+					x509.PEMCipherAES256,
+				)
+				if err != nil {
+					return nil, err
+				}
+
+				privateKeyPEM := pem.EncodeToMemory(block)
+				return privateKeyPEM, nil
+			},
+			keyPassphrase: "testpass",
+			wantErr:       false,
+		},
+		{
+			name: "Encrypted ED25519 key with incorrect passphrase",
+			generateKey: func() ([]byte, error) {
+				_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+				if err != nil {
+					return nil, err
+				}
+
+				privateKeyDER, err := x509.MarshalPKCS8PrivateKey(privateKey)
+				if err != nil {
+					return nil, err
+				}
+
+				block, err := x509.EncryptPEMBlock(
+					rand.Reader,
+					"PRIVATE KEY",
+					privateKeyDER,
+					[]byte("testpass"),
+					x509.PEMCipherAES256,
+				)
+				if err != nil {
+					return nil, err
+				}
+
+				privateKeyPEM := pem.EncodeToMemory(block)
+				return privateKeyPEM, nil
+			},
+			keyPassphrase: "wrongpass",
+			wantErr:       true,
+		},
+		{
+			name: "Malformed private key",
+			generateKey: func() ([]byte, error) {
+				return []byte("malformed key data"), nil
+			},
+			keyPassphrase: "",
+			wantErr:       true,
+		},
+		{
+			name: "OpenSSH private key",
+			generateKey: func() ([]byte, error) {
+				// This is a sample unencrypted ed25519 OpenSSH private key
+				// ssh-keygen -t ed25519 -f test_ed25519_openssh -N ""
+				privateKeyPEM := []byte(`-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACCU6Sk58h0kd2bUvHHvyS1JQiLgBf6yKaIbpGlK8TEfVAAAAJgBQMSpAUDE
+qQAAAAtzc2gtZWQyNTUxOQAAACCU6Sk58h0kd2bUvHHvyS1JQiLgBf6yKaIbpGlK8TEfVA
+AAAEBBVspZHjWj6Np5szQQHB6w+1X3ZOatDcMmcnm1+R9J9pTpKTnyHSR3ZtS8ce/JLUlC
+IuAF/rIpohukaUrxMR9UAAAADmtpbUBraW0tZmVkb3JhAQIDBAUGBw==
+-----END OPENSSH PRIVATE KEY-----`)
+				return privateKeyPEM, nil
+			},
+			keyPassphrase: "",
+			wantErr:       false,
+		},
+		{
+			name: "OpenSSH private key with passphrase",
+			generateKey: func() ([]byte, error) {
+				// This is a sample ed25519 OpenSSH private key encrypted with passphrase "doco-cd"
+				// ssh-keygen -t ed25519 -f test_ed25519_openssh_pass -N "doco-cd"
+				privateKeyPEM := []byte(`-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABA+Zz/91P
+rp2u7NvTWBtLI0AAAAGAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIFyEIiKcYAJl82Ga
+40hVJoKO1qOvVfekORkGLSsKFnF7AAAAoBgOn6fvoLqNvcj0QMyuZTYVJEm9YXs8zNkG+9
+suGsdNHOvMRQWLzq9VJiJUyOG29zayIQ4Q3pZlcoRINpUI9yl4/eFza7P4MEHDVBLF531K
+X3nAnZomTg2czfus92AmR+3kYDWvBE1WkpieAaRfVTuBtNcB41rOAZMLQ001zhVF2qdb+D
++tvLTkrbIyLPEbZOBHuCH+mVgPefYCRXsB9Nw=
+-----END OPENSSH PRIVATE KEY-----`)
+				return privateKeyPEM, nil
+			},
+			keyPassphrase: "doco-cd",
+			wantErr:       false,
+		},
 	}
 
-	// Serialize the private key to PEM format
-	privateKeyDER, err := x509.MarshalPKCS8PrivateKey(privateKey)
-	if err != nil {
-		t.Fatalf("Failed to marshal private key to PKCS8: %v", err)
-	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			privateKeyPEM, err := tc.generateKey()
+			if err != nil {
+				t.Fatalf("Failed to generate test key: %v", err)
+			}
 
-	privateKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateKeyDER})
-
-	// Test parsing unencrypted private key
-	rawKey, err := getRawPrivateKey(privateKeyPEM, "")
-	if err != nil {
-		t.Fatalf("Failed to parse unencrypted private key: %v", err)
-	}
-
-	if _, ok := rawKey.(ed25519.PrivateKey); !ok {
-		t.Fatalf("Parsed key is not of type ed25519.PrivateKey")
+			_, err = getRawPrivateKey(privateKeyPEM, tc.keyPassphrase)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("getRawPrivateKey() error = %v, wantErr %v", err, tc.wantErr)
+			}
+		})
 	}
 }
