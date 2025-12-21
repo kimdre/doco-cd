@@ -138,10 +138,12 @@ func getRawPrivateKey(pemBytes []byte, passphrase string) (interface{}, error) {
 
 	switch block.Type {
 	case "ENCRYPTED PRIVATE KEY":
-		der, err := x509.DecryptPEMBlock(block, []byte(passphrase))
+		// Deprecated, but we still use it for compatibility
+		der, err := x509.DecryptPEMBlock(block, []byte(passphrase)) // nolint:staticcheck
 		if err != nil {
 			return nil, err
 		}
+
 		return x509.ParsePKCS8PrivateKey(der)
 	case "PRIVATE KEY":
 		return x509.ParsePKCS8PrivateKey(block.Bytes)
@@ -150,6 +152,7 @@ func getRawPrivateKey(pemBytes []byte, passphrase string) (interface{}, error) {
 		if passphrase != "" {
 			return ssh.ParseRawPrivateKeyWithPassphrase(pemBytes, []byte(passphrase))
 		}
+
 		return ssh.ParseRawPrivateKey(pemBytes)
 	}
 }

@@ -171,6 +171,7 @@ func TestGetRawPrivateKey(t *testing.T) {
 				}
 
 				privateKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateKeyDER})
+
 				return privateKeyPEM, nil
 			},
 			keyPassphrase: "",
@@ -189,7 +190,7 @@ func TestGetRawPrivateKey(t *testing.T) {
 					return nil, err
 				}
 
-				block, err := x509.EncryptPEMBlock(
+				block, err := x509.EncryptPEMBlock( // nolint:staticcheck
 					rand.Reader,
 					"ENCRYPTED PRIVATE KEY",
 					privateKeyDER,
@@ -201,6 +202,7 @@ func TestGetRawPrivateKey(t *testing.T) {
 				}
 
 				privateKeyPEM := pem.EncodeToMemory(block)
+
 				return privateKeyPEM, nil
 			},
 			keyPassphrase: "testpass",
@@ -219,7 +221,7 @@ func TestGetRawPrivateKey(t *testing.T) {
 					return nil, err
 				}
 
-				block, err := x509.EncryptPEMBlock(
+				block, err := x509.EncryptPEMBlock( // nolint:staticcheck
 					rand.Reader,
 					"PRIVATE KEY",
 					privateKeyDER,
@@ -231,6 +233,7 @@ func TestGetRawPrivateKey(t *testing.T) {
 				}
 
 				privateKeyPEM := pem.EncodeToMemory(block)
+
 				return privateKeyPEM, nil
 			},
 			keyPassphrase: "wrongpass",
@@ -256,6 +259,7 @@ qQAAAAtzc2gtZWQyNTUxOQAAACCU6Sk58h0kd2bUvHHvyS1JQiLgBf6yKaIbpGlK8TEfVA
 AAAEBBVspZHjWj6Np5szQQHB6w+1X3ZOatDcMmcnm1+R9J9pTpKTnyHSR3ZtS8ce/JLUlC
 IuAF/rIpohukaUrxMR9UAAAADmtpbUBraW0tZmVkb3JhAQIDBAUGBw==
 -----END OPENSSH PRIVATE KEY-----`)
+
 				return privateKeyPEM, nil
 			},
 			keyPassphrase: "",
@@ -274,6 +278,7 @@ suGsdNHOvMRQWLzq9VJiJUyOG29zayIQ4Q3pZlcoRINpUI9yl4/eFza7P4MEHDVBLF531K
 X3nAnZomTg2czfus92AmR+3kYDWvBE1WkpieAaRfVTuBtNcB41rOAZMLQ001zhVF2qdb+D
 +tvLTkrbIyLPEbZOBHuCH+mVgPefYCRXsB9Nw=
 -----END OPENSSH PRIVATE KEY-----`)
+
 				return privateKeyPEM, nil
 			},
 			keyPassphrase: "doco-cd",
