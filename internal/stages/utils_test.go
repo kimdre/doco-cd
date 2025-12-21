@@ -23,12 +23,33 @@ func TestGetRepoName(t *testing.T) {
 			cloneURL: "http://git.example.com/doco-cd.git",
 			expected: "git.example.com/doco-cd",
 		},
+		// SSH SCP-like
+		{
+			cloneURL: "git@github.com:kimdre/doco-cd_tests.git",
+			expected: "github.com/kimdre/doco-cd_tests",
+		},
+		// SSH URL
+		{
+			cloneURL: "ssh://git@github.com/kimdre/doco-cd_tests.git",
+			expected: "github.com/kimdre/doco-cd_tests",
+		},
+		{
+			cloneURL: "ssh://github.com/kimdre/doco-cd_tests.git",
+			expected: "github.com/kimdre/doco-cd_tests",
+		},
+		// Token-injected HTTPS
+		{
+			cloneURL: "https://oauth2:TOKEN@github.com/kimdre/doco-cd_tests.git",
+			expected: "github.com/kimdre/doco-cd_tests",
+		},
 	}
 	for _, tt := range tests {
-		result := getRepoName(config.HttpUrl(tt.cloneURL))
-		if result != tt.expected {
-			t.Errorf("getRepoName failed for %s: expected %s, got %s", tt.cloneURL, tt.expected, result)
-		}
+		t.Run(tt.cloneURL, func(t *testing.T) {
+			result := GetRepoName(tt.cloneURL)
+			if result != tt.expected {
+				t.Errorf("GetRepoName failed for %s: expected %s, got %s", tt.cloneURL, tt.expected, result)
+			}
+		})
 	}
 }
 
@@ -49,11 +70,32 @@ func TestGetFullName(t *testing.T) {
 			cloneURL: "http://git.example.com/doco-cd.git",
 			expected: "doco-cd",
 		},
+		// SSH SCP-like
+		{
+			cloneURL: "git@github.com:kimdre/doco-cd_tests.git",
+			expected: "kimdre/doco-cd_tests",
+		},
+		// SSH URL
+		{
+			cloneURL: "ssh://git@github.com/kimdre/doco-cd_tests.git",
+			expected: "kimdre/doco-cd_tests",
+		},
+		{
+			cloneURL: "ssh://github.com/kimdre/doco-cd_tests.git",
+			expected: "kimdre/doco-cd_tests",
+		},
+		// Token-injected HTTPS
+		{
+			cloneURL: "https://oauth2:TOKEN@github.com/kimdre/doco-cd_tests.git",
+			expected: "kimdre/doco-cd_tests",
+		},
 	}
 	for _, tt := range tests {
-		result := getFullName(config.HttpUrl(tt.cloneURL))
-		if result != tt.expected {
-			t.Errorf("getFullName failed for %s: expected %s, got %s", tt.cloneURL, tt.expected, result)
-		}
+		t.Run(tt.cloneURL, func(t *testing.T) {
+			result := getFullName(config.HttpUrl(tt.cloneURL))
+			if result != tt.expected {
+				t.Errorf("getFullName failed for %s: expected %s, got %s", tt.cloneURL, tt.expected, result)
+			}
+		})
 	}
 }

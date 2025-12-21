@@ -48,7 +48,7 @@ func TestDeploySwarmStack(t *testing.T) {
 
 	t.Chdir(tmpDir)
 
-	repo, err := git.CloneRepository(tmpDir, p.CloneURL, git.SwarmModeBranch, c.SkipTLSVerification, c.HttpProxy)
+	repo, err := git.CloneRepository(tmpDir, p.CloneURL, git.SwarmModeBranch, c.SkipTLSVerification, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}

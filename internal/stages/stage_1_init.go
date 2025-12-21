@@ -44,7 +44,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 
 	if s.DeployConfig.RepositoryUrl != "" {
 		s.Repository.CloneURL = s.DeployConfig.RepositoryUrl
-		s.Repository.Name = getRepoName(s.Repository.CloneURL)
+		s.Repository.Name = GetRepoName(string(s.Repository.CloneURL))
 
 		err = config.LoadLocalDotEnv(s.DeployConfig, s.Repository.PathInternal)
 		if err != nil {
@@ -69,14 +69,15 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 	)
 
 	authCloneUrl := string(s.Repository.CloneURL)
-	if s.AppConfig.GitAccessToken != "" {
+	if s.AppConfig.GitAccessToken != "" && !git.IsSSH(string(s.Repository.CloneURL)) {
 		authCloneUrl = git.GetAuthUrl(string(s.Repository.CloneURL), s.AppConfig.AuthType, s.AppConfig.GitAccessToken)
 	}
 
 	if s.DeployConfig.RepositoryUrl != "" {
 		stageLog.Debug("repository URL provided, cloning remote repository")
 
-		_, err = git.CloneRepository(s.Repository.PathInternal, authCloneUrl, s.DeployConfig.Reference, s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy)
+		_, err = git.CloneRepository(s.Repository.PathInternal, authCloneUrl, s.DeployConfig.Reference,
+			s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, s.AppConfig.SSHPrivateKey, s.AppConfig.SSHPrivateKeyPassphrase)
 		if err != nil && !errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			return fmt.Errorf("failed to clone repository: %w", err)
 		}
@@ -112,14 +113,15 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 
 	stageLog.Debug("checking out reference "+s.DeployConfig.Reference, slog.String("path", s.Repository.PathExternal))
 
-	s.Repository.Git, err = git.UpdateRepository(s.Repository.PathInternal, authCloneUrl, s.DeployConfig.Reference, s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy)
+	s.Repository.Git, err = git.UpdateRepository(s.Repository.PathInternal, authCloneUrl, s.DeployConfig.Reference,
+		s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, s.AppConfig.SSHPrivateKey, s.AppConfig.SSHPrivateKeyPassphrase)
 	if err != nil {
 		return fmt.Errorf("failed to checkout repository: %w", err)
 	}
 
 	if s.JobTrigger == JobTriggerPoll {
 		s.Payload = &webhook.ParsedPayload{
-			Name:      getRepoName(s.Repository.CloneURL),
+			Name:      GetRepoName(string(s.Repository.CloneURL)),
 			Ref:       s.DeployConfig.Reference,
 			CommitSHA: string(JobTriggerPoll),
 			FullName:  getFullName(s.Repository.CloneURL),

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 
 	"gopkg.in/validator.v2"
 )
@@ -34,18 +35,33 @@ func validateHttpUrl(v interface{}, _ string) error {
 		return nil // Empty string is considered valid
 	}
 
+	// Accept classic SSH clone (e.g., git@github.com:owner/repo.git)
+	sshClonePattern := regexp.MustCompile(`^[a-z0-9._-]+@[^:]+:.+\.git$`)
+	if sshClonePattern.MatchString(str) {
+		return nil
+	}
+
 	u, err := url.Parse(str)
 	if err != nil {
 		return fmt.Errorf("%w: failed to parse URL '%s'", ErrInvalidHttpUrl, str)
 	}
 
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("%w: URL must start with http or https, got '%s'", ErrInvalidHttpUrl, str)
-	}
+	// Accept http(s) and ssh scheme URLs
+	switch u.Scheme {
+	case "http", "https":
+		if u.Host == "" {
+			return fmt.Errorf("%w: URL must have a host, got '%s'", ErrInvalidHttpUrl, str)
+		}
 
-	if u.Host == "" {
-		return fmt.Errorf("%w: URL must have a host, got '%s'", ErrInvalidHttpUrl, str)
-	}
+		return nil
+	case "ssh":
+		// ssh://host/owner/repo.git
+		if u.Host == "" || u.Path == "" {
+			return fmt.Errorf("%w: SSH URL must include host and path, got '%s'", ErrInvalidHttpUrl, str)
+		}
 
-	return nil
+		return nil
+	default:
+		return fmt.Errorf("%w: URL must start with http, https or ssh, got '%s'", ErrInvalidHttpUrl, str)
+	}
 }
