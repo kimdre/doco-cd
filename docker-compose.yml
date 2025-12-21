@@ -28,7 +28,7 @@ services:
       # - ./data:/data
       - data:/data
     healthcheck:
-      test: [ "/doco-cd", "healthcheck" ]
+      test: [ "CMD", "/doco-cd", "healthcheck" ]
       start_period: 15s
       interval: 30s
       timeout: 5s
