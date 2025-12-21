@@ -469,7 +469,7 @@ IuAF/rIpohukaUrxMR9UAAAADmtpbUBraW0tZmVkb3JhAQIDBAUGBw==
 			name:        "Missing passphrase for encrypted key",
 			privateKey:  encryptedKey,
 			passphrase:  "",
-			expectedErr: "",
+			expectedErr: "failed to create SSH public keys: bcrypt_pbkdf: empty password",
 		},
 		{
 			name:        "Unencrypted ED25519 key",
