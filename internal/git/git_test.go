@@ -434,28 +434,89 @@ func TestGetChangedFilesBetweenCommits(t *testing.T) {
 }
 
 func TestSSHAuth(t *testing.T) {
-	privateKey := `-----BEGIN OPENSSH PRIVATE KEY-----
+	const (
+		encryptedKey = `-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABA+Zz/91P
+rp2u7NvTWBtLI0AAAAGAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIFyEIiKcYAJl82Ga
+40hVJoKO1qOvVfekORkGLSsKFnF7AAAAoBgOn6fvoLqNvcj0QMyuZTYVJEm9YXs8zNkG+9
+suGsdNHOvMRQWLzq9VJiJUyOG29zayIQ4Q3pZlcoRINpUI9yl4/eFza7P4MEHDVBLF531K
+X3nAnZomTg2czfus92AmR+3kYDWvBE1WkpieAaRfVTuBtNcB41rOAZMLQ001zhVF2qdb+D
++tvLTkrbIyLPEbZOBHuCH+mVgPefYCRXsB9Nw=
+-----END OPENSSH PRIVATE KEY-----`
+		encryptedKeyPassphrase = "doco-cd"
+		unencryptedKey         = `-----BEGIN OPENSSH PRIVATE KEY-----
 b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
 QyNTUxOQAAACCU6Sk58h0kd2bUvHHvyS1JQiLgBf6yKaIbpGlK8TEfVAAAAJgBQMSpAUDE
 qQAAAAtzc2gtZWQyNTUxOQAAACCU6Sk58h0kd2bUvHHvyS1JQiLgBf6yKaIbpGlK8TEfVA
 AAAEBBVspZHjWj6Np5szQQHB6w+1X3ZOatDcMmcnm1+R9J9pTpKTnyHSR3ZtS8ce/JLUlC
 IuAF/rIpohukaUrxMR9UAAAADmtpbUBraW0tZmVkb3JhAQIDBAUGBw==
 -----END OPENSSH PRIVATE KEY-----`
+	)
 
-	auth, err := sshAuth(privateKey, "testpass")
-	if err != nil {
-		t.Fatalf("Failed to create SSH auth: %v", err)
+	testCases := []struct {
+		name        string
+		privateKey  string
+		passphrase  string
+		expectedErr string
+	}{
+		{
+			name:        "Encrypted ED25519 key",
+			privateKey:  encryptedKey,
+			passphrase:  encryptedKeyPassphrase,
+			expectedErr: "",
+		},
+		{
+			name:        "Missing passphrase for encrypted key",
+			privateKey:  encryptedKey,
+			passphrase:  "",
+			expectedErr: "",
+		},
+		{
+			name:        "Unencrypted ED25519 key",
+			privateKey:  unencryptedKey,
+			passphrase:  "",
+			expectedErr: "",
+		},
+		{
+			name:        "Unencrypted ED25519 key with passphrase",
+			privateKey:  unencryptedKey,
+			passphrase:  "test",
+			expectedErr: "",
+		},
+		{
+			name:        "Missing private key",
+			privateKey:  "",
+			passphrase:  "",
+			expectedErr: "ssh URL requires SSH_PRIVATE_KEY to be set",
+		},
 	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			auth, err := sshAuth(tc.privateKey, tc.passphrase)
+			if err != nil {
+				if tc.expectedErr == "" {
+					t.Fatalf("Expected no error, got %v", err)
+				}
 
-	if auth == nil {
-		t.Fatal("SSH auth is nil")
+				if err.Error() == tc.expectedErr {
+					return
+				}
+				t.Fatalf("Expected error %v, got %v", tc.expectedErr, err.Error())
+			} else if tc.expectedErr != "" {
+				t.Fatalf("Expected error %v, got none", tc.expectedErr)
+			}
+
+			if auth == nil {
+				if tc.expectedErr != "auth empty" {
+					t.Fatal("Expected auth to be non-nil")
+				}
+			}
+
+			if auth.Name() != "ssh-public-keys" {
+				t.Fatalf("Expected auth name 'ssh-public-keys', got '%s'", auth.Name())
+			}
+		})
 	}
-
-	if auth.Name() != "ssh-public-keys" {
-		t.Fatalf("Expected auth name 'ssh-key', got '%s'", auth.Name())
-	}
-
-	t.Logf("SSH auth created successfully: %s", auth.String())
 }
 
 func TestConvertSSHUrl(t *testing.T) {
