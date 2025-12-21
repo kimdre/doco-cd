@@ -501,6 +501,7 @@ IuAF/rIpohukaUrxMR9UAAAADmtpbUBraW0tZmVkb3JhAQIDBAUGBw==
 				if err.Error() == tc.expectedErr {
 					return
 				}
+
 				t.Fatalf("Expected error %v, got %v", tc.expectedErr, err.Error())
 			} else if tc.expectedErr != "" {
 				t.Fatalf("Expected error %v, got none", tc.expectedErr)
