@@ -432,3 +432,62 @@ func TestGetChangedFilesBetweenCommits(t *testing.T) {
 		t.Errorf("Expected changes in subdir %s, but found none", expectedChangedDirectory)
 	}
 }
+
+func TestSSHAuth(t *testing.T) {
+	privateKey := `-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACCU6Sk58h0kd2bUvHHvyS1JQiLgBf6yKaIbpGlK8TEfVAAAAJgBQMSpAUDE
+qQAAAAtzc2gtZWQyNTUxOQAAACCU6Sk58h0kd2bUvHHvyS1JQiLgBf6yKaIbpGlK8TEfVA
+AAAEBBVspZHjWj6Np5szQQHB6w+1X3ZOatDcMmcnm1+R9J9pTpKTnyHSR3ZtS8ce/JLUlC
+IuAF/rIpohukaUrxMR9UAAAADmtpbUBraW0tZmVkb3JhAQIDBAUGBw==
+-----END OPENSSH PRIVATE KEY-----`
+
+	auth, err := sshAuth(privateKey, "testpass")
+	if err != nil {
+		t.Fatalf("Failed to create SSH auth: %v", err)
+	}
+
+	if auth == nil {
+		t.Fatal("SSH auth is nil")
+	}
+
+	if auth.Name() != "ssh-public-keys" {
+		t.Fatalf("Expected auth name 'ssh-key', got '%s'", auth.Name())
+	}
+
+	t.Logf("SSH auth created successfully: %s", auth.String())
+}
+
+func TestConvertSSHUrl(t *testing.T) {
+	testCases := []struct {
+		name     string
+		sshUrl   string
+		expected string
+	}{
+		{
+			name:     "Valid SSH URL",
+			sshUrl:   "git@github.com:user/repo.git",
+			expected: "ssh://git@github.com/user/repo.git",
+		},
+		{
+			name:     "Valid SSH URL without .git",
+			sshUrl:   "git@github.com:user/repo",
+			expected: "ssh://git@github.com/user/repo",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := convertSSHUrl(tc.sshUrl)
+			if tc.expected == "" {
+				if result != tc.expected {
+					t.Fatalf("Expected empty string for invalid URL, got %s", result)
+				}
+			}
+
+			if result != tc.expected {
+				t.Fatalf("Expected %s, got %s", tc.expected, result)
+			}
+		})
+	}
+}
