@@ -181,7 +181,7 @@ func TestDeployCompose(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	repo, err := git.CloneRepository(tmpDir, p.CloneURL, p.Ref, c.SkipTLSVerification, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
+	repo, err := git.CloneRepository(tmpDir, p.CloneURL, p.Ref, c.SkipTLSVerification, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitCloneSubmodules)
 	if err != nil {
 		if !errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			t.Fatal(err)
@@ -368,7 +368,7 @@ func TestHasChangedConfigs(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
+	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitCloneSubmodules)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -431,7 +431,7 @@ func TestHasChangedSecrets(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
+	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitCloneSubmodules)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -494,7 +494,7 @@ func TestHasChangedBindMounts(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
+	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitCloneSubmodules)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}

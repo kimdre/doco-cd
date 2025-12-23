@@ -192,13 +192,13 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		slog.String("container_path", internalRepoPath),
 		slog.String("host_path", externalRepoPath))
 
-	_, err = git.CloneRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase)
+	_, err = git.CloneRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitCloneSubmodules)
 	if err != nil {
 		// If the repository already exists, check it out to the specified commit SHA
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			jobLog.Debug("repository already exists, checking out reference "+pollConfig.Reference, slog.String("host_path", externalRepoPath))
 
-			_, err = git.UpdateRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase)
+			_, err = git.UpdateRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitCloneSubmodules)
 			if err != nil {
 				pollError(jobLog, metadata, fmt.Errorf("failed to checkout repository: %w", err))
 
