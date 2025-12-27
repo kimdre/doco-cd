@@ -22,7 +22,7 @@ The following tools need to be installed:
 
 Follow the installation instructions for the following dependencies:
 
-- [Bitwarden Go SDK](https://github.com/bitwarden/sdk-go/tree/main?tab=readme-ov-file#installation)
+- [Bitwarden Go SDK](https://github.com/bitwarden/sdk-go/tree/main?tab=readme-ov-file#installation) (optional, only required if you're building with Bitwarden support. Not required when building with the `nobitwarden` build tag)
 
 ### Getting started
 
@@ -72,6 +72,20 @@ Run the following command to build and run the doco-cd dev container:
 
 ```bash
 docker compose -f dev.compose.yaml up --build
+```
+
+#### Building without Bitwarden support
+
+If you want to build the project without Bitwarden Secrets Manager support (e.g., for armv7 architecture where Bitwarden SDK is not compatible), use the `nobitwarden` build tag:
+
+```bash
+CGO_ENABLED=0 go build -tags nobitwarden -o doco-cd ./cmd/doco-cd
+```
+
+Or using Docker with the `DISABLE_BITWARDEN=true` build argument:
+
+```bash
+docker build --build-arg DISABLE_BITWARDEN=true -t doco-cd:nobitwarden .
 ```
 
 ### Submitting your code
