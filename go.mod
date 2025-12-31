@@ -304,7 +304,7 @@ require (
 require (
 	github.com/1password/onepassword-sdk-go v0.3.1
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.0
-	github.com/bitwarden/sdk-go v1.0.2
+	github.com/bitwarden/sdk-go v1.0.2 // indirect; optional, excluded with nobitwarden build tag
 	github.com/infisical/go-sdk v0.6.3
 	github.com/joho/godotenv v1.5.1
 	github.com/openbao/openbao/api/v2 v2.5.0
