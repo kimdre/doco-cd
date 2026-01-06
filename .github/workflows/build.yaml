@@ -18,11 +18,16 @@ jobs:
         include:
           - platform: linux/amd64
             runner: ubuntu-24.04
+            build_tags: ""
+            build_args: ""
           - platform: linux/arm64
             runner: ubuntu-24.04-arm
-#            Build for arm32 is disabled because the Bitwarden Go SDK does not support arm32.
-#          - platform: linux/arm/v7
-#            runner: ubuntu-24.04-arm
+            build_tags: ""
+            build_args: ""
+          - platform: linux/arm/v7
+            runner: ubuntu-24.04-arm
+            build_tags: "nobitwarden"
+            build_args: "DISABLE_BITWARDEN=true"
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Prepare
@@ -59,6 +64,7 @@ jobs:
           sbom: true
           build-args: |
             APP_VERSION=${{ github.ref_name }}
+            ${{ matrix.build_args }}
           tags: ghcr.io/${{ github.repository }}
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}

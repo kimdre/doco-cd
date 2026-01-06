@@ -78,10 +78,11 @@ jobs:
         with:
           sarif_file: 'trivy-results.sarif'
 
-      - name: Build and push image
+      - name: Build and push multi-platform image
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
         with:
           context: .
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
           build-args: |
             APP_VERSION=dev-build.${{ steps.vars.outputs.short_sha }}
           push: ${{ github.event_name != 'pull_request' }}
