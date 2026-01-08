@@ -124,7 +124,7 @@ require (
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/getsops/gopgagent v0.0.0-20241224165529-7044f28e491e // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
-	github.com/go-git/go-billy/v5 v5.6.2 // indirect
+	github.com/go-git/go-billy/v5 v5.6.2
 	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -269,7 +269,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.5.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4
-	golang.org/x/crypto v0.46.0 // indirect
+	golang.org/x/crypto v0.46.0
 	golang.org/x/mod v0.31.0 // indirect
 	golang.org/x/oauth2 v0.31.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
@@ -305,7 +305,7 @@ require (
 	github.com/1password/onepassword-sdk-go v0.3.1
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.0
 	github.com/bitwarden/sdk-go v1.0.2
-	github.com/infisical/go-sdk v0.6.3
+	github.com/infisical/go-sdk v0.6.4
 	github.com/joho/godotenv v1.5.1
 	github.com/openbao/openbao/api/v2 v2.5.0
 	github.com/testcontainers/testcontainers-go v0.40.0
