@@ -77,7 +77,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		stageLog.Debug("repository URL provided, cloning remote repository")
 
 		_, err = git.CloneRepository(s.Repository.PathInternal, authCloneUrl, s.DeployConfig.Reference,
-			s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, s.AppConfig.SSHPrivateKey, s.AppConfig.SSHPrivateKeyPassphrase)
+			s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, s.AppConfig.SSHPrivateKey, s.AppConfig.SSHPrivateKeyPassphrase, s.AppConfig.GitCloneSubmodules)
 		if err != nil && !errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			return fmt.Errorf("failed to clone repository: %w", err)
 		}
@@ -114,7 +114,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 	stageLog.Debug("checking out reference "+s.DeployConfig.Reference, slog.String("path", s.Repository.PathExternal))
 
 	s.Repository.Git, err = git.UpdateRepository(s.Repository.PathInternal, authCloneUrl, s.DeployConfig.Reference,
-		s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, s.AppConfig.SSHPrivateKey, s.AppConfig.SSHPrivateKeyPassphrase)
+		s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, s.AppConfig.SSHPrivateKey, s.AppConfig.SSHPrivateKeyPassphrase, s.AppConfig.GitCloneSubmodules)
 	if err != nil {
 		return fmt.Errorf("failed to checkout repository: %w", err)
 	}
