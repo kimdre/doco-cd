@@ -297,7 +297,29 @@ func validateUniqueProjectNames(configs []*DeployConfig) error {
 func ResolveDeployConfigs(poll PollConfig, configDir, name string) ([]*DeployConfig, error) {
 	// Prefer inline deployments when present
 	if len(poll.Deployments) > 0 {
-		return poll.Deployments, nil
+		configs := poll.Deployments
+
+		// Handle autodiscover for inline deployment configs
+		for i, c := range configs {
+			// Check for deployConfigs with AutoDiscover enabled, if true then remove this config and add new configs based on discovered compose files
+			if c.AutoDiscover {
+				discoveredConfigs, err := autoDiscoverDeployments(configDir, c)
+				if err != nil {
+					return nil, fmt.Errorf("failed to auto-discover deployment configurations: %w", err)
+				}
+
+				// Replace the current config with the discovered configs
+				configs = append(configs[:i], configs[i+1:]...)
+				configs = append(configs, discoveredConfigs...)
+			}
+		}
+
+		// Check if the stack/project names are not unique
+		if err := validateUniqueProjectNames(configs); err != nil {
+			return nil, err
+		}
+
+		return configs, nil
 	}
 
 	// No inline deployments, use repository config discovery from configDir

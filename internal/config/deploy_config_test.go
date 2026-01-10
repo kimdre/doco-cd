@@ -267,3 +267,94 @@ func TestResolveDeployConfigs_InlineMissingName(t *testing.T) {
 		t.Fatalf("expected error %v, got %v", ErrInvalidConfig, err)
 	}
 }
+
+func TestResolveDeployConfigs_InlineAutoDiscover(t *testing.T) {
+	// Create a temporary directory structure with subdirectories containing docker-compose files
+	tmpDir := createTmpDir(t)
+	t.Cleanup(func() {
+		err := os.RemoveAll(tmpDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	// Create subdirectories with docker-compose files
+	testDir1 := filepath.Join(tmpDir, "test1")
+	testDir2 := filepath.Join(tmpDir, "test2")
+
+	err := os.MkdirAll(testDir1, 0o750)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = os.MkdirAll(testDir2, 0o750)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create docker-compose.yml files
+	err = os.WriteFile(filepath.Join(testDir1, "docker-compose.yml"), []byte("version: '3'\nservices:\n  test1:\n    image: test1"), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = os.WriteFile(filepath.Join(testDir2, "docker-compose.yaml"), []byte("version: '3'\nservices:\n  test2:\n    image: test2"), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create inline deployment with auto_discover enabled
+	baseConfig := &DeployConfig{
+		AutoDiscover:     true,
+		WorkingDirectory: ".",
+		ComposeFiles:     []string{"docker-compose.yml", "docker-compose.yaml"},
+	}
+
+	poll := PollConfig{
+		CloneUrl:    "https://example.com/repo.git",
+		Reference:   "refs/heads/main",
+		Interval:    60,
+		Deployments: []*DeployConfig{baseConfig},
+	}
+
+	// Validate poll config
+	if err := poll.Validate(); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+
+	// Resolve deploy configs - should auto-discover the test1 and test2 subdirectories
+	configs, err := ResolveDeployConfigs(poll, tmpDir, "repo")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	// Should have discovered 2 configs (test1 and test2)
+	if len(configs) != 2 {
+		t.Fatalf("expected 2 configs, got %d", len(configs))
+	}
+
+	// Verify the discovered configs
+	names := make(map[string]bool)
+	for _, cfg := range configs {
+		names[cfg.Name] = true
+	}
+
+	if !names["test1"] {
+		t.Errorf("expected to find 'test1' config")
+	}
+
+	if !names["test2"] {
+		t.Errorf("expected to find 'test2' config")
+	}
+
+	// Verify working directories are set correctly
+	for _, cfg := range configs {
+		if cfg.Name == "test1" && cfg.WorkingDirectory != "test1" {
+			t.Errorf("expected test1 working directory to be 'test1', got '%s'", cfg.WorkingDirectory)
+		}
+
+		if cfg.Name == "test2" && cfg.WorkingDirectory != "test2" {
+			t.Errorf("expected test2 working directory to be 'test2', got '%s'", cfg.WorkingDirectory)
+		}
+	}
+}
