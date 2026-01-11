@@ -16,6 +16,7 @@ import (
 const (
 	cloneUrl            = "https://github.com/kimdre/doco-cd.git"
 	cloneUrlTest        = "https://github.com/kimdre/doco-cd_tests.git"
+	cloneUrlSSH         = "git@github.com:kimdre/doco-cd.git"
 	remoteMainBranch    = "refs/remotes/origin/main"
 	validBranchRef      = MainBranch
 	validBranchRefShort = "main"
@@ -23,8 +24,6 @@ const (
 	validTagRefShort    = "v0.15.0"
 	invalidRef          = "refs/heads/invalid"
 	invalidTagRef       = "refs/tags/invalid"
-	validCommitSHA      = "903b270da7505fe8b13b42d3b191b08fb9ca3247"
-	invalidCommitSHA    = "1111111111111111111111111111111111111111"
 )
 
 func TestGetAuthUrl(t *testing.T) {
@@ -49,43 +48,73 @@ func TestGetAuthUrl(t *testing.T) {
 func TestCloneRepository(t *testing.T) {
 	c, err := config.GetAppConfig()
 	if err != nil {
-		t.Fatalf("Failed To get app config: %v", err)
+		t.Fatalf("Failed to get app config: %v", err)
 	}
 
-	repo, err := CloneRepository(t.TempDir(), cloneUrl, validBranchRef, false, c.HttpProxy)
-	if err != nil {
-		t.Fatalf("Failed To clone repository: %v", err)
+	testCases := []struct {
+		name       string
+		cloneUrl   string
+		privateKey string
+		passphrase string
+		skip       bool
+	}{
+		{
+			name:       "HTTP clone",
+			cloneUrl:   cloneUrl,
+			privateKey: "",
+			passphrase: "",
+			skip:       false,
+		},
+		{
+			name:       "SSH clone",
+			cloneUrl:   cloneUrlSSH,
+			privateKey: c.SSHPrivateKey,
+			passphrase: c.SSHPrivateKeyPassphrase,
+			skip:       c.SSHPrivateKey == "",
+		},
 	}
 
-	if repo == nil {
-		t.Fatal("Repository is nil")
-	}
+	for _, tc := range testCases {
+		// capture range variable
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.skip {
+				t.Skip("SSH private key not set, skipping SSH clone test")
+			}
 
-	// Check files in the repository
-	worktree, err := repo.Worktree()
-	if err != nil {
-		t.Fatalf("Failed To get worktree: %v", err)
-	}
+			repo, err := CloneRepository(t.TempDir(), tc.cloneUrl, validBranchRef, false, c.HttpProxy, tc.privateKey, tc.passphrase)
+			if err != nil {
+				t.Fatalf("Failed to clone repository: %v", err)
+			}
 
-	t.Cleanup(func() {
-		err = os.RemoveAll(worktree.Filesystem.Root())
-		if err != nil {
-			t.Fatalf("Failed To remove repository: %v", err)
-		}
-	})
+			if repo == nil {
+				t.Fatal("Repository is nil")
+			}
 
-	files, err := worktree.Filesystem.ReadDir(".")
-	if err != nil {
-		t.Fatalf("Failed To read directory: %v", err)
-	}
+			worktree, err := repo.Worktree()
+			if err != nil {
+				t.Fatalf("Failed to get worktree: %v", err)
+			}
 
-	if len(files) == 0 {
-		t.Fatal("No files in repository")
-	}
+			t.Cleanup(func() {
+				err = os.RemoveAll(worktree.Filesystem.Root())
+				if err != nil {
+					t.Fatalf("Failed to remove repository: %v", err)
+				}
+			})
 
-	// Check if the repository is cloned
-	if worktree.Filesystem.Root() == "" {
-		t.Fatal("Repository is not cloned")
+			files, err := worktree.Filesystem.ReadDir(".")
+			if err != nil {
+				t.Fatalf("Failed to read directory: %v", err)
+			}
+
+			if len(files) == 0 {
+				t.Fatal("No files in repository")
+			}
+
+			if worktree.Filesystem.Root() == "" {
+				t.Fatal("Repository is not cloned")
+			}
+		})
 	}
 }
 
@@ -172,7 +201,7 @@ func TestUpdateRepository(t *testing.T) {
 				)
 			}
 
-			repo, err := CloneRepository(t.TempDir(), tc.cloneUrl, MainBranch, false, c.HttpProxy)
+			repo, err := CloneRepository(t.TempDir(), tc.cloneUrl, MainBranch, false, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
 			if err != nil {
 				t.Fatalf("Failed To clone repository: %v", err)
 			}
@@ -186,7 +215,7 @@ func TestUpdateRepository(t *testing.T) {
 				t.Fatalf("Failed To get worktree: %v", err)
 			}
 
-			repo, err = UpdateRepository(worktree.Filesystem.Root(), tc.cloneUrl, tc.branchRef, true, c.HttpProxy)
+			repo, err = UpdateRepository(worktree.Filesystem.Root(), tc.cloneUrl, tc.branchRef, true, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
 			if err != nil {
 				if !errors.Is(err, tc.expectedErr) {
 					t.Fatalf("Expected error %v, got %v", tc.expectedErr, err)
@@ -232,7 +261,7 @@ func TestGetReferenceSet(t *testing.T) {
 		t.Fatalf("Failed To get app config: %v", err)
 	}
 
-	repo, err := CloneRepository(t.TempDir(), cloneUrl, MainBranch, false, c.HttpProxy)
+	repo, err := CloneRepository(t.TempDir(), cloneUrl, MainBranch, false, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
 	if err != nil {
 		t.Fatalf("Failed To clone repository: %v", err)
 	}
@@ -267,7 +296,7 @@ func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 
 	url := GetAuthUrl(cloneUrlTest, c.AuthType, c.GitAccessToken)
 
-	repo, err := CloneRepository(t.TempDir(), url, MainBranch, false, c.HttpProxy)
+	repo, err := CloneRepository(t.TempDir(), url, MainBranch, false, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
 	if err != nil {
 		t.Fatalf("Failed To clone repository: %v", err)
 	}
@@ -289,7 +318,7 @@ func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 		t.Fatalf("Failed To create new file: %v", err)
 	}
 
-	repo, err = UpdateRepository(worktree.Filesystem.Root(), url, "alternative", true, c.HttpProxy)
+	repo, err = UpdateRepository(worktree.Filesystem.Root(), url, "alternative", true, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
 	if err != nil {
 		t.Fatalf("Failed To update repository: %v", err)
 	}
@@ -324,7 +353,7 @@ func TestGetLatestCommit(t *testing.T) {
 		t.Fatalf("Failed To get app config: %v", err)
 	}
 
-	repo, err := CloneRepository(t.TempDir(), cloneUrl, MainBranch, false, c.HttpProxy)
+	repo, err := CloneRepository(t.TempDir(), cloneUrl, MainBranch, false, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
 	if err != nil {
 		t.Fatalf("Failed To clone repository: %v", err)
 	}
@@ -362,7 +391,7 @@ func TestGetChangedFilesBetweenCommits(t *testing.T) {
 
 	url := GetAuthUrl(cloneUrlTest, c.AuthType, c.GitAccessToken)
 
-	repo, err := CloneRepository(tmpDir, url, MainBranch, false, c.HttpProxy)
+	repo, err := CloneRepository(tmpDir, url, MainBranch, false, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
 	if err != nil {
 		t.Fatalf("Failed To clone repository: %v", err)
 	}
@@ -401,5 +430,126 @@ func TestGetChangedFilesBetweenCommits(t *testing.T) {
 
 	if !hasChanged {
 		t.Errorf("Expected changes in subdir %s, but found none", expectedChangedDirectory)
+	}
+}
+
+func TestSSHAuth(t *testing.T) {
+	const (
+		encryptedKey = `-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABA+Zz/91P
+rp2u7NvTWBtLI0AAAAGAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIFyEIiKcYAJl82Ga
+40hVJoKO1qOvVfekORkGLSsKFnF7AAAAoBgOn6fvoLqNvcj0QMyuZTYVJEm9YXs8zNkG+9
+suGsdNHOvMRQWLzq9VJiJUyOG29zayIQ4Q3pZlcoRINpUI9yl4/eFza7P4MEHDVBLF531K
+X3nAnZomTg2czfus92AmR+3kYDWvBE1WkpieAaRfVTuBtNcB41rOAZMLQ001zhVF2qdb+D
++tvLTkrbIyLPEbZOBHuCH+mVgPefYCRXsB9Nw=
+-----END OPENSSH PRIVATE KEY-----`
+		encryptedKeyPassphrase = "doco-cd"
+		unencryptedKey         = `-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACCU6Sk58h0kd2bUvHHvyS1JQiLgBf6yKaIbpGlK8TEfVAAAAJgBQMSpAUDE
+qQAAAAtzc2gtZWQyNTUxOQAAACCU6Sk58h0kd2bUvHHvyS1JQiLgBf6yKaIbpGlK8TEfVA
+AAAEBBVspZHjWj6Np5szQQHB6w+1X3ZOatDcMmcnm1+R9J9pTpKTnyHSR3ZtS8ce/JLUlC
+IuAF/rIpohukaUrxMR9UAAAADmtpbUBraW0tZmVkb3JhAQIDBAUGBw==
+-----END OPENSSH PRIVATE KEY-----`
+	)
+
+	testCases := []struct {
+		name        string
+		privateKey  string
+		passphrase  string
+		expectedErr string
+	}{
+		{
+			name:        "Encrypted ED25519 key",
+			privateKey:  encryptedKey,
+			passphrase:  encryptedKeyPassphrase,
+			expectedErr: "",
+		},
+		{
+			name:        "Missing passphrase for encrypted key",
+			privateKey:  encryptedKey,
+			passphrase:  "",
+			expectedErr: "failed to create SSH public keys: bcrypt_pbkdf: empty password",
+		},
+		{
+			name:        "Unencrypted ED25519 key",
+			privateKey:  unencryptedKey,
+			passphrase:  "",
+			expectedErr: "",
+		},
+		{
+			name:        "Unencrypted ED25519 key with passphrase",
+			privateKey:  unencryptedKey,
+			passphrase:  "test",
+			expectedErr: "",
+		},
+		{
+			name:        "Missing private key",
+			privateKey:  "",
+			passphrase:  "",
+			expectedErr: "ssh URL requires SSH_PRIVATE_KEY to be set",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			auth, err := sshAuth(tc.privateKey, tc.passphrase)
+			if err != nil {
+				if tc.expectedErr == "" {
+					t.Fatalf("Expected no error, got %v", err)
+				}
+
+				if err.Error() == tc.expectedErr {
+					return
+				}
+
+				t.Fatalf("Expected error %v, got %v", tc.expectedErr, err.Error())
+			} else if tc.expectedErr != "" {
+				t.Fatalf("Expected error %v, got none", tc.expectedErr)
+			}
+
+			if auth == nil {
+				if tc.expectedErr != "auth empty" {
+					t.Fatal("Expected auth to be non-nil")
+				}
+			}
+
+			if auth.Name() != "ssh-public-keys" {
+				t.Fatalf("Expected auth name 'ssh-public-keys', got '%s'", auth.Name())
+			}
+		})
+	}
+}
+
+func TestConvertSSHUrl(t *testing.T) {
+	testCases := []struct {
+		name     string
+		sshUrl   string
+		expected string
+	}{
+		{
+			name:     "Valid SSH URL",
+			sshUrl:   "git@github.com:user/repo.git",
+			expected: "ssh://git@github.com/user/repo.git",
+		},
+		{
+			name:     "Valid SSH URL without .git",
+			sshUrl:   "git@github.com:user/repo",
+			expected: "ssh://git@github.com/user/repo",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := convertSSHUrl(tc.sshUrl)
+			if tc.expected == "" {
+				if result != tc.expected {
+					t.Fatalf("Expected empty string for invalid URL, got %s", result)
+				}
+			}
+
+			if result != tc.expected {
+				t.Fatalf("Expected %s, got %s", tc.expected, result)
+			}
+		})
 	}
 }

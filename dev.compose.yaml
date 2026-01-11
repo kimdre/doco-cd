@@ -1,6 +1,7 @@
 x-poll-config: &poll-config
   POLL_CONFIG: |
     - url: https://github.com/kimdre/doco-cd_tests.git
+      #url: git@github.com:kimdre/doco-cd_tests.git
       reference: main
       interval: 10
       #target: "bitwarden-sm"
@@ -16,8 +17,11 @@ services:
     pull_policy: build
     restart: unless-stopped
     depends_on:
-      - proxy
-#      - apprise
+      proxy:
+        condition: "service_started"
+      apprise:
+        condition: "service_started"
+        required: false
     ports:
       - "80:80"
       - "9120:9120"
@@ -30,7 +34,8 @@ services:
       # DOCKER_API_VERSION: 1.47
       <<: *poll-config
       #POLL_CONFIG_FILE: /poll.yml
-      HTTP_PROXY: http://username:password@proxy:8888
+      #HTTP_PROXY: http://username:password@proxy:8888
+      #SSH_PRIVATE_KEY_FILE: /run/secrets/ssh-private-key
 #      APPRISE_API_URL: http://apprise:8000/notify
 #      APPRISE_NOTIFY_LEVEL: info
       # APPRISE_NOTIFY_URLS: # .env
@@ -38,6 +43,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - data:/data
 #    secrets:
+#      - ssh-private-key
 #      - source: docker-config
 #        target: /root/.docker/config.json
 #    configs: # Use with POLL_CONFIG_FILE
@@ -55,19 +61,62 @@ services:
       - source: tinyproxy.conf
         target: /etc/tinyproxy/tinyproxy.conf
 
-#  apprise:
-#    image: caronc/apprise:latest
-#    restart: unless-stopped
-#    ports:
-#      - "8000:8000"
-#    environment:
-#      TZ: Europe/Berlin
-#      APPRISE_WORKER_COUNT: 1
+  apprise:
+    profiles:
+      - notifications
+    image: caronc/apprise:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      TZ: Europe/Berlin
+      APPRISE_WORKER_COUNT: 1
+
+  grafana:
+    # Dashboard: https://github.com/kimdre/doco-cd/discussions/583
+    profiles:
+      - monitoring
+    image: grafana/grafana:12.3.0
+    restart: unless-stopped
+    user: "1000"
+    ports:
+      - "3300:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    environment:
+      TZ: Europe/Berlin
+
+  prometheus:
+    depends_on:
+      - app
+    profiles:
+      - monitoring
+    restart: unless-stopped
+    image: prom/prometheus:v3.8.0
+    ports:
+      - "9090:9090"
+    volumes:
+#      - ./prometheus:/etc/prometheus
+      - prometheus-data:/prometheus
+    configs:
+      - source: prometheus.yaml
+        target: /etc/prometheus/prometheus.yaml
+    command:
+      - --web.enable-lifecycle
+      - --config.file=/etc/prometheus/prometheus.yaml
+      - --storage.tsdb.retention.size=100MB
+      - --storage.tsdb.wal-compression
+    environment:
+      TZ: Europe/Berlin
 
 volumes:
   data:
+  prometheus-data:
+  grafana-data:
 
 #secrets:
+#  ssh-private-key:
+#    file: ./ed25519
 #  docker-config:
 #    file: docker-config.json
 
@@ -87,3 +136,12 @@ configs:
       Port 8888
       Timeout 600
       BasicAuth username password
+  prometheus.yaml:
+    content: |
+      global:
+        scrape_interval: 10s
+
+      scrape_configs:
+        - job_name: doco-cd
+          static_configs:
+            - targets: ['doco-cd:9120']

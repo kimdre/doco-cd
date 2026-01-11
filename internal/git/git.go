@@ -6,30 +6,33 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
-
-	"github.com/go-git/go-git/v5/plumbing/format/diff"
-
-	"github.com/kimdre/doco-cd/internal/encryption"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/format/diff"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
 
+	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/filesystem"
+	"github.com/kimdre/doco-cd/internal/git/ssh"
 )
 
 const (
-	RemoteName          = "origin"
-	TagPrefix           = "refs/tags/"
-	BranchPrefix        = "refs/heads/"
-	MainBranch          = "refs/heads/main"
-	SwarmModeBranch     = "refs/heads/swarm-mode"
-	refSpecAllBranches  = "+refs/heads/*:refs/remotes/origin/*"
-	refSpecSingleBranch = "+refs/heads/%s:refs/remotes/origin/%s"
-	refSpecAllTags      = "+refs/tags/*:refs/tags/*"
-	refSpecSingleTag    = "+refs/tags/%s:refs/tags/%s"
+	DefaultShortSHALength = 7 // Default length for shortened commit SHAs
+	RemoteName            = "origin"
+	TagPrefix             = "refs/tags/"
+	BranchPrefix          = "refs/heads/"
+	MainBranch            = "refs/heads/main"
+	SwarmModeBranch       = "refs/heads/swarm-mode"
+	refSpecAllBranches    = "+refs/heads/*:refs/remotes/origin/*"
+	refSpecSingleBranch   = "+refs/heads/%s:refs/remotes/origin/%s"
+	refSpecAllTags        = "+refs/tags/*:refs/tags/*"
+	refSpecSingleTag      = "+refs/tags/%s:refs/tags/%s"
 )
 
 var (
@@ -38,6 +41,7 @@ var (
 	ErrPullFailed              = errors.New("failed to pull repository")
 	ErrRepositoryAlreadyExists = git.ErrRepositoryAlreadyExists
 	ErrInvalidReference        = git.ErrInvalidReference
+	ErrSSHKeyRequired          = errors.New("ssh URL requires SSH_PRIVATE_KEY to be set")
 )
 
 // ChangedFile represents a file that has changed between two commits.
@@ -115,16 +119,97 @@ func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 	return RefSet{}, fmt.Errorf("%w: %s", ErrInvalidReference, ref)
 }
 
-// UpdateRepository updates a local repository by
-//  1. fetching the latest changes From the remote
-//  2. checking out the specified reference (branch or tag)
-//  3. pulling the latest changes From the remote
-//  4. returning the updated repository
-//
-// Allowed reference forma
-//   - Branches: refs/heads/main or main
-//   - Tags: refs/tags/v1.0.0 or v1.0.0
-func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions) (*git.Repository, error) {
+// IsSSH checks if a given URL is an SSH URL.
+func IsSSH(url string) bool {
+	return strings.HasPrefix(url, "git@") || strings.HasPrefix(url, "ssh://")
+}
+
+// sshAuth creates an SSH authentication method using the provided private key.
+func sshAuth(privateKey, keyPassphrase string) (transport.AuthMethod, error) {
+	if strings.TrimSpace(privateKey) == "" {
+		return nil, ErrSSHKeyRequired
+	}
+
+	auth, err := gitssh.NewPublicKeys(ssh.DefaultGitSSHUser, []byte(privateKey), keyPassphrase)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create SSH public keys: %w", err)
+	}
+
+	// auth.HostKeyCallback = ssh2.InsecureIgnoreHostKey()
+
+	return auth, nil
+}
+
+// addToKnownHosts adds the host from the SSH URL to the known_hosts file.
+func addToKnownHosts(url string) error {
+	err := ssh.CreateKnownHostsFile()
+	if err != nil {
+		return fmt.Errorf("failed to create known_hosts file: %w", err)
+	}
+
+	host, err := ssh.ExtractHostFromSSHUrl(url)
+	if err != nil {
+		return fmt.Errorf("failed to extract host from SSH URL: %w", err)
+	}
+
+	return ssh.AddHostToKnownHosts(host)
+}
+
+// convertSSHUrl converts SSH URLs to the ssh:// format.
+// e.g. convert git@github.com:user/repo.git to ssh://git@github.com/user/repo.git
+func convertSSHUrl(url string) string {
+	// Check if url starts with git@ and convert to ssh:// format
+	if strings.HasPrefix(url, "git@") {
+		// Replace the first ':' with '/' after the host
+		if idx := strings.Index(url, ":"); idx != -1 {
+			url = url[:idx] + "/" + url[idx+1:]
+		}
+
+		url = "ssh://" + url
+	}
+
+	return url
+}
+
+// updateRemoteURL updates the remote URL of the repository.
+func updateRemoteURL(repo *git.Repository, url string) error {
+	// Update remote URL in case it has changed
+	remote, err := repo.Remote(RemoteName)
+	if err != nil {
+		return fmt.Errorf("failed to get remote %s: %w", RemoteName, err)
+	}
+
+	c := remote.Config()
+
+	var newUrl []string
+	if IsSSH(url) {
+		newUrl = []string{convertSSHUrl(url)}
+	} else {
+		newUrl = []string{url}
+	}
+
+	if slices.Compare(c.URLs, newUrl) == 0 {
+		// No change in URL
+		return nil
+	}
+
+	c.URLs = newUrl
+
+	err = repo.DeleteRemote(RemoteName)
+	if err != nil {
+		return fmt.Errorf("failed to delete remote %s: %w", RemoteName, err)
+	}
+
+	_, err = repo.CreateRemote(c)
+	if err != nil {
+		return fmt.Errorf("failed to create remote %s: %w", RemoteName, err)
+	}
+
+	return nil
+}
+
+// UpdateRepository fetches and checks out the requested ref.
+func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, sshPrivateKey, sshPrivateKeyPassphrase string) (*git.Repository, error) {
 	repo, err := git.PlainOpen(path)
 	if err != nil {
 		return nil, err
@@ -135,21 +220,40 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 		return nil, err
 	}
 
+	err = updateRemoteURL(repo, url)
+	if err != nil {
+		return nil, err
+	}
+
 	opts := &git.FetchOptions{
-		RemoteName:      RemoteName,
-		RemoteURL:       url,
-		RefSpecs:        []config.RefSpec{refSpecAllBranches, refSpecAllTags},
-		InsecureSkipTLS: skipTLSVerify,
-		Prune:           true,
+		RemoteName: RemoteName,
+		RemoteURL:  url,
+		RefSpecs:   []config.RefSpec{refSpecAllBranches, refSpecAllTags},
+		Prune:      true,
 	}
 
-	if proxyOpts != (transport.ProxyOptions{}) {
-		opts.ProxyOptions = proxyOpts
+	// SSH auth when key is provided
+	if IsSSH(url) {
+		err = addToKnownHosts(url)
+		if err != nil {
+			return nil, fmt.Errorf("failed to add host to known_hosts: %w", err)
+		}
+
+		opts.RemoteURL = convertSSHUrl(url)
+
+		opts.Auth, err = sshAuth(sshPrivateKey, sshPrivateKeyPassphrase)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		opts.InsecureSkipTLS = skipTLSVerify
+
+		if proxyOpts != (transport.ProxyOptions{}) {
+			opts.ProxyOptions = proxyOpts
+		}
 	}
 
-	// Fetch remote branches and tags
-	err = repo.Fetch(opts)
-	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
+	if err = repo.Fetch(opts); err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
 		return nil, fmt.Errorf("%w: %w", ErrFetchFailed, err)
 	}
 
@@ -162,40 +266,51 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 		return nil, fmt.Errorf("%w: %s", ErrInvalidReference, ref)
 	}
 
-	err = worktree.Checkout(&git.CheckoutOptions{
-		Branch: refSet.localRef,
-		Keep:   true,
-	})
-	if err != nil {
+	if err = worktree.Checkout(&git.CheckoutOptions{Branch: refSet.localRef, Keep: true}); err != nil {
 		return nil, fmt.Errorf("%w: %w: %s", ErrCheckoutFailed, err, refSet.localRef)
 	}
 
-	err = ResetTrackedFiles(repo)
-	if err != nil {
+	if err = ResetTrackedFiles(repo); err != nil {
 		return nil, fmt.Errorf("failed to reset tracked files: %w", err)
 	}
 
 	return repo, nil
 }
 
-// CloneRepository clones a repository From a given URL and reference To a temporary directory.
-func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions) (*git.Repository, error) {
+// CloneRepository clones a repository with HTTP or SSH auth.
+func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, sshPrivateKey, sshPrivateKeyPassphrase string) (*git.Repository, error) {
 	err := os.MkdirAll(path, filesystem.PermDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create directory %s: %w", path, err)
 	}
 
 	opts := &git.CloneOptions{
-		RemoteName:      RemoteName,
-		URL:             url,
-		SingleBranch:    true,
-		ReferenceName:   plumbing.ReferenceName(ref),
-		Tags:            git.NoTags,
-		InsecureSkipTLS: skipTLSVerify,
+		RemoteName:    RemoteName,
+		URL:           url,
+		SingleBranch:  true,
+		ReferenceName: plumbing.ReferenceName(ref),
+		Tags:          git.NoTags,
 	}
 
-	if proxyOpts != (transport.ProxyOptions{}) {
-		opts.ProxyOptions = proxyOpts
+	// SSH auth when key is provided
+	if IsSSH(url) {
+		err = addToKnownHosts(url)
+		if err != nil {
+			return nil, fmt.Errorf("failed to add host to known_hosts: %w", err)
+		}
+
+		opts.URL = convertSSHUrl(url)
+
+		opts.Auth, err = sshAuth(sshPrivateKey, sshPrivateKeyPassphrase)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		opts.InsecureSkipTLS = skipTLSVerify
+
+		if proxyOpts != (transport.ProxyOptions{}) {
+			opts.ProxyOptions = proxyOpts
+		}
 	}
 
 	return git.PlainClone(path, false, opts)
@@ -400,4 +515,43 @@ func shouldResetDecryptedFile(repo *git.Repository, repoRoot, file string) bool 
 	}
 
 	return !strings.EqualFold(string(decryptedContent), string(workingContent))
+}
+
+// GetShortestUniqueCommitSHA returns the shortest unique prefix of a commit SHA in the repository.
+// Similar to the git command `git rev-parse --short=<length> <commitSHA>`.
+func GetShortestUniqueCommitSHA(repo *git.Repository, commitSHA string, minLength int) (string, error) {
+	iter, err := repo.CommitObjects()
+	if err != nil {
+		return "", err
+	}
+	defer iter.Close()
+
+	// collect all commit SHAs
+	var allSHAs []string
+
+	err = iter.ForEach(func(c *object.Commit) error {
+		allSHAs = append(allSHAs, c.Hash.String())
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+
+	shaLen := len(commitSHA)
+	for length := minLength; length <= shaLen; length++ {
+		prefixCount := make(map[string]int, len(allSHAs))
+		for _, sha := range allSHAs {
+			if len(sha) >= length {
+				prefix := sha[:length]
+				prefixCount[prefix]++
+			}
+		}
+
+		prefix := commitSHA[:length]
+		if prefixCount[prefix] == 1 {
+			return prefix, nil
+		}
+	}
+
+	return "", fmt.Errorf("no unique prefix found for commit SHA %s", commitSHA)
 }

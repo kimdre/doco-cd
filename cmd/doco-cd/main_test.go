@@ -18,6 +18,8 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/google/uuid"
 
+	"github.com/kimdre/doco-cd/internal/stages"
+
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -69,7 +71,7 @@ func TestMain(m *testing.M) {
 	if swarm.ModeEnabled {
 		log.Println("Testing in Docker Swarm mode")
 	} else {
-		log.Println("Testing in Docker Compose mode")
+		log.Println("Testing in Docker Standalone mode")
 	}
 
 	// Ensure the Docker client is closed after tests
@@ -172,7 +174,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"deployment failed","content":"no compose files found: stat %[2]s/docker-compose.yaml: no such file or directory","job_id":"%[1]s"}`,
+			expectedResponseBody: `{"error":"deployment failed","content":"failed to deploy stack test-deploy: no compose files found: stat %[2]s/docker-compose.yaml: no such file or directory","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "",
 			swarmMode:            false,
@@ -370,7 +372,7 @@ func TestHandleEvent(t *testing.T) {
 					status, tc.expectedStatusCode)
 			}
 
-			expectedReturnMessage := fmt.Sprintf(tc.expectedResponseBody, jobID, filepath.Join(tmpDir, getRepoName(tc.payload.CloneURL))) + "\n"
+			expectedReturnMessage := fmt.Sprintf(tc.expectedResponseBody, jobID, filepath.Join(tmpDir, stages.GetRepoName(tc.payload.CloneURL))) + "\n"
 			if rr.Body.String() != expectedReturnMessage {
 				t.Errorf("handler returned unexpected body: got '%v' want '%v'",
 					rr.Body.String(), expectedReturnMessage)

@@ -94,12 +94,23 @@ func (c *DeployConfig) validateConfig() error {
 	// Sanitize the compose file path
 	for _, file := range c.ComposeFiles {
 		cleaned := filepath.Clean(file)
-		if !filepath.IsLocal(cleaned) {
+
+		if filepath.IsAbs(cleaned) {
 			return fmt.Errorf("%w: %s", ErrInvalidFilePath, file)
 		}
 
-		// Check if the filename contains any path
-		if filepath.Base(cleaned) != cleaned {
+		if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(os.PathSeparator)) {
+			return fmt.Errorf("%w: %s", ErrInvalidFilePath, file)
+		}
+
+		full := filepath.Join(c.WorkingDirectory, cleaned)
+
+		rel, err := filepath.Rel(c.WorkingDirectory, full)
+		if err != nil {
+			return fmt.Errorf("%w: %s", ErrInvalidFilePath, file)
+		}
+
+		if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 			return fmt.Errorf("%w: %s", ErrInvalidFilePath, file)
 		}
 

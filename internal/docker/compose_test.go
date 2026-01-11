@@ -24,8 +24,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 
-	"github.com/kimdre/doco-cd/internal/notification"
-
 	"github.com/go-git/go-git/v5/plumbing"
 
 	"github.com/docker/compose/v2/pkg/api"
@@ -183,7 +181,7 @@ func TestDeployCompose(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	repo, err := git.CloneRepository(tmpDir, p.CloneURL, p.Ref, c.SkipTLSVerification, c.HttpProxy)
+	repo, err := git.CloneRepository(tmpDir, p.CloneURL, p.Ref, c.SkipTLSVerification, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
 	if err != nil {
 		if !errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			t.Fatal(err)
@@ -247,15 +245,8 @@ func TestDeployCompose(t *testing.T) {
 
 		jobID := uuid.Must(uuid.NewV7()).String()
 
-		log := logger.New(slog.LevelInfo)
-		jobLog := log.With(slog.String("job_id", jobID))
-
-		metadata := notification.Metadata{
-			Repository: p.FullName,
-			Stack:      deployConf.Name,
-			Revision:   notification.GetRevision(deployConf.Reference, latestCommit),
-			JobID:      jobID,
-		}
+		testLog := logger.New(slog.LevelInfo)
+		jobLog := testLog.With(slog.String("job_id", jobID))
 
 		resolvedSecrets := make(secrettypes.ResolvedSecrets)
 		if secretProvider != nil && len(deployConf.ExternalSecrets) > 0 {
@@ -266,19 +257,19 @@ func TestDeployCompose(t *testing.T) {
 		}
 
 		err = DeployStack(jobLog, repoPath, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
-			[]git.ChangedFile{}, latestCommit, "test", "poll", false, metadata, resolvedSecrets, false)
+			[]git.ChangedFile{}, latestCommit, "test", "poll", false, resolvedSecrets, false)
 		if err != nil {
 			t.Fatalf("failed to deploy stack: %v", err)
 		}
 
 		t.Log("Verifying deployment")
 
-		containers, err := GetLabeledContainers(ctx, dockerClient, DocoCDLabels.Metadata.Manager, config.AppName)
+		serviceLabels, err := GetLabeledServices(ctx, dockerClient, DocoCDLabels.Deployment.Name, deployConf.Name)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if len(containers) == 0 {
+		if len(serviceLabels) == 0 {
 			t.Fatal("expected at least one labeled container, got none")
 		}
 
@@ -327,20 +318,20 @@ func TestDeployCompose(t *testing.T) {
 
 		t.Log("Destroying deployment")
 
-		err = DestroyStack(jobLog, &ctx, &dockerCli, deployConf, metadata)
+		err = DestroyStack(jobLog, &ctx, &dockerCli, deployConf)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		t.Log("Verifying destruction")
 
-		containers, err = GetLabeledContainers(ctx, dockerClient, DocoCDLabels.Metadata.Manager, config.AppName)
+		serviceLabels, err = GetLabeledServices(ctx, dockerClient, DocoCDLabels.Deployment.Name, deployConf.Name)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if len(containers) != 0 {
-			t.Fatalf("expected no labeled containers after destruction, got %d", len(containers))
+		if len(serviceLabels) != 0 {
+			t.Fatalf("expected no labeled containers after destruction, got %d", len(serviceLabels))
 		}
 
 		t.Log("Finished destroying deployment with no errors")
@@ -377,7 +368,7 @@ func TestHasChangedConfigs(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy)
+	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -440,7 +431,7 @@ func TestHasChangedSecrets(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy)
+	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -503,7 +494,7 @@ func TestHasChangedBindMounts(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy)
+	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -690,7 +681,7 @@ func TestRemoveProject(t *testing.T) {
 	}
 
 	// Verify project is removed
-	containers, err := GetProject(ctx, dockerCli, "test")
+	containers, err := GetProjectContainers(ctx, dockerCli, "test")
 	if err != nil {
 		t.Fatalf("failed to get project: %v", err)
 	}
@@ -720,7 +711,7 @@ func TestGetProject(t *testing.T) {
 
 	t.Log("Getting project")
 
-	containers, err := GetProject(ctx, dockerCli, "test")
+	containers, err := GetProjectContainers(ctx, dockerCli, "test")
 	if err != nil {
 		t.Fatalf("failed to get project: %v", err)
 	}

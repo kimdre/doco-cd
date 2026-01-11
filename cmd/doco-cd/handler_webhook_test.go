@@ -21,6 +21,8 @@ import (
 	swarmTypes "github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
 
+	"github.com/kimdre/doco-cd/internal/stages"
+
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 
 	"github.com/kimdre/doco-cd/internal/config"
@@ -60,7 +62,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		indexPath = path.Join("html", "index.html")
 	}
 
-	indexPath = path.Join(tmpDir, getRepoName(cloneUrl), indexPath)
+	indexPath = path.Join(tmpDir, stages.GetRepoName(cloneUrl), indexPath)
 
 	payload, err := os.ReadFile(filepath.Join(WorkingDir, payloadFile))
 	if err != nil {
@@ -102,7 +104,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		dockerCli:    dockerCli,
 		dockerClient: dockerClient,
 		appConfig:    appConfig,
-		appVersion:   Version,
+		appVersion:   config.AppVersion,
 		dataMountPoint: container.MountPoint{
 			Type:        "bind",
 			Source:      tmpDir,
@@ -117,7 +119,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req.Header.Set(webhook.ScmProviderHeaders[webhook.Github], "sha256="+webhook.GenerateHMAC(payload, appConfig.WebhookSecret))
+	req.Header.Set(webhook.ScmProviderSecurityHeaders[webhook.Github], "sha256="+webhook.GenerateHMAC(payload, appConfig.WebhookSecret))
 
 	rr := httptest.NewRecorder()
 	handler := http.HandlerFunc(h.WebhookHandler)

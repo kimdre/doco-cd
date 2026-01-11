@@ -174,9 +174,14 @@ func TestGetDeployConfigs_RepositoryURL(t *testing.T) {
 			expectedErr: fmt.Errorf("RepositoryUrl: %w", ErrInvalidHttpUrl),
 		},
 		{
-			name:        "Invalid SSH URL", // SSH Urls are not supported
+			name:        "SSH URL",
 			repoUrl:     "git@github.com:kimdre/doco-cd.git",
-			expectedErr: fmt.Errorf("RepositoryUrl: %w", ErrInvalidHttpUrl),
+			expectedErr: nil,
+		},
+		{
+			name:        "SSH URL in ssh:// format",
+			repoUrl:     "ssh://git@github.com:22/kimdre/doco-cd.git",
+			expectedErr: nil,
 		},
 	}
 	for _, tc := range testCases {

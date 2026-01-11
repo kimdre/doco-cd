@@ -17,6 +17,9 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
+	"github.com/kimdre/doco-cd/internal/git/ssh"
+
+	"github.com/kimdre/doco-cd/cmd/doco-cd/healthcheck"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -35,10 +38,7 @@ const (
 	dataPath    = "/data"
 )
 
-var (
-	Version string
-	errMsg  string
-)
+var errMsg string
 
 // GetProxyUrlRedacted takes a proxy URL string and redacts the password if it exists.
 func GetProxyUrlRedacted(proxyUrl string) string {
@@ -81,7 +81,6 @@ func CreateMountpointSymlink(m container.MountPoint) error {
 func main() {
 	ctx := context.Background()
 
-	var wg sync.WaitGroup
 	// Set the default log level to debug
 	log := logger.New(slog.LevelDebug)
 
@@ -100,9 +99,22 @@ func main() {
 	// Set the actual log level
 	log = logger.New(logLevel)
 
-	log.Info("starting application", slog.String("version", Version), slog.String("log_level", c.LogLevel))
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		checkUrl := fmt.Sprintf("http://localhost:%d%s", c.HttpPort, healthPath)
 
-	prometheus.AppInfo.WithLabelValues(Version, c.LogLevel, time.Now().Format(time.RFC3339)).Set(1)
+		err = healthcheck.Check(ctx, checkUrl)
+		if err != nil {
+			log.Critical("health check failed", logger.ErrAttr(err), slog.String("url", checkUrl))
+			os.Exit(1)
+		}
+
+		log.Info("health check successful", slog.String("url", checkUrl))
+		os.Exit(0)
+	}
+
+	log.Info("starting application", slog.String("version", config.AppVersion), slog.String("log_level", c.LogLevel))
+
+	prometheus.AppInfo.WithLabelValues(config.AppVersion, c.LogLevel, time.Now().Format(time.RFC3339)).Set(1)
 
 	// Log if proxy is used
 	if c.HttpProxy != (transport.ProxyOptions{}) {
@@ -199,19 +211,57 @@ func main() {
 		if err != nil {
 			log.Error("failed to get latest application release version", logger.ErrAttr(err))
 		} else {
-			if Version != latestVersion {
+			if config.AppVersion != latestVersion {
 				log.Warn("new application version available",
-					slog.String("current", Version),
+					slog.String("current", config.AppVersion),
 					slog.String("latest", latestVersion),
 				)
 			} else {
-				log.Debug("application is up to date", slog.String("version", Version))
+				log.Debug("application is up to date", slog.String("version", config.AppVersion))
 			}
 		}
 	}()
 
+	// Initialize SSH agent if SSH private key is provided
+	if c.SSHPrivateKey != "" {
+		agentCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		go func() {
+			err = ssh.StartSSHAgent(agentCtx, ssh.SocketAgentSocketPath)
+			if err != nil {
+				log.Critical("failed to start SSH agent", logger.ErrAttr(err)) // nolint:contextcheck
+			} else {
+				log.Debug("SSH agent started")
+			}
+		}()
+
+		// Wait for the agent socket to appear (max 2s)
+		deadline := time.Now().Add(2 * time.Second)
+
+		for {
+			if _, err = os.Stat(ssh.SocketAgentSocketPath); err == nil {
+				break
+			}
+
+			if time.Now().After(deadline) {
+				log.Critical("SSH agent socket file does not exist", slog.String("path", ssh.SocketAgentSocketPath))
+				return
+			}
+
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		// Add the SSH private key to the agent
+		err = ssh.AddKeyToAgent([]byte(c.SSHPrivateKey), c.SSHPrivateKeyPassphrase)
+		if err != nil {
+			log.Critical("failed to add SSH private key to agent", logger.ErrAttr(err))
+			return
+		}
+	}
+
 	// Initialize the secret provider
-	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, Version)
+	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, config.AppVersion)
 	if err != nil {
 		log.Critical("failed to initialize secret provider", logger.ErrAttr(err))
 
@@ -226,7 +276,7 @@ func main() {
 
 	h := handlerData{
 		appConfig:      c,
-		appVersion:     Version,
+		appVersion:     config.AppVersion,
 		dataMountPoint: dataMountPoint,
 		dockerCli:      dockerCli,
 		dockerClient:   dockerClient,
@@ -242,6 +292,8 @@ func main() {
 		slog.Int("http_port", int(c.HttpPort)),
 		slog.Any("enabled_endpoints", enabledEndpoints),
 	)
+
+	var wg sync.WaitGroup
 
 	if len(c.PollConfig) > 0 {
 		log.Info("poll configuration found, scheduling polling jobs", slog.Any("poll_config", c.PollConfig))

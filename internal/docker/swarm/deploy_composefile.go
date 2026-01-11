@@ -9,6 +9,8 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/command/stack/swarm"
 
+	"github.com/kimdre/doco-cd/internal/utils/set"
+
 	"github.com/kimdre/doco-cd/internal/docker/options"
 
 	"github.com/docker/cli/cli/compose/convert"
@@ -32,9 +34,9 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Dep
 	namespace := convert.NewNamespace(opts.Namespace)
 
 	if opts.Prune {
-		services := map[string]struct{}{}
+		services := set.New[string]()
 		for _, service := range config.Services {
-			services[service.Name] = struct{}{}
+			services.Add(service.Name)
 		}
 
 		pruneServices(ctx, dockerCli, namespace, services)
@@ -83,20 +85,20 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Dep
 		return nil
 	}
 
-	return waitOnServices(ctx, dockerCli, serviceIDs)
+	return WaitOnServices(ctx, dockerCli, serviceIDs)
 }
 
-func getServicesDeclaredNetworks(serviceConfigs []composetypes.ServiceConfig) map[string]struct{} {
-	serviceNetworks := map[string]struct{}{}
+func getServicesDeclaredNetworks(serviceConfigs []composetypes.ServiceConfig) set.Set[string] {
+	serviceNetworks := set.New[string]()
 
 	for _, serviceConfig := range serviceConfigs {
 		if len(serviceConfig.Networks) == 0 {
-			serviceNetworks["default"] = struct{}{}
+			serviceNetworks.Add("default")
 			continue
 		}
 
 		for nw := range serviceConfig.Networks {
-			serviceNetworks[nw] = struct{}{}
+			serviceNetworks.Add(nw)
 		}
 	}
 
@@ -303,7 +305,8 @@ func deployServices(ctx context.Context, dockerCLI command.Cli, services map[str
 	return serviceIDs, nil
 }
 
-func waitOnServices(ctx context.Context, dockerCli command.Cli, serviceIDs []string) error {
+// WaitOnServices waits for the specified Swarm services to complete.
+func WaitOnServices(ctx context.Context, dockerCli command.Cli, serviceIDs []string) error {
 	var errs []error
 
 	for _, serviceID := range serviceIDs {
