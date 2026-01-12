@@ -23,13 +23,8 @@ RUN if [ "$DISABLE_BITWARDEN" != "true" ] && ! ([ "$TARGETARCH" = "arm" ] && [ "
     fi
 
 # Set build environment
-# CGO_ENABLED=1 and CC=musl-gcc are required for Bitwarden SDK when enabled
-# For builds without Bitwarden, CGO is not needed
 ENV GOCACHE=/root/.cache/go-build \
     GOOS=linux
-
-# Bitwarden SDK build flags https://github.com/bitwarden/sdk-go/blob/main/INSTRUCTIONS.md
-ARG BW_SDK_BUILD_FLAGS="-linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'"
 
 # Copy source code
 COPY . ./
@@ -43,12 +38,15 @@ FROM prerequisites AS build
 
 ARG APP_VERSION=dev
 ARG DISABLE_BITWARDEN=false
+# Bitwarden SDK build flags https://github.com/bitwarden/sdk-go/blob/main/INSTRUCTIONS.md
 ARG BW_SDK_BUILD_FLAGS="-linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'"
 ARG TARGETARCH
 ARG TARGETVARIANT
 
 # Build with or without Bitwarden support
 # armv7 builds are automatically built without Bitwarden
+# CGO_ENABLED=1 and CC=musl-gcc are required for Bitwarden SDK when enabled
+# For builds without Bitwarden, CGO is not needed
 RUN --mount=type=cache,target=/go/pkg/mod/ \
     --mount=type=cache,target="/root/.cache/go-build" \
     --mount=type=bind,target=. \
