@@ -10,8 +10,7 @@ import (
 )
 
 const (
-	Name          = "bitwarden_sm"
-	stateFilePath = "/tmp/bitwarden-sm-state.json"
+	Name = "bitwarden_sm"
 )
 
 var ErrNotSupported = errors.New("bitwarden secrets manager is not supported in this build")
