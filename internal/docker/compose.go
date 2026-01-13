@@ -1,15 +1,11 @@
 package docker
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
-	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -52,88 +48,10 @@ const (
 )
 
 var (
-	ErrDockerSocketConnectionFailed = errors.New("failed to connect to docker socket")
-	ErrNoContainerToStart           = errors.New("no container to start")
-	ErrIsInUse                      = errors.New("is in use")
-	ComposeVersion                  string // Version of the docker compose module, will be set at runtime
+	ErrNoContainerToStart = errors.New("no container to start")
+	ErrIsInUse            = errors.New("is in use")
+	ComposeVersion        string // Version of the docker compose module, will be set at runtime
 )
-
-// ConnectToSocket connects to the docker socket.
-func ConnectToSocket() (net.Conn, error) {
-	c, err := net.Dial("unix", SocketPath)
-	if err != nil {
-		return nil, err
-	}
-
-	return c, nil
-}
-
-func NewHttpClient() *http.Client {
-	return &http.Client{
-		Transport: &http.Transport{
-			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return net.Dial("unix", SocketPath)
-			},
-		},
-	}
-}
-
-// VerifySocketRead verifies whether the application can read from the docker socket.
-func VerifySocketRead(httpClient *http.Client) error {
-	reqBody, err := json.Marshal("")
-	if err != nil {
-		return err
-	}
-
-	req, err := http.NewRequest("GET", "http://localhost/info", bytes.NewReader(reqBody))
-	if err != nil {
-		return err
-	}
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-
-	defer resp.Body.Close() //nolint:errcheck
-
-	responseBody, _ := io.ReadAll(resp.Body)
-
-	// Check for a successful response
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to get containers: %s", responseBody)
-	}
-
-	return nil
-}
-
-// VerifySocketConnection verifies whether the application can connect to the docker socket.
-func VerifySocketConnection() error {
-	// Check if the docker socket file exists
-	if _, err := os.Stat(SocketPath); errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-
-	c, err := ConnectToSocket()
-	if err != nil {
-		return err
-	}
-
-	httpClient := NewHttpClient()
-	defer httpClient.CloseIdleConnections()
-
-	err = VerifySocketRead(httpClient)
-	if err != nil {
-		return err
-	}
-
-	err = c.Close()
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
 
 func CreateDockerCli(quiet, verifyTLS bool) (command.Cli, error) {
 	var (

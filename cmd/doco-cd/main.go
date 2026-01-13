@@ -124,9 +124,9 @@ func main() {
 	}
 
 	// Test/verify the connection to the docker socket
-	err = docker.VerifySocketConnection()
+	err, errType := docker.VerifyDockerAPIAccess()
 	if err != nil {
-		log.Critical(docker.ErrDockerSocketConnectionFailed.Error(), logger.ErrAttr(err))
+		log.Critical(errType.Error(), logger.ErrAttr(err))
 	}
 
 	log.Debug("connection to docker socket was successful")
