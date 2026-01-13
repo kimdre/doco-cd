@@ -337,6 +337,17 @@ func UpdateSubmodules(repo *git.Repository, auth transport.AuthMethod) error {
 	}
 
 	for _, submodule := range submodules {
+		submoduleRepo, err := submodule.Repository()
+		if err != nil {
+			return fmt.Errorf("failed to get submodule repository: %w", err)
+		}
+
+		// Reset tracked files in submodule
+		err = ResetTrackedFiles(submoduleRepo)
+		if err != nil {
+			return fmt.Errorf("failed to reset tracked files in submodule: %w", err)
+		}
+
 		opts := &git.SubmoduleUpdateOptions{
 			Init:              true,
 			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
@@ -345,10 +356,33 @@ func UpdateSubmodules(repo *git.Repository, auth transport.AuthMethod) error {
 			opts.Auth = auth
 		}
 
-		if err := submodule.Update(opts); err != nil {
+		if err = submodule.Update(opts); err != nil {
 			submodulePath := "submodule"
 			if cfg := submodule.Config(); cfg.Path != "" {
 				submodulePath = cfg.Path
+			}
+
+			if errors.Is(err, git.ErrUnstagedChanges) {
+				// Hard reset and try again
+				submoduleRepoWorktree, err := submoduleRepo.Worktree()
+				if err != nil {
+					return fmt.Errorf("failed to get worktree for %s: %w", submodulePath, err)
+				}
+
+				err = submoduleRepoWorktree.Reset(&git.ResetOptions{
+					Mode: git.HardReset,
+				})
+				if err != nil {
+					return fmt.Errorf("failed to reset worktree for %s: %w", submodulePath, err)
+				}
+
+				// Retry submodule update
+				err = submodule.Update(opts)
+				if err != nil {
+					return fmt.Errorf("failed to update %s after resetting: %w", submodulePath, err)
+				}
+
+				continue
 			}
 
 			return fmt.Errorf("failed to update %s: %w", submodulePath, err)
