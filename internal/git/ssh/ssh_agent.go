@@ -134,8 +134,6 @@ func getRawPrivateKey(pemBytes []byte, passphrase string) (interface{}, error) {
 		return nil, errors.New("failed to decode PEM block")
 	}
 
-	fmt.Println("Type: ", block.Type)
-
 	switch block.Type {
 	case "ENCRYPTED PRIVATE KEY":
 		// Deprecated, but we still use it for compatibility
