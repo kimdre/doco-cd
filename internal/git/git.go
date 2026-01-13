@@ -275,7 +275,7 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 	}
 
 	if cloneSubmodules {
-		if err = UpdateSubmodules(repo, opts.Auth); err != nil {
+		if err = UpdateSubmodules(repo, sshPrivateKey, sshPrivateKeyPassphrase); err != nil {
 			return nil, fmt.Errorf("failed to update submodules: %w", err)
 		}
 	}
@@ -325,7 +325,7 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 	return git.PlainClone(path, false, opts)
 }
 
-func UpdateSubmodules(repo *git.Repository, auth transport.AuthMethod) error {
+func UpdateSubmodules(repo *git.Repository, sshPrivateKey, sshPrivateKeyPassphrase string) error {
 	worktree, err := repo.Worktree()
 	if err != nil {
 		return fmt.Errorf("failed to get worktree: %w", err)
@@ -352,8 +352,12 @@ func UpdateSubmodules(repo *git.Repository, auth transport.AuthMethod) error {
 			Init:              true,
 			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
 		}
-		if auth != nil {
-			opts.Auth = auth
+
+		if IsSSH(submodule.Config().URL) {
+			opts.Auth, err = sshAuth(sshPrivateKey, sshPrivateKeyPassphrase)
+			if err != nil {
+				return fmt.Errorf("failed to create SSH auth for submodule: %w", err)
+			}
 		}
 
 		if err = submodule.Update(opts); err != nil {
