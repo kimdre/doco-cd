@@ -110,26 +110,33 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		}
 	}
 
+	cloneUrl := payload.CloneURL
+	if appConfig.SSHPrivateKey != "" {
+		cloneUrl = payload.SSHUrl
+	}
+
 	// Clone the repository
 	jobLog.Debug(
 		"get repository",
-		slog.String("url", payload.CloneURL))
+		slog.String("url", cloneUrl))
 
 	// Determine the authenticated clone URL if needed
-	authCloneUrl := payload.CloneURL
-	if payload.Private {
-		jobLog.Debug("authenticating to private repository")
+	authCloneUrl := cloneUrl
+	if !git.IsSSH(cloneUrl) {
+		if payload.Private {
+			jobLog.Debug("authenticating to private repository")
 
-		if appConfig.GitAccessToken == "" && !git.IsSSH(payload.CloneURL) {
-			onError(w, jobLog, "missing access token for private repository", "", http.StatusInternalServerError, metadata)
+			if appConfig.GitAccessToken == "" {
+				onError(w, jobLog, "missing access token for private repository", "", http.StatusInternalServerError, metadata)
 
-			return
+				return
+			}
+
+			authCloneUrl = git.GetAuthUrl(cloneUrl, appConfig.AuthType, appConfig.GitAccessToken)
+		} else if appConfig.GitAccessToken != "" {
+			// Always use the access token for public repositories if it is set to avoid rate limiting
+			authCloneUrl = git.GetAuthUrl(cloneUrl, appConfig.AuthType, appConfig.GitAccessToken)
 		}
-
-		authCloneUrl = git.GetAuthUrl(payload.CloneURL, appConfig.AuthType, appConfig.GitAccessToken)
-	} else if appConfig.GitAccessToken != "" && !git.IsSSH(payload.CloneURL) {
-		// Always use the access token for public repositories if it is set to avoid rate limiting
-		authCloneUrl = git.GetAuthUrl(payload.CloneURL, appConfig.AuthType, appConfig.GitAccessToken)
 	}
 
 	// Validate payload.FullName to prevent directory traversal
@@ -187,7 +194,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		return
 	}
 
-	err = cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog, dockerClient, dockerCli, payload.CloneURL, deployConfigs, metadata)
+	err = cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog, dockerClient, dockerCli, cloneUrl, deployConfigs, metadata)
 	if err != nil {
 		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to clean up obsolete auto-discovered containers", err.Error(), http.StatusInternalServerError, metadata)
 	}
@@ -205,7 +212,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			deployLog,
 			failNotifyFunc,
 			&stages.RepositoryData{
-				CloneURL:     config.HttpUrl(payload.CloneURL),
+				CloneURL:     config.HttpUrl(cloneUrl),
 				Name:         repoName,
 				PathInternal: internalRepoPath,
 				PathExternal: externalRepoPath,
