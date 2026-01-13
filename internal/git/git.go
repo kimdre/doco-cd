@@ -209,7 +209,7 @@ func updateRemoteURL(repo *git.Repository, url string) error {
 }
 
 // UpdateRepository fetches and checks out the requested ref.
-func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, sshPrivateKey, sshPrivateKeyPassphrase string) (*git.Repository, error) {
+func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, sshPrivateKey, sshPrivateKeyPassphrase string, cloneSubmodules bool) (*git.Repository, error) {
 	repo, err := git.PlainOpen(path)
 	if err != nil {
 		return nil, err
@@ -274,11 +274,17 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 		return nil, fmt.Errorf("failed to reset tracked files: %w", err)
 	}
 
+	if cloneSubmodules {
+		if err = UpdateSubmodules(repo, opts.Auth); err != nil {
+			return nil, fmt.Errorf("failed to update submodules: %w", err)
+		}
+	}
+
 	return repo, nil
 }
 
 // CloneRepository clones a repository with HTTP or SSH auth.
-func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, sshPrivateKey, sshPrivateKeyPassphrase string) (*git.Repository, error) {
+func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, sshPrivateKey, sshPrivateKeyPassphrase string, cloneSubmodules bool) (*git.Repository, error) {
 	err := os.MkdirAll(path, filesystem.PermDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create directory %s: %w", path, err)
@@ -290,6 +296,9 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 		SingleBranch:  true,
 		ReferenceName: plumbing.ReferenceName(ref),
 		Tags:          git.NoTags,
+	}
+	if cloneSubmodules {
+		opts.RecurseSubmodules = git.DefaultSubmoduleRecursionDepth
 	}
 
 	// SSH auth when key is provided
@@ -314,6 +323,73 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 	}
 
 	return git.PlainClone(path, false, opts)
+}
+
+func UpdateSubmodules(repo *git.Repository, auth transport.AuthMethod) error {
+	worktree, err := repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("failed to get worktree: %w", err)
+	}
+
+	submodules, err := worktree.Submodules()
+	if err != nil {
+		return fmt.Errorf("failed to list submodules: %w", err)
+	}
+
+	for _, submodule := range submodules {
+		submoduleRepo, err := submodule.Repository()
+		if err != nil {
+			return fmt.Errorf("failed to get submodule repository: %w", err)
+		}
+
+		// Reset tracked files in submodule
+		err = ResetTrackedFiles(submoduleRepo)
+		if err != nil {
+			return fmt.Errorf("failed to reset tracked files in submodule: %w", err)
+		}
+
+		opts := &git.SubmoduleUpdateOptions{
+			Init:              true,
+			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
+		}
+		if auth != nil {
+			opts.Auth = auth
+		}
+
+		if err = submodule.Update(opts); err != nil {
+			submodulePath := "submodule"
+			if cfg := submodule.Config(); cfg.Path != "" {
+				submodulePath = cfg.Path
+			}
+
+			if errors.Is(err, git.ErrUnstagedChanges) {
+				// Hard reset and try again
+				submoduleRepoWorktree, err := submoduleRepo.Worktree()
+				if err != nil {
+					return fmt.Errorf("failed to get worktree for %s: %w", submodulePath, err)
+				}
+
+				err = submoduleRepoWorktree.Reset(&git.ResetOptions{
+					Mode: git.HardReset,
+				})
+				if err != nil {
+					return fmt.Errorf("failed to reset worktree for %s: %w", submodulePath, err)
+				}
+
+				// Retry submodule update
+				err = submodule.Update(opts)
+				if err != nil {
+					return fmt.Errorf("failed to update %s after resetting: %w", submodulePath, err)
+				}
+
+				continue
+			}
+
+			return fmt.Errorf("failed to update %s: %w", submodulePath, err)
+		}
+	}
+
+	return nil
 }
 
 // GetAuthUrl returns a clone URL with an access token for private repositories.
