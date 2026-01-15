@@ -151,9 +151,11 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	t.Cleanup(func() {
 		t.Log("Remove " + stackName)
 
-		err = service.Down(ctx, stackName, downOpts)
-		if err != nil {
-			t.Fatal(err)
+		if service != nil {
+			err = service.Down(ctx, stackName, downOpts)
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 	})
 
@@ -196,7 +198,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		}
 
 		if testContainer.State.Running != true {
-			t.Errorf("Test container is not running: %v", testContainer.State)
+			t.Fatal("Test container is not running")
 		}
 
 		// Check if test container returns the expected response on its published port
