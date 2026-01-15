@@ -443,7 +443,7 @@ suGsdNHOvMRQWLzq9VJiJUyOG29zayIQ4Q3pZlcoRINpUI9yl4/eFza7P4MEHDVBLF531K
 X3nAnZomTg2czfus92AmR+3kYDWvBE1WkpieAaRfVTuBtNcB41rOAZMLQ001zhVF2qdb+D
 +tvLTkrbIyLPEbZOBHuCH+mVgPefYCRXsB9Nw=
 -----END OPENSSH PRIVATE KEY-----`
-		encryptedKeyPassphrase = "doco-cd"
+		encryptedKeyPassphrase = config.AppName
 		unencryptedKey         = `-----BEGIN OPENSSH PRIVATE KEY-----
 b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
 QyNTUxOQAAACCU6Sk58h0kd2bUvHHvyS1JQiLgBf6yKaIbpGlK8TEfVAAAAJgBQMSpAUDE
