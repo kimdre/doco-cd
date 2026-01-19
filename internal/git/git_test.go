@@ -81,6 +81,14 @@ func TestCloneRepository(t *testing.T) {
 				t.Skip("SSH private key not set, skipping SSH clone test")
 			}
 
+			if !IsSSH(tc.cloneUrl) {
+				tc.cloneUrl = GetAuthUrl(
+					tc.cloneUrl,
+					c.AuthType,
+					c.GitAccessToken,
+				)
+			}
+
 			repo, err := CloneRepository(t.TempDir(), tc.cloneUrl, validBranchRef, false, c.HttpProxy, tc.privateKey, tc.passphrase, c.GitCloneSubmodules)
 			if err != nil {
 				t.Fatalf("Failed to clone repository: %v", err)
