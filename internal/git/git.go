@@ -308,7 +308,6 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 		opts.RecurseSubmodules = git.DefaultSubmoduleRecursionDepth
 	}
 
-	// SSH auth when key is provided
 	if IsSSH(url) {
 		err = addToKnownHosts(url)
 		if err != nil {
