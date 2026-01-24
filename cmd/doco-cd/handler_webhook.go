@@ -13,6 +13,7 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/google/uuid"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -110,26 +111,35 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		}
 	}
 
+	cloneUrl := payload.CloneURL
+	if appConfig.SSHPrivateKey != "" {
+		cloneUrl = payload.SSHUrl
+	}
+
 	// Clone the repository
 	jobLog.Debug(
 		"get repository",
-		slog.String("url", payload.CloneURL))
+		slog.String("url", cloneUrl))
 
 	// Determine the authenticated clone URL if needed
-	authCloneUrl := payload.CloneURL
-	if payload.Private {
-		jobLog.Debug("authenticating to private repository")
+	auth := transport.AuthMethod(nil)
+	if git.IsSSH(cloneUrl) {
+		// SSH authentication
+		auth, err = git.SSHAuth(appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase)
+		if err != nil {
+			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to set up SSH authentication", err.Error(), http.StatusInternalServerError, metadata)
 
-		if appConfig.GitAccessToken == "" && !git.IsSSH(payload.CloneURL) {
+			return
+		}
+	} else {
+		// HTTPS authentication
+		if appConfig.GitAccessToken != "" {
+			auth = git.HttpTokenAuth(appConfig.GitAccessToken)
+		} else if payload.Private {
 			onError(w, jobLog, "missing access token for private repository", "", http.StatusInternalServerError, metadata)
 
 			return
 		}
-
-		authCloneUrl = git.GetAuthUrl(payload.CloneURL, appConfig.AuthType, appConfig.GitAccessToken)
-	} else if appConfig.GitAccessToken != "" && !git.IsSSH(payload.CloneURL) {
-		// Always use the access token for public repositories if it is set to avoid rate limiting
-		authCloneUrl = git.GetAuthUrl(payload.CloneURL, appConfig.AuthType, appConfig.GitAccessToken)
 	}
 
 	// Validate payload.FullName to prevent directory traversal
@@ -154,13 +164,13 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	// Try to clone the repository
-	_, err = git.CloneRepository(internalRepoPath, authCloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitCloneSubmodules)
+	_, err = git.CloneRepository(internalRepoPath, cloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules)
 	if err != nil {
 		// If the repository already exists, check it out to the specified commit SHA
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			jobLog.Debug("repository already exists, checking out reference "+payload.Ref, slog.String("host_path", externalRepoPath))
 
-			_, err = git.UpdateRepository(internalRepoPath, authCloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitCloneSubmodules)
+			_, err = git.UpdateRepository(internalRepoPath, cloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules)
 			if err != nil {
 				onError(w, jobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), http.StatusInternalServerError, metadata)
 
@@ -187,7 +197,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		return
 	}
 
-	err = cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog, dockerClient, dockerCli, payload.CloneURL, deployConfigs, metadata)
+	err = cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog, dockerClient, dockerCli, cloneUrl, deployConfigs, metadata)
 	if err != nil {
 		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to clean up obsolete auto-discovered containers", err.Error(), http.StatusInternalServerError, metadata)
 	}
@@ -205,7 +215,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			deployLog,
 			failNotifyFunc,
 			&stages.RepositoryData{
-				CloneURL:     config.HttpUrl(payload.CloneURL),
+				CloneURL:     config.HttpUrl(cloneUrl),
 				Name:         repoName,
 				PathInternal: internalRepoPath,
 				PathExternal: externalRepoPath,

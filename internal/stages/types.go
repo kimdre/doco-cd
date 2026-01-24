@@ -211,9 +211,10 @@ func (s *StageManager) GetStageMetaData(stageName StageName) (*MetaData, error) 
 func (s *StageManager) NotifyFailure(notifyErr error) {
 	var (
 		latestCommit string
-		shortCommit  string
 		commitErr    error
 	)
+
+	commitSha := latestCommit
 
 	if s.NotifyFailureFunc != nil {
 		if s.Repository.Git != nil {
@@ -221,14 +222,14 @@ func (s *StageManager) NotifyFailure(notifyErr error) {
 			if commitErr != nil {
 				latestCommit = ""
 			}
+
+			commitSha, commitErr = gitInternal.GetShortestUniqueCommitSHA(s.Repository.Git, latestCommit, gitInternal.DefaultShortSHALength)
+			if commitErr != nil {
+				commitSha = latestCommit
+			}
 		}
 
-		shortCommit, commitErr = gitInternal.GetShortestUniqueCommitSHA(s.Repository.Git, latestCommit, gitInternal.DefaultShortSHALength)
-		if commitErr == nil {
-			shortCommit = latestCommit
-		}
-
-		revision := notification.GetRevision(s.DeployConfig.Reference, shortCommit)
+		revision := notification.GetRevision(s.DeployConfig.Reference, commitSha)
 
 		s.NotifyFailureFunc(notifyErr, notification.Metadata{
 			Repository: s.Repository.Name,
