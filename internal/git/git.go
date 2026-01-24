@@ -37,13 +37,13 @@ const (
 )
 
 var (
-	ErrCheckoutFailed          = errors.New("failed to checkout repository")
-	ErrFetchFailed             = errors.New("failed to fetch repository")
-	ErrPullFailed              = errors.New("failed to pull repository")
-	ErrRepositoryAlreadyExists = git.ErrRepositoryAlreadyExists
-	ErrInvalidReference        = git.ErrInvalidReference
-	ErrSSHKeyRequired          = errors.New("ssh URL requires SSH_PRIVATE_KEY to be set")
-	ErrSubmoduleAuthMissmatch  = errors.New("there might be a mismatch between the authentication method and the repository or submodule remote URL")
+	ErrCheckoutFailed             = errors.New("failed to checkout repository")
+	ErrFetchFailed                = errors.New("failed to fetch repository")
+	ErrPullFailed                 = errors.New("failed to pull repository")
+	ErrRepositoryAlreadyExists    = git.ErrRepositoryAlreadyExists
+	ErrInvalidReference           = git.ErrInvalidReference
+	ErrSSHKeyRequired             = errors.New("ssh URL requires SSH_PRIVATE_KEY to be set")
+	ErrPossibleAuthMethodMismatch = errors.New("there might be a mismatch between the authentication method and the repository or submodule remote URL")
 )
 
 // ChangedFile represents a file that has changed between two commits.
@@ -327,7 +327,7 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 	repo, err := git.PlainClone(path, false, opts)
 	if err != nil {
 		if errors.Is(err, transport.ErrInvalidAuthMethod) && cloneSubmodules {
-			return nil, fmt.Errorf("%w: %w", err, ErrSubmoduleAuthMissmatch)
+			return nil, fmt.Errorf("%w: %w", err, ErrPossibleAuthMethodMismatch)
 		}
 	}
 
@@ -391,7 +391,7 @@ func updateSubmodules(repo *git.Repository, auth transport.AuthMethod) error {
 
 				continue
 			} else if errors.Is(err, transport.ErrInvalidAuthMethod) {
-				return fmt.Errorf("%w: %w", err, ErrSubmoduleAuthMissmatch)
+				return fmt.Errorf("%w: %w", err, ErrPossibleAuthMethodMismatch)
 			}
 
 			return fmt.Errorf("failed to update %s: %w", submodulePath, err)
