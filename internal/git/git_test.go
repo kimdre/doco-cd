@@ -16,7 +16,7 @@ import (
 
 const (
 	cloneUrl            = "https://github.com/kimdre/doco-cd.git"
-	cloneUrlTest        = "https://github.com/kimdre/doco-cd.git"
+	cloneUrlTest        = "https://github.com/kimdre/doco-cd_tests.git"
 	cloneUrlSSH         = "git@github.com:kimdre/doco-cd.git"
 	remoteMainBranch    = "refs/remotes/origin/main"
 	validBranchRef      = MainBranch
