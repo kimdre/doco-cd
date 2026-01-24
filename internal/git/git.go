@@ -143,6 +143,11 @@ func SSHAuth(privateKey, keyPassphrase string) (transport.AuthMethod, error) {
 
 // HttpTokenAuth returns an AuthMethod for HTTP Basic Auth using a token.
 func HttpTokenAuth(token string) transport.AuthMethod {
+	// CRITICAL FIX: Return nil if token is empty
+	if token == "" {
+		return nil
+	}
+
 	return &githttp.BasicAuth{
 		Username: "oauth2", // can be anything except an empty string
 		Password: token,
