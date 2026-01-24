@@ -136,15 +136,7 @@ func TestCloneRepository(t *testing.T) {
 				auth = HttpTokenAuth(c.GitAccessToken)
 			}
 
-			repo, err := CloneRepository(
-				t.TempDir(),
-				tc.cloneUrl,
-				validBranchRef,
-				false,
-				transport.ProxyOptions{},
-				auth,
-				c.GitCloneSubmodules,
-			)
+			repo, err := CloneRepository(t.TempDir(), tc.cloneUrl, validBranchRef, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 			if err != nil {
 				t.Fatalf("Failed to clone repository: %v", err)
 			}
@@ -271,15 +263,7 @@ func TestUpdateRepository(t *testing.T) {
 				auth = HttpTokenAuth(c.GitAccessToken)
 			}
 
-			repo, err := CloneRepository(
-				t.TempDir(),
-				tc.cloneUrl,
-				MainBranch,
-				false,
-				transport.ProxyOptions{},
-				auth,
-				c.GitCloneSubmodules,
-			)
+			repo, err := CloneRepository(t.TempDir(), tc.cloneUrl, MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 			if err != nil {
 				t.Fatalf("Failed to clone repository %s: %v", tc.cloneUrl, err)
 			}
@@ -293,15 +277,7 @@ func TestUpdateRepository(t *testing.T) {
 				t.Fatalf("Failed to get worktree: %v", err)
 			}
 
-			repo, err = UpdateRepository(
-				worktree.Filesystem.Root(),
-				tc.cloneUrl,
-				tc.branchRef,
-				false, // skipTLSVerify
-				transport.ProxyOptions{},
-				auth,
-				c.GitCloneSubmodules,
-			)
+			repo, err = UpdateRepository(worktree.Filesystem.Root(), tc.cloneUrl, tc.branchRef, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 			if err != nil {
 				if !errors.Is(err, tc.expectedErr) {
 					t.Fatalf("Expected error %v, got %v", tc.expectedErr, err)
@@ -364,15 +340,7 @@ func TestGetReferenceSet(t *testing.T) {
 		auth = HttpTokenAuth(c.GitAccessToken)
 	}
 
-	repo, err := CloneRepository(
-		t.TempDir(),
-		url,
-		MainBranch,
-		false,
-		transport.ProxyOptions{},
-		auth,
-		c.GitCloneSubmodules,
-	)
+	repo, err := CloneRepository(t.TempDir(), url, MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -417,15 +385,7 @@ func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 		auth = HttpTokenAuth(c.GitAccessToken)
 	}
 
-	repo, err := CloneRepository(
-		t.TempDir(),
-		url,
-		MainBranch,
-		false,
-		transport.ProxyOptions{},
-		auth,
-		c.GitCloneSubmodules,
-	)
+	repo, err := CloneRepository(t.TempDir(), url, MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -447,15 +407,7 @@ func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 		t.Fatalf("Failed to create new file: %v", err)
 	}
 
-	repo, err = UpdateRepository(
-		worktree.Filesystem.Root(),
-		url,
-		"alternative",
-		false,
-		transport.ProxyOptions{},
-		auth,
-		c.GitCloneSubmodules,
-	)
+	repo, err = UpdateRepository(worktree.Filesystem.Root(), url, "alternative", false, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
 		t.Fatalf("Failed to update repository: %v", err)
 	}
@@ -506,15 +458,7 @@ func TestGetLatestCommit(t *testing.T) {
 		auth = HttpTokenAuth(c.GitAccessToken)
 	}
 
-	repo, err := CloneRepository(
-		t.TempDir(),
-		url,
-		MainBranch,
-		false,
-		transport.ProxyOptions{},
-		auth,
-		c.GitCloneSubmodules,
-	)
+	repo, err := CloneRepository(t.TempDir(), url, MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -562,15 +506,7 @@ func TestGetChangedFilesBetweenCommits(t *testing.T) {
 		auth = HttpTokenAuth(c.GitAccessToken)
 	}
 
-	repo, err := CloneRepository(
-		tmpDir,
-		url,
-		MainBranch,
-		false,
-		transport.ProxyOptions{},
-		auth,
-		c.GitCloneSubmodules,
-	)
+	repo, err := CloneRepository(tmpDir, url, MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
