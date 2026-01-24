@@ -329,13 +329,11 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 	}
 
 	repo, err := git.PlainClone(path, false, opts)
-	if err != nil {
-		if errors.Is(err, transport.ErrInvalidAuthMethod) && cloneSubmodules {
-			return nil, fmt.Errorf("%w: %w", err, ErrPossibleAuthMethodMismatch)
-		}
+	if errors.Is(err, transport.ErrInvalidAuthMethod) && cloneSubmodules {
+		return nil, fmt.Errorf("%w: %w", err, ErrPossibleAuthMethodMismatch)
 	}
 
-	return repo, nil
+	return repo, err
 }
 
 func updateSubmodules(repo *git.Repository, auth transport.AuthMethod) error {
