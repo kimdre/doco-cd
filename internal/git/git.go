@@ -43,7 +43,7 @@ var (
 	ErrRepositoryAlreadyExists = git.ErrRepositoryAlreadyExists
 	ErrInvalidReference        = git.ErrInvalidReference
 	ErrSSHKeyRequired          = errors.New("ssh URL requires SSH_PRIVATE_KEY to be set")
-	ErrSubmoduleAuthMissmatch  = errors.New("there might be a mismatch between the authentication method and submodule remote URL")
+	ErrSubmoduleAuthMissmatch  = errors.New("there might be a mismatch between the authentication method and the repository or submodule remote URL")
 )
 
 // ChangedFile represents a file that has changed between two commits.
