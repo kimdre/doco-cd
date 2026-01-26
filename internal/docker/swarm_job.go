@@ -55,7 +55,7 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode JobMode, comma
 
 	newServiceSpec := swarmTypes.ServiceSpec{
 		Annotations: swarmTypes.Annotations{
-			Name: fmt.Sprintf("%s_%s", "doco-cd", title),
+			Name: fmt.Sprintf("%s_%s", config.AppName, title),
 			Labels: map[string]string{
 				DocoCDLabels.Metadata.Manager:   config.AppName,
 				DocoCDLabels.Metadata.Version:   config.AppVersion,

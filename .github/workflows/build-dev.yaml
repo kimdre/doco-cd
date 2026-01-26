@@ -74,14 +74,15 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@5d4e8d1aca955e8d8589aabd499c5cae939e33c7 # v4
+        uses: github/codeql-action/upload-sarif@19b2f06db2b6f5108140aeb04014ef02b648f789 # v4
         with:
           sarif_file: 'trivy-results.sarif'
 
-      - name: Build and push image
+      - name: Build and push dev image
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
         with:
           context: .
+          platforms: linux/amd64
           build-args: |
             APP_VERSION=dev-build.${{ steps.vars.outputs.short_sha }}
           push: ${{ github.event_name != 'pull_request' }}

@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/go-git/go-git/v5/plumbing/transport"
+
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/filesystem"
@@ -68,16 +70,21 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		slog.String("reference", s.DeployConfig.Reference),
 	)
 
-	authCloneUrl := string(s.Repository.CloneURL)
-	if s.AppConfig.GitAccessToken != "" && !git.IsSSH(string(s.Repository.CloneURL)) {
-		authCloneUrl = git.GetAuthUrl(string(s.Repository.CloneURL), s.AppConfig.AuthType, s.AppConfig.GitAccessToken)
+	auth := transport.AuthMethod(nil)
+	if git.IsSSH(string(s.Repository.CloneURL)) {
+		auth, err = git.SSHAuth(s.AppConfig.SSHPrivateKey, s.AppConfig.SSHPrivateKeyPassphrase)
+		if err != nil {
+			return fmt.Errorf("failed to get SSH auth: %w", err)
+		}
+	} else if s.AppConfig.GitAccessToken != "" {
+		auth = git.HttpTokenAuth(s.AppConfig.GitAccessToken)
 	}
 
 	if s.DeployConfig.RepositoryUrl != "" {
 		stageLog.Debug("repository URL provided, cloning remote repository")
 
-		_, err = git.CloneRepository(s.Repository.PathInternal, authCloneUrl, s.DeployConfig.Reference,
-			s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, s.AppConfig.SSHPrivateKey, s.AppConfig.SSHPrivateKeyPassphrase)
+		_, err = git.CloneRepository(s.Repository.PathInternal, string(s.Repository.CloneURL), s.DeployConfig.Reference,
+			s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, auth, s.AppConfig.GitCloneSubmodules)
 		if err != nil && !errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			return fmt.Errorf("failed to clone repository: %w", err)
 		}
@@ -113,8 +120,8 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 
 	stageLog.Debug("checking out reference "+s.DeployConfig.Reference, slog.String("path", s.Repository.PathExternal))
 
-	s.Repository.Git, err = git.UpdateRepository(s.Repository.PathInternal, authCloneUrl, s.DeployConfig.Reference,
-		s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, s.AppConfig.SSHPrivateKey, s.AppConfig.SSHPrivateKeyPassphrase)
+	s.Repository.Git, err = git.UpdateRepository(s.Repository.PathInternal, string(s.Repository.CloneURL), s.DeployConfig.Reference,
+		s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, auth, s.AppConfig.GitCloneSubmodules)
 	if err != nil {
 		return fmt.Errorf("failed to checkout repository: %w", err)
 	}

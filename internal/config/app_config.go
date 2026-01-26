@@ -28,6 +28,7 @@ type AppConfig struct {
 	WebhookSecretFile           string                 `env:"WEBHOOK_SECRET_FILE,file"`                                           // WebhookSecretFile is the file containing the WebhookSecret
 	GitAccessToken              string                 `env:"GIT_ACCESS_TOKEN"`                                                   // GitAccessToken is the access token used to authenticate with the Git server (e.g. GitHub) for private repositories
 	GitAccessTokenFile          string                 `env:"GIT_ACCESS_TOKEN_FILE,file"`                                         // GitAccessTokenFile is the file containing the GitAccessToken
+	GitCloneSubmodules          bool                   `env:"GIT_CLONE_SUBMODULES,notEmpty" envDefault:"true"`                    // GitCloneSubmodules controls whether git submodules are cloned
 	SSHPrivateKey               string                 `env:"SSH_PRIVATE_KEY"`                                                    // SSHPrivateKey is the SSH private key used for SSH authentication with Git repositories
 	SSHPrivateKeyFile           string                 `env:"SSH_PRIVATE_KEY_FILE,file"`                                          // SSHPrivateKeyFile is the file containing the SSHPrivateKey
 	SSHPrivateKeyPassphrase     string                 `env:"SSH_PRIVATE_KEY_PASSPHRASE"`                                         // SSHPrivateKeyPassphrase is the passphrase for the SSH private key, if applicable

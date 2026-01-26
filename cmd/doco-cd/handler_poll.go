@@ -13,6 +13,7 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/google/uuid"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -169,11 +170,6 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	jobLog.Debug("get repository",
 		slog.String("url", cloneUrl))
 
-	if appConfig.GitAccessToken != "" && !git.IsSSH(cloneUrl) {
-		// Always use the access token for public repositories if it is set to avoid rate limiting
-		cloneUrl = git.GetAuthUrl(cloneUrl, appConfig.AuthType, appConfig.GitAccessToken)
-	}
-
 	internalRepoPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
 	if err != nil {
 		pollError(jobLog, metadata, fmt.Errorf("failed to verify and sanitize internal filesystem path: %w", err))
@@ -192,13 +188,25 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		slog.String("container_path", internalRepoPath),
 		slog.String("host_path", externalRepoPath))
 
-	_, err = git.CloneRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase)
+	auth := transport.AuthMethod(nil)
+	if git.IsSSH(cloneUrl) {
+		auth, err = git.SSHAuth(appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase)
+		if err != nil {
+			pollError(jobLog, metadata, fmt.Errorf("failed to setup ssh auth: %w", err))
+
+			return append(results, pollResult{Metadata: metadata, Err: err})
+		}
+	} else if appConfig.GitAccessToken != "" {
+		auth = git.HttpTokenAuth(appConfig.GitAccessToken)
+	}
+
+	_, err = git.CloneRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules)
 	if err != nil {
 		// If the repository already exists, check it out to the specified commit SHA
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			jobLog.Debug("repository already exists, checking out reference "+pollConfig.Reference, slog.String("host_path", externalRepoPath))
 
-			_, err = git.UpdateRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase)
+			_, err = git.UpdateRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules)
 			if err != nil {
 				pollError(jobLog, metadata, fmt.Errorf("failed to checkout repository: %w", err))
 

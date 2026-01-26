@@ -78,6 +78,11 @@ func registerHttpEndpoints(c *config.AppConfig, h *handlerData, log *logger.Logg
 
 // HealthCheckHandler handles health check requests.
 func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request) {
+	var (
+		err     error
+		errType error
+	)
+
 	jobID := uuid.Must(uuid.NewV7()).String()
 
 	metadata := notification.Metadata{
@@ -87,9 +92,9 @@ func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request)
 		Revision:   "",
 	}
 
-	err := docker.VerifySocketConnection()
+	err, errType = docker.VerifyDockerAPIAccess()
 	if err != nil {
-		onError(w, h.log.With(logger.ErrAttr(err)), docker.ErrDockerSocketConnectionFailed.Error(), err.Error(), http.StatusServiceUnavailable, metadata)
+		onError(w, h.log.With(logger.ErrAttr(err)), errType.Error(), err.Error(), http.StatusServiceUnavailable, metadata)
 
 		return
 	}

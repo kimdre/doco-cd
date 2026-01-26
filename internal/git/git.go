@@ -15,6 +15,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/format/diff"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
 
 	"github.com/kimdre/doco-cd/internal/encryption"
@@ -36,12 +37,13 @@ const (
 )
 
 var (
-	ErrCheckoutFailed          = errors.New("failed to checkout repository")
-	ErrFetchFailed             = errors.New("failed to fetch repository")
-	ErrPullFailed              = errors.New("failed to pull repository")
-	ErrRepositoryAlreadyExists = git.ErrRepositoryAlreadyExists
-	ErrInvalidReference        = git.ErrInvalidReference
-	ErrSSHKeyRequired          = errors.New("ssh URL requires SSH_PRIVATE_KEY to be set")
+	ErrCheckoutFailed             = errors.New("failed to checkout repository")
+	ErrFetchFailed                = errors.New("failed to fetch repository")
+	ErrPullFailed                 = errors.New("failed to pull repository")
+	ErrRepositoryAlreadyExists    = git.ErrRepositoryAlreadyExists
+	ErrInvalidReference           = git.ErrInvalidReference
+	ErrSSHKeyRequired             = errors.New("ssh URL requires SSH_PRIVATE_KEY to be set")
+	ErrPossibleAuthMethodMismatch = errors.New("there might be a mismatch between the authentication method and the repository or submodule remote URL")
 )
 
 // ChangedFile represents a file that has changed between two commits.
@@ -124,8 +126,8 @@ func IsSSH(url string) bool {
 	return strings.HasPrefix(url, "git@") || strings.HasPrefix(url, "ssh://")
 }
 
-// sshAuth creates an SSH authentication method using the provided private key.
-func sshAuth(privateKey, keyPassphrase string) (transport.AuthMethod, error) {
+// SSHAuth creates an SSH authentication method using the provided private key.
+func SSHAuth(privateKey, keyPassphrase string) (transport.AuthMethod, error) {
 	if strings.TrimSpace(privateKey) == "" {
 		return nil, ErrSSHKeyRequired
 	}
@@ -138,6 +140,18 @@ func sshAuth(privateKey, keyPassphrase string) (transport.AuthMethod, error) {
 	// auth.HostKeyCallback = ssh2.InsecureIgnoreHostKey()
 
 	return auth, nil
+}
+
+// HttpTokenAuth returns an AuthMethod for HTTP Basic Auth using a token.
+func HttpTokenAuth(token string) transport.AuthMethod {
+	if token == "" {
+		return nil
+	}
+
+	return &githttp.BasicAuth{
+		Username: "oauth2", // can be anything except an empty string
+		Password: token,
+	}
 }
 
 // addToKnownHosts adds the host from the SSH URL to the known_hosts file.
@@ -209,7 +223,7 @@ func updateRemoteURL(repo *git.Repository, url string) error {
 }
 
 // UpdateRepository fetches and checks out the requested ref.
-func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, sshPrivateKey, sshPrivateKeyPassphrase string) (*git.Repository, error) {
+func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, cloneSubmodules bool) (*git.Repository, error) {
 	repo, err := git.PlainOpen(path)
 	if err != nil {
 		return nil, err
@@ -230,6 +244,7 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 		RemoteURL:  url,
 		RefSpecs:   []config.RefSpec{refSpecAllBranches, refSpecAllTags},
 		Prune:      true,
+		Auth:       auth,
 	}
 
 	// SSH auth when key is provided
@@ -240,11 +255,6 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 		}
 
 		opts.RemoteURL = convertSSHUrl(url)
-
-		opts.Auth, err = sshAuth(sshPrivateKey, sshPrivateKeyPassphrase)
-		if err != nil {
-			return nil, err
-		}
 	} else {
 		opts.InsecureSkipTLS = skipTLSVerify
 
@@ -274,11 +284,17 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 		return nil, fmt.Errorf("failed to reset tracked files: %w", err)
 	}
 
+	if cloneSubmodules {
+		if err = updateSubmodules(repo, opts.Auth); err != nil {
+			return nil, fmt.Errorf("failed to update submodules: %w", err)
+		}
+	}
+
 	return repo, nil
 }
 
 // CloneRepository clones a repository with HTTP or SSH auth.
-func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, sshPrivateKey, sshPrivateKeyPassphrase string) (*git.Repository, error) {
+func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, cloneSubmodules bool) (*git.Repository, error) {
 	err := os.MkdirAll(path, filesystem.PermDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create directory %s: %w", path, err)
@@ -290,9 +306,13 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 		SingleBranch:  true,
 		ReferenceName: plumbing.ReferenceName(ref),
 		Tags:          git.NoTags,
+		Auth:          auth,
 	}
 
-	// SSH auth when key is provided
+	if cloneSubmodules {
+		opts.RecurseSubmodules = git.DefaultSubmoduleRecursionDepth
+	}
+
 	if IsSSH(url) {
 		err = addToKnownHosts(url)
 		if err != nil {
@@ -300,11 +320,6 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 		}
 
 		opts.URL = convertSSHUrl(url)
-
-		opts.Auth, err = sshAuth(sshPrivateKey, sshPrivateKeyPassphrase)
-		if err != nil {
-			return nil, err
-		}
 	} else {
 		opts.InsecureSkipTLS = skipTLSVerify
 
@@ -313,7 +328,79 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 		}
 	}
 
-	return git.PlainClone(path, false, opts)
+	repo, err := git.PlainClone(path, false, opts)
+	if errors.Is(err, transport.ErrInvalidAuthMethod) && cloneSubmodules {
+		return nil, fmt.Errorf("%w: %w", err, ErrPossibleAuthMethodMismatch)
+	}
+
+	return repo, err
+}
+
+func updateSubmodules(repo *git.Repository, auth transport.AuthMethod) error {
+	worktree, err := repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("failed to get worktree: %w", err)
+	}
+
+	submodules, err := worktree.Submodules()
+	if err != nil {
+		return fmt.Errorf("failed to list submodules: %w", err)
+	}
+
+	for _, submodule := range submodules {
+		submoduleRepo, err := submodule.Repository()
+		if err != nil {
+			return fmt.Errorf("failed to get submodule repository: %w", err)
+		}
+
+		// Reset tracked files in submodule
+		err = ResetTrackedFiles(submoduleRepo)
+		if err != nil {
+			return fmt.Errorf("failed to reset tracked files in submodule: %w", err)
+		}
+
+		opts := &git.SubmoduleUpdateOptions{
+			Init:              true,
+			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
+			Auth:              auth,
+		}
+
+		if err = submodule.Update(opts); err != nil {
+			submodulePath := "submodule"
+			if cfg := submodule.Config(); cfg.Path != "" {
+				submodulePath = cfg.Path
+			}
+
+			if errors.Is(err, git.ErrUnstagedChanges) {
+				// Hard reset and try again
+				submoduleRepoWorktree, err := submoduleRepo.Worktree()
+				if err != nil {
+					return fmt.Errorf("failed to get worktree for %s: %w", submodulePath, err)
+				}
+
+				err = submoduleRepoWorktree.Reset(&git.ResetOptions{
+					Mode: git.HardReset,
+				})
+				if err != nil {
+					return fmt.Errorf("failed to reset worktree for %s: %w", submodulePath, err)
+				}
+
+				// Retry submodule update
+				err = submodule.Update(opts)
+				if err != nil {
+					return fmt.Errorf("failed to update %s after resetting: %w", submodulePath, err)
+				}
+
+				continue
+			} else if errors.Is(err, transport.ErrInvalidAuthMethod) {
+				return fmt.Errorf("%w: %w", err, ErrPossibleAuthMethodMismatch)
+			}
+
+			return fmt.Errorf("failed to update %s: %w", submodulePath, err)
+		}
+	}
+
+	return nil
 }
 
 // GetAuthUrl returns a clone URL with an access token for private repositories.

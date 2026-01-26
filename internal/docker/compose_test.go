@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	testCompose "github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/testcontainers/testcontainers-go/wait"
 
@@ -181,7 +182,17 @@ func TestDeployCompose(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	repo, err := git.CloneRepository(tmpDir, p.CloneURL, p.Ref, c.SkipTLSVerification, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
+	auth := transport.AuthMethod(nil)
+	if git.IsSSH(p.CloneURL) {
+		auth, err = git.SSHAuth(c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
+		if err != nil {
+			t.Fatalf("Failed to get SSH auth: %v", err)
+		}
+	} else if c.GitAccessToken != "" {
+		auth = git.HttpTokenAuth(c.GitAccessToken)
+	}
+
+	repo, err := git.CloneRepository(tmpDir, p.CloneURL, p.Ref, c.SkipTLSVerification, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
 		if !errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			t.Fatal(err)
@@ -364,11 +375,21 @@ func TestHasChangedConfigs(t *testing.T) {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
 
-	url := git.GetAuthUrl(cloneUrlTest, c.AuthType, c.GitAccessToken)
+	url := cloneUrlTest
+
+	auth := transport.AuthMethod(nil)
+	if git.IsSSH(url) {
+		auth, err = git.SSHAuth(c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
+		if err != nil {
+			t.Fatalf("Failed to get SSH auth: %v", err)
+		}
+	} else if c.GitAccessToken != "" {
+		auth = git.HttpTokenAuth(c.GitAccessToken)
+	}
 
 	tmpDir := t.TempDir()
 
-	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
+	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -427,11 +448,21 @@ func TestHasChangedSecrets(t *testing.T) {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
 
-	url := git.GetAuthUrl(cloneUrlTest, c.AuthType, c.GitAccessToken)
+	url := cloneUrlTest
+
+	auth := transport.AuthMethod(nil)
+	if git.IsSSH(url) {
+		auth, err = git.SSHAuth(c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
+		if err != nil {
+			t.Fatalf("Failed to get SSH auth: %v", err)
+		}
+	} else if c.GitAccessToken != "" {
+		auth = git.HttpTokenAuth(c.GitAccessToken)
+	}
 
 	tmpDir := t.TempDir()
 
-	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
+	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -490,11 +521,21 @@ func TestHasChangedBindMounts(t *testing.T) {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
 
-	url := git.GetAuthUrl(cloneUrlTest, c.AuthType, c.GitAccessToken)
+	url := cloneUrlTest
+
+	auth := transport.AuthMethod(nil)
+	if git.IsSSH(url) {
+		auth, err = git.SSHAuth(c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
+		if err != nil {
+			t.Fatalf("Failed to get SSH auth: %v", err)
+		}
+	} else if c.GitAccessToken != "" {
+		auth = git.HttpTokenAuth(c.GitAccessToken)
+	}
 
 	tmpDir := t.TempDir()
 
-	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
+	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
