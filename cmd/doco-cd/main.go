@@ -296,7 +296,10 @@ func main() {
 	var wg sync.WaitGroup
 
 	if len(c.PollConfig) > 0 {
-		log.Info("poll configuration found, scheduling polling jobs", slog.Any("poll_config", c.PollConfig))
+		log.Info(
+			"poll configuration found, scheduling polling jobs",
+			slog.Any("poll_config", logger.BuildSliceLogValue(c.PollConfig, "Deployments.Internal")),
+		)
 
 		for _, pollConfig := range c.PollConfig {
 			err = StartPoll(&h, pollConfig, &wg)

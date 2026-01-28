@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
@@ -14,6 +15,8 @@ import (
 	"github.com/creasty/defaults"
 	"go.yaml.in/yaml/v3"
 	"gopkg.in/validator.v2"
+
+	"github.com/kimdre/doco-cd/internal/logger"
 )
 
 var (
@@ -74,6 +77,11 @@ func DefaultDeployConfig(name, reference string) *DeployConfig {
 		WorkingDirectory: ".",
 		ComposeFiles:     cli.DefaultFileNames,
 	}
+}
+
+// LogValue implements the slog.LogValuer interface for DeployConfig.
+func (c DeployConfig) LogValue() slog.Value {
+	return logger.BuildLogValue(c, "Internal")
 }
 
 func (c *DeployConfig) validateConfig() error {
@@ -172,7 +180,9 @@ func GetDeployConfigFromYAML(f string) ([]*DeployConfig, error) {
 }
 
 // GetDeployConfigs returns either the deployment configuration from the repository or the default configuration.
-func GetDeployConfigs(configDir, name, customTarget, reference string) ([]*DeployConfig, error) {
+func GetDeployConfigs(repoRoot, deployConfigBaseDir, name, customTarget, reference string) ([]*DeployConfig, error) {
+	configDir := filepath.Join(repoRoot, deployConfigBaseDir)
+
 	files, err := os.ReadDir(configDir)
 	if err != nil {
 		return nil, err
@@ -207,7 +217,7 @@ func GetDeployConfigs(configDir, name, customTarget, reference string) ([]*Deplo
 		for i, c := range configs {
 			// Check for deployConfigs with AutoDiscover enabled, if true then remove this config and add new configs based on discovered compose files
 			if c.AutoDiscover {
-				discoveredConfigs, err := autoDiscoverDeployments(configDir, c)
+				discoveredConfigs, err := autoDiscoverDeployments(repoRoot, c)
 				if err != nil {
 					return nil, fmt.Errorf("failed to auto-discover deployment configurations: %w", err)
 				}
@@ -294,22 +304,53 @@ func validateUniqueProjectNames(configs []*DeployConfig) error {
 // ResolveDeployConfigs returns deployment configs for a poll run, preferring inline
 // deployments defined on the PollConfig when provided. Falls back to repository
 // configuration files or default values when no inline deployments are present.
-func ResolveDeployConfigs(poll PollConfig, configDir, name string) ([]*DeployConfig, error) {
+// repoRoot is the absolute path to the repository root.
+// deployConfigBaseDir is the relative path from repo root where config files are located.
+func ResolveDeployConfigs(poll PollConfig, repoRoot, deployConfigBaseDir, name string) ([]*DeployConfig, error) {
 	// Prefer inline deployments when present
 	if len(poll.Deployments) > 0 {
-		return poll.Deployments, nil
+		configs, err := expandInlineAutoDiscoverConfigs(repoRoot, poll.Deployments)
+		if err != nil {
+			return nil, err
+		}
+
+		return configs, nil
 	}
 
-	// No inline deployments, use repository config discovery from configDir
-	return GetDeployConfigs(configDir, name, poll.CustomTarget, poll.Reference)
+	// No inline deployments, use repository config discovery
+	return GetDeployConfigs(repoRoot, deployConfigBaseDir, name, poll.CustomTarget, poll.Reference)
 }
 
-// autoDiscoverDeployments scans the base directory for subdirectories
-// containing docker-compose files and generates DeployConfig entries for each.
-func autoDiscoverDeployments(baseDir string, baseDeployConfig *DeployConfig) ([]*DeployConfig, error) {
+// expandInlineAutoDiscoverConfigs replaces inline deployments that have auto-discovery
+// enabled with the discovered deployments rooted at repoRoot.
+func expandInlineAutoDiscoverConfigs(repoRoot string, deployments []*DeployConfig) ([]*DeployConfig, error) {
+	expanded := make([]*DeployConfig, 0, len(deployments))
+
+	for _, deployment := range deployments {
+		if !deployment.AutoDiscover {
+			expanded = append(expanded, deployment)
+			continue
+		}
+
+		discoveredConfigs, err := autoDiscoverDeployments(repoRoot, deployment)
+		if err != nil {
+			return nil, fmt.Errorf("failed to auto-discover deployment configurations: %w", err)
+		}
+
+		expanded = append(expanded, discoveredConfigs...)
+	}
+
+	return expanded, nil
+}
+
+// autoDiscoverDeployments scans for subdirectories containing docker-compose files
+// and generates DeployConfig entries for each.
+// repoRoot is the absolute path to the repository root.
+// baseDeployConfig.WorkingDirectory is treated as repo-root-relative.
+func autoDiscoverDeployments(repoRoot string, baseDeployConfig *DeployConfig) ([]*DeployConfig, error) {
 	var configs []*DeployConfig
 
-	searchPath := path.Join(baseDir, baseDeployConfig.WorkingDirectory)
+	searchPath := filepath.Join(repoRoot, baseDeployConfig.WorkingDirectory)
 
 	err := filepath.WalkDir(searchPath, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -345,7 +386,7 @@ func autoDiscoverDeployments(baseDir string, baseDeployConfig *DeployConfig) ([]
 
 				c.Name = filepath.Base(p)
 
-				c.WorkingDirectory, err = filepath.Rel(baseDir, p)
+				c.WorkingDirectory, err = filepath.Rel(repoRoot, p)
 				if err != nil {
 					return err
 				}
