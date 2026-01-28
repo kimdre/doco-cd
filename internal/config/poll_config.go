@@ -3,8 +3,11 @@ package config
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/creasty/defaults"
+
+	"github.com/kimdre/doco-cd/internal/logger"
 )
 
 var (
@@ -29,6 +32,11 @@ type PollJob struct {
 }
 
 const MinPollInterval = 10 // Minimum allowed poll interval in seconds
+
+// LogValue implements the slog.LogValuer interface for PollConfig.
+func (c PollConfig) LogValue() slog.Value {
+	return logger.BuildLogValue(c, "Deployments.Internal")
+}
 
 // Validate checks if the PollConfig is valid.
 func (c *PollConfig) Validate() error {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
@@ -14,6 +15,8 @@ import (
 	"github.com/creasty/defaults"
 	"go.yaml.in/yaml/v3"
 	"gopkg.in/validator.v2"
+
+	"github.com/kimdre/doco-cd/internal/logger"
 )
 
 var (
@@ -74,6 +77,11 @@ func DefaultDeployConfig(name, reference string) *DeployConfig {
 		WorkingDirectory: ".",
 		ComposeFiles:     cli.DefaultFileNames,
 	}
+}
+
+// LogValue implements the slog.LogValuer interface for DeployConfig.
+func (c DeployConfig) LogValue() slog.Value {
+	return logger.BuildLogValue(c, "Internal")
 }
 
 func (c *DeployConfig) validateConfig() error {
