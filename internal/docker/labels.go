@@ -14,6 +14,7 @@ type docoCdLabelNamesDeployment struct {
 	TargetRef           string // Target reference (branch/tag) of the deployment
 	Trigger             string // Poll or SHA of the commit that triggered the deployment
 	CommitSHA           string // SHA of the commit that is currently deployed
+	ConfigHash          string // SHA256 hash of the deploy-config used during deployment
 	ExternalSecretsHash string // SHA256 hash of the external secrets used during deployment
 	AutoDiscover        string // Whether the deployment was auto-discovered
 	AutoDiscoverDelete  string // Whether auto-discovered deployment is allowed to be deleted
@@ -45,7 +46,8 @@ var DocoCDLabels = docoCdLabelNames{
 		TargetRef:           "cd.doco.deployment.target.ref",
 		CommitSHA:           "cd.doco.deployment.target.sha",
 		Trigger:             "cd.doco.deployment.trigger",
-		ExternalSecretsHash: "cd.doco.deployment.external_secrets_hash",
+		ConfigHash:          "cd.doco.deployment.config.sha",
+		ExternalSecretsHash: "cd.doco.deployment.external_secrets.sha",
 		AutoDiscover:        "cd.doco.deployment.auto_discover",
 		AutoDiscoverDelete:  "cd.doco.deployment.auto_discover.delete",
 	},

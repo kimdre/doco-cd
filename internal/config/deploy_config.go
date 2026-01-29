@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -143,6 +144,15 @@ func (c *DeployConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	return nil
+}
+
+// Hash returns a hash of the DeployConfig struct (without changing the order of its elements).
+func (c *DeployConfig) Hash() (string, error) {
+	data, err := yaml.Marshal(c)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(data)), nil
 }
 
 // GetDeployConfigFromYAML reads a YAML file and unmarshals it into a slice of DeployConfig structs.

@@ -80,6 +80,11 @@ func RemoveSwarmStack(ctx context.Context, dockerCli command.Cli, namespace stri
 
 // addSwarmServiceLabels adds custom labels to the service containers in a Docker Swarm stack.
 func addSwarmServiceLabels(stack *composetypes.Config, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, latestCommit, secretHash string) {
+	deployConfigHash, err := deployConfig.Hash()
+	if err != nil {
+		deployConfigHash = ""
+	}
+
 	customLabels := map[string]string{
 		DocoCDLabels.Metadata.Manager:               config.AppName,
 		DocoCDLabels.Metadata.Version:               appVersion,
@@ -89,6 +94,7 @@ func addSwarmServiceLabels(stack *composetypes.Config, deployConfig config.Deplo
 		DocoCDLabels.Deployment.Trigger:             payload.CommitSHA,
 		DocoCDLabels.Deployment.CommitSHA:           latestCommit,
 		DocoCDLabels.Deployment.TargetRef:           deployConfig.Reference,
+		DocoCDLabels.Deployment.ConfigHash:          deployConfigHash,
 		DocoCDLabels.Deployment.ExternalSecretsHash: secretHash,
 		DocoCDLabels.Deployment.AutoDiscover:        strconv.FormatBool(deployConfig.AutoDiscover),
 		DocoCDLabels.Deployment.AutoDiscoverDelete:  strconv.FormatBool(deployConfig.AutoDiscoverOpts.Delete),
