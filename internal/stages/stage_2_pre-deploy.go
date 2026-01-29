@@ -31,14 +31,15 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	secretsChanged := false // Flag to indicate if external secrets have changed
 	imagesChanged := false  // Flag to indicate if images have changed
 	deployedCommit := ""
-	deployedSecretHash := ""
+	curDeployConfigHash := ""
+	curSecretHash := ""
 
 	serviceLabels, err := docker.GetServiceLabels(ctx, s.Docker.Client, s.DeployConfig.Name)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve service labels: %w", err)
 	}
 
-	// Find deployed commit and external secrets hash from labels of deployed services
+	// Find deployed commit, deployConfig hash and externalSecrets hash from labels of deployed services
 	for _, labels := range serviceLabels {
 		name, ok := labels[docker.DocoCDLabels.Repository.Name]
 		if !ok || name != getFullName(s.Repository.CloneURL) {
@@ -46,9 +47,11 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		}
 
 		deployedCommit = labels[docker.DocoCDLabels.Deployment.CommitSHA]
-		deployedSecretHash = labels[docker.DocoCDLabels.Deployment.ExternalSecretsHash]
+		curDeployConfigHash = labels[docker.DocoCDLabels.Deployment.ConfigHash]
+		curSecretHash = labels[docker.DocoCDLabels.Deployment.ExternalSecretsHash]
 	}
 
+	// Compare external secrets if a secret provider is configured
 	if s.SecretProvider != nil && *s.SecretProvider != nil && len(s.DeployConfig.ExternalSecrets) > 0 {
 		stageLog.Debug("resolving external secrets", slog.Any("external_secrets", s.DeployConfig.ExternalSecrets))
 
@@ -59,7 +62,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		}
 
 		secretHash := secretprovider.Hash(s.DeployState.ResolvedSecrets)
-		if deployedSecretHash != "" && deployedSecretHash != secretHash {
+		if curSecretHash != "" && curSecretHash != secretHash {
 			stageLog.Debug("external secrets have changed, proceeding with deployment")
 
 			secretsChanged = true
@@ -120,8 +123,8 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		return ErrSkipDeployment
 	}
 
-	// Check for file changes
 	if deployedCommit != "" {
+		// Check for file changes
 		s.DeployState.ChangedFiles, err = git.GetChangedFilesBetweenCommits(s.Repository.Git, plumbing.NewHash(deployedCommit), plumbing.NewHash(latestCommit))
 		if err != nil {
 			return fmt.Errorf("failed to get changed files between commits: %w", err)
@@ -132,17 +135,36 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			return fmt.Errorf("failed to compare commits in subdirectory: %w", err)
 		}
 
-		if !filesChanged && !secretsChanged && !imagesChanged {
-			stageLog.Debug("no changes detected in subdirectory, skipping deployment",
+		// Compare deployConfig hashes
+		newDeployConfigHash, err := s.DeployConfig.Hash()
+		if err != nil {
+			return fmt.Errorf("failed to hash deploy configuration: %w", err)
+		}
+
+		deployConfigChanged := false
+
+		if curDeployConfigHash != newDeployConfigHash {
+			stageLog.Debug("deploy configuration has changed", slog.String("new_hash", newDeployConfigHash), slog.String("old_hash", curDeployConfigHash))
+
+			deployConfigChanged = true
+		}
+
+		if !deployConfigChanged && !filesChanged && !secretsChanged && !imagesChanged {
+			stageLog.Debug("no changes detected, skipping deployment",
 				slog.String("directory", s.DeployConfig.WorkingDirectory))
 
 			return ErrSkipDeployment
 		}
 
-		if filesChanged {
-			stageLog.Debug("changes detected in subdirectory, proceeding with deployment",
-				slog.String("directory", s.DeployConfig.WorkingDirectory))
-		}
+		stageLog.Debug("changes detected, proceeding with deployment",
+			slog.String("directory", s.DeployConfig.WorkingDirectory),
+			slog.Group("has_changes",
+				slog.Bool("files", filesChanged),
+				slog.Bool("deploy_config", deployConfigChanged),
+				slog.Bool("external_secrets", secretsChanged),
+				slog.Bool("images", imagesChanged),
+			),
+		)
 	}
 
 	return nil

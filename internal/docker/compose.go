@@ -100,6 +100,11 @@ func addComposeServiceLabels(project *types.Project, deployConfig config.DeployC
 			dependencies = append(dependencies, dep)
 		}
 
+		deployConfigHash, err := deployConfig.Hash()
+		if err != nil {
+			deployConfigHash = ""
+		}
+
 		s.CustomLabels = map[string]string{
 			DocoCDLabels.Metadata.Manager:               config.AppName,
 			DocoCDLabels.Metadata.Version:               appVersion,
@@ -109,6 +114,7 @@ func addComposeServiceLabels(project *types.Project, deployConfig config.DeployC
 			DocoCDLabels.Deployment.Trigger:             payload.CommitSHA,
 			DocoCDLabels.Deployment.CommitSHA:           latestCommit,
 			DocoCDLabels.Deployment.TargetRef:           deployConfig.Reference,
+			DocoCDLabels.Deployment.ConfigHash:          deployConfigHash,
 			DocoCDLabels.Deployment.ExternalSecretsHash: secretHash,
 			DocoCDLabels.Deployment.AutoDiscover:        strconv.FormatBool(deployConfig.AutoDiscover),
 			DocoCDLabels.Deployment.AutoDiscoverDelete:  strconv.FormatBool(deployConfig.AutoDiscoverOpts.Delete),
