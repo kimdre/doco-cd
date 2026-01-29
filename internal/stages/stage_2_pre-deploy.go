@@ -142,6 +142,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		}
 
 		deployConfigChanged := false
+
 		if curDeployConfigHash != newDeployConfigHash {
 			stageLog.Debug("deploy configuration has changed", slog.String("new_hash", newDeployConfigHash), slog.String("old_hash", curDeployConfigHash))
 
