@@ -36,7 +36,7 @@ func validateHttpUrl(v interface{}, _ string) error {
 	}
 
 	// Accept classic SSH clone (e.g., git@github.com:owner/repo.git)
-	sshClonePattern := regexp.MustCompile(`^[a-z0-9._-]+@[^:]+:.+\.git$`)
+	sshClonePattern := regexp.MustCompile(`^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+:.+`)
 	if sshClonePattern.MatchString(str) {
 		return nil
 	}
