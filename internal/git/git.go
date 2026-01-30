@@ -14,6 +14,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/format/diff"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
@@ -326,6 +327,12 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 		if proxyOpts != (transport.ProxyOptions{}) {
 			opts.ProxyOptions = proxyOpts
 		}
+	}
+
+	// Required for cloning from Azure DevOps repositories with go-git v5, should be fixed in v6
+	// https://github.com/go-git/go-git/pull/613
+	transport.UnsupportedCapabilities = []capability.Capability{
+		capability.ThinPack,
 	}
 
 	repo, err := git.PlainClone(path, false, opts)
