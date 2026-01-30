@@ -58,7 +58,7 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
         CGO_ENABLED=1 CC=musl-gcc go build -ldflags="-s -w -X github.com/kimdre/doco-cd/internal/config.AppVersion=${APP_VERSION} ${BW_SDK_BUILD_FLAGS}" -o / ./...; \
     fi
 
-FROM gcr.io/distroless/base-debian13@sha256:0e299959b841de2aef4259d411c23826a2276e019a5ffea141245679a1d95b46 AS release
+FROM gcr.io/distroless/base-debian13@sha256:8c8b7cf2a01e2d1c683128b2488d77139fa90ec8cb807f0ae260d57f7022dedd AS release
 
 WORKDIR /
 
