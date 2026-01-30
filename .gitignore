@@ -23,6 +23,10 @@ bin/
 go.work
 go.work.sum
 
+# SSH keys
+id_rsa
+ed25519
+
 *.env
 .env
 
