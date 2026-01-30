@@ -26,6 +26,10 @@ go.work.sum
 *.env
 .env
 
+# SSH keys
+id_rsa
+ed25519
+
 cover.out
 cover.html
 
