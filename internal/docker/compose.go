@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -509,6 +511,12 @@ func DeployStack(
 			return fmt.Errorf("%s: %w", errMsg, err)
 		}
 
+		imagesChanged, err := HasChangedImages(*ctx, *dockerCli, project)
+		if err != nil {
+			errMsg := "failed to check for changed images"
+			return fmt.Errorf("%s: %w", errMsg, err)
+		}
+
 		switch {
 		case forceDeploy:
 			deployConfig.ForceRecreate = true
@@ -518,6 +526,8 @@ func DeployStack(
 			deployConfig.ForceRecreate = true
 
 			stackLog.Debug("changed external secrets detected, forcing recreate of all services")
+		case imagesChanged:
+			stackLog.Debug("changed images detected, forcing recreate of all services")
 		case hasChangedFiles || (hasChangedCompose && triggerEvent == "poll"):
 			deployConfig.ForceRecreate = true
 
@@ -911,4 +921,94 @@ func GetImages(ctx context.Context, dockerCli command.Cli, projectName string) (
 	}
 
 	return images, nil
+}
+
+// HasChangedImages checks if any service image defined in the compose project differs from what is currently deployed.
+//
+// Detection strategy:
+//  1. List currently deployed containers for the compose project and map `com.docker.compose.service` -> container image reference and image ID.
+//  2. For each compose service that specifies an explicit `image:` (services with build-only are ignored), compare:
+//     - the desired image reference string (e.g. repo:tag or repo@sha256:...) against the container's image reference
+//     - and (as a fallback/extra guarantee) compare the resolved image IDs if the desired image exists locally.
+//
+// Notes / edge cases:
+//   - If the project has no containers yet, returns false (no deployed state to compare).
+//   - If the desired image can't be inspected locally, the function still detects changes via reference comparison.
+func HasChangedImages(ctx context.Context, dockerCli command.Cli, project *types.Project) (bool, error) {
+	if project == nil {
+		return false, errors.New("project is nil")
+	}
+
+	type deployedImage struct {
+		ref string
+		id  string
+	}
+
+	deployedByService := map[string]deployedImage{}
+
+	args := filters.NewArgs(
+		filters.Arg("label", fmt.Sprintf("%s=%s", api.ProjectLabel, project.Name)),
+	)
+
+	containers, err := dockerCli.Client().ContainerList(ctx, container.ListOptions{All: true, Filters: args})
+	if err != nil {
+		return false, fmt.Errorf("failed to list project containers: %w", err)
+	}
+
+	if len(containers) == 0 {
+		return false, nil
+	}
+
+	for _, c := range containers {
+		svc := c.Labels[api.ServiceLabel]
+		if svc == "" {
+			continue
+		}
+
+		ref := strings.TrimSpace(c.Image)
+		id := strings.TrimSpace(c.ImageID)
+
+		inspect, ierr := dockerCli.Client().ContainerInspect(ctx, c.ID)
+		if ierr == nil {
+			if strings.TrimSpace(inspect.Config.Image) != "" {
+				ref = strings.TrimSpace(inspect.Config.Image)
+			}
+
+			if strings.TrimSpace(inspect.Image) != "" {
+				id = strings.TrimSpace(inspect.Image)
+			}
+		}
+
+		deployedByService[svc] = deployedImage{ref: ref, id: id}
+	}
+
+	for _, s := range project.Services {
+		desiredRef := strings.TrimSpace(s.Image)
+		if desiredRef == "" {
+			continue
+		}
+
+		current, exists := deployedByService[s.Name]
+		if !exists {
+			// Service not currently deployed (scaled to 0 / removed). That's drift.
+			return true, nil
+		}
+
+		// Primary: the compose reference string changed.
+		if current.ref != "" && desiredRef != current.ref {
+			return true, nil
+		}
+
+		// Secondary: resolved image ID changed.
+		desiredInspect, imgErr := dockerCli.Client().ImageInspect(ctx, desiredRef)
+		if imgErr != nil {
+			return false, fmt.Errorf("failed to inspect desired image for service %s (%s): %w", s.Name, desiredRef, imgErr)
+		}
+
+		if current.id != "" && desiredInspect.ID != "" && current.id != desiredInspect.ID {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
