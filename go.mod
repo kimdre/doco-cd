@@ -28,7 +28,7 @@ require (
 	github.com/go-git/go-billy/v5 v5.7.0
 	github.com/go-git/go-git/v5 v5.16.4
 	github.com/google/uuid v1.6.0
-	github.com/infisical/go-sdk v0.6.7
+	github.com/infisical/go-sdk v0.6.8
 	github.com/joho/godotenv v1.5.1
 	github.com/openbao/openbao/api/v2 v2.5.0
 	github.com/prometheus/client_golang v1.23.2
