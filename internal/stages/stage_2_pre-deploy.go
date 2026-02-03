@@ -69,6 +69,11 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		}
 	}
 
+	s.DeployConfig.Internal.Hash, err = s.DeployConfig.Hash()
+	if err != nil {
+		return fmt.Errorf("failed to hash deploy configuration: %w", err)
+	}
+
 	if s.DeployConfig.ForceImagePull {
 		stageLog.Debug("force image pull enabled, checking for image updates")
 
@@ -136,17 +141,9 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		}
 
 		// Compare deployConfig hashes
-		s.DeployConfig.Internal.Hash, err = s.DeployConfig.Hash()
-		if err != nil {
-			return fmt.Errorf("failed to hash deploy configuration: %w", err)
-		}
-
-		deployConfigChanged := false
-
-		if curDeployConfigHash != s.DeployConfig.Internal.Hash {
+		deployConfigChanged := curDeployConfigHash != s.DeployConfig.Internal.Hash
+		if deployConfigChanged {
 			stageLog.Debug("deploy configuration has changed", slog.String("new_hash", s.DeployConfig.Internal.Hash), slog.String("old_hash", curDeployConfigHash))
-
-			deployConfigChanged = true
 		}
 
 		if !deployConfigChanged && !filesChanged && !secretsChanged && !imagesChanged {
