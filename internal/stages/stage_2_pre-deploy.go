@@ -136,15 +136,15 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		}
 
 		// Compare deployConfig hashes
-		newDeployConfigHash, err := s.DeployConfig.Hash()
+		s.DeployConfig.Internal.Hash, err = s.DeployConfig.Hash()
 		if err != nil {
 			return fmt.Errorf("failed to hash deploy configuration: %w", err)
 		}
 
 		deployConfigChanged := false
 
-		if curDeployConfigHash != newDeployConfigHash {
-			stageLog.Debug("deploy configuration has changed", slog.String("new_hash", newDeployConfigHash), slog.String("old_hash", curDeployConfigHash))
+		if curDeployConfigHash != s.DeployConfig.Internal.Hash {
+			stageLog.Debug("deploy configuration has changed", slog.String("new_hash", s.DeployConfig.Internal.Hash), slog.String("old_hash", curDeployConfigHash))
 
 			deployConfigChanged = true
 		}
