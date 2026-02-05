@@ -30,7 +30,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/infisical/go-sdk v0.6.8
 	github.com/joho/godotenv v1.5.1
-	github.com/openbao/openbao/api/v2 v2.5.0
+	github.com/openbao/openbao/api/v2 v2.5.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/testcontainers/testcontainers-go v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/compose v0.40.0
