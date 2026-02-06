@@ -19,6 +19,7 @@ import (
 	"github.com/docker/compose/v2/pkg/compose"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+
 	"github.com/kimdre/doco-cd/internal/stages"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -170,7 +171,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 		inspectName := stackName + "_" + containerName
 
-		svc, err := docker.WaitForSwarmService(t, ctx, dockerClient, inspectName, 10*time.Second)
+		svc, err := docker.WaitForSwarmService(ctx, t, dockerClient, inspectName, 10*time.Second)
 		if err != nil {
 			t.Fatalf("Failed to find swarm service for test container: %v", err)
 		}

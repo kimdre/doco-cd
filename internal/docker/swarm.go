@@ -359,10 +359,11 @@ func PruneStackSecrets(ctx context.Context, client *client.Client, namespace str
 }
 
 // WaitForSwarmService waits until a swarm service exists (and optionally has published ports).
-func WaitForSwarmService(t *testing.T, ctx context.Context, cli *client.Client, serviceName string, timeout time.Duration) (swarmTypes.Service, error) {
+func WaitForSwarmService(ctx context.Context, t *testing.T, cli *client.Client, serviceName string, timeout time.Duration) (swarmTypes.Service, error) {
 	t.Helper()
 
 	deadline := time.Now().Add(timeout)
+
 	var lastErr error
 
 	for time.Now().Before(deadline) {
@@ -374,6 +375,7 @@ func WaitForSwarmService(t *testing.T, ctx context.Context, cli *client.Client, 
 		}
 
 		lastErr = err
+
 		time.Sleep(500 * time.Millisecond)
 	}
 
