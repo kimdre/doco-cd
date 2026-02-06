@@ -457,6 +457,11 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 
 			err = swarm.ScaleService(ctx, h.dockerCli, svcName, uint64(replicas), waitForServices, false)
 			if err != nil {
+				if errors.Is(err, swarm.ErrNotReplicatedService) {
+					jobLog.Debug("skipping non-replicated service for scale action", slog.String("service", svcName))
+					continue
+				}
+
 				errMsg = "failed to scale service"
 				jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 				JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
@@ -549,6 +554,11 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 				JSONResponse(w, "job retriggered: "+svcName, jobID, http.StatusOK)
 				return
 			}
+		}
+
+		if reRunCounter == 0 {
+			JSONError(w, "no job services found to retrigger in stack: "+stackName, "", jobID, http.StatusNotFound)
+			return
 		}
 
 		JSONResponse(w, strconv.FormatInt(reRunCounter, 10)+" job(s) retriggered in stack: "+stackName, jobID, http.StatusOK)
