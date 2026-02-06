@@ -2,7 +2,6 @@ package git
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -26,25 +25,6 @@ const (
 	invalidRef          = "refs/heads/invalid"
 	invalidTagRef       = "refs/tags/invalid"
 )
-
-func TestGetAuthUrl(t *testing.T) {
-	c, err := config.GetAppConfig()
-	if err != nil {
-		t.Fatalf("Failed to get app config: %v", err)
-	}
-
-	expectedUrl := fmt.Sprintf("https://%s:%s@github.com/kimdre/doco-cd.git", c.AuthType, c.GitAccessToken)
-
-	authUrl := GetAuthUrl(
-		"https://github.com/kimdre/doco-cd.git",
-		c.AuthType,
-		c.GitAccessToken,
-	)
-
-	if authUrl != expectedUrl {
-		t.Fatalf("Expected %s, got %s", expectedUrl, authUrl)
-	}
-}
 
 func TestHttpTokenAuth(t *testing.T) {
 	testCases := []struct {

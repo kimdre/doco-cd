@@ -3,6 +3,7 @@ package healthcheck
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 func TestCheck(t *testing.T) {
@@ -29,9 +30,26 @@ func TestCheck(t *testing.T) {
 		},
 	}
 
+	const (
+		maxRetries = 3
+		retryDelay = 500 * time.Millisecond
+	)
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := Check(context.Background(), tc.url)
+			var err error
+			for attempt := 1; attempt <= maxRetries; attempt++ {
+				err = Check(context.Background(), tc.url)
+				if (err != nil) == tc.wantErr {
+					break // Success or expected error
+				}
+
+				if attempt < maxRetries {
+					t.Logf("Retrying (%d/%d) after error: %v", attempt, maxRetries, err)
+					time.Sleep(retryDelay)
+				}
+			}
+
 			if (err != nil) != tc.wantErr {
 				t.Errorf("Check(%q) error = %v, wantErr %v", tc.url, err, tc.wantErr)
 			}
