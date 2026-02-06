@@ -43,7 +43,7 @@ func TestDeploySwarmStack(t *testing.T) {
 		CommitSHA: "244b6f9a5b3dc546ab3822d9c0744846f539c6ef",
 		Name:      "test",
 		FullName:  "kimdre/doco-cd_tests",
-		CloneURL:  git.GetAuthUrl(cloneUrlTest, c.AuthType, c.GitAccessToken),
+		CloneURL:  cloneUrlTest,
 		Private:   true,
 	}
 
