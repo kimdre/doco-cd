@@ -56,3 +56,13 @@ var DocoCDLabels = docoCdLabelNames{
 		URL:  "cd.doco.repository.url",
 	},
 }
+
+var docoCDJobLabelNames = struct {
+	JobSchedule string // Schedule of the job (if applicable) in cron format
+	JobLastRun  string // Timestamp of the last run in RFC3339 format
+	JobNextRun  string // Timestamp of the next scheduled run in RFC3339 format
+}{
+	JobSchedule: "cd.doco.job.schedule",
+	JobLastRun:  "cd.doco.job.last_run",
+	JobNextRun:  "cd.doco.job.next_run",
+}

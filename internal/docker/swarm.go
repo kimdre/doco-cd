@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	swarmTypes "github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
@@ -29,6 +30,11 @@ import (
 	"github.com/kimdre/doco-cd/internal/webhook"
 
 	"github.com/kimdre/doco-cd/internal/config"
+)
+
+var (
+	ErrNotAJobService                = errors.New("service is not a job-mode service")
+	ErrJobServiceRestartNotSupported = errors.New("restart not supported for job services")
 )
 
 // DeploySwarmStack deploys a Docker Swarm stack using the provided project and deploy configuration.
@@ -351,6 +357,80 @@ func PruneStackSecrets(ctx context.Context, client *client.Client, namespace str
 				return fmt.Errorf("failed to remove secret %s: %w", s.ID, err)
 			}
 		}
+	}
+
+	return nil
+}
+
+// RestartService triggers a rolling restart for both replicated and global services.
+// It works by incrementing TaskTemplate.ForceUpdate and updating the service spec.
+// Job services cannot be restarted and will return an error.
+func RestartService(ctx context.Context, cli *client.Client, serviceName string) error {
+	svc, _, err := cli.ServiceInspectWithRaw(ctx, serviceName, swarmTypes.ServiceInspectOptions{
+		InsertDefaults: true,
+	})
+	if err != nil {
+		return fmt.Errorf("inspect service %s: %w", serviceName, err)
+	}
+
+	// Job services are meant to run-to-completion; "restart" isn't a meaningful operation here.
+	switch svc.Spec.Mode {
+	case swarmTypes.ServiceMode{
+		ReplicatedJob: &swarmTypes.ReplicatedJob{},
+	}:
+		return ErrJobServiceRestartNotSupported
+	case swarmTypes.ServiceMode{
+		GlobalJob: &swarmTypes.GlobalJob{},
+	}:
+		return ErrJobServiceRestartNotSupported
+	}
+
+	spec := svc.Spec
+	spec.TaskTemplate.ForceUpdate++
+
+	_, err = cli.ServiceUpdate(ctx, svc.ID, svc.Version, spec, swarmTypes.ServiceUpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("update service %s: %w", serviceName, err)
+	}
+
+	return nil
+}
+
+// RerunJobService attempts to retrigger a Swarm job service (`replicated-job` or `global-job`)
+// by updating the service spec (bumping a dummy label), causing Swarm to create new job tasks.
+//
+// Note: Swarm does not allow UpdateConfig / RollbackConfig on job-mode services, so we must
+// strip those fields before calling ServiceUpdate.
+func RerunJobService(ctx context.Context, cli *client.Client, serviceName string) error {
+	svc, _, err := cli.ServiceInspectWithRaw(ctx, serviceName, swarmTypes.ServiceInspectOptions{
+		InsertDefaults: true,
+	})
+	if err != nil {
+		return fmt.Errorf("inspect service %s: %w", serviceName, err)
+	}
+
+	isReplicatedJob := svc.Spec.Mode.ReplicatedJob != nil
+
+	isGlobalJob := svc.Spec.Mode.GlobalJob != nil
+	if !isReplicatedJob && !isGlobalJob {
+		return ErrNotAJobService
+	}
+
+	spec := svc.Spec
+	if spec.Labels == nil {
+		spec.Labels = map[string]string{}
+	}
+
+	// Change a no-op label to force a spec update.
+	spec.Labels[docoCDJobLabelNames.JobLastRun] = time.Now().UTC().Format(time.RFC3339)
+
+	// Jobs may not have an update config (daemon returns InvalidArgument otherwise).
+	spec.UpdateConfig = nil
+	spec.RollbackConfig = nil
+
+	_, err = cli.ServiceUpdate(ctx, svc.ID, svc.Version, spec, swarmTypes.ServiceUpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("update (rerun) job service %s: %w", serviceName, err)
 	}
 
 	return nil
