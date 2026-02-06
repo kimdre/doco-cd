@@ -156,11 +156,15 @@ func main() {
 		return
 	}
 
-	swarm.ModeEnabled, err = swarm.CheckDaemonIsSwarmManager(ctx, dockerCli)
-	if err != nil {
-		log.Critical("failed to check if docker daemon is a swarm manager", logger.ErrAttr(err))
+	if c.DockerSwarmFeatures {
+		swarm.ModeEnabled, err = swarm.CheckDaemonIsSwarmManager(ctx, dockerCli)
+		if err != nil {
+			log.Critical("failed to check if docker daemon is a swarm manager", logger.ErrAttr(err))
 
-		return
+			return
+		}
+	} else {
+		log.Debug("swarm features disabled by configuration")
 	}
 
 	log.Debug("negotiated docker versions to use",
