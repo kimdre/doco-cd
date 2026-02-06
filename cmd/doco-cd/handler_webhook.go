@@ -109,6 +109,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 			return
 		}
+	} else {
+		swarm.ModeEnabled = false
 	}
 
 	cloneUrl := payload.CloneURL

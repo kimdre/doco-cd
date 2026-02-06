@@ -150,6 +150,8 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 
 			return append(results, pollResult{Metadata: metadata, Err: err})
 		}
+	} else {
+		swarm.ModeEnabled = false
 	}
 
 	if strings.Contains(repoName, "..") {
