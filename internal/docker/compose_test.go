@@ -15,9 +15,10 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
-	"github.com/kimdre/doco-cd/internal/test"
 	testCompose "github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/kimdre/doco-cd/internal/test"
 
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
 
@@ -68,17 +69,19 @@ var (
 	customTarget     = ""
 )
 
-// Helper to get a free TCP port
+// Helper to get a free TCP port.
 func getFreePort() (int, error) {
 	l, err := net.Listen("tcp", ":0")
 	if err != nil {
 		return 0, err
 	}
+
 	defer func() { _ = l.Close() }()
+
 	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
-// Helper to generate compose YAML with a random port
+// Helper to generate compose YAML with a random port.
 func generateComposeContents(port int) string {
 	return fmt.Sprintf(`services:
   test:
@@ -109,6 +112,7 @@ func TestLoadCompose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	composeYAML := generateComposeContents(port)
 	createComposeFile(t, filePath, composeYAML)
 
@@ -222,10 +226,12 @@ func TestDeployCompose(t *testing.T) {
 	filePath := filepath.Join(repoPath, "test.compose.yaml")
 
 	t.Log("Load compose file")
+
 	port, err := getFreePort()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	composeYAML := generateComposeContents(port)
 	createComposeFile(t, filePath, composeYAML)
 
@@ -601,6 +607,7 @@ func startTestContainer(ctx context.Context, t *testing.T) (*testCompose.DockerC
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	composeYAML := generateComposeContents(port)
 
 	stack, err := testCompose.NewDockerComposeWith(

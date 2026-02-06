@@ -11,9 +11,10 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
-	"github.com/kimdre/doco-cd/internal/test"
 	testCompose "github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/kimdre/doco-cd/internal/test"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
