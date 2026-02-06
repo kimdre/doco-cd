@@ -40,6 +40,23 @@ const (
     image: nginx:latest
     ports:
       - "80:80"
+
+  db-migrate:
+    image: busybox
+    command: ["sh", "-lc", "echo running migrations; date; echo done"]
+    deploy:
+      mode: replicated-job
+      replicas: 1
+      restart_policy:
+        condition: none
+
+  test2:
+    image: busybox
+    command: ["sh", "-lc", "echo running test2; date; echo done"]
+    deploy:
+      mode: global-job
+      restart_policy:
+        condition: none
 `
 )
 
