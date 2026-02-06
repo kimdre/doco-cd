@@ -47,7 +47,10 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	expectedStatusCode := http.StatusCreated
 	tmpDir := t.TempDir()
 
-	const containerName = "test"
+	const (
+		stackName     = "test-deploy"
+		containerName = "test"
+	)
 
 	payloadFile := githubPayloadFile
 	cloneUrl := "https://github.com/kimdre/doco-cd.git"
@@ -146,10 +149,10 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	}
 
 	t.Cleanup(func() {
-		t.Log("Remove " + t.Name())
+		t.Log("Remove " + stackName)
 
 		if service != nil {
-			err = service.Down(ctx, t.Name(), downOpts)
+			err = service.Down(ctx, stackName, downOpts)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -167,7 +170,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	if swarm.ModeEnabled {
 		t.Log("Testing in Swarm mode, using service inspect")
 
-		inspectName := t.Name() + "_" + containerName
+		inspectName := stackName + "_" + containerName
 
 		svc, _, err := dockerCli.Client().ServiceInspectWithRaw(ctx, inspectName, swarmTypes.ServiceInspectOptions{
 			InsertDefaults: true,
