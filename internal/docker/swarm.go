@@ -362,9 +362,8 @@ func PruneStackSecrets(ctx context.Context, client *client.Client, namespace str
 	return nil
 }
 
-// RestartService triggers a rolling restart for both replicated and global services.
-// It works by incrementing TaskTemplate.ForceUpdate and updating the service spec.
-// Job services cannot be restarted and will return an error.
+// RestartService restarts long-running Swarm services by bumping ForceUpdate.
+// For job-mode services (replicated-job/global-job), it returns ErrJobServiceRestartNotSupported.
 func RestartService(ctx context.Context, cli *client.Client, serviceName string) error {
 	svc, _, err := cli.ServiceInspectWithRaw(ctx, serviceName, swarmTypes.ServiceInspectOptions{
 		InsertDefaults: true,
@@ -373,20 +372,17 @@ func RestartService(ctx context.Context, cli *client.Client, serviceName string)
 		return fmt.Errorf("inspect service %s: %w", serviceName, err)
 	}
 
-	// Job services are meant to run-to-completion; "restart" isn't a meaningful operation here.
-	switch svc.Spec.Mode {
-	case swarmTypes.ServiceMode{
-		ReplicatedJob: &swarmTypes.ReplicatedJob{},
-	}:
-		return ErrJobServiceRestartNotSupported
-	case swarmTypes.ServiceMode{
-		GlobalJob: &swarmTypes.GlobalJob{},
-	}:
+	// Job services cannot be updated with UpdateConfig present; treat restart as a no-op.
+	if svc.Spec.Mode.ReplicatedJob != nil || svc.Spec.Mode.GlobalJob != nil {
 		return ErrJobServiceRestartNotSupported
 	}
 
 	spec := svc.Spec
-	spec.TaskTemplate.ForceUpdate++
+	if spec.TaskTemplate.ForceUpdate == 0 {
+		spec.TaskTemplate.ForceUpdate = 1
+	} else {
+		spec.TaskTemplate.ForceUpdate++
+	}
 
 	_, err = cli.ServiceUpdate(ctx, svc.ID, svc.Version, spec, swarmTypes.ServiceUpdateOptions{})
 	if err != nil {

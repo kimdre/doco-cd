@@ -484,6 +484,12 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 				}
 			}
 
+			// Job services cannot be updated with UpdateConfig present; treat restart as a no-op.
+			if svc.Spec.Mode.ReplicatedJob != nil || svc.Spec.Mode.GlobalJob != nil {
+				jobLog.Debug("skipping restart for job-mode service", slog.String("service", svcName))
+				continue
+			}
+
 			jobLog.Info("restarting service", slog.String("service", svcName))
 
 			// Swarm restart supports replicated/global and skips job-mode services.
