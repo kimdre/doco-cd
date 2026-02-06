@@ -170,7 +170,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 		inspectName := stackName + "_" + containerName
 
-		svc, err := docker.WaitForSwarmService(t, ctx, dockerClient, inspectName, 2*time.Minute)
+		svc, err := docker.WaitForSwarmService(t, ctx, dockerClient, inspectName, 10*time.Second)
 		if err != nil {
 			t.Fatalf("Failed to find swarm service for test container: %v", err)
 		}
