@@ -18,9 +18,7 @@ import (
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
 	"github.com/docker/docker/api/types/container"
-	swarmTypes "github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
-
 	"github.com/kimdre/doco-cd/internal/stages"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -172,15 +170,13 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 		inspectName := stackName + "_" + containerName
 
-		svc, _, err := dockerCli.Client().ServiceInspectWithRaw(ctx, inspectName, swarmTypes.ServiceInspectOptions{
-			InsertDefaults: true,
-		})
+		svc, err := docker.WaitForSwarmService(t, ctx, dockerClient, inspectName, 2*time.Minute)
 		if err != nil {
-			t.Fatalf("Failed to inspect test container: %v", err)
+			t.Fatalf("Failed to find swarm service for test container: %v", err)
 		}
 
 		if len(svc.Endpoint.Ports) == 0 {
-			t.Fatal("Test container has no published ports")
+			t.Fatal("Test service has no published ports")
 		}
 
 		testContainerPort = strconv.FormatUint(uint64(svc.Endpoint.Ports[0].PublishedPort), 10)
