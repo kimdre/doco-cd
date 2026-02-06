@@ -17,8 +17,8 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/google/uuid"
-
 	"github.com/kimdre/doco-cd/internal/stages"
+	"github.com/kimdre/doco-cd/internal/test"
 
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 
@@ -83,7 +83,6 @@ func TestMain(m *testing.M) {
 }
 
 func TestHandleEvent(t *testing.T) {
-	projectName := "test-deploy"
 	defaultEnvVars := map[string]string{
 		"GIT_ACCESS_TOKEN": os.Getenv("GIT_ACCESS_TOKEN"),
 		"WEBHOOK_SECRET":   os.Getenv("WEBHOOK_SECRET"),
@@ -103,7 +102,6 @@ func TestHandleEvent(t *testing.T) {
 			payload: webhook.ParsedPayload{
 				Ref:       git.MainBranch,
 				CommitSHA: validCommitSHA,
-				Name:      projectName,
 				FullName:  "kimdre/doco-cd",
 				CloneURL:  "https://github.com/kimdre/doco-cd",
 				Private:   false,
@@ -119,7 +117,6 @@ func TestHandleEvent(t *testing.T) {
 			payload: webhook.ParsedPayload{
 				Ref:       git.MainBranch,
 				CommitSHA: "f291bfca73b06814293c1f9c9f3c7f95e4932564",
-				Name:      projectName,
 				FullName:  "kimdre/doco-cd",
 				CloneURL:  "https://github.com/kimdre/doco-cd",
 				Private:   false,
@@ -135,7 +132,6 @@ func TestHandleEvent(t *testing.T) {
 			payload: webhook.ParsedPayload{
 				Ref:       invalidBranch,
 				CommitSHA: validCommitSHA,
-				Name:      projectName,
 				FullName:  "kimdre/doco-cd",
 				CloneURL:  "https://github.com/kimdre/doco-cd",
 				Private:   false,
@@ -151,7 +147,6 @@ func TestHandleEvent(t *testing.T) {
 			payload: webhook.ParsedPayload{
 				Ref:       git.MainBranch,
 				CommitSHA: validCommitSHA,
-				Name:      projectName,
 				FullName:  "kimdre/doco-cd",
 				CloneURL:  "https://github.com/kimdre/doco-cd",
 				Private:   true,
@@ -167,7 +162,6 @@ func TestHandleEvent(t *testing.T) {
 			payload: webhook.ParsedPayload{
 				Ref:       git.MainBranch,
 				CommitSHA: "efefb4111f3c363692a2526f9be9b24560e6511f",
-				Name:      projectName,
 				FullName:  "kimdre/kimdre",
 				CloneURL:  "https://github.com/kimdre/kimdre",
 				Private:   false,
@@ -183,7 +177,6 @@ func TestHandleEvent(t *testing.T) {
 			payload: webhook.ParsedPayload{
 				Ref:       "remote",
 				CommitSHA: validCommitSHA,
-				Name:      projectName,
 				FullName:  "kimdre/doco-cd_tests",
 				CloneURL:  "https://github.com/kimdre/doco-cd_tests",
 				Private:   false,
@@ -199,7 +192,6 @@ func TestHandleEvent(t *testing.T) {
 			payload: webhook.ParsedPayload{
 				Ref:       git.SwarmModeBranch,
 				CommitSHA: "01435dad4e7ff8f7da70202ca1ca77bccca9eb62",
-				Name:      projectName,
 				FullName:  "kimdre/doco-cd_tests",
 				CloneURL:  "https://github.com/kimdre/doco-cd_tests",
 				Private:   false,
@@ -245,6 +237,8 @@ func TestHandleEvent(t *testing.T) {
 			if !swarm.ModeEnabled && tc.swarmMode {
 				t.Skipf("Skipping test %s because it requires Swarm mode to be enabled", tc.name)
 			}
+
+			tc.payload.Name = test.ConvertTestName(t.Name())
 
 			tmpDir := t.TempDir()
 
