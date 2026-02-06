@@ -140,8 +140,10 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			return fmt.Errorf("failed to compare commits in subdirectory: %w", err)
 		}
 
+		// Skip deployConfig hash check if the label is missing (added in a later version) to avoid unnecessary deployments;
+		// it will be updated on the next deployment after upgrade.
 		// Compare deployConfig hashes
-		deployConfigChanged := curDeployConfigHash != s.DeployConfig.Internal.Hash
+		deployConfigChanged := curDeployConfigHash != "" && curDeployConfigHash != s.DeployConfig.Internal.Hash
 		if deployConfigChanged {
 			stageLog.Debug("deploy configuration has changed", slog.String("new_hash", s.DeployConfig.Internal.Hash), slog.String("old_hash", curDeployConfigHash))
 		}
