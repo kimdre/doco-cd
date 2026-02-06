@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,21 +58,7 @@ func createTestFile(fileName string, content string) error {
 	return nil
 }
 
-const (
-	cloneUrlTest    = "https://github.com/kimdre/doco-cd_tests.git"
-	composeContents = `services:
-  test:
-    image: nginx:latest
-    environment:
-      GIT_ACCESS_TOKEN:
-      WEBHOOK_SECRET:
-      TZ: Europe/Berlin
-    ports:
-      - "80:80"
-    volumes:
-      - ./html:/usr/share/nginx/html
-`
-)
+const cloneUrlTest = "https://github.com/kimdre/doco-cd_tests.git"
 
 var (
 	fileName         = ".doco-cd.yaml"
@@ -80,6 +67,30 @@ var (
 	composeFiles     = []string{"test.compose.yaml"}
 	customTarget     = ""
 )
+
+// Helper to get a free TCP port
+func getFreePort() (int, error) {
+	l, err := net.Listen("tcp", ":0")
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = l.Close() }()
+	return l.Addr().(*net.TCPAddr).Port, nil
+}
+
+// Helper to generate compose YAML with a random port
+func generateComposeContents(port int) string {
+	return fmt.Sprintf(`services:
+  test:
+    image: nginx:latest
+    environment:
+      TZ: Europe/Berlin
+    ports:
+      - "%d:80"
+    volumes:
+      - ./html:/usr/share/nginx/html
+`, port)
+}
 
 func TestVerifySocketConnection(t *testing.T) {
 	err := VerifySocketConnection()
@@ -94,7 +105,12 @@ func TestLoadCompose(t *testing.T) {
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "test.compose.yaml")
 
-	createComposeFile(t, filePath, composeContents)
+	port, err := getFreePort()
+	if err != nil {
+		t.Fatal(err)
+	}
+	composeYAML := generateComposeContents(port)
+	createComposeFile(t, filePath, composeYAML)
 
 	stackName := test.ConvertTestName(t.Name())
 
@@ -206,7 +222,12 @@ func TestDeployCompose(t *testing.T) {
 	filePath := filepath.Join(repoPath, "test.compose.yaml")
 
 	t.Log("Load compose file")
-	createComposeFile(t, filePath, composeContents)
+	port, err := getFreePort()
+	if err != nil {
+		t.Fatal(err)
+	}
+	composeYAML := generateComposeContents(port)
+	createComposeFile(t, filePath, composeYAML)
 
 	stackName := test.ConvertTestName(t.Name())
 
@@ -576,16 +597,22 @@ func startTestContainer(ctx context.Context, t *testing.T) (*testCompose.DockerC
 	t.Chdir(t.TempDir())
 	stackName := test.ConvertTestName(t.Name())
 
+	port, err := getFreePort()
+	if err != nil {
+		t.Fatal(err)
+	}
+	composeYAML := generateComposeContents(port)
+
 	stack, err := testCompose.NewDockerComposeWith(
 		testCompose.StackIdentifier(stackName),
-		testCompose.WithStackReaders(strings.NewReader(composeContents)),
+		testCompose.WithStackReaders(strings.NewReader(composeYAML)),
 	)
 	if err != nil {
 		t.Fatalf("failed to create stack: %v", err)
 	}
 
 	err = stack.
-		WaitForService(stackName, wait.ForListeningPort("80/tcp")).
+		WaitForService("test", wait.ForListeningPort("80/tcp")).
 		Up(ctx, testCompose.Wait(true))
 	if err != nil {
 		t.Fatalf("failed to start stack: %v", err)
