@@ -8,6 +8,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/stages"
+	"github.com/kimdre/doco-cd/internal/test"
 
 	"github.com/kimdre/doco-cd/internal/git"
 
@@ -35,7 +36,7 @@ func TestRunPoll(t *testing.T) {
 		CustomTarget: "",
 	}
 
-	const name = "test-deploy"
+	stackName := test.ConvertTestName(t.Name())
 
 	if swarm.ModeEnabled {
 		pollConfig.Reference = git.SwarmModeBranch
@@ -98,9 +99,9 @@ func TestRunPoll(t *testing.T) {
 		t.Log("Remove test container")
 
 		if swarm.ModeEnabled {
-			err = docker.RemoveSwarmStack(ctx, dockerCli, name)
+			err = docker.RemoveSwarmStack(ctx, dockerCli, stackName)
 		} else {
-			err = service.Down(ctx, name, downOpts)
+			err = service.Down(ctx, stackName, downOpts)
 		}
 
 		if err != nil {
@@ -110,7 +111,7 @@ func TestRunPoll(t *testing.T) {
 
 	metadata := notification.Metadata{
 		Repository: stages.GetRepoName(string(pollConfig.CloneUrl)),
-		Stack:      name,
+		Stack:      stackName,
 		Revision:   notification.GetRevision(pollConfig.Reference, ""),
 	}
 

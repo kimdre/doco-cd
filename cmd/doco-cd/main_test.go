@@ -33,10 +33,8 @@ import (
 )
 
 const (
-	validCommitSHA   = "26263c2b44133367927cd1423d8c8457b5befce5"
-	invalidCommitSHA = "1111111111111111111111111111111111111111"
-	projectName      = "test-deploy"
-	invalidBranch    = "refs/heads/invalid"
+	validCommitSHA = "26263c2b44133367927cd1423d8c8457b5befce5"
+	invalidBranch  = "refs/heads/invalid"
 )
 
 var WorkingDir string
@@ -85,6 +83,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestHandleEvent(t *testing.T) {
+	projectName := "test-deploy"
 	defaultEnvVars := map[string]string{
 		"GIT_ACCESS_TOKEN": os.Getenv("GIT_ACCESS_TOKEN"),
 		"WEBHOOK_SECRET":   os.Getenv("WEBHOOK_SECRET"),
