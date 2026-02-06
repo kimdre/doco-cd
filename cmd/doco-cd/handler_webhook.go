@@ -110,7 +110,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			return
 		}
 	} else {
-		// Disable swarm mode when DOCKER_SWARM_FEATURES is false
 		swarm.ModeEnabled = false
 	}
 

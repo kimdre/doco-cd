@@ -151,7 +151,6 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			return append(results, pollResult{Metadata: metadata, Err: err})
 		}
 	} else {
-		// Disable swarm mode when DOCKER_SWARM_FEATURES is false
 		swarm.ModeEnabled = false
 	}
 
