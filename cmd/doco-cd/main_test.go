@@ -17,6 +17,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/google/uuid"
+	"github.com/kimdre/doco-cd/internal/test"
 
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/stages"
@@ -199,7 +200,7 @@ func TestHandleEvent(t *testing.T) {
 			payload: webhook.ParsedPayload{
 				Ref:       git.SwarmModeBranch,
 				CommitSHA: "01435dad4e7ff8f7da70202ca1ca77bccca9eb62",
-				Name:      projectName,
+				Name:      test.ConvertTestName(t.Name()),
 				FullName:  "kimdre/doco-cd_tests",
 				CloneURL:  "https://github.com/kimdre/doco-cd_tests",
 				Private:   false,
