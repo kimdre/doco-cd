@@ -379,5 +379,5 @@ func WaitForSwarmService(ctx context.Context, t *testing.T, cli *client.Client, 
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	return swarmTypes.Service{}, fmt.Errorf("timed out waiting for service %s: %w", serviceName, lastErr)
+	return swarmTypes.Service{}, fmt.Errorf("timed out waiting for service %s after %s: %w", serviceName, timeout.String(), lastErr)
 }
