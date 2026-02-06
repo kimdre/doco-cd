@@ -27,6 +27,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
@@ -43,6 +44,8 @@ const (
 )
 
 func TestHandlerData_WebhookHandler(t *testing.T) {
+	encryption.SetupAgeKeyEnvVar(t)
+
 	expectedResponse := `{"content":"job completed successfully","job_id":"[a-f0-9-]{36}"}`
 	expectedStatusCode := http.StatusCreated
 	tmpDir := t.TempDir()
