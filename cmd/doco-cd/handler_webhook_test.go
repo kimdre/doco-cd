@@ -135,7 +135,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	}
 
 	if !regex.MatchString(rr.Body.String()) {
-		t.Errorf("handler returned unexpected body: got %v want %v", rr.Body.String(), expectedResponse)
+		t.Fatalf("handler returned unexpected body: got %v want %v", rr.Body.String(), expectedResponse)
 	}
 
 	ctx := context.Background()

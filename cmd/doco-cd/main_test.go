@@ -187,7 +187,7 @@ func TestHandleEvent(t *testing.T) {
 				Name:      projectName,
 				FullName:  "kimdre/doco-cd_tests",
 				CloneURL:  "https://github.com/kimdre/doco-cd_tests",
-				Private:   true,
+				Private:   false,
 			},
 			expectedStatusCode:   http.StatusCreated,
 			expectedResponseBody: `{"content":"job completed successfully","job_id":"%[1]s"}`,
@@ -203,7 +203,7 @@ func TestHandleEvent(t *testing.T) {
 				Name:      projectName,
 				FullName:  "kimdre/doco-cd_tests",
 				CloneURL:  "https://github.com/kimdre/doco-cd_tests",
-				Private:   true,
+				Private:   false,
 			},
 			expectedStatusCode:   http.StatusCreated,
 			expectedResponseBody: `{"content":"job completed successfully","job_id":"%[1]s"}`,
@@ -275,6 +275,10 @@ func TestHandleEvent(t *testing.T) {
 			appConfig, err := config.GetAppConfig()
 			if err != nil {
 				t.Fatalf("failed to get app config: %s", err.Error())
+			}
+
+			if tc.payload.Private && appConfig.GitAccessToken == "" {
+				t.Skip("Skipping test for private repository because GIT_ACCESS_TOKEN is not set")
 			}
 
 			dockerClient, _ := client.NewClientWithOpts(

@@ -169,7 +169,7 @@ func TestDeployCompose(t *testing.T) {
 		CommitSHA: "4d877107dfa2e3b582bd8f8f803befbd3a1d867e",
 		Name:      "test",
 		FullName:  "kimdre/doco-cd_tests",
-		CloneURL:  git.GetAuthUrl(cloneUrlTest, c.AuthType, c.GitAccessToken),
+		CloneURL:  cloneUrlTest,
 		Private:   true,
 	}
 

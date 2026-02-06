@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -408,14 +407,6 @@ func updateSubmodules(repo *git.Repository, auth transport.AuthMethod) error {
 	}
 
 	return nil
-}
-
-// GetAuthUrl returns a clone URL with an access token for private repositories.
-func GetAuthUrl(url, authType, token string) string {
-	// Retrieve the protocol From the clone URL (e.g. https://, http://, git://
-	protocol := regexp.MustCompile("^(https?|git)://").FindString(url)
-
-	return protocol + authType + ":" + token + "@" + url[len(protocol):]
 }
 
 // GetLatestCommit retrieves the last commit hash for a given reference in a repository.

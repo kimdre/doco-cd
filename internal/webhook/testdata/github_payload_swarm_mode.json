@@ -7,7 +7,7 @@
     "node_id": "R_kgDOMiFK8Q",
     "name": "doco-cd_tests",
     "full_name": "kimdre/doco-cd_tests",
-    "private": true,
+    "private": false,
     "owner": {
       "name": "kimdre",
       "email": "redacted",
