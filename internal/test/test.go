@@ -1,9 +1,6 @@
 package test
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"io"
 	"regexp"
 	"strings"
 )
@@ -20,20 +17,4 @@ func ConvertTestName(testName string) string {
 	}
 
 	return s
-}
-
-// ShortHash generates a short hash from the provided data reader.
-func ShortHash(data string) string {
-	const length = 8
-
-	h := sha256.New()
-
-	_, err := io.Copy(h, strings.NewReader(data))
-	if err != nil {
-		return ""
-	}
-
-	hash := hex.EncodeToString(h.Sum(nil))
-
-	return hash[:length]
 }
