@@ -457,6 +457,11 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 
 			err = swarm.ScaleService(ctx, h.dockerCli, svcName, uint64(replicas), waitForServices, false)
 			if err != nil {
+				if errors.Is(err, swarm.ErrNotReplicatedService) {
+					jobLog.Debug("skipping non-replicated service for scale action", slog.String("service", svcName))
+					continue
+				}
+
 				errMsg = "failed to scale service"
 				jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 				JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
@@ -484,12 +489,23 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 				}
 			}
 
+			// Job services cannot be updated with UpdateConfig present; treat restart as a no-op.
+			if svc.Spec.Mode.ReplicatedJob != nil || svc.Spec.Mode.GlobalJob != nil {
+				jobLog.Debug("skipping restart for job-mode service", slog.String("service", svcName))
+				continue
+			}
+
 			jobLog.Info("restarting service", slog.String("service", svcName))
 
-			// Update the service with the same number of replicas to force a redeploy
-			err = swarm.ScaleService(ctx, h.dockerCli, svcName, *svc.Spec.Mode.Replicated.Replicas, true, true)
+			// Swarm restart supports replicated/global and skips job-mode services.
+			err = docker.RestartService(ctx, h.dockerClient, svcName)
 			if err != nil {
-				errMsg = "failed to scale service"
+				if errors.Is(err, docker.ErrJobServiceRestartNotSupported) {
+					jobLog.Debug("skipping restart for job-mode service", slog.String("service", svcName))
+					continue
+				}
+
+				errMsg = "failed to restart service"
 				jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 				JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
 
@@ -503,6 +519,50 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 		}
 
 		JSONResponse(w, "stack restarted: "+stackName, jobID, http.StatusOK)
+	case "run":
+		if !requireMethod(w, jobLog, r, http.MethodPost) {
+			return
+		}
+
+		var reRunCounter int64
+
+		for _, svc := range services {
+			svcName := svc.Spec.Name
+			if serviceName != "" && svcName != fmt.Sprintf("%s_%s", stackName, serviceName) {
+				continue
+			}
+
+			jobLog.Info("retriggering job service", slog.String("service", svcName))
+
+			err = docker.RerunJobService(ctx, h.dockerClient, svcName)
+			if err != nil {
+				if errors.Is(err, docker.ErrNotAJobService) {
+					jobLog.Debug("skipping non-job service for run action", slog.String("service", svcName))
+					continue
+				}
+
+				errMsg = "failed to retrigger job service"
+				jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+				JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
+
+				return
+			}
+
+			reRunCounter++
+
+			if serviceName != "" {
+				JSONResponse(w, "job retriggered: "+svcName, jobID, http.StatusOK)
+				return
+			}
+		}
+
+		if reRunCounter == 0 {
+			JSONError(w, "no job services found to retrigger in stack: "+stackName, "", jobID, http.StatusNotFound)
+			return
+		}
+
+		JSONResponse(w, strconv.FormatInt(reRunCounter, 10)+" job(s) retriggered in stack: "+stackName, jobID, http.StatusOK)
+
 	default:
 		jobLog.Error(restAPI.ErrInvalidAction.Error())
 		JSONError(w, restAPI.ErrInvalidAction.Error(), "action not supported: "+action, jobID, http.StatusBadRequest)

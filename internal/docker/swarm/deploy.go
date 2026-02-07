@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/docker/cli/cli/command"
@@ -17,6 +18,8 @@ import (
 )
 
 const defaultNetworkDriver = "overlay"
+
+var ErrNotReplicatedService = errors.New("service is not in replicated or replicated-job mode")
 
 // RunDeploy is the swarm implementation of docker stack deploy.
 func RunDeploy(ctx context.Context, dockerCLI command.Cli, opts *options.Deploy, cfg *composetypes.Config) error {
@@ -91,23 +94,35 @@ func ScaleService(ctx context.Context, dockerCLI command.Cli, serviceName string
 		service.Spec.TaskTemplate.ForceUpdate++
 	}
 
+	// Handle replicated-job services
+	if service.Spec.Mode.ReplicatedJob != nil {
+		// Jobs may not have an update config (daemon rejects ServiceUpdate otherwise).
+		service.Spec.UpdateConfig = nil
+		service.Spec.RollbackConfig = nil
+
+		// Treat `replicas` as "how many completions to run" and allow that many concurrently.
+		service.Spec.Mode.ReplicatedJob.TotalCompletions = &replicas
+		service.Spec.Mode.ReplicatedJob.MaxConcurrent = &replicas
+
+		_, err = apiClient.ServiceUpdate(ctx, service.ID, service.Version, service.Spec, swarmTypes.ServiceUpdateOptions{})
+
+		return err
+	}
+
+	// Handle classic replicated services
 	if service.Spec.Mode.Replicated == nil {
-		return fmt.Errorf("service %s is not in replicated mode", serviceName)
+		return fmt.Errorf("%w: %s", ErrNotReplicatedService, serviceName)
 	}
 
 	service.Spec.Mode.Replicated.Replicas = &replicas
 
-	updateOpts := swarmTypes.ServiceUpdateOptions{}
-
-	_, err = apiClient.ServiceUpdate(ctx, service.ID, service.Version, service.Spec, updateOpts)
+	_, err = apiClient.ServiceUpdate(ctx, service.ID, service.Version, service.Spec, swarmTypes.ServiceUpdateOptions{})
 	if err != nil {
 		return err
 	}
 
 	if wait {
-		// Wait for the service to scale
-		err = waitOnService(ctx, dockerCLI, serviceName)
-		if err != nil {
+		if err := waitOnService(ctx, dockerCLI, serviceName); err != nil {
 			return err
 		}
 	}
