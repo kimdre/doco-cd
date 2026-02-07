@@ -248,7 +248,10 @@ func TestHandleEvent(t *testing.T) {
 
 			tmpDir := t.TempDir()
 
-			stackName := test.ConvertTestName(t.Name())[:40]
+			stackName := test.ConvertTestName(t.Name())
+			if len(stackName) > 40 {
+				stackName = stackName[:40]
+			}
 
 			for k, v := range defaultEnvVars {
 				err := os.Setenv(k, v)
