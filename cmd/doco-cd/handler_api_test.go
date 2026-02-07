@@ -14,6 +14,8 @@ import (
 	testCompose "github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/kimdre/doco-cd/internal/test"
+
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -125,22 +127,22 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 		expectedStatus int
 	}{
 		{"Get all Projects", "/projects", "/projects?all=true", http.MethodGet, h.GetProjectsApiHandler, http.StatusOK},
-		{"Get Project", "/project/{projectName}", "/project/test", http.MethodGet, h.ProjectApiHandler, http.StatusOK},
+		{"Get Project", "/project/{projectName}", "/project/{projectName}", http.MethodGet, h.ProjectApiHandler, http.StatusOK},
 		{"Get Project - Non-existent Project", "/project/{projectName}", "/project/nonexistent", http.MethodGet, h.ProjectApiHandler, http.StatusNotFound},
 		{"Get Project - Missing Path Param", "/project/{projectName}", "/project/", http.MethodGet, h.ProjectApiHandler, http.StatusNotFound},
-		{"Remove Project - With all volumes", "/project/{projectName}", "/project/test?volumes=true&images=false", http.MethodDelete, h.ProjectApiHandler, http.StatusOK},
-		{"Remove Project - With all images", "/project/{projectName}", "/project/test?volumes=false&images=true", http.MethodDelete, h.ProjectApiHandler, http.StatusOK},
-		{"Remove Project - Invalid images Param", "/project/{projectName}", "/project/test?images=x", http.MethodDelete, h.ProjectApiHandler, http.StatusBadRequest},
-		{"Remove Project - Invalid volumes Param", "/project/{projectName}", "/project/test?volumes=x", http.MethodDelete, h.ProjectApiHandler, http.StatusBadRequest},
-		{"Restart Project", "/project/{projectName}/{action}", "/project/test/restart", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK},
+		{"Remove Project - With all volumes", "/project/{projectName}", "/project/{projectName}?volumes=true&images=false", http.MethodDelete, h.ProjectApiHandler, http.StatusOK},
+		{"Remove Project - With all images", "/project/{projectName}", "/project/{projectName}?volumes=false&images=true", http.MethodDelete, h.ProjectApiHandler, http.StatusOK},
+		{"Remove Project - Invalid images Param", "/project/{projectName}", "/project/{projectName}?images=x", http.MethodDelete, h.ProjectApiHandler, http.StatusBadRequest},
+		{"Remove Project - Invalid volumes Param", "/project/{projectName}", "/project/{projectName}?volumes=x", http.MethodDelete, h.ProjectApiHandler, http.StatusBadRequest},
+		{"Restart Project", "/project/{projectName}/{action}", "/project/{projectName}/restart", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK},
 		{"Restart Project - Non-existent Project", "/project/{projectName}/{action}", "/project/nonexistent/restart", http.MethodPost, h.ProjectActionApiHandler, http.StatusNotFound},
-		{"Restart Project - With Timeout", "/project/{projectName}/{action}", "/project/test/restart?timeout=60", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK},
-		{"Restart Project - Invalid Timeout", "/project/{projectName}/{action}", "/project/test/restart?timeout=x", http.MethodPost, h.ProjectActionApiHandler, http.StatusBadRequest},
-		{"Restart Project - Invalid Method", "/project/{projectName}/{action}", "/project/test/restart", http.MethodGet, h.ProjectActionApiHandler, http.StatusMethodNotAllowed},
-		{"Stop Project", "/project/{projectName}/{action}", "/project/test/stop", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK},
+		{"Restart Project - With Timeout", "/project/{projectName}/{action}", "/project/{projectName}/restart?timeout=60", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK},
+		{"Restart Project - Invalid Timeout", "/project/{projectName}/{action}", "/project/{projectName}/restart?timeout=x", http.MethodPost, h.ProjectActionApiHandler, http.StatusBadRequest},
+		{"Restart Project - Invalid Method", "/project/{projectName}/{action}", "/project/{projectName}/restart", http.MethodGet, h.ProjectActionApiHandler, http.StatusMethodNotAllowed},
+		{"Stop Project", "/project/{projectName}/{action}", "/project/{projectName}/stop", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK},
 		{"Stop Project - Non-existent Project", "/project/{projectName}/{action}", "/project/nonexistent/stop", http.MethodPost, h.ProjectActionApiHandler, http.StatusNotFound},
-		{"Start Project", "/project/{projectName}/{action}", "/project/test/start", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK},
-		{"Invalid Action", "/project/{projectName}/{action}", "/project/test/invalid", http.MethodPost, h.ProjectActionApiHandler, http.StatusBadRequest},
+		{"Start Project", "/project/{projectName}/{action}", "/project/{projectName}/start", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK},
+		{"Invalid Action", "/project/{projectName}/{action}", "/project/{projectName}/invalid", http.MethodPost, h.ProjectActionApiHandler, http.StatusBadRequest},
 	}
 
 	for _, tc := range testCases {
@@ -155,8 +157,10 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 
 			var stack *testCompose.DockerCompose
 
+			stackName := test.ConvertTestName(t.Name())
+
 			stack, err = testCompose.NewDockerComposeWith(
-				testCompose.StackIdentifier("test"),
+				testCompose.StackIdentifier(stackName),
 				testCompose.WithStackReaders(strings.NewReader(composeContent)),
 			)
 			if err != nil {
@@ -182,7 +186,7 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 				}
 			})
 
-			endpointPath := path.Join(apiPath, tc.path)
+			endpointPath := path.Join(apiPath, strings.Replace(tc.path, "{projectName}", stackName, 1))
 			endpointPattern := path.Join(apiPath, tc.pattern)
 
 			t.Logf("Testing API endpoint: %s", endpointPath)

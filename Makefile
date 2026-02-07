@@ -19,15 +19,15 @@ BUILD_FLAGS:=-ldflags="-X main.Version=dev $(BUILD_FLAGS)"
 
 test:
 	@echo "Running tests..."
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" CGO_ENABLED=1 CC=musl-gcc go test ${BUILD_FLAGS} -cover -p 1 ./... -timeout 10m
+	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" CGO_ENABLED=1 CC=musl-gcc go test ${BUILD_FLAGS} -cover ./... -timeout 10m
 
 test-nobitwarden:
 	@echo "Running tests without bitwarden integration..."
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test -ldflags="-X main.Version=dev" -tags nobitwarden -cover -p 1 ./... -timeout 10m
+	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test -ldflags="-X main.Version=dev" -tags nobitwarden -cover ./... -timeout 10m
 
 test-verbose:
 	@echo "Running tests..."
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test ${BUILD_FLAGS} -v -cover -p 1 ./... -timeout 10m
+	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test ${BUILD_FLAGS} -v -cover ./... -timeout 10m
 
 test-coverage:
 	@echo "Running tests with coverage..."
@@ -37,7 +37,7 @@ test-coverage:
 # Run specified tests from arguments
 test-run:
 	@echo "Running tests: $(filter-out $@,$(MAKECMDGOALS))"
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test ${BUILD_FLAGS} -cover -p 1 ./... -timeout 10m -run $(filter-out $@,$(MAKECMDGOALS))
+	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test ${BUILD_FLAGS} -cover ./... -timeout 10m -run $(filter-out $@,$(MAKECMDGOALS))
 
 build:
 	mkdir -p $(BINARY_DIR)
@@ -84,3 +84,6 @@ cleanup:
 	else \
 		echo "No containers to clean up."; \
 	fi
+
+clean-testcache:
+	go clean -testcache

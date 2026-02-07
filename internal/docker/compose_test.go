@@ -17,6 +17,8 @@ import (
 	testCompose "github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/kimdre/doco-cd/internal/test"
+
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
@@ -56,22 +58,7 @@ func createTestFile(fileName string, content string) error {
 	return nil
 }
 
-const (
-	cloneUrlTest    = "https://github.com/kimdre/doco-cd_tests.git"
-	projectName     = "test"
-	composeContents = `services:
-  test:
-    image: nginx:latest
-    environment:
-      GIT_ACCESS_TOKEN:
-      WEBHOOK_SECRET:
-      TZ: Europe/Berlin
-    ports:
-      - "80:80"
-    volumes:
-      - ./html:/usr/share/nginx/html
-`
-)
+const cloneUrlTest = "https://github.com/kimdre/doco-cd_tests.git"
 
 var (
 	fileName         = ".doco-cd.yaml"
@@ -79,16 +66,21 @@ var (
 	workingDirectory = "."
 	composeFiles     = []string{"test.compose.yaml"}
 	customTarget     = ""
-
-	deployConfig = fmt.Sprintf(`name: %s
-reference: %s
-working_dir: %s
-force_image_pull: true
-force_recreate: true
-compose_files:
-  - %s
-`, projectName, reference, workingDirectory, composeFiles[0])
 )
+
+// Helper to generate compose YAML with a random port.
+func generateComposeContents() string {
+	return `services:
+  test:
+    image: nginx:latest
+    environment:
+      TZ: Europe/Berlin
+    ports:
+      - "80"
+    volumes:
+      - ./html:/usr/share/nginx/html
+`
+}
 
 func TestVerifySocketConnection(t *testing.T) {
 	err := VerifySocketConnection()
@@ -103,9 +95,12 @@ func TestLoadCompose(t *testing.T) {
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "test.compose.yaml")
 
-	createComposeFile(t, filePath, composeContents)
+	composeYAML := generateComposeContents()
+	createComposeFile(t, filePath, composeYAML)
 
-	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
+	stackName := test.ConvertTestName(t.Name())
+
+	project, err := LoadCompose(ctx, tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +162,7 @@ func TestDeployCompose(t *testing.T) {
 	p := webhook.ParsedPayload{
 		Ref:       git.MainBranch,
 		CommitSHA: "4d877107dfa2e3b582bd8f8f803befbd3a1d867e",
-		Name:      "test",
+		Name:      uuid.Must(uuid.NewV7()).String(),
 		FullName:  "kimdre/doco-cd_tests",
 		CloneURL:  cloneUrlTest,
 		Private:   true,
@@ -213,9 +208,13 @@ func TestDeployCompose(t *testing.T) {
 	filePath := filepath.Join(repoPath, "test.compose.yaml")
 
 	t.Log("Load compose file")
-	createComposeFile(t, filePath, composeContents)
 
-	project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{}, []string{}, map[string]string{})
+	composeYAML := generateComposeContents()
+	createComposeFile(t, filePath, composeYAML)
+
+	stackName := test.ConvertTestName(t.Name())
+
+	project, err := LoadCompose(ctx, tmpDir, stackName, []string{filePath}, []string{}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,12 +223,21 @@ func TestDeployCompose(t *testing.T) {
 
 	filePath = filepath.Join(repoPath, fileName)
 
+	deployConfig := fmt.Sprintf(`name: %s
+reference: %s
+working_dir: %s
+force_image_pull: true
+force_recreate: true
+compose_files:
+  - %s
+`, stackName, reference, workingDirectory, composeFiles[0])
+
 	err = createTestFile(filePath, deployConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	deployConfigs, err := config.GetDeployConfigs(tmpDir, c.DeployConfigBaseDir, projectName, customTarget, p.Ref)
+	deployConfigs, err := config.GetDeployConfigs(tmpDir, c.DeployConfigBaseDir, stackName, customTarget, p.Ref)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +276,7 @@ func TestDeployCompose(t *testing.T) {
 		}
 
 		err = DeployStack(jobLog, repoPath, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
-			[]git.ChangedFile{}, latestCommit, "test", "poll", false, resolvedSecrets, false)
+			[]git.ChangedFile{}, latestCommit, "dev", "poll", false, resolvedSecrets, false)
 		if err != nil {
 			t.Fatalf("failed to deploy stack: %v", err)
 		}
@@ -396,7 +404,7 @@ func TestHasChangedConfigs(t *testing.T) {
 
 	t.Chdir(tmpDir)
 
-	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{".env"}, []string{}, map[string]string{})
+	project, err := LoadCompose(t.Context(), tmpDir, test.ConvertTestName(t.Name()), []string{"docker-compose.yml"}, []string{".env"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatalf("Failed to load compose file: %v", err)
 	}
@@ -469,7 +477,7 @@ func TestHasChangedSecrets(t *testing.T) {
 
 	t.Chdir(tmpDir)
 
-	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{".env"}, []string{}, map[string]string{})
+	project, err := LoadCompose(t.Context(), tmpDir, test.ConvertTestName(t.Name()), []string{"docker-compose.yml"}, []string{".env"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatalf("Failed to load compose file: %v", err)
 	}
@@ -542,7 +550,7 @@ func TestHasChangedBindMounts(t *testing.T) {
 
 	t.Chdir(tmpDir)
 
-	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{"docker-compose.yml"}, []string{".env"}, []string{}, map[string]string{})
+	project, err := LoadCompose(t.Context(), tmpDir, test.ConvertTestName(t.Name()), []string{"docker-compose.yml"}, []string{".env"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatalf("Failed to load compose file: %v", err)
 	}
@@ -570,10 +578,13 @@ func TestHasChangedBindMounts(t *testing.T) {
 
 func startTestContainer(ctx context.Context, t *testing.T) (*testCompose.DockerCompose, error) {
 	t.Chdir(t.TempDir())
+	stackName := test.ConvertTestName(t.Name())
+
+	composeYAML := generateComposeContents()
 
 	stack, err := testCompose.NewDockerComposeWith(
-		testCompose.StackIdentifier("test"),
-		testCompose.WithStackReaders(strings.NewReader(composeContents)),
+		testCompose.StackIdentifier(stackName),
+		testCompose.WithStackReaders(strings.NewReader(composeYAML)),
 	)
 	if err != nil {
 		t.Fatalf("failed to create stack: %v", err)
@@ -623,7 +634,7 @@ func TestRestartProject(t *testing.T) {
 
 	t.Log("Restarting project")
 
-	err = RestartProject(ctx, dockerCli, "test", timeout)
+	err = RestartProject(ctx, dockerCli, test.ConvertTestName(t.Name()), timeout)
 	if err != nil {
 		t.Fatalf("failed to restart project: %v", err)
 	}
@@ -651,7 +662,7 @@ func TestStopProject(t *testing.T) {
 
 	t.Log("Stopping project")
 
-	err = StopProject(ctx, dockerCli, "test", timeout)
+	err = StopProject(ctx, dockerCli, test.ConvertTestName(t.Name()), timeout)
 	if err != nil {
 		t.Fatalf("failed to stop project: %v", err)
 	}
@@ -676,10 +687,11 @@ func TestStartProject(t *testing.T) {
 	}
 
 	timeout := time.Duration(30) * time.Second
+	stackName := test.ConvertTestName(t.Name())
 
 	t.Log("Stopping project")
 
-	err = StopProject(ctx, dockerCli, "test", timeout)
+	err = StopProject(ctx, dockerCli, stackName, timeout)
 	if err != nil {
 		t.Fatalf("failed to stop project: %v", err)
 	}
@@ -688,7 +700,7 @@ func TestStartProject(t *testing.T) {
 
 	t.Log("Starting project")
 
-	err = StartProject(ctx, dockerCli, "test", timeout)
+	err = StartProject(ctx, dockerCli, stackName, timeout)
 	if err != nil {
 		t.Fatalf("failed to start project: %v", err)
 	}
@@ -713,16 +725,17 @@ func TestRemoveProject(t *testing.T) {
 	}
 
 	timeout := time.Duration(30) * time.Second
+	stackName := test.ConvertTestName(t.Name())
 
 	t.Log("Removing project")
 
-	err = RemoveProject(ctx, dockerCli, "test", timeout, true, true)
+	err = RemoveProject(ctx, dockerCli, stackName, timeout, true, true)
 	if err != nil {
 		t.Fatalf("failed to remove project: %v", err)
 	}
 
 	// Verify project is removed
-	containers, err := GetProjectContainers(ctx, dockerCli, "test")
+	containers, err := GetProjectContainers(ctx, dockerCli, stackName)
 	if err != nil {
 		t.Fatalf("failed to get project: %v", err)
 	}
@@ -752,7 +765,7 @@ func TestGetProject(t *testing.T) {
 
 	t.Log("Getting project")
 
-	containers, err := GetProjectContainers(ctx, dockerCli, "test")
+	containers, err := GetProjectContainers(ctx, dockerCli, test.ConvertTestName(t.Name()))
 	if err != nil {
 		t.Fatalf("failed to get project: %v", err)
 	}
@@ -800,7 +813,6 @@ func TestGetProjects(t *testing.T) {
 func TestInjectSecretsToProject(t *testing.T) {
 	const (
 		varName         = "TEST_PASSWORD"
-		projectName     = "test"
 		composeContents = `services:
   test:
     image: nginx:latest
@@ -922,7 +934,7 @@ func TestInjectSecretsToProject(t *testing.T) {
 
 			t.Log("Resolved secrets:", resolvedSecrets)
 
-			project, err := LoadCompose(ctx, tmpDir, projectName, []string{filePath}, []string{".env"}, []string{}, resolvedSecrets)
+			project, err := LoadCompose(ctx, tmpDir, test.ConvertTestName(t.Name()), []string{filePath}, []string{".env"}, []string{}, resolvedSecrets)
 			if err != nil {
 				t.Fatal(err)
 			}
