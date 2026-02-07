@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"testing"
 	"time"
 
 	swarmTypes "github.com/docker/docker/api/types/swarm"
@@ -360,6 +361,30 @@ func PruneStackSecrets(ctx context.Context, client *client.Client, namespace str
 	}
 
 	return nil
+}
+
+// WaitForSwarmService waits until a swarm service exists (and optionally has published ports).
+func WaitForSwarmService(ctx context.Context, t *testing.T, cli *client.Client, serviceName string, timeout time.Duration) (swarmTypes.Service, error) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+
+	var lastErr error
+
+	for time.Now().Before(deadline) {
+		svc, _, err := cli.ServiceInspectWithRaw(ctx, serviceName, swarmTypes.ServiceInspectOptions{
+			InsertDefaults: true,
+		})
+		if err == nil {
+			return svc, nil
+		}
+
+		lastErr = err
+
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	return swarmTypes.Service{}, fmt.Errorf("timed out waiting for service %s after %s: %w", serviceName, timeout.String(), lastErr)
 }
 
 // RestartService restarts long-running Swarm services by bumping ForceUpdate.

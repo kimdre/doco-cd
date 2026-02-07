@@ -14,8 +14,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/filesystem"
 )
 
-var projectName = "test"
-
 func createTestFile(fileName string, content string) error {
 	err := os.WriteFile(fileName, []byte(content), filesystem.PermOwner)
 	if err != nil {
@@ -47,7 +45,7 @@ reference: %s
 working_dir: %s
 compose_files:
   - %s
-`, projectName, reference, workingDirectory, composeFiles[0])
+`, t.Name(), reference, workingDirectory, composeFiles[0])
 
 		dirName := createTmpDir(t)
 		t.Cleanup(func() {
@@ -64,7 +62,7 @@ compose_files:
 			t.Fatal(err)
 		}
 
-		configs, err := GetDeployConfigs(dirName, ".", projectName, customTarget, reference)
+		configs, err := GetDeployConfigs(dirName, ".", t.Name(), customTarget, reference)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -75,8 +73,8 @@ compose_files:
 
 		config := configs[0]
 
-		if config.Name != projectName {
-			t.Errorf("expected name to be %v, got %s", projectName, config.Name)
+		if config.Name != t.Name() {
+			t.Errorf("expected name to be %v, got %s", t.Name(), config.Name)
 		}
 
 		if config.Reference != reference {
@@ -94,7 +92,7 @@ compose_files:
 }
 
 func TestGetDeployConfigs_DefaultValues(t *testing.T) {
-	defaultConfig := DefaultDeployConfig(projectName, DefaultReference)
+	defaultConfig := DefaultDeployConfig(t.Name(), DefaultReference)
 
 	dirName := createTmpDir(t)
 	t.Cleanup(func() {
@@ -104,7 +102,7 @@ func TestGetDeployConfigs_DefaultValues(t *testing.T) {
 		}
 	})
 
-	configs, err := GetDeployConfigs(dirName, ".", projectName, "", "")
+	configs, err := GetDeployConfigs(dirName, ".", t.Name(), "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,8 +113,8 @@ func TestGetDeployConfigs_DefaultValues(t *testing.T) {
 
 	config := configs[0]
 
-	if config.Name != projectName {
-		t.Errorf("expected name to be %v, got %s", projectName, config.Name)
+	if config.Name != t.Name() {
+		t.Errorf("expected name to be %v, got %s", t.Name(), config.Name)
 	}
 
 	if config.Reference != defaultConfig.Reference {
@@ -136,7 +134,7 @@ func TestGetDeployConfigs_DefaultValues(t *testing.T) {
 // when there are duplicate project names in the config files.
 func TestGetDeployConfigs_DuplicateProjectName(t *testing.T) {
 	config := DeployConfig{
-		Name:             "test",
+		Name:             t.Name(),
 		Reference:        "refs/heads/test",
 		WorkingDirectory: "/test",
 		ComposeFiles:     []string{"test.compose.yaml"},
@@ -304,7 +302,7 @@ func TestResolveDeployConfigs_InlineAutoDiscover(t *testing.T) {
 		t.Fatalf("unexpected validation error: %v", err)
 	}
 
-	configs, err := ResolveDeployConfigs(poll, repoRoot, ".", projectName)
+	configs, err := ResolveDeployConfigs(poll, repoRoot, ".", t.Name())
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -338,7 +336,7 @@ func TestGetDeployConfigs_WithSubdirectory(t *testing.T) {
 
 	deployConfig := fmt.Sprintf(`name: %s
 reference: %s
-`, projectName, reference)
+`, t.Name(), reference)
 
 	// Create temporary repo root
 	repoRoot := createTmpDir(t)
@@ -366,7 +364,7 @@ reference: %s
 	}
 
 	// Test with subdirectory as deployConfigBaseDir
-	configs, err := GetDeployConfigs(repoRoot, deployConfigBaseDir, projectName, customTarget, reference)
+	configs, err := GetDeployConfigs(repoRoot, deployConfigBaseDir, t.Name(), customTarget, reference)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -376,8 +374,8 @@ reference: %s
 	}
 
 	config := configs[0]
-	if config.Name != projectName {
-		t.Errorf("expected name to be %v, got %s", projectName, config.Name)
+	if config.Name != t.Name() {
+		t.Errorf("expected name to be %v, got %s", t.Name(), config.Name)
 	}
 
 	if config.Reference != reference {
@@ -393,7 +391,7 @@ func TestGetDeployConfigs_WithRootDirectory(t *testing.T) {
 
 	deployConfig := fmt.Sprintf(`name: %s
 reference: %s
-`, projectName, reference)
+`, t.Name(), reference)
 
 	repoRoot := createTmpDir(t)
 	t.Cleanup(func() {
@@ -411,7 +409,7 @@ reference: %s
 	}
 
 	// Test with root directory as deployConfigBaseDir
-	configs, err := GetDeployConfigs(repoRoot, deployConfigBaseDir, projectName, customTarget, reference)
+	configs, err := GetDeployConfigs(repoRoot, deployConfigBaseDir, t.Name(), customTarget, reference)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,8 +419,8 @@ reference: %s
 	}
 
 	config := configs[0]
-	if config.Name != projectName {
-		t.Errorf("expected name to be %v, got %s", projectName, config.Name)
+	if config.Name != t.Name() {
+		t.Errorf("expected name to be %v, got %s", t.Name(), config.Name)
 	}
 }
 
@@ -433,7 +431,7 @@ func TestResolveDeployConfigs_WithSubdirectory(t *testing.T) {
 
 	deployConfig := fmt.Sprintf(`name: %s
 reference: %s
-`, projectName, reference)
+`, t.Name(), reference)
 
 	repoRoot := createTmpDir(t)
 	t.Cleanup(func() {
@@ -463,7 +461,7 @@ reference: %s
 		Interval:  60,
 	}
 
-	configs, err := ResolveDeployConfigs(poll, repoRoot, deployConfigBaseDir, projectName)
+	configs, err := ResolveDeployConfigs(poll, repoRoot, deployConfigBaseDir, t.Name())
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -472,8 +470,8 @@ reference: %s
 		t.Fatalf("expected 1 config, got %d", len(configs))
 	}
 
-	if configs[0].Name != projectName {
-		t.Errorf("expected name to be %v, got %s", projectName, configs[0].Name)
+	if configs[0].Name != t.Name() {
+		t.Errorf("expected name to be %v, got %s", t.Name(), configs[0].Name)
 	}
 }
 

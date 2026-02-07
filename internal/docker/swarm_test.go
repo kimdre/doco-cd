@@ -8,6 +8,8 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
+	"github.com/kimdre/doco-cd/internal/test"
+
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 
 	"github.com/kimdre/doco-cd/internal/git"
@@ -30,6 +32,8 @@ func TestDeploySwarmStack(t *testing.T) {
 	if !swarm.ModeEnabled {
 		t.Skip("Swarm mode is not enabled, skipping test")
 	}
+
+	stackName := test.ConvertTestName(t.Name())
 
 	tmpDir := t.TempDir()
 
@@ -72,12 +76,12 @@ func TestDeploySwarmStack(t *testing.T) {
 	repoPath := worktree.Filesystem.Root()
 	filePath := filepath.Join(repoPath, "docker-compose.yml")
 
-	project, err := LoadCompose(t.Context(), tmpDir, projectName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
+	project, err := LoadCompose(t.Context(), tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	deployConfigs, err := config.GetDeployConfigs(tmpDir, c.DeployConfigBaseDir, projectName, customTarget, p.Ref)
+	deployConfigs, err := config.GetDeployConfigs(tmpDir, c.DeployConfigBaseDir, stackName, customTarget, p.Ref)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,14 +105,14 @@ func TestDeploySwarmStack(t *testing.T) {
 		}
 	})
 
-	err = PruneStackConfigs(t.Context(), dockerClient, projectName)
+	err = PruneStackConfigs(t.Context(), dockerClient, stackName)
 	if err != nil {
 		t.Fatalf("Failed to prune stack configs: %v", err)
 	} else {
 		t.Logf("Stack configs pruned successfully")
 	}
 
-	err = PruneStackSecrets(t.Context(), dockerClient, projectName)
+	err = PruneStackSecrets(t.Context(), dockerClient, stackName)
 	if err != nil {
 		t.Fatalf("Failed to prune stack secrets: %v", err)
 	} else {

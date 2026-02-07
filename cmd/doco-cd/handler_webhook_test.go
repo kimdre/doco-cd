@@ -18,8 +18,9 @@ import (
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/compose"
 	"github.com/docker/docker/api/types/container"
-	swarmTypes "github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
+
+	"github.com/kimdre/doco-cd/internal/test"
 
 	"github.com/kimdre/doco-cd/internal/stages"
 
@@ -50,10 +51,9 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	expectedStatusCode := http.StatusCreated
 	tmpDir := t.TempDir()
 
-	const (
-		containerName = "test"
-		stackName     = "test-deploy"
-	)
+	const containerName = "test"
+
+	stackName := test.ConvertTestName(t.Name())
 
 	payloadFile := githubPayloadFile
 	cloneUrl := "https://github.com/kimdre/doco-cd.git"
@@ -114,7 +114,8 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 			Destination: tmpDir,
 			Mode:        "rw",
 		},
-		log: log,
+		log:      log,
+		testName: stackName,
 	}
 
 	req, err := http.NewRequest("POST", webhookPath, bytes.NewReader(payload))
@@ -175,15 +176,13 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 		inspectName := stackName + "_" + containerName
 
-		svc, _, err := dockerCli.Client().ServiceInspectWithRaw(ctx, inspectName, swarmTypes.ServiceInspectOptions{
-			InsertDefaults: true,
-		})
+		svc, err := docker.WaitForSwarmService(ctx, t, dockerClient, inspectName, 30*time.Second)
 		if err != nil {
-			t.Fatalf("Failed to inspect test container: %v", err)
+			t.Fatalf("Failed to find swarm service for test container: %v", err)
 		}
 
 		if len(svc.Endpoint.Ports) == 0 {
-			t.Fatal("Test container has no published ports")
+			t.Fatal("Test service has no published ports")
 		}
 
 		testContainerPort = strconv.FormatUint(uint64(svc.Endpoint.Ports[0].PublishedPort), 10)

@@ -16,6 +16,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/google/uuid"
 
+	"github.com/kimdre/doco-cd/internal/test"
+
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
@@ -39,6 +41,7 @@ type handlerData struct {
 	dockerClient   *client.Client       // Docker client
 	log            *logger.Logger       // Logger for logging messages
 	secretProvider *secretprovider.SecretProvider
+	testName       string // Overwrites the deployConfig.Name to make test deployments unique and prevent conflicts between tests when running in parallel. Not used in production.
 }
 
 // onError handles errors by logging them, sending a JSON error response, and sending a notification.
@@ -71,6 +74,7 @@ func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any
 func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *config.AppConfig,
 	dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget, jobID string,
 	dockerCli command.Cli, dockerClient *client.Client, secretProvider *secretprovider.SecretProvider,
+	testName string,
 ) {
 	var err error
 
@@ -205,6 +209,12 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	for _, deployConfig := range deployConfigs {
 		deployLog := jobLog.WithGroup("deploy")
 
+		// Used to make test deployments unique and prevent conflicts between tests when running in parallel.
+		// It is not used in production.
+		if testName != "" {
+			deployConfig.Name = test.ConvertTestName(testName)
+		}
+
 		failNotifyFunc := func(err error, metadata notification.Metadata) {
 			onError(w, deployLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), http.StatusInternalServerError, metadata)
 		}
@@ -333,5 +343,5 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 	defer lock.Unlock()
 
-	HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, h.dockerClient, h.secretProvider)
+	HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, h.dockerClient, h.secretProvider, h.testName)
 }
