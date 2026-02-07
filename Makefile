@@ -84,3 +84,6 @@ cleanup:
 	else \
 		echo "No containers to clean up."; \
 	fi
+
+clean-testcache:
+	go clean -testcache
