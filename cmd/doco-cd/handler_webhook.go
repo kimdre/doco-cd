@@ -269,6 +269,14 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 	jobLog.Debug("received webhook event")
 
+	// If wait=false (default), return immediately and run the deployment in the background.
+	// If wait=true, run the deployment synchronously and return when it's completed.
+	wait := false
+	if v := r.URL.Query().Get("wait"); v != "" {
+		// Only treat explicit "true" as synchronous. Everything else (including invalid) is async.
+		wait = strings.EqualFold(v, "true") || v == "1"
+	}
+
 	metadata := notification.Metadata{
 		JobID:      jobID,
 		Repository: "",
@@ -341,7 +349,29 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	defer lock.Unlock()
+	if wait {
+		defer lock.Unlock()
 
-	HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, h.dockerClient, h.secretProvider, h.testName)
+		HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, h.dockerClient, h.secretProvider, h.testName)
+
+		return
+	}
+
+	// Async mode: respond immediately and run the deployment in the background.
+	JSONResponse(w, "job accepted", jobID, http.StatusAccepted)
+
+	go func() {
+		defer lock.Unlock()
+		// We must not write to the original ResponseWriter after we've already responded.
+		// Use a no-op writer so HandleEvent can still call JSONResponse/JSONError internally.
+		HandleEvent(ctx, jobLog, noopResponseWriter{}, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, h.dockerClient, h.secretProvider, h.testName)
+	}()
 }
+
+// noopResponseWriter is used when we run HandleEvent asynchronously.
+// It prevents writes to the original HTTP connection after we've already responded.
+type noopResponseWriter struct{}
+
+func (noopResponseWriter) Header() http.Header       { return http.Header{} }
+func (noopResponseWriter) Write([]byte) (int, error) { return 0, nil }
+func (noopResponseWriter) WriteHeader(_ int)         {}

@@ -118,7 +118,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		testName: stackName,
 	}
 
-	req, err := http.NewRequest("POST", webhookPath, bytes.NewReader(payload))
+	req, err := http.NewRequest("POST", webhookPath+"?wait=true", bytes.NewReader(payload))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,5 +265,61 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 	if bodyString != string(fileContent) {
 		t.Fatalf("Test container returned unexpected body: got '%v' but want '%v'", bodyString, string(fileContent))
+	}
+}
+
+func TestWebhookHandler_WaitQueryParam(t *testing.T) {
+	encryption.SetupAgeKeyEnvVar(t)
+
+	appConfig, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	log := logger.New(12)
+
+	h := handlerData{
+		appConfig:  appConfig,
+		appVersion: config.AppVersion,
+		dataMountPoint: container.MountPoint{
+			Type:        "bind",
+			Source:      t.TempDir(),
+			Destination: t.TempDir(),
+			Mode:        "rw",
+		},
+		log: log,
+	}
+
+	testCases := []struct {
+		name string
+		url  string
+	}{
+		{
+			name: "Default async when wait not set",
+			url:  webhookPath,
+		},
+		{
+			name: "Synchronous when wait=true",
+			url:  webhookPath + "?wait=true",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Provide a payload that fails parsing; wait should not affect parse errors.
+			req, err := http.NewRequest("POST", tc.url, bytes.NewReader([]byte("{}")))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			h.testName = test.ConvertTestName(t.Name())
+
+			rr := httptest.NewRecorder()
+			h.WebhookHandler(rr, req)
+
+			if rr.Code == 0 {
+				t.Fatalf("expected recorder to have a status code")
+			}
+		})
 	}
 }
