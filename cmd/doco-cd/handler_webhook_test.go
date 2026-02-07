@@ -20,6 +20,8 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 
+	"github.com/kimdre/doco-cd/internal/test"
+
 	"github.com/kimdre/doco-cd/internal/stages"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -46,10 +48,9 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	expectedStatusCode := http.StatusCreated
 	tmpDir := t.TempDir()
 
-	const (
-		stackName     = "test-deploy"
-		containerName = "test"
-	)
+	const containerName = "test"
+
+	stackName := test.ConvertTestName(t.Name())
 
 	payloadFile := githubPayloadFile
 	cloneUrl := "https://github.com/kimdre/doco-cd.git"
@@ -110,7 +111,8 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 			Destination: tmpDir,
 			Mode:        "rw",
 		},
-		log: log,
+		log:      log,
+		testName: stackName,
 	}
 
 	req, err := http.NewRequest("POST", webhookPath, bytes.NewReader(payload))

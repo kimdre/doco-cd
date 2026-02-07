@@ -84,8 +84,6 @@ func TestMain(m *testing.M) {
 }
 
 func TestHandleEvent(t *testing.T) {
-	const projectName = "test-deploy"
-
 	defaultEnvVars := map[string]string{
 		"GIT_ACCESS_TOKEN": os.Getenv("GIT_ACCESS_TOKEN"),
 		"WEBHOOK_SECRET":   os.Getenv("WEBHOOK_SECRET"),
@@ -105,7 +103,7 @@ func TestHandleEvent(t *testing.T) {
 			payload: webhook.ParsedPayload{
 				Ref:       git.MainBranch,
 				CommitSHA: validCommitSHA,
-				Name:      projectName,
+				Name:      "doco-cd",
 				FullName:  "kimdre/doco-cd",
 				CloneURL:  "https://github.com/kimdre/doco-cd",
 				Private:   false,
@@ -121,7 +119,7 @@ func TestHandleEvent(t *testing.T) {
 			payload: webhook.ParsedPayload{
 				Ref:       git.MainBranch,
 				CommitSHA: "f291bfca73b06814293c1f9c9f3c7f95e4932564",
-				Name:      projectName,
+				Name:      "doco-cd",
 				FullName:  "kimdre/doco-cd",
 				CloneURL:  "https://github.com/kimdre/doco-cd",
 				Private:   false,
@@ -137,7 +135,7 @@ func TestHandleEvent(t *testing.T) {
 			payload: webhook.ParsedPayload{
 				Ref:       invalidBranch,
 				CommitSHA: validCommitSHA,
-				Name:      projectName,
+				Name:      "doco-cd",
 				FullName:  "kimdre/doco-cd",
 				CloneURL:  "https://github.com/kimdre/doco-cd",
 				Private:   false,
@@ -153,7 +151,7 @@ func TestHandleEvent(t *testing.T) {
 			payload: webhook.ParsedPayload{
 				Ref:       git.MainBranch,
 				CommitSHA: validCommitSHA,
-				Name:      projectName,
+				Name:      "doco-cd",
 				FullName:  "kimdre/doco-cd",
 				CloneURL:  "https://github.com/kimdre/doco-cd",
 				Private:   true,
@@ -169,13 +167,13 @@ func TestHandleEvent(t *testing.T) {
 			payload: webhook.ParsedPayload{
 				Ref:       git.MainBranch,
 				CommitSHA: "efefb4111f3c363692a2526f9be9b24560e6511f",
-				Name:      projectName,
+				Name:      "kimdre",
 				FullName:  "kimdre/kimdre",
 				CloneURL:  "https://github.com/kimdre/kimdre",
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"deployment failed","content":"failed to deploy stack test-deploy: no compose files found: stat %[2]s/docker-compose.yaml: no such file or directory","job_id":"%[1]s"}`,
+			expectedResponseBody: `{"error":"deployment failed","content":"failed to deploy stack ` + test.ShortHash(t.Name()) + `: no compose files found: stat %[2]s/docker-compose.yaml: no such file or directory","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "",
 			swarmMode:            false,
@@ -185,7 +183,7 @@ func TestHandleEvent(t *testing.T) {
 			payload: webhook.ParsedPayload{
 				Ref:       "remote",
 				CommitSHA: validCommitSHA,
-				Name:      projectName,
+				Name:      "doco-cd_tests",
 				FullName:  "kimdre/doco-cd_tests",
 				CloneURL:  "https://github.com/kimdre/doco-cd_tests",
 				Private:   false,
@@ -201,7 +199,7 @@ func TestHandleEvent(t *testing.T) {
 			payload: webhook.ParsedPayload{
 				Ref:       git.SwarmModeBranch,
 				CommitSHA: "01435dad4e7ff8f7da70202ca1ca77bccca9eb62",
-				Name:      test.ConvertTestName(t.Name()),
+				Name:      "doco-cd_tests",
 				FullName:  "kimdre/doco-cd_tests",
 				CloneURL:  "https://github.com/kimdre/doco-cd_tests",
 				Private:   false,
@@ -249,6 +247,8 @@ func TestHandleEvent(t *testing.T) {
 			}
 
 			tmpDir := t.TempDir()
+
+			stackName := test.ConvertTestName(t.Name())[:40]
 
 			for k, v := range defaultEnvVars {
 				err := os.Setenv(k, v)
@@ -341,9 +341,9 @@ func TestHandleEvent(t *testing.T) {
 				t.Log("Remove test container")
 
 				if swarm.ModeEnabled {
-					err = docker.RemoveSwarmStack(ctx, dockerCli, tc.payload.Name)
+					err = docker.RemoveSwarmStack(ctx, dockerCli, stackName)
 				} else if service != nil {
-					err = service.Down(ctx, tc.payload.Name, downOpts)
+					err = service.Down(ctx, stackName, downOpts)
 				}
 
 				if err != nil {
@@ -370,6 +370,7 @@ func TestHandleEvent(t *testing.T) {
 				dockerCli,
 				dockerClient,
 				&secretProvider,
+				stackName,
 			)
 
 			if status := rr.Code; status != tc.expectedStatusCode {
