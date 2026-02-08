@@ -202,13 +202,13 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		auth = git.HttpTokenAuth(appConfig.GitAccessToken)
 	}
 
-	_, err = git.CloneRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules)
+	repo, err := git.CloneRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules)
 	if err != nil {
 		// If the repository already exists, check it out to the specified commit SHA
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			jobLog.Debug("repository already exists, checking out reference "+pollConfig.Reference, slog.String("host_path", externalRepoPath))
 
-			_, err = git.UpdateRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules)
+			repo, err = git.UpdateRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules)
 			if err != nil {
 				pollError(jobLog, metadata, fmt.Errorf("failed to checkout repository: %w", err))
 
@@ -260,6 +260,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 				Name:         repoName,
 				PathInternal: internalRepoPath,
 				PathExternal: externalRepoPath,
+				Git:          repo,
 			},
 			&stages.Docker{
 				Cmd:            dockerCli,

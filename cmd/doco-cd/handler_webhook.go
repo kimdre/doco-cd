@@ -172,13 +172,14 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	// Try to clone the repository
-	_, err = git.CloneRepository(internalRepoPath, cloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules)
+
+	repo, err := git.CloneRepository(internalRepoPath, cloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules)
 	if err != nil {
 		// If the repository already exists, check it out to the specified commit SHA
 		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
 			jobLog.Debug("repository already exists, checking out reference "+payload.Ref, slog.String("host_path", externalRepoPath))
 
-			_, err = git.UpdateRepository(internalRepoPath, cloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules)
+			repo, err = git.UpdateRepository(internalRepoPath, cloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules)
 			if err != nil {
 				onError(w, jobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), http.StatusInternalServerError, metadata)
 
@@ -231,6 +232,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				Name:         repoName,
 				PathInternal: internalRepoPath,
 				PathExternal: externalRepoPath,
+				Git:          repo,
 			},
 			&stages.Docker{
 				Cmd:            dockerCli,
