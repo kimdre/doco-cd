@@ -314,7 +314,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 			statusCode = http.StatusInternalServerError
 		}
 
-		if isBranchTagEvent, err := webhook.IsBranchOrTagDeletionEvent(r); err == nil && isBranchTagEvent {
+		if deletionEvent, eErr := webhook.IsBranchOrTagDeletionEvent(r, jobLog); eErr == nil && deletionEvent {
 			errMsg = "branch or tag deletion event received, skipping webhook event"
 			statusCode = http.StatusAccepted
 
@@ -322,12 +322,12 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 			JSONResponse(w, errMsg, jobID, statusCode)
 
 			return
-		} else if err != nil {
+		} else if eErr != nil {
 			errMsg = "failed to check if event is branch or tag deletion"
 			statusCode = http.StatusInternalServerError
 
-			jobLog.Error(errMsg, logger.ErrAttr(err))
-			JSONError(w, errMsg, err.Error(), jobID, statusCode)
+			jobLog.Error(errMsg, logger.ErrAttr(eErr))
+			JSONError(w, errMsg, eErr.Error(), jobID, statusCode)
 
 			return
 		}

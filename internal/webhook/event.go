@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 )
 
@@ -28,7 +29,7 @@ func detectProvider(r *http.Request) (ScmProvider, error) {
 }
 
 // IsBranchOrTagDeletionEvent checks if the incoming webhook event is a branch or tag deletion event for the given provider.
-func IsBranchOrTagDeletionEvent(r *http.Request) (bool, error) {
+func IsBranchOrTagDeletionEvent(r *http.Request, l *slog.Logger) (bool, error) {
 	provider, err := detectProvider(r)
 	if err != nil {
 		return false, err
@@ -55,19 +56,19 @@ func IsBranchOrTagDeletionEvent(r *http.Request) (bool, error) {
 		return ok && (refType == "branch" || refType == "tag"), nil
 	case Gitlab:
 		if event != "Push Hook" && event != "Tag Push Hook" {
-			fmt.Println("unexpected event type for GitLab: ", event)
+			l.Warn("unexpected event type for GitLab: ", event)
 			return false, nil
 		}
 
 		after, ok := payload["after"].(string)
 		if !ok || after != "0000000000000000000000000000000000000000" {
-			fmt.Println("unexpected 'after' value for GitLab event: ", after)
+			l.Warn("unexpected 'after' value for GitLab event: ", after)
 			return false, nil
 		}
 		// Also verify checkout_sha is null for deletion events
 		checkoutSha := payload["checkout_sha"]
 
-		fmt.Println("GitLab event 'after' value indicates deletion, checkout_sha:", checkoutSha)
+		l.Warn("GitLab event 'after' value indicates deletion, checkout_sha:", checkoutSha)
 		return checkoutSha == nil, nil
 	default:
 		return false, ErrUnknownProvider
