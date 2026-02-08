@@ -314,24 +314,6 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 			statusCode = http.StatusInternalServerError
 		}
 
-		if deletionEvent, eErr := webhook.IsBranchOrTagDeletionEvent(r, jobLog); eErr == nil && deletionEvent {
-			errMsg = "branch or tag deletion event received, skipping webhook event"
-			statusCode = http.StatusAccepted
-
-			jobLog.Debug(errMsg)
-			JSONResponse(w, errMsg, jobID, statusCode)
-
-			return
-		} else if eErr != nil {
-			errMsg = "failed to check if event is branch or tag deletion"
-			statusCode = http.StatusInternalServerError
-
-			jobLog.Error(errMsg, logger.ErrAttr(eErr))
-			JSONError(w, errMsg, eErr.Error(), jobID, statusCode)
-
-			return
-		}
-
 		if payload.CloneURL != "" {
 			repoName = stages.GetRepoName(payload.CloneURL)
 			metadata.Repository = repoName
@@ -339,6 +321,20 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		onError(w, jobLog.With(slog.String("ip", r.RemoteAddr), logger.ErrAttr(err)), errMsg, err.Error(), statusCode, metadata)
+
+		return
+	}
+
+	if deletionEvent, eErr := webhook.IsBranchOrTagDeletionEvent(r); eErr == nil && deletionEvent {
+		errMsg = "branch or tag deletion event received, skipping webhook event"
+		jobLog.Debug(errMsg)
+		JSONResponse(w, errMsg, jobID, http.StatusAccepted)
+
+		return
+	} else if eErr != nil {
+		errMsg = "failed to check if event is branch or tag deletion"
+		jobLog.Error(errMsg, logger.ErrAttr(eErr))
+		JSONError(w, errMsg, eErr.Error(), jobID, http.StatusInternalServerError)
 
 		return
 	}
