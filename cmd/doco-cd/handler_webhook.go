@@ -100,7 +100,9 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	if payload.Ref == "" {
-		onError(w, jobLog, "no reference provided in webhook payload, skipping event", "", http.StatusBadRequest, metadata)
+		msg := "no reference provided in webhook payload, skipping event"
+		jobLog.Warn(msg)
+		JSONResponse(w, msg, jobID, http.StatusAccepted)
 
 		return
 	}
