@@ -289,7 +289,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	// Limit the request body size
 	r.Body = http.MaxBytesReader(w, r.Body, h.appConfig.MaxPayloadSize)
 
-	payload, err := webhook.Parse(r, h.appConfig.WebhookSecret)
+	provider, payload, err := webhook.Parse(r, h.appConfig.WebhookSecret)
 	if err != nil {
 		var statusCode int
 
@@ -325,7 +325,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if deletionEvent, eErr := webhook.IsBranchOrTagDeletionEvent(r); eErr == nil && deletionEvent {
+	if deletionEvent, eErr := webhook.IsBranchOrTagDeletionEvent(r, payload, provider); eErr == nil && deletionEvent {
 		errMsg = "branch or tag deletion event received, skipping webhook event"
 		jobLog.Debug(errMsg)
 		JSONResponse(w, errMsg, jobID, http.StatusAccepted)

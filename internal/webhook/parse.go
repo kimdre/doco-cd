@@ -13,9 +13,9 @@ var (
 )
 
 // Parse parses the payload and returns the parsed payload data.
-func Parse(r *http.Request, secretKey string) (ParsedPayload, error) {
+func Parse(r *http.Request, secretKey string) (ScmProvider, ParsedPayload, error) {
 	if r.Body == nil {
-		return ParsedPayload{}, fmt.Errorf("%w: request body is empty", ErrParsingPayload)
+		return Unknown, ParsedPayload{}, fmt.Errorf("%w: request body is empty", ErrParsingPayload)
 	}
 
 	defer func() {
@@ -24,18 +24,23 @@ func Parse(r *http.Request, secretKey string) (ParsedPayload, error) {
 	}()
 
 	if r.Method != http.MethodPost {
-		return ParsedPayload{}, ErrInvalidHTTPMethod
+		return Unknown, ParsedPayload{}, ErrInvalidHTTPMethod
 	}
 
 	payload, err := io.ReadAll(r.Body)
 	if err != nil || len(payload) == 0 {
-		return ParsedPayload{}, err
+		return Unknown, ParsedPayload{}, err
 	}
 
 	provider, err := verifyProviderSecret(r, payload, secretKey)
 	if err != nil {
-		return ParsedPayload{}, err
+		return Unknown, ParsedPayload{}, err
 	}
 
-	return parsePayload(payload, provider)
+	parsedPayload, err := parsePayload(payload, provider)
+	if err != nil {
+		return 0, ParsedPayload{}, err
+	}
+
+	return provider, parsedPayload, nil
 }

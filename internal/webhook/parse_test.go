@@ -68,7 +68,7 @@ func TestParse(t *testing.T) {
 				}
 			}
 
-			p, err := Parse(r, testSecret)
+			_, p, err := Parse(r, testSecret)
 			if tc.expectedError == nil {
 				if err != nil {
 					t.Fatalf("expected no error, got %v", err)

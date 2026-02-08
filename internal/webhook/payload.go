@@ -7,6 +7,7 @@ import (
 // GithubPushPayload is a struct that represents the payload sent by GitHub or Gitea, as they have the same structure.
 type GithubPushPayload struct {
 	Ref        string `json:"ref"`
+	RefType    string `json:"ref_type,omitempty"` // ref_type is only present in create/delete events
 	CommitSHA  string `json:"after"`
 	Repository struct {
 		Name     string `json:"name"`
@@ -21,6 +22,7 @@ type GithubPushPayload struct {
 // GitlabPushPayload is a struct that represents the payload sent by GitLab.
 type GitlabPushPayload struct {
 	Ref        string `json:"ref"`
+	After      string `json:"after"`
 	CommitSHA  string `json:"checkout_sha"`
 	Repository struct {
 		Name              string `json:"name"`
@@ -35,6 +37,8 @@ type GitlabPushPayload struct {
 // ParsedPayload is a struct that contains the parsed payload data.
 type ParsedPayload struct {
 	Ref       string // Ref is the branch or tag that triggered the webhook
+	RefType   string // RefType is the type of ref (branch or tag) that triggered the webhook, only present in delete events
+	After     string // After is the SHA of the commit after the push, only present in GitLab payloads
 	CommitSHA string // CommitSHA is the SHA of the commit that triggered the webhook
 	Name      string // Name is the short name of the repository (without owner or organization)
 	FullName  string // FullName is the full name of the repository (e.g., owner/repo)
@@ -60,6 +64,7 @@ func parsePayload(payload []byte, provider ScmProvider) (ParsedPayload, error) {
 
 		parsedPayload := ParsedPayload{
 			Ref:       githubPayload.Ref,
+			RefType:   githubPayload.RefType,
 			CommitSHA: githubPayload.CommitSHA,
 			Name:      githubPayload.Repository.Name,
 			FullName:  githubPayload.Repository.FullName,
@@ -78,6 +83,7 @@ func parsePayload(payload []byte, provider ScmProvider) (ParsedPayload, error) {
 
 		parsedPayload := ParsedPayload{
 			Ref:       gitlabPayload.Ref,
+			After:     gitlabPayload.After,
 			CommitSHA: gitlabPayload.CommitSHA,
 			Name:      gitlabPayload.Repository.Name,
 			FullName:  gitlabPayload.Repository.PathWithNamespace,
