@@ -34,8 +34,10 @@ func IsBranchOrTagDeletionEvent(r *http.Request) (bool, error) {
 		return false, err
 	}
 
-	eventHeader := ScmProviderEventHeaders[provider]
-	event := r.Header.Get(eventHeader)
+	event := r.Header.Get(ScmProviderEventHeaders[provider])
+	if event == "" {
+		return false, fmt.Errorf("missing event header for provider %v", provider)
+	}
 
 	var payload map[string]any
 	if err = json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -53,16 +55,19 @@ func IsBranchOrTagDeletionEvent(r *http.Request) (bool, error) {
 		return ok && (refType == "branch" || refType == "tag"), nil
 	case Gitlab:
 		if event != "Push Hook" && event != "Tag Push Hook" {
+			fmt.Println("unexpected event type for GitLab: ", event)
 			return false, nil
 		}
 
 		after, ok := payload["after"].(string)
 		if !ok || after != "0000000000000000000000000000000000000000" {
+			fmt.Println("unexpected 'after' value for GitLab event: ", after)
 			return false, nil
 		}
 		// Also verify checkout_sha is null for deletion events
 		checkoutSha := payload["checkout_sha"]
 
+		fmt.Println("GitLab event 'after' value indicates deletion, checkout_sha:", checkoutSha)
 		return checkoutSha == nil, nil
 	default:
 		return false, ErrUnknownProvider
