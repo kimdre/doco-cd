@@ -100,7 +100,9 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	if payload.Ref == "" {
-		onError(w, jobLog, "no reference provided in webhook payload, skipping event", "", http.StatusBadRequest, metadata)
+		msg := "no reference provided in webhook payload, skipping event"
+		jobLog.Warn(msg)
+		JSONError(w, msg, msg, jobID, http.StatusBadRequest)
 
 		return
 	}
@@ -289,7 +291,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	// Limit the request body size
 	r.Body = http.MaxBytesReader(w, r.Body, h.appConfig.MaxPayloadSize)
 
-	payload, err := webhook.Parse(r, h.appConfig.WebhookSecret)
+	provider, payload, err := webhook.Parse(r, h.appConfig.WebhookSecret)
 	if err != nil {
 		var statusCode int
 
@@ -325,6 +327,20 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if deletionEvent, eErr := webhook.IsBranchOrTagDeletionEvent(r, payload, provider); eErr == nil && deletionEvent {
+		errMsg = "branch or tag deletion event received, skipping webhook event"
+		jobLog.Info(errMsg)
+		JSONResponse(w, errMsg, jobID, http.StatusAccepted)
+
+		return
+	} else if eErr != nil {
+		errMsg = "failed to check if event is branch or tag deletion"
+		jobLog.Error(errMsg, logger.ErrAttr(eErr))
+		JSONError(w, errMsg, eErr.Error(), jobID, http.StatusInternalServerError)
+
+		return
+	}
+
 	if metadata.Repository == "" {
 		repoName = stages.GetRepoName(payload.CloneURL)
 		metadata.Repository = repoName
@@ -342,7 +358,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		)
 		JSONError(w,
 			errMsg,
-			fmt.Sprintf("repsoitory '%s' is currently locked by job '%s'", repoName, lock.Holder()),
+			fmt.Sprintf("repository '%s' is currently locked by job '%s'", repoName, lock.Holder()),
 			jobID,
 			http.StatusTooManyRequests)
 
