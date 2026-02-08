@@ -358,7 +358,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		)
 		JSONError(w,
 			errMsg,
-			fmt.Sprintf("repsoitory '%s' is currently locked by job '%s'", repoName, lock.Holder()),
+			fmt.Sprintf("repository '%s' is currently locked by job '%s'", repoName, lock.Holder()),
 			jobID,
 			http.StatusTooManyRequests)
 
