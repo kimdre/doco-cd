@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+
+	"github.com/kimdre/doco-cd/internal/git"
 )
 
 var ErrUnknownProvider = errors.New("unknown SCM provider")
@@ -16,8 +18,6 @@ var ScmProviderEventHeaders = map[ScmProvider]string{
 	Gogs:   "X-Gogs-Event",
 }
 
-const ZeroSHA = "0000000000000000000000000000000000000000" // ZeroSHA is the SHA used by Git to indicate a branch or tag deletion event.
-
 // IsBranchOrTagDeletionEvent checks if the incoming webhook event is a branch or tag deletion event for the given provider.
 func IsBranchOrTagDeletionEvent(r *http.Request, payload ParsedPayload, provider ScmProvider) (bool, error) {
 	event := r.Header.Get(ScmProviderEventHeaders[provider])
@@ -27,7 +27,7 @@ func IsBranchOrTagDeletionEvent(r *http.Request, payload ParsedPayload, provider
 
 	switch provider {
 	case Github, Gitea, Gogs, Forgejo:
-		if payload.Before != ZeroSHA && payload.After == ZeroSHA {
+		if payload.Before != git.ZeroSHA && payload.After == git.ZeroSHA {
 			return true, nil
 		}
 
@@ -41,7 +41,7 @@ func IsBranchOrTagDeletionEvent(r *http.Request, payload ParsedPayload, provider
 			return false, nil
 		}
 
-		if payload.After != ZeroSHA {
+		if payload.After != git.ZeroSHA {
 			return false, nil
 		}
 		// Also verify checkout_sha is null for deletion events
