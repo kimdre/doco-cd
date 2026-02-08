@@ -270,6 +270,10 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			appConfig,
 			deployConfig,
 			secretProvider,
+			&git.RepoBranch{
+				Repository: cloneUrl,
+				Reference:  pollConfig.Reference,
+			},
 		)
 
 		err = stageMgr.RunStages(ctx)

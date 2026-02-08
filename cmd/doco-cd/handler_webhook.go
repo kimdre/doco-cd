@@ -241,6 +241,10 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			appConfig,
 			deployConfig,
 			secretProvider,
+			&git.RepoBranch{
+				Repository: cloneUrl,
+				Reference:  payload.Ref,
+			},
 		)
 
 		err = stageMgr.RunStages(ctx)

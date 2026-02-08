@@ -47,6 +47,12 @@ var (
 	ErrPossibleAuthMethodMismatch = errors.New("there might be a mismatch between the authentication method and the repository or submodule remote URL")
 )
 
+// RepoBranch represents a combination of a repository and a reference (branch or tag).
+type RepoBranch struct {
+	Repository string
+	Reference  string
+}
+
 // ChangedFile represents a file that has changed between two commits.
 type ChangedFile struct {
 	// From represents the file state before the change.

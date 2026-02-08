@@ -129,18 +129,19 @@ type DeploymentState struct {
 
 // StageManager is the main structure that holds the logger and stage data.
 type StageManager struct {
-	Stages            *Stages
-	Log               *slog.Logger
-	JobID             string                                          // Unique identifier for the job
-	JobTrigger        JobTrigger                                      // Trigger type for the job (e.g., "webhook", "poll")
-	NotifyFailureFunc func(err error, metadata notification.Metadata) // Function to call on failure
-	AppConfig         *config.AppConfig
-	DeployConfig      *config.DeployConfig
-	DeployState       *DeploymentState
-	Docker            *Docker
-	Payload           *webhook.ParsedPayload
-	Repository        *RepositoryData
-	SecretProvider    *secretprovider.SecretProvider
+	Stages             *Stages
+	Log                *slog.Logger
+	JobID              string                                          // Unique identifier for the job
+	JobTrigger         JobTrigger                                      // Trigger type for the job (e.g., "webhook", "poll")
+	NotifyFailureFunc  func(err error, metadata notification.Metadata) // Function to call on failure
+	AppConfig          *config.AppConfig
+	DeployConfig       *config.DeployConfig
+	DeployState        *DeploymentState
+	Docker             *Docker
+	Payload            *webhook.ParsedPayload
+	Repository         *RepositoryData
+	SecretProvider     *secretprovider.SecretProvider
+	PreviousRepoBranch *gitInternal.RepoBranch // Previous repository branch information for comparison during deployment
 }
 
 // NewStageManager creates and initializes a new StageManager instance for managing stages.ß.
@@ -149,19 +150,21 @@ func NewStageManager(jobID string, jobTrigger JobTrigger, log *slog.Logger,
 	repoData *RepositoryData, dockerData *Docker, payload *webhook.ParsedPayload,
 	appConfig *config.AppConfig, deployConfig *config.DeployConfig,
 	secretProvider *secretprovider.SecretProvider,
+	previousRepoBranch *gitInternal.RepoBranch,
 ) *StageManager {
 	return &StageManager{
-		Log:               log.With(),
-		JobID:             jobID,
-		JobTrigger:        jobTrigger,
-		NotifyFailureFunc: failNotifyFunc,
-		AppConfig:         appConfig,
-		DeployConfig:      deployConfig,
-		DeployState:       &DeploymentState{},
-		Docker:            dockerData,
-		Payload:           payload,
-		Repository:        repoData,
-		SecretProvider:    secretProvider,
+		Log:                log.With(),
+		JobID:              jobID,
+		JobTrigger:         jobTrigger,
+		NotifyFailureFunc:  failNotifyFunc,
+		AppConfig:          appConfig,
+		DeployConfig:       deployConfig,
+		DeployState:        &DeploymentState{},
+		Docker:             dockerData,
+		Payload:            payload,
+		Repository:         repoData,
+		SecretProvider:     secretProvider,
+		PreviousRepoBranch: previousRepoBranch,
 		Stages: &Stages{
 			Init: &InitStageData{
 				MetaData: NewMetaData(StageInit),
