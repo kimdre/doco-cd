@@ -27,15 +27,15 @@ func IsBranchOrTagDeletionEvent(r *http.Request, payload ParsedPayload, provider
 
 	switch provider {
 	case Github, Gitea, Gogs, Forgejo:
-		if event != "delete" {
-			return false, nil
-		}
-
 		if payload.Before != ZeroSHA && payload.After == ZeroSHA {
 			return true, nil
 		}
 
-		return payload.RefType == "branch" || payload.RefType == "tag", nil
+		if event == "delete" {
+			return payload.RefType == "branch" || payload.RefType == "tag", nil
+		}
+
+		return false, nil
 	case Gitlab:
 		if event != "Push Hook" && event != "Tag Push Hook" {
 			return false, nil
