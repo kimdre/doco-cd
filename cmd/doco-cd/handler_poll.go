@@ -223,6 +223,13 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		jobLog.Debug("repository cloned", slog.String("path", externalRepoPath))
 	}
 
+	// Track the clone state (URL and reference) to skip redundant cloning/updating in stage 1.
+	// This is shared across all deploy configs and updated after each successful clone/update.
+	cloneState := &stages.CloneState{
+		CloneURL:  cloneUrl,
+		Reference: pollConfig.Reference,
+	}
+
 	jobLog.Debug("retrieving deployment configuration")
 
 	// shortName is the last part of repoName, which is just the name of the repository
@@ -270,6 +277,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			appConfig,
 			deployConfig,
 			secretProvider,
+			cloneState,
 		)
 
 		err = stageMgr.RunStages(ctx)

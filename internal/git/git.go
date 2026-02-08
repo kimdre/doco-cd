@@ -223,6 +223,12 @@ func updateRemoteURL(repo *git.Repository, url string) error {
 	return nil
 }
 
+// OpenRepository opens an existing git repository at the specified path.
+// This is a lightweight operation that doesn't fetch or update the repository.
+func OpenRepository(path string) (*git.Repository, error) {
+	return git.PlainOpen(path)
+}
+
 // UpdateRepository fetches and checks out the requested ref.
 func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, cloneSubmodules bool) (*git.Repository, error) {
 	repo, err := git.PlainOpen(path)
