@@ -314,6 +314,24 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 			statusCode = http.StatusInternalServerError
 		}
 
+		if isBranchTagEvent, err := webhook.IsBranchOrTagDeletionEvent(r); err == nil && isBranchTagEvent {
+			errMsg = "branch or tag deletion event received, skipping webhook event"
+			statusCode = http.StatusAccepted
+
+			jobLog.Debug(errMsg)
+			JSONResponse(w, errMsg, jobID, statusCode)
+
+			return
+		} else if errors.Is(err, webhook.ErrUnknownProvider) {
+			errMsg = webhook.ErrUnknownProvider.Error()
+			statusCode = http.StatusBadRequest
+
+			jobLog.Warn(errMsg)
+			JSONError(w, errMsg, "could not detect SCM provider from request headers", jobID, statusCode)
+
+			return
+		}
+
 		if payload.CloneURL != "" {
 			repoName = stages.GetRepoName(payload.CloneURL)
 			metadata.Repository = repoName
