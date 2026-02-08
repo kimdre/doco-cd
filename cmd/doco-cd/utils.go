@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -69,9 +70,20 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 ) error {
 	autoDiscoveredNames := make(map[string]bool)
 
+	// Collect working directory base paths to scope cleanup to only stacks
+	// deployed from the same base directory (e.g., "apps/swarm" or "apps/compose").
+	// Without this, multiple doco-cd instances watching different subdirectories
+	// of the same repo would treat each other's stacks as obsolete.
+	workingDirBases := make(map[string]bool)
+
 	for _, cfg := range deployConfigs {
 		if cfg.AutoDiscover {
 			autoDiscoveredNames[cfg.Name] = cfg.AutoDiscoverOpts.Delete
+
+			base := filepath.Dir(cfg.WorkingDirectory)
+			if base != "." {
+				workingDirBases[base] = true
+			}
 		}
 	}
 
@@ -88,6 +100,31 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 			}
 
 			if cloneUrl == labels[docker.DocoCDLabels.Repository.URL] {
+				// Scope cleanup to stacks under the same working directory base path.
+				// This prevents one doco-cd instance from removing stacks managed by
+				// another instance watching a different subdirectory of the same repo.
+				if len(workingDirBases) > 0 {
+					containerWorkingDir := labels[docker.DocoCDLabels.Deployment.WorkingDir]
+					inScope := false
+
+					for base := range workingDirBases {
+						if strings.Contains(containerWorkingDir, string(os.PathSeparator)+base+string(os.PathSeparator)) {
+							inScope = true
+							break
+						}
+					}
+
+					if !inScope {
+						jobLog.Debug("skipping stack from different working directory scope",
+							slog.String("stack", stackName),
+							slog.String("working_dir", containerWorkingDir),
+						)
+						processedStacks = append(processedStacks, stackName)
+
+						continue
+					}
+				}
+
 				jobLog.Debug("checking auto-discovered stack for obsolescence", slog.String("stack", stackName))
 
 				if _, found := autoDiscoveredNames[stackName]; !found {
