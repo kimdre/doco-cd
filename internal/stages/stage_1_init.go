@@ -80,18 +80,28 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		auth = git.HttpTokenAuth(s.AppConfig.GitAccessToken)
 	}
 
+	// Check if we can skip cloning/updating because the previous run (initial or a prior deploy config)
+	// was already done with the same URL and reference
+	skipCloneUpdate := s.CloneState.Matches(string(s.Repository.CloneURL), s.DeployConfig.Reference)
+
 	if s.DeployConfig.RepositoryUrl != "" {
-		stageLog.Debug("repository URL provided, cloning remote repository")
+		if skipCloneUpdate {
+			stageLog.Debug("skipping clone of remote repository (already cloned/updated with same URL and reference)",
+				slog.String("url", string(s.Repository.CloneURL)),
+				slog.String("reference", s.DeployConfig.Reference))
+		} else {
+			stageLog.Debug("repository URL provided, cloning remote repository")
 
-		_, err = git.CloneRepository(s.Repository.PathInternal, string(s.Repository.CloneURL), s.DeployConfig.Reference,
-			s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, auth, s.AppConfig.GitCloneSubmodules)
-		if err != nil && !errors.Is(err, git.ErrRepositoryAlreadyExists) {
-			return fmt.Errorf("failed to clone repository: %w", err)
+			_, err = git.CloneRepository(s.Repository.PathInternal, string(s.Repository.CloneURL), s.DeployConfig.Reference,
+				s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, auth, s.AppConfig.GitCloneSubmodules)
+			if err != nil && !errors.Is(err, git.ErrRepositoryAlreadyExists) {
+				return fmt.Errorf("failed to clone repository: %w", err)
+			}
+
+			stageLog.Info("cloned remote repository",
+				slog.String("url", string(s.Repository.CloneURL)),
+				slog.String("path", s.Repository.PathExternal))
 		}
-
-		stageLog.Info("cloned remote repository",
-			slog.String("url", string(s.Repository.CloneURL)),
-			slog.String("path", s.Repository.PathExternal))
 	}
 
 	if s.DeployConfig.Destroy {
@@ -118,12 +128,27 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		}
 	}
 
-	stageLog.Debug("checking out reference "+s.DeployConfig.Reference, slog.String("path", s.Repository.PathExternal))
+	// Skip UpdateRepository if the previous run already cloned/updated with the same URL and reference
+	if skipCloneUpdate {
+		stageLog.Debug("skipping checkout (already at correct reference)",
+			slog.String("reference", s.DeployConfig.Reference),
+			slog.String("path", s.Repository.PathExternal))
 
-	s.Repository.Git, err = git.UpdateRepository(s.Repository.PathInternal, string(s.Repository.CloneURL), s.DeployConfig.Reference,
-		s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, auth, s.AppConfig.GitCloneSubmodules)
-	if err != nil {
-		return fmt.Errorf("failed to checkout repository: %w", err)
+		s.Repository.Git, err = git.OpenRepository(s.Repository.PathInternal)
+		if err != nil {
+			return fmt.Errorf("failed to open repository: %w", err)
+		}
+	} else {
+		stageLog.Debug("checking out reference "+s.DeployConfig.Reference, slog.String("path", s.Repository.PathExternal))
+
+		s.Repository.Git, err = git.UpdateRepository(s.Repository.PathInternal, string(s.Repository.CloneURL), s.DeployConfig.Reference,
+			s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, auth, s.AppConfig.GitCloneSubmodules)
+		if err != nil {
+			return fmt.Errorf("failed to checkout repository: %w", err)
+		}
+
+		// Update clone state so subsequent deploy configs can skip if they use the same URL and reference
+		s.CloneState.Update(string(s.Repository.CloneURL), s.DeployConfig.Reference)
 	}
 
 	if s.JobTrigger == JobTriggerPoll {
