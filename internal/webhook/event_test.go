@@ -227,6 +227,7 @@ func TestIsBranchOrTagDeletionEvent(t *testing.T) {
 				if err == nil {
 					t.Errorf("expected an error, but got none")
 				}
+
 				return
 			}
 
