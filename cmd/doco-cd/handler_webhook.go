@@ -322,12 +322,12 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 			JSONResponse(w, errMsg, jobID, statusCode)
 
 			return
-		} else if errors.Is(err, webhook.ErrUnknownProvider) {
-			errMsg = webhook.ErrUnknownProvider.Error()
-			statusCode = http.StatusBadRequest
+		} else if err != nil {
+			errMsg = "failed to check if event is branch or tag deletion"
+			statusCode = http.StatusInternalServerError
 
-			jobLog.Warn(errMsg)
-			JSONError(w, errMsg, "could not detect SCM provider from request headers", jobID, statusCode)
+			jobLog.Error(errMsg, logger.ErrAttr(err))
+			JSONError(w, errMsg, err.Error(), jobID, statusCode)
 
 			return
 		}
