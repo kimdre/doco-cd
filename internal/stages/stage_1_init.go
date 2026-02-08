@@ -12,6 +12,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/kimdre/doco-cd/internal/config"
+
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
@@ -44,16 +45,6 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		}
 	}
 
-	if s.DeployConfig.RepositoryUrl != "" {
-		s.Repository.CloneURL = s.DeployConfig.RepositoryUrl
-		s.Repository.Name = GetRepoName(string(s.Repository.CloneURL))
-
-		err = config.LoadLocalDotEnv(s.DeployConfig, s.Repository.PathInternal)
-		if err != nil {
-			return fmt.Errorf("failed to parse local env files: %w", err)
-		}
-	}
-
 	s.Repository.PathInternal, err = filesystem.VerifyAndSanitizePath(filepath.Join(s.Docker.DataMountPoint.Destination, s.Repository.Name), s.Docker.DataMountPoint.Destination) // Path inside the container
 	if err != nil {
 		return fmt.Errorf("failed to verify and sanitize internal filesystem path: %w", err)
@@ -81,25 +72,30 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 	}
 
 	if s.DeployConfig.RepositoryUrl != "" {
-		stageLog.Debug("repository URL provided, cloning remote repository")
+		err = config.LoadLocalDotEnv(s.DeployConfig, s.Repository.PathInternal)
+		if err != nil {
+			return fmt.Errorf("failed to parse local env files: %w", err)
+		}
 
 		// Only clone if the repository or reference has changed since the last deployment to optimize for faster deployments
-		if s.PreviousRepoBranch.Repository != string(s.Repository.CloneURL) ||
+		if s.PreviousRepoBranch.Repository != string(s.DeployConfig.RepositoryUrl) ||
 			s.PreviousRepoBranch.Reference != s.DeployConfig.Reference {
-			_, err = git.CloneRepository(s.Repository.PathInternal, string(s.Repository.CloneURL), s.DeployConfig.Reference,
+			stageLog.Debug("repository URL provided, cloning remote repository")
+
+			s.Repository.Git, err = git.CloneRepository(s.Repository.PathInternal, string(s.DeployConfig.RepositoryUrl), s.DeployConfig.Reference,
 				s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, auth, s.AppConfig.GitCloneSubmodules)
 			if err != nil && !errors.Is(err, git.ErrRepositoryAlreadyExists) {
 				return fmt.Errorf("failed to clone repository: %w", err)
 			}
 
 			stageLog.Info("cloned remote repository",
-				slog.String("url", string(s.Repository.CloneURL)),
+				slog.String("url", string(s.DeployConfig.RepositoryUrl)),
 				slog.String("path", s.Repository.PathExternal))
 
-			s.PreviousRepoBranch.Repository = string(s.Repository.CloneURL)
+			s.PreviousRepoBranch.Repository = string(s.DeployConfig.RepositoryUrl)
 			s.PreviousRepoBranch.Reference = s.DeployConfig.Reference
 		} else {
-			stageLog.Debug("repository and reference unchanged since last deployment, skipping clone",
+			stageLog.Debug("repository and reference unchanged, skipping clone",
 				slog.String("repository", s.PreviousRepoBranch.Repository),
 				slog.String("reference", s.PreviousRepoBranch.Reference))
 		}
@@ -164,6 +160,10 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		slog.String("repository", s.Repository.Name),
 		slog.String("reference", s.DeployConfig.Reference),
 	)
+
+	if s.Repository.Git == nil {
+		return errors.New("repository is not initialized")
+	}
 
 	return nil
 }
