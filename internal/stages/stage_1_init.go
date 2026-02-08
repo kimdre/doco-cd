@@ -86,7 +86,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 
 	if s.DeployConfig.RepositoryUrl != "" {
 		if skipCloneUpdate {
-			stageLog.Debug("skipping clone of remote repository (already cloned/updated with same URL and reference)",
+			stageLog.Debug("skipping clone of remote repository, already at correct state",
 				slog.String("url", string(s.Repository.CloneURL)),
 				slog.String("reference", s.DeployConfig.Reference))
 		} else {
@@ -130,7 +130,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 
 	// Skip UpdateRepository if the previous run already cloned/updated with the same URL and reference
 	if skipCloneUpdate {
-		stageLog.Debug("skipping checkout (already at correct reference)",
+		stageLog.Debug("skipping checkout, already at correct reference",
 			slog.String("reference", s.DeployConfig.Reference),
 			slog.String("path", s.Repository.PathExternal))
 
