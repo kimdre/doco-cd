@@ -329,7 +329,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 	if deletionEvent, eErr := webhook.IsBranchOrTagDeletionEvent(r, payload, provider); eErr == nil && deletionEvent {
 		errMsg = "branch or tag deletion event received, skipping webhook event"
-		jobLog.Debug(errMsg)
+		jobLog.Info(errMsg)
 		JSONResponse(w, errMsg, jobID, http.StatusAccepted)
 
 		return
