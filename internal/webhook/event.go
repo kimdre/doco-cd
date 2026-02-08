@@ -31,8 +31,8 @@ func IsBranchOrTagDeletionEvent(r *http.Request, payload ParsedPayload, provider
 			return false, nil
 		}
 
-		if payload.After != ZeroSHA && payload.Before != ZeroSHA {
-			return false, nil
+		if payload.Before != ZeroSHA && payload.After == ZeroSHA {
+			return true, nil
 		}
 
 		return payload.RefType == "branch" || payload.RefType == "tag", nil
