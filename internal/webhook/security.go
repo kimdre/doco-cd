@@ -24,14 +24,16 @@ const (
 	Gitlab
 	Gitea
 	Gogs
+	Forgejo
 )
 
 // ScmProviderSecurityHeaders maps ScmProvider to their respective security header names.
 var ScmProviderSecurityHeaders = map[ScmProvider]string{
-	Github: "X-Hub-Signature-256",
-	Gitlab: "X-Gitlab-Token", // #nosec G101
-	Gitea:  "X-Gitea-Signature",
-	Gogs:   "X-Gogs-Signature",
+	Github:  "X-Hub-Signature-256",
+	Gitlab:  "X-Gitlab-Token", // #nosec G101
+	Gitea:   "X-Gitea-Signature",
+	Gogs:    "X-Gogs-Signature",
+	Forgejo: "X-Forgejo-Signature",
 }
 
 func GenerateHMAC(payload []byte, secretKey string) string {
@@ -74,6 +76,11 @@ func verifyProviderSecret(r *http.Request, payload []byte, secretKey string) (Sc
 		signature := r.Header.Get(ScmProviderSecurityHeaders[Gogs])
 
 		return Gogs, verifySignature(payload, signature, secretKey)
+
+	case r.Header.Get(ScmProviderSecurityHeaders[Forgejo]) != "":
+		signature := r.Header.Get(ScmProviderSecurityHeaders[Forgejo])
+
+		return Forgejo, verifySignature(payload, signature, secretKey)
 
 	default:
 		return Unknown, ErrMissingSecurityHeader
