@@ -54,10 +54,12 @@ func (p *Provider) GetSecret(_ context.Context, ref string) (string, error) {
 	}
 
 	secret, err := p.Client.Secrets().Retrieve(infisical.RetrieveSecretOptions{
-		SecretKey:   key,
-		Environment: env,
-		ProjectID:   projectId,
-		SecretPath:  path,
+		SecretKey:              key,
+		Environment:            env,
+		ProjectID:              projectId,
+		SecretPath:             path,
+		ExpandSecretReferences: true,
+		IncludeImports:         true,
 	})
 	if err != nil {
 		return "", err
