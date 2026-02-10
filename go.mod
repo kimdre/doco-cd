@@ -26,7 +26,7 @@ require (
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/getsops/sops/v3 v3.11.0
 	github.com/go-git/go-billy/v5 v5.7.0
-	github.com/go-git/go-git/v5 v5.16.4
+	github.com/go-git/go-git/v5 v5.16.5
 	github.com/google/uuid v1.6.0
 	github.com/infisical/go-sdk v0.6.8
 	github.com/joho/godotenv v1.5.1
