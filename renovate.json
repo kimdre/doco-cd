@@ -29,7 +29,7 @@
     {
       "groupName": "Golang",
       "matchDatasources": ["golang-version", "docker"],
-      "matchPackagePatterns": ["^golang$"]
+      "matchPackageNames": ["golang"]
     }
   ],
   "customManagers": [
