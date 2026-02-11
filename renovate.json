@@ -3,54 +3,91 @@
   "extends": [
     "config:best-practices"
   ],
-  "dependencyDashboardLabels": ["dependencies"],
-  "labels": ["dependencies"],
+  "dependencyDashboardLabels": [
+    "dependencies"
+  ],
+  "labels": [
+    "dependencies"
+  ],
   "timezone": "Europe/Berlin",
-  "schedule": ["after 3am and before 7am"],
-  "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
+  "schedule": [
+    "after 3am and before 7am"
+  ],
+  "postUpdateOptions": [
+    "gomodTidy",
+    "gomodUpdateImportPaths"
+  ],
   "packageRules": [
     {
-      "matchUpdateTypes": ["major"],
+      "matchUpdateTypes": [
+        "major"
+      ],
       "minimumReleaseAge": "2 days"
     },
     {
-      "matchUpdateTypes": ["minor"],
+      "matchUpdateTypes": [
+        "minor"
+      ],
       "minimumReleaseAge": "1 days"
     },
     {
-      "matchUpdateTypes": ["patch", "pin", "digest"],
+      "matchUpdateTypes": [
+        "patch",
+        "pin",
+        "digest"
+      ],
       "automerge": true
     },
     {
-      "matchDatasources": ["docker"],
-      "matchFileNames": ["docker-compose.yml"],
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchFileNames": [
+        "docker-compose.yml"
+      ],
       "pinDigests": false
     },
     {
       "description": "Disable built-in Go version updates from gomod manager",
-      "matchManagers": ["gomod"],
-      "matchDepTypes": ["golang"],
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchDepTypes": [
+        "golang"
+      ],
       "enabled": false
     },
     {
       "description": "Disable built-in golang image updates from dockerfile manager",
-      "matchManagers": ["dockerfile"],
-      "matchPackageNames": ["golang"],
+      "matchManagers": [
+        "dockerfile"
+      ],
+      "matchPackageNames": [
+        "golang"
+      ],
       "enabled": false
     },
     {
       "description": "Group Go version updates from go.mod and Dockerfile",
       "groupName": "golang",
-      "matchManagers": ["regex"],
-      "matchDepNames": ["golang"]
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepNames": [
+        "golang"
+      ]
     }
   ],
   "customManagers": [
     {
       "customType": "regex",
       "description": "Match Go version in go.mod",
-      "managerFilePatterns": ["go\\.mod$"],
-      "matchStrings": ["(?m)^go (?<currentValue>\\S+)"],
+      "managerFilePatterns": [
+        "go\\.mod$"
+      ],
+      "matchStrings": [
+        "(?m)^go (?<currentValue>\\S+)"
+      ],
       "depNameTemplate": "golang",
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"
@@ -58,8 +95,12 @@
     {
       "customType": "regex",
       "description": "Match golang image version in Dockerfile",
-      "managerFilePatterns": ["Dockerfile$"],
-      "matchStrings": ["FROM golang:(?<currentValue>[^@\\s]+)(?:@(?<currentDigest>sha256:[a-f0-9]+))?"],
+      "managerFilePatterns": [
+        "Dockerfile$"
+      ],
+      "matchStrings": [
+        "FROM golang:(?<currentValue>[^@\\s]+)(?:@(?<currentDigest>sha256:[a-f0-9]+))?"
+      ],
       "depNameTemplate": "golang",
       "datasourceTemplate": "docker"
     }
