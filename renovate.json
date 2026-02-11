@@ -27,9 +27,27 @@
       "pinDigests": false
     },
     {
+      "description": "Disable built-in Go version updates from gomod manager",
+      "matchManagers": ["gomod"],
+      "matchDepTypes": ["golang"],
+      "enabled": false
+    },
+    {
       "description": "Group Go version updates from go.mod and Dockerfile",
       "groupName": "golang",
-      "matchDepNames": ["go", "golang"]
+      "matchDepNames": ["golang"]
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Match Go version in go.mod using Docker datasource",
+      "managerFilePatterns": ["go\\.mod$"],
+      "matchStrings": ["(?m)^go (?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      "depNameTemplate": "golang",
+      "packageNameTemplate": "golang",
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
     }
   ]
 }
