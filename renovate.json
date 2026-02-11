@@ -38,5 +38,14 @@
       "matchPackageNames": ["golang"],
       "matchDepNames": ["golang"]
     }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/go.mod$/"],
+      "matchStrings": ["\\sgo (?<currentValue>.+?)\\s"],
+      "depNameTemplate": "golang",
+      "datasourceTemplate": "golang-version"
+    }
   ]
 }
