@@ -41,13 +41,10 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Match Go version in go.mod using Docker datasource",
-      "managerFilePatterns": ["go\\.mod$"],
-      "matchStrings": ["(?m)^go (?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      "managerFilePatterns": ["/go.mod$/"],
+      "matchStrings": ["\\sgo (?<currentValue>.+?)\\s"],
       "depNameTemplate": "golang",
-      "packageNameTemplate": "golang",
-      "datasourceTemplate": "docker",
-      "versioningTemplate": "docker"
+      "datasourceTemplate": "golang-version"
     }
   ]
 }
