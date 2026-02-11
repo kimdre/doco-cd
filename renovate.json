@@ -3,40 +3,70 @@
   "extends": [
     "config:best-practices"
   ],
-  "dependencyDashboardLabels": ["dependencies"],
-  "labels": ["dependencies"],
+  "dependencyDashboardLabels": [
+    "dependencies"
+  ],
+  "labels": [
+    "dependencies"
+  ],
   "timezone": "Europe/Berlin",
-  "schedule": ["after 3am and before 7am"],
-  "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
+  "schedule": [
+    "after 3am and before 7am"
+  ],
+  "postUpdateOptions": [
+    "gomodTidy",
+    "gomodUpdateImportPaths"
+  ],
   "packageRules": [
     {
-      "matchUpdateTypes": ["major"],
+      "matchUpdateTypes": [
+        "major"
+      ],
       "minimumReleaseAge": "2 days"
     },
     {
-      "matchUpdateTypes": ["minor"],
+      "matchUpdateTypes": [
+        "minor"
+      ],
       "minimumReleaseAge": "1 days"
     },
     {
-      "matchUpdateTypes": ["patch", "pin", "digest"],
+      "matchUpdateTypes": [
+        "patch",
+        "pin",
+        "digest"
+      ],
       "automerge": true
     },
     {
-      "matchDatasources": ["docker"],
-      "matchFileNames": ["docker-compose.yml"],
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchFileNames": [
+        "docker-compose.yml"
+      ],
       "pinDigests": false
     },
     {
       "groupName": "Golang",
-      "matchDatasources": ["golang-version", "docker"],
-      "matchPackagePatterns": ["^golang$"]
+      "matchDatasources": [
+        "golang-version",
+        "docker"
+      ],
+      "matchPackageNames": [
+        "/^golang$/"
+      ]
     }
   ],
   "customManagers": [
     {
       "customType": "regex",
-      "managerFilePatterns": ["/go.mod$/"],
-      "matchStrings": ["\\sgo (?<currentValue>.+?)\\s"],
+      "managerFilePatterns": [
+        "/go.mod$/"
+      ],
+      "matchStrings": [
+        "\\sgo (?<currentValue>.+?)\\s"
+      ],
       "depNameTemplate": "golang",
       "datasourceTemplate": "golang-version"
     }
