@@ -25,6 +25,11 @@
       "matchDatasources": ["docker"],
       "matchFileNames": ["docker-compose.yml"],
       "pinDigests": false
+    },
+    {
+      "groupName": "Golang",
+      "matchDatasources": ["golang-version", "docker"],
+      "matchPackagePatterns": ["^golang$"]
     }
   ],
   "customManagers": [
