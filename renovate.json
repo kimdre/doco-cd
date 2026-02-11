@@ -35,8 +35,8 @@
     {
       "description": "Group Go version updates from go.mod and Dockerfile",
       "groupName": "golang",
-      "matchDepNames": ["golang"],
-      "matchDatasources": ["golang-version", "docker"]
+      "matchPackageNames": ["golang"],
+      "matchDepNames": ["golang"]
     }
   ],
   "customManagers": [
