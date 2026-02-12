@@ -17,7 +17,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.1
 	github.com/bitwarden/sdk-go v1.0.2 // optional, excluded with nobitwarden build tag
 	github.com/caarlos0/env/v11 v11.3.1
-	github.com/compose-spec/compose-go/v2 v2.9.1
+	github.com/compose-spec/compose-go/v2 v2.10.1
 	github.com/containerd/errdefs v1.0.0
 	github.com/creasty/defaults v1.8.0
 	github.com/distribution/reference v0.6.0
@@ -298,6 +298,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.9.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
+	go.yaml.in/yaml/v4 v4.0.0-rc.3 // indirect
 	golang.org/x/mod v0.33.0 // indirect
 	golang.org/x/net v0.50.0 // indirect
 	golang.org/x/oauth2 v0.31.0 // indirect
