@@ -57,7 +57,7 @@ services:
       retries: 30
       start_period: 5s
       test: 'wget --spider  http://127.0.0.1:8200/v1/sys/seal-status || exit 1'
-      timeout: 10s
+      timeout: 5s
     volumes:
       - bao_init:/init
     configs:
