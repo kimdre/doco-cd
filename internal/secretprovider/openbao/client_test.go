@@ -32,6 +32,7 @@ var testCredentials = struct {
 
 // setupOpenBaoContainers sets up the OpenBao test containers and returns the site URL and access token.
 func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
+	t.Helper()
 	t.Log("starting OpenBao test container")
 
 	ctx := context.Background()
