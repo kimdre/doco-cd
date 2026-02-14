@@ -2,7 +2,6 @@ package openbao
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"path/filepath"
 	"testing"
@@ -36,7 +35,7 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 	t.Helper()
 	t.Log("starting OpenBao test container")
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Start OpenBao container, mounting bao.conf
 	stack, err := compose.NewDockerCompose(filepath.Join("testdata", "openbao.compose.yml"))
