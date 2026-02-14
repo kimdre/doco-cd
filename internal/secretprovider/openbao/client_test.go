@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/testcontainers/testcontainers-go/modules/compose"
+	"github.com/testcontainers/testcontainers-go/wait"
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
@@ -42,7 +44,11 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 		t.Fatalf("failed to create stack: %v", err)
 	}
 
-	err = stack.Up(ctx, compose.Wait(true))
+	err = stack.
+		WaitForService("vault",
+			wait.ForListeningPort("8200/tcp").
+				WithStartupTimeout(2*time.Minute)).
+		Up(ctx, compose.Wait(true))
 	if err != nil {
 		t.Fatalf("failed to start stack: %v", err)
 	}
