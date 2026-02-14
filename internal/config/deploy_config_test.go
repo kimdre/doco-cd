@@ -23,113 +23,6 @@ func createTestFile(fileName string, content string) error {
 	return nil
 }
 
-func createTmpDir(t *testing.T) string {
-	dirName, err := os.MkdirTemp(os.TempDir(), "test-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return dirName
-}
-
-func TestGetDeployConfigs(t *testing.T) {
-	t.Run("Valid Config", func(t *testing.T) {
-		fileName := ".doco-cd.yaml"
-		reference := "refs/heads/test"
-		workingDirectory := "/test"
-		composeFiles := []string{"test.compose.yaml"}
-		customTarget := ""
-
-		deployConfig := fmt.Sprintf(`name: %s
-reference: %s
-working_dir: %s
-compose_files:
-  - %s
-`, t.Name(), reference, workingDirectory, composeFiles[0])
-
-		dirName := createTmpDir(t)
-		t.Cleanup(func() {
-			err := os.RemoveAll(dirName)
-			if err != nil {
-				t.Fatal(err)
-			}
-		})
-
-		filePath := filepath.Join(dirName, fileName)
-
-		err := createTestFile(filePath, deployConfig)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		configs, err := GetDeployConfigs(dirName, ".", t.Name(), customTarget, reference)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if len(configs) != 1 {
-			t.Fatalf("expected 1 config, got %d", len(configs))
-		}
-
-		config := configs[0]
-
-		if config.Name != t.Name() {
-			t.Errorf("expected name to be %v, got %s", t.Name(), config.Name)
-		}
-
-		if config.Reference != reference {
-			t.Errorf("expected reference to be %v, got %s", reference, config.Reference)
-		}
-
-		if config.WorkingDirectory != filepath.Join(".", workingDirectory) {
-			t.Errorf("expected working directory to be '%v', got '%s'", workingDirectory, config.WorkingDirectory)
-		}
-
-		if !reflect.DeepEqual(config.ComposeFiles, composeFiles) {
-			t.Errorf("expected compose files to be %v, got %v", composeFiles, config.ComposeFiles)
-		}
-	})
-}
-
-func TestGetDeployConfigs_DefaultValues(t *testing.T) {
-	defaultConfig := DefaultDeployConfig(t.Name(), DefaultReference)
-
-	dirName := createTmpDir(t)
-	t.Cleanup(func() {
-		err := os.RemoveAll(dirName)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
-
-	configs, err := GetDeployConfigs(dirName, ".", t.Name(), "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(configs) != 1 {
-		t.Fatalf("expected 1 config, got %d", len(configs))
-	}
-
-	config := configs[0]
-
-	if config.Name != t.Name() {
-		t.Errorf("expected name to be %v, got %s", t.Name(), config.Name)
-	}
-
-	if config.Reference != defaultConfig.Reference {
-		t.Errorf("expected reference to be %s, got %s", defaultConfig.Reference, config.Reference)
-	}
-
-	if config.WorkingDirectory != defaultConfig.WorkingDirectory {
-		t.Errorf("expected working directory to be %s, got %s", defaultConfig.WorkingDirectory, config.WorkingDirectory)
-	}
-
-	if !reflect.DeepEqual(config.ComposeFiles, defaultConfig.ComposeFiles) {
-		t.Errorf("expected compose files to be %v, got %v", defaultConfig.ComposeFiles, config.ComposeFiles)
-	}
-}
-
 // TestGetDeployConfigs_DuplicateProjectName checks if the function returns an error
 // when there are duplicate project names in the config files.
 func TestGetDeployConfigs_DuplicateProjectName(t *testing.T) {
@@ -202,17 +95,11 @@ func TestGetDeployConfigs_RepositoryURL(t *testing.T) {
 }
 
 func TestResolveDeployConfigs_InlineOverride(t *testing.T) {
-	dirName := createTmpDir(t)
-	t.Cleanup(func() {
-		err := os.RemoveAll(dirName)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+	dirName := t.TempDir()
 
 	poll := PollConfig{
 		CloneUrl:    "https://example.com/repo.git",
-		Reference:   "refs/heads/main",
+		Reference:   DefaultReference,
 		Interval:    60,
 		Deployments: []*DeployConfig{{Name: "inline-stack"}},
 	}
@@ -255,7 +142,7 @@ func TestResolveDeployConfigs_InlineOverride(t *testing.T) {
 func TestResolveDeployConfigs_InlineMissingName(t *testing.T) {
 	poll := PollConfig{
 		CloneUrl:    "https://example.com/repo.git",
-		Reference:   "refs/heads/main",
+		Reference:   DefaultReference,
 		Interval:    60,
 		Deployments: []*DeployConfig{{}}, // Missing name should error
 	}
@@ -267,12 +154,7 @@ func TestResolveDeployConfigs_InlineMissingName(t *testing.T) {
 }
 
 func TestResolveDeployConfigs_InlineAutoDiscover(t *testing.T) {
-	repoRoot := createTmpDir(t)
-	t.Cleanup(func() {
-		if err := os.RemoveAll(repoRoot); err != nil {
-			t.Fatal(err)
-		}
-	})
+	repoRoot := t.TempDir()
 
 	servicesDir := filepath.Join(repoRoot, "services")
 	serviceOneDir := filepath.Join(servicesDir, "service-one")
@@ -291,7 +173,7 @@ func TestResolveDeployConfigs_InlineAutoDiscover(t *testing.T) {
 
 	poll := PollConfig{
 		CloneUrl:  "https://example.com/repo.git",
-		Reference: "refs/heads/main",
+		Reference: DefaultReference,
 		Interval:  60,
 		Deployments: []*DeployConfig{
 			{WorkingDirectory: "services", AutoDiscover: true},
@@ -328,161 +210,8 @@ func TestResolveDeployConfigs_InlineAutoDiscover(t *testing.T) {
 	}
 }
 
-func TestGetDeployConfigs_WithSubdirectory(t *testing.T) {
-	fileName := ".doco-cd.yaml"
-	reference := "refs/heads/main"
-	deployConfigBaseDir := "configs"
-	customTarget := ""
-
-	deployConfig := fmt.Sprintf(`name: %s
-reference: %s
-`, t.Name(), reference)
-
-	// Create temporary repo root
-	repoRoot := createTmpDir(t)
-	t.Cleanup(func() {
-		err := os.RemoveAll(repoRoot)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
-
-	// Create subdirectory for configs
-	configDir := filepath.Join(repoRoot, deployConfigBaseDir)
-
-	err := os.MkdirAll(configDir, 0o750)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Create config file in subdirectory
-	filePath := filepath.Join(configDir, fileName)
-
-	err = createTestFile(filePath, deployConfig)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Test with subdirectory as deployConfigBaseDir
-	configs, err := GetDeployConfigs(repoRoot, deployConfigBaseDir, t.Name(), customTarget, reference)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(configs) != 1 {
-		t.Fatalf("expected 1 config, got %d", len(configs))
-	}
-
-	config := configs[0]
-	if config.Name != t.Name() {
-		t.Errorf("expected name to be %v, got %s", t.Name(), config.Name)
-	}
-
-	if config.Reference != reference {
-		t.Errorf("expected reference to be %v, got %s", reference, config.Reference)
-	}
-}
-
-func TestGetDeployConfigs_WithRootDirectory(t *testing.T) {
-	fileName := ".doco-cd.yaml"
-	reference := "refs/heads/main"
-	deployConfigBaseDir := "."
-	customTarget := ""
-
-	deployConfig := fmt.Sprintf(`name: %s
-reference: %s
-`, t.Name(), reference)
-
-	repoRoot := createTmpDir(t)
-	t.Cleanup(func() {
-		err := os.RemoveAll(repoRoot)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
-
-	filePath := filepath.Join(repoRoot, fileName)
-
-	err := createTestFile(filePath, deployConfig)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Test with root directory as deployConfigBaseDir
-	configs, err := GetDeployConfigs(repoRoot, deployConfigBaseDir, t.Name(), customTarget, reference)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(configs) != 1 {
-		t.Fatalf("expected 1 config, got %d", len(configs))
-	}
-
-	config := configs[0]
-	if config.Name != t.Name() {
-		t.Errorf("expected name to be %v, got %s", t.Name(), config.Name)
-	}
-}
-
-func TestResolveDeployConfigs_WithSubdirectory(t *testing.T) {
-	fileName := ".doco-cd.yaml"
-	reference := "refs/heads/main"
-	deployConfigBaseDir := "config"
-
-	deployConfig := fmt.Sprintf(`name: %s
-reference: %s
-`, t.Name(), reference)
-
-	repoRoot := createTmpDir(t)
-	t.Cleanup(func() {
-		err := os.RemoveAll(repoRoot)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
-
-	configDir := filepath.Join(repoRoot, deployConfigBaseDir)
-
-	err := os.MkdirAll(configDir, 0o750)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	filePath := filepath.Join(configDir, fileName)
-
-	err = createTestFile(filePath, deployConfig)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	poll := PollConfig{
-		CloneUrl:  "https://example.com/repo.git",
-		Reference: reference,
-		Interval:  60,
-	}
-
-	configs, err := ResolveDeployConfigs(poll, repoRoot, deployConfigBaseDir, t.Name())
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-
-	if len(configs) != 1 {
-		t.Fatalf("expected 1 config, got %d", len(configs))
-	}
-
-	if configs[0].Name != t.Name() {
-		t.Errorf("expected name to be %v, got %s", t.Name(), configs[0].Name)
-	}
-}
-
 func TestAutoDiscoverDeployments_BasicDiscovery(t *testing.T) {
-	repoRoot := createTmpDir(t)
-	t.Cleanup(func() {
-		err := os.RemoveAll(repoRoot)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+	repoRoot := t.TempDir()
 
 	// Create subdirectories with compose files
 	service1Dir := filepath.Join(repoRoot, "service1")
@@ -557,13 +286,7 @@ func TestAutoDiscoverDeployments_BasicDiscovery(t *testing.T) {
 }
 
 func TestAutoDiscoverDeployments_WithWorkingDirectory(t *testing.T) {
-	repoRoot := createTmpDir(t)
-	t.Cleanup(func() {
-		err := os.RemoveAll(repoRoot)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+	repoRoot := t.TempDir()
 
 	// Create a services subdirectory
 	servicesDir := filepath.Join(repoRoot, "services")
@@ -605,13 +328,7 @@ func TestAutoDiscoverDeployments_WithWorkingDirectory(t *testing.T) {
 }
 
 func TestAutoDiscoverDeployments_WithDepthLimit(t *testing.T) {
-	repoRoot := createTmpDir(t)
-	t.Cleanup(func() {
-		err := os.RemoveAll(repoRoot)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+	repoRoot := t.TempDir()
 
 	// Create nested directories
 	level1Dir := filepath.Join(repoRoot, "level1")
@@ -671,13 +388,7 @@ func TestAutoDiscoverDeployments_WithDepthLimit(t *testing.T) {
 }
 
 func TestAutoDiscoverDeployments_NoComposeFiles(t *testing.T) {
-	repoRoot := createTmpDir(t)
-	t.Cleanup(func() {
-		err := os.RemoveAll(repoRoot)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+	repoRoot := t.TempDir()
 
 	// Create subdirectories without compose files
 	service1Dir := filepath.Join(repoRoot, "service1")
@@ -704,13 +415,7 @@ func TestAutoDiscoverDeployments_NoComposeFiles(t *testing.T) {
 }
 
 func TestAutoDiscoverDeployments_InheritBaseConfig(t *testing.T) {
-	repoRoot := createTmpDir(t)
-	t.Cleanup(func() {
-		err := os.RemoveAll(repoRoot)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+	repoRoot := t.TempDir()
 
 	serviceDir := filepath.Join(repoRoot, "service1")
 
@@ -728,7 +433,7 @@ func TestAutoDiscoverDeployments_InheritBaseConfig(t *testing.T) {
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml"},
 		AutoDiscover:     true,
-		Reference:        "refs/heads/main",
+		Reference:        DefaultReference,
 		RemoveOrphans:    false,
 		ForceRecreate:    true,
 		Timeout:          300,

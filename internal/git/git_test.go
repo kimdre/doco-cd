@@ -1,4 +1,4 @@
-package git
+package git_test
 
 import (
 	"errors"
@@ -9,6 +9,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
+	"github.com/kimdre/doco-cd/internal/git"
+
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/encryption"
 )
@@ -18,7 +20,7 @@ const (
 	cloneUrlTest        = "https://github.com/kimdre/doco-cd_tests.git"
 	cloneUrlSSH         = "git@github.com:kimdre/doco-cd.git"
 	remoteMainBranch    = "refs/remotes/origin/main"
-	validBranchRef      = MainBranch
+	validBranchRef      = git.MainBranch
 	validBranchRefShort = "main"
 	validTagRef         = "refs/tags/v0.15.0"
 	validTagRefShort    = "v0.15.0"
@@ -49,7 +51,7 @@ func TestHttpTokenAuth(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			auth := HttpTokenAuth(tc.token)
+			auth := git.HttpTokenAuth(tc.token)
 
 			if tc.expectNil && auth != nil {
 				t.Fatal("Expected nil auth for empty token")
@@ -103,20 +105,20 @@ func TestCloneRepository(t *testing.T) {
 
 			var auth transport.AuthMethod
 
-			if IsSSH(tc.cloneUrl) {
+			if git.IsSSH(tc.cloneUrl) {
 				t.Log("Using SSH auth for", tc.cloneUrl)
 
-				auth, err = SSHAuth(tc.privateKey, tc.passphrase)
+				auth, err = git.SSHAuth(tc.privateKey, tc.passphrase)
 				if err != nil {
 					t.Fatalf("Failed to get SSH auth: %v", err)
 				}
 			} else if c.GitAccessToken != "" {
 				t.Log("Using HTTP token auth for", tc.cloneUrl)
 
-				auth = HttpTokenAuth(c.GitAccessToken)
+				auth = git.HttpTokenAuth(c.GitAccessToken)
 			}
 
-			repo, err := CloneRepository(t.TempDir(), tc.cloneUrl, validBranchRef, false, c.HttpProxy, auth, c.GitCloneSubmodules)
+			repo, err := git.CloneRepository(t.TempDir(), tc.cloneUrl, validBranchRef, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 			if err != nil {
 				t.Fatalf("Failed to clone repository: %v", err)
 			}
@@ -199,7 +201,7 @@ func TestUpdateRepository(t *testing.T) {
 			privateRepo: false,
 			branchRef:   invalidRef,
 			expectedRef: "",
-			expectedErr: ErrInvalidReference,
+			expectedErr: git.ErrInvalidReference,
 		},
 		{
 			name:        "Invalid tag ref",
@@ -207,7 +209,7 @@ func TestUpdateRepository(t *testing.T) {
 			privateRepo: false,
 			branchRef:   invalidTagRef,
 			expectedRef: "",
-			expectedErr: ErrInvalidReference,
+			expectedErr: git.ErrInvalidReference,
 		},
 		{
 			name:        "Private Repository",
@@ -230,20 +232,20 @@ func TestUpdateRepository(t *testing.T) {
 
 			var auth transport.AuthMethod
 
-			if IsSSH(tc.cloneUrl) {
+			if git.IsSSH(tc.cloneUrl) {
 				t.Logf("Using SSH auth for %s", tc.cloneUrl)
 
-				auth, err = SSHAuth(c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
+				auth, err = git.SSHAuth(c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
 				if err != nil {
 					t.Fatalf("Failed to get SSH auth: %v", err)
 				}
 			} else if tc.privateRepo && c.GitAccessToken != "" {
 				t.Logf("Using HTTP token auth for %s", tc.cloneUrl)
 
-				auth = HttpTokenAuth(c.GitAccessToken)
+				auth = git.HttpTokenAuth(c.GitAccessToken)
 			}
 
-			repo, err := CloneRepository(t.TempDir(), tc.cloneUrl, MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
+			repo, err := git.CloneRepository(t.TempDir(), tc.cloneUrl, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 			if err != nil {
 				t.Fatalf("Failed to clone repository %s: %v", tc.cloneUrl, err)
 			}
@@ -257,7 +259,7 @@ func TestUpdateRepository(t *testing.T) {
 				t.Fatalf("Failed to get worktree: %v", err)
 			}
 
-			repo, err = UpdateRepository(worktree.Filesystem.Root(), tc.cloneUrl, tc.branchRef, false, c.HttpProxy, auth, c.GitCloneSubmodules)
+			repo, err = git.UpdateRepository(worktree.Filesystem.Root(), tc.cloneUrl, tc.branchRef, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 			if err != nil {
 				if !errors.Is(err, tc.expectedErr) {
 					t.Fatalf("Expected error %v, got %v", tc.expectedErr, err)
@@ -307,20 +309,20 @@ func TestGetReferenceSet(t *testing.T) {
 
 	var auth transport.AuthMethod
 
-	if IsSSH(url) {
+	if git.IsSSH(url) {
 		t.Log("Using SSH auth for", url)
 
-		auth, err = SSHAuth(c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
+		auth, err = git.SSHAuth(c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
 		if err != nil {
 			t.Fatalf("Failed to get SSH auth: %v", err)
 		}
 	} else if c.GitAccessToken != "" {
 		t.Log("Using HTTP token auth for", url)
 
-		auth = HttpTokenAuth(c.GitAccessToken)
+		auth = git.HttpTokenAuth(c.GitAccessToken)
 	}
 
-	repo, err := CloneRepository(t.TempDir(), url, MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
+	repo, err := git.CloneRepository(t.TempDir(), url, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -329,21 +331,21 @@ func TestGetReferenceSet(t *testing.T) {
 		t.Fatal("Repository is nil")
 	}
 
-	refSet, err := GetReferenceSet(repo, MainBranch)
+	refSet, err := git.GetReferenceSet(repo, git.MainBranch)
 	if err != nil {
 		t.Fatalf("Failed to get reference set: %v", err)
 	}
 
-	if refSet.localRef == "" || refSet.remoteRef == "" {
+	if refSet.LocalRef == "" || refSet.RemoteRef == "" {
 		t.Fatal("Reference set is incomplete")
 	}
 
-	if refSet.localRef.String() != MainBranch {
-		t.Fatalf("Expected local reference %s, got %s", MainBranch, refSet.localRef.String())
+	if refSet.LocalRef.String() != git.MainBranch {
+		t.Fatalf("Expected local reference %s, got %s", git.MainBranch, refSet.LocalRef.String())
 	}
 
-	if refSet.remoteRef.String() != remoteMainBranch {
-		t.Fatalf("Expected remote reference %s, got %s", remoteMainBranch, refSet.remoteRef.String())
+	if refSet.RemoteRef.String() != remoteMainBranch {
+		t.Fatalf("Expected remote reference %s, got %s", remoteMainBranch, refSet.RemoteRef.String())
 	}
 }
 
@@ -356,16 +358,16 @@ func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 	url := cloneUrlTest
 
 	var auth transport.AuthMethod
-	if IsSSH(url) {
-		auth, err = SSHAuth(c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
+	if git.IsSSH(url) {
+		auth, err = git.SSHAuth(c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
 		if err != nil {
 			t.Fatalf("Failed to get SSH auth: %v", err)
 		}
 	} else if c.GitAccessToken != "" {
-		auth = HttpTokenAuth(c.GitAccessToken)
+		auth = git.HttpTokenAuth(c.GitAccessToken)
 	}
 
-	repo, err := CloneRepository(t.TempDir(), url, MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
+	repo, err := git.CloneRepository(t.TempDir(), url, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -387,7 +389,7 @@ func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 		t.Fatalf("Failed to create new file: %v", err)
 	}
 
-	repo, err = UpdateRepository(worktree.Filesystem.Root(), url, "alternative", false, c.HttpProxy, auth, c.GitCloneSubmodules)
+	repo, err = git.UpdateRepository(worktree.Filesystem.Root(), url, "alternative", false, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
 		t.Fatalf("Failed to update repository: %v", err)
 	}
@@ -425,20 +427,20 @@ func TestGetLatestCommit(t *testing.T) {
 
 	var auth transport.AuthMethod
 
-	if IsSSH(url) {
+	if git.IsSSH(url) {
 		t.Log("Using SSH auth for", url)
 
-		auth, err = SSHAuth(c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
+		auth, err = git.SSHAuth(c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
 		if err != nil {
 			t.Fatalf("Failed to get SSH auth: %v", err)
 		}
 	} else if c.GitAccessToken != "" {
 		t.Log("Using HTTP token auth for", url)
 
-		auth = HttpTokenAuth(c.GitAccessToken)
+		auth = git.HttpTokenAuth(c.GitAccessToken)
 	}
 
-	repo, err := CloneRepository(t.TempDir(), url, MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
+	repo, err := git.CloneRepository(t.TempDir(), url, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -447,7 +449,7 @@ func TestGetLatestCommit(t *testing.T) {
 		t.Fatal("Repository is nil")
 	}
 
-	commit, err := GetLatestCommit(repo, MainBranch)
+	commit, err := git.GetLatestCommit(repo, git.MainBranch)
 	if err != nil {
 		t.Fatalf("Failed to get latest commit: %v", err)
 	}
@@ -477,21 +479,21 @@ func TestGetChangedFilesBetweenCommits(t *testing.T) {
 	url := cloneUrlTest
 
 	var auth transport.AuthMethod
-	if IsSSH(url) {
-		auth, err = SSHAuth(c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
+	if git.IsSSH(url) {
+		auth, err = git.SSHAuth(c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
 		if err != nil {
 			t.Fatalf("Failed to get SSH auth: %v", err)
 		}
 	} else if c.GitAccessToken != "" {
-		auth = HttpTokenAuth(c.GitAccessToken)
+		auth = git.HttpTokenAuth(c.GitAccessToken)
 	}
 
-	repo, err := CloneRepository(tmpDir, url, MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
+	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
 
-	changedFiles, err := GetChangedFilesBetweenCommits(repo, commitOld, commitNew)
+	changedFiles, err := git.GetChangedFilesBetweenCommits(repo, commitOld, commitNew)
 	if err != nil {
 		t.Fatalf("Failed to get changed files: %v", err)
 	}
@@ -518,7 +520,7 @@ func TestGetChangedFilesBetweenCommits(t *testing.T) {
 	t.Logf("Changed files: %v", changedFilePaths)
 	t.Logf("testDir: %s", expectedChangedDirectory)
 
-	hasChanged, err := HasChangesInSubdir(changedFiles, tmpDir, expectedChangedDirectory)
+	hasChanged, err := git.HasChangesInSubdir(changedFiles, tmpDir, expectedChangedDirectory)
 	if err != nil {
 		t.Fatalf("Failed to check changes in subdir: %v", err)
 	}
@@ -588,7 +590,7 @@ IuAF/rIpohukaUrxMR9UAAAADmtpbUBraW0tZmVkb3JhAQIDBAUGBw==
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			auth, err := SSHAuth(tc.privateKey, tc.passphrase)
+			auth, err := git.SSHAuth(tc.privateKey, tc.passphrase)
 			if err != nil {
 				if tc.expectedErr == "" {
 					t.Fatalf("Expected no error, got %v", err)
@@ -636,7 +638,7 @@ func TestConvertSSHUrl(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := convertSSHUrl(tc.sshUrl)
+			result := git.ConvertSSHUrl(tc.sshUrl)
 			if tc.expected == "" {
 				if result != tc.expected {
 					t.Fatalf("Expected empty string for invalid URL, got %s", result)
