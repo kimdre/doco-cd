@@ -44,7 +44,7 @@ services:
     cap_add:
       - IPC_LOCK
     ports:
-      - "8200:8200"
+      - "8200"  # random port on host to avoid conflicts
     depends_on:
       db:
         condition: service_healthy

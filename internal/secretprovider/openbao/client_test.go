@@ -70,6 +70,12 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 		t.Fatalf("failed to get vault service container: %v", err)
 	}
 
+	// Get the randomized host port mapped to Vault's default port 8200
+	mappedPort, err := svc.MappedPort(ctx, "8200")
+	if err != nil {
+		t.Fatalf("failed to get mapped port: %v", err)
+	}
+
 	// Initialize Vault
 	exitStatus, output, err := svc.Exec(ctx, []string{"vault", "operator", "init", "-key-shares=1", "-key-threshold=1", "-format=json"})
 	if err != nil {
@@ -167,7 +173,7 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 
 	t.Logf("OpenBao container setup complete")
 
-	return "http://localhost:8200", initData.RootToken
+	return "http://localhost:" + mappedPort.Port(), initData.RootToken
 }
 
 func TestProvider_GetSecret_OpenBao(t *testing.T) {
