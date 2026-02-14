@@ -54,7 +54,7 @@ services:
       - VAULT_PG_CONNECTION_URL=postgres://postgres:postgresPW!@db:5432/openbao?sslmode=disable
     healthcheck:
       interval: 2s
-      retries: 10
+      retries: 30
       start_period: 5s
       test: 'wget --spider  http://127.0.0.1:8200/v1/sys/seal-status || exit 1'
       timeout: 10s
