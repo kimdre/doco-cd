@@ -45,7 +45,12 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 
 	err = stack.
 		WaitForService("vault",
-			wait.ForListeningPort("8200/tcp").
+			wait.ForHTTP("/v1/sys/health").
+				WithPort("8200/tcp").
+				WithStatusCodeMatcher(func(status int) bool {
+					// Vault returns 501 when uninitialized, 503 when sealed, and 200 when initialized and unsealed
+					return status == 200 || status == 503 || status == 501
+				}).
 				WithStartupTimeout(2*time.Minute)).
 		Up(ctx, compose.Wait(true))
 	if err != nil {
