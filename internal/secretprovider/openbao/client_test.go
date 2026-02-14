@@ -8,8 +8,9 @@ import (
 	"testing"
 
 	"github.com/docker/docker/pkg/stdcopy"
-	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 	"github.com/testcontainers/testcontainers-go/modules/compose"
+
+	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
 
 var rootCredentials = struct {
