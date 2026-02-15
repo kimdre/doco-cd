@@ -48,14 +48,14 @@ services:
       db:
         condition: service_healthy
     environment:
-      - VAULT_ADDR=http://vault:8200
+      - VAULT_ADDR=http://127.0.0.1:8200
       - VAULT_DISABLE_MLOCK=true
       - VAULT_PG_CONNECTION_URL=postgres://postgres:postgresPW!@db:5432/openbao?sslmode=disable
     healthcheck:
       interval: 2s
       retries: 30
       start_period: 5s
-      test: 'wget --spider  http://vault:8200/v1/sys/seal-status || exit 1'
+      test: 'wget --spider  http://127.0.0.1:8200/v1/sys/seal-status || exit 1'
       timeout: 5s
     volumes:
       - bao_init:/init
