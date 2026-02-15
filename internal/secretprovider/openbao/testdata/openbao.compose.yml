@@ -46,7 +46,7 @@ services:
       - "8200"  # random port on host to avoid conflicts
     depends_on:
       db:
-        condition: service_started
+        condition: service_healthy
     environment:
       - VAULT_ADDR=http://vault:8200
       - VAULT_DISABLE_MLOCK=true

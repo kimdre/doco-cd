@@ -46,8 +46,7 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 
 	err = stack.
 		WaitForService("vault",
-			wait.ForHTTP("/v1/sys/seal-status").
-				WithPort("8200/tcp").
+			wait.ForHealthCheck().
 				WithStartupTimeout(2*time.Minute)).
 		Up(ctx, compose.Wait(true))
 	if err != nil {
