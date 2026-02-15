@@ -40,7 +40,6 @@ services:
   vault:
     image: openbao/openbao:2
     command: ['server', '-config=/openbao/config/bao.conf']
-
     cap_add:
       - IPC_LOCK
     ports:
