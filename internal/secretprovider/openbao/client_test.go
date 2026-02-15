@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/testcontainers/testcontainers-go/modules/compose"
@@ -39,15 +38,16 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 	ctx := context.Background()
 
 	// Start OpenBao container, mounting bao.conf
-	stack, err := compose.NewDockerCompose(filepath.Join("testdata", "openbao.compose.yml"))
+	stack, err := compose.NewDockerComposeWith(
+		compose.WithStackFiles(filepath.Join("testdata", "openbao.compose.yml")),
+	)
 	if err != nil {
 		t.Fatalf("failed to create stack: %v", err)
 	}
 
 	err = stack.
 		WaitForService("vault",
-			wait.ForHealthCheck().
-				WithStartupTimeout(2*time.Minute)).
+			wait.ForHealthCheck()).
 		Up(ctx, compose.Wait(true))
 	if err != nil {
 		t.Fatalf("failed to start stack: %v", err)
@@ -58,8 +58,7 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 
 		if err = stack.Down(ctx,
 			compose.RemoveOrphans(true),
-			compose.RemoveVolumes(true),
-			compose.RemoveImagesLocal); err != nil {
+			compose.RemoveVolumes(true)); err != nil {
 			t.Errorf("failed to stop stack: %v", err)
 		}
 	})
