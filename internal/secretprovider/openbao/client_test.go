@@ -11,6 +11,8 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
+
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
 
@@ -176,6 +178,10 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 }
 
 func TestProvider_GetSecret_OpenBao(t *testing.T) {
+	if swarm.ModeEnabled {
+		t.Skip("Skipping OpenBao tests in swarm mode due to issues with testcontainers.")
+	}
+
 	siteUrl, accessToken := setupOpenBaoContainers(t)
 
 	testCases := []struct {
