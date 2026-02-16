@@ -49,8 +49,8 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 	const maxRetries = 3
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		err = stack.
-			WaitForService("vault",
-				wait.ForHealthCheck()).
+			WaitForService("db", wait.ForHealthCheck()).
+			WaitForService("vault", wait.ForHealthCheck()).
 			Up(ctx, compose.Wait(true))
 		if err == nil {
 			break
