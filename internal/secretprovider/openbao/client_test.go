@@ -178,6 +178,8 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 }
 
 func TestProvider_GetSecret_OpenBao(t *testing.T) {
+	t.Logf("Swarm Mode Enabled: %v", swarm.ModeEnabled)
+
 	if swarm.ModeEnabled {
 		t.Skip("Skipping OpenBao tests in swarm mode due to issues with testcontainers.")
 	}
