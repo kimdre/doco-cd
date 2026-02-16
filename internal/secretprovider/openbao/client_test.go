@@ -270,6 +270,10 @@ func TestProvider_GetSecret_OpenBao(t *testing.T) {
 }
 
 func TestProvider_ResolveSecretReferences_OpenBao(t *testing.T) {
+	if swarm.ModeEnabled {
+		t.Skip("Skipping OpenBao tests in swarm mode due to issues with testcontainers.")
+	}
+
 	siteUrl, accessToken := setupOpenBaoContainers(t)
 
 	testCases := []struct {
@@ -343,6 +347,10 @@ func TestProvider_ResolveSecretReferences_OpenBao(t *testing.T) {
 }
 
 func TestProvider_ResolveCertificate_OpenBao(t *testing.T) {
+	if swarm.ModeEnabled {
+		t.Skip("Skipping OpenBao tests in swarm mode due to issues with testcontainers.")
+	}
+
 	siteUrl, accessToken := setupOpenBaoContainers(t)
 
 	provider, err := NewProvider(t.Context(), siteUrl, accessToken)
