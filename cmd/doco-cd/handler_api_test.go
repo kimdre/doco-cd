@@ -179,7 +179,6 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 					context.Background(),
 					testCompose.RemoveOrphans(true),
 					testCompose.RemoveVolumes(true),
-					testCompose.RemoveImagesLocal,
 				)
 				if err != nil {
 					t.Fatalf("Failed to stop stack: %v", err)

@@ -32,18 +32,22 @@ var testCredentials = struct {
 
 // setupOpenBaoContainers sets up the OpenBao test containers and returns the site URL and access token.
 func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
+	t.Helper()
 	t.Log("starting OpenBao test container")
 
 	ctx := context.Background()
 
 	// Start OpenBao container, mounting bao.conf
-	stack, err := compose.NewDockerCompose(filepath.Join("testdata", "openbao.compose.yml"))
+	stack, err := compose.NewDockerComposeWith(
+		compose.WithStackFiles(filepath.Join("testdata", "openbao.compose.yml")),
+	)
 	if err != nil {
 		t.Fatalf("failed to create stack: %v", err)
 	}
 
 	err = stack.
-		WaitForService("vault", wait.ForListeningPort("8200/tcp")).
+		WaitForService("db", wait.ForHealthCheck()).
+		WaitForService("vault", wait.ForHealthCheck()).
 		Up(ctx, compose.Wait(true))
 	if err != nil {
 		t.Fatalf("failed to start stack: %v", err)
@@ -54,8 +58,7 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 
 		if err = stack.Down(ctx,
 			compose.RemoveOrphans(true),
-			compose.RemoveVolumes(true),
-			compose.RemoveImagesLocal); err != nil {
+			compose.RemoveVolumes(true)); err != nil {
 			t.Errorf("failed to stop stack: %v", err)
 		}
 	})
@@ -64,6 +67,12 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 	svc, err := stack.ServiceContainer(ctx, "vault")
 	if err != nil {
 		t.Fatalf("failed to get vault service container: %v", err)
+	}
+
+	// Get the randomized host port mapped to Vault's default port 8200
+	mappedPort, err := svc.MappedPort(ctx, "8200")
+	if err != nil {
+		t.Fatalf("failed to get mapped port: %v", err)
 	}
 
 	// Initialize Vault
@@ -163,7 +172,7 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 
 	t.Logf("OpenBao container setup complete")
 
-	return "http://localhost:8200", initData.RootToken
+	return "http://localhost:" + mappedPort.Port(), initData.RootToken
 }
 
 func TestProvider_GetSecret_OpenBao(t *testing.T) {
