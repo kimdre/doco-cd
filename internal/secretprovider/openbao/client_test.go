@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/docker/docker/pkg/stdcopy"
@@ -28,6 +29,28 @@ var testCredentials = struct {
 }{
 	username: "test",
 	password: "test123",
+}
+
+var (
+	setupOnce     sync.Once
+	sharedSiteURL string
+	sharedToken   string
+	errSetup      error
+)
+
+// getOpenBaoContainers ensures the OpenBao containers are set up only once.
+func getOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
+	t.Helper()
+
+	setupOnce.Do(func() {
+		sharedSiteURL, sharedToken = setupOpenBaoContainers(t)
+	})
+
+	if errSetup != nil {
+		t.Fatalf("failed to setup OpenBao containers: %v", errSetup)
+	}
+
+	return sharedSiteURL, sharedToken
 }
 
 // setupOpenBaoContainers sets up the OpenBao test containers and returns the site URL and access token.
@@ -176,7 +199,8 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 }
 
 func TestProvider_GetSecret_OpenBao(t *testing.T) {
-	siteUrl, accessToken := setupOpenBaoContainers(t)
+	t.Parallel()
+	siteUrl, accessToken := getOpenBaoContainers(t)
 
 	testCases := []struct {
 		name      string
@@ -264,7 +288,8 @@ func TestProvider_GetSecret_OpenBao(t *testing.T) {
 }
 
 func TestProvider_ResolveSecretReferences_OpenBao(t *testing.T) {
-	siteUrl, accessToken := setupOpenBaoContainers(t)
+	t.Parallel()
+	siteUrl, accessToken := getOpenBaoContainers(t)
 
 	testCases := []struct {
 		name             string
@@ -337,7 +362,8 @@ func TestProvider_ResolveSecretReferences_OpenBao(t *testing.T) {
 }
 
 func TestProvider_ResolveCertificate_OpenBao(t *testing.T) {
-	siteUrl, accessToken := setupOpenBaoContainers(t)
+	t.Parallel()
+	siteUrl, accessToken := getOpenBaoContainers(t)
 
 	provider, err := NewProvider(t.Context(), siteUrl, accessToken)
 	if err != nil {
