@@ -47,7 +47,7 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 
 	err = stack.
 		WaitForService("vault",
-			wait.ForHealthCheck()).
+			wait.ForLog("OpenBao server started!")).
 		Up(ctx, compose.Wait(true))
 	if err != nil {
 		t.Fatalf("failed to start stack: %v", err)
