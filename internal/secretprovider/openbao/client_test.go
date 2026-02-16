@@ -59,7 +59,7 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 		t.Logf("attempt %d: failed to start stack: %v", attempt, err)
 
 		if attempt < maxRetries {
-			t.Logf("retrying in 5 seconds...")
+			t.Logf("retrying in 1 second...")
 			time.Sleep(1 * time.Second)
 		} else {
 			t.Fatalf("failed to start stack after %d attempts: %v", maxRetries, err)
