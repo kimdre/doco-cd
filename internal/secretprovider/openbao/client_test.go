@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/testcontainers/testcontainers-go/modules/compose"
@@ -45,12 +46,24 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 		t.Fatalf("failed to create stack: %v", err)
 	}
 
-	err = stack.
-		WaitForService("vault",
-			wait.ForHealthCheck()).
-		Up(ctx, compose.Wait(true))
-	if err != nil {
-		t.Fatalf("failed to start stack: %v", err)
+	const maxRetries = 3
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		err = stack.
+			WaitForService("vault",
+				wait.ForHealthCheck()).
+			Up(ctx, compose.Wait(true))
+		if err == nil {
+			break
+		}
+
+		t.Logf("attempt %d: failed to start stack: %v", attempt, err)
+
+		if attempt < maxRetries {
+			t.Logf("retrying in 5 seconds...")
+			time.Sleep(1 * time.Second)
+		} else {
+			t.Fatalf("failed to start stack after %d attempts: %v", maxRetries, err)
+		}
 	}
 
 	t.Cleanup(func() {
