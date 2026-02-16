@@ -25,6 +25,7 @@ configs:
 services:
   db:
     image: pgautoupgrade/pgautoupgrade:17-alpine
+    restart: unless-stopped
     environment:
       - POSTGRES_PASSWORD=postgresPW!
       - POSTGRES_USER=postgres
@@ -46,6 +47,7 @@ services:
   vault:
     image: openbao/openbao:2
     command: ['server', '-config=/openbao/config/bao.conf']
+    restart: unless-stopped
     cap_add:
       - IPC_LOCK
     ports:
