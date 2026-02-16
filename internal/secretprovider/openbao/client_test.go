@@ -199,7 +199,6 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 }
 
 func TestProvider_GetSecret_OpenBao(t *testing.T) {
-	t.Parallel()
 	siteUrl, accessToken := getOpenBaoContainers(t)
 
 	testCases := []struct {
@@ -288,7 +287,6 @@ func TestProvider_GetSecret_OpenBao(t *testing.T) {
 }
 
 func TestProvider_ResolveSecretReferences_OpenBao(t *testing.T) {
-	t.Parallel()
 	siteUrl, accessToken := getOpenBaoContainers(t)
 
 	testCases := []struct {
@@ -362,7 +360,6 @@ func TestProvider_ResolveSecretReferences_OpenBao(t *testing.T) {
 }
 
 func TestProvider_ResolveCertificate_OpenBao(t *testing.T) {
-	t.Parallel()
 	siteUrl, accessToken := getOpenBaoContainers(t)
 
 	provider, err := NewProvider(t.Context(), siteUrl, accessToken)
