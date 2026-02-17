@@ -45,7 +45,7 @@ func TestDeploySwarmStack(t *testing.T) {
 	p := webhook.ParsedPayload{
 		Ref:       git.SwarmModeBranch,
 		CommitSHA: "244b6f9a5b3dc546ab3822d9c0744846f539c6ef",
-		Name:      "test",
+		Name:      stackName,
 		FullName:  "kimdre/doco-cd_tests",
 		CloneURL:  cloneUrlTest,
 		Private:   true,

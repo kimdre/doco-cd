@@ -167,11 +167,23 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 				t.Fatalf("failed to create stack: %v", err)
 			}
 
-			err = stack.
-				WaitForService("nginx", wait.ForListeningPort("80/tcp")).
-				Up(ctx, testCompose.Wait(true))
+			// Retry starting the stack up to 3 times
+			const maxRetries = 3
+			for i := 0; i < maxRetries; i++ {
+				err = stack.
+					WaitForService("nginx", wait.ForListeningPort("80/tcp")).
+					Up(ctx, testCompose.Wait(true))
+				if err == nil {
+					break
+				}
+
+				if i < maxRetries-1 {
+					t.Logf("failed to start stack (attempt %d/%d): %v, retrying...", i+1, maxRetries, err)
+				}
+			}
+
 			if err != nil {
-				t.Fatalf("failed to start stack: %v", err)
+				t.Fatalf("failed to start stack after %d attempts: %v", maxRetries, err)
 			}
 
 			t.Cleanup(func() {
