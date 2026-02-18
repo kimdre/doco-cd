@@ -39,7 +39,7 @@ func TestAddHostToKnownHosts(t *testing.T) {
 			}
 
 			// Get the known_hosts file content
-			data, readErr := os.ReadFile(KnownHostsFilePath)
+			data, readErr := os.ReadFile(KnownHostsFilePath) // #nosec G304
 			if readErr != nil {
 				t.Fatalf("Failed to read known_hosts file: %v", readErr)
 			}

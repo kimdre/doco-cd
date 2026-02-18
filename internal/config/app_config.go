@@ -22,7 +22,7 @@ type AppConfig struct {
 	HttpPort                    uint16                 `env:"HTTP_PORT,notEmpty" envDefault:"80" validate:"min=1,max=65535"` // HttpPort is the port the HTTP server will listen on
 	HttpProxyString             string                 `env:"HTTP_PROXY"`                                                    // HttpProxyString is the HTTP proxy URL as a string
 	HttpProxy                   transport.ProxyOptions // HttpProxy is the HTTP proxy configuration parsed from the HttpProxyString
-	ApiSecret                   string                 `env:"API_SECRET"`                                                         // ApiSecret is the secret token used to authenticate with the API
+	ApiSecret                   string                 `env:"API_SECRET"`                                                         // #nosec G117 -- ApiSecret is the secret token used to authenticate with the API
 	ApiSecretFile               string                 `env:"API_SECRET_FILE,file"`                                               // ApiSecretFile is the file containing the ApiSecret
 	WebhookSecret               string                 `env:"WEBHOOK_SECRET"`                                                     // WebhookSecret is the secret token used to authenticate the webhook
 	WebhookSecretFile           string                 `env:"WEBHOOK_SECRET_FILE,file"`                                           // WebhookSecretFile is the file containing the WebhookSecret

@@ -16,7 +16,7 @@ func TestGetRepoName(t *testing.T) {
 			expected: "github.com/kimdre/doco-cd_tests",
 		},
 		{
-			cloneURL: "https://user:password@github.com/kimdre/doco-cd_tests.git",
+			cloneURL: "https://user:password@github.com/kimdre/doco-cd_tests.git", // #nosec G101 -- This is a test URL, not a real token
 			expected: "github.com/kimdre/doco-cd_tests",
 		},
 		{
@@ -39,7 +39,7 @@ func TestGetRepoName(t *testing.T) {
 		},
 		// Token-injected HTTPS
 		{
-			cloneURL: "https://oauth2:TOKEN@github.com/kimdre/doco-cd_tests.git",
+			cloneURL: "https://oauth2:TOKEN@github.com/kimdre/doco-cd_tests.git", // #nosec G101 -- This is a test URL, not a real token
 			expected: "github.com/kimdre/doco-cd_tests",
 		},
 	}
@@ -63,7 +63,7 @@ func TestGetFullName(t *testing.T) {
 			expected: "kimdre/doco-cd_tests",
 		},
 		{
-			cloneURL: "https://user:password@github.com/kimdre/doco-cd_tests.git",
+			cloneURL: "https://user:password@github.com/kimdre/doco-cd_tests.git", // #nosec G101 -- This is a test URL, not a real token
 			expected: "kimdre/doco-cd_tests",
 		},
 		{
@@ -86,7 +86,7 @@ func TestGetFullName(t *testing.T) {
 		},
 		// Token-injected HTTPS
 		{
-			cloneURL: "https://oauth2:TOKEN@github.com/kimdre/doco-cd_tests.git",
+			cloneURL: "https://oauth2:TOKEN@github.com/kimdre/doco-cd_tests.git", // #nosec G101 -- This is a test URL, not a real token
 			expected: "kimdre/doco-cd_tests",
 		},
 	}

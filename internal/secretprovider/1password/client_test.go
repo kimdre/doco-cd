@@ -28,17 +28,17 @@ func TestProvider_GetSecret_OnePassword(t *testing.T) {
 	}{
 		{
 			name:      "Valid secret reference",
-			secretRef: "op://Doco-CD/Secret Test/OTHER_SECRET",
+			secretRef: "op://Doco-CD/Secret Test/OTHER_SECRET", // #nosec G101
 			expectErr: false,
 		},
 		{
 			name:      "Invalid secret reference missing parts",
-			secretRef: "op://Doco-CD/Secret Test",
+			secretRef: "op://Doco-CD/Secret Test", // #nosec G101
 			expectErr: true,
 		},
 		{
 			name:      "Non-existent secret",
-			secretRef: "op://Doco-CD/Secret Test/NON_EXISTENT_SECRET",
+			secretRef: "op://Doco-CD/Secret Test/NON_EXISTENT_SECRET", // #nosec G101
 			expectErr: true,
 		},
 	}

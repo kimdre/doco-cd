@@ -399,12 +399,12 @@ func TestGetProxyUrlRedacted(t *testing.T) {
 	}{
 		{
 			name:     "Valid HTTP Proxy",
-			proxyURL: "http://user:password@proxy:8080",
+			proxyURL: "http://user:password@proxy:8080", // #nosec G101
 			expected: "http://user:***@proxy:8080",
 		},
 		{
 			name:     "Valid HTTPS Proxy",
-			proxyURL: "https://user:password@proxy:8443",
+			proxyURL: "https://user:password@proxy:8443", // #nosec G101
 			expected: "https://user:***@proxy:8443",
 		},
 		{

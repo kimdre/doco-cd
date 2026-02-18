@@ -47,7 +47,7 @@ var DocoCDLabels = docoCdLabelNames{
 		CommitSHA:           "cd.doco.deployment.target.sha",
 		Trigger:             "cd.doco.deployment.trigger",
 		ConfigHash:          "cd.doco.deployment.config.sha",
-		ExternalSecretsHash: "cd.doco.deployment.external_secrets.sha",
+		ExternalSecretsHash: "cd.doco.deployment.external_secrets.sha", // #nosec G101
 		AutoDiscover:        "cd.doco.deployment.auto_discover",
 		AutoDiscoverDelete:  "cd.doco.deployment.auto_discover.delete",
 	},
