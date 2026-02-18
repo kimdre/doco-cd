@@ -45,12 +45,23 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 		t.Fatalf("failed to create stack: %v", err)
 	}
 
-	err = stack.
-		WaitForService("db", wait.ForHealthCheck()).
-		WaitForService("vault", wait.ForHealthCheck()).
-		Up(ctx, compose.Wait(true))
+	const maxRetries = 3
+	for i := 0; i < maxRetries; i++ {
+		err = stack.
+			WaitForService("db", wait.ForHealthCheck()).
+			WaitForService("vault", wait.ForHealthCheck()).
+			Up(ctx, compose.Wait(true))
+		if err == nil {
+			break
+		}
+
+		if i < maxRetries-1 {
+			t.Logf("failed to start stack (attempt %d/%d): %v, retrying...", i+1, maxRetries, err)
+		}
+	}
+
 	if err != nil {
-		t.Fatalf("failed to start stack: %v", err)
+		t.Fatalf("failed to start stack after %d attempts: %v", maxRetries, err)
 	}
 
 	t.Cleanup(func() {
