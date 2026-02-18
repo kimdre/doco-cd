@@ -16,7 +16,7 @@ func Check(ctx context.Context, url string) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req) // #nosec G704
 	if err != nil {
 		return fmt.Errorf("health check request failed: %w", err)
 	}

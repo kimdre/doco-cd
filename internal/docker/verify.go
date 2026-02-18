@@ -50,7 +50,7 @@ func VerifySocketRead(httpClient *http.Client) error {
 		return err
 	}
 
-	resp, err := httpClient.Do(req)
+	resp, err := httpClient.Do(req) // #nosec G704
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
@@ -121,12 +121,12 @@ func VerifyDockerHostConnection(dockerHost string) error {
 		return fmt.Errorf("unsupported DOCKER_HOST scheme: %s", dockerHost)
 	}
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", url, nil) // #nosec G704
 	if err != nil {
 		return err
 	}
 
-	resp, err := httpClient.Do(req)
+	resp, err := httpClient.Do(req) // #nosec G704
 	if err != nil {
 		return fmt.Errorf("failed to connect to docker host: %w", err)
 	}

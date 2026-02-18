@@ -28,27 +28,27 @@ func TestProvider_GetSecret_Infisical(t *testing.T) {
 	}{
 		{
 			name:      "Valid secret reference basic",
-			secretRef: "0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:DATABASE_URL",
+			secretRef: "0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:DATABASE_URL", // #nosec G101
 			expectErr: false,
 		},
 		{
 			name:      "Valid secret reference with absolute path",
-			secretRef: "0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:/Test/Sub/TEST_SECRET",
+			secretRef: "0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:/Test/Sub/TEST_SECRET", // #nosec G101
 			expectErr: false,
 		},
 		{
 			name:      "Valid secret reference with relative path",
-			secretRef: "0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:Test/Sub/TEST_SECRET",
+			secretRef: "0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:Test/Sub/TEST_SECRET", // #nosec G101
 			expectErr: false,
 		},
 		{
 			name:      "Invalid secret reference missing parts",
-			secretRef: "0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev",
+			secretRef: "0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev", // #nosec G101
 			expectErr: true,
 		},
 		{
 			name:      "Non-existent secret",
-			secretRef: "0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:NON_EXISTENT_SECRET",
+			secretRef: "0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:NON_EXISTENT_SECRET", // #nosec G101
 			expectErr: true,
 		},
 	}
@@ -107,7 +107,7 @@ func TestProvider_ResolveSecretReferences_Infisical(t *testing.T) {
 			name: "Multiple secrets",
 			secretsToResolve: map[string]string{
 				"TEST_KEY":    "0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:TEST_KEY",
-				"TEST_SECRET": "0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:/Test/Sub/TEST_SECRET",
+				"TEST_SECRET": "0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:/Test/Sub/TEST_SECRET", // #nosec G101
 			},
 			expectedResolved: secrettypes.ResolvedSecrets{
 				"TEST_KEY":    "test-pass",

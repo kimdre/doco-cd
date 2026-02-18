@@ -145,7 +145,7 @@ func formatMessage(message string, m Metadata) string {
 
 	for _, f := range fields {
 		if f.value != "" {
-			_, _ = sb.WriteString(fmt.Sprintf("\n%s: %s", f.key, f.value))
+			_, _ = fmt.Fprintf(&sb, "\n%s: %s", f.key, f.value)
 		}
 	}
 

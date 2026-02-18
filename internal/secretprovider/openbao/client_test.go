@@ -45,12 +45,23 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 		t.Fatalf("failed to create stack: %v", err)
 	}
 
-	err = stack.
-		WaitForService("db", wait.ForHealthCheck()).
-		WaitForService("vault", wait.ForHealthCheck()).
-		Up(ctx, compose.Wait(true))
+	const maxRetries = 3
+	for i := 0; i < maxRetries; i++ {
+		err = stack.
+			WaitForService("db", wait.ForHealthCheck()).
+			WaitForService("vault", wait.ForHealthCheck()).
+			Up(ctx, compose.Wait(true))
+		if err == nil {
+			break
+		}
+
+		if i < maxRetries-1 {
+			t.Logf("failed to start stack (attempt %d/%d): %v, retrying...", i+1, maxRetries, err)
+		}
+	}
+
 	if err != nil {
-		t.Fatalf("failed to start stack: %v", err)
+		t.Fatalf("failed to start stack after %d attempts: %v", maxRetries, err)
 	}
 
 	t.Cleanup(func() {
@@ -185,27 +196,27 @@ func TestProvider_GetSecret_OpenBao(t *testing.T) {
 	}{
 		{
 			name:      "Valid KV secret reference in default namespace",
-			secretRef: "kv:rootSecret:creds:password",
+			secretRef: "kv:rootSecret:creds:password", // #nosec G101
 			expectErr: false,
 		},
 		{
 			name:      "Valid KV secret reference in root namespace with slash",
-			secretRef: "kv:/:rootSecret:creds:password",
+			secretRef: "kv:/:rootSecret:creds:password", // #nosec G101
 			expectErr: false,
 		},
 		{
 			name:      "Valid KV secret reference in root namespace",
-			secretRef: "kv:root:rootSecret:creds:password",
+			secretRef: "kv:root:rootSecret:creds:password", // #nosec G101
 			expectErr: false,
 		},
 		{
 			name:      "Valid KV secret reference in test namespace",
-			secretRef: "kv:test:testSecret:creds:password",
+			secretRef: "kv:test:testSecret:creds:password", // #nosec G101
 			expectErr: false,
 		},
 		{
 			name:      "Invalid secret reference missing parts",
-			secretRef: "kv:rootSecret:creds",
+			secretRef: "kv:rootSecret:creds", // #nosec G101
 			expectErr: true,
 		},
 		{
@@ -215,12 +226,12 @@ func TestProvider_GetSecret_OpenBao(t *testing.T) {
 		},
 		{
 			name:      "Non-existent namespace",
-			secretRef: "kv:invalid:rootSecret:creds:password",
+			secretRef: "kv:invalid:rootSecret:creds:password", // #nosec G101
 			expectErr: true,
 		},
 		{
 			name:      "Valid PKI cert reference",
-			secretRef: "pki:pki:test.example.com",
+			secretRef: "pki:pki:test.example.com", // #nosec G101
 			expectErr: false,
 		},
 		{
@@ -230,12 +241,12 @@ func TestProvider_GetSecret_OpenBao(t *testing.T) {
 		},
 		{
 			name:      "Non-existent PKI cert",
-			secretRef: "pki:pki:nonexistent.example.com",
+			secretRef: "pki:pki:nonexistent.example.com", // #nosec G101
 			expectErr: true,
 		},
 		{
 			name:      "Invalid engine type",
-			secretRef: "invalid:creds:password",
+			secretRef: "invalid:creds:password", // #nosec G101
 			expectErr: true,
 		},
 	}
@@ -274,7 +285,7 @@ func TestProvider_ResolveSecretReferences_OpenBao(t *testing.T) {
 		{
 			name: "Single secret from default namespace",
 			secretsToResolve: map[string]string{
-				"ROOT_PASSWORD": "kv:rootSecret:creds:password",
+				"ROOT_PASSWORD": "kv:rootSecret:creds:password", // #nosec G101
 			},
 			expectedResolved: secrettypes.ResolvedSecrets{
 				"ROOT_PASSWORD": rootCredentials.password,
@@ -283,8 +294,8 @@ func TestProvider_ResolveSecretReferences_OpenBao(t *testing.T) {
 		{
 			name: "Multiple secrets from root namespace",
 			secretsToResolve: map[string]string{
-				"ROOT_PASSWORD": "kv:root:rootSecret:creds:password",
-				"ROOT_USERNAME": "kv:root:rootSecret:creds:username",
+				"ROOT_PASSWORD": "kv:root:rootSecret:creds:password", // #nosec G101
+				"ROOT_USERNAME": "kv:root:rootSecret:creds:username", // #nosec G101
 			},
 			expectedResolved: secrettypes.ResolvedSecrets{
 				"ROOT_PASSWORD": rootCredentials.password,
@@ -294,8 +305,8 @@ func TestProvider_ResolveSecretReferences_OpenBao(t *testing.T) {
 		{
 			name: "Multiple secrets from test namespace",
 			secretsToResolve: map[string]string{
-				"TEST_PASSWORD": "kv:test:testSecret:creds:password",
-				"TEST_USERNAME": "kv:test:testSecret:creds:username",
+				"TEST_PASSWORD": "kv:test:testSecret:creds:password", // #nosec G101
+				"TEST_USERNAME": "kv:test:testSecret:creds:username", // #nosec G101
 			},
 			expectedResolved: secrettypes.ResolvedSecrets{
 				"TEST_PASSWORD": testCredentials.password,
@@ -305,8 +316,8 @@ func TestProvider_ResolveSecretReferences_OpenBao(t *testing.T) {
 		{
 			name: "Multiple secrets from root and test namespace",
 			secretsToResolve: map[string]string{
-				"ROOT_PASSWORD": "kv:root:rootSecret:creds:password",
-				"TEST_PASSWORD": "kv:test:testSecret:creds:password",
+				"ROOT_PASSWORD": "kv:root:rootSecret:creds:password", // #nosec G101
+				"TEST_PASSWORD": "kv:test:testSecret:creds:password", // #nosec G101
 			},
 			expectedResolved: secrettypes.ResolvedSecrets{
 				"ROOT_PASSWORD": rootCredentials.password,

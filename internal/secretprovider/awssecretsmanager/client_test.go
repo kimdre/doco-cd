@@ -61,16 +61,16 @@ func TestProvider_ResolveSecretReferences_AWSSecretManager(t *testing.T) {
 		{
 			name: "Without Path in ARN",
 			secretsToResolve: map[string]string{
-				"TEST_SECRET": "arn:aws:secretsmanager:eu-west-1:243238513853:secret:test-RAbPpz",
+				"TEST_SECRET": "arn:aws:secretsmanager:eu-west-1:243238513853:secret:test-RAbPpz", // #nosec G101
 			},
 			expectedResolved: secrettypes.ResolvedSecrets{
-				"TEST_SECRET": "{\"username\":\"ulli\",\"password\":\"something\",\"with/delimiter\":\"some/value\"}",
+				"TEST_SECRET": "{\"username\":\"ulli\",\"password\":\"something\",\"with/delimiter\":\"some/value\"}", // #nosec G101
 			},
 		},
 		{
 			name: "With Path in ARN",
 			secretsToResolve: map[string]string{
-				"TEST_SECRET":    "arn:aws:secretsmanager:eu-west-1:243238513853:secret:test-RAbPpz/password",
+				"TEST_SECRET":    "arn:aws:secretsmanager:eu-west-1:243238513853:secret:test-RAbPpz/password", // #nosec G101
 				"USERNAME":       "arn:aws:secretsmanager:eu-west-1:243238513853:secret:test-RAbPpz/username",
 				"WITH_DELIMITER": "arn:aws:secretsmanager:eu-west-1:243238513853:secret:test-RAbPpz/with/delimiter",
 			},
