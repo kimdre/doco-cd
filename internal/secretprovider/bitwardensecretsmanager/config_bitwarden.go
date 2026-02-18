@@ -11,7 +11,7 @@ import (
 type Config struct {
 	ApiUrl          string `env:"SECRET_PROVIDER_API_URL,notEmpty" envDefault:"https://vault.bitwarden.com/api"`
 	IdentityUrl     string `env:"SECRET_PROVIDER_IDENTITY_URL,notEmpty" envDefault:"https://vault.bitwarden.com/identity"`
-	AccessToken     string `env:"SECRET_PROVIDER_ACCESS_TOKEN" validate:"nonzero"` // Access token for authenticating with the secret provider
+	AccessToken     string `env:"SECRET_PROVIDER_ACCESS_TOKEN" validate:"nonzero"` // #nosec G117 -- Access token for authenticating with the secret provider
 	AccessTokenFile string `env:"SECRET_PROVIDER_ACCESS_TOKEN_FILE,file"`          // Path to a file containing the access token
 }
 
