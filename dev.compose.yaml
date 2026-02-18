@@ -2,7 +2,7 @@ x-poll-config: &poll-config
   POLL_CONFIG: |
     - url: https://github.com/kimdre/doco-cd_tests.git
       #url: git@github.com:kimdre/doco-cd_tests.git
-      reference: main
+      reference: 916
       interval: 10
       #target: "bitwarden-sm"
 
