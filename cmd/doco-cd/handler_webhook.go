@@ -13,7 +13,6 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
-	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/google/uuid"
 
 	"github.com/kimdre/doco-cd/internal/test"
@@ -129,25 +128,15 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		"get repository",
 		slog.String("url", cloneUrl))
 
-	// Determine the authenticated clone URL if needed
-	auth := transport.AuthMethod(nil)
-	if git.IsSSH(cloneUrl) {
-		// SSH authentication
-		auth, err = git.SSHAuth(appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase)
-		if err != nil {
-			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to set up SSH authentication", err.Error(), http.StatusInternalServerError, metadata)
+	auth, err := git.GetAuthMethod(cloneUrl, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken)
+	if err != nil {
+		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to set up authentication", err.Error(), http.StatusInternalServerError, metadata)
+		return
+	}
 
-			return
-		}
-	} else {
-		// HTTPS authentication
-		if appConfig.GitAccessToken != "" {
-			auth = git.HttpTokenAuth(appConfig.GitAccessToken)
-		} else if payload.Private {
-			onError(w, jobLog, "missing access token for private repository", "", http.StatusInternalServerError, metadata)
-
-			return
-		}
+	if auth == nil && payload.Private {
+		onError(w, jobLog, "missing access token for private repository", "", http.StatusInternalServerError, metadata)
+		return
 	}
 
 	// Validate payload.FullName to prevent directory traversal

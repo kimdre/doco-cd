@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/docker/docker/client"
-	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/kimdre/doco-cd/internal/test"
 
@@ -53,15 +52,12 @@ func TestDeploySwarmStack(t *testing.T) {
 
 	t.Chdir(tmpDir)
 
-	auth := transport.AuthMethod(nil)
-	if git.IsSSH(p.CloneURL) {
-		auth, err = git.SSHAuth(c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
-		if err != nil {
-			t.Fatalf("Failed to get SSH auth: %v", err)
-		}
-	} else if c.GitAccessToken != "" {
-		auth = git.HttpTokenAuth(c.GitAccessToken)
+	auth, err := git.GetAuthMethod(p.CloneURL, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	if err != nil {
+		t.Fatalf("Failed to get auth method: %v", err)
 	}
+
+	t.Logf("Using auth method: %s", auth.Name())
 
 	repo, err := git.CloneRepository(tmpDir, p.CloneURL, git.SwarmModeBranch, c.SkipTLSVerification, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {

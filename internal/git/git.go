@@ -121,6 +121,17 @@ func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 	return RefSet{}, fmt.Errorf("%w: %s", ErrInvalidReference, ref)
 }
 
+// GetAuthMethod determines the appropriate authentication method based on the URL and provided credentials.
+func GetAuthMethod(url, privateKey, keyPassphrase, token string) (transport.AuthMethod, error) {
+	if IsSSH(url) {
+		return SSHAuth(privateKey, keyPassphrase)
+	} else if token != "" {
+		return HttpTokenAuth(token), nil
+	}
+
+	return nil, nil
+}
+
 // IsSSH checks if a given URL is an SSH URL.
 func IsSSH(url string) bool {
 	return strings.HasPrefix(url, "git@") || strings.HasPrefix(url, "ssh://")
