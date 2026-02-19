@@ -84,15 +84,18 @@ func TestGetAppConfig(t *testing.T) {
 
 				// Set up Docker secrets as environment variables
 				for k, v := range tt.dockerSecrets {
+					// Temporarily unset the original environment variable if it exists to avoid conflicts with the *_FILE variable
+					if _, exists := os.LookupEnv(k); exists {
+						t.Setenv(k, "")
+					}
+
 					secretFileEnvVar := k + "_FILE"
 					secretFilePath := path.Join(secretsPath, k)
 
 					// Set the app config *_FILE environment variable
-					t.Logf("Set environment variable %s to %s", secretFileEnvVar, secretFilePath)
+					t.Logf("Set environment file variable %s to %s with content '%s'", secretFileEnvVar, secretFilePath, v)
 
 					t.Setenv(secretFileEnvVar, secretFilePath)
-
-					t.Logf("Set Docker secret %s to %s", k, v)
 
 					if err := os.WriteFile(secretFilePath, []byte(v), filesystem.PermOwner); err != nil {
 						t.Fatalf("failed to write Docker secret: %v", err)
@@ -102,6 +105,7 @@ func TestGetAppConfig(t *testing.T) {
 
 			// Set up the environment
 			for k, v := range tt.envVars {
+				t.Logf("Set environment variable %s to %s", k, v)
 				t.Setenv(k, v)
 			}
 
