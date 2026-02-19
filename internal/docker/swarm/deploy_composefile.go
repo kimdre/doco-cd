@@ -71,6 +71,11 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Dep
 		return err
 	}
 
+	// Wait for all resources to be ready before deploying services
+	if err = waitForResources(ctx, dockerCli.Client(), networks, secrets, configs); err != nil {
+		return err
+	}
+
 	services, err := convert.Services(ctx, namespace, config, dockerCli.Client())
 	if err != nil {
 		return err
