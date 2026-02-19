@@ -212,18 +212,6 @@ func TestHandleEvent(t *testing.T) {
 		},
 	}
 
-	// Restore environment variables after the test
-	for _, k := range []string{"LOG_LEVEL", "HTTP_PORT", "WEBHOOK_SECRET", "GIT_ACCESS_TOKEN", "AUTH_TYPE", "SKIP_TLS_VERIFICATION"} {
-		if v, ok := os.LookupEnv(k); ok {
-			t.Cleanup(func() {
-				err := os.Setenv(k, v)
-				if err != nil {
-					t.Fatalf("failed to restore environment variable %s: %v", k, err)
-				}
-			})
-		}
-	}
-
 	dockerCli, err := docker.CreateDockerCli(false, false)
 	if err != nil {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
@@ -254,25 +242,12 @@ func TestHandleEvent(t *testing.T) {
 			}
 
 			for k, v := range defaultEnvVars {
-				err := os.Setenv(k, v)
-				if err != nil {
-					t.Fatalf("Failed to set environment variable: %v", err)
-				}
-
-				t.Cleanup(func() {
-					err = os.Unsetenv(k)
-					if err != nil {
-						t.Fatalf("Failed to unset environment variable: %v", err)
-					}
-				})
+				t.Setenv(k, v)
 			}
 
 			if tc.overrideEnv != nil {
 				for k, v := range tc.overrideEnv {
-					err := os.Setenv(k, v)
-					if err != nil {
-						t.Fatalf("Failed to set environment variable: %v", err)
-					}
+					t.Setenv(k, v)
 				}
 			}
 
