@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"gopkg.in/validator.v2"
 
 	"github.com/kimdre/doco-cd/internal/filesystem"
@@ -21,15 +23,6 @@ func createTestFile(fileName string, content string) error {
 	}
 
 	return nil
-}
-
-func createTmpDir(t *testing.T) string {
-	dirName, err := os.MkdirTemp(os.TempDir(), "test-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return dirName
 }
 
 func TestGetDeployConfigs(t *testing.T) {
@@ -47,13 +40,7 @@ compose_files:
   - %s
 `, t.Name(), reference, workingDirectory, composeFiles[0])
 
-		dirName := createTmpDir(t)
-		t.Cleanup(func() {
-			err := os.RemoveAll(dirName)
-			if err != nil {
-				t.Fatal(err)
-			}
-		})
+		dirName := t.TempDir()
 
 		filePath := filepath.Join(dirName, fileName)
 
@@ -94,13 +81,7 @@ compose_files:
 func TestGetDeployConfigs_DefaultValues(t *testing.T) {
 	defaultConfig := DefaultDeployConfig(t.Name(), DefaultReference)
 
-	dirName := createTmpDir(t)
-	t.Cleanup(func() {
-		err := os.RemoveAll(dirName)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+	dirName := t.TempDir()
 
 	configs, err := GetDeployConfigs(dirName, ".", t.Name(), "", "")
 	if err != nil {
@@ -202,13 +183,7 @@ func TestGetDeployConfigs_RepositoryURL(t *testing.T) {
 }
 
 func TestResolveDeployConfigs_InlineOverride(t *testing.T) {
-	dirName := createTmpDir(t)
-	t.Cleanup(func() {
-		err := os.RemoveAll(dirName)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+	dirName := t.TempDir()
 
 	poll := PollConfig{
 		CloneUrl:    "https://example.com/repo.git",
@@ -267,12 +242,7 @@ func TestResolveDeployConfigs_InlineMissingName(t *testing.T) {
 }
 
 func TestResolveDeployConfigs_InlineAutoDiscover(t *testing.T) {
-	repoRoot := createTmpDir(t)
-	t.Cleanup(func() {
-		if err := os.RemoveAll(repoRoot); err != nil {
-			t.Fatal(err)
-		}
-	})
+	repoRoot := t.TempDir()
 
 	servicesDir := filepath.Join(repoRoot, "services")
 	serviceOneDir := filepath.Join(servicesDir, "service-one")
@@ -339,13 +309,7 @@ reference: %s
 `, t.Name(), reference)
 
 	// Create temporary repo root
-	repoRoot := createTmpDir(t)
-	t.Cleanup(func() {
-		err := os.RemoveAll(repoRoot)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+	repoRoot := t.TempDir()
 
 	// Create subdirectory for configs
 	configDir := filepath.Join(repoRoot, deployConfigBaseDir)
@@ -393,13 +357,7 @@ func TestGetDeployConfigs_WithRootDirectory(t *testing.T) {
 reference: %s
 `, t.Name(), reference)
 
-	repoRoot := createTmpDir(t)
-	t.Cleanup(func() {
-		err := os.RemoveAll(repoRoot)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+	repoRoot := t.TempDir()
 
 	filePath := filepath.Join(repoRoot, fileName)
 
@@ -424,6 +382,201 @@ reference: %s
 	}
 }
 
+func TestGetDeployConfigs_WithAutoDiscovery(t *testing.T) {
+	repoRoot := t.TempDir()
+
+	_ = createTestRepo(t, repoRoot)
+
+	// Create a compose file in random subdirectory to trigger auto-discovery
+	subDir := filepath.Join(repoRoot, t.Name())
+
+	err := os.MkdirAll(subDir, 0o750)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = createTestFile(filepath.Join(subDir, "compose.yaml"), "services:\n  web:\n    image: nginx")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	deployConfig := fmt.Sprintf(`name: %s
+reference: master
+auto_discover: true
+`, t.Name())
+
+	filePath := filepath.Join(repoRoot, ".doco-cd.yaml")
+
+	err = createTestFile(filePath, deployConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test with auto-discovery enabled
+	configs, err := GetDeployConfigs(repoRoot, ".", t.Name(), "", "master")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(configs) != 1 {
+		t.Fatalf("expected 1 config, got %d", len(configs))
+	}
+
+	if configs[0].Name != t.Name() {
+		t.Errorf("expected name to be %v, got %s", t.Name(), configs[0].Name)
+	}
+
+	if !configs[0].AutoDiscover {
+		t.Errorf("expected AutoDiscover to be true, got false")
+	}
+}
+
+func TestGetDeployConfigs_WithAutoDiscoveryOnDifferentBranch(t *testing.T) {
+	repoRoot := t.TempDir()
+
+	repo := createTestRepo(t, repoRoot)
+
+	// Create a new branch and switch to it
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = worktree.Checkout(&git.CheckoutOptions{
+		Branch: plumbing.NewBranchReferenceName("feature-branch"),
+		Create: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Fake remote reference for feature-branch
+	head, err := repo.Head()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ref := plumbing.NewHashReference("refs/remotes/origin/feature-branch", head.Hash())
+
+	err = repo.Storer.SetReference(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a compose file in random subdirectory to trigger auto-discovery
+	subDir := filepath.Join(repoRoot, t.Name())
+
+	err = os.MkdirAll(subDir, 0o750)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = createTestFile(filepath.Join(subDir, "compose.yaml"), "services:\n  web:\n    image: nginx")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	deployConfig := fmt.Sprintf(`name: %s
+reference: refs/heads/feature-branch
+auto_discover: true
+`, t.Name())
+
+	filePath := filepath.Join(repoRoot, ".doco-cd.yaml")
+
+	err = createTestFile(filePath, deployConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test with auto-discovery enabled on feature branch
+	configs, err := GetDeployConfigs(repoRoot, ".", t.Name(), "", "refs/heads/feature-branch")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(configs) != 1 {
+		t.Fatalf("expected 1 config, got %d", len(configs))
+	}
+
+	if configs[0].Name != t.Name() {
+		t.Errorf("expected name to be %v, got %s", t.Name(), configs[0].Name)
+	}
+
+	if !configs[0].AutoDiscover {
+		t.Errorf("expected AutoDiscover to be true, got false")
+	}
+}
+
+func TestGetDeployConfigs_WithAutoDiscoveryWithRemoteUrl(t *testing.T) {
+	testCases := []struct {
+		name            string
+		branch          string
+		expectedConfigs int
+	}{
+		{
+			name:            "Auto-discovery with valid repository URL",
+			branch:          "main",
+			expectedConfigs: 1,
+		},
+		{
+			name:            "Auto-discovery with valid repository URL on feature branch",
+			branch:          "dual",
+			expectedConfigs: 2,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			repoRoot := t.TempDir()
+			// Create subdirectory for configs
+			subDir := filepath.Join(repoRoot, t.Name())
+
+			_ = createTestRepo(t, subDir)
+
+			deployConfig := fmt.Sprintf(`name: %s
+reference: %s
+auto_discover: true
+repository_url: https://github.com/kimdre/doco-cd_tests.git
+`, t.Name(), tc.branch)
+
+			filePath := filepath.Join(subDir, ".doco-cd.yaml")
+
+			err := createTestFile(filePath, deployConfig)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// Test with auto-discovery enabled and repository URL set (should ignore repository URL for discovery)
+			configs, err := GetDeployConfigs(subDir, ".", t.Name(), "", "master")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if len(configs) != tc.expectedConfigs {
+				t.Fatalf("expected 1 config, got %d", len(configs))
+			}
+
+			if configs[0].Name != "doco-cd_tests" {
+				if tc.expectedConfigs == 2 {
+					if configs[0].Name != "app1" && configs[1].Name != "app2" {
+						t.Fatalf("expected names to be 'app1' and 'app2', got '%s' and '%s'", configs[0].Name, configs[1].Name)
+					}
+				} else {
+					t.Fatalf("expected name to be 'doco-cd_tests', got '%s'", configs[0].Name)
+				}
+			}
+
+			if !configs[0].AutoDiscover {
+				t.Errorf("expected AutoDiscover to be true, got false")
+			}
+
+			if configs[0].Reference != tc.branch {
+				t.Errorf("expected reference to be '^main', got '%s'", configs[0].Reference)
+			}
+		})
+	}
+}
+
 func TestResolveDeployConfigs_WithSubdirectory(t *testing.T) {
 	fileName := ".doco-cd.yaml"
 	reference := "refs/heads/main"
@@ -433,13 +586,7 @@ func TestResolveDeployConfigs_WithSubdirectory(t *testing.T) {
 reference: %s
 `, t.Name(), reference)
 
-	repoRoot := createTmpDir(t)
-	t.Cleanup(func() {
-		err := os.RemoveAll(repoRoot)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+	repoRoot := t.TempDir()
 
 	configDir := filepath.Join(repoRoot, deployConfigBaseDir)
 
@@ -476,13 +623,7 @@ reference: %s
 }
 
 func TestAutoDiscoverDeployments_BasicDiscovery(t *testing.T) {
-	repoRoot := createTmpDir(t)
-	t.Cleanup(func() {
-		err := os.RemoveAll(repoRoot)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+	repoRoot := t.TempDir()
 
 	// Create subdirectories with compose files
 	service1Dir := filepath.Join(repoRoot, "service1")
@@ -557,13 +698,7 @@ func TestAutoDiscoverDeployments_BasicDiscovery(t *testing.T) {
 }
 
 func TestAutoDiscoverDeployments_WithWorkingDirectory(t *testing.T) {
-	repoRoot := createTmpDir(t)
-	t.Cleanup(func() {
-		err := os.RemoveAll(repoRoot)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+	repoRoot := t.TempDir()
 
 	// Create a services subdirectory
 	servicesDir := filepath.Join(repoRoot, "services")
@@ -605,13 +740,7 @@ func TestAutoDiscoverDeployments_WithWorkingDirectory(t *testing.T) {
 }
 
 func TestAutoDiscoverDeployments_WithDepthLimit(t *testing.T) {
-	repoRoot := createTmpDir(t)
-	t.Cleanup(func() {
-		err := os.RemoveAll(repoRoot)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+	repoRoot := t.TempDir()
 
 	// Create nested directories
 	level1Dir := filepath.Join(repoRoot, "level1")
@@ -671,13 +800,7 @@ func TestAutoDiscoverDeployments_WithDepthLimit(t *testing.T) {
 }
 
 func TestAutoDiscoverDeployments_NoComposeFiles(t *testing.T) {
-	repoRoot := createTmpDir(t)
-	t.Cleanup(func() {
-		err := os.RemoveAll(repoRoot)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+	repoRoot := t.TempDir()
 
 	// Create subdirectories without compose files
 	service1Dir := filepath.Join(repoRoot, "service1")
@@ -704,13 +827,7 @@ func TestAutoDiscoverDeployments_NoComposeFiles(t *testing.T) {
 }
 
 func TestAutoDiscoverDeployments_InheritBaseConfig(t *testing.T) {
-	repoRoot := createTmpDir(t)
-	t.Cleanup(func() {
-		err := os.RemoveAll(repoRoot)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+	repoRoot := t.TempDir()
 
 	serviceDir := filepath.Join(repoRoot, "service1")
 
@@ -766,4 +883,52 @@ func TestAutoDiscoverDeployments_InheritBaseConfig(t *testing.T) {
 	if !reflect.DeepEqual(cfg.Profiles, baseConfig.Profiles) {
 		t.Errorf("expected Profiles to be inherited: %v, got %v", baseConfig.Profiles, cfg.Profiles)
 	}
+}
+
+// createTestRepo initializes a git repository at the specified path with a single commit on the master branch.
+func createTestRepo(t *testing.T, repoPath string) (repo *git.Repository) {
+	t.Helper()
+
+	// Init git repo at repoRoot with main branch
+	repo, err := git.PlainInit(repoPath, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create initial commit to main branch
+	w, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = createTestFile(filepath.Join(repoPath, "README.md"), "Test repository for auto-discovery")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = w.Add("README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = w.Commit("Initial commit", &git.CommitOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// After the commit, create a fake remote reference
+	head, err := repo.Head()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a remote-style reference that GetReferenceSet expects
+	ref := plumbing.NewHashReference("refs/remotes/origin/master", head.Hash())
+
+	err = repo.Storer.SetReference(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return repo
 }
