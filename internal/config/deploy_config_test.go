@@ -8,9 +8,11 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"gopkg.in/validator.v2"
 
 	"github.com/kimdre/doco-cd/internal/filesystem"
@@ -899,10 +901,6 @@ func TestAutoDiscoverDeployments_InheritBaseConfig(t *testing.T) {
 func createTestRepo(t *testing.T, repoPath string) (repo *git.Repository) {
 	t.Helper()
 
-	// Set authorship info for commits (required by go-git)
-	t.Setenv("GIT_AUTHOR_NAME", "Test Author")
-	t.Setenv("GIT_AUTHOR_EMAIL", "test@example.com")
-
 	// Init git repo at repoRoot with main branch
 	repo, err := git.PlainInit(repoPath, false)
 	if err != nil {
@@ -925,7 +923,14 @@ func createTestRepo(t *testing.T, repoPath string) (repo *git.Repository) {
 		t.Fatal(err)
 	}
 
-	_, err = w.Commit("Initial commit", &git.CommitOptions{})
+	_, err = w.Commit("Initial commit", &git.CommitOptions{
+		All: true,
+		Author: &object.Signature{
+			Name:  "Test Author",
+			Email: "test@example.com",
+			When:  time.Now(),
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
