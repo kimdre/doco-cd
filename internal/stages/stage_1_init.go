@@ -44,7 +44,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 
 	if s.DeployConfig.RepositoryUrl != "" {
 		s.Repository.CloneURL = s.DeployConfig.RepositoryUrl
-		s.Repository.Name = GetRepoName(string(s.Repository.CloneURL))
+		s.Repository.Name = git.GetRepoName(string(s.Repository.CloneURL))
 
 		err = config.LoadLocalDotEnv(s.DeployConfig, s.Repository.PathInternal)
 		if err != nil {
@@ -146,7 +146,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 
 	if s.JobTrigger == JobTriggerPoll {
 		s.Payload = &webhook.ParsedPayload{
-			Name:      GetRepoName(string(s.Repository.CloneURL)),
+			Name:      git.GetRepoName(string(s.Repository.CloneURL)),
 			Ref:       s.DeployConfig.Reference,
 			CommitSHA: string(JobTriggerPoll),
 			FullName:  getFullName(s.Repository.CloneURL),
