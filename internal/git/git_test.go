@@ -100,7 +100,7 @@ func TestCloneRepository(t *testing.T) {
 				t.Skip("SSH private key not set, skipping SSH clone test")
 			}
 
-			auth, err := git.GetAuthMethod(tc.cloneUrl, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+			auth, err := GetAuthMethod(tc.cloneUrl, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
 			if err != nil {
 				t.Fatalf("Failed to get auth method: %v", err)
 			}
@@ -219,7 +219,7 @@ func TestUpdateRepository(t *testing.T) {
 				t.Fatalf("Failed to get app config: %v", err)
 			}
 
-			auth, err := git.GetAuthMethod(tc.cloneUrl, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+			auth, err := GetAuthMethod(tc.cloneUrl, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
 			if err != nil {
 				t.Fatalf("Failed to get auth method: %v", err)
 			}
@@ -288,7 +288,7 @@ func TestGetReferenceSet(t *testing.T) {
 
 	url := cloneUrl
 
-	auth, err := git.GetAuthMethod(url, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	auth, err := GetAuthMethod(url, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
 	if err != nil {
 		t.Fatalf("Failed to get auth method: %v", err)
 	}
@@ -330,7 +330,7 @@ func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 
 	url := cloneUrlTest
 
-	auth, err := git.GetAuthMethod(url, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	auth, err := GetAuthMethod(url, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
 	if err != nil {
 		t.Fatalf("Failed to get auth method: %v", err)
 	}
@@ -395,7 +395,7 @@ func TestGetLatestCommit(t *testing.T) {
 
 	url := cloneUrl
 
-	auth, err := git.GetAuthMethod(url, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	auth, err := GetAuthMethod(url, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
 	if err != nil {
 		t.Fatalf("Failed to get auth method: %v", err)
 	}
@@ -440,7 +440,7 @@ func TestGetChangedFilesBetweenCommits(t *testing.T) {
 
 	url := cloneUrlTest
 
-	auth, err := git.GetAuthMethod(url, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	auth, err := GetAuthMethod(url, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
 	if err != nil {
 		t.Fatalf("Failed to get auth method: %v", err)
 	}
