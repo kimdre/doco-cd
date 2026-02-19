@@ -288,9 +288,9 @@ func GetDeployConfigs(repoRoot, deployConfigBaseDir, name, customTarget, referen
 							if err != nil {
 								return nil, fmt.Errorf("failed to update repository: %w", err)
 							}
+						} else {
+							return nil, fmt.Errorf("failed to clone repository: %w", err)
 						}
-
-						return nil, fmt.Errorf("failed to clone repository: %w", err)
 					}
 				} else {
 					err = gitInternal.CheckoutRepository(baseRepo, c.Reference)
@@ -468,7 +468,14 @@ func autoDiscoverDeployments(repoRoot string, baseDeployConfig *DeployConfig) ([
 				c := &DeployConfig{}
 				deepCopy(baseDeployConfig, c)
 
-				c.Name = filepath.Base(p)
+				stackDirName := filepath.Base(p)    // Get the stack name from the directory name where the compose file is located
+				repoName := filepath.Base(repoRoot) // Get the repository name from the repo root path
+
+				if baseDeployConfig.Name != "" && stackDirName == repoName {
+					c.Name = baseDeployConfig.Name
+				} else {
+					c.Name = stackDirName
+				}
 
 				c.WorkingDirectory, err = filepath.Rel(repoRoot, p)
 				if err != nil {
