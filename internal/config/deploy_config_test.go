@@ -42,6 +42,8 @@ compose_files:
 
 		dirName := t.TempDir()
 
+		createTestRepo(t, dirName)
+
 		filePath := filepath.Join(dirName, fileName)
 
 		err := createTestFile(filePath, deployConfig)
@@ -82,6 +84,8 @@ func TestGetDeployConfigs_DefaultValues(t *testing.T) {
 	defaultConfig := DefaultDeployConfig(t.Name(), DefaultReference)
 
 	dirName := t.TempDir()
+
+	createTestRepo(t, dirName)
 
 	configs, err := GetDeployConfigs(dirName, ".", t.Name(), "", "")
 	if err != nil {
@@ -311,6 +315,8 @@ reference: %s
 	// Create temporary repo root
 	repoRoot := t.TempDir()
 
+	createTestRepo(t, repoRoot)
+
 	// Create subdirectory for configs
 	configDir := filepath.Join(repoRoot, deployConfigBaseDir)
 
@@ -359,6 +365,8 @@ reference: %s
 
 	repoRoot := t.TempDir()
 
+	createTestRepo(t, repoRoot)
+
 	filePath := filepath.Join(repoRoot, fileName)
 
 	err := createTestFile(filePath, deployConfig)
@@ -385,7 +393,7 @@ reference: %s
 func TestGetDeployConfigs_WithAutoDiscovery(t *testing.T) {
 	repoRoot := t.TempDir()
 
-	_ = createTestRepo(t, repoRoot)
+	createTestRepo(t, repoRoot)
 
 	// Create a compose file in random subdirectory to trigger auto-discovery
 	subDir := filepath.Join(repoRoot, t.Name())
@@ -531,7 +539,7 @@ func TestGetDeployConfigs_WithAutoDiscoveryWithRemoteUrl(t *testing.T) {
 			// Create subdirectory for configs
 			subDir := filepath.Join(repoRoot, t.Name())
 
-			_ = createTestRepo(t, subDir)
+			createTestRepo(t, subDir)
 
 			deployConfig := fmt.Sprintf(`name: %s
 reference: %s
@@ -587,6 +595,8 @@ reference: %s
 `, t.Name(), reference)
 
 	repoRoot := t.TempDir()
+
+	createTestRepo(t, repoRoot)
 
 	configDir := filepath.Join(repoRoot, deployConfigBaseDir)
 
