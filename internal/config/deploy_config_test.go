@@ -411,7 +411,7 @@ func TestGetDeployConfigs_WithAutoDiscovery(t *testing.T) {
 	}
 
 	deployConfig := fmt.Sprintf(`name: %s
-reference: master
+reference: main
 auto_discover: true
 `, t.Name())
 
@@ -423,7 +423,7 @@ auto_discover: true
 	}
 
 	// Test with auto-discovery enabled
-	configs, err := GetDeployConfigs(repoRoot, ".", t.Name(), "", "master")
+	configs, err := GetDeployConfigs(repoRoot, ".", t.Name(), "", "main")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -441,7 +441,7 @@ auto_discover: true
 	}
 }
 
-func TestGetDeployConfigs_WithAutoDiscoveryOnDifferentBranch(t *testing.T) {
+func TestGetDeployConfigs_WithAutoDiscovery_OnDifferentBranch(t *testing.T) {
 	repoRoot := t.TempDir()
 
 	repo := createTestRepo(t, repoRoot)
@@ -517,7 +517,7 @@ auto_discover: true
 	}
 }
 
-func TestGetDeployConfigs_WithAutoDiscoveryWithRemoteUrl(t *testing.T) {
+func TestGetDeployConfigs_WithAutoDiscovery_WithRemoteUrl(t *testing.T) {
 	testCases := []struct {
 		name            string
 		branch          string
@@ -557,7 +557,7 @@ repository_url: https://github.com/kimdre/doco-cd_tests.git
 			}
 
 			// Test with auto-discovery enabled and repository URL set (should ignore repository URL for discovery)
-			configs, err := GetDeployConfigs(subDir, ".", t.Name(), "", "master")
+			configs, err := GetDeployConfigs(subDir, ".", t.Name(), "", "main")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -897,12 +897,17 @@ func TestAutoDiscoverDeployments_InheritBaseConfig(t *testing.T) {
 	}
 }
 
-// createTestRepo initializes a git repository at the specified path with a single commit on the master branch.
+// createTestRepo initializes a git repository at the specified path with a single commit on the main branch.
 func createTestRepo(t *testing.T, repoPath string) (repo *git.Repository) {
 	t.Helper()
 
 	// Init git repo at repoRoot with main branch
-	repo, err := git.PlainInit(repoPath, false)
+	repo, err := git.PlainInitWithOptions(repoPath, &git.PlainInitOptions{
+		Bare: false,
+		InitOptions: git.InitOptions{
+			DefaultBranch: DefaultReference,
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -942,7 +947,7 @@ func createTestRepo(t *testing.T, repoPath string) (repo *git.Repository) {
 	}
 
 	// Create a remote-style reference that GetReferenceSet expects
-	ref := plumbing.NewHashReference("refs/remotes/origin/master", head.Hash())
+	ref := plumbing.NewHashReference("refs/remotes/origin/main", head.Hash())
 
 	err = repo.Storer.SetReference(ref)
 	if err != nil {
