@@ -956,3 +956,63 @@ func createTestRepo(t *testing.T, repoPath string) (repo *git.Repository) {
 
 	return repo
 }
+
+func TestGetDeployConfigs_WithAutoDiscovery_WithRemoteUrl_WithMultipleConfigs(t *testing.T) {
+	repoRoot := t.TempDir()
+
+	createTestRepo(t, repoRoot)
+
+	// Two deploy configs in one file using YAML document separator
+	deployConfig := `
+name: main-stack
+repository_url: https://github.com/kimdre/doco-cd.git
+reference: main
+compose_files: ["test.compose.yaml"]
+working_dir: test
+auto_discover: true
+---
+name: dual-stack
+repository_url: https://github.com/kimdre/doco-cd_tests.git
+reference: dual
+auto_discover: true
+`
+
+	filePath := filepath.Join(repoRoot, ".doco-cd.yaml")
+
+	err := createTestFile(filePath, deployConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	configs, err := GetDeployConfigs(repoRoot, ".", t.Name(), "", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// First config (main branch) should discover 1, second config (dual branch) should discover 2
+	expectedTotal := 3
+	if len(configs) != expectedTotal {
+		t.Fatalf("expected %d configs, got %d", expectedTotal, len(configs))
+	}
+
+	found := 0
+
+	for _, cfg := range configs {
+		t.Logf("Discovered config: Name=%s, Reference=%s", cfg.Name, cfg.Reference)
+
+		switch cfg.RepositoryUrl {
+		case "https://github.com/kimdre/doco-cd.git":
+			if cfg.Name == "test" && cfg.Reference == "main" {
+				found++
+			}
+		case "https://github.com/kimdre/doco-cd_tests.git":
+			if (cfg.Name == "app1" || cfg.Name == "app2") && cfg.Reference == "dual" {
+				found++
+			}
+		}
+	}
+
+	if found != expectedTotal {
+		t.Errorf("expected to find %d configs with correct properties, found %d", expectedTotal, found)
+	}
+}
