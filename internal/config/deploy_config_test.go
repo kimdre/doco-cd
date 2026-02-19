@@ -524,12 +524,12 @@ func TestGetDeployConfigs_WithAutoDiscovery_WithRemoteUrl(t *testing.T) {
 		expectedConfigs int
 	}{
 		{
-			name:            "Auto-discovery with valid repository URL",
+			name:            "Main Branch",
 			branch:          "main",
 			expectedConfigs: 1,
 		},
 		{
-			name:            "Auto-discovery with valid repository URL on feature branch",
+			name:            "Dual Branch",
 			branch:          "dual",
 			expectedConfigs: 2,
 		},
@@ -566,13 +566,11 @@ repository_url: https://github.com/kimdre/doco-cd_tests.git
 				t.Fatalf("expected 1 config, got %d", len(configs))
 			}
 
-			if configs[0].Name != "doco-cd_tests" {
-				if tc.expectedConfigs == 2 {
-					if configs[0].Name != "app1" && configs[1].Name != "app2" {
-						t.Fatalf("expected names to be 'app1' and 'app2', got '%s' and '%s'", configs[0].Name, configs[1].Name)
-					}
-				} else {
-					t.Fatalf("expected name to be 'doco-cd_tests', got '%s'", configs[0].Name)
+			if tc.expectedConfigs == 1 && configs[0].Name != t.Name() {
+				t.Errorf("expected name to be %v, got %s", t.Name(), configs[0].Name)
+			} else if tc.expectedConfigs == 2 {
+				if configs[0].Name != "app1" && configs[1].Name != "app2" {
+					t.Fatalf("expected names to be 'app1' and 'app2', got '%s' and '%s'", configs[0].Name, configs[1].Name)
 				}
 			}
 
@@ -964,13 +962,21 @@ func TestGetDeployConfigs_WithAutoDiscovery_WithRemoteUrl_WithMultipleConfigs(t 
 
 	// Two deploy configs in one file using YAML document separator
 	deployConfig := `
+# Config for main branch - should discover 1 deployment with name 'test'
 name: main-stack
+repository_url: https://github.com/kimdre/doco-cd_tests.git
+reference: main
+auto_discover: true
+---
+# Config for doco-cd repo - should discover 1 deployment with name 'test''
+name: test-stack
 repository_url: https://github.com/kimdre/doco-cd.git
 reference: main
 compose_files: ["test.compose.yaml"]
 working_dir: test
 auto_discover: true
 ---
+# Config for dual branch - should discover 2 deployments with names 'app1' and 'app2'
 name: dual-stack
 repository_url: https://github.com/kimdre/doco-cd_tests.git
 reference: dual
@@ -990,7 +996,7 @@ auto_discover: true
 	}
 
 	// First config (main branch) should discover 1, second config (dual branch) should discover 2
-	expectedTotal := 3
+	expectedTotal := 4
 	if len(configs) != expectedTotal {
 		t.Fatalf("expected %d configs, got %d", expectedTotal, len(configs))
 	}
@@ -1007,6 +1013,8 @@ auto_discover: true
 			}
 		case "https://github.com/kimdre/doco-cd_tests.git":
 			if (cfg.Name == "app1" || cfg.Name == "app2") && cfg.Reference == "dual" {
+				found++
+			} else if cfg.Name == "main-stack" && cfg.Reference == "main" {
 				found++
 			}
 		}
