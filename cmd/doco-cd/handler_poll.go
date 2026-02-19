@@ -62,7 +62,7 @@ func StartPoll(h *handlerData, pollConfig config.PollConfig, wg *sync.WaitGroup)
 
 // PollHandler is a function that handles polling for changes in a repository.
 func (h *handlerData) PollHandler(pollJob *config.PollJob) {
-	repoName := stages.GetRepoName(string(pollJob.Config.CloneUrl))
+	repoName := git.GetRepoName(string(pollJob.Config.CloneUrl))
 
 	logger := h.log.With(slog.String("repository", repoName))
 	logger.Debug("Start poll handler")
@@ -138,7 +138,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 
 	startTime := time.Now()
 	cloneUrl := string(pollConfig.CloneUrl)
-	repoName := stages.GetRepoName(cloneUrl)
+	repoName := git.GetRepoName(cloneUrl)
 	jobLog := logger.With(slog.String("job_id", metadata.JobID))
 
 	if appConfig.DockerSwarmFeatures {

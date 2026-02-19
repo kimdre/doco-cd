@@ -40,6 +40,8 @@ require (
 	gotest.tools/v3 v3.5.2
 )
 
+require github.com/sourcegraph/conc v0.3.0
+
 require (
 	cel.dev/expr v0.24.0 // indirect
 	cloud.google.com/go v0.121.6 // indirect

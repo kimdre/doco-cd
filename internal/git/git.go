@@ -3,7 +3,9 @@ package git
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -56,8 +58,8 @@ type ChangedFile struct {
 }
 
 type RefSet struct {
-	localRef  plumbing.ReferenceName
-	remoteRef plumbing.ReferenceName
+	LocalRef  plumbing.ReferenceName
+	RemoteRef plumbing.ReferenceName
 }
 
 // GetReferenceSet retrieves a RefSet of local and remote references for a given reference name.
@@ -70,50 +72,50 @@ func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 		name := strings.TrimPrefix(ref, BranchPrefix)
 
 		refCandidates = append(refCandidates, RefSet{
-			localRef:  plumbing.NewBranchReferenceName(name),
-			remoteRef: plumbing.NewRemoteReferenceName(RemoteName, name),
+			LocalRef:  plumbing.NewBranchReferenceName(name),
+			RemoteRef: plumbing.NewRemoteReferenceName(RemoteName, name),
 		})
 	case strings.HasPrefix(ref, TagPrefix):
 		name := strings.TrimPrefix(ref, TagPrefix)
 
 		refCandidates = append(refCandidates, RefSet{
-			localRef:  plumbing.NewTagReferenceName(name),
-			remoteRef: plumbing.NewTagReferenceName(name),
+			LocalRef:  plumbing.NewTagReferenceName(name),
+			RemoteRef: plumbing.NewTagReferenceName(name),
 		})
 	default:
 		// Create ref candidate for branch and tag
 		refCandidates = append(refCandidates,
 			RefSet{
 				// Create ref candidate for branch
-				localRef:  plumbing.NewBranchReferenceName(ref),
-				remoteRef: plumbing.NewRemoteReferenceName(RemoteName, ref),
+				LocalRef:  plumbing.NewBranchReferenceName(ref),
+				RemoteRef: plumbing.NewRemoteReferenceName(RemoteName, ref),
 			},
 			// Create ref candidate for tag
 			RefSet{
-				localRef:  plumbing.NewTagReferenceName(ref),
-				remoteRef: plumbing.NewTagReferenceName(ref),
+				LocalRef:  plumbing.NewTagReferenceName(ref),
+				RemoteRef: plumbing.NewTagReferenceName(ref),
 			},
 		)
 	}
 
 	for _, candidate := range refCandidates {
-		if candidate.localRef.IsBranch() {
-			newRef := plumbing.NewSymbolicReference(candidate.localRef, candidate.remoteRef)
+		if candidate.LocalRef.IsBranch() {
+			newRef := plumbing.NewSymbolicReference(candidate.LocalRef, candidate.RemoteRef)
 
 			err := repo.Storer.SetReference(newRef)
 			if err != nil {
 				return RefSet{}, err
 			}
 		}
-		// Check if localRef exists remotely
-		_, err := repo.Reference(candidate.remoteRef, true)
+		// Check if LocalRef exists remotely
+		_, err := repo.Reference(candidate.RemoteRef, true)
 		if err != nil {
 			if errors.Is(err, plumbing.ErrReferenceNotFound) {
 				// If the reference does not exist, continue To the next candidate
 				continue
 			}
 
-			return RefSet{}, fmt.Errorf("%w: %s", err, candidate.localRef)
+			return RefSet{}, fmt.Errorf("%w: %s", err, candidate.LocalRef)
 		}
 
 		return candidate, nil
@@ -181,9 +183,9 @@ func addToKnownHosts(url string) error {
 	return ssh.AddHostToKnownHosts(host)
 }
 
-// convertSSHUrl converts SSH URLs to the ssh:// format.
+// ConvertSSHUrl converts SSH URLs to the ssh:// format.
 // e.g. convert git@github.com:user/repo.git to ssh://git@github.com/user/repo.git
-func convertSSHUrl(url string) string {
+func ConvertSSHUrl(url string) string {
 	// Check if url starts with git@ and convert to ssh:// format
 	if strings.HasPrefix(url, "git@") {
 		// Replace the first ':' with '/' after the host
@@ -209,7 +211,7 @@ func updateRemoteURL(repo *git.Repository, url string) error {
 
 	var newUrl []string
 	if IsSSH(url) {
-		newUrl = []string{convertSSHUrl(url)}
+		newUrl = []string{ConvertSSHUrl(url)}
 	} else {
 		newUrl = []string{url}
 	}
@@ -247,11 +249,6 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 		return nil, err
 	}
 
-	worktree, err := repo.Worktree()
-	if err != nil {
-		return nil, err
-	}
-
 	err = updateRemoteURL(repo, url)
 	if err != nil {
 		return nil, err
@@ -272,7 +269,7 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 			return nil, fmt.Errorf("failed to add host to known_hosts: %w", err)
 		}
 
-		opts.RemoteURL = convertSSHUrl(url)
+		opts.RemoteURL = ConvertSSHUrl(url)
 	} else {
 		opts.InsecureSkipTLS = skipTLSVerify
 
@@ -285,21 +282,9 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 		return nil, fmt.Errorf("%w: %w", ErrFetchFailed, err)
 	}
 
-	refSet, err := GetReferenceSet(repo, ref)
+	err = CheckoutRepository(repo, ref)
 	if err != nil {
-		return nil, err
-	}
-
-	if refSet.localRef == "" {
-		return nil, fmt.Errorf("%w: %s", ErrInvalidReference, ref)
-	}
-
-	if err = worktree.Checkout(&git.CheckoutOptions{Branch: refSet.localRef, Keep: true}); err != nil {
-		return nil, fmt.Errorf("%w: %w: %s", ErrCheckoutFailed, err, refSet.localRef)
-	}
-
-	if err = ResetTrackedFiles(repo); err != nil {
-		return nil, fmt.Errorf("failed to reset tracked files: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrCheckoutFailed, err)
 	}
 
 	if cloneSubmodules {
@@ -309,6 +294,33 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 	}
 
 	return repo, nil
+}
+
+// CheckoutRepository checks out the specified reference in the repository, keeping untracked files intact.
+func CheckoutRepository(repo *git.Repository, ref string) error {
+	worktree, err := repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("failed to get worktree: %w", err)
+	}
+
+	refSet, err := GetReferenceSet(repo, ref)
+	if err != nil {
+		return fmt.Errorf("failed to get reference set for %s: %w", ref, err)
+	}
+
+	if refSet.LocalRef == "" {
+		return fmt.Errorf("%w: %s", ErrInvalidReference, ref)
+	}
+
+	if err = worktree.Checkout(&git.CheckoutOptions{Branch: refSet.LocalRef, Keep: true}); err != nil {
+		return fmt.Errorf("failed to checkout worktree: %w: %s", err, refSet.LocalRef)
+	}
+
+	if err = ResetTrackedFiles(repo); err != nil {
+		return fmt.Errorf("failed to reset tracked files: %w", err)
+	}
+
+	return nil
 }
 
 // CloneRepository clones a repository with HTTP or SSH auth.
@@ -337,7 +349,7 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 			return nil, fmt.Errorf("failed to add host to known_hosts: %w", err)
 		}
 
-		opts.URL = convertSSHUrl(url)
+		opts.URL = ConvertSSHUrl(url)
 	} else {
 		opts.InsecureSkipTLS = skipTLSVerify
 
@@ -435,7 +447,7 @@ func GetLatestCommit(repo *git.Repository, ref string) (string, error) {
 		return plumbing.ZeroHash.String(), err
 	}
 
-	r, err := repo.Reference(refSet.remoteRef, true)
+	r, err := repo.Reference(refSet.RemoteRef, true)
 	if err != nil {
 		return plumbing.ZeroHash.String(), fmt.Errorf("failed to get reference %s: %w", ref, err)
 	}
@@ -623,6 +635,10 @@ func shouldResetDecryptedFile(repo *git.Repository, repoRoot, file string) bool 
 // GetShortestUniqueCommitSHA returns the shortest unique prefix of a commit SHA in the repository.
 // Similar to the git command `git rev-parse --short=<length> <commitSHA>`.
 func GetShortestUniqueCommitSHA(repo *git.Repository, commitSHA string, minLength int) (string, error) {
+	if repo == nil {
+		return "", errors.New("repository not found")
+	}
+
 	iter, err := repo.CommitObjects()
 	if err != nil {
 		return "", err
@@ -657,4 +673,72 @@ func GetShortestUniqueCommitSHA(repo *git.Repository, commitSHA string, minLengt
 	}
 
 	return "", fmt.Errorf("no unique prefix found for commit SHA %s", commitSHA)
+}
+
+// GetRepoName returns the repository name in the form "<host>/<owner>/<repo>" from the given clone URL.
+// Supports:
+//   - https://github.com/owner/repo(.git)
+//   - http://github.com/owner/repo(.git)
+//   - ssh://github.com/owner/repo(.git)
+//   - git@github.com:owner/repo(.git)
+//   - token-injected https like https://oauth2:TOKEN@github.com/owner/repo(.git)
+func GetRepoName(cloneURL string) string {
+	u := strings.TrimSpace(cloneURL)
+	if u == "" {
+		return ""
+	}
+
+	// Handle classic SCP-like SSH: git@host:owner/repo(.git)
+	if strings.Contains(u, "@") && strings.Contains(u, ":") && !strings.Contains(u, "://") {
+		parts := strings.SplitN(u, "@", 2)
+		if len(parts) == 2 {
+			hostAndPath := parts[1]
+
+			hostParts := strings.SplitN(hostAndPath, ":", 2)
+			if len(hostParts) == 2 {
+				host := hostParts[0]
+				repoPath := strings.TrimPrefix(hostParts[1], "/")
+				ownerRepo := normalizeOwnerRepo(repoPath)
+
+				return host + "/" + ownerRepo
+			}
+		}
+	}
+
+	// For URLs with a scheme use net/url
+	parsed, err := url.Parse(u)
+	if err == nil && parsed.Host != "" {
+		p := strings.TrimPrefix(parsed.Path, "/")
+		ownerRepo := normalizeOwnerRepo(p)
+
+		return parsed.Host + "/" + ownerRepo
+	}
+
+	// Fallback: attempt to normalize directly
+	return normalizeOwnerRepo(u)
+}
+
+// normalizeOwnerRepo cleans a path and returns "owner/repo" or empty string when not possible.
+func normalizeOwnerRepo(p string) string {
+	// Remove query or fragment if present in raw strings
+	if idx := strings.IndexAny(p, "?#"); idx >= 0 {
+		p = p[:idx]
+	}
+
+	// Trim trailing '.git'
+	p = strings.TrimSuffix(p, ".git")
+
+	// Clean path and split
+	clean := path.Clean(p)
+
+	parts := strings.Split(clean, "/")
+	if len(parts) < 2 {
+		// Not enough segments to form owner/repo
+		return clean // safest fallback; avoids panic
+	}
+
+	owner := parts[len(parts)-2]
+	repo := parts[len(parts)-1]
+
+	return owner + "/" + repo
 }

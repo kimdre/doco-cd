@@ -20,9 +20,9 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 
-	"github.com/kimdre/doco-cd/internal/test"
+	"github.com/kimdre/doco-cd/internal/git"
 
-	"github.com/kimdre/doco-cd/internal/stages"
+	"github.com/kimdre/doco-cd/internal/test"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 
@@ -65,7 +65,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		indexPath = path.Join("html", "index.html")
 	}
 
-	indexPath = path.Join(tmpDir, stages.GetRepoName(cloneUrl), indexPath)
+	indexPath = path.Join(tmpDir, git.GetRepoName(cloneUrl), indexPath)
 
 	payload, err := os.ReadFile(filepath.Join(WorkingDir, payloadFile))
 	if err != nil {
