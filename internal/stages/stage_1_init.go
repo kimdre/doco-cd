@@ -9,8 +9,6 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/go-git/go-git/v5/plumbing/transport"
-
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/filesystem"
@@ -70,14 +68,9 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		slog.String("reference", s.DeployConfig.Reference),
 	)
 
-	auth := transport.AuthMethod(nil)
-	if git.IsSSH(string(s.Repository.CloneURL)) {
-		auth, err = git.SSHAuth(s.AppConfig.SSHPrivateKey, s.AppConfig.SSHPrivateKeyPassphrase)
-		if err != nil {
-			return fmt.Errorf("failed to get SSH auth: %w", err)
-		}
-	} else if s.AppConfig.GitAccessToken != "" {
-		auth = git.HttpTokenAuth(s.AppConfig.GitAccessToken)
+	auth, err := git.GetAuthMethod(string(s.Repository.CloneURL), s.AppConfig.SSHPrivateKey, s.AppConfig.SSHPrivateKeyPassphrase, s.AppConfig.GitAccessToken)
+	if err != nil {
+		return fmt.Errorf("failed to get auth method: %w", err)
 	}
 
 	// Check if we can skip cloning/updating because the previous run (initial or a prior deploy config)

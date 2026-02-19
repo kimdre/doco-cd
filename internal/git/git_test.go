@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/encryption"
@@ -101,20 +100,12 @@ func TestCloneRepository(t *testing.T) {
 				t.Skip("SSH private key not set, skipping SSH clone test")
 			}
 
-			var auth transport.AuthMethod
-
-			if IsSSH(tc.cloneUrl) {
-				t.Log("Using SSH auth for", tc.cloneUrl)
-
-				auth, err = SSHAuth(tc.privateKey, tc.passphrase)
-				if err != nil {
-					t.Fatalf("Failed to get SSH auth: %v", err)
-				}
-			} else if c.GitAccessToken != "" {
-				t.Log("Using HTTP token auth for", tc.cloneUrl)
-
-				auth = HttpTokenAuth(c.GitAccessToken)
+			auth, err := GetAuthMethod(tc.cloneUrl, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+			if err != nil {
+				t.Fatalf("Failed to get auth method: %v", err)
 			}
+
+			t.Logf("Using auth method: %s", auth.Name())
 
 			repo, err := CloneRepository(t.TempDir(), tc.cloneUrl, validBranchRef, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 			if err != nil {
@@ -228,20 +219,12 @@ func TestUpdateRepository(t *testing.T) {
 				t.Fatalf("Failed to get app config: %v", err)
 			}
 
-			var auth transport.AuthMethod
-
-			if IsSSH(tc.cloneUrl) {
-				t.Logf("Using SSH auth for %s", tc.cloneUrl)
-
-				auth, err = SSHAuth(c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
-				if err != nil {
-					t.Fatalf("Failed to get SSH auth: %v", err)
-				}
-			} else if tc.privateRepo && c.GitAccessToken != "" {
-				t.Logf("Using HTTP token auth for %s", tc.cloneUrl)
-
-				auth = HttpTokenAuth(c.GitAccessToken)
+			auth, err := GetAuthMethod(tc.cloneUrl, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+			if err != nil {
+				t.Fatalf("Failed to get auth method: %v", err)
 			}
+
+			t.Logf("Using auth method: %s", auth.Name())
 
 			repo, err := CloneRepository(t.TempDir(), tc.cloneUrl, MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 			if err != nil {
@@ -305,20 +288,12 @@ func TestGetReferenceSet(t *testing.T) {
 
 	url := cloneUrl
 
-	var auth transport.AuthMethod
-
-	if IsSSH(url) {
-		t.Log("Using SSH auth for", url)
-
-		auth, err = SSHAuth(c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
-		if err != nil {
-			t.Fatalf("Failed to get SSH auth: %v", err)
-		}
-	} else if c.GitAccessToken != "" {
-		t.Log("Using HTTP token auth for", url)
-
-		auth = HttpTokenAuth(c.GitAccessToken)
+	auth, err := GetAuthMethod(url, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	if err != nil {
+		t.Fatalf("Failed to get auth method: %v", err)
 	}
+
+	t.Logf("Using auth method: %s", auth.Name())
 
 	repo, err := CloneRepository(t.TempDir(), url, MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
@@ -355,15 +330,12 @@ func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 
 	url := cloneUrlTest
 
-	var auth transport.AuthMethod
-	if IsSSH(url) {
-		auth, err = SSHAuth(c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
-		if err != nil {
-			t.Fatalf("Failed to get SSH auth: %v", err)
-		}
-	} else if c.GitAccessToken != "" {
-		auth = HttpTokenAuth(c.GitAccessToken)
+	auth, err := GetAuthMethod(url, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	if err != nil {
+		t.Fatalf("Failed to get auth method: %v", err)
 	}
+
+	t.Logf("Using auth method: %s", auth.Name())
 
 	repo, err := CloneRepository(t.TempDir(), url, MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
@@ -423,20 +395,12 @@ func TestGetLatestCommit(t *testing.T) {
 
 	url := cloneUrl
 
-	var auth transport.AuthMethod
-
-	if IsSSH(url) {
-		t.Log("Using SSH auth for", url)
-
-		auth, err = SSHAuth(c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
-		if err != nil {
-			t.Fatalf("Failed to get SSH auth: %v", err)
-		}
-	} else if c.GitAccessToken != "" {
-		t.Log("Using HTTP token auth for", url)
-
-		auth = HttpTokenAuth(c.GitAccessToken)
+	auth, err := GetAuthMethod(url, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	if err != nil {
+		t.Fatalf("Failed to get auth method: %v", err)
 	}
+
+	t.Logf("Using auth method: %s", auth.Name())
 
 	repo, err := CloneRepository(t.TempDir(), url, MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
@@ -476,15 +440,12 @@ func TestGetChangedFilesBetweenCommits(t *testing.T) {
 
 	url := cloneUrlTest
 
-	var auth transport.AuthMethod
-	if IsSSH(url) {
-		auth, err = SSHAuth(c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
-		if err != nil {
-			t.Fatalf("Failed to get SSH auth: %v", err)
-		}
-	} else if c.GitAccessToken != "" {
-		auth = HttpTokenAuth(c.GitAccessToken)
+	auth, err := GetAuthMethod(url, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	if err != nil {
+		t.Fatalf("Failed to get auth method: %v", err)
 	}
+
+	t.Logf("Using auth method: %s", auth.Name())
 
 	repo, err := CloneRepository(tmpDir, url, MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
