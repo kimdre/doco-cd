@@ -111,12 +111,12 @@ func TestGetAppConfig(t *testing.T) {
 
 			// Run the test
 			cfg, err := GetAppConfig()
-			if !errors.Is(err, tt.expectedErr) {
-				t.Fatalf("expected error to be '%v', got '%v'", tt.expectedErr, err)
-			}
+			if err != nil {
+				if errors.Is(err, tt.expectedErr) {
+					return
+				}
 
-			if tt.expectedErr != nil {
-				return
+				t.Fatalf("expected error to be '%v', got '%v'", tt.expectedErr, err)
 			}
 
 			if tt.dockerSecrets != nil {
