@@ -14,8 +14,12 @@ import (
 
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/creasty/defaults"
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"go.yaml.in/yaml/v3"
 	"gopkg.in/validator.v2"
+
+	gitInternal "github.com/kimdre/doco-cd/internal/git"
 
 	"github.com/kimdre/doco-cd/internal/logger"
 )
@@ -164,7 +168,7 @@ func GetDeployConfigFromYAML(f string) ([]*DeployConfig, error) {
 		return nil, fmt.Errorf("failed to read file: %v", err)
 	}
 
-	// Read all yaml documents in the file and unmarshal them into a slice of DeployConfig structs
+	// Read all YAML documents in the file and unmarshal them into a slice of DeployConfig structs
 	dec := yaml.NewDecoder(bytes.NewReader(b))
 
 	var configs []*DeployConfig
@@ -214,6 +218,36 @@ func GetDeployConfigs(repoRoot, deployConfigBaseDir, name, customTarget, referen
 		DeploymentConfigFileNames = DefaultDeploymentConfigFileNames
 	}
 
+	// Get repo and change to reference in c.Reference if it is different to the current reference in the repoRoot,
+	// otherwise it will cause issues with the auto-discovery
+	baseRepo, err := git.PlainOpen(repoRoot)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open git repository at %s: %w", repoRoot, err)
+	}
+
+	// Compare the resolved reference with the current HEAD reference, if they are different then skip the auto-discovery for this deployment config
+	headRef, err := baseRepo.Head()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get HEAD reference: %w", err)
+	}
+
+	// Checkout repo to different reference
+	w, err := baseRepo.Worktree()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get git worktree: %w", err)
+	}
+
+	// Defer checkout back to original HEAD reference after the deployment is done
+	defer func(branch plumbing.ReferenceName) {
+		err = w.Checkout(&git.CheckoutOptions{
+			Branch: branch,
+			Keep:   true,
+		})
+		if err != nil {
+			slog.Error("failed to checkout back to original HEAD reference after deployment", "error", err)
+		}
+	}(headRef.Name())
+
 	var configs []*DeployConfig
 	for _, configFile := range DeploymentConfigFileNames {
 		configs, err = getDeployConfigsFromFile(configDir, files, configFile)
@@ -225,40 +259,78 @@ func GetDeployConfigs(repoRoot, deployConfigBaseDir, name, customTarget, referen
 			return nil, err
 		}
 
+		appConfig, err := GetAppConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get app config: %w", err)
+		}
+
+		// Build a new slice to avoid modifying the slice we're iterating over
+		var expandedConfigs []*DeployConfig
+
 		// Handle autodiscover deployment configs
-		for i, c := range configs {
+		for _, c := range configs {
+			repoDir := repoRoot
 			// Check for deployConfigs with AutoDiscover enabled, if true then remove this config and add new configs based on discovered compose files
 			if c.AutoDiscover {
-				discoveredConfigs, err := autoDiscoverDeployments(repoRoot, c)
+				if c.RepositoryUrl != "" {
+					auth, err := gitInternal.GetAuthMethod(string(c.RepositoryUrl), appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken)
+					if err != nil {
+						return nil, fmt.Errorf("failed to get auth method: %w", err)
+					}
+
+					repoDir = path.Join(path.Dir(repoRoot), string(c.RepositoryUrl)) // FIXME: convert repo url to repo name
+
+					// Clone the repository to repoDir if it does not exist, otherwise fetch the latest changes and checkout to the correct reference
+					_, err = gitInternal.CloneRepository(repoDir, string(c.RepositoryUrl), c.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules)
+					if err != nil {
+						if errors.Is(err, git.ErrRepositoryAlreadyExists) {
+							_, err = gitInternal.UpdateRepository(repoDir, string(c.RepositoryUrl), c.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules)
+							if err != nil {
+								return nil, fmt.Errorf("failed to update repository: %w", err)
+							}
+						}
+
+						return nil, fmt.Errorf("failed to clone repository: %w", err)
+					}
+				} else {
+					err = gitInternal.CheckoutRepository(baseRepo, c.Reference)
+					if err != nil {
+						return nil, fmt.Errorf("failed to checkout repository to reference %s: %w", c.Reference, err)
+					}
+				}
+
+				discoveredConfigs, err := autoDiscoverDeployments(repoDir, c)
 				if err != nil {
 					return nil, fmt.Errorf("failed to auto-discover deployment configurations: %w", err)
 				}
 
-				// Replace the current config with the discovered configs
-				configs = append(configs[:i], configs[i+1:]...)
-				configs = append(configs, discoveredConfigs...)
+				// Add the discovered configs to the expanded list
+				expandedConfigs = append(expandedConfigs, discoveredConfigs...)
+			} else {
+				// Keep non-autodiscover configs as-is
+				expandedConfigs = append(expandedConfigs, c)
 			}
 		}
 
-		if configs != nil {
-			if err = validator.Validate(configs); err != nil {
+		if expandedConfigs != nil {
+			if err = validator.Validate(expandedConfigs); err != nil {
 				return nil, err
 			}
 
 			// Check if the stack/project names are not unique
-			err = validateUniqueProjectNames(configs)
+			err = validateUniqueProjectNames(expandedConfigs)
 			if err != nil {
 				return nil, err
 			}
 
-			for _, c := range configs {
+			for _, c := range expandedConfigs {
 				// If the reference is not already set in the deployment config file, set it to the current reference
 				if c.Reference == "" {
 					c.Reference = reference
 				}
 			}
 
-			return configs, nil
+			return expandedConfigs, nil
 		}
 	}
 
