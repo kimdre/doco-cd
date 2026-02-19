@@ -117,7 +117,7 @@ func waitForConfig(ctx context.Context, apiClient client.ConfigAPIClient, name s
 
 // waitForResources waits for the specified resources to be ready by concurrently inspecting them until they succeed or time out.
 func waitForResources(ctx context.Context, apiClient client.APIClient, networks map[string]network.CreateOptions, secrets []swarm.SecretSpec, configs []swarm.ConfigSpec) error {
-	const resourceWaitTimeout = 10 * time.Second
+	const resourceWaitTimeout = 5 * time.Second
 
 	g, ctx := errgroup.WithContext(ctx)
 
