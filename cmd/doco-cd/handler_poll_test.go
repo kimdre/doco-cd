@@ -7,7 +7,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
-	"github.com/kimdre/doco-cd/internal/stages"
 	"github.com/kimdre/doco-cd/internal/test"
 
 	"github.com/kimdre/doco-cd/internal/git"
@@ -110,7 +109,7 @@ func TestRunPoll(t *testing.T) {
 	})
 
 	metadata := notification.Metadata{
-		Repository: stages.GetRepoName(string(pollConfig.CloneUrl)),
+		Repository: git.GetRepoName(string(pollConfig.CloneUrl)),
 		Stack:      stackName,
 		Revision:   notification.GetRevision(pollConfig.Reference, ""),
 	}

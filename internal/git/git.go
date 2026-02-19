@@ -3,7 +3,9 @@ package git
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -633,6 +635,10 @@ func shouldResetDecryptedFile(repo *git.Repository, repoRoot, file string) bool 
 // GetShortestUniqueCommitSHA returns the shortest unique prefix of a commit SHA in the repository.
 // Similar to the git command `git rev-parse --short=<length> <commitSHA>`.
 func GetShortestUniqueCommitSHA(repo *git.Repository, commitSHA string, minLength int) (string, error) {
+	if repo == nil {
+		return "", errors.New("repository not found")
+	}
+
 	iter, err := repo.CommitObjects()
 	if err != nil {
 		return "", err
@@ -667,4 +673,72 @@ func GetShortestUniqueCommitSHA(repo *git.Repository, commitSHA string, minLengt
 	}
 
 	return "", fmt.Errorf("no unique prefix found for commit SHA %s", commitSHA)
+}
+
+// GetRepoName returns the repository name in the form "<host>/<owner>/<repo>" from the given clone URL.
+// Supports:
+//   - https://github.com/owner/repo(.git)
+//   - http://github.com/owner/repo(.git)
+//   - ssh://github.com/owner/repo(.git)
+//   - git@github.com:owner/repo(.git)
+//   - token-injected https like https://oauth2:TOKEN@github.com/owner/repo(.git)
+func GetRepoName(cloneURL string) string {
+	u := strings.TrimSpace(cloneURL)
+	if u == "" {
+		return ""
+	}
+
+	// Handle classic SCP-like SSH: git@host:owner/repo(.git)
+	if strings.Contains(u, "@") && strings.Contains(u, ":") && !strings.Contains(u, "://") {
+		parts := strings.SplitN(u, "@", 2)
+		if len(parts) == 2 {
+			hostAndPath := parts[1]
+
+			hostParts := strings.SplitN(hostAndPath, ":", 2)
+			if len(hostParts) == 2 {
+				host := hostParts[0]
+				repoPath := strings.TrimPrefix(hostParts[1], "/")
+				ownerRepo := normalizeOwnerRepo(repoPath)
+
+				return host + "/" + ownerRepo
+			}
+		}
+	}
+
+	// For URLs with a scheme use net/url
+	parsed, err := url.Parse(u)
+	if err == nil && parsed.Host != "" {
+		p := strings.TrimPrefix(parsed.Path, "/")
+		ownerRepo := normalizeOwnerRepo(p)
+
+		return parsed.Host + "/" + ownerRepo
+	}
+
+	// Fallback: attempt to normalize directly
+	return normalizeOwnerRepo(u)
+}
+
+// normalizeOwnerRepo cleans a path and returns "owner/repo" or empty string when not possible.
+func normalizeOwnerRepo(p string) string {
+	// Remove query or fragment if present in raw strings
+	if idx := strings.IndexAny(p, "?#"); idx >= 0 {
+		p = p[:idx]
+	}
+
+	// Trim trailing '.git'
+	p = strings.TrimSuffix(p, ".git")
+
+	// Clean path and split
+	clean := path.Clean(p)
+
+	parts := strings.Split(clean, "/")
+	if len(parts) < 2 {
+		// Not enough segments to form owner/repo
+		return clean // safest fallback; avoids panic
+	}
+
+	owner := parts[len(parts)-2]
+	repo := parts[len(parts)-1]
+
+	return owner + "/" + repo
 }

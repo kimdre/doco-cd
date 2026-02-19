@@ -278,7 +278,7 @@ func GetDeployConfigs(repoRoot, deployConfigBaseDir, name, customTarget, referen
 						return nil, fmt.Errorf("failed to get auth method: %w", err)
 					}
 
-					repoDir = path.Join(path.Dir(repoRoot), string(c.RepositoryUrl)) // FIXME: convert repo url to repo name
+					repoDir = path.Join(path.Dir(repoRoot), gitInternal.GetRepoName(string(c.RepositoryUrl)))
 
 					// Clone the repository to repoDir if it does not exist, otherwise fetch the latest changes and checkout to the correct reference
 					_, err = gitInternal.CloneRepository(repoDir, string(c.RepositoryUrl), c.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules)

@@ -78,7 +78,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	var err error
 
 	startTime := time.Now()
-	repoName := stages.GetRepoName(payload.CloneURL)
+	repoName := git.GetRepoName(payload.CloneURL)
 
 	jobLog = jobLog.With(slog.String("repository", repoName))
 
@@ -314,7 +314,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if payload.CloneURL != "" {
-			repoName = stages.GetRepoName(payload.CloneURL)
+			repoName = git.GetRepoName(payload.CloneURL)
 			metadata.Repository = repoName
 			metadata.Revision = notification.GetRevision(payload.Ref, payload.CommitSHA)
 		}
@@ -339,7 +339,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if metadata.Repository == "" {
-		repoName = stages.GetRepoName(payload.CloneURL)
+		repoName = git.GetRepoName(payload.CloneURL)
 		metadata.Repository = repoName
 		metadata.Revision = notification.GetRevision(payload.Ref, payload.CommitSHA)
 	}
