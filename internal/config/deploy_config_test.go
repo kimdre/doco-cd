@@ -899,6 +899,10 @@ func TestAutoDiscoverDeployments_InheritBaseConfig(t *testing.T) {
 func createTestRepo(t *testing.T, repoPath string) (repo *git.Repository) {
 	t.Helper()
 
+	// Set authorship info for commits (required by go-git)
+	t.Setenv("GIT_AUTHOR_NAME", "Test Author")
+	t.Setenv("GIT_AUTHOR_EMAIL", "test@example.com")
+
 	// Init git repo at repoRoot with main branch
 	repo, err := git.PlainInit(repoPath, false)
 	if err != nil {
