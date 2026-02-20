@@ -69,7 +69,7 @@ jobs:
           retention-days: 90
 
       - name: Upload Release Assets
-        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
-        with:
-          files: |
-            doco-cd_${{ github.ref_name }}_sbom.cdx.json
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload ${{ github.ref_name }} doco-cd_${{ github.ref_name }}_sbom.cdx.json --clobber
