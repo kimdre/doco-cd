@@ -13,7 +13,6 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
-	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/google/uuid"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -63,7 +62,7 @@ func StartPoll(h *handlerData, pollConfig config.PollConfig, wg *sync.WaitGroup)
 
 // PollHandler is a function that handles polling for changes in a repository.
 func (h *handlerData) PollHandler(pollJob *config.PollJob) {
-	repoName := stages.GetRepoName(string(pollJob.Config.CloneUrl))
+	repoName := git.GetRepoName(string(pollJob.Config.CloneUrl))
 
 	logger := h.log.With(slog.String("repository", repoName))
 	logger.Debug("Start poll handler")
@@ -139,7 +138,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 
 	startTime := time.Now()
 	cloneUrl := string(pollConfig.CloneUrl)
-	repoName := stages.GetRepoName(cloneUrl)
+	repoName := git.GetRepoName(cloneUrl)
 	jobLog := logger.With(slog.String("job_id", metadata.JobID))
 
 	if appConfig.DockerSwarmFeatures {
@@ -190,16 +189,10 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		slog.String("container_path", internalRepoPath),
 		slog.String("host_path", externalRepoPath))
 
-	auth := transport.AuthMethod(nil)
-	if git.IsSSH(cloneUrl) {
-		auth, err = git.SSHAuth(appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase)
-		if err != nil {
-			pollError(jobLog, metadata, fmt.Errorf("failed to setup ssh auth: %w", err))
-
-			return append(results, pollResult{Metadata: metadata, Err: err})
-		}
-	} else if appConfig.GitAccessToken != "" {
-		auth = git.HttpTokenAuth(appConfig.GitAccessToken)
+	auth, err := git.GetAuthMethod(cloneUrl, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken)
+	if err != nil {
+		pollError(jobLog, metadata, fmt.Errorf("failed to get auth method: %w", err))
+		return append(results, pollResult{Metadata: metadata, Err: err})
 	}
 
 	_, err = git.CloneRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules)
