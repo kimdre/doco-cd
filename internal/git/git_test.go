@@ -338,7 +338,7 @@ func TestGetReferenceSet(t *testing.T) {
 			name:              "Branch Reference",
 			localRef:          git.MainBranch,
 			expectedLocalRef:  git.MainBranch,
-			expectedRemoteRef: git.MainBranch,
+			expectedRemoteRef: remoteMainBranch,
 		},
 		{
 			name:              "Tag",
