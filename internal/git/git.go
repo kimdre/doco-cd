@@ -326,11 +326,10 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 	}
 
 	opts := &git.CloneOptions{
-		RemoteName:    RemoteName,
-		URL:           url,
-		ReferenceName: plumbing.ReferenceName(ref),
-		Tags:          git.AllTags,
-		Auth:          auth,
+		RemoteName: RemoteName,
+		URL:        url,
+		Tags:       git.AllTags,
+		Auth:       auth,
 	}
 
 	if cloneSubmodules {
@@ -365,6 +364,11 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 		}
 
 		return nil, fmt.Errorf("clone failed: %w", err)
+	}
+
+	err = CheckoutRepository(repo, ref)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrCheckoutFailed, err)
 	}
 
 	return repo, err
