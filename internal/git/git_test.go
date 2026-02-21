@@ -19,8 +19,8 @@ const (
 	cloneUrlTest     = "https://github.com/kimdre/doco-cd_tests.git"
 	cloneUrlSSH      = "git@github.com:kimdre/doco-cd.git"
 	remoteMainBranch = "refs/remotes/origin/main"
-	validTagRef      = "refs/tags/v0.15.0"
-	validTagRefShort = "v0.15.0"
+	remoteTagRef     = "refs/tags/v0.15.0"
+	tagRef           = "v0.15.0"
 	invalidRef       = "refs/heads/invalid"
 	invalidTagRef    = "refs/tags/invalid"
 	commitSHARef     = "bb8864f3fb30cdd36a109f52bc4ab961ec40f5d6"
@@ -91,7 +91,7 @@ func TestCloneRepository(t *testing.T) {
 		{
 			name:       "HTTP clone tag ref",
 			cloneUrl:   cloneUrl,
-			reference:  validTagRefShort,
+			reference:  tagRef,
 			privateKey: "",
 			passphrase: "",
 			skip:       false,
@@ -192,16 +192,16 @@ func TestUpdateRepository(t *testing.T) {
 			name:        "Valid tag ref",
 			cloneUrl:    cloneUrl,
 			privateRepo: false,
-			branchRef:   validTagRef,
-			expectedRef: validTagRef,
+			branchRef:   remoteTagRef,
+			expectedRef: remoteTagRef,
 			expectedErr: nil,
 		},
 		{
 			name:        "Valid short tag ref",
 			cloneUrl:    cloneUrl,
 			privateRepo: false,
-			branchRef:   validTagRefShort,
-			expectedRef: validTagRef,
+			branchRef:   tagRef,
+			expectedRef: remoteTagRef,
 			expectedErr: nil,
 		},
 		{
@@ -309,21 +309,51 @@ func TestUpdateRepository(t *testing.T) {
 }
 
 func TestGetReferenceSet(t *testing.T) {
+	testCases := []struct {
+		name              string
+		localRef          string
+		expectedLocalRef  string
+		expectedRemoteRef string
+	}{
+		{
+			name:              "Branch",
+			localRef:          "main",
+			expectedLocalRef:  git.MainBranch,
+			expectedRemoteRef: remoteMainBranch,
+		},
+		{
+			name:              "Branch Reference",
+			localRef:          git.MainBranch,
+			expectedLocalRef:  git.MainBranch,
+			expectedRemoteRef: git.MainBranch,
+		},
+		{
+			name:              "Tag",
+			localRef:          tagRef,
+			expectedLocalRef:  remoteTagRef,
+			expectedRemoteRef: remoteTagRef,
+		},
+		{
+			name:              "Commit SHA",
+			localRef:          commitSHARef,
+			expectedLocalRef:  commitSHARef,
+			expectedRemoteRef: "", // For commit SHA, there is no remote reference
+		},
+	}
+
 	c, err := config.GetAppConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
 
-	url := cloneUrl
-
-	auth, err := git.GetAuthMethod(url, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	auth, err := git.GetAuthMethod(cloneUrl, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
 	if err != nil {
 		t.Fatalf("Failed to get auth method: %v", err)
 	}
 
 	t.Logf("Using auth method: %s", auth.Name())
 
-	repo, err := git.CloneRepository(t.TempDir(), url, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
+	repo, err := git.CloneRepository(t.TempDir(), cloneUrl, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -332,21 +362,25 @@ func TestGetReferenceSet(t *testing.T) {
 		t.Fatal("Repository is nil")
 	}
 
-	refSet, err := git.GetReferenceSet(repo, git.MainBranch)
-	if err != nil {
-		t.Fatalf("Failed to get reference set: %v", err)
-	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			refSet, err := git.GetReferenceSet(repo, tc.localRef)
+			if err != nil {
+				t.Fatalf("Failed to get reference set: %v", err)
+			}
 
-	if refSet.LocalRef == "" || refSet.RemoteRef == "" {
-		t.Fatal("Reference set is incomplete")
-	}
+			if refSet.LocalRef.String() == "" || (tc.expectedRemoteRef != "" && refSet.RemoteRef.String() == "") {
+				t.Fatalf("Reference set is incomplete: localRef: %s, remoteRef: %s", refSet.LocalRef.String(), refSet.RemoteRef.String())
+			}
 
-	if refSet.LocalRef.String() != git.MainBranch {
-		t.Fatalf("Expected local reference %s, got %s", git.MainBranch, refSet.LocalRef.String())
-	}
+			if refSet.LocalRef.String() != tc.expectedLocalRef {
+				t.Fatalf("Expected local reference %s, got %s", tc.expectedLocalRef, refSet.LocalRef.String())
+			}
 
-	if refSet.RemoteRef.String() != remoteMainBranch {
-		t.Fatalf("Expected remote reference %s, got %s", remoteMainBranch, refSet.RemoteRef.String())
+			if refSet.RemoteRef.String() != tc.expectedRemoteRef {
+				t.Fatalf("Expected remote reference %s, got %s", tc.expectedRemoteRef, refSet.RemoteRef.String())
+			}
+		})
 	}
 }
 
