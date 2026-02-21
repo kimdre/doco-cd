@@ -64,14 +64,9 @@ type RefSet struct {
 
 // GetReferenceSet retrieves a RefSet of local and remote references for a given reference name.
 func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
-	// First, check if ref is a commit SHA (full or short)
-	if hash := plumbing.NewHash(ref); hash != plumbing.ZeroHash || len(ref) >= 4 {
-		// Try to resolve as a commit hash
-		commitHash, err := repo.ResolveRevision(plumbing.Revision(ref))
-		if err == nil {
-			// It's a valid commit SHA - use it directly
-			return RefSet{LocalRef: plumbing.ReferenceName(commitHash.String()), RemoteRef: ""}, nil
-		}
+	// First, check if ref is a commit SHA (full or short hex string)
+	if plumbing.IsHash(ref) {
+		return RefSet{LocalRef: plumbing.ReferenceName(ref)}, nil
 	}
 
 	remoteRef := plumbing.NewRemoteReferenceName(RemoteName, ref)
