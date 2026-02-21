@@ -64,61 +64,38 @@ type RefSet struct {
 
 // GetReferenceSet retrieves a RefSet of local and remote references for a given reference name.
 func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
-	var refCandidates []RefSet
+	remoteRef := plumbing.NewRemoteReferenceName(RemoteName, ref)
+	branchRef := plumbing.NewBranchReferenceName(ref)
+	tagRef := plumbing.NewTagReferenceName(ref)
+	fullRef := plumbing.ReferenceName(ref)
 
-	// Check if the reference is a branch or tag
-	switch {
-	case strings.HasPrefix(ref, BranchPrefix):
-		name := strings.TrimPrefix(ref, BranchPrefix)
-
-		refCandidates = append(refCandidates, RefSet{
-			LocalRef:  plumbing.NewBranchReferenceName(name),
-			RemoteRef: plumbing.NewRemoteReferenceName(RemoteName, name),
-		})
-	case strings.HasPrefix(ref, TagPrefix):
-		name := strings.TrimPrefix(ref, TagPrefix)
-
-		refCandidates = append(refCandidates, RefSet{
-			LocalRef:  plumbing.NewTagReferenceName(name),
-			RemoteRef: plumbing.NewTagReferenceName(name),
-		})
-	default:
-		// Create ref candidate for branch and tag
-		refCandidates = append(refCandidates,
-			RefSet{
-				// Create ref candidate for branch
-				LocalRef:  plumbing.NewBranchReferenceName(ref),
-				RemoteRef: plumbing.NewRemoteReferenceName(RemoteName, ref),
-			},
-			// Create ref candidate for tag
-			RefSet{
-				LocalRef:  plumbing.NewTagReferenceName(ref),
-				RemoteRef: plumbing.NewTagReferenceName(ref),
-			},
-		)
+	// Try each reference type in order of precedence
+	// Local branch first (exists after single-branch clone), then remote, tag, full ref
+	refTypes := []struct {
+		localRef  plumbing.ReferenceName
+		remoteRef plumbing.ReferenceName
+	}{
+		{branchRef, remoteRef}, // Local branch -> remote tracking
+		{remoteRef, remoteRef}, // Remote ref
+		{tagRef, tagRef},       // Tags don't have separate remote refs
+		{fullRef, fullRef},     // Full refs are used as-is
 	}
 
-	for _, candidate := range refCandidates {
-		if candidate.LocalRef.IsBranch() {
-			newRef := plumbing.NewSymbolicReference(candidate.LocalRef, candidate.RemoteRef)
+	var lastErr error
 
-			err := repo.Storer.SetReference(newRef)
-			if err != nil {
-				return RefSet{}, err
-			}
-		}
-		// Check if LocalRef exists remotely
-		_, err := repo.Reference(candidate.RemoteRef, true)
-		if err != nil {
-			if errors.Is(err, plumbing.ErrReferenceNotFound) {
-				// If the reference does not exist, continue To the next candidate
-				continue
-			}
-
-			return RefSet{}, fmt.Errorf("%w: %s", err, candidate.LocalRef)
+	for _, rt := range refTypes {
+		_, err := repo.Reference(rt.localRef, true)
+		if err == nil {
+			return RefSet{LocalRef: rt.localRef, RemoteRef: rt.remoteRef}, nil
 		}
 
-		return candidate, nil
+		if !errors.Is(err, plumbing.ErrReferenceNotFound) {
+			lastErr = err
+		}
+	}
+
+	if lastErr != nil {
+		return RefSet{}, fmt.Errorf("failed to get reference %s: %w", ref, lastErr)
 	}
 
 	return RefSet{}, fmt.Errorf("%w: %s", ErrInvalidReference, ref)
@@ -333,9 +310,8 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 	opts := &git.CloneOptions{
 		RemoteName:    RemoteName,
 		URL:           url,
-		SingleBranch:  true,
 		ReferenceName: plumbing.ReferenceName(ref),
-		Tags:          git.NoTags,
+		Tags:          git.AllTags,
 		Auth:          auth,
 	}
 
@@ -365,8 +341,12 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 	}
 
 	repo, err := git.PlainClone(path, false, opts)
-	if errors.Is(err, transport.ErrInvalidAuthMethod) && cloneSubmodules {
-		return nil, fmt.Errorf("%w: %w", err, ErrPossibleAuthMethodMismatch)
+	if err != nil {
+		if errors.Is(err, transport.ErrInvalidAuthMethod) && cloneSubmodules {
+			return nil, fmt.Errorf("%w: %w", err, ErrPossibleAuthMethodMismatch)
+		}
+
+		return nil, fmt.Errorf("clone failed: %w", err)
 	}
 
 	return repo, err
