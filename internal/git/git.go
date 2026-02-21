@@ -64,37 +64,46 @@ type RefSet struct {
 
 // GetReferenceSet retrieves a RefSet of local and remote references for a given reference name.
 func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
-	// First, check if ref is a commit SHA (full or short hex string)
 	if plumbing.IsHash(ref) {
 		return RefSet{LocalRef: plumbing.ReferenceName(ref)}, nil
 	}
 
-	remoteRef := plumbing.NewRemoteReferenceName(RemoteName, ref)
-	branchRef := plumbing.NewBranchReferenceName(ref)
-	tagRef := plumbing.NewTagReferenceName(ref)
-	fullRef := plumbing.ReferenceName(ref)
+	// Build candidate (local, remote) pairs based on whether ref is already qualified
+	type candidate struct {
+		local  plumbing.ReferenceName
+		remote plumbing.ReferenceName
+	}
 
-	// Try each reference type in order of precedence
-	// Local branch first (exists after single-branch clone), then remote, tag, full ref
-	refTypes := []struct {
-		localRef  plumbing.ReferenceName
-		remoteRef plumbing.ReferenceName
-	}{
-		{branchRef, remoteRef}, // Local branch -> remote tracking
-		{remoteRef, remoteRef}, // Remote ref
-		{tagRef, tagRef},       // Tags don't have separate remote refs
-		{fullRef, fullRef},     // Full refs are used as-is
+	var candidates []candidate
+
+	if strings.HasPrefix(ref, "refs/") {
+		fullRef := plumbing.ReferenceName(ref)
+
+		remoteRef := fullRef
+		if strings.HasPrefix(ref, BranchPrefix) {
+			remoteRef = plumbing.NewRemoteReferenceName(RemoteName, strings.TrimPrefix(ref, BranchPrefix))
+		}
+
+		candidates = append(candidates,
+			candidate{fullRef, remoteRef},
+			candidate{remoteRef, remoteRef},
+		)
+	} else {
+		remoteRef := plumbing.NewRemoteReferenceName(RemoteName, ref)
+		candidates = append(candidates,
+			candidate{plumbing.NewBranchReferenceName(ref), remoteRef},
+			candidate{remoteRef, remoteRef},
+			candidate{plumbing.NewTagReferenceName(ref), plumbing.NewTagReferenceName(ref)},
+			candidate{plumbing.ReferenceName(ref), plumbing.ReferenceName(ref)},
+		)
 	}
 
 	var lastErr error
 
-	for _, rt := range refTypes {
-		_, err := repo.Reference(rt.localRef, true)
-		if err == nil {
-			return RefSet{LocalRef: rt.localRef, RemoteRef: rt.remoteRef}, nil
-		}
-
-		if !errors.Is(err, plumbing.ErrReferenceNotFound) {
+	for _, c := range candidates {
+		if _, err := repo.Reference(c.local, true); err == nil {
+			return RefSet{LocalRef: c.local, RemoteRef: c.remote}, nil
+		} else if !errors.Is(err, plumbing.ErrReferenceNotFound) {
 			lastErr = err
 		}
 	}
@@ -224,6 +233,40 @@ func OpenRepository(path string) (*git.Repository, error) {
 	return git.PlainOpen(path)
 }
 
+// FetchRepository fetches updates from the remote repository, including all branches and tags, and prunes deleted references.
+func FetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod) error {
+	opts := &git.FetchOptions{
+		RemoteName: RemoteName,
+		RemoteURL:  url,
+		RefSpecs:   []config.RefSpec{refSpecAllBranches, refSpecAllTags},
+		Prune:      true,
+		Auth:       auth,
+	}
+
+	// SSH auth when key is provided
+	if IsSSH(url) {
+		err := addToKnownHosts(url)
+		if err != nil {
+			return fmt.Errorf("failed to add host to known_hosts: %w", err)
+		}
+
+		opts.RemoteURL = ConvertSSHUrl(url)
+	} else {
+		opts.InsecureSkipTLS = skipTLSVerify
+
+		if proxyOpts != (transport.ProxyOptions{}) {
+			opts.ProxyOptions = proxyOpts
+		}
+	}
+
+	err := repo.Fetch(opts)
+	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
+		return fmt.Errorf("%w: %w", ErrFetchFailed, err)
+	}
+
+	return nil
+}
+
 // UpdateRepository fetches and checks out the requested ref.
 func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, cloneSubmodules bool) (*git.Repository, error) {
 	repo, err := git.PlainOpen(path)
@@ -236,31 +279,8 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 		return nil, err
 	}
 
-	opts := &git.FetchOptions{
-		RemoteName: RemoteName,
-		RemoteURL:  url,
-		RefSpecs:   []config.RefSpec{refSpecAllBranches, refSpecAllTags},
-		Prune:      true,
-		Auth:       auth,
-	}
-
-	// SSH auth when key is provided
-	if IsSSH(url) {
-		err = addToKnownHosts(url)
-		if err != nil {
-			return nil, fmt.Errorf("failed to add host to known_hosts: %w", err)
-		}
-
-		opts.RemoteURL = ConvertSSHUrl(url)
-	} else {
-		opts.InsecureSkipTLS = skipTLSVerify
-
-		if proxyOpts != (transport.ProxyOptions{}) {
-			opts.ProxyOptions = proxyOpts
-		}
-	}
-
-	if err = repo.Fetch(opts); err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
+	err = FetchRepository(repo, url, skipTLSVerify, proxyOpts, auth)
+	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrFetchFailed, err)
 	}
 
@@ -270,7 +290,7 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 	}
 
 	if cloneSubmodules {
-		if err = updateSubmodules(repo, opts.Auth); err != nil {
+		if err = updateSubmodules(repo, auth); err != nil {
 			return nil, fmt.Errorf("failed to update submodules: %w", err)
 		}
 	}
@@ -287,7 +307,7 @@ func CheckoutRepository(repo *git.Repository, ref string) error {
 
 	refSet, err := GetReferenceSet(repo, ref)
 	if err != nil {
-		return fmt.Errorf("failed to get reference set for %s: %w", ref, err)
+		return fmt.Errorf("failed to get reference set: %w", err)
 	}
 
 	if refSet.LocalRef == "" {
@@ -359,6 +379,11 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 		}
 
 		return nil, fmt.Errorf("clone failed: %w", err)
+	}
+
+	err = FetchRepository(repo, url, skipTLSVerify, proxyOpts, auth)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrFetchFailed, err)
 	}
 
 	err = CheckoutRepository(repo, ref)
