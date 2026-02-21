@@ -73,7 +73,7 @@ compose-up:
 
 compose-down:
 	@echo "Stopping dev docker-compose..."
-	@docker compose -f dev.compose.yaml down
+	@docker compose -f dev.compose.yaml down --volumes
 
 cleanup:
 	@CONTAINERS=$$(docker container ls --format "{{.ID}}" --filter "label=cd.doco.metadata.manager"); \
