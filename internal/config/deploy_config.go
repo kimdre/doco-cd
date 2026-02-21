@@ -269,6 +269,11 @@ func GetDeployConfigs(repoRoot, deployConfigBaseDir, name, customTarget, referen
 
 		// Handle autodiscover deployment configs
 		for _, c := range configs {
+			if c.Reference == "" {
+				// If the reference is not already set in the deployment config file, set it to the current reference
+				c.Reference = reference
+			}
+
 			repoDir := repoRoot
 			// Check for deployConfigs with AutoDiscover enabled, if true then remove this config and add new configs based on discovered compose files
 			if c.AutoDiscover {
@@ -321,13 +326,6 @@ func GetDeployConfigs(repoRoot, deployConfigBaseDir, name, customTarget, referen
 			err = validateUniqueProjectNames(expandedConfigs)
 			if err != nil {
 				return nil, err
-			}
-
-			for _, c := range expandedConfigs {
-				// If the reference is not already set in the deployment config file, set it to the current reference
-				if c.Reference == "" {
-					c.Reference = reference
-				}
 			}
 
 			return expandedConfigs, nil
