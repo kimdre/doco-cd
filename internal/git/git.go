@@ -64,6 +64,16 @@ type RefSet struct {
 
 // GetReferenceSet retrieves a RefSet of local and remote references for a given reference name.
 func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
+	// First, check if ref is a commit SHA (full or short)
+	if hash := plumbing.NewHash(ref); hash != plumbing.ZeroHash || len(ref) >= 4 {
+		// Try to resolve as a commit hash
+		commitHash, err := repo.ResolveRevision(plumbing.Revision(ref))
+		if err == nil {
+			// It's a valid commit SHA - use it directly
+			return RefSet{LocalRef: plumbing.ReferenceName(commitHash.String()), RemoteRef: ""}, nil
+		}
+	}
+
 	remoteRef := plumbing.NewRemoteReferenceName(RemoteName, ref)
 	branchRef := plumbing.NewBranchReferenceName(ref)
 	tagRef := plumbing.NewTagReferenceName(ref)
@@ -289,8 +299,16 @@ func CheckoutRepository(repo *git.Repository, ref string) error {
 		return fmt.Errorf("%w: %s", ErrInvalidReference, ref)
 	}
 
-	if err = worktree.Checkout(&git.CheckoutOptions{Branch: refSet.LocalRef, Keep: true}); err != nil {
-		return fmt.Errorf("failed to checkout worktree: %w: %s", err, refSet.LocalRef)
+	// Check if LocalRef is a commit hash (empty RemoteRef signals a SHA)
+	if refSet.RemoteRef == "" {
+		hash := plumbing.NewHash(string(refSet.LocalRef))
+		if err = worktree.Checkout(&git.CheckoutOptions{Hash: hash, Keep: true}); err != nil {
+			return fmt.Errorf("failed to checkout commit: %w: %s", err, refSet.LocalRef)
+		}
+	} else {
+		if err = worktree.Checkout(&git.CheckoutOptions{Branch: refSet.LocalRef, Keep: true}); err != nil {
+			return fmt.Errorf("failed to checkout worktree: %w: %s", err, refSet.LocalRef)
+		}
 	}
 
 	if err = ResetTrackedFiles(repo); err != nil {
@@ -425,6 +443,11 @@ func GetLatestCommit(repo *git.Repository, ref string) (string, error) {
 	refSet, err := GetReferenceSet(repo, ref)
 	if err != nil {
 		return plumbing.ZeroHash.String(), err
+	}
+
+	// If RemoteRef is empty, it's a commit SHA - return it directly
+	if refSet.RemoteRef == "" {
+		return string(refSet.LocalRef), nil
 	}
 
 	r, err := repo.Reference(refSet.RemoteRef, true)
