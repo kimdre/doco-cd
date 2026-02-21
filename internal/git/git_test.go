@@ -15,16 +15,15 @@ import (
 )
 
 const (
-	cloneUrl            = "https://github.com/kimdre/doco-cd.git"
-	cloneUrlTest        = "https://github.com/kimdre/doco-cd_tests.git"
-	cloneUrlSSH         = "git@github.com:kimdre/doco-cd.git"
-	remoteMainBranch    = "refs/remotes/origin/main"
-	validBranchRef      = git.MainBranch
-	validBranchRefShort = "main"
-	validTagRef         = "refs/tags/v0.15.0"
-	validTagRefShort    = "v0.15.0"
-	invalidRef          = "refs/heads/invalid"
-	invalidTagRef       = "refs/tags/invalid"
+	cloneUrl         = "https://github.com/kimdre/doco-cd.git"
+	cloneUrlTest     = "https://github.com/kimdre/doco-cd_tests.git"
+	cloneUrlSSH      = "git@github.com:kimdre/doco-cd.git"
+	remoteMainBranch = "refs/remotes/origin/main"
+	validTagRef      = "refs/tags/v0.15.0"
+	validTagRefShort = "v0.15.0"
+	invalidRef       = "refs/heads/invalid"
+	invalidTagRef    = "refs/tags/invalid"
+	commitSHARef     = "bb8864f3fb30cdd36a109f52bc4ab961ec40f5d6"
 )
 
 func TestHttpTokenAuth(t *testing.T) {
@@ -76,13 +75,31 @@ func TestCloneRepository(t *testing.T) {
 	testCases := []struct {
 		name       string
 		cloneUrl   string
+		reference  string
 		privateKey string
 		passphrase string
 		skip       bool
 	}{
 		{
-			name:       "HTTP clone",
+			name:       "HTTP clone branch ref",
 			cloneUrl:   cloneUrl,
+			reference:  git.MainBranch,
+			privateKey: "",
+			passphrase: "",
+			skip:       false,
+		},
+		{
+			name:       "HTTP clone tag ref",
+			cloneUrl:   cloneUrl,
+			reference:  validTagRefShort,
+			privateKey: "",
+			passphrase: "",
+			skip:       false,
+		},
+		{
+			name:       "HTTP clone sha ref",
+			cloneUrl:   cloneUrl,
+			reference:  commitSHARef,
 			privateKey: "",
 			passphrase: "",
 			skip:       false,
@@ -90,6 +107,7 @@ func TestCloneRepository(t *testing.T) {
 		{
 			name:       "SSH clone",
 			cloneUrl:   cloneUrlSSH,
+			reference:  git.MainBranch,
 			privateKey: c.SSHPrivateKey,
 			passphrase: c.SSHPrivateKeyPassphrase,
 			skip:       c.SSHPrivateKey == "",
@@ -109,7 +127,7 @@ func TestCloneRepository(t *testing.T) {
 
 			t.Logf("Using auth method: %s", auth.Name())
 
-			repo, err := git.CloneRepository(t.TempDir(), tc.cloneUrl, validBranchRef, false, c.HttpProxy, auth, c.GitCloneSubmodules)
+			repo, err := git.CloneRepository(t.TempDir(), tc.cloneUrl, tc.reference, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 			if err != nil {
 				t.Fatalf("Failed to clone repository: %v", err)
 			}
@@ -159,14 +177,14 @@ func TestUpdateRepository(t *testing.T) {
 			name:        "Valid branch ref",
 			cloneUrl:    cloneUrl,
 			privateRepo: false,
-			branchRef:   validBranchRef,
+			branchRef:   git.MainBranch,
 			expectedRef: remoteMainBranch,
 			expectedErr: nil,
 		},
 		{
 			name:        "Valid short branch ref",
 			cloneUrl:    cloneUrl,
-			branchRef:   validBranchRefShort,
+			branchRef:   "main",
 			expectedRef: remoteMainBranch,
 			expectedErr: nil,
 		},
@@ -184,6 +202,14 @@ func TestUpdateRepository(t *testing.T) {
 			privateRepo: false,
 			branchRef:   validTagRefShort,
 			expectedRef: validTagRef,
+			expectedErr: nil,
+		},
+		{
+			name:        "Valid commit SHA ref",
+			cloneUrl:    cloneUrl,
+			privateRepo: false,
+			branchRef:   commitSHARef,
+			expectedRef: commitSHARef,
 			expectedErr: nil,
 		},
 		{
