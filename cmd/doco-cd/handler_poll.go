@@ -186,6 +186,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	}
 
 	jobLog.Debug("cloning repository",
+		slog.String("reference", pollConfig.Reference),
 		slog.String("container_path", internalRepoPath),
 		slog.String("host_path", externalRepoPath))
 

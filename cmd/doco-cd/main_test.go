@@ -139,7 +139,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"failed to clone repository","content":"couldn't find remote ref \"` + invalidBranch + `\"","job_id":"%[1]s"}`,
+			expectedResponseBody: `{"error":"failed to clone repository","content":"failed to checkout repository: failed to get reference set: invalid reference, should be a tag or a branch: ` + invalidBranch + `","job_id":"%[1]s"}`,
 			overrideEnv:          nil,
 			customTarget:         "",
 			swarmMode:            false,
