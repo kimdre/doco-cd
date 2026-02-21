@@ -51,7 +51,7 @@ jobs:
           echo "APP_VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
 
       - name: Generate Software Bill of Materials (SBOM)
-        uses: aquasecurity/trivy-action@c1824fd6edce30d7ab345a9989de00bbd46ef284
+        uses: aquasecurity/trivy-action@e368e328979b113139d6f9068e03accaed98a518
         with:
           image-ref: ghcr.io/${{ github.repository }}:${{ env.APP_VERSION }}
           scan-type: image
