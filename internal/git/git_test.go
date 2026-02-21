@@ -233,7 +233,7 @@ func TestUpdateRepository(t *testing.T) {
 			cloneUrl:    cloneUrlTest,
 			privateRepo: true,
 			branchRef:   "destroy",
-			expectedRef: "refs/heads/destroy",
+			expectedRef: "refs/remotes/origin/destroy",
 			expectedErr: nil,
 		},
 	}
@@ -288,11 +288,24 @@ func TestUpdateRepository(t *testing.T) {
 				}
 			}
 
+			if plumbing.IsHash(tc.expectedRef) {
+				commit, err := repo.CommitObject(plumbing.NewHash(tc.expectedRef))
+				if err != nil {
+					t.Fatalf("Failed to get commit object for %s: %v", tc.expectedRef, err)
+				}
+
+				if commit.Hash.String() != tc.expectedRef {
+					t.Fatalf("Expected commit hash %s, got %s", tc.expectedRef, commit.Hash.String())
+				}
+
+				return
+			}
+
 			refName := plumbing.ReferenceName(tc.expectedRef)
 			if tc.expectedRef != "" {
 				ref, err := repo.Reference(refName, true)
 				if err != nil {
-					t.Fatalf("Failed to get reference: %v", err)
+					t.Fatalf("Failed to get reference %s: %v", refName, err)
 				}
 
 				if ref.Name().String() != tc.expectedRef {
