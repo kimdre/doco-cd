@@ -14,7 +14,7 @@ type Config struct {
 	SiteUrl           string `env:"SECRET_PROVIDER_SITE_URL,notEmpty"`         // Endpoint template to query for secrets
 	ResultJMESPath    string `env:"SECRET_PROVIDER_RESULT_JMES_PATH,notEmpty"` // JMESpath query issued against the response data
 	RequestBody       string `env:"SECRET_PROVIDER_REQUEST_BODY"`              // HTTP request payload template
-	BearerToken       string `env:"SECRET_PROVIDER_BEARER_TOKEN"`              // Authentication secret for the Bearer authentication scheme
+	BearerToken       string `env:"SECRET_PROVIDER_BEARER_TOKEN"`              // #nosec G117 Authentication secret for the Bearer authentication scheme
 	BearerTokenFile   string `env:"SECRET_PROVIDER_BEARER_TOKEN_FILE,file"`    // File path containing the authentication secret for the Bearer authentication scheme
 	BasicUsername     string `env:"SECRET_PROVIDER_BASIC_USERNAME"`            // Authentication principal for the Basic authentication scheme
 	BasicUsernameFile string `env:"SECRET_PROVIDER_BASIC_USERNAME_FILE,file"`  // File path containing the authentication principal for the Basic authentication scheme

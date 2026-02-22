@@ -31,7 +31,7 @@ func (a *secretProviderAdapterCloser) GetSecret(_ context.Context, _ string) (st
 }
 
 func (a *secretProviderAdapterCloser) Close() {
-	a.called += 1
+	a.called++
 }
 
 func (a *secretProviderAdapterCloser) CloseCalled() int {
@@ -47,7 +47,7 @@ func (a *secretProviderAdapterIOCloser) GetSecret(_ context.Context, _ string) (
 }
 
 func (a *secretProviderAdapterIOCloser) Close() error {
-	a.called += 1
+	a.called++
 
 	return nil
 }

@@ -75,7 +75,6 @@ func (c *testCase) LoadEnv(baseURL string, t *testing.T) {
 	if c.haveBasicPasswordFile != "" {
 		t.Setenv("SECRET_PROVIDER_BASIC_PASSWORD_FILE", c.haveBasicPasswordFile)
 	}
-
 }
 
 func TestValueProvider_GetSecret_Webhook(t *testing.T) {
@@ -113,18 +112,18 @@ func TestValueProvider_GetSecret_Webhook(t *testing.T) {
 		"basic_auth": {
 			haveSecretID:      "authorization",
 			haveBasicUsername: "username",
-			haveBasicPassword: "password",
+			haveBasicPassword: "password", // #nosec G101
 			wantSecret:        "Basic dXNlcm5hbWU6cGFzc3dvcmQ=",
 		},
 		"basic_auth_without_password": {
 			haveSecretID:      "authorization",
 			haveBasicUsername: "username",
-			wantSecret:        "Basic dXNlcm5hbWU6dXNlcm5hbWU=",
+			wantSecret:        "Basic dXNlcm5hbWU6dXNlcm5hbWU=", // #nosec G101
 		},
 		"bearer_token": {
 			haveSecretID:    "authorization",
 			haveBearerToken: "DEADBEEFCAFE",
-			wantSecret:      "Bearer DEADBEEFCAFE",
+			wantSecret:      "Bearer DEADBEEFCAFE", // #nosec G101
 		},
 		"lookup_error": {
 			haveSecretID: "error",
@@ -279,11 +278,12 @@ func postSecret(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := lookupSecret(lookup, r)
-	if err == nil {
+	switch {
+	case err == nil:
 		httpRespondSecret(w, result)
-	} else if errors.Is(err, errNoJSON) {
+	case errors.Is(err, errNoJSON):
 		http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
-	} else {
+	default:
 		httpRespondError(w, http.StatusBadRequest, errNoLookup)
 	}
 }

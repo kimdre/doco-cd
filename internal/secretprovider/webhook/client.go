@@ -74,7 +74,7 @@ func (p *ValueProvider) GetSecret(ctx context.Context, id string) (string, error
 		return "", err
 	}
 
-	resp, err := p.client.Do(req)
+	resp, err := p.client.Do(req) // #nosec G704
 	if err != nil {
 		return "", err
 	}
