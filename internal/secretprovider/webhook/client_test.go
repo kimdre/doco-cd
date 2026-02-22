@@ -20,6 +20,7 @@ type testCase struct {
 	haveResultJMESPath    string
 	haveURLPath           string
 	haveRequestBody       string
+	haveCustomHeaders     string
 	haveBearerToken       string
 	haveBasicUsername     string
 	haveBasicPassword     string
@@ -50,6 +51,10 @@ func (c *testCase) LoadEnv(baseURL string, t *testing.T) {
 
 	if c.haveRequestBody != "" {
 		t.Setenv("SECRET_PROVIDER_REQUEST_BODY", c.haveRequestBody)
+	}
+
+	if c.haveCustomHeaders != "" {
+		t.Setenv("SECRET_PROVIDER_CUSTOM_HEADERS", c.haveCustomHeaders)
 	}
 
 	if c.haveBearerToken != "" {
@@ -190,6 +195,26 @@ func TestValueProvider_GetSecret_Webhook(t *testing.T) {
 			haveBearerTokenFile: "testdata/does/not/exist.txt",
 			wantConfigErr:       true,
 		},
+		"custom_headers": {
+			haveSecretID:      "x-custom-header",
+			haveCustomHeaders: `{"X-Custom-Header":"custom-value"}`,
+			wantSecret:        "custom-value",
+		},
+		"custom_headers_override_accept": {
+			haveSecretID:      "accept",
+			haveCustomHeaders: `{"Accept":"text/plain"}`,
+			wantSecret:        "text/plain",
+		},
+		"custom_headers_multiple": {
+			haveSecretID:      "x-custom-header",
+			haveCustomHeaders: `{"X-Custom-Header":"multi-value","X-Other":"other"}`,
+			wantSecret:        "multi-value",
+		},
+		"broken_custom_headers_json": {
+			haveSecretID:      "broken",
+			haveCustomHeaders: `{not valid json}`,
+			wantConfigErr:     true,
+		},
 	}
 
 	ts := httptest.NewServer(newMockHandler())
@@ -298,6 +323,8 @@ func lookupSecret(key string, r *http.Request) (string, error) {
 		return r.Header.Get("User-Agent"), nil
 	case "authorization":
 		return r.Header.Get("Authorization"), nil
+	case "x-custom-header":
+		return r.Header.Get("X-Custom-Header"), nil
 	case "method":
 		return r.Method, nil
 	case "error":

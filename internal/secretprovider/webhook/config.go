@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -11,15 +12,17 @@ import (
 )
 
 type Config struct {
-	SiteUrl           string `env:"SECRET_PROVIDER_SITE_URL,notEmpty"`         // Endpoint template to query for secrets
-	ResultJMESPath    string `env:"SECRET_PROVIDER_RESULT_JMES_PATH,notEmpty"` // JMESpath query issued against the response data
-	RequestBody       string `env:"SECRET_PROVIDER_REQUEST_BODY"`              // HTTP request payload template
-	BearerToken       string `env:"SECRET_PROVIDER_BEARER_TOKEN"`              // #nosec G117 Authentication secret for the Bearer authentication scheme
-	BearerTokenFile   string `env:"SECRET_PROVIDER_BEARER_TOKEN_FILE,file"`    // File path containing the authentication secret for the Bearer authentication scheme
-	BasicUsername     string `env:"SECRET_PROVIDER_BASIC_USERNAME"`            // Authentication principal for the Basic authentication scheme
-	BasicUsernameFile string `env:"SECRET_PROVIDER_BASIC_USERNAME_FILE,file"`  // File path containing the authentication principal for the Basic authentication scheme
-	BasicPassword     string `env:"SECRET_PROVIDER_BASIC_PASSWORD"`            // Authentication secret for the Basic authentication scheme
-	BasicPasswordFile string `env:"SECRET_PROVIDER_BASIC_PASSWORD_FILE,file"`  // File path containing the authentication secret for the Basic authentication scheme
+	SiteUrl           string            `env:"SECRET_PROVIDER_SITE_URL,notEmpty"`         // Endpoint template to query for secrets
+	ResultJMESPath    string            `env:"SECRET_PROVIDER_RESULT_JMES_PATH,notEmpty"` // JMESpath query issued against the response data
+	RequestBody       string            `env:"SECRET_PROVIDER_REQUEST_BODY"`              // HTTP request payload template
+	CustomHeadersJSON string            `env:"SECRET_PROVIDER_CUSTOM_HEADERS"`            // JSON-encoded map of custom HTTP headers to include in requests
+	BearerToken       string            `env:"SECRET_PROVIDER_BEARER_TOKEN"`              // #nosec G117 Authentication secret for the Bearer authentication scheme
+	BearerTokenFile   string            `env:"SECRET_PROVIDER_BEARER_TOKEN_FILE,file"`    // File path containing the authentication secret for the Bearer authentication scheme
+	BasicUsername     string            `env:"SECRET_PROVIDER_BASIC_USERNAME"`            // Authentication principal for the Basic authentication scheme
+	BasicUsernameFile string            `env:"SECRET_PROVIDER_BASIC_USERNAME_FILE,file"`  // File path containing the authentication principal for the Basic authentication scheme
+	BasicPassword     string            `env:"SECRET_PROVIDER_BASIC_PASSWORD"`            // Authentication secret for the Basic authentication scheme
+	BasicPasswordFile string            `env:"SECRET_PROVIDER_BASIC_PASSWORD_FILE,file"`  // File path containing the authentication secret for the Basic authentication scheme
+	CustomHeaders     map[string]string `env:"-"`                                         // Parsed custom HTTP headers
 }
 
 // GetConfig retrieves and parses the configuration for the Webhook Secrets Provider from environment variables.
@@ -35,6 +38,12 @@ func GetConfig() (*Config, error) {
 	err := config.ParseConfigFromEnv(&cfg, &mappings)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", config.ErrParseConfigFailed, err)
+	}
+
+	if cfg.CustomHeadersJSON != "" {
+		if err := json.Unmarshal([]byte(cfg.CustomHeadersJSON), &cfg.CustomHeaders); err != nil {
+			return nil, fmt.Errorf("%w: failed to parse custom headers JSON: %w", config.ErrParseConfigFailed, err)
+		}
 	}
 
 	return &cfg, nil

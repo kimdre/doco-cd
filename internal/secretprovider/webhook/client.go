@@ -26,10 +26,11 @@ const (
 // ValueProvider provides generic access to remote secrets
 // using a HTTP client for retrieval.
 type ValueProvider struct {
-	endpoint *template.Template
-	payload  *template.Template
-	query    *jmespath.JMESPath
-	client   *http.Client
+	endpoint      *template.Template
+	payload       *template.Template
+	query         *jmespath.JMESPath
+	client        *http.Client
+	customHeaders map[string]string
 }
 
 // NewValueProvider returns a new ValueProvider based on the given configuration.
@@ -41,7 +42,8 @@ func NewValueProvider(ctx context.Context, cfg *Config) (*ValueProvider, error) 
 	}
 
 	result := &ValueProvider{
-		client: &http.Client{Transport: rt},
+		client:        &http.Client{Transport: rt},
+		customHeaders: cfg.CustomHeaders,
 	}
 
 	result.query, err = jmespath.Compile(cfg.ResultJMESPath)
@@ -133,6 +135,11 @@ func (p *ValueProvider) newRequest(ctx context.Context, id string) (*http.Reques
 	}
 
 	req.Header.Set(HeaderAccept, ContentTypeJSON)
+
+	// Apply custom headers last so they can override defaults
+	for key, value := range p.customHeaders {
+		req.Header.Set(key, value)
+	}
 
 	return req, nil
 }
