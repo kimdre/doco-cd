@@ -6,12 +6,12 @@ changelog:
     - title: ✨ Features
       labels:
         - feature
-    - title: 🐛 Bug Fixes and Security
-      labels:
-        - bug
     - title: 🌟 Improvements
       labels:
         - enhancement
+    - title: 🐛 Bug Fixes
+      labels:
+        - bug
     - title: 📦 Dependencies
       labels:
         - dependencies
