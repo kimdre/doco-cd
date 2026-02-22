@@ -1,7 +1,6 @@
 package encryption
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -50,7 +49,7 @@ func TestDecryptSopsFile(t *testing.T) {
 		{"testdata/encrypted.yaml", "this.is.encrypted: \"yes\"\n", nil},
 		{"testdata/encrypted.env", "THIS_IS_ENCRYPTED=yes\n", nil},
 		{"testdata/unencrypted.yaml", "this.is.encrypted: \"yes\"\n", sops.MetadataNotFound},
-		{"testdata/unencrypted.env", "THIS_IS_ENCRYPTED=yes\n", errors.New("parsing time \"\" as \"2006-01-02T15:04:05Z07:00\": cannot parse \"\" as \"2006\"")},
+		{"testdata/unencrypted.env", "THIS_IS_ENCRYPTED=yes\n", sops.MetadataNotFound},
 		{"testdata/empty.yaml", "", sops.MetadataNotFound},
 	}
 
