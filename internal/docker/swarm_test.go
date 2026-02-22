@@ -57,7 +57,11 @@ func TestDeploySwarmStack(t *testing.T) {
 		t.Fatalf("Failed to get auth method: %v", err)
 	}
 
-	t.Logf("Using auth method: %s", auth.Name())
+	if auth != nil {
+		t.Logf("Using auth method: %s", auth.Name())
+	} else {
+		t.Log("No auth method configured, using anonymous access")
+	}
 
 	repo, err := git.CloneRepository(tmpDir, p.CloneURL, git.SwarmModeBranch, c.SkipTLSVerification, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {

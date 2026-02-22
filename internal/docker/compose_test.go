@@ -181,7 +181,11 @@ func TestDeployCompose(t *testing.T) {
 		t.Fatalf("Failed to get auth method: %v", err)
 	}
 
-	t.Logf("Using auth method: %s", auth.Name())
+	if auth != nil {
+		t.Logf("Using auth method: %s", auth.Name())
+	} else {
+		t.Log("No auth method configured, using anonymous access")
+	}
 
 	repo, err := git.CloneRepository(tmpDir, p.CloneURL, p.Ref, c.SkipTLSVerification, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
@@ -386,7 +390,11 @@ func TestHasChangedConfigs(t *testing.T) {
 		t.Fatalf("Failed to get auth method: %v", err)
 	}
 
-	t.Logf("Using auth method: %s", auth.Name())
+	if auth != nil {
+		t.Logf("Using auth method: %s", auth.Name())
+	} else {
+		t.Log("No auth method configured, using anonymous access")
+	}
 
 	tmpDir := t.TempDir()
 
@@ -456,7 +464,11 @@ func TestHasChangedSecrets(t *testing.T) {
 		t.Fatalf("Failed to get auth method: %v", err)
 	}
 
-	t.Logf("Using auth method: %s", auth.Name())
+	if auth != nil {
+		t.Logf("Using auth method: %s", auth.Name())
+	} else {
+		t.Log("No auth method configured, using anonymous access")
+	}
 
 	tmpDir := t.TempDir()
 
@@ -526,7 +538,11 @@ func TestHasChangedBindMounts(t *testing.T) {
 		t.Fatalf("Failed to get auth method: %v", err)
 	}
 
-	t.Logf("Using auth method: %s", auth.Name())
+	if auth != nil {
+		t.Logf("Using auth method: %s", auth.Name())
+	} else {
+		t.Log("No auth method configured, using anonymous access")
+	}
 
 	tmpDir := t.TempDir()
 

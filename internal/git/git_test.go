@@ -125,7 +125,11 @@ func TestCloneRepository(t *testing.T) {
 				t.Fatalf("Failed to get auth method: %v", err)
 			}
 
-			t.Logf("Using auth method: %s", auth.Name())
+			if auth != nil {
+				t.Logf("Using auth method: %s", auth.Name())
+			} else {
+				t.Log("No auth method configured, using anonymous access")
+			}
 
 			repo, err := git.CloneRepository(t.TempDir(), tc.cloneUrl, tc.reference, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 			if err != nil {
@@ -252,7 +256,11 @@ func TestUpdateRepository(t *testing.T) {
 				t.Fatalf("Failed to get auth method: %v", err)
 			}
 
-			t.Logf("Using auth method: %s", auth.Name())
+			if auth != nil {
+				t.Logf("Using auth method: %s", auth.Name())
+			} else {
+				t.Log("No auth method configured, using anonymous access")
+			}
 
 			repo, err := git.CloneRepository(t.TempDir(), tc.cloneUrl, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 			if err != nil {
@@ -364,7 +372,11 @@ func TestGetReferenceSet(t *testing.T) {
 		t.Fatalf("Failed to get auth method: %v", err)
 	}
 
-	t.Logf("Using auth method: %s", auth.Name())
+	if auth != nil {
+		t.Logf("Using auth method: %s", auth.Name())
+	} else {
+		t.Log("No auth method configured, using anonymous access")
+	}
 
 	repo, err := git.CloneRepository(t.TempDir(), cloneUrl, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
@@ -410,7 +422,11 @@ func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 		t.Fatalf("Failed to get auth method: %v", err)
 	}
 
-	t.Logf("Using auth method: %s", auth.Name())
+	if auth != nil {
+		t.Logf("Using auth method: %s", auth.Name())
+	} else {
+		t.Log("No auth method configured, using anonymous access")
+	}
 
 	repo, err := git.CloneRepository(t.TempDir(), url, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
@@ -475,7 +491,11 @@ func TestGetLatestCommit(t *testing.T) {
 		t.Fatalf("Failed to get auth method: %v", err)
 	}
 
-	t.Logf("Using auth method: %s", auth.Name())
+	if auth != nil {
+		t.Logf("Using auth method: %s", auth.Name())
+	} else {
+		t.Log("No auth method configured, using anonymous access")
+	}
 
 	repo, err := git.CloneRepository(t.TempDir(), url, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
@@ -520,7 +540,11 @@ func TestGetChangedFilesBetweenCommits(t *testing.T) {
 		t.Fatalf("Failed to get auth method: %v", err)
 	}
 
-	t.Logf("Using auth method: %s", auth.Name())
+	if auth != nil {
+		t.Logf("Using auth method: %s", auth.Name())
+	} else {
+		t.Log("No auth method configured, using anonymous access")
+	}
 
 	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
