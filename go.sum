@@ -312,8 +312,8 @@ github.com/fxamacker/cbor/v2 v2.7.0/go.mod h1:pxXPTn3joSm21Gbwsv0w9OSA2y1HFR9qXE
 github.com/getsentry/raven-go v0.2.0/go.mod h1:KungGk8q33+aIAZUIVWZDr2OfAEBsO49PX4NzFV5kcQ=
 github.com/getsops/gopgagent v0.0.0-20241224165529-7044f28e491e h1:y/1nzrdF+RPds4lfoEpNhjfmzlgZtPqyO3jMzrqDQws=
 github.com/getsops/gopgagent v0.0.0-20241224165529-7044f28e491e/go.mod h1:awFzISqLJoZLm+i9QQ4SgMNHDqljH6jWV0B36V5MrUM=
-github.com/getsops/sops/v3 v3.12.0 h1:n/hD+bINWzCPE+7VjVu0jb6dm+nItmGQuhcUBsLQzCk=
-github.com/getsops/sops/v3 v3.12.0/go.mod h1:Bs/geuL5shRiXi194TQaGFiLvzVpA6U8tTYRd84qdvM=
+github.com/getsops/sops/v3 v3.12.1 h1:DZzLNJx6EH4SZvMjI1Y814WIcOQNUtOP3WgDsHNqQTU=
+github.com/getsops/sops/v3 v3.12.1/go.mod h1:Bs/geuL5shRiXi194TQaGFiLvzVpA6U8tTYRd84qdvM=
 github.com/gliderlabs/ssh v0.3.8 h1:a4YXD1V7xMF9g5nTkdfnja3Sxy1PVDCj1Zg4Wb8vY6c=
 github.com/gliderlabs/ssh v0.3.8/go.mod h1:xYoytBv1sV0aL3CavoDuJIQNURXkkfPA/wxQ1pL1fAU=
 github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 h1:+zs/tPmkDkHx3U66DAb0lQFJrpS6731Oaa12ikc+DiI=

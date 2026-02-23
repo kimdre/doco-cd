@@ -24,7 +24,7 @@ require (
 	github.com/docker/cli v28.5.2+incompatible
 	github.com/docker/compose/v2 v2.40.3
 	github.com/docker/docker v28.5.2+incompatible
-	github.com/getsops/sops/v3 v3.12.0
+	github.com/getsops/sops/v3 v3.12.1
 	github.com/go-git/go-billy/v5 v5.7.0
 	github.com/go-git/go-git/v5 v5.16.5
 	github.com/google/uuid v1.6.0
