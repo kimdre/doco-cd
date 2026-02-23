@@ -159,20 +159,23 @@ func TestRepoMatches_MismatchedBranch(t *testing.T) {
 		t.Fatalf("failed to checkout test branch: %v", err)
 	}
 
-	// Check again after checkout (should not match since we're on a different branch now)
-	matched, err = git.RepoMatches(dir, cloneUrlTest, "test")
+	// Check again after checkout: the repository is now on 'test', so asking if it matches 'main' should return false
+	matched, err = git.RepoMatches(dir, cloneUrlTest, git.MainBranch)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if matched {
-		t.Errorf("expected repo to not match after checkout to different branch")
+		t.Errorf("expected repo to not match reference after checkout to different branch")
 
-		// Get current branch for debugging
+		// Get the current branch to confirm it's 'test'
 		headRef, err := repo.Head()
 		if err != nil {
-			t.Fatalf("failed to get current HEAD: %v", err)
+			t.Fatalf("failed to get HEAD reference: %v", err)
 		}
-		t.Logf("Current HEAD is at: %s but expected %2s", headRef.Name(), "refs/heads/test")
+
+		if headRef.Name().Short() != "test" {
+			t.Fatalf("expected current branch to be 'test', got '%s'", headRef.Name().Short())
+		}
 	}
 }
