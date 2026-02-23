@@ -44,7 +44,7 @@ require golang.org/x/sync v0.19.0
 
 require (
 	github.com/jmespath/go-jmespath v0.4.0
-	github.com/prometheus/common v0.66.1
+	github.com/prometheus/common v0.67.5
 )
 
 require (
@@ -309,7 +309,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.39.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.9.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.yaml.in/yaml/v2 v2.4.2 // indirect
+	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	golang.org/x/mod v0.33.0 // indirect
 	golang.org/x/net v0.50.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
