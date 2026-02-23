@@ -81,7 +81,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 	}
 
 	// Check if we can skip cloning/updating because the previous run (initial or a prior deploy config)
-	skipCloneUpdate, err := git.RepoMatches(s.Repository.PathInternal, string(s.Repository.CloneURL), s.DeployConfig.Reference)
+	skipCloneUpdate, err := git.MatchesHead(s.Repository.PathInternal, s.DeployConfig.Reference)
 	if err != nil {
 		return fmt.Errorf("failed to check if repository matches remote and reference: %w", err)
 	}

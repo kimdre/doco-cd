@@ -1,121 +1,26 @@
 package git_test
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/git"
 )
 
-func TestRepoMatches_MatchingRemoteAndRef(t *testing.T) {
-	c, err := config.GetAppConfig()
-	if err != nil {
-		t.Fatalf("Failed to get app config: %v", err)
+func TestMatchesHead(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name      string
+		reference string
+	}{
+		{"matches branch", "test"},
+		{"matches branch ref", "refs/heads/test"},
+		{"matches tag", "v1.0.0"},
+		{"matches tag ref", "refs/tags/v1.0.0"},
+		{"matches commit SHA", "a6e74091c5bb5913c0daff4d3fc8c1d1b2ad826b"},
 	}
 
-	auth, err := git.GetAuthMethod(cloneUrl, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
-	if err != nil {
-		t.Fatalf("Failed to get auth method: %v", err)
-	}
-
-	// Clone repository to temp dir
-	dir := t.TempDir()
-
-	repo, err := git.CloneRepository(dir, cloneUrl, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
-	if err != nil {
-		t.Fatalf("Failed to clone repository: %v", err)
-	}
-
-	if repo == nil {
-		t.Fatal("repository is nil after clone")
-	}
-
-	matched, err := git.RepoMatches(dir, cloneUrl, git.MainBranch)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if !matched {
-		t.Fatalf("expected repo to match remote+ref")
-	}
-}
-
-func TestRepoMatches_MismatchedRemote(t *testing.T) {
-	c, err := config.GetAppConfig()
-	if err != nil {
-		t.Fatalf("Failed to get app config: %v", err)
-	}
-
-	auth, err := git.GetAuthMethod(cloneUrl, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
-	if err != nil {
-		t.Fatalf("Failed to get auth method: %v", err)
-	}
-
-	// Clone repository to temp dir
-	dir := t.TempDir()
-
-	repo, err := git.CloneRepository(dir, cloneUrl, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
-	if err != nil {
-		t.Fatalf("Failed to clone repository: %v", err)
-	}
-
-	if repo == nil {
-		t.Fatal("repository is nil after clone")
-	}
-
-	// Check against a different URL (should not match but repo should be returned)
-	matched, err := git.RepoMatches(dir, cloneUrlTest, git.MainBranch)
-	if err != nil {
-		if errors.Is(err, git.ErrRemoteURLMismatch) {
-			// Expected error, test passes
-			return
-		}
-
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if matched {
-		t.Fatalf("expected repo to not match when remote URL is different")
-	}
-}
-
-func TestRepoMatches_MatchingCommitSHA(t *testing.T) {
-	c, err := config.GetAppConfig()
-	if err != nil {
-		t.Fatalf("Failed to get app config: %v", err)
-	}
-
-	auth, err := git.GetAuthMethod(cloneUrl, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
-	if err != nil {
-		t.Fatalf("Failed to get auth method: %v", err)
-	}
-
-	// Clone repository to temp dir
-	dir := t.TempDir()
-
-	repo, err := git.CloneRepository(dir, cloneUrl, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
-	if err != nil {
-		t.Fatalf("Failed to clone repository: %v", err)
-	}
-
-	if repo == nil {
-		t.Fatal("repository is nil after clone")
-	}
-
-	// Use a known commit SHA from existing tests
-	matched, err := git.RepoMatches(dir, cloneUrl, commitSHARef)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if !matched {
-		t.Fatalf("expected repo to match when commit SHA exists locally")
-	}
-}
-
-// This tests the RepoMatches function's ability to detect a mismatch after a checkout to a different branch.
-func TestRepoMatches_MismatchedBranch(t *testing.T) {
 	c, err := config.GetAppConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
@@ -126,10 +31,63 @@ func TestRepoMatches_MismatchedBranch(t *testing.T) {
 		t.Fatalf("Failed to get auth method: %v", err)
 	}
 
-	if auth != nil {
-		t.Logf("Using auth method: %s", auth.Name())
-	} else {
-		t.Log("No auth method configured, using anonymous access")
+	dir := t.TempDir()
+
+	repo, err := git.CloneRepository(dir, cloneUrlTest, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
+	if err != nil {
+		t.Fatalf("Failed to clone repository: %v", err)
+	}
+
+	if repo == nil {
+		t.Fatal("repository is nil after clone")
+	}
+
+	matched, err := git.MatchesHead(dir, git.MainBranch)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !matched {
+		t.Fatalf("expected repo to match reference after clone")
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err = git.CheckoutRepository(repo, tc.reference)
+			if err != nil {
+				t.Fatalf("failed to checkout reference '%s': %v", tc.reference, err)
+			}
+
+			matched, err = git.MatchesHead(dir, tc.reference)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if !matched {
+				// Get current head for debugging
+				headRef, err := repo.Head()
+				if err != nil {
+					t.Fatalf("failed to get HEAD reference: %v", err)
+				}
+
+				t.Errorf("expected repo to match reference '%s' but got '%s'", tc.reference, headRef.Name().String())
+			}
+		})
+	}
+}
+
+// This tests the MatchesHead function's ability to detect a mismatch after a checkout to a different branch.
+func TestMatchesHead_AfterCheckoutToDifferentBranch(t *testing.T) {
+	t.Parallel()
+
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("Failed to get app config: %v", err)
+	}
+
+	auth, err := git.GetAuthMethod(cloneUrlTest, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	if err != nil {
+		t.Fatalf("Failed to get auth method: %v", err)
 	}
 
 	// Clone repository to temp dir
@@ -145,7 +103,7 @@ func TestRepoMatches_MismatchedBranch(t *testing.T) {
 	}
 
 	// Check against a different branch (should not match but repo should be returned)
-	matched, err := git.RepoMatches(dir, cloneUrlTest, git.MainBranch)
+	matched, err := git.MatchesHead(dir, git.MainBranch)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -160,7 +118,7 @@ func TestRepoMatches_MismatchedBranch(t *testing.T) {
 	}
 
 	// Check again after checkout: the repository is now on 'test', so asking if it matches 'main' should return false
-	matched, err = git.RepoMatches(dir, cloneUrlTest, git.MainBranch)
+	matched, err = git.MatchesHead(dir, git.MainBranch)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

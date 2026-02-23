@@ -760,9 +760,8 @@ func GetRepoName(cloneURL string) string {
 	return normalizeOwnerRepo(u)
 }
 
-// RepoMatches inspects an existing repository at path and returns whether it matches the
-// given remote URL and reference.
-func RepoMatches(path, url, ref string) (bool, error) {
+// MatchesHead inspects an existing repository at path and determines if HEAD is at the specified reference (branch, tag, or commit SHA).
+func MatchesHead(path, ref string) (bool, error) {
 	repo, err := OpenRepository(path)
 	if err != nil {
 		if errors.Is(err, git.ErrRepositoryNotExists) {
@@ -772,80 +771,31 @@ func RepoMatches(path, url, ref string) (bool, error) {
 		return false, fmt.Errorf("failed to open repository at %s: %w", path, err)
 	}
 
-	// Verify remote URL matches
-	remote, err := repo.Remote(RemoteName)
+	head, err := repo.Head()
 	if err != nil {
-		return false, fmt.Errorf("failed to get remote %s: %w", RemoteName, err)
+		return false, fmt.Errorf("failed to get HEAD reference: %w", err)
 	}
 
-	remoteCfg := remote.Config()
-	if len(remoteCfg.URLs) == 0 {
-		return false, fmt.Errorf("remote %s has no URLs configured", RemoteName)
-	}
-
-	remoteURL := remoteCfg.URLs[0]
-
-	// Normalize SSH style URLs for comparison
-	desired := url
-	if IsSSH(url) {
-		desired = ConvertSSHUrl(url)
-	}
-
-	if IsSSH(remoteURL) {
-		remoteURL = ConvertSSHUrl(remoteURL)
-	}
-
-	if remoteURL != desired {
-		return false, fmt.Errorf("%w: expected %s, got %s", ErrRemoteURLMismatch, desired, remoteURL)
-	}
-
-	// If the requested ref is an explicit commit hash, verify the commit exists in the repo.
-	if plumbing.IsHash(ref) {
-		// check commit existence
-		if _, err = repo.CommitObject(plumbing.NewHash(ref)); err != nil {
-			return false, fmt.Errorf("failed to find commit %s: %w", ref, err)
-		}
-
-		// Prior behavior: consider present commit as a match even if HEAD is not at that commit
-		return true, nil
-	}
-
-	// For branch or tag names, resolve reference candidates and determine desired local ref
 	refSet, err := GetReferenceSet(repo, ref)
 	if err != nil {
-		return false, fmt.Errorf("failed to get reference set: %w", err)
+		return false, fmt.Errorf("failed to get reference set for %s: %w", ref, err)
 	}
 
-	// Determine desired local reference name (handle remote-only refs mapping to local branch)
-	desiredLocal := refSet.LocalRef
-	if desiredLocal == refSet.RemoteRef && strings.HasPrefix(string(refSet.RemoteRef), "refs/remotes/"+RemoteName+"/") {
-		branchName := strings.TrimPrefix(string(refSet.RemoteRef), "refs/remotes/"+RemoteName+"/")
-		desiredLocal = plumbing.NewBranchReferenceName(branchName)
+	// If RemoteRef is empty, LocalRef is a commit SHA
+	if refSet.RemoteRef == "" {
+		return head.Hash().String() == string(refSet.LocalRef), nil
 	}
 
-	// Resolve desired commit hash for the requested ref
-	desiredHash, err := GetLatestCommit(repo, ref)
+	r, err := repo.Reference(refSet.RemoteRef, true)
 	if err != nil {
-		return false, fmt.Errorf("failed to resolve latest commit for ref %s: %w", ref, err)
+		if errors.Is(err, plumbing.ErrReferenceNotFound) {
+			return false, nil
+		}
+
+		return false, fmt.Errorf("failed to get reference %s: %w", refSet.RemoteRef, err)
 	}
 
-	// If desiredLocal is a branch, require that HEAD is on the same branch name
-	headRef, err := repo.Head()
-	if err != nil {
-		return false, fmt.Errorf("failed to get HEAD: %w", err)
-	}
-
-	if strings.HasPrefix(string(desiredLocal), BranchPrefix) {
-		// HEAD.Name() may be a branch or detached; require name equality
-		return headRef.Name() == desiredLocal, nil
-	}
-
-	// Otherwise (tags or remote-only refs), compare commit hash
-	if desiredHash == plumbing.ZeroHash.String() {
-		return false, nil
-	}
-
-	return headRef.Hash().String() == desiredHash, nil
+	return head.Hash() == r.Hash(), nil
 }
 
 // normalizeOwnerRepo cleans a path and returns "owner/repo" or empty string when not possible.
