@@ -17,8 +17,6 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
 	"github.com/go-git/go-git/v5/plumbing/transport"
-	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
-	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
 
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/filesystem"
@@ -140,65 +138,6 @@ func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 	return RefSet{}, fmt.Errorf("%w: %s", ErrInvalidReference, ref)
 }
 
-// GetAuthMethod determines the appropriate authentication method based on the URL and provided credentials.
-func GetAuthMethod(url, privateKey, keyPassphrase, token string) (transport.AuthMethod, error) {
-	if IsSSH(url) {
-		return SSHAuth(privateKey, keyPassphrase)
-	} else if token != "" {
-		return HttpTokenAuth(token), nil
-	}
-
-	return nil, nil
-}
-
-// IsSSH checks if a given URL is an SSH URL.
-func IsSSH(url string) bool {
-	return strings.HasPrefix(url, "git@") || strings.HasPrefix(url, "ssh://")
-}
-
-// SSHAuth creates an SSH authentication method using the provided private key.
-func SSHAuth(privateKey, keyPassphrase string) (transport.AuthMethod, error) {
-	if strings.TrimSpace(privateKey) == "" {
-		return nil, ErrSSHKeyRequired
-	}
-
-	auth, err := gitssh.NewPublicKeys(ssh.DefaultGitSSHUser, []byte(privateKey), keyPassphrase)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create SSH public keys: %w", err)
-	}
-
-	// auth.HostKeyCallback = ssh2.InsecureIgnoreHostKey()
-
-	return auth, nil
-}
-
-// HttpTokenAuth returns an AuthMethod for HTTP Basic Auth using a token.
-func HttpTokenAuth(token string) transport.AuthMethod {
-	if token == "" {
-		return nil
-	}
-
-	return &githttp.BasicAuth{
-		Username: "oauth2", // can be anything except an empty string
-		Password: token,
-	}
-}
-
-// addToKnownHosts adds the host from the SSH URL to the known_hosts file.
-func addToKnownHosts(url string) error {
-	err := ssh.CreateKnownHostsFile()
-	if err != nil {
-		return fmt.Errorf("failed to create known_hosts file: %w", err)
-	}
-
-	host, err := ssh.ExtractHostFromSSHUrl(url)
-	if err != nil {
-		return fmt.Errorf("failed to extract host from SSH URL: %w", err)
-	}
-
-	return ssh.AddHostToKnownHosts(host)
-}
-
 // ConvertSSHUrl converts SSH URLs to the ssh:// format.
 // e.g. convert git@github.com:user/repo.git to ssh://git@github.com/user/repo.git
 func ConvertSSHUrl(url string) string {
@@ -270,7 +209,7 @@ func FetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxy
 
 	// SSH auth when key is provided
 	if IsSSH(url) {
-		err := addToKnownHosts(url)
+		err := ssh.AddToKnownHosts(url)
 		if err != nil {
 			return fmt.Errorf("failed to add host to known_hosts: %w", err)
 		}
@@ -427,7 +366,7 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 	}
 
 	if IsSSH(url) {
-		err = addToKnownHosts(url)
+		err = ssh.AddToKnownHosts(url)
 		if err != nil {
 			return nil, fmt.Errorf("failed to add host to known_hosts: %w", err)
 		}

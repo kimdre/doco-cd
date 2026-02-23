@@ -28,14 +28,14 @@ func TestAddHostToKnownHosts(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			KnownHostsFilePath = filepath.Join(t.TempDir(), "known_hosts_test")
 
-			err := CreateKnownHostsFile()
+			err := createKnownHostsFile()
 			if err != nil {
 				t.Fatalf("Failed to create known_hosts file: %v", err)
 			}
 
-			err = AddHostToKnownHosts(tc.host)
+			err = addHostToKnownHosts(tc.host)
 			if (err != nil) != tc.wantErr {
-				t.Errorf("AddHostToKnownHosts(%q) error = %v, wantErr %v", tc.host, err, tc.wantErr)
+				t.Errorf("addHostToKnownHosts(%q) error = %v, wantErr %v", tc.host, err, tc.wantErr)
 			}
 
 			// Get the known_hosts file content
@@ -73,7 +73,7 @@ func TestExtractHostFromSSHUrl(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.sshURL, func(t *testing.T) {
-			host, err := ExtractHostFromSSHUrl(tc.sshURL)
+			host, err := extractHostFromSSHUrl(tc.sshURL)
 			if tc.expected == "" {
 				if err == nil {
 					t.Errorf("Expected error for invalid URL %q, got host %q", tc.sshURL, host)

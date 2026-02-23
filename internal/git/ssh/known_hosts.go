@@ -67,9 +67,9 @@ func fetchHostPublicKey(host string) (ssh.PublicKey, error) {
 	return serverKey, nil
 }
 
-// CreateKnownHostsFile ensures that the known_hosts file exists
+// createKnownHostsFile ensures that the known_hosts file exists
 // and sets the SSH_KNOWN_HOSTS environment variable.
-func CreateKnownHostsFile() error {
+func createKnownHostsFile() error {
 	if _, err := os.Stat(KnownHostsFilePath); errors.Is(err, os.ErrNotExist) {
 		file, err := os.Create(KnownHostsFilePath) // #nosec G304
 		if err != nil {
@@ -86,8 +86,8 @@ func formatKnownHostLine(host string, key ssh.PublicKey) string {
 	return fmt.Sprintf("%s %s %s", host, key.Type(), base64.StdEncoding.EncodeToString(key.Marshal()))
 }
 
-// AddHostToKnownHosts retrieves the host key and adds it to known_hosts.
-func AddHostToKnownHosts(host string) error {
+// addHostToKnownHosts retrieves the host key and adds it to known_hosts.
+func addHostToKnownHosts(host string) error {
 	serverKey, err := fetchHostPublicKey(host)
 	if err != nil {
 		return err
@@ -118,8 +118,8 @@ func AddHostToKnownHosts(host string) error {
 	return os.Setenv(KnownHostsEnvVar, KnownHostsFilePath)
 }
 
-// ExtractHostFromSSHUrl extracts the host/domain from an SSH URL.
-func ExtractHostFromSSHUrl(sshUrl string) (string, error) {
+// extractHostFromSSHUrl extracts the host/domain from an SSH URL.
+func extractHostFromSSHUrl(sshUrl string) (string, error) {
 	if strings.HasPrefix(sshUrl, "ssh://") {
 		u, err := url.Parse(sshUrl)
 		if err != nil {
@@ -158,4 +158,19 @@ func ExtractHostFromSSHUrl(sshUrl string) (string, error) {
 	}
 
 	return "", errors.New("invalid SSH URL format")
+}
+
+// AddToKnownHosts adds the host from the SSH URL to the known_hosts file.
+func AddToKnownHosts(url string) error {
+	err := createKnownHostsFile()
+	if err != nil {
+		return fmt.Errorf("failed to create known_hosts file: %w", err)
+	}
+
+	host, err := extractHostFromSSHUrl(url)
+	if err != nil {
+		return fmt.Errorf("failed to extract host from SSH URL: %w", err)
+	}
+
+	return addHostToKnownHosts(host)
 }
