@@ -70,7 +70,6 @@ func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 		return RefSet{LocalRef: plumbing.ReferenceName(ref)}, nil
 	}
 
-	// Build candidate (local, remote) pairs based on whether ref is already qualified
 	type candidate struct {
 		local  plumbing.ReferenceName
 		remote plumbing.ReferenceName
