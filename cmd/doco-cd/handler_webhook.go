@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/docker/cli/cli/command"
@@ -197,6 +198,10 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to clean up obsolete auto-discovered containers", err.Error(), http.StatusInternalServerError, metadata)
 	}
 
+	var wg sync.WaitGroup
+
+	resultCh := make(chan error, len(deployConfigs))
+
 	for _, deployConfig := range deployConfigs {
 		deployLog := jobLog.WithGroup("deploy")
 
@@ -206,36 +211,77 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			deployConfig.Name = test.ConvertTestName(testName)
 		}
 
-		failNotifyFunc := func(err error, metadata notification.Metadata) {
-			onError(w, deployLog.With(logger.ErrAttr(err)), "deployment failed", err.Error(), http.StatusInternalServerError, metadata)
-		}
+		wg.Add(1)
 
-		stageMgr := stages.NewStageManager(
-			metadata.JobID,
-			stages.JobTriggerWebhook,
-			deployLog,
-			failNotifyFunc,
-			&stages.RepositoryData{
-				CloneURL:     config.HttpUrl(cloneUrl),
-				Name:         repoName,
-				PathInternal: internalRepoPath,
-				PathExternal: externalRepoPath,
-			},
-			&stages.Docker{
-				Cmd:            dockerCli,
-				Client:         dockerClient,
-				DataMountPoint: dataMountPoint,
-			},
-			&payload,
-			appConfig,
-			deployConfig,
-			secretProvider,
-		)
+		go func(dc *config.DeployConfig) {
+			defer wg.Done()
 
-		err = stageMgr.RunStages(ctx)
-		if err != nil {
-			return
+			if deployerLimiter != nil {
+				unlock, lerr := deployerLimiter.acquire(ctx, repoName)
+				if lerr != nil {
+					resultCh <- lerr
+					return
+				}
+				defer unlock()
+			}
+
+			failNotifyFunc := func(err error, metadata notification.Metadata) {
+				// Don't write to HTTP from goroutines — just send notification and log
+				go func() {
+					notifyErr := notification.Send(notification.Failure, "Deployment Failed", err.Error(), metadata)
+					if notifyErr != nil {
+						deployLog.Error("failed to send notification", logger.ErrAttr(notifyErr))
+					}
+				}()
+
+				deployLog.Error("deployment failed", logger.ErrAttr(err))
+			}
+
+			stageMgr := stages.NewStageManager(
+				metadata.JobID,
+				stages.JobTriggerWebhook,
+				deployLog,
+				failNotifyFunc,
+				&stages.RepositoryData{
+					CloneURL:     config.HttpUrl(cloneUrl),
+					Name:         repoName,
+					PathInternal: internalRepoPath,
+					PathExternal: externalRepoPath,
+				},
+				&stages.Docker{
+					Cmd:            dockerCli,
+					Client:         dockerClient,
+					DataMountPoint: dataMountPoint,
+				},
+				&payload,
+				appConfig,
+				dc,
+				secretProvider,
+			)
+
+			err := stageMgr.RunStages(ctx)
+			resultCh <- err
+		}(deployConfig)
+	}
+
+	// Wait for all deployments to complete
+	wg.Wait()
+	close(resultCh)
+
+	var deployErr error
+
+	for e := range resultCh {
+		if e != nil {
+			deployErr = e
+			// keep looping to drain channel
 		}
+	}
+
+	if deployErr != nil {
+		// In synchronous mode we should return an error to the caller
+		// For async mode, w is noopResponseWriter and JSONError is a no-op
+		onError(w, jobLog.With(logger.ErrAttr(deployErr)), "deployment failed", deployErr.Error(), http.StatusInternalServerError, metadata)
+		return
 	}
 
 	msg := "job completed successfully"

@@ -237,6 +237,11 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		return append(results, pollResult{Metadata: metadata, Err: err})
 	}
 
+	// We'll run each deployment concurrently but grouped by repo+reference and limited by the global deployerLimiter
+	var deployWg sync.WaitGroup
+
+	resultCh := make(chan pollResult, len(deployConfigs))
+
 	for _, deployConfig := range deployConfigs {
 		deployLog := jobLog.WithGroup("deploy")
 
@@ -244,36 +249,58 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			pollError(deployLog, metadata, err)
 		}
 
-		stageMgr := stages.NewStageManager(
-			metadata.JobID,
-			stages.JobTriggerPoll,
-			deployLog,
-			failNotifyFunc,
-			&stages.RepositoryData{
-				CloneURL:     pollConfig.CloneUrl,
-				Name:         repoName,
-				PathInternal: internalRepoPath,
-				PathExternal: externalRepoPath,
-			},
-			&stages.Docker{
-				Cmd:            dockerCli,
-				Client:         dockerClient,
-				DataMountPoint: dataMountPoint,
-			},
-			&webhook.ParsedPayload{},
-			appConfig,
-			deployConfig,
-			secretProvider,
-		)
+		deployWg.Add(1)
 
-		err = stageMgr.RunStages(ctx)
-		if err != nil {
-			results = append(results, pollResult{Metadata: metadata, Err: err})
+		go func(dc *config.DeployConfig) {
+			defer deployWg.Done()
 
-			continue
-		}
+			if deployerLimiter != nil {
+				unlock, lerr := deployerLimiter.acquire(ctx, repoName)
+				if lerr != nil {
+					resultCh <- pollResult{Metadata: metadata, Err: lerr}
+					return
+				}
+				defer unlock()
+			}
 
-		results = append(results, pollResult{Metadata: metadata, Err: nil})
+			stageMgr := stages.NewStageManager(
+				metadata.JobID,
+				stages.JobTriggerPoll,
+				deployLog,
+				failNotifyFunc,
+				&stages.RepositoryData{
+					CloneURL:     pollConfig.CloneUrl,
+					Name:         repoName,
+					PathInternal: internalRepoPath,
+					PathExternal: externalRepoPath,
+				},
+				&stages.Docker{
+					Cmd:            dockerCli,
+					Client:         dockerClient,
+					DataMountPoint: dataMountPoint,
+				},
+				&webhook.ParsedPayload{},
+				appConfig,
+				dc,
+				secretProvider,
+			)
+
+			err := stageMgr.RunStages(ctx)
+			if err != nil {
+				resultCh <- pollResult{Metadata: metadata, Err: err}
+				return
+			}
+
+			resultCh <- pollResult{Metadata: metadata, Err: nil}
+		}(deployConfig)
+	}
+
+	// Wait for all deployments to finish
+	deployWg.Wait()
+	close(resultCh)
+
+	for r := range resultCh {
+		results = append(results, r)
 	}
 
 	nextRun := time.Now().Add(time.Duration(pollConfig.Interval) * time.Second).Format(time.RFC3339)
