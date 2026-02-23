@@ -166,6 +166,13 @@ func TestRepoMatches_MismatchedBranch(t *testing.T) {
 	}
 
 	if matched {
-		t.Fatalf("expected repo to not match after checkout to different branch")
+		t.Errorf("expected repo to not match after checkout to different branch")
+
+		// Get current branch for debugging
+		headRef, err := repo.Head()
+		if err != nil {
+			t.Fatalf("failed to get current HEAD: %v", err)
+		}
+		t.Logf("Current HEAD is at: %s but expected %2s", headRef.Name(), "refs/heads/test")
 	}
 }
