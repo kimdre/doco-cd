@@ -159,7 +159,7 @@ func TestRepoMatches_MismatchedBranch(t *testing.T) {
 		t.Fatalf("failed to checkout test branch: %v", err)
 	}
 
-	// Check again after checkout (should still not match)
+	// Check again after checkout (should not match since we're on a different branch now)
 	matched, err = git.RepoMatches(dir, cloneUrlTest, "test")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
