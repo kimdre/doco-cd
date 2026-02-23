@@ -104,28 +104,6 @@ type Stages struct {
 	Cleanup     *CleanupStageData
 }
 
-// CloneState holds information about the current repository clone state.
-// This is used to skip redundant cloning/updating in stage 1 when the URL and reference match
-// the previous clone/update operation. It tracks both the initial clone and subsequent updates
-// to optimize cases where multiple deploy configs use the same URL and reference.
-type CloneState struct {
-	CloneURL  string // The URL used for the last clone/update
-	Reference string // The reference (branch/tag) used for the last clone/update
-}
-
-// Matches checks if the given URL and reference match the current clone state.
-func (c *CloneState) Matches(url, reference string) bool {
-	return c != nil && c.CloneURL == url && c.Reference == reference
-}
-
-// Update updates the clone state with the new URL and reference.
-func (c *CloneState) Update(url, reference string) {
-	if c != nil {
-		c.CloneURL = url
-		c.Reference = reference
-	}
-}
-
 // RepositoryData holds information about the triggering repository.
 type RepositoryData struct {
 	CloneURL     config.HttpUrl  // Repository clone URL (e.g., "https://github.com/user/my-repo.git")
@@ -160,7 +138,6 @@ type StageManager struct {
 	DeployConfig      *config.DeployConfig
 	DeployState       *DeploymentState
 	Docker            *Docker
-	CloneState        *CloneState // Tracks the last clone/update URL and reference to skip redundant operations
 	Payload           *webhook.ParsedPayload
 	Repository        *RepositoryData
 	SecretProvider    *secretprovider.SecretProvider
@@ -171,7 +148,7 @@ func NewStageManager(jobID string, jobTrigger JobTrigger, log *slog.Logger,
 	failNotifyFunc func(err error, metadata notification.Metadata),
 	repoData *RepositoryData, dockerData *Docker, payload *webhook.ParsedPayload,
 	appConfig *config.AppConfig, deployConfig *config.DeployConfig,
-	secretProvider *secretprovider.SecretProvider, cloneState *CloneState,
+	secretProvider *secretprovider.SecretProvider,
 ) *StageManager {
 	return &StageManager{
 		Log:               log.With(),
@@ -182,7 +159,6 @@ func NewStageManager(jobID string, jobTrigger JobTrigger, log *slog.Logger,
 		DeployConfig:      deployConfig,
 		DeployState:       &DeploymentState{},
 		Docker:            dockerData,
-		CloneState:        cloneState,
 		Payload:           payload,
 		Repository:        repoData,
 		SecretProvider:    secretProvider,

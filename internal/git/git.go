@@ -45,6 +45,7 @@ var (
 	ErrInvalidReference           = git.ErrInvalidReference
 	ErrSSHKeyRequired             = errors.New("ssh URL requires SSH_PRIVATE_KEY to be set")
 	ErrPossibleAuthMethodMismatch = errors.New("there might be a mismatch between the authentication method and the repository or submodule remote URL")
+	ErrRemoteURLMismatch          = errors.New("remote URL does not match expected URL")
 )
 
 // ChangedFile represents a file that has changed between two commits.
@@ -757,6 +758,44 @@ func GetRepoName(cloneURL string) string {
 
 	// Fallback: attempt to normalize directly
 	return normalizeOwnerRepo(u)
+}
+
+// MatchesHead inspects an existing repository at path and determines if HEAD is at the specified reference (branch, tag, or commit SHA).
+func MatchesHead(path, ref string) (bool, error) {
+	repo, err := OpenRepository(path)
+	if err != nil {
+		if errors.Is(err, git.ErrRepositoryNotExists) {
+			return false, nil
+		}
+
+		return false, fmt.Errorf("failed to open repository at %s: %w", path, err)
+	}
+
+	head, err := repo.Head()
+	if err != nil {
+		return false, fmt.Errorf("failed to get HEAD reference: %w", err)
+	}
+
+	refSet, err := GetReferenceSet(repo, ref)
+	if err != nil {
+		return false, fmt.Errorf("failed to get reference set for %s: %w", ref, err)
+	}
+
+	// If RemoteRef is empty, LocalRef is a commit SHA
+	if refSet.RemoteRef == "" {
+		return head.Hash().String() == string(refSet.LocalRef), nil
+	}
+
+	r, err := repo.Reference(refSet.RemoteRef, true)
+	if err != nil {
+		if errors.Is(err, plumbing.ErrReferenceNotFound) {
+			return false, nil
+		}
+
+		return false, fmt.Errorf("failed to get reference %s: %w", refSet.RemoteRef, err)
+	}
+
+	return head.Hash() == r.Hash(), nil
 }
 
 // normalizeOwnerRepo cleans a path and returns "owner/repo" or empty string when not possible.
