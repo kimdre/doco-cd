@@ -759,6 +759,68 @@ func GetRepoName(cloneURL string) string {
 	return normalizeOwnerRepo(u)
 }
 
+// RepoMatches inspects an existing repository at path and returns whether it matches the
+// given remote URL and reference.
+func RepoMatches(path, url, ref string) (bool, error) {
+	repo, err := OpenRepository(path)
+	if err != nil {
+		return false, err
+	}
+
+	// Verify remote URL matches
+	remote, err := repo.Remote(RemoteName)
+	if err != nil {
+		return false, fmt.Errorf("failed to get remote %s: %w", RemoteName, err)
+	}
+
+	remoteCfg := remote.Config()
+	if len(remoteCfg.URLs) == 0 {
+		return false, fmt.Errorf("remote %s has no URLs configured", RemoteName)
+	}
+
+	remoteURL := remoteCfg.URLs[0]
+
+	// Normalize SSH style URLs for comparison
+	desired := url
+	if IsSSH(url) {
+		desired = ConvertSSHUrl(url)
+	}
+
+	if IsSSH(remoteURL) {
+		remoteURL = ConvertSSHUrl(remoteURL)
+	}
+
+	if remoteURL != desired {
+		return false, fmt.Errorf("remote URL mismatch: expected %s, got %s", desired, remoteURL)
+	}
+
+	// Check if reference exists locally or remotely in the opened repo
+	if plumbing.IsHash(ref) {
+		// If a commit hash, verify commit exists
+		if _, err = repo.CommitObject(plumbing.NewHash(ref)); err == nil {
+			return true, nil
+		}
+
+		return false, nil
+	}
+
+	refSet, err := GetReferenceSet(repo, ref)
+	if err != nil {
+		return false, fmt.Errorf("failed to get reference set: %w", err)
+	}
+
+	// If GetReferenceSet returned a local reference, it's fine; also accept a remote hash if available
+	if refSet.LocalRef != "" {
+		return true, nil
+	}
+
+	if refSet.RemoteHash != plumbing.ZeroHash {
+		return true, nil
+	}
+
+	return false, nil
+}
+
 // normalizeOwnerRepo cleans a path and returns "owner/repo" or empty string when not possible.
 func normalizeOwnerRepo(p string) string {
 	// Remove query or fragment if present in raw strings

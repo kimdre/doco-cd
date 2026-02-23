@@ -182,13 +182,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		jobLog.Debug("repository cloned", slog.String("path", externalRepoPath))
 	}
 
-	// Track the clone state (URL and reference) to skip redundant cloning/updating in stage 1.
-	// This is shared across all deploy configs and updated after each successful clone/update.
-	cloneState := &stages.CloneState{
-		CloneURL:  cloneUrl,
-		Reference: payload.Ref,
-	}
-
 	jobLog.Debug("retrieving deployment configuration")
 
 	// Get the deployment configs from the repository
@@ -237,7 +230,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			appConfig,
 			deployConfig,
 			secretProvider,
-			cloneState,
 		)
 
 		err = stageMgr.RunStages(ctx)

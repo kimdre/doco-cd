@@ -42,6 +42,13 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		}
 	}
 
+	if s.Repository.Git == nil {
+		s.Repository.Git, err = git.OpenRepository(s.Repository.PathInternal)
+		if err != nil {
+			return fmt.Errorf("failed to open repository: %w", err)
+		}
+	}
+
 	if s.DeployConfig.RepositoryUrl != "" {
 		s.Repository.CloneURL = s.DeployConfig.RepositoryUrl
 		s.Repository.Name = git.GetRepoName(string(s.Repository.CloneURL))
@@ -74,8 +81,10 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 	}
 
 	// Check if we can skip cloning/updating because the previous run (initial or a prior deploy config)
-	// was already done with the same URL and reference
-	skipCloneUpdate := s.CloneState.Matches(string(s.Repository.CloneURL), s.DeployConfig.Reference)
+	skipCloneUpdate, err := git.RepoMatches(s.Repository.PathInternal, string(s.Repository.CloneURL), s.DeployConfig.Reference)
+	if err != nil {
+		return fmt.Errorf("failed to check if repository matches remote and reference: %w", err)
+	}
 
 	if s.DeployConfig.RepositoryUrl != "" {
 		if skipCloneUpdate {
@@ -139,9 +148,6 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		if err != nil {
 			return fmt.Errorf("failed to checkout repository: %w", err)
 		}
-
-		// Update clone state so subsequent deploy configs can skip if they use the same URL and reference
-		s.CloneState.Update(string(s.Repository.CloneURL), s.DeployConfig.Reference)
 	}
 
 	if s.JobTrigger == JobTriggerPoll {
