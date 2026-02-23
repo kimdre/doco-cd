@@ -45,6 +45,7 @@ var (
 	ErrInvalidReference           = git.ErrInvalidReference
 	ErrSSHKeyRequired             = errors.New("ssh URL requires SSH_PRIVATE_KEY to be set")
 	ErrPossibleAuthMethodMismatch = errors.New("there might be a mismatch between the authentication method and the repository or submodule remote URL")
+	ErrRemoteURLMismatch          = errors.New("remote URL does not match expected URL")
 )
 
 // ChangedFile represents a file that has changed between two commits.
@@ -791,7 +792,7 @@ func RepoMatches(path, url, ref string) (bool, error) {
 	}
 
 	if remoteURL != desired {
-		return false, fmt.Errorf("remote URL mismatch: expected %s, got %s", desired, remoteURL)
+		return false, fmt.Errorf("%w: expected %s, got %s", ErrRemoteURLMismatch, desired, remoteURL)
 	}
 
 	// Check if reference exists locally or remotely in the opened repo

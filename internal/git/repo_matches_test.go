@@ -1,6 +1,7 @@
 package git_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/kimdre/doco-cd/internal/config"
@@ -66,11 +67,16 @@ func TestRepoMatches_MismatchedRemote(t *testing.T) {
 	// Check against a different URL (should not match but repo should be returned)
 	matched, err := git.RepoMatches(dir, cloneUrlTest, git.MainBranch)
 	if err != nil {
+		if errors.Is(err, git.ErrRemoteURLMismatch) {
+			// Expected error, test passes
+			return
+		}
+
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if matched {
-		t.Fatalf("expected repo to not match when remote URL differs")
+		t.Fatalf("expected repo to not match when remote URL is different")
 	}
 }
 
