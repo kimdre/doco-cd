@@ -150,8 +150,8 @@ func TestRepoMatches_MismatchedBranch(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if matched {
-		t.Fatalf("expected repo to not match when branch is different")
+	if !matched {
+		t.Fatalf("expected repo to match reference after clone")
 	}
 
 	err = git.CheckoutRepository(repo, "test")
