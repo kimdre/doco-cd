@@ -765,7 +765,7 @@ func GetRepoName(cloneURL string) string {
 func RepoMatches(path, url, ref string) (bool, error) {
 	repo, err := OpenRepository(path)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to open repository at %s: %w", path, err)
 	}
 
 	// Verify remote URL matches
