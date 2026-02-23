@@ -217,9 +217,11 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			defer wg.Done()
 
 			if deployerLimiter != nil {
-				unlock, lerr := deployerLimiter.acquire(ctx, repoName)
-				if lerr != nil {
-					resultCh <- lerr
+				jobLog.Debug("queuing deployment", slog.String("stack", dc.Name), slog.String("reference", dc.Reference))
+
+				unlock, lErr := deployerLimiter.acquire(ctx, repoName, NormalizeReference(dc.Reference))
+				if lErr != nil {
+					resultCh <- lErr
 					return
 				}
 				defer unlock()
@@ -316,12 +318,10 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 	metadata := notification.Metadata{
 		JobID:      jobID,
-		Repository: "",
+		Repository: "unknown", // Will be updated later if we can parse the payload
 		Stack:      "",
 		Revision:   "",
 	}
-
-	repoName := "unknown"
 
 	// Limit the request body size
 	r.Body = http.MaxBytesReader(w, r.Body, h.appConfig.MaxPayloadSize)
@@ -352,8 +352,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if payload.CloneURL != "" {
-			repoName = git.GetRepoName(payload.CloneURL)
-			metadata.Repository = repoName
+			metadata.Repository = git.GetRepoName(payload.CloneURL)
 			metadata.Revision = notification.GetRevision(payload.Ref, payload.CommitSHA)
 		}
 
@@ -377,34 +376,12 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if metadata.Repository == "" {
-		repoName = git.GetRepoName(payload.CloneURL)
-		metadata.Repository = repoName
+		metadata.Repository = git.GetRepoName(payload.CloneURL)
 		metadata.Revision = notification.GetRevision(payload.Ref, payload.CommitSHA)
 	}
 
-	lock := GetRepoLock(repoName)
-	locked := lock.TryLock(jobID)
-
-	if !locked {
-		errMsg = "another job is still in progress for this repository"
-		h.log.Warn(errMsg,
-			slog.String("repository", repoName),
-			slog.String("locked_by_job", lock.Holder()),
-		)
-		JSONError(w,
-			errMsg,
-			fmt.Sprintf("repository '%s' is currently locked by job '%s'", repoName, lock.Holder()),
-			jobID,
-			http.StatusTooManyRequests)
-
-		return
-	}
-
 	if wait {
-		defer lock.Unlock()
-
 		HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, h.dockerClient, h.secretProvider, h.testName)
-
 		return
 	}
 
@@ -412,9 +389,6 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	JSONResponse(w, "job accepted", jobID, http.StatusAccepted)
 
 	go func() {
-		defer lock.Unlock()
-		// We must not write to the original ResponseWriter after we've already responded.
-		// Use a no-op writer so HandleEvent can still call JSONResponse/JSONError internally.
 		HandleEvent(ctx, jobLog, noopResponseWriter{}, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, h.dockerClient, h.secretProvider, h.testName)
 	}()
 }

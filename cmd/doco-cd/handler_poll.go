@@ -255,9 +255,11 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			defer deployWg.Done()
 
 			if deployerLimiter != nil {
-				unlock, lerr := deployerLimiter.acquire(ctx, repoName)
-				if lerr != nil {
-					resultCh <- pollResult{Metadata: metadata, Err: lerr}
+				jobLog.Debug("queuing deployment", slog.String("stack", dc.Name), slog.String("reference", dc.Reference))
+
+				unlock, lErr := deployerLimiter.acquire(ctx, repoName, NormalizeReference(dc.Reference))
+				if lErr != nil {
+					resultCh <- pollResult{Metadata: metadata, Err: lErr}
 					return
 				}
 				defer unlock()

@@ -10,13 +10,13 @@ import (
 func TestTryAcquireBasic(t *testing.T) {
 	lim := NewDeployerLimiter(1)
 
-	unlock, ok := lim.TryAcquire("repoA")
+	unlock, ok := lim.TryAcquire("repoA", "ref1")
 	if !ok || unlock == nil {
 		t.Fatalf("expected TryAcquire success on empty limiter")
 	}
 
 	// second TryAcquire should fail because the per-repo lock is held (and sem capacity 1)
-	_, ok2 := lim.TryAcquire("repoA")
+	_, ok2 := lim.TryAcquire("repoA", "ref1")
 	if ok2 {
 		unlock()
 		t.Fatalf("expected TryAcquire to fail when already acquired")
@@ -42,7 +42,7 @@ func TestPerRepoSerialization(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			unlock, err := lim.acquire(ctx, "repo-serial")
+			unlock, err := lim.acquire(ctx, "repo-serial", "ref")
 			if err != nil {
 				t.Errorf("failed to acquire: %v", err)
 				return
@@ -79,7 +79,7 @@ func TestDifferentReposParallelism(t *testing.T) {
 	go func() {
 		defer wg.Done()
 
-		unlock, err := lim.acquire(ctx, "repoA")
+		unlock, err := lim.acquire(ctx, "repoA", "ref")
 		if err != nil {
 			t.Errorf("acquire error: %v", err)
 			return
@@ -95,7 +95,7 @@ func TestDifferentReposParallelism(t *testing.T) {
 	go func() {
 		defer wg.Done()
 
-		unlock, err := lim.acquire(ctx, "repoB")
+		unlock, err := lim.acquire(ctx, "repoB", "ref")
 		if err != nil {
 			t.Errorf("acquire error: %v", err)
 			return
