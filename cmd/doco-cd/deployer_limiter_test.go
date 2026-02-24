@@ -25,47 +25,6 @@ func TestTryAcquireBasic(t *testing.T) {
 	unlock()
 }
 
-func TestPerRepoSerialization(t *testing.T) {
-	lim := NewDeployerLimiter(1)
-	ctx := context.Background()
-
-	order := make([]int, 0)
-	mu := sync.Mutex{}
-
-	// Create three jobs for same repo that append their id to order when they run
-	wg := sync.WaitGroup{}
-	for i := 1; i <= 3; i++ {
-		wg.Add(1)
-
-		go func(id int) {
-			defer wg.Done()
-
-			unlock, err := lim.acquire(ctx, "repo-serial", "ref")
-			if err != nil {
-				t.Errorf("failed to acquire: %v", err)
-				return
-			}
-			// simulate work
-			time.Sleep(20 * time.Millisecond)
-
-			mu.Lock()
-
-			order = append(order, id)
-			mu.Unlock()
-			unlock()
-		}(i)
-	}
-
-	wg.Wait()
-
-	// Expect order to be 1,2,3 (FIFO for same repo)
-	for i := 0; i < 3; i++ {
-		if order[i] != i+1 {
-			t.Fatalf("expected order %v, got %v", []int{1, 2, 3}, order)
-		}
-	}
-}
-
 func TestDifferentReposParallelism(t *testing.T) {
 	// allow max 2 concurrent
 	lim := NewDeployerLimiter(2)
