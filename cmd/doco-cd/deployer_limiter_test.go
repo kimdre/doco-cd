@@ -23,6 +23,13 @@ func TestTryAcquireBasic(t *testing.T) {
 	}
 
 	unlock()
+
+	// now TryAcquire should succeed again
+	unlock2, ok3 := lim.TryAcquire("repoA", "ref1")
+	if !ok3 || unlock2 == nil {
+		t.Fatalf("expected TryAcquire success after release")
+	}
+	unlock2()
 }
 
 func TestDifferentReposParallelism(t *testing.T) {
