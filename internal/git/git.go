@@ -226,7 +226,7 @@ func FetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxy
 
 	err := repo.Fetch(opts)
 	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
-		return fmt.Errorf("%w: %w", ErrFetchFailed, err)
+		return err
 	}
 
 	return nil
