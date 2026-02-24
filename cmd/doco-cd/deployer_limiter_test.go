@@ -37,9 +37,7 @@ func TestPerRepoSerialization(t *testing.T) {
 	for i := 1; i <= 3; i++ {
 		wg.Add(1)
 
-		id := i
-
-		go func() {
+		go func(id int) {
 			defer wg.Done()
 
 			unlock, err := lim.acquire(ctx, "repo-serial", "ref")
@@ -54,7 +52,7 @@ func TestPerRepoSerialization(t *testing.T) {
 			order = append(order, id)
 			mu.Unlock()
 			unlock()
-		}()
+		}(i)
 	}
 
 	wg.Wait()
