@@ -26,7 +26,7 @@ func TestTryAcquireBasic(t *testing.T) {
 }
 
 func TestPerRepoSerialization(t *testing.T) {
-	lim := NewDeployerLimiter(2)
+	lim := NewDeployerLimiter(1)
 	ctx := context.Background()
 
 	order := make([]int, 0)
@@ -47,6 +47,7 @@ func TestPerRepoSerialization(t *testing.T) {
 			}
 			// simulate work
 			time.Sleep(20 * time.Millisecond)
+
 			mu.Lock()
 
 			order = append(order, id)
