@@ -193,7 +193,7 @@ func TestHandleEvent(t *testing.T) {
 			swarmMode:            false,
 		},
 		{
-			name: "With Remote Repository and Swarm Mode",
+			name: "With Swarm Mode",
 			payload: webhook.ParsedPayload{
 				Ref:       git.SwarmModeBranch,
 				CommitSHA: "01435dad4e7ff8f7da70202ca1ca77bccca9eb62",
