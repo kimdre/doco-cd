@@ -180,7 +180,7 @@ func TestHandleEvent(t *testing.T) {
 			name: "With Remote Repository",
 			payload: webhook.ParsedPayload{
 				Ref:       "remote",
-				CommitSHA: validCommitSHA,
+				CommitSHA: "d02f87d2a886d6bae4673409f6b5108b45156f5c",
 				Name:      "doco-cd_tests",
 				FullName:  "kimdre/doco-cd_tests",
 				CloneURL:  "https://github.com/kimdre/doco-cd_tests",
@@ -224,12 +224,8 @@ func TestHandleEvent(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			if swarm.ModeEnabled && !tc.swarmMode {
-				t.Skipf("Skipping test %s because it requires Swarm mode to be disabled", tc.name)
-			}
-
-			if !swarm.ModeEnabled && tc.swarmMode {
-				t.Skipf("Skipping test %s because it requires Swarm mode to be enabled", tc.name)
+			if swarm.ModeEnabled != tc.swarmMode {
+				t.Skipf("Skipping test because it requires swarm mode %v, but current mode is %v", tc.swarmMode, swarm.ModeEnabled)
 			}
 
 			tmpDir := t.TempDir()
