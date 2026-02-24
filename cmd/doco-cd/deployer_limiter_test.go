@@ -29,6 +29,7 @@ func TestTryAcquireBasic(t *testing.T) {
 	if !ok3 || unlock2 == nil {
 		t.Fatalf("expected TryAcquire success after release")
 	}
+
 	unlock2()
 }
 
