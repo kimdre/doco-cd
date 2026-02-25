@@ -161,7 +161,20 @@ func updateRemoteURL(repo *git.Repository, url string) error {
 	// Update remote URL in case it has changed
 	remote, err := repo.Remote(RemoteName)
 	if err != nil {
-		return fmt.Errorf("failed to get remote %s: %w", RemoteName, err)
+		// If remote does not exist, create it with the provided URL
+		c := &config.RemoteConfig{Name: RemoteName}
+		if IsSSH(url) {
+			c.URLs = []string{ConvertSSHUrl(url)}
+		} else {
+			c.URLs = []string{url}
+		}
+
+		_, createErr := repo.CreateRemote(c)
+		if createErr != nil {
+			return fmt.Errorf("failed to create remote %s: %w", RemoteName, createErr)
+		}
+
+		return nil
 	}
 
 	c := remote.Config()
@@ -199,8 +212,8 @@ func OpenRepository(path string) (*git.Repository, error) {
 	return git.PlainOpen(path)
 }
 
-// FetchRepository fetches updates from the remote repository, including all branches and tags, and prunes deleted references.
-func FetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod) error {
+// fetchRepository fetches updates from the remote repository, including all branches and tags, and prunes deleted references.
+func fetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod) error {
 	opts := &git.FetchOptions{
 		RemoteName: RemoteName,
 		RemoteURL:  url,
@@ -235,6 +248,11 @@ func FetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxy
 
 // UpdateRepository fetches and checks out the requested ref.
 func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, cloneSubmodules bool) (*git.Repository, error) {
+	// Serialize operations on the same path
+	lock := lockForPath(path)
+	lock.Lock()
+	defer lock.Unlock()
+
 	repo, err := git.PlainOpen(path)
 	if err != nil {
 		return nil, err
@@ -245,7 +263,7 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 		return nil, err
 	}
 
-	err = FetchRepository(repo, url, skipTLSVerify, proxyOpts, auth)
+	err = fetchRepository(repo, url, skipTLSVerify, proxyOpts, auth)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrFetchFailed, err)
 	}
@@ -351,6 +369,11 @@ func CheckoutRepository(repo *git.Repository, ref string) error {
 
 // CloneRepository clones a repository with HTTP or SSH auth.
 func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, cloneSubmodules bool) (*git.Repository, error) {
+	// Serialize operations on the same path to avoid concurrent partial clones
+	lock := lockForPath(path)
+	lock.Lock()
+	defer lock.Unlock()
+
 	err := os.MkdirAll(path, filesystem.PermDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create directory %s: %w", path, err)
@@ -394,14 +417,32 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 			return nil, fmt.Errorf("%w: %w", err, ErrPossibleAuthMethodMismatch)
 		}
 
-		return nil, fmt.Errorf("clone failed: %w", err)
+		// Handle partial state: if remote already exists (race/previous attempt), try to recover
+		if strings.Contains(err.Error(), "remote already exists") {
+			// If the directory contains a repository, try UpdateRepository
+			if _, statErr := os.Stat(path); statErr == nil {
+				if existingRepo, openErr := git.PlainOpen(path); openErr == nil {
+					if upd, uErr := UpdateRepository(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules); uErr == nil {
+						return upd, nil
+					}
+
+					_ = existingRepo // keep linter happy; we only needed to know PlainOpen succeeded
+				}
+			}
+
+			// Remove path and retry clone once
+			_ = os.RemoveAll(path)
+
+			repo, err = git.PlainClone(path, false, opts)
+			if err != nil {
+				return nil, fmt.Errorf("clone failed: %w", err)
+			}
+		} else {
+			return nil, fmt.Errorf("clone failed: %w", err)
+		}
 	}
 
-	err = FetchRepository(repo, url, skipTLSVerify, proxyOpts, auth)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrFetchFailed, err)
-	}
-
+	// At this point repo should be a valid repository from either the initial clone or the retried clone
 	err = CheckoutRepository(repo, ref)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrCheckoutFailed, err)
