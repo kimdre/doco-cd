@@ -203,7 +203,11 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	resultCh := make(chan error, len(deployConfigs))
 
 	for _, deployConfig := range deployConfigs {
-		deployLog := jobLog.WithGroup("deploy")
+		deployLog := jobLog.
+			WithGroup("deploy").
+			With(
+				slog.String("stack", deployConfig.Name),
+				slog.String("reference", deployConfig.Reference))
 
 		// Used to make test deployments unique and prevent conflicts between tests when running in parallel.
 		// It is not used in production.

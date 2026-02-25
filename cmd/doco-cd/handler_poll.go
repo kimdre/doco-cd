@@ -243,7 +243,11 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	resultCh := make(chan pollResult, len(deployConfigs))
 
 	for _, deployConfig := range deployConfigs {
-		deployLog := jobLog.WithGroup("deploy")
+		deployLog := jobLog.
+			WithGroup("deploy").
+			With(
+				slog.String("stack", deployConfig.Name),
+				slog.String("reference", deployConfig.Reference))
 
 		failNotifyFunc := func(err error, metadata notification.Metadata) {
 			pollError(deployLog, metadata, err)
