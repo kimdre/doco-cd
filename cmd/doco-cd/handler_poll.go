@@ -259,7 +259,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			defer deployWg.Done()
 
 			if deployerLimiter != nil {
-				jobLog.Debug("queuing deployment", slog.String("stack", dc.Name), slog.String("reference", dc.Reference))
+				deployLog.Debug("queuing deployment")
 
 				unlock, lErr := deployerLimiter.acquire(ctx, repoName, NormalizeReference(dc.Reference))
 				if lErr != nil {
