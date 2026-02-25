@@ -210,7 +210,12 @@ func TestHandleEvent(t *testing.T) {
 		},
 	}
 
-	dockerCli, err := docker.CreateDockerCli(false, false)
+	appConfig, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("failed to get app config: %s", err.Error())
+	}
+
+	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy, !appConfig.SkipTLSVerification)
 	if err != nil {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
 	}
@@ -219,6 +224,11 @@ func TestHandleEvent(t *testing.T) {
 	if err != nil {
 		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
+
+	dockerClient, _ := client.NewClientWithOpts(
+		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
+	)
 
 	encryption.SetupAgeKeyEnvVar(t)
 
@@ -245,34 +255,15 @@ func TestHandleEvent(t *testing.T) {
 				}
 			}
 
-			appConfig, err := config.GetAppConfig()
-			if err != nil {
-				t.Fatalf("failed to get app config: %s", err.Error())
-			}
-
 			if tc.payload.Private && appConfig.GitAccessToken == "" {
 				t.Skip("Skipping test for private repository because GIT_ACCESS_TOKEN is not set")
 			}
-
-			dockerClient, _ := client.NewClientWithOpts(
-				client.FromEnv,
-				client.WithAPIVersionNegotiation(),
-			)
 
 			log := logger.New(12)
 			jobID := uuid.Must(uuid.NewV7()).String()
 			jobLog := log.With(slog.String("job_id", jobID))
 
 			ctx := context.Background()
-
-			dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy, !appConfig.SkipTLSVerification)
-			if err != nil {
-				if tc.expectedStatusCode == http.StatusInternalServerError {
-					return
-				}
-
-				t.Fatalf("Failed to create docker client: %v", err)
-			}
 
 			t.Cleanup(func() {
 				err = dockerCli.Client().Close()
