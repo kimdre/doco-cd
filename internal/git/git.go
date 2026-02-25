@@ -46,6 +46,7 @@ var (
 	ErrSSHKeyRequired             = errors.New("ssh URL requires SSH_PRIVATE_KEY to be set")
 	ErrPossibleAuthMethodMismatch = errors.New("there might be a mismatch between the authentication method and the repository or submodule remote URL")
 	ErrRemoteURLMismatch          = errors.New("remote URL does not match expected URL")
+	ErrGetHeadFailed              = errors.New("failed to get HEAD reference")
 )
 
 // ChangedFile represents a file that has changed between two commits.
@@ -773,7 +774,7 @@ func MatchesHead(path, ref string) (bool, error) {
 
 	head, err := repo.Head()
 	if err != nil {
-		return false, fmt.Errorf("failed to get HEAD reference: %w", err)
+		return false, fmt.Errorf("%w for repository '%s': %w", ErrGetHeadFailed, path, err)
 	}
 
 	refSet, err := GetReferenceSet(repo, ref)
