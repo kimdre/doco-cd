@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -240,10 +242,10 @@ func TestHandleEvent(t *testing.T) {
 
 			tmpDir := t.TempDir()
 
-			stackName := test.ConvertTestName(t.Name())
-			if len(stackName) > 40 {
-				stackName = stackName[:40]
-			}
+			// Hash test name for stack name to avoid issues with special characters and length limits
+			// Shorten hash to 10 characters to comply with Docker stack name length limits
+			sum := sha256.Sum256([]byte(t.Name()))
+			stackName := test.ConvertTestName(hex.EncodeToString(sum[:])[:10])
 
 			for k, v := range defaultEnvVars {
 				t.Setenv(k, v)
