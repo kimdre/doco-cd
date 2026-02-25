@@ -420,12 +420,10 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 		// Handle partial state: if remote already exists (race/previous attempt), try to recover
 		if errors.Is(err, git.ErrRemoteExists) {
 			// If the directory contains a repository, try UpdateRepository
-			if existingRepo, openErr := git.PlainOpen(path); openErr == nil {
+			if _, openErr := git.PlainOpen(path); openErr == nil {
 				if upd, uErr := UpdateRepository(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules); uErr == nil {
 					return upd, nil
 				}
-
-				_ = existingRepo // keep linter happy; we only needed to know PlainOpen succeeded
 			}
 
 			// Remove path and retry clone once
