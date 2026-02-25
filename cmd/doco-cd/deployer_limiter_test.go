@@ -95,9 +95,38 @@ func TestTryAcquire_JoinSameRef(t *testing.T) {
 		t.Fatalf("expected second TryAcquire to join same ref")
 	}
 
-	// cleanup
-	unlock2()
-	unlock1()
+	t.Cleanup(func() {
+		unlock1()
+		unlock2()
+	})
+
+	// Check length of locks for repoJoin is 1 and refCounts for refA is 2
+	lim.mu.Lock()
+
+	t.Cleanup(func() {
+		lim.mu.Unlock()
+	})
+
+	repoEnt, ok := lim.locks["repoJoin"]
+	if !ok {
+		t.Fatalf("expected repo entry for repoJoin")
+	}
+
+	repoEnt.mu.Lock()
+
+	t.Cleanup(func() {
+		repoEnt.mu.Unlock()
+	})
+
+	if len(repoEnt.refCounts) != 1 {
+		t.Fatalf("expected 1 ref in refCounts, got %d", len(repoEnt.refCounts))
+	}
+
+	count, ok := repoEnt.refCounts["refA"]
+
+	if !ok || count != 2 {
+		t.Fatalf("expected refA count to be 2, got %d", count)
+	}
 }
 
 // TestTryAcquire_DifferentRef_BlockedThenSucceeds verifies TryAcquire for a different ref fails while active and succeeds after release.
