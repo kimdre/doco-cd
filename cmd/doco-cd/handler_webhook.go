@@ -208,7 +208,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		// Used to make test deployments unique and prevent conflicts between tests when running in parallel.
 		// It is not used in production.
 		if testName != "" {
-			deployConfig.Name = test.ConvertTestName(testName)
+			deployConfig.Name = test.ConvertTestName(fmt.Sprintf("%s-%s", testName, deployConfig.Name))
 		}
 
 		wg.Add(1)
