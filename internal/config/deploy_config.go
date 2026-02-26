@@ -298,7 +298,11 @@ func GetDeployConfigs(repoRoot, deployConfigBaseDir, name, customTarget, referen
 						}
 					}
 				} else {
+					unlock := gitInternal.AcquirePathLock(repoRoot)
 					err = gitInternal.CheckoutRepository(baseRepo, c.Reference)
+
+					unlock()
+
 					if err != nil {
 						return nil, fmt.Errorf("failed to checkout repository to reference %s: %w", c.Reference, err)
 					}

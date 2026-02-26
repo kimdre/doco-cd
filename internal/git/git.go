@@ -249,9 +249,8 @@ func fetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxy
 // UpdateRepository fetches and checks out the requested ref.
 func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, cloneSubmodules bool) (*git.Repository, error) {
 	// Serialize operations on the same path
-	lock := lockForPath(path)
-	lock.Lock()
-	defer lock.Unlock()
+	unlock := AcquirePathLock(path)
+	defer unlock()
 
 	repo, err := git.PlainOpen(path)
 	if err != nil {
@@ -370,9 +369,8 @@ func CheckoutRepository(repo *git.Repository, ref string) error {
 // CloneRepository clones a repository with HTTP or SSH auth.
 func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, cloneSubmodules bool) (*git.Repository, error) {
 	// Serialize operations on the same path to avoid concurrent partial clones
-	lock := lockForPath(path)
-	lock.Lock()
-	defer lock.Unlock()
+	unlock := AcquirePathLock(path)
+	defer unlock()
 
 	err := os.MkdirAll(path, filesystem.PermDir)
 	if err != nil {
