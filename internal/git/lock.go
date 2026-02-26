@@ -11,17 +11,28 @@ var cloneLocks = struct {
 	m: make(map[string]*sync.Mutex),
 }
 
-// lockForPath returns the mutex for a given path, creating it if necessary.
-func lockForPath(p string) *sync.Mutex {
+// lockForKey returns the mutex for a given key, creating it if necessary.
+func lockForKey(k string) *sync.Mutex {
 	cloneLocks.mu.Lock()
 	defer cloneLocks.mu.Unlock()
 
-	if m, ok := cloneLocks.m[p]; ok {
+	if m, ok := cloneLocks.m[k]; ok {
 		return m
 	}
 
 	m := &sync.Mutex{}
-	cloneLocks.m[p] = m
+	cloneLocks.m[k] = m
 
 	return m
+}
+
+// AcquirePathLock locks the mutex for the given key and returns a function to unlock it.
+// The returned unlock function is idempotent (safe to call multiple times).
+func AcquirePathLock(key string) func() {
+	lock := lockForKey(key)
+	lock.Lock()
+
+	var once sync.Once
+
+	return func() { once.Do(func() { lock.Unlock() }) }
 }
