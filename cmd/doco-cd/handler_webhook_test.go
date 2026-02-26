@@ -154,8 +154,6 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	}
 
 	t.Cleanup(func() {
-		t.Log("Remove " + stackName)
-
 		if service != nil {
 			err = service.Down(ctx, stackName, downOpts)
 			if err != nil {

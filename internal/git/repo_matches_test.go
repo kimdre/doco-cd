@@ -67,7 +67,7 @@ func TestMatchesHead(t *testing.T) {
 				// Get current head for debugging
 				headRef, err := repo.Head()
 				if err != nil {
-					t.Fatalf("failed to get HEAD reference: %v", err)
+					t.Fatalf("%s: %v", git.ErrGetHeadFailed.Error(), err)
 				}
 
 				t.Errorf("expected repo to match reference '%s' but got '%s'", tc.reference, headRef.Name().String())
@@ -129,7 +129,7 @@ func TestMatchesHead_AfterCheckoutToDifferentBranch(t *testing.T) {
 		// Get the current branch to confirm it's 'test'
 		headRef, err := repo.Head()
 		if err != nil {
-			t.Fatalf("failed to get HEAD reference: %v", err)
+			t.Fatalf("%s: %v", git.ErrGetHeadFailed.Error(), err)
 		}
 
 		if headRef.Name().Short() != "test" {

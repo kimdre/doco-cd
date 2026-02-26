@@ -95,8 +95,6 @@ func TestRunPoll(t *testing.T) {
 	})
 
 	t.Cleanup(func() {
-		t.Log("Remove test container")
-
 		if swarm.ModeEnabled {
 			err = docker.RemoveSwarmStack(ctx, dockerCli, stackName)
 		} else {

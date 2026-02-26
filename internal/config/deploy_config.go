@@ -228,7 +228,7 @@ func GetDeployConfigs(repoRoot, deployConfigBaseDir, name, customTarget, referen
 	// Compare the resolved reference with the current HEAD reference, if they are different then skip the auto-discovery for this deployment config
 	headRef, err := baseRepo.Head()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get HEAD reference: %w", err)
+		return nil, fmt.Errorf("%w: %w", gitInternal.ErrGetHeadFailed, err)
 	}
 
 	// Checkout repo to different reference
@@ -298,7 +298,11 @@ func GetDeployConfigs(repoRoot, deployConfigBaseDir, name, customTarget, referen
 						}
 					}
 				} else {
+					unlock := gitInternal.AcquirePathLock(repoRoot)
 					err = gitInternal.CheckoutRepository(baseRepo, c.Reference)
+
+					unlock()
+
 					if err != nil {
 						return nil, fmt.Errorf("failed to checkout repository to reference %s: %w", c.Reference, err)
 					}

@@ -70,6 +70,16 @@ var (
 		Help:      "Duration of deployment operations in seconds",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"repository"})
+	DeploymentsActive = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: MetricsNamespace,
+		Name:      "deployments_active",
+		Help:      "Number of currently active deployments",
+	}, []string{"repository"})
+	DeploymentsQueued = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: MetricsNamespace,
+		Name:      "deployments_queued",
+		Help:      "Number of queued deployments waiting to start",
+	}, []string{"repository"})
 )
 
 func init() {
@@ -78,6 +88,7 @@ func init() {
 		PollTotal, PollErrors, PollDuration,
 		WebhookRequestsTotal, WebhookErrorsTotal, WebhookDuration,
 		DeploymentsTotal, DeploymentErrorsTotal, DeploymentDuration,
+		DeploymentsActive, DeploymentsQueued,
 	)
 }
 

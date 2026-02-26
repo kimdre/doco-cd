@@ -42,13 +42,6 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		}
 	}
 
-	if s.Repository.Git == nil {
-		s.Repository.Git, err = git.OpenRepository(s.Repository.PathInternal)
-		if err != nil {
-			return fmt.Errorf("failed to open repository: %w", err)
-		}
-	}
-
 	if s.DeployConfig.RepositoryUrl != "" {
 		s.Repository.CloneURL = s.DeployConfig.RepositoryUrl
 		s.Repository.Name = git.GetRepoName(string(s.Repository.CloneURL))

@@ -38,7 +38,10 @@ const (
 	dataPath    = "/data"
 )
 
-var errMsg string
+var (
+	errMsg          string
+	deployerLimiter *DeployerLimiter // deployerLimiter controls the concurrency of deployments across webhook and poll handlers.
+)
 
 // GetProxyUrlRedacted takes a proxy URL string and redacts the password if it exists.
 func GetProxyUrlRedacted(proxyUrl string) string {
@@ -287,6 +290,9 @@ func main() {
 		log:            log,
 		secretProvider: &secretProvider,
 	}
+
+	// Initialize the deployer limiter according to configuration
+	deployerLimiter = NewDeployerLimiter(c.MaxConcurrentDeployments)
 
 	// Register HTTP endpoints
 	enabledEndpoints := registerHttpEndpoints(c, &h, log)

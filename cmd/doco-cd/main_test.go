@@ -180,7 +180,7 @@ func TestHandleEvent(t *testing.T) {
 			name: "With Remote Repository",
 			payload: webhook.ParsedPayload{
 				Ref:       "remote",
-				CommitSHA: validCommitSHA,
+				CommitSHA: "d02f87d2a886d6bae4673409f6b5108b45156f5c",
 				Name:      "doco-cd_tests",
 				FullName:  "kimdre/doco-cd_tests",
 				CloneURL:  "https://github.com/kimdre/doco-cd_tests",
@@ -193,7 +193,7 @@ func TestHandleEvent(t *testing.T) {
 			swarmMode:            false,
 		},
 		{
-			name: "With Remote Repository and Swarm Mode",
+			name: "With Swarm Mode",
 			payload: webhook.ParsedPayload{
 				Ref:       git.SwarmModeBranch,
 				CommitSHA: "01435dad4e7ff8f7da70202ca1ca77bccca9eb62",
@@ -210,7 +210,12 @@ func TestHandleEvent(t *testing.T) {
 		},
 	}
 
-	dockerCli, err := docker.CreateDockerCli(false, false)
+	appConfig, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("failed to get app config: %s", err.Error())
+	}
+
+	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy, !appConfig.SkipTLSVerification)
 	if err != nil {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
 	}
@@ -220,16 +225,17 @@ func TestHandleEvent(t *testing.T) {
 		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 
+	dockerClient, _ := client.NewClientWithOpts(
+		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
+	)
+
 	encryption.SetupAgeKeyEnvVar(t)
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			if swarm.ModeEnabled && !tc.swarmMode {
-				t.Skipf("Skipping test %s because it requires Swarm mode to be disabled", tc.name)
-			}
-
-			if !swarm.ModeEnabled && tc.swarmMode {
-				t.Skipf("Skipping test %s because it requires Swarm mode to be enabled", tc.name)
+			if swarm.ModeEnabled != tc.swarmMode {
+				t.Skipf("Skipping test because it requires swarm mode %v, but current mode is %v", tc.swarmMode, swarm.ModeEnabled)
 			}
 
 			tmpDir := t.TempDir()
@@ -249,34 +255,15 @@ func TestHandleEvent(t *testing.T) {
 				}
 			}
 
-			appConfig, err := config.GetAppConfig()
-			if err != nil {
-				t.Fatalf("failed to get app config: %s", err.Error())
-			}
-
 			if tc.payload.Private && appConfig.GitAccessToken == "" {
 				t.Skip("Skipping test for private repository because GIT_ACCESS_TOKEN is not set")
 			}
-
-			dockerClient, _ := client.NewClientWithOpts(
-				client.FromEnv,
-				client.WithAPIVersionNegotiation(),
-			)
 
 			log := logger.New(12)
 			jobID := uuid.Must(uuid.NewV7()).String()
 			jobLog := log.With(slog.String("job_id", jobID))
 
 			ctx := context.Background()
-
-			dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy, !appConfig.SkipTLSVerification)
-			if err != nil {
-				if tc.expectedStatusCode == http.StatusInternalServerError {
-					return
-				}
-
-				t.Fatalf("Failed to create docker client: %v", err)
-			}
 
 			t.Cleanup(func() {
 				err = dockerCli.Client().Close()
@@ -313,8 +300,6 @@ func TestHandleEvent(t *testing.T) {
 					Images:        "all",
 					Volumes:       true,
 				}
-
-				t.Log("Remove test container")
 
 				if swarm.ModeEnabled {
 					err = docker.RemoveSwarmStack(ctx, dockerCli, stackName)
