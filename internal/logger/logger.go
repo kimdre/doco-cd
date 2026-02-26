@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"os"
+
+	slogdedup "github.com/veqryn/slog-dedup"
 )
 
 type Logger struct {
@@ -40,44 +42,51 @@ func ErrAttr(err error) slog.Attr {
 
 // New returns a new Logger with the given log level.
 func New(logLevel slog.Level) *Logger {
+	jh := slog.NewJSONHandler(
+		os.Stderr,
+		&slog.HandlerOptions{
+			// AddSource: true,
+			Level: logLevel,
+			ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+				// Customize the name of the time key.
+				if a.Key == slog.TimeKey {
+					a.Key = "time"
+				}
+
+				// Customize the name of the level key and the output string, including
+				// custom level values.
+				if a.Key == slog.LevelKey {
+					// Handle custom level values.
+					level := a.Value.Any().(slog.Level)
+
+					switch {
+					case level < LevelInfo:
+						a.Value = slog.StringValue(LevelDebugName)
+					case level < LevelWarning:
+						a.Value = slog.StringValue(LevelInfoName)
+					case level < LevelError:
+						a.Value = slog.StringValue(LevelWarningName)
+					case level < LevelCritical:
+						a.Value = slog.StringValue(LevelErrorName)
+					default:
+						a.Value = slog.StringValue(LevelCriticalName)
+					}
+				}
+
+				return a
+			},
+		},
+	)
+
+	overwriter := slog.New(
+		slogdedup.NewOverwriteHandler(jh, nil),
+	)
+
+	slog.SetDefault(overwriter)
+	slog.SetLogLoggerLevel(logLevel)
+
 	return &Logger{
-		slog.New(
-			slog.NewJSONHandler(
-				os.Stderr,
-				&slog.HandlerOptions{
-					// AddSource: true,
-					Level: logLevel,
-					ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-						// Customize the name of the time key.
-						if a.Key == slog.TimeKey {
-							a.Key = "time"
-						}
-
-						// Customize the name of the level key and the output string, including
-						// custom level values.
-						if a.Key == slog.LevelKey {
-							// Handle custom level values.
-							level := a.Value.Any().(slog.Level)
-
-							switch {
-							case level < LevelInfo:
-								a.Value = slog.StringValue(LevelDebugName)
-							case level < LevelWarning:
-								a.Value = slog.StringValue(LevelInfoName)
-							case level < LevelError:
-								a.Value = slog.StringValue(LevelWarningName)
-							case level < LevelCritical:
-								a.Value = slog.StringValue(LevelErrorName)
-							default:
-								a.Value = slog.StringValue(LevelCriticalName)
-							}
-						}
-
-						return a
-					},
-				},
-			),
-		),
+		overwriter,
 		logLevel,
 	}
 }
