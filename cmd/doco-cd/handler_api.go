@@ -19,9 +19,9 @@ import (
 	restAPI "github.com/kimdre/doco-cd/internal/restapi"
 )
 
-// registerHttpEndpoints registers the HTTP endpoints based on the application configuration and
+// registerApiEndpoints registers the API endpoints based on the application configuration and
 // returns a list of all enabled endpoints.
-func registerHttpEndpoints(c *config.AppConfig, h *handlerData, log *logger.Logger) []string {
+func registerApiEndpoints(c *config.AppConfig, h *handlerData, log *logger.Logger, mux *http.ServeMux) []string {
 	var enabledEndpoints []string
 
 	type endpoint struct {
@@ -31,12 +31,11 @@ func registerHttpEndpoints(c *config.AppConfig, h *handlerData, log *logger.Logg
 
 	// Register health endpoint
 	enabledEndpoints = append(enabledEndpoints, healthPath)
-	http.HandleFunc(healthPath, h.HealthCheckHandler)
+	mux.HandleFunc(healthPath, h.HealthCheckHandler)
 	log.Debug("register health endpoint", slog.String("path", healthPath))
 
-	// Register HTTP handlers based on configuration
+	// Register API handlers based on configuration
 	if c.ApiSecret != "" {
-		// Register API endpoints
 		enabledEndpoints = append(enabledEndpoints, apiPath)
 
 		endpoints := []endpoint{
@@ -49,7 +48,7 @@ func registerHttpEndpoints(c *config.AppConfig, h *handlerData, log *logger.Logg
 		}
 
 		for _, ep := range endpoints {
-			http.HandleFunc(ep.path, ep.handler)
+			mux.HandleFunc(ep.path, ep.handler)
 			log.Debug("register api endpoint", slog.String("path", ep.path))
 		}
 	} else {
@@ -57,7 +56,6 @@ func registerHttpEndpoints(c *config.AppConfig, h *handlerData, log *logger.Logg
 	}
 
 	if c.WebhookSecret != "" {
-		// Register webhook endpoints
 		enabledEndpoints = append(enabledEndpoints, webhookPath)
 
 		endpoints := []endpoint{
@@ -66,7 +64,7 @@ func registerHttpEndpoints(c *config.AppConfig, h *handlerData, log *logger.Logg
 		}
 
 		for _, ep := range endpoints {
-			http.HandleFunc(ep.path, ep.handler)
+			mux.HandleFunc(ep.path, ep.handler)
 			log.Debug("register webhook endpoint", slog.String("path", ep.path))
 		}
 	} else {

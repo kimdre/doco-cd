@@ -294,13 +294,14 @@ func main() {
 	// Initialize the deployer limiter according to configuration
 	deployerLimiter = NewDeployerLimiter(c.MaxConcurrentDeployments)
 
-	// Register HTTP endpoints
-	enabledEndpoints := registerHttpEndpoints(c, &h, log)
+	// Register API endpoints
+	apiServerMux := http.NewServeMux()
+	enabledApiEndpoints := registerApiEndpoints(c, &h, log, apiServerMux)
 
 	log.Info(
 		"listening for events",
 		slog.Int("http_port", int(c.HttpPort)),
-		slog.Any("enabled_endpoints", enabledEndpoints),
+		slog.Any("enabled_endpoints", enabledApiEndpoints),
 	)
 
 	var wg sync.WaitGroup
@@ -334,6 +335,7 @@ func main() {
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", c.HttpPort),
 		ReadHeaderTimeout: 3 * time.Second,
+		Handler:           apiServerMux,
 	}
 
 	err = server.ListenAndServe()
