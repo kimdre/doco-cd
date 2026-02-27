@@ -52,6 +52,7 @@ linters:
             - fmt.Printf
             - fmt.Print
             - fmt.Println
+            - io.Closer.Close
             - io.Writer.Write
         - name: unreachable-code
         - name: unused-parameter
