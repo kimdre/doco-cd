@@ -3,6 +3,7 @@ package git
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"path"
@@ -457,6 +458,8 @@ func updateSubmodules(repo *git.Repository, auth transport.AuthMethod) error {
 	}
 
 	for _, submodule := range submodules {
+		slog.Debug("Updating submodule", "name", submodule.Config().Name, "path", submodule.Config().Path)
+
 		submoduleRepo, err := submodule.Repository()
 		if err != nil {
 			return fmt.Errorf("failed to get submodule repository: %w", err)
