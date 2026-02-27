@@ -63,6 +63,14 @@ linters:
             - ["ID", "HTTP", "URL", "API"]
             # Custom  Blocklist
             - []
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
 formatters:
   enable:
     - gofmt
