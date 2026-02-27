@@ -504,7 +504,9 @@ func updateSubmodules(repo *git.Repository, auth transport.AuthMethod) error {
 	}
 
 	for _, submodule := range submodules {
-		slog.Debug("Updating submodule", "name", submodule.Config().Name, "path", submodule.Config().Path)
+		slog.Debug("updating submodule",
+			"name", submodule.Config().Name,
+			"path", filepath.Join(worktree.Filesystem.Root(), submodule.Config().Path))
 
 		submoduleRepo, err := submodule.Repository()
 		if err != nil {
