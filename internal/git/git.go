@@ -3,8 +3,8 @@ package git
 import (
 	"errors"
 	"fmt"
-	"net"
 	"log/slog"
+	"net"
 	"net/url"
 	"os"
 	"path"
