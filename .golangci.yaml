@@ -70,7 +70,6 @@ linters:
       - common-false-positives
       - legacy
       - std-error-handling
-    paths:
 formatters:
   enable:
     - gofmt
