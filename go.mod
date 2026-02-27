@@ -43,6 +43,7 @@ require (
 require golang.org/x/sync v0.19.0
 
 require (
+	github.com/avast/retry-go/v5 v5.0.0
 	github.com/jmespath/go-jmespath v0.4.0
 	github.com/prometheus/common v0.67.5
 	github.com/veqryn/slog-dedup v0.6.0

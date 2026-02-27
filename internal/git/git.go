@@ -3,13 +3,16 @@ package git
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path"
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
+	"github.com/avast/retry-go/v5"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -47,6 +50,20 @@ var (
 	ErrPossibleAuthMethodMismatch = errors.New("there might be a mismatch between the authentication method and the repository or submodule remote URL")
 	ErrRemoteURLMismatch          = errors.New("remote URL does not match expected URL")
 	ErrGetHeadFailed              = errors.New("failed to get HEAD reference")
+)
+
+// retrier is a shared retry configuration for git operations that may fail
+// due to transient issues like network errors or temporary repository states.
+var retrier = retry.New(
+	retry.Attempts(3),
+	retry.Delay(250*time.Millisecond),
+	retry.DelayType(retry.BackOffDelay),
+	retry.RetryIf(func(err error) bool {
+		_, isURLErr := errors.AsType[*url.Error](err)
+		netErr, isNetErr := errors.AsType[net.Error](err)
+
+		return isURLErr || (isNetErr && netErr.Timeout())
+	}),
 )
 
 // ChangedFile represents a file that has changed between two commits.
@@ -238,12 +255,17 @@ func fetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxy
 		}
 	}
 
-	err := repo.Fetch(opts)
-	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
-		return err
-	}
+	err := retrier.Do(
+		func() error {
+			err := repo.Fetch(opts)
+			if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
+				return err
+			}
 
-	return nil
+			return nil
+		})
+
+	return err
 }
 
 // UpdateRepository fetches and checks out the requested ref.
@@ -409,7 +431,7 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 		capability.ThinPack,
 	}
 
-	repo, err := git.PlainClone(path, false, opts)
+	repo, err := cloneWithRetry(path, opts)
 	if err != nil {
 		if errors.Is(err, transport.ErrInvalidAuthMethod) && cloneSubmodules {
 			return nil, fmt.Errorf("%w: %w", err, ErrPossibleAuthMethodMismatch)
@@ -427,7 +449,7 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 			// Remove path and retry clone once
 			_ = os.RemoveAll(path)
 
-			repo, err = git.PlainClone(path, false, opts)
+			repo, err = cloneWithRetry(path, opts)
 			if err != nil {
 				return nil, fmt.Errorf("clone failed: %w", err)
 			}
@@ -443,6 +465,28 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 	}
 
 	return repo, err
+}
+
+// cloneWithRetry attempts to clone a repository with the provided options, retrying on transient errors.
+func cloneWithRetry(path string, opts *git.CloneOptions) (*git.Repository, error) {
+	var repo *git.Repository
+
+	err := retrier.Do(
+		func() error {
+			var err error
+
+			repo, err = git.PlainClone(path, false, opts)
+			if err != nil && !errors.Is(err, git.ErrRemoteExists) {
+				return err
+			}
+
+			return nil
+		})
+	if err != nil {
+		return nil, err
+	}
+
+	return repo, nil
 }
 
 func updateSubmodules(repo *git.Repository, auth transport.AuthMethod) error {
@@ -474,38 +518,45 @@ func updateSubmodules(repo *git.Repository, auth transport.AuthMethod) error {
 			Auth:              auth,
 		}
 
-		if err = submodule.Update(opts); err != nil {
-			submodulePath := "submodule"
-			if cfg := submodule.Config(); cfg.Path != "" {
-				submodulePath = cfg.Path
-			}
+		err = retrier.Do(
+			func() error {
+				if err = submodule.Update(opts); err != nil {
+					submodulePath := "submodule"
+					if cfg := submodule.Config(); cfg.Path != "" {
+						submodulePath = cfg.Path
+					}
 
-			if errors.Is(err, git.ErrUnstagedChanges) {
-				// Hard reset and try again
-				submoduleRepoWorktree, err := submoduleRepo.Worktree()
-				if err != nil {
-					return fmt.Errorf("failed to get worktree for %s: %w", submodulePath, err)
+					switch {
+					case errors.Is(err, git.ErrUnstagedChanges):
+						// Hard reset and try again
+						submoduleRepoWorktree, err := submoduleRepo.Worktree()
+						if err != nil {
+							return fmt.Errorf("failed to get worktree for %s: %w", submodulePath, err)
+						}
+
+						err = submoduleRepoWorktree.Reset(&git.ResetOptions{
+							Mode: git.HardReset,
+						})
+						if err != nil {
+							return fmt.Errorf("failed to reset worktree for %s: %w", submodulePath, err)
+						}
+
+						// Retry submodule update
+						err = submodule.Update(opts)
+						if err != nil {
+							return fmt.Errorf("failed to update %s after resetting: %w", submodulePath, err)
+						}
+					case errors.Is(err, transport.ErrInvalidAuthMethod):
+						return fmt.Errorf("%w: %w", err, ErrPossibleAuthMethodMismatch)
+					default:
+						return fmt.Errorf("failed to update %s: %w", submodulePath, err)
+					}
 				}
 
-				err = submoduleRepoWorktree.Reset(&git.ResetOptions{
-					Mode: git.HardReset,
-				})
-				if err != nil {
-					return fmt.Errorf("failed to reset worktree for %s: %w", submodulePath, err)
-				}
-
-				// Retry submodule update
-				err = submodule.Update(opts)
-				if err != nil {
-					return fmt.Errorf("failed to update %s after resetting: %w", submodulePath, err)
-				}
-
-				continue
-			} else if errors.Is(err, transport.ErrInvalidAuthMethod) {
-				return fmt.Errorf("%w: %w", err, ErrPossibleAuthMethodMismatch)
-			}
-
-			return fmt.Errorf("failed to update %s: %w", submodulePath, err)
+				return nil
+			})
+		if err != nil {
+			return err
 		}
 	}
 
