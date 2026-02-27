@@ -53,7 +53,7 @@ func TestMatchesHead(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err = git.CheckoutRepository(repo, tc.reference)
+			err = git.CheckoutRepository(repo, tc.reference, auth, c.GitCloneSubmodules)
 			if err != nil {
 				t.Fatalf("failed to checkout reference '%s': %v", tc.reference, err)
 			}
@@ -112,7 +112,7 @@ func TestMatchesHead_AfterCheckoutToDifferentBranch(t *testing.T) {
 		t.Fatalf("expected repo to match reference after clone")
 	}
 
-	err = git.CheckoutRepository(repo, "test")
+	err = git.CheckoutRepository(repo, "test", auth, c.GitCloneSubmodules)
 	if err != nil {
 		t.Fatalf("failed to checkout test branch: %v", err)
 	}

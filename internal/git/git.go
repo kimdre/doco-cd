@@ -268,22 +268,18 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 		return nil, fmt.Errorf("%w: %w", ErrFetchFailed, err)
 	}
 
-	err = CheckoutRepository(repo, ref)
+	// Pass auth and cloneSubmodules so CheckoutRepository can ensure submodules are updated when needed.
+	err = CheckoutRepository(repo, ref, auth, cloneSubmodules)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrCheckoutFailed, err)
-	}
-
-	if cloneSubmodules {
-		if err = updateSubmodules(repo, auth); err != nil {
-			return nil, fmt.Errorf("failed to update submodules: %w", err)
-		}
 	}
 
 	return repo, nil
 }
 
 // CheckoutRepository checks out the specified reference in the repository, keeping untracked files intact.
-func CheckoutRepository(repo *git.Repository, ref string) error {
+// If cloneSubmodules is true, submodules will be initialized/updated using the provided auth.
+func CheckoutRepository(repo *git.Repository, ref string, auth transport.AuthMethod, cloneSubmodules bool) error {
 	worktree, err := repo.Worktree()
 	if err != nil {
 		return fmt.Errorf("failed to get worktree: %w", err)
@@ -364,6 +360,13 @@ func CheckoutRepository(repo *git.Repository, ref string) error {
 		return fmt.Errorf("failed to reset tracked files: %w", err)
 	}
 
+	// Ensure submodules match the checked-out parent commit when requested.
+	if cloneSubmodules {
+		if err = updateSubmodules(repo, auth); err != nil {
+			return fmt.Errorf("failed to update submodules: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -437,8 +440,7 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 		}
 	}
 
-	// At this point repo should be a valid repository from either the initial clone or the retried clone
-	err = CheckoutRepository(repo, ref)
+	err = CheckoutRepository(repo, ref, auth, cloneSubmodules)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrCheckoutFailed, err)
 	}
@@ -462,7 +464,19 @@ func updateSubmodules(repo *git.Repository, auth transport.AuthMethod) error {
 
 		submoduleRepo, err := submodule.Repository()
 		if err != nil {
-			return fmt.Errorf("failed to get submodule repository: %w", err)
+			// If the submodule isn't initialized, try to initialize it and retry
+			if errors.Is(err, git.ErrSubmoduleNotInitialized) {
+				if initErr := submodule.Init(); initErr != nil {
+					return fmt.Errorf("failed to init submodule %s: %w", submodule.Config().Path, initErr)
+				}
+
+				submoduleRepo, err = submodule.Repository()
+				if err != nil {
+					return fmt.Errorf("failed to get submodule repository after init: %w", err)
+				}
+			} else {
+				return fmt.Errorf("failed to get submodule repository: %w", err)
+			}
 		}
 
 		// Reset tracked files in submodule
