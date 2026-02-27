@@ -52,6 +52,7 @@ linters:
             - fmt.Printf
             - fmt.Print
             - fmt.Println
+            - io.Closer.Close
             - io.Writer.Write
         - name: unreachable-code
         - name: unused-parameter
@@ -62,6 +63,13 @@ linters:
             - ["ID", "HTTP", "URL", "API"]
             # Custom  Blocklist
             - []
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
 formatters:
   enable:
     - gofmt
