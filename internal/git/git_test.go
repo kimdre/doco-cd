@@ -49,6 +49,8 @@ func TestHttpTokenAuth(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			auth := git.HttpTokenAuth(tc.token)
 
 			if tc.expectNil && auth != nil {
@@ -67,6 +69,8 @@ func TestHttpTokenAuth(t *testing.T) {
 }
 
 func TestCloneRepository(t *testing.T) {
+	t.Parallel()
+
 	c, err := config.GetAppConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
@@ -116,6 +120,8 @@ func TestCloneRepository(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			if tc.skip {
 				t.Skip("SSH private key not set, skipping SSH clone test")
 			}
@@ -169,6 +175,8 @@ func TestCloneRepository(t *testing.T) {
 }
 
 func TestCloneRepository_WithSubmodule(t *testing.T) {
+	t.Parallel()
+
 	c, err := config.GetAppConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
@@ -322,6 +330,8 @@ func TestUpdateRepository(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			c, err := config.GetAppConfig()
 			if err != nil {
 				t.Fatalf("Failed to get app config: %v", err)
@@ -406,6 +416,8 @@ func TestUpdateRepository(t *testing.T) {
 }
 
 func TestGetReferenceSet(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name              string
 		localRef          string
@@ -486,6 +498,8 @@ func TestGetReferenceSet(t *testing.T) {
 }
 
 func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
+	t.Parallel()
+
 	c, err := config.GetAppConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
@@ -555,6 +569,8 @@ func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 }
 
 func TestGetLatestCommit(t *testing.T) {
+	t.Parallel()
+
 	c, err := config.GetAppConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
@@ -595,6 +611,8 @@ func TestGetLatestCommit(t *testing.T) {
 }
 
 func TestGetChangedFilesBetweenCommits(t *testing.T) {
+	t.Parallel()
+
 	var (
 		commitOld                = plumbing.NewHash("f8c5992297bf70eb01f0ba40d062896b1f48dc65")
 		commitNew                = plumbing.NewHash("e72ef851774e50b82c173fd36cfcf9a88355c592")
@@ -665,6 +683,8 @@ func TestGetChangedFilesBetweenCommits(t *testing.T) {
 }
 
 func TestSSHAuth(t *testing.T) {
+	t.Parallel()
+
 	const (
 		encryptedKey = `-----BEGIN OPENSSH PRIVATE KEY-----
 b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABA+Zz/91P
@@ -753,6 +773,8 @@ IuAF/rIpohukaUrxMR9UAAAADmtpbUBraW0tZmVkb3JhAQIDBAUGBw==
 }
 
 func TestConvertSSHUrl(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name     string
 		sshUrl   string
@@ -787,6 +809,8 @@ func TestConvertSSHUrl(t *testing.T) {
 }
 
 func TestGetRepoName(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		cloneURL string
 		expected string
