@@ -7,6 +7,8 @@ import (
 )
 
 func TestAddHostToKnownHosts(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name    string
 		host    string
@@ -60,6 +62,8 @@ func TestAddHostToKnownHosts(t *testing.T) {
 }
 
 func TestExtractHostFromSSHUrl(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		sshURL   string
 		expected string
