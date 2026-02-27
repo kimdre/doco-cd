@@ -298,8 +298,13 @@ func GetDeployConfigs(repoRoot, deployConfigBaseDir, name, customTarget, referen
 						}
 					}
 				} else {
+					auth, err := gitInternal.GetAuthMethod(string(c.RepositoryUrl), appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken)
+					if err != nil {
+						return nil, fmt.Errorf("failed to get auth method: %w", err)
+					}
+
 					unlock := gitInternal.AcquirePathLock(repoRoot)
-					err = gitInternal.CheckoutRepository(baseRepo, c.Reference)
+					err = gitInternal.CheckoutRepository(baseRepo, c.Reference, auth, appConfig.GitCloneSubmodules)
 
 					unlock()
 

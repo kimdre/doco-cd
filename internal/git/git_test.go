@@ -49,6 +49,8 @@ func TestHttpTokenAuth(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			auth := git.HttpTokenAuth(tc.token)
 
 			if tc.expectNil && auth != nil {
@@ -67,6 +69,8 @@ func TestHttpTokenAuth(t *testing.T) {
 }
 
 func TestCloneRepository(t *testing.T) {
+	t.Parallel()
+
 	c, err := config.GetAppConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
@@ -116,6 +120,8 @@ func TestCloneRepository(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			if tc.skip {
 				t.Skip("SSH private key not set, skipping SSH clone test")
 			}
@@ -165,6 +171,84 @@ func TestCloneRepository(t *testing.T) {
 				t.Fatal("Repository is not cloned")
 			}
 		})
+	}
+}
+
+func TestCloneRepository_WithSubmodule(t *testing.T) {
+	t.Parallel()
+
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("Failed to get app config: %v", err)
+	}
+
+	auth, err := git.GetAuthMethod(cloneUrlTest, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	if err != nil {
+		t.Fatalf("Failed to get auth method: %v", err)
+	}
+
+	if auth != nil {
+		t.Logf("Using auth method: %s", auth.Name())
+	} else {
+		t.Log("No auth method configured, using anonymous access")
+	}
+
+	repo, err := git.CloneRepository(t.TempDir(), cloneUrlTest, "with-submodule", false, c.HttpProxy, auth, true)
+	if err != nil {
+		t.Fatalf("Failed to clone repository: %v", err)
+	}
+
+	if repo == nil {
+		t.Fatal("Repository is nil")
+	}
+
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("Failed to get worktree: %v", err)
+	}
+
+	submodules, err := worktree.Submodules()
+	if err != nil {
+		t.Fatalf("Failed to get submodules: %v", err)
+	}
+
+	if len(submodules) == 0 {
+		t.Fatal("No submodules found, but expected one")
+	}
+
+	submodule := submodules[0]
+
+	if submodule.Config().Path != "doco-cd_tests" {
+		t.Fatalf("Expected submodule path 'doco-cd_tests', got '%s'", submodule.Config().Path)
+	}
+
+	// Check if submodule is initialized by reading the README.md file in the submodule directory
+	subRepo, err := submodule.Repository()
+	if err != nil {
+		t.Fatalf("Failed to get submodule repository: %v", err)
+	}
+
+	subWorktree, err := subRepo.Worktree()
+	if err != nil {
+		t.Fatalf("Failed to get submodule worktree: %v", err)
+	}
+
+	files, err := subWorktree.Filesystem.ReadDir(".")
+	if err != nil {
+		t.Fatalf("Failed to read submodule directory: %v", err)
+	}
+
+	foundReadme := false
+
+	for _, file := range files {
+		if file.Name() == "README.md" {
+			foundReadme = true
+			break
+		}
+	}
+
+	if !foundReadme {
+		t.Fatal("Submodule is not initialized, README.md not found")
 	}
 }
 
@@ -246,6 +330,8 @@ func TestUpdateRepository(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			c, err := config.GetAppConfig()
 			if err != nil {
 				t.Fatalf("Failed to get app config: %v", err)
@@ -329,7 +415,111 @@ func TestUpdateRepository(t *testing.T) {
 	}
 }
 
+func TestUpdateRepository_WithSubmodule(t *testing.T) {
+	t.Parallel()
+
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("Failed to get app config: %v", err)
+	}
+
+	auth, err := git.GetAuthMethod(cloneUrlTest, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	if err != nil {
+		t.Fatalf("Failed to get auth method: %v", err)
+	}
+
+	if auth != nil {
+		t.Logf("Using auth method: %s", auth.Name())
+	} else {
+		t.Log("No auth method configured, using anonymous access")
+	}
+
+	repo, err := git.CloneRepository(t.TempDir(), cloneUrlTest, git.MainBranch, false, c.HttpProxy, auth, true)
+	if err != nil {
+		t.Fatalf("Failed to clone repository: %v", err)
+	}
+
+	if repo == nil {
+		t.Fatal("Repository is nil")
+	}
+
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("Failed to get worktree: %v", err)
+	}
+
+	// Check if any submodules exist before update
+	submodules, err := worktree.Submodules()
+	if err != nil {
+		t.Fatalf("Failed to get submodules: %v", err)
+	}
+
+	if len(submodules) != 0 {
+		t.Fatal("Expected no submodules before update, but found some")
+	}
+
+	repo, err = git.UpdateRepository(worktree.Filesystem.Root(), cloneUrlTest, "with-submodule", false, c.HttpProxy, auth, true)
+	if err != nil {
+		t.Fatalf("Failed to update repository: %v", err)
+	}
+
+	if repo == nil {
+		t.Fatal("Repository is nil")
+	}
+
+	worktree, err = repo.Worktree()
+	if err != nil {
+		t.Fatalf("Failed to get worktree: %v", err)
+	}
+
+	submodules, err = worktree.Submodules()
+	if err != nil {
+		t.Fatalf("Failed to get submodules: %v", err)
+	}
+
+	if len(submodules) == 0 {
+		t.Fatal("No submodules found, but expected one")
+	}
+
+	submodule := submodules[0]
+
+	if submodule.Config().Path != "doco-cd_tests" {
+		t.Fatalf("Expected submodule path 'doco-cd_tests', got '%s'", submodule.Config().Path)
+	}
+
+	// Check if submodule is initialized by reading the README.md file in the submodule directory
+	subRepo, err := submodule.Repository()
+	if err != nil {
+		t.Fatalf("Failed to get submodule repository: %v", err)
+	}
+
+	subWorktree, err := subRepo.Worktree()
+	if err != nil {
+		t.Fatalf("Failed to get submodule worktree: %v", err)
+	}
+
+	files, err := subWorktree.Filesystem.ReadDir(".")
+	if err != nil {
+		t.Fatalf("Failed to read submodule directory: %v", err)
+	}
+
+	foundReadme := false
+
+	for _, file := range files {
+		if file.Name() == "README.md" {
+			foundReadme = true
+			break
+		}
+	}
+
+	if !foundReadme {
+		t.Fatal("Submodule is not initialized, README.md not found")
+	}
+}
+
 func TestGetReferenceSet(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name              string
 		localRef          string
@@ -410,6 +600,8 @@ func TestGetReferenceSet(t *testing.T) {
 }
 
 func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
+	t.Parallel()
+
 	c, err := config.GetAppConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
@@ -479,6 +671,8 @@ func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 }
 
 func TestGetLatestCommit(t *testing.T) {
+	t.Parallel()
+
 	c, err := config.GetAppConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
@@ -519,6 +713,8 @@ func TestGetLatestCommit(t *testing.T) {
 }
 
 func TestGetChangedFilesBetweenCommits(t *testing.T) {
+	t.Parallel()
+
 	var (
 		commitOld                = plumbing.NewHash("f8c5992297bf70eb01f0ba40d062896b1f48dc65")
 		commitNew                = plumbing.NewHash("e72ef851774e50b82c173fd36cfcf9a88355c592")
@@ -589,6 +785,8 @@ func TestGetChangedFilesBetweenCommits(t *testing.T) {
 }
 
 func TestSSHAuth(t *testing.T) {
+	t.Parallel()
+
 	const (
 		encryptedKey = `-----BEGIN OPENSSH PRIVATE KEY-----
 b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABA+Zz/91P
@@ -677,6 +875,8 @@ IuAF/rIpohukaUrxMR9UAAAADmtpbUBraW0tZmVkb3JhAQIDBAUGBw==
 }
 
 func TestConvertSSHUrl(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name     string
 		sshUrl   string
@@ -711,6 +911,8 @@ func TestConvertSSHUrl(t *testing.T) {
 }
 
 func TestGetRepoName(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		cloneURL string
 		expected string
