@@ -15,7 +15,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.10
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.10
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.2
-	github.com/bitwarden/sdk-go v1.0.2 // optional, excluded with nobitwarden build tag
 	github.com/caarlos0/env/v11 v11.4.0
 	github.com/compose-spec/compose-go/v2 v2.9.1
 	github.com/containerd/errdefs v1.0.0
@@ -44,6 +43,7 @@ require golang.org/x/sync v0.19.0
 
 require (
 	github.com/avast/retry-go/v5 v5.0.0
+	github.com/bitwarden/sdk-go/v2 v2.0.0
 	github.com/jmespath/go-jmespath v0.4.0
 	github.com/prometheus/common v0.67.5
 	github.com/veqryn/slog-dedup v0.6.0

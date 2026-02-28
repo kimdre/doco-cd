@@ -6,7 +6,7 @@ import (
 	"context"
 	"path/filepath"
 
-	"github.com/bitwarden/sdk-go"
+	"github.com/bitwarden/sdk-go/v2"
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
