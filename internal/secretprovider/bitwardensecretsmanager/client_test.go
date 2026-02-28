@@ -5,7 +5,7 @@ package bitwardensecretsmanager
 import (
 	"testing"
 
-	"github.com/bitwarden/sdk-go"
+	"github.com/bitwarden/sdk-go/v2"
 
 	"github.com/kimdre/doco-cd/internal/config"
 )
