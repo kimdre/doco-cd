@@ -10,6 +10,8 @@ import (
 )
 
 func TestJSONResponse(t *testing.T) {
+	t.Parallel()
+
 	rr := httptest.NewRecorder()
 
 	jobId := uuid.Must(uuid.NewV7()).String()
@@ -29,6 +31,8 @@ func TestJSONResponse(t *testing.T) {
 }
 
 func TestJSONError(t *testing.T) {
+	t.Parallel()
+
 	rr := httptest.NewRecorder()
 
 	jobId := uuid.Must(uuid.NewV7()).String()

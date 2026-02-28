@@ -28,6 +28,8 @@ func TestIsSopsEncryptedFile(t *testing.T) {
 
 	for _, file := range files {
 		t.Run(file.path, func(t *testing.T) {
+			t.Parallel()
+
 			isEncrypted, err := IsEncryptedFile(file.path)
 			if err != nil {
 				t.Fatalf("Error checking if file is encrypted: %v", err)
@@ -57,6 +59,8 @@ func TestDecryptSopsFile(t *testing.T) {
 
 	for _, file := range files {
 		t.Run(file.path, func(t *testing.T) {
+			t.Parallel()
+
 			decryptedContent, err := DecryptFile(file.path)
 			if err != nil {
 				if file.error == nil {
@@ -85,9 +89,11 @@ func TestDecryptFilesInDirectory_GitIgnore(t *testing.T) {
 		t.Fatalf("Failed to read %s: %v", testData, err)
 	}
 
+	t.Setenv("SOPS_AGE_KEY", "")
+	t.Setenv("SOPS_AGE_KEY_FILE", "")
+
 	t.Run("ignores files matched by .gitignore", func(t *testing.T) {
-		t.Setenv("SOPS_AGE_KEY", "")
-		t.Setenv("SOPS_AGE_KEY_FILE", "")
+		t.Parallel()
 
 		repoDir := t.TempDir()
 

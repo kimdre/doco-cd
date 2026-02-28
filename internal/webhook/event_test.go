@@ -9,6 +9,8 @@ import (
 )
 
 func TestIsBranchOrTagDeletionEvent(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name           string
 		provider       ScmProvider
@@ -210,6 +212,8 @@ func TestIsBranchOrTagDeletionEvent(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			// Create a test request
 			r := httptest.NewRequest(http.MethodPost, "/webhook", nil)
 

@@ -8,6 +8,8 @@ import (
 )
 
 func skipWrongProvider(t *testing.T) {
+	t.Helper()
+
 	c, err := config.GetAppConfig()
 	if err != nil {
 		t.Fatalf("unable to get app config: %v", err)
@@ -20,6 +22,8 @@ func skipWrongProvider(t *testing.T) {
 
 func TestProvider_GetSecret_Infisical(t *testing.T) {
 	skipWrongProvider(t)
+
+	t.Parallel()
 
 	testCases := []struct {
 		name      string
@@ -65,6 +69,8 @@ func TestProvider_GetSecret_Infisical(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			secret, err := provider.GetSecret(t.Context(), tc.secretRef)
 			if tc.expectErr && err == nil {
 				t.Errorf("Expected error but got none")
@@ -83,6 +89,8 @@ func TestProvider_GetSecret_Infisical(t *testing.T) {
 
 func TestProvider_ResolveSecretReferences_Infisical(t *testing.T) {
 	skipWrongProvider(t)
+
+	t.Parallel()
 
 	cfg, err := GetConfig()
 	if err != nil {
@@ -123,6 +131,8 @@ func TestProvider_ResolveSecretReferences_Infisical(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			resolved, err := provider.ResolveSecretReferences(t.Context(), tc.secretsToResolve)
 			if err != nil {
 				t.Fatalf("Failed to resolve secrets: %v", err)

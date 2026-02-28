@@ -7,6 +7,8 @@ import (
 )
 
 func TestParseLevel(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		level   string
@@ -46,6 +48,8 @@ func TestParseLevel(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := ParseLevel(tt.level)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseLevel() error = %v, wantErr %v", err, tt.wantErr)
@@ -61,6 +65,8 @@ func TestParseLevel(t *testing.T) {
 }
 
 func TestErrAttr(t *testing.T) {
+	t.Parallel()
+
 	err := errors.New("test message")
 
 	attr := ErrAttr(err)
@@ -74,6 +80,8 @@ func TestErrAttr(t *testing.T) {
 }
 
 func TestNew(t *testing.T) {
+	t.Parallel()
+
 	logLevel := LevelDebug
 	logger := New(logLevel)
 
@@ -83,6 +91,8 @@ func TestNew(t *testing.T) {
 }
 
 func TestLogger_ParseLevel(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		level   string
@@ -122,6 +132,8 @@ func TestLogger_ParseLevel(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := ParseLevel(tt.level)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Logger.ParseLevel() error = %v, wantErr %v", err, tt.wantErr)

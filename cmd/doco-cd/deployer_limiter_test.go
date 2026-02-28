@@ -8,6 +8,8 @@ import (
 )
 
 func TestTryAcquire(t *testing.T) {
+	t.Parallel()
+
 	lim := NewDeployerLimiter(1)
 
 	unlock, ok := lim.TryAcquire("repoA", "ref1")
@@ -34,6 +36,8 @@ func TestTryAcquire(t *testing.T) {
 }
 
 func TestDifferentReposParallelism(t *testing.T) {
+	t.Parallel()
+
 	// allow max 2 concurrent
 	lim := NewDeployerLimiter(2)
 	ctx := context.Background()
@@ -82,6 +86,8 @@ func TestDifferentReposParallelism(t *testing.T) {
 
 // TestTryAcquire_JoinSameRef verifies a second TryAcquire with the same ref succeeds when global capacity allows.
 func TestTryAcquire_JoinSameRef(t *testing.T) {
+	t.Parallel()
+
 	lim := NewDeployerLimiter(2)
 
 	unlock1, ok := lim.TryAcquire("repoJoin", "refA")
@@ -131,6 +137,8 @@ func TestTryAcquire_JoinSameRef(t *testing.T) {
 
 // TestTryAcquire_DifferentRef_BlockedThenSucceeds verifies TryAcquire for a different ref fails while active and succeeds after release.
 func TestTryAcquire_DifferentRef_BlockedThenSucceeds(t *testing.T) {
+	t.Parallel()
+
 	lim := NewDeployerLimiter(1)
 
 	unlock1, ok := lim.TryAcquire("repoEnq", "ref1")

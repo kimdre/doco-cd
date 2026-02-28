@@ -25,6 +25,8 @@ import (
 
 // Make http call to HealthCheckHandler.
 func TestHandlerData_HealthCheckHandler(t *testing.T) {
+	t.Parallel()
+
 	expectedResponse := `{"content":"healthy","job_id":"[a-f0-9-]{36}"}`
 	expectedStatusCode := http.StatusOK
 

@@ -3,6 +3,8 @@ package main
 import "testing"
 
 func TestRetrieveContainerIDFromMountInfo(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name       string
 		content    string
@@ -32,6 +34,8 @@ func TestRetrieveContainerIDFromMountInfo(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			id := extractContainerIDFromMountInfo(tc.content)
 			if id != tc.expectedID {
 				t.Errorf("expected ID %q, got %q", tc.expectedID, id)

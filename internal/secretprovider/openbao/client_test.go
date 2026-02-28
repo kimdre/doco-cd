@@ -258,6 +258,8 @@ func TestProvider_GetSecret_OpenBao(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			secret, err := provider.GetSecret(t.Context(), tc.secretRef)
 			if tc.expectErr && err == nil {
 				t.Errorf("Expected error but got none")
@@ -333,6 +335,8 @@ func TestProvider_ResolveSecretReferences_OpenBao(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			resolved, err := provider.ResolveSecretReferences(t.Context(), tc.secretsToResolve)
 			if err != nil {
 				t.Fatalf("Failed to resolve secrets: %v", err)

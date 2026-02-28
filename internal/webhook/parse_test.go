@@ -19,6 +19,8 @@ const (
 )
 
 func TestParse(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name          string
 		filePath      string
@@ -34,6 +36,8 @@ func TestParse(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			payload, err := os.ReadFile(tc.filePath)
 			if err != nil {
 				t.Fatal(err)

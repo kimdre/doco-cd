@@ -6,6 +6,8 @@ import (
 )
 
 func TestPollConfig_Validate(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name     string
 		config   PollConfig
@@ -68,6 +70,8 @@ func TestPollConfig_Validate(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			err := tc.config.Validate()
 			if !errors.Is(err, tc.expected) {
 				t.Errorf("expected %v, got %v", tc.expected, err)
@@ -77,6 +81,8 @@ func TestPollConfig_Validate(t *testing.T) {
 }
 
 func TestPollConfig_String(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name     string
 		config   PollConfig
@@ -103,6 +109,8 @@ func TestPollConfig_String(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := tc.config.String()
 			if result != tc.expected {
 				t.Errorf("expected %s, got %s", tc.expected, result)

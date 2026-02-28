@@ -7,6 +7,8 @@ import (
 )
 
 func TestGetFullName(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		cloneURL string
 		expected string
@@ -45,6 +47,8 @@ func TestGetFullName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.cloneURL, func(t *testing.T) {
+			t.Parallel()
+
 			result := getFullName(config.HttpUrl(tt.cloneURL))
 			if result != tt.expected {
 				t.Errorf("getFullName failed for %s: expected %s, got %s", tt.cloneURL, tt.expected, result)

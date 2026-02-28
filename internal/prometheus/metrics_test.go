@@ -14,6 +14,8 @@ import (
 
 // TestServe tests the metrics endpoint serving functionality.
 func TestServe(t *testing.T) {
+	t.Parallel()
+
 	expectedStatusCode := 200
 	expectedContentType := "text/plain; version=0.0.4; charset=utf-8; escaping=underscores"
 
