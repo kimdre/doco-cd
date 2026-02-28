@@ -82,17 +82,11 @@ func TestMain(m *testing.M) {
 }
 
 func TestHandleEvent(t *testing.T) {
-	defaultEnvVars := map[string]string{
-		"GIT_ACCESS_TOKEN": os.Getenv("GIT_ACCESS_TOKEN"),
-		"WEBHOOK_SECRET":   os.Getenv("WEBHOOK_SECRET"),
-	}
-
 	testCases := []struct {
 		name                 string
 		payload              webhook.ParsedPayload
 		expectedStatusCode   int
 		expectedResponseBody string
-		overrideEnv          map[string]string
 		customTarget         string
 		swarmMode            bool
 	}{
@@ -108,7 +102,6 @@ func TestHandleEvent(t *testing.T) {
 			},
 			expectedStatusCode:   http.StatusCreated,
 			expectedResponseBody: `{"content":"job completed successfully","job_id":"%[1]s"}`,
-			overrideEnv:          nil,
 			customTarget:         "",
 			swarmMode:            false,
 		},
@@ -124,7 +117,6 @@ func TestHandleEvent(t *testing.T) {
 			},
 			expectedStatusCode:   http.StatusCreated,
 			expectedResponseBody: `{"content":"job completed successfully","job_id":"%[1]s"}`,
-			overrideEnv:          nil,
 			customTarget:         "test",
 			swarmMode:            false,
 		},
@@ -140,7 +132,6 @@ func TestHandleEvent(t *testing.T) {
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
 			expectedResponseBody: `{"error":"failed to clone repository","content":"failed to checkout repository: failed to get reference set: invalid reference, should be a tag or a branch: ` + invalidBranch + `","job_id":"%[1]s"}`,
-			overrideEnv:          nil,
 			customTarget:         "",
 			swarmMode:            false,
 		},
@@ -156,7 +147,6 @@ func TestHandleEvent(t *testing.T) {
 			},
 			expectedStatusCode:   http.StatusCreated,
 			expectedResponseBody: `{"content":"job completed successfully","job_id":"%[1]s"}`,
-			overrideEnv:          nil,
 			customTarget:         "",
 			swarmMode:            false,
 		},
@@ -172,7 +162,6 @@ func TestHandleEvent(t *testing.T) {
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
 			expectedResponseBody: `{"error":"deployment failed","content":"failed to deploy stack %[3]s: no compose files found: stat %[2]s/docker-compose.yaml: no such file or directory","job_id":"%[1]s"}`,
-			overrideEnv:          nil,
 			customTarget:         "",
 			swarmMode:            false,
 		},
@@ -188,7 +177,6 @@ func TestHandleEvent(t *testing.T) {
 			},
 			expectedStatusCode:   http.StatusCreated,
 			expectedResponseBody: `{"content":"job completed successfully","job_id":"%[1]s"}`,
-			overrideEnv:          nil,
 			customTarget:         "",
 			swarmMode:            false,
 		},
@@ -204,7 +192,6 @@ func TestHandleEvent(t *testing.T) {
 			},
 			expectedStatusCode:   http.StatusCreated,
 			expectedResponseBody: `{"content":"job completed successfully","job_id":"%[1]s"}`,
-			overrideEnv:          nil,
 			customTarget:         "",
 			swarmMode:            true,
 		},
@@ -232,8 +219,19 @@ func TestHandleEvent(t *testing.T) {
 
 	encryption.SetupAgeKeyEnvVar(t)
 
+	defaultEnvVars := map[string]string{
+		"GIT_ACCESS_TOKEN": os.Getenv("GIT_ACCESS_TOKEN"),
+		"WEBHOOK_SECRET":   os.Getenv("WEBHOOK_SECRET"),
+	}
+
+	for k, v := range defaultEnvVars {
+		t.Setenv(k, v)
+	}
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			if swarm.ModeEnabled != tc.swarmMode {
 				t.Skipf("Skipping test because it requires swarm mode %v, but current mode is %v", tc.swarmMode, swarm.ModeEnabled)
 			}
@@ -243,16 +241,6 @@ func TestHandleEvent(t *testing.T) {
 			stackName := test.ConvertTestName(t.Name())
 			if len(stackName) > 40 {
 				stackName = stackName[:40]
-			}
-
-			for k, v := range defaultEnvVars {
-				t.Setenv(k, v)
-			}
-
-			if tc.overrideEnv != nil {
-				for k, v := range tc.overrideEnv {
-					t.Setenv(k, v)
-				}
 			}
 
 			if tc.payload.Private && appConfig.GitAccessToken == "" {
@@ -349,6 +337,8 @@ func TestHandleEvent(t *testing.T) {
 }
 
 func TestGetProxyUrlRedacted(t *testing.T) {
+	t.Parallel()
+
 	// Test cases with different proxy URLs
 	testCases := []struct {
 		name     string
@@ -388,6 +378,8 @@ func TestGetProxyUrlRedacted(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := GetProxyUrlRedacted(tc.proxyURL)
 			if result != tc.expected {
 				t.Errorf("GetProxyUrlRedacted(%q) = %q; want %q", tc.proxyURL, result, tc.expected)
@@ -397,6 +389,8 @@ func TestGetProxyUrlRedacted(t *testing.T) {
 }
 
 func TestCreateMountpointSymlink(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name        string
 		source      string
@@ -413,6 +407,8 @@ func TestCreateMountpointSymlink(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			tmpDir := t.TempDir()
 
 			err := CreateMountpointSymlink(container.MountPoint{

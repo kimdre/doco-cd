@@ -11,6 +11,8 @@ import (
 )
 
 func TestSend(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name          string
 		appriseUrl    string
@@ -71,6 +73,8 @@ func TestSend(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			SetAppriseConfig("http://"+endpoint+"/notify", fmt.Sprint(tc.appriseUrl, endpoint), "info")
 
 			err = Send(Info, "Test Notification", "This is a test message", metadata)
@@ -86,6 +90,8 @@ func TestSend(t *testing.T) {
 }
 
 func TestGetRevision(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name      string
 		reference string
@@ -120,6 +126,8 @@ func TestGetRevision(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := GetRevision(tc.reference, tc.commitSha)
 			if result != tc.expected {
 				t.Errorf("expected %s, got %s", tc.expected, result)

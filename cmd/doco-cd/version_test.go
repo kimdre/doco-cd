@@ -5,6 +5,8 @@ import (
 )
 
 func TestGetLatestAppReleaseVersion(t *testing.T) {
+	t.Parallel()
+
 	version, err := getLatestAppReleaseVersion()
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)

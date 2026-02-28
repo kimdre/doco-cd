@@ -3,6 +3,8 @@ package slice
 import "testing"
 
 func TestUnique(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		input    []int
@@ -32,6 +34,8 @@ func TestUnique(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := Unique(tt.input)
 			if len(result) != len(tt.expected) {
 				t.Errorf("expected length %d, got %d", len(tt.expected), len(result))

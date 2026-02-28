@@ -42,13 +42,17 @@ import (
 )
 
 func createComposeFile(t *testing.T, filePath, content string) {
+	t.Helper()
+
 	err := os.WriteFile(filePath, []byte(content), filesystem.PermOwner)
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
-func createTestFile(fileName string, content string) error {
+func createTestFile(t *testing.T, fileName string, content string) error {
+	t.Helper()
+
 	err := os.WriteFile(fileName, []byte(content), filesystem.PermOwner)
 	if err != nil {
 		return err
@@ -82,6 +86,8 @@ func generateComposeContents() string {
 }
 
 func TestVerifySocketConnection(t *testing.T) {
+	t.Parallel()
+
 	err := VerifySocketConnection()
 	if err != nil {
 		t.Fatal(err)
@@ -92,6 +98,8 @@ func TestLoadCompose(t *testing.T) {
 	ctx := context.Background()
 
 	tmpDir := t.TempDir()
+	t.Chdir(tmpDir)
+
 	filePath := filepath.Join(tmpDir, "test.compose.yaml")
 
 	composeYAML := generateComposeContents()
@@ -232,7 +240,7 @@ compose_files:
   - %s
 `, stackName, reference, workingDirectory, composeFiles[0])
 
-	err = createTestFile(filePath, deployConfig)
+	err = createTestFile(t, filePath, deployConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -411,23 +419,27 @@ func TestHasChangedConfigs(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		changedFiles, err := git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(tc.oldCommit), plumbing.NewHash(tc.newCommit))
-		if err != nil {
-			t.Fatalf("Failed to get changed files: %v", err)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-		if tc.ExpectedChanges && len(changedFiles) == 0 {
-			t.Fatalf("Expectec changed files, but found none found")
-		}
+			changedFiles, err := git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(tc.oldCommit), plumbing.NewHash(tc.newCommit))
+			if err != nil {
+				t.Fatalf("Failed to get changed files: %v", err)
+			}
 
-		hasChanged, err := HasChangedConfigs(changedFiles, project)
-		if err != nil {
-			t.Fatalf("Failed to check for changed configs: %v", err)
-		}
+			if tc.ExpectedChanges && len(changedFiles) == 0 {
+				t.Fatalf("Expectec changed files, but found none found")
+			}
 
-		if !hasChanged && tc.ExpectedChanges {
-			t.Error("Expected changed configs, but found none")
-		}
+			hasChanged, err := HasChangedConfigs(changedFiles, project)
+			if err != nil {
+				t.Fatalf("Failed to check for changed configs: %v", err)
+			}
+
+			if !hasChanged && tc.ExpectedChanges {
+				t.Error("Expected changed configs, but found none")
+			}
+		})
 	}
 }
 
@@ -485,23 +497,27 @@ func TestHasChangedSecrets(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		changedFiles, err := git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(tc.oldCommit), plumbing.NewHash(tc.newCommit))
-		if err != nil {
-			t.Fatalf("Failed to get changed files: %v", err)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-		if tc.ExpectedChanges && len(changedFiles) == 0 {
-			t.Fatalf("Expectec changed files, but found none found")
-		}
+			changedFiles, err := git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(tc.oldCommit), plumbing.NewHash(tc.newCommit))
+			if err != nil {
+				t.Fatalf("Failed to get changed files: %v", err)
+			}
 
-		hasChanged, err := HasChangedSecrets(changedFiles, project)
-		if err != nil {
-			t.Fatalf("Failed to check for changed secrets: %v", err)
-		}
+			if tc.ExpectedChanges && len(changedFiles) == 0 {
+				t.Fatalf("Expectec changed files, but found none found")
+			}
 
-		if !hasChanged && tc.ExpectedChanges {
-			t.Error("Expected changed secrets, but found none")
-		}
+			hasChanged, err := HasChangedSecrets(changedFiles, project)
+			if err != nil {
+				t.Fatalf("Failed to check for changed secrets: %v", err)
+			}
+
+			if !hasChanged && tc.ExpectedChanges {
+				t.Error("Expected changed secrets, but found none")
+			}
+		})
 	}
 }
 
@@ -559,23 +575,27 @@ func TestHasChangedBindMounts(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		changedFiles, err := git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(tc.oldCommit), plumbing.NewHash(tc.newCommit))
-		if err != nil {
-			t.Fatalf("Failed to get changed files: %v", err)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-		if tc.ExpectedChanges && len(changedFiles) == 0 {
-			t.Fatalf("Expectec changed files, but found none found")
-		}
+			changedFiles, err := git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(tc.oldCommit), plumbing.NewHash(tc.newCommit))
+			if err != nil {
+				t.Fatalf("Failed to get changed files: %v", err)
+			}
 
-		hasChanged, err := HasChangedBindMounts(changedFiles, project)
-		if err != nil {
-			t.Fatalf("Failed to check for changed bind mounts: %v", err)
-		}
+			if tc.ExpectedChanges && len(changedFiles) == 0 {
+				t.Fatalf("Expectec changed files, but found none found")
+			}
 
-		if !hasChanged && tc.ExpectedChanges {
-			t.Error("Expected changed bind mounts, but found none")
-		}
+			hasChanged, err := HasChangedBindMounts(changedFiles, project)
+			if err != nil {
+				t.Fatalf("Failed to check for changed bind mounts: %v", err)
+			}
+
+			if !hasChanged && tc.ExpectedChanges {
+				t.Error("Expected changed bind mounts, but found none")
+			}
+		})
 	}
 }
 
@@ -899,6 +919,8 @@ func TestInjectSecretsToProject(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			if c.SecretProvider != tc.secretProvider {
 				t.Skip("Skipping test because secret provider is not configured in app config")
 			}

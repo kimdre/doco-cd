@@ -8,6 +8,8 @@ import (
 )
 
 func TestValidateApiKey(t *testing.T) {
+	t.Parallel()
+
 	appConfig, err := config.GetAppConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
@@ -27,6 +29,8 @@ func TestValidateApiKey(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			req, err := http.NewRequest("GET", "/v1/api", nil)
 			if err != nil {
 				t.Fatalf("Failed to create request: %v", err)

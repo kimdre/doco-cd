@@ -7,6 +7,8 @@ import (
 )
 
 func TestVerifyAndSanitizePath(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name        string
 		path        string
@@ -45,6 +47,8 @@ func TestVerifyAndSanitizePath(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			tc.expected, _ = filepath.Abs(tc.expected)
 			result, err := VerifyAndSanitizePath(tc.path, tc.trustedRoot)
 

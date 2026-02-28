@@ -30,6 +30,8 @@ func skipWrongProvider(t *testing.T) {
 func TestNewProvider_BitwardenSecretManager(t *testing.T) {
 	skipWrongProvider(t)
 
+	t.Parallel()
+
 	cfg, err := GetConfig()
 	if err != nil {
 		t.Fatalf("unable to get config: %v", err)
@@ -97,6 +99,8 @@ func TestNewProvider_BitwardenSecretManager(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			provider, err = NewProvider(tc.apiUrl, tc.identityURL, tc.accessToken)
 			if err != nil {
 				if tc.expectError == "" {
@@ -137,6 +141,8 @@ func TestNewProvider_BitwardenSecretManager(t *testing.T) {
 func TestProvider_GetSecret_BitwardenSecretManager(t *testing.T) {
 	skipWrongProvider(t)
 
+	t.Parallel()
+
 	cfg, err := GetConfig()
 	if err != nil {
 		t.Fatalf("unable to get config: %v", err)
@@ -175,6 +181,8 @@ func TestProvider_GetSecret_BitwardenSecretManager(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			secretValue, err := provider.GetSecret(t.Context(), tc.secretID)
 			if tc.expectError != "" {
 				if err == nil {
@@ -197,6 +205,8 @@ func TestProvider_GetSecret_BitwardenSecretManager(t *testing.T) {
 
 func TestProvider_GetSecrets_BitwardenSecretManager(t *testing.T) {
 	skipWrongProvider(t)
+
+	t.Parallel()
 
 	cfg, err := GetConfig()
 	if err != nil {
@@ -246,6 +256,8 @@ func TestProvider_GetSecrets_BitwardenSecretManager(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			secrets, err := provider.GetSecrets(t.Context(), tc.secretIDs)
 			if tc.expectError != "" {
 				if err == nil {
@@ -276,6 +288,8 @@ func TestProvider_GetSecrets_BitwardenSecretManager(t *testing.T) {
 
 func TestProvider_ResolveSecretReferences_BitwardenSecretManager(t *testing.T) {
 	skipWrongProvider(t)
+
+	t.Parallel()
 
 	cfg, err := GetConfig()
 	if err != nil {
@@ -336,6 +350,8 @@ func TestProvider_ResolveSecretReferences_BitwardenSecretManager(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			resolvedSecrets, err := provider.ResolveSecretReferences(t.Context(), tc.secrets)
 			if tc.expectError != "" {
 				if err == nil {

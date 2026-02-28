@@ -7,6 +7,8 @@ import (
 )
 
 func TestCheck(t *testing.T) {
+	t.Parallel()
+
 	// Start a local HTTP server for testing
 	testCases := []struct {
 		name    string
@@ -37,6 +39,8 @@ func TestCheck(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			var err error
 			for attempt := 1; attempt <= maxRetries; attempt++ {
 				err = Check(context.Background(), tc.url)

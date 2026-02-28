@@ -7,6 +7,8 @@ import (
 )
 
 func skipWrongProvider(t *testing.T) {
+	t.Helper()
+
 	c, err := config.GetAppConfig()
 	if err != nil {
 		t.Fatalf("unable to get app config: %v", err)
@@ -20,6 +22,8 @@ func skipWrongProvider(t *testing.T) {
 // TestProvider_GetSecret_OnePassword tests the GetSecret method of the 1Password Provider.
 func TestProvider_GetSecret_OnePassword(t *testing.T) {
 	skipWrongProvider(t)
+
+	t.Parallel()
 
 	testCases := []struct {
 		name      string
@@ -59,6 +63,8 @@ func TestProvider_GetSecret_OnePassword(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			secret, err := provider.GetSecret(t.Context(), tc.secretRef)
 			if tc.expectErr && err == nil {
 				t.Errorf("Expected error but got none")

@@ -40,12 +40,12 @@ const (
   nginx:
     image: nginx:latest
     ports:
-      - "80:80"
+      - "80"
 `
 )
 
 func TestHandlerData_WebhookHandler(t *testing.T) {
-	encryption.SetupAgeKeyEnvVar(t)
+	t.Parallel()
 
 	expectedResponse := `{"content":"job completed successfully","job_id":"[a-f0-9-]{36}"}`
 	expectedStatusCode := http.StatusCreated
@@ -305,6 +305,8 @@ func TestWebhookHandler_WaitQueryParam(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			// Provide a payload that fails parsing; wait should not affect parse errors.
 			req, err := http.NewRequest("POST", tc.url, bytes.NewReader([]byte("{}")))
 			if err != nil {

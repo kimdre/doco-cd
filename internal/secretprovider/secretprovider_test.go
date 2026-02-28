@@ -8,6 +8,8 @@ import (
 )
 
 func TestInitialize(t *testing.T) {
+	t.Parallel()
+
 	ctx := t.Context()
 
 	c, err := config.GetAppConfig()

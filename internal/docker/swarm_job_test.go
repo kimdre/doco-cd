@@ -7,6 +7,8 @@ import (
 )
 
 func TestRunSwarmJob(t *testing.T) {
+	t.Parallel()
+
 	dockerCli, err := CreateDockerCli(false, false)
 	if err != nil {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
@@ -32,6 +34,8 @@ func TestRunSwarmJob(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(string(tc.mode), func(t *testing.T) {
+			t.Parallel()
+
 			t.Logf("Running job with mode: %s, command: %v, title: %s", tc.mode, tc.command, tc.title)
 
 			err := RunSwarmJob(t.Context(), dockerCli, tc.mode, tc.command, tc.title)
@@ -43,6 +47,8 @@ func TestRunSwarmJob(t *testing.T) {
 }
 
 func TestRunImagePruneJob(t *testing.T) {
+	t.Parallel()
+
 	dockerCli, err := CreateDockerCli(false, false)
 	if err != nil {
 		t.Fatalf("Failed to create Docker CLI: %v", err)

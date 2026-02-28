@@ -57,6 +57,8 @@ func (a *secretProviderAdapterIOCloser) CloseCalled() int {
 }
 
 func TestSecretProviderAdapter_Close(t *testing.T) {
+	t.Parallel()
+
 	testCases := map[string]struct {
 		haveProvider secretProviderCloseAssertion
 		wantCalled   int
@@ -75,7 +77,9 @@ func TestSecretProviderAdapter_Close(t *testing.T) {
 	}
 
 	for name, tc := range testCases {
-		tr := func(t *testing.T) {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			subject := AdaptSecretValueProvider(name, tc.haveProvider)
 
 			subject.Close()
@@ -83,13 +87,13 @@ func TestSecretProviderAdapter_Close(t *testing.T) {
 			if got := tc.haveProvider.CloseCalled(); got != tc.wantCalled {
 				t.Errorf("got %d, want %d", got, tc.wantCalled)
 			}
-		}
-
-		t.Run(name, tr)
+		})
 	}
 }
 
 func TestSecretProviderAdapter_ResolveSecretReferences(t *testing.T) {
+	t.Parallel()
+
 	impl := SecretValueProviderFunc(secretProviderMock)
 	subject := AdaptSecretValueProvider("mock", impl)
 	have := map[string]string{
@@ -121,6 +125,8 @@ func TestSecretProviderAdapter_ResolveSecretReferences(t *testing.T) {
 }
 
 func assertSecretLookup(t *testing.T, haveKey, gotValue, wantValue string) {
+	t.Helper()
+
 	if gotValue != wantValue {
 		t.Errorf("invalid resolution for key %q; got %q, want %q", haveKey, gotValue, wantValue)
 	}

@@ -18,7 +18,9 @@ import (
 	"github.com/kimdre/doco-cd/internal/filesystem"
 )
 
-func createTestFile(fileName string, content string) error {
+func createTestFile(t *testing.T, fileName string, content string) error {
+	t.Helper()
+
 	err := os.WriteFile(fileName, []byte(content), filesystem.PermOwner)
 	if err != nil {
 		return err
@@ -28,7 +30,11 @@ func createTestFile(fileName string, content string) error {
 }
 
 func TestGetDeployConfigs(t *testing.T) {
+	t.Parallel()
+
 	t.Run("Valid Config", func(t *testing.T) {
+		t.Parallel()
+
 		fileName := ".doco-cd.yaml"
 		reference := "refs/heads/test"
 		workingDirectory := "/test"
@@ -48,7 +54,7 @@ compose_files:
 
 		filePath := filepath.Join(dirName, fileName)
 
-		err := createTestFile(filePath, deployConfig)
+		err := createTestFile(t, filePath, deployConfig)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -83,6 +89,8 @@ compose_files:
 }
 
 func TestGetDeployConfigs_DefaultValues(t *testing.T) {
+	t.Parallel()
+
 	defaultConfig := DefaultDeployConfig(t.Name(), DefaultReference)
 
 	dirName := t.TempDir()
@@ -120,6 +128,8 @@ func TestGetDeployConfigs_DefaultValues(t *testing.T) {
 // TestGetDeployConfigs_DuplicateProjectName checks if the function returns an error
 // when there are duplicate project names in the config files.
 func TestGetDeployConfigs_DuplicateProjectName(t *testing.T) {
+	t.Parallel()
+
 	config := DeployConfig{
 		Name:             t.Name(),
 		Reference:        "refs/heads/test",
@@ -138,6 +148,8 @@ func TestGetDeployConfigs_DuplicateProjectName(t *testing.T) {
 // TestGetDeployConfigs_InvalidRepositoryURL checks if the function returns an error when the repository URL is an SSH URL
 // The init function panics if the validator for HttpUrl is not registered correctly.
 func TestGetDeployConfigs_RepositoryURL(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name        string
 		repoUrl     HttpUrl
@@ -171,6 +183,8 @@ func TestGetDeployConfigs_RepositoryURL(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			config := DeployConfig{
 				Name:          tc.name,
 				RepositoryUrl: tc.repoUrl,
@@ -189,6 +203,8 @@ func TestGetDeployConfigs_RepositoryURL(t *testing.T) {
 }
 
 func TestResolveDeployConfigs_InlineOverride(t *testing.T) {
+	t.Parallel()
+
 	dirName := t.TempDir()
 
 	poll := PollConfig{
@@ -234,6 +250,8 @@ func TestResolveDeployConfigs_InlineOverride(t *testing.T) {
 }
 
 func TestResolveDeployConfigs_InlineMissingName(t *testing.T) {
+	t.Parallel()
+
 	poll := PollConfig{
 		CloneUrl:    "https://example.com/repo.git",
 		Reference:   "refs/heads/main",
@@ -248,6 +266,8 @@ func TestResolveDeployConfigs_InlineMissingName(t *testing.T) {
 }
 
 func TestResolveDeployConfigs_InlineAutoDiscover(t *testing.T) {
+	t.Parallel()
+
 	repoRoot := t.TempDir()
 
 	servicesDir := filepath.Join(repoRoot, "services")
@@ -260,7 +280,7 @@ func TestResolveDeployConfigs_InlineAutoDiscover(t *testing.T) {
 		}
 
 		composeFile := filepath.Join(dir, "compose.yaml")
-		if err := createTestFile(composeFile, "services:\n  app:\n    image: alpine"); err != nil {
+		if err := createTestFile(t, composeFile, "services:\n  app:\n    image: alpine"); err != nil {
 			t.Fatalf("failed to write compose file for %s: %v", dir, err)
 		}
 	}
@@ -305,6 +325,8 @@ func TestResolveDeployConfigs_InlineAutoDiscover(t *testing.T) {
 }
 
 func TestGetDeployConfigs_WithSubdirectory(t *testing.T) {
+	t.Parallel()
+
 	fileName := ".doco-cd.yaml"
 	reference := "refs/heads/main"
 	deployConfigBaseDir := "configs"
@@ -330,7 +352,7 @@ reference: %s
 	// Create config file in subdirectory
 	filePath := filepath.Join(configDir, fileName)
 
-	err = createTestFile(filePath, deployConfig)
+	err = createTestFile(t, filePath, deployConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,6 +378,8 @@ reference: %s
 }
 
 func TestGetDeployConfigs_WithRootDirectory(t *testing.T) {
+	t.Parallel()
+
 	fileName := ".doco-cd.yaml"
 	reference := "refs/heads/main"
 	deployConfigBaseDir := "."
@@ -371,7 +395,7 @@ reference: %s
 
 	filePath := filepath.Join(repoRoot, fileName)
 
-	err := createTestFile(filePath, deployConfig)
+	err := createTestFile(t, filePath, deployConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,6 +417,8 @@ reference: %s
 }
 
 func TestGetDeployConfigs_WithAutoDiscovery(t *testing.T) {
+	t.Parallel()
+
 	repoRoot := t.TempDir()
 
 	createTestRepo(t, repoRoot)
@@ -405,7 +431,7 @@ func TestGetDeployConfigs_WithAutoDiscovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = createTestFile(filepath.Join(subDir, "compose.yaml"), "services:\n  web:\n    image: nginx")
+	err = createTestFile(t, filepath.Join(subDir, "compose.yaml"), "services:\n  web:\n    image: nginx")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -417,7 +443,7 @@ auto_discover: true
 
 	filePath := filepath.Join(repoRoot, ".doco-cd.yaml")
 
-	err = createTestFile(filePath, deployConfig)
+	err = createTestFile(t, filePath, deployConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -442,6 +468,8 @@ auto_discover: true
 }
 
 func TestGetDeployConfigs_WithAutoDiscovery_OnDifferentBranch(t *testing.T) {
+	t.Parallel()
+
 	repoRoot := t.TempDir()
 
 	repo := createTestRepo(t, repoRoot)
@@ -481,7 +509,7 @@ func TestGetDeployConfigs_WithAutoDiscovery_OnDifferentBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = createTestFile(filepath.Join(subDir, "compose.yaml"), "services:\n  web:\n    image: nginx")
+	err = createTestFile(t, filepath.Join(subDir, "compose.yaml"), "services:\n  web:\n    image: nginx")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -493,7 +521,7 @@ auto_discover: true
 
 	filePath := filepath.Join(repoRoot, ".doco-cd.yaml")
 
-	err = createTestFile(filePath, deployConfig)
+	err = createTestFile(t, filePath, deployConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -518,6 +546,8 @@ auto_discover: true
 }
 
 func TestGetDeployConfigs_WithAutoDiscovery_WithRemoteUrl(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name            string
 		branch          string
@@ -537,6 +567,8 @@ func TestGetDeployConfigs_WithAutoDiscovery_WithRemoteUrl(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			repoRoot := t.TempDir()
 			// Create subdirectory for configs
 			subDir := filepath.Join(repoRoot, t.Name())
@@ -551,7 +583,7 @@ repository_url: https://github.com/kimdre/doco-cd_tests.git
 
 			filePath := filepath.Join(subDir, ".doco-cd.yaml")
 
-			err := createTestFile(filePath, deployConfig)
+			err := createTestFile(t, filePath, deployConfig)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -586,6 +618,8 @@ repository_url: https://github.com/kimdre/doco-cd_tests.git
 }
 
 func TestResolveDeployConfigs_WithSubdirectory(t *testing.T) {
+	t.Parallel()
+
 	fileName := ".doco-cd.yaml"
 	reference := "refs/heads/main"
 	deployConfigBaseDir := "config"
@@ -607,7 +641,7 @@ reference: %s
 
 	filePath := filepath.Join(configDir, fileName)
 
-	err = createTestFile(filePath, deployConfig)
+	err = createTestFile(t, filePath, deployConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -633,6 +667,8 @@ reference: %s
 }
 
 func TestAutoDiscoverDeployments_BasicDiscovery(t *testing.T) {
+	t.Parallel()
+
 	repoRoot := t.TempDir()
 
 	// Create subdirectories with compose files
@@ -651,12 +687,12 @@ func TestAutoDiscoverDeployments_BasicDiscovery(t *testing.T) {
 
 	// Create compose files
 
-	err = createTestFile(filepath.Join(service1Dir, "compose.yaml"), "services:\n  web:\n    image: nginx")
+	err = createTestFile(t, filepath.Join(service1Dir, "compose.yaml"), "services:\n  web:\n    image: nginx")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = createTestFile(filepath.Join(service2Dir, "docker-compose.yml"), "services:\n  db:\n    image: postgres")
+	err = createTestFile(t, filepath.Join(service2Dir, "docker-compose.yml"), "services:\n  db:\n    image: postgres")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -708,6 +744,8 @@ func TestAutoDiscoverDeployments_BasicDiscovery(t *testing.T) {
 }
 
 func TestAutoDiscoverDeployments_WithWorkingDirectory(t *testing.T) {
+	t.Parallel()
+
 	repoRoot := t.TempDir()
 
 	// Create a services subdirectory
@@ -719,7 +757,7 @@ func TestAutoDiscoverDeployments_WithWorkingDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = createTestFile(filepath.Join(service1Dir, "compose.yaml"), "services:\n  web:\n    image: nginx")
+	err = createTestFile(t, filepath.Join(service1Dir, "compose.yaml"), "services:\n  web:\n    image: nginx")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -750,6 +788,8 @@ func TestAutoDiscoverDeployments_WithWorkingDirectory(t *testing.T) {
 }
 
 func TestAutoDiscoverDeployments_WithDepthLimit(t *testing.T) {
+	t.Parallel()
+
 	repoRoot := t.TempDir()
 
 	// Create nested directories
@@ -764,17 +804,17 @@ func TestAutoDiscoverDeployments_WithDepthLimit(t *testing.T) {
 
 	// Create compose files at different levels
 
-	err = createTestFile(filepath.Join(level1Dir, "compose.yaml"), "services:\n  web:\n    image: nginx")
+	err = createTestFile(t, filepath.Join(level1Dir, "compose.yaml"), "services:\n  web:\n    image: nginx")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = createTestFile(filepath.Join(level2Dir, "compose.yaml"), "services:\n  db:\n    image: postgres")
+	err = createTestFile(t, filepath.Join(level2Dir, "compose.yaml"), "services:\n  db:\n    image: postgres")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = createTestFile(filepath.Join(level3Dir, "compose.yaml"), "services:\n  cache:\n    image: redis")
+	err = createTestFile(t, filepath.Join(level3Dir, "compose.yaml"), "services:\n  cache:\n    image: redis")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -810,6 +850,8 @@ func TestAutoDiscoverDeployments_WithDepthLimit(t *testing.T) {
 }
 
 func TestAutoDiscoverDeployments_NoComposeFiles(t *testing.T) {
+	t.Parallel()
+
 	repoRoot := t.TempDir()
 
 	// Create subdirectories without compose files
@@ -837,6 +879,8 @@ func TestAutoDiscoverDeployments_NoComposeFiles(t *testing.T) {
 }
 
 func TestAutoDiscoverDeployments_InheritBaseConfig(t *testing.T) {
+	t.Parallel()
+
 	repoRoot := t.TempDir()
 
 	serviceDir := filepath.Join(repoRoot, "service1")
@@ -846,7 +890,7 @@ func TestAutoDiscoverDeployments_InheritBaseConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = createTestFile(filepath.Join(serviceDir, "compose.yaml"), "services:\n  web:\n    image: nginx")
+	err = createTestFile(t, filepath.Join(serviceDir, "compose.yaml"), "services:\n  web:\n    image: nginx")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -916,7 +960,7 @@ func createTestRepo(t *testing.T, repoPath string) (repo *git.Repository) {
 		t.Fatal(err)
 	}
 
-	err = createTestFile(filepath.Join(repoPath, "README.md"), "Test repository for auto-discovery")
+	err = createTestFile(t, filepath.Join(repoPath, "README.md"), "Test repository for auto-discovery")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -956,6 +1000,8 @@ func createTestRepo(t *testing.T, repoPath string) (repo *git.Repository) {
 }
 
 func TestGetDeployConfigs_WithAutoDiscovery_WithRemoteUrl_WithMultipleConfigs(t *testing.T) {
+	t.Parallel()
+
 	repoRoot := t.TempDir()
 
 	createTestRepo(t, repoRoot)
@@ -985,7 +1031,7 @@ auto_discover: true
 
 	filePath := filepath.Join(repoRoot, ".doco-cd.yaml")
 
-	err := createTestFile(filePath, deployConfig)
+	err := createTestFile(t, filePath, deployConfig)
 	if err != nil {
 		t.Fatal(err)
 	}

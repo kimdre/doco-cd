@@ -7,34 +7,36 @@ import (
 )
 
 func TestShouldForceDeploy(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name      string
-		stackName string
-		commits   []string
-		expected  []bool
+		name     string
+		commits  []string
+		expected []bool
 	}{
 		{
-			name:      "No loop detected",
-			stackName: "stackA",
-			commits:   []string{"commit1", "commit2", "commit3"},
-			expected:  []bool{false, false, false},
+			name:     "No loop detected",
+			commits:  []string{"commit1", "commit2", "commit3"},
+			expected: []bool{false, false, false},
 		},
 		{
-			name:      "Loop detected after 3 same commits",
-			stackName: "stackB",
-			commits:   []string{"commitX", "commitX", "commitX", "commitY"},
-			expected:  []bool{false, false, true, false},
+			name:     "Loop detected after 3 same commits",
+			commits:  []string{"commitX", "commitX", "commitX", "commitY"},
+			expected: []bool{false, false, true, false},
 		},
 		{
-			name:      "Multiple stacks with independent loops",
-			stackName: "stackC",
-			commits:   []string{"commitA", "commitA", "commitB", "commitB", "commitB"},
-			expected:  []bool{false, false, false, false, true},
+			name:     "Multiple stacks with independent loops",
+			commits:  []string{"commitA", "commitA", "commitB", "commitB", "commitB"},
+			expected: []bool{false, false, false, false, true},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			stackName := t.Name()
+
 			// Reset the tracker for each test case
 			deploymentLoopTracker.Lock()
 			deploymentLoopTracker.loops = make(map[string]struct {
@@ -44,9 +46,9 @@ func TestShouldForceDeploy(t *testing.T) {
 			deploymentLoopTracker.Unlock()
 
 			for i, commit := range tt.commits {
-				result := shouldForceDeploy(tt.stackName, commit, 3)
+				result := shouldForceDeploy(stackName, commit, 3)
 				if result != tt.expected[i] {
-					t.Errorf("shouldForceDeploy(%s, %s) = %v; want %v", tt.stackName, commit, result, tt.expected[i])
+					t.Errorf("shouldForceDeploy(%s, %s) = %v; want %v", stackName, commit, result, tt.expected[i])
 				}
 			}
 		})
@@ -54,30 +56,36 @@ func TestShouldForceDeploy(t *testing.T) {
 }
 
 // reset helper to isolate tests.
-func resetRepoLocks() {
+func resetRepoLocks(t *testing.T) {
+	t.Helper()
+
 	repoLocks = sync.Map{}
 }
 
 func TestGetRepoLock_SameAndDifferentRepos(t *testing.T) {
-	resetRepoLocks()
+	t.Cleanup(func() { resetRepoLocks(t) })
 
-	l1 := GetRepoLock("repo1")
-	l2 := GetRepoLock("repo1")
+	repoName := t.Name()
+
+	l1 := GetRepoLock(repoName + "-1")
+	l2 := GetRepoLock(repoName + "-1")
 
 	if l1 != l2 {
 		t.Fatalf("expected same lock instance for same repo")
 	}
 
-	l3 := GetRepoLock("repo2")
+	l3 := GetRepoLock(repoName + "-2")
 	if l1 == l3 {
 		t.Fatalf("expected different lock instances for different repos")
 	}
 }
 
 func TestRepoLock_TryLockSequence_SingleRepo(t *testing.T) {
-	resetRepoLocks()
+	t.Cleanup(func() { resetRepoLocks(t) })
 
-	l := GetRepoLock("repo")
+	repoName := t.Name()
+
+	l := GetRepoLock(repoName)
 
 	if ok := l.TryLock("job-1"); !ok {
 		t.Fatalf("expected first TryLock to succeed")
@@ -113,11 +121,13 @@ func TestRepoLock_TryLockSequence_SingleRepo(t *testing.T) {
 }
 
 func TestRepoLock_ConcurrentTryLock_SameRepo(t *testing.T) {
-	resetRepoLocks()
+	t.Cleanup(func() { resetRepoLocks(t) })
+
+	repoName := t.Name()
 
 	const goroutines = 20
 
-	l := GetRepoLock("repo")
+	l := GetRepoLock(repoName)
 
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
@@ -168,10 +178,10 @@ func TestRepoLock_ConcurrentTryLock_SameRepo(t *testing.T) {
 }
 
 func TestRepoLock_IndependentRepos(t *testing.T) {
-	resetRepoLocks()
+	t.Cleanup(func() { resetRepoLocks(t) })
 
-	la := GetRepoLock("repoA")
-	lb := GetRepoLock("repoB")
+	la := GetRepoLock(t.Name() + "-A")
+	lb := GetRepoLock(t.Name() + "-B")
 
 	if !la.TryLock("job-A1") {
 		t.Fatalf("repoA first lock should succeed")

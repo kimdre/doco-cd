@@ -3,6 +3,8 @@ package set
 import "testing"
 
 func TestSet(t *testing.T) {
+	t.Parallel()
+
 	s := New[string]("banana")
 
 	// Test Add and Contains

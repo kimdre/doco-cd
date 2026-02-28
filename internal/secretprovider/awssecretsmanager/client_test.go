@@ -9,6 +9,8 @@ import (
 )
 
 func skipWrongProvider(t *testing.T) {
+	t.Helper()
+
 	c, err := config.GetAppConfig()
 	if err != nil {
 		t.Fatalf("unable to get app config: %v", err)
@@ -21,6 +23,8 @@ func skipWrongProvider(t *testing.T) {
 
 func TestProvider_GetSecret_AWSSecretManager(t *testing.T) {
 	skipWrongProvider(t)
+
+	t.Parallel()
 
 	secretARN := "arn:aws:secretsmanager:eu-west-1:243238513853:secret:test-RAbPpz" // #nosec G101
 	expectedValue := "{\"username\":\"ulli\",\"password\":\"irgendwas\"}"
@@ -47,6 +51,8 @@ func TestProvider_GetSecret_AWSSecretManager(t *testing.T) {
 
 func TestProvider_ResolveSecretReferences_AWSSecretManager(t *testing.T) {
 	skipWrongProvider(t)
+
+	t.Parallel()
 
 	cfg, err := GetConfig()
 	if err != nil {
@@ -89,6 +95,8 @@ func TestProvider_ResolveSecretReferences_AWSSecretManager(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			resolvedSecrets, err := provider.ResolveSecretReferences(t.Context(), tc.secretsToResolve)
 			if err != nil {
 				t.Fatalf("Failed to resolve secret references: %v", err)
