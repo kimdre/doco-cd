@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -130,16 +131,19 @@ func CreateTmpDotEnvFile(deployConfig *DeployConfig) (string, error) {
 		return "", fmt.Errorf("%s: %w", errMsg, err)
 	}
 
+	defer func() {
+		if err := tmpEnvFile.Close(); err != nil {
+			slog.Warn("failed to close temporary env file", "file", tmpEnvFile.Name(), "error", err)
+			return
+		}
+	}()
+
 	// Write environment variables to the temp env file
 	for k, v := range deployConfig.Internal.Environment {
 		_, err = fmt.Fprintf(tmpEnvFile, "%s=%s\n", k, v)
 		if err != nil {
 			return "", fmt.Errorf("failed to write to temporary env file: %w", err)
 		}
-	}
-
-	if err = tmpEnvFile.Close(); err != nil {
-		return "", fmt.Errorf("failed to close temporary env file: %w", err)
 	}
 
 	// Prepend the temp env file to the list of env files
