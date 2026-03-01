@@ -2,7 +2,6 @@ package docker
 
 import (
 	"log"
-	"path/filepath"
 	"testing"
 
 	"github.com/docker/docker/client"
@@ -63,20 +62,14 @@ func TestDeploySwarmStack(t *testing.T) {
 		t.Log("No auth method configured, using anonymous access")
 	}
 
-	repo, err := git.CloneRepository(tmpDir, p.CloneURL, git.SwarmModeBranch, c.SkipTLSVerification, c.HttpProxy, auth, c.GitCloneSubmodules)
+	_, err = git.CloneRepository(tmpDir, p.CloneURL, git.SwarmModeBranch, c.SkipTLSVerification, c.HttpProxy, auth, c.GitCloneSubmodules)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
 
-	worktree, err := repo.Worktree()
-	if err != nil {
-		t.Fatal(err)
-	}
+	composeFile := "docker-compose.yml"
 
-	repoPath := worktree.Filesystem.Root()
-	filePath := filepath.Join(repoPath, "docker-compose.yml")
-
-	project, err := LoadCompose(t.Context(), tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
+	project, err := LoadCompose(t.Context(), tmpDir, stackName, []string{composeFile}, []string{".env"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}

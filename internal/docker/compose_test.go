@@ -101,14 +101,15 @@ func TestLoadCompose(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	filePath := filepath.Join(tmpDir, "test.compose.yaml")
+	composeFile := "test.compose.yaml"
+	filePath := filepath.Join(tmpDir, composeFile)
 
 	composeYAML := generateComposeContents()
 	createComposeFile(t, filePath, composeYAML)
 
 	stackName := test.ConvertTestName(t.Name())
 
-	project, err := LoadCompose(ctx, tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
+	project, err := LoadCompose(ctx, tmpDir, stackName, []string{composeFile}, []string{".env"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
