@@ -167,9 +167,9 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 		}
 	}
 
-	absoluteEnvFiles := make([]string, 0, len(envFiles))
-	for _, f := range envFiles {
-		absoluteEnvFiles = append(absoluteEnvFiles, filepath.Join(workingDir, f))
+	absoluteEnvFiles := make([]string, len(envFiles))
+	for i, f := range envFiles {
+		absoluteEnvFiles[i] = filepath.Join(workingDir, f)
 	}
 
 	options, err := cli.NewProjectOptions(
