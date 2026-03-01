@@ -152,9 +152,7 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 	// if envFiles only contains ".env", we check if the file exists in the working directory
 	// #nosec G602 -- length is checked before access
 	if len(envFiles) == 1 && envFiles[0] == ".env" {
-		envFilePath := path.Join(workingDir, ".env")
-
-		if _, err := os.Stat(envFilePath); errors.Is(err, os.ErrNotExist) {
+		if _, err := os.Stat(path.Join(workingDir, ".env")); errors.Is(err, os.ErrNotExist) {
 			envFiles = []string{}
 		}
 	}
