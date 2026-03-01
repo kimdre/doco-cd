@@ -155,6 +155,8 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 	// the specified working directory. Without this, concurrent deployments with
 	// different working directories would fail since they share the same process
 	// working directory.
+	workingDir = filepath.Clean(workingDir)
+
 	absoluteComposeFiles := make([]string, len(composeFiles))
 	for i, f := range composeFiles {
 		if strings.HasPrefix(f, workingDir) {
@@ -166,7 +168,7 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 
 	// if envFiles only contains ".env", we check if the file exists in the working directory
 	if len(envFiles) == 1 && envFiles[0] == ".env" {
-		if _, err := os.Stat(path.Join(workingDir, ".env")); errors.Is(err, os.ErrNotExist) {
+		if _, err := os.Stat(filepath.Join(workingDir, ".env")); errors.Is(err, os.ErrNotExist) {
 			envFiles = []string{}
 		}
 	}
@@ -176,7 +178,7 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 		if strings.HasPrefix(f, workingDir) {
 			absoluteEnvFiles[i] = filepath.Clean(f)
 		} else {
-			absoluteEnvFiles[i] = filepath.Join(workingDir, f)
+			absoluteEnvFiles[i] = filepath.Join(workingDir, filepath.FromSlash(f))
 		}
 	}
 
