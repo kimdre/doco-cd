@@ -157,11 +157,7 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 	// working directory.
 	absoluteComposeFiles := make([]string, len(composeFiles))
 	for i, f := range composeFiles {
-		if filepath.IsAbs(f) {
-			absoluteComposeFiles[i] = f
-		} else {
-			absoluteComposeFiles[i] = filepath.Join(workingDir, f)
-		}
+		absoluteComposeFiles[i] = filepath.Join(workingDir, f)
 	}
 
 	// if envFiles only contains ".env", we check if the file exists in the working directory
@@ -173,11 +169,7 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 
 	absoluteEnvFiles := make([]string, 0, len(envFiles))
 	for _, f := range envFiles {
-		if filepath.IsAbs(f) {
-			absoluteEnvFiles = append(absoluteEnvFiles, f)
-		} else {
-			absoluteEnvFiles = append(absoluteEnvFiles, filepath.Join(workingDir, f))
-		}
+		absoluteEnvFiles = append(absoluteEnvFiles, filepath.Join(workingDir, f))
 	}
 
 	options, err := cli.NewProjectOptions(
