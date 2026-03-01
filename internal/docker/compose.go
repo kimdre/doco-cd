@@ -149,23 +149,44 @@ func addComposeVolumeLabels(project *types.Project, deployConfig config.DeployCo
 
 // LoadCompose parses and loads Compose files as specified by the Docker Compose specification.
 func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles, envFiles, profiles []string, environment map[string]string) (*types.Project, error) {
-	// if envFiles only contains ".env", we check if the file exists in the working directory
-	// #nosec G602 -- length is checked before access
-	if len(envFiles) == 1 && envFiles[0] == ".env" {
-		envFilePath := path.Join(workingDir, ".env")
+	// Resolve compose file paths to absolute paths relative to workingDir.
+	// This is necessary because the compose-go library's LoadConfigFiles internally
+	// uses filepath.Abs which resolves relative paths against os.Getwd(), not against
+	// the specified working directory. Without this, concurrent deployments with
+	// different working directories would fail since they share the same process
+	// working directory.
+	absoluteComposeFiles := make([]string, len(composeFiles))
+	for i, f := range composeFiles {
+		if filepath.IsAbs(f) {
+			absoluteComposeFiles[i] = f
+		} else {
+			absoluteComposeFiles[i] = filepath.Join(workingDir, f)
+		}
+	}
 
-		if _, err := os.Stat(envFilePath); errors.Is(err, os.ErrNotExist) {
+	// if envFiles only contains ".env", we check if the file exists in the working directory
+	if len(envFiles) == 1 && envFiles[0] == ".env" {
+		if _, err := os.Stat(path.Join(workingDir, ".env")); errors.Is(err, os.ErrNotExist) {
 			envFiles = []string{}
 		}
 	}
 
+	absoluteEnvFiles := make([]string, 0, len(envFiles))
+	for _, f := range envFiles {
+		if filepath.IsAbs(f) {
+			absoluteEnvFiles = append(absoluteEnvFiles, f)
+		} else {
+			absoluteEnvFiles = append(absoluteEnvFiles, filepath.Join(workingDir, f))
+		}
+	}
+
 	options, err := cli.NewProjectOptions(
-		composeFiles,
+		absoluteComposeFiles,
 		cli.WithName(projectName),
 		cli.WithWorkingDirectory(workingDir),
 		cli.WithInterpolation(true),
 		cli.WithResolvedPaths(true),
-		cli.WithEnvFiles(envFiles...), // env files for variable interpolation
+		cli.WithEnvFiles(absoluteEnvFiles...), // env files for variable interpolation
 		cli.WithProfiles(profiles),
 	)
 	if err != nil {
@@ -364,14 +385,6 @@ func DeployStack(
 		jobLog.Error(errMsg, slog.String("resolved_path", externalWorkingDir))
 
 		return fmt.Errorf("%s", errMsg)
-	}
-
-	err = os.Chdir(internalWorkingDir)
-	if err != nil {
-		errMsg := "failed to change internal working directory"
-		jobLog.Error(errMsg, logger.ErrAttr(err), slog.String("path", internalWorkingDir))
-
-		return fmt.Errorf("%s: %w", errMsg, err)
 	}
 
 	// Check if the default compose files are used

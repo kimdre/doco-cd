@@ -130,16 +130,14 @@ func CreateTmpDotEnvFile(deployConfig *DeployConfig) (string, error) {
 		return "", fmt.Errorf("%s: %w", errMsg, err)
 	}
 
+	defer tmpEnvFile.Close()
+
 	// Write environment variables to the temp env file
 	for k, v := range deployConfig.Internal.Environment {
 		_, err = fmt.Fprintf(tmpEnvFile, "%s=%s\n", k, v)
 		if err != nil {
 			return "", fmt.Errorf("failed to write to temporary env file: %w", err)
 		}
-	}
-
-	if err = tmpEnvFile.Close(); err != nil {
-		return "", fmt.Errorf("failed to close temporary env file: %w", err)
 	}
 
 	// Prepend the temp env file to the list of env files

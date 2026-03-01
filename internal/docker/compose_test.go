@@ -95,10 +95,11 @@ func TestVerifySocketConnection(t *testing.T) {
 }
 
 func TestLoadCompose(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 
 	tmpDir := t.TempDir()
-	t.Chdir(tmpDir)
 
 	filePath := filepath.Join(tmpDir, "test.compose.yaml")
 
@@ -125,9 +126,9 @@ func TestLoadCompose(t *testing.T) {
 }
 
 func TestDeployCompose(t *testing.T) {
-	ctx := context.Background()
-
 	encryption.SetupAgeKeyEnvVar(t)
+
+	ctx := context.Background()
 
 	c, err := config.GetAppConfig()
 	if err != nil {
@@ -366,6 +367,8 @@ compose_files:
 }
 
 func TestHasChangedConfigs(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name            string
 		oldCommit       string
@@ -411,8 +414,6 @@ func TestHasChangedConfigs(t *testing.T) {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
 
-	t.Chdir(tmpDir)
-
 	project, err := LoadCompose(t.Context(), tmpDir, test.ConvertTestName(t.Name()), []string{"docker-compose.yml"}, []string{".env"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatalf("Failed to load compose file: %v", err)
@@ -444,6 +445,8 @@ func TestHasChangedConfigs(t *testing.T) {
 }
 
 func TestHasChangedSecrets(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name            string
 		oldCommit       string
@@ -488,8 +491,6 @@ func TestHasChangedSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
-
-	t.Chdir(tmpDir)
 
 	project, err := LoadCompose(t.Context(), tmpDir, test.ConvertTestName(t.Name()), []string{"docker-compose.yml"}, []string{".env"}, []string{}, map[string]string{})
 	if err != nil {
@@ -522,6 +523,8 @@ func TestHasChangedSecrets(t *testing.T) {
 }
 
 func TestHasChangedBindMounts(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name            string
 		oldCommit       string
@@ -567,8 +570,6 @@ func TestHasChangedBindMounts(t *testing.T) {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
 
-	t.Chdir(tmpDir)
-
 	project, err := LoadCompose(t.Context(), tmpDir, test.ConvertTestName(t.Name()), []string{"docker-compose.yml"}, []string{".env"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatalf("Failed to load compose file: %v", err)
@@ -600,7 +601,6 @@ func TestHasChangedBindMounts(t *testing.T) {
 }
 
 func startTestContainer(ctx context.Context, t *testing.T) (*testCompose.DockerCompose, error) {
-	t.Chdir(t.TempDir())
 	stackName := test.ConvertTestName(t.Name())
 
 	composeYAML := generateComposeContents()
@@ -833,6 +833,8 @@ func TestGetProjects(t *testing.T) {
 
 // TestInjectSecretsToProject tests resolving and injecting secrets from external secret managers into a Docker Compose project.
 func TestInjectSecretsToProject(t *testing.T) {
+	t.Parallel()
+
 	const (
 		varName         = "TEST_PASSWORD"
 		composeContents = `services:
@@ -907,7 +909,6 @@ func TestInjectSecretsToProject(t *testing.T) {
 	ctx := t.Context()
 
 	tmpDir := t.TempDir()
-	t.Chdir(tmpDir)
 
 	filePath := filepath.Join(tmpDir, "test.compose.yaml")
 	createComposeFile(t, filePath, composeContents)

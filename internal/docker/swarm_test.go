@@ -18,6 +18,8 @@ import (
 )
 
 func TestDeploySwarmStack(t *testing.T) {
+	t.Parallel()
+
 	dockerCli, err := CreateDockerCli(false, false)
 	if err != nil {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
@@ -49,8 +51,6 @@ func TestDeploySwarmStack(t *testing.T) {
 		CloneURL:  cloneUrlTest,
 		Private:   true,
 	}
-
-	t.Chdir(tmpDir)
 
 	auth, err := git.GetAuthMethod(p.CloneURL, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
 	if err != nil {
