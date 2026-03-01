@@ -155,6 +155,11 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 	// the specified working directory. Without this, concurrent deployments with
 	// different working directories would fail since they share the same process
 	// working directory.
+	c, err := config.GetAppConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get app config: %w", err)
+	}
+
 	absoluteComposeFiles := make([]string, len(composeFiles))
 	for i, f := range composeFiles {
 		if filepath.IsAbs(f) {
@@ -191,6 +196,13 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create project options: %w", err)
+	}
+
+	if c.PassEnv {
+		err = cli.WithOsEnv(options)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get OS environment variables for interpolation: %w", err)
+		}
 	}
 
 	// Inject external secrets into the environment for variable interpolation
