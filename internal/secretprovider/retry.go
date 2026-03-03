@@ -16,6 +16,7 @@ var retryableKeywords = []string{
 	"429",
 	"too many requests",
 	"rate limit",
+	"rate-limit",
 }
 
 // isRetryable returns true if the error message indicates a rate-limit or
