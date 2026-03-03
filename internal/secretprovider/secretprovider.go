@@ -52,62 +52,75 @@ func (f SecretValueProviderFunc) GetSecret(ctx context.Context, id string) (stri
 var ErrUnknownProvider = errors.New("unknown secret provider")
 
 // Initialize initializes the secret provider based on the provided configuration.
+// The returned provider is wrapped with retry logic to handle transient
+// rate-limit errors (HTTP 429) from upstream APIs.
 func Initialize(ctx context.Context, provider, version string) (SecretProvider, error) {
 	if provider == "" {
 		return nil, nil
 	}
 
+	var (
+		p   SecretProvider
+		err error
+	)
+
 	switch provider {
 	case awssecretsmanager.Name:
-		cfg, err := awssecretsmanager.GetConfig()
-		if err != nil {
-			return nil, err
+		cfg, cfgErr := awssecretsmanager.GetConfig()
+		if cfgErr != nil {
+			return nil, cfgErr
 		}
 
-		return awssecretsmanager.NewProvider(ctx, cfg.Region, cfg.AccessKeyID, cfg.SecretAccessKey)
+		p, err = awssecretsmanager.NewProvider(ctx, cfg.Region, cfg.AccessKeyID, cfg.SecretAccessKey)
 	case bitwardensecretsmanager.Name:
-		cfg, err := bitwardensecretsmanager.GetConfig()
-		if err != nil {
-			return nil, err
+		cfg, cfgErr := bitwardensecretsmanager.GetConfig()
+		if cfgErr != nil {
+			return nil, cfgErr
 		}
 
-		return bitwardensecretsmanager.NewProvider(cfg.ApiUrl, cfg.IdentityUrl, cfg.AccessToken)
+		p, err = bitwardensecretsmanager.NewProvider(cfg.ApiUrl, cfg.IdentityUrl, cfg.AccessToken)
 	case onepassword.Name:
-		cfg, err := onepassword.GetConfig()
-		if err != nil {
-			return nil, err
+		cfg, cfgErr := onepassword.GetConfig()
+		if cfgErr != nil {
+			return nil, cfgErr
 		}
 
-		return onepassword.NewProvider(ctx, cfg.AccessToken, version)
+		p, err = onepassword.NewProvider(ctx, cfg.AccessToken, version)
 	case infisical.Name:
-		cfg, err := infisical.GetConfig()
-		if err != nil {
-			return nil, err
+		cfg, cfgErr := infisical.GetConfig()
+		if cfgErr != nil {
+			return nil, cfgErr
 		}
 
-		return infisical.NewProvider(ctx, cfg.SiteUrl, cfg.ClientID, cfg.ClientSecret)
+		p, err = infisical.NewProvider(ctx, cfg.SiteUrl, cfg.ClientID, cfg.ClientSecret)
 	case openbao.Name:
-		cfg, err := openbao.GetConfig()
-		if err != nil {
-			return nil, err
+		cfg, cfgErr := openbao.GetConfig()
+		if cfgErr != nil {
+			return nil, cfgErr
 		}
 
-		return openbao.NewProvider(ctx, cfg.SiteUrl, cfg.AccessToken)
+		p, err = openbao.NewProvider(ctx, cfg.SiteUrl, cfg.AccessToken)
 	case webhook.Name:
-		cfg, err := webhook.GetConfig()
-		if err != nil {
-			return nil, err
+		cfg, cfgErr := webhook.GetConfig()
+		if cfgErr != nil {
+			return nil, cfgErr
 		}
 
-		prov, err := webhook.NewValueProvider(ctx, cfg)
-		if err != nil {
-			return nil, err
+		prov, provErr := webhook.NewValueProvider(ctx, cfg)
+		if provErr != nil {
+			return nil, provErr
 		}
 
-		return AdaptSecretValueProvider(webhook.Name, prov), nil
+		p = AdaptSecretValueProvider(webhook.Name, prov)
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnknownProvider, provider)
 	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return NewRetryingSecretProvider(p), nil
 }
 
 // Hash returns a SHA256 hash of the ExternalSecrets map.
