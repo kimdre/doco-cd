@@ -11,37 +11,39 @@ endif
 BUILD_FLAGS:=
 ifeq ($(shell uname), Linux)
     BUILD_FLAGS:=-linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'
+    COMPILER=CGO_ENABLED=1 CC=musl-gcc
 else ifeq ($(shell uname), Darwin)
 		BUILD_FLAGS:=""
+		COMPILER=CGO_ENABLED=1 CC=clang CXX=clang++
 endif
 
 BUILD_FLAGS:=-ldflags="-X main.Version=dev $(BUILD_FLAGS)"
 
 test:
 	@echo "Running tests..."
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" CGO_ENABLED=1 CC=musl-gcc go test ${BUILD_FLAGS} -cover ./... -timeout 10m
+	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" ${COMPILER} go test ${BUILD_FLAGS} -cover ./... -timeout 10m
 
 test-nobitwarden:
 	@echo "Running tests without bitwarden integration..."
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test -ldflags="-X main.Version=dev" -tags nobitwarden -cover ./... -timeout 10m
+	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" ${COMPILER} go test -ldflags="-X main.Version=dev" -tags nobitwarden -cover ./... -timeout 10m
 
 test-verbose:
 	@echo "Running tests..."
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test ${BUILD_FLAGS} -v -cover ./... -timeout 10m
+	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" ${COMPILER} go test ${BUILD_FLAGS} -v -cover ./... -timeout 10m
 
 test-coverage:
 	@echo "Running tests with coverage..."
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test ${BUILD_FLAGS} -v -coverprofile cover.out ./...
+	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" ${COMPILER} go test ${BUILD_FLAGS} -v -coverprofile cover.out ./...
 	@go tool cover -html cover.out -o cover.html
 
 # Run specified tests from arguments
 test-run:
 	@echo "Running tests: $(filter-out $@,$(MAKECMDGOALS))"
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" go test ${BUILD_FLAGS} -cover ./... -timeout 10m -run $(filter-out $@,$(MAKECMDGOALS))
+	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" ${COMPILER} go test ${BUILD_FLAGS} -cover ./... -timeout 10m -run $(filter-out $@,$(MAKECMDGOALS))
 
 build:
 	mkdir -p $(BINARY_DIR)
-	go build ${BUILD_FLAGS} -o $(BINARY_DIR) ./...
+	${COMPILER} go build ${BUILD_FLAGS} -o $(BINARY_DIR) ./...
 
 lint fmt:
 	${GO_BIN}/golangci-lint run --fix ./...
