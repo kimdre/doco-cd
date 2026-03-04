@@ -1,6 +1,3 @@
-// TODO: Re-enable when testcontainers-go/modules/compose migrates to docker/compose/v5
-//go:build ignore
-
 package openbao
 
 import (
@@ -11,10 +8,9 @@ import (
 	"testing"
 
 	"github.com/moby/moby/api/pkg/stdcopy"
-	"github.com/testcontainers/testcontainers-go/modules/compose"
-	"github.com/testcontainers/testcontainers-go/wait"
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
+	"github.com/kimdre/doco-cd/internal/test"
 )
 
 var rootCredentials = struct {
@@ -40,68 +36,20 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 
 	ctx := context.Background()
 
-	// Start OpenBao container, mounting bao.conf
-	stack, err := compose.NewDockerComposeWith(
-		compose.WithStackFiles(filepath.Join("testdata", "openbao.compose.yml")),
-	)
-	if err != nil {
-		t.Fatalf("failed to create stack: %v", err)
-	}
-
-	const maxRetries = 3
-	for i := 0; i < maxRetries; i++ {
-		err = stack.
-			WaitForService("db", wait.ForHealthCheck()).
-			WaitForService("vault", wait.ForHealthCheck()).
-			Up(ctx, compose.Wait(true))
-		if err == nil {
-			break
-		}
-
-		if i < maxRetries-1 {
-			t.Logf("failed to start stack (attempt %d/%d): %v, retrying...", i+1, maxRetries, err)
-		}
-	}
-
-	if err != nil {
-		t.Fatalf("failed to start stack after %d attempts: %v", maxRetries, err)
-	}
-
-	t.Cleanup(func() {
-		t.Log("stopping OpenBao test containers")
-
-		if err = stack.Down(ctx,
-			compose.RemoveOrphans(true),
-			compose.RemoveVolumes(true)); err != nil {
-			t.Errorf("failed to stop stack: %v", err)
-		}
-	})
-
-	// Initialize OpenBao with the provided configuration
-	svc, err := stack.ServiceContainer(ctx, "vault")
-	if err != nil {
-		t.Fatalf("failed to get vault service container: %v", err)
-	}
+	stack := test.ComposeUp(ctx, t, test.WithFile(filepath.Join("testdata", "openbao.compose.yml")))
 
 	// Get the randomized host port mapped to Vault's default port 8200
-	mappedPort, err := svc.MappedPort(ctx, "8200")
-	if err != nil {
-		t.Fatalf("failed to get mapped port: %v", err)
-	}
+	mappedPort := stack.MappedPort(ctx, t, "vault", "8200")
 
 	// Initialize Vault
-	exitStatus, output, err := svc.Exec(ctx, []string{"vault", "operator", "init", "-key-shares=1", "-key-threshold=1", "-format=json"})
-	if err != nil {
-		t.Fatalf("failed to initialize vault: %v", err)
-	}
-
+	exitStatus, output := stack.Exec(ctx, t, "vault", []string{"vault", "operator", "init", "-key-shares=1", "-key-threshold=1", "-format=json"})
 	if exitStatus != 0 {
-		t.Fatalf("vault init command failed with exit code %d: %s", exitStatus, output)
+		t.Fatalf("vault init command failed with exit code %d", exitStatus)
 	}
 
 	var stdout, stderr bytes.Buffer
 
-	_, err = stdcopy.StdCopy(&stdout, &stderr, output)
+	_, err := stdcopy.StdCopy(&stdout, &stderr, output)
 	if err != nil {
 		t.Fatalf("failed to demultiplex vault init output: %v", err)
 	}
@@ -119,74 +67,74 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 	}
 
 	// Unseal Vault
-	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "operator", "unseal", initData.UnsealKeys[0]})
-	if err != nil || exitStatus != 0 {
-		t.Fatalf("failed to unseal vault: %v", err)
+	exitStatus, _ = stack.Exec(ctx, t, "vault", []string{"vault", "operator", "unseal", initData.UnsealKeys[0]})
+	if exitStatus != 0 {
+		t.Fatalf("failed to unseal vault (exit code %d)", exitStatus)
 	}
 
 	// Login to Vault
-	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "login", initData.RootToken})
-	if err != nil || exitStatus != 0 {
-		t.Fatalf("failed to login to vault: %v", err)
+	exitStatus, _ = stack.Exec(ctx, t, "vault", []string{"vault", "login", initData.RootToken})
+	if exitStatus != 0 {
+		t.Fatalf("failed to login to vault (exit code %d)", exitStatus)
 	}
 
 	// Enable KV secrets engine at "rootSecret/" in root namespace
-	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "secrets", "enable", "-path=rootSecret", "kv-v2"})
-	if err != nil || exitStatus != 0 {
-		t.Fatalf("failed to enable kv secrets engine: %v", err)
+	exitStatus, _ = stack.Exec(ctx, t, "vault", []string{"vault", "secrets", "enable", "-path=rootSecret", "kv-v2"})
+	if exitStatus != 0 {
+		t.Fatalf("failed to enable kv secrets engine (exit code %d)", exitStatus)
 	}
 
 	// Enable PKI secrets engine at "pki/"
-	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "secrets", "enable", "-path=pki", "pki"})
-	if err != nil || exitStatus != 0 {
-		t.Fatalf("failed to enable pki secrets engine: %v", err)
+	exitStatus, _ = stack.Exec(ctx, t, "vault", []string{"vault", "secrets", "enable", "-path=pki", "pki"})
+	if exitStatus != 0 {
+		t.Fatalf("failed to enable pki secrets engine (exit code %d)", exitStatus)
 	}
 
 	// Create root CA
-	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "write", "pki/root/generate/internal", "common_name=example.com", "ttl=8760h"})
-	if err != nil || exitStatus != 0 {
-		t.Fatalf("failed to create root CA: %v", err)
+	exitStatus, _ = stack.Exec(ctx, t, "vault", []string{"vault", "write", "pki/root/generate/internal", "common_name=example.com", "ttl=8760h"})
+	if exitStatus != 0 {
+		t.Fatalf("failed to create root CA (exit code %d)", exitStatus)
 	}
 
 	// Create a role to issue certificates
-	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "write", "pki/roles/example-dot-com", "allowed_domains=example.com", "allow_subdomains=true", "max_ttl=72h"})
-	if err != nil || exitStatus != 0 {
-		t.Fatalf("failed to create pki role: %v", err)
+	exitStatus, _ = stack.Exec(ctx, t, "vault", []string{"vault", "write", "pki/roles/example-dot-com", "allowed_domains=example.com", "allow_subdomains=true", "max_ttl=72h"})
+	if exitStatus != 0 {
+		t.Fatalf("failed to create pki role (exit code %d)", exitStatus)
 	}
 
 	// Issue a test certificate
-	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "write", "pki/issue/example-dot-com", "common_name=test.example.com", "ttl=24h"})
-	if err != nil || exitStatus != 0 {
-		t.Fatalf("failed to issue test certificate: %v", err)
+	exitStatus, _ = stack.Exec(ctx, t, "vault", []string{"vault", "write", "pki/issue/example-dot-com", "common_name=test.example.com", "ttl=24h"})
+	if exitStatus != 0 {
+		t.Fatalf("failed to issue test certificate (exit code %d)", exitStatus)
 	}
 
 	// Add test secrets to root namespace
-	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "kv", "put", "rootSecret/creds", "password=" + rootCredentials.password, "username=" + rootCredentials.username})
-	if err != nil || exitStatus != 0 {
-		t.Fatalf("failed to add test secret: %v", err)
+	exitStatus, _ = stack.Exec(ctx, t, "vault", []string{"vault", "kv", "put", "rootSecret/creds", "password=" + rootCredentials.password, "username=" + rootCredentials.username})
+	if exitStatus != 0 {
+		t.Fatalf("failed to add test secret (exit code %d)", exitStatus)
 	}
 
 	// Create additional namespace "test"
-	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "namespace", "create", "test"})
-	if err != nil || exitStatus != 0 {
-		t.Fatalf("failed to create namespace: %v", err)
+	exitStatus, _ = stack.Exec(ctx, t, "vault", []string{"vault", "namespace", "create", "test"})
+	if exitStatus != 0 {
+		t.Fatalf("failed to create namespace (exit code %d)", exitStatus)
 	}
 
 	// Enable KV secrets engine at "testSecret/" in "test" namespace
-	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "secrets", "enable", "-namespace=test", "-path=testSecret", "kv-v2"})
-	if err != nil || exitStatus != 0 {
-		t.Fatalf("failed to enable kv secrets engine in namespace: %v", err)
+	exitStatus, _ = stack.Exec(ctx, t, "vault", []string{"vault", "secrets", "enable", "-namespace=test", "-path=testSecret", "kv-v2"})
+	if exitStatus != 0 {
+		t.Fatalf("failed to enable kv secrets engine in namespace (exit code %d)", exitStatus)
 	}
 
 	// Add test secrets to "test" namespace
-	exitStatus, _, err = svc.Exec(ctx, []string{"vault", "kv", "put", "-namespace=test", "testSecret/creds", "password=" + testCredentials.password, "username=" + testCredentials.username})
-	if err != nil || exitStatus != 0 {
-		t.Fatalf("failed to add test secret to namespace: %v", err)
+	exitStatus, _ = stack.Exec(ctx, t, "vault", []string{"vault", "kv", "put", "-namespace=test", "testSecret/creds", "password=" + testCredentials.password, "username=" + testCredentials.username})
+	if exitStatus != 0 {
+		t.Fatalf("failed to add test secret to namespace (exit code %d)", exitStatus)
 	}
 
 	t.Logf("OpenBao container setup complete")
 
-	return "http://localhost:" + mappedPort.Port(), initData.RootToken
+	return "http://localhost:" + mappedPort, initData.RootToken
 }
 
 func TestProvider_GetSecret_OpenBao(t *testing.T) {

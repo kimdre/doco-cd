@@ -71,6 +71,11 @@ services:
     environment:
       TZ: Europe/Berlin
       APPRISE_WORKER_COUNT: 1
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/" ]
+      interval: 2s
+      timeout: 5s
+      retries: 10
 
   grafana:
     # Dashboard: https://github.com/kimdre/doco-cd/discussions/583
