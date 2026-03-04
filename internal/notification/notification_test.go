@@ -46,7 +46,7 @@ func TestSend(t *testing.T) {
     environment:
       APPRISE_WORKER_COUNT: "1"
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
       interval: 2s
       timeout: 5s
       retries: 10
