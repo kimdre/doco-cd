@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/avast/retry-go/v5"
 	composeCli "github.com/compose-spec/compose-go/v2/cli"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/flags"
@@ -108,6 +109,7 @@ func ComposeUp(ctx context.Context, t *testing.T, opts ...ComposeOption) *Compos
 
 	options, err := composeCli.NewProjectOptions(
 		[]string{filePath},
+		composeCli.WithWorkingDirectory(filepath.Dir(filePath)),
 		composeCli.WithName(stackName),
 	)
 	if err != nil {
@@ -119,21 +121,19 @@ func ComposeUp(ctx context.Context, t *testing.T, opts ...ComposeOption) *Compos
 		t.Fatalf("failed to load compose project: %v", err)
 	}
 
-	err = retry.New(
-		retry.Attempts(3),
-		retry.LastErrorOnly(true),
-		retry.Context(ctx),
-		retry.OnRetry(func(attempt uint, err error) {
-			t.Logf("failed to start stack (attempt %d): %v, retrying...", attempt+1, err)
-		}),
-	).Do(func() error {
-		return svc.Up(ctx, project, api.UpOptions{
-			Create: api.CreateOptions{RemoveOrphans: true},
-			Start:  api.StartOptions{Wait: true},
-		})
-	})
-	if err != nil {
-		t.Fatalf("failed to start compose stack %q: %v", stackName, err)
+	// Set the CustomLabels that compose uses internally to track containers
+	// by project/service. Without these, the Start phase cannot find the
+	// containers created by Create ("service X has no container to start").
+	for i, s := range project.Services {
+		s.CustomLabels = map[string]string{
+			api.ProjectLabel:     project.Name,
+			api.ServiceLabel:     s.Name,
+			api.WorkingDirLabel:  project.WorkingDir,
+			api.ConfigFilesLabel: strings.Join(project.ComposeFiles, ","),
+			api.VersionLabel:     api.ComposeVersion,
+			api.OneoffLabel:      "False",
+		}
+		project.Services[i] = s
 	}
 
 	dockerClient, err := client.New(client.FromEnv)
@@ -141,12 +141,20 @@ func ComposeUp(ctx context.Context, t *testing.T, opts ...ComposeOption) *Compos
 		t.Fatalf("failed to create docker client: %v", err)
 	}
 
-	stack := &ComposeStack{
-		Name:      stackName,
-		Service:   svc,
-		DockerCli: dockerCli,
-		Client:    dockerClient,
-	}
+	t.Cleanup(func() {
+		if err := dockerClient.Close(); err != nil {
+			t.Errorf("failed to close docker client: %v", err)
+		}
+	})
+
+	err = svc.Up(ctx, project, api.UpOptions{
+		Create: api.CreateOptions{RemoveOrphans: true},
+		Start: api.StartOptions{
+			Project:     project,
+			Wait:        true,
+			WaitTimeout: 30 * time.Second,
+		},
+	})
 
 	t.Cleanup(func() {
 		if err := svc.Down(context.WithoutCancel(ctx), stackName, api.DownOptions{
@@ -156,9 +164,18 @@ func ComposeUp(ctx context.Context, t *testing.T, opts ...ComposeOption) *Compos
 		}); err != nil {
 			t.Errorf("failed to stop compose stack %q: %v", stackName, err)
 		}
-
-		dockerClient.Close()
 	})
+
+	if err != nil {
+		t.Fatalf("failed to start compose stack %q: %v", stackName, err)
+	}
+
+	stack := &ComposeStack{
+		Name:      stackName,
+		Service:   svc,
+		DockerCli: dockerCli,
+		Client:    dockerClient,
+	}
 
 	return stack
 }
