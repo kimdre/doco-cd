@@ -767,17 +767,10 @@ func TestInjectSecretsToProject(t *testing.T) {
 	}
 }
 
-func startTestContainer(ctx context.Context, t *testing.T) {
-	t.Helper()
-
-	composeYAML := generateComposeContents()
-	test.ComposeUp(ctx, t, composeYAML)
-}
-
 func TestRestartProject(t *testing.T) {
 	ctx := context.Background()
 
-	startTestContainer(ctx, t)
+	test.ComposeUp(ctx, t, test.WithYAML(generateComposeContents()))
 
 	c, err := config.GetAppConfig()
 	if err != nil {
@@ -802,7 +795,7 @@ func TestRestartProject(t *testing.T) {
 func TestStopProject(t *testing.T) {
 	ctx := context.Background()
 
-	startTestContainer(ctx, t)
+	test.ComposeUp(ctx, t, test.WithYAML(generateComposeContents()))
 
 	c, err := config.GetAppConfig()
 	if err != nil {
@@ -827,7 +820,7 @@ func TestStopProject(t *testing.T) {
 func TestStartProject(t *testing.T) {
 	ctx := context.Background()
 
-	startTestContainer(ctx, t)
+	test.ComposeUp(ctx, t, test.WithYAML(generateComposeContents()))
 
 	c, err := config.GetAppConfig()
 	if err != nil {
@@ -862,7 +855,7 @@ func TestStartProject(t *testing.T) {
 func TestRemoveProject(t *testing.T) {
 	ctx := context.Background()
 
-	startTestContainer(ctx, t)
+	test.ComposeUp(ctx, t, test.WithYAML(generateComposeContents()))
 
 	c, err := config.GetAppConfig()
 	if err != nil {
@@ -898,7 +891,7 @@ func TestRemoveProject(t *testing.T) {
 func TestGetProject(t *testing.T) {
 	ctx := context.Background()
 
-	startTestContainer(ctx, t)
+	test.ComposeUp(ctx, t, test.WithYAML(generateComposeContents()))
 
 	c, err := config.GetAppConfig()
 	if err != nil {
@@ -927,7 +920,7 @@ func TestGetProject(t *testing.T) {
 func TestGetProjects(t *testing.T) {
 	ctx := context.Background()
 
-	startTestContainer(ctx, t)
+	test.ComposeUp(ctx, t, test.WithYAML(generateComposeContents()))
 
 	c, err := config.GetAppConfig()
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/avast/retry-go/v5"
 	composeCli "github.com/compose-spec/compose-go/v2/cli"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/flags"
@@ -23,6 +24,38 @@ type ComposeStack struct {
 	Service   api.Compose
 	DockerCli command.Cli
 	Client    *client.Client
+}
+
+// composeOptions holds the configuration for [ComposeUp].
+type composeOptions struct {
+	yaml     string
+	filePath string
+	name     string
+}
+
+// ComposeOption configures a [ComposeUp] call.
+type ComposeOption func(*composeOptions)
+
+// WithYAML sets the compose source to an inline YAML string.
+func WithYAML(yaml string) ComposeOption {
+	return func(o *composeOptions) {
+		o.yaml = yaml
+	}
+}
+
+// WithFile sets the compose source to a file path.
+func WithFile(filePath string) ComposeOption {
+	return func(o *composeOptions) {
+		o.filePath = filePath
+	}
+}
+
+// WithName sets a custom stack name.
+// If not set, the stack name defaults to a sanitized version of the test name.
+func WithName(name string) ComposeOption {
+	return func(o *composeOptions) {
+		o.name = name
+	}
 }
 
 // NewDockerCli creates a docker CLI for test use.
@@ -43,30 +76,25 @@ func NewDockerCli() (command.Cli, error) {
 	return dockerCli, nil
 }
 
-// ComposeUp deploys a compose stack from a YAML string using the test name as stack name.
-// Cleanup (compose down) is registered automatically via t.Cleanup.
-func ComposeUp(ctx context.Context, t *testing.T, composeYAML string) *ComposeStack {
+// ComposeUp deploys a compose stack and registers automatic cleanup via t.Cleanup.
+// Use [WithYAML] or [WithFile] to set the compose source, and [WithName] to set a custom stack name.
+func ComposeUp(ctx context.Context, t *testing.T, opts ...ComposeOption) *ComposeStack {
 	t.Helper()
 
-	return composeUp(ctx, t, ConvertTestName(t.Name()), composeYAML, "")
-}
+	var o composeOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
 
-// ComposeUpWithName deploys a compose stack from a YAML string with a custom stack name.
-func ComposeUpWithName(ctx context.Context, t *testing.T, stackName, composeYAML string) *ComposeStack {
-	t.Helper()
+	stackName := o.name
+	if stackName == "" {
+		stackName = ConvertTestName(t.Name())
+	}
 
-	return composeUp(ctx, t, stackName, composeYAML, "")
-}
-
-// ComposeUpFile deploys a compose stack from a compose file path.
-func ComposeUpFile(ctx context.Context, t *testing.T, stackName, composeFilePath string) *ComposeStack {
-	t.Helper()
-
-	return composeUp(ctx, t, stackName, "", composeFilePath)
-}
-
-func composeUp(ctx context.Context, t *testing.T, stackName, composeYAML, composeFilePath string) *ComposeStack {
-	t.Helper()
+	filePath := o.filePath
+	if o.yaml != "" {
+		filePath = writeComposeYAML(t, o.yaml)
+	}
 
 	dockerCli, err := NewDockerCli()
 	if err != nil {
@@ -76,22 +104,6 @@ func composeUp(ctx context.Context, t *testing.T, stackName, composeYAML, compos
 	svc, err := compose.NewComposeService(dockerCli)
 	if err != nil {
 		t.Fatalf("failed to create compose service: %v", err)
-	}
-
-	filePath := composeFilePath
-
-	if composeYAML != "" {
-		tmpFile, err := os.CreateTemp(t.TempDir(), "compose-*.yaml")
-		if err != nil {
-			t.Fatalf("failed to create temp compose file: %v", err)
-		}
-
-		if _, err = tmpFile.WriteString(composeYAML); err != nil {
-			t.Fatalf("failed to write compose file: %v", err)
-		}
-
-		_ = tmpFile.Close()
-		filePath = tmpFile.Name()
 	}
 
 	options, err := composeCli.NewProjectOptions(
@@ -107,22 +119,19 @@ func composeUp(ctx context.Context, t *testing.T, stackName, composeYAML, compos
 		t.Fatalf("failed to load compose project: %v", err)
 	}
 
-	const maxRetries = 3
-
-	for i := range maxRetries {
-		err = svc.Up(ctx, project, api.UpOptions{
+	err = retry.New(
+		retry.Attempts(3),
+		retry.LastErrorOnly(true),
+		retry.Context(ctx),
+		retry.OnRetry(func(attempt uint, err error) {
+			t.Logf("failed to start stack (attempt %d): %v, retrying...", attempt+1, err)
+		}),
+	).Do(func() error {
+		return svc.Up(ctx, project, api.UpOptions{
 			Create: api.CreateOptions{RemoveOrphans: true},
 			Start:  api.StartOptions{Wait: true},
 		})
-		if err == nil {
-			break
-		}
-
-		if i < maxRetries-1 {
-			t.Logf("failed to start stack (attempt %d/%d): %v, retrying...", i+1, maxRetries, err)
-		}
-	}
-
+	})
 	if err != nil {
 		t.Fatalf("failed to start compose stack %q: %v", stackName, err)
 	}
@@ -152,6 +161,24 @@ func composeUp(ctx context.Context, t *testing.T, stackName, composeYAML, compos
 	})
 
 	return stack
+}
+
+// writeComposeYAML writes a compose YAML string to a temporary file and returns its path.
+func writeComposeYAML(t *testing.T, yaml string) string {
+	t.Helper()
+
+	tmpFile, err := os.CreateTemp(t.TempDir(), "compose-*.yaml")
+	if err != nil {
+		t.Fatalf("failed to create temp compose file: %v", err)
+	}
+
+	if _, err = tmpFile.WriteString(yaml); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	_ = tmpFile.Close()
+
+	return tmpFile.Name()
 }
 
 // ServiceContainerID returns the container ID for a service in the stack.

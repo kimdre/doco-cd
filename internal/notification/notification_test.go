@@ -51,7 +51,7 @@ func TestSend(t *testing.T) {
       timeout: 5s
       retries: 10
 `
-	stack := test.ComposeUp(ctx, t, appriseComposeYAML)
+	stack := test.ComposeUp(ctx, t, test.WithYAML(appriseComposeYAML))
 	endpoint := stack.Endpoint(ctx, t, "apprise", "8000")
 
 	for _, tc := range testCases {

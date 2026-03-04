@@ -36,7 +36,7 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 
 	ctx := context.Background()
 
-	stack := test.ComposeUpFile(ctx, t, "openbao-dev", filepath.Join("testdata", "openbao.compose.yml"))
+	stack := test.ComposeUp(ctx, t, test.WithFile(filepath.Join("testdata", "openbao.compose.yml")))
 
 	// Get the randomized host port mapped to Vault's default port 8200
 	mappedPort := stack.MappedPort(ctx, t, "vault", "8200")

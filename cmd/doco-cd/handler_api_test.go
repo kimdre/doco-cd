@@ -156,7 +156,7 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 
 			stackName := test.ConvertTestName(t.Name())
 
-			test.ComposeUpWithName(ctx, t, stackName, composeContent)
+			test.ComposeUp(ctx, t, test.WithYAML(composeContent), test.WithName(stackName))
 
 			endpointPath := path.Join(apiPath, strings.Replace(tc.path, "{projectName}", stackName, 1))
 			endpointPattern := path.Join(apiPath, tc.pattern)
