@@ -15,8 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types/image"
-
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
@@ -25,7 +23,7 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing/format/diff"
 
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 
@@ -33,8 +31,8 @@ import (
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/flags"
-	"github.com/docker/compose/v2/pkg/api"
-	"github.com/docker/compose/v2/pkg/compose"
+	"github.com/docker/compose/v5/pkg/api"
+	"github.com/docker/compose/v5/pkg/compose"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/encryption"
@@ -239,12 +237,15 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		afterImages  map[string]api.ImageSummary // Images used by stack after deployment
 	)
 
-	service := compose.NewComposeService(dockerCli)
+	service, err := compose.NewComposeService(dockerCli)
+	if err != nil {
+		return err
+	}
 
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 
 	if ComposeVersion == "" {
-		ComposeVersion, err = GetModuleVersion("github.com/docker/compose/v2")
+		ComposeVersion, err = GetModuleVersion("github.com/docker/compose/v5")
 		if err != nil {
 			if errors.Is(err, ErrModuleNotFound) {
 				// Placeholder for when the module is not found
@@ -585,7 +586,10 @@ func DestroyStack(
 		return nil
 	}
 
-	service := compose.NewComposeService(*dockerCli)
+	service, err := compose.NewComposeService(*dockerCli)
+	if err != nil {
+		return err
+	}
 
 	downOpts := api.DownOptions{
 		RemoveOrphans: deployConfig.RemoveOrphans,
@@ -596,7 +600,7 @@ func DestroyStack(
 		downOpts.Images = "all"
 	}
 
-	err := service.Down(*ctx, deployConfig.Name, downOpts)
+	err = service.Down(*ctx, deployConfig.Name, downOpts)
 	if err != nil {
 		errMsg := "failed to destroy stack"
 		return fmt.Errorf("%s: %w", errMsg, err)
@@ -795,7 +799,10 @@ func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *ty
 
 // RestartProject restarts all services in the specified project.
 func RestartProject(ctx context.Context, dockerCli command.Cli, projectName string, timeout time.Duration) error {
-	service := compose.NewComposeService(dockerCli)
+	service, err := compose.NewComposeService(dockerCli)
+	if err != nil {
+		return err
+	}
 
 	return service.Restart(ctx, projectName, api.RestartOptions{
 		Timeout: &timeout,
@@ -804,7 +811,10 @@ func RestartProject(ctx context.Context, dockerCli command.Cli, projectName stri
 
 // StopProject stops all services in the specified project.
 func StopProject(ctx context.Context, dockerCli command.Cli, projectName string, timeout time.Duration) error {
-	service := compose.NewComposeService(dockerCli)
+	service, err := compose.NewComposeService(dockerCli)
+	if err != nil {
+		return err
+	}
 
 	return service.Stop(ctx, projectName, api.StopOptions{
 		Timeout: &timeout,
@@ -813,7 +823,10 @@ func StopProject(ctx context.Context, dockerCli command.Cli, projectName string,
 
 // StartProject starts all services in the specified project.
 func StartProject(ctx context.Context, dockerCli command.Cli, projectName string, timeout time.Duration) error {
-	service := compose.NewComposeService(dockerCli)
+	service, err := compose.NewComposeService(dockerCli)
+	if err != nil {
+		return err
+	}
 
 	return service.Start(ctx, projectName, api.StartOptions{
 		Wait:        true,
@@ -823,7 +836,10 @@ func StartProject(ctx context.Context, dockerCli command.Cli, projectName string
 
 // RemoveProject removes the entire project including containers, networks, volumes and images.
 func RemoveProject(ctx context.Context, dockerCli command.Cli, projectName string, timeout time.Duration, removeVolumes, removeImages bool) error {
-	service := compose.NewComposeService(dockerCli)
+	service, err := compose.NewComposeService(dockerCli)
+	if err != nil {
+		return err
+	}
 
 	return service.Down(ctx, projectName, api.DownOptions{
 		RemoveOrphans: true,
@@ -841,7 +857,10 @@ func RemoveProject(ctx context.Context, dockerCli command.Cli, projectName strin
 
 // GetProjects returns a list of all projects.
 func GetProjects(ctx context.Context, dockerCli command.Cli, showDisabled bool) ([]api.Stack, error) {
-	service := compose.NewComposeService(dockerCli)
+	service, err := compose.NewComposeService(dockerCli)
+	if err != nil {
+		return nil, err
+	}
 
 	return service.List(ctx, api.ListOptions{
 		All: showDisabled,
@@ -850,7 +869,10 @@ func GetProjects(ctx context.Context, dockerCli command.Cli, showDisabled bool) 
 
 // GetProjectContainers returns the status of all services in the specified project.
 func GetProjectContainers(ctx context.Context, dockerCli command.Cli, projectName string) ([]api.ContainerSummary, error) {
-	service := compose.NewComposeService(dockerCli)
+	service, err := compose.NewComposeService(dockerCli)
+	if err != nil {
+		return nil, err
+	}
 
 	return service.Ps(ctx, projectName, api.PsOptions{
 		All: true,
@@ -863,7 +885,7 @@ func pruneImages(ctx context.Context, dockerCli command.Cli, images []string) ([
 	var prunedImages []string
 
 	for _, img := range images {
-		response, err := dockerCli.Client().ImageRemove(ctx, img, image.RemoveOptions{
+		result, err := dockerCli.Client().ImageRemove(ctx, img, client.ImageRemoveOptions{
 			Force:         true,
 			PruneChildren: true,
 		})
@@ -881,7 +903,7 @@ func pruneImages(ctx context.Context, dockerCli command.Cli, images []string) ([
 			return nil, fmt.Errorf("failed to remove image %s: %w", img, err)
 		}
 
-		for _, r := range response {
+		for _, r := range result.Items {
 			if r.Deleted != "" {
 				prunedImages = append(prunedImages, r.Deleted)
 			} else if r.Untagged != "" {
@@ -895,7 +917,10 @@ func pruneImages(ctx context.Context, dockerCli command.Cli, images []string) ([
 
 // PullImages pulls all images defined in the compose project.
 func PullImages(ctx context.Context, dockerCli command.Cli, projectName string) error {
-	service := compose.NewComposeService(dockerCli)
+	service, err := compose.NewComposeService(dockerCli)
+	if err != nil {
+		return err
+	}
 
 	containers, err := GetProjectContainers(ctx, dockerCli, projectName)
 	if err != nil {
@@ -919,7 +944,10 @@ func PullImages(ctx context.Context, dockerCli command.Cli, projectName string) 
 
 // GetImages retrieves all image IDs used by the services in the compose project.
 func GetImages(ctx context.Context, dockerCli command.Cli, projectName string) (set.Set[string], error) {
-	service := compose.NewComposeService(dockerCli)
+	service, err := compose.NewComposeService(dockerCli)
+	if err != nil {
+		return nil, err
+	}
 
 	imageSummaries, err := service.Images(ctx, projectName, api.ImagesOptions{})
 	if err != nil {

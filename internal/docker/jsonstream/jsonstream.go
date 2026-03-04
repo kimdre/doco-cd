@@ -8,7 +8,7 @@ import (
 	"io"
 	"regexp"
 
-	"github.com/docker/docker/pkg/jsonmessage"
+	mobyJSONStream "github.com/moby/moby/api/types/jsonstream"
 )
 
 type ctxReader struct {
@@ -17,10 +17,9 @@ type ctxReader struct {
 }
 
 type (
-	Stream       = jsonmessage.Stream
-	JSONMessage  = jsonmessage.JSONMessage
-	JSONError    = jsonmessage.JSONError
-	JSONProgress = jsonmessage.JSONProgress
+	JSONMessage  = mobyJSONStream.Message
+	JSONError    = mobyJSONStream.Error
+	JSONProgress = mobyJSONStream.Progress
 )
 
 var (

@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	swarmTypes "github.com/docker/docker/api/types/swarm"
-	"github.com/docker/docker/client"
+	swarmTypes "github.com/moby/moby/api/types/swarm"
+	dockerClient "github.com/moby/moby/client"
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
@@ -23,7 +23,6 @@ import (
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
-	"github.com/docker/cli/cli/command/stack/swarm"
 	composetypes "github.com/docker/cli/cli/compose/types"
 
 	"github.com/kimdre/doco-cd/internal/docker/options"
@@ -45,7 +44,7 @@ func DeploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types
 	opts := options.Deploy{
 		Composefiles:     project.ComposeFiles,
 		Namespace:        deployConfig.Name,
-		ResolveImage:     swarm.ResolveImageAlways,
+		ResolveImage:     swarmInternal.ResolveImageAlways,
 		SendRegistryAuth: true,
 		Prune:            deployConfig.RemoveOrphans,
 		Detach:           false,
@@ -313,7 +312,7 @@ func generateShortHash(data io.Reader) (hash string, err error) {
 	return hash, nil
 }
 
-func PruneStackConfigs(ctx context.Context, client *client.Client, namespace string) error {
+func PruneStackConfigs(ctx context.Context, client *dockerClient.Client, namespace string) error {
 	// List all configs in the swarm
 	configs, err := GetLabeledConfigs(ctx, client, swarmInternal.StackNamespaceLabel, namespace)
 	if err != nil {
@@ -323,7 +322,7 @@ func PruneStackConfigs(ctx context.Context, client *client.Client, namespace str
 	for _, c := range configs {
 		if c.Spec.Labels[swarmInternal.StackNamespaceLabel] == namespace {
 			// Remove the c if it belongs to the specified namespace
-			err = client.ConfigRemove(ctx, c.ID)
+			_, err = client.ConfigRemove(ctx, c.ID, dockerClient.ConfigRemoveOptions{})
 			if err != nil {
 				if strings.Contains(err.Error(), ErrIsInUse.Error()) {
 					// If the config is in use, we can skip it
@@ -338,7 +337,7 @@ func PruneStackConfigs(ctx context.Context, client *client.Client, namespace str
 	return nil
 }
 
-func PruneStackSecrets(ctx context.Context, client *client.Client, namespace string) error {
+func PruneStackSecrets(ctx context.Context, client *dockerClient.Client, namespace string) error {
 	// List all secrets in the swarm
 	secrets, err := GetLabeledSecrets(ctx, client, swarmInternal.StackNamespaceLabel, namespace)
 	if err != nil {
@@ -348,7 +347,7 @@ func PruneStackSecrets(ctx context.Context, client *client.Client, namespace str
 	for _, s := range secrets {
 		if s.Spec.Labels[swarmInternal.StackNamespaceLabel] == namespace {
 			// Remove the secret if it belongs to the specified namespace
-			err = client.SecretRemove(ctx, s.ID)
+			_, err = client.SecretRemove(ctx, s.ID, dockerClient.SecretRemoveOptions{})
 			if err != nil {
 				if strings.Contains(err.Error(), ErrIsInUse.Error()) {
 					// If the config is in use, we can skip it
@@ -364,7 +363,7 @@ func PruneStackSecrets(ctx context.Context, client *client.Client, namespace str
 }
 
 // WaitForSwarmService waits until a swarm service exists (and optionally has published ports).
-func WaitForSwarmService(ctx context.Context, t *testing.T, cli *client.Client, serviceName string, timeout time.Duration) (swarmTypes.Service, error) {
+func WaitForSwarmService(ctx context.Context, t *testing.T, cli *dockerClient.Client, serviceName string, timeout time.Duration) (swarmTypes.Service, error) {
 	t.Helper()
 
 	deadline := time.Now().Add(timeout)
@@ -372,11 +371,11 @@ func WaitForSwarmService(ctx context.Context, t *testing.T, cli *client.Client, 
 	var lastErr error
 
 	for time.Now().Before(deadline) {
-		svc, _, err := cli.ServiceInspectWithRaw(ctx, serviceName, swarmTypes.ServiceInspectOptions{
+		result, err := cli.ServiceInspect(ctx, serviceName, dockerClient.ServiceInspectOptions{
 			InsertDefaults: true,
 		})
 		if err == nil {
-			return svc, nil
+			return result.Service, nil
 		}
 
 		lastErr = err
@@ -389,13 +388,15 @@ func WaitForSwarmService(ctx context.Context, t *testing.T, cli *client.Client, 
 
 // RestartService restarts long-running Swarm services by bumping ForceUpdate.
 // For job-mode services (replicated-job/global-job), it returns ErrJobServiceRestartNotSupported.
-func RestartService(ctx context.Context, cli *client.Client, serviceName string) error {
-	svc, _, err := cli.ServiceInspectWithRaw(ctx, serviceName, swarmTypes.ServiceInspectOptions{
+func RestartService(ctx context.Context, cli *dockerClient.Client, serviceName string) error {
+	result, err := cli.ServiceInspect(ctx, serviceName, dockerClient.ServiceInspectOptions{
 		InsertDefaults: true,
 	})
 	if err != nil {
 		return fmt.Errorf("inspect service %s: %w", serviceName, err)
 	}
+
+	svc := result.Service
 
 	// Job services cannot be updated with UpdateConfig present; treat restart as a no-op.
 	if svc.Spec.Mode.ReplicatedJob != nil || svc.Spec.Mode.GlobalJob != nil {
@@ -409,7 +410,10 @@ func RestartService(ctx context.Context, cli *client.Client, serviceName string)
 		spec.TaskTemplate.ForceUpdate++
 	}
 
-	_, err = cli.ServiceUpdate(ctx, svc.ID, svc.Version, spec, swarmTypes.ServiceUpdateOptions{})
+	_, err = cli.ServiceUpdate(ctx, svc.ID, dockerClient.ServiceUpdateOptions{
+		Version: svc.Version,
+		Spec:    spec,
+	})
 	if err != nil {
 		return fmt.Errorf("update service %s: %w", serviceName, err)
 	}
@@ -422,13 +426,15 @@ func RestartService(ctx context.Context, cli *client.Client, serviceName string)
 //
 // Note: Swarm does not allow UpdateConfig / RollbackConfig on job-mode services, so we must
 // strip those fields before calling ServiceUpdate.
-func RerunJobService(ctx context.Context, cli *client.Client, serviceName string) error {
-	svc, _, err := cli.ServiceInspectWithRaw(ctx, serviceName, swarmTypes.ServiceInspectOptions{
+func RerunJobService(ctx context.Context, cli *dockerClient.Client, serviceName string) error {
+	result, err := cli.ServiceInspect(ctx, serviceName, dockerClient.ServiceInspectOptions{
 		InsertDefaults: true,
 	})
 	if err != nil {
 		return fmt.Errorf("inspect service %s: %w", serviceName, err)
 	}
+
+	svc := result.Service
 
 	isReplicatedJob := svc.Spec.Mode.ReplicatedJob != nil
 
@@ -449,7 +455,10 @@ func RerunJobService(ctx context.Context, cli *client.Client, serviceName string
 	spec.UpdateConfig = nil
 	spec.RollbackConfig = nil
 
-	_, err = cli.ServiceUpdate(ctx, svc.ID, svc.Version, spec, swarmTypes.ServiceUpdateOptions{})
+	_, err = cli.ServiceUpdate(ctx, svc.ID, dockerClient.ServiceUpdateOptions{
+		Version: svc.Version,
+		Spec:    spec,
+	})
 	if err != nil {
 		return fmt.Errorf("update (rerun) job service %s: %w", serviceName, err)
 	}

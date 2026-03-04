@@ -11,10 +11,10 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/git"
 
-	"github.com/docker/compose/v2/pkg/api"
-	"github.com/docker/compose/v2/pkg/compose"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"github.com/docker/compose/v5/pkg/api"
+	"github.com/docker/compose/v5/pkg/compose"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -25,7 +25,7 @@ import (
 func TestRunPoll(t *testing.T) {
 	encryption.SetupAgeKeyEnvVar(t)
 
-	log := logger.New(12)
+	log := logger.New(logger.LevelCritical)
 	ctx := context.Background()
 
 	pollConfig := config.PollConfig{
@@ -66,12 +66,14 @@ func TestRunPoll(t *testing.T) {
 		t.Fatalf("Failed to create docker client: %v", err)
 	}
 
-	dockerClient, _ := client.NewClientWithOpts(
+	dockerClient, _ := client.New(
 		client.FromEnv,
-		client.WithAPIVersionNegotiation(),
 	)
 
-	service := compose.NewComposeService(dockerCli)
+	service, err := compose.NewComposeService(dockerCli)
+	if err != nil {
+		t.Fatalf("failed to create compose service: %v", err)
+	}
 
 	downOpts := api.DownOptions{
 		RemoveOrphans: true,

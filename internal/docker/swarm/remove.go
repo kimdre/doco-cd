@@ -7,10 +7,10 @@ import (
 	"sort"
 
 	"github.com/docker/cli/cli/command"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/api/types/swarm"
-	"github.com/docker/docker/api/types/versions"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/api/types/swarm"
+	"github.com/moby/moby/client"
+	"github.com/moby/moby/client/pkg/versions"
 
 	"github.com/kimdre/doco-cd/internal/docker/options"
 )
@@ -87,7 +87,7 @@ func removeServices(ctx context.Context, dockerCLI command.Cli, services []swarm
 
 	for _, service := range services {
 		_, _ = fmt.Fprintln(dockerCLI.Out(), "Removing service", service.Spec.Name)
-		if err := dockerCLI.Client().ServiceRemove(ctx, service.ID); err != nil {
+		if _, err := dockerCLI.Client().ServiceRemove(ctx, service.ID, client.ServiceRemoveOptions{}); err != nil {
 			hasError = true
 			_, _ = fmt.Fprintf(dockerCLI.Err(), "Failed to remove service %s: %s", service.ID, err)
 		}
@@ -101,7 +101,7 @@ func removeNetworks(ctx context.Context, dockerCLI command.Cli, networks []netwo
 
 	for _, nw := range networks {
 		_, _ = fmt.Fprintln(dockerCLI.Out(), "Removing network", nw.Name)
-		if err := dockerCLI.Client().NetworkRemove(ctx, nw.ID); err != nil {
+		if _, err := dockerCLI.Client().NetworkRemove(ctx, nw.ID, client.NetworkRemoveOptions{}); err != nil {
 			hasError = true
 			_, _ = fmt.Fprintf(dockerCLI.Err(), "Failed to remove network %s: %s", nw.ID, err)
 		}
@@ -115,7 +115,7 @@ func removeSecrets(ctx context.Context, dockerCli command.Cli, secrets []swarm.S
 
 	for _, secret := range secrets {
 		_, _ = fmt.Fprintln(dockerCli.Out(), "Removing secret", secret.Spec.Name)
-		if err := dockerCli.Client().SecretRemove(ctx, secret.ID); err != nil {
+		if _, err := dockerCli.Client().SecretRemove(ctx, secret.ID, client.SecretRemoveOptions{}); err != nil {
 			hasError = true
 			_, _ = fmt.Fprintf(dockerCli.Err(), "Failed to remove secret %s: %s", secret.ID, err)
 		}
@@ -129,7 +129,7 @@ func removeConfigs(ctx context.Context, dockerCLI command.Cli, configs []swarm.C
 
 	for _, config := range configs {
 		_, _ = fmt.Fprintln(dockerCLI.Out(), "Removing config", config.Spec.Name)
-		if err := dockerCLI.Client().ConfigRemove(ctx, config.ID); err != nil {
+		if _, err := dockerCLI.Client().ConfigRemove(ctx, config.ID, client.ConfigRemoveOptions{}); err != nil {
 			hasError = true
 			_, _ = fmt.Fprintf(dockerCLI.Err(), "Failed to remove config %s: %s", config.ID, err)
 		}

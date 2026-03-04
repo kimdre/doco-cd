@@ -12,11 +12,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/docker/compose/v2/pkg/api"
-	"github.com/docker/compose/v2/pkg/compose"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"github.com/docker/compose/v5/pkg/api"
+	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/google/uuid"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/test"
 
@@ -212,9 +212,8 @@ func TestHandleEvent(t *testing.T) {
 		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 
-	dockerClient, _ := client.NewClientWithOpts(
+	dockerClient, _ := client.New(
 		client.FromEnv,
-		client.WithAPIVersionNegotiation(),
 	)
 
 	encryption.SetupAgeKeyEnvVar(t)
@@ -247,9 +246,8 @@ func TestHandleEvent(t *testing.T) {
 				t.Skip("Skipping test for private repository because GIT_ACCESS_TOKEN is not set")
 			}
 
-			log := logger.New(12)
 			jobID := uuid.Must(uuid.NewV7()).String()
-			jobLog := log.With(slog.String("job_id", jobID))
+			jobLog := logger.New(logger.LevelCritical).With(slog.String("job_id", jobID))
 
 			ctx := context.Background()
 
@@ -281,7 +279,7 @@ func TestHandleEvent(t *testing.T) {
 			rr := httptest.NewRecorder()
 
 			t.Cleanup(func() {
-				service := compose.NewComposeService(dockerCli)
+				service, svcErr := compose.NewComposeService(dockerCli)
 
 				downOpts := api.DownOptions{
 					RemoveOrphans: true,
@@ -291,7 +289,7 @@ func TestHandleEvent(t *testing.T) {
 
 				if swarm.ModeEnabled {
 					err = docker.RemoveSwarmStack(ctx, dockerCli, stackName)
-				} else if service != nil {
+				} else if svcErr == nil && service != nil {
 					err = service.Down(ctx, stackName, downOpts)
 				}
 

@@ -5,28 +5,25 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/moby/moby/api/pkg/stdcopy"
+	"github.com/moby/moby/client"
 )
 
-func Exec(client client.APIClient, containerID string, cmd ...string) (out string, err error) {
-	client.NegotiateAPIVersion(context.TODO())
-
+func Exec(apiClient client.APIClient, containerID string, cmd ...string) (out string, err error) {
 	// EXEC COMMAND
-	execConfig := container.ExecOptions{
+	execConfig := client.ExecCreateOptions{
 		Cmd:          cmd,
 		AttachStdout: true,
 		AttachStderr: true,
 	}
 
-	res, err := client.ContainerExecCreate(context.Background(), containerID, execConfig)
+	res, err := apiClient.ExecCreate(context.Background(), containerID, execConfig)
 	if err != nil {
 		return "", fmt.Errorf("failed to exec command with error: %w", err)
 	}
 
 	// ATTACH TO EXEC PROCESS
-	resp, err := client.ContainerExecAttach(context.Background(), res.ID, container.ExecAttachOptions{})
+	resp, err := apiClient.ExecAttach(context.Background(), res.ID, client.ExecAttachOptions{})
 	if err != nil {
 		return "", fmt.Errorf("failed to attach to exec process: %w", err)
 	}

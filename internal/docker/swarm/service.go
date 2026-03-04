@@ -8,9 +8,8 @@ import (
 
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/command/service/progress"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/api/types/swarm"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/swarm"
+	"github.com/moby/moby/client"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/kimdre/doco-cd/internal/docker/jsonstream"
@@ -62,7 +61,7 @@ func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string)
 func waitForNetwork(ctx context.Context, apiClient client.NetworkAPIClient, name string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		_, err := apiClient.NetworkInspect(ctx, name, network.InspectOptions{})
+		_, err := apiClient.NetworkInspect(ctx, name, client.NetworkInspectOptions{})
 		if err == nil {
 			return nil
 		}
@@ -81,7 +80,7 @@ func waitForNetwork(ctx context.Context, apiClient client.NetworkAPIClient, name
 func waitForSecret(ctx context.Context, apiClient client.SecretAPIClient, name string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		_, _, err := apiClient.SecretInspectWithRaw(ctx, name)
+		_, err := apiClient.SecretInspect(ctx, name, client.SecretInspectOptions{})
 		if err == nil {
 			return nil
 		}
@@ -100,7 +99,7 @@ func waitForSecret(ctx context.Context, apiClient client.SecretAPIClient, name s
 func waitForConfig(ctx context.Context, apiClient client.ConfigAPIClient, name string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		_, _, err := apiClient.ConfigInspectWithRaw(ctx, name)
+		_, err := apiClient.ConfigInspect(ctx, name, client.ConfigInspectOptions{})
 		if err == nil {
 			return nil
 		}
@@ -116,7 +115,7 @@ func waitForConfig(ctx context.Context, apiClient client.ConfigAPIClient, name s
 }
 
 // waitForResources waits for the specified resources to be ready by concurrently inspecting them until they succeed or time out.
-func waitForResources(ctx context.Context, apiClient client.APIClient, networks map[string]network.CreateOptions, secrets []swarm.SecretSpec, configs []swarm.ConfigSpec) error {
+func waitForResources(ctx context.Context, apiClient client.APIClient, networks map[string]client.NetworkCreateOptions, secrets []swarm.SecretSpec, configs []swarm.ConfigSpec) error {
 	const resourceWaitTimeout = 5 * time.Second
 
 	g, ctx := errgroup.WithContext(ctx)
