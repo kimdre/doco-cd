@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/test"
 
@@ -93,9 +93,8 @@ func TestDeploySwarmStack(t *testing.T) {
 		t.Logf("Swarm stack deployed successfully")
 	}
 
-	dockerClient, _ := client.NewClientWithOpts(
+	dockerClient, _ := client.New(
 		client.FromEnv,
-		client.WithAPIVersionNegotiation(),
 	)
 
 	t.Cleanup(func() {

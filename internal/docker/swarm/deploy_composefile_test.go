@@ -5,24 +5,24 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"gotest.tools/v3/assert"
 )
 
 // FakeClient is a fake NetworkAPIClient.
 type FakeClient struct {
 	client.NetworkAPIClient
-	NetworkInspectFunc func(ctx context.Context, networkID string, options network.InspectOptions) (network.Inspect, error)
+	NetworkInspectFunc func(ctx context.Context, networkID string, options client.NetworkInspectOptions) (client.NetworkInspectResult, error)
 }
 
 // NetworkInspect fakes inspecting a network.
-func (c *FakeClient) NetworkInspect(ctx context.Context, networkID string, options network.InspectOptions) (network.Inspect, error) {
+func (c *FakeClient) NetworkInspect(ctx context.Context, networkID string, options client.NetworkInspectOptions) (client.NetworkInspectResult, error) {
 	if c.NetworkInspectFunc != nil {
 		return c.NetworkInspectFunc(ctx, networkID, options)
 	}
 
-	return network.Inspect{}, nil
+	return client.NetworkInspectResult{}, nil
 }
 
 type notFoundError struct {
@@ -63,14 +63,14 @@ func TestValidateExternalNetworks(t *testing.T) {
 		},
 		{
 			network:         "user",
-			inspectResponse: network.Inspect{Scope: "swarm"},
+			inspectResponse: network.Inspect{Network: network.Network{Scope: "swarm"}},
 		},
 	}
 
 	for _, testcase := range testCases {
 		c := &FakeClient{
-			NetworkInspectFunc: func(_ context.Context, _ string, _ network.InspectOptions) (network.Inspect, error) {
-				return testcase.inspectResponse, testcase.inspectError
+			NetworkInspectFunc: func(_ context.Context, _ string, _ client.NetworkInspectOptions) (client.NetworkInspectResult, error) {
+				return client.NetworkInspectResult{Network: testcase.inspectResponse}, testcase.inspectError
 			},
 		}
 		networks := []string{testcase.network}

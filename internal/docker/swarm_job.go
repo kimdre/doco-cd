@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/docker/cli/cli/command"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/mount"
-	swarmTypes "github.com/docker/docker/api/types/swarm"
+	"github.com/moby/moby/api/types/mount"
+	swarmTypes "github.com/moby/moby/api/types/swarm"
+	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -28,8 +28,6 @@ const (
 // https://docs.docker.com/reference/cli/docker/service/create/#running-as-a-job
 func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode JobMode, command []string, title string) error {
 	apiClient := dockerCLI.Client()
-
-	createOpts := swarmTypes.ServiceCreateOptions{QueryRegistry: true}
 
 	var (
 		serviceMode swarmTypes.ServiceMode
@@ -82,26 +80,28 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode JobMode, comma
 		Mode: serviceMode,
 	}
 
-	response, err := apiClient.ServiceCreate(ctx, newServiceSpec, createOpts)
+	response, err := apiClient.ServiceCreate(ctx, client.ServiceCreateOptions{
+		Spec:          newServiceSpec,
+		QueryRegistry: true,
+	})
 	if err == nil {
 		serviceId = response.ID
 	} else {
 		// Update existing service to trigger a new job run
 		if strings.Contains(err.Error(), "already exists") {
 			// Get the existing service ID
-			filter := filters.NewArgs()
-			filter.Add("name", newServiceSpec.Name)
+			filter := make(client.Filters).Add("name", newServiceSpec.Name)
 
-			services, listErr := apiClient.ServiceList(ctx, swarmTypes.ServiceListOptions{Filters: filter})
+			listResult, listErr := apiClient.ServiceList(ctx, client.ServiceListOptions{Filters: filter})
 			if listErr != nil {
 				return fmt.Errorf("error listing services: %w", listErr)
 			}
 
-			if len(services) == 0 {
+			if len(listResult.Items) == 0 {
 				return errors.New("service already exists but could not find it")
 			}
 
-			for _, service := range services {
+			for _, service := range listResult.Items {
 				if service.Spec.Name == newServiceSpec.Name {
 					serviceId = service.ID
 					break
@@ -112,22 +112,23 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode JobMode, comma
 				return errors.New("service already exists but could not find its ID")
 			}
 
-			// Update the existing service to trigger a new job run
-			updateOpts := swarmTypes.ServiceUpdateOptions{
-				QueryRegistry: true,
-			}
-
-			existingService, _, getErr := apiClient.ServiceInspectWithRaw(ctx, serviceId, swarmTypes.ServiceInspectOptions{})
+			inspectResult, getErr := apiClient.ServiceInspect(ctx, serviceId, client.ServiceInspectOptions{})
 			if getErr != nil {
 				return fmt.Errorf("error inspecting existing service: %w", getErr)
 			}
+
+			existingService := inspectResult.Service
 
 			// Update the ForceUpdate to trigger a new job run
 			existingService.Spec.TaskTemplate.ContainerSpec.Labels = newServiceSpec.TaskTemplate.ContainerSpec.Labels
 			existingService.Spec.TaskTemplate.ContainerSpec.Command = newServiceSpec.TaskTemplate.ContainerSpec.Command
 			existingService.Spec.TaskTemplate.ForceUpdate = newServiceSpec.TaskTemplate.ForceUpdate
 
-			_, updateErr := apiClient.ServiceUpdate(ctx, serviceId, existingService.Version, existingService.Spec, updateOpts)
+			_, updateErr := apiClient.ServiceUpdate(ctx, serviceId, client.ServiceUpdateOptions{
+				Version:       existingService.Version,
+				Spec:          existingService.Spec,
+				QueryRegistry: true,
+			})
 			if updateErr != nil {
 				return fmt.Errorf("error updating existing service: %w", updateErr)
 			}

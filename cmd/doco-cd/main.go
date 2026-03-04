@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/git/ssh"
 
@@ -149,9 +149,8 @@ func main() {
 		}
 	}(dockerCli.Client())
 
-	dockerClient, err := client.NewClientWithOpts(
+	dockerClient, err := client.New(
 		client.FromEnv,
-		client.WithAPIVersionNegotiation(),
 	)
 	if err != nil {
 		log.Critical("failed to create docker client", logger.ErrAttr(err))

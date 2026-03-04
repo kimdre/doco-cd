@@ -4,10 +4,9 @@ import (
 	"context"
 
 	"github.com/docker/cli/cli/compose/convert"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/api/types/swarm"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/api/types/swarm"
+	"github.com/moby/moby/client"
 )
 
 const (
@@ -16,49 +15,75 @@ const (
 
 var ModeEnabled bool // Whether the docker host is running in swarm mode
 
-func getStackFilter(namespace string) filters.Args {
-	filter := filters.NewArgs()
-	filter.Add("label", convert.LabelNamespace+"="+namespace)
-
-	return filter
+func getStackFilter(namespace string) client.Filters {
+	return make(client.Filters).Add("label", convert.LabelNamespace+"="+namespace)
 }
 
 func GetStackServices(ctx context.Context, apiclient client.APIClient, namespace string) ([]swarm.Service, error) {
-	return apiclient.ServiceList(ctx, swarm.ServiceListOptions{Filters: getStackFilter(namespace)})
+	result, err := apiclient.ServiceList(ctx, client.ServiceListOptions{Filters: getStackFilter(namespace)})
+	if err != nil {
+		return nil, err
+	}
+
+	return result.Items, nil
 }
 
 func GetServicesByLabel(ctx context.Context, apiclient client.APIClient, labelKey, labelValue string) ([]swarm.Service, error) {
-	filter := filters.NewArgs()
-	filter.Add("label", labelKey+"="+labelValue)
+	filter := make(client.Filters).Add("label", labelKey+"="+labelValue)
 
-	return apiclient.ServiceList(ctx, swarm.ServiceListOptions{Filters: filter})
+	result, err := apiclient.ServiceList(ctx, client.ServiceListOptions{Filters: filter})
+	if err != nil {
+		return nil, err
+	}
+
+	return result.Items, nil
 }
 
 func getStackNetworks(ctx context.Context, apiclient client.APIClient, namespace string) ([]network.Summary, error) {
-	return apiclient.NetworkList(ctx, network.ListOptions{Filters: getStackFilter(namespace)})
+	result, err := apiclient.NetworkList(ctx, client.NetworkListOptions{Filters: getStackFilter(namespace)})
+	if err != nil {
+		return nil, err
+	}
+
+	return result.Items, nil
 }
 
 func getStackSecrets(ctx context.Context, apiclient client.APIClient, namespace string) ([]swarm.Secret, error) {
-	return apiclient.SecretList(ctx, swarm.SecretListOptions{Filters: getStackFilter(namespace)})
+	result, err := apiclient.SecretList(ctx, client.SecretListOptions{Filters: getStackFilter(namespace)})
+	if err != nil {
+		return nil, err
+	}
+
+	return result.Items, nil
 }
 
 func getStackConfigs(ctx context.Context, apiclient client.APIClient, namespace string) ([]swarm.Config, error) {
-	return apiclient.ConfigList(ctx, swarm.ConfigListOptions{Filters: getStackFilter(namespace)})
+	result, err := apiclient.ConfigList(ctx, client.ConfigListOptions{Filters: getStackFilter(namespace)})
+	if err != nil {
+		return nil, err
+	}
+
+	return result.Items, nil
 }
 
 func getStackTasks(ctx context.Context, apiclient client.APIClient, namespace string) ([]swarm.Task, error) {
-	return apiclient.TaskList(ctx, swarm.TaskListOptions{Filters: getStackFilter(namespace)})
+	result, err := apiclient.TaskList(ctx, client.TaskListOptions{Filters: getStackFilter(namespace)})
+	if err != nil {
+		return nil, err
+	}
+
+	return result.Items, nil
 }
 
 func GetStacks(ctx context.Context, apiclient client.APIClient) (map[string][]swarm.Service, error) {
 	stacks := make(map[string][]swarm.Service)
 
-	services, err := apiclient.ServiceList(ctx, swarm.ServiceListOptions{})
+	result, err := apiclient.ServiceList(ctx, client.ServiceListOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	for _, service := range services {
+	for _, service := range result.Items {
 		if namespace, ok := service.Spec.Labels[StackNamespaceLabel]; ok {
 			stacks[namespace] = append(stacks[namespace], service)
 		}

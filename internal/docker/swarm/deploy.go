@@ -6,11 +6,11 @@ import (
 	"fmt"
 
 	"github.com/docker/cli/cli/command"
-	"github.com/docker/cli/cli/command/stack/swarm"
 	"github.com/docker/cli/cli/compose/convert"
 	composetypes "github.com/docker/cli/cli/compose/types"
-	swarmTypes "github.com/docker/docker/api/types/swarm"
-	"github.com/docker/docker/api/types/versions"
+	swarmTypes "github.com/moby/moby/api/types/swarm"
+	"github.com/moby/moby/client"
+	"github.com/moby/moby/client/pkg/versions"
 
 	"github.com/kimdre/doco-cd/internal/utils/set"
 
@@ -18,6 +18,13 @@ import (
 )
 
 const defaultNetworkDriver = "overlay"
+
+// ResolveImage constants for controlling image resolution during deployment.
+const (
+	ResolveImageAlways  = "always"
+	ResolveImageChanged = "changed"
+	ResolveImageNever   = "never"
+)
 
 var ErrNotReplicatedService = errors.New("service is not in replicated or replicated-job mode")
 
@@ -29,7 +36,7 @@ func RunDeploy(ctx context.Context, dockerCLI command.Cli, opts *options.Deploy,
 	// client side image resolution should not be done when the supported
 	// server version is older than 1.30
 	if versions.LessThan(dockerCLI.Client().ClientVersion(), "1.30") {
-		opts.ResolveImage = swarm.ResolveImageNever
+		opts.ResolveImage = ResolveImageNever
 	}
 
 	return deployCompose(ctx, dockerCLI, opts, cfg)
@@ -38,7 +45,7 @@ func RunDeploy(ctx context.Context, dockerCLI command.Cli, opts *options.Deploy,
 // validateResolveImageFlag validates the opts.resolveImage command line option.
 func validateResolveImageFlag(opts *options.Deploy) error {
 	switch opts.ResolveImage {
-	case swarm.ResolveImageAlways, swarm.ResolveImageChanged, swarm.ResolveImageNever:
+	case ResolveImageAlways, ResolveImageChanged, ResolveImageNever:
 		return nil
 	default:
 		return fmt.Errorf("invalid option %s for resolve-image", opts.ResolveImage)
@@ -50,12 +57,12 @@ func validateResolveImageFlag(opts *options.Deploy) error {
 // create services, but the API call for creating a network does not return a
 // proper status code when it can't create a network in the "global" scope.
 func CheckDaemonIsSwarmManager(ctx context.Context, dockerCli command.Cli) (bool, error) {
-	info, err := dockerCli.Client().Info(ctx)
+	result, err := dockerCli.Client().Info(ctx, client.InfoOptions{})
 	if err != nil {
 		return false, err
 	}
 
-	if !info.Swarm.ControlAvailable {
+	if !result.Info.Swarm.ControlAvailable {
 		return false, nil
 	}
 
@@ -85,10 +92,12 @@ func pruneServices(ctx context.Context, dockerCCLI command.Cli, namespace conver
 func ScaleService(ctx context.Context, dockerCLI command.Cli, serviceName string, replicas uint64, wait, force bool) error {
 	apiClient := dockerCLI.Client()
 
-	service, _, err := apiClient.ServiceInspectWithRaw(ctx, serviceName, swarmTypes.ServiceInspectOptions{})
+	result, err := apiClient.ServiceInspect(ctx, serviceName, client.ServiceInspectOptions{})
 	if err != nil {
 		return err
 	}
+
+	service := result.Service
 
 	if force {
 		service.Spec.TaskTemplate.ForceUpdate++
@@ -104,7 +113,10 @@ func ScaleService(ctx context.Context, dockerCLI command.Cli, serviceName string
 		service.Spec.Mode.ReplicatedJob.TotalCompletions = &replicas
 		service.Spec.Mode.ReplicatedJob.MaxConcurrent = &replicas
 
-		_, err = apiClient.ServiceUpdate(ctx, service.ID, service.Version, service.Spec, swarmTypes.ServiceUpdateOptions{})
+		_, err = apiClient.ServiceUpdate(ctx, service.ID, client.ServiceUpdateOptions{
+			Version: service.Version,
+			Spec:    service.Spec,
+		})
 
 		return err
 	}
@@ -116,7 +128,10 @@ func ScaleService(ctx context.Context, dockerCLI command.Cli, serviceName string
 
 	service.Spec.Mode.Replicated.Replicas = &replicas
 
-	_, err = apiClient.ServiceUpdate(ctx, service.ID, service.Version, service.Spec, swarmTypes.ServiceUpdateOptions{})
+	_, err = apiClient.ServiceUpdate(ctx, service.ID, client.ServiceUpdateOptions{
+		Version: service.Version,
+		Spec:    service.Spec,
+	})
 	if err != nil {
 		return err
 	}

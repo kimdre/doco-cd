@@ -10,16 +10,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/compose/v2/pkg/api"
-	"github.com/docker/docker/api/types/swarm"
+	"github.com/docker/compose/v5/pkg/api"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/swarm"
 
 	swarmInternal "github.com/kimdre/doco-cd/internal/docker/swarm"
 
-	"github.com/docker/docker/api/types/volume"
+	"github.com/moby/moby/api/types/volume"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 )
 
 var (
@@ -31,13 +30,13 @@ var (
 )
 
 // GetContainerID retrieves the container ID for a given service name.
-func GetContainerID(client client.APIClient, name string) (id string, err error) {
-	containers, err := client.ContainerList(context.TODO(), container.ListOptions{All: true})
+func GetContainerID(apiClient client.APIClient, name string) (id string, err error) {
+	result, err := apiClient.ContainerList(context.TODO(), client.ContainerListOptions{All: true})
 	if err != nil {
 		return "", err
 	}
 
-	for _, cont := range containers {
+	for _, cont := range result.Items {
 		for _, containerName := range cont.Names {
 			if strings.Contains(containerName, name) { // Match by service name
 				return cont.ID, nil
@@ -84,10 +83,15 @@ func GetServiceLabels(ctx context.Context, cli *client.Client, stackName string)
 
 // GetLabeledContainers retrieves all containers with a specific label key and value.
 func GetLabeledContainers(ctx context.Context, cli *client.Client, key, value string) (containers []container.Summary, err error) {
-	return cli.ContainerList(ctx, container.ListOptions{
-		Filters: filters.NewArgs(filters.Arg("label", key+"="+value)),
+	result, err := cli.ContainerList(ctx, client.ContainerListOptions{
+		Filters: make(client.Filters).Add("label", key+"="+value),
 		All:     false,
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	return result.Items, nil
 }
 
 // GetLabeledServices retrieves all services with a specific label key and value, along with their labels.
@@ -120,51 +124,51 @@ func GetLabeledServices(ctx context.Context, cli *client.Client, key, value stri
 }
 
 // GetLabeledVolumes retrieves all volumes with a specific label key and value.
-func GetLabeledVolumes(ctx context.Context, cli *client.Client, key, value string) (volumes []*volume.Volume, err error) {
-	volResp, err := cli.VolumeList(ctx, volume.ListOptions{
-		Filters: filters.NewArgs(filters.Arg("label", key+"="+value)),
+func GetLabeledVolumes(ctx context.Context, cli *client.Client, key, value string) (volumes []volume.Volume, err error) {
+	volResp, err := cli.VolumeList(ctx, client.VolumeListOptions{
+		Filters: make(client.Filters).Add("label", key+"="+value),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list volumes with label %s=%s: %w", key, value, err)
 	}
 
-	return volResp.Volumes, nil
+	return volResp.Items, nil
 }
 
 // GetLabeledConfigs retrieves all configs with a specific label key and value.
 func GetLabeledConfigs(ctx context.Context, cli *client.Client, key, value string) (configs []swarm.Config, err error) {
-	configs, err = cli.ConfigList(ctx, swarm.ConfigListOptions{
-		Filters: filters.NewArgs(filters.Arg("label", key+"="+value)),
+	result, err := cli.ConfigList(ctx, client.ConfigListOptions{
+		Filters: make(client.Filters).Add("label", key+"="+value),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list configs with label %s=%s: %w", key, value, err)
 	}
 
-	return configs, nil
+	return result.Items, nil
 }
 
 // GetLabeledSecrets retrieves all secrets with a specific label key and value.
 func GetLabeledSecrets(ctx context.Context, cli *client.Client, key, value string) (secrets []swarm.Secret, err error) {
-	secrets, err = cli.SecretList(ctx, swarm.SecretListOptions{
-		Filters: filters.NewArgs(filters.Arg("label", key+"="+value)),
+	result, err := cli.SecretList(ctx, client.SecretListOptions{
+		Filters: make(client.Filters).Add("label", key+"="+value),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list secrets with label %s=%s: %w", key, value, err)
 	}
 
-	return secrets, nil
+	return result.Items, nil
 }
 
 // GetMountPointByDestination retrieves the mount point of a container volume/bind mount by its destination (mount point inside the container).
 func GetMountPointByDestination(cli *client.Client, containerID, destination string) (container.MountPoint, error) {
 	// Get the container info
-	cont, err := cli.ContainerInspect(context.TODO(), containerID)
+	result, err := cli.ContainerInspect(context.TODO(), containerID, client.ContainerInspectOptions{})
 	if err != nil {
 		return container.MountPoint{}, fmt.Errorf("failed to inspect container %s: %w", containerID, err)
 	}
 
 	// Get the volume path
-	for _, mount := range cont.Mounts {
+	for _, mount := range result.Container.Mounts {
 		if mount.Destination == destination {
 			return mount, nil
 		}
@@ -182,10 +186,12 @@ func CheckMountPointWriteable(mountPoint container.MountPoint) error {
 	// Create a test file to check if the mount point is writable
 	testFilePath := filepath.Join(mountPoint.Destination, ".test")
 
-	_, err := os.Create(testFilePath) // #nosec G304
+	f, err := os.Create(testFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to create file in %s: %w", testFilePath, err)
 	}
+
+	defer f.Close()
 
 	defer func() {
 		err = os.Remove(testFilePath)
@@ -228,7 +234,7 @@ func RemoveLabeledVolumes(ctx context.Context, dockerClient *client.Client, stac
 		retries := 5
 
 		for i := 0; i < retries; i++ {
-			err = dockerClient.VolumeRemove(ctx, vol.Name, true)
+			_, err = dockerClient.VolumeRemove(ctx, vol.Name, client.VolumeRemoveOptions{Force: true})
 			if err != nil {
 				if strings.Contains(err.Error(), ErrIsInUse.Error()) {
 					time.Sleep(2 * time.Second)
