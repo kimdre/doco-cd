@@ -29,9 +29,10 @@ type ComposeStack struct {
 
 // composeOptions holds the configuration for [ComposeUp].
 type composeOptions struct {
-	yaml     string
-	filePath string
-	name     string
+	yaml        string
+	filePath    string
+	name        string
+	pruneImages bool
 }
 
 // ComposeOption configures a [ComposeUp] call.
@@ -56,6 +57,13 @@ func WithFile(filePath string) ComposeOption {
 func WithName(name string) ComposeOption {
 	return func(o *composeOptions) {
 		o.name = name
+	}
+}
+
+// WithPruneImages removes all images when the stack is taken down during cleanup.
+func WithPruneImages() ComposeOption {
+	return func(o *composeOptions) {
+		o.pruneImages = true
 	}
 }
 
@@ -157,11 +165,15 @@ func ComposeUp(ctx context.Context, t *testing.T, opts ...ComposeOption) *Compos
 	})
 
 	t.Cleanup(func() {
-		if err := svc.Down(context.WithoutCancel(ctx), stackName, api.DownOptions{
+		downOpts := api.DownOptions{
 			RemoveOrphans: true,
 			Volumes:       true,
-			Images:        "all",
-		}); err != nil {
+		}
+		if o.pruneImages {
+			downOpts.Images = "all"
+		}
+
+		if err := svc.Down(context.WithoutCancel(ctx), stackName, downOpts); err != nil {
 			t.Errorf("failed to stop compose stack %q: %v", stackName, err)
 		}
 	})
