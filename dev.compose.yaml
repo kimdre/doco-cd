@@ -2,7 +2,7 @@ x-poll-config: &poll-config
   POLL_CONFIG: |
     - url: https://github.com/kimdre/doco-cd_tests.git
       #url: git@github.com:kimdre/doco-cd_tests.git
-      reference: main
+      reference: with-submodule
       interval: 10
       #target: "bitwarden-sm"
 
@@ -38,7 +38,6 @@ services:
       #SSH_PRIVATE_KEY_FILE: /run/secrets/ssh-private-key
       #APPRISE_API_URL: http://apprise:8000/notify
       #APPRISE_NOTIFY_LEVEL: info
-      # APPRISE_NOTIFY_URLS: # see .env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - data:/data
