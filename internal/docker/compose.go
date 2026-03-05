@@ -950,22 +950,25 @@ func checkFilePath(file string, paths []string, workingDir string) (bool, error)
 
 // ProjectFilesHaveChanges checks if any files related to the compose project have changed.
 func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
-	checks := map[string]func([]gitInternal.ChangedFile, *types.Project) (bool, error){
-		"configs":    HasChangedConfigs,
-		"secrets":    HasChangedSecrets,
-		"bindMounts": HasChangedBindMounts,
-		"envFiles":   HasChangedEnvFiles,
-		"extends":    HasChangedExtendsFiles,
-		"includes":   HasChangedIncludeFiles,
+	checks := []struct {
+		name string
+		fn   func([]gitInternal.ChangedFile, *types.Project) (bool, error)
+	}{
+		{"configs", HasChangedConfigs},
+		{"secrets", HasChangedSecrets},
+		{"bindMounts", HasChangedBindMounts},
+		{"envFiles", HasChangedEnvFiles},
+		{"extends", HasChangedExtendsFiles},
+		{"includes", HasChangedIncludeFiles},
 	}
 
-	for name, check := range checks {
-		hasChanges, err := check(changedFiles, project)
+	for _, check := range checks {
+		changed, err := check.fn(changedFiles, project)
 		if err != nil {
-			return false, fmt.Errorf("failed to check %s for changes: %w", name, err)
+			return false, fmt.Errorf("failed to check '%s' for changes: %w", check.name, err)
 		}
 
-		if hasChanges {
+		if changed {
 			return true, nil
 		}
 	}
