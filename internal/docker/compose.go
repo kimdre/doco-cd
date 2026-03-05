@@ -758,6 +758,7 @@ func HasChangedComposeFiles(changedFiles []gitInternal.ChangedFile, project *typ
 			composeFile = filepath.Join(project.WorkingDir, composeFile)
 		}
 
+		// Get the last 4 parts of the composeFile path
 		composeFileParts := strings.Split(composeFile, string(os.PathSeparator))
 
 		pathSuffix := path.Join(composeFileParts...)
@@ -842,6 +843,11 @@ func HasChangedExtendsFiles(changedFiles []gitInternal.ChangedFile, project *typ
 	}
 
 	for _, file := range extends {
+		if !path.IsAbs(file) {
+			file = filepath.Join(project.WorkingDir, file)
+		}
+
+		// Get the last 4 parts of the file path
 		fileParts := strings.Split(file, string(os.PathSeparator))
 
 		pathSuffix := path.Join(fileParts...)
