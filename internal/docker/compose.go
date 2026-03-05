@@ -767,9 +767,13 @@ func HasChangedComposeFiles(changedFiles []gitInternal.ChangedFile, project *typ
 	return false, nil
 }
 
-// getExtendsFilesFromYaml parses the compose files as YAML and extracts the file paths used in `extends:` definitions.
-// These files can also trigger a redeployment if they are changed,
-// but they are not included in the compose project configuration and therefore need to be extracted manually.
+/*
+getExtendsFilesFromYaml parses the compose files as YAML and extracts the file paths used in `extends:` definitions.
+These files can also trigger a redeployment if they are changed,
+but they are not included in the compose project configuration and therefore need to be extracted manually.
+
+https://docs.docker.com/compose/how-tos/multiple-compose-files/extends/
+*/
 func getExtendsFilesFromYaml(composeFiles []string, workingDir string) ([]string, error) {
 	type composeFile struct {
 		Services map[string]struct {
@@ -847,12 +851,63 @@ func HasChangedExtendsFiles(changedFiles []gitInternal.ChangedFile, project *typ
 	return false, nil
 }
 
-// getIncludeFilesFromYaml parses the compose files as YAML and extracts the file paths used in `include:` definitions.
-// These files can also trigger a redeployment if they are changed,
-// but they are already resolved by the compose-go library and therefore need to be extracted manually.
+/*
+getIncludeFilesFromYaml parses the compose files as YAML and extracts the file paths used in `include:` definitions.
+These files can also trigger a redeployment if they are changed,
+but they are already resolved by the compose-go library and therefore need to be extracted manually.
+
+Handles both simple string form and object form with a `path` key.
+
+https://docs.docker.com/compose/how-tos/multiple-compose-files/include
+*/
 func getIncludeFilesFromYaml(composeFiles []string, workingDir string) ([]string, error) {
-	type composeFile struct {
-		Include []string `yaml:"include"`
+	// extractPaths recursively extracts include file paths from supported compose include forms.
+	// Supported forms:
+	// - include: file.yml
+	// - include: [file.yml, other.yml]
+	// - include:
+	//   - path: file.yml
+	//   - path: [a.yml, b.yml]
+	var extractPaths func(node *yaml.Node) []string
+
+	extractPaths = func(node *yaml.Node) []string {
+		if node == nil {
+			return nil
+		}
+
+		switch node.Kind {
+		case yaml.ScalarNode:
+			v := strings.TrimSpace(node.Value)
+			if v == "" {
+				return nil
+			}
+
+			return []string{v}
+		case yaml.SequenceNode:
+			out := make([]string, 0, len(node.Content))
+			for _, child := range node.Content {
+				out = append(out, extractPaths(child)...)
+			}
+
+			return out
+		case yaml.MappingNode:
+			out := make([]string, 0)
+
+			for i := 0; i+1 < len(node.Content); i += 2 {
+				key := node.Content[i]
+				val := node.Content[i+1]
+
+				if key.Value != "path" {
+					continue
+				}
+
+				out = append(out, extractPaths(val)...)
+			}
+
+			return out
+		default:
+			return nil
+		}
 	}
 
 	out := set.New[string]()
@@ -867,24 +922,43 @@ func getIncludeFilesFromYaml(composeFiles []string, workingDir string) ([]string
 			return nil, err
 		}
 
-		var cfg composeFile
-		if err = yaml.Unmarshal(b, &cfg); err != nil {
+		var root yaml.Node
+		if err = yaml.Unmarshal(b, &root); err != nil {
 			return nil, err
 		}
 
-		for _, inc := range cfg.Include {
-			// Exclude OCI artifacts which are referenced in the compose file but not present on the filesystem
-			// https://docs.docker.com/compose/how-tos/multiple-compose-files/include
-			if strings.HasPrefix(inc, "oci://") {
+		if len(root.Content) == 0 {
+			continue
+		}
+
+		doc := root.Content[0]
+		if doc.Kind != yaml.MappingNode {
+			continue
+		}
+
+		for i := 0; i+1 < len(doc.Content); i += 2 {
+			key := doc.Content[i]
+			val := doc.Content[i+1]
+
+			if key.Value != "include" {
 				continue
 			}
 
-			incPath := inc
-			if !filepath.IsAbs(inc) {
-				incPath = filepath.Join(filepath.Dir(f), inc)
-			}
+			for _, inc := range extractPaths(val) {
+				// Exclude OCI artifacts which are referenced in the compose file but not present on the filesystem
+				// These are not supported as triggers for redeployment since they are not part of the Git repository and cannot be monitored for changes
+				// https://docs.docker.com/compose/how-tos/multiple-compose-files/include
+				if strings.HasPrefix(inc, "oci://") {
+					continue
+				}
 
-			out.Add(filepath.Clean(incPath))
+				incPath := inc
+				if !filepath.IsAbs(inc) {
+					incPath = filepath.Join(filepath.Dir(f), inc)
+				}
+
+				out.Add(filepath.Clean(incPath))
+			}
 		}
 	}
 
