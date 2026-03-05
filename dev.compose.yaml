@@ -2,7 +2,7 @@ x-poll-config: &poll-config
   POLL_CONFIG: |
     - url: https://github.com/kimdre/doco-cd_tests.git
       #url: git@github.com:kimdre/doco-cd_tests.git
-      reference: main
+      reference: 916
       interval: 10
       #target: "bitwarden-sm"
 
@@ -36,9 +36,9 @@ services:
       #POLL_CONFIG_FILE: /poll.yml
       #HTTP_PROXY: http://username:password@proxy:8888
       #SSH_PRIVATE_KEY_FILE: /run/secrets/ssh-private-key
-#      APPRISE_API_URL: http://apprise:8000/notify
-#      APPRISE_NOTIFY_LEVEL: info
-      # APPRISE_NOTIFY_URLS: # .env
+      #APPRISE_API_URL: http://apprise:8000/notify
+      #APPRISE_NOTIFY_LEVEL: info
+      # APPRISE_NOTIFY_URLS: # see .env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - data:/data
@@ -71,11 +71,11 @@ services:
     environment:
       TZ: Europe/Berlin
       APPRISE_WORKER_COUNT: 1
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8000/" ]
-      interval: 2s
-      timeout: 5s
-      retries: 10
+    #healthcheck:
+    #  test: [ "CMD", "curl", "-f", "http://localhost:8000/" ]
+    #  interval: 2s
+    #  timeout: 5s
+    #  retries: 10
 
   grafana:
     # Dashboard: https://github.com/kimdre/doco-cd/discussions/583
@@ -86,11 +86,16 @@ services:
     user: "1000"
     ports:
       - "3300:3000"
-    volumes:
-      - grafana-data:/var/lib/grafana
+    post_start:
+      - command: sh -c "mkdir -p /var/lib/grafana/dashboards/; curl -fsSL https://grafana.com/api/dashboards/23980/revisions/latest/download -o /var/lib/grafana/dashboards/doco-cd.json"
+        user: root
     environment:
       TZ: Europe/Berlin
-
+    configs:
+      - source: grafana-datasources.yaml
+        target: /etc/grafana/provisioning/datasources/datasources.yaml
+      - source: grafana-dashboards.yaml
+        target: /etc/grafana/provisioning/dashboards/dashboards.yaml
   prometheus:
     depends_on:
       - app
@@ -117,7 +122,6 @@ services:
 volumes:
   data:
   prometheus-data:
-  grafana-data:
 
 #secrets:
 #  ssh-private-key:
@@ -150,3 +154,25 @@ configs:
         - job_name: doco-cd
           static_configs:
             - targets: ['doco-cd:9120']
+  grafana-datasources.yaml:
+    content: |
+      apiVersion: 1
+      datasources:
+        - name: DS_PROMETHEUS
+          type: prometheus
+          url: http://prometheus:9090
+          isDefault: true
+  grafana-dashboards.yaml:
+    content: |
+      apiVersion: 1
+      providers:
+        - name: doco-cd
+          orgId: 1
+          folder: ""
+          type: file
+          disableDeletion: false
+          editable: true
+          updateIntervalSeconds: 300
+          options:
+            path: /var/lib/grafana/dashboards
+            foldersFromFilesStructure: false
