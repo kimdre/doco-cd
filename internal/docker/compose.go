@@ -819,26 +819,26 @@ func getExtendsFilesFromYaml(composeFiles []string, workingDir string) ([]string
 }
 
 // HasChangedExtendsFiles checks if any files referenced in docker compose `extends:` definitions have changed using the Git status.
-func HasChangedExtendsFiles(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
-	changedPaths := getAbsolutePaths(changedFiles, project.WorkingDir)
+func HasChangedExtendsFiles(changedFiles []gitInternal.ChangedFile, composeFiles []string, workingDir string) (bool, error) {
+	changedPaths := getAbsolutePaths(changedFiles, workingDir)
 
-	composeFiles := set.New[string]()
+	files := set.New[string]()
 
-	for _, composeFile := range project.ComposeFiles {
+	for _, composeFile := range composeFiles {
 		if !path.IsAbs(composeFile) {
-			composeFile = filepath.Join(project.WorkingDir, composeFile)
+			composeFile = filepath.Join(workingDir, composeFile)
 		}
 
-		composeFiles.Add(composeFile)
+		files.Add(composeFile)
 	}
 
-	extends, err := getExtendsFilesFromYaml(composeFiles.ToSlice(), project.WorkingDir)
+	extends, err := getExtendsFilesFromYaml(files.ToSlice(), workingDir)
 	if err != nil {
 		return false, fmt.Errorf("failed to get extends files from compose yaml: %w", err)
 	}
 
 	for _, file := range extends {
-		changed, err := checkFilePath(file, changedPaths, project.WorkingDir)
+		changed, err := checkFilePath(file, changedPaths, workingDir)
 		if err != nil {
 			return false, err
 		}
@@ -966,26 +966,26 @@ func getIncludeFilesFromYaml(composeFiles []string, workingDir string) ([]string
 }
 
 // HasChangedIncludeFiles checks if any files referenced in docker compose `include:` definitions have changed using the Git status.
-func HasChangedIncludeFiles(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
-	changedPaths := getAbsolutePaths(changedFiles, project.WorkingDir)
+func HasChangedIncludeFiles(changedFiles []gitInternal.ChangedFile, composeFiles []string, workingDir string) (bool, error) {
+	changedPaths := getAbsolutePaths(changedFiles, workingDir)
 
-	composeFiles := set.New[string]()
+	files := set.New[string]()
 
-	for _, composeFile := range project.ComposeFiles {
+	for _, composeFile := range composeFiles {
 		if !path.IsAbs(composeFile) {
-			composeFile = filepath.Join(project.WorkingDir, composeFile)
+			composeFile = filepath.Join(workingDir, composeFile)
 		}
 
-		composeFiles.Add(composeFile)
+		files.Add(composeFile)
 	}
 
-	includeFiles, err := getIncludeFilesFromYaml(composeFiles.ToSlice(), project.WorkingDir)
+	includeFiles, err := getIncludeFilesFromYaml(files.ToSlice(), workingDir)
 	if err != nil {
 		return false, fmt.Errorf("failed to get include files from compose yaml: %w", err)
 	}
 
 	for _, file := range includeFiles {
-		changed, err := checkFilePath(file, changedPaths, project.WorkingDir)
+		changed, err := checkFilePath(file, changedPaths, workingDir)
 		if err != nil {
 			return false, err
 		}
@@ -1032,8 +1032,6 @@ func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *ty
 		{"secrets", HasChangedSecrets},
 		{"bindMounts", HasChangedBindMounts},
 		{"envFiles", HasChangedEnvFiles},
-		{"extends", HasChangedExtendsFiles},
-		{"includes", HasChangedIncludeFiles},
 	}
 
 	var changeReasons []string

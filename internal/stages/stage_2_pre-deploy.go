@@ -28,11 +28,13 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	}
 
 	// Check for external secret changes and current deployed commit
-	secretsChanged := false // Flag to indicate if external secrets have changed
-	imagesChanged := false  // Flag to indicate if images have changed
-	deployedCommit := ""
-	curDeployConfigHash := ""
-	curSecretHash := ""
+	var (
+		secretsChanged      bool // Flag to indicate if external secrets have changed
+		imagesChanged       bool // Flag to indicate if images have changed
+		deployedCommit      string
+		curDeployConfigHash string
+		curSecretHash       string
+	)
 
 	serviceLabels, err := docker.GetServiceLabels(ctx, s.Docker.Client, s.DeployConfig.Name)
 	if err != nil {
@@ -135,9 +137,33 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			return fmt.Errorf("failed to get changed files between commits: %w", err)
 		}
 
-		filesChanged, err := git.HasChangesInSubdir(s.DeployState.ChangedFiles, s.Repository.PathInternal, s.DeployConfig.WorkingDirectory)
-		if err != nil {
-			return fmt.Errorf("failed to compare commits in subdirectory: %w", err)
+		checks := []struct {
+			name string
+			fn   func(changedFiles []git.ChangedFile, composeFiles []string, workingDir string) (bool, error)
+		}{
+			{"extends", docker.HasChangedExtendsFiles},
+			{"includes", docker.HasChangedIncludeFiles},
+		}
+
+		var filesChanged bool
+
+		for _, check := range checks {
+			filesChanged, err = check.fn(s.DeployState.ChangedFiles, s.DeployConfig.ComposeFiles, s.DeployConfig.WorkingDirectory)
+			if err != nil {
+				return fmt.Errorf("failed to check for %s file changes: %w", check.name, err)
+			}
+
+			if filesChanged {
+				stageLog.Debug(check.name + " files have changed, proceeding with deployment")
+				break
+			}
+		}
+
+		if !filesChanged {
+			filesChanged, err = git.HasChangesInSubdir(s.DeployState.ChangedFiles, s.Repository.PathInternal, s.DeployConfig.WorkingDirectory)
+			if err != nil {
+				return fmt.Errorf("failed to compare commits in subdirectory: %w", err)
+			}
 		}
 
 		// Skip deployConfig hash check if the label is missing (added in a later version) to avoid unnecessary deployments;
