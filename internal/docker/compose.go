@@ -521,7 +521,7 @@ func DeployStack(
 			}
 		}
 	} else {
-		hasChangedFiles, err := ProjectFilesHaveChanges(changedFiles, project)
+		detectedChanges, err := ProjectFilesHaveChanges(changedFiles, project)
 		if err != nil {
 			errMsg := "failed to check for changed project files"
 			return fmt.Errorf("%s: %w", errMsg, err)
@@ -542,10 +542,10 @@ func DeployStack(
 			deployConfig.ForceRecreate = true
 
 			stackLog.Debug("changed external secrets detected, forcing recreate of all services")
-		case hasChangedFiles || (hasChangedCompose && triggerEvent == "poll"):
+		case len(detectedChanges) > 0 || (hasChangedCompose && triggerEvent == "poll"):
 			deployConfig.ForceRecreate = true
 
-			stackLog.Debug("changed mounted files detected, forcing recreate of all services")
+			stackLog.Debug("changed project files detected, forcing recreate of all services", slog.Any("changed_files", detectedChanges))
 		case hasChangedCompose:
 			stackLog.Debug("changed compose files detected, continue normal deployment")
 		}
@@ -1023,7 +1023,7 @@ func checkFilePath(file string, paths []string, workingDir string) (bool, error)
 }
 
 // ProjectFilesHaveChanges checks if any files related to the compose project have changed.
-func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
+func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *types.Project) ([]string, error) {
 	checks := []struct {
 		name string
 		fn   func([]gitInternal.ChangedFile, *types.Project) (bool, error)
@@ -1036,18 +1036,20 @@ func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *ty
 		{"includes", HasChangedIncludeFiles},
 	}
 
+	var changeReasons []string
+
 	for _, check := range checks {
 		changed, err := check.fn(changedFiles, project)
 		if err != nil {
-			return false, fmt.Errorf("failed to check '%s' for changes: %w", check.name, err)
+			return nil, fmt.Errorf("failed to check '%s' for changes: %w", check.name, err)
 		}
 
 		if changed {
-			return true, nil
+			changeReasons = append(changeReasons, check.name)
 		}
 	}
 
-	return false, nil
+	return changeReasons, nil
 }
 
 // RestartProject restarts all services in the specified project.
