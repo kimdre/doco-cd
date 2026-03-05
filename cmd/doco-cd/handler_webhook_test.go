@@ -201,7 +201,22 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if testContainer.Container.State.Running != true {
+		// Wait for the container to be in a running state
+		for i := 0; i < 10; i++ {
+			testContainer, err = dockerCli.Client().ContainerInspect(ctx, testContainerID, client.ContainerInspectOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if testContainer.Container.State.Running {
+				break
+			}
+
+			t.Logf("Test container is not running yet (attempt %d), waiting...", i+1)
+			time.Sleep(2 * time.Second)
+		}
+
+		if !testContainer.Container.State.Running {
 			t.Fatal("Test container is not running")
 		}
 
