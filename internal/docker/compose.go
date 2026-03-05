@@ -748,6 +748,33 @@ func HasChangedEnvFiles(changedFiles []gitInternal.ChangedFile, project *types.P
 	return false, nil
 }
 
+// HasChangedComposeFiles checks if any of the compose files have changed using the Git status.
+func HasChangedComposeFiles(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
+	// Get absolute paths of changed files
+	paths := getAbsolutePaths(changedFiles, project.WorkingDir)
+
+	for _, composeFile := range project.ComposeFiles {
+		if !path.IsAbs(composeFile) {
+			composeFile = filepath.Join(project.WorkingDir, composeFile)
+		}
+
+		composeFileParts := strings.Split(composeFile, string(os.PathSeparator))
+
+		pathSuffix := path.Join(composeFileParts...)
+		if len(composeFileParts) > 4 {
+			pathSuffix = path.Join(composeFileParts[len(composeFileParts)-4:]...)
+		}
+
+		for _, p := range paths {
+			if strings.HasSuffix(p, pathSuffix) {
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
+}
+
 // getExtendsFilesFromYaml parses the compose files as YAML and extracts the file paths used in `extends:` definitions.
 // These files can also trigger a redeployment if they are changed,
 // but they are not included in the compose project configuration and therefore need to be extracted manually.
@@ -795,9 +822,8 @@ func getExtendsFilesFromYaml(composeFiles []string, workingDir string) ([]string
 	return out.ToSlice(), nil
 }
 
-// HasChangedComposeFiles checks if any of the compose files have changed using the Git status.
-func HasChangedComposeFiles(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
-	// Get absolute paths of changed files
+// HasChangedExtendsFiles checks if any files referenced in docker compose `extends:` definitions have changed using the Git status.
+func HasChangedExtendsFiles(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
 	paths := getAbsolutePaths(changedFiles, project.WorkingDir)
 
 	composeFiles := set.New[string]()
@@ -815,15 +841,12 @@ func HasChangedComposeFiles(changedFiles []gitInternal.ChangedFile, project *typ
 		return false, fmt.Errorf("failed to get extends files from compose yaml: %w", err)
 	}
 
-	allFiles := set.Union(composeFiles, set.New[string](extends...)).ToSlice()
+	for _, file := range extends {
+		fileParts := strings.Split(file, string(os.PathSeparator))
 
-	for _, file := range allFiles {
-		// Get the last 4 parts of the composeFile path
-		composeFileParts := strings.Split(file, string(os.PathSeparator))
-
-		pathSuffix := path.Join(composeFileParts...)
-		if len(composeFileParts) > 4 {
-			pathSuffix = path.Join(composeFileParts[len(composeFileParts)-4:]...)
+		pathSuffix := path.Join(fileParts...)
+		if len(fileParts) > 4 {
+			pathSuffix = path.Join(fileParts[len(fileParts)-4:]...)
 		}
 
 		for _, p := range paths {
@@ -839,10 +862,11 @@ func HasChangedComposeFiles(changedFiles []gitInternal.ChangedFile, project *typ
 // ProjectFilesHaveChanges checks if any files related to the compose project have changed.
 func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
 	checks := map[string]func([]gitInternal.ChangedFile, *types.Project) (bool, error){
-		"configs":    HasChangedConfigs,
-		"secrets":    HasChangedSecrets,
-		"bindMounts": HasChangedBindMounts,
-		"envFiles":   HasChangedEnvFiles,
+		"configs":      HasChangedConfigs,
+		"secrets":      HasChangedSecrets,
+		"bindMounts":   HasChangedBindMounts,
+		"envFiles":     HasChangedEnvFiles,
+		"extendsFiles": HasChangedExtendsFiles,
 	}
 
 	for name, check := range checks {
