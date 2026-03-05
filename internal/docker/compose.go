@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"go.yaml.in/yaml/v3"
+
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
@@ -746,18 +748,78 @@ func HasChangedEnvFiles(changedFiles []gitInternal.ChangedFile, project *types.P
 	return false, nil
 }
 
+// getExtendsFilesFromYaml parses the compose files as YAML and extracts the file paths used in `extends:` definitions.
+// These files can also trigger a redeployment if they are changed,
+// but they are not included in the compose project configuration and therefore need to be extracted manually.
+func getExtendsFilesFromYaml(composeFiles []string, workingDir string) ([]string, error) {
+	type composeFile struct {
+		Services map[string]struct {
+			Extends struct {
+				File    string `yaml:"file"`
+				Service string `yaml:"service"`
+			} `yaml:"extends"`
+		} `yaml:"services"`
+	}
+
+	out := set.New[string]()
+
+	for _, f := range composeFiles {
+		if !filepath.IsAbs(f) {
+			f = filepath.Join(workingDir, f)
+		}
+
+		b, err := os.ReadFile(f)
+		if err != nil {
+			return nil, err
+		}
+
+		var cfg composeFile
+		if err = yaml.Unmarshal(b, &cfg); err != nil {
+			return nil, err
+		}
+
+		for _, svc := range cfg.Services {
+			if svc.Extends.File == "" {
+				continue
+			}
+
+			ext := svc.Extends.File
+			if !filepath.IsAbs(ext) {
+				ext = filepath.Join(filepath.Dir(f), ext)
+			}
+
+			out.Add(filepath.Clean(ext))
+		}
+	}
+
+	return out.ToSlice(), nil
+}
+
 // HasChangedComposeFiles checks if any of the compose files have changed using the Git status.
 func HasChangedComposeFiles(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
 	// Get absolute paths of changed files
 	paths := getAbsolutePaths(changedFiles, project.WorkingDir)
+
+	composeFiles := set.New[string]()
 
 	for _, composeFile := range project.ComposeFiles {
 		if !path.IsAbs(composeFile) {
 			composeFile = filepath.Join(project.WorkingDir, composeFile)
 		}
 
+		composeFiles.Add(composeFile)
+	}
+
+	extends, err := getExtendsFilesFromYaml(composeFiles.ToSlice(), project.WorkingDir)
+	if err != nil {
+		return false, fmt.Errorf("failed to get extends files from compose yaml: %w", err)
+	}
+
+	allFiles := set.Union(composeFiles, set.New[string](extends...)).ToSlice()
+
+	for _, file := range allFiles {
 		// Get the last 4 parts of the composeFile path
-		composeFileParts := strings.Split(composeFile, string(os.PathSeparator))
+		composeFileParts := strings.Split(file, string(os.PathSeparator))
 
 		pathSuffix := path.Join(composeFileParts...)
 		if len(composeFileParts) > 4 {
