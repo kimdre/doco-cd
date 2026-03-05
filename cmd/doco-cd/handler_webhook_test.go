@@ -171,7 +171,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	testContainerPort := ""
+	var testContainerPort string
 
 	if swarm.ModeEnabled {
 		t.Log("Testing in Swarm mode, using service inspect")
@@ -196,35 +196,53 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 			}
 		})
 	} else {
-		testContainer, err := dockerCli.Client().ContainerInspect(ctx, testContainerID, client.ContainerInspectOptions{})
-		if err != nil {
-			t.Fatal(err)
-		}
+		var testContainer client.ContainerInspectResult
+		// Wait for the container to be in a running state and have published ports
+		deadline := time.Now().Add(30 * time.Second)
 
-		// Wait for the container to be in a running state
-		for i := 0; i < 10; i++ {
+		for {
 			testContainer, err = dockerCli.Client().ContainerInspect(ctx, testContainerID, client.ContainerInspectOptions{})
 			if err != nil {
-				t.Fatal(err)
+				if time.Now().After(deadline) {
+					t.Fatalf("Failed to inspect container: %v", err)
+				}
+
+				time.Sleep(1 * time.Second)
+
+				continue
 			}
 
-			if testContainer.Container.State.Running {
+			if !testContainer.Container.State.Running {
+				if time.Now().After(deadline) {
+					t.Fatal("Test container is not running")
+				}
+
+				t.Logf("Test container is not running yet, waiting...")
+				time.Sleep(1 * time.Second)
+
+				continue
+			}
+
+			// Check if test container has published ports
+			portKey, _ := network.ParsePort("80/tcp")
+			networkPort := testContainer.Container.NetworkSettings.Ports[portKey]
+
+			if len(networkPort) > 0 {
+				testContainerPort = networkPort[0].HostPort
 				break
 			}
 
-			t.Logf("Test container is not running yet (attempt %d), waiting...", i+1)
-			time.Sleep(2 * time.Second)
+			if time.Now().After(deadline) {
+				t.Fatal("Test container port not published")
+			}
+
+			t.Logf("Test container port not yet published, waiting...")
+			time.Sleep(1 * time.Second)
 		}
 
-		if !testContainer.Container.State.Running {
-			t.Fatal("Test container is not running")
+		if testContainerPort == "" {
+			t.Fatal("Failed to get test container port")
 		}
-
-		// Check if test container returns the expected response on its published port
-		portKey, _ := network.ParsePort("80/tcp")
-		networkPort := testContainer.Container.NetworkSettings.Ports[portKey]
-
-		testContainerPort = networkPort[0].HostPort
 	}
 
 	testURL := "http://127.0.0.1:" + testContainerPort
