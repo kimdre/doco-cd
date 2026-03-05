@@ -751,25 +751,16 @@ func HasChangedEnvFiles(changedFiles []gitInternal.ChangedFile, project *types.P
 // HasChangedComposeFiles checks if any of the compose files have changed using the Git status.
 func HasChangedComposeFiles(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
 	// Get absolute paths of changed files
-	paths := getAbsolutePaths(changedFiles, project.WorkingDir)
+	changedPaths := getAbsolutePaths(changedFiles, project.WorkingDir)
 
-	for _, composeFile := range project.ComposeFiles {
-		if !path.IsAbs(composeFile) {
-			composeFile = filepath.Join(project.WorkingDir, composeFile)
+	for _, file := range project.ComposeFiles {
+		changed, err := checkFilePath(file, changedPaths, project.WorkingDir)
+		if err != nil {
+			return false, err
 		}
 
-		// Get the last 4 parts of the composeFile path
-		composeFileParts := strings.Split(composeFile, string(os.PathSeparator))
-
-		pathSuffix := path.Join(composeFileParts...)
-		if len(composeFileParts) > 4 {
-			pathSuffix = path.Join(composeFileParts[len(composeFileParts)-4:]...)
-		}
-
-		for _, p := range paths {
-			if strings.HasSuffix(p, pathSuffix) {
-				return true, nil
-			}
+		if changed {
+			return true, nil
 		}
 	}
 
@@ -825,7 +816,7 @@ func getExtendsFilesFromYaml(composeFiles []string, workingDir string) ([]string
 
 // HasChangedExtendsFiles checks if any files referenced in docker compose `extends:` definitions have changed using the Git status.
 func HasChangedExtendsFiles(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
-	paths := getAbsolutePaths(changedFiles, project.WorkingDir)
+	changedPaths := getAbsolutePaths(changedFiles, project.WorkingDir)
 
 	composeFiles := set.New[string]()
 
@@ -843,22 +834,114 @@ func HasChangedExtendsFiles(changedFiles []gitInternal.ChangedFile, project *typ
 	}
 
 	for _, file := range extends {
-		if !path.IsAbs(file) {
-			file = filepath.Join(project.WorkingDir, file)
+		changed, err := checkFilePath(file, changedPaths, project.WorkingDir)
+		if err != nil {
+			return false, err
 		}
 
-		// Get the last 4 parts of the file path
-		fileParts := strings.Split(file, string(os.PathSeparator))
+		if changed {
+			return true, nil
+		}
+	}
 
-		pathSuffix := path.Join(fileParts...)
-		if len(fileParts) > 4 {
-			pathSuffix = path.Join(fileParts[len(fileParts)-4:]...)
+	return false, nil
+}
+
+// getIncludeFilesFromYaml parses the compose files as YAML and extracts the file paths used in `include:` definitions.
+// These files can also trigger a redeployment if they are changed,
+// but they are already resolved by the compose-go library and therefore need to be extracted manually.
+func getIncludeFilesFromYaml(composeFiles []string, workingDir string) ([]string, error) {
+	type composeFile struct {
+		Include []string `yaml:"include"`
+	}
+
+	out := set.New[string]()
+
+	for _, f := range composeFiles {
+		if !filepath.IsAbs(f) {
+			f = filepath.Join(workingDir, f)
 		}
 
-		for _, p := range paths {
-			if strings.HasSuffix(p, pathSuffix) {
-				return true, nil
+		b, err := os.ReadFile(f)
+		if err != nil {
+			return nil, err
+		}
+
+		var cfg composeFile
+		if err = yaml.Unmarshal(b, &cfg); err != nil {
+			return nil, err
+		}
+
+		for _, inc := range cfg.Include {
+			// Exclude OCI artifacts which are referenced in the compose file but not present on the filesystem
+			// https://docs.docker.com/compose/how-tos/multiple-compose-files/include
+			if strings.HasPrefix(inc, "oci://") {
+				continue
 			}
+
+			incPath := inc
+			if !filepath.IsAbs(inc) {
+				incPath = filepath.Join(filepath.Dir(f), inc)
+			}
+
+			out.Add(filepath.Clean(incPath))
+		}
+	}
+
+	return out.ToSlice(), nil
+}
+
+// HasChangedIncludeFiles checks if any files referenced in docker compose `include:` definitions have changed using the Git status.
+func HasChangedIncludeFiles(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
+	changedPaths := getAbsolutePaths(changedFiles, project.WorkingDir)
+
+	composeFiles := set.New[string]()
+
+	for _, composeFile := range project.ComposeFiles {
+		if !path.IsAbs(composeFile) {
+			composeFile = filepath.Join(project.WorkingDir, composeFile)
+		}
+
+		composeFiles.Add(composeFile)
+	}
+
+	includeFiles, err := getIncludeFilesFromYaml(composeFiles.ToSlice(), project.WorkingDir)
+	if err != nil {
+		return false, fmt.Errorf("failed to get include files from compose yaml: %w", err)
+	}
+
+	for _, file := range includeFiles {
+		changed, err := checkFilePath(file, changedPaths, project.WorkingDir)
+		if err != nil {
+			return false, err
+		}
+
+		if changed {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// checkFilePath checks if the given file path matches any of the paths in the list,
+// considering both absolute and relative paths and allowing for matching based on the last 4 parts of the path.
+func checkFilePath(file string, paths []string, workingDir string) (bool, error) {
+	if !path.IsAbs(file) {
+		file = filepath.Join(workingDir, file)
+	}
+
+	// Get the last 4 parts of the file path
+	fileParts := strings.Split(file, string(os.PathSeparator))
+
+	pathSuffix := path.Join(fileParts...)
+	if len(fileParts) > 4 {
+		pathSuffix = path.Join(fileParts[len(fileParts)-4:]...)
+	}
+
+	for _, p := range paths {
+		if strings.HasSuffix(p, pathSuffix) {
+			return true, nil
 		}
 	}
 
@@ -868,11 +951,12 @@ func HasChangedExtendsFiles(changedFiles []gitInternal.ChangedFile, project *typ
 // ProjectFilesHaveChanges checks if any files related to the compose project have changed.
 func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
 	checks := map[string]func([]gitInternal.ChangedFile, *types.Project) (bool, error){
-		"configs":      HasChangedConfigs,
-		"secrets":      HasChangedSecrets,
-		"bindMounts":   HasChangedBindMounts,
-		"envFiles":     HasChangedEnvFiles,
-		"extendsFiles": HasChangedExtendsFiles,
+		"configs":    HasChangedConfigs,
+		"secrets":    HasChangedSecrets,
+		"bindMounts": HasChangedBindMounts,
+		"envFiles":   HasChangedEnvFiles,
+		"extends":    HasChangedExtendsFiles,
+		"includes":   HasChangedIncludeFiles,
 	}
 
 	for name, check := range checks {
