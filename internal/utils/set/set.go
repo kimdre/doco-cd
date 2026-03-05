@@ -38,3 +38,16 @@ func (s Set[T]) ToSlice() []T {
 
 	return slice
 }
+
+// Union merges the given sets into a new set containing all unique elements from the input sets.
+func Union[T comparable](sets ...Set[T]) Set[T] {
+	result := Set[T]{}
+
+	for _, s := range sets {
+		for elem := range s {
+			result.Add(elem)
+		}
+	}
+
+	return result
+}
