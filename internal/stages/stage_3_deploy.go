@@ -64,12 +64,14 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 		stageLog.Warn("deployment loop detected for stack, forcing deployment", slog.String("commit", latestCommit))
 	}
 
-	err = docker.DeployStack(stageLog, s.Repository.PathInternal, s.Repository.PathExternal, &ctx, &s.Docker.Cmd, s.Docker.Client,
+	containersChanged, err := docker.DeployStack(stageLog, s.Repository.PathInternal, s.Repository.PathExternal, &ctx, &s.Docker.Cmd, s.Docker.Client,
 		s.Payload, s.DeployConfig, s.DeployState.ChangedFiles, latestCommit, config.AppVersion,
 		string(s.JobTrigger), forceDeploy, s.DeployState.ResolvedSecrets, s.DeployState.SecretsChanged)
 	if err != nil {
 		return fmt.Errorf("failed to deploy stack %s: %w", s.DeployConfig.Name, err)
 	}
+
+	s.DeployState.ContainersChanged = containersChanged
 
 	return nil
 }

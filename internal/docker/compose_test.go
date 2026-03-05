@@ -283,10 +283,14 @@ compose_files:
 			}
 		}
 
-		err = DeployStack(jobLog, repoPath, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
+		containersChanged, err := DeployStack(jobLog, repoPath, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
 			[]git.ChangedFile{}, latestCommit, "dev", "poll", false, resolvedSecrets, false)
 		if err != nil {
 			t.Fatalf("failed to deploy stack: %v", err)
+		}
+
+		if !containersChanged {
+			t.Fatal("expected containers to be changed on first deployment, got false")
 		}
 
 		t.Log("Verifying deployment")

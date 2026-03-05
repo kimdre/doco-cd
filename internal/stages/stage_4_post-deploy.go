@@ -35,9 +35,12 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 		JobID:      s.JobID,
 	}
 
-	err = notification.Send(notification.Success, "Stack deployed", "successfully deployed stack "+s.DeployConfig.Name, metadata)
-	if err != nil {
-		stageLog.Error("failed to send notification", logger.ErrAttr(err))
+	// Only send success notification if containers were actually changed
+	if s.DeployState.ContainersChanged {
+		err = notification.Send(notification.Success, "Stack deployed", "successfully deployed stack "+s.DeployConfig.Name, metadata)
+		if err != nil {
+			stageLog.Error("failed to send notification", logger.ErrAttr(err))
+		}
 	}
 
 	return nil

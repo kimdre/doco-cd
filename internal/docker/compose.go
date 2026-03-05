@@ -227,19 +227,21 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 }
 
 // deployCompose deploys a project as specified by the Docker Compose specification (LoadCompose).
+// It returns a boolean indicating whether containers were actually created or modified during deployment.
 func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project,
 	deployConfig *config.DeployConfig, payload webhook.ParsedPayload,
 	repoDir, latestCommit, appVersion, secretHash string,
-) error {
+) (bool, error) {
 	var (
-		err          error
-		beforeImages map[string]api.ImageSummary // Images used by stack before deployment
-		afterImages  map[string]api.ImageSummary // Images used by stack after deployment
+		err               error
+		beforeImages      map[string]api.ImageSummary // Images used by stack before deployment
+		afterImages       map[string]api.ImageSummary // Images used by stack after deployment
+		containersChanged bool                        // Track whether containers were created or modified
 	)
 
 	service, err := compose.NewComposeService(dockerCli)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	timestamp := time.Now().UTC().Format(time.RFC3339)
@@ -251,16 +253,15 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 				// Placeholder for when the module is not found
 				ComposeVersion = "unknown"
 			} else {
-				return fmt.Errorf("failed to get module version: %w", err)
+				return false, fmt.Errorf("failed to get module version: %w", err)
 			}
 		}
 	}
 
-	if deployConfig.PruneImages {
-		beforeImages, err = service.Images(ctx, project.Name, api.ImagesOptions{})
-		if err != nil {
-			return fmt.Errorf("failed to get existing images: %w", err)
-		}
+	// Get images before deployment to detect changes
+	beforeImages, err = service.Images(ctx, project.Name, api.ImagesOptions{})
+	if err != nil {
+		beforeImages = make(map[string]api.ImageSummary)
 	}
 
 	addComposeServiceLabels(project, *deployConfig, payload, repoDir, appVersion, timestamp, ComposeVersion, latestCommit, secretHash)
@@ -276,7 +277,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 			Quiet: true,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to pull images: %w", err)
+			return false, fmt.Errorf("failed to pull images: %w", err)
 		}
 	}
 
@@ -301,7 +302,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 
 	err = service.Build(ctx, project, buildOpts)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	createOpts := api.CreateOptions{
@@ -325,20 +326,35 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		if errors.Is(err, ErrNoContainerToStart) {
 			err = service.Start(ctx, project.Name, startOpts)
 			if err != nil {
-				return err
+				return false, err
 			}
 		} else {
-			return err
+			return false, err
 		}
+	} else {
+		// If service.Up succeeded without error, containers were created/started
+		containersChanged = true
 	}
 
 	if deployConfig.PruneImages {
 		afterImages, err = service.Images(ctx, project.Name, api.ImagesOptions{})
 		if err != nil {
-			return fmt.Errorf("failed to get images after deployment: %w", err)
+			return false, fmt.Errorf("failed to get images after deployment: %w", err)
 		}
 
 		// Determine unused images by comparing image SHAs used by services before and after the deployment
+		// If images changed, containers were modified
+		if len(beforeImages) == 0 && len(afterImages) > 0 {
+			containersChanged = true
+		} else {
+			for svc, beforeImg := range beforeImages {
+				afterImg, exists := afterImages[svc]
+				if !exists || beforeImg.ID != afterImg.ID {
+					containersChanged = true
+					break
+				}
+			}
+		}
 
 		var ids []string
 
@@ -351,20 +367,21 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 
 		_, err = pruneImages(ctx, dockerCli, slice.Unique(ids))
 		if err != nil {
-			return fmt.Errorf("failed to prune images: %w", err)
+			return false, fmt.Errorf("failed to prune images: %w", err)
 		}
 	}
 
-	return nil
+	return containersChanged, nil
 }
 
 // DeployStack deploys the stack using the provided deployment configuration.
+// It returns a boolean indicating whether containers were actually created or modified during deployment.
 func DeployStack(
 	jobLog *slog.Logger, internalRepoPath, externalRepoPath string, ctx *context.Context,
 	dockerCli *command.Cli, dockerClient *client.Client, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
 	changedFiles []gitInternal.ChangedFile, latestCommit, appVersion, triggerEvent string, forceDeploy bool,
 	resolvedSecrets secrettypes.ResolvedSecrets, secretsChanged bool,
-) error {
+) (bool, error) {
 	startTime := time.Now()
 
 	stackLog := jobLog.
@@ -375,7 +392,7 @@ func DeployStack(
 		errMsg := "invalid working directory: potential path traversal detected"
 		jobLog.Error(errMsg, slog.String("working_directory", deployConfig.WorkingDirectory))
 
-		return fmt.Errorf("%s: %w", errMsg, errors.New("validation error"))
+		return false, fmt.Errorf("%s: %w", errMsg, errors.New("validation error"))
 	}
 
 	// Path inside the container
@@ -386,7 +403,7 @@ func DeployStack(
 		errMsg := "invalid working directory: resolved path is outside the allowed base directory"
 		jobLog.Error(errMsg, slog.String("resolved_path", internalWorkingDir))
 
-		return fmt.Errorf("%s", errMsg)
+		return false, fmt.Errorf("%s", errMsg)
 	}
 
 	// Path on the host
@@ -397,7 +414,7 @@ func DeployStack(
 		errMsg := "invalid working directory: resolved path is outside the allowed base directory"
 		jobLog.Error(errMsg, slog.String("resolved_path", externalWorkingDir))
 
-		return fmt.Errorf("%s", errMsg)
+		return false, fmt.Errorf("%s", errMsg)
 	}
 
 	// Check if the default compose files are used
@@ -416,8 +433,7 @@ func DeployStack(
 		}
 
 		if len(tmpComposeFiles) == 0 {
-			errMsg := "no compose files found"
-			return fmt.Errorf("%s: %w", errMsg, err)
+			return false, fmt.Errorf("no compose files found: %w", err)
 		}
 
 		deployConfig.ComposeFiles = tmpComposeFiles
@@ -426,7 +442,7 @@ func DeployStack(
 	// Check if files in the working directory are SOPS encrypted and decrypt them if necessary
 	f, err := encryption.DecryptFilesInDirectory(internalRepoPath, internalWorkingDir)
 	if err != nil {
-		return fmt.Errorf("file decryption failed: %w", err)
+		return false, fmt.Errorf("file decryption failed: %w", err)
 	}
 
 	if len(f) > 0 {
@@ -439,8 +455,7 @@ func DeployStack(
 	if deployConfig.Internal.Environment != nil {
 		tmpEnvFile, err := config.CreateTmpDotEnvFile(deployConfig)
 		if err != nil {
-			errMsg := "failed to create temporary env file"
-			return fmt.Errorf("%s: %w", errMsg, err)
+			return false, fmt.Errorf("failed to create temporary env file: %w", err)
 		}
 
 		// Delete the temp file after deployment
@@ -454,8 +469,7 @@ func DeployStack(
 
 	project, err := LoadCompose(*ctx, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles, deployConfig.EnvFiles, deployConfig.Profiles, resolvedSecrets)
 	if err != nil {
-		errMsg := "failed to load compose config"
-		return fmt.Errorf("%s: %w", errMsg, err)
+		return false, fmt.Errorf("failed to load compose config: %w", err)
 	}
 
 	done := make(chan struct{})
@@ -476,34 +490,30 @@ func DeployStack(
 	}()
 
 	// When SwarmModeEnabled is true, we deploy the stack using Docker Swarm.
+	var containersChanged bool
+
 	if swarm.ModeEnabled {
 		stackLog.Info("deploying swarm stack")
 
 		err = DeploySwarmStack(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion, secretHash, resolvedSecrets)
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
-
-			errMsg := "failed to deploy swarm stack " + deployConfig.Name
-
-			return fmt.Errorf("%s: %w", errMsg, err)
+			return false, fmt.Errorf("failed to deploy swarm stack %s: %w", deployConfig.Name, err)
 		}
+
+		// For swarm mode, consider containers as changed on successful deployment
+		containersChanged = true
 
 		err = PruneStackConfigs(*ctx, dockerClient, deployConfig.Name)
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
-
-			errMsg := "failed to prune stack configs"
-
-			return fmt.Errorf("%s: %w", errMsg, err)
+			return false, fmt.Errorf("failed to prune stack configs: %w", err)
 		}
 
 		err = PruneStackSecrets(*ctx, dockerClient, deployConfig.Name)
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
-
-			errMsg := "failed to prune stack secrets"
-
-			return fmt.Errorf("%s: %w", errMsg, err)
+			return false, fmt.Errorf("failed to prune stack secrets: %w", err)
 		}
 
 		if deployConfig.PruneImages {
@@ -512,58 +522,55 @@ func DeployStack(
 			err = RunImagePruneJob(*ctx, *dockerCli)
 			if err != nil {
 				prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
-
-				errMsg := "failed to run image prune job"
-
-				return fmt.Errorf("%s: %w", errMsg, err)
+				return false, fmt.Errorf("failed to run image prune job: %w", err)
 			}
 		}
-	} else {
-		hasChangedFiles, err := ProjectFilesHaveChanges(changedFiles, project)
-		if err != nil {
-			errMsg := "failed to check for changed project files"
-			return fmt.Errorf("%s: %w", errMsg, err)
-		}
 
-		hasChangedCompose, err := HasChangedComposeFiles(changedFiles, project)
-		if err != nil {
-			errMsg := "failed to check for changed compose files"
-			return fmt.Errorf("%s: %w", errMsg, err)
-		}
+		prometheus.DeploymentsTotal.WithLabelValues(deployConfig.Name).Inc()
+		prometheus.DeploymentDuration.WithLabelValues(deployConfig.Name).Observe(time.Since(startTime).Seconds())
 
-		switch {
-		case forceDeploy:
-			deployConfig.ForceRecreate = true
+		return containersChanged, nil
+	}
 
-			stackLog.Debug("force deploy enabled, forcing recreate of all services")
-		case secretsChanged:
-			deployConfig.ForceRecreate = true
+	hasChangedFiles, err := ProjectFilesHaveChanges(changedFiles, project)
+	if err != nil {
+		return false, fmt.Errorf("failed to check for changed project files: %w", err)
+	}
 
-			stackLog.Debug("changed external secrets detected, forcing recreate of all services")
-		case hasChangedFiles || (hasChangedCompose && triggerEvent == "poll"):
-			deployConfig.ForceRecreate = true
+	hasChangedCompose, err := HasChangedComposeFiles(changedFiles, project)
+	if err != nil {
+		return false, fmt.Errorf("failed to check for changed compose files: %w", err)
+	}
 
-			stackLog.Debug("changed mounted files detected, forcing recreate of all services")
-		case hasChangedCompose:
-			stackLog.Debug("changed compose files detected, continue normal deployment")
-		}
+	switch {
+	case forceDeploy:
+		deployConfig.ForceRecreate = true
 
-		stackLog.Info("deploying stack", slog.Bool("forced", deployConfig.ForceRecreate))
+		stackLog.Debug("force deploy enabled, forcing recreate of all services")
+	case secretsChanged:
+		deployConfig.ForceRecreate = true
 
-		err = deployCompose(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion, secretHash)
-		if err != nil {
-			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
+		stackLog.Debug("changed external secrets detected, forcing recreate of all services")
+	case hasChangedFiles || (hasChangedCompose && triggerEvent == "poll"):
+		deployConfig.ForceRecreate = true
 
-			errMsg := "failed to deploy stack"
+		stackLog.Debug("changed mounted files detected, forcing recreate of all services")
+	case hasChangedCompose:
+		stackLog.Debug("changed compose files detected, continue normal deployment")
+	}
 
-			return fmt.Errorf("%s: %w", errMsg, err)
-		}
+	stackLog.Info("deploying stack", slog.Bool("forced", deployConfig.ForceRecreate))
+
+	containersChanged, err = deployCompose(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion, secretHash)
+	if err != nil {
+		prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
+		return false, fmt.Errorf("failed to deploy stack: %w", err)
 	}
 
 	prometheus.DeploymentsTotal.WithLabelValues(deployConfig.Name).Inc()
 	prometheus.DeploymentDuration.WithLabelValues(deployConfig.Name).Observe(time.Since(startTime).Seconds())
 
-	return nil
+	return containersChanged, nil
 }
 
 // DestroyStack destroys the stack using the provided deployment configuration.
@@ -579,8 +586,7 @@ func DestroyStack(
 	if swarm.ModeEnabled {
 		err := RemoveSwarmStack(*ctx, *dockerCli, deployConfig.Name)
 		if err != nil {
-			errMsg := "failed to destroy swarm stack"
-			return fmt.Errorf("%s: %w", errMsg, err)
+			return fmt.Errorf("failed to destroy swarm stack: %w", err)
 		}
 
 		return nil
@@ -602,8 +608,7 @@ func DestroyStack(
 
 	err = service.Down(*ctx, deployConfig.Name, downOpts)
 	if err != nil {
-		errMsg := "failed to destroy stack"
-		return fmt.Errorf("%s: %w", errMsg, err)
+		return fmt.Errorf("failed to destroy stack: %w", err)
 	}
 
 	return nil

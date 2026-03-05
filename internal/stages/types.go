@@ -122,9 +122,10 @@ type Docker struct {
 
 // DeploymentState holds the dynamic state information during the deployment process.
 type DeploymentState struct {
-	ChangedFiles    []gitInternal.ChangedFile
-	SecretsChanged  bool
-	ResolvedSecrets secrettypes.ResolvedSecrets
+	ChangedFiles      []gitInternal.ChangedFile
+	SecretsChanged    bool
+	ResolvedSecrets   secrettypes.ResolvedSecrets
+	ContainersChanged bool // Whether containers were actually created or modified during deployment
 }
 
 // StageManager is the main structure that holds the logger and stage data.
