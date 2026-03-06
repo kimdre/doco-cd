@@ -165,8 +165,10 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		}
 	})
 
-	var testContainerID string
-	var testContainerPort string
+	var (
+		testContainerID   string
+		testContainerPort string
+	)
 
 	if swarm.ModeEnabled {
 		t.Log("Testing in Swarm mode, using service inspect")
@@ -200,7 +202,9 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 				if time.Now().After(deadline) {
 					t.Fatalf("Failed to list containers: %v", err)
 				}
+
 				time.Sleep(1 * time.Second)
+
 				continue
 			}
 
@@ -216,8 +220,10 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 				if time.Now().After(deadline) {
 					t.Fatal("Test container not found in stack")
 				}
+
 				t.Logf("Test container not yet in stack, waiting...")
 				time.Sleep(1 * time.Second)
+
 				continue
 			}
 
@@ -227,8 +233,11 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 				if time.Now().After(deadline) {
 					t.Fatalf("Failed to inspect container: %v", err)
 				}
+
 				time.Sleep(1 * time.Second)
+
 				testContainerID = "" // Reset to retry finding it
+
 				continue
 			}
 
@@ -236,8 +245,10 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 				if time.Now().After(deadline) {
 					t.Fatal("Test container is not running")
 				}
+
 				t.Logf("Test container is not running yet, waiting...")
 				time.Sleep(1 * time.Second)
+
 				continue
 			}
 
