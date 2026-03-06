@@ -15,6 +15,7 @@ import (
 	"github.com/docker/cli/cli/flags"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
+	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 )
@@ -301,4 +302,54 @@ func (s *ComposeStack) Exec(ctx context.Context, t *testing.T, serviceName strin
 	}
 
 	return inspectResp.ExitCode, strings.NewReader(string(output))
+}
+
+// WaitForStack waits until all containers in the stack are running and healthy (if healthcheck is defined).
+func WaitForStack(ctx context.Context, t *testing.T, compose api.Compose, projectName string, timeout time.Duration) ([]api.ContainerSummary, error) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("timeout waiting for stack %q to be ready", projectName)
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("context cancelled while waiting for stack %q to be ready: %w", projectName, ctx.Err())
+		case <-ticker.C:
+			containers, err := compose.Ps(ctx, projectName, api.PsOptions{All: true})
+			if err != nil {
+				return nil, fmt.Errorf("failed to list containers for stack %q: %w", projectName, err)
+			}
+
+			if len(containers) == 0 {
+				continue
+			}
+
+			allReady := true
+
+			for _, c := range containers {
+				t.Logf("Container %s state: %s, health: %s", c.Name, c.State, c.Health)
+
+				if c.State != container.StateRunning {
+					allReady = false
+					break
+				}
+
+				if c.Health != container.NoHealthcheck && c.Health != container.Healthy {
+					allReady = false
+					break
+				}
+			}
+
+			if allReady {
+				return containers, nil
+			}
+		}
+	}
 }
