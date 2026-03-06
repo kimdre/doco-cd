@@ -52,8 +52,6 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	expectedStatusCode := http.StatusCreated
 	tmpDir := t.TempDir()
 
-	const containerName = "test"
-
 	stackName := test.ConvertTestName(t.Name())
 
 	payloadFile := githubPayloadFile
@@ -173,7 +171,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	if swarm.ModeEnabled {
 		t.Log("Testing in Swarm mode, using service inspect")
 
-		inspectName := stackName + "_" + containerName
+		inspectName := stackName + "_" + "app"
 
 		svc, err := docker.WaitForSwarmService(ctx, t, dockerClient, inspectName, 30*time.Second)
 		if err != nil {
@@ -199,9 +197,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		}
 
 		for _, c := range containers {
-			t.Logf("Found container in stack: %s with name %s (%v)", c.ID, c.Name, c.Names)
-
-			if c.Service == containerName {
+			if c.Service == "app" {
 				testContainerID = c.ID
 				break
 			}
