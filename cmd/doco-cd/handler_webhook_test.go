@@ -165,12 +165,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		}
 	})
 
-	// Check if the deployed test container is running
-	testContainerID, err := docker.GetContainerID(dockerCli.Client(), containerName)
-	if err != nil {
-		t.Fatal(err)
-	}
-
+	var testContainerID string
 	var testContainerPort string
 
 	if swarm.ModeEnabled {
@@ -196,19 +191,44 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 			}
 		})
 	} else {
-		var testContainer client.ContainerInspectResult
 		// Wait for the container to be in a running state and have published ports
 		deadline := time.Now().Add(30 * time.Second)
 
 		for {
-			testContainer, err = dockerCli.Client().ContainerInspect(ctx, testContainerID, client.ContainerInspectOptions{})
+			containers, err := service.Ps(ctx, stackName, api.PsOptions{All: true})
+			if err != nil {
+				if time.Now().After(deadline) {
+					t.Fatalf("Failed to list containers: %v", err)
+				}
+				time.Sleep(1 * time.Second)
+				continue
+			}
+
+			// Find the test container
+			for _, c := range containers {
+				if c.Service == containerName {
+					testContainerID = c.ID
+					break
+				}
+			}
+
+			if testContainerID == "" {
+				if time.Now().After(deadline) {
+					t.Fatal("Test container not found in stack")
+				}
+				t.Logf("Test container not yet in stack, waiting...")
+				time.Sleep(1 * time.Second)
+				continue
+			}
+
+			// Inspect the container
+			testContainer, err := dockerCli.Client().ContainerInspect(ctx, testContainerID, client.ContainerInspectOptions{})
 			if err != nil {
 				if time.Now().After(deadline) {
 					t.Fatalf("Failed to inspect container: %v", err)
 				}
-
 				time.Sleep(1 * time.Second)
-
+				testContainerID = "" // Reset to retry finding it
 				continue
 			}
 
@@ -216,10 +236,8 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 				if time.Now().After(deadline) {
 					t.Fatal("Test container is not running")
 				}
-
 				t.Logf("Test container is not running yet, waiting...")
 				time.Sleep(1 * time.Second)
-
 				continue
 			}
 
