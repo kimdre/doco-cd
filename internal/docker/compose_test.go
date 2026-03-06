@@ -1146,6 +1146,20 @@ services:
 			composeFiles:  []string{"compose.yaml"},
 			expectedFiles: []string{},
 		},
+		{
+			name: "Non-existent compose file is skipped",
+			files: map[string]string{
+				"compose.yaml": `
+services:
+  app:
+    extends:
+      file: base.yml
+      service: base
+`,
+			},
+			composeFiles:  []string{"nonexistent.yaml", "compose.yaml"},
+			expectedFiles: []string{"base.yml"},
+		},
 	}
 
 	for _, tc := range testCases {
