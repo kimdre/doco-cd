@@ -46,7 +46,7 @@ func TestSend(t *testing.T) {
     environment:
       APPRISE_WORKER_COUNT: "1"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/status >/dev/null || exit 1"]
       interval: 2s
       timeout: 5s
       retries: 10
