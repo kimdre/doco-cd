@@ -357,21 +357,21 @@ func WaitForStack(ctx context.Context, t *testing.T, compose api.Compose, projec
 				continue
 			}
 
-			allReady := true
+			ready := true
 
 			for _, c := range containers {
 				if c.State != container.StateRunning {
-					allReady = false
+					ready = false
 					break
 				}
 
 				if c.Health != "" && c.Health != container.Healthy {
-					allReady = false
+					ready = false
 					break
 				}
 			}
 
-			if allReady {
+			if ready {
 				return containers, nil
 			}
 		}
