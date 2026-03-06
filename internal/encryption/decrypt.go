@@ -72,7 +72,14 @@ func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
 		}
 	}
 
-	err := filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
+	// Open the repository root for writing decrypted files without changing their permissions.
+	root, err := os.OpenRoot(repoPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open repo root %s: %w", repoPath, err)
+	}
+	defer root.Close()
+
+	err = filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return fmt.Errorf("failed to walk directory %s: %w", path, err)
 		}
@@ -145,8 +152,24 @@ func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
 				return fmt.Errorf("failed to decrypt file %s: %w", path, err)
 			}
 
-			err = os.WriteFile(path, decryptedContent, filesystem.PermOwner)
+			relPath, err := filepath.Rel(repoPath, path)
 			if err != nil {
+				return fmt.Errorf("failed to get relative path for %s: %w", path, err)
+			}
+
+			if strings.HasPrefix(relPath, "..") {
+				return fmt.Errorf("path %s escapes the repository root %s", path, repoPath)
+			}
+
+			f, err := root.OpenFile(relPath, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, filesystem.PermOwner)
+			if err != nil {
+				return fmt.Errorf("failed to open file %s for writing: %w", path, err)
+			}
+
+			defer f.Close()
+
+			if _, err := f.Write(decryptedContent); err != nil {
+				_ = f.Close()
 				return fmt.Errorf("failed to write decrypted content to file %s: %w", path, err)
 			}
 
