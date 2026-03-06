@@ -199,7 +199,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		}
 
 		for _, c := range containers {
-			t.Logf("Found container in stack: %s with name %s", c.ID, c.Name)
+			t.Logf("Found container in stack: %s with name %s (%v)", c.ID, c.Name, c.Names)
 
 			if c.Service == containerName {
 				testContainerID = c.ID
