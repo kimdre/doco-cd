@@ -109,11 +109,13 @@ func TestDecryptFilesInDirectory_GitIgnore(t *testing.T) {
 			t.Fatalf("Failed to create ignored_dir: %v", err)
 		}
 
+		// #nosec G703
 		if err = os.WriteFile(filepath.Join(ignoredDir, "secret.yaml"), testData, filesystem.PermOwner); err != nil {
 			t.Fatalf("Failed to write ignored secret: %v", err)
 		}
 
 		// Create a root-level file matching *.ignored
+		// #nosec G703
 		if err = os.WriteFile(filepath.Join(repoDir, "file.ignored"), testData, filesystem.PermOwner); err != nil {
 			t.Fatalf("Failed to write file.ignored: %v", err)
 		}
