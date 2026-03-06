@@ -793,6 +793,12 @@ func getExtendsFilesFromYaml(composeFiles []string, workingDir string) ([]string
 
 		b, err := os.ReadFile(f)
 		if err != nil {
+			// The file list may contain candidate names that don't exist
+			// on disk (e.g., docker-compose.yml instead of compose.yml).
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+
 			return nil, err
 		}
 
@@ -919,6 +925,12 @@ func getIncludeFilesFromYaml(composeFiles []string, workingDir string) ([]string
 
 		b, err := os.ReadFile(f)
 		if err != nil {
+			// The file list may contain candidate names that don't exist
+			// on disk (e.g., docker-compose.yml instead of compose.yml).
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+
 			return nil, err
 		}
 
