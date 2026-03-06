@@ -34,6 +34,8 @@ type composeOptions struct {
 	filePath    string
 	name        string
 	pruneImages bool
+	noWait      bool
+	waitTimeout time.Duration // Maximum time to wait for containers to be healthy in [ComposeUp]. Default is 30 seconds.
 }
 
 // ComposeOption configures a [ComposeUp] call.
@@ -50,6 +52,20 @@ func WithYAML(yaml string) ComposeOption {
 func WithFile(filePath string) ComposeOption {
 	return func(o *composeOptions) {
 		o.filePath = filePath
+	}
+}
+
+// WithNoWait disables waiting for containers to be healthy after starting the stack.
+func WithNoWait() ComposeOption {
+	return func(o *composeOptions) {
+		o.noWait = true
+	}
+}
+
+// WithWaitTimeout sets the maximum time to wait for containers to be healthy in [ComposeUp]. Default is 30 seconds.
+func WithWaitTimeout(timeout time.Duration) ComposeOption {
+	return func(o *composeOptions) {
+		o.waitTimeout = timeout
 	}
 }
 
@@ -86,15 +102,25 @@ func NewDockerCli() (command.Cli, error) {
 	return dockerCli, nil
 }
 
+func loadOpts(opts ...ComposeOption) composeOptions {
+	var o composeOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+
+	if o.waitTimeout == 0 {
+		o.waitTimeout = 30 * time.Second
+	}
+
+	return o
+}
+
 // ComposeUp deploys a compose stack and registers automatic cleanup via t.Cleanup.
 // Use [WithYAML] or [WithFile] to set the compose source, and [WithName] to set a custom stack name.
 func ComposeUp(ctx context.Context, t *testing.T, opts ...ComposeOption) *ComposeStack {
 	t.Helper()
 
-	var o composeOptions
-	for _, opt := range opts {
-		opt(&o)
-	}
+	o := loadOpts(opts...)
 
 	stackName := o.name
 	if stackName == "" {
@@ -160,8 +186,8 @@ func ComposeUp(ctx context.Context, t *testing.T, opts ...ComposeOption) *Compos
 		Create: api.CreateOptions{RemoveOrphans: true},
 		Start: api.StartOptions{
 			Project:     project,
-			Wait:        true,
-			WaitTimeout: 30 * time.Second,
+			Wait:        !o.noWait,
+			WaitTimeout: o.waitTimeout,
 		},
 	})
 
@@ -334,14 +360,12 @@ func WaitForStack(ctx context.Context, t *testing.T, compose api.Compose, projec
 			allReady := true
 
 			for _, c := range containers {
-				t.Logf("Container %s state: %s, health: %s", c.Name, c.State, c.Health)
-
 				if c.State != container.StateRunning {
 					allReady = false
 					break
 				}
 
-				if c.Health != container.NoHealthcheck && c.Health != container.Healthy {
+				if c.Health != "" && c.Health != container.Healthy {
 					allReady = false
 					break
 				}
