@@ -140,7 +140,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 
 		checks := []struct {
 			name string
-			fn   func(changedFiles []git.ChangedFile, composeFiles []string, workingDir string) (bool, error)
+			fn   func(changedFiles []git.ChangedFile, composeFiles []string, workingDir string, repoRoot string) (bool, error)
 		}{
 			{"extends", docker.HasChangedExtendsFiles},
 			{"includes", docker.HasChangedIncludeFiles},
@@ -149,7 +149,12 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		var filesChanged bool
 
 		for _, check := range checks {
-			filesChanged, err = check.fn(s.DeployState.ChangedFiles, s.DeployConfig.ComposeFiles, filepath.Join(s.Repository.PathInternal, s.DeployConfig.WorkingDirectory))
+			filesChanged, err = check.fn(
+				s.DeployState.ChangedFiles,
+				s.DeployConfig.ComposeFiles,
+				filepath.Join(s.Repository.PathInternal, s.DeployConfig.WorkingDirectory),
+				s.Repository.PathInternal,
+			)
 			if err != nil {
 				return fmt.Errorf("failed to check for %s file changes: %w", check.name, err)
 			}

@@ -611,10 +611,10 @@ func DestroyStack(
 	return nil
 }
 
-func getAbsolutePaths(changedFiles []gitInternal.ChangedFile, workingDir string) []string {
+func getAbsolutePaths(changedFiles []gitInternal.ChangedFile, repoRoot string) []string {
 	var absPaths []string
 
-	w := filepath.Clean(workingDir)
+	repoRoot = filepath.Clean(repoRoot)
 
 	for _, f := range changedFiles {
 		checkPaths := []diff.File{f.From, f.To}
@@ -627,12 +627,7 @@ func getAbsolutePaths(changedFiles []gitInternal.ChangedFile, workingDir string)
 			p := filepath.Clean(checkPath.Path())
 
 			if !filepath.IsAbs(p) {
-				// Check if base of working directory ends with directory path of changed file
-				if strings.HasSuffix(filepath.Dir(p), filepath.Base(w)) {
-					p = filepath.Join(w, filepath.Base(p))
-				} else {
-					p = filepath.Join(workingDir, p)
-				}
+				p = filepath.Join(repoRoot, p)
 			}
 
 			if !slices.Contains(absPaths, p) {
@@ -853,20 +848,21 @@ func getExtendsFilesFromYaml(composeFiles []string, workingDir string) ([]string
 }
 
 // HasChangedExtendsFiles checks if any files referenced in docker compose `extends:` definitions have changed using the Git status.
-func HasChangedExtendsFiles(changedFiles []gitInternal.ChangedFile, composeFiles []string, workingDir string) (bool, error) {
-	changedPaths := getAbsolutePaths(changedFiles, workingDir)
+func HasChangedExtendsFiles(changedFiles []gitInternal.ChangedFile, composeFiles []string, workingDir string, repoRoot string) (bool, error) {
+	changedPaths := getAbsolutePaths(changedFiles, repoRoot)
 
-	files := set.New[string]()
-
+	// Convert compose files to absolute paths
+	absoluteComposeFiles := make([]string, 0, len(composeFiles))
 	for _, composeFile := range composeFiles {
-		if !path.IsAbs(composeFile) {
+		if !filepath.IsAbs(composeFile) {
 			composeFile = filepath.Join(workingDir, composeFile)
 		}
 
-		files.Add(composeFile)
+		composeFile = filepath.Clean(composeFile)
+		absoluteComposeFiles = append(absoluteComposeFiles, composeFile)
 	}
 
-	extends, err := getExtendsFilesFromYaml(files.ToSlice(), workingDir)
+	extends, err := getExtendsFilesFromYaml(absoluteComposeFiles, workingDir)
 	if err != nil {
 		return false, fmt.Errorf("failed to get extends files from compose yaml: %w", err)
 	}
@@ -1034,20 +1030,21 @@ func getIncludeFilesFromYaml(composeFiles []string, workingDir string) ([]string
 }
 
 // HasChangedIncludeFiles checks if any files referenced in docker compose `include:` definitions have changed using the Git status.
-func HasChangedIncludeFiles(changedFiles []gitInternal.ChangedFile, composeFiles []string, workingDir string) (bool, error) {
-	changedPaths := getAbsolutePaths(changedFiles, workingDir)
+func HasChangedIncludeFiles(changedFiles []gitInternal.ChangedFile, composeFiles []string, workingDir string, repoRoot string) (bool, error) {
+	changedPaths := getAbsolutePaths(changedFiles, repoRoot)
 
-	files := set.New[string]()
-
+	// Convert compose files to absolute paths
+	absoluteComposeFiles := make([]string, 0, len(composeFiles))
 	for _, composeFile := range composeFiles {
-		if !path.IsAbs(composeFile) {
+		if !filepath.IsAbs(composeFile) {
 			composeFile = filepath.Join(workingDir, composeFile)
 		}
 
-		files.Add(composeFile)
+		composeFile = filepath.Clean(composeFile)
+		absoluteComposeFiles = append(absoluteComposeFiles, composeFile)
 	}
 
-	includeFiles, err := getIncludeFilesFromYaml(files.ToSlice(), workingDir)
+	includeFiles, err := getIncludeFilesFromYaml(absoluteComposeFiles, workingDir)
 	if err != nil {
 		return false, fmt.Errorf("failed to get include files from compose yaml: %w", err)
 	}
@@ -1073,6 +1070,8 @@ func checkFilePath(file string, paths []string, workingDir string) (bool, error)
 		file = filepath.Join(workingDir, file)
 	}
 
+	file = filepath.Clean(file)
+
 	// Get the last 4 parts of the file path
 	fileParts := strings.Split(file, string(os.PathSeparator))
 
@@ -1082,7 +1081,8 @@ func checkFilePath(file string, paths []string, workingDir string) (bool, error)
 	}
 
 	for _, p := range paths {
-		if strings.HasSuffix(p, pathSuffix) {
+		pClean := filepath.Clean(p)
+		if pClean == file || pClean == pathSuffix || strings.HasSuffix(pClean, pathSuffix) {
 			return true, nil
 		}
 	}
