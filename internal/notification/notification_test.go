@@ -56,8 +56,6 @@ func TestSend(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			SetAppriseConfig("http://"+endpoint+"/notify", fmt.Sprint(tc.appriseUrl, endpoint), "info")
 
 			err := Send(Info, "Test Notification", "This is a test message", metadata)
