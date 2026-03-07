@@ -3,6 +3,7 @@ package notification
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -36,6 +37,9 @@ var (
 	appriseNotifyUrls  = ""
 	appriseNotifyLevel = Info
 )
+
+// ErrNotifyFailed is returned when the Apprise request fails due to invalid notify URLs or unreachable service.
+var ErrNotifyFailed = errors.New("request to apprise failed")
 
 // appriseRequest represents the structure of a request to the Apprise notification service.
 type appriseRequest struct {
@@ -93,7 +97,7 @@ func send(apiUrl, notifyUrls, title, message, level string) error {
 	case http.StatusNoContent:
 		return nil
 	case http.StatusFailedDependency:
-		return fmt.Errorf("notify urls are not valid or Apprise service is not reachable")
+		return ErrNotifyFailed
 	default:
 		return fmt.Errorf("apprise request failed with status: %s", resp.Status)
 	}

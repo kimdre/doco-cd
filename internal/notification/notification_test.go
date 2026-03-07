@@ -26,7 +26,7 @@ func TestSend(t *testing.T) {
 		{
 			name:          "Invalid Service URL",
 			appriseUrl:    "pover://wrong@test",
-			expectedError: "failed to send notification: notify urls are not valid or Apprise service is not reachable",
+			expectedError: "failed to send notification: " + ErrNotifyFailed.Error(),
 		},
 	}
 
