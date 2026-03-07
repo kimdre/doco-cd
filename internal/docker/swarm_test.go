@@ -97,7 +97,7 @@ func TestDeploySwarmStack(t *testing.T) {
 		//	}
 		//	errStr := err.Error()
 		//	return strings.Contains(errStr, "network") && strings.Contains(errStr, "not found")
-		//}),
+		// }),
 		retry.Attempts(5),
 		retry.Delay(2*time.Second),
 		retry.Context(ctx),
