@@ -92,6 +92,8 @@ func send(apiUrl, notifyUrls, title, message, level string) error {
 		return nil
 	case http.StatusNoContent:
 		return nil
+	case http.StatusFailedDependency:
+		return fmt.Errorf("notify urls are not valid or Apprise service is not reachable")
 	default:
 		return fmt.Errorf("apprise request failed with status: %s", resp.Status)
 	}
