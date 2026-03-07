@@ -390,14 +390,28 @@ func TestCreateMountpointSymlink(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name        string
-		source      string
-		destination string
-		expectError error
+		name         string
+		source       string
+		destination  string
+		skipReadlink bool
+		expectError  error
 	}{
 		{
 			name:        "Valid Symlink Creation",
 			source:      "source",
+			destination: "destination",
+			expectError: nil,
+		},
+		{
+			name:         "same directory",
+			source:       "same",
+			destination:  "same",
+			expectError:  nil,
+			skipReadlink: true,
+		},
+		{
+			name:        "end with slash",
+			source:      "source1/",
 			destination: "destination",
 			expectError: nil,
 		},
@@ -409,14 +423,30 @@ func TestCreateMountpointSymlink(t *testing.T) {
 
 			tmpDir := t.TempDir()
 
+			source := filepath.Join(tmpDir, tc.source)
+			destination := filepath.Join(tmpDir, tc.destination)
+
 			err := CreateMountpointSymlink(container.MountPoint{
 				Type:        "bind",
-				Source:      filepath.Join(tmpDir, tc.source),
-				Destination: filepath.Join(tmpDir, tc.destination),
+				Source:      source,
+				Destination: destination,
 				Mode:        "rw",
 			})
 			if !errors.Is(err, tc.expectError) {
 				t.Errorf("symlink creation error: got %v, want %v", err, tc.expectError)
+			}
+
+			if tc.skipReadlink {
+				return
+			}
+
+			link, err := os.Readlink(source)
+			if err != nil {
+				t.Errorf("failed to read symlink: %v", err)
+			}
+
+			if link != destination {
+				t.Errorf("symlink destination: got %v, want %v", link, destination)
 			}
 		})
 	}
