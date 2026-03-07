@@ -169,19 +169,9 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	)
 
 	if swarm.ModeEnabled {
-		t.Log("Testing in Swarm mode, using service inspect")
+		t.Log("Testing in Swarm mode")
 
-		inspectName := stackName + "_" + "app"
-
-		// Get all services from stack
-		services, err := swarm.GetStackServices(ctx, dockerClient, stackName)
-		if err != nil {
-			t.Fatalf("Failed to get services for stack: %v", err)
-		}
-
-		for _, svc := range services {
-			t.Logf("Service: %s, ID: %s", svc.Spec.Name, svc.ID)
-		}
+		inspectName := stackName + "_" + "test"
 
 		svc, err := docker.WaitForSwarmService(ctx, t, dockerClient, inspectName, 30*time.Second)
 		if err != nil {
