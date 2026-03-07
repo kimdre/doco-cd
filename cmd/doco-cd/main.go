@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -61,14 +61,23 @@ func GetProxyUrlRedacted(proxyUrl string) string {
 // Required so that the docker cli client is able to read/parse certain files (like .env files) in docker.LoadCompose.
 func CreateMountpointSymlink(m container.MountPoint) error {
 	// prepare the symlink parent directory
-	symlinkParentDir := path.Dir(m.Source)
+	// if source end with `/` path.Dir will like remove `/`,
+	// like `/data/dococd/` -> /data/dococd which is not what we want.
+	source := filepath.Clean(m.Source)
+	destination := filepath.Clean(m.Destination)
+
+	if source == destination {
+		return nil
+	}
+
+	symlinkParentDir := filepath.Dir(source)
 
 	err := os.MkdirAll(symlinkParentDir, filesystem.PermDir)
 	if err != nil {
 		return fmt.Errorf("failed to create parent directory %s: %w", symlinkParentDir, err)
 	}
 
-	err = os.Symlink(m.Destination, m.Source)
+	err = os.Symlink(destination, source)
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
 			// If the symlink already exists, we can ignore the error
