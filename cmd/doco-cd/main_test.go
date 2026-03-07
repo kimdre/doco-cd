@@ -425,6 +425,7 @@ func TestCreateMountpointSymlink(t *testing.T) {
 
 			source := filepath.Join(tmpDir, tc.source)
 			destination := filepath.Join(tmpDir, tc.destination)
+
 			err := CreateMountpointSymlink(container.MountPoint{
 				Type:        "bind",
 				Source:      source,
@@ -434,13 +435,16 @@ func TestCreateMountpointSymlink(t *testing.T) {
 			if !errors.Is(err, tc.expectError) {
 				t.Errorf("symlink creation error: got %v, want %v", err, tc.expectError)
 			}
+
 			if tc.skipReadlink {
 				return
 			}
+
 			link, err := os.Readlink(source)
 			if err != nil {
 				t.Errorf("failed to read symlink: %v", err)
 			}
+
 			if link != destination {
 				t.Errorf("symlink destination: got %v, want %v", link, destination)
 			}
