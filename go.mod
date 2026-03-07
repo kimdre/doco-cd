@@ -27,8 +27,8 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/infisical/go-sdk v0.6.8
 	github.com/joho/godotenv v1.5.1
-	github.com/moby/moby/api v1.53.0
-	github.com/moby/moby/client v0.2.2
+	github.com/moby/moby/api v1.54.0
+	github.com/moby/moby/client v0.3.0
 	github.com/openbao/openbao/api/v2 v2.5.1
 	github.com/prometheus/client_golang v1.23.2
 	go.yaml.in/yaml/v3 v3.0.4
