@@ -46,7 +46,7 @@ const (
 )
 
 func TestHandlerData_WebhookHandler(t *testing.T) {
-	t.Parallel()
+	encryption.SetupAgeKeyEnvVar(t)
 
 	expectedResponse := `{"content":"job completed successfully","job_id":"[a-f0-9-]{36}"}`
 	expectedStatusCode := http.StatusCreated
