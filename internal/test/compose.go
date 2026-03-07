@@ -15,6 +15,7 @@ import (
 	"github.com/docker/cli/cli/flags"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
+	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 )
@@ -33,6 +34,8 @@ type composeOptions struct {
 	filePath    string
 	name        string
 	pruneImages bool
+	noWait      bool
+	waitTimeout time.Duration // Maximum time to wait for containers to be healthy in [ComposeUp]. Default is 30 seconds.
 }
 
 // ComposeOption configures a [ComposeUp] call.
@@ -49,6 +52,20 @@ func WithYAML(yaml string) ComposeOption {
 func WithFile(filePath string) ComposeOption {
 	return func(o *composeOptions) {
 		o.filePath = filePath
+	}
+}
+
+// WithNoWait disables waiting for containers to be healthy after starting the stack.
+func WithNoWait() ComposeOption {
+	return func(o *composeOptions) {
+		o.noWait = true
+	}
+}
+
+// WithWaitTimeout sets the maximum time to wait for containers to be healthy in [ComposeUp]. Default is 30 seconds.
+func WithWaitTimeout(timeout time.Duration) ComposeOption {
+	return func(o *composeOptions) {
+		o.waitTimeout = timeout
 	}
 }
 
@@ -85,15 +102,25 @@ func NewDockerCli() (command.Cli, error) {
 	return dockerCli, nil
 }
 
+func loadOpts(opts ...ComposeOption) composeOptions {
+	var o composeOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+
+	if o.waitTimeout == 0 {
+		o.waitTimeout = 30 * time.Second
+	}
+
+	return o
+}
+
 // ComposeUp deploys a compose stack and registers automatic cleanup via t.Cleanup.
 // Use [WithYAML] or [WithFile] to set the compose source, and [WithName] to set a custom stack name.
 func ComposeUp(ctx context.Context, t *testing.T, opts ...ComposeOption) *ComposeStack {
 	t.Helper()
 
-	var o composeOptions
-	for _, opt := range opts {
-		opt(&o)
-	}
+	o := loadOpts(opts...)
 
 	stackName := o.name
 	if stackName == "" {
@@ -159,8 +186,8 @@ func ComposeUp(ctx context.Context, t *testing.T, opts ...ComposeOption) *Compos
 		Create: api.CreateOptions{RemoveOrphans: true},
 		Start: api.StartOptions{
 			Project:     project,
-			Wait:        true,
-			WaitTimeout: 30 * time.Second,
+			Wait:        !o.noWait,
+			WaitTimeout: o.waitTimeout,
 		},
 	})
 
@@ -301,4 +328,52 @@ func (s *ComposeStack) Exec(ctx context.Context, t *testing.T, serviceName strin
 	}
 
 	return inspectResp.ExitCode, strings.NewReader(string(output))
+}
+
+// WaitForStack waits until all containers in the stack are running and healthy (if healthcheck is defined).
+func WaitForStack(ctx context.Context, t *testing.T, compose api.Compose, projectName string, timeout time.Duration) ([]api.ContainerSummary, error) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("timeout waiting for stack %q to be ready", projectName)
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("context cancelled while waiting for stack %q to be ready: %w", projectName, ctx.Err())
+		case <-ticker.C:
+			containers, err := compose.Ps(ctx, projectName, api.PsOptions{All: true})
+			if err != nil {
+				return nil, fmt.Errorf("failed to list containers for stack %q: %w", projectName, err)
+			}
+
+			if len(containers) == 0 {
+				continue
+			}
+
+			ready := true
+
+			for _, c := range containers {
+				if c.State != container.StateRunning {
+					ready = false
+					break
+				}
+
+				if c.Health != "" && c.Health != container.Healthy {
+					ready = false
+					break
+				}
+			}
+
+			if ready {
+				return containers, nil
+			}
+		}
+	}
 }

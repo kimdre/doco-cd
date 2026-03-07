@@ -52,8 +52,6 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	expectedStatusCode := http.StatusCreated
 	tmpDir := t.TempDir()
 
-	const containerName = "test"
-
 	stackName := test.ConvertTestName(t.Name())
 
 	payloadFile := githubPayloadFile
@@ -165,18 +163,15 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		}
 	})
 
-	// Check if the deployed test container is running
-	testContainerID, err := docker.GetContainerID(dockerCli.Client(), containerName)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var testContainerPort string
+	var (
+		testContainerID   string
+		testContainerPort string
+	)
 
 	if swarm.ModeEnabled {
-		t.Log("Testing in Swarm mode, using service inspect")
+		t.Log("Testing in Swarm mode")
 
-		inspectName := stackName + "_" + containerName
+		inspectName := stackName + "_" + "test"
 
 		svc, err := docker.WaitForSwarmService(ctx, t, dockerClient, inspectName, 30*time.Second)
 		if err != nil {
@@ -196,37 +191,39 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 			}
 		})
 	} else {
-		var testContainer client.ContainerInspectResult
-		// Wait for the container to be in a running state and have published ports
-		deadline := time.Now().Add(30 * time.Second)
+		containers, err := test.WaitForStack(ctx, t, service, stackName, 30*time.Second)
+		if err != nil {
+			t.Fatalf("Failed waiting for stack to be ready: %v", err)
+		}
+
+		for _, c := range containers {
+			if c.Service == "app" {
+				testContainerID = c.ID
+				break
+			}
+		}
+
+		if testContainerID == "" {
+			t.Fatal("Test container not found in stack")
+		}
+
+		deadline := time.Now().Add(15 * time.Second)
 
 		for {
-			testContainer, err = dockerCli.Client().ContainerInspect(ctx, testContainerID, client.ContainerInspectOptions{})
+			testContainer, err := dockerCli.Client().ContainerInspect(ctx, testContainerID, client.ContainerInspectOptions{})
 			if err != nil {
 				if time.Now().After(deadline) {
 					t.Fatalf("Failed to inspect container: %v", err)
 				}
 
-				time.Sleep(1 * time.Second)
+				time.Sleep(500 * time.Millisecond)
 
 				continue
 			}
 
-			if !testContainer.Container.State.Running {
-				if time.Now().After(deadline) {
-					t.Fatal("Test container is not running")
-				}
-
-				t.Logf("Test container is not running yet, waiting...")
-				time.Sleep(1 * time.Second)
-
-				continue
-			}
-
-			// Check if test container has published ports
 			portKey, _ := network.ParsePort("80/tcp")
-			networkPort := testContainer.Container.NetworkSettings.Ports[portKey]
 
+			networkPort := testContainer.Container.NetworkSettings.Ports[portKey]
 			if len(networkPort) > 0 {
 				testContainerPort = networkPort[0].HostPort
 				break
@@ -236,12 +233,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 				t.Fatal("Test container port not published")
 			}
 
-			t.Logf("Test container port not yet published, waiting...")
-			time.Sleep(1 * time.Second)
-		}
-
-		if testContainerPort == "" {
-			t.Fatal("Failed to get test container port")
+			time.Sleep(500 * time.Millisecond)
 		}
 	}
 

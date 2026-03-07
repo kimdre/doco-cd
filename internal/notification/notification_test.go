@@ -26,7 +26,7 @@ func TestSend(t *testing.T) {
 		{
 			name:          "Invalid Service URL",
 			appriseUrl:    "pover://wrong@test",
-			expectedError: "failed to send notification: apprise request failed with status: 424 Failed Dependency",
+			expectedError: "failed to send notification: " + ErrNotifyFailed.Error(),
 		},
 	}
 
@@ -46,7 +46,7 @@ func TestSend(t *testing.T) {
     environment:
       APPRISE_WORKER_COUNT: "1"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/status >/dev/null || exit 1"]
       interval: 2s
       timeout: 5s
       retries: 10
@@ -56,8 +56,7 @@ func TestSend(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
+			// Cannot run tests in parallel because SetAppriseConfig modifies global variables
 			SetAppriseConfig("http://"+endpoint+"/notify", fmt.Sprint(tc.appriseUrl, endpoint), "info")
 
 			err := Send(Info, "Test Notification", "This is a test message", metadata)
