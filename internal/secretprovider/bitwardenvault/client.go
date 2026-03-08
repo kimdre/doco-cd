@@ -3,9 +3,11 @@ package bitwardenvault
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -16,10 +18,8 @@ import (
 )
 
 type Provider struct {
-	ApiUrl string
-	ApiKey string // Used if OAuth2 is not configured
+	apiURL string
 	client *http.Client
-
 	// OAuth2 fields
 	oauth2TokenURL     string
 	oauth2ClientID     string
@@ -27,29 +27,24 @@ type Provider struct {
 	oauth2Token        string
 	oauth2TokenExpiry  time.Time
 	oauth2Mu           sync.Mutex
+	skipTlsVerify      bool
 }
 
 const Name = "bitwarden_vault"
 
-func NewProvider(apiUrl, apiKey string, opts ...func(*Provider)) *Provider {
-	p := &Provider{
-		ApiUrl: apiUrl,
-		ApiKey: apiKey,
-		client: &http.Client{},
-	}
-	for _, opt := range opts {
-		opt(p)
+// NewProvider creates a Provider using the given config, including TLS options.
+func NewProvider(apiUrl, tokenUrl, clientID, clientSecret string, skipTlsVerify bool) *Provider {
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: skipTlsVerify},
 	}
 
-	return p
-}
-
-// WithOAuth2 configures the provider to use OAuth2 client credentials.
-func WithOAuth2(tokenURL, clientID, clientSecret string) func(*Provider) {
-	return func(p *Provider) {
-		p.oauth2TokenURL = tokenURL
-		p.oauth2ClientID = clientID
-		p.oauth2ClientSecret = clientSecret
+	return &Provider{
+		apiURL:             apiUrl,
+		client:             &http.Client{Transport: transport},
+		oauth2TokenURL:     tokenUrl,
+		oauth2ClientID:     clientID,
+		oauth2ClientSecret: clientSecret,
+		skipTlsVerify:      skipTlsVerify,
 	}
 }
 
@@ -112,16 +107,12 @@ func (p *Provider) ResolveSecretReferences(ctx context.Context, secrets map[stri
 func (p *Provider) Close() {}
 
 func (p *Provider) getAuthHeader(ctx context.Context) (string, error) {
-	if p.oauth2TokenURL != "" && p.oauth2ClientID != "" && p.oauth2ClientSecret != "" {
-		token, err := p.getOAuth2Token(ctx)
-		if err != nil {
-			return "", err
-		}
-
-		return "Bearer " + token, nil
+	token, err := p.getOAuth2Token(ctx)
+	if err != nil {
+		return "", err
 	}
 
-	return "Bearer " + p.ApiKey, nil
+	return "Bearer " + token, nil
 }
 
 func (p *Provider) getOAuth2Token(ctx context.Context) (string, error) {
@@ -134,9 +125,13 @@ func (p *Provider) getOAuth2Token(ctx context.Context) (string, error) {
 
 	form := url.Values{}
 	form.Set("grant_type", "client_credentials")
+	form.Set("scope", "api")
 	form.Set("client_id", p.oauth2ClientID)
 	form.Set("client_secret", p.oauth2ClientSecret)
-	form.Set("scope", "api")
+	form.Set("device_identifier", "0") // Bitwarden/Vaultwarden requires this
+	form.Set("deviceName", "docoCD")   // Bitwarden/Vaultwarden requires camelCase
+	form.Set("deviceType", "0")        // Bitwarden/Vaultwarden requires camelCase
+	form.Set("twoFactorToken", "0")
 
 	req, err := http.NewRequestWithContext(ctx, "POST", p.oauth2TokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
@@ -152,14 +147,16 @@ func (p *Provider) getOAuth2Token(ctx context.Context) (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("oauth2 token endpoint returned %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("oauth2 token endpoint returned %d: %s", resp.StatusCode, string(body))
 	}
 
 	var tokenResp struct {
 		AccessToken string `json:"access_token"`
 		ExpiresIn   int    `json:"expires_in"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+	err = json.NewDecoder(resp.Body).Decode(&tokenResp)
+	if err != nil {
 		return "", err
 	}
 
@@ -170,7 +167,7 @@ func (p *Provider) getOAuth2Token(ctx context.Context) (string, error) {
 }
 
 func (p *Provider) getItemByID(ctx context.Context, id string) (*VaultItem, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/object/item/%s", p.ApiUrl, id), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/object/item/%s", p.apiURL, id), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -186,10 +183,15 @@ func (p *Provider) getItemByID(ctx context.Context, id string) (*VaultItem, erro
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		cerr := resp.Body.Close()
+		if cerr != nil {
+			// Optionally log or handle close error
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+		return nil, fmt.Errorf("unexpected status: %s", resp.Status)
 	}
 
 	var item VaultItem
