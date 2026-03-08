@@ -9,16 +9,15 @@ import (
 // Requires a running Vaultwarden container (see testdata/docker-compose.yml)
 // and a test vault with known item IDs and API key.
 func TestProvider_GetSecret(t *testing.T) {
-
 	// Get config
 	cfg, cfgErr := GetConfig()
 	if cfgErr != nil {
 		t.Fatalf("failed to get config: %v", cfgErr)
 	}
 
-	var testSecretID = "13591cbd-4f0d-4fac-8522-020594387b28"
+	testSecretID := "13591cbd-4f0d-4fac-8522-020594387b28" // #nosec G101
 
-	provider := NewProvider(cfg.ApiUrl, cfg.OAuth2TokenURL, cfg.OAuth2ClientID, cfg.OAuth2ClientSecret, cfg.SkipTlsVerify)
+	provider := NewProvider(cfg.ApiUrl, cfg.OAuth2TokenURL, cfg.OAuth2ClientID, cfg.OAuth2ClientSecret, cfg.SkipTLSVerify)
 
 	t.Run("login secret", func(t *testing.T) {
 		val, err := provider.GetSecret(context.Background(), testSecretID)
