@@ -1,0 +1,15 @@
+version: '3.7'
+services:
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden-test
+    environment:
+      - ADMIN_TOKEN=supersecrettoken
+      - SIGNUPS_ALLOWED=true
+      - WEBSOCKET_ENABLED=true
+    ports:
+      - "80:80"
+    volumes:
+      - ./vw-data:/data
+    restart: unless-stopped
+
