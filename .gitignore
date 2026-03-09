@@ -3,7 +3,7 @@
 #
 
 # Editor directories and files
-.idea
+.idea/
 
 # Binaries for programs and plugins
 bin/
