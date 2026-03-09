@@ -37,7 +37,7 @@ require (
 	gotest.tools/v3 v3.5.2
 )
 
-require golang.org/x/sync v0.19.0
+require golang.org/x/sync v0.20.0
 
 require (
 	github.com/avast/retry-go/v5 v5.0.0
