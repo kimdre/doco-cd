@@ -787,21 +787,42 @@ func GetShortestUniqueCommitSHA(repo *git.Repository, commitSHA string, minLengt
 		return "", errors.New("repository not found")
 	}
 
+	if commitSHA == "" {
+		return "", errors.New("commit SHA is empty")
+	}
+
 	iter, err := repo.CommitObjects()
 	if err != nil {
 		return "", err
 	}
 	defer iter.Close()
 
-	// collect all commit SHAs
-	var allSHAs []string
+	// collect all commit SHAs, skipping any errors
+	var (
+		allSHAs     []string
+		foundCommit bool
+	)
 
 	err = iter.ForEach(func(c *object.Commit) error {
-		allSHAs = append(allSHAs, c.Hash.String())
+		if c == nil {
+			return nil
+		}
+
+		sha := c.Hash.String()
+
+		allSHAs = append(allSHAs, sha)
+		if sha == commitSHA {
+			foundCommit = true
+		}
+
 		return nil
 	})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error iterating commits: %w", err)
+	}
+
+	if !foundCommit {
+		return "", fmt.Errorf("commit SHA %s not found in repository", commitSHA)
 	}
 
 	shaLen := len(commitSHA)
