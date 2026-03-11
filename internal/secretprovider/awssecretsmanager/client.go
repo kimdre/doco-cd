@@ -176,13 +176,16 @@ func (p *Provider) ResolveSecretReferences(ctx context.Context, secrets map[stri
 		return nil, err
 	}
 
+	out := make(map[string]string, len(secrets))
 	for envVar, secretID := range secrets {
 		if val, ok := resolved[secretID]; ok {
-			secrets[envVar] = val
+			out[envVar] = val
+		} else {
+			out[envVar] = ""
 		}
 	}
 
-	return secrets, nil
+	return out, nil
 }
 
 func (p *Provider) Close() {
