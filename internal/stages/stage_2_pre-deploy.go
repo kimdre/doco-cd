@@ -192,7 +192,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			return fmt.Errorf("failed to check for changed project files: %s", err)
 		}
 
-		if !composeChanged && len(changedFiles) > 0 && !imagesChanged {
+		if !composeChanged && len(changedFiles) == 0 && !imagesChanged {
 			stageLog.Debug("no changes detected, skipping deployment",
 				slog.String("directory", s.DeployConfig.WorkingDirectory))
 
