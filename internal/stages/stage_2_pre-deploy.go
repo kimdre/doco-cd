@@ -187,7 +187,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			stageLog.Debug("compose project has changed, proceeding with deployment", slog.String("new_hash", docker.ProjectHash(s.Docker.Project)), slog.String("old_hash", curProjectHash))
 		}
 
-		changedFiles, err := docker.ProjectFilesHaveChanges(s.DeployState.ChangedFiles, s.Docker.Project)
+		changedFiles, err := docker.ProjectFilesHaveChanges(s.DeployState.ChangedFiles, s.Docker.Project, s.Repository.PathInternal)
 		if err != nil {
 			return fmt.Errorf("failed to check for changed project files: %s", err)
 		}

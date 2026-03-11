@@ -287,7 +287,7 @@ compose_files:
 			}
 		}
 
-		err = DeployStack(jobLog, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
+		err = DeployStack(jobLog, repoPath, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
 			[]git.ChangedFile{}, latestCommit, "dev", "poll", false, resolvedSecrets, false)
 		if err != nil {
 			t.Fatalf("failed to deploy stack: %v", err)
@@ -435,7 +435,7 @@ func TestHasChangedConfigs(t *testing.T) {
 				t.Fatalf("Expectec changed files, but found none found")
 			}
 
-			hasChanged, err := HasChangedConfigs(changedFiles, project)
+			hasChanged, err := HasChangedConfigs(changedFiles, project, project.WorkingDir)
 			if err != nil {
 				t.Fatalf("Failed to check for changed configs: %v", err)
 			}
@@ -513,7 +513,7 @@ func TestHasChangedSecrets(t *testing.T) {
 				t.Fatalf("Expectec changed files, but found none found")
 			}
 
-			hasChanged, err := HasChangedSecrets(changedFiles, project)
+			hasChanged, err := HasChangedSecrets(changedFiles, project, project.WorkingDir)
 			if err != nil {
 				t.Fatalf("Failed to check for changed secrets: %v", err)
 			}
@@ -591,7 +591,7 @@ func TestHasChangedBindMounts(t *testing.T) {
 				t.Fatalf("Expectec changed files, but found none found")
 			}
 
-			hasChanged, err := HasChangedBindMounts(changedFiles, project)
+			hasChanged, err := HasChangedBindMounts(changedFiles, project, project.WorkingDir)
 			if err != nil {
 				t.Fatalf("Failed to check for changed bind mounts: %v", err)
 			}
