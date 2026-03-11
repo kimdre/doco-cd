@@ -143,6 +143,10 @@ func TestDeployCompose(t *testing.T) {
 
 	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, "v0.0.0-test")
 	if err != nil {
+		if errors.Is(err, bitwardensecretsmanager.ErrNotSupported) {
+			t.Skip(err.Error())
+		}
+
 		t.Fatalf("failed to initialize secret provider: %s", err.Error())
 
 		return
@@ -700,6 +704,10 @@ func TestInjectSecretsToProject(t *testing.T) {
 					t.Logf("expected initialization error: %s", err.Error())
 
 					return
+				}
+
+				if errors.Is(err, bitwardensecretsmanager.ErrNotSupported) {
+					t.Skip(err.Error())
 				}
 
 				t.Fatalf("failed to initialize secret provider: %s", err.Error())

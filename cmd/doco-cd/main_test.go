@@ -18,6 +18,8 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
+
 	"github.com/kimdre/doco-cd/internal/test"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -265,6 +267,10 @@ func TestHandleEvent(t *testing.T) {
 
 			secretProvider, err := secretprovider.Initialize(ctx, appConfig.SecretProvider, "v0.0.0-test")
 			if err != nil {
+				if errors.Is(err, bitwardensecretsmanager.ErrNotSupported) {
+					t.Skip(err.Error())
+				}
+
 				t.Fatalf("failed to initialize secret provider: %s", err.Error())
 
 				return

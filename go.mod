@@ -44,6 +44,7 @@ require (
 	github.com/bitwarden/sdk-go/v2 v2.0.0
 	github.com/docker/compose/v5 v5.1.0
 	github.com/jmespath/go-jmespath v0.4.1-0.20220621161143-b0104c826a24
+	github.com/opencontainers/go-digest v1.0.0
 	github.com/prometheus/common v0.67.5
 	github.com/veqryn/slog-dedup v0.6.0
 )
@@ -210,7 +211,6 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f // indirect
 	github.com/onsi/gomega v1.37.0 // indirect
-	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/oracle/oci-go-sdk/v65 v65.95.2 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect

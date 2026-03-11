@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
+	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
 	"github.com/kimdre/doco-cd/internal/test"
 
 	"github.com/kimdre/doco-cd/internal/git"
@@ -50,6 +52,10 @@ func TestRunPoll(t *testing.T) {
 
 	secretProvider, err := secretprovider.Initialize(ctx, appConfig.SecretProvider, "v0.0.0-test")
 	if err != nil {
+		if errors.Is(err, bitwardensecretsmanager.ErrNotSupported) {
+			t.Skip(err.Error())
+		}
+
 		t.Fatalf("failed to initialize secret provider: %s", err.Error())
 
 		return
