@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/avast/retry-go/v5"
 	composeCli "github.com/compose-spec/compose-go/v2/cli"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/flags"
@@ -182,15 +183,6 @@ func ComposeUp(ctx context.Context, t *testing.T, opts ...ComposeOption) *Compos
 		}
 	})
 
-	err = svc.Up(ctx, project, api.UpOptions{
-		Create: api.CreateOptions{RemoveOrphans: true},
-		Start: api.StartOptions{
-			Project:     project,
-			Wait:        !o.noWait,
-			WaitTimeout: o.waitTimeout,
-		},
-	})
-
 	t.Cleanup(func() {
 		downOpts := api.DownOptions{
 			RemoveOrphans: true,
@@ -198,6 +190,8 @@ func ComposeUp(ctx context.Context, t *testing.T, opts ...ComposeOption) *Compos
 		}
 		if o.pruneImages {
 			downOpts.Images = "all"
+		} else {
+			downOpts.Images = "local"
 		}
 
 		if err := svc.Down(context.WithoutCancel(ctx), stackName, downOpts); err != nil {
@@ -205,6 +199,25 @@ func ComposeUp(ctx context.Context, t *testing.T, opts ...ComposeOption) *Compos
 		}
 	})
 
+	err = retry.New(
+		retry.Delay(1*time.Second),
+		retry.DelayType(retry.BackOffDelay),
+		retry.Attempts(3),
+		retry.RetryIf(func(err error) bool {
+			// Retry if error contains "No such image"
+			return strings.Contains(err.Error(), "No such image:")
+		}),
+	).Do(
+		func() error {
+			return svc.Up(ctx, project, api.UpOptions{
+				Create: api.CreateOptions{RemoveOrphans: true},
+				Start: api.StartOptions{
+					Project:     project,
+					Wait:        !o.noWait,
+					WaitTimeout: o.waitTimeout,
+				},
+			})
+		})
 	if err != nil {
 		t.Fatalf("failed to start compose stack %q: %v", stackName, err)
 	}
