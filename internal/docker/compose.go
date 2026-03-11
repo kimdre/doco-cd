@@ -383,6 +383,16 @@ func DeployStack(
 		return fmt.Errorf("%s", errMsg)
 	}
 
+	internalWorkingDir := path.Join(internalRepoPath, deployConfig.WorkingDirectory)
+
+	internalWorkingDir, err = filepath.Abs(internalWorkingDir)
+	if err != nil || !strings.HasPrefix(internalWorkingDir, internalRepoPath) {
+		errMsg := "invalid working directory: resolved path is outside the allowed base directory"
+		jobLog.Error(errMsg, slog.String("resolved_path", internalWorkingDir))
+
+		return fmt.Errorf("%s", errMsg)
+	}
+
 	// Create a temporary env file if environment variables are specified in the deployment config
 	if deployConfig.Internal.Environment != nil {
 		tmpEnvFile, err := config.CreateTmpDotEnvFile(deployConfig)
@@ -467,7 +477,7 @@ func DeployStack(
 			}
 		}
 	} else {
-		detectedChanges, err := ProjectFilesHaveChanges(changedFiles, project, internalRepoPath)
+		detectedChanges, err := ProjectFilesHaveChanges(changedFiles, project, internalWorkingDir)
 		if err != nil {
 			errMsg := "failed to check for changed project files"
 			return fmt.Errorf("%s: %w", errMsg, err)
@@ -627,29 +637,24 @@ func HasChangedSecrets(changedFiles []gitInternal.ChangedFile, project *types.Pr
 }
 
 // HasChangedBindMounts checks if any files used in docker compose `volumes:` definitions with type `bind` have changed using the Git status.
-func HasChangedBindMounts(changedFiles []gitInternal.ChangedFile, project *types.Project, repoPath string) (bool, error) {
-	// We only need the relative part in this case
+func HasChangedBindMounts(changedFiles []gitInternal.ChangedFile, project *types.Project, absWorkingDir string) (bool, error) {
 	paths := getAbsolutePaths(changedFiles, ".")
 
 	for _, s := range project.Services {
 		for _, v := range s.Volumes {
 			if v.Type == "bind" && v.Source != "" {
+				bindSourceAbs := v.Source
+				if !filepath.IsAbs(bindSourceAbs) {
+					bindSourceAbs = filepath.Join(absWorkingDir, bindSourceAbs)
+				}
+
 				for _, p := range paths {
-					info, err := os.Stat(filepath.Join(repoPath, p))
-					if err != nil {
-						if errors.Is(err, os.ErrNotExist) {
-							continue
-						}
+					slog.Info("checking bind mount for changes", slog.String("bind_source", bindSourceAbs), slog.String("changed_file", p))
 
-						return false, fmt.Errorf("failed to stat bind mount source %s: %w", p, err)
-					}
-
-					// Redeployment is not needed if the bind mount source is a directory
-					if info.IsDir() {
-						continue
-					}
-
-					if strings.HasSuffix(v.Source, p) {
+					// FIXME: This does not work yet
+					// Tets with make test-run "TestHasChangedBindMounts/Has_changes -v"
+					// Test with secret-provider branch and bitwarden-sm
+					if strings.HasSuffix(bindSourceAbs, p) {
 						return true, nil
 					}
 				}
@@ -782,7 +787,7 @@ func checkFilePath(file string, paths []string, workingDir string) (bool, error)
 }
 
 // ProjectFilesHaveChanges checks if any files related to the compose project have changed.
-func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *types.Project, repoPath string) ([]string, error) {
+func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *types.Project, absWorkingDir string) ([]string, error) {
 	checks := []struct {
 		name string
 		fn   func([]gitInternal.ChangedFile, *types.Project, string) (bool, error)
@@ -797,7 +802,7 @@ func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *ty
 	var changeReasons []string
 
 	for _, check := range checks {
-		changed, err := check.fn(changedFiles, project, repoPath)
+		changed, err := check.fn(changedFiles, project, absWorkingDir)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check '%s' for changes: %w", check.name, err)
 		}

@@ -591,7 +591,7 @@ func TestHasChangedBindMounts(t *testing.T) {
 				t.Fatalf("Expectec changed files, but found none found")
 			}
 
-			hasChanged, err := HasChangedBindMounts(changedFiles, project, project.WorkingDir)
+			hasChanged, err := HasChangedBindMounts(changedFiles, project, tmpDir)
 			if err != nil {
 				t.Fatalf("Failed to check for changed bind mounts: %v", err)
 			}
