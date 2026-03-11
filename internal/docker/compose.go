@@ -362,7 +362,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 
 // DeployStack deploys the stack using the provided deployment configuration.
 func DeployStack(
-	jobLog *slog.Logger, externalRepoPath string, ctx *context.Context,
+	jobLog *slog.Logger, externalRepoPath, internalRepoPath string, ctx *context.Context,
 	dockerCli *command.Cli, dockerClient *client.Client, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
 	changedFiles []gitInternal.ChangedFile, latestCommit, appVersion, triggerEvent string, forceDeploy bool,
 	resolvedSecrets secrettypes.ResolvedSecrets, secretsChanged bool,
@@ -467,7 +467,7 @@ func DeployStack(
 			}
 		}
 	} else {
-		detectedChanges, err := ProjectFilesHaveChanges(changedFiles, project)
+		detectedChanges, err := ProjectFilesHaveChanges(changedFiles, project, internalRepoPath)
 		if err != nil {
 			errMsg := "failed to check for changed project files"
 			return fmt.Errorf("%s: %w", errMsg, err)
@@ -586,21 +586,18 @@ func getAbsolutePaths(changedFiles []gitInternal.ChangedFile, repoRoot string) [
 }
 
 // HasChangedConfigs checks if any files used in docker compose `configs:` definitions have changed using the Git status.
-func HasChangedConfigs(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
-	paths := getAbsolutePaths(changedFiles, project.WorkingDir)
+func HasChangedConfigs(changedFiles []gitInternal.ChangedFile, project *types.Project, _ string) (bool, error) {
+	// We only need the relative part in this case
+	paths := getAbsolutePaths(changedFiles, ".")
 
 	for _, c := range project.Configs {
-		configPath := c.File
-		if configPath == "" {
+		// Changes in config.Content are handled in project hash comparison
+		if c.File == "" {
 			continue
 		}
 
-		if !path.IsAbs(configPath) {
-			configPath = filepath.Join(project.WorkingDir, configPath)
-		}
-
 		for _, p := range paths {
-			if p == configPath {
+			if strings.HasSuffix(c.File, p) {
 				return true, nil
 			}
 		}
@@ -610,21 +607,17 @@ func HasChangedConfigs(changedFiles []gitInternal.ChangedFile, project *types.Pr
 }
 
 // HasChangedSecrets checks if any files used in docker compose `secrets:` definitions have changed using the Git status.
-func HasChangedSecrets(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
-	paths := getAbsolutePaths(changedFiles, project.WorkingDir)
+func HasChangedSecrets(changedFiles []gitInternal.ChangedFile, project *types.Project, _ string) (bool, error) {
+	// We only need the relative part in this case
+	paths := getAbsolutePaths(changedFiles, ".")
 
 	for _, s := range project.Secrets {
-		secretPath := s.File
-		if secretPath == "" {
+		if s.File == "" {
 			continue
 		}
 
-		if !path.IsAbs(secretPath) {
-			secretPath = filepath.Join(project.WorkingDir, secretPath)
-		}
-
 		for _, p := range paths {
-			if p == secretPath {
+			if strings.HasSuffix(s.File, p) {
 				return true, nil
 			}
 		}
@@ -634,14 +627,15 @@ func HasChangedSecrets(changedFiles []gitInternal.ChangedFile, project *types.Pr
 }
 
 // HasChangedBindMounts checks if any files used in docker compose `volumes:` definitions with type `bind` have changed using the Git status.
-func HasChangedBindMounts(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
-	paths := getAbsolutePaths(changedFiles, project.WorkingDir)
+func HasChangedBindMounts(changedFiles []gitInternal.ChangedFile, project *types.Project, repoPath string) (bool, error) {
+	// We only need the relative part in this case
+	paths := getAbsolutePaths(changedFiles, ".")
 
 	for _, s := range project.Services {
 		for _, v := range s.Volumes {
 			if v.Type == "bind" && v.Source != "" {
 				for _, p := range paths {
-					info, err := os.Stat(p)
+					info, err := os.Stat(filepath.Join(repoPath, p))
 					if err != nil {
 						if errors.Is(err, os.ErrNotExist) {
 							continue
@@ -652,10 +646,10 @@ func HasChangedBindMounts(changedFiles []gitInternal.ChangedFile, project *types
 
 					// Redeployment is not needed if the bind mount source is a directory
 					if info.IsDir() {
-						return false, nil
+						continue
 					}
 
-					if strings.HasPrefix(p, v.Source) {
+					if strings.HasSuffix(v.Source, p) {
 						return true, nil
 					}
 				}
@@ -667,19 +661,14 @@ func HasChangedBindMounts(changedFiles []gitInternal.ChangedFile, project *types
 }
 
 // HasChangedEnvFiles checks if any files used in docker compose `env_file:` definitions have changed using the Git status.
-func HasChangedEnvFiles(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
-	paths := getAbsolutePaths(changedFiles, project.WorkingDir)
+func HasChangedEnvFiles(changedFiles []gitInternal.ChangedFile, project *types.Project, _ string) (bool, error) {
+	// We only need the relative part in this case
+	paths := getAbsolutePaths(changedFiles, ".")
 
 	for _, s := range project.Services {
 		for _, envFile := range s.EnvFiles {
-			envFilePath := envFile.Path
-
-			if !path.IsAbs(envFilePath) {
-				envFilePath = filepath.Join(project.WorkingDir, envFilePath)
-			}
-
 			for _, p := range paths {
-				if p == envFilePath {
+				if strings.HasSuffix(envFile.Path, p) {
 					return true, nil
 				}
 			}
@@ -691,8 +680,8 @@ func HasChangedEnvFiles(changedFiles []gitInternal.ChangedFile, project *types.P
 
 // HasChangedBuildFiles checks if any files used as build context in docker compose `build:` definitions have changed using the Git status.
 // This includes any file within the build context directory for each service. If a changed file is within a build context, it returns true.
-func HasChangedBuildFiles(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
-	paths := getAbsolutePaths(changedFiles, project.WorkingDir)
+func HasChangedBuildFiles(changedFiles []gitInternal.ChangedFile, project *types.Project, _ string) (bool, error) {
+	paths := getAbsolutePaths(changedFiles, ".")
 
 	for _, s := range project.Services {
 		if s.Build == nil {
@@ -730,13 +719,13 @@ func HasChangedBuildFiles(changedFiles []gitInternal.ChangedFile, project *types
 			contexts = append(contexts, dockerFile)
 		}
 
-		for _, ctx := range contexts {
-			if !path.IsAbs(ctx) {
-				ctx = filepath.Join(project.WorkingDir, ctx)
+		for _, ctxFile := range contexts {
+			if !path.IsAbs(ctxFile) {
+				ctxFile = filepath.Join(project.WorkingDir, ctxFile)
 			}
 
 			for _, p := range paths {
-				if strings.HasPrefix(p, ctx) {
+				if strings.HasSuffix(ctxFile, p) {
 					return true, nil
 				}
 			}
@@ -793,10 +782,10 @@ func checkFilePath(file string, paths []string, workingDir string) (bool, error)
 }
 
 // ProjectFilesHaveChanges checks if any files related to the compose project have changed.
-func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *types.Project) ([]string, error) {
+func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *types.Project, repoPath string) ([]string, error) {
 	checks := []struct {
 		name string
-		fn   func([]gitInternal.ChangedFile, *types.Project) (bool, error)
+		fn   func([]gitInternal.ChangedFile, *types.Project, string) (bool, error)
 	}{
 		{"configs", HasChangedConfigs},
 		{"secrets", HasChangedSecrets},
@@ -808,7 +797,7 @@ func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *ty
 	var changeReasons []string
 
 	for _, check := range checks {
-		changed, err := check.fn(changedFiles, project)
+		changed, err := check.fn(changedFiles, project, repoPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check '%s' for changes: %w", check.name, err)
 		}
