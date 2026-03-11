@@ -103,7 +103,7 @@ func TestDeploySwarmStack(t *testing.T) {
 		retry.Context(ctx),
 	).Do(
 		func() error {
-			return DeploySwarmStack(ctx, dockerCli, project, deployConfigs[0], p, tmpDir, "e8e2d31f0fa0c924400b3bac751b6c2c6930adb1", "dev", "", map[string]string{})
+			return DeploySwarmStack(ctx, dockerCli, project, deployConfigs[0], p, tmpDir, "e8e2d31f0fa0c924400b3bac751b6c2c6930adb1", "dev", map[string]string{})
 		},
 	)
 	if err != nil {

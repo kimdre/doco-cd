@@ -39,7 +39,7 @@ var (
 
 // DeploySwarmStack deploys a Docker Swarm stack using the provided project and deploy configuration.
 func DeploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types.Project, deployConfig *config.DeployConfig,
-	payload webhook.ParsedPayload, externalWorkingDir, latestCommit, appVersion, secretHash string, resolvedSecrets secrettypes.ResolvedSecrets,
+	payload webhook.ParsedPayload, externalWorkingDir, latestCommit, appVersion string, resolvedSecrets secrettypes.ResolvedSecrets,
 ) error {
 	opts := options.Deploy{
 		Composefiles:     project.ComposeFiles,
@@ -53,12 +53,14 @@ func DeploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types
 
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 
+	projectHash := ProjectHash(project)
+
 	cfg, err := swarmInternal.LoadComposefile(dockerCli, opts, resolvedSecrets, externalWorkingDir)
 	if err != nil {
 		return fmt.Errorf("failed to load compose file: %w", err)
 	}
 
-	addSwarmServiceLabels(cfg, *deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit, secretHash)
+	addSwarmServiceLabels(cfg, *deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit, projectHash)
 	addSwarmVolumeLabels(cfg, *deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
 	addSwarmConfigLabels(cfg, *deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
 	addSwarmSecretLabels(cfg, *deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
@@ -85,22 +87,22 @@ func RemoveSwarmStack(ctx context.Context, dockerCli command.Cli, namespace stri
 }
 
 // addSwarmServiceLabels adds custom labels to the service containers in a Docker Swarm stack.
-func addSwarmServiceLabels(stack *composetypes.Config, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, latestCommit, secretHash string) {
+func addSwarmServiceLabels(stack *composetypes.Config, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, latestCommit, projectHash string) {
 	customLabels := map[string]string{
-		DocoCDLabels.Metadata.Manager:               config.AppName,
-		DocoCDLabels.Metadata.Version:               appVersion,
-		DocoCDLabels.Deployment.Name:                deployConfig.Name,
-		DocoCDLabels.Deployment.Timestamp:           timestamp,
-		DocoCDLabels.Deployment.WorkingDir:          repoDir,
-		DocoCDLabels.Deployment.Trigger:             payload.CommitSHA,
-		DocoCDLabels.Deployment.CommitSHA:           latestCommit,
-		DocoCDLabels.Deployment.TargetRef:           deployConfig.Reference,
-		DocoCDLabels.Deployment.ConfigHash:          deployConfig.Internal.Hash,
-		DocoCDLabels.Deployment.ExternalSecretsHash: secretHash,
-		DocoCDLabels.Deployment.AutoDiscover:        strconv.FormatBool(deployConfig.AutoDiscover),
-		DocoCDLabels.Deployment.AutoDiscoverDelete:  strconv.FormatBool(deployConfig.AutoDiscoverOpts.Delete),
-		DocoCDLabels.Repository.Name:                payload.FullName,
-		DocoCDLabels.Repository.URL:                 payload.WebURL,
+		DocoCDLabels.Metadata.Manager:              config.AppName,
+		DocoCDLabels.Metadata.Version:              appVersion,
+		DocoCDLabels.Deployment.Name:               deployConfig.Name,
+		DocoCDLabels.Deployment.Timestamp:          timestamp,
+		DocoCDLabels.Deployment.ComposeHash:        projectHash,
+		DocoCDLabels.Deployment.WorkingDir:         repoDir,
+		DocoCDLabels.Deployment.Trigger:            payload.CommitSHA,
+		DocoCDLabels.Deployment.CommitSHA:          latestCommit,
+		DocoCDLabels.Deployment.TargetRef:          deployConfig.Reference,
+		DocoCDLabels.Deployment.ConfigHash:         deployConfig.Internal.Hash,
+		DocoCDLabels.Deployment.AutoDiscover:       strconv.FormatBool(deployConfig.AutoDiscover),
+		DocoCDLabels.Deployment.AutoDiscoverDelete: strconv.FormatBool(deployConfig.AutoDiscoverOpts.Delete),
+		DocoCDLabels.Repository.Name:               payload.FullName,
+		DocoCDLabels.Repository.URL:                payload.WebURL,
 	}
 
 	for i, s := range stack.Services {

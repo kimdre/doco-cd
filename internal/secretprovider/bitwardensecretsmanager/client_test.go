@@ -63,14 +63,14 @@ func TestNewProvider_BitwardenSecretManager(t *testing.T) {
 			apiUrl:      cfg.ApiUrl,
 			identityURL: cfg.IdentityUrl,
 			accessToken: "",
-			expectError: "API error: Access token is not in a valid format: Doesn't contain a decryption key",
+			expectError: "API error: Doesn't contain a decryption key",
 		},
 		{
 			name:        "Invalid Access Token",
 			apiUrl:      cfg.ApiUrl,
 			identityURL: cfg.IdentityUrl,
 			accessToken: "invalid-token",
-			expectError: "API error: Access token is not in a valid format: Doesn't contain a decryption key",
+			expectError: "API error: Doesn't contain a decryption key",
 		},
 		{
 			name:        "Empty API URL",
