@@ -649,12 +649,18 @@ func HasChangedBindMounts(changedFiles []gitInternal.ChangedFile, project *types
 				}
 
 				for _, p := range paths {
-					slog.Info("checking bind mount for changes", slog.String("bind_source", bindSourceAbs), slog.String("changed_file", p))
+					// If first part of p and last part of bindSourceAbs contain the same string, remove if from p and join them together
+					if strings.HasSuffix(p, filepath.Base(bindSourceAbs)) {
+						bindSourceAbs = strings.TrimSuffix(bindSourceAbs, filepath.Base(bindSourceAbs))
+						p = filepath.Join(bindSourceAbs, p)
+					}
 
-					// FIXME: This does not work yet
-					// Tets with make test-run "TestHasChangedBindMounts/Has_changes -v"
-					// Test with secret-provider branch and bitwarden-sm
-					if strings.HasSuffix(bindSourceAbs, p) {
+					rel, err := filepath.Rel(bindSourceAbs, p)
+					if err != nil {
+						return false, fmt.Errorf("failed to get relative path: %w", err)
+					}
+
+					if !strings.HasPrefix(rel, "..") {
 						return true, nil
 					}
 				}
