@@ -657,7 +657,7 @@ func HasChangedBindMounts(changedFiles []gitInternal.ChangedFile, project *types
 
 					rel, err := filepath.Rel(bindSourceAbs, p)
 					if err != nil {
-						return false, fmt.Errorf("failed to get relative path: %w", err)
+						continue
 					}
 
 					if !strings.HasPrefix(rel, "..") {
