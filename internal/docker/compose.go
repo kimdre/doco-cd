@@ -182,8 +182,6 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 		absComposeFiles = append(absComposeFiles, f)
 	}
 
-	slog.Debug("compose files: ", slog.Any("files", absComposeFiles))
-
 	// if envFiles only contains ".env", we check if the file exists in the working directory
 	if len(envFiles) == 1 && envFiles[0] == ".env" {
 		if _, err := os.Stat(path.Join(workingDir, ".env")); errors.Is(err, os.ErrNotExist) {
