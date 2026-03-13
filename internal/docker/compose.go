@@ -251,7 +251,7 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 // deployCompose deploys a project as specified by the Docker Compose specification (LoadCompose).
 func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project,
 	deployConfig *config.DeployConfig, payload webhook.ParsedPayload,
-	repoDir, latestCommit, appVersion string,
+	repoDir, latestCommit, appVersion, recreateType string,
 ) error {
 	var (
 		err          error
@@ -302,9 +302,8 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		}
 	}
 
-	recreateType := api.RecreateDiverged
-	if deployConfig.ForceRecreate {
-		recreateType = api.RecreateForce
+	if recreateType == "" {
+		recreateType = api.RecreateDiverged
 	}
 
 	// Convert deployConfig.BuildOpts.Args to types.MappingWithEquals
@@ -329,7 +328,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	createOpts := api.CreateOptions{
 		RemoveOrphans:        deployConfig.RemoveOrphans,
 		Recreate:             recreateType,
-		RecreateDependencies: recreateType,
+		RecreateDependencies: api.RecreateDiverged,
 		QuietPull:            true,
 	}
 
@@ -493,40 +492,44 @@ func DeployStack(
 			return fmt.Errorf("%s: %w", errMsg, err)
 		}
 
-		// var (
-		//	hasChangedCompose bool
-		//	newProjectHash    = ProjectHash(project)
-		//)
-		//
-		// serviceLabels, err := GetServiceLabels(*ctx, dockerClient, deployConfig.Name)
-		// if err != nil {
-		//	return fmt.Errorf("failed to get service labels: %w", err)
-		//}
-		//
-		// for _, labels := range serviceLabels {
-		//	hash, found := labels[DocoCDLabels.Deployment.ComposeHash]
-		//	if !found || hash != newProjectHash {
-		//		hasChangedCompose = true
-		//		break
-		//	}
-		//}
+		var (
+			hasChangedCompose bool
+			newProjectHash    = ProjectHash(project)
+		)
+
+		serviceLabels, err := GetServiceLabels(*ctx, dockerClient, deployConfig.Name)
+		if err != nil {
+			return fmt.Errorf("failed to get service labels: %w", err)
+		}
+
+		for _, labels := range serviceLabels {
+			hash, found := labels[DocoCDLabels.Deployment.ComposeHash]
+			if !found || hash != newProjectHash {
+				hasChangedCompose = true
+				break
+			}
+		}
+
+		recreateType := api.RecreateDiverged
 
 		switch {
 		case forceDeploy:
-			deployConfig.ForceRecreate = true
+			recreateType = api.RecreateForce
 
 			stackLog.Debug("force deploy enabled, forcing recreate of all services")
-		case len(detectedChanges) > 0: // || (hasChangedCompose && triggerEvent == "poll"):
-			deployConfig.ForceRecreate = true
+		case len(detectedChanges) > 0:
+			recreateType = api.RecreateForce
 
-			stackLog.Debug("changed project files detected, forcing recreate of all services", slog.Any("changed_files", detectedChanges))
-			// case hasChangedCompose:
-			//	stackLog.Debug("changed compose files detected, continue normal deployment")
+			stackLog.Debug("changed project files detected, forcing recreate", slog.Any("changed_files", detectedChanges))
+		case hasChangedCompose:
+			recreateType = api.RecreateForce
+
+			stackLog.Debug("changed compose config detected, forcing recreate")
 		}
 
-		stackLog.Info("deploying stack", slog.Bool("forced", deployConfig.ForceRecreate))
+		stackLog.Info("deploying stack", slog.String("container_recreate", recreateType))
 
-		err = deployCompose(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion)
+		err = deployCompose(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion, recreateType)
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 
