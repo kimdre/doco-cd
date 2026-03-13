@@ -4,4 +4,4 @@ todo-pr-checker:
   case_sensitive: true,
   always_split_snippets: false,
   action_items: ['TODO', 'FIXME', 'BUG']
-  # ignore_files: ['testFolder/', '*.js']
+  ignore_files: ['.github/config.yml']
