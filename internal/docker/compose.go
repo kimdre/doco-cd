@@ -497,7 +497,7 @@ func DeployStack(
 		//	newProjectHash    = ProjectHash(project)
 		//)
 		//
-		//serviceLabels, err := GetServiceLabels(*ctx, dockerClient, deployConfig.Name)
+		// serviceLabels, err := GetServiceLabels(*ctx, dockerClient, deployConfig.Name)
 		//if err != nil {
 		//	return fmt.Errorf("failed to get service labels: %w", err)
 		//}
