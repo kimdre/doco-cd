@@ -493,10 +493,22 @@ func DeployStack(
 			return fmt.Errorf("%s: %w", errMsg, err)
 		}
 
-		hasChangedCompose, err := HasChangedComposeFiles(changedFiles, project)
+		var (
+			hasChangedCompose bool
+			newProjectHash    = ProjectHash(project)
+		)
+
+		serviceLabels, err := GetServiceLabels(*ctx, dockerClient, deployConfig.Name)
 		if err != nil {
-			errMsg := "failed to check for changed compose files"
-			return fmt.Errorf("%s: %w", errMsg, err)
+			return fmt.Errorf("failed to get service labels: %w", err)
+		}
+
+		for _, labels := range serviceLabels {
+			hash, found := labels[DocoCDLabels.Deployment.ComposeHash]
+			if !found || hash != newProjectHash {
+				hasChangedCompose = true
+				break
+			}
 		}
 
 		switch {
@@ -732,52 +744,6 @@ func HasChangedBuildFiles(changedFiles []gitInternal.ChangedFile, project *types
 					return true, nil
 				}
 			}
-		}
-	}
-
-	return false, nil
-}
-
-// HasChangedComposeFiles checks if any of the compose files have changed using the Git status.
-func HasChangedComposeFiles(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
-	// Get absolute paths of changed files
-	changedPaths := getPaths(changedFiles, project.WorkingDir)
-
-	for _, file := range project.ComposeFiles {
-		changed, err := checkFilePath(file, changedPaths, project.WorkingDir)
-		if err != nil {
-			return false, err
-		}
-
-		if changed {
-			return true, nil
-		}
-	}
-
-	return false, nil
-}
-
-// checkFilePath checks if the given file path matches any of the paths in the list,
-// considering both absolute and relative paths and allowing for matching based on the last 4 parts of the path.
-func checkFilePath(file string, paths []string, workingDir string) (bool, error) {
-	if !path.IsAbs(file) {
-		file = filepath.Join(workingDir, file)
-	}
-
-	file = filepath.Clean(file)
-
-	// Get the last 4 parts of the file path
-	fileParts := strings.Split(file, string(os.PathSeparator))
-
-	pathSuffix := path.Join(fileParts...)
-	if len(fileParts) > 4 {
-		pathSuffix = path.Join(fileParts[len(fileParts)-4:]...)
-	}
-
-	for _, p := range paths {
-		pClean := filepath.Clean(p)
-		if pClean == file || pClean == pathSuffix || strings.HasSuffix(pClean, pathSuffix) {
-			return true, nil
 		}
 	}
 
