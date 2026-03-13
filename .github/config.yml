@@ -1,0 +1,7 @@
+# https://github.com/NikkelM/Todo-PR-Checker
+todo-pr-checker:
+  post_comment: 'items_found'
+  case_sensitive: true,
+  always_split_snippets: false,
+  action_items: ['TODO', 'FIXME', 'BUG']
+  # ignore_files: ['testFolder/', '*.js']
