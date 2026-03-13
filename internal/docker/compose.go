@@ -557,10 +557,10 @@ func DestroyStack(
 	return nil
 }
 
-func getPaths(changedFiles []gitInternal.ChangedFile, repoRoot string) []string {
+func getPaths(changedFiles []gitInternal.ChangedFile, basePath string) []string {
 	var absPaths []string
 
-	repoRoot = filepath.Clean(repoRoot)
+	basePath = filepath.Clean(basePath)
 
 	for _, f := range changedFiles {
 		checkPaths := []diff.File{f.From, f.To}
@@ -573,7 +573,7 @@ func getPaths(changedFiles []gitInternal.ChangedFile, repoRoot string) []string 
 			p := filepath.Clean(checkPath.Path())
 
 			if !filepath.IsAbs(p) {
-				p = filepath.Join(repoRoot, p)
+				p = filepath.Join(basePath, p)
 			}
 
 			if !slices.Contains(absPaths, p) {
