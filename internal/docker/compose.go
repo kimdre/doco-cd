@@ -362,7 +362,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 
 // DeployStack deploys the stack using the provided deployment configuration.
 func DeployStack(
-	jobLog *slog.Logger, externalRepoPath, internalRepoPath string, ctx *context.Context,
+	jobLog *slog.Logger, externalRepoPath string, ctx *context.Context,
 	dockerCli *command.Cli, dockerClient *client.Client, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
 	changedFiles []gitInternal.ChangedFile, latestCommit, appVersion, triggerEvent string, forceDeploy bool,
 	resolvedSecrets secrettypes.ResolvedSecrets, secretsChanged bool,
@@ -379,16 +379,6 @@ func DeployStack(
 	if err != nil || !strings.HasPrefix(externalWorkingDir, externalRepoPath) {
 		errMsg := "invalid working directory: resolved path is outside the allowed base directory"
 		jobLog.Error(errMsg, slog.String("resolved_path", externalWorkingDir))
-
-		return fmt.Errorf("%s", errMsg)
-	}
-
-	internalWorkingDir := path.Join(internalRepoPath, deployConfig.WorkingDirectory)
-
-	internalWorkingDir, err = filepath.Abs(internalWorkingDir)
-	if err != nil || !strings.HasPrefix(internalWorkingDir, internalRepoPath) {
-		errMsg := "invalid working directory: resolved path is outside the allowed base directory"
-		jobLog.Error(errMsg, slog.String("resolved_path", internalWorkingDir))
 
 		return fmt.Errorf("%s", errMsg)
 	}
@@ -477,7 +467,7 @@ func DeployStack(
 			}
 		}
 	} else {
-		detectedChanges, err := ProjectFilesHaveChanges(changedFiles, project, internalWorkingDir)
+		detectedChanges, err := ProjectFilesHaveChanges(changedFiles, project)
 		if err != nil {
 			errMsg := "failed to check for changed project files"
 			return fmt.Errorf("%s: %w", errMsg, err)
@@ -567,7 +557,7 @@ func DestroyStack(
 	return nil
 }
 
-func getAbsolutePaths(changedFiles []gitInternal.ChangedFile, repoRoot string) []string {
+func getPaths(changedFiles []gitInternal.ChangedFile, repoRoot string) []string {
 	var absPaths []string
 
 	repoRoot = filepath.Clean(repoRoot)
@@ -596,9 +586,9 @@ func getAbsolutePaths(changedFiles []gitInternal.ChangedFile, repoRoot string) [
 }
 
 // HasChangedConfigs checks if any files used in docker compose `configs:` definitions have changed using the Git status.
-func HasChangedConfigs(changedFiles []gitInternal.ChangedFile, project *types.Project, _ string) (bool, error) {
+func HasChangedConfigs(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
 	// We only need the relative part in this case
-	paths := getAbsolutePaths(changedFiles, ".")
+	paths := getPaths(changedFiles, ".")
 
 	for _, c := range project.Configs {
 		// Changes in config.Content are handled in project hash comparison
@@ -617,9 +607,9 @@ func HasChangedConfigs(changedFiles []gitInternal.ChangedFile, project *types.Pr
 }
 
 // HasChangedSecrets checks if any files used in docker compose `secrets:` definitions have changed using the Git status.
-func HasChangedSecrets(changedFiles []gitInternal.ChangedFile, project *types.Project, _ string) (bool, error) {
+func HasChangedSecrets(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
 	// We only need the relative part in this case
-	paths := getAbsolutePaths(changedFiles, ".")
+	paths := getPaths(changedFiles, ".")
 
 	for _, s := range project.Secrets {
 		if s.File == "" {
@@ -637,33 +627,15 @@ func HasChangedSecrets(changedFiles []gitInternal.ChangedFile, project *types.Pr
 }
 
 // HasChangedBindMounts checks if any files used in docker compose `volumes:` definitions with type `bind` have changed using the Git status.
-func HasChangedBindMounts(changedFiles []gitInternal.ChangedFile, project *types.Project, absWorkingDir string) (bool, error) {
-	paths := getAbsolutePaths(changedFiles, ".")
+func HasChangedBindMounts(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
+	paths := getPaths(changedFiles, ".")
 
 	for _, s := range project.Services {
 		for _, v := range s.Volumes {
 			if v.Type == "bind" && v.Source != "" {
 				bindSourceAbs := v.Source
-				if !filepath.IsAbs(bindSourceAbs) {
-					bindSourceAbs = filepath.Join(absWorkingDir, bindSourceAbs)
-				}
 
-				for _, p := range paths {
-					// If first part of p and last part of bindSourceAbs contain the same string, remove if from p and join them together
-					if strings.HasSuffix(p, filepath.Base(bindSourceAbs)) {
-						bindSourceAbs = strings.TrimSuffix(bindSourceAbs, filepath.Base(bindSourceAbs))
-						p = filepath.Join(bindSourceAbs, p)
-					}
-
-					rel, err := filepath.Rel(bindSourceAbs, p)
-					if err != nil {
-						continue
-					}
-
-					if !strings.HasPrefix(rel, "..") {
-						return true, nil
-					}
-				}
+				return filesInPath(paths, bindSourceAbs), nil
 			}
 		}
 	}
@@ -672,9 +644,9 @@ func HasChangedBindMounts(changedFiles []gitInternal.ChangedFile, project *types
 }
 
 // HasChangedEnvFiles checks if any files used in docker compose `env_file:` definitions have changed using the Git status.
-func HasChangedEnvFiles(changedFiles []gitInternal.ChangedFile, project *types.Project, _ string) (bool, error) {
+func HasChangedEnvFiles(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
 	// We only need the relative part in this case
-	paths := getAbsolutePaths(changedFiles, ".")
+	paths := getPaths(changedFiles, ".")
 
 	for _, s := range project.Services {
 		for _, envFile := range s.EnvFiles {
@@ -691,8 +663,8 @@ func HasChangedEnvFiles(changedFiles []gitInternal.ChangedFile, project *types.P
 
 // HasChangedBuildFiles checks if any files used as build context in docker compose `build:` definitions have changed using the Git status.
 // This includes any file within the build context directory for each service. If a changed file is within a build context, it returns true.
-func HasChangedBuildFiles(changedFiles []gitInternal.ChangedFile, project *types.Project, _ string) (bool, error) {
-	paths := getAbsolutePaths(changedFiles, ".")
+func HasChangedBuildFiles(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
+	paths := getPaths(changedFiles, ".")
 
 	for _, s := range project.Services {
 		if s.Build == nil {
@@ -749,7 +721,7 @@ func HasChangedBuildFiles(changedFiles []gitInternal.ChangedFile, project *types
 // HasChangedComposeFiles checks if any of the compose files have changed using the Git status.
 func HasChangedComposeFiles(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
 	// Get absolute paths of changed files
-	changedPaths := getAbsolutePaths(changedFiles, project.WorkingDir)
+	changedPaths := getPaths(changedFiles, project.WorkingDir)
 
 	for _, file := range project.ComposeFiles {
 		changed, err := checkFilePath(file, changedPaths, project.WorkingDir)
@@ -793,10 +765,10 @@ func checkFilePath(file string, paths []string, workingDir string) (bool, error)
 }
 
 // ProjectFilesHaveChanges checks if any files related to the compose project have changed.
-func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *types.Project, absWorkingDir string) ([]string, error) {
+func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *types.Project) ([]string, error) {
 	checks := []struct {
 		name string
-		fn   func([]gitInternal.ChangedFile, *types.Project, string) (bool, error)
+		fn   func([]gitInternal.ChangedFile, *types.Project) (bool, error)
 	}{
 		{"configs", HasChangedConfigs},
 		{"secrets", HasChangedSecrets},
@@ -808,7 +780,7 @@ func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *ty
 	var changeReasons []string
 
 	for _, check := range checks {
-		changed, err := check.fn(changedFiles, project, absWorkingDir)
+		changed, err := check.fn(changedFiles, project)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check '%s' for changes: %w", check.name, err)
 		}
@@ -1024,4 +996,56 @@ func ProjectHash(p *types.Project) string {
 	}
 
 	return digest.SHA256.FromBytes(b).Encoded()
+}
+
+// filesInPath checks if at least one of the given filePaths is inside the searchPath.
+func filesInPath(filePaths []string, searchPath string) bool {
+	for _, p := range filePaths {
+		if strings.HasSuffix(p, filepath.Base(searchPath)) {
+			p = joinPathsWithoutDuplicates(searchPath, p)
+		}
+
+		rel, err := filepath.Rel(searchPath, p)
+		if err != nil {
+			continue
+		}
+
+		if !strings.HasPrefix(rel, "..") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// joinPathsWithoutDuplicates joins multiple paths, removing duplicate overlapping segments between each pair.
+func joinPathsWithoutDuplicates(paths ...string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+
+	isAbs := filepath.IsAbs(paths[0])
+
+	resultElems := strings.Split(filepath.Clean(paths[0]), string(filepath.Separator))
+	for _, next := range paths[1:] {
+		nextElems := strings.Split(filepath.Clean(next), string(filepath.Separator))
+		maxOverlap := 0
+
+		m := min(len(resultElems), len(nextElems))
+		for k := m; k > 0; k-- {
+			if reflect.DeepEqual(resultElems[len(resultElems)-k:], nextElems[:k]) {
+				maxOverlap = k
+				break
+			}
+		}
+
+		resultElems = append(resultElems, nextElems[maxOverlap:]...)
+	}
+
+	joined := filepath.Join(resultElems...)
+	if isAbs && !strings.HasPrefix(joined, string(filepath.Separator)) {
+		joined = string(filepath.Separator) + joined
+	}
+
+	return joined
 }

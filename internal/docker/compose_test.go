@@ -287,7 +287,7 @@ compose_files:
 			}
 		}
 
-		err = DeployStack(jobLog, repoPath, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
+		err = DeployStack(jobLog, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
 			[]git.ChangedFile{}, latestCommit, "dev", "poll", false, resolvedSecrets, false)
 		if err != nil {
 			t.Fatalf("failed to deploy stack: %v", err)
@@ -435,7 +435,7 @@ func TestHasChangedConfigs(t *testing.T) {
 				t.Fatalf("Expectec changed files, but found none found")
 			}
 
-			hasChanged, err := HasChangedConfigs(changedFiles, project, project.WorkingDir)
+			hasChanged, err := HasChangedConfigs(changedFiles, project)
 			if err != nil {
 				t.Fatalf("Failed to check for changed configs: %v", err)
 			}
@@ -513,7 +513,7 @@ func TestHasChangedSecrets(t *testing.T) {
 				t.Fatalf("Expectec changed files, but found none found")
 			}
 
-			hasChanged, err := HasChangedSecrets(changedFiles, project, project.WorkingDir)
+			hasChanged, err := HasChangedSecrets(changedFiles, project)
 			if err != nil {
 				t.Fatalf("Failed to check for changed secrets: %v", err)
 			}
@@ -591,13 +591,99 @@ func TestHasChangedBindMounts(t *testing.T) {
 				t.Fatalf("Expectec changed files, but found none found")
 			}
 
-			hasChanged, err := HasChangedBindMounts(changedFiles, project, tmpDir)
+			hasChanged, err := HasChangedBindMounts(changedFiles, project)
 			if err != nil {
 				t.Fatalf("Failed to check for changed bind mounts: %v", err)
 			}
 
 			if !hasChanged && tc.ExpectedChanges {
 				t.Error("Expected changed bind mounts, but found none")
+			}
+		})
+	}
+}
+
+func TestFilesInPath(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := "/var/lib/docker/volumes/doco-cd_data/_data/github.com/kimdre/doco-cd_tests/" // path to repoRoot in data volume on docker host
+
+	testCases := []struct {
+		name           string
+		bindSourcePath string   // bindSource is path relative to the repoRoot
+		changedFiles   []string // Changed file paths from `git status` relative to repoRoot
+		shouldFind     bool
+	}{
+		{
+			name:           "file bind mount",
+			bindSourcePath: "test.txt",
+			changedFiles: []string{
+				"test.txt",
+			},
+			shouldFind: true,
+		},
+		{
+			name:           "directory bind mount",
+			bindSourcePath: "html",
+			changedFiles: []string{
+				"html/index.html",
+			},
+			shouldFind: true,
+		},
+		{
+			name:           "mixed files and directories",
+			bindSourcePath: "html",
+			changedFiles: []string{
+				"html/index.html",
+				"README.md",
+				"configs/test.conf",
+			},
+			shouldFind: true,
+		},
+		{
+			name:           "no changes in bind mount",
+			bindSourcePath: "html",
+			changedFiles: []string{
+				"README.md",
+				"configs/test.conf",
+			},
+			shouldFind: false,
+		},
+		{
+			name:           "bind mount in subdirectory",
+			bindSourcePath: "app/html",
+			changedFiles: []string{
+				"app/html/index.html",
+				"app/configs/test.conf",
+			},
+			shouldFind: true,
+		},
+		{
+			name:           "no changes in directories",
+			bindSourcePath: "html",
+			changedFiles: []string{
+				"docs/guide.md",
+				"configs/test.conf",
+			},
+			shouldFind: false,
+		},
+		{
+			name:           "no changes in files",
+			bindSourcePath: "test.txt",
+			changedFiles: []string{
+				"README.md",
+			},
+			shouldFind: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			bindSourceAbs := filepath.Join(repoRoot, tc.bindSourcePath)
+			found := filesInPath(tc.changedFiles, bindSourceAbs)
+
+			if found != tc.shouldFind {
+				t.Fatalf("Expected to find change: %t, but got %t", tc.shouldFind, found)
 			}
 		})
 	}
