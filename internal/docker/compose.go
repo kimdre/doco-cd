@@ -160,14 +160,28 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 		return nil, fmt.Errorf("failed to get app config: %w", err)
 	}
 
-	absoluteComposeFiles := make([]string, len(composeFiles))
-	for i, f := range composeFiles {
-		if filepath.IsAbs(f) {
-			absoluteComposeFiles[i] = f
-		} else {
-			absoluteComposeFiles[i] = filepath.Join(workingDir, f)
+	var absComposeFiles []string
+
+	throwError := !reflect.DeepEqual(composeFiles, cli.DefaultFileNames)
+
+	for _, f := range composeFiles {
+		if !filepath.IsAbs(f) {
+			f = filepath.Join(workingDir, f)
 		}
+
+		// Check if file exists
+		if _, err = os.Stat(f); err != nil {
+			if throwError {
+				return nil, fmt.Errorf("could not find compose file: %w", err)
+			}
+
+			continue
+		}
+
+		absComposeFiles = append(absComposeFiles, f)
 	}
+
+	slog.Debug("compose files: ", slog.Any("files", absComposeFiles))
 
 	// if envFiles only contains ".env", we check if the file exists in the working directory
 	if len(envFiles) == 1 && envFiles[0] == ".env" {
@@ -176,26 +190,33 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 		}
 	}
 
-	absoluteEnvFiles := make([]string, 0, len(envFiles))
+	absEnvFiles := make([]string, 0, len(envFiles))
 	for _, f := range envFiles {
 		if filepath.IsAbs(f) {
-			absoluteEnvFiles = append(absoluteEnvFiles, f)
+			absEnvFiles = append(absEnvFiles, f)
 		} else {
-			absoluteEnvFiles = append(absoluteEnvFiles, filepath.Join(workingDir, f))
+			absEnvFiles = append(absEnvFiles, filepath.Join(workingDir, f))
 		}
 	}
 
 	options, err := cli.NewProjectOptions(
-		absoluteComposeFiles,
+		absComposeFiles,
 		cli.WithName(projectName),
 		cli.WithWorkingDirectory(workingDir),
 		cli.WithInterpolation(true),
 		cli.WithResolvedPaths(true),
-		cli.WithEnvFiles(absoluteEnvFiles...), // env files for variable interpolation
+		cli.WithEnvFiles(absEnvFiles...), // env files for variable interpolation
 		cli.WithProfiles(profiles),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create project options: %w", err)
+	}
+
+	if len(composeFiles) == 0 {
+		err = cli.WithDefaultConfigPath(options)
+		if err != nil {
+			return nil, fmt.Errorf("failed to use default compose file: %w", err)
+		}
 	}
 
 	if c.PassEnv {
