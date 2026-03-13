@@ -55,13 +55,13 @@ type DeployConfig struct {
 		Quiet          bool              `yaml:"quiet" default:"false"`            // Quiet suppresses the build output
 		Args           map[string]string `yaml:"args"`                             // BuildArgs is a map of build-time arguments to pass to the build process
 		NoCache        bool              `yaml:"no_cache" default:"false"`         // NoCache disables the use of the cache when building images
-	} `yaml:"build_opts"` // BuildOpts is the build options for the deployment
+	} `yaml:"build_opts"`                             // BuildOpts is the build options for the deployment
 	Destroy     bool `yaml:"destroy" default:"false"` // Destroy removes the deployment and all its resources from the Docker host
 	DestroyOpts struct {
 		RemoveVolumes bool `yaml:"remove_volumes" default:"true"` // RemoveVolumes removes the volumes used by the deployment (always enabled in docker swarm mode)
 		RemoveImages  bool `yaml:"remove_images" default:"true"`  // RemoveImages removes the images used by the deployment (currently not supported in docker swarm mode)
 		RemoveRepoDir bool `yaml:"remove_dir" default:"true"`     // RemoveRepoDir removes the repository directory after the deployment is destroyed
-	} `yaml:"destroy_opts"` // DestroyOpts is the destroy options for the deployment
+	} `yaml:"destroy_opts"`                                                   // DestroyOpts is the destroy options for the deployment
 	Profiles         []string          `yaml:"profiles" default:"[]"`         // Profiles is a list of profiles to use for the deployment, e.g., ["dev", "prod"]. See https://docs.docker.com/compose/how-tos/profiles/
 	ExternalSecrets  map[string]string `yaml:"external_secrets"`              // ExternalSecrets maps env vars to secret IDs/keys for injecting secrets from external providers like Bitwarden SM at deployment, e.g. {"DB_PASSWORD": "138e3697-ed58-431c-b866-b3550066343a"}
 	AutoDiscover     bool              `yaml:"auto_discover" default:"false"` // AutoDiscover enables autodiscovery of services to deploy in the working directory by checking for subdirectories with docker-compose files
@@ -73,7 +73,7 @@ type DeployConfig struct {
 		File        string            `yaml:"-"` // File is the path to the deployment configuration file in the repository (if RepositoryUrl is not set) or in the cloned repository (if RepositoryUrl is set)
 		Environment map[string]string // Environment stores environment variables from local env_files entries (if RepositoryUrl to set) for the deployment for interpolating variables in the compose files
 		Hash        string            `yaml:"-"` // Hash is a hash of the DeployConfig struct (without changing the order of its elements)
-	} // Internal holds internal configuration values that are not set by the user
+	}                                  // Internal holds internal configuration values that are not set by the user
 }
 
 // DefaultDeployConfig creates a DeployConfig with default values.
@@ -345,7 +345,7 @@ func GetDeployConfigs(repoRoot, deployConfigBaseDir, name, customTarget, referen
 	}
 
 	if customTarget != "" {
-		return nil, ErrConfigFileNotFound
+		return nil, fmt.Errorf("%w: .doco-cd.%s.y(a)ml", ErrConfigFileNotFound, customTarget)
 	}
 
 	return []*DeployConfig{DefaultDeployConfig(name, reference)}, nil
