@@ -492,23 +492,23 @@ func DeployStack(
 			return fmt.Errorf("%s: %w", errMsg, err)
 		}
 
-		var (
-			hasChangedCompose bool
-			newProjectHash    = ProjectHash(project)
-		)
-
-		serviceLabels, err := GetServiceLabels(*ctx, dockerClient, deployConfig.Name)
-		if err != nil {
-			return fmt.Errorf("failed to get service labels: %w", err)
-		}
-
-		for _, labels := range serviceLabels {
-			hash, found := labels[DocoCDLabels.Deployment.ComposeHash]
-			if !found || hash != newProjectHash {
-				hasChangedCompose = true
-				break
-			}
-		}
+		//var (
+		//	hasChangedCompose bool
+		//	newProjectHash    = ProjectHash(project)
+		//)
+		//
+		//serviceLabels, err := GetServiceLabels(*ctx, dockerClient, deployConfig.Name)
+		//if err != nil {
+		//	return fmt.Errorf("failed to get service labels: %w", err)
+		//}
+		//
+		//for _, labels := range serviceLabels {
+		//	hash, found := labels[DocoCDLabels.Deployment.ComposeHash]
+		//	if !found || hash != newProjectHash {
+		//		hasChangedCompose = true
+		//		break
+		//	}
+		//}
 
 		recreateType := api.RecreateDiverged
 
@@ -521,10 +521,10 @@ func DeployStack(
 			recreateType = api.RecreateForce
 
 			stackLog.Debug("changed project files detected, forcing recreate", slog.Any("changed_files", detectedChanges))
-		case hasChangedCompose:
-			recreateType = api.RecreateForce
-
-			stackLog.Debug("changed compose config detected, forcing recreate")
+			//case hasChangedCompose:
+			//	recreateType = api.RecreateForce
+			//
+			//	stackLog.Debug("changed compose config detected, forcing recreate")
 		}
 
 		stackLog.Info("deploying stack", slog.String("container_recreate", recreateType))
