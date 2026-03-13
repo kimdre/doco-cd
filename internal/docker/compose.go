@@ -512,6 +512,9 @@ func DeployStack(
 
 		recreateType := api.RecreateDiverged
 
+		// TODO compare "cd.doco.X" label keys of deployed containers in stack with the ones generated for the new compose project.
+		// If there are new or missing labels, trigger a forced recreate.
+
 		switch {
 		case forceDeploy:
 			recreateType = api.RecreateForce
