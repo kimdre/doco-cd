@@ -163,7 +163,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"deployment failed","content":"failed to deploy stack %[3]s: no compose files found: stat %[2]s/docker-compose.yaml: no such file or directory","job_id":"%[1]s"}`,
+			expectedResponseBody: `{"error":"deployment failed","content":"failed to deploy stack %[3]s: failed to load compose config: failed to load compose project: open stat %[2]s/compose.yaml: no such file or directory","job_id":"%[1]s"}`,
 			customTarget:         "",
 			swarmMode:            false,
 		},
