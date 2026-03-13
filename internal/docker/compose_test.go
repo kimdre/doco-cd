@@ -288,7 +288,7 @@ compose_files:
 		}
 
 		err = DeployStack(jobLog, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
-			[]git.ChangedFile{}, latestCommit, "dev", "poll", false, resolvedSecrets, false)
+			[]git.ChangedFile{}, latestCommit, "dev", false, resolvedSecrets)
 		if err != nil {
 			t.Fatalf("failed to deploy stack: %v", err)
 		}

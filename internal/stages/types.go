@@ -125,7 +125,6 @@ type Docker struct {
 // DeploymentState holds the dynamic state information during the deployment process.
 type DeploymentState struct {
 	ChangedFiles    []gitInternal.ChangedFile
-	SecretsChanged  bool
 	ResolvedSecrets secrettypes.ResolvedSecrets
 }
 

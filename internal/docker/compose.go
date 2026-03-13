@@ -384,8 +384,8 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 func DeployStack(
 	jobLog *slog.Logger, externalRepoPath string, ctx *context.Context,
 	dockerCli *command.Cli, dockerClient *client.Client, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
-	changedFiles []gitInternal.ChangedFile, latestCommit, appVersion, triggerEvent string, forceDeploy bool,
-	resolvedSecrets secrettypes.ResolvedSecrets, secretsChanged bool,
+	changedFiles []gitInternal.ChangedFile, latestCommit, appVersion string, forceDeploy bool,
+	resolvedSecrets secrettypes.ResolvedSecrets,
 ) error {
 	startTime := time.Now()
 
@@ -493,39 +493,35 @@ func DeployStack(
 			return fmt.Errorf("%s: %w", errMsg, err)
 		}
 
-		var (
-			hasChangedCompose bool
-			newProjectHash    = ProjectHash(project)
-		)
-
-		serviceLabels, err := GetServiceLabels(*ctx, dockerClient, deployConfig.Name)
-		if err != nil {
-			return fmt.Errorf("failed to get service labels: %w", err)
-		}
-
-		for _, labels := range serviceLabels {
-			hash, found := labels[DocoCDLabels.Deployment.ComposeHash]
-			if !found || hash != newProjectHash {
-				hasChangedCompose = true
-				break
-			}
-		}
+		// var (
+		//	hasChangedCompose bool
+		//	newProjectHash    = ProjectHash(project)
+		//)
+		//
+		// serviceLabels, err := GetServiceLabels(*ctx, dockerClient, deployConfig.Name)
+		// if err != nil {
+		//	return fmt.Errorf("failed to get service labels: %w", err)
+		//}
+		//
+		// for _, labels := range serviceLabels {
+		//	hash, found := labels[DocoCDLabels.Deployment.ComposeHash]
+		//	if !found || hash != newProjectHash {
+		//		hasChangedCompose = true
+		//		break
+		//	}
+		//}
 
 		switch {
 		case forceDeploy:
 			deployConfig.ForceRecreate = true
 
 			stackLog.Debug("force deploy enabled, forcing recreate of all services")
-		case secretsChanged:
-			deployConfig.ForceRecreate = true
-
-			stackLog.Debug("changed external secrets detected, forcing recreate of all services")
-		case len(detectedChanges) > 0 || (hasChangedCompose && triggerEvent == "poll"):
+		case len(detectedChanges) > 0: // || (hasChangedCompose && triggerEvent == "poll"):
 			deployConfig.ForceRecreate = true
 
 			stackLog.Debug("changed project files detected, forcing recreate of all services", slog.Any("changed_files", detectedChanges))
-		case hasChangedCompose:
-			stackLog.Debug("changed compose files detected, continue normal deployment")
+			// case hasChangedCompose:
+			//	stackLog.Debug("changed compose files detected, continue normal deployment")
 		}
 
 		stackLog.Info("deploying stack", slog.Bool("forced", deployConfig.ForceRecreate))
