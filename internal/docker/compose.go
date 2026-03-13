@@ -492,7 +492,7 @@ func DeployStack(
 			return fmt.Errorf("%s: %w", errMsg, err)
 		}
 
-		//var (
+		// var (
 		//	hasChangedCompose bool
 		//	newProjectHash    = ProjectHash(project)
 		//)
@@ -524,7 +524,7 @@ func DeployStack(
 			recreateType = api.RecreateForce
 
 			stackLog.Debug("changed project files detected, forcing recreate", slog.Any("changed_files", detectedChanges))
-			//case hasChangedCompose:
+			// case hasChangedCompose:
 			//	recreateType = api.RecreateForce
 			//
 			//	stackLog.Debug("changed compose config detected, forcing recreate")
