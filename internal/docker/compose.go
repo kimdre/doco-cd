@@ -162,6 +162,7 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 
 	var absComposeFiles []string
 
+	// If the user changed the default compose files, we throw an error of the custom compose file is not found
 	throwError := !reflect.DeepEqual(composeFiles, cli.DefaultFileNames)
 
 	for _, f := range composeFiles {
