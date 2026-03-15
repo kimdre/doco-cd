@@ -2,7 +2,6 @@ package docker
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -16,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opencontainers/go-digest"
+	"github.com/kimdre/doco-cd/internal/utils/module"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
@@ -51,6 +50,19 @@ var (
 	ErrIsInUse            = errors.New("is in use")
 	ComposeVersion        string // Version of the docker compose module, will be set at runtime
 )
+
+func init() {
+	version, err := module.GetVersion("github.com/docker/compose/v5")
+	if err != nil {
+		if errors.Is(err, module.ErrNotFound) {
+			ComposeVersion = "unknown"
+		} else {
+			panic(fmt.Sprintf("failed to get module version: %v", err))
+		}
+	}
+
+	ComposeVersion = version
+}
 
 func CreateDockerCli(quiet, verifyTLS bool) (command.Cli, error) {
 	var (
@@ -89,7 +101,11 @@ addComposeServiceLabels adds the labels docker compose expects to exist on servi
 This is required for future compose operations to work, such as finding
 containers that are part of a service.
 */
-func addComposeServiceLabels(project *types.Project, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, composeVersion, latestCommit string) {
+func addComposeServiceLabels(project *types.Project, deployConfig *config.DeployConfig, payload *webhook.ParsedPayload,
+	workingDir, appVersion, timestamp, composeVersion, latestCommit string,
+) {
+	projectHash := ProjectHash(project)
+
 	for i, s := range project.Services {
 		// Extract service dependencies (depends_on)
 		dependencies := make([]string, 0, len(s.DependsOn))
@@ -104,8 +120,8 @@ func addComposeServiceLabels(project *types.Project, deployConfig config.DeployC
 			DocoCDLabels.Metadata.Version:              appVersion,
 			DocoCDLabels.Deployment.Name:               deployConfig.Name,
 			DocoCDLabels.Deployment.Timestamp:          timestamp,
-			DocoCDLabels.Deployment.ComposeHash:        ProjectHash(project),
-			DocoCDLabels.Deployment.WorkingDir:         repoDir,
+			DocoCDLabels.Deployment.ComposeHash:        projectHash,
+			DocoCDLabels.Deployment.WorkingDir:         workingDir,
 			DocoCDLabels.Deployment.Trigger:            payload.CommitSHA,
 			DocoCDLabels.Deployment.CommitSHA:          latestCommit,
 			DocoCDLabels.Deployment.TargetRef:          deployConfig.Reference,
@@ -126,14 +142,18 @@ func addComposeServiceLabels(project *types.Project, deployConfig config.DeployC
 	}
 }
 
-func addComposeVolumeLabels(project *types.Project, deployConfig config.DeployConfig, payload webhook.ParsedPayload, appVersion, timestamp, composeVersion, latestCommit string) {
+func addComposeVolumeLabels(project *types.Project, deployConfig *config.DeployConfig, payload *webhook.ParsedPayload,
+	appVersion, timestamp, composeVersion, latestCommit string,
+) {
+	projectHash := ProjectHash(project)
+
 	for i, v := range project.Volumes {
 		v.CustomLabels = map[string]string{
 			DocoCDLabels.Metadata.Manager:       config.AppName,
 			DocoCDLabels.Metadata.Version:       appVersion,
 			DocoCDLabels.Deployment.Name:        deployConfig.Name,
 			DocoCDLabels.Deployment.Timestamp:   timestamp,
-			DocoCDLabels.Deployment.ComposeHash: ProjectHash(project),
+			DocoCDLabels.Deployment.ComposeHash: projectHash,
 			DocoCDLabels.Deployment.Trigger:     payload.CommitSHA,
 			DocoCDLabels.Deployment.TargetRef:   deployConfig.Reference,
 			DocoCDLabels.Deployment.CommitSHA:   latestCommit,
@@ -250,8 +270,7 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 
 // deployCompose deploys a project as specified by the Docker Compose specification (LoadCompose).
 func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project,
-	deployConfig *config.DeployConfig, payload webhook.ParsedPayload,
-	repoDir, latestCommit, appVersion, recreateType string,
+	deployConfig *config.DeployConfig, recreateMode string, services []string,
 ) error {
 	var (
 		err          error
@@ -264,29 +283,12 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		return err
 	}
 
-	timestamp := time.Now().UTC().Format(time.RFC3339)
-
-	if ComposeVersion == "" {
-		ComposeVersion, err = GetModuleVersion("github.com/docker/compose/v5")
-		if err != nil {
-			if errors.Is(err, ErrModuleNotFound) {
-				// Placeholder for when the module is not found
-				ComposeVersion = "unknown"
-			} else {
-				return fmt.Errorf("failed to get module version: %w", err)
-			}
-		}
-	}
-
 	if deployConfig.PruneImages {
 		beforeImages, err = service.Images(ctx, project.Name, api.ImagesOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to get existing images: %w", err)
 		}
 	}
-
-	addComposeServiceLabels(project, *deployConfig, payload, repoDir, appVersion, timestamp, ComposeVersion, latestCommit)
-	addComposeVolumeLabels(project, *deployConfig, payload, appVersion, timestamp, ComposeVersion, latestCommit)
 
 	if deployConfig.ForceImagePull {
 		for i, s := range project.Services {
@@ -302,8 +304,8 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		}
 	}
 
-	if recreateType == "" {
-		recreateType = api.RecreateDiverged
+	if recreateMode == "" {
+		recreateMode = api.RecreateDiverged
 	}
 
 	// Convert deployConfig.BuildOpts.Args to types.MappingWithEquals
@@ -326,8 +328,9 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	}
 
 	createOpts := api.CreateOptions{
+		Services:             services,
 		RemoveOrphans:        deployConfig.RemoveOrphans,
-		Recreate:             recreateType,
+		Recreate:             recreateMode,
 		RecreateDependencies: api.RecreateDiverged,
 		QuietPull:            true,
 	}
@@ -442,11 +445,27 @@ func DeployStack(
 		}
 	}()
 
+	timestamp := time.Now().UTC().Format(time.RFC3339)
+
+	// Generate project hash with doco-cd labels
+	// We don't want to compare the hashes with these labels
+	projectHash := ProjectHash(project)
+
 	// When SwarmModeEnabled is true, we deploy the stack using Docker Swarm.
 	if swarm.ModeEnabled {
 		stackLog.Info("deploying swarm stack")
 
-		err = DeploySwarmStack(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion, resolvedSecrets)
+		cfg, opts, err := LoadSwarmStack(dockerCli, project, deployConfig, resolvedSecrets, externalWorkingDir)
+		if err != nil {
+			return fmt.Errorf("failed to load swarm stack: %w", err)
+		}
+
+		addSwarmServiceLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit, projectHash)
+		addSwarmVolumeLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
+		addSwarmConfigLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
+		addSwarmSecretLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
+
+		err = DeploySwarmStack(*ctx, *dockerCli, cfg, opts)
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 
@@ -492,47 +511,30 @@ func DeployStack(
 			return fmt.Errorf("%s: %w", errMsg, err)
 		}
 
-		// var (
-		//	hasChangedCompose bool
-		//	newProjectHash    = ProjectHash(project)
-		//)
-		//
-		// serviceLabels, err := GetServiceLabels(*ctx, dockerClient, deployConfig.Name)
-		//if err != nil {
-		//	return fmt.Errorf("failed to get service labels: %w", err)
-		//}
-		//
-		//for _, labels := range serviceLabels {
-		//	hash, found := labels[DocoCDLabels.Deployment.ComposeHash]
-		//	if !found || hash != newProjectHash {
-		//		hasChangedCompose = true
-		//		break
-		//	}
-		//}
+		addComposeServiceLabels(project, deployConfig, payload, externalWorkingDir, appVersion, timestamp, ComposeVersion, latestCommit)
+		addComposeVolumeLabels(project, deployConfig, payload, appVersion, timestamp, ComposeVersion, latestCommit)
 
-		recreateType := api.RecreateDiverged
-
-		// TODO compare "cd.doco.X" label keys of deployed containers in stack with the ones generated for the new compose project.
-		// If there are new or missing labels, trigger a forced recreate.
+		forcedServices := set.New[string]() // services to recreate if project files changed
+		recreateMode := api.RecreateDiverged
 
 		switch {
 		case forceDeploy:
-			recreateType = api.RecreateForce
+			recreateMode = api.RecreateForce
 
 			stackLog.Debug("force deploy enabled, forcing recreate of all services")
 		case len(detectedChanges) > 0:
-			recreateType = api.RecreateForce
+			recreateMode = api.RecreateForce
 
-			stackLog.Debug("changed project files detected, forcing recreate", slog.Any("changed_files", detectedChanges))
-			// case hasChangedCompose:
-			//	recreateType = api.RecreateForce
-			//
-			//	stackLog.Debug("changed compose config detected, forcing recreate")
+			for _, change := range detectedChanges {
+				forcedServices.Add(change.Services...)
+			}
+
+			stackLog.Debug("changed project files detected, forcing recreate", slog.Any("changes", detectedChanges))
 		}
 
-		stackLog.Info("deploying stack", slog.String("container_recreate", recreateType))
+		stackLog.Info("deploying stack", slog.Group("recreate", slog.String("mode", recreateMode), slog.Any("forced_services", forcedServices.ToSlice())))
 
-		err = deployCompose(*ctx, *dockerCli, project, deployConfig, *payload, externalWorkingDir, latestCommit, appVersion, recreateType)
+		err = deployCompose(*ctx, *dockerCli, project, deployConfig, recreateMode, forcedServices.ToSlice())
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 
@@ -620,9 +622,11 @@ func getPaths(changedFiles []gitInternal.ChangedFile, basePath string) []string 
 }
 
 // HasChangedConfigs checks if any files used in docker compose `configs:` definitions have changed using the Git status.
-func HasChangedConfigs(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
+func HasChangedConfigs(changedFiles []gitInternal.ChangedFile, project *types.Project) ([]string, error) {
 	// We only need the relative part in this case
 	paths := getPaths(changedFiles, ".")
+
+	var changedServices []string
 
 	for _, c := range project.Configs {
 		// Changes in config.Content are handled in project hash comparison
@@ -632,18 +636,28 @@ func HasChangedConfigs(changedFiles []gitInternal.ChangedFile, project *types.Pr
 
 		for _, p := range paths {
 			if strings.HasSuffix(c.File, p) {
-				return true, nil
+				// Find services that use if the changed config
+				for _, s := range project.Services {
+					for _, cfg := range s.Configs {
+						if strings.HasSuffix(c.File, cfg.Source) {
+							changedServices = append(changedServices, s.Name)
+							break
+						}
+					}
+				}
 			}
 		}
 	}
 
-	return false, nil
+	return slice.Unique(changedServices), nil
 }
 
 // HasChangedSecrets checks if any files used in docker compose `secrets:` definitions have changed using the Git status.
-func HasChangedSecrets(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
+func HasChangedSecrets(changedFiles []gitInternal.ChangedFile, project *types.Project) ([]string, error) {
 	// We only need the relative part in this case
 	paths := getPaths(changedFiles, ".")
+
+	var changedServices []string
 
 	for _, s := range project.Secrets {
 		if s.File == "" {
@@ -652,53 +666,84 @@ func HasChangedSecrets(changedFiles []gitInternal.ChangedFile, project *types.Pr
 
 		for _, p := range paths {
 			if strings.HasSuffix(s.File, p) {
-				return true, nil
+				// Find services that use if the changed config
+				for _, svc := range project.Services {
+					for _, secret := range svc.Secrets {
+						if strings.HasSuffix(s.File, secret.Source) {
+							changedServices = append(changedServices, svc.Name)
+							break
+						}
+					}
+				}
 			}
 		}
 	}
 
-	return false, nil
+	return slice.Unique(changedServices), nil
 }
 
 // HasChangedBindMounts checks if any files used in docker compose `volumes:` definitions with type `bind` have changed using the Git status.
-func HasChangedBindMounts(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
+func HasChangedBindMounts(changedFiles []gitInternal.ChangedFile, project *types.Project) ([]string, error) {
 	paths := getPaths(changedFiles, ".")
+
+	var changedServices []string
 
 	for _, s := range project.Services {
 		for _, v := range s.Volumes {
 			if v.Type == "bind" && v.Source != "" {
 				bindSourceAbs := v.Source
 
-				return filesInPath(paths, bindSourceAbs), nil
-			}
-		}
-	}
-
-	return false, nil
-}
-
-// HasChangedEnvFiles checks if any files used in docker compose `env_file:` definitions have changed using the Git status.
-func HasChangedEnvFiles(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
-	// We only need the relative part in this case
-	paths := getPaths(changedFiles, ".")
-
-	for _, s := range project.Services {
-		for _, envFile := range s.EnvFiles {
-			for _, p := range paths {
-				if strings.HasSuffix(envFile.Path, p) {
-					return true, nil
+				if filesInPath(paths, bindSourceAbs) {
+					for _, svc := range project.Services {
+						for _, vol := range svc.Volumes {
+							if vol.Type == "bind" && vol.Source == v.Source {
+								changedServices = append(changedServices, svc.Name)
+								break
+							}
+						}
+					}
 				}
 			}
 		}
 	}
 
-	return false, nil
+	return slice.Unique(changedServices), nil
+}
+
+// HasChangedEnvFiles checks if any files used in docker compose `env_file:` definitions have changed using the Git status.
+func HasChangedEnvFiles(changedFiles []gitInternal.ChangedFile, project *types.Project) ([]string, error) {
+	// We only need the relative part in this case
+	paths := getPaths(changedFiles, ".")
+
+	var changedServices []string
+
+	for _, s := range project.Services {
+		for _, envFile := range s.EnvFiles {
+			for _, p := range paths {
+				if strings.HasSuffix(envFile.Path, p) {
+					// Find services that use if the changed env file
+					for _, svc := range project.Services {
+						for _, ef := range svc.EnvFiles {
+							if strings.HasSuffix(envFile.Path, ef.Path) {
+								changedServices = append(changedServices, svc.Name)
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return slice.Unique(changedServices), nil
 }
 
 // HasChangedBuildFiles checks if any files used as build context in docker compose `build:` definitions have changed using the Git status.
 // This includes any file within the build context directory for each service. If a changed file is within a build context, it returns true.
-func HasChangedBuildFiles(changedFiles []gitInternal.ChangedFile, project *types.Project) (bool, error) {
+func HasChangedBuildFiles(changedFiles []gitInternal.ChangedFile, project *types.Project) ([]string, error) {
 	paths := getPaths(changedFiles, ".")
+
+	var changedServices []string
 
 	for _, s := range project.Services {
 		if s.Build == nil {
@@ -743,20 +788,26 @@ func HasChangedBuildFiles(changedFiles []gitInternal.ChangedFile, project *types
 
 			for _, p := range paths {
 				if strings.HasSuffix(ctxFile, p) {
-					return true, nil
+					changedServices = append(changedServices, s.Name)
+					break
 				}
 			}
 		}
 	}
 
-	return false, nil
+	return slice.Unique(changedServices), nil
+}
+
+type Change struct {
+	Type     string
+	Services []string
 }
 
 // ProjectFilesHaveChanges checks if any files related to the compose project have changed.
-func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *types.Project) ([]string, error) {
+func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *types.Project) ([]Change, error) {
 	checks := []struct {
 		name string
-		fn   func([]gitInternal.ChangedFile, *types.Project) (bool, error)
+		fn   func([]gitInternal.ChangedFile, *types.Project) ([]string, error)
 	}{
 		{"configs", HasChangedConfigs},
 		{"secrets", HasChangedSecrets},
@@ -765,20 +816,23 @@ func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *ty
 		{"buildFiles", HasChangedBuildFiles},
 	}
 
-	var changeReasons []string
+	var changes []Change
 
 	for _, check := range checks {
-		changed, err := check.fn(changedFiles, project)
+		changedServices, err := check.fn(changedFiles, project)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check '%s' for changes: %w", check.name, err)
 		}
 
-		if changed {
-			changeReasons = append(changeReasons, check.name)
+		if len(changedServices) > 0 {
+			changes = append(changes, Change{
+				Type:     check.name,
+				Services: changedServices,
+			})
 		}
 	}
 
-	return changeReasons, nil
+	return changes, nil
 }
 
 // RestartProject restarts all services in the specified project.
@@ -973,17 +1027,6 @@ func CheckDefaultComposeFiles(composeFiles []string, workingDir string) ([]strin
 	}
 
 	return composeFiles, nil
-}
-
-// ProjectHash generates a SHA256 hash of the project configuration to be used for detecting changes in the project that may require a redeployment.
-func ProjectHash(p *types.Project) string {
-	b, err := json.Marshal(p)
-	if err != nil {
-		slog.Error("failed to marshal project for hashing", logger.ErrAttr(err))
-		return ""
-	}
-
-	return digest.SHA256.FromBytes(b).Encoded()
 }
 
 // filesInPath checks if at least one of the given filePaths is inside the searchPath.

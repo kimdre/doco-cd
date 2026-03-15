@@ -37,10 +37,10 @@ var (
 	ErrJobServiceRestartNotSupported = errors.New("restart not supported for job services")
 )
 
-// DeploySwarmStack deploys a Docker Swarm stack using the provided project and deploy configuration.
-func DeploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types.Project, deployConfig *config.DeployConfig,
-	payload webhook.ParsedPayload, externalWorkingDir, latestCommit, appVersion string, resolvedSecrets secrettypes.ResolvedSecrets,
-) error {
+// LoadSwarmStack loads a Docker Swarm stack using the provided project and deploy configuration.
+func LoadSwarmStack(dockerCli *command.Cli, project *types.Project, deployConfig *config.DeployConfig,
+	resolvedSecrets secrettypes.ResolvedSecrets, externalWorkingDir string,
+) (*composetypes.Config, *options.Deploy, error) {
 	opts := options.Deploy{
 		Composefiles:     project.ComposeFiles,
 		Namespace:        deployConfig.Name,
@@ -51,29 +51,25 @@ func DeploySwarmStack(ctx context.Context, dockerCli command.Cli, project *types
 		Environment:      project.Environment,
 	}
 
-	timestamp := time.Now().UTC().Format(time.RFC3339)
-
-	projectHash := ProjectHash(project)
-
-	cfg, err := swarmInternal.LoadComposefile(dockerCli, opts, resolvedSecrets, externalWorkingDir)
+	cfg, err := swarmInternal.LoadComposefile(*dockerCli, opts, resolvedSecrets, externalWorkingDir)
 	if err != nil {
-		return fmt.Errorf("failed to load compose file: %w", err)
+		return nil, nil, fmt.Errorf("failed to load compose file: %w", err)
 	}
 
-	addSwarmServiceLabels(cfg, *deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit, projectHash)
-	addSwarmVolumeLabels(cfg, *deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
-	addSwarmConfigLabels(cfg, *deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
-	addSwarmSecretLabels(cfg, *deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
-
 	if err = SetConfigHashPrefixes(cfg, opts.Namespace); err != nil {
-		return fmt.Errorf("failed to set config hash prefixes: %w", err)
+		return nil, nil, fmt.Errorf("failed to set config hash prefixes: %w", err)
 	}
 
 	if err = SetSecretHashPrefixes(cfg, opts.Namespace); err != nil {
-		return fmt.Errorf("failed to set secret hash prefixes: %w", err)
+		return nil, nil, fmt.Errorf("failed to set secret hash prefixes: %w", err)
 	}
 
-	return swarmInternal.RunDeploy(ctx, dockerCli, &opts, cfg)
+	return cfg, &opts, nil
+}
+
+// DeploySwarmStack deploys a Docker Swarm stack using the provided project and deploy configuration.
+func DeploySwarmStack(ctx context.Context, dockerCli command.Cli, cfg *composetypes.Config, opts *options.Deploy) error {
+	return swarmInternal.RunDeploy(ctx, dockerCli, opts, cfg)
 }
 
 // RemoveSwarmStack removes a Docker Swarm stack using the provided deploy configuration.
@@ -87,7 +83,9 @@ func RemoveSwarmStack(ctx context.Context, dockerCli command.Cli, namespace stri
 }
 
 // addSwarmServiceLabels adds custom labels to the service containers in a Docker Swarm stack.
-func addSwarmServiceLabels(stack *composetypes.Config, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, latestCommit, projectHash string) {
+func addSwarmServiceLabels(stack *composetypes.Config, deployConfig *config.DeployConfig, payload *webhook.ParsedPayload,
+	repoDir, appVersion, timestamp, latestCommit, projectHash string,
+) {
 	customLabels := map[string]string{
 		DocoCDLabels.Metadata.Manager:              config.AppName,
 		DocoCDLabels.Metadata.Version:              appVersion,
@@ -119,7 +117,9 @@ func addSwarmServiceLabels(stack *composetypes.Config, deployConfig config.Deplo
 }
 
 // addSwarmVolumeLabels adds custom labels to the volumes in a Docker Swarm stack.
-func addSwarmVolumeLabels(stack *composetypes.Config, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, latestCommit string) {
+func addSwarmVolumeLabels(stack *composetypes.Config, deployConfig *config.DeployConfig, payload *webhook.ParsedPayload,
+	repoDir, appVersion, timestamp, latestCommit string,
+) {
 	customLabels := map[string]string{
 		DocoCDLabels.Metadata.Manager:      config.AppName,
 		DocoCDLabels.Metadata.Version:      appVersion,
@@ -147,7 +147,9 @@ func addSwarmVolumeLabels(stack *composetypes.Config, deployConfig config.Deploy
 }
 
 // addSwarmConfigLabels adds custom labels to the configs in a Docker Swarm stack.
-func addSwarmConfigLabels(stack *composetypes.Config, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, latestCommit string) {
+func addSwarmConfigLabels(stack *composetypes.Config, deployConfig *config.DeployConfig, payload *webhook.ParsedPayload,
+	repoDir, appVersion, timestamp, latestCommit string,
+) {
 	customLabels := map[string]string{
 		DocoCDLabels.Metadata.Manager:      config.AppName,
 		DocoCDLabels.Metadata.Version:      appVersion,
@@ -174,7 +176,9 @@ func addSwarmConfigLabels(stack *composetypes.Config, deployConfig config.Deploy
 	}
 }
 
-func addSwarmSecretLabels(stack *composetypes.Config, deployConfig config.DeployConfig, payload webhook.ParsedPayload, repoDir, appVersion, timestamp, latestCommit string) {
+func addSwarmSecretLabels(stack *composetypes.Config, deployConfig *config.DeployConfig, payload *webhook.ParsedPayload,
+	repoDir, appVersion, timestamp, latestCommit string,
+) {
 	customLabels := map[string]string{
 		DocoCDLabels.Metadata.Manager:      config.AppName,
 		DocoCDLabels.Metadata.Version:      appVersion,

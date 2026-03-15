@@ -41,18 +41,12 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		curProjectHash string
 	)
 
-	serviceLabels, err := docker.GetServiceLabels(ctx, s.Docker.Client, s.DeployConfig.Name)
+	labels, err := docker.GetLatestServiceLabels(ctx, s.Docker.Client, getFullName(s.Repository.CloneURL), s.DeployConfig.Name)
 	if err != nil {
-		return fmt.Errorf("failed to retrieve service labels: %w", err)
+		return fmt.Errorf("failed to get latest labels from deployed services: %w", err)
 	}
 
-	// Find deployed commit, deployConfig hash and externalSecrets hash from labels of deployed services
-	for _, labels := range serviceLabels {
-		name, ok := labels[docker.DocoCDLabels.Repository.Name]
-		if !ok || name != getFullName(s.Repository.CloneURL) {
-			break
-		}
-
+	if len(labels) > 0 {
 		deployedCommit = labels[docker.DocoCDLabels.Deployment.CommitSHA]
 		curProjectHash = labels[docker.DocoCDLabels.Deployment.ComposeHash]
 	}

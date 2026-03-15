@@ -435,12 +435,12 @@ func TestHasChangedConfigs(t *testing.T) {
 				t.Fatalf("Expectec changed files, but found none found")
 			}
 
-			hasChanged, err := HasChangedConfigs(changedFiles, project)
+			changes, err := HasChangedConfigs(changedFiles, project)
 			if err != nil {
 				t.Fatalf("Failed to check for changed configs: %v", err)
 			}
 
-			if !hasChanged && tc.ExpectedChanges {
+			if len(changes) == 0 && tc.ExpectedChanges {
 				t.Error("Expected changed configs, but found none")
 			}
 		})
@@ -513,12 +513,12 @@ func TestHasChangedSecrets(t *testing.T) {
 				t.Fatalf("Expectec changed files, but found none found")
 			}
 
-			hasChanged, err := HasChangedSecrets(changedFiles, project)
+			changes, err := HasChangedSecrets(changedFiles, project)
 			if err != nil {
 				t.Fatalf("Failed to check for changed secrets: %v", err)
 			}
 
-			if !hasChanged && tc.ExpectedChanges {
+			if len(changes) == 0 && tc.ExpectedChanges {
 				t.Error("Expected changed secrets, but found none")
 			}
 		})
@@ -591,12 +591,12 @@ func TestHasChangedBindMounts(t *testing.T) {
 				t.Fatalf("Expectec changed files, but found none found")
 			}
 
-			hasChanged, err := HasChangedBindMounts(changedFiles, project)
+			changes, err := HasChangedBindMounts(changedFiles, project)
 			if err != nil {
 				t.Fatalf("Failed to check for changed bind mounts: %v", err)
 			}
 
-			if !hasChanged && tc.ExpectedChanges {
+			if len(changes) == 0 && tc.ExpectedChanges {
 				t.Error("Expected changed bind mounts, but found none")
 			}
 		})

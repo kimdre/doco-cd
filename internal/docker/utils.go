@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 	"strings"
 	"time"
 
@@ -14,9 +13,9 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/swarm"
 
-	swarmInternal "github.com/kimdre/doco-cd/internal/docker/swarm"
-
 	"github.com/moby/moby/api/types/volume"
+
+	swarmInternal "github.com/kimdre/doco-cd/internal/docker/swarm"
 
 	"github.com/moby/moby/client"
 )
@@ -25,8 +24,6 @@ var (
 	ErrMountPointNotFound     = errors.New("mount point not found")
 	ErrMountPointNotWriteable = errors.New("mount point is not writeable")
 	ErrContainerIDNotFound    = errors.New("container ID not found")
-	ErrBuildInfoUnavailable   = errors.New("build info unavailable")
-	ErrModuleNotFound         = errors.New("module not found in build info")
 )
 
 // GetContainerID retrieves the container ID for a given service name.
@@ -48,11 +45,11 @@ func GetContainerID(apiClient client.APIClient, name string) (id string, err err
 }
 
 type (
-	Service string
-	Labels  map[string]string
+	Service string            // Name of the Service
+	Labels  map[string]string // Labels of the Service
 )
 
-// GetServiceLabels retrieves the labels for all services in a given stack.
+// GetServiceLabels retrieves the Labels for each Service in a given stack.
 func GetServiceLabels(ctx context.Context, cli *client.Client, stackName string) (map[Service]Labels, error) {
 	if swarmInternal.ModeEnabled {
 		services, err := swarmInternal.GetStackServices(ctx, cli, stackName)
@@ -201,22 +198,6 @@ func CheckMountPointWriteable(mountPoint container.MountPoint) error {
 	}()
 
 	return nil
-}
-
-// GetModuleVersion retrieves the version of a specified module from the build info.
-func GetModuleVersion(module string) (string, error) {
-	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		return "", ErrBuildInfoUnavailable
-	}
-
-	for _, dep := range info.Deps {
-		if dep.Path == module {
-			return strings.TrimPrefix(dep.Version, "v"), nil
-		}
-	}
-
-	return "", fmt.Errorf("%w: %s", ErrModuleNotFound, module)
 }
 
 func RemoveLabeledVolumes(ctx context.Context, dockerClient *client.Client, stackName string) error {
