@@ -13,9 +13,11 @@ func New[T comparable](elements ...T) Set[T] {
 	return s
 }
 
-// Add inserts the specified element into the set.
-func (s Set[T]) Add(element T) {
-	s[element] = struct{}{}
+// Add inserts the specified elements into the set.
+func (s Set[T]) Add(elements ...T) {
+	for _, element := range elements {
+		s[element] = struct{}{}
+	}
 }
 
 // Remove deletes the specified element from the set.
@@ -50,4 +52,8 @@ func Union[T comparable](sets ...Set[T]) Set[T] {
 	}
 
 	return result
+}
+
+func (s Set[T]) Len() int {
+	return len(s)
 }
