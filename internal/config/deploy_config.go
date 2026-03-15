@@ -70,6 +70,7 @@ type DeployConfig struct {
 		Delete    bool `yaml:"delete" default:"true"` // Delete removes obsolete auto-discovered deployments that are no longer present in the repository
 	} `yaml:"auto_discover_opts"` // AutoDiscoverOpts are options for the autodiscovery feature
 	Internal struct {
+		File        string            `yaml:"-"` // File is the path to the deployment configuration file in the repository (if RepositoryUrl is not set) or in the cloned repository (if RepositoryUrl is set)
 		Environment map[string]string // Environment stores environment variables from local env_files entries (if RepositoryUrl to set) for the deployment for interpolating variables in the compose files
 		Hash        string            `yaml:"-"` // Hash is a hash of the DeployConfig struct (without changing the order of its elements)
 	} // Internal holds internal configuration values that are not set by the user
@@ -184,6 +185,8 @@ func GetDeployConfigFromYAML(f string) ([]*DeployConfig, error) {
 
 			return nil, fmt.Errorf("failed to decode yaml: %v", err)
 		}
+
+		c.Internal.File = f
 
 		configs = append(configs, &c)
 	}
@@ -342,7 +345,7 @@ func GetDeployConfigs(repoRoot, deployConfigBaseDir, name, customTarget, referen
 	}
 
 	if customTarget != "" {
-		return nil, ErrConfigFileNotFound
+		return nil, fmt.Errorf("%w: .doco-cd.%s.y(a)ml", ErrConfigFileNotFound, customTarget)
 	}
 
 	return []*DeployConfig{DefaultDeployConfig(name, reference)}, nil

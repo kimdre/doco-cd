@@ -678,11 +678,11 @@ func GetChangedFilesBetweenCommits(repo *git.Repository, commitHash1, commitHash
 }
 
 // HasChangesInSubdir checks if any of the changed files are in a specified subdirectory.
-func HasChangesInSubdir(changedFiles []ChangedFile, workingDir, subdir string) (bool, error) {
+func HasChangesInSubdir(changedFiles []ChangedFile, repoPath, subdir, deployConfigPath string) (bool, error) {
 	// Collect all symlinks in subdir
 	symlinks := make(map[string]string)
 
-	err := filepath.Walk(filepath.Join(workingDir, subdir), func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(filepath.Join(repoPath, subdir), func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return fmt.Errorf("failed to walk subdir %s: %w", subdir, err)
 		}
@@ -708,9 +708,9 @@ func HasChangesInSubdir(changedFiles []ChangedFile, workingDir, subdir string) (
 		return false, err
 	}
 
-	for _, file := range changedFiles {
-		var paths []string
+	var paths []string
 
+	for _, file := range changedFiles {
 		if file.From != nil {
 			paths = append(paths, file.From.Path())
 		}
@@ -718,24 +718,29 @@ func HasChangesInSubdir(changedFiles []ChangedFile, workingDir, subdir string) (
 		if file.To != nil {
 			paths = append(paths, file.To.Path())
 		}
+	}
 
-		for _, p := range paths {
-			rel, err := filepath.Rel(subdir, p)
+	for _, p := range paths {
+		// Ignore deployConfig if present
+		// deployConfigPath is the absolute path to the .doco-cd.yml file
+		if strings.HasPrefix(deployConfigPath, p) {
+			continue
+		}
 
-			if err == nil && (rel == "." || !strings.HasPrefix(rel, "..")) {
-				return true, nil
+		rel, err := filepath.Rel(subdir, p)
+		if err == nil && (rel == "." || !strings.HasPrefix(rel, "..")) {
+			return true, nil
+		}
+
+		// Check if file is inside any symlink target
+		for _, target := range symlinks {
+			relSymlink, err := filepath.Rel(target, filepath.Join(target, p))
+			if err != nil {
+				continue
 			}
 
-			// Check if file is inside any symlink target
-			for _, target := range symlinks {
-				relSymlink, err := filepath.Rel(target, filepath.Join(target, p))
-				if err != nil {
-					continue
-				}
-
-				if relSymlink == "." || !strings.HasPrefix(relSymlink, "..") {
-					return true, nil
-				}
+			if relSymlink == "." || !strings.HasPrefix(relSymlink, "..") {
+				return true, nil
 			}
 		}
 	}

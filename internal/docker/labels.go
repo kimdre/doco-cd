@@ -8,16 +8,16 @@ type docoCDLabelNamesMetadata struct {
 
 // DocoCDLabelNamesDeployment contains the labels used by DocoCD to identify deployed containers.
 type docoCdLabelNamesDeployment struct {
-	Name                string // Name of the deployment
-	Timestamp           string // Timestamp of deployment in RFC3339 format
-	WorkingDir          string // Working Directory where the deployment gets executed
-	TargetRef           string // Target reference (branch/tag) of the deployment
-	Trigger             string // Poll or SHA of the commit that triggered the deployment
-	CommitSHA           string // SHA of the commit that is currently deployed
-	ConfigHash          string // SHA256 hash of the deploy-config used during deployment
-	ExternalSecretsHash string // SHA256 hash of the external secrets used during deployment
-	AutoDiscover        string // Whether the deployment was auto-discovered
-	AutoDiscoverDelete  string // Whether auto-discovered deployment is allowed to be deleted
+	Name               string // Name of the deployment
+	Timestamp          string // Timestamp of deployment in RFC3339 format
+	ComposeHash        string // SHA256 hash of the generated compose project contents
+	WorkingDir         string // Working Directory where the deployment gets executed
+	TargetRef          string // Target reference (branch/tag) of the deployment
+	Trigger            string // Poll or SHA of the commit that triggered the deployment
+	CommitSHA          string // SHA of the commit that is currently deployed
+	ConfigHash         string // SHA256 hash of the deploy-config used during deployment
+	AutoDiscover       string // Whether the deployment was auto-discovered
+	AutoDiscoverDelete string // Whether auto-discovered deployment is allowed to be deleted
 }
 
 // docoCdLabelNamesRepository contains the labels used by DocoCD to identify the repository.
@@ -40,16 +40,16 @@ var DocoCDLabels = docoCdLabelNames{
 		Version: "cd.doco.metadata.version",
 	},
 	Deployment: docoCdLabelNamesDeployment{
-		Name:                "cd.doco.deployment.name",
-		Timestamp:           "cd.doco.deployment.timestamp",
-		WorkingDir:          "cd.doco.deployment.working_dir",
-		TargetRef:           "cd.doco.deployment.target.ref",
-		CommitSHA:           "cd.doco.deployment.target.sha",
-		Trigger:             "cd.doco.deployment.trigger",
-		ConfigHash:          "cd.doco.deployment.config.sha",
-		ExternalSecretsHash: "cd.doco.deployment.external_secrets.sha", // #nosec G101
-		AutoDiscover:        "cd.doco.deployment.auto_discover",
-		AutoDiscoverDelete:  "cd.doco.deployment.auto_discover.delete",
+		Name:               "cd.doco.deployment.name",
+		Timestamp:          "cd.doco.deployment.timestamp",
+		ComposeHash:        "cd.doco.deployment.compose.sha",
+		WorkingDir:         "cd.doco.deployment.working_dir",
+		TargetRef:          "cd.doco.deployment.target.ref",
+		CommitSHA:          "cd.doco.deployment.target.sha",
+		Trigger:            "cd.doco.deployment.trigger",
+		ConfigHash:         "cd.doco.deployment.config.sha",
+		AutoDiscover:       "cd.doco.deployment.auto_discover",
+		AutoDiscoverDelete: "cd.doco.deployment.auto_discover.delete",
 	},
 	Repository: docoCdLabelNamesRepository{
 		Name: "cd.doco.repository.name",

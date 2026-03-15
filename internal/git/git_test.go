@@ -774,7 +774,7 @@ func TestGetChangedFilesBetweenCommits(t *testing.T) {
 	t.Logf("Changed files: %v", changedFilePaths)
 	t.Logf("testDir: %s", expectedChangedDirectory)
 
-	hasChanged, err := git.HasChangesInSubdir(changedFiles, tmpDir, expectedChangedDirectory)
+	hasChanged, err := git.HasChangesInSubdir(changedFiles, tmpDir, expectedChangedDirectory, filepath.Join(tmpDir, ".doco-cd.yml"))
 	if err != nil {
 		t.Fatalf("Failed to check changes in subdir: %v", err)
 	}

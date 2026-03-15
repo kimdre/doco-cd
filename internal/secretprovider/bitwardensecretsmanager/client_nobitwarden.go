@@ -4,7 +4,6 @@ package bitwardensecretsmanager
 
 import (
 	"context"
-	"errors"
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
@@ -12,8 +11,6 @@ import (
 const (
 	Name = "bitwarden_sm"
 )
-
-var ErrNotSupported = errors.New("bitwarden secrets manager is not supported in this build")
 
 type Provider struct{}
 
