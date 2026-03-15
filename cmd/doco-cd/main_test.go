@@ -10,8 +10,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/avast/retry-go/v5"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/google/uuid"
@@ -311,30 +314,43 @@ func TestHandleEvent(t *testing.T) {
 				Mode:        "rw",
 			}
 
-			HandleEvent(
-				ctx,
-				jobLog,
-				rr,
-				appConfig,
-				testMountPoint,
-				tc.payload,
-				tc.customTarget,
-				jobID,
-				dockerCli,
-				dockerClient,
-				&secretProvider,
-				stackName,
-			)
+			err = retry.New(
+				retry.Attempts(3),
+				retry.Delay(1*time.Second),
+				retry.RetryIf(func(err error) bool {
+					return strings.Contains(err.Error(), "No such image:")
+				}),
+			).Do(func() error {
+				HandleEvent(
+					ctx,
+					jobLog,
+					rr,
+					appConfig,
+					testMountPoint,
+					tc.payload,
+					tc.customTarget,
+					jobID,
+					dockerCli,
+					dockerClient,
+					&secretProvider,
+					stackName,
+				)
 
-			if status := rr.Code; status != tc.expectedStatusCode {
-				t.Errorf("handler returned wrong status code: got %v want %v",
-					status, tc.expectedStatusCode)
-			}
+				expectedReturnMessage := fmt.Sprintf(tc.expectedResponseBody, jobID, filepath.Join(tmpDir, git.GetRepoName(tc.payload.CloneURL)), stackName) + "\n"
+				if rr.Body.String() != expectedReturnMessage {
+					return fmt.Errorf("handler returned unexpected body: got '%v' want '%v'",
+						rr.Body.String(), expectedReturnMessage)
+				}
 
-			expectedReturnMessage := fmt.Sprintf(tc.expectedResponseBody, jobID, filepath.Join(tmpDir, git.GetRepoName(tc.payload.CloneURL)), stackName) + "\n"
-			if rr.Body.String() != expectedReturnMessage {
-				t.Errorf("handler returned unexpected body: got '%v' want '%v'",
-					rr.Body.String(), expectedReturnMessage)
+				if status := rr.Code; status != tc.expectedStatusCode {
+					return fmt.Errorf("handler returned wrong status code: got %v want %v",
+						status, tc.expectedStatusCode)
+				}
+
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("test failed: %v", err)
 			}
 		})
 	}
