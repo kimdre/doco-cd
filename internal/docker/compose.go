@@ -803,6 +803,17 @@ type Change struct {
 	Services []string
 }
 
+// sortChanges sorts the changes first by type and then by service name within each change.
+func sortChanges(changes []Change) {
+	slices.SortFunc(changes, func(a, b Change) int {
+		return strings.Compare(a.Type, b.Type)
+	})
+
+	for i := range changes {
+		slices.Sort(changes[i].Services)
+	}
+}
+
 // ProjectFilesHaveChanges checks if any files related to the compose project have changed.
 func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *types.Project) ([]Change, error) {
 	checks := []struct {
@@ -833,6 +844,8 @@ func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *ty
 			})
 		}
 	}
+
+	sortChanges(changes)
 
 	return changes, nil
 }

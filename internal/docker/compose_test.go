@@ -817,6 +817,8 @@ func TestProjectFilesHaveChanges(t *testing.T) {
 				t.Fatalf("Failed to get project changes: %v", err)
 			}
 
+			sortChanges(tc.expectedChanges)
+
 			if !reflect.DeepEqual(changes, tc.expectedChanges) {
 				t.Fatalf("Expected changes: %v, but got: %v", tc.expectedChanges, changes)
 			}
