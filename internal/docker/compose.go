@@ -825,6 +825,8 @@ func ProjectFilesHaveChanges(changedFiles []gitInternal.ChangedFile, project *ty
 		}
 
 		if len(changedServices) > 0 {
+			slices.Sort(changedServices)
+
 			changes = append(changes, Change{
 				Type:     check.name,
 				Services: changedServices,

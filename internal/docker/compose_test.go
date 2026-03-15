@@ -759,7 +759,7 @@ func TestProjectFilesHaveChanges(t *testing.T) {
 			oldCommit: "5519af2e6ca9ee6a6d751c09290387aa8e317386",
 			newCommit: "3af5b37a662eebb0ce2b9006ea69009f726b2789",
 			expectedChanges: []Change{
-				{Type: "configs", Services: []string{"test", "included"}},
+				{Type: "configs", Services: []string{"included", "test"}},
 			},
 		},
 	}
