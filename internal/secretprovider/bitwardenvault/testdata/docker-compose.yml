@@ -1,0 +1,46 @@
+services:
+  cert-init:
+    image: alpine/openssl:latest
+    command: >
+      sh -c '
+        openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 3650 \
+          -keyout /certs/localhost.key -out /certs/localhost.crt -subj "/CN=localhost" \
+          -addext "subjectAltName=DNS:localhost,DNS:*.localhost,IP:0.0.0.0";
+      '
+    volumes:
+      - certs:/certs
+    entrypoint: ""
+    restart: no
+
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden-test
+    environment:
+      - ADMIN_TOKEN=supersecrettoken
+      - SIGNUPS_ALLOWED=true
+      - WEBSOCKET_ENABLED=true
+      - ROCKET_TLS={certs="/certs/localhost.crt",key="/certs/localhost.key"}
+    depends_on:
+      cert-init:
+        condition: service_completed_successfully
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./vw-data:/data
+      - certs:/certs
+    restart: unless-stopped
+    networks:
+      default:
+        ipv4_address: 192.168.51.5
+
+volumes:
+  certs:
+
+networks:
+  default:
+    ipam:
+      driver: default
+      config:
+        - subnet: 192.168.51.0/24
+          gateway: 192.168.51.1
