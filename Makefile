@@ -81,7 +81,7 @@ cleanup:
 	@CONTAINERS=$$(docker container ls --format "{{.ID}}" --filter "label=cd.doco.metadata.manager"); \
 	if [ -n "$$CONTAINERS" ]; then \
 		for PROJECT in $$(for ID in $$CONTAINERS; do docker container inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' $$ID; done | sort | uniq); do \
-			docker compose -p $$PROJECT down; \
+			docker compose -p $$PROJECT down -v; \
 		done; \
 	else \
 		echo "No containers to clean up."; \
