@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -684,6 +685,140 @@ func TestFilesInPath(t *testing.T) {
 
 			if found != tc.shouldFind {
 				t.Fatalf("Expected to find change: %t, but got %t", tc.shouldFind, found)
+			}
+		})
+	}
+}
+
+func TestProjectFilesHaveChanges(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name            string
+		oldCommit       string
+		newCommit       string
+		expectedChanges []Change
+	}{
+		{
+			name:      "Changed dotenv in single service",
+			oldCommit: "1a62190db8ea6f700dbc6364ea94522c21c3642f",
+			newCommit: "268aa233f1dbac17cc521883f7e3755bc37f70c1",
+			expectedChanges: []Change{
+				{Type: "envFiles", Services: []string{"test"}},
+			},
+		},
+		{
+			name:      "Changed bind mount in single service",
+			oldCommit: "49913446ea803cb9ecaa441118e0b9ef48e77cc2",
+			newCommit: "1a62190db8ea6f700dbc6364ea94522c21c3642f",
+			expectedChanges: []Change{
+				{Type: "bindMounts", Services: []string{"test"}},
+			},
+		},
+		{
+			name:      "Changed secret in single service",
+			oldCommit: "b181a3a84af166639c8789bb6be15a6a5bdfe7af",
+			newCommit: "1dbfb46f4b3479a8986f1d46fc5d9948dcac2ede",
+			expectedChanges: []Change{
+				{Type: "secrets", Services: []string{"test"}},
+			},
+		},
+		{
+			name:      "Changed config in single service",
+			oldCommit: "f0582842c7526c1815a2f4aa46a88301567809bf",
+			newCommit: "204ef121cf41686515977e7bc9d33376661252d6",
+			expectedChanges: []Change{
+				{Type: "configs", Services: []string{"test"}},
+			},
+		},
+		{
+			name:            "Changes in Compose Project",
+			oldCommit:       "1dbfb46f4b3479a8986f1d46fc5d9948dcac2ede",
+			newCommit:       "c50cc1d8cbad3b6e6f2c058cf7a4898a6ba908e6",
+			expectedChanges: nil,
+		},
+		{
+			name:      "Changes in Secret and Bind Mount in single service",
+			oldCommit: "268aa233f1dbac17cc521883f7e3755bc37f70c1",
+			newCommit: "0eb919b35ff46af6efc02425588622adf448a4d4",
+			expectedChanges: []Change{
+				{Type: "secrets", Services: []string{"test"}},
+				{Type: "bindMounts", Services: []string{"test"}},
+			},
+		},
+		{
+			name:      "Changes in Bind Mount and Compose Project in Multiple Services",
+			oldCommit: "29993e4b57ab55a687f69c1cca945b6c8966806a",
+			newCommit: "5327b541f9917213b0b2ca4549f6314c78513bc7",
+			expectedChanges: []Change{
+				{Type: "bindMounts", Services: []string{"test"}},
+			},
+		},
+		{
+			name:      "Changes in Multiple Configs for Multiple Services",
+			oldCommit: "5519af2e6ca9ee6a6d751c09290387aa8e317386",
+			newCommit: "3af5b37a662eebb0ce2b9006ea69009f726b2789",
+			expectedChanges: []Change{
+				{Type: "configs", Services: []string{"test", "included"}},
+			},
+		},
+	}
+
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("Failed to get app config: %v", err)
+	}
+
+	auth, err := git.GetAuthMethod(cloneUrlTest, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	if err != nil {
+		t.Fatalf("Failed to get auth method: %v", err)
+	}
+
+	if auth != nil {
+		t.Logf("Using auth method: %s", auth.Name())
+	} else {
+		t.Log("No auth method configured, using anonymous access")
+	}
+
+	tmpDir := t.TempDir()
+
+	repo, err := git.CloneRepository(tmpDir, cloneUrlTest, git.MainBranch, c.SkipTLSVerification, c.HttpProxy, auth, c.GitCloneSubmodules)
+	if err != nil {
+		t.Fatalf("Failed to clone repository: %v", err)
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err = git.CheckoutRepository(repo, tc.newCommit, auth, c.GitCloneSubmodules)
+			if err != nil {
+				t.Fatalf("Failed to checkout old commit: %v", err)
+			}
+
+			deployConfigs, err := config.GetDeployConfigs(tmpDir, ".", t.Name(), "", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			d := deployConfigs[0]
+			d.Name = test.ConvertTestName(t.Name())
+
+			changedFiles, err := git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(tc.oldCommit), plumbing.NewHash(tc.newCommit))
+			if err != nil {
+				t.Fatalf("Failed to get changed files: %v", err)
+			}
+
+			project, err := LoadCompose(t.Context(), tmpDir, d.Name, d.ComposeFiles, d.EnvFiles, d.Profiles, map[string]string{})
+			if err != nil {
+				t.Fatalf("Failed to load compose file: %v", err)
+			}
+
+			changes, err := ProjectFilesHaveChanges(changedFiles, project)
+			if err != nil {
+				t.Fatalf("Failed to get project changes: %v", err)
+			}
+
+			if !reflect.DeepEqual(changes, tc.expectedChanges) {
+				t.Fatalf("Expected changes: %v, but got: %v", tc.expectedChanges, changes)
 			}
 		})
 	}
