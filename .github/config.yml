@@ -1,4 +1,3 @@
-# https://github.com/NikkelM/Todo-PR-Checker
 todo-pr-checker:
   post_comment: 'items_found'
   case_sensitive: true,
