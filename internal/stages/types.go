@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
 	"github.com/go-git/go-git/v5"
 	"github.com/moby/moby/api/types/container"
@@ -118,12 +119,12 @@ type Docker struct {
 	Cmd            command.Cli
 	Client         *client.Client
 	DataMountPoint container.MountPoint
+	Project        *types.Project
 }
 
 // DeploymentState holds the dynamic state information during the deployment process.
 type DeploymentState struct {
 	ChangedFiles    []gitInternal.ChangedFile
-	SecretsChanged  bool
 	ResolvedSecrets secrettypes.ResolvedSecrets
 }
 

@@ -38,3 +38,7 @@ cover.out
 cover.html
 
 docker-config.json
+
+# Agents/Copilot files
+issue.md
+.github/AGENTS.md

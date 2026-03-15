@@ -10,13 +10,18 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/avast/retry-go/v5"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/google/uuid"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
+
+	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
 
 	"github.com/kimdre/doco-cd/internal/test"
 
@@ -161,7 +166,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"deployment failed","content":"failed to deploy stack %[3]s: no compose files found: stat %[2]s/docker-compose.yaml: no such file or directory","job_id":"%[1]s"}`,
+			expectedResponseBody: `{"error":"deployment failed","content":"failed to deploy stack %[3]s: failed to load compose config: failed to load compose project: no configuration file provided: not found","job_id":"%[1]s"}`,
 			customTarget:         "",
 			swarmMode:            false,
 		},
@@ -265,6 +270,10 @@ func TestHandleEvent(t *testing.T) {
 
 			secretProvider, err := secretprovider.Initialize(ctx, appConfig.SecretProvider, "v0.0.0-test")
 			if err != nil {
+				if errors.Is(err, bitwardensecretsmanager.ErrNotSupported) {
+					t.Skip(err.Error())
+				}
+
 				t.Fatalf("failed to initialize secret provider: %s", err.Error())
 
 				return
@@ -305,30 +314,43 @@ func TestHandleEvent(t *testing.T) {
 				Mode:        "rw",
 			}
 
-			HandleEvent(
-				ctx,
-				jobLog,
-				rr,
-				appConfig,
-				testMountPoint,
-				tc.payload,
-				tc.customTarget,
-				jobID,
-				dockerCli,
-				dockerClient,
-				&secretProvider,
-				stackName,
-			)
+			err = retry.New(
+				retry.Attempts(3),
+				retry.Delay(1*time.Second),
+				retry.RetryIf(func(err error) bool {
+					return strings.Contains(err.Error(), "No such image:")
+				}),
+			).Do(func() error {
+				HandleEvent(
+					ctx,
+					jobLog,
+					rr,
+					appConfig,
+					testMountPoint,
+					tc.payload,
+					tc.customTarget,
+					jobID,
+					dockerCli,
+					dockerClient,
+					&secretProvider,
+					stackName,
+				)
 
-			if status := rr.Code; status != tc.expectedStatusCode {
-				t.Errorf("handler returned wrong status code: got %v want %v",
-					status, tc.expectedStatusCode)
-			}
+				expectedReturnMessage := fmt.Sprintf(tc.expectedResponseBody, jobID, filepath.Join(tmpDir, git.GetRepoName(tc.payload.CloneURL)), stackName) + "\n"
+				if rr.Body.String() != expectedReturnMessage {
+					return fmt.Errorf("handler returned unexpected body: got '%v' want '%v'",
+						rr.Body.String(), expectedReturnMessage)
+				}
 
-			expectedReturnMessage := fmt.Sprintf(tc.expectedResponseBody, jobID, filepath.Join(tmpDir, git.GetRepoName(tc.payload.CloneURL)), stackName) + "\n"
-			if rr.Body.String() != expectedReturnMessage {
-				t.Errorf("handler returned unexpected body: got '%v' want '%v'",
-					rr.Body.String(), expectedReturnMessage)
+				if status := rr.Code; status != tc.expectedStatusCode {
+					return fmt.Errorf("handler returned wrong status code: got %v want %v",
+						status, tc.expectedStatusCode)
+				}
+
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("test failed: %v", err)
 			}
 		})
 	}

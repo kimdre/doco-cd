@@ -2,13 +2,14 @@ x-poll-config: &poll-config
   POLL_CONFIG: |
     - url: https://github.com/kimdre/doco-cd_tests.git
       #url: git@github.com:kimdre/doco-cd_tests.git
-      reference: with-submodule
+      reference: main
       interval: 10
       #target: "bitwarden-sm"
 
 services:
   app:
     container_name: doco-cd
+#    image: ghcr.io/kimdre/doco-cd:latest
     build:
       context: .
       dockerfile: Dockerfile
