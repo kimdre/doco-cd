@@ -2,55 +2,79 @@ package docker
 
 import (
 	"encoding/json"
-	"log/slog"
+	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/opencontainers/go-digest"
-
-	"github.com/kimdre/doco-cd/internal/logger"
 )
+
+// deepCopy recursively copies src into dst using reflection.
+func deepCopy(dst, src reflect.Value) {
+	switch src.Kind() {
+	case reflect.Ptr:
+		if src.IsNil() {
+			return
+		}
+
+		dst.Set(reflect.New(src.Elem().Type()))
+		deepCopy(dst.Elem(), src.Elem())
+	case reflect.Struct:
+		for i := 0; i < src.NumField(); i++ {
+			field := src.Type().Field(i)
+			if field.PkgPath != "" { // unexported field
+				continue
+			}
+
+			deepCopy(dst.Field(i), src.Field(i))
+		}
+	case reflect.Slice:
+		if src.IsNil() {
+			return
+		}
+
+		dst.Set(reflect.MakeSlice(src.Type(), src.Len(), src.Cap()))
+
+		for i := 0; i < src.Len(); i++ {
+			deepCopy(dst.Index(i), src.Index(i))
+		}
+	case reflect.Map:
+		if src.IsNil() {
+			return
+		}
+
+		dst.Set(reflect.MakeMapWithSize(src.Type(), src.Len()))
+
+		for _, key := range src.MapKeys() {
+			val := reflect.New(src.MapIndex(key).Type()).Elem()
+			deepCopy(val, src.MapIndex(key))
+			dst.SetMapIndex(key, val)
+		}
+	default:
+		dst.Set(src)
+	}
+}
 
 // copyProject creates a deep copy of the given project struct by marshaling it to JSON and unmarshalling it back to a new struct.
 // This is necessary because some fields in the compose types are pointers, and we want to avoid modifying the original struct when adding labels.
-func copyProject(orig *types.Project) (*types.Project, error) {
-	b, err := json.Marshal(orig)
-	if err != nil {
-		return nil, err
+func copyProject(orig *types.Project) *types.Project {
+	if orig == nil {
+		return nil
 	}
 
-	clone := types.Project{}
+	clone := &types.Project{}
+	deepCopy(reflect.ValueOf(clone).Elem(), reflect.ValueOf(orig).Elem())
 
-	err = json.Unmarshal(b, &clone)
-	if err != nil {
-		return nil, err
-	}
-
-	return &clone, nil
+	return clone
 }
 
 // ProjectHash generates a SHA256 hash of the project configuration to be used for detecting changes in the project that may require a redeployment.
-func ProjectHash(p *types.Project) string {
-	pCopy, err := copyProject(p)
-	if err != nil {
-		slog.Error("failed to copy project for hashing", logger.ErrAttr(err))
-		return ""
-	}
+func ProjectHash(p *types.Project) (string, error) {
+	pCopy := copyProject(p)
 
 	// Set all dynamic values to a constant value to avoid unnecessary changes in the hash when these values change but the actual configuration does not.
 	for name, cfg := range pCopy.Services {
-		// remove the Build config when generating the service hash
-		cfg.Build = nil
-		cfg.PullPolicy = ""
-
-		cfg.Scale = nil
-		if cfg.Deploy != nil {
-			cfg.Deploy.Replicas = nil
-		}
-
-		cfg.DependsOn = nil
-		cfg.Profiles = nil
-
 		for l := range cfg.Labels {
 			if strings.HasPrefix(l, "cd.doco.") || strings.HasPrefix(l, "com.docker.compose.") {
 				cfg.Labels[l] = ""
@@ -72,9 +96,8 @@ func ProjectHash(p *types.Project) string {
 
 	b, err := json.Marshal(p)
 	if err != nil {
-		slog.Error("failed to marshal project for hashing", logger.ErrAttr(err))
-		return ""
+		return "", fmt.Errorf("failed to marshal project for hashing: %w", err)
 	}
 
-	return digest.SHA256.FromBytes(b).Encoded()
+	return digest.SHA256.FromBytes(b).Encoded(), nil
 }
