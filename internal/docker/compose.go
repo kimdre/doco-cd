@@ -102,10 +102,8 @@ This is required for future compose operations to work, such as finding
 containers that are part of a service.
 */
 func addComposeServiceLabels(project *types.Project, deployConfig *config.DeployConfig, payload *webhook.ParsedPayload,
-	workingDir, appVersion, timestamp, composeVersion, latestCommit string,
+	workingDir, appVersion, timestamp, composeVersion, latestCommit, projectHash string,
 ) {
-	projectHash := ProjectHash(project)
-
 	for i, s := range project.Services {
 		// Extract service dependencies (depends_on)
 		dependencies := make([]string, 0, len(s.DependsOn))
@@ -143,10 +141,8 @@ func addComposeServiceLabels(project *types.Project, deployConfig *config.Deploy
 }
 
 func addComposeVolumeLabels(project *types.Project, deployConfig *config.DeployConfig, payload *webhook.ParsedPayload,
-	appVersion, timestamp, composeVersion, latestCommit string,
+	appVersion, timestamp, composeVersion, latestCommit, projectHash string,
 ) {
-	projectHash := ProjectHash(project)
-
 	for i, v := range project.Volumes {
 		v.CustomLabels = map[string]string{
 			DocoCDLabels.Metadata.Manager:       config.AppName,
@@ -449,7 +445,10 @@ func DeployStack(
 
 	// Generate project hash with doco-cd labels
 	// We don't want to compare the hashes with these labels
-	projectHash := ProjectHash(project)
+	projectHash, err := ProjectHash(project)
+	if err != nil {
+		return fmt.Errorf("failed to generate project hash: %w", err)
+	}
 
 	// When SwarmModeEnabled is true, we deploy the stack using Docker Swarm.
 	if swarm.ModeEnabled {
@@ -511,8 +510,8 @@ func DeployStack(
 			return fmt.Errorf("%s: %w", errMsg, err)
 		}
 
-		addComposeServiceLabels(project, deployConfig, payload, externalWorkingDir, appVersion, timestamp, ComposeVersion, latestCommit)
-		addComposeVolumeLabels(project, deployConfig, payload, appVersion, timestamp, ComposeVersion, latestCommit)
+		addComposeServiceLabels(project, deployConfig, payload, externalWorkingDir, appVersion, timestamp, ComposeVersion, latestCommit, projectHash)
+		addComposeVolumeLabels(project, deployConfig, payload, appVersion, timestamp, ComposeVersion, latestCommit, projectHash)
 
 		forcedServices := set.New[string]() // services to recreate if project files changed
 		recreateMode := api.RecreateDiverged

@@ -176,9 +176,14 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			return fmt.Errorf("failed to load compose project: %w", err)
 		}
 
-		composeChanged := docker.ProjectHash(s.Docker.Project) != curProjectHash
+		newHash, err := docker.ProjectHash(s.Docker.Project)
+		if err != nil {
+			return fmt.Errorf("failed to get project hash: %w", err)
+		}
+
+		composeChanged := newHash != curProjectHash
 		if composeChanged {
-			stageLog.Debug("compose project has changed, proceeding with deployment", slog.String("new_hash", docker.ProjectHash(s.Docker.Project)), slog.String("old_hash", curProjectHash))
+			stageLog.Debug("compose project has changed, proceeding with deployment", slog.String("new_hash", newHash), slog.String("old_hash", curProjectHash))
 		}
 
 		changedFiles, err := docker.ProjectFilesHaveChanges(s.DeployState.ChangedFiles, s.Docker.Project)
