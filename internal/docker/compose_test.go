@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/avast/retry-go/v5"
+
 	"github.com/kimdre/doco-cd/internal/test"
 
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
