@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/avast/retry-go/v5"
 	"github.com/kimdre/doco-cd/internal/test"
 
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
@@ -288,8 +289,16 @@ compose_files:
 			}
 		}
 
-		err = DeployStack(jobLog, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
-			[]git.ChangedFile{}, latestCommit, "dev", false, resolvedSecrets)
+		err = retry.New(
+			retry.Attempts(3),
+			retry.Delay(1*time.Second),
+			retry.RetryIf(func(err error) bool {
+				return strings.Contains(err.Error(), "No such image:")
+			}),
+		).Do(func() error {
+			return DeployStack(jobLog, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
+				[]git.ChangedFile{}, latestCommit, "dev", false, resolvedSecrets)
+		})
 		if err != nil {
 			t.Fatalf("failed to deploy stack: %v", err)
 		}
