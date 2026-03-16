@@ -77,7 +77,7 @@ func ProjectHash(p *types.Project) (string, error) {
 	for name, cfg := range pCopy.Services {
 		for l := range cfg.Labels {
 			if strings.HasPrefix(l, "cd.doco.") || strings.HasPrefix(l, "com.docker.compose.") {
-				cfg.Labels[l] = ""
+				delete(cfg.Labels, l)
 			}
 		}
 
@@ -87,7 +87,7 @@ func ProjectHash(p *types.Project) (string, error) {
 	for v, cfg := range pCopy.Volumes {
 		for l := range cfg.Labels {
 			if strings.HasPrefix(l, "cd.doco.") || strings.HasPrefix(l, "com.docker.compose.") {
-				cfg.Labels[l] = ""
+				delete(cfg.Labels, l)
 			}
 		}
 
