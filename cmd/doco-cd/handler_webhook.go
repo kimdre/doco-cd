@@ -384,8 +384,14 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		metadata.Revision = notification.GetRevision(payload.Ref, payload.CommitSHA)
 	}
 
+	// Prevent concurrent deployments for the same repository using a lock
+	repoLock := GetRepoLock(metadata.Repository)
 	if wait {
+		repoLock.mu.Lock()
+		defer repoLock.mu.Unlock()
+
 		HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, h.dockerClient, h.secretProvider, h.testName)
+
 		return
 	}
 
@@ -393,6 +399,9 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	JSONResponse(w, "job accepted", jobID, http.StatusAccepted)
 
 	go func() {
+		repoLock.mu.Lock()
+		defer repoLock.mu.Unlock()
+
 		HandleEvent(ctx, jobLog, noopResponseWriter{}, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, h.dockerClient, h.secretProvider, h.testName)
 	}()
 }

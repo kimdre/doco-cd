@@ -164,8 +164,9 @@ func addComposeVolumeLabels(project *types.Project, deployConfig *config.DeployC
 }
 
 // LoadCompose parses and loads Compose files as specified by the Docker Compose specification.
-func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles, envFiles, profiles []string,
-	environment map[string]string) (*types.Project, error) {
+func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles,
+	envFiles, profiles []string, environment map[string]string,
+) (*types.Project, error) {
 	// Resolve compose file paths to absolute paths relative to workingDir.
 	// This is necessary because the compose-go library's LoadConfigFiles internally
 	// uses filepath.Abs which resolves relative paths against os.Getwd(), not against
