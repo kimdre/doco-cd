@@ -89,3 +89,11 @@ cleanup:
 
 clean-testcache:
 	go clean -testcache
+
+webhook:
+	@SIGNATURE=$$(openssl dgst -sha256 -hmac "test_Secret1" < cmd/doco-cd/testdata/github_payload.json | sed 's/^.* //'); \
+  	curl -X POST -H "X-Hub-Signature-256: sha256=$$SIGNATURE" \
+  		-H "Content-Type: application/json" \
+  		-H "X-GitHub-Event: push" \
+  		--data @cmd/doco-cd/testdata/github_payload.json \
+  		http://localhost/v1/webhook

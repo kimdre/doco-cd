@@ -45,6 +45,37 @@ const (
 `
 )
 
+func newWebhookRequest(t *testing.T, url string, payload []byte, appConfig *config.AppConfig) *http.Request {
+	t.Helper()
+
+	req, err := http.NewRequest("POST", url, bytes.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req.Header.Set(webhook.ScmProviderSecurityHeaders[webhook.Github], "sha256="+webhook.GenerateHMAC(payload, appConfig.WebhookSecret))
+	req.Header.Set(webhook.ScmProviderEventHeaders[webhook.Github], "push")
+
+	return req
+}
+
+func validateWebhookResponse(t *testing.T, rr *httptest.ResponseRecorder, expectedStatusCode int, expectedResponse string, idx int) {
+	t.Helper()
+
+	if status := rr.Code; status != expectedStatusCode {
+		t.Errorf("handler[%d] returned wrong status code: got %v want %v", idx, status, expectedStatusCode)
+	}
+
+	regex, err := regexp.Compile(expectedResponse)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !regex.MatchString(rr.Body.String()) {
+		t.Fatalf("handler[%d] returned unexpected body: got %v want %v", idx, rr.Body.String(), expectedResponse)
+	}
+}
+
 func TestHandlerData_WebhookHandler(t *testing.T) {
 	encryption.SetupAgeKeyEnvVar(t)
 
@@ -116,30 +147,13 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		testName: stackName,
 	}
 
-	req, err := http.NewRequest("POST", webhookPath+"?wait=true", bytes.NewReader(payload))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	req.Header.Set(webhook.ScmProviderSecurityHeaders[webhook.Github], "sha256="+webhook.GenerateHMAC(payload, appConfig.WebhookSecret))
-	req.Header.Set(webhook.ScmProviderEventHeaders[webhook.Github], "push")
+	req := newWebhookRequest(t, webhookPath+"?wait=true", minifiedPayload.Bytes(), appConfig)
 
 	rr := httptest.NewRecorder()
 	handler := http.HandlerFunc(h.WebhookHandler)
 	handler.ServeHTTP(rr, req)
 
-	if status := rr.Code; status != expectedStatusCode {
-		t.Errorf("handler returned wrong status code: got %v want %v", status, expectedStatusCode)
-	}
-
-	regex, err := regexp.Compile(expectedResponse)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !regex.MatchString(rr.Body.String()) {
-		t.Fatalf("handler returned unexpected body: got %v want %v", rr.Body.String(), expectedResponse)
-	}
+	validateWebhookResponse(t, rr, expectedStatusCode, expectedResponse, 0)
 
 	ctx := context.Background()
 
