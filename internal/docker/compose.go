@@ -164,7 +164,8 @@ func addComposeVolumeLabels(project *types.Project, deployConfig *config.DeployC
 }
 
 // LoadCompose parses and loads Compose files as specified by the Docker Compose specification.
-func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles, envFiles, profiles []string, environment map[string]string) (*types.Project, error) {
+func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles, envFiles, profiles []string,
+	environment map[string]string) (*types.Project, error) {
 	// Resolve compose file paths to absolute paths relative to workingDir.
 	// This is necessary because the compose-go library's LoadConfigFiles internally
 	// uses filepath.Abs which resolves relative paths against os.Getwd(), not against
@@ -420,8 +421,7 @@ func DeployStack(
 
 	project, err := LoadCompose(*ctx, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles, deployConfig.EnvFiles, deployConfig.Profiles, resolvedSecrets)
 	if err != nil {
-		errMsg := "failed to load compose config"
-		return fmt.Errorf("%s: %w", errMsg, err)
+		return fmt.Errorf("failed to load compose config: %w", err)
 	}
 
 	done := make(chan struct{})
@@ -536,10 +536,7 @@ func DeployStack(
 		err = deployCompose(*ctx, *dockerCli, project, deployConfig, recreateMode, forcedServices.ToSlice())
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
-
-			errMsg := "failed to deploy stack"
-
-			return fmt.Errorf("%s: %w", errMsg, err)
+			return fmt.Errorf("failed to deploy stack: %w", err)
 		}
 	}
 
