@@ -379,7 +379,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if metadata.Repository == "" {
+	if metadata.Repository == "" || metadata.Repository == "unknown" {
 		metadata.Repository = git.GetRepoName(payload.CloneURL)
 		metadata.Revision = notification.GetRevision(payload.Ref, payload.CommitSHA)
 	}
@@ -399,7 +399,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		case <-locked:
 			// Acquired immediately
 		case <-time.After(10 * time.Millisecond):
-			jobLog.Info("waiting for repository lock", slog.String("repository", metadata.Repository))
+			jobLog.Info("waiting for webhook lock", slog.String("repository", metadata.Repository))
 			<-locked
 		}
 
@@ -425,7 +425,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		case <-locked:
 			// Acquired immediately
 		case <-time.After(10 * time.Millisecond):
-			jobLog.Info("waiting for repository lock", slog.String("repository", metadata.Repository))
+			jobLog.Info("waiting for webhook lock", slog.String("repository", metadata.Repository))
 			<-locked
 		}
 
