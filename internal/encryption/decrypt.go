@@ -50,6 +50,10 @@ func GetFileFormat(path string) string {
 
 // DecryptFile decrypts a SOPS-encrypted file at the given path and returns its contents as a byte slice.
 func DecryptFile(path string) ([]byte, error) {
+	if !SopsKeyIsSet() {
+		return nil, ErrSopsKeyNotSet
+	}
+
 	format := GetFileFormat(path)
 
 	return decrypt.File(path, format)
@@ -143,10 +147,6 @@ func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
 		}
 
 		if isEncrypted {
-			if !SopsKeyIsSet() {
-				return fmt.Errorf("%w, cannot decrypt file: %s", ErrSopsKeyNotSet, path)
-			}
-
 			decryptedContent, err := DecryptFile(path)
 			if err != nil {
 				return fmt.Errorf("failed to decrypt file %s: %w", path, err)
@@ -195,4 +195,29 @@ func IsEncryptedFile(path string) (bool, error) {
 // IsEncryptedContent checks the given content for SOPS-specific markers to determine if it is a SOPS-encrypted file.
 func IsEncryptedContent(content string) bool {
 	return strings.Contains(content, "sops") && strings.Contains(content, "ENC[")
+}
+
+// DecryptFileInPlace decrypts a SOPS-encrypted file at the given path and overwrites it with the decrypted content.
+func DecryptFileInPlace(path string) error {
+	path = filepath.Clean(path)
+
+	if !filepath.IsAbs(path) {
+		return fmt.Errorf("%w: path must be absolute: %s", filesystem.ErrInvalidFilePath, path)
+	}
+
+	isEncrypted, err := IsEncryptedFile(path)
+	if err != nil {
+		return fmt.Errorf("failed to check if file is encrypted: %w", err)
+	}
+
+	if !isEncrypted {
+		return nil
+	}
+
+	decryptedContent, err := DecryptFile(path)
+	if err != nil {
+		return fmt.Errorf("failed to decrypt file %s: %w", path, err)
+	}
+
+	return os.WriteFile(path, decryptedContent, filesystem.PermOwner)
 }
