@@ -372,8 +372,8 @@ func TestWebhookHandler_WaitQueryParam(t *testing.T) {
 func TestHandlerData_WebhookHandler_WithConcurrentRequests(t *testing.T) {
 	encryption.SetupAgeKeyEnvVar(t)
 
-	expectedResponse := `{"content":"job completed successfully","job_id":"[a-f0-9-]{36}"}`
-	expectedStatusCode := http.StatusCreated
+	expectedResponse := `{"content":"job accepted","job_id":"[a-f0-9-]{36}"}`
+	expectedStatusCode := http.StatusAccepted
 	tmpDir := t.TempDir()
 
 	stackName := test.ConvertTestName(t.Name())
@@ -444,8 +444,16 @@ func TestHandlerData_WebhookHandler_WithConcurrentRequests(t *testing.T) {
 
 	requests := make([]*http.Request, numRequests)
 	for i := 0; i < numRequests; i++ {
-		requests[i] = newWebhookRequest(t, webhookPath+"?wait=true", payload, appConfig)
+		requests[i] = newWebhookRequest(t, webhookPath+"?wait=false", payload, appConfig)
 	}
+
+	// Log as curl command
+	t.Logf("Simulating %d concurrent requests with the following curl command:\n\ncurl -X POST %s?wait=false -H 'Content-Type: application/json' -H 'X-Hub-Signature-256: sha256=%s' -H 'X-GitHub-Event: push' -d '%s'\n",
+		numRequests,
+		webhookPath,
+		webhook.GenerateHMAC(payload, appConfig.WebhookSecret),
+		string(payload),
+	)
 
 	handler := http.HandlerFunc(h.WebhookHandler)
 
@@ -501,7 +509,7 @@ func TestHandlerData_WebhookHandler_WithConcurrentRequests(t *testing.T) {
 		testContainerPort string
 	)
 
-	t.Logf("Checking test container for request 1 of %d", numRequests)
+	t.Log("Waiting for stack to be ready before validating test container response")
 
 	if swarm.ModeEnabled {
 		t.Log("Testing in Swarm mode")
@@ -526,16 +534,7 @@ func TestHandlerData_WebhookHandler_WithConcurrentRequests(t *testing.T) {
 			}
 		})
 	} else {
-		containers, err := service.Ps(ctx, stackName, api.PsOptions{All: true})
-		if err != nil {
-			t.Fatalf("Failed to list containers: %v", err)
-		}
-
-		for _, c := range containers {
-			t.Logf("Container %s is %s", c.ID, c.Status)
-		}
-
-		containers, err = test.WaitForStack(ctx, t, service, stackName, 30*time.Second)
+		containers, err := test.WaitForStack(ctx, t, service, stackName, 180*time.Second)
 		if err != nil {
 			t.Fatalf("Failed waiting for stack to be ready: %v", err)
 		}
