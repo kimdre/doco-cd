@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/utils/module"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -256,6 +257,20 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 	project, err := options.LoadProject(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load compose project: %w", err)
+	}
+
+	if encryption.SopsKeyIsSet() {
+		// Decrypt any files in project
+		err = decryptProjectFiles(project)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt compose files: %w", err)
+		}
+
+		// Reload project after decryption
+		project, err = options.LoadProject(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load compose project: %w", err)
+		}
 	}
 
 	project, err = project.WithServicesEnvironmentResolved(false)
@@ -1091,4 +1106,57 @@ func joinPathsWithoutDuplicates(paths ...string) string {
 	}
 
 	return joined
+}
+
+// decryptProjectFiles decrypts all files used in the compose project that are encrypted using doco-cd's encryption mechanism.
+// This includes configs, secrets, bind mounts, env files and build contexts.
+func decryptProjectFiles(p *types.Project) error {
+	var projectFiles []string
+
+	for _, s := range p.Services {
+		for _, cfg := range s.Configs {
+			if cfg.Source != "" {
+				projectFiles = append(projectFiles, cfg.Source)
+			}
+		}
+
+		for _, secret := range s.Secrets {
+			if secret.Source != "" {
+				projectFiles = append(projectFiles, secret.Source)
+			}
+		}
+
+		for _, v := range s.Volumes {
+			if v.Type == "bind" && v.Source != "" {
+				projectFiles = append(projectFiles, v.Source)
+			}
+		}
+
+		for _, envFile := range s.EnvFiles {
+			if envFile.Path != "" {
+				projectFiles = append(projectFiles, envFile.Path)
+			}
+		}
+
+		if s.Build != nil {
+			if s.Build.Dockerfile != "" {
+				projectFiles = append(projectFiles, s.Build.Dockerfile)
+			}
+
+			for _, secret := range s.Build.Secrets {
+				if secret.Source != "" {
+					projectFiles = append(projectFiles, secret.Source)
+				}
+			}
+		}
+	}
+
+	for _, f := range slice.Unique(projectFiles) {
+		err := encryption.DecryptFileInPlace(f)
+		if err != nil {
+			return fmt.Errorf("failed to decrypt project file '%s': %w", f, err)
+		}
+	}
+
+	return nil
 }

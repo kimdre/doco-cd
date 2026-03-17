@@ -196,3 +196,26 @@ func IsEncryptedFile(path string) (bool, error) {
 func IsEncryptedContent(content string) bool {
 	return strings.Contains(content, "sops") && strings.Contains(content, "ENC[")
 }
+
+// DecryptFileInPlace decrypts a SOPS-encrypted file at the given path and overwrites it with the decrypted content.
+func DecryptFileInPlace(path string) error {
+	isEncrypted, err := IsEncryptedFile(path)
+	if err != nil {
+		return fmt.Errorf("failed to check if file is encrypted: %w", err)
+	}
+
+	if !isEncrypted {
+		return nil
+	}
+
+	if !SopsKeyIsSet() {
+		return fmt.Errorf("%w, cannot decrypt file: %s", ErrSopsKeyNotSet, path)
+	}
+
+	decryptedContent, err := DecryptFile(path)
+	if err != nil {
+		return fmt.Errorf("failed to decrypt file %s: %w", path, err)
+	}
+
+	return os.WriteFile(path, decryptedContent, filesystem.PermOwner)
+}

@@ -168,6 +168,19 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			}(tmpEnvFile)
 		}
 
+		decryptFiles := append(s.DeployConfig.ComposeFiles, s.DeployConfig.EnvFiles...)
+		for _, file := range decryptFiles {
+			file = filepath.Join(s.Repository.PathInternal, file)
+			if _, err = os.Stat(file); os.IsNotExist(err) {
+				continue
+			}
+
+			err = encryption.DecryptFileInPlace(file)
+			if err != nil {
+				return fmt.Errorf("file decryption failed: %w", err)
+			}
+		}
+
 		s.Docker.Project, err = docker.LoadCompose(
 			ctx, extAbsWorkingDir, s.DeployConfig.Name,
 			s.DeployConfig.ComposeFiles, s.DeployConfig.EnvFiles,
