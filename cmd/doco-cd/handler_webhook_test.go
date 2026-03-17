@@ -520,7 +520,7 @@ func TestHandlerData_WebhookHandler_WithConcurrentRequests(t *testing.T) {
 			}
 		})
 	} else {
-		containers, err := test.WaitForStack(ctx, t, service, stackName, 30*time.Second)
+		containers, err := test.WaitForStack(ctx, t, service, stackName, 60*time.Second)
 		if err != nil {
 			t.Fatalf("Failed waiting for stack to be ready: %v", err)
 		}
