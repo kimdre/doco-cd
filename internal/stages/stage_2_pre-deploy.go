@@ -173,7 +173,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 
 		decryptFiles := slices.Concat(s.DeployConfig.ComposeFiles, s.DeployConfig.EnvFiles)
 		for _, file := range decryptFiles {
-			file = filepath.Join(s.Repository.PathInternal, file)
+			file = filepath.Join(s.Repository.PathInternal, s.DeployConfig.WorkingDirectory, file)
 
 			file, err = filesystem.VerifyAndSanitizePath(file, s.Repository.PathInternal)
 			if err != nil {
