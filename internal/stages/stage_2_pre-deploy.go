@@ -7,10 +7,13 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/go-git/go-git/v5/plumbing"
+
+	"github.com/kimdre/doco-cd/internal/filesystem"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/encryption"
@@ -168,9 +171,15 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			}(tmpEnvFile)
 		}
 
-		decryptFiles := append(s.DeployConfig.ComposeFiles, s.DeployConfig.EnvFiles...)
+		decryptFiles := slices.Concat(s.DeployConfig.ComposeFiles, s.DeployConfig.EnvFiles)
 		for _, file := range decryptFiles {
 			file = filepath.Join(s.Repository.PathInternal, file)
+
+			file, err = filesystem.VerifyAndSanitizePath(file, s.Repository.PathInternal)
+			if err != nil {
+				return fmt.Errorf("invalid file path: %w", err)
+			}
+
 			if _, err = os.Stat(file); os.IsNotExist(err) {
 				continue
 			}

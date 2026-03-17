@@ -199,6 +199,12 @@ func IsEncryptedContent(content string) bool {
 
 // DecryptFileInPlace decrypts a SOPS-encrypted file at the given path and overwrites it with the decrypted content.
 func DecryptFileInPlace(path string) error {
+	path = filepath.Clean(path)
+
+	if !filepath.IsAbs(path) {
+		return fmt.Errorf("%w: path must be absolute: %s", filesystem.ErrInvalidFilePath, path)
+	}
+
 	isEncrypted, err := IsEncryptedFile(path)
 	if err != nil {
 		return fmt.Errorf("failed to check if file is encrypted: %w", err)
