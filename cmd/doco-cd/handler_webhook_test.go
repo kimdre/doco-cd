@@ -454,6 +454,8 @@ func TestHandlerData_WebhookHandler_WithConcurrentRequests(t *testing.T) {
 	responses := make([]*httptest.ResponseRecorder, numRequests)
 
 	for i, req := range requests {
+		t.Logf("Starting request %d of %d", i+1, numRequests)
+
 		go func(idx int, r *http.Request) {
 			defer wg.Done()
 
@@ -462,6 +464,8 @@ func TestHandlerData_WebhookHandler_WithConcurrentRequests(t *testing.T) {
 			responses[idx] = rr
 		}(i, req)
 	}
+
+	t.Logf("Waiting for all %d requests to complete", numRequests)
 
 	wg.Wait()
 
@@ -497,6 +501,8 @@ func TestHandlerData_WebhookHandler_WithConcurrentRequests(t *testing.T) {
 		testContainerPort string
 	)
 
+	t.Logf("Checking test container for request 1 of %d", numRequests)
+
 	if swarm.ModeEnabled {
 		t.Log("Testing in Swarm mode")
 
@@ -520,7 +526,16 @@ func TestHandlerData_WebhookHandler_WithConcurrentRequests(t *testing.T) {
 			}
 		})
 	} else {
-		containers, err := test.WaitForStack(ctx, t, service, stackName, 60*time.Second)
+		containers, err := service.Ps(ctx, stackName, api.PsOptions{All: true})
+		if err != nil {
+			t.Fatalf("Failed to list containers: %v", err)
+		}
+
+		for _, c := range containers {
+			t.Logf("Container %s is %s", c.ID, c.Status)
+		}
+
+		containers, err = test.WaitForStack(ctx, t, service, stackName, 30*time.Second)
 		if err != nil {
 			t.Fatalf("Failed waiting for stack to be ready: %v", err)
 		}
