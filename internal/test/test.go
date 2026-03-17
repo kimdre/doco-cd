@@ -15,8 +15,8 @@ func ConvertTestName(testName string) string {
 
 	s := reg.ReplaceAllString(strings.ToLower(testName), "-")
 
-	if len(s) > 50 {
-		s = fmt.Sprintf("%s-%d", s[:50], rand.Intn(1000))
+	if len(s) > 40 {
+		s = fmt.Sprintf("%s-%d", s[:40], rand.Intn(1000))
 	}
 
 	return s
