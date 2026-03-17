@@ -259,20 +259,6 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 		return nil, fmt.Errorf("failed to load compose project: %w", err)
 	}
 
-	if encryption.SopsKeyIsSet() {
-		// Decrypt any files in project
-		err = decryptProjectFiles(project)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decrypt compose files: %w", err)
-		}
-
-		// Reload project after decryption
-		project, err = options.LoadProject(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load compose project: %w", err)
-		}
-	}
-
 	project, err = project.WithServicesEnvironmentResolved(false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve services environment: %w", err)
@@ -1108,9 +1094,9 @@ func joinPathsWithoutDuplicates(paths ...string) string {
 	return joined
 }
 
-// decryptProjectFiles decrypts all files used in the compose project that are encrypted using doco-cd's encryption mechanism.
+// DecryptProjectFiles decrypts all files used in the compose project that are encrypted using doco-cd's encryption mechanism.
 // This includes configs, secrets, bind mounts, env files and build contexts.
-func decryptProjectFiles(p *types.Project) error {
+func DecryptProjectFiles(workingDir string, p *types.Project) error {
 	var projectFiles []string
 
 	for _, s := range p.Services {
@@ -1152,6 +1138,10 @@ func decryptProjectFiles(p *types.Project) error {
 	}
 
 	for _, f := range slice.Unique(projectFiles) {
+		if !filepath.IsAbs(f) {
+			f = filepath.Join(workingDir, f)
+		}
+
 		err := encryption.DecryptFileInPlace(f)
 		if err != nil {
 			return fmt.Errorf("failed to decrypt project file '%s': %w", f, err)

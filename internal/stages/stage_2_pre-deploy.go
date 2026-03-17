@@ -198,6 +198,14 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			return fmt.Errorf("failed to load compose project: %w", err)
 		}
 
+		if encryption.SopsKeyIsSet() {
+			// Decrypt any files in project
+			err = docker.DecryptProjectFiles(intAbsWorkingDir, s.Docker.Project)
+			if err != nil {
+				return fmt.Errorf("failed to decrypt compose files: %w", err)
+			}
+		}
+
 		newHash, err := docker.ProjectHash(s.Docker.Project)
 		if err != nil {
 			return fmt.Errorf("failed to get project hash: %w", err)
