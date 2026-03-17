@@ -50,6 +50,10 @@ func GetFileFormat(path string) string {
 
 // DecryptFile decrypts a SOPS-encrypted file at the given path and returns its contents as a byte slice.
 func DecryptFile(path string) ([]byte, error) {
+	if !SopsKeyIsSet() {
+		return nil, ErrSopsKeyNotSet
+	}
+
 	format := GetFileFormat(path)
 
 	return decrypt.File(path, format)
@@ -143,10 +147,6 @@ func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
 		}
 
 		if isEncrypted {
-			if !SopsKeyIsSet() {
-				return fmt.Errorf("%w, cannot decrypt file: %s", ErrSopsKeyNotSet, path)
-			}
-
 			decryptedContent, err := DecryptFile(path)
 			if err != nil {
 				return fmt.Errorf("failed to decrypt file %s: %w", path, err)
@@ -212,10 +212,6 @@ func DecryptFileInPlace(path string) error {
 
 	if !isEncrypted {
 		return nil
-	}
-
-	if !SopsKeyIsSet() {
-		return fmt.Errorf("%w, cannot decrypt file: %s", ErrSopsKeyNotSet, path)
 	}
 
 	decryptedContent, err := DecryptFile(path)
