@@ -1,6 +1,8 @@
 package test
 
 import (
+	"fmt"
+	"math/rand"
 	"regexp"
 	"strings"
 )
@@ -12,8 +14,9 @@ func ConvertTestName(testName string) string {
 	reg := regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
 
 	s := reg.ReplaceAllString(strings.ToLower(testName), "-")
-	if len(s) > 63 {
-		s = s[:63]
+
+	if len(s) > 50 {
+		s = fmt.Sprintf("%s-%d", s[:50], rand.Intn(1000))
 	}
 
 	return s
