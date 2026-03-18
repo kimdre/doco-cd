@@ -617,10 +617,28 @@ func getPaths(changedFiles []gitInternal.ChangedFile, basePath string) []string 
 	return slice.Unique(absPaths)
 }
 
-// HasChangedConfigs checks if any files used in docker compose `configs:` definitions have changed using the Git status.
-func HasChangedConfigs(repoRootExternal string, changedFiles []gitInternal.ChangedFile, project *types.Project) ([]string, error) {
-	paths := getPaths(changedFiles, repoRootExternal)
+// checkPathAffected checks if a changed file is affected by a used file
+func checkPathAffected(changed string, used string) bool {
+	used = filepath.Clean(used)
+	changed = filepath.Clean(changed)
 
+	rel, err := filepath.Rel(used, changed)
+	if err != nil {
+		// It' share same reporoot, so it should not happen
+		slog.Debug("checkPathAffected ",
+			slog.String("used", used),
+			slog.String("changed", changed),
+			slog.Any("error", err),
+		)
+
+		return false
+	}
+
+	return !strings.HasPrefix(rel, "..")
+}
+
+// HasChangedConfigs checks if any files used in docker compose `configs:` definitions have changed using the Git status.
+func HasChangedConfigs(paths []string, project *types.Project) ([]string, error) {
 	configToServicesMap := make(map[string][]string)
 
 	for name, s := range project.Services {
@@ -638,9 +656,7 @@ func HasChangedConfigs(repoRootExternal string, changedFiles []gitInternal.Chang
 		}
 
 		for _, p := range paths {
-			// c.File reporoot/a/b/
-			// p  reporoot/a/b/c.txt
-			if strings.HasPrefix(p, c.File) {
+			if checkPathAffected(p, c.File) {
 				changedServices = append(changedServices, configToServicesMap[name]...)
 			}
 		}
@@ -650,9 +666,7 @@ func HasChangedConfigs(repoRootExternal string, changedFiles []gitInternal.Chang
 }
 
 // HasChangedSecrets checks if any files used in docker compose `secrets:` definitions have changed using the Git status.
-func HasChangedSecrets(repoRootExternal string, changedFiles []gitInternal.ChangedFile, project *types.Project) ([]string, error) {
-	paths := getPaths(changedFiles, repoRootExternal)
-
+func HasChangedSecrets(paths []string, project *types.Project) ([]string, error) {
 	secretsToServicesMap := make(map[string][]string)
 
 	for name, s := range project.Services {
@@ -668,10 +682,8 @@ func HasChangedSecrets(repoRootExternal string, changedFiles []gitInternal.Chang
 			continue
 		}
 
-		// s.File reporoot/a/b/
-		// p  reporoot/a/b/c.txt
 		for _, p := range paths {
-			if strings.HasPrefix(p, s.File) {
+			if checkPathAffected(p, s.File) {
 				changedServices = append(changedServices, secretsToServicesMap[name]...)
 			}
 		}
@@ -681,9 +693,7 @@ func HasChangedSecrets(repoRootExternal string, changedFiles []gitInternal.Chang
 }
 
 // HasChangedBindMounts checks if any files used in docker compose `volumes:` definitions with type `bind` have changed using the Git status.
-func HasChangedBindMounts(repoRootExternal string, changedFiles []gitInternal.ChangedFile, project *types.Project) ([]string, error) {
-	paths := getPaths(changedFiles, repoRootExternal)
-
+func HasChangedBindMounts(paths []string, project *types.Project) ([]string, error) {
 	var changedServices []string
 
 	for _, s := range project.Services {
@@ -691,7 +701,7 @@ func HasChangedBindMounts(repoRootExternal string, changedFiles []gitInternal.Ch
 		for _, v := range s.Volumes {
 			if v.Type == "bind" && v.Source != "" {
 				for _, path := range paths {
-					if strings.HasPrefix(path, v.Source) {
+					if checkPathAffected(path, v.Source) {
 						changedServices = append(changedServices, s.Name)
 						break out
 					}
@@ -704,16 +714,14 @@ func HasChangedBindMounts(repoRootExternal string, changedFiles []gitInternal.Ch
 }
 
 // HasChangedEnvFiles checks if any files used in docker compose `env_file:` definitions have changed using the Git status.
-func HasChangedEnvFiles(repoRootExternal string, changedFiles []gitInternal.ChangedFile, project *types.Project) ([]string, error) {
-	paths := getPaths(changedFiles, repoRootExternal)
-
+func HasChangedEnvFiles(paths []string, project *types.Project) ([]string, error) {
 	var changedServices []string
 
 	for _, s := range project.Services {
 	out:
 		for _, envFile := range s.EnvFiles {
 			for _, p := range paths {
-				if strings.HasPrefix(p, envFile.Path) {
+				if checkPathAffected(p, envFile.Path) {
 					changedServices = append(changedServices, s.Name)
 					break out
 				}
@@ -726,9 +734,7 @@ func HasChangedEnvFiles(repoRootExternal string, changedFiles []gitInternal.Chan
 
 // HasChangedBuildFiles checks if any files used as build context in docker compose `build:` definitions have changed using the Git status.
 // This includes any file within the build context directory for each service. If a changed file is within a build context, it returns true.
-func HasChangedBuildFiles(repoRootExternal string, changedFiles []gitInternal.ChangedFile, project *types.Project) ([]string, error) {
-	paths := getPaths(changedFiles, repoRootExternal)
-
+func HasChangedBuildFiles(paths []string, project *types.Project) ([]string, error) {
 	var changedServices []string
 
 	for _, s := range project.Services {
@@ -775,7 +781,7 @@ func HasChangedBuildFiles(repoRootExternal string, changedFiles []gitInternal.Ch
 			}
 
 			for _, p := range paths {
-				if strings.HasSuffix(ctxFile, p) {
+				if checkPathAffected(p, ctxFile) {
 					changedServices = append(changedServices, s.Name)
 					break out
 				}
@@ -806,7 +812,7 @@ func sortChanges(changes []Change) {
 func ProjectFilesHaveChanges(repoRootExternal string, changedFiles []gitInternal.ChangedFile, project *types.Project) ([]Change, error) {
 	checks := []struct {
 		name string
-		fn   func(string, []gitInternal.ChangedFile, *types.Project) ([]string, error)
+		fn   func([]string, *types.Project) ([]string, error)
 	}{
 		{"configs", HasChangedConfigs},
 		{"secrets", HasChangedSecrets},
@@ -815,10 +821,12 @@ func ProjectFilesHaveChanges(repoRootExternal string, changedFiles []gitInternal
 		{"buildFiles", HasChangedBuildFiles},
 	}
 
+	paths := getPaths(changedFiles, repoRootExternal)
+
 	var changes []Change
 
 	for _, check := range checks {
-		changedServices, err := check.fn(repoRootExternal, changedFiles, project)
+		changedServices, err := check.fn(paths, project)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check '%s' for changes: %w", check.name, err)
 		}
