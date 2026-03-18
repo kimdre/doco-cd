@@ -169,7 +169,6 @@ func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
 			defer f.Close()
 
 			if _, err := f.Write(decryptedContent); err != nil {
-				_ = f.Close()
 				return fmt.Errorf("failed to write decrypted content to file %s: %w", path, err)
 			}
 
@@ -200,24 +199,26 @@ func IsEncryptedContent(content string) bool {
 // DecryptFileInPlace decrypts a SOPS-encrypted file at the given path and overwrites it with the decrypted content.
 // If the file is encrypted and successfully decrypted, it returns true. If the file is not encrypted, it returns false without modifying the file.
 // The trustedRoot parameter specifies the base directory that the path must reside in.
-func DecryptFileInPlace(path, trustedRoot string) (bool, error) {
+func DecryptFileInPlace(path, repoPath string) (bool, error) {
 	path = filepath.Clean(path)
 
 	if !filepath.IsAbs(path) {
 		return false, fmt.Errorf("%w: path must be absolute: %s", filesystem.ErrInvalidFilePath, path)
 	}
 
-	if trustedRoot == "" {
+	if repoPath == "" {
 		return false, fmt.Errorf("%w: trusted root must not be empty", filesystem.ErrInvalidFilePath)
 	}
 
 	// Ensure the path is within the trusted root and use the sanitized absolute path.
-	safePath, err := filesystem.VerifyAndSanitizePath(path, trustedRoot)
+	// Open the repository root for writing decrypted files without changing their permissions.
+	root, err := os.OpenRoot(repoPath)
 	if err != nil {
-		return false, fmt.Errorf("invalid file path: %w", err)
+		return false, fmt.Errorf("failed to open repo root %s: %w", repoPath, err)
 	}
+	defer root.Close()
 
-	isEncrypted, err := IsEncryptedFile(safePath)
+	isEncrypted, err := IsEncryptedFile(path)
 	if err != nil {
 		return false, fmt.Errorf("failed to check if file is encrypted: %w", err)
 	}
@@ -226,10 +227,31 @@ func DecryptFileInPlace(path, trustedRoot string) (bool, error) {
 		return false, nil
 	}
 
-	decryptedContent, err := DecryptFile(safePath)
+	// Prevent path to escape the repoPath
+	relPath, err := filepath.Rel(repoPath, path)
 	if err != nil {
-		return false, fmt.Errorf("failed to decrypt file %s: %w", safePath, err)
+		return false, fmt.Errorf("failed to get relative path for symlink target %s: %w", path, err)
 	}
 
-	return true, os.WriteFile(safePath, decryptedContent, filesystem.PermOwner)
+	if strings.HasPrefix(relPath, "..") {
+		return false, fmt.Errorf("path %s escapes the repository root %s", path, repoPath)
+	}
+
+	decryptedContent, err := DecryptFile(path)
+	if err != nil {
+		return false, fmt.Errorf("failed to decrypt file %s: %w", path, err)
+	}
+
+	f, err := root.OpenFile(relPath, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, filesystem.PermOwner)
+	if err != nil {
+		return false, fmt.Errorf("failed to open file %s for writing: %w", path, err)
+	}
+
+	defer f.Close()
+
+	if _, err := f.Write(decryptedContent); err != nil {
+		return false, fmt.Errorf("failed to write decrypted content to file %s: %w", path, err)
+	}
+
+	return true, nil
 }

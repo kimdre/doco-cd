@@ -1159,7 +1159,7 @@ func DecryptProjectFiles(repoDir, workingDir string, p *types.Project) ([]string
 			f = filepath.Join(workingDir, f)
 		}
 
-		decrypted, err := encryption.DecryptFileInPlace(f)
+		decrypted, err := encryption.DecryptFileInPlace(f, repoDir)
 		if err != nil {
 			return decryptedFiles, fmt.Errorf("failed to decrypt project file '%s': %w", f, err)
 		}
