@@ -169,6 +169,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			}(tmpEnvFile)
 		}
 
+		// Decrypt compose and dotenv files (for variable interpolation) before loading/generating project from them
 		decryptFiles := slices.Concat(s.DeployConfig.ComposeFiles, s.DeployConfig.EnvFiles)
 		for _, file := range decryptFiles {
 			file = filepath.Join(s.Repository.PathInternal, s.DeployConfig.WorkingDirectory, file)
@@ -200,7 +201,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			return fmt.Errorf("failed to load compose project: %w", err)
 		}
 
-		// Decrypt any files in project
+		// Decrypt any project-related files
 		f, err := docker.DecryptProjectFiles(s.Repository.PathExternal, s.Docker.Project)
 		if err != nil {
 			return fmt.Errorf("failed to decrypt project files: %w", err)

@@ -1097,6 +1097,7 @@ func joinPathsWithoutDuplicates(paths ...string) string {
 // DecryptProjectFiles decrypts all files used in the compose project that are encrypted using doco-cd's encryption mechanism.
 // This includes configs, secrets, bind mounts, env files and build contexts.
 // Since absolute file paths in types.Project are paths on the docker host, repoPath also needs to be the external path to the repository.
+// We use the symlink inside the container to follow the external path to the correct internal path
 func DecryptProjectFiles(repoPath string, p *types.Project) ([]string, error) {
 	var (
 		projectFiles   []string
