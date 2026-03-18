@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +29,7 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing"
 
+	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/google/uuid"
@@ -383,76 +385,155 @@ compose_files:
 func TestHasChangedConfigs(t *testing.T) {
 	t.Parallel()
 
+	const repoRoot = "/data/doco-cd/fake-repo-root"
+
 	testCases := []struct {
 		name            string
-		oldCommit       string
-		newCommit       string
-		ExpectedChanges bool
+		changePath      []string
+		project         *types.Project
+		ExpectedChanges []string
 	}{
 		{
-			name:            "Has changes",
-			oldCommit:       "182520d6b0c574c319de69d05ba79858712e335e",
-			newCommit:       "87344f0f87250cd2b5d82d2483d3a62ee1d18e93",
-			ExpectedChanges: true,
+			name: "same path in service config and changed files",
+			changePath: []string{
+				repoRoot + "/test",
+			},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Configs: []types.ServiceConfigObjConfig{
+							{
+								Source: "test",
+							},
+						},
+					},
+				},
+				Configs: map[string]types.ConfigObjConfig{
+					"test": {
+						File: repoRoot + "/test",
+					},
+				},
+			},
+			ExpectedChanges: []string{"svc1"},
 		},
 		{
-			name:            "Has no changes",
-			oldCommit:       "72f1a4e88fdeffec3241d6da2ee19757eee3a0fd",
-			newCommit:       "151642a5c4f1b16b543d06c60fa9c95e2c7704a2",
-			ExpectedChanges: false,
+			name: "parent path in service config and changed in sub files",
+			changePath: []string{
+				repoRoot + "/test/subdir/config.yaml",
+			},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Configs: []types.ServiceConfigObjConfig{
+							{
+								Source: "test",
+							},
+						},
+					},
+				},
+				Configs: map[string]types.ConfigObjConfig{
+					"test": {
+						File: repoRoot + "/test",
+					},
+				},
+			},
+			ExpectedChanges: []string{"svc1"},
 		},
-	}
 
-	c, err := config.GetAppConfig()
-	if err != nil {
-		t.Fatalf("Failed to get app config: %v", err)
-	}
-
-	url := cloneUrlTest
-
-	auth, err := git.GetAuthMethod(url, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
-	if err != nil {
-		t.Fatalf("Failed to get auth method: %v", err)
-	}
-
-	if auth != nil {
-		t.Logf("Using auth method: %s", auth.Name())
-	} else {
-		t.Log("No auth method configured, using anonymous access")
-	}
-
-	tmpDir := t.TempDir()
-
-	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy, auth, c.GitCloneSubmodules)
-	if err != nil {
-		t.Fatalf("Failed to clone repository: %v", err)
-	}
-
-	project, err := LoadCompose(t.Context(), tmpDir, tmpDir, test.ConvertTestName(t.Name()), []string{"docker-compose.yml"}, []string{".env"}, []string{}, map[string]string{})
-	if err != nil {
-		t.Fatalf("Failed to load compose file: %v", err)
+		{
+			name: "change in different path than service config",
+			changePath: []string{
+				repoRoot + "/other/subdir/config.yaml",
+			},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Configs: []types.ServiceConfigObjConfig{
+							{
+								Source: "test",
+							},
+						},
+					},
+				},
+				Configs: map[string]types.ConfigObjConfig{
+					"test": {
+						File: repoRoot + "/test",
+					},
+				},
+			},
+			ExpectedChanges: []string{},
+		},
+		{
+			name: "change in different path than service config",
+			changePath: []string{
+				repoRoot + "/other/subdir/config.yaml",
+			},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Configs: []types.ServiceConfigObjConfig{
+							{
+								Source: "cfg",
+							},
+							{
+								Source: "cfg2",
+							},
+						},
+					},
+				},
+				Configs: map[string]types.ConfigObjConfig{
+					"cfg": {
+						File: repoRoot + "/other2/subdir/config.yaml",
+					},
+					"cfg2": {
+						File: repoRoot + "/other2/other/subdir/config.yaml",
+					},
+				},
+			},
+			ExpectedChanges: []string{},
+		},
+		{
+			name:       "Has no changes",
+			changePath: []string{},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Configs: []types.ServiceConfigObjConfig{
+							{
+								Source: "test",
+							},
+						},
+					},
+				},
+				Configs: map[string]types.ConfigObjConfig{
+					"test": {
+						File: repoRoot + "/test",
+					},
+				},
+			},
+			ExpectedChanges: []string{},
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			changedFiles, err := git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(tc.oldCommit), plumbing.NewHash(tc.newCommit))
-			if err != nil {
-				t.Fatalf("Failed to get changed files: %v", err)
-			}
-
-			if tc.ExpectedChanges && len(changedFiles) == 0 {
-				t.Fatalf("Expectec changed files, but found none found")
-			}
-
-			changes, err := HasChangedConfigs(changedFiles, project)
+			changes, err := HasChangedConfigs(tc.changePath, tc.project)
 			if err != nil {
 				t.Fatalf("Failed to check for changed configs: %v", err)
 			}
 
-			if len(changes) == 0 && tc.ExpectedChanges {
-				t.Error("Expected changed configs, but found none")
+			slices.Sort(changes)
+			slices.Sort(tc.ExpectedChanges)
+
+			if !reflect.DeepEqual(changes, tc.ExpectedChanges) {
+				t.Errorf("Expected changes %v, but got %v", tc.ExpectedChanges, changes)
 			}
 		})
 	}
@@ -461,76 +542,155 @@ func TestHasChangedConfigs(t *testing.T) {
 func TestHasChangedSecrets(t *testing.T) {
 	t.Parallel()
 
+	const repoRoot = "/data/doco-cd/fake-repo-root"
+
 	testCases := []struct {
 		name            string
-		oldCommit       string
-		newCommit       string
-		ExpectedChanges bool
+		changePath      []string
+		project         *types.Project
+		ExpectedChanges []string
 	}{
 		{
-			name:            "Has changes",
-			oldCommit:       "e4bd98139b81fd80938687edc7f9a1a001654e92",
-			newCommit:       "d47101db6f9a07b0d36a6245b257c3690782ae69",
-			ExpectedChanges: true,
+			name: "Has changes",
+			changePath: []string{
+				repoRoot + "/test",
+			},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Secrets: []types.ServiceSecretConfig{
+							{
+								Source: "test",
+							},
+						},
+					},
+				},
+				Secrets: map[string]types.SecretConfig{
+					"test": {
+						File: repoRoot + "/test",
+					},
+				},
+			},
+			ExpectedChanges: []string{"svc1"},
 		},
 		{
-			name:            "Has no changes",
-			oldCommit:       "72f1a4e88fdeffec3241d6da2ee19757eee3a0fd",
-			newCommit:       "151642a5c4f1b16b543d06c60fa9c95e2c7704a2",
-			ExpectedChanges: false,
+			name: "parent path in service secret and changed in sub files",
+			changePath: []string{
+				repoRoot + "/test/subdir/config.yaml",
+			},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Secrets: []types.ServiceSecretConfig{
+							{
+								Source: "test",
+							},
+						},
+					},
+				},
+				Secrets: map[string]types.SecretConfig{
+					"test": {
+						File: repoRoot + "/test",
+					},
+				},
+			},
+			ExpectedChanges: []string{"svc1"},
 		},
-	}
 
-	c, err := config.GetAppConfig()
-	if err != nil {
-		t.Fatalf("Failed to get app config: %v", err)
-	}
-
-	url := cloneUrlTest
-
-	auth, err := git.GetAuthMethod(url, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
-	if err != nil {
-		t.Fatalf("Failed to get auth method: %v", err)
-	}
-
-	if auth != nil {
-		t.Logf("Using auth method: %s", auth.Name())
-	} else {
-		t.Log("No auth method configured, using anonymous access")
-	}
-
-	tmpDir := t.TempDir()
-
-	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy, auth, c.GitCloneSubmodules)
-	if err != nil {
-		t.Fatalf("Failed to clone repository: %v", err)
-	}
-
-	project, err := LoadCompose(t.Context(), tmpDir, tmpDir, test.ConvertTestName(t.Name()), []string{"docker-compose.yml"}, []string{".env"}, []string{}, map[string]string{})
-	if err != nil {
-		t.Fatalf("Failed to load compose file: %v", err)
+		{
+			name: "change in different path than service secret",
+			changePath: []string{
+				repoRoot + "/other/subdir/config.yaml",
+			},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Secrets: []types.ServiceSecretConfig{
+							{
+								Source: "test",
+							},
+						},
+					},
+				},
+				Secrets: map[string]types.SecretConfig{
+					"test": {
+						File: repoRoot + "/test",
+					},
+				},
+			},
+			ExpectedChanges: []string{},
+		},
+		{
+			name: "change in different path than service secret",
+			changePath: []string{
+				repoRoot + "/other/subdir/config.yaml",
+			},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Secrets: []types.ServiceSecretConfig{
+							{
+								Source: "secret",
+							},
+							{
+								Source: "secret2",
+							},
+						},
+					},
+				},
+				Secrets: map[string]types.SecretConfig{
+					"secret": {
+						File: repoRoot + "/other2/subdir/config.yaml",
+					},
+					"secret2": {
+						File: repoRoot + "/other2/other/subdir/config.yaml",
+					},
+				},
+			},
+			ExpectedChanges: []string{},
+		},
+		{
+			name:       "Has no changes",
+			changePath: []string{},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Secrets: []types.ServiceSecretConfig{
+							{
+								Source: "test",
+							},
+						},
+					},
+				},
+				Secrets: map[string]types.SecretConfig{
+					"test": {
+						File: repoRoot + "/test",
+					},
+				},
+			},
+			ExpectedChanges: []string{},
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			changedFiles, err := git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(tc.oldCommit), plumbing.NewHash(tc.newCommit))
-			if err != nil {
-				t.Fatalf("Failed to get changed files: %v", err)
-			}
-
-			if tc.ExpectedChanges && len(changedFiles) == 0 {
-				t.Fatalf("Expectec changed files, but found none found")
-			}
-
-			changes, err := HasChangedSecrets(changedFiles, project)
+			changes, err := HasChangedSecrets(tc.changePath, tc.project)
 			if err != nil {
 				t.Fatalf("Failed to check for changed secrets: %v", err)
 			}
 
-			if len(changes) == 0 && tc.ExpectedChanges {
-				t.Error("Expected changed secrets, but found none")
+			slices.Sort(changes)
+			slices.Sort(tc.ExpectedChanges)
+
+			if !reflect.DeepEqual(changes, tc.ExpectedChanges) {
+				t.Errorf("Expected changes %v, but got %v", tc.ExpectedChanges, changes)
 			}
 		})
 	}
@@ -539,162 +699,383 @@ func TestHasChangedSecrets(t *testing.T) {
 func TestHasChangedBindMounts(t *testing.T) {
 	t.Parallel()
 
+	const repoRoot = "/data/doco-cd/fake-repo-root"
+
 	testCases := []struct {
 		name            string
-		oldCommit       string
-		newCommit       string
-		ExpectedChanges bool
+		changePath      []string
+		project         *types.Project
+		ExpectedChanges []string
 	}{
 		{
-			name:            "Has changes",
-			oldCommit:       "72f1a4e88fdeffec3241d6da2ee19757eee3a0fd",
-			newCommit:       "151642a5c4f1b16b543d06c60fa9c95e2c7704a2",
-			ExpectedChanges: true,
+			name: "bind mount changed path are the same",
+			changePath: []string{
+				repoRoot + "/dir",
+			},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Volumes: []types.ServiceVolumeConfig{
+							{
+								Type:   "bind",
+								Source: repoRoot + "/dir",
+							},
+						},
+					},
+				},
+			},
+			ExpectedChanges: []string{"svc1"},
 		},
 		{
-			name:            "Has no changes",
-			oldCommit:       "e4bd98139b81fd80938687edc7f9a1a001654e92",
-			newCommit:       "d47101db6f9a07b0d36a6245b257c3690782ae69",
-			ExpectedChanges: false,
+			name: "same name but different path are different",
+			// https://github.com/kimdre/doco-cd/issues/1132
+			changePath: []string{
+				repoRoot + "/server/cwhc-ser6pro/services-auto/gatus/config.yaml",
+			},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"mihomo": {
+						Name: "mihomo",
+						Volumes: []types.ServiceVolumeConfig{
+							{
+								Type:   "bind",
+								Source: repoRoot + "/server/cwhc-istoreos/services-auto/mihomo/config.yaml",
+							},
+						},
+					},
+					"gatus": {
+						Name: "gatus",
+						Volumes: []types.ServiceVolumeConfig{
+							{
+								Type:   "bind",
+								Source: repoRoot + "/server/cwhc-ser6pro/services-auto/gatus/config.yaml",
+							},
+						},
+					},
+				},
+			},
+			ExpectedChanges: []string{"gatus"},
 		},
-	}
-
-	c, err := config.GetAppConfig()
-	if err != nil {
-		t.Fatalf("Failed to get app config: %v", err)
-	}
-
-	url := cloneUrlTest
-
-	auth, err := git.GetAuthMethod(url, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
-	if err != nil {
-		t.Fatalf("Failed to get auth method: %v", err)
-	}
-
-	if auth != nil {
-		t.Logf("Using auth method: %s", auth.Name())
-	} else {
-		t.Log("No auth method configured, using anonymous access")
-	}
-
-	tmpDir := t.TempDir()
-
-	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, c.SkipTLSVerification, c.HttpProxy, auth, c.GitCloneSubmodules)
-	if err != nil {
-		t.Fatalf("Failed to clone repository: %v", err)
-	}
-
-	project, err := LoadCompose(t.Context(), tmpDir, tmpDir, test.ConvertTestName(t.Name()), []string{"docker-compose.yml"}, []string{".env"}, []string{}, map[string]string{})
-	if err != nil {
-		t.Fatalf("Failed to load compose file: %v", err)
+		{
+			name: "bind mount parent path",
+			changePath: []string{
+				repoRoot + "/a/b/c/d/e/f.txt",
+			},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Volumes: []types.ServiceVolumeConfig{
+							{
+								Type:   "bind",
+								Source: repoRoot + "/a/b/c/d/e/f.txt",
+							},
+						},
+					},
+					"svc2": {
+						Name: "svc2",
+						Volumes: []types.ServiceVolumeConfig{
+							{
+								Type:   "bind",
+								Source: repoRoot + "/a/b/c",
+							},
+						},
+					},
+					"svc3": {
+						Name: "svc3",
+						Volumes: []types.ServiceVolumeConfig{
+							{
+								Type:   "bind",
+								Source: repoRoot + "/b/c/d/e/f.txt",
+							},
+						},
+					},
+				},
+			},
+			ExpectedChanges: []string{"svc1", "svc2"},
+		},
+		{
+			name:       "Has no changes",
+			changePath: []string{},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Volumes: []types.ServiceVolumeConfig{
+							{
+								Type:   "bind",
+								Source: repoRoot + "/dir",
+							},
+						},
+					},
+				},
+			},
+			ExpectedChanges: []string{},
+		},
+		{
+			name: "different path",
+			changePath: []string{
+				repoRoot + "/dir2",
+			},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Volumes: []types.ServiceVolumeConfig{
+							{
+								Type:   "bind",
+								Source: repoRoot + "/dir",
+							},
+						},
+					},
+				},
+			},
+			ExpectedChanges: []string{},
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			changedFiles, err := git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(tc.oldCommit), plumbing.NewHash(tc.newCommit))
-			if err != nil {
-				t.Fatalf("Failed to get changed files: %v", err)
-			}
-
-			if tc.ExpectedChanges && len(changedFiles) == 0 {
-				t.Fatalf("Expectec changed files, but found none found")
-			}
-
-			changes, err := HasChangedBindMounts(changedFiles, project)
+			changes, err := HasChangedBindMounts(tc.changePath, tc.project)
 			if err != nil {
 				t.Fatalf("Failed to check for changed bind mounts: %v", err)
 			}
 
-			if len(changes) == 0 && tc.ExpectedChanges {
-				t.Error("Expected changed bind mounts, but found none")
+			slices.Sort(changes)
+			slices.Sort(tc.ExpectedChanges)
+
+			if !reflect.DeepEqual(changes, tc.ExpectedChanges) {
+				t.Errorf("Expected changes %v, but got %v", tc.ExpectedChanges, changes)
 			}
 		})
 	}
 }
 
-func TestFilesInPath(t *testing.T) {
+func TestHasChangedEnvFiles(t *testing.T) {
 	t.Parallel()
 
-	repoRoot := "/var/lib/docker/volumes/doco-cd_data/_data/github.com/kimdre/doco-cd_tests/" // path to repoRoot in data volume on docker host
+	const repoRoot = "/data/doco-cd/fake-repo-root"
 
 	testCases := []struct {
-		name           string
-		bindSourcePath string   // bindSource is path relative to the repoRoot
-		changedFiles   []string // Changed file paths from `git status` relative to repoRoot
-		shouldFind     bool
+		name            string
+		changePath      []string
+		project         *types.Project
+		ExpectedChanges []string
 	}{
 		{
-			name:           "file bind mount",
-			bindSourcePath: "test.txt",
-			changedFiles: []string{
-				"test.txt",
+			name: "same path",
+			changePath: []string{
+				repoRoot + "/test/.env",
 			},
-			shouldFind: true,
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						EnvFiles: []types.EnvFile{
+							{
+								Path: repoRoot + "/test/.env",
+							},
+						},
+					},
+				},
+			},
+			ExpectedChanges: []string{"svc1"},
 		},
 		{
-			name:           "directory bind mount",
-			bindSourcePath: "html",
-			changedFiles: []string{
-				"html/index.html",
+			name: "parent path",
+			changePath: []string{
+				repoRoot + "/test/.env",
 			},
-			shouldFind: true,
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						EnvFiles: []types.EnvFile{
+							{
+								Path: repoRoot + "/test",
+							},
+						},
+					},
+				},
+			},
+			ExpectedChanges: []string{"svc1"},
 		},
 		{
-			name:           "mixed files and directories",
-			bindSourcePath: "html",
-			changedFiles: []string{
-				"html/index.html",
-				"README.md",
-				"configs/test.conf",
+			name: "different path",
+			changePath: []string{
+				repoRoot + "/test2/.env",
 			},
-			shouldFind: true,
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						EnvFiles: []types.EnvFile{
+							{
+								Path: repoRoot + "/test/.env",
+							},
+						},
+					},
+				},
+			},
+			ExpectedChanges: []string{},
 		},
 		{
-			name:           "no changes in bind mount",
-			bindSourcePath: "html",
-			changedFiles: []string{
-				"README.md",
-				"configs/test.conf",
+			name:       "Has no changes",
+			changePath: []string{},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						EnvFiles: []types.EnvFile{
+							{
+								Path: repoRoot + "/",
+							},
+						},
+					},
+				},
 			},
-			shouldFind: false,
-		},
-		{
-			name:           "bind mount in subdirectory",
-			bindSourcePath: "app/html",
-			changedFiles: []string{
-				"app/html/index.html",
-				"app/configs/test.conf",
-			},
-			shouldFind: true,
-		},
-		{
-			name:           "no changes in directories",
-			bindSourcePath: "html",
-			changedFiles: []string{
-				"docs/guide.md",
-				"configs/test.conf",
-			},
-			shouldFind: false,
-		},
-		{
-			name:           "no changes in files",
-			bindSourcePath: "test.txt",
-			changedFiles: []string{
-				"README.md",
-			},
-			shouldFind: false,
+			ExpectedChanges: []string{},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			bindSourceAbs := filepath.Join(repoRoot, tc.bindSourcePath)
-			found := filesInPath(tc.changedFiles, bindSourceAbs)
+			t.Parallel()
 
-			if found != tc.shouldFind {
-				t.Fatalf("Expected to find change: %t, but got %t", tc.shouldFind, found)
+			changes, err := HasChangedEnvFiles(tc.changePath, tc.project)
+			if err != nil {
+				t.Fatalf("Failed to check for changed env files: %v", err)
+			}
+
+			slices.Sort(changes)
+			slices.Sort(tc.ExpectedChanges)
+
+			if !reflect.DeepEqual(changes, tc.ExpectedChanges) {
+				t.Errorf("Expected changes %v, but got %v", tc.ExpectedChanges, changes)
+			}
+		})
+	}
+}
+
+func TestHasChangedBuildFiles(t *testing.T) {
+	t.Parallel()
+
+	const repoRoot = "/data/doco-cd/fake-repo-root"
+
+	project := &types.Project{
+		Services: map[string]types.ServiceConfig{
+			"svc1": {
+				Name: "svc1",
+				Build: &types.BuildConfig{
+					Context: repoRoot + "/context",
+					AdditionalContexts: types.Mapping{
+						"dir":  repoRoot + "/additionalCtx/dir",
+						"dir2": repoRoot + "/additionalCtx/dir2",
+					},
+					Dockerfile: repoRoot + "/Dockerfile",
+					Secrets: []types.ServiceSecretConfig{
+						{
+							Source: repoRoot + "/secret",
+						},
+					},
+				},
+			},
+		},
+	}
+	testCases := []struct {
+		name            string
+		changePath      []string
+		project         *types.Project
+		ExpectedChanges []string
+	}{
+		{
+			name: "no build",
+			changePath: []string{
+				repoRoot + "/test/.env",
+			},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name:  "svc1",
+						Build: nil,
+					},
+				},
+			},
+			ExpectedChanges: []string{},
+		},
+		{
+			name:            "no change",
+			changePath:      []string{},
+			project:         project,
+			ExpectedChanges: []string{},
+		},
+		{
+			name: "context changed",
+			changePath: []string{
+				repoRoot + "/context",
+			},
+			project:         project,
+			ExpectedChanges: []string{"svc1"},
+		},
+		{
+			name: "different path",
+			changePath: []string{
+				repoRoot + "/context2",
+			},
+			project:         project,
+			ExpectedChanges: []string{},
+		},
+		{
+			name: "additional context changed",
+			changePath: []string{
+				repoRoot + "/additionalCtx/dir",
+			},
+			project:         project,
+			ExpectedChanges: []string{"svc1"},
+		},
+		{
+			name: "additional context sub dir changed",
+			changePath: []string{
+				repoRoot + "/additionalCtx/dir/aaa.txt",
+			},
+			project:         project,
+			ExpectedChanges: []string{"svc1"},
+		},
+		{
+			name: "dockerfile changed",
+			changePath: []string{
+				repoRoot + "/Dockerfile",
+			},
+			project:         project,
+			ExpectedChanges: []string{"svc1"},
+		},
+		{
+			name: "build secret changed",
+			changePath: []string{
+				repoRoot + "/secret",
+			},
+			project:         project,
+			ExpectedChanges: []string{"svc1"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			changes, err := HasChangedBuildFiles(tc.changePath, tc.project)
+			if err != nil {
+				t.Fatalf("Failed to check for changed env files: %v", err)
+			}
+
+			slices.Sort(changes)
+			slices.Sort(tc.ExpectedChanges)
+
+			if !reflect.DeepEqual(changes, tc.ExpectedChanges) {
+				t.Errorf("Expected changes %v, but got %v", tc.ExpectedChanges, changes)
 			}
 		})
 	}
@@ -822,7 +1203,7 @@ func TestProjectFilesHaveChanges(t *testing.T) {
 				t.Fatalf("Failed to load compose file: %v", err)
 			}
 
-			changes, err := ProjectFilesHaveChanges(changedFiles, project)
+			changes, err := ProjectFilesHaveChanges(tmpDir, changedFiles, project)
 			if err != nil {
 				t.Fatalf("Failed to get project changes: %v", err)
 			}
@@ -1185,4 +1566,121 @@ func TestGetProjects(t *testing.T) {
 	}
 
 	t.Logf("Found %d projects", len(projects))
+}
+
+func Test_checkPathAffected(t *testing.T) {
+	const repoRoot = "/data/reporoot"
+
+	tests := []struct {
+		name    string
+		used    string
+		changed string
+		want    bool
+	}{
+		{
+			name:    "used end with /",
+			used:    repoRoot + "/a/b/",
+			changed: repoRoot + "/a/b/c.txt",
+			want:    true,
+		},
+		{
+			name:    "used not end with /",
+			used:    repoRoot + "/a/b",
+			changed: repoRoot + "/a/b/c.txt",
+			want:    true,
+		},
+		{
+			name:    "used are prefix of changed",
+			used:    repoRoot + "/a/b",
+			changed: repoRoot + "/a/b2",
+			want:    false,
+		},
+		{
+			name:    "used are prefix of changed and subdir",
+			used:    repoRoot + "/a/b",
+			changed: repoRoot + "/a/b2/c/d/e.txt",
+			want:    false,
+		},
+		{
+			name:    "used are prefix of changed but end with /",
+			used:    repoRoot + "/a/b/",
+			changed: repoRoot + "/a/b2",
+			want:    false,
+		},
+		{
+			name:    "different path /",
+			used:    repoRoot + "/a/b/",
+			changed: repoRoot + "/c/d",
+			want:    false,
+		},
+		{
+			name:    "different path but same suffix",
+			used:    repoRoot + "/a/b/e/f/g.txt",
+			changed: repoRoot + "/c/d/e/f/g.txt",
+			want:    false,
+		},
+		{
+			name:    "file same path",
+			used:    repoRoot + "/test.txt",
+			changed: repoRoot + "/test.txt",
+			want:    true,
+		},
+		{
+			name:    "directory used",
+			used:    repoRoot + "/html",
+			changed: repoRoot + "/html/index.html",
+			want:    true,
+		},
+		{
+			name:    "different path",
+			used:    repoRoot + "/html",
+			changed: repoRoot + "/configs/test.conf",
+			want:    false,
+		},
+		{
+			name:    "different path 2",
+			used:    repoRoot + "/html",
+			changed: repoRoot + "README.md",
+			want:    false,
+		},
+
+		{
+			name:    "used in subdirectory",
+			used:    repoRoot + "/app/html",
+			changed: repoRoot + "/app/html/index.html",
+			want:    true,
+		},
+		{
+			name:    "used in subdirectory 2",
+			used:    repoRoot + "/app/html",
+			changed: repoRoot + "/app/configs/test.conf",
+			want:    false,
+		},
+		{
+			name:    "no changes in directories",
+			used:    repoRoot + "/html",
+			changed: repoRoot + "/docs/guide.md",
+			want:    false,
+		},
+		{
+			name:    "no changes in directories 2",
+			used:    repoRoot + "/html",
+			changed: repoRoot + "/configs/test.conf",
+			want:    false,
+		},
+		{
+			name:    "no changes in files",
+			used:    repoRoot + "/test.txt",
+			changed: repoRoot + "/README.md",
+			want:    false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := checkPathAffected(tt.changed, tt.used)
+			if tt.want != got {
+				t.Errorf("checkPathAffected(used=%q, changed=%q) = %v, want %v", tt.used, tt.changed, got, tt.want)
+			}
+		})
+	}
 }
