@@ -121,27 +121,3 @@ func LoadLocalDotEnv(deployConfig *DeployConfig, internalRepoPath string) error 
 
 	return nil
 }
-
-// CreateTmpDotEnvFile creates a temporary dotenv file from the DeployConfig.Internal.Environment map.
-func CreateTmpDotEnvFile(deployConfig *DeployConfig) (string, error) {
-	tmpEnvFile, err := os.CreateTemp(os.TempDir(), deployConfig.Name+".*.env")
-	if err != nil {
-		errMsg := "failed to create temporary env file"
-		return "", fmt.Errorf("%s: %w", errMsg, err)
-	}
-
-	defer tmpEnvFile.Close()
-
-	// Write environment variables to the temp env file
-	for k, v := range deployConfig.Internal.Environment {
-		_, err = fmt.Fprintf(tmpEnvFile, "%s=%s\n", k, v)
-		if err != nil {
-			return "", fmt.Errorf("failed to write to temporary env file: %w", err)
-		}
-	}
-
-	// Prepend the temp env file to the list of env files
-	deployConfig.EnvFiles = append([]string{tmpEnvFile.Name()}, deployConfig.EnvFiles...)
-
-	return tmpEnvFile.Name(), nil
-}
