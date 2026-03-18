@@ -732,8 +732,8 @@ func HasChangedBindMounts(paths []string, project *types.Project) ([]string, err
 	out:
 		for _, v := range s.Volumes {
 			if v.Type == "bind" && v.Source != "" {
-				for _, path := range paths {
-					if checkPathAffected(path, v.Source) {
+				for _, p := range paths {
+					if checkPathAffected(p, v.Source) {
 						changedServices = append(changedServices, s.Name)
 						break out
 					}
