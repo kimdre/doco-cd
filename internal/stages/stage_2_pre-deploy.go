@@ -182,7 +182,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 				continue
 			}
 
-			decrypted, err := encryption.DecryptFileInPlace(file)
+			decrypted, err := encryption.DecryptFileInPlace(file, s.Repository.PathInternal)
 			if err != nil {
 				return fmt.Errorf("file decryption failed: %w", err)
 			}
