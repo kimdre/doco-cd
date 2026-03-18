@@ -640,7 +640,7 @@ func HasChangedConfigs(repoRootExternal string, changedFiles []gitInternal.Chang
 		for _, p := range paths {
 			// c.File reporoot/a/b/
 			// p  reporoot/a/b/c.txt
-			if strings.HasPrefix(c.File, p) {
+			if strings.HasPrefix(p, c.File) {
 				changedServices = append(changedServices, configToServicesMap[name]...)
 			}
 		}
@@ -671,7 +671,7 @@ func HasChangedSecrets(repoRootExternal string, changedFiles []gitInternal.Chang
 		// s.File reporoot/a/b/
 		// p  reporoot/a/b/c.txt
 		for _, p := range paths {
-			if strings.HasPrefix(s.File, p) {
+			if strings.HasPrefix(p, s.File) {
 				changedServices = append(changedServices, secretsToServicesMap[name]...)
 			}
 		}
@@ -690,9 +690,8 @@ func HasChangedBindMounts(repoRootExternal string, changedFiles []gitInternal.Ch
 	out:
 		for _, v := range s.Volumes {
 			if v.Type == "bind" && v.Source != "" {
-				bindSourceAbs := v.Source
 				for _, path := range paths {
-					if strings.HasPrefix(path, bindSourceAbs) {
+					if strings.HasPrefix(path, v.Source) {
 						changedServices = append(changedServices, s.Name)
 						break out
 					}
@@ -714,7 +713,7 @@ func HasChangedEnvFiles(repoRootExternal string, changedFiles []gitInternal.Chan
 	out:
 		for _, envFile := range s.EnvFiles {
 			for _, p := range paths {
-				if strings.HasSuffix(envFile.Path, p) {
+				if strings.HasPrefix(p, envFile.Path) {
 					changedServices = append(changedServices, s.Name)
 					break out
 				}
