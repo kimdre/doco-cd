@@ -1153,6 +1153,10 @@ func DecryptProjectFiles(repoPath string, p *types.Project) ([]string, error) {
 			if v.Type == "bind" && v.Source != "" {
 				info, err := os.Stat(v.Source)
 				if err != nil {
+					if errors.Is(err, os.ErrNotExist) {
+						continue
+					}
+
 					return decryptedFiles, fmt.Errorf("failed to stat bind mount source '%s': %w", v.Source, err)
 				}
 
