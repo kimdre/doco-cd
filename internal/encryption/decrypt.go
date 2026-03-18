@@ -181,6 +181,11 @@ func DecryptFileInPlace(path, repoPath string) (bool, error) {
 		return false, fmt.Errorf("%w: path must be absolute: %s", filesystem.ErrInvalidFilePath, path)
 	}
 
+	// Skip files like sockets, etc...
+	if filesystem.IsDir(path) || filesystem.IsSocket(path) {
+		return false, nil
+	}
+
 	if repoPath == "" {
 		return false, fmt.Errorf("%w: trusted root must not be empty", filesystem.ErrInvalidFilePath)
 	}
