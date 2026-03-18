@@ -454,6 +454,7 @@ func TestHasChangedConfigs(t *testing.T) {
 			if len(changes) == 0 && len(tc.ExpectedChanges) > 0 {
 				t.Error("Expected changed configs, but found none")
 			}
+
 			if !reflect.DeepEqual(changes, tc.ExpectedChanges) {
 				t.Errorf("Expected changes %v, but got %v", tc.ExpectedChanges, changes)
 			}
@@ -535,6 +536,7 @@ func TestHasChangedSecrets(t *testing.T) {
 			if len(changes) == 0 && len(tc.ExpectedChanges) > 0 {
 				t.Error("Expected changed secrets, but found none")
 			}
+
 			if !reflect.DeepEqual(changes, tc.ExpectedChanges) {
 				t.Errorf("Expected changes %v, but got %v", tc.ExpectedChanges, changes)
 			}
@@ -616,6 +618,7 @@ func TestHasChangedBindMounts(t *testing.T) {
 			if len(changes) == 0 && len(tc.ExpectedChanges) > 0 {
 				t.Error("Expected changed bind mounts, but found none")
 			}
+
 			if !reflect.DeepEqual(changes, tc.ExpectedChanges) {
 				t.Errorf("Expected changes %v, but got %v", tc.ExpectedChanges, changes)
 			}

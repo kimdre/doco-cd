@@ -622,6 +622,7 @@ func HasChangedConfigs(repoRootExternal string, changedFiles []gitInternal.Chang
 	paths := getPaths(changedFiles, repoRootExternal)
 
 	configToServicesMap := make(map[string][]string)
+
 	for name, s := range project.Services {
 		for _, cfg := range s.Configs {
 			configToServicesMap[cfg.Source] = append(configToServicesMap[cfg.Source], name)
@@ -629,6 +630,7 @@ func HasChangedConfigs(repoRootExternal string, changedFiles []gitInternal.Chang
 	}
 
 	var changedServices []string
+
 	for name, c := range project.Configs {
 		// Changes in config.Content are handled in project hash comparison
 		if c.File == "" {
@@ -652,6 +654,7 @@ func HasChangedSecrets(repoRootExternal string, changedFiles []gitInternal.Chang
 	paths := getPaths(changedFiles, repoRootExternal)
 
 	secretsToServicesMap := make(map[string][]string)
+
 	for name, s := range project.Services {
 		for _, secret := range s.Secrets {
 			secretsToServicesMap[secret.Source] = append(secretsToServicesMap[secret.Source], name)
@@ -659,6 +662,7 @@ func HasChangedSecrets(repoRootExternal string, changedFiles []gitInternal.Chang
 	}
 
 	var changedServices []string
+
 	for name, s := range project.Secrets {
 		if s.File == "" {
 			continue
