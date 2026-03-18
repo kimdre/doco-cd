@@ -26,8 +26,7 @@ RUN if [ "$DISABLE_BITWARDEN" != "true" ] && ! ([ "$TARGETARCH" = "arm" ] && [ "
 ENV GOCACHE=/root/.cache/go-build \
     GOOS=linux
 
-# Copy source code
-COPY . ./
+COPY go.mod go.sum ./
 
 RUN --mount=type=cache,target=/go/pkg/mod/ \
     --mount=type=bind,source=go.sum,target=go.sum \
@@ -42,6 +41,8 @@ ARG DISABLE_BITWARDEN=false
 ARG BW_SDK_BUILD_FLAGS="-linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'"
 ARG TARGETARCH
 ARG TARGETVARIANT
+
+COPY . .
 
 # Build with or without Bitwarden support
 # armv7 builds are automatically built without Bitwarden

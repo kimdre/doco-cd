@@ -1,14 +1,13 @@
+.bin/
+bin
+.idea/
+.vscode/
+.git/
+docs/
+test/
+test-cases/
 **/testdata
 Dockerfile
 *.compose.yaml
 docker-compose.yaml
-.git
 .dockerignore
-# ignore tools & build output
-.bin
-bin
-
-docs
-test
-test-cases
-
