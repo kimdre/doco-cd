@@ -1619,6 +1619,61 @@ func Test_checkPathAffected(t *testing.T) {
 			changed: repoRoot + "/c/d/e/f/g.txt",
 			want:    false,
 		},
+		{
+			name:    "file same path",
+			used:    repoRoot + "/test.txt",
+			changed: repoRoot + "/test.txt",
+			want:    true,
+		},
+		{
+			name:    "directory used",
+			used:    repoRoot + "/html",
+			changed: repoRoot + "/html/index.html",
+			want:    true,
+		},
+		{
+			name:    "different path",
+			used:    repoRoot + "/html",
+			changed: repoRoot + "/configs/test.conf",
+			want:    false,
+		},
+		{
+			name:    "different path 2",
+			used:    repoRoot + "/html",
+			changed: repoRoot + "README.md",
+			want:    false,
+		},
+
+		{
+			name:    "used in subdirectory",
+			used:    repoRoot + "/app/html",
+			changed: repoRoot + "/app/html/index.html",
+			want:    true,
+		},
+		{
+			name:    "used in subdirectory 2",
+			used:    repoRoot + "/app/html",
+			changed: repoRoot + "/app/configs/test.conf",
+			want:    false,
+		},
+		{
+			name:    "no changes in directories",
+			used:    repoRoot + "/html",
+			changed: repoRoot + "/docs/guide.md",
+			want:    false,
+		},
+		{
+			name:    "no changes in directories 2",
+			used:    repoRoot + "/html",
+			changed: repoRoot + "/configs/test.conf",
+			want:    false,
+		},
+		{
+			name:    "no changes in files",
+			used:    repoRoot + "/test.txt",
+			changed: repoRoot + "/README.md",
+			want:    false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
