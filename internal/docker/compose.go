@@ -1096,8 +1096,11 @@ func joinPathsWithoutDuplicates(paths ...string) string {
 
 // DecryptProjectFiles decrypts all files used in the compose project that are encrypted using doco-cd's encryption mechanism.
 // This includes configs, secrets, bind mounts, env files and build contexts.
-func DecryptProjectFiles(workingDir string, p *types.Project) error {
-	var projectFiles []string
+func DecryptProjectFiles(repoDir, workingDir string, p *types.Project) ([]string, error) {
+	var (
+		projectFiles   []string
+		decryptedFiles []string
+	)
 
 	for _, s := range p.Services {
 		for _, cfg := range s.Configs {
@@ -1114,6 +1117,20 @@ func DecryptProjectFiles(workingDir string, p *types.Project) error {
 
 		for _, v := range s.Volumes {
 			if v.Type == "bind" && v.Source != "" {
+				info, err := os.Stat(v.Source)
+				if err != nil {
+					return decryptedFiles, err
+				}
+
+				if info.IsDir() {
+					decryptedFiles, err = encryption.DecryptFilesInDirectory(repoDir, v.Source)
+					if err != nil {
+						return decryptedFiles, err
+					}
+
+					continue
+				}
+
 				projectFiles = append(projectFiles, v.Source)
 			}
 		}
@@ -1126,12 +1143,12 @@ func DecryptProjectFiles(workingDir string, p *types.Project) error {
 
 		if s.Build != nil {
 			if s.Build.Dockerfile != "" {
-				projectFiles = append(projectFiles, s.Build.Dockerfile)
+				projectFiles = append(projectFiles, filepath.Join(s.Build.Context, s.Build.Dockerfile))
 			}
 
 			for _, secret := range s.Build.Secrets {
 				if secret.Source != "" {
-					projectFiles = append(projectFiles, secret.Source)
+					projectFiles = append(projectFiles, filepath.Join(s.Build.Context, secret.Source))
 				}
 			}
 		}
@@ -1142,11 +1159,15 @@ func DecryptProjectFiles(workingDir string, p *types.Project) error {
 			f = filepath.Join(workingDir, f)
 		}
 
-		err := encryption.DecryptFileInPlace(f)
+		decrypted, err := encryption.DecryptFileInPlace(f)
 		if err != nil {
-			return fmt.Errorf("failed to decrypt project file '%s': %w", f, err)
+			return decryptedFiles, fmt.Errorf("failed to decrypt project file '%s': %w", f, err)
+		}
+
+		if decrypted {
+			decryptedFiles = append(decryptedFiles, f)
 		}
 	}
 
-	return nil
+	return decryptedFiles, nil
 }

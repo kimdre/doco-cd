@@ -144,15 +144,13 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			return fmt.Errorf("failed to check for default compose files: %w", err)
 		}
 
-		// Decrypt any SOPS-encrypted files in the working directory
-		f, err := encryption.DecryptFilesInDirectory(s.Repository.PathInternal, intAbsWorkingDir)
-		if err != nil {
-			return fmt.Errorf("file decryption failed: %w", err)
-		}
+		var decryptedFiles []string
 
-		if len(f) > 0 {
-			s.Log.Debug("decrypted SOPS-encrypted files", slog.Any("files", f))
-		}
+		//// Decrypt any SOPS-encrypted files in the working directory
+		// decryptedFiles, err := encryption.DecryptFilesInDirectory(s.Repository.PathInternal, intAbsWorkingDir)
+		//if err != nil {
+		//	return fmt.Errorf("file decryption failed: %w", err)
+		//}
 
 		// Create a temporary env file if environment variables are specified in the deployment config
 		if s.DeployConfig.Internal.Environment != nil {
@@ -184,9 +182,13 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 				continue
 			}
 
-			err = encryption.DecryptFileInPlace(file)
+			decrypted, err := encryption.DecryptFileInPlace(file)
 			if err != nil {
 				return fmt.Errorf("file decryption failed: %w", err)
+			}
+
+			if decrypted {
+				decryptedFiles = append(decryptedFiles, file)
 			}
 		}
 
@@ -199,9 +201,15 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		}
 
 		// Decrypt any files in project
-		err = docker.DecryptProjectFiles(intAbsWorkingDir, s.Docker.Project)
+		f, err := docker.DecryptProjectFiles(s.Repository.PathInternal, intAbsWorkingDir, s.Docker.Project)
 		if err != nil {
 			return fmt.Errorf("failed to decrypt compose files: %w", err)
+		}
+
+		decryptedFiles = append(decryptedFiles, f...)
+
+		if len(decryptedFiles) > 0 {
+			s.Log.Debug("decrypted SOPS-encrypted files", slog.Any("files", decryptedFiles))
 		}
 
 		newHash, err := docker.ProjectHash(s.Docker.Project)
