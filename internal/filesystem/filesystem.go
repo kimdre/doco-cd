@@ -67,3 +67,13 @@ func IsSymlink(path string) bool {
 
 	return info.Mode().Type() == fs.ModeSymlink
 }
+
+// IsFile checks if the given path is a regular file without any mode bits set (like symlink, socket, named pipe, etc.).
+func IsFile(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+
+	return info.Mode().IsRegular()
+}
