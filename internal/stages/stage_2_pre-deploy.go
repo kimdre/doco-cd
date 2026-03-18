@@ -148,7 +148,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 
 		//// Decrypt any SOPS-encrypted files in the working directory
 		// decryptedFiles, err := encryption.DecryptFilesInDirectory(s.Repository.PathInternal, intAbsWorkingDir)
-		//if err != nil {
+		// if err != nil {
 		//	return fmt.Errorf("file decryption failed: %w", err)
 		//}
 
