@@ -617,7 +617,7 @@ func getPaths(changedFiles []gitInternal.ChangedFile, basePath string) []string 
 	return slice.Unique(absPaths)
 }
 
-// checkPathAffected checks if a changed file is affected by a used file
+// checkPathAffected checks if a changed file is affected by a used file.
 func checkPathAffected(changed string, used string) bool {
 	used = filepath.Clean(used)
 	changed = filepath.Clean(changed)
