@@ -207,11 +207,10 @@ func DecryptFileInPlace(path, repoPath string) (bool, error) {
 	// Ensure the path is within the trusted root and use the sanitized absolute path.
 	// Open the repository root for writing decrypted files without changing their permissions.
 	root, err := os.OpenRoot(repoPath)
-	defer root.Close()
-
 	if err != nil {
 		return false, fmt.Errorf("failed to open repo root %s: %w", repoPath, err)
 	}
+	defer root.Close()
 
 	decryptedContent, err := DecryptFile(path)
 	if err != nil {
