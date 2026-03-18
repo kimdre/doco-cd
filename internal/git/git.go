@@ -3,6 +3,7 @@ package git
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/url"
@@ -682,12 +683,17 @@ func HasChangesInSubdir(changedFiles []ChangedFile, repoPath, subdir, deployConf
 	// Collect all symlinks in subdir
 	symlinks := make(map[string]string)
 
-	err := filepath.Walk(filepath.Join(repoPath, subdir), func(path string, info os.FileInfo, err error) error {
+	err := filepath.WalkDir(filepath.Join(repoPath, subdir), func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return fmt.Errorf("failed to walk subdir %s: %w", subdir, err)
 		}
 
 		// Check if the file is a symlink
+		info, statErr := d.Info()
+		if statErr != nil {
+			return fmt.Errorf("failed to get file info: %w", statErr)
+		}
+
 		if info.Mode()&os.ModeSymlink != 0 {
 			target, err := os.Readlink(path)
 			if err != nil {
