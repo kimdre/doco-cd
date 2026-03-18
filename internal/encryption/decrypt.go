@@ -185,6 +185,9 @@ func DecryptFileInPlace(path, repoPath string) (bool, error) {
 		return false, fmt.Errorf("%w: trusted root must not be empty", filesystem.ErrInvalidFilePath)
 	}
 
+	lock := acquireFileLock(path)
+	defer releaseFileLock(path, lock)
+
 	isEncrypted, err := IsEncryptedFile(path)
 	if err != nil {
 		return false, fmt.Errorf("failed to check if file is encrypted: %w", err)
