@@ -201,9 +201,9 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		}
 
 		// Decrypt any files in project
-		f, err := docker.DecryptProjectFiles(s.Repository.PathInternal, intAbsWorkingDir, s.Docker.Project)
+		f, err := docker.DecryptProjectFiles(s.Repository.PathExternal, s.Docker.Project)
 		if err != nil {
-			return fmt.Errorf("failed to decrypt compose files: %w", err)
+			return fmt.Errorf("failed to decrypt project files: %w", err)
 		}
 
 		decryptedFiles = append(decryptedFiles, f...)

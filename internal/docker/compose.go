@@ -1096,7 +1096,8 @@ func joinPathsWithoutDuplicates(paths ...string) string {
 
 // DecryptProjectFiles decrypts all files used in the compose project that are encrypted using doco-cd's encryption mechanism.
 // This includes configs, secrets, bind mounts, env files and build contexts.
-func DecryptProjectFiles(repoDir, workingDir string, p *types.Project) ([]string, error) {
+// Since absolute file paths in types.Project are paths on the docker host, repoPath also needs to be the external path to the repository.
+func DecryptProjectFiles(repoPath string, p *types.Project) ([]string, error) {
 	var (
 		projectFiles   []string
 		decryptedFiles []string
@@ -1123,7 +1124,7 @@ func DecryptProjectFiles(repoDir, workingDir string, p *types.Project) ([]string
 				}
 
 				if info.IsDir() {
-					decryptedFiles, err = encryption.DecryptFilesInDirectory(repoDir, v.Source)
+					decryptedFiles, err = encryption.DecryptFilesInDirectory(repoPath, v.Source)
 					if err != nil {
 						return decryptedFiles, err
 					}
@@ -1143,12 +1144,20 @@ func DecryptProjectFiles(repoDir, workingDir string, p *types.Project) ([]string
 
 		if s.Build != nil {
 			if s.Build.Dockerfile != "" {
-				projectFiles = append(projectFiles, filepath.Join(s.Build.Context, s.Build.Dockerfile))
+				if filepath.IsAbs(s.Build.Dockerfile) {
+					projectFiles = append(projectFiles, s.Build.Dockerfile)
+				} else {
+					projectFiles = append(projectFiles, filepath.Join(s.Build.Context, s.Build.Dockerfile))
+				}
 			}
 
 			for _, secret := range s.Build.Secrets {
 				if secret.Source != "" {
-					projectFiles = append(projectFiles, filepath.Join(s.Build.Context, secret.Source))
+					if filepath.IsAbs(secret.Source) {
+						projectFiles = append(projectFiles, secret.Source)
+					} else {
+						projectFiles = append(projectFiles, filepath.Join(s.Build.Context, secret.Source))
+					}
 				}
 			}
 		}
@@ -1156,10 +1165,10 @@ func DecryptProjectFiles(repoDir, workingDir string, p *types.Project) ([]string
 
 	for _, f := range slice.Unique(projectFiles) {
 		if !filepath.IsAbs(f) {
-			f = filepath.Join(workingDir, f)
+			f = filepath.Join(p.WorkingDir, f)
 		}
 
-		decrypted, err := encryption.DecryptFileInPlace(f, repoDir)
+		decrypted, err := encryption.DecryptFileInPlace(f, repoPath)
 		if err != nil {
 			return decryptedFiles, fmt.Errorf("failed to decrypt project file '%s': %w", f, err)
 		}
