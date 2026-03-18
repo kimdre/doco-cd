@@ -1,1 +1,8 @@
+.bin/
+.idea/
+.vscode/
+.git/
+docs/
+test/
+test-cases/
 **/testdata
