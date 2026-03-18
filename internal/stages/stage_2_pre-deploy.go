@@ -7,16 +7,12 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/go-git/go-git/v5/plumbing"
 
-	"github.com/kimdre/doco-cd/internal/filesystem"
-
 	"github.com/kimdre/doco-cd/internal/config"
-	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/logger"
 
 	"github.com/kimdre/doco-cd/internal/utils/set"
@@ -161,50 +157,12 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			}(tmpEnvFile)
 		}
 
-		var decryptedFiles []string
-
-		// Decrypt compose and dotenv files (for variable interpolation) before loading/generating project from them
-		decryptFiles := slices.Concat(s.DeployConfig.ComposeFiles, s.DeployConfig.EnvFiles)
-		for _, file := range decryptFiles {
-			file = filepath.Join(s.Repository.PathInternal, s.DeployConfig.WorkingDirectory, file)
-
-			file, err = filesystem.VerifyAndSanitizePath(file, s.Repository.PathInternal)
-			if err != nil {
-				return fmt.Errorf("invalid file path: %w", err)
-			}
-
-			if _, err = os.Stat(file); os.IsNotExist(err) {
-				continue
-			}
-
-			decrypted, err := encryption.DecryptFileInPlace(file, s.Repository.PathInternal)
-			if err != nil {
-				return fmt.Errorf("file decryption failed: %w", err)
-			}
-
-			if decrypted {
-				decryptedFiles = append(decryptedFiles, file)
-			}
-		}
-
 		s.Docker.Project, err = docker.LoadCompose(
-			ctx, extAbsWorkingDir, s.DeployConfig.Name,
+			ctx, s.Repository.PathExternal, extAbsWorkingDir, s.DeployConfig.Name,
 			s.DeployConfig.ComposeFiles, s.DeployConfig.EnvFiles,
 			s.DeployConfig.Profiles, s.DeployState.ResolvedSecrets)
 		if err != nil {
 			return fmt.Errorf("failed to load compose project: %w", err)
-		}
-
-		// Decrypt any project-related files
-		f, err := docker.DecryptProjectFiles(s.Repository.PathExternal, s.Docker.Project)
-		if err != nil {
-			return fmt.Errorf("failed to decrypt project files: %w", err)
-		}
-
-		decryptedFiles = append(decryptedFiles, f...)
-
-		if len(decryptedFiles) > 0 {
-			s.Log.Debug("decrypted SOPS-encrypted files", slog.Any("files", decryptedFiles))
 		}
 
 		newHash, err := docker.ProjectHash(s.Docker.Project)

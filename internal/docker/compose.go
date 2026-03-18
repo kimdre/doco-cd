@@ -165,7 +165,7 @@ func addComposeVolumeLabels(project *types.Project, deployConfig *config.DeployC
 }
 
 // LoadCompose parses and loads Compose files as specified by the Docker Compose specification.
-func LoadCompose(ctx context.Context, workingDir, projectName string, composeFiles,
+func LoadCompose(ctx context.Context, repoPath, workingDir, projectName string, composeFiles,
 	envFiles, profiles []string, environment map[string]string,
 ) (*types.Project, error) {
 	// Resolve compose file paths to absolute paths relative to workingDir.
@@ -217,6 +217,20 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 		}
 	}
 
+	var decryptedFiles []string
+
+	decryptFiles := slices.Concat(absComposeFiles, absEnvFiles)
+	for _, file := range decryptFiles {
+		decrypted, err := encryption.DecryptFileInPlace(file, repoPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt file %s: %w", file, err)
+		}
+
+		if decrypted {
+			decryptedFiles = append(decryptedFiles, file)
+		}
+	}
+
 	options, err := cli.NewProjectOptions(
 		absComposeFiles,
 		cli.WithName(projectName),
@@ -254,7 +268,25 @@ func LoadCompose(ctx context.Context, workingDir, projectName string, composeFil
 		return nil, fmt.Errorf("failed to get .env file for interpolation: %w", err)
 	}
 
+	// Preload project for decrypting project-related files
 	project, err := options.LoadProject(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load compose project: %w", err)
+	}
+
+	// Decrypt any project-related files
+	files, err := DecryptProjectFiles(repoPath, project)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt project files: %w", err)
+	}
+
+	decryptedFiles = append(decryptedFiles, files...)
+	if len(decryptedFiles) > 0 {
+		slog.Debug("decrypted SOPS-encrypted files", slog.String("stack", project.Name), slog.Any("files", decryptedFiles))
+	}
+
+	// Reload project after decryption to ensure all decrypted values are properly loaded into the project.
+	project, err = options.LoadProject(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load compose project: %w", err)
 	}
@@ -421,7 +453,7 @@ func DeployStack(
 		}(tmpEnvFile)
 	}
 
-	project, err := LoadCompose(*ctx, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles, deployConfig.EnvFiles, deployConfig.Profiles, resolvedSecrets)
+	project, err := LoadCompose(*ctx, externalRepoPath, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles, deployConfig.EnvFiles, deployConfig.Profiles, resolvedSecrets)
 	if err != nil {
 		return fmt.Errorf("failed to load compose config: %w", err)
 	}
