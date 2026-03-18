@@ -9,6 +9,7 @@ import (
 	"github.com/avast/retry-go/v5"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/encryption"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
 	"github.com/kimdre/doco-cd/internal/test"
@@ -22,6 +23,7 @@ import (
 )
 
 func TestDeploySwarmStack(t *testing.T) {
+	encryption.SetupAgeKeyEnvVar(t)
 	t.Parallel()
 
 	dockerCli, err := CreateDockerCli(false, false)
