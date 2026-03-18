@@ -387,19 +387,19 @@ func TestHasChangedConfigs(t *testing.T) {
 		name            string
 		oldCommit       string
 		newCommit       string
-		ExpectedChanges bool
+		ExpectedChanges []string
 	}{
 		{
 			name:            "Has changes",
 			oldCommit:       "182520d6b0c574c319de69d05ba79858712e335e",
 			newCommit:       "87344f0f87250cd2b5d82d2483d3a62ee1d18e93",
-			ExpectedChanges: true,
+			ExpectedChanges: []string{"test"},
 		},
 		{
 			name:            "Has no changes",
 			oldCommit:       "72f1a4e88fdeffec3241d6da2ee19757eee3a0fd",
 			newCommit:       "151642a5c4f1b16b543d06c60fa9c95e2c7704a2",
-			ExpectedChanges: false,
+			ExpectedChanges: []string{},
 		},
 	}
 
@@ -442,17 +442,20 @@ func TestHasChangedConfigs(t *testing.T) {
 				t.Fatalf("Failed to get changed files: %v", err)
 			}
 
-			if tc.ExpectedChanges && len(changedFiles) == 0 {
-				t.Fatalf("Expectec changed files, but found none found")
+			if len(tc.ExpectedChanges) > 0 && len(changedFiles) == 0 {
+				t.Fatalf("Expected changed files, but found none")
 			}
 
-			changes, err := HasChangedConfigs(changedFiles, project)
+			changes, err := HasChangedConfigs(tmpDir, changedFiles, project)
 			if err != nil {
 				t.Fatalf("Failed to check for changed configs: %v", err)
 			}
 
-			if len(changes) == 0 && tc.ExpectedChanges {
+			if len(changes) == 0 && len(tc.ExpectedChanges) > 0 {
 				t.Error("Expected changed configs, but found none")
+			}
+			if !reflect.DeepEqual(changes, tc.ExpectedChanges) {
+				t.Errorf("Expected changes %v, but got %v", tc.ExpectedChanges, changes)
 			}
 		})
 	}
@@ -465,19 +468,19 @@ func TestHasChangedSecrets(t *testing.T) {
 		name            string
 		oldCommit       string
 		newCommit       string
-		ExpectedChanges bool
+		ExpectedChanges []string
 	}{
 		{
 			name:            "Has changes",
 			oldCommit:       "e4bd98139b81fd80938687edc7f9a1a001654e92",
 			newCommit:       "d47101db6f9a07b0d36a6245b257c3690782ae69",
-			ExpectedChanges: true,
+			ExpectedChanges: []string{"test"},
 		},
 		{
 			name:            "Has no changes",
 			oldCommit:       "72f1a4e88fdeffec3241d6da2ee19757eee3a0fd",
 			newCommit:       "151642a5c4f1b16b543d06c60fa9c95e2c7704a2",
-			ExpectedChanges: false,
+			ExpectedChanges: []string{},
 		},
 	}
 
@@ -520,17 +523,20 @@ func TestHasChangedSecrets(t *testing.T) {
 				t.Fatalf("Failed to get changed files: %v", err)
 			}
 
-			if tc.ExpectedChanges && len(changedFiles) == 0 {
-				t.Fatalf("Expectec changed files, but found none found")
+			if len(tc.ExpectedChanges) > 0 && len(changedFiles) == 0 {
+				t.Fatalf("Expected changed files, but found none")
 			}
 
-			changes, err := HasChangedSecrets(changedFiles, project)
+			changes, err := HasChangedSecrets(tmpDir, changedFiles, project)
 			if err != nil {
 				t.Fatalf("Failed to check for changed secrets: %v", err)
 			}
 
-			if len(changes) == 0 && tc.ExpectedChanges {
+			if len(changes) == 0 && len(tc.ExpectedChanges) > 0 {
 				t.Error("Expected changed secrets, but found none")
+			}
+			if !reflect.DeepEqual(changes, tc.ExpectedChanges) {
+				t.Errorf("Expected changes %v, but got %v", tc.ExpectedChanges, changes)
 			}
 		})
 	}
@@ -543,19 +549,19 @@ func TestHasChangedBindMounts(t *testing.T) {
 		name            string
 		oldCommit       string
 		newCommit       string
-		ExpectedChanges bool
+		ExpectedChanges []string
 	}{
 		{
 			name:            "Has changes",
 			oldCommit:       "72f1a4e88fdeffec3241d6da2ee19757eee3a0fd",
 			newCommit:       "151642a5c4f1b16b543d06c60fa9c95e2c7704a2",
-			ExpectedChanges: true,
+			ExpectedChanges: []string{"test"},
 		},
 		{
 			name:            "Has no changes",
 			oldCommit:       "e4bd98139b81fd80938687edc7f9a1a001654e92",
 			newCommit:       "d47101db6f9a07b0d36a6245b257c3690782ae69",
-			ExpectedChanges: false,
+			ExpectedChanges: []string{},
 		},
 	}
 
@@ -598,103 +604,20 @@ func TestHasChangedBindMounts(t *testing.T) {
 				t.Fatalf("Failed to get changed files: %v", err)
 			}
 
-			if tc.ExpectedChanges && len(changedFiles) == 0 {
-				t.Fatalf("Expectec changed files, but found none found")
+			if len(tc.ExpectedChanges) > 0 && len(changedFiles) == 0 {
+				t.Fatalf("Expected changed files, but found none")
 			}
 
-			changes, err := HasChangedBindMounts(changedFiles, project)
+			changes, err := HasChangedBindMounts(tmpDir, changedFiles, project)
 			if err != nil {
 				t.Fatalf("Failed to check for changed bind mounts: %v", err)
 			}
 
-			if len(changes) == 0 && tc.ExpectedChanges {
+			if len(changes) == 0 && len(tc.ExpectedChanges) > 0 {
 				t.Error("Expected changed bind mounts, but found none")
 			}
-		})
-	}
-}
-
-func TestFilesInPath(t *testing.T) {
-	t.Parallel()
-
-	repoRoot := "/var/lib/docker/volumes/doco-cd_data/_data/github.com/kimdre/doco-cd_tests/" // path to repoRoot in data volume on docker host
-
-	testCases := []struct {
-		name           string
-		bindSourcePath string   // bindSource is path relative to the repoRoot
-		changedFiles   []string // Changed file paths from `git status` relative to repoRoot
-		shouldFind     bool
-	}{
-		{
-			name:           "file bind mount",
-			bindSourcePath: "test.txt",
-			changedFiles: []string{
-				"test.txt",
-			},
-			shouldFind: true,
-		},
-		{
-			name:           "directory bind mount",
-			bindSourcePath: "html",
-			changedFiles: []string{
-				"html/index.html",
-			},
-			shouldFind: true,
-		},
-		{
-			name:           "mixed files and directories",
-			bindSourcePath: "html",
-			changedFiles: []string{
-				"html/index.html",
-				"README.md",
-				"configs/test.conf",
-			},
-			shouldFind: true,
-		},
-		{
-			name:           "no changes in bind mount",
-			bindSourcePath: "html",
-			changedFiles: []string{
-				"README.md",
-				"configs/test.conf",
-			},
-			shouldFind: false,
-		},
-		{
-			name:           "bind mount in subdirectory",
-			bindSourcePath: "app/html",
-			changedFiles: []string{
-				"app/html/index.html",
-				"app/configs/test.conf",
-			},
-			shouldFind: true,
-		},
-		{
-			name:           "no changes in directories",
-			bindSourcePath: "html",
-			changedFiles: []string{
-				"docs/guide.md",
-				"configs/test.conf",
-			},
-			shouldFind: false,
-		},
-		{
-			name:           "no changes in files",
-			bindSourcePath: "test.txt",
-			changedFiles: []string{
-				"README.md",
-			},
-			shouldFind: false,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			bindSourceAbs := filepath.Join(repoRoot, tc.bindSourcePath)
-			found := filesInPath(tc.changedFiles, bindSourceAbs)
-
-			if found != tc.shouldFind {
-				t.Fatalf("Expected to find change: %t, but got %t", tc.shouldFind, found)
+			if !reflect.DeepEqual(changes, tc.ExpectedChanges) {
+				t.Errorf("Expected changes %v, but got %v", tc.ExpectedChanges, changes)
 			}
 		})
 	}
@@ -822,7 +745,7 @@ func TestProjectFilesHaveChanges(t *testing.T) {
 				t.Fatalf("Failed to load compose file: %v", err)
 			}
 
-			changes, err := ProjectFilesHaveChanges(changedFiles, project)
+			changes, err := ProjectFilesHaveChanges(tmpDir, changedFiles, project)
 			if err != nil {
 				t.Fatalf("Failed to get project changes: %v", err)
 			}

@@ -1,1 +1,4 @@
 **/testdata
+Dockerfile
+*.compose.yaml
+docker-compose.yaml
