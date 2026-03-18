@@ -17,8 +17,6 @@ import (
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	dockerClient "github.com/moby/moby/client"
 
-	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
-
 	swarmInternal "github.com/kimdre/doco-cd/internal/docker/swarm"
 
 	"github.com/compose-spec/compose-go/v2/types"
@@ -38,8 +36,8 @@ var (
 )
 
 // LoadSwarmStack loads a Docker Swarm stack using the provided project and deploy configuration.
-func LoadSwarmStack(dockerCli *command.Cli, project *types.Project, deployConfig *config.DeployConfig,
-	resolvedSecrets secrettypes.ResolvedSecrets, externalWorkingDir string,
+func LoadSwarmStack(dockerCli *command.Cli, project *types.Project,
+	deployConfig *config.DeployConfig, externalWorkingDir string,
 ) (*composetypes.Config, *options.Deploy, error) {
 	opts := options.Deploy{
 		Composefiles:     project.ComposeFiles,
@@ -51,7 +49,7 @@ func LoadSwarmStack(dockerCli *command.Cli, project *types.Project, deployConfig
 		Environment:      project.Environment,
 	}
 
-	cfg, err := swarmInternal.LoadComposefile(*dockerCli, opts, resolvedSecrets, externalWorkingDir)
+	cfg, err := swarmInternal.LoadComposefile(*dockerCli, opts, deployConfig.Internal.Environment, externalWorkingDir)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to load compose file: %w", err)
 	}

@@ -71,7 +71,7 @@ type DeployConfig struct {
 	} `yaml:"auto_discover_opts"` // AutoDiscoverOpts are options for the autodiscovery feature
 	Internal struct {
 		File        string            `yaml:"-"` // File is the path to the deployment configuration file in the repository (if RepositoryUrl is not set) or in the cloned repository (if RepositoryUrl is set)
-		Environment map[string]string // Environment stores environment variables from local env_files entries (if RepositoryUrl to set) for the deployment for interpolating variables in the compose files
+		Environment map[string]string // Environment is stores environment variables for variable interpolation in the compose project
 		Hash        string            `yaml:"-"` // Hash is a hash of the DeployConfig struct (without changing the order of its elements)
 	} // Internal holds internal configuration values that are not set by the user
 }

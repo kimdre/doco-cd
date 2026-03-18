@@ -16,13 +16,11 @@ import (
 	"github.com/docker/cli/cli/compose/schema"
 	"github.com/docker/cli/cli/compose/types"
 
-	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
-
 	"github.com/kimdre/doco-cd/internal/docker/options"
 )
 
 // LoadComposefile parse the composefile specified in the cli and returns its Config and version.
-func LoadComposefile(dockerCli command.Cli, opts options.Deploy, resolvedSecrets secrettypes.ResolvedSecrets, workingDir string) (*types.Config, error) {
+func LoadComposefile(dockerCli command.Cli, opts options.Deploy, environment map[string]string, workingDir string) (*types.Config, error) {
 	configDetails, err := GetConfigDetails(opts.Composefiles, dockerCli.In())
 	if err != nil {
 		return nil, err
@@ -43,8 +41,8 @@ func LoadComposefile(dockerCli command.Cli, opts options.Deploy, resolvedSecrets
 		configDetails.Environment[k] = v
 	}
 
-	// Inject external secrets into the environment for variable interpolation
-	for k, v := range resolvedSecrets {
+	// Add additional env vars into the environment for variable interpolation
+	for k, v := range environment {
 		configDetails.Environment[k] = v
 	}
 

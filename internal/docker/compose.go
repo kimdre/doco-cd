@@ -19,7 +19,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/utils/module"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
-	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 	"github.com/kimdre/doco-cd/internal/utils/set"
 	"github.com/kimdre/doco-cd/internal/utils/slice"
 
@@ -37,7 +36,6 @@ import (
 	"github.com/docker/compose/v5/pkg/compose"
 
 	"github.com/kimdre/doco-cd/internal/config"
-	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
@@ -418,7 +416,6 @@ func DeployStack(
 	jobLog *slog.Logger, externalRepoPath string, ctx *context.Context,
 	dockerCli *command.Cli, dockerClient *client.Client, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
 	changedFiles []gitInternal.ChangedFile, latestCommit, appVersion string, forceDeploy bool,
-	resolvedSecrets secrettypes.ResolvedSecrets,
 ) error {
 	startTime := time.Now()
 
@@ -436,24 +433,8 @@ func DeployStack(
 		return fmt.Errorf("%s", errMsg)
 	}
 
-	// Create a temporary env file if environment variables are specified in the deployment config
-	if deployConfig.Internal.Environment != nil {
-		tmpEnvFile, err := config.CreateTmpDotEnvFile(deployConfig)
-		if err != nil {
-			errMsg := "failed to create temporary env file"
-			return fmt.Errorf("%s: %w", errMsg, err)
-		}
-
-		// Delete the temp file after deployment
-		defer func(name string) {
-			err = os.Remove(name)
-			if err != nil {
-				stackLog.Warn("failed to delete temporary env file", logger.ErrAttr(err), slog.String("file", name))
-			}
-		}(tmpEnvFile)
-	}
-
-	project, err := LoadCompose(*ctx, externalRepoPath, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles, deployConfig.EnvFiles, deployConfig.Profiles, resolvedSecrets)
+	project, err := LoadCompose(*ctx, externalRepoPath, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles,
+		deployConfig.EnvFiles, deployConfig.Profiles, deployConfig.Internal.Environment)
 	if err != nil {
 		return fmt.Errorf("failed to load compose config: %w", err)
 	}
@@ -488,7 +469,7 @@ func DeployStack(
 	if swarm.ModeEnabled {
 		stackLog.Info("deploying swarm stack")
 
-		cfg, opts, err := LoadSwarmStack(dockerCli, project, deployConfig, resolvedSecrets, externalWorkingDir)
+		cfg, opts, err := LoadSwarmStack(dockerCli, project, deployConfig, externalWorkingDir)
 		if err != nil {
 			return fmt.Errorf("failed to load swarm stack: %w", err)
 		}

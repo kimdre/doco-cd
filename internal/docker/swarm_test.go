@@ -10,8 +10,6 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/encryption"
-	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
-
 	"github.com/kimdre/doco-cd/internal/test"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -81,9 +79,7 @@ func TestDeploySwarmStack(t *testing.T) {
 	repoPath := worktree.Filesystem.Root()
 	filePath := filepath.Join(repoPath, "docker-compose.yml")
 
-	resolvedSecrets := secrettypes.ResolvedSecrets{}
-
-	project, err := LoadCompose(t.Context(), tmpDir, tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, resolvedSecrets)
+	project, err := LoadCompose(t.Context(), tmpDir, tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +91,7 @@ func TestDeploySwarmStack(t *testing.T) {
 
 	ctx := t.Context()
 
-	cfg, opts, err := LoadSwarmStack(&dockerCli, project, deployConfigs[0], resolvedSecrets, tmpDir)
+	cfg, opts, err := LoadSwarmStack(&dockerCli, project, deployConfigs[0], tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to load swarm stack: %v", err)
 	}
