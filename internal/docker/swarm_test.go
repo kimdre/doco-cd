@@ -82,7 +82,7 @@ func TestDeploySwarmStack(t *testing.T) {
 
 	resolvedSecrets := secrettypes.ResolvedSecrets{}
 
-	project, err := LoadCompose(t.Context(), tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, resolvedSecrets)
+	project, err := LoadCompose(t.Context(), tmpDir, tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, resolvedSecrets)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,6 +3,7 @@ package filesystem
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,4 +36,44 @@ func VerifyAndSanitizePath(path, trustedRoot string) (string, error) {
 	}
 
 	return absPath, nil
+}
+
+// IsSocket checks if the given path is a socket file.
+func IsSocket(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+
+	return info.Mode().Type() == fs.ModeSocket
+}
+
+// IsDir checks if the given path is a directory.
+func IsDir(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+
+	return info.IsDir()
+}
+
+// IsSymlink checks if the given path is a symbolic link.
+func IsSymlink(path string) bool {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return false
+	}
+
+	return info.Mode().Type() == fs.ModeSymlink
+}
+
+// IsFile checks if the given path is a regular file without any mode bits set (like symlink, socket, named pipe, etc.).
+func IsFile(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+
+	return info.Mode().IsRegular()
 }
