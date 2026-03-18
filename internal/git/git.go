@@ -693,6 +693,7 @@ func HasChangesInSubdir(changedFiles []ChangedFile, repoPath, subdir, deployConf
 		if statErr != nil {
 			return fmt.Errorf("failed to get file info: %w", statErr)
 		}
+
 		if info.Mode()&os.ModeSymlink != 0 {
 			target, err := os.Readlink(path)
 			if err != nil {
