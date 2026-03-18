@@ -701,7 +701,7 @@ func TestFilesInPath(t *testing.T) {
 }
 
 func TestProjectFilesHaveChanges(t *testing.T) {
-	t.Parallel()
+	encryption.SetupAgeKeyEnvVar(t)
 
 	testCases := []struct {
 		name            string
