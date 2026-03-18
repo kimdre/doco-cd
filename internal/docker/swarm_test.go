@@ -24,7 +24,6 @@ import (
 
 func TestDeploySwarmStack(t *testing.T) {
 	encryption.SetupAgeKeyEnvVar(t)
-	t.Parallel()
 
 	dockerCli, err := CreateDockerCli(false, false)
 	if err != nil {
