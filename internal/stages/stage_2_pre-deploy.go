@@ -56,6 +56,10 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			return fmt.Errorf("failed to resolve external secrets: %w", err)
 		}
 
+		if s.DeployConfig.Internal.Environment == nil {
+			s.DeployConfig.Internal.Environment = make(map[string]string)
+		}
+
 		for k, v := range resolvedSecrets {
 			s.DeployConfig.Internal.Environment[k] = v
 		}
