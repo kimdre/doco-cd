@@ -76,14 +76,7 @@ func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
 		}
 	}
 
-	// Open the repository root for writing decrypted files without changing their permissions.
-	root, err := os.OpenRoot(repoPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open repo root %s: %w", repoPath, err)
-	}
-	defer root.Close()
-
-	err = filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return fmt.Errorf("failed to walk directory %s: %w", path, err)
 		}
@@ -121,16 +114,6 @@ func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
 				absTarget = filepath.Join(filepath.Dir(path), target)
 			}
 
-			// Prevent absTarget to escape the repoPath
-			relPath, err := filepath.Rel(repoPath, absTarget)
-			if err != nil {
-				return fmt.Errorf("failed to get relative path for symlink target %s: %w", absTarget, err)
-			}
-
-			if strings.HasPrefix(relPath, "..") {
-				return fmt.Errorf("symlink target %s escapes the repository root %s", absTarget, repoPath)
-			}
-
 			// Recursively walk the symlink target
 			_, err = DecryptFilesInDirectory(repoPath, absTarget)
 
@@ -141,7 +124,7 @@ func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
 			return nil
 		}
 
-		decrypted, err := DecryptFileInPlace(path, repoPath)
+		decrypted, err := DecryptFileInPlace(path)
 		if err != nil {
 			return fmt.Errorf("failed to decrypt file %s: %w", path, err)
 		}
@@ -174,7 +157,7 @@ func IsEncryptedContent(content string) bool {
 // DecryptFileInPlace decrypts a SOPS-encrypted file at the given path and overwrites it with the decrypted content.
 // If the file is encrypted and successfully decrypted, it returns true. If the file is not encrypted, it returns false without modifying the file.
 // The repoPath parameter is used to ensure that the file being decrypted is within the trusted repository root, preventing potential security issues with symlinks or path traversal.
-func DecryptFileInPlace(path, repoPath string) (bool, error) {
+func DecryptFileInPlace(path string) (bool, error) {
 	path = filepath.Clean(path)
 
 	if !filepath.IsAbs(path) {
@@ -184,10 +167,6 @@ func DecryptFileInPlace(path, repoPath string) (bool, error) {
 	// Skip if the path is not a regular file (like socket, named pipe, etc.)
 	if !filesystem.IsFile(path) {
 		return false, nil
-	}
-
-	if repoPath == "" {
-		return false, fmt.Errorf("%w: trusted root must not be empty", filesystem.ErrInvalidFilePath)
 	}
 
 	lock := acquireFileLock(path)
@@ -202,38 +181,14 @@ func DecryptFileInPlace(path, repoPath string) (bool, error) {
 		return false, nil
 	}
 
-	// Prevent path to escape the repoPath
-	relPath, err := filepath.Rel(repoPath, path)
-	if err != nil {
-		return false, fmt.Errorf("failed to get relative path for symlink target %s: %w", path, err)
-	}
-
-	if strings.HasPrefix(relPath, "..") {
-		return false, fmt.Errorf("path %s escapes the repository root %s", path, repoPath)
-	}
-
-	// Ensure the path is within the trusted root and use the sanitized absolute path.
-	// Open the repository root for writing decrypted files without changing their permissions.
-	root, err := os.OpenRoot(repoPath)
-	if err != nil {
-		return false, fmt.Errorf("failed to open repo root %s: %w", repoPath, err)
-	}
-	defer root.Close()
-
 	decryptedContent, err := DecryptFile(path)
 	if err != nil {
 		return false, fmt.Errorf("failed to decrypt file %s: %w", path, err)
 	}
 
-	f, err := root.OpenFile(relPath, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, filesystem.PermOwner)
+	err = os.WriteFile(path, decryptedContent, filesystem.PermOwner)
 	if err != nil {
-		return false, fmt.Errorf("failed to open file %s for writing: %w", path, err)
-	}
-
-	defer f.Close()
-
-	if _, err := f.Write(decryptedContent); err != nil {
-		return false, fmt.Errorf("failed to write decrypted content to file %s: %w", path, err)
+		return false, fmt.Errorf("failed to write file %s: %w", path, err)
 	}
 
 	return true, nil
