@@ -221,7 +221,7 @@ func LoadCompose(ctx context.Context, repoPath, workingDir, projectName string, 
 
 	decryptFiles := slices.Concat(absComposeFiles, absEnvFiles)
 	for _, file := range decryptFiles {
-		decrypted, err := encryption.DecryptFileInPlace(file, repoPath)
+		decrypted, err := encryption.DecryptFileInPlace(file)
 		if err != nil {
 			return nil, fmt.Errorf("failed to decrypt file %s: %w", file, err)
 		}
@@ -1151,7 +1151,7 @@ func DecryptProjectFiles(repoPath string, p *types.Project) ([]string, error) {
 			f = filepath.Join(p.WorkingDir, f)
 		}
 
-		decrypted, err := encryption.DecryptFileInPlace(f, repoPath)
+		decrypted, err := encryption.DecryptFileInPlace(f)
 		if err != nil {
 			return decryptedFiles, fmt.Errorf("failed to decrypt project file '%s': %w", f, err)
 		}
