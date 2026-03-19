@@ -65,17 +65,20 @@ func ParseConfigFromEnv(config interface{}, mappings *[]EnvVarFileMapping) error
 }
 
 // LoadLocalDotEnv processes local dotenv files and loads their variables into the DeployConfig.Internal.Environment map.
-func LoadLocalDotEnv(deployConfig *DeployConfig, internalRepoPath string) error {
+// Remote dotenv files (prefixed with "remote:") are collected and left in DeployConfig.EnvFiles for later processing.
+func LoadLocalDotEnv(deployConfig *DeployConfig, basePath string) error {
 	const remotePrefix = "remote:"
 
 	var remoteEnvFiles []string // List of env files that are not local and will be processed later
 
-	envVars := make(map[string]string)
+	if len(deployConfig.Internal.Environment) == 0 {
+		deployConfig.Internal.Environment = make(map[string]string)
+	}
 
 	for _, f := range deployConfig.EnvFiles {
 		// Process any env-files that are local and not in the remote repository (see repository_url)
 		if !strings.HasPrefix(f, remotePrefix) {
-			absPath := filepath.Join(internalRepoPath, f)
+			absPath := filepath.Join(basePath, f)
 
 			// Decrypt file if needed
 			isEncrypted, err := encryption.IsEncryptedFile(absPath)
@@ -108,7 +111,7 @@ func LoadLocalDotEnv(deployConfig *DeployConfig, internalRepoPath string) error 
 			}
 
 			for k, v := range envMap {
-				envVars[k] = v
+				deployConfig.Internal.Environment[k] = v
 			}
 		} else {
 			f = strings.TrimPrefix(f, remotePrefix)
@@ -117,7 +120,6 @@ func LoadLocalDotEnv(deployConfig *DeployConfig, internalRepoPath string) error 
 	}
 
 	deployConfig.EnvFiles = remoteEnvFiles
-	deployConfig.Internal.Environment = envVars
 
 	return nil
 }

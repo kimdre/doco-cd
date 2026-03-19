@@ -46,6 +46,7 @@ var (
 	ErrCheckoutFailed             = errors.New("failed to checkout repository")
 	ErrFetchFailed                = errors.New("failed to fetch repository")
 	ErrPullFailed                 = errors.New("failed to pull repository")
+	ErrRepositoryNotExists        = git.ErrRepositoryNotExists
 	ErrRepositoryAlreadyExists    = git.ErrRepositoryAlreadyExists
 	ErrInvalidReference           = git.ErrInvalidReference
 	ErrSSHKeyRequired             = errors.New("ssh URL requires SSH_PRIVATE_KEY to be set")
@@ -231,8 +232,8 @@ func OpenRepository(path string) (*git.Repository, error) {
 	return git.PlainOpen(path)
 }
 
-// fetchRepository fetches updates from the remote repository, including all branches and tags, and prunes deleted references.
-func fetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod) error {
+// FetchRepository fetches updates from the remote repository, including all branches and tags, and prunes deleted references.
+func FetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod) error {
 	opts := &git.FetchOptions{
 		RemoteName: RemoteName,
 		RemoteURL:  url,
@@ -286,7 +287,7 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 		return nil, err
 	}
 
-	err = fetchRepository(repo, url, skipTLSVerify, proxyOpts, auth)
+	err = FetchRepository(repo, url, skipTLSVerify, proxyOpts, auth)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrFetchFailed, err)
 	}
