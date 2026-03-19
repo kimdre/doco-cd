@@ -265,7 +265,7 @@ compose_files:
 
 			downOpts := api.DownOptions{
 				RemoveOrphans: true,
-				Images:        "all",
+				Images:        "local",
 				Volumes:       true,
 			}
 

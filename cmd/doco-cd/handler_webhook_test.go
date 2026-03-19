@@ -164,7 +164,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 	downOpts := api.DownOptions{
 		RemoveOrphans: true,
-		Images:        "all",
+		Images:        "local",
 		Volumes:       true,
 	}
 
