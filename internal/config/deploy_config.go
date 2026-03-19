@@ -38,37 +38,37 @@ const DefaultReference = "refs/heads/main"
 
 // DeployConfig is the structure of the deployment configuration file.
 type DeployConfig struct {
-	Name               string   `yaml:"name"`                                                                                                         // Name of the docker-compose deployment / stack
-	RepositoryUrl      HttpUrl  `yaml:"repository_url" default:"" validate:"httpUrl"`                                                                 // RepositoryUrl is the http URL of the Git repository to deploy
-	WebhookEventFilter string   `yaml:"webhook_filter" default:""`                                                                                    // WebhookEventFilter is a regular expression to whitelist deployment triggers based on the webhook event payload (e.g., branch like "^refs/heads/main$" or "main", tag like "^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$" or "v[0-9]+\.[0-9]+\.[0-9]+")
-	Reference          string   `yaml:"reference" default:""`                                                                                         // Reference is the Git reference to the deployment, e.g., refs/heads/main, main, refs/tags/v1.0.0 or v1.0.0
-	WorkingDirectory   string   `yaml:"working_dir" default:"."`                                                                                      // WorkingDirectory is the working directory for the deployment
-	ComposeFiles       []string `yaml:"compose_files" default:"[\"compose.yaml\", \"compose.yml\", \"docker-compose.yml\", \"docker-compose.yaml\"]"` // ComposeFiles is the list of docker-compose files to use
-	EnvFiles           []string `yaml:"env_files" default:"[\".env\"]"`                                                                               // EnvFiles is the list of dotenv files to use for variable interpolation
-	RemoveOrphans      bool     `yaml:"remove_orphans" default:"true"`                                                                                // RemoveOrphans removes containers for services not defined in the Compose file
-	PruneImages        bool     `yaml:"prune_images" default:"true"`                                                                                  // PruneImages removes images that are no longer used by any service in the deployment or any other running container
-	ForceRecreate      bool     `yaml:"force_recreate" default:"false"`                                                                               // ForceRecreate forces the recreation/redeployment of containers even if the configuration has not changed
-	ForceImagePull     bool     `yaml:"force_image_pull" default:"false"`                                                                             // ForceImagePull always pulls the latest version of the image tags you've specified if a newer version is available
-	Timeout            int      `yaml:"timeout" default:"180"`                                                                                        // Timeout is the time in seconds to wait for the deployment to finish in seconds before timing out
+	Name               string   `yaml:"name" json:"name"`                                                                                                                  // Name of the docker-compose deployment / stack
+	RepositoryUrl      HttpUrl  `yaml:"repository_url" json:"repository_url" default:"" validate:"httpUrl"`                                                                // RepositoryUrl is the http URL of the Git repository to deploy
+	WebhookEventFilter string   `yaml:"webhook_filter" json:"webhook_filter" default:""`                                                                                   // WebhookEventFilter is a regular expression to whitelist deployment triggers based on the webhook event payload (e.g., branch like "^refs/heads/main$" or "main", tag like "^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$" or "v[0-9]+\.[0-9]+\.[0-9]+")
+	Reference          string   `yaml:"reference" json:"reference" default:""`                                                                                             // Reference is the Git reference to the deployment, e.g., refs/heads/main, main, refs/tags/v1.0.0 or v1.0.0
+	WorkingDirectory   string   `yaml:"working_dir" json:"working_dir" default:"."`                                                                                        // WorkingDirectory is the working directory for the deployment
+	ComposeFiles       []string `yaml:"compose_files" json:"compose_files" default:"[\"compose.yaml\", \"compose.yml\", \"docker-compose.yml\", \"docker-compose.yaml\"]"` // ComposeFiles is the list of docker-compose files to use
+	EnvFiles           []string `yaml:"env_files" json:"env_files" default:"[\".env\"]"`                                                                                   // EnvFiles is the list of dotenv files to use for variable interpolation
+	RemoveOrphans      bool     `yaml:"remove_orphans" json:"remove_orphans" default:"true"`                                                                               // RemoveOrphans removes containers for services not defined in the Compose file
+	PruneImages        bool     `yaml:"prune_images" json:"prune_images" default:"true"`                                                                                   // PruneImages removes images that are no longer used by any service in the deployment or any other running container
+	ForceRecreate      bool     `yaml:"force_recreate" json:"force_recreate" default:"false"`                                                                              // ForceRecreate forces the recreation/redeployment of containers even if the configuration has not changed
+	ForceImagePull     bool     `yaml:"force_image_pull" json:"force_image_pull" default:"false"`                                                                          // ForceImagePull always pulls the latest version of the image tags you've specified if a newer version is available
+	Timeout            int      `yaml:"timeout" json:"timeout" default:"180"`                                                                                              // Timeout is the time in seconds to wait for the deployment to finish in seconds before timing out
 	BuildOpts          struct {
-		ForceImagePull bool              `yaml:"force_image_pull" default:"false"` // ForceImagePull always attempt to pull a newer version of the image
-		Quiet          bool              `yaml:"quiet" default:"false"`            // Quiet suppresses the build output
-		Args           map[string]string `yaml:"args"`                             // BuildArgs is a map of build-time arguments to pass to the build process
-		NoCache        bool              `yaml:"no_cache" default:"false"`         // NoCache disables the use of the cache when building images
+		ForceImagePull bool              `yaml:"force_image_pull" json:"force_image_pull" default:"false"` // ForceImagePull always attempt to pull a newer version of the image
+		Quiet          bool              `yaml:"quiet" json:"quiet" default:"false"`                       // Quiet suppresses the build output
+		Args           map[string]string `yaml:"args" json:"args"`                                         // BuildArgs is a map of build-time arguments to pass to the build process
+		NoCache        bool              `yaml:"no_cache" json:"no_cache" default:"false"`                 // NoCache disables the use of the cache when building images
 	} `yaml:"build_opts"` // BuildOpts is the build options for the deployment
-	Destroy     bool `yaml:"destroy" default:"false"` // Destroy removes the deployment and all its resources from the Docker host
+	Destroy     bool `yaml:"destroy" json:"destroy" default:"false"` // Destroy removes the deployment and all its resources from the Docker host
 	DestroyOpts struct {
-		RemoveVolumes bool `yaml:"remove_volumes" default:"true"` // RemoveVolumes removes the volumes used by the deployment (always enabled in docker swarm mode)
-		RemoveImages  bool `yaml:"remove_images" default:"true"`  // RemoveImages removes the images used by the deployment (currently not supported in docker swarm mode)
-		RemoveRepoDir bool `yaml:"remove_dir" default:"true"`     // RemoveRepoDir removes the repository directory after the deployment is destroyed
-	} `yaml:"destroy_opts"` // DestroyOpts is the destroy options for the deployment
-	Profiles         []string          `yaml:"profiles" default:"[]"`         // Profiles is a list of profiles to use for the deployment, e.g., ["dev", "prod"]. See https://docs.docker.com/compose/how-tos/profiles/
-	ExternalSecrets  map[string]string `yaml:"external_secrets"`              // ExternalSecrets maps env vars to secret IDs/keys for injecting secrets from external providers like Bitwarden SM at deployment, e.g. {"DB_PASSWORD": "138e3697-ed58-431c-b866-b3550066343a"}
-	AutoDiscover     bool              `yaml:"auto_discover" default:"false"` // AutoDiscover enables autodiscovery of services to deploy in the working directory by checking for subdirectories with docker-compose files
+		RemoveVolumes bool `yaml:"remove_volumes" json:"remove_volumes" default:"true"` // RemoveVolumes removes the volumes used by the deployment (always enabled in docker swarm mode)
+		RemoveImages  bool `yaml:"remove_images" json:"remove_images" default:"true"`   // RemoveImages removes the images used by the deployment (currently not supported in docker swarm mode)
+		RemoveRepoDir bool `yaml:"remove_dir" json:"remove_dir" default:"true"`         // RemoveRepoDir removes the repository directory after the deployment is destroyed
+	} `yaml:"destroy_opts" json:"destroy_opts"` // DestroyOpts is the destroy options for the deployment
+	Profiles         []string          `yaml:"profiles" json:"profiles" default:"[]"`              // Profiles is a list of profiles to use for the deployment, e.g., ["dev", "prod"]. See https://docs.docker.com/compose/how-tos/profiles/
+	ExternalSecrets  map[string]string `yaml:"external_secrets" json:"external_secrets"`           // ExternalSecrets maps env vars to secret IDs/keys for injecting secrets from external providers like Bitwarden SM at deployment, e.g. {"DB_PASSWORD": "138e3697-ed58-431c-b866-b3550066343a"}
+	AutoDiscover     bool              `yaml:"auto_discover" json:"auto_discover" default:"false"` // AutoDiscover enables autodiscovery of services to deploy in the working directory by checking for subdirectories with docker-compose files
 	AutoDiscoverOpts struct {
-		ScanDepth int  `yaml:"depth" default:"0"`     // ScanDepth is the maximum depth of subdirectories to scan for docker-compose files
-		Delete    bool `yaml:"delete" default:"true"` // Delete removes obsolete auto-discovered deployments that are no longer present in the repository
-	} `yaml:"auto_discover_opts"` // AutoDiscoverOpts are options for the autodiscovery feature
+		ScanDepth int  `yaml:"depth" json:"depth" default:"0"`      // ScanDepth is the maximum depth of subdirectories to scan for docker-compose files
+		Delete    bool `yaml:"delete" json:"delete" default:"true"` // Delete removes obsolete auto-discovered deployments that are no longer present in the repository
+	} `yaml:"auto_discover_opts" json:"auto_discover_opts"` // AutoDiscoverOpts are options for the autodiscovery feature
 	Internal struct {
 		File        string            `yaml:"-"` // File is the path to the deployment configuration file in the repository (if RepositoryUrl is not set) or in the cloned repository (if RepositoryUrl is set)
 		Environment map[string]string // Environment is stores environment variables for variable interpolation in the compose project

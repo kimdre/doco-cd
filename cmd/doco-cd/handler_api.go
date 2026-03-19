@@ -1,11 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -45,6 +47,7 @@ func registerApiEndpoints(c *config.AppConfig, h *handlerData, log *logger.Logge
 			{apiPath + "/stacks", h.GetStacksApiHandler},
 			{apiPath + "/stack/{stackName}", h.StackApiHandler},
 			{apiPath + "/stack/{stackName}/{action}", h.StackActionApiHandler},
+			{apiPath + "/poll/run", h.TriggerPollHandler},
 		}
 
 		for _, ep := range endpoints {
@@ -676,4 +679,97 @@ func (h *handlerData) GetStacksApiHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	JSONResponse(w, stacks, jobID, http.StatusOK)
+}
+
+// TriggerPollHandler handles API requests to trigger a poll of the configured repositories.
+// This can be used to manually trigger a poll outside the planned intervals,
+// for example after a failed deployment or to check for new commits after a network outage.
+func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+
+	// Add a job id to the context to track deployments in the logs
+	jobID := uuid.Must(uuid.NewV7()).String()
+	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
+
+	jobLog.Debug("received api request")
+
+	if !requireMethod(w, jobLog, r, http.MethodPost) {
+		return
+	}
+
+	if !restAPI.ValidateApiKey(r, h.appConfig.ApiSecret) {
+		jobLog.Error(restAPI.ErrInvalidApiKey.Error())
+		JSONError(w, restAPI.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
+
+		return
+	}
+
+	wait := getQueryParam(r, w, jobLog, jobID, "wait", "bool", true).(bool)
+
+	decoder := json.NewDecoder(r.Body)
+
+	var pollConfigs []config.PollConfig
+	if err := decoder.Decode(&pollConfigs); err != nil {
+		h.log.Error(err.Error())
+		JSONError(w, err.Error(), "", "", http.StatusBadRequest)
+	}
+
+	if len(pollConfigs) > 0 {
+		h.log.Info(
+			"poll triggered via API, starting jobs",
+			slog.Any("poll_config", logger.BuildSliceLogValue(pollConfigs, "Deployments.Internal")),
+		)
+
+		var wg sync.WaitGroup
+
+		if wait {
+			for _, p := range pollConfigs {
+				p.RunOnce = true
+
+				pollJob := &config.PollJob{
+					Config:  p,
+					LastRun: 0,
+					NextRun: 0,
+				}
+
+				h.log.Debug("Starting poll handler", "config", p)
+				wg.Add(1)
+
+				go func() {
+					defer wg.Done()
+
+					h.PollHandler(pollJob)
+					h.log.Debug("PollJob handler stopped", "config", p)
+				}()
+			}
+
+			wg.Wait()
+		} else {
+			for _, p := range pollConfigs {
+				p.RunOnce = true
+
+				pollJob := &config.PollJob{
+					Config:  p,
+					LastRun: 0,
+					NextRun: 0,
+				}
+
+				h.log.Debug("Starting poll handler", "config", p)
+				wg.Add(1)
+
+				go func() {
+					defer wg.Done()
+
+					h.PollHandler(pollJob)
+					h.log.Debug("PollJob handler stopped", "config", p)
+				}()
+			}
+		}
+
+		JSONResponse(w, "poll jobs complete", jobID, http.StatusOK)
+	} else {
+		err = errors.New("no poll configuration provided in request body")
+		jobLog.Error(err.Error())
+		JSONError(w, err.Error(), "", jobID, http.StatusBadRequest)
+	}
 }
