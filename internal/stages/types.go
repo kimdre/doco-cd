@@ -16,7 +16,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
-	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -124,8 +123,7 @@ type Docker struct {
 
 // DeploymentState holds the dynamic state information during the deployment process.
 type DeploymentState struct {
-	ChangedFiles    []gitInternal.ChangedFile
-	ResolvedSecrets secrettypes.ResolvedSecrets
+	ChangedFiles []gitInternal.ChangedFile
 }
 
 // StageManager is the main structure that holds the logger and stage data.

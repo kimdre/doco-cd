@@ -46,6 +46,8 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		s.Repository.CloneURL = s.DeployConfig.RepositoryUrl
 		s.Repository.Name = git.GetRepoName(string(s.Repository.CloneURL))
 
+		// Load local (without remote: prefix) dotenv files before paths get updated to remote repository
+		// Remote dotenv files get read later
 		err = config.LoadLocalDotEnv(s.DeployConfig, s.Repository.PathInternal)
 		if err != nil {
 			return fmt.Errorf("failed to parse local env files: %w", err)
@@ -73,6 +75,22 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		return fmt.Errorf("failed to get auth method: %w", err)
 	}
 
+	// Attempt to fetch the remote repository before checking if we can skip cloning/updating,
+	// to ensure we have the latest commits and references available locally
+	if s.DeployConfig.RepositoryUrl != "" {
+		repo, err := git.OpenRepository(s.Repository.PathInternal)
+		switch {
+		case err == nil:
+			err = git.FetchRepository(repo, string(s.Repository.CloneURL), s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, auth)
+			if err != nil {
+				return fmt.Errorf("failed to fetch repository: %w", err)
+			}
+		case errors.Is(err, git.ErrRepositoryNotExists): // Continue without fetching the repository, it will be cloned later
+		default:
+			return fmt.Errorf("failed to open repository: %w", err)
+		}
+	}
+
 	// Check if we can skip cloning/updating because the previous run (initial or a prior deploy config)
 	skipCloneUpdate, err := git.MatchesHead(s.Repository.PathInternal, s.DeployConfig.Reference)
 	if err != nil {
@@ -96,6 +114,12 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 			stageLog.Info("cloned remote repository",
 				slog.String("url", string(s.Repository.CloneURL)),
 				slog.String("path", s.Repository.PathExternal))
+		}
+
+		// Now also load remote dotenv files
+		err = config.LoadLocalDotEnv(s.DeployConfig, filepath.Join(s.Repository.PathInternal, s.DeployConfig.WorkingDirectory))
+		if err != nil {
+			return fmt.Errorf("failed to parse remote env files: %w", err)
 		}
 	}
 

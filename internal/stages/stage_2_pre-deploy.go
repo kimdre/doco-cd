@@ -5,15 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/go-git/go-git/v5/plumbing"
-
-	"github.com/kimdre/doco-cd/internal/config"
-	"github.com/kimdre/doco-cd/internal/logger"
 
 	"github.com/kimdre/doco-cd/internal/utils/set"
 
@@ -55,9 +51,17 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		stageLog.Debug("resolving external secrets", slog.Any("external_secrets", s.DeployConfig.ExternalSecrets))
 
 		// Resolve external secrets
-		s.DeployState.ResolvedSecrets, err = (*s.SecretProvider).ResolveSecretReferences(ctx, s.DeployConfig.ExternalSecrets)
+		resolvedSecrets, err := (*s.SecretProvider).ResolveSecretReferences(ctx, s.DeployConfig.ExternalSecrets)
 		if err != nil {
 			return fmt.Errorf("failed to resolve external secrets: %w", err)
+		}
+
+		if s.DeployConfig.Internal.Environment == nil {
+			s.DeployConfig.Internal.Environment = make(map[string]string)
+		}
+
+		for k, v := range resolvedSecrets {
+			s.DeployConfig.Internal.Environment[k] = v
 		}
 	}
 
@@ -140,27 +144,10 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			return fmt.Errorf("failed to check for default compose files: %w", err)
 		}
 
-		// Create a temporary env file if environment variables are specified in the deployment config
-		if s.DeployConfig.Internal.Environment != nil {
-			tmpEnvFile, err := config.CreateTmpDotEnvFile(s.DeployConfig)
-			if err != nil {
-				errMsg := "failed to create temporary env file"
-				return fmt.Errorf("%s: %w", errMsg, err)
-			}
-
-			// Delete the temp file after deployment
-			defer func(name string) {
-				err = os.Remove(name)
-				if err != nil {
-					s.Log.Warn("failed to delete temporary env file", logger.ErrAttr(err), slog.String("file", name))
-				}
-			}(tmpEnvFile)
-		}
-
 		s.Docker.Project, err = docker.LoadCompose(
 			ctx, s.Repository.PathExternal, extAbsWorkingDir, s.DeployConfig.Name,
 			s.DeployConfig.ComposeFiles, s.DeployConfig.EnvFiles,
-			s.DeployConfig.Profiles, s.DeployState.ResolvedSecrets)
+			s.DeployConfig.Profiles, s.DeployConfig.Internal.Environment)
 		if err != nil {
 			return fmt.Errorf("failed to load compose project: %w", err)
 		}

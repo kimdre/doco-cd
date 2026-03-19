@@ -21,8 +21,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
 
-	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
-
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -284,11 +282,14 @@ compose_files:
 		testLog := logger.New(slog.LevelInfo)
 		jobLog := testLog.With(slog.String("job_id", jobID))
 
-		resolvedSecrets := make(secrettypes.ResolvedSecrets)
 		if secretProvider != nil && len(deployConf.ExternalSecrets) > 0 {
-			resolvedSecrets, err = secretProvider.ResolveSecretReferences(ctx, deployConf.ExternalSecrets)
+			resolvedSecrets, err := secretProvider.ResolveSecretReferences(ctx, deployConf.ExternalSecrets)
 			if err != nil {
 				t.Fatalf("failed to resolve external secrets: %s", err.Error())
+			}
+
+			for k, v := range resolvedSecrets {
+				deployConf.Internal.Environment[k] = v
 			}
 		}
 
@@ -300,7 +301,7 @@ compose_files:
 			}),
 		).Do(func() error {
 			return DeployStack(jobLog, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
-				[]git.ChangedFile{}, latestCommit, "dev", false, resolvedSecrets)
+				[]git.ChangedFile{}, latestCommit, "dev", false)
 		})
 		if err != nil {
 			t.Fatalf("failed to deploy stack: %v", err)
