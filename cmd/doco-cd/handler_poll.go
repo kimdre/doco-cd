@@ -53,7 +53,7 @@ func StartPoll(h *handlerData, pollConfig config.PollConfig, wg *sync.WaitGroup)
 	go func() {
 		defer wg.Done()
 
-		h.PollHandler(pollJob)
+		h.PollHandler(context.Background(), pollJob)
 		h.log.Debug("PollJob handler stopped", "config", pollConfig)
 	}()
 
@@ -61,7 +61,7 @@ func StartPoll(h *handlerData, pollConfig config.PollConfig, wg *sync.WaitGroup)
 }
 
 // PollHandler is a function that handles polling for changes in a repository.
-func (h *handlerData) PollHandler(pollJob *config.PollJob) {
+func (h *handlerData) PollHandler(ctx context.Context, pollJob *config.PollJob) {
 	repoName := git.GetRepoName(string(pollJob.Config.CloneUrl))
 
 	logger := h.log.With(slog.String("repository", repoName))
@@ -88,7 +88,7 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 
 				logger.Debug("start poll job")
 
-				_ = RunPoll(context.Background(), pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.dockerClient, logger, metadata, h.secretProvider)
+				_ = RunPoll(ctx, pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.dockerClient, logger, metadata, h.secretProvider)
 
 				lock.Unlock()
 			}
@@ -100,7 +100,7 @@ func (h *handlerData) PollHandler(pollJob *config.PollJob) {
 
 		// If run_once is set, perform a single run and exit after the initial run.
 		if pollJob.Config.RunOnce {
-			logger.Info("RunOnce configured: single initial poll completed, stopped polling", slog.Any("config", pollJob.Config))
+			logger.Debug("run_once is set, exiting poll handler after run")
 			return
 		}
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -710,8 +711,11 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 
 	var pollConfigs []config.PollConfig
 	if err := decoder.Decode(&pollConfigs); err != nil {
-		h.log.Error(err.Error())
-		JSONError(w, err.Error(), "", "", http.StatusBadRequest)
+		errMsg = "failed to decode json in body"
+		h.log.Error(errMsg, logger.ErrAttr(err))
+		JSONError(w, errMsg, err.Error(), jobID, http.StatusBadRequest)
+
+		return
 	}
 
 	if len(pollConfigs) > 0 {
@@ -722,54 +726,39 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 
 		var wg sync.WaitGroup
 
-		if wait {
-			for _, p := range pollConfigs {
-				p.RunOnce = true
+		for _, p := range pollConfigs {
+			p.RunOnce = true
 
-				pollJob := &config.PollJob{
-					Config:  p,
-					LastRun: 0,
-					NextRun: 0,
-				}
-
-				h.log.Debug("Starting poll handler", "config", p)
-				wg.Add(1)
-
-				go func() {
-					defer wg.Done()
-
-					h.PollHandler(pollJob)
-					h.log.Debug("PollJob handler stopped", "config", p)
-				}()
+			pollJob := &config.PollJob{
+				Config:  p,
+				LastRun: 0,
+				NextRun: 0,
 			}
 
-			wg.Wait()
-		} else {
-			for _, p := range pollConfigs {
-				p.RunOnce = true
+			h.log.Debug("Starting poll handler", "config", p)
 
-				pollJob := &config.PollJob{
-					Config:  p,
-					LastRun: 0,
-					NextRun: 0,
-				}
+			wg.Add(1)
 
-				h.log.Debug("Starting poll handler", "config", p)
-				wg.Add(1)
+			go func(ctx context.Context) {
+				defer wg.Done()
 
-				go func() {
-					defer wg.Done()
-
-					h.PollHandler(pollJob)
-					h.log.Debug("PollJob handler stopped", "config", p)
-				}()
-			}
+				h.PollHandler(ctx, pollJob)
+			}(r.Context())
 		}
 
-		JSONResponse(w, "poll jobs complete", jobID, http.StatusOK)
-	} else {
-		err = errors.New("no poll configuration provided in request body")
-		jobLog.Error(err.Error())
-		JSONError(w, err.Error(), "", jobID, http.StatusBadRequest)
+		if wait {
+			wg.Wait()
+			JSONResponse(w, "poll jobs complete", jobID, http.StatusOK)
+
+			return
+		}
+
+		JSONResponse(w, "poll jobs started", jobID, http.StatusAccepted)
+
+		return
 	}
+
+	err = errors.New("no poll configuration provided in request body")
+	jobLog.Error(err.Error())
+	JSONError(w, err.Error(), "", jobID, http.StatusBadRequest)
 }
