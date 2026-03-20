@@ -62,3 +62,78 @@ func TestVerifyAndSanitizePath(t *testing.T) {
 		})
 	}
 }
+
+func TestInBasePath(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name        string
+		path        string
+		trustedRoot string
+		expected    bool
+	}{
+		{
+			name:        "Same path",
+			path:        "/valid/path",
+			trustedRoot: "/valid/path",
+			expected:    true,
+		},
+		{
+			name:        "Path within trusted root",
+			path:        "/valid/path",
+			trustedRoot: "/valid",
+			expected:    true,
+		},
+		{
+			name:        "Path outside trusted root",
+			path:        "/invalid/path",
+			trustedRoot: "/valid",
+			expected:    false,
+		},
+		{
+			name:        "Absolute Path with traversal",
+			path:        "/valid/../../invalid/path",
+			trustedRoot: "/valid",
+			expected:    false,
+		},
+		{
+			name:        "Relative path",
+			path:        "valid/path",
+			trustedRoot: "valid",
+			expected:    true,
+		},
+		{
+			name:        "Relative path with traversal",
+			path:        "valid/../../invalid/path",
+			trustedRoot: "valid",
+			expected:    false,
+		},
+		{
+			name:        "Relative path outside trusted root",
+			path:        "invalid/path",
+			trustedRoot: "valid",
+			expected:    false,
+		},
+		{
+			name:        "Path in base outside trusted root",
+			path:        "/base/invalid/path",
+			trustedRoot: "/base/valid",
+			expected:    false,
+		},
+		{
+			name:        "Path in base in trusted root",
+			path:        "/base/valid/path",
+			trustedRoot: "/base/valid",
+			expected:    true,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := InBasePath(tc.trustedRoot, tc.path)
+
+			if result != tc.expected {
+				t.Fatalf("expected %v, got %v", tc.expected, result)
+			}
+		})
+	}
+}

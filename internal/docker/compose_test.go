@@ -1569,7 +1569,7 @@ func TestGetProjects(t *testing.T) {
 	t.Logf("Found %d projects", len(projects))
 }
 
-func Test_checkPathAffected(t *testing.T) {
+func TestCheckPathAffected(t *testing.T) {
 	const repoRoot = "/data/reporoot"
 
 	tests := []struct {
@@ -1678,7 +1678,7 @@ func Test_checkPathAffected(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := checkPathAffected(tt.changed, tt.used)
+			got := filesystem.InBasePath(tt.used, tt.changed)
 			if tt.want != got {
 				t.Errorf("checkPathAffected(used=%q, changed=%q) = %v, want %v", tt.used, tt.changed, got, tt.want)
 			}

@@ -27,10 +27,7 @@ var IgnoreDirs = []string{
 	"node_modules",
 }
 
-var (
-	ErrSopsKeyNotSet = errors.New("SOPS secret key is not set")
-	ErrPathTraversal = errors.New("path traversal detected")
-)
+var ErrSopsKeyNotSet = errors.New("SOPS secret key is not set")
 
 func GetFileFormat(path string) string {
 	var format string
@@ -66,25 +63,10 @@ func DecryptContent(content []byte, format string) ([]byte, error) {
 	return decrypt.Data(content, format)
 }
 
-// Add a check to ensure files/directories are within the repository root.
-func isWithinRepoRoot(repoPath, targetPath string) bool {
-	absRepoPath, err := filepath.Abs(repoPath)
-	if err != nil {
-		return false
-	}
-
-	absTargetPath, err := filepath.Abs(targetPath)
-	if err != nil {
-		return false
-	}
-
-	return strings.HasPrefix(absTargetPath, absRepoPath)
-}
-
 // DecryptFilesInDirectory walks through the specified directory and decrypts all SOPS-encrypted files.
 func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
-	if !isWithinRepoRoot(repoPath, dirPath) {
-		return nil, fmt.Errorf("%w: %s is outside the repository root %s", ErrPathTraversal, dirPath, repoPath)
+	if !filesystem.InBasePath(repoPath, dirPath) {
+		return nil, fmt.Errorf("%w: %s is outside the repository root %s", filesystem.ErrPathTraversal, dirPath, repoPath)
 	}
 
 	var decryptedFiles []string
@@ -138,7 +120,7 @@ func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
 
 			// Recursively walk the symlink target
 			_, err = DecryptFilesInDirectory(repoPath, absTarget)
-			if errors.Is(err, ErrPathTraversal) {
+			if errors.Is(err, filesystem.ErrPathTraversal) {
 				return nil
 			}
 

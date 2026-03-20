@@ -31,11 +31,25 @@ func VerifyAndSanitizePath(path, trustedRoot string) (string, error) {
 
 	trustedRoot = filepath.Clean(trustedRoot) + string(os.PathSeparator)
 
-	if !strings.HasPrefix(absPath, trustedRoot) {
-		return absPath, ErrPathTraversal
+	if !InBasePath(trustedRoot, absPath) {
+		return absPath, fmt.Errorf("%w: %s is outside of trusted root %s", ErrPathTraversal, absPath, trustedRoot)
 	}
 
 	return absPath, nil
+}
+
+// InBasePath checks if the given path is within the base path,
+// preventing path traversal attacks.
+func InBasePath(basePath, path string) bool {
+	basePath = filepath.Clean(basePath)
+	path = filepath.Clean(path)
+
+	rel, err := filepath.Rel(basePath, path)
+	if err != nil {
+		return false
+	}
+
+	return !strings.HasPrefix(rel, "..")
 }
 
 // IsSocket checks if the given path is a socket file.
