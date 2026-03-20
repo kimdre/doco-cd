@@ -1,0 +1,16 @@
+meta {
+  name: Projects
+  type: http
+  seq: 2
+}
+
+get {
+  url: http://localhost/v1/api/projects
+  body: none
+  auth: inherit
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

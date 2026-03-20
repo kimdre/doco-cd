@@ -1,0 +1,16 @@
+meta {
+  name: Delete Stack by Name
+  type: http
+  seq: 5
+}
+
+delete {
+  url: http://localhost/v1/api/stack/test-deploy
+  body: none
+  auth: inherit
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

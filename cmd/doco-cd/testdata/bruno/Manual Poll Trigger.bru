@@ -1,0 +1,37 @@
+meta {
+  name: Manual Poll Trigger
+  type: http
+  seq: 7
+}
+
+post {
+  url: http://localhost/v1/api/poll/run?wait=true
+  body: json
+  auth: inherit
+}
+
+params:query {
+  wait: true
+}
+
+body:json {
+  [
+    {
+      "url": "https://github.com/kimdre/doco-cd_tests.git",
+      "reference": "main",
+      "deployments": [
+        {
+          "name": "poll-test",
+          "env_files": [
+            ".env"
+          ]
+        }
+      ]
+    }
+  ]
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

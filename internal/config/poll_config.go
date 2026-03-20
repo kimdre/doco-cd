@@ -1,11 +1,13 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 
 	"github.com/creasty/defaults"
+	"gopkg.in/validator.v2"
 
 	"github.com/kimdre/doco-cd/internal/logger"
 )
@@ -17,12 +19,12 @@ var (
 )
 
 type PollConfig struct {
-	CloneUrl     HttpUrl         `yaml:"url" validate:"httpUrl"`              // CloneUrl is the URL to clone the Git repository that is used to poll for changes
-	Reference    string          `yaml:"reference" default:"refs/heads/main"` // Reference is the Git reference to the deployment, e.g., refs/heads/main, main, refs/tags/v1.0.0 or v1.0.0
-	Interval     int             `yaml:"interval" default:"180"`              // Interval is the interval in seconds to poll for changes
-	CustomTarget string          `yaml:"target" default:""`                   // CustomTarget is the name of an optional custom deployment config file, e.g. ".doco-cd.custom-name.yaml"
-	RunOnce      bool            `yaml:"run_once" default:"false"`            // RunOnce when true, performs a single run and exits
-	Deployments  []*DeployConfig `yaml:"deployments" default:"[]"`            // Deployments allows defining deployment configs inline in the poll configuration
+	CloneUrl     HttpUrl         `yaml:"url" json:"url" validate:"httpUrl"`                    // CloneUrl is the URL to clone the Git repository that is used to poll for changes
+	Reference    string          `yaml:"reference" json:"reference" default:"refs/heads/main"` // Reference is the Git reference to the deployment, e.g., refs/heads/main, main, refs/tags/v1.0.0 or v1.0.0
+	Interval     int             `yaml:"interval" default:"180"`                               // Interval is the interval in seconds to poll for changes
+	CustomTarget string          `yaml:"target" json:"target" default:""`                      // CustomTarget is the name of an optional custom deployment config file, e.g. ".doco-cd.custom-name.yaml"
+	RunOnce      bool            `yaml:"run_once" default:"false"`                             // RunOnce when true, performs a single run and exits
+	Deployments  []*DeployConfig `yaml:"deployments" json:"deployments" default:"[]"`          // Deployments allows defining deployment configs inline in the poll configuration
 }
 
 type PollJob struct {
@@ -77,6 +79,11 @@ func (c *PollConfig) Validate() error {
 		}
 	}
 
+	err := validator.Validate(c)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidPollConfig, err)
+	}
+
 	return nil
 }
 
@@ -94,6 +101,21 @@ func (c *PollConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type Plain PollConfig
 
 	if err := unmarshal((*Plain)(c)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *PollConfig) UnmarshalJSON(data []byte) error {
+	err := defaults.Set(c)
+	if err != nil {
+		return err
+	}
+
+	type Plain PollConfig
+
+	if err := json.Unmarshal(data, (*Plain)(c)); err != nil {
 		return err
 	}
 

@@ -1,0 +1,20 @@
+meta {
+  name: Restart Stack by Name
+  type: http
+  seq: 7
+}
+
+post {
+  url: http://localhost/v1/api/stack/test-deploy/restart?service=test
+  body: none
+  auth: inherit
+}
+
+params:query {
+  service: test
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

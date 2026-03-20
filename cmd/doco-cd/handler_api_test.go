@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/docker/compose/v5/pkg/api"
+	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
@@ -179,6 +181,137 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 
 			if status := rr.Code; status != tc.expectedStatus {
 				t.Errorf("handler returned wrong status code: got %v want %v", status, tc.expectedStatus)
+			}
+		})
+	}
+}
+
+func TestHandlerData_TriggerPollHandler(t *testing.T) {
+	// This is a placeholder test to ensure the TriggerPollHandler is registered and responds to requests.
+	// Implementing a full test would require setting up a mock PollManager and verifying it receives the trigger call.
+	testCases := []struct {
+		name             string
+		payload          *strings.Reader
+		wait             bool
+		expectedStatus   int
+		expectedResponse string
+	}{
+		{
+			name:             "With wait",
+			payload:          strings.NewReader(`[{"url": "https://github.com/kimdre/doco-cd_tests.git", "reference": "main"}]`),
+			wait:             true,
+			expectedStatus:   http.StatusOK,
+			expectedResponse: `{"content":"poll jobs complete","job_id":"[a-f0-9-]{36}"}`,
+		},
+		{
+			name:             "Without wait",
+			payload:          strings.NewReader(`[{"url": "https://github.com/kimdre/doco-cd_tests.git", "reference": "main"}]`),
+			wait:             false,
+			expectedStatus:   http.StatusOK,
+			expectedResponse: `{"content":"poll jobs complete","job_id":"[a-f0-9-]{36}"}`,
+		},
+		{
+			name:             "With deploy config",
+			payload:          strings.NewReader(`[{"url": "https://github.com/kimdre/doco-cd_tests.git", "reference": "main", "deployments": [{"name": "with-deploy-config"}]}]`),
+			wait:             true,
+			expectedStatus:   http.StatusOK,
+			expectedResponse: `{"content":"poll jobs complete","job_id":"[a-f0-9-]{36}"}`,
+		},
+		{
+			name:             "Empty body",
+			payload:          strings.NewReader(``),
+			wait:             false,
+			expectedStatus:   http.StatusBadRequest,
+			expectedResponse: `{"error":"failed to decode json in body","content":"EOF","job_id":"[a-f0-9-]{36}"}`,
+		},
+		{
+			name:             "Invalid JSON",
+			payload:          strings.NewReader(`[{"url": "https://github.com/kimdre/doco-cd_tests.git", "reference": "main"]`),
+			wait:             false,
+			expectedStatus:   http.StatusBadRequest,
+			expectedResponse: `{"error":"failed to decode json in body","content":"invalid character ']' after object key:value pair","job_id":"[a-f0-9-]{36}"}`,
+		},
+	}
+
+	appConfig, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy, !appConfig.SkipTLSVerification)
+	if err != nil {
+		t.Fatalf("Failed to create docker client: %v", err)
+	}
+
+	backend, err := compose.NewComposeService(dockerCli)
+	if err != nil {
+		t.Fatalf("Failed to create compose service: %v", err)
+	}
+
+	t.Cleanup(func() {
+		err = dockerCli.Client().Close()
+		if err != nil {
+			return
+		}
+	})
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := handlerData{
+				dockerCli:  dockerCli,
+				appConfig:  appConfig,
+				appVersion: config.AppVersion,
+				log:        logger.New(logger.LevelCritical),
+				testName:   test.ConvertTestName(t.Name()),
+			}
+
+			endpoint := path.Join(apiPath, "/poll/run")
+
+			rr := httptest.NewRecorder()
+
+			mux := http.NewServeMux()
+			mux.HandleFunc(endpoint, h.TriggerPollHandler)
+
+			reqUrl := endpoint
+			if tc.wait {
+				reqUrl += "?wait=true"
+			}
+
+			req, err := http.NewRequest("POST", reqUrl, tc.payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			t.Cleanup(func() {
+				downOpts := api.DownOptions{
+					RemoveOrphans: true,
+					Images:        "local",
+					Volumes:       true,
+				}
+
+				err = backend.Down(context.Background(), test.ConvertTestName(t.Name()), downOpts)
+				if err != nil {
+					t.Fatalf("Failed to remove test stack: %v", err)
+				}
+			})
+
+			// Set headers
+			req.Header.Set(restAPI.KeyHeader, appConfig.ApiSecret)
+			mux.ServeHTTP(rr, req)
+
+			if status := rr.Code; status != tc.expectedStatus {
+				t.Errorf("handler returned wrong status code: got %v want %v", status, tc.expectedStatus)
+			}
+
+			regex, err := regexp.Compile(tc.expectedResponse)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if !regex.MatchString(rr.Body.String()) {
+				t.Errorf("handler returned unexpected body: got %v want %v", rr.Body.String(), tc.expectedResponse)
 			}
 		})
 	}
