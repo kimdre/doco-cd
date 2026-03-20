@@ -63,7 +63,7 @@ func TestVerifyAndSanitizePath(t *testing.T) {
 	}
 }
 
-func TestInTrustedRoot(t *testing.T) {
+func TestInBasePath(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
@@ -129,7 +129,7 @@ func TestInTrustedRoot(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := InTrustedRoot(tc.trustedRoot, tc.path)
+			result := InBasePath(tc.trustedRoot, tc.path)
 
 			if result != tc.expected {
 				t.Fatalf("expected %v, got %v", tc.expected, result)

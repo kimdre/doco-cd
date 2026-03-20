@@ -650,7 +650,7 @@ func HasChangedConfigs(paths []string, project *types.Project) ([]string, error)
 		}
 
 		for _, p := range paths {
-			if filesystem.InTrustedRoot(c.File, p) {
+			if filesystem.InBasePath(c.File, p) {
 				changedServices = append(changedServices, configToServicesMap[name]...)
 			}
 		}
@@ -677,7 +677,7 @@ func HasChangedSecrets(paths []string, project *types.Project) ([]string, error)
 		}
 
 		for _, p := range paths {
-			if filesystem.InTrustedRoot(s.File, p) {
+			if filesystem.InBasePath(s.File, p) {
 				changedServices = append(changedServices, secretsToServicesMap[name]...)
 			}
 		}
@@ -695,7 +695,7 @@ func HasChangedBindMounts(paths []string, project *types.Project) ([]string, err
 		for _, v := range s.Volumes {
 			if v.Type == "bind" && v.Source != "" {
 				for _, p := range paths {
-					if filesystem.InTrustedRoot(v.Source, p) {
+					if filesystem.InBasePath(v.Source, p) {
 						changedServices = append(changedServices, s.Name)
 						break out
 					}
@@ -715,7 +715,7 @@ func HasChangedEnvFiles(paths []string, project *types.Project) ([]string, error
 	out:
 		for _, envFile := range s.EnvFiles {
 			for _, p := range paths {
-				if filesystem.InTrustedRoot(envFile.Path, p) {
+				if filesystem.InBasePath(envFile.Path, p) {
 					changedServices = append(changedServices, s.Name)
 					break out
 				}
@@ -775,7 +775,7 @@ func HasChangedBuildFiles(paths []string, project *types.Project) ([]string, err
 			}
 
 			for _, p := range paths {
-				if filesystem.InTrustedRoot(ctxFile, p) {
+				if filesystem.InBasePath(ctxFile, p) {
 					changedServices = append(changedServices, s.Name)
 					break out
 				}

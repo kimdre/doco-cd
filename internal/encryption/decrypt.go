@@ -65,7 +65,7 @@ func DecryptContent(content []byte, format string) ([]byte, error) {
 
 // DecryptFilesInDirectory walks through the specified directory and decrypts all SOPS-encrypted files.
 func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
-	if !filesystem.InTrustedRoot(repoPath, dirPath) {
+	if !filesystem.InBasePath(repoPath, dirPath) {
 		return nil, fmt.Errorf("%w: %s is outside the repository root %s", filesystem.ErrPathTraversal, dirPath, repoPath)
 	}
 

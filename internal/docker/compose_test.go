@@ -1678,7 +1678,7 @@ func TestCheckPathAffected(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := filesystem.InTrustedRoot(tt.used, tt.changed)
+			got := filesystem.InBasePath(tt.used, tt.changed)
 			if tt.want != got {
 				t.Errorf("checkPathAffected(used=%q, changed=%q) = %v, want %v", tt.used, tt.changed, got, tt.want)
 			}

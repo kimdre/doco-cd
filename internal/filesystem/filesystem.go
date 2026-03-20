@@ -31,20 +31,20 @@ func VerifyAndSanitizePath(path, trustedRoot string) (string, error) {
 
 	trustedRoot = filepath.Clean(trustedRoot) + string(os.PathSeparator)
 
-	if !InTrustedRoot(trustedRoot, absPath) {
+	if !InBasePath(trustedRoot, absPath) {
 		return absPath, fmt.Errorf("%w: %s is outside of trusted root %s", ErrPathTraversal, absPath, trustedRoot)
 	}
 
 	return absPath, nil
 }
 
-// InTrustedRoot checks if the given path is equal to or a subpath of the trusted root directory,
+// InBasePath checks if the given path is within the base path,
 // preventing path traversal attacks.
-func InTrustedRoot(trustedRoot, path string) bool {
-	trustedRoot = filepath.Clean(trustedRoot)
+func InBasePath(basePath, path string) bool {
+	basePath = filepath.Clean(basePath)
 	path = filepath.Clean(path)
 
-	rel, err := filepath.Rel(trustedRoot, path)
+	rel, err := filepath.Rel(basePath, path)
 	if err != nil {
 		return false
 	}
