@@ -38,7 +38,8 @@ func VerifyAndSanitizePath(path, trustedRoot string) (string, error) {
 	return absPath, nil
 }
 
-// InTrustedRoot checks if the given path is within the trusted root directory.
+// InTrustedRoot checks if the given path is equal to or a subpath of the trusted root directory,
+// preventing path traversal attacks.
 func InTrustedRoot(trustedRoot, path string) bool {
 	trustedRoot = filepath.Clean(trustedRoot)
 	path = filepath.Clean(path)

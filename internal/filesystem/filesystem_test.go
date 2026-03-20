@@ -73,6 +73,12 @@ func TestInTrustedRoot(t *testing.T) {
 		expected    bool
 	}{
 		{
+			name:        "Same path",
+			path:        "/valid/path",
+			trustedRoot: "/valid/path",
+			expected:    true,
+		},
+		{
 			name:        "Path within trusted root",
 			path:        "/valid/path",
 			trustedRoot: "/valid",
@@ -107,6 +113,18 @@ func TestInTrustedRoot(t *testing.T) {
 			path:        "invalid/path",
 			trustedRoot: "valid",
 			expected:    false,
+		},
+		{
+			name:        "Path in base outside trusted root",
+			path:        "/base/invalid/path",
+			trustedRoot: "/base/valid",
+			expected:    false,
+		},
+		{
+			name:        "Path in base in trusted root",
+			path:        "/base/valid/path",
+			trustedRoot: "/base/valid",
+			expected:    true,
 		},
 	}
 	for _, tc := range testCases {

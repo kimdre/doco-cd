@@ -631,26 +631,6 @@ func getPaths(changedFiles []gitInternal.ChangedFile, basePath string) []string 
 	return slice.Unique(absPaths)
 }
 
-// checkPathAffected checks if a changed file is affected by a used file.
-func checkPathAffected(changed string, used string) bool {
-	used = filepath.Clean(used)
-	changed = filepath.Clean(changed)
-
-	rel, err := filepath.Rel(used, changed)
-	if err != nil {
-		// It' share same reporoot, so it should not happen
-		slog.Debug("checkPathAffected ",
-			slog.String("used", used),
-			slog.String("changed", changed),
-			slog.Any("error", err),
-		)
-
-		return false
-	}
-
-	return !strings.HasPrefix(rel, "..")
-}
-
 // HasChangedConfigs checks if any files used in docker compose `configs:` definitions have changed using the Git status.
 func HasChangedConfigs(paths []string, project *types.Project) ([]string, error) {
 	configToServicesMap := make(map[string][]string)
@@ -670,7 +650,7 @@ func HasChangedConfigs(paths []string, project *types.Project) ([]string, error)
 		}
 
 		for _, p := range paths {
-			if checkPathAffected(p, c.File) {
+			if filesystem.InTrustedRoot(c.File, p) {
 				changedServices = append(changedServices, configToServicesMap[name]...)
 			}
 		}
@@ -697,7 +677,7 @@ func HasChangedSecrets(paths []string, project *types.Project) ([]string, error)
 		}
 
 		for _, p := range paths {
-			if checkPathAffected(p, s.File) {
+			if filesystem.InTrustedRoot(s.File, p) {
 				changedServices = append(changedServices, secretsToServicesMap[name]...)
 			}
 		}
@@ -715,7 +695,7 @@ func HasChangedBindMounts(paths []string, project *types.Project) ([]string, err
 		for _, v := range s.Volumes {
 			if v.Type == "bind" && v.Source != "" {
 				for _, p := range paths {
-					if checkPathAffected(p, v.Source) {
+					if filesystem.InTrustedRoot(v.Source, p) {
 						changedServices = append(changedServices, s.Name)
 						break out
 					}
@@ -735,7 +715,7 @@ func HasChangedEnvFiles(paths []string, project *types.Project) ([]string, error
 	out:
 		for _, envFile := range s.EnvFiles {
 			for _, p := range paths {
-				if checkPathAffected(p, envFile.Path) {
+				if filesystem.InTrustedRoot(envFile.Path, p) {
 					changedServices = append(changedServices, s.Name)
 					break out
 				}
@@ -795,7 +775,7 @@ func HasChangedBuildFiles(paths []string, project *types.Project) ([]string, err
 			}
 
 			for _, p := range paths {
-				if checkPathAffected(p, ctxFile) {
+				if filesystem.InTrustedRoot(ctxFile, p) {
 					changedServices = append(changedServices, s.Name)
 					break out
 				}
