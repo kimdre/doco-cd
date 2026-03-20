@@ -32,7 +32,7 @@ func VerifyAndSanitizePath(path, trustedRoot string) (string, error) {
 	trustedRoot = filepath.Clean(trustedRoot) + string(os.PathSeparator)
 
 	if !InTrustedRoot(trustedRoot, absPath) {
-		return "", fmt.Errorf("%w: %s is outside of trusted root %s", ErrPathTraversal, absPath, trustedRoot)
+		return absPath, fmt.Errorf("%w: %s is outside of trusted root %s", ErrPathTraversal, absPath, trustedRoot)
 	}
 
 	return absPath, nil
