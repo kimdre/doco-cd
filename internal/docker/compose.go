@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/kimdre/doco-cd/internal/encryption"
+	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/utils/module"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -1090,7 +1091,7 @@ func DecryptProjectFiles(repoPath string, p *types.Project) ([]string, error) {
 				if info.IsDir() {
 					decryptedFiles, err = encryption.DecryptFilesInDirectory(repoPath, v.Source)
 					if err != nil {
-						if errors.Is(err, encryption.ErrPathTraversal) {
+						if errors.Is(err, filesystem.ErrPathTraversal) {
 							continue
 						}
 
