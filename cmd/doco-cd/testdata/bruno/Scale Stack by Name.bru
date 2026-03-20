@@ -1,0 +1,22 @@
+meta {
+  name: Scale Stack by Name
+  type: http
+  seq: 6
+}
+
+post {
+  url: http://localhost/v1/api/stack/test-deploy/scale?replicas=0
+  body: none
+  auth: inherit
+}
+
+params:query {
+  replicas: 0
+  ~service: test
+  ~wait: true
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

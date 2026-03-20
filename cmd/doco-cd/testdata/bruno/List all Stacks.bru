@@ -1,0 +1,16 @@
+meta {
+  name: List all Stacks
+  type: http
+  seq: 3
+}
+
+get {
+  url: http://localhost/v1/api/stacks
+  body: none
+  auth: inherit
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
