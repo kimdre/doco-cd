@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/creasty/defaults"
+	"gopkg.in/validator.v2"
 
 	"github.com/kimdre/doco-cd/internal/logger"
 )
@@ -76,6 +77,11 @@ func (c *PollConfig) Validate() error {
 		if err := validateUniqueProjectNames(c.Deployments); err != nil {
 			return err
 		}
+	}
+
+	err := validator.Validate(c)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidPollConfig, err)
 	}
 
 	return nil

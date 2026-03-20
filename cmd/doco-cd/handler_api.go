@@ -708,6 +708,7 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 	wait := getQueryParam(r, w, jobLog, jobID, "wait", "bool", true).(bool)
 
 	decoder := json.NewDecoder(r.Body)
+	defer r.Body.Close()
 
 	var pollConfigs []config.PollConfig
 	if err := decoder.Decode(&pollConfigs); err != nil {
@@ -718,16 +719,31 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Set default values for api-called poll jobs
+	for i, p := range pollConfigs {
+		p.RunOnce = true
+		p.Interval = 0
+
+		err = p.Validate()
+		if err != nil {
+			errMsg = fmt.Sprintf("invalid poll configuration at index %d", i)
+			h.log.Error(errMsg, logger.ErrAttr(err))
+			JSONError(w, errMsg, err.Error(), jobID, http.StatusBadRequest)
+
+			return
+		}
+
+		pollConfigs[i] = p
+	}
+
 	if len(pollConfigs) > 0 {
-		h.log.Info(
-			"poll triggered via API, starting jobs",
-			slog.Any("poll_config", logger.BuildSliceLogValue(pollConfigs, "Deployments.Internal")),
-		)
+		h.log.Info("poll triggered via API")
 
 		var wg sync.WaitGroup
 
 		for _, p := range pollConfigs {
 			p.RunOnce = true
+			p.Interval = 0
 
 			pollJob := &config.PollJob{
 				Config:  p,
