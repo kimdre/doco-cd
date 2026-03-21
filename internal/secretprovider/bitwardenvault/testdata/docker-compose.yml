@@ -5,10 +5,10 @@ services:
       sh -c '
         openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 3650 \
           -keyout /certs/localhost.key -out /certs/localhost.crt -subj "/CN=localhost" \
-          -addext "subjectAltName=DNS:localhost,DNS:*.localhost,IP:0.0.0.0";
+          -addext "subjectAltName=DNS:localhost,DNS:*.localhost,IP:0.0.0.0"
       '
     volumes:
-      - certs:/certs
+      - ./certs:/certs
     entrypoint: ""
     restart: no
 
@@ -20,22 +20,19 @@ services:
       - SIGNUPS_ALLOWED=true
       - WEBSOCKET_ENABLED=true
       - ROCKET_TLS={certs="/certs/localhost.crt",key="/certs/localhost.key"}
+      - ROCKET_PORT=443
     depends_on:
       cert-init:
         condition: service_completed_successfully
     ports:
-      - "80:80"
       - "443:443"
     volumes:
       - ./vw-data:/data
-      - certs:/certs
+      - ./certs:/certs:ro
     restart: unless-stopped
     networks:
       default:
         ipv4_address: 192.168.51.5
-
-volumes:
-  certs:
 
 networks:
   default:

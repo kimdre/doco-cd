@@ -15,11 +15,12 @@ var (
 )
 
 const (
-	PermDir      = 0o755 // Directory permission
-	PermOwner    = 0o600 // Owner permission
-	PermGroup    = 0o640 // Group permission
-	PermPublic   = 0o644 // Public permission
-	PermReadOnly = 0o444 // Read-only permission
+	PermDir        = 0o755 // Directory permission
+	PermOwner      = 0o600 // Owner permission
+	PermGroup      = 0o640 // Group permission
+	PermPublic     = 0o644 // Public permission
+	PermReadOnly   = 0o444 // Read-only permission
+	PermExecutable = 0o755 // Executable permission
 )
 
 // VerifyAndSanitizePath checks if a file path is valid and sanitizes it.

@@ -13,7 +13,6 @@ type Config struct {
 	OAuth2ClientSecret     string `env:"SECRET_PROVIDER_OAUTH2_CLIENT_SECRET"`
 	OAuth2ClientSecretFile string `env:"SECRET_PROVIDER_OAUTH2_CLIENT_SECRET_FILE,file"`
 	OAuth2TokenURL         string `env:"SECRET_PROVIDER_OAUTH2_TOKEN_URL" envDefault:"https://identity.bitwarden.com/connect/token"` // For self-hosted, e.g. https://vault.example.com/identity/connect/token
-	SkipTLSVerify          bool   `env:"SECRET_PROVIDER_SKIP_TLS_VERIFY" envDefault:"false"`
 }
 
 func GetConfig() (*Config, error) {

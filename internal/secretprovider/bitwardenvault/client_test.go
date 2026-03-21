@@ -17,7 +17,10 @@ func TestProvider_GetSecret(t *testing.T) {
 
 	testSecretID := "13591cbd-4f0d-4fac-8522-020594387b28" // #nosec G101
 
-	provider := NewProvider(cfg.ApiUrl, cfg.OAuth2TokenURL, cfg.OAuth2ClientID, cfg.OAuth2ClientSecret, cfg.SkipTLSVerify)
+	provider, err := NewProvider(cfg.ApiUrl, cfg.OAuth2TokenURL, cfg.OAuth2ClientID, cfg.OAuth2ClientSecret)
+	if err != nil {
+		t.Fatalf("failed to create provider: %v", err)
+	}
 
 	t.Run("login secret", func(t *testing.T) {
 		val, err := provider.GetSecret(context.Background(), testSecretID)

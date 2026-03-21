@@ -115,7 +115,10 @@ func Initialize(ctx context.Context, provider, version string) (SecretProvider, 
 			return nil, cfgErr
 		}
 
-		p = bitwardenvault.NewProvider(cfg.ApiUrl, cfg.OAuth2TokenURL, cfg.OAuth2ClientID, cfg.OAuth2ClientSecret, cfg.SkipTLSVerify)
+		p, err = bitwardenvault.NewProvider(cfg.ApiUrl, cfg.OAuth2TokenURL, cfg.OAuth2ClientID, cfg.OAuth2ClientSecret)
+		if err != nil {
+			return nil, err
+		}
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnknownProvider, provider)
 	}
