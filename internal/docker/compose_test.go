@@ -419,6 +419,40 @@ func TestHasChangedConfigs(t *testing.T) {
 			ExpectedChanges: []string{"svc1"},
 		},
 		{
+			name: "same path in service config and changed files, but ignored by label",
+			changePath: []string{
+				repoRoot + "/test",
+			},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Labels: map[string]string{
+							DocoCDLabels.Deployment.RecreateIgnore: "configs=test",
+						},
+						Configs: []types.ServiceConfigObjConfig{
+							{Source: "test"},
+						},
+					},
+					"svc2": {
+						Name: "svc2",
+						Labels: map[string]string{
+							"a.b.c.d": "configs=test",
+						},
+						Configs: []types.ServiceConfigObjConfig{
+							{Source: "test"},
+						},
+					},
+				},
+				Configs: map[string]types.ConfigObjConfig{
+					"test": {
+						File: repoRoot + "/test",
+					},
+				},
+			},
+			ExpectedChanges: []string{"svc2"},
+		},
+		{
 			name: "parent path in service config and changed in sub files",
 			changePath: []string{
 				repoRoot + "/test/subdir/config.yaml",
@@ -525,7 +559,12 @@ func TestHasChangedConfigs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			changes, err := HasChangedConfigs(tc.changePath, tc.project)
+			ignoreCfg, err := getIgnoreRecrateCfgFromProject(tc.project)
+			if err != nil {
+				t.Fatalf("Failed to get ignore config: %v", err)
+			}
+
+			changes, err := HasChangedConfigs(tc.changePath, tc.project, ignoreCfg)
 			if err != nil {
 				t.Fatalf("Failed to check for changed configs: %v", err)
 			}
@@ -574,6 +613,41 @@ func TestHasChangedSecrets(t *testing.T) {
 				},
 			},
 			ExpectedChanges: []string{"svc1"},
+		},
+		{
+			name: "Has changes but ignore by label",
+			changePath: []string{
+				repoRoot + "/test",
+			},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Labels: map[string]string{
+							DocoCDLabels.Deployment.RecreateIgnore: "secrets=test",
+						},
+						Secrets: []types.ServiceSecretConfig{
+							{
+								Source: "test",
+							},
+						},
+					},
+					"svc2": {
+						Name: "svc2",
+						Secrets: []types.ServiceSecretConfig{
+							{
+								Source: "test",
+							},
+						},
+					},
+				},
+				Secrets: map[string]types.SecretConfig{
+					"test": {
+						File: repoRoot + "/test",
+					},
+				},
+			},
+			ExpectedChanges: []string{"svc2"},
 		},
 		{
 			name: "parent path in service secret and changed in sub files",
@@ -682,7 +756,12 @@ func TestHasChangedSecrets(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			changes, err := HasChangedSecrets(tc.changePath, tc.project)
+			ignoreCfg, err := getIgnoreRecrateCfgFromProject(tc.project)
+			if err != nil {
+				t.Fatalf("Failed to get ignore config: %v", err)
+			}
+
+			changes, err := HasChangedSecrets(tc.changePath, tc.project, ignoreCfg)
 			if err != nil {
 				t.Fatalf("Failed to check for changed secrets: %v", err)
 			}
@@ -727,6 +806,40 @@ func TestHasChangedBindMounts(t *testing.T) {
 				},
 			},
 			ExpectedChanges: []string{"svc1"},
+		},
+		{
+			name: "bind mount changed path are the same, but ignored by label",
+			changePath: []string{
+				repoRoot + "/dir",
+			},
+			project: &types.Project{
+				WorkingDir: repoRoot,
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Labels: map[string]string{
+							DocoCDLabels.Deployment.RecreateIgnore: "bindMounts=/dir",
+						},
+						Volumes: []types.ServiceVolumeConfig{
+							{
+								Type:   "bind",
+								Source: repoRoot + "/sourceDir",
+								Target: "/dir",
+							},
+						},
+					},
+					"svc2": {
+						Name: "svc2",
+						Volumes: []types.ServiceVolumeConfig{
+							{
+								Type:   "bind",
+								Source: repoRoot + "/dir",
+							},
+						},
+					},
+				},
+			},
+			ExpectedChanges: []string{"svc2"},
 		},
 		{
 			name: "same name but different path are different",
@@ -840,7 +953,12 @@ func TestHasChangedBindMounts(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			changes, err := HasChangedBindMounts(tc.changePath, tc.project)
+			ignoreCfg, err := getIgnoreRecrateCfgFromProject(tc.project)
+			if err != nil {
+				t.Fatalf("Failed to get ignore config: %v", err)
+			}
+
+			changes, err := HasChangedBindMounts(tc.changePath, tc.project, ignoreCfg)
 			if err != nil {
 				t.Fatalf("Failed to check for changed bind mounts: %v", err)
 			}
@@ -946,7 +1064,7 @@ func TestHasChangedEnvFiles(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			changes, err := HasChangedEnvFiles(tc.changePath, tc.project)
+			changes, err := HasChangedEnvFiles(tc.changePath, tc.project, nil)
 			if err != nil {
 				t.Fatalf("Failed to check for changed env files: %v", err)
 			}
@@ -1067,7 +1185,7 @@ func TestHasChangedBuildFiles(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			changes, err := HasChangedBuildFiles(tc.changePath, tc.project)
+			changes, err := HasChangedBuildFiles(tc.changePath, tc.project, nil)
 			if err != nil {
 				t.Fatalf("Failed to check for changed env files: %v", err)
 			}

@@ -18,6 +18,7 @@ type docoCdLabelNamesDeployment struct {
 	ConfigHash         string // SHA256 hash of the deploy-config used during deployment
 	AutoDiscover       string // Whether the deployment was auto-discovered
 	AutoDiscoverDelete string // Whether auto-discovered deployment is allowed to be deleted
+	RecreateIgnore     string // Whether the deployment file changes should ignore recreate
 }
 
 // docoCdLabelNamesRepository contains the labels used by DocoCD to identify the repository.
@@ -50,6 +51,7 @@ var DocoCDLabels = docoCdLabelNames{
 		ConfigHash:         "cd.doco.deployment.config.sha",
 		AutoDiscover:       "cd.doco.deployment.auto_discover",
 		AutoDiscoverDelete: "cd.doco.deployment.auto_discover.delete",
+		RecreateIgnore:     "cd.doco.deployment.recreate.ignore",
 	},
 	Repository: docoCdLabelNamesRepository{
 		Name: "cd.doco.repository.name",
