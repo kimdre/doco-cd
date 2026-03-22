@@ -1388,6 +1388,7 @@ func TestProjectFilesHaveChanges_withoutGitRepo(t *testing.T) {
 	t.Parallel()
 
 	const repoRoot = "/data/doco-cd/fake-repo-root"
+
 	testCases := []struct {
 		name            string
 		project         *types.Project

@@ -44,6 +44,7 @@ func (s Set[T]) ToSlice() []T {
 // Difference returns a new set containing the elements in s that are not in other.
 func (s Set[T]) Difference(other Set[T]) Set[T] {
 	difference := New[T]()
+
 	for elem := range s {
 		if !other.Contains(elem) {
 			difference.Add(elem)

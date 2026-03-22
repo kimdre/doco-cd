@@ -35,6 +35,7 @@ func TestComposeSignal(t *testing.T) {
 	stack := test.ComposeUp(ctx, t, test.WithYAML(generateComposeContents()))
 
 	beforetime := time.Now()
+
 	gotErr := ComposeSignal(t.Context(), dockerCli, project, []SignalService{
 		{ServiceName: "test", Signal: "SIGHUP"},
 	})
@@ -42,6 +43,7 @@ func TestComposeSignal(t *testing.T) {
 		t.Errorf("ComposeSignal() failed: %v", gotErr)
 		return
 	}
+
 	log := stack.ContainerLogs(ctx, t, "test", beforetime)
 	if !strings.Contains(log, "signal 1 (SIGHUP) received, reconfiguring") {
 		t.Errorf("expected empty log, got: %s", log)

@@ -652,8 +652,10 @@ func HasChangedConfigs(paths []string, project *types.Project, ignoreCfg project
 		}
 	}
 
-	var changedServices []string
-	var ignoredServices []string
+	var (
+		changedServices []string
+		ignoredServices []string
+	)
 
 	for cfgName, c := range project.Configs {
 		// Changes in config.Content are handled in project hash comparison
@@ -687,8 +689,10 @@ func HasChangedSecrets(paths []string, project *types.Project, ignoreCfg project
 		}
 	}
 
-	var changedServices []string
-	var ignoredServices []string
+	var (
+		changedServices []string
+		ignoredServices []string
+	)
 
 	for secretName, s := range project.Secrets {
 		if s.File == "" {
@@ -713,8 +717,10 @@ func HasChangedSecrets(paths []string, project *types.Project, ignoreCfg project
 
 // HasChangedBindMounts checks if any files used in docker compose `volumes:` definitions with type `bind` have changed using the Git status.
 func HasChangedBindMounts(paths []string, project *types.Project, ignoreCfg projectIgnoreCfg) ([]string, []string) {
-	var changedServices []string
-	var ignoredServices []string
+	var (
+		changedServices []string
+		ignoredServices []string
+	)
 
 	for _, s := range project.Services {
 	out:
@@ -867,8 +873,10 @@ func ProjectFilesHaveChanges(changePaths []string, project *types.Project) ([]Ch
 		return nil, IgnoredInfo{}, err
 	}
 
-	var changes []Change
-	var allChangedServices, allIgnoredServices []string
+	var (
+		changes                                []Change
+		allChangedServices, allIgnoredServices []string
+	)
 
 	for _, check := range checks {
 		changedServices, ignoredServices := check.fn(changePaths, project, ignoreCfg)
@@ -892,6 +900,7 @@ func ProjectFilesHaveChanges(changePaths []string, project *types.Project) ([]Ch
 	slices.Sort(ignores)
 
 	retIgnored := IgnoredInfo{}
+
 	for _, svcName := range ignores {
 		sig := ignoreCfg[svcName].signal
 		if sig != "" {

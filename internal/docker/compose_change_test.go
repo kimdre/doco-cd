@@ -406,6 +406,7 @@ func Test_getChangeAndIgnore(t *testing.T) {
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("getChangeAndIgnore() = %v, want %v", got, tt.want)
 			}
+
 			if !reflect.DeepEqual(got2, tt.want2) {
 				t.Errorf("getChangeAndIgnore() = %v, want %v", got2, tt.want2)
 			}

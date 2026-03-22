@@ -143,5 +143,6 @@ func getChangeAndIgnore(changed, ignored []string) ([]string, []string) {
 
 	// if changed set contains ignored set, remove them
 	ignoredSet = ignoredSet.Difference(changedSet)
+
 	return changedSet.ToSlice(), ignoredSet.ToSlice()
 }

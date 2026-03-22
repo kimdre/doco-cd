@@ -10,7 +10,7 @@ import (
 	"github.com/docker/compose/v5/pkg/compose"
 )
 
-// ComposeSignal will send signal to service
+// ComposeSignal will send signal to service.
 func ComposeSignal(ctx context.Context, dockerCli command.Cli, project *types.Project, signal []SignalService) error {
 	service, err := compose.NewComposeService(dockerCli)
 	if err != nil {
@@ -26,5 +26,6 @@ func ComposeSignal(ctx context.Context, dockerCli command.Cli, project *types.Pr
 			return fmt.Errorf("failed to send signal(%s) to service %s: %w", s.Signal, s.ServiceName, err)
 		}
 	}
+
 	return nil
 }
