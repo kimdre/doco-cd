@@ -15,9 +15,9 @@ func TestProvider_GetSecret(t *testing.T) {
 		t.Fatalf("failed to get config: %v", cfgErr)
 	}
 
-	testSecretID := "13591cbd-4f0d-4fac-8522-020594387b28" // #nosec G101
+	testSecretID := "7293a970-2834-4490-a2c9-b41400c9295f" // #nosec G101
 
-	provider, err := NewProvider(cfg.ApiUrl, cfg.OAuth2TokenURL, cfg.OAuth2ClientID, cfg.OAuth2ClientSecret)
+	provider, err := NewProvider(t.Context(), cfg)
 	if err != nil {
 		t.Fatalf("failed to create provider: %v", err)
 	}

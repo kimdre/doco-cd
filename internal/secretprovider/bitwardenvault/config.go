@@ -13,6 +13,7 @@ type Config struct {
 	OAuth2ClientSecret     string `env:"SECRET_PROVIDER_OAUTH2_CLIENT_SECRET"`
 	OAuth2ClientSecretFile string `env:"SECRET_PROVIDER_OAUTH2_CLIENT_SECRET_FILE,file"`
 	OAuth2TokenURL         string `env:"SECRET_PROVIDER_OAUTH2_TOKEN_URL" envDefault:"https://identity.bitwarden.com/connect/token"` // For self-hosted, e.g. https://vault.example.com/identity/connect/token
+	AppDataDir             string `env:"SECRET_PROVIDER_APPDATA_DIR" envDefault:"/data/.config/bitwarden-cli"`                       // Data directory for bw CLI to store config/session
 }
 
 func GetConfig() (*Config, error) {
@@ -20,7 +21,6 @@ func GetConfig() (*Config, error) {
 	mappings := []config.EnvVarFileMapping{
 		{EnvName: "SECRET_PROVIDER_OAUTH2_CLIENT_SECRET", EnvValue: &cfg.OAuth2ClientSecret, FileValue: &cfg.OAuth2ClientSecretFile, AllowUnset: true},
 	}
-	_ = config.ParseConfigFromEnv(&cfg, &[]config.EnvVarFileMapping{}) // Preload OAuth2 fields for conditional logic
 
 	err := config.ParseConfigFromEnv(&cfg, &mappings)
 	if err != nil {

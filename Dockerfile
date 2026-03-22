@@ -68,6 +68,12 @@ VOLUME /data
 
 COPY --from=build /doco-cd /doco-cd
 
+# Copy libaries for Bitwarden Vault support on distroless
+COPY --from=prerequisites \
+  "/usr/lib/x86_64-linux-gnu/libstdc++.so.6" \
+  /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 \
+  /lib/
+
 ENV TZ=UTC \
     HTTP_PORT=80 \
     METRICS_PORT=9120 \

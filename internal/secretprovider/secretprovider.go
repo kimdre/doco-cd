@@ -115,7 +115,7 @@ func Initialize(ctx context.Context, provider, version string) (SecretProvider, 
 			return nil, cfgErr
 		}
 
-		p, err = bitwardenvault.NewProvider(cfg.ApiUrl, cfg.OAuth2TokenURL, cfg.OAuth2ClientID, cfg.OAuth2ClientSecret)
+		p, err = bitwardenvault.NewProvider(ctx, cfg)
 		if err != nil {
 			return nil, err
 		}

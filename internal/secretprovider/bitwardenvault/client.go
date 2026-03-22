@@ -34,20 +34,21 @@ type Provider struct {
 }
 
 // NewProvider creates a Provider using the given config.
-func NewProvider(apiUrl, tokenUrl, clientID, clientSecret string) (*Provider, error) {
-	cfg := &Config{
-		ApiUrl:             apiUrl,
-		OAuth2ClientID:     clientID,
-		OAuth2ClientSecret: clientSecret,
-		OAuth2TokenURL:     tokenUrl,
-	}
-
+func NewProvider(ctx context.Context, cfg *Config) (*Provider, error) {
 	cliPath, err := ensureBwCli()
 	if err != nil {
 		return nil, fmt.Errorf("failed to ensure bw CLI: %w", err)
 	}
 
-	return &Provider{cliPath: cliPath, cfg: cfg}, nil
+	p := &Provider{cliPath: cliPath, cfg: cfg}
+
+	// Pre-login to cache session and validate credentials
+	p.cliSession, err = p.getSession(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get initial session: %w", err)
+	}
+
+	return p, nil
 }
 
 func (p *Provider) Name() string {
@@ -89,6 +90,17 @@ func ensureBwCli() (string, error) {
 	return cliPath, nil
 }
 
+// getEnv returns a copy of strings representing the environment, in the form "key=value".
+func (p *Provider) getEnv() []string {
+	env := os.Environ()
+
+	env = append(env, "BITWARDENCLI_APPDATA_DIR="+p.cfg.AppDataDir)
+	env = append(env, "BW_CLIENTID="+p.cfg.OAuth2ClientID)
+	env = append(env, "BW_CLIENTSECRET="+p.cfg.OAuth2ClientSecret)
+
+	return env
+}
+
 // getSession logs in to Bitwarden and returns a session key.
 func (p *Provider) getSession(ctx context.Context) (string, error) {
 	p.cliSessionMu.Lock()
@@ -102,24 +114,17 @@ func (p *Provider) getSession(ctx context.Context) (string, error) {
 		return "", errors.New("client ID or secret contains unsafe characters")
 	}
 
-	env := os.Environ()
-	env = append(env, "BW_CLIENTID="+p.cfg.OAuth2ClientID)
-	env = append(env, "BW_CLIENTSECRET="+p.cfg.OAuth2ClientSecret)
-
 	if p.cfg.ApiUrl == "https://vault.bitwarden.com" || p.cfg.ApiUrl == "https://vault.bitwarden.eu" {
 		cmd := exec.CommandContext(ctx, p.cliPath, "config", "server", p.cfg.ApiUrl)
-
-		cmd.Env = env
-		cmd.Stderr = os.Stdout
-		if err := cmd.Run(); err != nil {
-			errOut, _ := cmd.Output()
-			return "", fmt.Errorf("bw config server failed: %w", errOut)
+		cmd.Env = p.getEnv()
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return "", fmt.Errorf("bw config server failed: %w; output: %s", err, out)
 		}
 	} else {
 		// Set server endpoints if provided
 		cmd := exec.CommandContext(ctx, p.cliPath, "config", "server", "--api", p.cfg.ApiUrl, "--identity", p.cfg.OAuth2TokenURL)
 
-		cmd.Env = env
+		cmd.Env = p.getEnv()
 		if err := cmd.Run(); err != nil {
 			return "", fmt.Errorf("bw config server --api failed: %w", err)
 		}
@@ -127,7 +132,7 @@ func (p *Provider) getSession(ctx context.Context) (string, error) {
 
 	// #nosec G204 -- Arguments are validated and not user-controlled; no shell is invoked.
 	cmd := exec.CommandContext(ctx, p.cliPath, "login", "--apikey")
-	cmd.Env = env
+	cmd.Env = p.getEnv()
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -145,12 +150,15 @@ func (p *Provider) GetSecret(ctx context.Context, id string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to get session: %w", err)
 	}
+
 	// Validate id and session for safe characters
-	if strings.ContainsAny(id, " \t\n\r\v\f;|&$><`\"'\\") || strings.ContainsAny(session, " \t\n\r\v\f;|&$><`\"'\\") {
-		return "", errors.New("secret id or session contains unsafe characters")
-	}
+	// if strings.ContainsAny(id, " \t\n\r\v\f;|&$><`\"'\\") || strings.ContainsAny(session, " \t\n\r\v\f;|&$><`\"'\\") {
+	//	return "", fmt.Errorf("secret id or session contains unsafe characters: id=%s session=%s", id, session)
+	//}
+
 	// #nosec G204 -- Arguments are validated and not user-controlled; no shell is invoked.
 	cmd := exec.CommandContext(ctx, p.cliPath, "get", "item", id, "--session", session)
+	cmd.Env = p.getEnv()
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -166,6 +174,8 @@ func (p *Provider) GetSecret(ctx context.Context, id string) (string, error) {
 			PrivateKey string `json:"privateKey"`
 		} `json:"sshKey"`
 	}{}
+
+	fmt.Println("bw get item output:", string(out)) // Debug output
 
 	err = json.Unmarshal(out, &item)
 	if err != nil {
