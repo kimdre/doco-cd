@@ -397,6 +397,7 @@ func Test_getChangeAndIgnore(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, got2 := getChangeAndIgnore(tt.changed, tt.ignored)
 			slices.Sort(got)
 			slices.Sort(got2)
