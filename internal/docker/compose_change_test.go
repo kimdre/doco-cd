@@ -343,7 +343,7 @@ func Test_checkIsIgnoreByCfg(t *testing.T) {
 			want:      true,
 		},
 		{
-			name: "svc scope found with empty",
+			name: "svc bindMounts is ignore",
 			ignoreCfg: projectIgnoreCfg{
 				"svc1": {
 					ignoreMap: map[changeScope]changeIgnoreRule{
@@ -359,7 +359,7 @@ func Test_checkIsIgnoreByCfg(t *testing.T) {
 			want:  true,
 		},
 		{
-			name: "svc scope found with empty",
+			name: "svc bindMounts is not ignore",
 			ignoreCfg: projectIgnoreCfg{
 				"svc1": {
 					ignoreMap: map[changeScope]changeIgnoreRule{
@@ -392,46 +392,46 @@ func Test_getChangeAndIgnore(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		changed []string
-		ignored []string
-		want    []string
-		want2   []string
+		name        string
+		changed     []string
+		ignored     []string
+		wantChanged []string
+		wantIgnored []string
 	}{
 		{
-			name:    "only changed",
-			changed: []string{"1"},
-			ignored: []string{},
-			want:    []string{"1"},
-			want2:   []string{},
+			name:        "only changed",
+			changed:     []string{"1"},
+			ignored:     []string{},
+			wantChanged: []string{"1"},
+			wantIgnored: []string{},
 		},
 		{
-			name:    "only ignored",
-			changed: []string{},
-			ignored: []string{"1"},
-			want:    []string{},
-			want2:   []string{"1"},
+			name:        "only ignored",
+			changed:     []string{},
+			ignored:     []string{"1"},
+			wantChanged: []string{},
+			wantIgnored: []string{"1"},
 		},
 		{
-			name:    "both changed and ignored",
-			changed: []string{"1"},
-			ignored: []string{"2"},
-			want:    []string{"1"},
-			want2:   []string{"2"},
+			name:        "both changed and ignored",
+			changed:     []string{"1"},
+			ignored:     []string{"2"},
+			wantChanged: []string{"1"},
+			wantIgnored: []string{"2"},
 		},
 		{
-			name:    "changed include all ignored",
-			changed: []string{"1", "2"},
-			ignored: []string{"1"},
-			want:    []string{"1", "2"},
-			want2:   []string{},
+			name:        "changed include all ignored",
+			changed:     []string{"1", "2"},
+			ignored:     []string{"1"},
+			wantChanged: []string{"1", "2"},
+			wantIgnored: []string{},
 		},
 		{
-			name:    "ignored include all changed",
-			changed: []string{"1", "2"},
-			ignored: []string{"1", "2", "3"},
-			want:    []string{"1", "2"},
-			want2:   []string{"3"},
+			name:        "ignored include all changed",
+			changed:     []string{"1", "2"},
+			ignored:     []string{"1", "2", "3"},
+			wantChanged: []string{"1", "2"},
+			wantIgnored: []string{"3"},
 		},
 	}
 	for _, tt := range tests {
@@ -441,15 +441,15 @@ func Test_getChangeAndIgnore(t *testing.T) {
 			got, got2 := getChangeAndIgnore(tt.changed, tt.ignored)
 			slices.Sort(got)
 			slices.Sort(got2)
-			slices.Sort(tt.want)
-			slices.Sort(tt.want2)
+			slices.Sort(tt.wantChanged)
+			slices.Sort(tt.wantIgnored)
 
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("getChangeAndIgnore() = %v, want %v", got, tt.want)
+			if !reflect.DeepEqual(got, tt.wantChanged) {
+				t.Errorf("getChangeAndIgnore() = %v, want %v", got, tt.wantChanged)
 			}
 
-			if !reflect.DeepEqual(got2, tt.want2) {
-				t.Errorf("getChangeAndIgnore() = %v, want %v", got2, tt.want2)
+			if !reflect.DeepEqual(got2, tt.wantIgnored) {
+				t.Errorf("getChangeAndIgnore() = %v, want %v", got2, tt.wantIgnored)
 			}
 		})
 	}
