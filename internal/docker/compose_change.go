@@ -8,6 +8,7 @@ import (
 
 	"github.com/compose-spec/compose-go/v2/types"
 
+	"github.com/kimdre/doco-cd/internal/utils/set"
 	"github.com/kimdre/doco-cd/internal/utils/slice"
 )
 
@@ -92,11 +93,17 @@ func parseRecreateIgnore(input string) (map[changeScope]changeIgnoreRule, error)
 }
 
 // key is the service name.
-type projectIgnoreCfg = map[string]map[changeScope]changeIgnoreRule
+type projectIgnoreCfg = map[string]serviceIgnoreCfg
+
+type serviceIgnoreCfg struct {
+	ignoreMap map[changeScope]changeIgnoreRule
+	// send signal when ignore
+	signal string
+}
 
 // getChangeFromProject returns the recreate-ignore config.
 func getIgnoreRecrateCfgFromProject(project *types.Project) (projectIgnoreCfg, error) {
-	ret := make(map[string]map[changeScope]changeIgnoreRule)
+	ret := make(map[string]serviceIgnoreCfg)
 
 	for name, s := range project.Services {
 		ignoreCfg, ok := s.Labels[DocoCDLabels.Deployment.RecreateIgnore]
@@ -106,7 +113,10 @@ func getIgnoreRecrateCfgFromProject(project *types.Project) (projectIgnoreCfg, e
 				return nil, fmt.Errorf("%s's ignoreCfg is err: %w", name, err)
 			}
 
-			ret[name] = cfg
+			ret[name] = serviceIgnoreCfg{
+				ignoreMap: cfg,
+				signal:    s.Labels[DocoCDLabels.Deployment.RecreateIgnoreSignal],
+			}
 		}
 	}
 
@@ -119,10 +129,19 @@ func checkIsIgnoreByCfg(cfg projectIgnoreCfg, svc string, scope changeScope, ite
 		return false
 	}
 
-	scopeCfg, ok := svcCfg[scope]
+	scopeCfg, ok := svcCfg.ignoreMap[scope]
 	if !ok {
 		return false
 	}
 
 	return scopeCfg.IsIgnore(item)
+}
+
+func getChangeAndIgnore(changed, ignored []string) ([]string, []string) {
+	changedSet := set.New(changed...)
+	ignoredSet := set.New(ignored...)
+
+	// if changed set contains ignored set, remove them
+	ignoredSet = ignoredSet.Difference(changedSet)
+	return changedSet.ToSlice(), ignoredSet.ToSlice()
 }

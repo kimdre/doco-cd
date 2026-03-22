@@ -2,6 +2,7 @@ package docker
 
 import (
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/compose-spec/compose-go/v2/types"
@@ -170,7 +171,9 @@ func Test_getIgnoreRecrateCfgFromProject(t *testing.T) {
 				},
 			},
 			want: projectIgnoreCfg{
-				"svc2": {},
+				"svc2": {
+					ignoreMap: map[changeScope]changeIgnoreRule{},
+				},
 			},
 			wantErr: false,
 		},
@@ -187,17 +190,21 @@ func Test_getIgnoreRecrateCfgFromProject(t *testing.T) {
 					"svc2": types.ServiceConfig{
 						Name: "svc2",
 						Labels: map[string]string{
-							DocoCDLabels.Deployment.RecreateIgnore: "configs=app,secrets",
+							DocoCDLabels.Deployment.RecreateIgnore:       "configs=app,secrets",
+							DocoCDLabels.Deployment.RecreateIgnoreSignal: "SIGHUP",
 						},
 					},
 				},
 			},
 			want: projectIgnoreCfg{
 				"svc2": {
-					changeScopeConfigs: {
-						Items: []string{"app"},
+					signal: "SIGHUP",
+					ignoreMap: map[changeScope]changeIgnoreRule{
+						changeScopeConfigs: {
+							Items: []string{"app"},
+						},
+						changeScopeSecrets: {},
 					},
-					changeScopeSecrets: {},
 				},
 			},
 			wantErr: false,
@@ -232,10 +239,12 @@ func Test_checkIsIgnoreByCfg(t *testing.T) {
 
 	cfg := projectIgnoreCfg{
 		"svc1": {
-			changeScopeConfigs: {
-				Items: []string{"app"},
+			ignoreMap: map[changeScope]changeIgnoreRule{
+				changeScopeConfigs: {
+					Items: []string{"app"},
+				},
+				changeScopeSecrets: {},
 			},
-			changeScopeSecrets: {},
 		},
 	}
 
@@ -271,7 +280,7 @@ func Test_checkIsIgnoreByCfg(t *testing.T) {
 			want:      true,
 		},
 		{
-			name:      "svc scope found",
+			name:      "svc scope found not match",
 			ignoreCfg: cfg,
 			svc:       "svc1",
 			scope:     changeScopeConfigs,
@@ -279,7 +288,15 @@ func Test_checkIsIgnoreByCfg(t *testing.T) {
 			want:      false,
 		},
 		{
-			name:      "svc scope found with empty",
+			name:      "svc scope ignore all",
+			ignoreCfg: cfg,
+			svc:       "svc1",
+			scope:     changeScopeSecrets,
+			item:      "abcd",
+			want:      true,
+		},
+		{
+			name:      "svc scope ignore all",
 			ignoreCfg: cfg,
 			svc:       "svc1",
 			scope:     changeScopeSecrets,
@@ -287,10 +304,12 @@ func Test_checkIsIgnoreByCfg(t *testing.T) {
 		},
 		{
 			name: "svc scope found with empty",
-			ignoreCfg: map[string]map[changeScope]changeIgnoreRule{
+			ignoreCfg: projectIgnoreCfg{
 				"svc1": {
-					changeScopeBindMounts: {
-						Items: []string{"/"},
+					ignoreMap: map[changeScope]changeIgnoreRule{
+						changeScopeBindMounts: {
+							Items: []string{"/"},
+						},
 					},
 				},
 			},
@@ -301,10 +320,12 @@ func Test_checkIsIgnoreByCfg(t *testing.T) {
 		},
 		{
 			name: "svc scope found with empty",
-			ignoreCfg: map[string]map[changeScope]changeIgnoreRule{
+			ignoreCfg: projectIgnoreCfg{
 				"svc1": {
-					changeScopeBindMounts: {
-						Items: []string{"/"},
+					ignoreMap: map[changeScope]changeIgnoreRule{
+						changeScopeBindMounts: {
+							Items: []string{"/"},
+						},
 					},
 				},
 			},
@@ -322,6 +343,71 @@ func Test_checkIsIgnoreByCfg(t *testing.T) {
 
 			if got != tt.want {
 				t.Errorf("getIgnoreCfgByServiceNameAndScope() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_getChangeAndIgnore(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		changed []string
+		ignored []string
+		want    []string
+		want2   []string
+	}{
+		{
+			name:    "only changed",
+			changed: []string{"1"},
+			ignored: []string{},
+			want:    []string{"1"},
+			want2:   []string{},
+		},
+		{
+			name:    "only ignored",
+			changed: []string{},
+			ignored: []string{"1"},
+			want:    []string{},
+			want2:   []string{"1"},
+		},
+		{
+			name:    "both changed and ignored",
+			changed: []string{"1"},
+			ignored: []string{"2"},
+			want:    []string{"1"},
+			want2:   []string{"2"},
+		},
+		{
+			name:    "changed include all ignored",
+			changed: []string{"1", "2"},
+			ignored: []string{"1"},
+			want:    []string{"1", "2"},
+			want2:   []string{},
+		},
+		{
+			name:    "ignored include all changed",
+			changed: []string{"1", "2"},
+			ignored: []string{"1", "2", "3"},
+			want:    []string{"1", "2"},
+			want2:   []string{"3"},
+		},
+	}
+	for _, tt := range tests {
+		t.Parallel()
+		t.Run(tt.name, func(t *testing.T) {
+			got, got2 := getChangeAndIgnore(tt.changed, tt.ignored)
+			slices.Sort(got)
+			slices.Sort(got2)
+			slices.Sort(tt.want)
+			slices.Sort(tt.want2)
+
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("getChangeAndIgnore() = %v, want %v", got, tt.want)
+			}
+			if !reflect.DeepEqual(got2, tt.want2) {
+				t.Errorf("getChangeAndIgnore() = %v, want %v", got2, tt.want2)
 			}
 		})
 	}
