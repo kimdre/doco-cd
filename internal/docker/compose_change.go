@@ -38,6 +38,7 @@ func (c changeIgnoreRule) IsIgnore(item string) bool {
 var (
 	ErrChangeScopeDuplicate = errors.New("change scope is duplicated")
 	ErrChangeScopeInvalid   = errors.New("change scope is invalid")
+	ErrIgnoreCfgInvalid     = errors.New("ignore config is invalid")
 )
 
 // parseRecreateIgnore parses the recreate-ignore config
@@ -106,8 +107,21 @@ func getIgnoreRecrateCfgFromProject(project *types.Project) (projectIgnoreCfg, e
 	ret := make(map[string]serviceIgnoreCfg)
 
 	for name, s := range project.Services {
-		ignoreCfg, ok := s.Labels[DocoCDLabels.Deployment.RecreateIgnore]
-		if ok {
+		ignoreCfg, ignoreExist := s.Labels[DocoCDLabels.Deployment.RecreateIgnore]
+
+		ignoreCfg = strings.TrimSpace(ignoreCfg)
+		if ignoreExist && ignoreCfg == "" {
+			return nil, fmt.Errorf("service %s ignore is exist but empty, err: %w", name, ErrIgnoreCfgInvalid)
+		}
+
+		sig, sigExist := s.Labels[DocoCDLabels.Deployment.RecreateIgnoreSignal]
+
+		sig = strings.TrimSpace(sig)
+		if sigExist && sig == "" {
+			return nil, fmt.Errorf("service %s ignore signal is exist but empty, err: %w", name, ErrIgnoreCfgInvalid)
+		}
+
+		if ignoreExist {
 			cfg, err := parseRecreateIgnore(ignoreCfg)
 			if err != nil {
 				return nil, fmt.Errorf("%s's ignoreCfg is err: %w", name, err)
@@ -115,8 +129,10 @@ func getIgnoreRecrateCfgFromProject(project *types.Project) (projectIgnoreCfg, e
 
 			ret[name] = serviceIgnoreCfg{
 				ignoreMap: cfg,
-				signal:    s.Labels[DocoCDLabels.Deployment.RecreateIgnoreSignal],
+				signal:    sig,
 			}
+		} else if sigExist {
+			return nil, fmt.Errorf("service %s, ignore signal is exist but ignore is missing err: %w", name, ErrIgnoreCfgInvalid)
 		}
 	}
 

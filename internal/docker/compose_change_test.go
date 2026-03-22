@@ -170,12 +170,8 @@ func Test_getIgnoreRecrateCfgFromProject(t *testing.T) {
 					},
 				},
 			},
-			want: projectIgnoreCfg{
-				"svc2": {
-					ignoreMap: map[changeScope]changeIgnoreRule{},
-				},
-			},
-			wantErr: false,
+			want:    projectIgnoreCfg{},
+			wantErr: true,
 		},
 		{
 			name: "two services, one service have no-empty recreate-ignore config",
@@ -208,6 +204,50 @@ func Test_getIgnoreRecrateCfgFromProject(t *testing.T) {
 				},
 			},
 			wantErr: false,
+		},
+		{
+			name: "ignoreSignal is empty",
+			project: &types.Project{
+				Services: types.Services{
+					"svc2": types.ServiceConfig{
+						Name: "svc2",
+						Labels: map[string]string{
+							DocoCDLabels.Deployment.RecreateIgnore:       "configs=app,secrets",
+							DocoCDLabels.Deployment.RecreateIgnoreSignal: " ",
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "ignore is empty, but ignoreSignal is exist",
+			project: &types.Project{
+				Services: types.Services{
+					"svc2": types.ServiceConfig{
+						Name: "svc2",
+						Labels: map[string]string{
+							DocoCDLabels.Deployment.RecreateIgnore:       " ",
+							DocoCDLabels.Deployment.RecreateIgnoreSignal: "SIGHUP",
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "ignore is not exist, but ignoreSignal is exist",
+			project: &types.Project{
+				Services: types.Services{
+					"svc2": types.ServiceConfig{
+						Name: "svc2",
+						Labels: map[string]string{
+							DocoCDLabels.Deployment.RecreateIgnoreSignal: "SIGHUP",
+						},
+					},
+				},
+			},
+			wantErr: true,
 		},
 	}
 	for _, tt := range tests {
