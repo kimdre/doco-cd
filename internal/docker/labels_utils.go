@@ -7,11 +7,6 @@ import (
 	"github.com/moby/moby/client"
 )
 
-type candidate struct {
-	timestamp string
-	labels    Labels
-}
-
 // GetLatestServiceLabels retrieves the labels of the most recently (re-)deployed services for a given repository and deployment name..
 func GetLatestServiceLabels(ctx context.Context, client *client.Client, repoName, deployName string) (Labels, error) {
 	serviceLabels, err := GetServiceLabels(ctx, client, deployName)
@@ -24,33 +19,26 @@ func GetLatestServiceLabels(ctx context.Context, client *client.Client, repoName
 
 func getLatestServiceLabels(serviceLabels map[Service]Labels, repoName string) Labels {
 	var (
-		candidates   []candidate
-		latestLabels Labels
+		latestTimestamp string
+		latestLabels    Labels
 	)
 	// Find deployed commit, deployConfig hash and externalSecrets hash from labels of deployed services
 	for _, labels := range serviceLabels {
 		name, ok := labels[DocoCDLabels.Repository.Name]
 		if !ok || name != repoName {
-			break
+			// when service matches and some others don't,
+			// if use break random result will be returned.
+			continue
 		}
 
-		candidates = append(candidates, candidate{
-			timestamp: labels[DocoCDLabels.Deployment.Timestamp],
-			labels:    labels,
-		})
-	}
-
-	// Get the candidate with the latest timestamp to ensure we are comparing against the most recent deployment
-	if len(candidates) > 0 {
-		latestCandidate := candidates[0]
-
-		for _, c := range candidates[1:] {
-			if c.timestamp > latestCandidate.timestamp {
-				latestCandidate = c
-			}
+		timestamp := labels[DocoCDLabels.Deployment.Timestamp]
+		// Get the candidate with the latest timestamp to ensure we are comparing against the most recent deployment.
+		// use equal here, make latestLabels not empty when timestamp is empty
+		// todo: when timestamp is equal, result may random when deployed at the same timestamp multiple times
+		if timestamp >= latestTimestamp {
+			latestTimestamp = timestamp
+			latestLabels = labels
 		}
-
-		latestLabels = latestCandidate.labels
 	}
 
 	return latestLabels

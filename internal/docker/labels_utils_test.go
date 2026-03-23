@@ -60,6 +60,24 @@ func Test_getLatestServiceLabels(t *testing.T) {
 			want:     nil,
 		},
 		{
+			name: "two service with timestamp but repo mismatch",
+			serviceLabels: map[Service]Labels{
+				"svc1": {
+					DocoCDLabels.Repository.Name:      "repo",
+					DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
+				},
+				"svc2": {
+					DocoCDLabels.Repository.Name:      "repo-2",
+					DocoCDLabels.Deployment.Timestamp: "2016-01-02T15:04:05Z07:00",
+				},
+			},
+			repoName: "repo",
+			want: Labels{
+				DocoCDLabels.Repository.Name:      "repo",
+				DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
+			},
+		},
+		{
 			name: "two service with timestamp but no repo",
 			serviceLabels: map[Service]Labels{
 				"svc1": {
