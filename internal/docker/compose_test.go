@@ -430,7 +430,7 @@ func TestHasChangedConfigs(t *testing.T) {
 					"svc1": {
 						Name: "svc1",
 						Labels: map[string]string{
-							DocoCDLabels.Deployment.RecreateIgnore: "configs=test",
+							DocoCDLabels.Deployment.RecreateIgnore: "{configs: [test]}",
 						},
 						Configs: []types.ServiceConfigObjConfig{
 							{Source: "test"},
@@ -637,7 +637,7 @@ func TestHasChangedSecrets(t *testing.T) {
 					"svc1": {
 						Name: "svc1",
 						Labels: map[string]string{
-							DocoCDLabels.Deployment.RecreateIgnore: "secrets=test",
+							DocoCDLabels.Deployment.RecreateIgnore: "{secrets: [test]}",
 						},
 						Secrets: []types.ServiceSecretConfig{
 							{
@@ -842,7 +842,7 @@ func TestHasChangedBindMounts(t *testing.T) {
 					"not-affected": {
 						Name: "not-affected",
 						Labels: map[string]string{
-							DocoCDLabels.Deployment.RecreateIgnore: "bindMounts=/dir",
+							DocoCDLabels.Deployment.RecreateIgnore: "{bindMounts: [/dir]}",
 						},
 						Volumes: []types.ServiceVolumeConfig{
 							{
@@ -864,7 +864,7 @@ func TestHasChangedBindMounts(t *testing.T) {
 					"svc3": {
 						Name: "svc3",
 						Labels: map[string]string{
-							DocoCDLabels.Deployment.RecreateIgnore: "bindMounts=/dir",
+							DocoCDLabels.Deployment.RecreateIgnore: "{bindMounts: [/dir]}",
 						},
 						Volumes: []types.ServiceVolumeConfig{
 							{
@@ -1436,7 +1436,7 @@ func TestProjectFilesHaveChanges_withoutGitRepo(t *testing.T) {
 					"test2": {
 						Name: "test2",
 						Labels: types.Labels{
-							DocoCDLabels.Deployment.RecreateIgnore: "bindMounts=/mnt",
+							DocoCDLabels.Deployment.RecreateIgnore: "{bindMounts: [/mnt]}",
 						},
 						Volumes: []types.ServiceVolumeConfig{
 							{
@@ -1449,7 +1449,7 @@ func TestProjectFilesHaveChanges_withoutGitRepo(t *testing.T) {
 					"test3": {
 						Name: "test3",
 						Labels: types.Labels{
-							DocoCDLabels.Deployment.RecreateIgnore:       "bindMounts=/mnt",
+							DocoCDLabels.Deployment.RecreateIgnore:       "{bindMounts: [/mnt]}",
 							DocoCDLabels.Deployment.RecreateIgnoreSignal: "SIGHUP",
 						},
 						Volumes: []types.ServiceVolumeConfig{
@@ -1493,7 +1493,7 @@ func TestProjectFilesHaveChanges_withoutGitRepo(t *testing.T) {
 					"test": {
 						Name: "test",
 						Labels: types.Labels{
-							DocoCDLabels.Deployment.RecreateIgnore: "bindMounts=/mnt",
+							DocoCDLabels.Deployment.RecreateIgnore: "{bindMounts: [/mnt]}",
 						},
 						Volumes: []types.ServiceVolumeConfig{
 							{
@@ -1506,7 +1506,7 @@ func TestProjectFilesHaveChanges_withoutGitRepo(t *testing.T) {
 					"test2": {
 						Name: "test2",
 						Labels: types.Labels{
-							DocoCDLabels.Deployment.RecreateIgnore: "bindMounts=/mnt",
+							DocoCDLabels.Deployment.RecreateIgnore: "{bindMounts: [/mnt]}",
 						},
 						Configs: []types.ServiceConfigObjConfig{
 							{
