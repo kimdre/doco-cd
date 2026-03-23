@@ -49,6 +49,23 @@ type (
 	Labels  map[string]string // Labels of the Service
 )
 
+func (l Labels) Get(key string) (string, bool) {
+	v, ok := l[key]
+	return v, ok
+}
+
+func (l Labels) GetDeployedCommit() (string, bool) {
+	return l.Get(DocoCDLabels.Deployment.CommitSHA)
+}
+
+func (l Labels) GetDeployedTimestamp() (string, bool) {
+	return l.Get(DocoCDLabels.Deployment.Timestamp)
+}
+
+func (l Labels) GetDeployedComposeHash() (string, bool) {
+	return l.Get(DocoCDLabels.Deployment.ComposeHash)
+}
+
 // GetServiceLabels retrieves the Labels for each Service in a given stack.
 func GetServiceLabels(ctx context.Context, cli *client.Client, stackName string) (map[Service]Labels, error) {
 	if swarmInternal.ModeEnabled {

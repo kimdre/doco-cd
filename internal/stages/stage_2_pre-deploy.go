@@ -26,20 +26,8 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 
 	// Check for external secret changes and current deployed commit
 	var (
-		imagesChanged  bool // Flag to indicate if images have changed
-		deployedCommit string
-		curProjectHash string
+		imagesChanged bool // Flag to indicate if images have changed
 	)
-
-	labels, err := docker.GetLatestServiceLabels(ctx, s.Docker.Client, getFullName(s.Repository.CloneURL), s.DeployConfig.Name)
-	if err != nil {
-		return fmt.Errorf("failed to get latest labels from deployed services: %w", err)
-	}
-
-	if len(labels) > 0 {
-		deployedCommit = labels[docker.DocoCDLabels.Deployment.CommitSHA]
-		curProjectHash = labels[docker.DocoCDLabels.Deployment.ComposeHash]
-	}
 
 	// Compare external secrets if a secret provider is configured
 	if s.SecretProvider != nil && *s.SecretProvider != nil && len(s.DeployConfig.ExternalSecrets) > 0 {
@@ -59,6 +47,8 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			s.DeployConfig.Internal.Environment[k] = v
 		}
 	}
+
+	var err error
 
 	s.DeployConfig.Internal.Hash, err = s.DeployConfig.Hash()
 	if err != nil {
@@ -108,11 +98,17 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		}
 	}
 
-	if deployedCommit != "" {
+	deployedState, err := docker.GetLatestServiceState(ctx, s.Docker.Client, getFullName(s.Repository.CloneURL), s.DeployConfig.Name)
+	if err != nil {
+		return fmt.Errorf("failed to get latest labels from deployed services: %w", err)
+	}
+
+	if deployedCommit, _ := deployedState.Labels.GetDeployedCommit(); deployedCommit != "" {
 		latestCommit, err := git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
 		if err != nil {
 			return fmt.Errorf("failed to get latest commit: %w", err)
 		}
+
 		stageLog.Debug("comparing commits",
 			slog.String("deployed_commit", deployedCommit),
 			slog.String("latest_commit", latestCommit))
@@ -149,6 +145,8 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		if err != nil {
 			return fmt.Errorf("failed to get project hash: %w", err)
 		}
+
+		curProjectHash, _ := deployedState.Labels.GetDeployedComposeHash()
 
 		composeChanged := newHash != curProjectHash
 		if composeChanged {
