@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/compose-spec/compose-go/v2/types"
+	"gopkg.in/yaml.v3"
 
 	"github.com/kimdre/doco-cd/internal/utils/set"
 	"github.com/kimdre/doco-cd/internal/utils/slice"
@@ -22,84 +23,57 @@ const (
 	changeScopeEnvFiles   changeScope = "envFiles"
 )
 
-type changeIgnoreRule struct {
-	Items []string // ignore specific items
-}
+type (
+	// key is the service name.
+	projectIgnoreCfg map[string]serviceIgnoreCfg
+
+	serviceIgnoreCfg struct {
+		ignoreMap ignoreCfg
+		// send signal when ignore
+		signal string
+	}
+
+	ignoreCfg map[changeScope]changeIgnoreRule
+	// ignore specific items.
+	// when null and empty, means ignore all.
+	changeIgnoreRule []string
+)
 
 func (c changeIgnoreRule) IsIgnore(item string) bool {
-	// empty items means ignore all
-	if len(c.Items) == 0 {
+	// empty items or null means ignore all
+	if len(c) == 0 {
 		return true
 	}
 
-	return slices.Contains(c.Items, item)
+	return slices.Contains(c, item)
 }
 
-var (
-	ErrChangeScopeDuplicate = errors.New("change scope is duplicated")
-	ErrChangeScopeInvalid   = errors.New("change scope is invalid")
-	ErrIgnoreCfgInvalid     = errors.New("ignore config is invalid")
-)
+var ErrIgnoreCfgInvalid = errors.New("ignore config is invalid")
 
 // parseRecreateIgnore parses the recreate-ignore config
-// example: configs=app|nginx,secrets=db,bindMounts
-func parseRecreateIgnore(input string) (map[changeScope]changeIgnoreRule, error) {
-	ret := make(map[changeScope]changeIgnoreRule)
+// example:  "{configs: [app, nginx], secrets: [db], bindMounts: []}"
+func parseRecreateIgnore(input string) (ignoreCfg, error) {
+	ret := ignoreCfg{}
 
-	input = strings.TrimSpace(input)
-	if input == "" {
-		return ret, nil
+	err := yaml.Unmarshal([]byte(input), &ret)
+	if err != nil {
+		return nil, fmt.Errorf("%w, yaml err: %v", ErrIgnoreCfgInvalid, err.Error())
 	}
 
-	for entry := range strings.SplitSeq(input, ",") {
-		entry = strings.TrimSpace(entry)
-		if entry == "" {
-			continue
-		}
-
-		scopeStr, itemsPart, _ := strings.Cut(entry, "=")
-		scope := changeScope(scopeStr)
-
+	for scope, rule := range ret {
 		switch scope {
 		case changeScopeConfigs, changeScopeSecrets, changeScopeBindMounts:
 			// ignore envFiles and buildFiles because always need recreate
 		default:
-			return nil, fmt.Errorf("%s: %w", scope, ErrChangeScopeInvalid)
-		}
-		// duplicate scope check
-		_, ok := ret[scope]
-		if ok {
-			return nil, fmt.Errorf("%s: %w", scope, ErrChangeScopeDuplicate)
+			return nil, fmt.Errorf("%w, %s is not supported", ErrIgnoreCfgInvalid, scope)
 		}
 
-		rule := changeIgnoreRule{}
-
-		for item := range strings.SplitSeq(itemsPart, "|") {
-			item = strings.TrimSpace(item)
-			if item != "" {
-				rule.Items = append(rule.Items, item)
-			}
+		if len(slice.Unique(rule)) != len(rule) {
+			return nil, fmt.Errorf("%w, %s have duplicated items", ErrIgnoreCfgInvalid, scope)
 		}
-
-		if len(rule.Items) != 0 {
-			if len(slice.Unique(rule.Items)) != len(rule.Items) {
-				return nil, fmt.Errorf("%s: %w", scope, ErrChangeScopeDuplicate)
-			}
-		}
-
-		ret[scope] = rule
 	}
 
 	return ret, nil
-}
-
-// key is the service name.
-type projectIgnoreCfg = map[string]serviceIgnoreCfg
-
-type serviceIgnoreCfg struct {
-	ignoreMap map[changeScope]changeIgnoreRule
-	// send signal when ignore
-	signal string
 }
 
 // getIgnoreRecreateCfgFromProject returns the recreate-ignore config.

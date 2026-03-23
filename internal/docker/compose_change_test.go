@@ -14,89 +14,107 @@ func Test_parseRecreateIgnore(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   string
-		want    map[changeScope]changeIgnoreRule
+		want    ignoreCfg
 		wantErr bool
 	}{
 		{
 			name:  "valid config",
-			input: `configs=app|nginx,secrets=db,bindMounts`,
-			want: map[changeScope]changeIgnoreRule{
-				changeScopeConfigs: {
-					Items: []string{"app", "nginx"},
-				},
-				changeScopeSecrets: {
-					Items: []string{"db"},
-				},
-				changeScopeBindMounts: {
-					Items: nil,
-				},
+			input: `{configs: [app, nginx], secrets: [db], bindMounts: []}`,
+			want: ignoreCfg{
+				changeScopeConfigs:    {"app", "nginx"},
+				changeScopeSecrets:    {"db"},
+				changeScopeBindMounts: {},
 			},
 			wantErr: false,
 		},
 		{
+			name: "valid multiline config",
+			input: `
+configs:
+  - app
+  - nginx
+secrets:
+  - db
+bindMounts: []
+`,
+			want: ignoreCfg{
+				changeScopeConfigs:    {"app", "nginx"},
+				changeScopeSecrets:    {"db"},
+				changeScopeBindMounts: {},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "invalid yaml",
+			input:   `configs=app,nginx`,
+			want:    nil,
+			wantErr: true,
+		},
+		{
 			name:    "valid empty config",
-			input:   ` `,
-			want:    map[changeScope]changeIgnoreRule{},
+			input:   ``,
+			want:    ignoreCfg{},
 			wantErr: false,
 		},
 		{
 			name:    "empty config",
 			input:   ``,
-			want:    map[changeScope]changeIgnoreRule{},
+			want:    ignoreCfg{},
 			wantErr: false,
 		},
 		{
 			name:  "valid config with empty items",
-			input: `configs= ,secrets`,
-			want: map[changeScope]changeIgnoreRule{
+			input: `{configs: [], secrets: []}`,
+			want: ignoreCfg{
 				changeScopeConfigs: {},
 				changeScopeSecrets: {},
 			},
 			wantErr: false,
 		},
 		{
-			name:    "duplicate scopes",
-			input:   `configs=,configs=a`,
-			want:    nil,
-			wantErr: true,
+			name:  "valid config with null",
+			input: `{configs: null, secrets: null}`,
+			want: ignoreCfg{
+				changeScopeConfigs: nil,
+				changeScopeSecrets: nil,
+			},
+			wantErr: false,
 		},
 		{
 			name:    "duplicate scope items",
-			input:   `configs=a|a`,
-			want:    map[changeScope]changeIgnoreRule{},
+			input:   `{configs: [app, app]}`,
+			want:    ignoreCfg{},
 			wantErr: true,
 		},
 		{
 			name:  "bindMounts",
-			input: `bindMounts`,
-			want: map[changeScope]changeIgnoreRule{
+			input: `{bindMounts: []}`,
+			want: ignoreCfg{
 				changeScopeBindMounts: {},
 			},
 			wantErr: false,
 		},
 		{
 			name:  "bindMounts with paths",
-			input: `bindMounts=/|/data`,
-			want: map[changeScope]changeIgnoreRule{
-				changeScopeBindMounts: {
-					Items: []string{"/", "/data"},
-				},
+			input: `{bindMounts: [/, /data]}`,
+			want: ignoreCfg{
+				changeScopeBindMounts: {"/", "/data"},
 			},
 			wantErr: false,
 		},
 		{
 			name:    "wrong scope",
-			input:   `envFiles`,
+			input:   `{envFiles: []} `,
 			wantErr: true,
 		},
 		{
 			name:    "wrong scope",
-			input:   `buildFiles`,
+			input:   `{buildFiles: []} `,
 			wantErr: true,
 		},
 		{
 			name:    "unknown scope",
-			input:   `xxxx`,
+			input:   `{unknownScope: []}`,
 			wantErr: true,
 		},
 	}
@@ -119,7 +137,7 @@ func Test_parseRecreateIgnore(t *testing.T) {
 			}
 
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("parseRecreateIgnore() = %v, want %v", got, tt.want)
+				t.Errorf("parseRecreateIgnore() = %#v, want %#v", got, tt.want)
 			}
 		})
 	}
@@ -186,7 +204,7 @@ func Test_getIgnoreRecreateCfgFromProject(t *testing.T) {
 					"svc2": types.ServiceConfig{
 						Name: "svc2",
 						Labels: map[string]string{
-							DocoCDLabels.Deployment.RecreateIgnore:       "configs=app,secrets",
+							DocoCDLabels.Deployment.RecreateIgnore:       "{configs: [app], secrets: []}",
 							DocoCDLabels.Deployment.RecreateIgnoreSignal: "SIGHUP",
 						},
 					},
@@ -195,10 +213,8 @@ func Test_getIgnoreRecreateCfgFromProject(t *testing.T) {
 			want: projectIgnoreCfg{
 				"svc2": {
 					signal: "SIGHUP",
-					ignoreMap: map[changeScope]changeIgnoreRule{
-						changeScopeConfigs: {
-							Items: []string{"app"},
-						},
+					ignoreMap: ignoreCfg{
+						changeScopeConfigs: []string{"app"},
 						changeScopeSecrets: {},
 					},
 				},
@@ -212,7 +228,7 @@ func Test_getIgnoreRecreateCfgFromProject(t *testing.T) {
 					"svc2": types.ServiceConfig{
 						Name: "svc2",
 						Labels: map[string]string{
-							DocoCDLabels.Deployment.RecreateIgnore:       "configs=app,secrets",
+							DocoCDLabels.Deployment.RecreateIgnore:       "{configs: [app], secrets: []}",
 							DocoCDLabels.Deployment.RecreateIgnoreSignal: " ",
 						},
 					},
@@ -279,10 +295,8 @@ func Test_checkIsIgnoreByCfg(t *testing.T) {
 
 	cfg := projectIgnoreCfg{
 		"svc1": {
-			ignoreMap: map[changeScope]changeIgnoreRule{
-				changeScopeConfigs: {
-					Items: []string{"app"},
-				},
+			ignoreMap: ignoreCfg{
+				changeScopeConfigs: []string{"app"},
 				changeScopeSecrets: {},
 			},
 		},
@@ -346,10 +360,8 @@ func Test_checkIsIgnoreByCfg(t *testing.T) {
 			name: "svc bindMounts is ignore",
 			ignoreCfg: projectIgnoreCfg{
 				"svc1": {
-					ignoreMap: map[changeScope]changeIgnoreRule{
-						changeScopeBindMounts: {
-							Items: []string{"/"},
-						},
+					ignoreMap: ignoreCfg{
+						changeScopeBindMounts: []string{"/"},
 					},
 				},
 			},
@@ -362,10 +374,8 @@ func Test_checkIsIgnoreByCfg(t *testing.T) {
 			name: "svc bindMounts is not ignore",
 			ignoreCfg: projectIgnoreCfg{
 				"svc1": {
-					ignoreMap: map[changeScope]changeIgnoreRule{
-						changeScopeBindMounts: {
-							Items: []string{"/"},
-						},
+					ignoreMap: ignoreCfg{
+						changeScopeBindMounts: []string{"/"},
 					},
 				},
 			},
