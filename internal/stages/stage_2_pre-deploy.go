@@ -24,11 +24,6 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		s.Stages.PreDeploy.FinishedAt = time.Now()
 	}()
 
-	latestCommit, err := git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
-	if err != nil {
-		return fmt.Errorf("failed to get latest commit: %w", err)
-	}
-
 	// Check for external secret changes and current deployed commit
 	var (
 		imagesChanged  bool // Flag to indicate if images have changed
@@ -113,11 +108,15 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		}
 	}
 
-	stageLog.Debug("comparing commits",
-		slog.String("deployed_commit", deployedCommit),
-		slog.String("latest_commit", latestCommit))
-
 	if deployedCommit != "" {
+		latestCommit, err := git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
+		if err != nil {
+			return fmt.Errorf("failed to get latest commit: %w", err)
+		}
+		stageLog.Debug("comparing commits",
+			slog.String("deployed_commit", deployedCommit),
+			slog.String("latest_commit", latestCommit))
+
 		// Validate and sanitize the working directory
 		if strings.Contains(s.DeployConfig.WorkingDirectory, "..") {
 			return errors.New("invalid working directory: must not contain '..' to prevent directory traversal")
