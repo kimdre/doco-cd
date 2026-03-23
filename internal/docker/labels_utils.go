@@ -14,16 +14,19 @@ type candidate struct {
 
 // GetLatestServiceLabels retrieves the labels of the most recently (re-)deployed services for a given repository and deployment name..
 func GetLatestServiceLabels(ctx context.Context, client *client.Client, repoName, deployName string) (Labels, error) {
-	var (
-		candidates   []candidate
-		latestLabels Labels
-	)
-
 	serviceLabels, err := GetServiceLabels(ctx, client, deployName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve service labels: %w", err)
 	}
 
+	return getLatestServiceLabels(serviceLabels, repoName), nil
+}
+
+func getLatestServiceLabels(serviceLabels map[Service]Labels, repoName string) Labels {
+	var (
+		candidates   []candidate
+		latestLabels Labels
+	)
 	// Find deployed commit, deployConfig hash and externalSecrets hash from labels of deployed services
 	for _, labels := range serviceLabels {
 		name, ok := labels[DocoCDLabels.Repository.Name]
@@ -50,5 +53,5 @@ func GetLatestServiceLabels(ctx context.Context, client *client.Client, repoName
 		latestLabels = latestCandidate.labels
 	}
 
-	return latestLabels, nil
+	return latestLabels
 }
