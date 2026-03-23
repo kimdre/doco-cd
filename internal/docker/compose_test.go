@@ -566,7 +566,7 @@ func TestHasChangedConfigs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			ignoreCfg, err := getIgnoreRecrateCfgFromProject(tc.project)
+			ignoreCfg, err := getIgnoreRecreateCfgFromProject(tc.project)
 			if err != nil {
 				t.Fatalf("Failed to get ignore config: %v", err)
 			}
@@ -774,7 +774,7 @@ func TestHasChangedSecrets(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			ignoreCfg, err := getIgnoreRecrateCfgFromProject(tc.project)
+			ignoreCfg, err := getIgnoreRecreateCfgFromProject(tc.project)
 			if err != nil {
 				t.Fatalf("Failed to get ignore config: %v", err)
 			}
@@ -995,7 +995,7 @@ func TestHasChangedBindMounts(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			ignoreCfg, err := getIgnoreRecrateCfgFromProject(tc.project)
+			ignoreCfg, err := getIgnoreRecreateCfgFromProject(tc.project)
 			if err != nil {
 				t.Fatalf("Failed to get ignore config: %v", err)
 			}

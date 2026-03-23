@@ -868,7 +868,7 @@ func ProjectFilesHaveChanges(changePaths []string, project *types.Project) ([]Ch
 		{changeScopeBuildFiles, HasChangedBuildFiles},
 	}
 
-	ignoreCfg, err := getIgnoreRecrateCfgFromProject(project)
+	ignoreCfg, err := getIgnoreRecreateCfgFromProject(project)
 	if err != nil {
 		return nil, IgnoredInfo{}, err
 	}

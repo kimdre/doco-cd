@@ -102,8 +102,8 @@ type serviceIgnoreCfg struct {
 	signal string
 }
 
-// getChangeFromProject returns the recreate-ignore config.
-func getIgnoreRecrateCfgFromProject(project *types.Project) (projectIgnoreCfg, error) {
+// getIgnoreRecreateCfgFromProject returns the recreate-ignore config.
+func getIgnoreRecreateCfgFromProject(project *types.Project) (projectIgnoreCfg, error) {
 	ret := make(map[string]serviceIgnoreCfg)
 
 	for name, s := range project.Services {

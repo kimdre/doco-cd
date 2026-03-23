@@ -125,7 +125,7 @@ func Test_parseRecreateIgnore(t *testing.T) {
 	}
 }
 
-func Test_getIgnoreRecrateCfgFromProject(t *testing.T) {
+func Test_getIgnoreRecreateCfgFromProject(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -254,21 +254,21 @@ func Test_getIgnoreRecrateCfgFromProject(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, gotErr := getIgnoreRecrateCfgFromProject(tt.project)
+			got, gotErr := getIgnoreRecreateCfgFromProject(tt.project)
 			if gotErr != nil {
 				if !tt.wantErr {
-					t.Errorf("getIgnoreRecrateCfgFromProject() failed: %v", gotErr)
+					t.Errorf("getIgnoreRecreateCfgFromProject() failed: %v", gotErr)
 				}
 
 				return
 			}
 
 			if tt.wantErr {
-				t.Fatal("getIgnoreRecrateCfgFromProject() succeeded unexpectedly")
+				t.Fatal("getIgnoreRecreateCfgFromProject() succeeded unexpectedly")
 			}
 
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("getIgnoreRecrateCfgFromProject() = %v, want %v", got, tt.want)
+				t.Errorf("getIgnoreRecreateCfgFromProject() = %v, want %v", got, tt.want)
 			}
 		})
 	}
