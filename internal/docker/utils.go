@@ -26,6 +26,22 @@ var (
 	ErrContainerIDNotFound    = errors.New("container ID not found")
 )
 
+// mergeSwarmLabels merges service-level labels and container labels from a swarm service.
+// Container labels take precedence on key collisions.
+func mergeSwarmLabels(service swarm.Service) map[string]string {
+	merged := make(map[string]string)
+
+	for k, v := range service.Spec.Labels {
+		merged[k] = v
+	}
+
+	for k, v := range service.Spec.TaskTemplate.ContainerSpec.Labels {
+		merged[k] = v
+	}
+
+	return merged
+}
+
 // GetContainerID retrieves the container ID for a given service name.
 func GetContainerID(apiClient client.APIClient, name string) (id string, err error) {
 	result, err := apiClient.ContainerList(context.TODO(), client.ContainerListOptions{All: true})
@@ -59,7 +75,7 @@ func GetServiceLabels(ctx context.Context, cli *client.Client, stackName string)
 
 		result := make(map[Service]Labels)
 		for _, service := range services {
-			result[Service(service.Spec.Name)] = service.Spec.TaskTemplate.ContainerSpec.Labels
+			result[Service(service.Spec.Name)] = mergeSwarmLabels(service)
 		}
 
 		return result, nil
@@ -101,7 +117,7 @@ func GetLabeledServices(ctx context.Context, cli *client.Client, key, value stri
 
 		result := make(map[Service]map[string]string)
 		for _, service := range services {
-			result[Service(service.Spec.Name)] = service.Spec.TaskTemplate.ContainerSpec.Labels
+			result[Service(service.Spec.Name)] = mergeSwarmLabels(service)
 		}
 
 		return result, nil
