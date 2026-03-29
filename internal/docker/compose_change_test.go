@@ -8,7 +8,7 @@ import (
 	"github.com/compose-spec/compose-go/v2/types"
 )
 
-func Test_parseRecreateIgnore(t *testing.T) {
+func TestParseRecreateIgnore(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -143,7 +143,7 @@ bindMounts: []
 	}
 }
 
-func Test_getIgnoreRecreateCfgFromProject(t *testing.T) {
+func TestGetIgnoreRecreateCfgFromProject(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -290,7 +290,7 @@ func Test_getIgnoreRecreateCfgFromProject(t *testing.T) {
 	}
 }
 
-func Test_checkIsIgnoreByCfg(t *testing.T) {
+func TestCheckIsIgnoreByCfg(t *testing.T) {
 	t.Parallel()
 
 	cfg := projectIgnoreCfg{
@@ -398,7 +398,7 @@ func Test_checkIsIgnoreByCfg(t *testing.T) {
 	}
 }
 
-func Test_getChangeAndIgnore(t *testing.T) {
+func TestGetChangeAndIgnore(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
