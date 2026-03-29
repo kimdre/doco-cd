@@ -301,7 +301,7 @@ compose_files:
 			}),
 		).Do(func() error {
 			return DeployStack(jobLog, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
-				[]git.ChangedFile{}, latestCommit, "dev", false)
+				nil, nil, latestCommit, "dev", false)
 		})
 		if err != nil {
 			t.Fatalf("failed to deploy stack: %v", err)
@@ -393,6 +393,7 @@ func TestHasChangedConfigs(t *testing.T) {
 		changePath      []string
 		project         *types.Project
 		ExpectedChanges []string
+		ExpectedIgnored []string
 	}{
 		{
 			name: "same path in service config and changed files",
@@ -417,6 +418,42 @@ func TestHasChangedConfigs(t *testing.T) {
 				},
 			},
 			ExpectedChanges: []string{"svc1"},
+			ExpectedIgnored: []string{},
+		},
+		{
+			name: "same path in service config and changed files, but ignored by label",
+			changePath: []string{
+				repoRoot + "/test",
+			},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Labels: map[string]string{
+							DocoCDLabels.Deployment.RecreateIgnore: "{configs: [test]}",
+						},
+						Configs: []types.ServiceConfigObjConfig{
+							{Source: "test"},
+						},
+					},
+					"svc2": {
+						Name: "svc2",
+						Labels: map[string]string{
+							"a.b.c.d": "configs=test",
+						},
+						Configs: []types.ServiceConfigObjConfig{
+							{Source: "test"},
+						},
+					},
+				},
+				Configs: map[string]types.ConfigObjConfig{
+					"test": {
+						File: repoRoot + "/test",
+					},
+				},
+			},
+			ExpectedChanges: []string{"svc2"},
+			ExpectedIgnored: []string{"svc1"},
 		},
 		{
 			name: "parent path in service config and changed in sub files",
@@ -441,6 +478,7 @@ func TestHasChangedConfigs(t *testing.T) {
 				},
 			},
 			ExpectedChanges: []string{"svc1"},
+			ExpectedIgnored: []string{},
 		},
 
 		{
@@ -466,6 +504,7 @@ func TestHasChangedConfigs(t *testing.T) {
 				},
 			},
 			ExpectedChanges: []string{},
+			ExpectedIgnored: []string{},
 		},
 		{
 			name: "change in different path than service config",
@@ -496,6 +535,7 @@ func TestHasChangedConfigs(t *testing.T) {
 				},
 			},
 			ExpectedChanges: []string{},
+			ExpectedIgnored: []string{},
 		},
 		{
 			name:       "Has no changes",
@@ -518,6 +558,7 @@ func TestHasChangedConfigs(t *testing.T) {
 				},
 			},
 			ExpectedChanges: []string{},
+			ExpectedIgnored: []string{},
 		},
 	}
 
@@ -525,16 +566,25 @@ func TestHasChangedConfigs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			changes, err := HasChangedConfigs(tc.changePath, tc.project)
+			ignoreCfg, err := getIgnoreRecreateCfgFromProject(tc.project)
 			if err != nil {
-				t.Fatalf("Failed to check for changed configs: %v", err)
+				t.Fatalf("Failed to get ignore config: %v", err)
 			}
+
+			changes, ignored := HasChangedConfigs(tc.changePath, tc.project, ignoreCfg)
 
 			slices.Sort(changes)
 			slices.Sort(tc.ExpectedChanges)
 
 			if !reflect.DeepEqual(changes, tc.ExpectedChanges) {
 				t.Errorf("Expected changes %v, but got %v", tc.ExpectedChanges, changes)
+			}
+
+			slices.Sort(ignored)
+			slices.Sort(tc.ExpectedIgnored)
+
+			if !reflect.DeepEqual(ignored, tc.ExpectedIgnored) {
+				t.Errorf("Expected changes %v, but got %v", tc.ExpectedIgnored, ignored)
 			}
 		})
 	}
@@ -550,6 +600,7 @@ func TestHasChangedSecrets(t *testing.T) {
 		changePath      []string
 		project         *types.Project
 		ExpectedChanges []string
+		ExpectedIgnored []string
 	}{
 		{
 			name: "Has changes",
@@ -574,6 +625,43 @@ func TestHasChangedSecrets(t *testing.T) {
 				},
 			},
 			ExpectedChanges: []string{"svc1"},
+			ExpectedIgnored: []string{},
+		},
+		{
+			name: "Has changes but ignore by label",
+			changePath: []string{
+				repoRoot + "/test",
+			},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Labels: map[string]string{
+							DocoCDLabels.Deployment.RecreateIgnore: "{secrets: [test]}",
+						},
+						Secrets: []types.ServiceSecretConfig{
+							{
+								Source: "test",
+							},
+						},
+					},
+					"svc2": {
+						Name: "svc2",
+						Secrets: []types.ServiceSecretConfig{
+							{
+								Source: "test",
+							},
+						},
+					},
+				},
+				Secrets: map[string]types.SecretConfig{
+					"test": {
+						File: repoRoot + "/test",
+					},
+				},
+			},
+			ExpectedChanges: []string{"svc2"},
+			ExpectedIgnored: []string{"svc1"},
 		},
 		{
 			name: "parent path in service secret and changed in sub files",
@@ -598,6 +686,7 @@ func TestHasChangedSecrets(t *testing.T) {
 				},
 			},
 			ExpectedChanges: []string{"svc1"},
+			ExpectedIgnored: []string{},
 		},
 
 		{
@@ -623,6 +712,7 @@ func TestHasChangedSecrets(t *testing.T) {
 				},
 			},
 			ExpectedChanges: []string{},
+			ExpectedIgnored: []string{},
 		},
 		{
 			name: "change in different path than service secret",
@@ -653,6 +743,7 @@ func TestHasChangedSecrets(t *testing.T) {
 				},
 			},
 			ExpectedChanges: []string{},
+			ExpectedIgnored: []string{},
 		},
 		{
 			name:       "Has no changes",
@@ -675,6 +766,7 @@ func TestHasChangedSecrets(t *testing.T) {
 				},
 			},
 			ExpectedChanges: []string{},
+			ExpectedIgnored: []string{},
 		},
 	}
 
@@ -682,16 +774,25 @@ func TestHasChangedSecrets(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			changes, err := HasChangedSecrets(tc.changePath, tc.project)
+			ignoreCfg, err := getIgnoreRecreateCfgFromProject(tc.project)
 			if err != nil {
-				t.Fatalf("Failed to check for changed secrets: %v", err)
+				t.Fatalf("Failed to get ignore config: %v", err)
 			}
+
+			changes, ignored := HasChangedSecrets(tc.changePath, tc.project, ignoreCfg)
 
 			slices.Sort(changes)
 			slices.Sort(tc.ExpectedChanges)
 
 			if !reflect.DeepEqual(changes, tc.ExpectedChanges) {
 				t.Errorf("Expected changes %v, but got %v", tc.ExpectedChanges, changes)
+			}
+
+			slices.Sort(ignored)
+			slices.Sort(tc.ExpectedIgnored)
+
+			if !reflect.DeepEqual(ignored, tc.ExpectedIgnored) {
+				t.Errorf("Expected changes %v, but got %v", tc.ExpectedIgnored, ignored)
 			}
 		})
 	}
@@ -707,6 +808,7 @@ func TestHasChangedBindMounts(t *testing.T) {
 		changePath      []string
 		project         *types.Project
 		ExpectedChanges []string
+		ExpectedIgnored []string
 	}{
 		{
 			name: "bind mount changed path are the same",
@@ -727,6 +829,55 @@ func TestHasChangedBindMounts(t *testing.T) {
 				},
 			},
 			ExpectedChanges: []string{"svc1"},
+			ExpectedIgnored: []string{},
+		},
+		{
+			name: "bind mount changed path are the same, but ignored by label",
+			changePath: []string{
+				repoRoot + "/dir",
+			},
+			project: &types.Project{
+				WorkingDir: repoRoot,
+				Services: map[string]types.ServiceConfig{
+					"not-affected": {
+						Name: "not-affected",
+						Labels: map[string]string{
+							DocoCDLabels.Deployment.RecreateIgnore: "{bindMounts: [/dir]}",
+						},
+						Volumes: []types.ServiceVolumeConfig{
+							{
+								Type:   "bind",
+								Source: repoRoot + "/sourceDir",
+								Target: "/dir",
+							},
+						},
+					},
+					"svc2": {
+						Name: "svc2",
+						Volumes: []types.ServiceVolumeConfig{
+							{
+								Type:   "bind",
+								Source: repoRoot + "/dir",
+							},
+						},
+					},
+					"svc3": {
+						Name: "svc3",
+						Labels: map[string]string{
+							DocoCDLabels.Deployment.RecreateIgnore: "{bindMounts: [/dir]}",
+						},
+						Volumes: []types.ServiceVolumeConfig{
+							{
+								Type:   "bind",
+								Source: repoRoot + "/dir",
+								Target: "/dir",
+							},
+						},
+					},
+				},
+			},
+			ExpectedChanges: []string{"svc2"},
+			ExpectedIgnored: []string{"svc3"},
 		},
 		{
 			name: "same name but different path are different",
@@ -757,6 +908,7 @@ func TestHasChangedBindMounts(t *testing.T) {
 				},
 			},
 			ExpectedChanges: []string{"gatus"},
+			ExpectedIgnored: []string{},
 		},
 		{
 			name: "bind mount parent path",
@@ -795,6 +947,7 @@ func TestHasChangedBindMounts(t *testing.T) {
 				},
 			},
 			ExpectedChanges: []string{"svc1", "svc2"},
+			ExpectedIgnored: []string{},
 		},
 		{
 			name:       "Has no changes",
@@ -813,6 +966,7 @@ func TestHasChangedBindMounts(t *testing.T) {
 				},
 			},
 			ExpectedChanges: []string{},
+			ExpectedIgnored: []string{},
 		},
 		{
 			name: "different path",
@@ -833,6 +987,7 @@ func TestHasChangedBindMounts(t *testing.T) {
 				},
 			},
 			ExpectedChanges: []string{},
+			ExpectedIgnored: []string{},
 		},
 	}
 
@@ -840,16 +995,25 @@ func TestHasChangedBindMounts(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			changes, err := HasChangedBindMounts(tc.changePath, tc.project)
+			ignoreCfg, err := getIgnoreRecreateCfgFromProject(tc.project)
 			if err != nil {
-				t.Fatalf("Failed to check for changed bind mounts: %v", err)
+				t.Fatalf("Failed to get ignore config: %v", err)
 			}
+
+			changes, ignored := HasChangedBindMounts(tc.changePath, tc.project, ignoreCfg)
 
 			slices.Sort(changes)
 			slices.Sort(tc.ExpectedChanges)
 
 			if !reflect.DeepEqual(changes, tc.ExpectedChanges) {
 				t.Errorf("Expected changes %v, but got %v", tc.ExpectedChanges, changes)
+			}
+
+			slices.Sort(ignored)
+			slices.Sort(tc.ExpectedIgnored)
+
+			if !reflect.DeepEqual(ignored, tc.ExpectedIgnored) {
+				t.Errorf("Expected changes %v, but got %v", tc.ExpectedIgnored, ignored)
 			}
 		})
 	}
@@ -946,7 +1110,7 @@ func TestHasChangedEnvFiles(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			changes, err := HasChangedEnvFiles(tc.changePath, tc.project)
+			changes, err := HasChangedEnvFiles(tc.changePath, tc.project, nil)
 			if err != nil {
 				t.Fatalf("Failed to check for changed env files: %v", err)
 			}
@@ -1067,7 +1231,7 @@ func TestHasChangedBuildFiles(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			changes, err := HasChangedBuildFiles(tc.changePath, tc.project)
+			changes, err := HasChangedBuildFiles(tc.changePath, tc.project, nil)
 			if err != nil {
 				t.Fatalf("Failed to check for changed env files: %v", err)
 			}
@@ -1194,7 +1358,7 @@ func TestProjectFilesHaveChanges(t *testing.T) {
 			d := deployConfigs[0]
 			d.Name = test.ConvertTestName(t.Name())
 
-			changedFiles, err := git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(tc.oldCommit), plumbing.NewHash(tc.newCommit))
+			gitChangedFiles, err := git.GetChangedFilesBetweenCommits(repo, plumbing.NewHash(tc.oldCommit), plumbing.NewHash(tc.newCommit))
 			if err != nil {
 				t.Fatalf("Failed to get changed files: %v", err)
 			}
@@ -1204,7 +1368,9 @@ func TestProjectFilesHaveChanges(t *testing.T) {
 				t.Fatalf("Failed to load compose file: %v", err)
 			}
 
-			changes, err := ProjectFilesHaveChanges(tmpDir, changedFiles, project)
+			changedFiles := GetPathsFromGitChangedFiles(gitChangedFiles, tmpDir)
+
+			changes, _, err := ProjectFilesHaveChanges(changedFiles, project)
 			if err != nil {
 				t.Fatalf("Failed to get project changes: %v", err)
 			}
@@ -1213,6 +1379,181 @@ func TestProjectFilesHaveChanges(t *testing.T) {
 
 			if !reflect.DeepEqual(changes, tc.expectedChanges) {
 				t.Fatalf("Expected changes: %v, but got: %v", tc.expectedChanges, changes)
+			}
+		})
+	}
+}
+
+func TestProjectFilesHaveChanges_withoutGitRepo(t *testing.T) {
+	t.Parallel()
+
+	const repoRoot = "/data/doco-cd/fake-repo-root"
+
+	testCases := []struct {
+		name            string
+		project         *types.Project
+		changedFiles    []string
+		expectedChanges []Change
+		expectedIgnored IgnoredInfo
+	}{
+		{
+			name:            "no changes with empty project",
+			project:         &types.Project{},
+			changedFiles:    []string{},
+			expectedChanges: nil,
+			expectedIgnored: IgnoredInfo{},
+		},
+		{
+			name: "no changes",
+			project: &types.Project{
+				Services: types.Services{
+					"test": {
+						Name: "test",
+					},
+					"test2": {
+						Name: "test2",
+					},
+				},
+			},
+			changedFiles:    []string{},
+			expectedChanges: nil,
+			expectedIgnored: IgnoredInfo{},
+		},
+		{
+			name: "have change bind mount",
+			project: &types.Project{
+				Services: types.Services{
+					"test": {
+						Name: "test",
+						Volumes: []types.ServiceVolumeConfig{
+							{
+								Type:   "bind",
+								Source: repoRoot + "/aa",
+								Target: "/mnt",
+							},
+						},
+					},
+					"test2": {
+						Name: "test2",
+						Labels: types.Labels{
+							DocoCDLabels.Deployment.RecreateIgnore: "{bindMounts: [/mnt]}",
+						},
+						Volumes: []types.ServiceVolumeConfig{
+							{
+								Type:   "bind",
+								Source: repoRoot + "/aa",
+								Target: "/mnt",
+							},
+						},
+					},
+					"test3": {
+						Name: "test3",
+						Labels: types.Labels{
+							DocoCDLabels.Deployment.RecreateIgnore:       "{bindMounts: [/mnt]}",
+							DocoCDLabels.Deployment.RecreateIgnoreSignal: "SIGHUP",
+						},
+						Volumes: []types.ServiceVolumeConfig{
+							{
+								Type:   "bind",
+								Source: repoRoot + "/aa",
+								Target: "/mnt",
+							},
+						},
+					},
+				},
+			},
+			changedFiles: []string{
+				repoRoot + "/aa",
+			},
+			expectedChanges: []Change{
+				{
+					Type:     string(changeScopeBindMounts),
+					Services: []string{"test"},
+				},
+			},
+			expectedIgnored: IgnoredInfo{
+				Ignored: []string{"test2"},
+				NeedSendSignal: []SignalService{
+					{
+						ServiceName: "test3",
+						Signal:      "SIGHUP",
+					},
+				},
+			},
+		},
+		{
+			name: "ignored but override",
+			project: &types.Project{
+				Configs: types.Configs{
+					"c-test": {
+						File: repoRoot + "/aa",
+					},
+				},
+				Services: types.Services{
+					"test": {
+						Name: "test",
+						Labels: types.Labels{
+							DocoCDLabels.Deployment.RecreateIgnore: "{bindMounts: [/mnt]}",
+						},
+						Volumes: []types.ServiceVolumeConfig{
+							{
+								Type:   "bind",
+								Source: repoRoot + "/aa",
+								Target: "/mnt",
+							},
+						},
+					},
+					"test2": {
+						Name: "test2",
+						Labels: types.Labels{
+							DocoCDLabels.Deployment.RecreateIgnore: "{bindMounts: [/mnt]}",
+						},
+						Configs: []types.ServiceConfigObjConfig{
+							{
+								Source: "c-test",
+							},
+						},
+						Volumes: []types.ServiceVolumeConfig{
+							{
+								Type:   "bind",
+								Source: repoRoot + "/aa",
+								Target: "/mnt",
+							},
+						},
+					},
+				},
+			},
+			changedFiles: []string{
+				repoRoot + "/aa",
+			},
+			expectedChanges: []Change{
+				{
+					Type:     string(changeScopeConfigs),
+					Services: []string{"test2"},
+				},
+			},
+			expectedIgnored: IgnoredInfo{
+				Ignored: []string{"test"},
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			changes, ignored, err := ProjectFilesHaveChanges(tc.changedFiles, tc.project)
+			if err != nil {
+				t.Fatalf("Failed to get project changes: %v", err)
+			}
+
+			sortChanges(tc.expectedChanges)
+
+			if !reflect.DeepEqual(changes, tc.expectedChanges) {
+				t.Fatalf("Expected changes: %v, but got: %v", tc.expectedChanges, changes)
+			}
+
+			if !reflect.DeepEqual(ignored, tc.expectedIgnored) {
+				t.Fatalf("Expected ignored: %v, but got: %v", tc.expectedIgnored, ignored)
 			}
 		})
 	}

@@ -41,6 +41,19 @@ func (s Set[T]) ToSlice() []T {
 	return slice
 }
 
+// Difference returns a new set containing the elements in s that are not in other.
+func (s Set[T]) Difference(other Set[T]) Set[T] {
+	difference := New[T]()
+
+	for elem := range s {
+		if !other.Contains(elem) {
+			difference.Add(elem)
+		}
+	}
+
+	return difference
+}
+
 // Union merges the given sets into a new set containing all unique elements from the input sets.
 func Union[T comparable](sets ...Set[T]) Set[T] {
 	result := Set[T]{}

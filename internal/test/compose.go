@@ -343,6 +343,31 @@ func (s *ComposeStack) Exec(ctx context.Context, t *testing.T, serviceName strin
 	return inspectResp.ExitCode, strings.NewReader(string(output))
 }
 
+// ContainerLogs gets the logs for a container, includes stdout and stderr.
+func (s *ComposeStack) ContainerLogs(ctx context.Context, t *testing.T, serviceName string, since time.Time) string {
+	t.Helper()
+
+	containerID := s.ServiceContainerID(ctx, t, serviceName)
+
+	logResp, err := s.Client.ContainerLogs(ctx, containerID, client.ContainerLogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Since:      since.Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		t.Fatalf("failed to got logs from container %s: %v", containerID, err)
+	}
+
+	output, err := io.ReadAll(logResp)
+	_ = logResp.Close()
+
+	if err != nil {
+		t.Fatalf("failed to read exec output: %v", err)
+	}
+
+	return string(output)
+}
+
 // WaitForStack waits until all containers in the stack are running and healthy (if healthcheck is defined).
 func WaitForStack(ctx context.Context, t *testing.T, compose api.Compose, projectName string, timeout time.Duration) ([]api.ContainerSummary, error) {
 	t.Helper()

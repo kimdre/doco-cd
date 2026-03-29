@@ -11,6 +11,7 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/notification"
 
 	"github.com/kimdre/doco-cd/internal/config"
@@ -123,7 +124,8 @@ type Docker struct {
 
 // DeploymentState holds the dynamic state information during the deployment process.
 type DeploymentState struct {
-	ChangedFiles []gitInternal.ChangedFile
+	changedServices []docker.Change
+	ignoredInfo     docker.IgnoredInfo
 }
 
 // StageManager is the main structure that holds the logger and stage data.
