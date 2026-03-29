@@ -3,17 +3,19 @@ package bitwardenvault
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/kimdre/doco-cd/internal/config"
 )
 
 type Config struct {
-	ApiUrl                 string `env:"SECRET_PROVIDER_API_URL,notEmpty" envDefault:"https://api.bitwarden.com"` // For self-hosted, e.g. https://vault.example.com/api
-	OAuth2ClientID         string `env:"SECRET_PROVIDER_OAUTH2_CLIENT_ID"`
-	OAuth2ClientSecret     string `env:"SECRET_PROVIDER_OAUTH2_CLIENT_SECRET"`
-	OAuth2ClientSecretFile string `env:"SECRET_PROVIDER_OAUTH2_CLIENT_SECRET_FILE,file"`
-	OAuth2TokenURL         string `env:"SECRET_PROVIDER_OAUTH2_TOKEN_URL" envDefault:"https://identity.bitwarden.com/connect/token"` // For self-hosted, e.g. https://vault.example.com/identity/connect/token
-	AppDataDir             string `env:"SECRET_PROVIDER_APPDATA_DIR" envDefault:"/data/.config/bitwarden-cli"`                       // Data directory for bw CLI to store config/session
+	ApiUrl                 string        `env:"SECRET_PROVIDER_API_URL,notEmpty" envDefault:"https://api.bitwarden.com"` // For self-hosted, e.g. https://vault.example.com/api
+	OAuth2ClientID         string        `env:"SECRET_PROVIDER_OAUTH2_CLIENT_ID"`
+	OAuth2ClientSecret     string        `env:"SECRET_PROVIDER_OAUTH2_CLIENT_SECRET"`
+	OAuth2ClientSecretFile string        `env:"SECRET_PROVIDER_OAUTH2_CLIENT_SECRET_FILE,file"`
+	OAuth2TokenURL         string        `env:"SECRET_PROVIDER_OAUTH2_TOKEN_URL" envDefault:"https://identity.bitwarden.com/connect/token"` // For self-hosted, e.g. https://vault.example.com/identity/connect/token
+	AppDataDir             string        `env:"SECRET_PROVIDER_APPDATA_DIR" envDefault:"/data/.config/bitwarden-cli"`                       // Data directory for bw CLI to store config/session
+	SyncInterval           time.Duration `env:"SECRET_PROVIDER_SYNC_INTERVAL" envDefault:"5m"`                                              // Interval for syncing secrets to keep the local cache up to date
 }
 
 func GetConfig() (*Config, error) {

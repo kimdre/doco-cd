@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -144,20 +145,28 @@ func (p *Provider) getSession(ctx context.Context) (string, error) {
 	return p.cliSession, nil
 }
 
-// GetSecret retrieves a secret by ID using the bw CLI.
-func (p *Provider) GetSecret(ctx context.Context, id string) (string, error) {
-	session, err := p.getSession(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to get session: %w", err)
+// closeSession logs out of the Bitwarden session to clean up resources.
+func (p *Provider) closeSession(ctx context.Context, session string) error {
+	// #nosec G204 -- Arguments are validated and not user-controlled; no shell is invoked.
+	cmd := exec.CommandContext(ctx, p.cliPath, "logout", "--session", session)
+	cmd.Env = os.Environ()
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("bw logout failed: %w", err)
 	}
 
+	return nil
+}
+
+// GetSecret retrieves a secret by ID using the bw CLI.
+func (p *Provider) GetSecret(ctx context.Context, id string) (string, error) {
 	// Validate id and session for safe characters
 	// if strings.ContainsAny(id, " \t\n\r\v\f;|&$><`\"'\\") || strings.ContainsAny(session, " \t\n\r\v\f;|&$><`\"'\\") {
 	//	return "", fmt.Errorf("secret id or session contains unsafe characters: id=%s session=%s", id, session)
 	//}
 
 	// #nosec G204 -- Arguments are validated and not user-controlled; no shell is invoked.
-	cmd := exec.CommandContext(ctx, p.cliPath, "get", "item", id, "--session", session)
+	cmd := exec.CommandContext(ctx, p.cliPath, "get", "item", id, "--session", p.cliSession)
 	cmd.Env = p.getEnv()
 
 	out, err := cmd.Output()
@@ -195,6 +204,18 @@ func (p *Provider) GetSecret(ctx context.Context, id string) (string, error) {
 
 // GetSecrets retrieves multiple secrets by ID.
 func (p *Provider) GetSecrets(ctx context.Context, ids []string) (map[string]string, error) {
+	session, err := p.getSession(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get session: %w", err)
+	}
+
+	defer func(p *Provider, ctx context.Context, session string) {
+		err = p.closeSession(ctx, session)
+		if err != nil {
+			slog.Error("failed to close bw session", "error", err)
+		}
+	}(p, ctx, session)
+
 	result := make(map[string]string)
 
 	for _, id := range ids {
