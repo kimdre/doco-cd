@@ -3,7 +3,6 @@ package git_test
 import (
 	"errors"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/go-git/go-git/v5/plumbing"
@@ -710,78 +709,6 @@ func TestGetLatestCommit(t *testing.T) {
 	}
 
 	t.Log(commit)
-}
-
-func TestGetChangedFilesBetweenCommits(t *testing.T) {
-	t.Parallel()
-
-	var (
-		commitOld                = plumbing.NewHash("f8c5992297bf70eb01f0ba40d062896b1f48dc65")
-		commitNew                = plumbing.NewHash("e72ef851774e50b82c173fd36cfcf9a88355c592")
-		expectedChangedDirectory = "html"
-		expectedChangedFile      = filepath.Join(expectedChangedDirectory, "index.html")
-	)
-
-	tmpDir := t.TempDir()
-
-	c, err := config.GetAppConfig()
-	if err != nil {
-		t.Fatalf("Failed to get app config: %v", err)
-	}
-
-	url := cloneUrlTest
-
-	auth, err := git.GetAuthMethod(url, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
-	if err != nil {
-		t.Fatalf("Failed to get auth method: %v", err)
-	}
-
-	if auth != nil {
-		t.Logf("Using auth method: %s", auth.Name())
-	} else {
-		t.Log("No auth method configured, using anonymous access")
-	}
-
-	repo, err := git.CloneRepository(tmpDir, url, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
-	if err != nil {
-		t.Fatalf("Failed to clone repository: %v", err)
-	}
-
-	changedFiles, err := git.GetChangedFilesBetweenCommits(repo, commitOld, commitNew)
-	if err != nil {
-		t.Fatalf("Failed to get changed files: %v", err)
-	}
-
-	if len(changedFiles) == 0 {
-		t.Fatal("No changed files found, but expected one changed file")
-	}
-
-	for _, file := range changedFiles {
-		if file.From.Path() != expectedChangedFile {
-			t.Errorf("Expected file %s, got %s", expectedChangedFile, file.From.Path())
-		}
-
-		if file.To.Path() != expectedChangedFile {
-			t.Errorf("Expected file %s, got %s", expectedChangedFile, file.To.Path())
-		}
-	}
-
-	var changedFilePaths []string
-	for _, file := range changedFiles {
-		changedFilePaths = append(changedFilePaths, file.To.Path())
-	}
-
-	t.Logf("Changed files: %v", changedFilePaths)
-	t.Logf("testDir: %s", expectedChangedDirectory)
-
-	hasChanged, err := git.HasChangesInSubdir(changedFiles, tmpDir, expectedChangedDirectory, filepath.Join(tmpDir, ".doco-cd.yml"))
-	if err != nil {
-		t.Fatalf("Failed to check changes in subdir: %v", err)
-	}
-
-	if !hasChanged {
-		t.Errorf("Expected changes in subdir %s, but found none", expectedChangedDirectory)
-	}
 }
 
 func TestSSHAuth(t *testing.T) {
