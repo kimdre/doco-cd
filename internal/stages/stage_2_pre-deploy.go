@@ -164,7 +164,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 
 		changedFiles := docker.GetPathsFromGitChangedFiles(gitChangedFiles, s.Repository.PathExternal)
 
-		changedServices, ignoredInfo, err := docker.ProjectFilesHaveChanges(changedFiles, s.Docker.Project)
+		changedServices, ignoredInfo, err := docker.ProjectFilesHaveChanges(s.Repository.PathExternal, changedFiles, s.Docker.Project)
 		if err != nil {
 			return fmt.Errorf("failed to check for changed project files: %s", err)
 		}
