@@ -480,6 +480,31 @@ func TestHasChangedConfigs(t *testing.T) {
 			ExpectedChanges: []string{"svc1"},
 			ExpectedIgnored: []string{},
 		},
+		{
+			name: "config use outside of repo",
+			changePath: []string{
+				repoRoot + "/test/subdir/config.yaml",
+			},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Configs: []types.ServiceConfigObjConfig{
+							{
+								Source: "test",
+							},
+						},
+					},
+				},
+				Configs: map[string]types.ConfigObjConfig{
+					"test": {
+						File: "/data/doco-cd",
+					},
+				},
+			},
+			ExpectedChanges: []string{},
+			ExpectedIgnored: []string{},
+		},
 
 		{
 			name: "change in different path than service config",
@@ -571,7 +596,7 @@ func TestHasChangedConfigs(t *testing.T) {
 				t.Fatalf("Failed to get ignore config: %v", err)
 			}
 
-			changes, ignored := HasChangedConfigs(tc.changePath, tc.project, ignoreCfg)
+			changes, ignored := HasChangedConfigs(repoRoot, tc.changePath, tc.project, ignoreCfg)
 
 			slices.Sort(changes)
 			slices.Sort(tc.ExpectedChanges)
@@ -688,6 +713,31 @@ func TestHasChangedSecrets(t *testing.T) {
 			ExpectedChanges: []string{"svc1"},
 			ExpectedIgnored: []string{},
 		},
+		{
+			name: "secret use outside of repo",
+			changePath: []string{
+				repoRoot + "/test/subdir/config.yaml",
+			},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Secrets: []types.ServiceSecretConfig{
+							{
+								Source: "test",
+							},
+						},
+					},
+				},
+				Secrets: map[string]types.SecretConfig{
+					"test": {
+						File: "/data/doco-cd",
+					},
+				},
+			},
+			ExpectedChanges: []string{},
+			ExpectedIgnored: []string{},
+		},
 
 		{
 			name: "change in different path than service secret",
@@ -779,7 +829,7 @@ func TestHasChangedSecrets(t *testing.T) {
 				t.Fatalf("Failed to get ignore config: %v", err)
 			}
 
-			changes, ignored := HasChangedSecrets(tc.changePath, tc.project, ignoreCfg)
+			changes, ignored := HasChangedSecrets(repoRoot, tc.changePath, tc.project, ignoreCfg)
 
 			slices.Sort(changes)
 			slices.Sort(tc.ExpectedChanges)
@@ -950,6 +1000,45 @@ func TestHasChangedBindMounts(t *testing.T) {
 			ExpectedIgnored: []string{},
 		},
 		{
+			name: "bind mount outside of repo",
+			changePath: []string{
+				repoRoot + "/a/b/c/d/e/f.txt",
+			},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Volumes: []types.ServiceVolumeConfig{
+							{
+								Type:   "bind",
+								Source: repoRoot + "/a/b/c/d/e/f.txt",
+							},
+						},
+					},
+					"svc2": {
+						Name: "svc2",
+						Volumes: []types.ServiceVolumeConfig{
+							{
+								Type:   "bind",
+								Source: repoRoot + "/a/b/c",
+							},
+						},
+					},
+					"svc3": {
+						Name: "svc3",
+						Volumes: []types.ServiceVolumeConfig{
+							{
+								Type:   "bind",
+								Source: "/data",
+							},
+						},
+					},
+				},
+			},
+			ExpectedChanges: []string{"svc1", "svc2"},
+			ExpectedIgnored: []string{},
+		},
+		{
 			name:       "Has no changes",
 			changePath: []string{},
 			project: &types.Project{
@@ -1000,7 +1089,7 @@ func TestHasChangedBindMounts(t *testing.T) {
 				t.Fatalf("Failed to get ignore config: %v", err)
 			}
 
-			changes, ignored := HasChangedBindMounts(tc.changePath, tc.project, ignoreCfg)
+			changes, ignored := HasChangedBindMounts(repoRoot, tc.changePath, tc.project, ignoreCfg)
 
 			slices.Sort(changes)
 			slices.Sort(tc.ExpectedChanges)
@@ -1069,6 +1158,25 @@ func TestHasChangedEnvFiles(t *testing.T) {
 			ExpectedChanges: []string{"svc1"},
 		},
 		{
+			name: "env file outside repo",
+			changePath: []string{
+				repoRoot + "/test/.env",
+			},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						EnvFiles: []types.EnvFile{
+							{
+								Path: "/data",
+							},
+						},
+					},
+				},
+			},
+			ExpectedChanges: []string{},
+		},
+		{
 			name: "different path",
 			changePath: []string{
 				repoRoot + "/test2/.env",
@@ -1110,7 +1218,7 @@ func TestHasChangedEnvFiles(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			changes, err := HasChangedEnvFiles(tc.changePath, tc.project, nil)
+			changes, err := HasChangedEnvFiles(repoRoot, tc.changePath, tc.project, nil)
 			if err != nil {
 				t.Fatalf("Failed to check for changed env files: %v", err)
 			}
@@ -1172,6 +1280,31 @@ func TestHasChangedBuildFiles(t *testing.T) {
 			ExpectedChanges: []string{},
 		},
 		{
+			name: "context outside of repo",
+			changePath: []string{
+				repoRoot + "/context",
+			},
+			project: &types.Project{
+				Services: map[string]types.ServiceConfig{
+					"svc1": {
+						Name: "svc1",
+						Build: &types.BuildConfig{
+							Context:    repoRoot + "/context",
+							Dockerfile: repoRoot + "/Dockerfile",
+						},
+					},
+					"svc2": {
+						Name: "svc2",
+						Build: &types.BuildConfig{
+							Context:    "/data/doco-cd",
+							Dockerfile: repoRoot + "/Dockerfile",
+						},
+					},
+				},
+			},
+			ExpectedChanges: []string{"svc1"},
+		},
+		{
 			name:            "no change",
 			changePath:      []string{},
 			project:         project,
@@ -1231,7 +1364,7 @@ func TestHasChangedBuildFiles(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			changes, err := HasChangedBuildFiles(tc.changePath, tc.project, nil)
+			changes, err := HasChangedBuildFiles(repoRoot, tc.changePath, tc.project, nil)
 			if err != nil {
 				t.Fatalf("Failed to check for changed env files: %v", err)
 			}
@@ -1370,7 +1503,7 @@ func TestProjectFilesHaveChanges(t *testing.T) {
 
 			changedFiles := GetPathsFromGitChangedFiles(gitChangedFiles, tmpDir)
 
-			changes, _, err := ProjectFilesHaveChanges(changedFiles, project)
+			changes, _, err := ProjectFilesHaveChanges(tmpDir, changedFiles, project)
 			if err != nil {
 				t.Fatalf("Failed to get project changes: %v", err)
 			}
@@ -1429,6 +1562,16 @@ func TestProjectFilesHaveChanges_withoutGitRepo(t *testing.T) {
 							{
 								Type:   "bind",
 								Source: repoRoot + "/aa",
+								Target: "/mnt",
+							},
+						},
+					},
+					"outside-repo": {
+						Name: "outside-repo",
+						Volumes: []types.ServiceVolumeConfig{
+							{
+								Type:   "bind",
+								Source: "/data",
 								Target: "/mnt",
 							},
 						},
@@ -1541,7 +1684,7 @@ func TestProjectFilesHaveChanges_withoutGitRepo(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			changes, ignored, err := ProjectFilesHaveChanges(tc.changedFiles, tc.project)
+			changes, ignored, err := ProjectFilesHaveChanges(repoRoot, tc.changedFiles, tc.project)
 			if err != nil {
 				t.Fatalf("Failed to get project changes: %v", err)
 			}

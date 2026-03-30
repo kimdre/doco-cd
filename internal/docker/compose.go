@@ -643,7 +643,7 @@ func GetPathsFromGitChangedFiles(changedFiles []gitInternal.ChangedFile, basePat
 }
 
 // HasChangedConfigs checks if any files used in docker compose `configs:` definitions have changed using the Git status.
-func HasChangedConfigs(paths []string, project *types.Project, ignoreCfg projectIgnoreCfg) ([]string, []string) {
+func HasChangedConfigs(repoPathExternal string, paths []string, project *types.Project, ignoreCfg projectIgnoreCfg) ([]string, []string) {
 	configToServicesMap := make(map[string][]string)
 
 	for name, s := range project.Services {
@@ -664,7 +664,9 @@ func HasChangedConfigs(paths []string, project *types.Project, ignoreCfg project
 		}
 
 		for _, p := range paths {
-			if filesystem.InBasePath(c.File, p) {
+			// ignore change outside repo
+			if filesystem.InBasePath(c.File, p) &&
+				filesystem.InBasePath(repoPathExternal, c.File) {
 				for _, svcName := range configToServicesMap[cfgName] {
 					if !checkIsIgnoreByCfg(ignoreCfg, svcName, changeScopeConfigs, cfgName) {
 						changedServices = append(changedServices, svcName)
@@ -680,7 +682,7 @@ func HasChangedConfigs(paths []string, project *types.Project, ignoreCfg project
 }
 
 // HasChangedSecrets checks if any files used in docker compose `secrets:` definitions have changed using the Git status.
-func HasChangedSecrets(paths []string, project *types.Project, ignoreCfg projectIgnoreCfg) ([]string, []string) {
+func HasChangedSecrets(repoPathExternal string, paths []string, project *types.Project, ignoreCfg projectIgnoreCfg) ([]string, []string) {
 	secretsToServicesMap := make(map[string][]string)
 
 	for name, s := range project.Services {
@@ -700,7 +702,9 @@ func HasChangedSecrets(paths []string, project *types.Project, ignoreCfg project
 		}
 
 		for _, p := range paths {
-			if filesystem.InBasePath(s.File, p) {
+			// ignore change outside repo
+			if filesystem.InBasePath(s.File, p) &&
+				filesystem.InBasePath(repoPathExternal, s.File) {
 				for _, svcName := range secretsToServicesMap[secretName] {
 					if !checkIsIgnoreByCfg(ignoreCfg, svcName, changeScopeSecrets, secretName) {
 						changedServices = append(changedServices, svcName)
@@ -716,7 +720,7 @@ func HasChangedSecrets(paths []string, project *types.Project, ignoreCfg project
 }
 
 // HasChangedBindMounts checks if any files used in docker compose `volumes:` definitions with type `bind` have changed using the Git status.
-func HasChangedBindMounts(paths []string, project *types.Project, ignoreCfg projectIgnoreCfg) ([]string, []string) {
+func HasChangedBindMounts(repoPathExternal string, paths []string, project *types.Project, ignoreCfg projectIgnoreCfg) ([]string, []string) {
 	var (
 		changedServices []string
 		ignoredServices []string
@@ -727,7 +731,9 @@ func HasChangedBindMounts(paths []string, project *types.Project, ignoreCfg proj
 		for _, v := range s.Volumes {
 			if v.Type == "bind" && v.Source != "" {
 				for _, p := range paths {
-					if filesystem.InBasePath(v.Source, p) {
+					// ignore change outside repo
+					if filesystem.InBasePath(v.Source, p) &&
+						filesystem.InBasePath(repoPathExternal, v.Source) {
 						if !checkIsIgnoreByCfg(ignoreCfg, s.Name, changeScopeBindMounts, v.Target) {
 							changedServices = append(changedServices, s.Name)
 						} else {
@@ -745,14 +751,16 @@ func HasChangedBindMounts(paths []string, project *types.Project, ignoreCfg proj
 }
 
 // HasChangedEnvFiles checks if any files used in docker compose `env_file:` definitions have changed using the Git status.
-func HasChangedEnvFiles(paths []string, project *types.Project, _ projectIgnoreCfg) ([]string, []string) {
+func HasChangedEnvFiles(repoPathExternal string, paths []string, project *types.Project, _ projectIgnoreCfg) ([]string, []string) {
 	var changedServices []string
 
 	for _, s := range project.Services {
 	out:
 		for _, envFile := range s.EnvFiles {
 			for _, p := range paths {
-				if filesystem.InBasePath(envFile.Path, p) {
+				// ignore change outside repo
+				if filesystem.InBasePath(envFile.Path, p) &&
+					filesystem.InBasePath(repoPathExternal, envFile.Path) {
 					changedServices = append(changedServices, s.Name)
 					break out
 				}
@@ -765,7 +773,7 @@ func HasChangedEnvFiles(paths []string, project *types.Project, _ projectIgnoreC
 
 // HasChangedBuildFiles checks if any files used as build context in docker compose `build:` definitions have changed using the Git status.
 // This includes any file within the build context directory for each service. If a changed file is within a build context, it returns true.
-func HasChangedBuildFiles(paths []string, project *types.Project, _ projectIgnoreCfg) ([]string, []string) {
+func HasChangedBuildFiles(repoPathExternal string, paths []string, project *types.Project, _ projectIgnoreCfg) ([]string, []string) {
 	var changedServices []string
 
 	for _, s := range project.Services {
@@ -812,7 +820,9 @@ func HasChangedBuildFiles(paths []string, project *types.Project, _ projectIgnor
 			}
 
 			for _, p := range paths {
-				if filesystem.InBasePath(ctxFile, p) {
+				// ignore change outside repo
+				if filesystem.InBasePath(ctxFile, p) &&
+					filesystem.InBasePath(repoPathExternal, ctxFile) {
 					changedServices = append(changedServices, s.Name)
 					break out
 				}
@@ -856,10 +866,10 @@ type SignalService struct {
 }
 
 // ProjectFilesHaveChanges checks if any files related to the compose project have changed.
-func ProjectFilesHaveChanges(changePaths []string, project *types.Project) ([]Change, IgnoredInfo, error) {
+func ProjectFilesHaveChanges(repoPathExternal string, changePaths []string, project *types.Project) ([]Change, IgnoredInfo, error) {
 	checks := []struct {
 		name changeScope
-		fn   func([]string, *types.Project, projectIgnoreCfg) ([]string, []string)
+		fn   func(string, []string, *types.Project, projectIgnoreCfg) ([]string, []string)
 	}{
 		{changeScopeConfigs, HasChangedConfigs},
 		{changeScopeSecrets, HasChangedSecrets},
@@ -879,7 +889,7 @@ func ProjectFilesHaveChanges(changePaths []string, project *types.Project) ([]Ch
 	)
 
 	for _, check := range checks {
-		changedServices, ignoredServices := check.fn(changePaths, project, ignoreCfg)
+		changedServices, ignoredServices := check.fn(repoPathExternal, changePaths, project, ignoreCfg)
 
 		allChangedServices = append(allChangedServices, changedServices...)
 		allIgnoredServices = append(allIgnoredServices, ignoredServices...)
