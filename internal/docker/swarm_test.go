@@ -1,7 +1,6 @@
 package docker
 
 import (
-	"log"
 	"path/filepath"
 	"testing"
 	"time"
@@ -30,7 +29,7 @@ func TestDeploySwarmStack(t *testing.T) {
 
 	swarm.ModeEnabled, err = swarm.CheckDaemonIsSwarmManager(t.Context(), dockerCli)
 	if err != nil {
-		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
+		t.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 
 	if !swarm.ModeEnabled {

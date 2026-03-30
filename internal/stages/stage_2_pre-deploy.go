@@ -166,7 +166,13 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			return fmt.Errorf("failed to check for changed project files: %s", err)
 		}
 
-		if !composeChanged && len(changedServices) == 0 && ignoredInfo.IsEmpty() && !imagesChanged {
+		missingServices := docker.CheckServiceMissing(deployedState.DeployedServicesName, s.Docker.Project.Name, s.Docker.Project.Services)
+
+		if !composeChanged &&
+			len(changedServices) == 0 &&
+			ignoredInfo.IsEmpty() &&
+			!imagesChanged &&
+			len(missingServices) == 0 {
 			stageLog.Debug("no changes detected, skipping deployment",
 				slog.String("directory", s.DeployConfig.WorkingDirectory),
 			)
@@ -184,6 +190,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 				slog.Any("files", changedServices),
 				slog.Any("ignored_info", ignoredInfo),
 				slog.Bool("images", imagesChanged),
+				slog.Any("missing_services", missingServices),
 			),
 		)
 	}

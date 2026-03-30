@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,12 +32,13 @@ type ComposeStack struct {
 
 // composeOptions holds the configuration for [ComposeUp].
 type composeOptions struct {
-	yaml        string
-	filePath    string
-	name        string
-	pruneImages bool
-	noWait      bool
-	waitTimeout time.Duration // Maximum time to wait for containers to be healthy in [ComposeUp]. Default is 30 seconds.
+	yaml         string
+	filePath     string
+	name         string
+	pruneImages  bool
+	noWait       bool
+	waitTimeout  time.Duration // Maximum time to wait for containers to be healthy in [ComposeUp]. Default is 30 seconds.
+	customLabels map[string]string
 }
 
 // ComposeOption configures a [ComposeUp] call.
@@ -85,6 +87,12 @@ func WithPruneImages() ComposeOption {
 	}
 }
 
+func WithCustomLabel(labels map[string]string) ComposeOption {
+	return func(o *composeOptions) {
+		o.customLabels = labels
+	}
+}
+
 // NewDockerCli creates a docker CLI for test use.
 func NewDockerCli() (command.Cli, error) {
 	dockerCli, err := command.NewDockerCli(
@@ -101,6 +109,16 @@ func NewDockerCli() (command.Cli, error) {
 	}
 
 	return dockerCli, nil
+}
+
+// NewDockerClient creates a docker client for test use.
+func NewDockerClient() (*client.Client, error) {
+	dockerClient, err := client.New(client.FromEnv)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create docker client: %w", err)
+	}
+
+	return dockerClient, nil
 }
 
 func loadOpts(opts ...ComposeOption) composeOptions {
@@ -169,6 +187,8 @@ func ComposeUp(ctx context.Context, t *testing.T, opts ...ComposeOption) *Compos
 			api.VersionLabel:     api.ComposeVersion,
 			api.OneoffLabel:      "False",
 		}
+		// add custom labels if provided
+		maps.Copy(s.CustomLabels, o.customLabels)
 		project.Services[i] = s
 	}
 
