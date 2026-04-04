@@ -2169,3 +2169,194 @@ func TestCheckPathAffected(t *testing.T) {
 		})
 	}
 }
+
+// TestDecryptProjectFiles verifies that DecryptProjectFiles resolves secret and config
+// file paths from the project-level Secrets/Configs maps (via the Source name key),
+// rather than treating the ServiceSecretConfig/ServiceConfigObjConfig Source field
+// directly as a file path (regression test for bug introduced in commit f54c567).
+func TestDecryptProjectFiles(t *testing.T) {
+	encryption.SetupAgeKeyEnvVar(t)
+
+	// Paths to encrypted test fixtures, relative to this package directory.
+	const (
+		encryptedYAMLSrc = "../encryption/testdata/encrypted.yaml"
+		encryptedEnvSrc  = "../encryption/testdata/encrypted.env"
+	)
+
+	copyFile := func(t *testing.T, src, dst string) {
+		t.Helper()
+
+		data, err := os.ReadFile(src)
+		if err != nil {
+			t.Fatalf("failed to read %s: %v", src, err)
+		}
+
+		// #nosec G703 -- dst is always constructed from t.TempDir(), not user input
+		if err := os.WriteFile(dst, data, filesystem.PermOwner); err != nil {
+			t.Fatalf("failed to write %s: %v", dst, err)
+		}
+	}
+
+	testCases := []struct {
+		name                           string
+		buildProject                   func(t *testing.T, tmpDir string) *types.Project
+		expectedDecryptedFileBasenames []string
+	}{
+		{
+			name: "secret file resolved via project Secrets map, not Source as path",
+			buildProject: func(t *testing.T, tmpDir string) *types.Project {
+				t.Helper()
+
+				secretFile := filepath.Join(tmpDir, "my-secret.env")
+				copyFile(t, encryptedEnvSrc, secretFile)
+
+				return &types.Project{
+					WorkingDir: tmpDir,
+					Services: types.Services{
+						"svc1": {
+							Name: "svc1",
+							Secrets: []types.ServiceSecretConfig{
+								{Source: "my_secret"}, // Source is the name, not the file path
+							},
+						},
+					},
+					Secrets: types.Secrets{
+						"my_secret": {File: secretFile}, // name -> actual file path
+					},
+				}
+			},
+			expectedDecryptedFileBasenames: []string{"my-secret.env"},
+		},
+		{
+			name: "config file resolved via project Configs map, not Source as path",
+			buildProject: func(t *testing.T, tmpDir string) *types.Project {
+				t.Helper()
+
+				configFile := filepath.Join(tmpDir, "my-config.yaml")
+				copyFile(t, encryptedYAMLSrc, configFile)
+
+				return &types.Project{
+					WorkingDir: tmpDir,
+					Services: types.Services{
+						"svc1": {
+							Name: "svc1",
+							Configs: []types.ServiceConfigObjConfig{
+								{Source: "my_config"}, // Source is the name, not the file path
+							},
+						},
+					},
+					Configs: types.Configs{
+						"my_config": {File: configFile}, // name -> actual file path
+					},
+				}
+			},
+			expectedDecryptedFileBasenames: []string{"my-config.yaml"},
+		},
+		{
+			name: "multiple services sharing same secret are deduplicated",
+			buildProject: func(t *testing.T, tmpDir string) *types.Project {
+				t.Helper()
+
+				secretFile := filepath.Join(tmpDir, "shared-secret.env")
+				copyFile(t, encryptedEnvSrc, secretFile)
+
+				return &types.Project{
+					WorkingDir: tmpDir,
+					Services: types.Services{
+						"svc1": {
+							Name:    "svc1",
+							Secrets: []types.ServiceSecretConfig{{Source: "shared"}},
+						},
+						"svc2": {
+							Name:    "svc2",
+							Secrets: []types.ServiceSecretConfig{{Source: "shared"}},
+						},
+					},
+					Secrets: types.Secrets{
+						"shared": {File: secretFile},
+					},
+				}
+			},
+			expectedDecryptedFileBasenames: []string{"shared-secret.env"},
+		},
+		{
+			name: "secret Source not present in project Secrets map is skipped",
+			buildProject: func(t *testing.T, tmpDir string) *types.Project {
+				t.Helper()
+
+				return &types.Project{
+					WorkingDir: tmpDir,
+					Services: types.Services{
+						"svc1": {
+							Name:    "svc1",
+							Secrets: []types.ServiceSecretConfig{{Source: "nonexistent"}},
+						},
+					},
+					Secrets: types.Secrets{},
+				}
+			},
+			expectedDecryptedFileBasenames: []string{},
+		},
+		{
+			name: "config Source not present in project Configs map is skipped",
+			buildProject: func(t *testing.T, tmpDir string) *types.Project {
+				t.Helper()
+
+				return &types.Project{
+					WorkingDir: tmpDir,
+					Services: types.Services{
+						"svc1": {
+							Name:    "svc1",
+							Configs: []types.ServiceConfigObjConfig{{Source: "nonexistent"}},
+						},
+					},
+					Configs: types.Configs{},
+				}
+			},
+			expectedDecryptedFileBasenames: []string{},
+		},
+		{
+			name: "environment-sourced secret (empty File) is skipped",
+			buildProject: func(t *testing.T, tmpDir string) *types.Project {
+				t.Helper()
+
+				return &types.Project{
+					WorkingDir: tmpDir,
+					Services: types.Services{
+						"svc1": {
+							Name:    "svc1",
+							Secrets: []types.ServiceSecretConfig{{Source: "env_secret"}},
+						},
+					},
+					Secrets: types.Secrets{
+						"env_secret": {}, // File is empty: secret comes from environment, not a file
+					},
+				}
+			},
+			expectedDecryptedFileBasenames: []string{},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			project := tc.buildProject(t, tmpDir)
+
+			decrypted, err := DecryptProjectFiles(tmpDir, project)
+			if err != nil {
+				t.Fatalf("DecryptProjectFiles returned unexpected error: %v", err)
+			}
+
+			if len(decrypted) != len(tc.expectedDecryptedFileBasenames) {
+				t.Fatalf("expected %d decrypted file(s), got %d: %v",
+					len(tc.expectedDecryptedFileBasenames), len(decrypted), decrypted)
+			}
+
+			for i, wantBase := range tc.expectedDecryptedFileBasenames {
+				if gotBase := filepath.Base(decrypted[i]); gotBase != wantBase {
+					t.Errorf("decrypted[%d]: expected basename %q, got %q", i, wantBase, gotBase)
+				}
+			}
+		})
+	}
+}
