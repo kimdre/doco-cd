@@ -8,6 +8,7 @@ import (
 	onepassword "github.com/kimdre/doco-cd/internal/secretprovider/1password"
 	"github.com/kimdre/doco-cd/internal/secretprovider/awssecretsmanager"
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
+	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardenvault"
 	"github.com/kimdre/doco-cd/internal/secretprovider/infisical"
 	"github.com/kimdre/doco-cd/internal/secretprovider/openbao"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
@@ -108,6 +109,16 @@ func Initialize(ctx context.Context, provider, version string) (SecretProvider, 
 		}
 
 		p = AdaptSecretValueProvider(webhook.Name, prov)
+	case bitwardenvault.Name:
+		cfg, cfgErr := bitwardenvault.GetConfig()
+		if cfgErr != nil {
+			return nil, cfgErr
+		}
+
+		p, err = bitwardenvault.NewProvider(ctx, cfg)
+		if err != nil {
+			return nil, err
+		}
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnknownProvider, provider)
 	}

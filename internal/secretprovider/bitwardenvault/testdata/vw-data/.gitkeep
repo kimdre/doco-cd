@@ -1,0 +1,3 @@
+# This directory is used by the docker-compose file for persistent Vaultwarden data.
+# It will be created automatically by Docker Compose if it does not exist.
+
