@@ -1133,13 +1133,17 @@ func DecryptProjectFiles(repoPath string, p *types.Project) ([]string, error) {
 	for _, s := range p.Services {
 		for _, cfg := range s.Configs {
 			if cfg.Source != "" {
-				projectFiles = append(projectFiles, cfg.Source)
+				if cfgConfig, ok := p.Configs[cfg.Source]; ok && cfgConfig.File != "" {
+					projectFiles = append(projectFiles, cfgConfig.File)
+				}
 			}
 		}
 
 		for _, secret := range s.Secrets {
 			if secret.Source != "" {
-				projectFiles = append(projectFiles, secret.Source)
+				if secretConfig, ok := p.Secrets[secret.Source]; ok && secretConfig.File != "" {
+					projectFiles = append(projectFiles, secretConfig.File)
+				}
 			}
 		}
 
