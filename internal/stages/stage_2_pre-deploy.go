@@ -21,6 +21,10 @@ func shouldSkipDeployment(composeChanged bool, changedServices []docker.Change, 
 	return !forceRecreate && !composeChanged && len(changedServices) == 0 && ignoredInfo.IsEmpty() && !imagesChanged
 }
 
+func shouldCheckImageUpdates(forceImagePull, forceRecreate bool) bool {
+	return forceImagePull && !forceRecreate
+}
+
 func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Logger) error {
 	s.Stages.PreDeploy.StartedAt = time.Now()
 
@@ -74,7 +78,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		return fmt.Errorf("failed to hash deploy configuration: %w", err)
 	}
 
-	if s.DeployConfig.ForceImagePull {
+	if shouldCheckImageUpdates(s.DeployConfig.ForceImagePull, s.DeployConfig.ForceRecreate) {
 		stageLog.Debug("force image pull enabled, checking for image updates")
 
 		var (
@@ -115,6 +119,8 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		} else {
 			stageLog.Debug("no running containers found for the deployment, skipping image pull check")
 		}
+	} else if s.DeployConfig.ForceImagePull && s.DeployConfig.ForceRecreate {
+		stageLog.Debug("force recreate enabled, skipping pre-deploy image pull check")
 	}
 
 	stageLog.Debug("comparing commits",

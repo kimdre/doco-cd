@@ -19,3 +19,17 @@ func TestShouldSkipDeployment(t *testing.T) {
 		}
 	})
 }
+
+func TestShouldCheckImageUpdates(t *testing.T) {
+	t.Run("checks image updates when force image pull enabled", func(t *testing.T) {
+		if !shouldCheckImageUpdates(true, false) {
+			t.Fatal("expected pre-deploy image updates to be checked")
+		}
+	})
+
+	t.Run("skips image updates when force recreate enabled", func(t *testing.T) {
+		if shouldCheckImageUpdates(true, true) {
+			t.Fatal("expected pre-deploy image updates to be skipped when force recreate is enabled")
+		}
+	})
+}
