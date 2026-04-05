@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/avast/retry-go/v5"
+	composetypes "github.com/docker/cli/cli/compose/types"
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/encryption"
@@ -161,5 +162,101 @@ func TestDeploySwarmStack(t *testing.T) {
 		t.Fatalf("Failed to remove swarm stack: %v", err)
 	} else {
 		t.Logf("Swarm stack removed successfully")
+	}
+}
+
+func TestAddSwarmServiceLabels(t *testing.T) {
+	stack := &composetypes.Config{
+		Services: []composetypes.ServiceConfig{
+			{Name: "web", Labels: map[string]string{"user.label": "keep"}},
+			{Name: "db"},
+		},
+	}
+
+	deployConfig := &config.DeployConfig{
+		Name:      "my-stack",
+		Reference: "refs/heads/main",
+	}
+
+	payload := &webhook.ParsedPayload{
+		CommitSHA: "abc123",
+		FullName:  "user/repo",
+		WebURL:    "https://github.com/user/repo",
+	}
+
+	addSwarmServiceLabels(stack, deployConfig, payload, "/work", "1.0.0", "2025-01-01T00:00:00Z", "def456", "hash123")
+
+	for _, s := range stack.Services {
+		// Volatile labels should be in Deploy.Labels only
+		if _, ok := s.Labels[DocoCDLabels.Deployment.Timestamp]; ok {
+			t.Errorf("service %s: timestamp should not be in container labels", s.Name)
+		}
+
+		if _, ok := s.Labels[DocoCDLabels.Deployment.Trigger]; ok {
+			t.Errorf("service %s: trigger should not be in container labels", s.Name)
+		}
+
+		if s.Deploy.Labels[DocoCDLabels.Deployment.Timestamp] != "2025-01-01T00:00:00Z" {
+			t.Errorf("service %s: expected timestamp in deploy labels", s.Name)
+		}
+
+		if s.Deploy.Labels[DocoCDLabels.Deployment.Trigger] != "abc123" {
+			t.Errorf("service %s: expected trigger in deploy labels", s.Name)
+		}
+
+		// Stable labels should be in container labels
+		if s.Labels[DocoCDLabels.Deployment.Name] != "my-stack" {
+			t.Errorf("service %s: expected name in container labels", s.Name)
+		}
+
+		if s.Labels[DocoCDLabels.Deployment.CommitSHA] != "def456" {
+			t.Errorf("service %s: expected commit SHA in container labels", s.Name)
+		}
+	}
+
+	// Existing user labels should be preserved
+	if stack.Services[0].Labels["user.label"] != "keep" {
+		t.Error("existing user label was overwritten")
+	}
+}
+
+func TestSwarmServiceLabelsStability(t *testing.T) {
+	stack := &composetypes.Config{
+		Services: []composetypes.ServiceConfig{
+			{Name: "web"},
+		},
+	}
+
+	deployConfig := &config.DeployConfig{
+		Name:      "my-stack",
+		Reference: "refs/heads/main",
+	}
+
+	payload := &webhook.ParsedPayload{
+		CommitSHA: "abc123",
+		FullName:  "user/repo",
+	}
+
+	addSwarmServiceLabels(stack, deployConfig, payload, "/work", "1.0.0", "2025-01-01T00:00:00Z", "commit1", "hash1")
+
+	// Snapshot container labels after first call
+	firstLabels := make(map[string]string)
+	for k, v := range stack.Services[0].Labels {
+		firstLabels[k] = v
+	}
+
+	// Call again with different timestamp but same commit
+	addSwarmServiceLabels(stack, deployConfig, payload, "/work", "1.0.0", "2025-06-15T12:00:00Z", "commit1", "hash1")
+
+	// Container labels should be identical (timestamp is not in container labels)
+	for k, v := range stack.Services[0].Labels {
+		if firstLabels[k] != v {
+			t.Errorf("container label %s changed: %q -> %q", k, firstLabels[k], v)
+		}
+	}
+
+	// Deploy labels should reflect the new timestamp
+	if stack.Services[0].Deploy.Labels[DocoCDLabels.Deployment.Timestamp] != "2025-06-15T12:00:00Z" {
+		t.Error("deploy timestamp was not updated")
 	}
 }

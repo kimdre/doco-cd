@@ -80,18 +80,18 @@ func RemoveSwarmStack(ctx context.Context, dockerCli command.Cli, namespace stri
 	return swarmInternal.RunRemove(ctx, dockerCli, opts)
 }
 
-// addSwarmServiceLabels adds custom labels to the service containers in a Docker Swarm stack.
+// addSwarmServiceLabels adds custom labels to services in a Docker Swarm stack.
+// Volatile labels (timestamp, trigger) are placed on service-level deploy labels
+// to avoid altering the task template and triggering unnecessary rolling updates.
 func addSwarmServiceLabels(stack *composetypes.Config, deployConfig *config.DeployConfig, payload *webhook.ParsedPayload,
 	repoDir, appVersion, timestamp, latestCommit, projectHash string,
 ) {
-	customLabels := map[string]string{
+	containerLabels := map[string]string{
 		DocoCDLabels.Metadata.Manager:              config.AppName,
 		DocoCDLabels.Metadata.Version:              appVersion,
 		DocoCDLabels.Deployment.Name:               deployConfig.Name,
-		DocoCDLabels.Deployment.Timestamp:          timestamp,
 		DocoCDLabels.Deployment.ComposeHash:        projectHash,
 		DocoCDLabels.Deployment.WorkingDir:         repoDir,
-		DocoCDLabels.Deployment.Trigger:            payload.CommitSHA,
 		DocoCDLabels.Deployment.CommitSHA:          latestCommit,
 		DocoCDLabels.Deployment.TargetRef:          deployConfig.Reference,
 		DocoCDLabels.Deployment.ConfigHash:         deployConfig.Internal.Hash,
@@ -101,13 +101,26 @@ func addSwarmServiceLabels(stack *composetypes.Config, deployConfig *config.Depl
 		DocoCDLabels.Repository.URL:                payload.WebURL,
 	}
 
+	serviceLabels := map[string]string{
+		DocoCDLabels.Deployment.Timestamp: timestamp,
+		DocoCDLabels.Deployment.Trigger:   payload.CommitSHA,
+	}
+
 	for i, s := range stack.Services {
 		if s.Labels == nil {
 			s.Labels = make(map[string]string)
 		}
 
-		for key, val := range customLabels {
+		for key, val := range containerLabels {
 			s.Labels[key] = val
+		}
+
+		if s.Deploy.Labels == nil {
+			s.Deploy.Labels = make(map[string]string)
+		}
+
+		for key, val := range serviceLabels {
+			s.Deploy.Labels[key] = val
 		}
 
 		stack.Services[i] = s
