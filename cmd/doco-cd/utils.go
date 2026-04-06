@@ -13,6 +13,7 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
 
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -75,6 +76,8 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 		}
 	}
 
+	jobLog = jobLog.With(slog.String("repo_clone_url", cloneUrl))
+
 	var processedStacks []string
 
 	serviceLabels, err := docker.GetLabeledServices(ctx, dockerClient, docker.DocoCDLabels.Deployment.AutoDiscover, "true")
@@ -87,8 +90,30 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 				continue
 			}
 
-			if cloneUrl == labels[docker.DocoCDLabels.Repository.URL] {
-				jobLog.Debug("checking auto-discovered stack for obsolescence", slog.String("stack", stackName))
+			stackLog := jobLog.With(slog.String("stack", stackName))
+
+			labelUrl := labels[docker.DocoCDLabels.Repository.URL]
+
+			// cloneUrl may not be in the same format as labelUrl
+			//  (e.g., "https://github.com/kimdre/doco-cd.git" vs. "https://github.com/kimdre/doco-cd")
+			// or my different protocols (e.g., "ssh://git@github.com/kimdre/doco-cd.git" vs. "https://github.com/kimdre/doco-cd")
+			cloneUrlRepoName := git.GetRepoName(cloneUrl)
+			labelUrlRepoName := git.GetRepoName(labelUrl)
+
+			match := cloneUrlRepoName == labelUrlRepoName
+
+			stackLog.Debug("checking auto-discovered stack for repository match",
+				slog.Group("repo_url",
+					slog.String("clone_url", cloneUrl),
+					slog.String("clone_url_repo_name", cloneUrlRepoName),
+					slog.String("label_url", labelUrl),
+					slog.String("label_url_repo_name", labelUrlRepoName),
+				),
+				slog.Bool("match", match),
+			)
+
+			if match {
+				stackLog.Debug("checking auto-discovered stack for obsolescence")
 
 				if _, found := autoDiscoveredNames[stackName]; !found {
 					autoDiscoverDelete := labels[docker.DocoCDLabels.Deployment.AutoDiscoverDelete]
@@ -102,13 +127,15 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 					}
 
 					if !deleteEnabled {
-						jobLog.Debug("skipping removal of obsolete auto-discovered stack as per configuration", slog.String("stack", stackName))
+						stackLog.Debug("skipping removal of obsolete auto-discovered stack as per configuration")
+
 						processedStacks = append(processedStacks, stackName)
 
 						continue
 					}
 
-					jobLog.Info("removing obsolete auto-discovered stack", slog.String("stack", stackName))
+					stackLog.Info("removing obsolete auto-discovered stack")
+
 					removeConfig := &config.DeployConfig{Name: stackName, Destroy: true}
 					removeConfig.DestroyOpts.RemoveVolumes = true
 					removeConfig.DestroyOpts.RemoveImages = true
@@ -121,12 +148,14 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 
 					err = notification.Send(notification.Success, "Stack destroyed", "successfully destroyed stack "+removeConfig.Name, metadata)
 					if err != nil {
-						jobLog.Error("failed to send notification", logger.ErrAttr(err))
+						stackLog.Error("failed to send notification", logger.ErrAttr(err))
 					}
 
-					jobLog.Info("removed obsolete auto-discovered stack", slog.String("stack", stackName))
+					stackLog.Info("removed obsolete auto-discovered stack", slog.String("stack", stackName))
 					processedStacks = append(processedStacks, stackName)
 				}
+			} else {
+				stackLog.Debug("skipping auto-discovered stack as it belongs to a different repository")
 			}
 		}
 	} else {
