@@ -44,6 +44,13 @@ func TestVerifyAndSanitizePath(t *testing.T) {
 			expected:    "../invalid/path",
 			expectError: ErrPathTraversal,
 		},
+		{
+			name:        "Path with IP and Port",
+			path:        "/mnt/192.168.0.10:12345/config",
+			trustedRoot: "/mnt",
+			expected:    "/mnt/192.168.0.10_12345/config",
+			expectError: nil,
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
