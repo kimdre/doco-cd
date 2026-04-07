@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/containerd/errdefs"
+
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/utils/module"
@@ -364,6 +366,13 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		return err
 	}
 
+	if deployConfig.AllResources {
+		err = ensureStandaloneAllResources(ctx, dockerCli, project)
+		if err != nil {
+			return fmt.Errorf("failed to create unreferenced resources: %w", err)
+		}
+	}
+
 	createOpts := api.CreateOptions{
 		Services:             services,
 		RemoveOrphans:        deployConfig.RemoveOrphans,
@@ -417,6 +426,146 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	}
 
 	return nil
+}
+
+func ensureStandaloneAllResources(ctx context.Context, dockerCli command.Cli, project *types.Project) error {
+	apiClient := dockerCli.Client()
+
+	for networkKey, networkConfig := range getUnreferencedComposeNetworks(project) {
+		if networkConfig.External {
+			continue
+		}
+
+		networkName := networkConfig.Name
+		if networkName == "" {
+			networkName = fmt.Sprintf("%s_%s", project.Name, networkKey)
+		}
+
+		_, err := apiClient.NetworkInspect(ctx, networkName, client.NetworkInspectOptions{})
+		switch {
+		case err == nil:
+			continue
+		case errdefs.IsNotFound(err):
+			_, _ = fmt.Fprintln(dockerCli.Out(), "Creating network", networkName)
+			if _, err = apiClient.NetworkCreate(ctx, networkName, client.NetworkCreateOptions{
+				Driver:     networkConfig.Driver,
+				Options:    networkConfig.DriverOpts,
+				Internal:   networkConfig.Internal,
+				Attachable: networkConfig.Attachable,
+				EnableIPv4: networkConfig.EnableIPv4,
+				EnableIPv6: networkConfig.EnableIPv6,
+				Labels:     buildComposeResourceLabels(project.Name, networkConfig.Labels, networkConfig.CustomLabels, api.NetworkLabel, networkKey),
+			}); err != nil {
+				return fmt.Errorf("create network %s: %w", networkName, err)
+			}
+		default:
+			return fmt.Errorf("inspect network %s: %w", networkName, err)
+		}
+	}
+
+	for volumeKey, volumeConfig := range getUnreferencedComposeVolumes(project) {
+		if volumeConfig.External {
+			continue
+		}
+
+		volumeName := volumeConfig.Name
+		if volumeName == "" {
+			volumeName = fmt.Sprintf("%s_%s", project.Name, volumeKey)
+		}
+
+		_, err := apiClient.VolumeInspect(ctx, volumeName, client.VolumeInspectOptions{})
+		switch {
+		case err == nil:
+			continue
+		case errdefs.IsNotFound(err):
+			_, _ = fmt.Fprintln(dockerCli.Out(), "Creating volume", volumeName)
+			if _, err = apiClient.VolumeCreate(ctx, client.VolumeCreateOptions{
+				Name:       volumeName,
+				Driver:     volumeConfig.Driver,
+				DriverOpts: map[string]string(volumeConfig.DriverOpts),
+				Labels:     buildComposeResourceLabels(project.Name, volumeConfig.Labels, volumeConfig.CustomLabels, api.VolumeLabel, volumeKey),
+			}); err != nil {
+				return fmt.Errorf("create volume %s: %w", volumeName, err)
+			}
+		default:
+			return fmt.Errorf("inspect volume %s: %w", volumeName, err)
+		}
+	}
+
+	return nil
+}
+
+func getUnreferencedComposeNetworks(project *types.Project) map[string]types.NetworkConfig {
+	referencedNetworks := set.New[string]()
+
+	for _, serviceConfig := range project.Services {
+		if len(serviceConfig.Networks) == 0 {
+			referencedNetworks.Add("default")
+			continue
+		}
+
+		for networkName := range serviceConfig.Networks {
+			referencedNetworks.Add(networkName)
+		}
+	}
+
+	unreferencedNetworks := make(map[string]types.NetworkConfig)
+
+	for networkName, networkConfig := range project.Networks {
+		if _, referenced := referencedNetworks[networkName]; referenced {
+			continue
+		}
+
+		unreferencedNetworks[networkName] = networkConfig
+	}
+
+	return unreferencedNetworks
+}
+
+func getUnreferencedComposeVolumes(project *types.Project) map[string]types.VolumeConfig {
+	referencedVolumes := set.New[string]()
+
+	for _, serviceConfig := range project.Services {
+		for _, volume := range serviceConfig.Volumes {
+			if volume.Source == "" {
+				continue
+			}
+
+			if _, exists := project.Volumes[volume.Source]; exists {
+				referencedVolumes.Add(volume.Source)
+			}
+		}
+	}
+
+	unreferencedVolumes := make(map[string]types.VolumeConfig)
+
+	for volumeName, volumeConfig := range project.Volumes {
+		if _, referenced := referencedVolumes[volumeName]; referenced {
+			continue
+		}
+
+		unreferencedVolumes[volumeName] = volumeConfig
+	}
+
+	return unreferencedVolumes
+}
+
+func buildComposeResourceLabels(projectName string, labels, customLabels map[string]string, kindLabelKey, kindLabelValue string) map[string]string {
+	merged := make(map[string]string)
+
+	for key, val := range labels {
+		merged[key] = val
+	}
+
+	for key, val := range customLabels {
+		merged[key] = val
+	}
+
+	merged[api.ProjectLabel] = projectName
+	merged[kindLabelKey] = kindLabelValue
+	merged[api.VersionLabel] = ComposeVersion
+
+	return merged
 }
 
 // DeployStack deploys the stack using the provided deployment configuration.

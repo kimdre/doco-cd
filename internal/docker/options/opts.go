@@ -9,6 +9,7 @@ type Deploy struct {
 	ResolveImage     string
 	SendRegistryAuth bool
 	Prune            bool
+	AllResources     bool
 	Detach           bool
 	Quiet            bool
 	Environment      map[string]string

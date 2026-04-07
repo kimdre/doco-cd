@@ -901,6 +901,7 @@ func TestAutoDiscoverDeployments_InheritBaseConfig(t *testing.T) {
 		AutoDiscover:     true,
 		Reference:        "refs/heads/main",
 		RemoveOrphans:    false,
+		AllResources:     true,
 		ForceRecreate:    true,
 		Timeout:          300,
 		Profiles:         []string{"prod"},
@@ -924,6 +925,10 @@ func TestAutoDiscoverDeployments_InheritBaseConfig(t *testing.T) {
 
 	if cfg.RemoveOrphans != baseConfig.RemoveOrphans {
 		t.Errorf("expected RemoveOrphans to be inherited: %v, got %v", baseConfig.RemoveOrphans, cfg.RemoveOrphans)
+	}
+
+	if cfg.AllResources != baseConfig.AllResources {
+		t.Errorf("expected AllResources to be inherited: %v, got %v", baseConfig.AllResources, cfg.AllResources)
 	}
 
 	if cfg.ForceRecreate != baseConfig.ForceRecreate {

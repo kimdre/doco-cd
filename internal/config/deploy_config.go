@@ -63,6 +63,7 @@ type DeployConfig struct {
 		RemoveRepoDir bool `yaml:"remove_dir" json:"remove_dir" default:"true"`         // RemoveRepoDir removes the repository directory after the deployment is destroyed
 	} `yaml:"destroy_opts" json:"destroy_opts"` // DestroyOpts is the destroy options for the deployment
 	Profiles         []string          `yaml:"profiles" json:"profiles" default:"[]"`              // Profiles is a list of profiles to use for the deployment, e.g., ["dev", "prod"]. See https://docs.docker.com/compose/how-tos/profiles/
+	AllResources     bool              `yaml:"all_resources" json:"all_resources" default:"false"` // AllResources deploys all top-level resources, even if they are not referenced by services (in standalone mode this applies to networks and named volumes)
 	ExternalSecrets  map[string]string `yaml:"external_secrets" json:"external_secrets"`           // ExternalSecrets maps env vars to secret IDs/keys for injecting secrets from external providers like Bitwarden SM at deployment, e.g. {"DB_PASSWORD": "138e3697-ed58-431c-b866-b3550066343a"}
 	AutoDiscover     bool              `yaml:"auto_discover" json:"auto_discover" default:"false"` // AutoDiscover enables autodiscovery of services to deploy in the working directory by checking for subdirectories with docker-compose files
 	AutoDiscoverOpts struct {

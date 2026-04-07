@@ -41,7 +41,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Dep
 		pruneServices(ctx, dockerCli, namespace, services)
 	}
 
-	serviceNetworks := getServicesDeclaredNetworks(config.Services)
+	serviceNetworks := getDeclaredNetworks(config.Services, config.Networks, opts.AllResources)
 
 	networks, externalNetworks := convert.Networks(namespace, config.Networks, serviceNetworks)
 	if err = validateExternalNetworks(ctx, dockerCli.Client(), externalNetworks); err != nil {
@@ -52,7 +52,9 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Dep
 		return err
 	}
 
-	secrets, err := convert.Secrets(namespace, config.Secrets)
+	declaredSecrets := getDeclaredSecrets(config.Services, config.Secrets, opts.AllResources)
+
+	secrets, err := convert.Secrets(namespace, declaredSecrets)
 	if err != nil {
 		return err
 	}
@@ -61,7 +63,9 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Dep
 		return err
 	}
 
-	configs, err := convert.Configs(namespace, config.Configs)
+	declaredConfigs := getDeclaredConfigs(config.Services, config.Configs, opts.AllResources)
+
+	configs, err := convert.Configs(namespace, declaredConfigs)
 	if err != nil {
 		return err
 	}
@@ -92,7 +96,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Dep
 	return WaitOnServices(ctx, dockerCli, serviceIDs)
 }
 
-func getServicesDeclaredNetworks(serviceConfigs []composetypes.ServiceConfig) set.Set[string] {
+func getDeclaredNetworks(serviceConfigs []composetypes.ServiceConfig, networkConfigs map[string]composetypes.NetworkConfig, allResources bool) set.Set[string] {
 	serviceNetworks := set.New[string]()
 
 	for _, serviceConfig := range serviceConfigs {
@@ -106,7 +110,63 @@ func getServicesDeclaredNetworks(serviceConfigs []composetypes.ServiceConfig) se
 		}
 	}
 
+	if allResources {
+		for networkName := range networkConfigs {
+			serviceNetworks.Add(networkName)
+		}
+	}
+
 	return serviceNetworks
+}
+
+func getDeclaredSecrets(serviceConfigs []composetypes.ServiceConfig, secretConfigs map[string]composetypes.SecretConfig, allResources bool) map[string]composetypes.SecretConfig {
+	if allResources {
+		return secretConfigs
+	}
+
+	declaredSecrets := make(map[string]composetypes.SecretConfig)
+
+	for _, serviceConfig := range serviceConfigs {
+		for _, secret := range serviceConfig.Secrets {
+			if secret.Source == "" {
+				continue
+			}
+
+			secretConfig, exists := secretConfigs[secret.Source]
+			if !exists {
+				continue
+			}
+
+			declaredSecrets[secret.Source] = secretConfig
+		}
+	}
+
+	return declaredSecrets
+}
+
+func getDeclaredConfigs(serviceConfigs []composetypes.ServiceConfig, configConfigs map[string]composetypes.ConfigObjConfig, allResources bool) map[string]composetypes.ConfigObjConfig {
+	if allResources {
+		return configConfigs
+	}
+
+	declaredConfigs := make(map[string]composetypes.ConfigObjConfig)
+
+	for _, serviceConfig := range serviceConfigs {
+		for _, cfg := range serviceConfig.Configs {
+			if cfg.Source == "" {
+				continue
+			}
+
+			configConfig, exists := configConfigs[cfg.Source]
+			if !exists {
+				continue
+			}
+
+			declaredConfigs[cfg.Source] = configConfig
+		}
+	}
+
+	return declaredConfigs
 }
 
 func validateExternalNetworks(ctx context.Context, apiClient client.NetworkAPIClient, externalNetworks []string) error {

@@ -45,6 +45,7 @@ func LoadSwarmStack(dockerCli *command.Cli, project *types.Project,
 		ResolveImage:     swarmInternal.ResolveImageAlways,
 		SendRegistryAuth: true,
 		Prune:            deployConfig.RemoveOrphans,
+		AllResources:     deployConfig.AllResources,
 		Detach:           false,
 		Environment:      project.Environment,
 	}
