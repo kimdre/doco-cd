@@ -215,6 +215,19 @@ func TestValueProvider_GetSecret_Webhook(t *testing.T) {
 			haveCustomHeaders: `{not valid json}`,
 			wantConfigErr:     true,
 		},
+		"bearer_token_in_request_body": {
+			haveSecretID:    "bearer_token_in_body",
+			haveURLPath:     "/post",
+			haveRequestBody: `{"token":"{{.bearerToken}}","ref":"{{.remoteRef}}"}`,
+			haveBearerToken: "secret-token-12345",
+			wantSecret:      "secret-token-12345",
+		},
+		"bearer_token_empty": {
+			haveSecretID:    "bearer_token_in_body",
+			haveURLPath:     "/post",
+			haveRequestBody: `{"token":"{{.bearerToken}}","ref":"{{.remoteRef}}"}`,
+			wantSecret:      "",
+		},
 	}
 
 	ts := httptest.NewServer(newMockHandler())
@@ -293,6 +306,12 @@ func postSecret(w http.ResponseWriter, r *http.Request) {
 	var body map[string]string
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		httpRespondError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	// Check for "token" field (used for bearer_token_in_body test)
+	if token, ok := body["token"]; ok {
+		httpRespondSecret(w, token)
 		return
 	}
 
