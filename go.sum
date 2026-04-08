@@ -228,8 +228,8 @@ github.com/dlclark/regexp2 v1.11.5 h1:Q/sSnsKerHeCkc/jSTNq1oCm7KiVgUMZRDUoRu0JQZ
 github.com/dlclark/regexp2 v1.11.5/go.mod h1:DHkYz0B9wPfa6wondMfaivmHpzrQ3v9q8cnmRbL6yW8=
 github.com/docker/buildx v0.32.0 h1:BjSqjSkQDnwgcsIC8NV3D4i6OKIXqu6xUWrg+G9mq5s=
 github.com/docker/buildx v0.32.0/go.mod h1:46Le9J2gV41DJ3zuGBc+Lf+ASYA4saGd0y/dGly8Wmg=
-github.com/docker/cli v29.3.1+incompatible h1:M04FDj2TRehDacrosh7Vlkgc7AuQoWloQkf1PA5hmoI=
-github.com/docker/cli v29.3.1+incompatible/go.mod h1:JLrzqnKDaYBop7H2jaqPtU4hHvMKP+vjCwu2uszcLI8=
+github.com/docker/cli v29.4.0+incompatible h1:+IjXULMetlvWJiuSI0Nbor36lcJ5BTcVpUmB21KBoVM=
+github.com/docker/cli v29.4.0+incompatible/go.mod h1:JLrzqnKDaYBop7H2jaqPtU4hHvMKP+vjCwu2uszcLI8=
 github.com/docker/compose/v5 v5.1.1 h1:Ngkcd7AtHra5TcEEkDWol9qcZ44pMHJiM7C3dzWcQPQ=
 github.com/docker/compose/v5 v5.1.1/go.mod h1:9MiC31ueo0VamH4PvTAPfUrd3lQHIWQYgww2yDB8Dx8=
 github.com/docker/distribution v2.8.3+incompatible h1:AtKxIZ36LoNK51+Z6RpzLpddBirtxJnzDrHLEKxTAYk=

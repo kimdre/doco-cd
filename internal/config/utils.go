@@ -32,7 +32,22 @@ func LoadFileBasedEnvVars(mappings *[]EnvVarFileMapping) error {
 				return fmt.Errorf("%w: %s or %s", ErrBothSecretsSet, m.EnvName, m.EnvName+"_FILE")
 			}
 
-			*m.EnvValue = strings.TrimSpace(*m.FileValue)
+			fileContent := strings.TrimSpace(*m.FileValue)
+
+			// If *_FILE content is SOPS-encrypted, decrypt it before assigning.
+			if encryption.IsEncryptedContent(fileContent) {
+				filePath := os.Getenv(m.EnvName + "_FILE")
+				format := encryption.GetFileFormat(filePath)
+
+				decrypted, err := encryption.DecryptContent([]byte(fileContent), format)
+				if err != nil {
+					return fmt.Errorf("failed to decrypt %s_FILE content: %w", m.EnvName, err)
+				}
+
+				fileContent = strings.TrimSpace(string(decrypted))
+			}
+
+			*m.EnvValue = fileContent
 
 			continue
 		}
