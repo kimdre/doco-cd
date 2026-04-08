@@ -111,16 +111,6 @@ func NewDockerCli() (command.Cli, error) {
 	return dockerCli, nil
 }
 
-// NewDockerClient creates a docker client for test use.
-func NewDockerClient() (*client.Client, error) {
-	dockerClient, err := client.New(client.FromEnv)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create docker client: %w", err)
-	}
-
-	return dockerClient, nil
-}
-
 func loadOpts(opts ...ComposeOption) composeOptions {
 	var o composeOptions
 	for _, opt := range opts {

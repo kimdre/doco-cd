@@ -356,7 +356,6 @@ services:
 		t.Fatal(err)
 	}
 
-	// auto generated name and container_name, both of them is possible in compose file, so we check both of them here.
 	want := []string{
 		"testgetlatestserviceswarm_nginx",
 		"testgetlatestserviceswarm_test2",
@@ -406,8 +405,7 @@ func Test_getComposeServiceMissing(t *testing.T) {
 	}
 
 	tests := []struct {
-		name string // description of this test case
-		// Named input parameters for target function.
+		name        string
 		deployed    []string
 		projectName string
 		services    types.Services
@@ -463,8 +461,7 @@ func Test_getSwarmServiceMissing(t *testing.T) {
 	}
 
 	tests := []struct {
-		name string // description of this test case
-		// Named input parameters for target function.
+		name        string
 		deployed    []string
 		projectName string
 		services    types.Services

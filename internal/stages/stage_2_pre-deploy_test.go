@@ -8,8 +8,7 @@ import (
 
 func TestShouldSkipDeployment(t *testing.T) {
 	tests := []struct {
-		name string // description of this test case
-		// Named input parameters for target function.
+		name            string
 		composeChanged  bool
 		changedServices []docker.Change
 		ignoredInfo     docker.IgnoredInfo

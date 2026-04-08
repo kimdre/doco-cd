@@ -115,7 +115,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 
 	deployedState, err := docker.GetLatestServiceState(ctx, s.Docker.Client, getFullName(s.Repository.CloneURL), s.DeployConfig.Name)
 	if err != nil {
-		return fmt.Errorf("failed to get latest labels from deployed services: %w", err)
+		return fmt.Errorf("failed to get latest state from deployed services: %w", err)
 	}
 
 	if deployedCommit, _ := deployedState.Labels.GetDeployedCommit(); deployedCommit != "" {

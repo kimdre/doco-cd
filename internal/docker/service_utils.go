@@ -34,11 +34,12 @@ func GetLatestServiceState(ctx context.Context, client *client.Client, repoName,
 	return getLatestServiceState(serviceLabels, repoName), nil
 }
 
+// getLatestServiceState returns the labels of the most recently (re-)deployed services for a given repository.
 func getLatestServiceState(serviceLabels map[Service]Labels, repoName string) LatestServiceState {
 	ret := LatestServiceState{}
 
 	var latestTimestamp string
-	// Find deployed commit, deployConfig hash and externalSecrets hash from labels of deployed services
+
 	for svcName, labels := range serviceLabels {
 		name, ok := labels[DocoCDLabels.Repository.Name]
 		if !ok || name != repoName {
