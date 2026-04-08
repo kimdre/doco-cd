@@ -7,29 +7,91 @@ import (
 )
 
 func TestShouldSkipDeployment(t *testing.T) {
-	t.Run("skips when nothing changed and force recreate disabled", func(t *testing.T) {
-		if !shouldSkipDeployment(false, nil, docker.IgnoredInfo{}, false, false, []string{}) {
-			t.Fatal("expected deployment to be skipped")
-		}
-	})
-
-	t.Run("does not skip when force recreate enabled", func(t *testing.T) {
-		if shouldSkipDeployment(false, nil, docker.IgnoredInfo{}, false, true, []string{}) {
-			t.Fatal("expected deployment to proceed when force recreate is enabled")
-		}
-	})
-}
-
-func TestShouldCheckImageUpdates(t *testing.T) {
-	t.Run("checks image updates when force image pull enabled", func(t *testing.T) {
-		if !shouldCheckImageUpdates(true, false) {
-			t.Fatal("expected pre-deploy image updates to be checked")
-		}
-	})
-
-	t.Run("skips image updates when force recreate enabled", func(t *testing.T) {
-		if shouldCheckImageUpdates(true, true) {
-			t.Fatal("expected pre-deploy image updates to be skipped when force recreate is enabled")
-		}
-	})
+	tests := []struct {
+		name string // description of this test case
+		// Named input parameters for target function.
+		composeChanged  bool
+		changedServices []docker.Change
+		ignoredInfo     docker.IgnoredInfo
+		imagesChanged   bool
+		missingServices []string
+		want            bool
+	}{
+		{
+			name:            "no changes",
+			composeChanged:  false,
+			changedServices: nil,
+			ignoredInfo:     docker.IgnoredInfo{},
+			imagesChanged:   false,
+			missingServices: nil,
+			want:            true,
+		},
+		{
+			name:            "compose file changed",
+			composeChanged:  true,
+			changedServices: nil,
+			ignoredInfo:     docker.IgnoredInfo{},
+			imagesChanged:   false,
+			missingServices: nil,
+			want:            false,
+		},
+		{
+			name:           "services changed",
+			composeChanged: false,
+			changedServices: []docker.Change{{
+				Type:     "configs",
+				Services: []string{"web"},
+			}},
+			ignoredInfo:     docker.IgnoredInfo{},
+			imagesChanged:   false,
+			missingServices: nil,
+			want:            false,
+		},
+		{
+			name:            "ignored changes",
+			composeChanged:  false,
+			changedServices: nil,
+			ignoredInfo:     docker.IgnoredInfo{Ignored: []string{"web"}},
+			imagesChanged:   false,
+			missingServices: nil,
+			want:            true,
+		},
+		{
+			name:            "ignored changes but need send signal",
+			composeChanged:  false,
+			changedServices: nil,
+			ignoredInfo: docker.IgnoredInfo{NeedSendSignal: []docker.SignalService{
+				{ServiceName: "web", Signal: "SIGHUP"},
+			}},
+			imagesChanged:   false,
+			missingServices: nil,
+			want:            false,
+		},
+		{
+			name:            "images changed",
+			composeChanged:  false,
+			changedServices: nil,
+			ignoredInfo:     docker.IgnoredInfo{},
+			imagesChanged:   true,
+			missingServices: nil,
+			want:            false,
+		},
+		{
+			name:            "missing services",
+			composeChanged:  false,
+			changedServices: nil,
+			ignoredInfo:     docker.IgnoredInfo{},
+			imagesChanged:   false,
+			missingServices: []string{"web"},
+			want:            false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shouldSkipDeployment(tt.composeChanged, tt.changedServices, tt.ignoredInfo, tt.imagesChanged, tt.missingServices)
+			if got != tt.want {
+				t.Errorf("shouldSkipDeployment() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }

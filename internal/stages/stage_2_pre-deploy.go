@@ -20,20 +20,14 @@ import (
 func shouldSkipDeployment(composeChanged bool,
 	changedServices []docker.Change,
 	ignoredInfo docker.IgnoredInfo,
-	imagesChanged,
-	forceRecreate bool,
+	imagesChanged bool,
 	missingServices []string,
 ) bool {
-	return !forceRecreate &&
-		!composeChanged &&
+	return !composeChanged &&
 		len(changedServices) == 0 &&
-		ignoredInfo.IsEmpty() &&
+		ignoredInfo.IsNeedSignal() &&
 		!imagesChanged &&
 		len(missingServices) == 0
-}
-
-func shouldCheckImageUpdates(forceImagePull, forceRecreate bool) bool {
-	return forceImagePull && !forceRecreate
 }
 
 func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Logger) error {
@@ -74,7 +68,9 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		return fmt.Errorf("failed to hash deploy configuration: %w", err)
 	}
 
-	if shouldCheckImageUpdates(s.DeployConfig.ForceImagePull, s.DeployConfig.ForceRecreate) {
+	if s.DeployConfig.ForceRecreate {
+		stageLog.Debug("force recreate enabled, skipping pre-deploy image pull check")
+	} else if s.DeployConfig.ForceImagePull {
 		stageLog.Debug("force image pull enabled, checking for image updates")
 
 		var (
@@ -115,8 +111,6 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		} else {
 			stageLog.Debug("no running containers found for the deployment, skipping image pull check")
 		}
-	} else if s.DeployConfig.ForceImagePull && s.DeployConfig.ForceRecreate {
-		stageLog.Debug("force recreate enabled, skipping pre-deploy image pull check")
 	}
 
 	deployedState, err := docker.GetLatestServiceState(ctx, s.Docker.Client, getFullName(s.Repository.CloneURL), s.DeployConfig.Name)
@@ -189,18 +183,15 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 
 		missingServices := docker.CheckServiceMissing(deployedState.DeployedServicesName, s.Docker.Project.Name, s.Docker.Project.Services)
 
-		if shouldSkipDeployment(composeChanged, changedServices, ignoredInfo, imagesChanged, s.DeployConfig.ForceRecreate, missingServices) {
-			stageLog.Debug("no changes detected, skipping deployment",
-				slog.String("directory", s.DeployConfig.WorkingDirectory),
-			)
-
-			return ErrSkipDeployment
-		}
-
-		if s.DeployConfig.ForceRecreate && !composeChanged && len(changedServices) == 0 && ignoredInfo.IsEmpty() && !imagesChanged && len(missingServices) == 0 {
+		if s.DeployConfig.ForceRecreate {
 			stageLog.Debug("force recreate enabled, proceeding with deployment",
 				slog.String("directory", s.DeployConfig.WorkingDirectory),
 			)
+		} else if shouldSkipDeployment(composeChanged, changedServices, ignoredInfo, imagesChanged, missingServices) {
+			stageLog.Debug("no changes detected, skipping deployment",
+				slog.String("directory", s.DeployConfig.WorkingDirectory),
+			)
+			return ErrSkipDeployment
 		}
 
 		s.DeployState.changedServices = changedServices
@@ -208,6 +199,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 
 		stageLog.Debug("changes detected, proceeding with deployment",
 			slog.String("directory", s.DeployConfig.WorkingDirectory),
+			slog.Bool("force_recreate", s.DeployConfig.ForceRecreate),
 			slog.Group("has_changes",
 				slog.Bool("compose_config", composeChanged),
 				slog.Any("files", changedServices),

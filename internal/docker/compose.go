@@ -860,6 +860,10 @@ func (i IgnoredInfo) IsEmpty() bool {
 	return len(i.Ignored) == 0 && len(i.NeedSendSignal) == 0
 }
 
+func (i IgnoredInfo) IsNeedSignal() bool {
+	return len(i.NeedSendSignal) == 0
+}
+
 type SignalService struct {
 	ServiceName string `json:"service_name"`
 	Signal      string `json:"signal"`
