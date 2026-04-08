@@ -35,6 +35,8 @@ func VerifyAndSanitizePath(path, trustedRoot string) (string, error) {
 		return absPath, fmt.Errorf("%w: %s is outside of trusted root %s", ErrPathTraversal, absPath, trustedRoot)
 	}
 
+	absPath = strings.ReplaceAll(absPath, ":", "_")
+
 	return absPath, nil
 }
 
