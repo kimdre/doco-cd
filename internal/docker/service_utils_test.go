@@ -258,9 +258,7 @@ services:
 }
 
 func TestGetLatestServiceSwarm(t *testing.T) {
-	t.Skip("debug swarm test stuck in CI")
-	t.Parallel()
-
+	// t.Parallel()
 	dockerCli, err := CreateDockerCli(false, false)
 	if err != nil {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
