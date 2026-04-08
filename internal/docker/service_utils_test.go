@@ -286,16 +286,10 @@ services:
       replicas: 2
     environment:
       TZ: Europe/Berlin
-    ports:
-      - "80"
-    volumes:
-      - ./html:/usr/share/nginx/html
   nginx:
     image: nginx:latest
     environment:
       TZ: Europe/Berlin
-    volumes:
-      - ./html:/usr/share/nginx/html
 `
 	createComposeFile(t, filePath, cfg)
 
