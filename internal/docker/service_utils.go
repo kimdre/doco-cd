@@ -3,7 +3,7 @@ package docker
 import (
 	"context"
 	"fmt"
-	"strconv"
+	"slices"
 	"strings"
 
 	"github.com/compose-spec/compose-go/v2/types"
@@ -89,24 +89,31 @@ func getComposeServiceMissing(deployed []string, projectName string, services ty
 	// container_name maybe set in compose file, or generate by compose project-service-index
 	deployedSet := set.New(deployed...)
 
+	slices.Sort(deployed)
+
 	wantedSet := set.New[string]()
 
 	for _, service := range services {
 		if service.ContainerName != "" {
 			wantedSet.Add(service.ContainerName)
 		} else {
-			replicas := service.GetScale()
-			for i := 1; i <= replicas; i++ {
-				name := getDefaultContainerName(projectName, service.Name, i)
-				wantedSet.Add(name)
+			// separator from https://github.com/docker/compose/blob/main/pkg/compose/convergence.go#L413
+			svcName := strings.Join([]string{projectName, service.Name}, api.Separator)
+			count := 0
+
+			for _, deployed := range deployed {
+				if strings.HasPrefix(deployed, svcName) {
+					count++
+				}
+			}
+
+			scale := service.GetScale()
+
+			if count < scale {
+				wantedSet.Add(service.Name)
 			}
 		}
 	}
 
 	return wantedSet.Difference(deployedSet).ToSlice()
-}
-
-// modify from https://github.com/docker/compose/blob/main/pkg/compose/convergence.go#L413
-func getDefaultContainerName(projectName string, serviceName string, number int) string {
-	return strings.Join([]string{projectName, serviceName, strconv.Itoa(number)}, api.Separator)
 }

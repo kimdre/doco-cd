@@ -417,8 +417,8 @@ func Test_getComposeServiceMissing(t *testing.T) {
 			projectName: "project",
 			services:    svcs,
 			want: []string{
-				"project-svc1-1", "container_name",
-				"project-svc-with-scale-1", "project-svc-with-scale-2",
+				"svc1", "container_name",
+				"svc-with-scale",
 			},
 		},
 		{
@@ -429,11 +429,25 @@ func Test_getComposeServiceMissing(t *testing.T) {
 			want:        []string{},
 		},
 		{
+			name:        "all deployed but index not start with 1",
+			deployed:    []string{"project-svc1-1", "container_name", "project-svc-with-scale-2", "project-svc-with-scale-3"},
+			projectName: "project",
+			services:    svcs,
+			want:        []string{},
+		},
+		{
+			name:        "missing deployed but index not start with 1",
+			deployed:    []string{"project-svc1-1", "container_name", "project-svc-with-scale-3"},
+			projectName: "project",
+			services:    svcs,
+			want:        []string{"svc-with-scale"},
+		},
+		{
 			name:        "missing deployed",
 			deployed:    []string{"project-svc-with-scale-1"},
 			projectName: "project",
 			services:    svcs,
-			want:        []string{"project-svc1-1", "container_name", "project-svc-with-scale-2"},
+			want:        []string{"svc1", "container_name", "svc-with-scale"},
 		},
 	}
 	for _, tt := range tests {
