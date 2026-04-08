@@ -171,6 +171,19 @@ func Test_getLatestServiceState(t *testing.T) {
 }
 
 func TestGetLatestServiceState(t *testing.T) {
+	dockerCli, err := CreateDockerCli(false, false)
+	if err != nil {
+		t.Fatalf("Failed to create Docker CLI: %v", err)
+	}
+
+	swarm.ModeEnabled, err = swarm.CheckDaemonIsSwarmManager(t.Context(), dockerCli)
+	if err != nil {
+		t.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
+	}
+
+	if swarm.ModeEnabled {
+		t.Skip("Swarm mode is enabled, skipping test")
+	}
 	// t.Parallel()
 	// cannot run in parallel, because container_name is set and need unique.
 	ctx := t.Context()
@@ -211,7 +224,7 @@ services:
 
 	stackName := test.ConvertTestName(t.Name())
 
-	_, err := LoadCompose(ctx, tmpDir, tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
+	_, err = LoadCompose(ctx, tmpDir, tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
