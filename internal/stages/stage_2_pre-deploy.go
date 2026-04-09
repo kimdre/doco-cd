@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing"
 
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/utils/set"
 
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -21,13 +22,13 @@ func shouldSkipDeployment(composeChanged bool,
 	changedServices []docker.Change,
 	ignoredInfo docker.IgnoredInfo,
 	imagesChanged bool,
-	missingServices []string,
+	mismatchServices []docker.ServiceMismatch,
 ) bool {
 	return !composeChanged &&
 		len(changedServices) == 0 &&
 		ignoredInfo.IsNeedSignal() &&
 		!imagesChanged &&
-		len(missingServices) == 0
+		len(mismatchServices) == 0
 }
 
 func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Logger) error {
@@ -113,7 +114,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		}
 	}
 
-	deployedState, err := docker.GetLatestServiceState(ctx, s.Docker.Client, getFullName(s.Repository.CloneURL), s.DeployConfig.Name)
+	deployedState, err := docker.GetLatestDeployStatus(ctx, s.Docker.Client, getFullName(s.Repository.CloneURL), s.DeployConfig.Name)
 	if err != nil {
 		return fmt.Errorf("failed to get latest state from deployed services: %w", err)
 	}
@@ -181,13 +182,13 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			return fmt.Errorf("failed to check for changed project files: %s", err)
 		}
 
-		missingServices := docker.CheckServiceMissing(deployedState.DeployedServicesName, s.Docker.Project.Name, s.Docker.Project.Services)
+		mismatchServices := docker.CheckServiceMismatch(swarm.ModeEnabled, deployedState.DeployedStatus, s.Docker.Project.Services)
 
 		if s.DeployConfig.ForceRecreate {
 			stageLog.Debug("force recreate enabled, proceeding with deployment",
 				slog.String("directory", s.DeployConfig.WorkingDirectory),
 			)
-		} else if shouldSkipDeployment(composeChanged, changedServices, ignoredInfo, imagesChanged, missingServices) {
+		} else if shouldSkipDeployment(composeChanged, changedServices, ignoredInfo, imagesChanged, mismatchServices) {
 			stageLog.Debug("no changes detected, skipping deployment",
 				slog.String("directory", s.DeployConfig.WorkingDirectory),
 			)
@@ -206,7 +207,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 				slog.Any("files", changedServices),
 				slog.Any("ignored_info", ignoredInfo),
 				slog.Bool("images", imagesChanged),
-				slog.Any("missing_services", missingServices),
+				slog.Any("mismatch_services", mismatchServices),
 			),
 		)
 	}

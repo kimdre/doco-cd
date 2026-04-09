@@ -1,9 +1,11 @@
 package docker
 
 import (
+	"context"
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,145 +25,241 @@ func Test_getLatestServiceState(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		serviceLabels map[Service]Labels
+		serviceStatus map[Service]ServiceStatus
 		repoName      string
-		want          LatestServiceState
+		want          LatestServiceStatus
 	}{
 		{
 			name:          "empty serviceLabels",
-			serviceLabels: map[Service]Labels{},
+			serviceStatus: map[Service]ServiceStatus{},
 			repoName:      "repo",
-			want:          LatestServiceState{},
+			want: LatestServiceStatus{
+				Labels:         Labels{},
+				DeployedStatus: map[Service]ServiceStatus{},
+			},
 		},
 		{
 			name: "signal service with no timestamp",
-			serviceLabels: map[Service]Labels{
+			serviceStatus: map[Service]ServiceStatus{
 				"svc1": {
-					DocoCDLabels.Repository.Name: "repo",
+					Labels: Labels{
+						DocoCDLabels.Repository.Name: "repo",
+					},
+					Replicas: 1,
 				},
 			},
 			repoName: "repo",
-			want: LatestServiceState{
+			want: LatestServiceStatus{
 				Labels: Labels{
 					DocoCDLabels.Repository.Name: "repo",
 				},
-				DeployedServicesName: []string{"svc1"},
+				DeployedStatus: map[Service]ServiceStatus{
+					"svc1": {
+						Labels: Labels{
+							DocoCDLabels.Repository.Name: "repo",
+						},
+						Replicas: 1,
+					},
+				},
 			},
 		},
 		{
 			name: "signal service with timestamp",
-			serviceLabels: map[Service]Labels{
+			serviceStatus: map[Service]ServiceStatus{
 				"svc1": {
-					DocoCDLabels.Repository.Name:      "repo",
-					DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
+					Labels: Labels{
+						DocoCDLabels.Repository.Name:      "repo",
+						DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
+					},
+					Replicas: 1,
 				},
 			},
 			repoName: "repo",
-			want: LatestServiceState{
+			want: LatestServiceStatus{
 				Labels: Labels{
 					DocoCDLabels.Repository.Name:      "repo",
 					DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
 				},
-				DeployedServicesName: []string{"svc1"},
+				DeployedStatus: map[Service]ServiceStatus{
+					"svc1": {
+						Labels: Labels{
+							DocoCDLabels.Repository.Name:      "repo",
+							DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
+						},
+						Replicas: 1,
+					},
+				},
 			},
 		},
 		{
 			name: "two service with timestamp but repo not match",
-			serviceLabels: map[Service]Labels{
+			serviceStatus: map[Service]ServiceStatus{
 				"svc1": {
-					DocoCDLabels.Repository.Name:      "repo-2",
-					DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
+					Labels: Labels{
+						DocoCDLabels.Repository.Name:      "repo-2",
+						DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
+					},
+					Replicas: 1,
 				},
 				"svc2": {
-					DocoCDLabels.Repository.Name:      "repo-2",
-					DocoCDLabels.Deployment.Timestamp: "2016-01-02T15:04:05Z07:00",
+					Labels: Labels{
+						DocoCDLabels.Repository.Name:      "repo-2",
+						DocoCDLabels.Deployment.Timestamp: "2016-01-02T15:04:05Z07:00",
+					},
+					Replicas: 1,
 				},
 			},
 			repoName: "repo",
-			want:     LatestServiceState{},
+			want: LatestServiceStatus{
+				Labels:         Labels{},
+				DeployedStatus: map[Service]ServiceStatus{},
+			},
 		},
 		{
 			name: "two service with timestamp but repo mixed",
-			serviceLabels: map[Service]Labels{
+			serviceStatus: map[Service]ServiceStatus{
 				"svc1": {
-					DocoCDLabels.Repository.Name:      "repo",
-					DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
+					Labels: Labels{
+						DocoCDLabels.Repository.Name:      "repo",
+						DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
+					},
+					Replicas: 1,
 				},
 				"svc2": {
-					DocoCDLabels.Repository.Name:      "repo-2",
-					DocoCDLabels.Deployment.Timestamp: "2016-01-02T15:04:05Z07:00",
+					Labels: Labels{
+						DocoCDLabels.Repository.Name:      "repo-2",
+						DocoCDLabels.Deployment.Timestamp: "2016-01-02T15:04:05Z07:00",
+					},
+					Replicas: 1,
 				},
 			},
 			repoName: "repo",
-			want: LatestServiceState{
+			want: LatestServiceStatus{
 				Labels: Labels{
 					DocoCDLabels.Repository.Name:      "repo",
 					DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
 				},
-				DeployedServicesName: []string{"svc1"},
+				DeployedStatus: map[Service]ServiceStatus{
+					"svc1": {
+						Labels: Labels{
+							DocoCDLabels.Repository.Name:      "repo",
+							DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
+						},
+						Replicas: 1,
+					},
+				},
 			},
 		},
 		{
-			name: "two service with timestamp but no repo",
-			serviceLabels: map[Service]Labels{
+			name: "two service with timestamp but repo mismatch",
+			serviceStatus: map[Service]ServiceStatus{
 				"svc1": {
-					DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
+					Labels: Labels{
+						DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
+					},
+					Replicas: 1,
 				},
 				"svc2": {
-					DocoCDLabels.Deployment.Timestamp: "2016-01-02T15:04:05Z07:00",
+					Labels: Labels{
+						DocoCDLabels.Deployment.Timestamp: "2016-01-02T15:04:05Z07:00",
+					},
+					Replicas: 1,
 				},
 			},
 			repoName: "repo",
-			want:     LatestServiceState{},
+			want: LatestServiceStatus{
+				Labels:         Labels{},
+				DeployedStatus: map[Service]ServiceStatus{},
+			},
 		},
 		{
 			name: "two service with timestamp but empty repo",
-			serviceLabels: map[Service]Labels{
+			serviceStatus: map[Service]ServiceStatus{
 				"svc1": {
-					DocoCDLabels.Repository.Name:      "",
-					DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
+					Labels: Labels{
+						DocoCDLabels.Repository.Name:      "",
+						DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
+					},
+					Replicas: 1,
 				},
 				"svc2": {
-					DocoCDLabels.Repository.Name:      "",
-					DocoCDLabels.Deployment.Timestamp: "2016-01-02T15:04:05Z07:00",
+					Labels: Labels{
+						DocoCDLabels.Repository.Name:      "",
+						DocoCDLabels.Deployment.Timestamp: "2016-01-02T15:04:05Z07:00",
+					},
+					Replicas: 2,
 				},
 			},
 			repoName: "",
-			want: LatestServiceState{
+			want: LatestServiceStatus{
 				Labels: Labels{
 					DocoCDLabels.Repository.Name:      "",
 					DocoCDLabels.Deployment.Timestamp: "2016-01-02T15:04:05Z07:00",
 				},
-				DeployedServicesName: []string{"svc1", "svc2"},
+				DeployedStatus: map[Service]ServiceStatus{
+					"svc2": {
+						Labels: Labels{
+							DocoCDLabels.Repository.Name:      "",
+							DocoCDLabels.Deployment.Timestamp: "2016-01-02T15:04:05Z07:00",
+						},
+						Replicas: 2,
+					},
+					"svc1": {
+						Labels: Labels{
+							DocoCDLabels.Repository.Name:      "",
+							DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
+						},
+						Replicas: 1,
+					},
+				},
 			},
 		},
 		{
 			name: "two service with timestamp",
-			serviceLabels: map[Service]Labels{
+			serviceStatus: map[Service]ServiceStatus{
 				"svc1": {
-					DocoCDLabels.Repository.Name:      "repo",
-					DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
+					Labels: Labels{
+						DocoCDLabels.Repository.Name:      "repo",
+						DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
+					},
+					Replicas: 1,
 				},
 				"svc2": {
-					DocoCDLabels.Repository.Name:      "repo",
-					DocoCDLabels.Deployment.Timestamp: "2016-01-02T15:04:05Z07:00",
+					Labels: Labels{
+						DocoCDLabels.Repository.Name:      "repo",
+						DocoCDLabels.Deployment.Timestamp: "2016-01-02T15:04:05Z07:00",
+					},
+					Replicas: 1,
 				},
 			},
 			repoName: "repo",
-			want: LatestServiceState{
+			want: LatestServiceStatus{
 				Labels: Labels{
 					DocoCDLabels.Repository.Name:      "repo",
 					DocoCDLabels.Deployment.Timestamp: "2016-01-02T15:04:05Z07:00",
 				},
-				DeployedServicesName: []string{"svc1", "svc2"},
+				DeployedStatus: map[Service]ServiceStatus{
+					"svc1": {
+						Labels: Labels{
+							DocoCDLabels.Repository.Name:      "repo",
+							DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
+						},
+						Replicas: 1,
+					},
+					"svc2": {
+						Labels: Labels{
+							DocoCDLabels.Repository.Name:      "repo",
+							DocoCDLabels.Deployment.Timestamp: "2016-01-02T15:04:05Z07:00",
+						},
+						Replicas: 1,
+					},
+				},
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := getLatestServiceState(tt.serviceLabels, tt.repoName)
-			slices.Sort(tt.want.DeployedServicesName)
-			slices.Sort(got.DeployedServicesName)
+			got := getLatestServiceStatus(tt.serviceStatus, tt.repoName)
 
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("GetLatestServiceState() = %v, want %v", got, tt.want)
@@ -238,27 +336,32 @@ services:
 		}),
 	)
 
-	latest, err := GetLatestServiceState(ctx, stack.Client, repoName, stackName)
+	latest, err := GetLatestDeployStatus(ctx, stack.Client, repoName, stackName)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// auto generated name and container_name, both of them is possible in compose file, so we check both of them here.
-	want := []string{
-		"testgetlatestservicestate-test-1", "testgetlatestservicestate-test-2",
-		"testgetlatestservicestate-test2-1", "testgetlatestservicestate-test2-2",
-		"nginx",
-	}
-	slices.Sort(want)
-	slices.Sort(latest.DeployedServicesName)
+	for svc, want := range map[string]struct {
+		Replicas uint64
+	}{
+		"test2": {Replicas: 2},
+		"test":  {Replicas: 2},
+		"nginx": {Replicas: 1},
+	} {
+		got := latest.DeployedStatus[Service(svc)]
+		if got.Replicas != want.Replicas {
+			t.Errorf("expected running tasks for service %s to be %d, got %d", svc, want.Replicas, got.Replicas)
+		}
 
-	if !reflect.DeepEqual(latest.DeployedServicesName, want) {
-		t.Errorf("expected deployed service name to be %v, got %v", want, latest.DeployedServicesName)
+		if got.SwarmMode != "" {
+			t.Errorf("expected swarm mode for service %s to be empty, got %s", svc, got.SwarmMode)
+		}
 	}
 }
 
 func TestGetLatestServiceSwarm(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
+
 	dockerCli, err := CreateDockerCli(false, false)
 	if err != nil {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
@@ -280,16 +383,34 @@ func TestGetLatestServiceSwarm(t *testing.T) {
 
 	cfg := `
 services:
-  test2:
+  replicas:
     image: nginx:latest
     deploy:
       replicas: 2
     environment:
       TZ: Europe/Berlin
-  nginx:
+  global:
     image: nginx:latest
+    deploy:
+      mode: global
     environment:
       TZ: Europe/Berlin
+  replicated-job:
+    image: nginx:latest
+    command: 'sh -c "exit 0"'
+    deploy:
+      replicas: 2
+      mode: replicated-job
+    environment:
+      TZ: Europe/Berlin
+  global-job:
+    image: nginx:latest
+    command: 'sh -c "exit 0"'
+    deploy:
+      mode: global-job
+    environment:
+      TZ: Europe/Berlin
+
 `
 	createComposeFile(t, filePath, cfg)
 
@@ -351,169 +472,243 @@ services:
 		client.FromEnv,
 	)
 
-	latest, err := GetLatestServiceState(ctx, dockerClient, repoName, stackName)
+	latest, err := GetLatestDeployStatus(ctx, dockerClient, repoName, stackName)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	want := []string{
-		"testgetlatestserviceswarm_nginx",
-		"testgetlatestserviceswarm_test2",
+	for svc, want := range map[string]struct {
+		Replicas uint64
+		Mode     string
+	}{
+		"replicas": {
+			Replicas: 2,
+			Mode:     swarmModeReplicated,
+		},
+		"global": {
+			Replicas: 0,
+			Mode:     swarmModeGlobal,
+		},
+		"replicated-job": {
+			Replicas: 2,
+			Mode:     swarmModeReplicatedJob,
+		},
+		"global-job": {
+			Replicas: 0,
+			Mode:     swarmModeGlobalJob,
+		},
+	} {
+		got := latest.DeployedStatus[Service(svc)]
+		if got.Replicas != want.Replicas {
+			t.Errorf("expected running tasks for service %s to be %d, got %d", svc, want.Replicas, got.Replicas)
+		}
 	}
-	slices.Sort(want)
-	slices.Sort(latest.DeployedServicesName)
 
-	if !reflect.DeepEqual(latest.DeployedServicesName, want) {
-		t.Errorf("expected deployed service name to be %v, got %v", want, latest.DeployedServicesName)
-	}
+	t.Cleanup(func() {
+		ctx := context.Background()
 
-	err = PruneStackConfigs(t.Context(), dockerClient, stackName)
-	if err != nil {
-		t.Fatalf("Failed to prune stack configs: %v", err)
-	} else {
-		t.Logf("Stack configs pruned successfully")
-	}
+		err = PruneStackConfigs(ctx, dockerClient, stackName)
+		if err != nil {
+			t.Fatalf("Failed to prune stack configs: %v", err)
+		} else {
+			t.Logf("Stack configs pruned successfully")
+		}
 
-	err = PruneStackSecrets(t.Context(), dockerClient, stackName)
-	if err != nil {
-		t.Fatalf("Failed to prune stack secrets: %v", err)
-	} else {
-		t.Logf("Stack secrets pruned successfully")
-	}
+		err = PruneStackSecrets(ctx, dockerClient, stackName)
+		if err != nil {
+			t.Fatalf("Failed to prune stack secrets: %v", err)
+		} else {
+			t.Logf("Stack secrets pruned successfully")
+		}
 
-	err = RemoveSwarmStack(t.Context(), dockerCli, stackName)
-	if err != nil {
-		t.Fatalf("Failed to remove swarm stack: %v", err)
-	} else {
-		t.Logf("Swarm stack removed successfully")
-	}
+		err = RemoveSwarmStack(ctx, dockerCli, stackName)
+		if err != nil {
+			t.Fatalf("Failed to remove swarm stack: %v", err)
+		} else {
+			t.Logf("Swarm stack removed successfully")
+		}
+	})
 }
 
-func Test_getComposeServiceMissing(t *testing.T) {
-	svcs := types.Services{
-		"svc1": {
-			Name: "svc1",
+func TestCheckServiceMismatch(t *testing.T) {
+	swarmServices := types.Services{
+		"replicated": {
+			Name:   "replicated",
+			Scale:  new(2),
+			Deploy: &types.DeployConfig{Mode: swarmModeReplicated},
 		},
-		"svc-with-container-name": {
-			Name:          "svc-with-container-name",
-			ContainerName: "container_name",
+		"replicated-job": {
+			Name:   "replicated-job",
+			Scale:  new(2),
+			Deploy: &types.DeployConfig{Mode: swarmModeReplicatedJob},
 		},
-		"svc-with-scale": {
-			Name:  "svc-with-scale",
-			Scale: new(2),
+		"global": {
+			Name:   "global",
+			Deploy: &types.DeployConfig{Mode: swarmModeGlobal},
+		},
+		"global-job": {
+			Name:   "global-job",
+			Deploy: &types.DeployConfig{Mode: swarmModeGlobalJob},
 		},
 	}
 
 	tests := []struct {
-		name        string
-		deployed    []string
-		projectName string
-		services    types.Services
-		want        []string
+		name            string
+		deployed        map[Service]ServiceStatus
+		swarmModeEnable bool
+		services        types.Services
+		want            []ServiceMismatch
 	}{
 		{
-			name:        "no deployed services",
-			deployed:    []string{},
-			projectName: "project",
-			services:    svcs,
-			want: []string{
-				"svc1", "container_name",
-				"svc-with-scale",
+			name: "swarmMode=false, no mismatch",
+			deployed: map[Service]ServiceStatus{
+				"foo": {Replicas: 1},
+			},
+			swarmModeEnable: false,
+			services: types.Services{
+				"foo": {},
+			},
+			want: nil,
+		},
+		{
+			name: "swarmMode=false, ignore deploy mode",
+			deployed: map[Service]ServiceStatus{
+				"foo": {Replicas: 1},
+			},
+			swarmModeEnable: false,
+			services: types.Services{
+				"foo": {
+					Deploy: &types.DeployConfig{
+						Mode: "global",
+					},
+				},
+			},
+			want: nil,
+		},
+		{
+			name: "swarmMode=false, mismatch replicas",
+			deployed: map[Service]ServiceStatus{
+				"foo": {Replicas: 1},
+			},
+			swarmModeEnable: false,
+			services: types.Services{
+				"foo": {
+					Scale: new(2),
+				},
+			},
+			want: []ServiceMismatch{
+				{
+					ServiceName: "foo",
+					Reasons: []ServiceMismatchReason{
+						{
+							Reason: ServiceMismatchReasonReplicas,
+							Want:   2,
+							Got:    uint64(1),
+						},
+					},
+				},
 			},
 		},
 		{
-			name:        "all deployed",
-			deployed:    []string{"project-svc1-1", "container_name", "project-svc-with-scale-1", "project-svc-with-scale-2"},
-			projectName: "project",
-			services:    svcs,
-			want:        []string{},
-		},
-		{
-			name:        "all deployed but index not start with 1",
-			deployed:    []string{"project-svc1-1", "container_name", "project-svc-with-scale-2", "project-svc-with-scale-3"},
-			projectName: "project",
-			services:    svcs,
-			want:        []string{},
-		},
-		{
-			name:        "missing deployed but index not start with 1",
-			deployed:    []string{"project-svc1-1", "container_name", "project-svc-with-scale-3"},
-			projectName: "project",
-			services:    svcs,
-			want:        []string{"svc-with-scale"},
-		},
-		{
-			name:        "missing deployed",
-			deployed:    []string{"project-svc-with-scale-1"},
-			projectName: "project",
-			services:    svcs,
-			want:        []string{"svc1", "container_name", "svc-with-scale"},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := getComposeServiceMissing(tt.deployed, tt.projectName, tt.services)
-			slices.Sort(got)
-			slices.Sort(tt.want)
-
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("getComposeServiceMissing() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func Test_getSwarmServiceMissing(t *testing.T) {
-	svcs := types.Services{
-		"svc1": {
-			Name: "svc1",
-		},
-		"svc-with-scale": {
-			Name:  "svc-with-scale",
-			Scale: new(2),
-		},
-	}
-
-	tests := []struct {
-		name        string
-		deployed    []string
-		projectName string
-		services    types.Services
-		want        []string
-	}{
-		{
-			name:        "no deployed services",
-			deployed:    []string{},
-			projectName: "project",
-			services:    svcs,
-			want: []string{
-				"project_svc1",
-				"project_svc-with-scale",
+			name:            "swarmMode=false, no deployed",
+			deployed:        map[Service]ServiceStatus{},
+			swarmModeEnable: false,
+			services: types.Services{
+				"foo": {
+					Scale: new(2),
+				},
+			},
+			want: []ServiceMismatch{
+				{
+					ServiceName: "foo",
+					Reasons: []ServiceMismatchReason{
+						{
+							Reason: ServiceMismatchReasonNotDeployed,
+						},
+					},
+				},
 			},
 		},
 		{
-			name:        "all deployed",
-			deployed:    []string{"project_svc1", "project_svc-with-scale"},
-			projectName: "project",
-			services:    svcs,
-			want:        []string{},
+			name: "swarmMode=true, no missing",
+			deployed: map[Service]ServiceStatus{
+				"foo": {Replicas: 1, SwarmMode: swarmModeReplicated},
+			},
+			swarmModeEnable: true,
+			services: types.Services{
+				"foo": {
+					Scale:  new(1),
+					Deploy: &types.DeployConfig{Mode: swarmModeReplicated},
+				},
+			},
+			want: nil,
 		},
 		{
-			name:        "missing deployed",
-			deployed:    []string{"project_svc-with-scale"},
-			projectName: "project",
-			services:    svcs,
-			want:        []string{"project_svc1"},
+			name: "swarmMode=true, no missing",
+			deployed: map[Service]ServiceStatus{
+				"replicated":     {Replicas: 2, SwarmMode: swarmModeReplicated},
+				"replicated-job": {Replicas: 2, SwarmMode: swarmModeReplicatedJob},
+				// global ignore replicas
+				"global":     {Replicas: 2, SwarmMode: swarmModeGlobal},
+				"global-job": {Replicas: 2, SwarmMode: swarmModeGlobalJob},
+			},
+			swarmModeEnable: true,
+			services:        swarmServices,
+			want:            nil,
+		},
+		{
+			name: "swarmMode=true, mismatch",
+			deployed: map[Service]ServiceStatus{
+				"replicated":     {Replicas: 2, SwarmMode: swarmModeReplicatedJob},
+				"replicated-job": {Replicas: 1, SwarmMode: swarmModeReplicatedJob},
+				"global-job":     {Replicas: 2, SwarmMode: swarmModeGlobalJob},
+			},
+			swarmModeEnable: true,
+			services:        swarmServices,
+			want: []ServiceMismatch{
+				{
+					ServiceName: "replicated",
+					Reasons: []ServiceMismatchReason{
+						{
+							Reason: ServiceMismatchReasonSwarmMode,
+							Want:   swarmModeReplicated,
+							Got:    swarmModeReplicatedJob,
+						},
+					},
+				},
+				{
+					ServiceName: "replicated-job",
+					Reasons: []ServiceMismatchReason{
+						{
+							Reason: ServiceMismatchReasonReplicas,
+							Want:   2,
+							Got:    uint64(1),
+						},
+					},
+				},
+				{
+					ServiceName: "global",
+					Reasons: []ServiceMismatchReason{
+						{
+							Reason: ServiceMismatchReasonNotDeployed,
+						},
+					},
+				},
+			},
 		},
 	}
+	cmpFunc := func(a, b ServiceMismatch) int {
+		return strings.Compare(a.ServiceName, b.ServiceName)
+	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := getSwarmServiceMissing(tt.deployed, tt.projectName, tt.services)
-			slices.Sort(got)
-			slices.Sort(tt.want)
+			got := CheckServiceMismatch(tt.swarmModeEnable, tt.deployed, tt.services)
+			slices.SortFunc(got, cmpFunc)
+			slices.SortFunc(tt.want, cmpFunc)
 
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("getSwarmServiceMissing() = %v, want %v", got, tt.want)
+				t.Errorf("CheckServiceMismatch() = %#v, want %#v", got, tt.want)
 			}
 		})
 	}
