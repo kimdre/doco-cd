@@ -119,7 +119,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		return fmt.Errorf("failed to get latest state from deployed services: %w", err)
 	}
 
-	if deployedCommit, _ := deployedState.Labels.GetDeployedCommit(); deployedCommit != "" {
+	if deployedCommit, _ := deployedState.Labels.GetDeploymentCommitSHA(); deployedCommit != "" {
 		latestCommit, err := git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
 		if err != nil {
 			return fmt.Errorf("failed to get latest commit: %w", err)
@@ -162,7 +162,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			return fmt.Errorf("failed to get project hash: %w", err)
 		}
 
-		curProjectHash, _ := deployedState.Labels.GetDeployedComposeHash()
+		curProjectHash, _ := deployedState.Labels.GetDeploymentComposeHash()
 
 		composeChanged := newHash != curProjectHash
 		if composeChanged {

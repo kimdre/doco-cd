@@ -54,15 +54,11 @@ func (l Labels) Get(key string) (string, bool) {
 	return v, ok
 }
 
-func (l Labels) GetDeployedCommit() (string, bool) {
+func (l Labels) GetDeploymentCommitSHA() (string, bool) {
 	return l.Get(DocoCDLabels.Deployment.CommitSHA)
 }
 
-func (l Labels) GetDeployedTimestamp() (string, bool) {
-	return l.Get(DocoCDLabels.Deployment.Timestamp)
-}
-
-func (l Labels) GetDeployedComposeHash() (string, bool) {
+func (l Labels) GetDeploymentComposeHash() (string, bool) {
 	return l.Get(DocoCDLabels.Deployment.ComposeHash)
 }
 
