@@ -174,7 +174,7 @@ type ServiceMismatchReason struct {
 }
 
 // CheckServiceMismatch checks if the deployed services match the services in the compose file.
-// now only check replicas, swarm mode and missing services
+// now only check replicas, swarm mode and missing services.
 func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceStatus, services types.Services) []ServiceMismatch {
 	var mismatches []ServiceMismatch
 

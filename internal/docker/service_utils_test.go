@@ -502,6 +502,10 @@ services:
 		if got.Replicas != want.Replicas {
 			t.Errorf("expected running tasks for service %s to be %d, got %d", svc, want.Replicas, got.Replicas)
 		}
+
+		if got.SwarmMode != want.Mode {
+			t.Errorf("expected swarm mode for service %s to be %s, got %s", svc, want.Mode, got.SwarmMode)
+		}
 	}
 
 	t.Cleanup(func() {
