@@ -29,7 +29,11 @@ func SetDisableSwarmFeature(ignore bool) {
 // GetModeEnabled, Whether the docker host is running in swarm mode,
 // it will return false if ignoreSwarmFeature is true.
 func GetModeEnabled() bool {
-	return disableSwarmFeature.Load() && modeEnabled.Load()
+	return getModeEnabled(disableSwarmFeature.Load(), modeEnabled.Load())
+}
+
+func getModeEnabled(disableSwarmFeature, modeEnabled bool) bool {
+	return !disableSwarmFeature && modeEnabled
 }
 
 func RefreshModeEnabled(ctx context.Context, dockerCli command.Cli) error {

@@ -9,7 +9,9 @@ import (
 	"github.com/docker/cli/cli/flags"
 )
 
-func TestCheckDaemonIsSwarmManager(t *testing.T) {
+func getDockerCli(t *testing.T) *command.DockerCli {
+	t.Helper()
+
 	dockerCli, err := command.NewDockerCli(
 		command.WithOutputStream(os.Stdout),
 		command.WithErrorStream(os.Stderr),
@@ -25,7 +27,13 @@ func TestCheckDaemonIsSwarmManager(t *testing.T) {
 		t.Fatal(fmt.Errorf("failed to initialize docker cli: %w", err))
 	}
 
-	_, err = checkDaemonIsSwarmManager(t.Context(), dockerCli)
+	return dockerCli
+}
+
+func TestCheckDaemonIsSwarmManager(t *testing.T) {
+	dockerCli := getDockerCli(t)
+
+	_, err := checkDaemonIsSwarmManager(t.Context(), dockerCli)
 	if err != nil {
 		t.Fatalf("Failed to check if Docker daemon is a swarm manager: %v", err)
 	}
