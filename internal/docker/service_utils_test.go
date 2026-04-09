@@ -632,13 +632,16 @@ func TestCheckServiceMismatch(t *testing.T) {
 		{
 			name: "swarmMode=true, no missing",
 			deployed: map[Service]ServiceStatus{
-				"foo": {Replicas: 1, SwarmMode: swarmModeReplicated},
+				"foo":        {Replicas: 1, SwarmMode: swarmModeReplicated},
+				"replicated": {Replicas: 1, SwarmMode: swarmModeReplicated},
 			},
 			swarmModeEnable: true,
 			services: types.Services{
 				"foo": {
-					Scale:  new(1),
-					Deploy: &types.DeployConfig{Mode: swarmModeReplicated},
+					Deploy: &types.DeployConfig{Mode: swarmModeReplicated, Replicas: new(1)},
+				},
+				"replicated": {
+					Name: "replicated",
 				},
 			},
 			want: nil,
