@@ -14,19 +14,17 @@ import (
 )
 
 type ServiceStatus struct {
-	// in no swarm mode
-	// the labels may be different between containers in a service, but most of they should be the same for the same service,
-	// except com.docker.compose.container-number, com.docker.compose.replace, maybe more.
-	//
-	// in swarm mode, the labels of tasks are the same as the service, so just use the labels of service
+	// In non-Swarm mode:
+	// Labels may differ between containers within a service, but most of them should be identical for the same service,
+	// except for com.docker.compose.container-number, com.docker.compose.replace, and potentially others.
 	Labels Labels
 
-	// swarm deploy mode
-	// empty if not in swarm mode
+	// swarm deploy mode.
+	// Empty if not in swarm mode.
 	SwarmMode string
 
-	// in no swarm mode, number is running container count
-	// in swarm mode, number is the service's replicas
+	// Non-swarm mode: number of running containers
+	// Swarm mode: number of service replicas
 	Replicas uint64
 }
 
@@ -38,13 +36,13 @@ const (
 )
 
 type LatestServiceStatus struct {
-	// the labels may be different between in different service, but project level labels should be the same.
+	// The labels may be different in different services, but project-level labels should be the same.
 	Labels Labels
 
 	DeployedStatus map[Service]ServiceStatus
 }
 
-// GetLatestDeployStatus retrieves the labels of the most recently (re-)deployed services for a given repository and deploy name.
+// GetLatestDeployStatus retrieves the deployed status for a given repository and deploy name.
 func GetLatestDeployStatus(ctx context.Context, client *client.Client, repoName, deployName string) (LatestServiceStatus, error) {
 	serviceLabels, err := getDeployStatus(ctx, client, deployName)
 	if err != nil {
@@ -54,7 +52,6 @@ func GetLatestDeployStatus(ctx context.Context, client *client.Client, repoName,
 	return getLatestServiceStatus(serviceLabels, repoName), nil
 }
 
-// getLatestServiceStatus returns the labels of the most recently (re-)deployed services for a given repository.
 func getLatestServiceStatus(statusMap map[Service]ServiceStatus, repoName string) LatestServiceStatus {
 	ret := LatestServiceStatus{
 		DeployedStatus: make(map[Service]ServiceStatus),
@@ -68,15 +65,15 @@ func getLatestServiceStatus(statusMap map[Service]ServiceStatus, repoName string
 
 		name, ok := labels[DocoCDLabels.Repository.Name]
 		if !ok || name != repoName {
-			// when service matches and some others don't,
-			// if use break random result will be returned.
+			// When a service matches and others don't,
+			// using 'break' will return a random result.
 			continue
 		}
 
 		timestamp := labels[DocoCDLabels.Deployment.Timestamp]
-		// Get the candidate with the latest timestamp to ensure we are comparing against the most recent deployment.
-		// use equal here, make latestLabels not empty when timestamp is empty
-		// todo: when timestamp is equal, result may random when deployed at the same timestamp multiple times
+		// Get the candidate with the latest timestamp for the most recent deployment comparison.
+		// Use 'equal' here; ensure latestLabels is not empty if timestamp is empty.
+		// TODO: If timestamps are equal, the result may be random for simultaneous deployments.
 		if timestamp >= latestTimestamp {
 			latestTimestamp = timestamp
 			ret.Labels = labels
@@ -176,6 +173,8 @@ type ServiceMismatchReason struct {
 	Got    any    `json:"got"`
 }
 
+// CheckServiceMismatch checks if the deployed services match the services in the compose file.
+// now only check replicas, swarm mode and missing services
 func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceStatus, services types.Services) []ServiceMismatch {
 	var mismatches []ServiceMismatch
 
