@@ -107,16 +107,11 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		return
 	}
 
-	if appConfig.DockerSwarmFeatures {
-		// Check if docker host is running in swarm mode
-		swarm.ModeEnabled, err = swarm.CheckDaemonIsSwarmManager(ctx, dockerCli)
-		if err != nil {
-			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to check if docker host is running in swarm mode", err.Error(), http.StatusInternalServerError, metadata)
+	// refresh if docker host is running in swarm mode
+	if err := swarm.RefreshModeEnabled(ctx, dockerCli); err != nil {
+		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to check if docker host is running in swarm mode", err.Error(), http.StatusInternalServerError, metadata)
 
-			return
-		}
-	} else {
-		swarm.ModeEnabled = false
+		return
 	}
 
 	cloneUrl := payload.CloneURL

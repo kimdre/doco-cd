@@ -53,7 +53,7 @@ func (s *StageManager) RunDestroyStage(ctx context.Context, stageLog *slog.Logge
 		return fmt.Errorf("failed to destroy stack: %w", err)
 	}
 
-	if swarm.ModeEnabled && s.DeployConfig.DestroyOpts.RemoveVolumes {
+	if swarm.GetModeEnabled() && s.DeployConfig.DestroyOpts.RemoveVolumes {
 		err = docker.RemoveLabeledVolumes(ctx, s.Docker.Client, s.DeployConfig.Name)
 		if err != nil {
 			return fmt.Errorf("failed to remove volumes: %w", err)

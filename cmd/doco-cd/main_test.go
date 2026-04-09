@@ -65,12 +65,11 @@ func TestMain(m *testing.M) {
 		log.Fatalf("Failed to verify docker socket connection: %v", err)
 	}
 
-	swarm.ModeEnabled, err = swarm.CheckDaemonIsSwarmManager(ctx, dockerCli)
-	if err != nil {
+	if err := swarm.RefreshModeEnabled(ctx, dockerCli); err != nil {
 		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 
-	if swarm.ModeEnabled {
+	if swarm.GetModeEnabled() {
 		log.Println("Testing in Docker Swarm mode")
 	} else {
 		log.Println("Testing in Docker Standalone mode")
@@ -212,8 +211,7 @@ func TestHandleEvent(t *testing.T) {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
 	}
 
-	swarm.ModeEnabled, err = swarm.CheckDaemonIsSwarmManager(t.Context(), dockerCli)
-	if err != nil {
+	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli); err != nil {
 		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 
@@ -236,8 +234,9 @@ func TestHandleEvent(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			if swarm.ModeEnabled != tc.swarmMode {
-				t.Skipf("Skipping test because it requires swarm mode %v, but current mode is %v", tc.swarmMode, swarm.ModeEnabled)
+			mode := swarm.GetModeEnabled()
+			if mode != tc.swarmMode {
+				t.Skipf("Skipping test because it requires swarm mode %v, but current mode is %v", tc.swarmMode, mode)
 			}
 
 			tmpDir := t.TempDir()
@@ -296,7 +295,7 @@ func TestHandleEvent(t *testing.T) {
 					Volumes:       true,
 				}
 
-				if swarm.ModeEnabled {
+				if swarm.GetModeEnabled() {
 					err = docker.RemoveSwarmStack(ctx, dockerCli, stackName)
 				} else if svcErr == nil && service != nil {
 					err = service.Down(ctx, stackName, downOpts)
