@@ -39,7 +39,7 @@ func Test_getLatestServiceState(t *testing.T) {
 			},
 		},
 		{
-			name: "signal service with no timestamp",
+			name: "single service with no timestamp",
 			serviceStatus: map[Service]ServiceStatus{
 				"svc1": {
 					Labels: Labels{
@@ -64,7 +64,7 @@ func Test_getLatestServiceState(t *testing.T) {
 			},
 		},
 		{
-			name: "signal service with timestamp",
+			name: "single service with timestamp",
 			serviceStatus: map[Service]ServiceStatus{
 				"svc1": {
 					Labels: Labels{
