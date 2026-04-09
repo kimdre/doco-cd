@@ -32,7 +32,7 @@ type notFoundError struct {
 func (notFoundError) NotFound() {}
 
 func TestValidateExternalNetworks(t *testing.T) {
-	if !ModeEnabled {
+	if !GetModeEnabled() {
 		t.Skip("Swarm mode not enabled, skipping test")
 	}
 

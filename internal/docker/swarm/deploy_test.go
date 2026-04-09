@@ -25,7 +25,7 @@ func TestCheckDaemonIsSwarmManager(t *testing.T) {
 		t.Fatal(fmt.Errorf("failed to initialize docker cli: %w", err))
 	}
 
-	_, err = CheckDaemonIsSwarmManager(t.Context(), dockerCli)
+	_, err = checkDaemonIsSwarmManager(t.Context(), dockerCli)
 	if err != nil {
 		t.Fatalf("Failed to check if Docker daemon is a swarm manager: %v", err)
 	}
