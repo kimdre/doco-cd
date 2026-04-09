@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"fmt"
+	"maps"
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/compose/convert"
@@ -11,6 +12,7 @@ import (
 	"github.com/moby/moby/client"
 
 	swarmInternal "github.com/kimdre/doco-cd/internal/docker/swarm"
+	"github.com/kimdre/doco-cd/internal/utils/set"
 )
 
 type ServiceStatus struct {
@@ -158,6 +160,7 @@ func getServiceStatusFromContainerStatus(projectName string, containers []contai
 
 const (
 	ServiceMismatchReasonNotDeployed = "service not deployed"
+	ServiceMismatchReasonUnnecessary = "service is unnecessary"
 	ServiceMismatchReasonSwarmMode   = "swarm mode mismatch"
 	ServiceMismatchReasonReplicas    = "replicas mismatch"
 )
@@ -174,7 +177,7 @@ type ServiceMismatchReason struct {
 }
 
 // CheckServiceMismatch checks if the deployed services match the services in the compose file.
-// now only check replicas, swarm mode and missing services.
+// now only check replicas, swarm mode, missing and unnecessary services.
 func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceStatus, services types.Services) []ServiceMismatch {
 	var mismatches []ServiceMismatch
 
@@ -236,6 +239,27 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 				Reasons:     reasons,
 			})
 		}
+	}
+
+	deployedSet := set.New[string]()
+	for name := range maps.Keys(deployed) {
+		deployedSet.Add(string(name))
+	}
+
+	wantSet := set.New[string]()
+	for name := range maps.Keys(services) {
+		wantSet.Add(name)
+	}
+
+	for name := range deployedSet.Difference(wantSet) {
+		mismatches = append(mismatches, ServiceMismatch{
+			ServiceName: name,
+			Reasons: []ServiceMismatchReason{
+				{
+					Reason: ServiceMismatchReasonUnnecessary,
+				},
+			},
+		})
 	}
 
 	return mismatches

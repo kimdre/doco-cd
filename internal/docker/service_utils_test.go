@@ -575,6 +575,27 @@ func TestCheckServiceMismatch(t *testing.T) {
 			want: nil,
 		},
 		{
+			name: "swarmMode=false, unnecessary service",
+			deployed: map[Service]ServiceStatus{
+				"foo": {Replicas: 1},
+				"bar": {Replicas: 1},
+			},
+			swarmModeEnable: false,
+			services: types.Services{
+				"foo": {},
+			},
+			want: []ServiceMismatch{
+				{
+					ServiceName: "bar",
+					Reasons: []ServiceMismatchReason{
+						{
+							Reason: ServiceMismatchReasonUnnecessary,
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "swarmMode=false, ignore deploy mode",
 			deployed: map[Service]ServiceStatus{
 				"foo": {Replicas: 1},
@@ -649,6 +670,29 @@ func TestCheckServiceMismatch(t *testing.T) {
 				},
 			},
 			want: nil,
+		},
+		{
+			name: "swarmMode=true, unnecessary service",
+			deployed: map[Service]ServiceStatus{
+				"foo":        {Replicas: 1, SwarmMode: swarmModeReplicated},
+				"replicated": {Replicas: 1, SwarmMode: swarmModeReplicated},
+			},
+			swarmModeEnable: true,
+			services: types.Services{
+				"foo": {
+					Deploy: &types.DeployConfig{Mode: swarmModeReplicated, Replicas: new(1)},
+				},
+			},
+			want: []ServiceMismatch{
+				{
+					ServiceName: "replicated",
+					Reasons: []ServiceMismatchReason{
+						{
+							Reason: ServiceMismatchReasonUnnecessary,
+						},
+					},
+				},
+			},
 		},
 		{
 			name: "swarmMode=true, no missing",
