@@ -90,7 +90,7 @@ func getLatestServiceStatus(statusMap map[Service]ServiceStatus, repoName string
 func getDeployStatus(ctx context.Context, client *client.Client, deployName string) (map[Service]ServiceStatus, error) {
 	result := make(map[Service]ServiceStatus)
 
-	if swarmInternal.ModeEnabled {
+	if swarmInternal.GetModeEnabled() {
 		services, err := swarmInternal.GetStackServices(ctx, client, deployName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get services for stack %s: %w", deployName, err)
