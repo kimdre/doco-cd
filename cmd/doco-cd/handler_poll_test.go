@@ -39,7 +39,7 @@ func TestRunPoll(t *testing.T) {
 
 	stackName := test.ConvertTestName(t.Name())
 
-	if swarm.ModeEnabled {
+	if swarm.GetModeEnabled() {
 		pollConfig.Reference = git.SwarmModeBranch
 
 		t.Log("Testing in Swarm mode, using 'swarm-mode' reference")
@@ -103,7 +103,7 @@ func TestRunPoll(t *testing.T) {
 	})
 
 	t.Cleanup(func() {
-		if swarm.ModeEnabled {
+		if swarm.GetModeEnabled() {
 			err = docker.RemoveSwarmStack(ctx, dockerCli, stackName)
 		} else {
 			err = service.Down(ctx, stackName, downOpts)

@@ -89,7 +89,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	cloneUrl := "https://github.com/kimdre/doco-cd.git"
 	indexPath := path.Join("test", "index.html")
 
-	if swarm.ModeEnabled {
+	if swarm.GetModeEnabled() {
 		payloadFile = githubPayloadFileSwarmMode
 		cloneUrl = "https://github.com/kimdre/doco-cd_tests.git"
 		indexPath = path.Join("html", "index.html")
@@ -182,7 +182,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		testContainerPort string
 	)
 
-	if swarm.ModeEnabled {
+	if swarm.GetModeEnabled() {
 		t.Log("Testing in Swarm mode")
 
 		inspectName := stackName + "_" + "test"

@@ -2,7 +2,9 @@ package swarm
 
 import (
 	"context"
+	"sync/atomic"
 
+	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/compose/convert"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/api/types/swarm"
@@ -13,7 +15,42 @@ const (
 	StackNamespaceLabel = "com.docker.stack.namespace"
 )
 
-var ModeEnabled bool // Whether the docker host is running in swarm mode
+var (
+	// disable swarm feature even if the daemon is running in swarm mode.
+	disableSwarmFeature atomic.Bool
+	modeEnabled         atomic.Bool
+)
+
+// SetDisableSwarmFeature, disable swarm feature.
+func SetDisableSwarmFeature(ignore bool) {
+	disableSwarmFeature.Store(ignore)
+}
+
+// GetModeEnabled, Whether the docker host is running in swarm mode,
+// it will return false if ignoreSwarmFeature is true.
+func GetModeEnabled() bool {
+	return getModeEnabled(disableSwarmFeature.Load(), modeEnabled.Load())
+}
+
+func getModeEnabled(disableSwarmFeature, modeEnabled bool) bool {
+	return !disableSwarmFeature && modeEnabled
+}
+
+func RefreshModeEnabled(ctx context.Context, dockerCli command.Cli) error {
+	// ignore swarm feature
+	if disableSwarmFeature.Load() {
+		return nil
+	}
+
+	enable, err := checkDaemonIsSwarmManager(ctx, dockerCli)
+	if err != nil {
+		return err
+	}
+
+	modeEnabled.Store(enable)
+
+	return nil
+}
 
 func getStackFilter(namespace string) client.Filters {
 	return make(client.Filters).Add("label", convert.LabelNamespace+"="+namespace)
