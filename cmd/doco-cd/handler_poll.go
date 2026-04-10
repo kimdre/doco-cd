@@ -15,6 +15,8 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/lock"
+
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
@@ -67,16 +69,16 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *config.PollJob) 
 	logger := h.log.With(slog.String("repository", repoName))
 	logger.Debug("Start poll handler")
 
-	lock := GetRepoLock(repoName)
+	repoLock := lock.GetRepoLock(repoName)
 
 	for {
 		if pollJob.LastRun == 0 || time.Now().Unix() >= pollJob.NextRun {
 			jobID := uuid.Must(uuid.NewV7()).String()
-			locked := lock.TryLock(jobID)
+			locked := repoLock.TryLock(jobID)
 
 			if !locked {
 				logger.Warn("another job is still in progress for this repository",
-					slog.String("locked_by_job", lock.Holder()),
+					slog.String("locked_by_job", repoLock.Holder()),
 				)
 			} else {
 				metadata := notification.Metadata{
@@ -90,7 +92,7 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *config.PollJob) 
 
 				_ = RunPoll(ctx, pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.dockerClient, logger, metadata, h.secretProvider)
 
-				lock.Unlock()
+				repoLock.Unlock()
 			}
 
 			pollJob.NextRun = time.Now().Unix() + int64(pollJob.Config.Interval)
