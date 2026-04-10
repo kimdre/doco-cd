@@ -16,6 +16,7 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/lock"
+	"github.com/kimdre/doco-cd/internal/reconciliation"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -227,7 +228,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		return append(results, pollResult{Metadata: metadata, Err: err})
 	}
 
-	err = cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog, dockerClient, dockerCli, string(pollConfig.CloneUrl), deployConfigs, metadata)
+	err = reconciliation.CleanupObsoleteAutoDiscoveredContainers(ctx, jobLog, dockerClient, dockerCli, string(pollConfig.CloneUrl), deployConfigs, metadata)
 	if err != nil {
 		pollError(jobLog, metadata, fmt.Errorf("failed to cleanup obsolete auto-discovered containers: %w", err))
 

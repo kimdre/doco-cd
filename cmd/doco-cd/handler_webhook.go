@@ -17,6 +17,7 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/lock"
+	"github.com/kimdre/doco-cd/internal/reconciliation"
 
 	"github.com/kimdre/doco-cd/internal/test"
 
@@ -190,7 +191,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		return
 	}
 
-	err = cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog, dockerClient, dockerCli, cloneUrl, deployConfigs, metadata)
+	err = reconciliation.CleanupObsoleteAutoDiscoveredContainers(ctx, jobLog, dockerClient, dockerCli, cloneUrl, deployConfigs, metadata)
 	if err != nil {
 		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to clean up obsolete auto-discovered containers", err.Error(), http.StatusInternalServerError, metadata)
 	}
