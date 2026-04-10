@@ -123,6 +123,10 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		}
 	}
 
+	for k, v := range s.DeployConfig.Environment {
+		s.DeployConfig.Internal.Environment[k] = v
+	}
+
 	if s.DeployConfig.Destroy {
 		// Skip deployment if another project with the same name already exists
 		// Check if containers do not belong to this repository or if doco-cd does not manage the stack
