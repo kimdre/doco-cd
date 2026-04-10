@@ -16,6 +16,8 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/lock"
+
 	"github.com/kimdre/doco-cd/internal/test"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -383,13 +385,13 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Prevent concurrent deployments for the same repository using a lock
-	repoLock := GetRepoLock(metadata.Repository)
+	repoLock := lock.GetRepoLock(metadata.Repository)
 
 	handleFn := func(w http.ResponseWriter) {
 		locked := make(chan struct{})
 
 		go func() {
-			repoLock.mu.Lock()
+			repoLock.Lock()
 			close(locked)
 		}()
 
@@ -401,7 +403,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 			<-locked
 		}
 
-		defer repoLock.mu.Unlock()
+		defer repoLock.Unlock()
 
 		HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, h.dockerClient, h.secretProvider, h.testName)
 	}
