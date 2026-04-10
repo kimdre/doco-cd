@@ -423,7 +423,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 func DeployStack(
 	jobLog *slog.Logger, externalRepoPath string, ctx *context.Context,
 	dockerCli *command.Cli, dockerClient *client.Client, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
-	detectedChanges []Change, needSignal []SignalService, latestCommit, appVersion string, forceDeploy bool,
+	detectedChanges []Change, needSignal []SignalService, latestCommit, appVersion string,
 ) error {
 	startTime := time.Now()
 
@@ -534,10 +534,6 @@ func DeployStack(
 		recreateMode := api.RecreateDiverged
 
 		switch {
-		case forceDeploy:
-			recreateMode = api.RecreateForce
-
-			stackLog.Debug("force deploy enabled, forcing recreate of all services")
 		case len(detectedChanges) > 0:
 			recreateMode = api.RecreateForce
 

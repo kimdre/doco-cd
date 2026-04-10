@@ -300,7 +300,7 @@ compose_files:
 			}),
 		).Do(func() error {
 			return DeployStack(jobLog, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
-				nil, nil, latestCommit, "dev", false)
+				nil, nil, latestCommit, "dev")
 		})
 		if err != nil {
 			t.Fatalf("failed to deploy stack: %v", err)
