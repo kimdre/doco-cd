@@ -65,7 +65,7 @@ func TestMain(m *testing.M) {
 		log.Fatalf("Failed to verify docker socket connection: %v", err)
 	}
 
-	if err := swarm.RefreshModeEnabled(ctx, dockerCli); err != nil {
+	if err := swarm.RefreshModeEnabled(ctx, dockerCli.Client()); err != nil {
 		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 
@@ -211,7 +211,7 @@ func TestHandleEvent(t *testing.T) {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
 	}
 
-	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli); err != nil {
+	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli.Client()); err != nil {
 		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 

@@ -14,7 +14,7 @@ func TestRunSwarmJob(t *testing.T) {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
 	}
 
-	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli); err != nil {
+	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli.Client()); err != nil {
 		t.Errorf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 
@@ -53,7 +53,7 @@ func TestRunImagePruneJob(t *testing.T) {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
 	}
 
-	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli); err != nil {
+	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli.Client()); err != nil {
 		t.Errorf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 

@@ -164,7 +164,7 @@ func main() {
 	}
 
 	if c.DockerSwarmFeatures {
-		if err := swarm.RefreshModeEnabled(ctx, dockerCli); err != nil {
+		if err := swarm.RefreshModeEnabled(ctx, dockerClient); err != nil {
 			log.Critical("failed to check if docker daemon is a swarm manager", logger.ErrAttr(err))
 			return
 		}

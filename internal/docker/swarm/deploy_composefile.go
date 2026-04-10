@@ -21,7 +21,7 @@ import (
 )
 
 func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Deploy, config *composetypes.Config) error {
-	isSwarmManager, err := checkDaemonIsSwarmManager(ctx, dockerCli)
+	isSwarmManager, err := checkDaemonIsSwarmManager(ctx, dockerCli.Client())
 	if err != nil {
 		return err
 	}

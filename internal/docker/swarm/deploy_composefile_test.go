@@ -34,7 +34,7 @@ func (notFoundError) NotFound() {}
 func TestValidateExternalNetworks(t *testing.T) {
 	t.Parallel()
 
-	if err := RefreshModeEnabled(t.Context(), getDockerCli(t)); err != nil {
+	if err := RefreshModeEnabled(t.Context(), getDockerClient(t)); err != nil {
 		t.Fatalf("failed refreshing mode enabled: %v", err)
 	}
 

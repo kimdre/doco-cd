@@ -56,8 +56,8 @@ func validateResolveImageFlag(opts *options.Deploy) error {
 // a swarm manager. This is necessary because we must create networks before we
 // create services, but the API call for creating a network does not return a
 // proper status code when it can't create a network in the "global" scope.
-func checkDaemonIsSwarmManager(ctx context.Context, dockerCli command.Cli) (bool, error) {
-	result, err := dockerCli.Client().Info(ctx, client.InfoOptions{})
+func checkDaemonIsSwarmManager(ctx context.Context, dockerClient client.APIClient) (bool, error) {
+	result, err := dockerClient.Info(ctx, client.InfoOptions{})
 	if err != nil {
 		return false, err
 	}

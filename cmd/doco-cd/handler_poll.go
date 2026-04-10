@@ -145,7 +145,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	jobLog := logger.With(slog.String("job_id", metadata.JobID))
 
 	// refresh if docker host is running in swarm mode
-	if err := swarm.RefreshModeEnabled(ctx, dockerCli); err != nil {
+	if err := swarm.RefreshModeEnabled(ctx, dockerClient); err != nil {
 		pollError(jobLog, metadata, fmt.Errorf("failed to check if docker host is running in swarm mode: %w", err))
 
 		return append(results, pollResult{Metadata: metadata, Err: err})
