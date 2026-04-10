@@ -46,6 +46,8 @@ func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string)
 
 	go func() {
 		errChan <- progress.ServiceProgress(ctx, dockerCli.Client(), serviceID, pipeWriter)
+
+		defer pipeWriter.Close() //nolint:errcheck
 	}()
 
 	// Monitor the output of the progress reader for errors
