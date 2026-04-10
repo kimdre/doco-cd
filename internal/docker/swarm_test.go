@@ -28,7 +28,7 @@ func TestDeploySwarmStack(t *testing.T) {
 	}
 
 	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli); err != nil {
-		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
+		t.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 
 	if !swarm.GetModeEnabled() {

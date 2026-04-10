@@ -274,12 +274,11 @@ func TestGetLatestServiceState(t *testing.T) {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
 	}
 
-	swarm.ModeEnabled, err = swarm.CheckDaemonIsSwarmManager(t.Context(), dockerCli)
-	if err != nil {
+	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli); err != nil {
 		t.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 
-	if swarm.ModeEnabled {
+	if swarm.GetModeEnabled() {
 		t.Skip("Swarm mode is enabled, skipping test")
 	}
 	// t.Parallel()
@@ -367,12 +366,11 @@ func TestGetLatestServiceSwarm(t *testing.T) {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
 	}
 
-	swarm.ModeEnabled, err = swarm.CheckDaemonIsSwarmManager(t.Context(), dockerCli)
-	if err != nil {
+	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli); err != nil {
 		t.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 
-	if !swarm.ModeEnabled {
+	if !swarm.GetModeEnabled() {
 		t.Skip("Swarm mode is not enabled, skipping test")
 	}
 
