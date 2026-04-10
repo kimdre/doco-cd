@@ -11,18 +11,24 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing"
 
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/utils/set"
 
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/git"
 )
 
-func shouldSkipDeployment(composeChanged bool, changedServices []docker.Change, ignoredInfo docker.IgnoredInfo, imagesChanged, forceRecreate bool) bool {
-	return !forceRecreate && !composeChanged && len(changedServices) == 0 && ignoredInfo.IsEmpty() && !imagesChanged
-}
-
-func shouldCheckImageUpdates(forceImagePull, forceRecreate bool) bool {
-	return forceImagePull && !forceRecreate
+func shouldSkipDeployment(composeChanged bool,
+	changedServices []docker.Change,
+	ignoredInfo docker.IgnoredInfo,
+	imagesChanged bool,
+	mismatchServices []docker.ServiceMismatch,
+) bool {
+	return !composeChanged &&
+		len(changedServices) == 0 &&
+		ignoredInfo.IsNeedSignal() &&
+		!imagesChanged &&
+		len(mismatchServices) == 0
 }
 
 func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Logger) error {
@@ -32,27 +38,10 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		s.Stages.PreDeploy.FinishedAt = time.Now()
 	}()
 
-	latestCommit, err := git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
-	if err != nil {
-		return fmt.Errorf("failed to get latest commit: %w", err)
-	}
-
 	// Check for external secret changes and current deployed commit
 	var (
-		imagesChanged  bool // Flag to indicate if images have changed
-		deployedCommit string
-		curProjectHash string
+		imagesChanged bool // Flag to indicate if images have changed
 	)
-
-	labels, err := docker.GetLatestServiceLabels(ctx, s.Docker.Client, getFullName(s.Repository.CloneURL), s.DeployConfig.Name)
-	if err != nil {
-		return fmt.Errorf("failed to get latest labels from deployed services: %w", err)
-	}
-
-	if len(labels) > 0 {
-		deployedCommit = labels[docker.DocoCDLabels.Deployment.CommitSHA]
-		curProjectHash = labels[docker.DocoCDLabels.Deployment.ComposeHash]
-	}
 
 	// Compare external secrets if a secret provider is configured
 	if s.SecretProvider != nil && *s.SecretProvider != nil && len(s.DeployConfig.ExternalSecrets) > 0 {
@@ -73,12 +62,16 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		}
 	}
 
+	var err error
+
 	s.DeployConfig.Internal.Hash, err = s.DeployConfig.Hash()
 	if err != nil {
 		return fmt.Errorf("failed to hash deploy configuration: %w", err)
 	}
 
-	if shouldCheckImageUpdates(s.DeployConfig.ForceImagePull, s.DeployConfig.ForceRecreate) {
+	if s.DeployConfig.ForceRecreate {
+		stageLog.Debug("force recreate enabled, skipping pre-deploy image pull check")
+	} else if s.DeployConfig.ForceImagePull {
 		stageLog.Debug("force image pull enabled, checking for image updates")
 
 		var (
@@ -119,15 +112,23 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		} else {
 			stageLog.Debug("no running containers found for the deployment, skipping image pull check")
 		}
-	} else if s.DeployConfig.ForceImagePull && s.DeployConfig.ForceRecreate {
-		stageLog.Debug("force recreate enabled, skipping pre-deploy image pull check")
 	}
 
-	stageLog.Debug("comparing commits",
-		slog.String("deployed_commit", deployedCommit),
-		slog.String("latest_commit", latestCommit))
+	deployedState, err := docker.GetLatestDeployStatus(ctx, s.Docker.Client, getFullName(s.Repository.CloneURL), s.DeployConfig.Name)
+	if err != nil {
+		return fmt.Errorf("failed to get latest state from deployed services: %w", err)
+	}
 
-	if deployedCommit != "" {
+	if deployedCommit, _ := deployedState.Labels.GetDeploymentCommitSHA(); deployedCommit != "" {
+		latestCommit, err := git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
+		if err != nil {
+			return fmt.Errorf("failed to get latest commit: %w", err)
+		}
+
+		stageLog.Debug("comparing commits",
+			slog.String("deployed_commit", deployedCommit),
+			slog.String("latest_commit", latestCommit))
+
 		// Validate and sanitize the working directory
 		if strings.Contains(s.DeployConfig.WorkingDirectory, "..") {
 			return errors.New("invalid working directory: must not contain '..' to prevent directory traversal")
@@ -161,6 +162,8 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			return fmt.Errorf("failed to get project hash: %w", err)
 		}
 
+		curProjectHash, _ := deployedState.Labels.GetDeploymentComposeHash()
+
 		composeChanged := newHash != curProjectHash
 		if composeChanged {
 			stageLog.Debug("compose project has changed, proceeding with deployment", slog.String("new_hash", newHash), slog.String("old_hash", curProjectHash))
@@ -179,7 +182,13 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			return fmt.Errorf("failed to check for changed project files: %s", err)
 		}
 
-		if shouldSkipDeployment(composeChanged, changedServices, ignoredInfo, imagesChanged, s.DeployConfig.ForceRecreate) {
+		mismatchServices := docker.CheckServiceMismatch(swarm.GetModeEnabled(), deployedState.DeployedStatus, s.Docker.Project.Services)
+
+		if s.DeployConfig.ForceRecreate {
+			stageLog.Debug("force recreate enabled, proceeding with deployment",
+				slog.String("directory", s.DeployConfig.WorkingDirectory),
+			)
+		} else if shouldSkipDeployment(composeChanged, changedServices, ignoredInfo, imagesChanged, mismatchServices) {
 			stageLog.Debug("no changes detected, skipping deployment",
 				slog.String("directory", s.DeployConfig.WorkingDirectory),
 			)
@@ -187,22 +196,18 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			return ErrSkipDeployment
 		}
 
-		if s.DeployConfig.ForceRecreate && !composeChanged && len(changedServices) == 0 && ignoredInfo.IsEmpty() && !imagesChanged {
-			stageLog.Debug("force recreate enabled, proceeding with deployment",
-				slog.String("directory", s.DeployConfig.WorkingDirectory),
-			)
-		}
-
 		s.DeployState.changedServices = changedServices
 		s.DeployState.ignoredInfo = ignoredInfo
 
 		stageLog.Debug("changes detected, proceeding with deployment",
 			slog.String("directory", s.DeployConfig.WorkingDirectory),
+			slog.Bool("force_recreate", s.DeployConfig.ForceRecreate),
 			slog.Group("has_changes",
 				slog.Bool("compose_config", composeChanged),
 				slog.Any("files", changedServices),
 				slog.Any("ignored_info", ignoredInfo),
 				slog.Bool("images", imagesChanged),
+				slog.Any("mismatch_services", mismatchServices),
 			),
 		)
 	}

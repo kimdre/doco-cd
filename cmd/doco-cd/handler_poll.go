@@ -141,16 +141,11 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	repoName := git.GetRepoName(cloneUrl)
 	jobLog := logger.With(slog.String("job_id", metadata.JobID))
 
-	if appConfig.DockerSwarmFeatures {
-		// Check if docker host is running in swarm mode
-		swarm.ModeEnabled, err = swarm.CheckDaemonIsSwarmManager(ctx, dockerCli)
-		if err != nil {
-			pollError(jobLog, metadata, fmt.Errorf("failed to check if docker host is running in swarm mode: %w", err))
+	// refresh if docker host is running in swarm mode
+	if err := swarm.RefreshModeEnabled(ctx, dockerCli); err != nil {
+		pollError(jobLog, metadata, fmt.Errorf("failed to check if docker host is running in swarm mode: %w", err))
 
-			return append(results, pollResult{Metadata: metadata, Err: err})
-		}
-	} else {
-		swarm.ModeEnabled = false
+		return append(results, pollResult{Metadata: metadata, Err: err})
 	}
 
 	if strings.Contains(repoName, "..") {

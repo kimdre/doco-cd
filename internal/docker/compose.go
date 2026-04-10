@@ -623,7 +623,7 @@ func DeployStack(
 	}
 
 	// When SwarmModeEnabled is true, we deploy the stack using Docker Swarm.
-	if swarm.ModeEnabled {
+	if swarm.GetModeEnabled() {
 		stackLog.Info("deploying swarm stack")
 
 		cfg, opts, err := LoadSwarmStack(dockerCli, project, deployConfig, externalWorkingDir)
@@ -732,7 +732,7 @@ func DestroyStack(
 
 	stackLog.Info("destroying stack")
 
-	if swarm.ModeEnabled {
+	if swarm.GetModeEnabled() {
 		err := RemoveSwarmStack(*ctx, *dockerCli, deployConfig.Name)
 		if err != nil {
 			errMsg := "failed to destroy swarm stack"
@@ -1007,6 +1007,10 @@ type IgnoredInfo struct {
 
 func (i IgnoredInfo) IsEmpty() bool {
 	return len(i.Ignored) == 0 && len(i.NeedSendSignal) == 0
+}
+
+func (i IgnoredInfo) IsNeedSignal() bool {
+	return len(i.NeedSendSignal) == 0
 }
 
 type SignalService struct {

@@ -27,6 +27,8 @@ services:
       # The data volume (left side) can also be replaced with a bind mount to a local directory, for example:
       # - ./data:/data
       - data:/data
+    cap_drop:
+      - ALL
     healthcheck:
       test: [ "CMD", "/doco-cd", "healthcheck" ]
       start_period: 15s
