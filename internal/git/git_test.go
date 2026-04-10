@@ -819,6 +819,16 @@ func TestConvertSSHUrl(t *testing.T) {
 			sshUrl:   "git@github.com:user/repo",
 			expected: "ssh://git@github.com/user/repo",
 		},
+		{
+			name:     "SSH URL with non-default port stays unchanged",
+			sshUrl:   "ssh://git@github.com:2222/user/repo.git",
+			expected: "ssh://git@github.com:2222/user/repo.git",
+		},
+		{
+			name:     "SSH URL with ",
+			sshUrl:   "ssh://git@gitea:2222/user/repo.git",
+			expected: "ssh://git@gitea:2222/user/repo.git",
+		},
 	}
 
 	for _, tc := range testCases {
