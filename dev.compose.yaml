@@ -17,6 +17,8 @@ services:
         - APP_VERSION=dev
     pull_policy: build
     restart: unless-stopped
+    cap_drop:
+      - ALL
     depends_on:
       proxy:
         condition: "service_started"
