@@ -123,8 +123,14 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		}
 	}
 
-	for k, v := range s.DeployConfig.Environment {
-		s.DeployConfig.Internal.Environment[k] = v
+	if len(s.DeployConfig.Environment) > 0 {
+		if s.DeployConfig.Internal.Environment == nil {
+			s.DeployConfig.Internal.Environment = make(map[string]string)
+		}
+
+		for k, v := range s.DeployConfig.Environment {
+			s.DeployConfig.Internal.Environment[k] = v
+		}
 	}
 
 	if s.DeployConfig.Destroy {
