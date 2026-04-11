@@ -32,7 +32,13 @@ type notFoundError struct {
 func (notFoundError) NotFound() {}
 
 func TestValidateExternalNetworks(t *testing.T) {
-	if !ModeEnabled {
+	t.Parallel()
+
+	if err := RefreshModeEnabled(t.Context(), getDockerCli(t)); err != nil {
+		t.Fatalf("failed refreshing mode enabled: %v", err)
+	}
+
+	if !GetModeEnabled() {
 		t.Skip("Swarm mode not enabled, skipping test")
 	}
 

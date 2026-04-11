@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,12 +32,13 @@ type ComposeStack struct {
 
 // composeOptions holds the configuration for [ComposeUp].
 type composeOptions struct {
-	yaml        string
-	filePath    string
-	name        string
-	pruneImages bool
-	noWait      bool
-	waitTimeout time.Duration // Maximum time to wait for containers to be healthy in [ComposeUp]. Default is 30 seconds.
+	yaml         string
+	filePath     string
+	name         string
+	pruneImages  bool
+	noWait       bool
+	waitTimeout  time.Duration // Maximum time to wait for containers to be healthy in [ComposeUp]. Default is 30 seconds.
+	customLabels map[string]string
 }
 
 // ComposeOption configures a [ComposeUp] call.
@@ -82,6 +84,12 @@ func WithName(name string) ComposeOption {
 func WithPruneImages() ComposeOption {
 	return func(o *composeOptions) {
 		o.pruneImages = true
+	}
+}
+
+func WithCustomLabel(labels map[string]string) ComposeOption {
+	return func(o *composeOptions) {
+		o.customLabels = labels
 	}
 }
 
@@ -169,6 +177,8 @@ func ComposeUp(ctx context.Context, t *testing.T, opts ...ComposeOption) *Compos
 			api.VersionLabel:     api.ComposeVersion,
 			api.OneoffLabel:      "False",
 		}
+		// add custom labels if provided
+		maps.Copy(s.CustomLabels, o.customLabels)
 		project.Services[i] = s
 	}
 
@@ -341,6 +351,31 @@ func (s *ComposeStack) Exec(ctx context.Context, t *testing.T, serviceName strin
 	}
 
 	return inspectResp.ExitCode, strings.NewReader(string(output))
+}
+
+// ContainerLogs gets the logs for a container, includes stdout and stderr.
+func (s *ComposeStack) ContainerLogs(ctx context.Context, t *testing.T, serviceName string, since time.Time) string {
+	t.Helper()
+
+	containerID := s.ServiceContainerID(ctx, t, serviceName)
+
+	logResp, err := s.Client.ContainerLogs(ctx, containerID, client.ContainerLogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Since:      since.Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		t.Fatalf("failed to got logs from container %s: %v", containerID, err)
+	}
+
+	output, err := io.ReadAll(logResp)
+	_ = logResp.Close()
+
+	if err != nil {
+		t.Fatalf("failed to read exec output: %v", err)
+	}
+
+	return string(output)
 }
 
 // WaitForStack waits until all containers in the stack are running and healthy (if healthcheck is defined).

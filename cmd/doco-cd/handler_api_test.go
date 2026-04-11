@@ -150,7 +150,7 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			if swarm.ModeEnabled {
+			if swarm.GetModeEnabled() {
 				t.Skip("Skipping Project API tests in Swarm mode")
 			}
 

@@ -16,6 +16,8 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/lock"
+
 	"github.com/kimdre/doco-cd/internal/test"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -107,16 +109,11 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		return
 	}
 
-	if appConfig.DockerSwarmFeatures {
-		// Check if docker host is running in swarm mode
-		swarm.ModeEnabled, err = swarm.CheckDaemonIsSwarmManager(ctx, dockerCli)
-		if err != nil {
-			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to check if docker host is running in swarm mode", err.Error(), http.StatusInternalServerError, metadata)
+	// refresh if docker host is running in swarm mode
+	if err := swarm.RefreshModeEnabled(ctx, dockerCli); err != nil {
+		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to check if docker host is running in swarm mode", err.Error(), http.StatusInternalServerError, metadata)
 
-			return
-		}
-	} else {
-		swarm.ModeEnabled = false
+		return
 	}
 
 	cloneUrl := payload.CloneURL
@@ -332,7 +329,10 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 	provider, payload, err := webhook.Parse(r, h.appConfig.WebhookSecret)
 	if err != nil {
-		var statusCode int
+		var (
+			statusCode int
+			errMsg     string
+		)
 
 		switch {
 		case errors.Is(err, webhook.ErrHMACVerificationFailed):
@@ -366,13 +366,13 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if deletionEvent, eErr := webhook.IsBranchOrTagDeletionEvent(r, payload, provider); eErr == nil && deletionEvent {
-		errMsg = "branch or tag deletion event received, skipping webhook event"
+		errMsg := "branch or tag deletion event received, skipping webhook event"
 		jobLog.Info(errMsg)
 		JSONResponse(w, errMsg, jobID, http.StatusAccepted)
 
 		return
 	} else if eErr != nil {
-		errMsg = "failed to check if event is branch or tag deletion"
+		errMsg := "failed to check if event is branch or tag deletion"
 		jobLog.Error(errMsg, logger.ErrAttr(eErr))
 		JSONError(w, errMsg, eErr.Error(), jobID, http.StatusInternalServerError)
 
@@ -385,13 +385,13 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Prevent concurrent deployments for the same repository using a lock
-	repoLock := GetRepoLock(metadata.Repository)
+	repoLock := lock.GetRepoLock(metadata.Repository)
 
-	if wait {
+	handleFn := func(w http.ResponseWriter) {
 		locked := make(chan struct{})
 
 		go func() {
-			repoLock.mu.Lock()
+			repoLock.Lock()
 			close(locked)
 		}()
 
@@ -403,36 +403,19 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 			<-locked
 		}
 
-		defer repoLock.mu.Unlock()
+		defer repoLock.Unlock()
 
 		HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, h.dockerClient, h.secretProvider, h.testName)
-
-		return
 	}
 
-	// Async mode: respond immediately and run the deployment in the background.
-	JSONResponse(w, "job accepted", jobID, http.StatusAccepted)
+	if wait {
+		handleFn(w)
+	} else {
+		// Async mode: respond immediately and run the deployment in the background.
+		JSONResponse(w, "job accepted", jobID, http.StatusAccepted)
 
-	go func() {
-		locked := make(chan struct{})
-
-		go func() {
-			repoLock.mu.Lock()
-			close(locked)
-		}()
-
-		select {
-		case <-locked:
-			// Acquired immediately
-		case <-time.After(10 * time.Millisecond):
-			jobLog.Info("waiting for webhook lock", slog.String("repository", metadata.Repository))
-			<-locked
-		}
-
-		defer repoLock.mu.Unlock()
-
-		HandleEvent(ctx, jobLog, noopResponseWriter{}, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, h.dockerClient, h.secretProvider, h.testName)
-	}()
+		go handleFn(noopResponseWriter{})
+	}
 }
 
 // noopResponseWriter is used when we run HandleEvent asynchronously.

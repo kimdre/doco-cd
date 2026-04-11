@@ -49,9 +49,22 @@ type (
 	Labels  map[string]string // Labels of the Service
 )
 
+func (l Labels) Get(key string) (string, bool) {
+	v, ok := l[key]
+	return v, ok
+}
+
+func (l Labels) GetDeploymentCommitSHA() (string, bool) {
+	return l.Get(DocoCDLabels.Deployment.CommitSHA)
+}
+
+func (l Labels) GetDeploymentComposeHash() (string, bool) {
+	return l.Get(DocoCDLabels.Deployment.ComposeHash)
+}
+
 // GetServiceLabels retrieves the Labels for each Service in a given stack.
 func GetServiceLabels(ctx context.Context, cli *client.Client, stackName string) (map[Service]Labels, error) {
-	if swarmInternal.ModeEnabled {
+	if swarmInternal.GetModeEnabled() {
 		services, err := swarmInternal.GetStackServices(ctx, cli, stackName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get services for stack %s: %w", stackName, err)
@@ -93,7 +106,7 @@ func GetLabeledContainers(ctx context.Context, cli *client.Client, key, value st
 
 // GetLabeledServices retrieves all services with a specific label key and value, along with their labels.
 func GetLabeledServices(ctx context.Context, cli *client.Client, key, value string) (map[Service]map[string]string, error) {
-	if swarmInternal.ModeEnabled {
+	if swarmInternal.GetModeEnabled() {
 		services, err := swarmInternal.GetServicesByLabel(ctx, cli, key, value)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get services with label %s=%s: %w", key, value, err)
@@ -202,7 +215,7 @@ func CheckMountPointWriteable(mountPoint container.MountPoint) error {
 
 func RemoveLabeledVolumes(ctx context.Context, dockerClient *client.Client, stackName string) error {
 	filterLabel := api.ProjectLabel
-	if swarmInternal.ModeEnabled {
+	if swarmInternal.GetModeEnabled() {
 		filterLabel = swarmInternal.StackNamespaceLabel
 	}
 

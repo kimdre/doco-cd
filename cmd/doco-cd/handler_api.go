@@ -118,7 +118,7 @@ func getQueryParam(r *http.Request, w http.ResponseWriter, log *slog.Logger, job
 		value, err := strconv.ParseBool(queryParam)
 		if err != nil {
 			err = fmt.Errorf("%w: %s", ErrInvalidParam, key)
-			errMsg = "'" + key + "' parameter must be true or false"
+			errMsg := "'" + key + "' parameter must be true or false"
 			log.With(logger.ErrAttr(err)).Error(errMsg)
 			JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
 
@@ -130,7 +130,7 @@ func getQueryParam(r *http.Request, w http.ResponseWriter, log *slog.Logger, job
 		value, err := strconv.Atoi(queryParam)
 		if err != nil {
 			err = fmt.Errorf("%w: %s", ErrInvalidParam, key)
-			errMsg = "'" + key + "' parameter must be a integer"
+			errMsg := "'" + key + "' parameter must be a integer"
 			log.With(logger.ErrAttr(err)).Error(errMsg)
 			JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
 
@@ -142,7 +142,7 @@ func getQueryParam(r *http.Request, w http.ResponseWriter, log *slog.Logger, job
 		return queryParam
 	default:
 		err := errors.New("invalid key type")
-		errMsg = "key type must be 'bool', 'int' or 'string'"
+		errMsg := "key type must be 'bool', 'int' or 'string'"
 		log.With(logger.ErrAttr(err)).Error(errMsg)
 		JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
 
@@ -193,7 +193,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 	case http.MethodGet:
 		containers, err := docker.GetProjectContainers(ctx, h.dockerCli, projectName)
 		if err != nil {
-			errMsg = "failed to get project: " + projectName
+			errMsg := "failed to get project: " + projectName
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 			JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
 
@@ -216,7 +216,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 		err := docker.RemoveProject(ctx, h.dockerCli, projectName, timeout, removeVolumes, removeImages)
 		if err != nil {
-			errMsg = "failed to remove project: " + projectName
+			errMsg := "failed to remove project: " + projectName
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 			JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
 
@@ -264,7 +264,7 @@ func (h *handlerData) GetProjectsApiHandler(w http.ResponseWriter, r *http.Reque
 
 	projects, err := docker.GetProjects(ctx, h.dockerCli, showAll)
 	if err != nil {
-		errMsg = "failed to get projects"
+		errMsg := "failed to get projects"
 		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 		JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
 
@@ -312,7 +312,7 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 
 	containers, err := docker.GetProjectContainers(ctx, h.dockerCli, projectName)
 	if err != nil {
-		errMsg = "failed to get project: " + projectName
+		errMsg := "failed to get project: " + projectName
 		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 		JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
 
@@ -335,7 +335,7 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 
 		err := docker.StartProject(ctx, h.dockerCli, projectName, timeout)
 		if err != nil {
-			errMsg = "failed to start project"
+			errMsg := "failed to start project"
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 			JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
 
@@ -352,7 +352,7 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 
 		err := docker.StopProject(ctx, h.dockerCli, projectName, timeout)
 		if err != nil {
-			errMsg = "failed to stop project"
+			errMsg := "failed to stop project"
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 			JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
 
@@ -369,7 +369,7 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 
 		err := docker.RestartProject(ctx, h.dockerCli, projectName, timeout)
 		if err != nil {
-			errMsg = "failed to restart project"
+			errMsg := "failed to restart project"
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 			JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
 
@@ -418,7 +418,7 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 
 	services, err := swarm.GetStackServices(ctx, h.dockerCli.Client(), stackName)
 	if err != nil {
-		errMsg = "failed to get stack: " + stackName
+		errMsg := "failed to get stack: " + stackName
 		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 		JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
 
@@ -440,7 +440,7 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 		replicas := getQueryParam(r, w, jobLog, jobID, "replicas", "int", -1).(int)
 		if replicas < 0 {
 			err = errors.New("missing or invalid replicas parameter")
-			errMsg = "'replicas' parameter is required and must be a non-negative integer"
+			errMsg := "'replicas' parameter is required and must be a non-negative integer"
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 			JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
 
@@ -464,7 +464,7 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 					continue
 				}
 
-				errMsg = "failed to scale service"
+				errMsg := "failed to scale service"
 				jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 				JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
 
@@ -507,7 +507,7 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 					continue
 				}
 
-				errMsg = "failed to restart service"
+				errMsg := "failed to restart service"
 				jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 				JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
 
@@ -543,7 +543,7 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 					continue
 				}
 
-				errMsg = "failed to retrigger job service"
+				errMsg := "failed to retrigger job service"
 				jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 				JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
 
@@ -603,7 +603,7 @@ func (h *handlerData) StackApiHandler(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		services, err := swarm.GetStackServices(ctx, h.dockerCli.Client(), stackName)
 		if err != nil {
-			errMsg = "failed to get stack: " + stackName
+			errMsg := "failed to get stack: " + stackName
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 			JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
 
@@ -621,7 +621,7 @@ func (h *handlerData) StackApiHandler(w http.ResponseWriter, r *http.Request) {
 
 		err := docker.RemoveSwarmStack(ctx, h.dockerCli, stackName)
 		if err != nil {
-			errMsg = "failed to remove stack: " + stackName
+			errMsg := "failed to remove stack: " + stackName
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 			JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
 
@@ -667,7 +667,7 @@ func (h *handlerData) GetStacksApiHandler(w http.ResponseWriter, r *http.Request
 
 	stacks, err := swarm.GetStacks(ctx, h.dockerCli.Client())
 	if err != nil {
-		errMsg = "failed to get stacks"
+		errMsg := "failed to get stacks"
 		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 		JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
 
@@ -712,7 +712,7 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 
 	var pollConfigs []config.PollConfig
 	if err := decoder.Decode(&pollConfigs); err != nil {
-		errMsg = "failed to decode json in body"
+		errMsg := "failed to decode json in body"
 		h.log.Error(errMsg, logger.ErrAttr(err))
 		JSONError(w, errMsg, err.Error(), jobID, http.StatusBadRequest)
 
@@ -726,7 +726,7 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 
 		err = p.Validate()
 		if err != nil {
-			errMsg = fmt.Sprintf("invalid poll configuration at index %d", i)
+			errMsg := fmt.Sprintf("invalid poll configuration at index %d", i)
 			h.log.Error(errMsg, logger.ErrAttr(err))
 			JSONError(w, errMsg, err.Error(), jobID, http.StatusBadRequest)
 

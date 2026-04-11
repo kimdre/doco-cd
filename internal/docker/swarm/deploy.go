@@ -52,11 +52,11 @@ func validateResolveImageFlag(opts *options.Deploy) error {
 	}
 }
 
-// CheckDaemonIsSwarmManager does an Info API call to verify that the daemon is
+// checkDaemonIsSwarmManager does an Info API call to verify that the daemon is
 // a swarm manager. This is necessary because we must create networks before we
 // create services, but the API call for creating a network does not return a
 // proper status code when it can't create a network in the "global" scope.
-func CheckDaemonIsSwarmManager(ctx context.Context, dockerCli command.Cli) (bool, error) {
+func checkDaemonIsSwarmManager(ctx context.Context, dockerCli command.Cli) (bool, error) {
 	result, err := dockerCli.Client().Info(ctx, client.InfoOptions{})
 	if err != nil {
 		return false, err

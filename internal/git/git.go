@@ -3,7 +3,6 @@ package git
 import (
 	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"net"
 	"net/url"
@@ -258,15 +257,26 @@ func FetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxy
 		}
 	}
 
-	err := retrier.Do(
-		func() error {
-			err := repo.Fetch(opts)
-			if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
-				return err
-			}
+	fetchWithRetry := func() error {
+		return retrier.Do(
+			func() error {
+				err := repo.Fetch(opts)
+				if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
+					return err
+				}
 
-			return nil
-		})
+				return nil
+			})
+	}
+
+	err := fetchWithRetry()
+	if err != nil && IsSSH(url) && ssh.IsHostKeyMismatchError(err) {
+		if refreshErr := ssh.RefreshKnownHost(url); refreshErr != nil {
+			return fmt.Errorf("failed to refresh host key after mismatch: %w", refreshErr)
+		}
+
+		err = fetchWithRetry()
+	}
 
 	return err
 }
@@ -438,6 +448,14 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 	}
 
 	repo, err := cloneWithRetry(path, opts)
+	if err != nil && IsSSH(url) && ssh.IsHostKeyMismatchError(err) {
+		if refreshErr := ssh.RefreshKnownHost(url); refreshErr != nil {
+			return nil, fmt.Errorf("failed to refresh host key after mismatch: %w", refreshErr)
+		}
+
+		repo, err = cloneWithRetry(path, opts)
+	}
+
 	if err != nil {
 		if errors.Is(err, transport.ErrInvalidAuthMethod) && cloneSubmodules {
 			return nil, fmt.Errorf("%w: %w", err, ErrPossibleAuthMethodMismatch)
@@ -677,82 +695,6 @@ func GetChangedFilesBetweenCommits(repo *git.Repository, commitHash1, commitHash
 	}
 
 	return changedFiles, nil
-}
-
-// HasChangesInSubdir checks if any of the changed files are in a specified subdirectory.
-func HasChangesInSubdir(changedFiles []ChangedFile, repoPath, subdir, deployConfigPath string) (bool, error) {
-	// Collect all symlinks in subdir
-	symlinks := make(map[string]string)
-
-	err := filepath.WalkDir(filepath.Join(repoPath, subdir), func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return fmt.Errorf("failed to walk subdir %s: %w", subdir, err)
-		}
-
-		// Check if the file is a symlink
-		info, statErr := d.Info()
-		if statErr != nil {
-			return fmt.Errorf("failed to get file info: %w", statErr)
-		}
-
-		if info.Mode()&os.ModeSymlink != 0 {
-			target, err := os.Readlink(path)
-			if err != nil {
-				return fmt.Errorf("failed to read symlink: %w", err)
-			}
-
-			absTarget := target
-			if !filepath.IsAbs(target) {
-				absTarget = filepath.Join(filepath.Dir(path), target)
-			}
-
-			symlinks[path] = absTarget
-		}
-
-		return nil
-	})
-	if err != nil {
-		return false, err
-	}
-
-	var paths []string
-
-	for _, file := range changedFiles {
-		if file.From != nil {
-			paths = append(paths, file.From.Path())
-		}
-
-		if file.To != nil {
-			paths = append(paths, file.To.Path())
-		}
-	}
-
-	for _, p := range paths {
-		// Ignore deployConfig if present
-		// deployConfigPath is the absolute path to the .doco-cd.yml file
-		if strings.HasPrefix(deployConfigPath, p) {
-			continue
-		}
-
-		rel, err := filepath.Rel(subdir, p)
-		if err == nil && (rel == "." || !strings.HasPrefix(rel, "..")) {
-			return true, nil
-		}
-
-		// Check if file is inside any symlink target
-		for _, target := range symlinks {
-			relSymlink, err := filepath.Rel(target, filepath.Join(target, p))
-			if err != nil {
-				continue
-			}
-
-			if relSymlink == "." || !strings.HasPrefix(relSymlink, "..") {
-				return true, nil
-			}
-		}
-	}
-
-	return false, nil
 }
 
 // shouldResetDecryptedFile determines whether a file should be reset based on its decrypted content.
