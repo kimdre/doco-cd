@@ -282,7 +282,6 @@ func main() {
 		appVersion:     config.AppVersion,
 		dataMountPoint: dataMountPoint,
 		dockerCli:      dockerCli,
-		dockerClient:   dockerClient,
 		log:            log,
 		secretProvider: &secretProvider,
 	}

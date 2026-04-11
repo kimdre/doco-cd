@@ -71,8 +71,6 @@ func TestRunPoll(t *testing.T) {
 		t.Fatalf("Failed to create docker client: %v", err)
 	}
 
-	dockerClient := dockerCli.Client()
-
 	service, err := compose.NewComposeService(dockerCli)
 	if err != nil {
 		t.Fatalf("failed to create compose service: %v", err)
@@ -118,7 +116,7 @@ func TestRunPoll(t *testing.T) {
 	}
 
 	// Run initial poll
-	results := RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With(), metadata, &secretProvider)
+	results := RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, log.With(), metadata, &secretProvider)
 
 	for _, result := range results {
 		if result.Err != nil {
@@ -129,7 +127,7 @@ func TestRunPoll(t *testing.T) {
 	pollConfig.Reference = "destroy"
 
 	// Run the second poll to destroy
-	results = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With(), metadata, &secretProvider)
+	results = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, log.With(), metadata, &secretProvider)
 	for _, result := range results {
 		if result.Err != nil {
 			t.Fatalf("Second poll deployment failed: %v", result.Err)

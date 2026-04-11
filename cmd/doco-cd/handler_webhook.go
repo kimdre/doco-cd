@@ -13,7 +13,6 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/google/uuid"
 	"github.com/moby/moby/api/types/container"
-	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/reconciliation"
@@ -38,7 +37,6 @@ type handlerData struct {
 	appVersion     string               // Application version
 	dataMountPoint container.MountPoint // Mount point for the data directory
 	dockerCli      command.Cli          // Docker CLI client
-	dockerClient   client.APIClient     // Docker client
 	log            *logger.Logger       // Logger for logging messages
 	secretProvider *secretprovider.SecretProvider
 	testName       string // Overwrites the deployConfig.Name to make test deployments unique and prevent conflicts between tests when running in parallel. Not used in production.
@@ -73,7 +71,7 @@ func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any
 // HandleEvent executes the deployment process for a given webhook event.
 func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *config.AppConfig,
 	dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget, jobID string,
-	dockerCli command.Cli, dockerClient client.APIClient, secretProvider *secretprovider.SecretProvider,
+	dockerCli command.Cli, secretProvider *secretprovider.SecretProvider,
 	testName string,
 ) {
 	var err error
@@ -108,7 +106,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	// refresh if docker host is running in swarm mode
-	if err := swarm.RefreshModeEnabled(ctx, dockerClient); err != nil {
+	if err := swarm.RefreshModeEnabled(ctx, dockerCli.Client()); err != nil {
 		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to check if docker host is running in swarm mode", err.Error(), http.StatusInternalServerError, metadata)
 
 		return
@@ -188,7 +186,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		return
 	}
 
-	err = reconciliation.CleanupObsoleteAutoDiscoveredContainers(ctx, jobLog, dockerClient, dockerCli, cloneUrl, deployConfigs, metadata)
+	err = reconciliation.CleanupObsoleteAutoDiscoveredContainers(ctx, jobLog, dockerCli, cloneUrl, deployConfigs, metadata)
 	if err != nil {
 		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to clean up obsolete auto-discovered containers", err.Error(), http.StatusInternalServerError, metadata)
 	}
@@ -335,7 +333,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 		defer repoLock.Unlock()
 
-		HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, h.dockerClient, h.secretProvider, h.testName)
+		HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, h.secretProvider, h.testName)
 	}
 
 	if wait {

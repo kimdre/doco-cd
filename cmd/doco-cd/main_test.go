@@ -214,8 +214,6 @@ func TestHandleEvent(t *testing.T) {
 		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 
-	dockerClient := dockerCli.Client()
-
 	encryption.SetupAgeKeyEnvVar(t)
 
 	defaultEnvVars := map[string]string{
@@ -327,7 +325,6 @@ func TestHandleEvent(t *testing.T) {
 					tc.customTarget,
 					jobID,
 					dockerCli,
-					dockerClient,
 					&secretProvider,
 					stackName,
 				)

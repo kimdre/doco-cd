@@ -500,7 +500,7 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 			jobLog.Info("restarting service", slog.String("service", svcName))
 
 			// Swarm restart supports replicated/global and skips job-mode services.
-			err = docker.RestartService(ctx, h.dockerClient, svcName)
+			err = docker.RestartService(ctx, h.dockerCli.Client(), svcName)
 			if err != nil {
 				if errors.Is(err, docker.ErrJobServiceRestartNotSupported) {
 					jobLog.Debug("skipping restart for job-mode service", slog.String("service", svcName))
@@ -536,7 +536,7 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 
 			jobLog.Info("retriggering job service", slog.String("service", svcName))
 
-			err = docker.RerunJobService(ctx, h.dockerClient, svcName)
+			err = docker.RerunJobService(ctx, h.dockerCli.Client(), svcName)
 			if err != nil {
 				if errors.Is(err, docker.ErrNotAJobService) {
 					jobLog.Debug("skipping non-job service for run action", slog.String("service", svcName))

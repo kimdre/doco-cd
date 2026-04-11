@@ -91,8 +91,6 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 		t.Fatalf("Failed to create docker client: %v", err)
 	}
 
-	dockerClient := dockerCli.Client()
-
 	t.Cleanup(func() {
 		err = dockerCli.Client().Close()
 		if err != nil {
@@ -103,10 +101,9 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	h := handlerData{
-		dockerCli:    dockerCli,
-		dockerClient: dockerClient,
-		appConfig:    appConfig,
-		appVersion:   config.AppVersion,
+		dockerCli:  dockerCli,
+		appConfig:  appConfig,
+		appVersion: config.AppVersion,
 		dataMountPoint: container.MountPoint{
 			Type:        "bind",
 			Source:      tmpDir,

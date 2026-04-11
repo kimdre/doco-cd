@@ -8,7 +8,6 @@ import (
 	"strconv"
 
 	"github.com/docker/cli/cli/command"
-	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
@@ -22,7 +21,7 @@ import (
 // CleanupObsoleteAutoDiscoveredContainers removes obsolete auto-discovered containers that are no longer defined in
 // the current deployment configurations but still exist on the Docker host.
 func CleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.Logger,
-	dockerClient client.APIClient, dockerCli command.Cli,
+	dockerCli command.Cli,
 	cloneUrl string, deployConfigs []*config.DeployConfig, metadata notification.Metadata,
 ) error {
 	autoDiscoveredNames := make(map[string]bool)
@@ -37,7 +36,7 @@ func CleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 
 	var processedStacks []string
 
-	serviceLabels, err := docker.GetLabeledServices(ctx, dockerClient, docker.DocoCDLabels.Deployment.AutoDiscover, "true")
+	serviceLabels, err := docker.GetLabeledServices(ctx, dockerCli.Client(), docker.DocoCDLabels.Deployment.AutoDiscover, "true")
 	if err == nil {
 		for _, labels := range serviceLabels {
 			stackName := labels[docker.DocoCDLabels.Deployment.Name]

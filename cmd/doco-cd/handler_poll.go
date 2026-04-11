@@ -13,7 +13,6 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/google/uuid"
 	"github.com/moby/moby/api/types/container"
-	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/reconciliation"
@@ -91,7 +90,7 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *config.PollJob) 
 
 				logger.Debug("start poll job")
 
-				_ = RunPoll(ctx, pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.dockerClient, logger, metadata, h.secretProvider)
+				_ = RunPoll(ctx, pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, logger, metadata, h.secretProvider)
 
 				repoLock.Unlock()
 			}
@@ -133,7 +132,7 @@ func pollError(jobLog *slog.Logger, metadata notification.Metadata, err error) {
 
 // RunPoll deploys compose projects based on the provided configuration.
 func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *config.AppConfig, dataMountPoint container.MountPoint,
-	dockerCli command.Cli, dockerClient client.APIClient, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
+	dockerCli command.Cli, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
 ) []pollResult {
 	var err error
 
@@ -145,7 +144,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	jobLog := logger.With(slog.String("job_id", metadata.JobID))
 
 	// refresh if docker host is running in swarm mode
-	if err := swarm.RefreshModeEnabled(ctx, dockerClient); err != nil {
+	if err := swarm.RefreshModeEnabled(ctx, dockerCli.Client()); err != nil {
 		pollError(jobLog, metadata, fmt.Errorf("failed to check if docker host is running in swarm mode: %w", err))
 
 		return append(results, pollResult{Metadata: metadata, Err: err})
@@ -228,7 +227,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		return append(results, pollResult{Metadata: metadata, Err: err})
 	}
 
-	err = reconciliation.CleanupObsoleteAutoDiscoveredContainers(ctx, jobLog, dockerClient, dockerCli, string(pollConfig.CloneUrl), deployConfigs, metadata)
+	err = reconciliation.CleanupObsoleteAutoDiscoveredContainers(ctx, jobLog, dockerCli, string(pollConfig.CloneUrl), deployConfigs, metadata)
 	if err != nil {
 		pollError(jobLog, metadata, fmt.Errorf("failed to cleanup obsolete auto-discovered containers: %w", err))
 
