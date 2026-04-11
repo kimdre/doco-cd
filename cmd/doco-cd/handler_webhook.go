@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/docker/cli/cli/command"
@@ -18,8 +17,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/reconciliation"
-
-	"github.com/kimdre/doco-cd/internal/test"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -196,79 +193,23 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to clean up obsolete auto-discovered containers", err.Error(), http.StatusInternalServerError, metadata)
 	}
 
-	var wg sync.WaitGroup
+	deployErr := handleDeploys(ctx, jobLog,
+		appConfig,
+		dataMountPoint,
+		dockerCli,
+		secretProvider,
+		jobID, stages.JobTriggerWebhook,
+		stages.RepositoryData{
+			CloneURL:     config.HttpUrl(cloneUrl),
+			Name:         repoName,
+			PathInternal: internalRepoPath,
+			PathExternal: externalRepoPath,
+		},
 
-	resultCh := make(chan error, len(deployConfigs))
-
-	for _, deployConfig := range deployConfigs {
-		deployLog := jobLog.
-			WithGroup("deploy").
-			With(
-				slog.String("stack", deployConfig.Name),
-				slog.String("reference", deployConfig.Reference))
-
-		// Used to make test deployments unique and prevent conflicts between tests when running in parallel.
-		// It is not used in production.
-		if testName != "" {
-			deployConfig.Name = test.ConvertTestName(testName)
-		}
-
-		wg.Add(1)
-
-		go func(dc *config.DeployConfig) {
-			defer wg.Done()
-
-			if deployerLimiter != nil {
-				deployLog.Debug("queuing deployment")
-
-				unlock, lErr := deployerLimiter.acquire(ctx, repoName, NormalizeReference(dc.Reference))
-				if lErr != nil {
-					resultCh <- lErr
-					return
-				}
-				defer unlock()
-			}
-
-			stageMgr := stages.NewStageManager(
-				metadata.JobID,
-				stages.JobTriggerWebhook,
-				deployLog,
-				failNotifyFunc,
-				&stages.RepositoryData{
-					CloneURL:     config.HttpUrl(cloneUrl),
-					Name:         repoName,
-					PathInternal: internalRepoPath,
-					PathExternal: externalRepoPath,
-				},
-				&stages.Docker{
-					Cmd:            dockerCli,
-					Client:         dockerClient,
-					DataMountPoint: dataMountPoint,
-				},
-				&payload,
-				appConfig,
-				dc,
-				secretProvider,
-			)
-
-			err := stageMgr.RunStages(ctx)
-			resultCh <- err
-		}(deployConfig)
-	}
-
-	// Wait for all deployments to complete
-	wg.Wait()
-	close(resultCh)
-
-	var deployErr error
-
-	for e := range resultCh {
-		if e != nil {
-			deployErr = e
-			// keep looping to drain channel
-		}
-	}
-
+		deployConfigs,
+		&payload,
+		testName,
+	)
 	if deployErr != nil {
 		// In synchronous mode we should return an error to the caller
 		// For async mode, w is noopResponseWriter and JSONError is a no-op

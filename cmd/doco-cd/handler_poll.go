@@ -235,90 +235,30 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		return append(results, pollResult{Metadata: metadata, Err: err})
 	}
 
-	// We'll run each deployment concurrently but grouped by repo+reference and limited by the global deployerLimiter
-	var deployWg sync.WaitGroup
-
-	resultCh := make(chan pollResult, len(deployConfigs))
-
-	for _, deployConfig := range deployConfigs {
-		deployLog := jobLog.
-			WithGroup("deploy").
-			With(
-				slog.String("stack", deployConfig.Name),
-				slog.String("reference", deployConfig.Reference))
-
-		deployWg.Add(1)
-
-		go func(dc *config.DeployConfig) {
-			defer deployWg.Done()
-
-			if deployerLimiter != nil {
-				deployLog.Debug("queuing deployment")
-
-				unlock, lErr := deployerLimiter.acquire(ctx, repoName, NormalizeReference(dc.Reference))
-				if lErr != nil {
-					resultCh <- pollResult{Metadata: metadata, Err: lErr}
-					return
-				}
-				defer unlock()
-			}
-
-			stageMgr := stages.NewStageManager(
-				metadata.JobID,
-				stages.JobTriggerPoll,
-				deployLog,
-				failNotifyFunc,
-				&stages.RepositoryData{
-					CloneURL:     pollConfig.CloneUrl,
-					Name:         repoName,
-					PathInternal: internalRepoPath,
-					PathExternal: externalRepoPath,
-				},
-				&stages.Docker{
-					Cmd:            dockerCli,
-					Client:         dockerClient,
-					DataMountPoint: dataMountPoint,
-				},
-				&webhook.ParsedPayload{},
-				appConfig,
-				dc,
-				secretProvider,
-			)
-
-			err := stageMgr.RunStages(ctx)
-			if err != nil {
-				resultCh <- pollResult{Metadata: metadata, Err: err}
-				return
-			}
-
-			resultCh <- pollResult{Metadata: metadata, Err: nil}
-		}(deployConfig)
-	}
-
-	// Wait for all deployments to finish
-	deployWg.Wait()
-	close(resultCh)
-
-	for r := range resultCh {
-		results = append(results, r)
-	}
+	deployErr := handleDeploys(ctx, jobLog,
+		appConfig,
+		dataMountPoint,
+		dockerCli,
+		secretProvider,
+		metadata.JobID,
+		stages.JobTriggerPoll,
+		stages.RepositoryData{
+			CloneURL:     config.HttpUrl(cloneUrl),
+			Name:         repoName,
+			PathInternal: internalRepoPath,
+			PathExternal: externalRepoPath,
+		},
+		deployConfigs,
+		&webhook.ParsedPayload{},
+		"",
+	)
 
 	nextRun := time.Now().Add(time.Duration(pollConfig.Interval) * time.Second).Format(time.RFC3339)
 	elapsedTime := time.Since(startTime)
 
-	var hasErrors bool
-
-	for _, result := range results {
-		if result.Err != nil {
-			hasErrors = true
-
-			break
-		}
-	}
-
-	if hasErrors {
+	if deployErr != nil {
 		prometheus.PollErrors.WithLabelValues(repoName).Inc()
-		jobLog.Warn("job completed with errors", slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()), slog.String("next_run", nextRun))
+		jobLog.Warn("job completed with errors", log.ErrAttr(deployErr), slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()), slog.String("next_run", nextRun))
 	} else {
 		jobLog.Info("job completed successfully", slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()), slog.String("next_run", nextRun))
 	}
