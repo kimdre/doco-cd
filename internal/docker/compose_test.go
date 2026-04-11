@@ -184,22 +184,11 @@ func TestDeployCompose(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	auth, err := git.GetAuthMethod(p.CloneURL, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	repo, err := git.CloneOrUpdateRepository(slog.Default(), p.CloneURL, p.Ref, tmpDir, tmpDir,
+		p.Private, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken, c.SkipTLSVerification,
+		c.HttpProxy, c.GitCloneSubmodules)
 	if err != nil {
-		t.Fatalf("Failed to get auth method: %v", err)
-	}
-
-	if auth != nil {
-		t.Logf("Using auth method: %s", auth.Name())
-	} else {
-		t.Log("No auth method configured, using anonymous access")
-	}
-
-	repo, err := git.CloneRepository(tmpDir, p.CloneURL, p.Ref, c.SkipTLSVerification, c.HttpProxy, auth, c.GitCloneSubmodules)
-	if err != nil {
-		if !errors.Is(err, git.ErrRepositoryAlreadyExists) {
-			t.Fatal(err)
-		}
+		t.Fatal(err)
 	}
 
 	latestCommit, err := git.GetLatestCommit(repo, p.Ref)

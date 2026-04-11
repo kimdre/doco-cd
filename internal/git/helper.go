@@ -30,6 +30,14 @@ func CloneOrUpdateRepository(log *slog.Logger,
 		return nil, ErrMissingAuthToken
 	}
 
+	if auth != nil {
+		log.Debug("Using auth method",
+			slog.String("name", auth.Name()),
+		)
+	} else {
+		log.Debug("No auth method configured, using anonymous access")
+	}
+
 	var repo *git.Repository
 	// Try to clone the repository
 	repo, err = CloneRepository(internalRepoPath, cloneUrl, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules)

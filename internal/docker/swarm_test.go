@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"log/slog"
 	"path/filepath"
 	"testing"
 	"time"
@@ -52,20 +53,11 @@ func TestDeploySwarmStack(t *testing.T) {
 		Private:   true,
 	}
 
-	auth, err := git.GetAuthMethod(p.CloneURL, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	repo, err := git.CloneOrUpdateRepository(slog.Default(), p.CloneURL, p.Ref, tmpDir, tmpDir,
+		p.Private, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken, c.SkipTLSVerification,
+		c.HttpProxy, c.GitCloneSubmodules)
 	if err != nil {
-		t.Fatalf("Failed to get auth method: %v", err)
-	}
-
-	if auth != nil {
-		t.Logf("Using auth method: %s", auth.Name())
-	} else {
-		t.Log("No auth method configured, using anonymous access")
-	}
-
-	repo, err := git.CloneRepository(tmpDir, p.CloneURL, git.SwarmModeBranch, c.SkipTLSVerification, c.HttpProxy, auth, c.GitCloneSubmodules)
-	if err != nil {
-		t.Fatalf("Failed to clone repository: %v", err)
+		t.Fatal(err)
 	}
 
 	worktree, err := repo.Worktree()
