@@ -316,7 +316,7 @@ func generateShortHash(data io.Reader) (hash string, err error) {
 	return hash, nil
 }
 
-func PruneStackConfigs(ctx context.Context, client *dockerClient.Client, namespace string) error {
+func PruneStackConfigs(ctx context.Context, client dockerClient.APIClient, namespace string) error {
 	// List all configs in the swarm
 	configs, err := GetLabeledConfigs(ctx, client, swarmInternal.StackNamespaceLabel, namespace)
 	if err != nil {
@@ -341,7 +341,7 @@ func PruneStackConfigs(ctx context.Context, client *dockerClient.Client, namespa
 	return nil
 }
 
-func PruneStackSecrets(ctx context.Context, client *dockerClient.Client, namespace string) error {
+func PruneStackSecrets(ctx context.Context, client dockerClient.APIClient, namespace string) error {
 	// List all secrets in the swarm
 	secrets, err := GetLabeledSecrets(ctx, client, swarmInternal.StackNamespaceLabel, namespace)
 	if err != nil {
@@ -367,7 +367,7 @@ func PruneStackSecrets(ctx context.Context, client *dockerClient.Client, namespa
 }
 
 // WaitForSwarmService waits until a swarm service exists (and optionally has published ports).
-func WaitForSwarmService(ctx context.Context, t *testing.T, cli *dockerClient.Client, serviceName string, timeout time.Duration) (swarmTypes.Service, error) {
+func WaitForSwarmService(ctx context.Context, t *testing.T, cli dockerClient.APIClient, serviceName string, timeout time.Duration) (swarmTypes.Service, error) {
 	t.Helper()
 
 	deadline := time.Now().Add(timeout)
@@ -392,7 +392,7 @@ func WaitForSwarmService(ctx context.Context, t *testing.T, cli *dockerClient.Cl
 
 // RestartService restarts long-running Swarm services by bumping ForceUpdate.
 // For job-mode services (replicated-job/global-job), it returns ErrJobServiceRestartNotSupported.
-func RestartService(ctx context.Context, cli *dockerClient.Client, serviceName string) error {
+func RestartService(ctx context.Context, cli dockerClient.APIClient, serviceName string) error {
 	result, err := cli.ServiceInspect(ctx, serviceName, dockerClient.ServiceInspectOptions{
 		InsertDefaults: true,
 	})
@@ -430,7 +430,7 @@ func RestartService(ctx context.Context, cli *dockerClient.Client, serviceName s
 //
 // Note: Swarm does not allow UpdateConfig / RollbackConfig on job-mode services, so we must
 // strip those fields before calling ServiceUpdate.
-func RerunJobService(ctx context.Context, cli *dockerClient.Client, serviceName string) error {
+func RerunJobService(ctx context.Context, cli dockerClient.APIClient, serviceName string) error {
 	result, err := cli.ServiceInspect(ctx, serviceName, dockerClient.ServiceInspectOptions{
 		InsertDefaults: true,
 	})

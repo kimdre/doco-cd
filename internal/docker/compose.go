@@ -422,7 +422,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 // DeployStack deploys the stack using the provided deployment configuration.
 func DeployStack(
 	jobLog *slog.Logger, externalRepoPath string, ctx *context.Context,
-	dockerCli *command.Cli, dockerClient *client.Client, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
+	dockerCli *command.Cli, dockerClient client.APIClient, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
 	detectedChanges []Change, needSignal []SignalService, latestCommit, appVersion string,
 ) error {
 	startTime := time.Now()

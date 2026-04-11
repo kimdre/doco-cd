@@ -22,7 +22,7 @@ import (
 // CleanupObsoleteAutoDiscoveredContainers removes obsolete auto-discovered containers that are no longer defined in
 // the current deployment configurations but still exist on the Docker host.
 func CleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.Logger,
-	dockerClient *client.Client, dockerCli command.Cli,
+	dockerClient client.APIClient, dockerCli command.Cli,
 	cloneUrl string, deployConfigs []*config.DeployConfig, metadata notification.Metadata,
 ) error {
 	autoDiscoveredNames := make(map[string]bool)

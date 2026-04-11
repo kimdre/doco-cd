@@ -41,7 +41,7 @@ type handlerData struct {
 	appVersion     string               // Application version
 	dataMountPoint container.MountPoint // Mount point for the data directory
 	dockerCli      command.Cli          // Docker CLI client
-	dockerClient   *client.Client       // Docker client
+	dockerClient   client.APIClient     // Docker client
 	log            *logger.Logger       // Logger for logging messages
 	secretProvider *secretprovider.SecretProvider
 	testName       string // Overwrites the deployConfig.Name to make test deployments unique and prevent conflicts between tests when running in parallel. Not used in production.
@@ -76,7 +76,7 @@ func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any
 // HandleEvent executes the deployment process for a given webhook event.
 func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *config.AppConfig,
 	dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget, jobID string,
-	dockerCli command.Cli, dockerClient *client.Client, secretProvider *secretprovider.SecretProvider,
+	dockerCli command.Cli, dockerClient client.APIClient, secretProvider *secretprovider.SecretProvider,
 	testName string,
 ) {
 	var err error

@@ -133,7 +133,7 @@ func pollError(jobLog *slog.Logger, metadata notification.Metadata, err error) {
 
 // RunPoll deploys compose projects based on the provided configuration.
 func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *config.AppConfig, dataMountPoint container.MountPoint,
-	dockerCli command.Cli, dockerClient *client.Client, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
+	dockerCli command.Cli, dockerClient client.APIClient, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
 ) []pollResult {
 	var err error
 

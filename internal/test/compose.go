@@ -27,7 +27,7 @@ type ComposeStack struct {
 	Name      string
 	Service   api.Compose
 	DockerCli command.Cli
-	Client    *client.Client
+	Client    client.APIClient
 }
 
 // composeOptions holds the configuration for [ComposeUp].

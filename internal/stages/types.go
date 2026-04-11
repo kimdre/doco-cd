@@ -117,7 +117,7 @@ type RepositoryData struct {
 // Docker holds the Docker CLI and client instances along with the data mount point.
 type Docker struct {
 	Cmd            command.Cli
-	Client         *client.Client
+	Client         client.APIClient
 	DataMountPoint container.MountPoint
 	Project        *types.Project
 }
