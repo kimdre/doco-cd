@@ -9,17 +9,9 @@ import (
 )
 
 func (p *Provider) startPeriodicSync(host, port string) {
-	syncIntervalStr := getEnv("BW_SYNC_INTERVAL", "2m")
-
-	syncInterval, err := time.ParseDuration(syncIntervalStr)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "WARN: Invalid format for BW_SYNC_INTERVAL '%s', using default of 2 minutes: %v", syncIntervalStr, err)
-		syncInterval = 2 * time.Minute
-	}
-
 	syncURL := fmt.Sprintf("http://%s:%s/sync", host, port)
-	fmt.Printf("Starting periodic sync every %s targeting %s\n", syncInterval, syncURL)
-	ticker := time.NewTicker(syncInterval)
+	fmt.Printf("Starting periodic sync every %s targeting %s\n", p.cfg.SyncInterval, syncURL)
+	ticker := time.NewTicker(p.cfg.SyncInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {

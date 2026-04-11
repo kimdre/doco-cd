@@ -107,6 +107,11 @@ func (p *Provider) getSession(ctx context.Context) (string, error) {
 	p.cliSessionMu.Lock()
 	defer p.cliSessionMu.Unlock()
 
+	err := p.logout(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to logout after config server update error: %w", err)
+	}
+
 	if p.cliSession != "" {
 		return p.cliSession, nil
 	}
@@ -124,10 +129,9 @@ func (p *Provider) getSession(ctx context.Context) (string, error) {
 	} else {
 		// Set server endpoints if provided
 		cmd := exec.CommandContext(ctx, p.cliPath, "config", "server", "--api", p.cfg.ApiUrl, "--identity", p.cfg.OAuth2TokenURL)
-
 		cmd.Env = p.getEnv()
-		if err := cmd.Run(); err != nil {
-			return "", fmt.Errorf("bw config server --api failed: %w", err)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return "", fmt.Errorf("bw config server --api failed: %w; output: %s", err, out)
 		}
 	}
 
@@ -140,7 +144,12 @@ func (p *Provider) getSession(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("bw login failed: %w", err)
 	}
 
-	p.cliSession = strings.TrimSpace(string(out))
+	sessionToken := strings.TrimSpace(string(out))
+	if sessionToken == "" {
+		return "", errors.New("bw login did not return a session token")
+	}
+
+	p.cliSession = sessionToken
 
 	return p.cliSession, nil
 }
@@ -153,6 +162,31 @@ func (p *Provider) closeSession(ctx context.Context, session string) error {
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("bw logout failed: %w", err)
+	}
+
+	return nil
+}
+
+func (p *Provider) logout(ctx context.Context) error {
+	p.cliSessionMu.Lock()
+	defer p.cliSessionMu.Unlock()
+
+	if p.cliSession == "" {
+		return nil
+	}
+
+	if p.cliSession != "" {
+		err := p.closeSession(ctx, p.cliSession)
+		if err != nil {
+			return err
+		}
+		p.cliSession = ""
+	} else {
+		logoutCmd := exec.CommandContext(ctx, p.cliPath, "logout")
+		logoutCmd.Env = p.getEnv()
+		if logoutOut, logoutErr := logoutCmd.CombinedOutput(); logoutErr != nil {
+			return fmt.Errorf("bw logout failed: %w; output: %s", logoutErr, logoutOut)
+		}
 	}
 
 	return nil
@@ -173,6 +207,11 @@ func (p *Provider) GetSecret(ctx context.Context, id string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("bw get item failed: %w", err)
 	}
+
+	if strings.TrimSpace(string(out)) == "" {
+		return "", errors.New("bw get item returned empty output")
+	}
+
 	// Parse the output JSON to extract the password or private key
 	item := struct {
 		Type  int `json:"type"`
@@ -188,7 +227,7 @@ func (p *Provider) GetSecret(ctx context.Context, id string) (string, error) {
 
 	err = json.Unmarshal(out, &item)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse bw item JSON: %w", err)
+		return "", fmt.Errorf("failed to parse bw item JSON: %w; content: %s", err, string(out))
 	}
 
 	if item.Type == 1 && item.Login != nil {
