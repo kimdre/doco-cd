@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -165,9 +164,6 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			slog.String("event", string(stages.JobTriggerPoll)),
 			slog.Any("config", pollConfig)))
 
-	jobLog.Debug("get repository",
-		slog.String("url", cloneUrl))
-
 	internalRepoPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
 	if err != nil {
 		pollError(jobLog, metadata, fmt.Errorf("failed to verify and sanitize internal filesystem path: %w", err))
@@ -182,36 +178,13 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		return append(results, pollResult{Metadata: metadata, Err: err})
 	}
 
-	jobLog.Debug("cloning repository",
-		slog.String("reference", pollConfig.Reference),
-		slog.String("container_path", internalRepoPath),
-		slog.String("host_path", externalRepoPath))
-
-	auth, err := git.GetAuthMethod(cloneUrl, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken)
-	if err != nil {
-		pollError(jobLog, metadata, fmt.Errorf("failed to get auth method: %w", err))
+	if _, err := git.CloneOrUpdateRepository(jobLog,
+		cloneUrl, pollConfig.Reference, internalRepoPath, externalRepoPath,
+		false, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken,
+		appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.GitCloneSubmodules,
+	); err != nil {
+		pollError(jobLog, metadata, fmt.Errorf("failed to clone repository: %w", err))
 		return append(results, pollResult{Metadata: metadata, Err: err})
-	}
-
-	_, err = git.CloneRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules)
-	if err != nil {
-		// If the repository already exists, check it out to the specified commit SHA
-		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
-			jobLog.Debug("repository already exists, checking out reference "+pollConfig.Reference, slog.String("host_path", externalRepoPath))
-
-			_, err = git.UpdateRepository(internalRepoPath, cloneUrl, pollConfig.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules)
-			if err != nil {
-				pollError(jobLog, metadata, fmt.Errorf("failed to checkout repository: %w", err))
-
-				return append(results, pollResult{Metadata: metadata, Err: err})
-			}
-		} else {
-			pollError(jobLog, metadata, fmt.Errorf("failed to clone repository: %w", err))
-
-			return append(results, pollResult{Metadata: metadata, Err: err})
-		}
-	} else {
-		jobLog.Debug("repository cloned", slog.String("path", externalRepoPath))
 	}
 
 	jobLog.Debug("retrieving deployment configuration")

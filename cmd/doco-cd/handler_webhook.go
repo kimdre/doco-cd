@@ -117,22 +117,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		cloneUrl = payload.SSHUrl
 	}
 
-	// Clone the repository
-	jobLog.Debug(
-		"get repository",
-		slog.String("url", cloneUrl))
-
-	auth, err := git.GetAuthMethod(cloneUrl, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken)
-	if err != nil {
-		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to set up authentication", err.Error(), http.StatusInternalServerError, metadata)
-		return
-	}
-
-	if auth == nil && payload.Private {
-		onError(w, jobLog, "missing access token for private repository", "", http.StatusInternalServerError, metadata)
-		return
-	}
-
 	// Validate payload.FullName to prevent directory traversal
 	if strings.Contains(payload.FullName, "..") {
 		onError(w, jobLog.With(slog.String("repository", payload.FullName)), "invalid repository name", "", http.StatusBadRequest, metadata)
@@ -154,26 +138,13 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		return
 	}
 
-	// Try to clone the repository
-	_, err = git.CloneRepository(internalRepoPath, cloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules)
-	if err != nil {
-		// If the repository already exists, check it out to the specified commit SHA
-		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
-			jobLog.Debug("repository already exists, checking out reference "+payload.Ref, slog.String("host_path", externalRepoPath))
-
-			_, err = git.UpdateRepository(internalRepoPath, cloneUrl, payload.Ref, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules)
-			if err != nil {
-				onError(w, jobLog.With(logger.ErrAttr(err)), "failed to checkout repository", err.Error(), http.StatusInternalServerError, metadata)
-
-				return
-			}
-		} else {
-			onError(w, jobLog.With(logger.ErrAttr(err)), "failed to clone repository", err.Error(), http.StatusInternalServerError, metadata)
-
-			return
-		}
-	} else {
-		jobLog.Debug("repository cloned", slog.String("path", externalRepoPath))
+	if _, err := git.CloneOrUpdateRepository(jobLog,
+		cloneUrl, payload.Ref, internalRepoPath, externalRepoPath,
+		payload.Private, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken,
+		appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.GitCloneSubmodules,
+	); err != nil {
+		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to clone repository", err.Error(), http.StatusInternalServerError, metadata)
+		return
 	}
 
 	jobLog.Debug("retrieving deployment configuration")
