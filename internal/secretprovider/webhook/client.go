@@ -31,6 +31,7 @@ type ValueProvider struct {
 	query         *jmespath.JMESPath
 	client        *http.Client
 	customHeaders map[string]string
+	bearerToken   string
 }
 
 // NewValueProvider returns a new ValueProvider based on the given configuration.
@@ -44,6 +45,7 @@ func NewValueProvider(ctx context.Context, cfg *Config) (*ValueProvider, error) 
 	result := &ValueProvider{
 		client:        &http.Client{Transport: rt},
 		customHeaders: cfg.CustomHeaders,
+		bearerToken:   cfg.BearerToken,
 	}
 
 	result.query, err = jmespath.Compile(cfg.ResultJMESPath)
@@ -105,7 +107,8 @@ func (p *ValueProvider) newRequest(ctx context.Context, id string) (*http.Reques
 
 	buf := new(bytes.Buffer)
 	tplParams := map[string]string{
-		"remoteRef": id,
+		"remoteRef":   id,
+		"bearerToken": p.bearerToken,
 	}
 
 	if err := p.endpoint.Execute(buf, tplParams); err != nil {

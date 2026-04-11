@@ -38,10 +38,7 @@ const (
 	dataPath    = "/data"
 )
 
-var (
-	errMsg          string
-	deployerLimiter *DeployerLimiter // deployerLimiter controls the concurrency of deployments across webhook and poll handlers.
-)
+var deployerLimiter *DeployerLimiter // deployerLimiter controls the concurrency of deployments across webhook and poll handlers.
 
 // GetProxyUrlRedacted takes a proxy URL string and redacts the password if it exists.
 func GetProxyUrlRedacted(proxyUrl string) string {
@@ -167,13 +164,12 @@ func main() {
 	}
 
 	if c.DockerSwarmFeatures {
-		swarm.ModeEnabled, err = swarm.CheckDaemonIsSwarmManager(ctx, dockerCli)
-		if err != nil {
+		if err := swarm.RefreshModeEnabled(ctx, dockerCli); err != nil {
 			log.Critical("failed to check if docker daemon is a swarm manager", logger.ErrAttr(err))
-
 			return
 		}
 	} else {
+		swarm.SetDisableSwarmFeature(true)
 		log.Debug("swarm features disabled by configuration")
 	}
 
@@ -181,7 +177,7 @@ func main() {
 		slog.Group("versions",
 			slog.String("docker_client", dockerClient.ClientVersion()),
 			slog.String("docker_api", dockerCli.CurrentVersion()),
-			slog.Bool("swarm_mode", swarm.ModeEnabled),
+			slog.Bool("swarm_mode", swarm.GetModeEnabled()),
 		))
 
 	// Get doco-cd container id

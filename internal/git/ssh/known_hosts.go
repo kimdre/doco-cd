@@ -1,13 +1,13 @@
 package ssh
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"net"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,20 +23,31 @@ const (
 	DefaultGitSSHPort = 22    // Default SSH port for Git servers
 )
 
-var KnownHostsFilePath = filepath.Join(os.TempDir(), "known_hosts")
+var (
+	KnownHostsFilePath   = filepath.Join(os.TempDir(), "known_hosts")
+	fetchHostPublicKeyFn = fetchHostPublicKey
+)
+
+type sshEndpoint struct {
+	host string
+	port string
+}
+
+func (e sshEndpoint) dialAddress() string {
+	return net.JoinHostPort(e.host, e.port)
+}
 
 // fetchHostPublicKey connects to the SSH server and returns its public key.
-func fetchHostPublicKey(host string) (ssh.PublicKey, error) {
-	addr := host
-	if !strings.Contains(host, ":") {
-		addr = host + fmt.Sprintf(":%d", DefaultGitSSHPort)
-	}
+
+func fetchHostPublicKey(endpoint sshEndpoint) (ssh.PublicKey, error) {
+	addr := endpoint.dialAddress()
 
 	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to %s: %w", addr, err)
 	}
-	defer conn.Close() // nolint:errcheck
+
+	defer func() { _ = conn.Close() }()
 
 	hostKeyCallback, err := knownhosts.New(KnownHostsFilePath)
 	if err != nil {
@@ -75,31 +86,158 @@ func createKnownHostsFile() error {
 		if err != nil {
 			return fmt.Errorf("failed to create known_hosts file: %w", err)
 		}
-		defer file.Close() // nolint:errcheck
+
+		defer func() { _ = file.Close() }()
 	}
 
 	return os.Setenv(KnownHostsEnvVar, KnownHostsFilePath)
 }
 
-// formatKnownHostLine returns a known_hosts formatted line for the given host and key.
-func formatKnownHostLine(host string, key ssh.PublicKey) string {
-	return fmt.Sprintf("%s %s %s", host, key.Type(), base64.StdEncoding.EncodeToString(key.Marshal()))
+// formatKnownHostLine returns a known_hosts formatted line for the given address and key.
+func formatKnownHostLine(address string, key ssh.PublicKey) string {
+	return knownhosts.Line([]string{address}, key)
+}
+
+// knownHostsContainsEndpoint checks if the known_hosts content contains an entry for the given SSH endpoint.
+func knownHostsContainsEndpoint(content string, endpoint sshEndpoint) bool {
+	target := knownhosts.Normalize(endpoint.dialAddress())
+
+	for _, rawLine := range strings.Split(content, "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+
+		hostsFieldIndex := 0
+
+		if strings.HasPrefix(fields[0], "@") {
+			if len(fields) < 3 {
+				continue
+			}
+
+			hostsFieldIndex = 1
+		}
+
+		for _, hostEntry := range strings.Split(fields[hostsFieldIndex], ",") {
+			if hostEntry == target {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// rewriteKnownHostsWithoutEndpoint removes any entries for the given SSH endpoint from the known_hosts content.
+func rewriteKnownHostsWithoutEndpoint(content string, endpoint sshEndpoint) (string, bool) {
+	target := knownhosts.Normalize(endpoint.dialAddress())
+	removed := false
+
+	updatedLines := make([]string, 0)
+
+	for _, rawLine := range strings.Split(content, "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" {
+			continue
+		}
+
+		if strings.HasPrefix(line, "#") {
+			updatedLines = append(updatedLines, rawLine)
+			continue
+		}
+
+		fields := strings.Fields(rawLine)
+		if len(fields) < 2 {
+			updatedLines = append(updatedLines, rawLine)
+			continue
+		}
+
+		hostsFieldIndex := 0
+
+		if strings.HasPrefix(fields[0], "@") {
+			if len(fields) < 3 {
+				updatedLines = append(updatedLines, rawLine)
+				continue
+			}
+
+			hostsFieldIndex = 1
+		}
+
+		hostEntries := strings.Split(fields[hostsFieldIndex], ",")
+
+		filteredHosts := make([]string, 0, len(hostEntries))
+		for _, hostEntry := range hostEntries {
+			if hostEntry == target {
+				removed = true
+				continue
+			}
+
+			filteredHosts = append(filteredHosts, hostEntry)
+		}
+
+		if len(filteredHosts) == 0 {
+			continue
+		}
+
+		if len(filteredHosts) != len(hostEntries) {
+			fields[hostsFieldIndex] = strings.Join(filteredHosts, ",")
+			updatedLines = append(updatedLines, strings.Join(fields, " "))
+
+			continue
+		}
+
+		updatedLines = append(updatedLines, rawLine)
+	}
+
+	return strings.Join(updatedLines, "\n"), removed
+}
+
+func overwriteKnownHosts(content string) error {
+	if content != "" {
+		content += "\n"
+	}
+
+	if err := os.WriteFile(KnownHostsFilePath, []byte(content), filesystem.PermOwner); err != nil { // #nosec G304
+		return fmt.Errorf("failed to write known_hosts: %w", err)
+	}
+
+	return nil
+}
+
+// IsHostKeyMismatchError returns true when an SSH operation failed due to host key mismatch.
+func IsHostKeyMismatchError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	message := strings.ToLower(err.Error())
+
+	return strings.Contains(message, "knownhosts: key mismatch")
 }
 
 // addHostToKnownHosts retrieves the host key and adds it to known_hosts.
-func addHostToKnownHosts(host string) error {
-	serverKey, err := fetchHostPublicKey(host)
-	if err != nil {
-		return err
-	}
-
-	knownHostLine := formatKnownHostLine(host, serverKey)
-
-	// Check if the host is already in known_hosts
+func addHostToKnownHosts(endpoint sshEndpoint) error {
+	// Skip probing if we already have an entry for this endpoint.
 	content, err := os.ReadFile(KnownHostsFilePath) // #nosec G304
 	if err != nil {
 		return fmt.Errorf("failed to read known_hosts: %w", err)
 	}
+
+	if knownHostsContainsEndpoint(string(content), endpoint) {
+		return nil
+	}
+
+	serverKey, err := fetchHostPublicKeyFn(endpoint)
+	if err != nil {
+		return err
+	}
+
+	knownHostLine := formatKnownHostLine(endpoint.dialAddress(), serverKey)
 
 	if strings.Contains(string(content), knownHostLine) {
 		return nil // Host already exists
@@ -109,7 +247,8 @@ func addHostToKnownHosts(host string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open known_hosts: %w", err)
 	}
-	defer f.Close() // nolint:errcheck
+
+	defer func() { _ = f.Close() }()
 
 	if _, err := f.WriteString(knownHostLine + "\n"); err != nil {
 		return fmt.Errorf("failed to write to known_hosts: %w", err)
@@ -118,25 +257,55 @@ func addHostToKnownHosts(host string) error {
 	return os.Setenv(KnownHostsEnvVar, KnownHostsFilePath)
 }
 
-// extractHostFromSSHUrl extracts the host/domain from an SSH URL.
-func extractHostFromSSHUrl(sshUrl string) (string, error) {
+// RefreshKnownHost replaces the known_hosts entry for the given SSH URL and fetches the current server key.
+func RefreshKnownHost(url string) error {
+	if err := createKnownHostsFile(); err != nil {
+		return fmt.Errorf("failed to create known_hosts file: %w", err)
+	}
+
+	endpoint, err := extractHostAndPortFromSSHUrl(url)
+	if err != nil {
+		return fmt.Errorf("failed to extract host from SSH URL: %w", err)
+	}
+
+	content, err := os.ReadFile(KnownHostsFilePath) // #nosec G304
+	if err != nil {
+		return fmt.Errorf("failed to read known_hosts: %w", err)
+	}
+
+	updatedContent, removed := rewriteKnownHostsWithoutEndpoint(string(content), endpoint)
+	if removed {
+		if err = overwriteKnownHosts(updatedContent); err != nil {
+			return err
+		}
+	}
+
+	if err = addHostToKnownHosts(endpoint); err != nil {
+		return fmt.Errorf("failed to refresh host in known_hosts: %w", err)
+	}
+
+	return nil
+}
+
+// extractHostAndPortFromSSHUrl extracts the host and port from an SSH URL.
+func extractHostAndPortFromSSHUrl(sshUrl string) (sshEndpoint, error) {
 	if strings.HasPrefix(sshUrl, "ssh://") {
 		u, err := url.Parse(sshUrl)
 		if err != nil {
-			return "", err
+			return sshEndpoint{}, err
 		}
 
-		if u.Host == "" {
-			return "", errors.New("invalid SSH URL: missing host")
+		host := u.Hostname()
+		if host == "" {
+			return sshEndpoint{}, errors.New("invalid SSH URL: missing host")
 		}
 
-		host := u.Host
-		// Remove port if present
-		if idx := strings.Index(host, ":"); idx != -1 {
-			host = host[:idx]
+		port := u.Port()
+		if port == "" {
+			port = strconv.Itoa(DefaultGitSSHPort)
 		}
 
-		return host, nil
+		return sshEndpoint{host: host, port: port}, nil
 	}
 
 	// Handle [user@]host:path format
@@ -144,20 +313,23 @@ func extractHostFromSSHUrl(sshUrl string) (string, error) {
 
 	colonIndex := strings.Index(sshUrl, ":")
 	if colonIndex == -1 {
-		return "", errors.New("invalid SSH URL: missing ':' after host")
+		return sshEndpoint{}, errors.New("invalid SSH URL: missing ':' after host")
 	}
 
-	if atIndex != -1 && atIndex < colonIndex {
-		// user@host:path
-		host := sshUrl[atIndex+1 : colonIndex]
-		return host, nil
-	} else if atIndex == -1 {
+	var host string
+
+	switch {
+	case atIndex == -1:
 		// host:path
-		host := sshUrl[:colonIndex]
-		return host, nil
+		host = sshUrl[:colonIndex]
+	case atIndex < colonIndex:
+		// user@host:path
+		host = sshUrl[atIndex+1 : colonIndex]
+	default:
+		return sshEndpoint{}, errors.New("invalid SSH URL format")
 	}
 
-	return "", errors.New("invalid SSH URL format")
+	return sshEndpoint{host: host, port: strconv.Itoa(DefaultGitSSHPort)}, nil
 }
 
 // AddToKnownHosts adds the host from the SSH URL to the known_hosts file.
@@ -167,10 +339,10 @@ func AddToKnownHosts(url string) error {
 		return fmt.Errorf("failed to create known_hosts file: %w", err)
 	}
 
-	host, err := extractHostFromSSHUrl(url)
+	endpoint, err := extractHostAndPortFromSSHUrl(url)
 	if err != nil {
 		return fmt.Errorf("failed to extract host from SSH URL: %w", err)
 	}
 
-	return addHostToKnownHosts(host)
+	return addHostToKnownHosts(endpoint)
 }

@@ -301,6 +301,7 @@ func LoadCompose(ctx context.Context, repoPath, workingDir, projectName string, 
 // deployCompose deploys a project as specified by the Docker Compose specification (LoadCompose).
 func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project,
 	deployConfig *config.DeployConfig, recreateMode string, services []string,
+	needSignal []SignalService,
 ) error {
 	var (
 		err          error
@@ -311,6 +312,12 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	service, err := compose.NewComposeService(dockerCli)
 	if err != nil {
 		return err
+	}
+
+	if len(needSignal) > 0 {
+		if err := ComposeSignal(ctx, dockerCli, project, needSignal); err != nil {
+			return err
+		}
 	}
 
 	if deployConfig.PruneImages {
@@ -416,7 +423,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 func DeployStack(
 	jobLog *slog.Logger, externalRepoPath string, ctx *context.Context,
 	dockerCli *command.Cli, dockerClient *client.Client, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
-	changedFiles []gitInternal.ChangedFile, latestCommit, appVersion string, forceDeploy bool,
+	detectedChanges []Change, needSignal []SignalService, latestCommit, appVersion string,
 ) error {
 	startTime := time.Now()
 
@@ -467,7 +474,7 @@ func DeployStack(
 	}
 
 	// When SwarmModeEnabled is true, we deploy the stack using Docker Swarm.
-	if swarm.ModeEnabled {
+	if swarm.GetModeEnabled() {
 		stackLog.Info("deploying swarm stack")
 
 		cfg, opts, err := LoadSwarmStack(dockerCli, project, deployConfig, externalWorkingDir)
@@ -520,12 +527,6 @@ func DeployStack(
 			}
 		}
 	} else {
-		detectedChanges, err := ProjectFilesHaveChanges(externalRepoPath, changedFiles, project)
-		if err != nil {
-			errMsg := "failed to check for changed project files"
-			return fmt.Errorf("%s: %w", errMsg, err)
-		}
-
 		addComposeServiceLabels(project, deployConfig, payload, externalWorkingDir, appVersion, timestamp, ComposeVersion, latestCommit, projectHash)
 		addComposeVolumeLabels(project, deployConfig, payload, appVersion, timestamp, ComposeVersion, latestCommit, projectHash)
 
@@ -533,10 +534,6 @@ func DeployStack(
 		recreateMode := api.RecreateDiverged
 
 		switch {
-		case forceDeploy:
-			recreateMode = api.RecreateForce
-
-			stackLog.Debug("force deploy enabled, forcing recreate of all services")
 		case len(detectedChanges) > 0:
 			recreateMode = api.RecreateForce
 
@@ -545,11 +542,21 @@ func DeployStack(
 			}
 
 			stackLog.Debug("changed project files detected, forcing recreate", slog.Any("changes", detectedChanges))
+		case len(needSignal) > 0:
+			stackLog.Debug("changed project files detected, sending signal to service",
+				slog.Any("need_signal", needSignal))
 		}
 
-		stackLog.Info("deploying stack", slog.Group("recreate", slog.String("mode", recreateMode), slog.Any("forced_services", forcedServices.ToSlice())))
+		stackLog.Info("deploying stack",
+			slog.Group("recreate",
+				slog.String("mode", recreateMode),
+				slog.Any("forced_services", forcedServices.ToSlice()),
+			),
+			slog.Any("need_signal", needSignal),
+		)
 
-		err = deployCompose(*ctx, *dockerCli, project, deployConfig, recreateMode, forcedServices.ToSlice())
+		err = deployCompose(*ctx, *dockerCli, project, deployConfig, recreateMode,
+			forcedServices.ToSlice(), needSignal)
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 			return fmt.Errorf("failed to deploy stack: %w", err)
@@ -572,7 +579,7 @@ func DestroyStack(
 
 	stackLog.Info("destroying stack")
 
-	if swarm.ModeEnabled {
+	if swarm.GetModeEnabled() {
 		err := RemoveSwarmStack(*ctx, *dockerCli, deployConfig.Name)
 		if err != nil {
 			errMsg := "failed to destroy swarm stack"
@@ -605,7 +612,7 @@ func DestroyStack(
 	return nil
 }
 
-func getPaths(changedFiles []gitInternal.ChangedFile, basePath string) []string {
+func GetPathsFromGitChangedFiles(changedFiles []gitInternal.ChangedFile, basePath string) []string {
 	var absPaths []string
 
 	basePath = filepath.Clean(basePath)
@@ -632,7 +639,7 @@ func getPaths(changedFiles []gitInternal.ChangedFile, basePath string) []string 
 }
 
 // HasChangedConfigs checks if any files used in docker compose `configs:` definitions have changed using the Git status.
-func HasChangedConfigs(paths []string, project *types.Project) ([]string, error) {
+func HasChangedConfigs(repoPathExternal string, paths []string, project *types.Project, ignoreCfg projectIgnoreCfg) ([]string, []string) {
 	configToServicesMap := make(map[string][]string)
 
 	for name, s := range project.Services {
@@ -641,26 +648,37 @@ func HasChangedConfigs(paths []string, project *types.Project) ([]string, error)
 		}
 	}
 
-	var changedServices []string
+	var (
+		changedServices []string
+		ignoredServices []string
+	)
 
-	for name, c := range project.Configs {
+	for cfgName, c := range project.Configs {
 		// Changes in config.Content are handled in project hash comparison
 		if c.File == "" {
 			continue
 		}
 
 		for _, p := range paths {
-			if filesystem.InBasePath(c.File, p) {
-				changedServices = append(changedServices, configToServicesMap[name]...)
+			// ignore change outside repo
+			if filesystem.InBasePath(c.File, p) &&
+				filesystem.InBasePath(repoPathExternal, c.File) {
+				for _, svcName := range configToServicesMap[cfgName] {
+					if !checkIsIgnoreByCfg(ignoreCfg, svcName, changeScopeConfigs, cfgName) {
+						changedServices = append(changedServices, svcName)
+					} else {
+						ignoredServices = append(ignoredServices, svcName)
+					}
+				}
 			}
 		}
 	}
 
-	return slice.Unique(changedServices), nil
+	return getChangeAndIgnore(changedServices, ignoredServices)
 }
 
 // HasChangedSecrets checks if any files used in docker compose `secrets:` definitions have changed using the Git status.
-func HasChangedSecrets(paths []string, project *types.Project) ([]string, error) {
+func HasChangedSecrets(repoPathExternal string, paths []string, project *types.Project, ignoreCfg projectIgnoreCfg) ([]string, []string) {
 	secretsToServicesMap := make(map[string][]string)
 
 	for name, s := range project.Services {
@@ -669,34 +687,55 @@ func HasChangedSecrets(paths []string, project *types.Project) ([]string, error)
 		}
 	}
 
-	var changedServices []string
+	var (
+		changedServices []string
+		ignoredServices []string
+	)
 
-	for name, s := range project.Secrets {
+	for secretName, s := range project.Secrets {
 		if s.File == "" {
 			continue
 		}
 
 		for _, p := range paths {
-			if filesystem.InBasePath(s.File, p) {
-				changedServices = append(changedServices, secretsToServicesMap[name]...)
+			// ignore change outside repo
+			if filesystem.InBasePath(s.File, p) &&
+				filesystem.InBasePath(repoPathExternal, s.File) {
+				for _, svcName := range secretsToServicesMap[secretName] {
+					if !checkIsIgnoreByCfg(ignoreCfg, svcName, changeScopeSecrets, secretName) {
+						changedServices = append(changedServices, svcName)
+					} else {
+						ignoredServices = append(ignoredServices, svcName)
+					}
+				}
 			}
 		}
 	}
 
-	return slice.Unique(changedServices), nil
+	return getChangeAndIgnore(changedServices, ignoredServices)
 }
 
 // HasChangedBindMounts checks if any files used in docker compose `volumes:` definitions with type `bind` have changed using the Git status.
-func HasChangedBindMounts(paths []string, project *types.Project) ([]string, error) {
-	var changedServices []string
+func HasChangedBindMounts(repoPathExternal string, paths []string, project *types.Project, ignoreCfg projectIgnoreCfg) ([]string, []string) {
+	var (
+		changedServices []string
+		ignoredServices []string
+	)
 
 	for _, s := range project.Services {
 	out:
 		for _, v := range s.Volumes {
 			if v.Type == "bind" && v.Source != "" {
 				for _, p := range paths {
-					if filesystem.InBasePath(v.Source, p) {
-						changedServices = append(changedServices, s.Name)
+					// ignore change outside repo
+					if filesystem.InBasePath(v.Source, p) &&
+						filesystem.InBasePath(repoPathExternal, v.Source) {
+						if !checkIsIgnoreByCfg(ignoreCfg, s.Name, changeScopeBindMounts, v.Target) {
+							changedServices = append(changedServices, s.Name)
+						} else {
+							ignoredServices = append(ignoredServices, s.Name)
+						}
+
 						break out
 					}
 				}
@@ -704,18 +743,20 @@ func HasChangedBindMounts(paths []string, project *types.Project) ([]string, err
 		}
 	}
 
-	return slice.Unique(changedServices), nil
+	return getChangeAndIgnore(changedServices, ignoredServices)
 }
 
 // HasChangedEnvFiles checks if any files used in docker compose `env_file:` definitions have changed using the Git status.
-func HasChangedEnvFiles(paths []string, project *types.Project) ([]string, error) {
+func HasChangedEnvFiles(repoPathExternal string, paths []string, project *types.Project, _ projectIgnoreCfg) ([]string, []string) {
 	var changedServices []string
 
 	for _, s := range project.Services {
 	out:
 		for _, envFile := range s.EnvFiles {
 			for _, p := range paths {
-				if filesystem.InBasePath(envFile.Path, p) {
+				// ignore change outside repo
+				if filesystem.InBasePath(envFile.Path, p) &&
+					filesystem.InBasePath(repoPathExternal, envFile.Path) {
 					changedServices = append(changedServices, s.Name)
 					break out
 				}
@@ -728,7 +769,7 @@ func HasChangedEnvFiles(paths []string, project *types.Project) ([]string, error
 
 // HasChangedBuildFiles checks if any files used as build context in docker compose `build:` definitions have changed using the Git status.
 // This includes any file within the build context directory for each service. If a changed file is within a build context, it returns true.
-func HasChangedBuildFiles(paths []string, project *types.Project) ([]string, error) {
+func HasChangedBuildFiles(repoPathExternal string, paths []string, project *types.Project, _ projectIgnoreCfg) ([]string, []string) {
 	var changedServices []string
 
 	for _, s := range project.Services {
@@ -775,7 +816,9 @@ func HasChangedBuildFiles(paths []string, project *types.Project) ([]string, err
 			}
 
 			for _, p := range paths {
-				if filesystem.InBasePath(ctxFile, p) {
+				// ignore change outside repo
+				if filesystem.InBasePath(ctxFile, p) &&
+					filesystem.InBasePath(repoPathExternal, ctxFile) {
 					changedServices = append(changedServices, s.Name)
 					break out
 				}
@@ -802,34 +845,60 @@ func sortChanges(changes []Change) {
 	}
 }
 
+type IgnoredInfo struct {
+	// Ignored services name
+	Ignored []string `json:"ignored"`
+	// Ignored services need to send signal
+	NeedSendSignal []SignalService `json:"need_signal"`
+}
+
+func (i IgnoredInfo) IsEmpty() bool {
+	return len(i.Ignored) == 0 && len(i.NeedSendSignal) == 0
+}
+
+func (i IgnoredInfo) IsNeedSignal() bool {
+	return len(i.NeedSendSignal) == 0
+}
+
+type SignalService struct {
+	ServiceName string `json:"service_name"`
+	Signal      string `json:"signal"`
+}
+
 // ProjectFilesHaveChanges checks if any files related to the compose project have changed.
-func ProjectFilesHaveChanges(repoRootExternal string, changedFiles []gitInternal.ChangedFile, project *types.Project) ([]Change, error) {
+func ProjectFilesHaveChanges(repoPathExternal string, changePaths []string, project *types.Project) ([]Change, IgnoredInfo, error) {
 	checks := []struct {
-		name string
-		fn   func([]string, *types.Project) ([]string, error)
+		name changeScope
+		fn   func(string, []string, *types.Project, projectIgnoreCfg) ([]string, []string)
 	}{
-		{"configs", HasChangedConfigs},
-		{"secrets", HasChangedSecrets},
-		{"bindMounts", HasChangedBindMounts},
-		{"envFiles", HasChangedEnvFiles},
-		{"buildFiles", HasChangedBuildFiles},
+		{changeScopeConfigs, HasChangedConfigs},
+		{changeScopeSecrets, HasChangedSecrets},
+		{changeScopeBindMounts, HasChangedBindMounts},
+		{changeScopeEnvFiles, HasChangedEnvFiles},
+		{changeScopeBuildFiles, HasChangedBuildFiles},
 	}
 
-	paths := getPaths(changedFiles, repoRootExternal)
+	ignoreCfg, err := getIgnoreRecreateCfgFromProject(project)
+	if err != nil {
+		return nil, IgnoredInfo{}, err
+	}
 
-	var changes []Change
+	var (
+		changes                                []Change
+		allChangedServices, allIgnoredServices []string
+	)
 
 	for _, check := range checks {
-		changedServices, err := check.fn(paths, project)
-		if err != nil {
-			return nil, fmt.Errorf("failed to check '%s' for changes: %w", check.name, err)
-		}
+		changedServices, ignoredServices := check.fn(repoPathExternal, changePaths, project, ignoreCfg)
+
+		allChangedServices = append(allChangedServices, changedServices...)
+		allIgnoredServices = append(allIgnoredServices, ignoredServices...)
 
 		if len(changedServices) > 0 {
 			slices.Sort(changedServices)
 
 			changes = append(changes, Change{
-				Type:     check.name,
+				Type:     string(check.name),
 				Services: changedServices,
 			})
 		}
@@ -837,7 +906,24 @@ func ProjectFilesHaveChanges(repoRootExternal string, changedFiles []gitInternal
 
 	sortChanges(changes)
 
-	return changes, nil
+	_, ignores := getChangeAndIgnore(allChangedServices, allIgnoredServices)
+	slices.Sort(ignores)
+
+	retIgnored := IgnoredInfo{}
+
+	for _, svcName := range ignores {
+		sig := ignoreCfg[svcName].signal
+		if sig != "" {
+			retIgnored.NeedSendSignal = append(retIgnored.NeedSendSignal, SignalService{
+				ServiceName: svcName,
+				Signal:      sig,
+			})
+		} else {
+			retIgnored.Ignored = append(retIgnored.Ignored, svcName)
+		}
+	}
+
+	return changes, retIgnored, nil
 }
 
 // RestartProject restarts all services in the specified project.
@@ -1047,13 +1133,17 @@ func DecryptProjectFiles(repoPath string, p *types.Project) ([]string, error) {
 	for _, s := range p.Services {
 		for _, cfg := range s.Configs {
 			if cfg.Source != "" {
-				projectFiles = append(projectFiles, cfg.Source)
+				if cfgConfig, ok := p.Configs[cfg.Source]; ok && cfgConfig.File != "" {
+					projectFiles = append(projectFiles, cfgConfig.File)
+				}
 			}
 		}
 
 		for _, secret := range s.Secrets {
 			if secret.Source != "" {
-				projectFiles = append(projectFiles, secret.Source)
+				if secretConfig, ok := p.Secrets[secret.Source]; ok && secretConfig.File != "" {
+					projectFiles = append(projectFiles, secretConfig.File)
+				}
 			}
 		}
 
