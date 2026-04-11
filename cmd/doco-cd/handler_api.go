@@ -11,8 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/kimdre/doco-cd/internal/config"
 
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -20,6 +18,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 	restAPI "github.com/kimdre/doco-cd/internal/restapi"
+	"github.com/kimdre/doco-cd/internal/utils/id"
 )
 
 // registerApiEndpoints registers the API endpoints based on the application configuration and
@@ -85,7 +84,7 @@ func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request)
 		errType error
 	)
 
-	jobID := uuid.Must(uuid.NewV7()).String()
+	jobID := id.GenJobID()
 
 	metadata := notification.Metadata{
 		JobID:      jobID,
@@ -168,7 +167,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := uuid.Must(uuid.NewV7()).String()
+	jobID := id.GenJobID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")
@@ -248,7 +247,7 @@ func (h *handlerData) GetProjectsApiHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := uuid.Must(uuid.NewV7()).String()
+	jobID := id.GenJobID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")
@@ -286,7 +285,7 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 	var err error
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := uuid.Must(uuid.NewV7()).String()
+	jobID := id.GenJobID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")
@@ -392,7 +391,7 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 	var err error
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := uuid.Must(uuid.NewV7()).String()
+	jobID := id.GenJobID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")
@@ -578,7 +577,7 @@ func (h *handlerData) StackApiHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := uuid.Must(uuid.NewV7()).String()
+	jobID := id.GenJobID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")
@@ -653,7 +652,7 @@ func (h *handlerData) GetStacksApiHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := uuid.Must(uuid.NewV7()).String()
+	jobID := id.GenJobID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")
@@ -689,7 +688,7 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 	var err error
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := uuid.Must(uuid.NewV7()).String()
+	jobID := id.GenJobID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")

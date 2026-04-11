@@ -17,10 +17,10 @@ import (
 	"github.com/avast/retry-go/v5"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
-	"github.com/google/uuid"
 	"github.com/moby/moby/api/types/container"
 
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
+	"github.com/kimdre/doco-cd/internal/utils/id"
 
 	"github.com/kimdre/doco-cd/internal/test"
 
@@ -245,7 +245,7 @@ func TestHandleEvent(t *testing.T) {
 				t.Skip("Skipping test for private repository because GIT_ACCESS_TOKEN is not set")
 			}
 
-			jobID := uuid.Must(uuid.NewV7()).String()
+			jobID := id.GenJobID()
 			jobLog := logger.New(logger.LevelCritical).With(slog.String("job_id", jobID))
 
 			ctx := context.Background()

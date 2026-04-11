@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/docker/cli/cli/command"
-	"github.com/google/uuid"
 	"github.com/moby/moby/api/types/container"
 
 	"github.com/kimdre/doco-cd/internal/lock"
@@ -26,6 +25,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/git"
 	log "github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/prometheus"
+	"github.com/kimdre/doco-cd/internal/utils/id"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -49,14 +49,11 @@ func StartPoll(h *handlerData, pollConfig config.PollConfig, wg *sync.WaitGroup)
 	}
 
 	h.log.Debug("Starting poll handler", "config", pollConfig)
-	wg.Add(1)
 
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		h.PollHandler(context.Background(), pollJob)
 		h.log.Debug("PollJob handler stopped", "config", pollConfig)
-	}()
+	})
 
 	return nil
 }
@@ -72,7 +69,7 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *config.PollJob) 
 
 	for {
 		if pollJob.LastRun == 0 || time.Now().Unix() >= pollJob.NextRun {
-			jobID := uuid.Must(uuid.NewV7()).String()
+			jobID := id.GenJobID()
 			locked := repoLock.TryLock(jobID)
 
 			if !locked {

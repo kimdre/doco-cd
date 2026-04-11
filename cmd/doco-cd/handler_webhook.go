@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/docker/cli/cli/command"
-	"github.com/google/uuid"
 	"github.com/moby/moby/api/types/container"
 
 	"github.com/kimdre/doco-cd/internal/lock"
@@ -27,6 +26,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/prometheus"
+	"github.com/kimdre/doco-cd/internal/utils/id"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -202,7 +202,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	customTarget := r.PathValue("customTarget")
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := uuid.Must(uuid.NewV7()).String()
+	jobID := id.GenJobID()
 
 	jobLog := h.log.With(slog.String("job_id", jobID))
 
