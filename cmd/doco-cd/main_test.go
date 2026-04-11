@@ -19,7 +19,6 @@ import (
 	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/google/uuid"
 	"github.com/moby/moby/api/types/container"
-	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
 
@@ -215,9 +214,7 @@ func TestHandleEvent(t *testing.T) {
 		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 
-	dockerClient, _ := client.New(
-		client.FromEnv,
-	)
+	dockerClient := dockerCli.Client()
 
 	encryption.SetupAgeKeyEnvVar(t)
 

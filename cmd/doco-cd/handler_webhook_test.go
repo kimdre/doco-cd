@@ -121,9 +121,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		t.Fatalf("Failed to create docker client: %v", err)
 	}
 
-	dockerClient, _ := client.New(
-		client.FromEnv,
-	)
+	dockerClient := dockerCli.Client()
 
 	t.Cleanup(func() {
 		err = dockerCli.Client().Close()

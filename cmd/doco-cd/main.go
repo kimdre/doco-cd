@@ -145,6 +145,9 @@ func main() {
 
 		return
 	}
+
+	dockerClient := dockerCli.Client()
+
 	defer func(client client.APIClient) {
 		log.Debug("closing docker client")
 
@@ -152,16 +155,7 @@ func main() {
 		if err != nil {
 			log.Error("failed to close docker client", logger.ErrAttr(err))
 		}
-	}(dockerCli.Client())
-
-	dockerClient, err := client.New(
-		client.FromEnv,
-	)
-	if err != nil {
-		log.Critical("failed to create docker client", logger.ErrAttr(err))
-
-		return
-	}
+	}(dockerClient)
 
 	if c.DockerSwarmFeatures {
 		if err := swarm.RefreshModeEnabled(ctx, dockerClient); err != nil {

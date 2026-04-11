@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/avast/retry-go/v5"
-	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/test"
@@ -129,9 +128,7 @@ func TestDeploySwarmStack(t *testing.T) {
 
 	t.Logf("Swarm stack deployed successfully")
 
-	dockerClient, _ := client.New(
-		client.FromEnv,
-	)
+	dockerClient := dockerCli.Client()
 
 	t.Cleanup(func() {
 		err = dockerClient.Close()

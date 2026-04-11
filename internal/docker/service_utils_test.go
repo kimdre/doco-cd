@@ -11,7 +11,6 @@ import (
 
 	"github.com/avast/retry-go/v5"
 	"github.com/compose-spec/compose-go/v2/types"
-	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -466,9 +465,7 @@ services:
 
 	t.Logf("Swarm stack deployed successfully")
 
-	dockerClient, _ := client.New(
-		client.FromEnv,
-	)
+	dockerClient := dockerCli.Client()
 
 	latest, err := GetLatestDeployStatus(ctx, dockerClient, repoName, stackName)
 	if err != nil {
