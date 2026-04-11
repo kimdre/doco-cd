@@ -1,4 +1,4 @@
-package main
+package reconciliation
 
 import (
 	"context"
@@ -10,6 +10,13 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/prometheus"
 )
+
+var deployerLimiter *DeployerLimiter // deployerLimiter controls the concurrency of deployments across webhook and poll handlers.
+
+// Initialize the deployer limiter according to configuration.
+func InitializeDeployerLimiter(maxConcurrent uint) {
+	deployerLimiter = NewDeployerLimiter(maxConcurrent)
+}
 
 type waiter struct {
 	ref string

@@ -193,7 +193,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to clean up obsolete auto-discovered containers", err.Error(), http.StatusInternalServerError, metadata)
 	}
 
-	deployErr := handleDeploys(ctx, jobLog,
+	deployErr := reconciliation.HandleDeploys(ctx, jobLog,
 		appConfig,
 		dataMountPoint,
 		dockerCli,

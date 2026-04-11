@@ -1,4 +1,4 @@
-package main
+package reconciliation
 
 import (
 	"context"
@@ -18,7 +18,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
-func handleDeploys(ctx context.Context,
+func HandleDeploys(ctx context.Context,
 	jobLog *slog.Logger,
 	appConfig *config.AppConfig,
 	dataMountPoint container.MountPoint,

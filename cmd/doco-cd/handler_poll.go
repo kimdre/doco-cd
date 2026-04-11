@@ -235,7 +235,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 		return append(results, pollResult{Metadata: metadata, Err: err})
 	}
 
-	deployErr := handleDeploys(ctx, jobLog,
+	deployErr := reconciliation.HandleDeploys(ctx, jobLog,
 		appConfig,
 		dataMountPoint,
 		dockerCli,

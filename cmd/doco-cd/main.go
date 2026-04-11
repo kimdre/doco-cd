@@ -18,6 +18,7 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/git/ssh"
+	"github.com/kimdre/doco-cd/internal/reconciliation"
 
 	"github.com/kimdre/doco-cd/cmd/doco-cd/healthcheck"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
@@ -37,8 +38,6 @@ const (
 	healthPath  = "/v1/health"
 	dataPath    = "/data"
 )
-
-var deployerLimiter *DeployerLimiter // deployerLimiter controls the concurrency of deployments across webhook and poll handlers.
 
 // GetProxyUrlRedacted takes a proxy URL string and redacts the password if it exists.
 func GetProxyUrlRedacted(proxyUrl string) string {
@@ -289,7 +288,7 @@ func main() {
 	}
 
 	// Initialize the deployer limiter according to configuration
-	deployerLimiter = NewDeployerLimiter(c.MaxConcurrentDeployments)
+	reconciliation.InitializeDeployerLimiter(c.MaxConcurrentDeployments)
 
 	// Register API endpoints
 	apiServerMux := http.NewServeMux()
