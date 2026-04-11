@@ -247,10 +247,6 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 				slog.String("stack", deployConfig.Name),
 				slog.String("reference", deployConfig.Reference))
 
-		failNotifyFunc := func(err error, metadata notification.Metadata) {
-			pollError(deployLog, metadata, err)
-		}
-
 		deployWg.Add(1)
 
 		go func(dc *config.DeployConfig) {
@@ -271,7 +267,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 				metadata.JobID,
 				stages.JobTriggerPoll,
 				deployLog,
-				failNotifyFunc,
+				poolFailNotifyFunc,
 				&stages.RepositoryData{
 					CloneURL:     pollConfig.CloneUrl,
 					Name:         repoName,
@@ -330,4 +326,8 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	prometheus.PollDuration.WithLabelValues(repoName).Observe(elapsedTime.Seconds())
 
 	return results
+}
+
+func poolFailNotifyFunc(deployLog *slog.Logger, err error, metadata notification.Metadata) {
+	pollError(deployLog, metadata, err)
 }

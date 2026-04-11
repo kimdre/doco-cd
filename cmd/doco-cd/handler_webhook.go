@@ -229,23 +229,11 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				defer unlock()
 			}
 
-			failNotifyFunc := func(err error, metadata notification.Metadata) {
-				// Don't write to HTTP from goroutines — just send notification and log
-				go func() {
-					notifyErr := notification.Send(notification.Failure, "Deployment Failed", err.Error(), metadata)
-					if notifyErr != nil {
-						deployLog.Error("failed to send notification", logger.ErrAttr(notifyErr))
-					}
-				}()
-
-				deployLog.Error("deployment failed", logger.ErrAttr(err))
-			}
-
 			stageMgr := stages.NewStageManager(
 				metadata.JobID,
 				stages.JobTriggerWebhook,
 				deployLog,
-				failNotifyFunc,
+				webhookFailNotifyFunc,
 				&stages.RepositoryData{
 					CloneURL:     config.HttpUrl(cloneUrl),
 					Name:         repoName,
@@ -295,6 +283,18 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	prometheus.WebhookRequestsTotal.WithLabelValues(repoName).Inc()
 	prometheus.WebhookDuration.WithLabelValues(repoName).Observe(elapsedTime.Seconds())
+}
+
+func webhookFailNotifyFunc(deployLog *slog.Logger, err error, metadata notification.Metadata) {
+	// Don't write to HTTP from goroutines — just send notification and log
+	go func() {
+		notifyErr := notification.Send(notification.Failure, "Deployment Failed", err.Error(), metadata)
+		if notifyErr != nil {
+			deployLog.Error("failed to send notification", logger.ErrAttr(notifyErr))
+		}
+	}()
+
+	deployLog.Error("deployment failed", logger.ErrAttr(err))
 }
 
 // WebhookHandler handles incoming webhook requests.
