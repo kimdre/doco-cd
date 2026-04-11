@@ -267,7 +267,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 				metadata.JobID,
 				stages.JobTriggerPoll,
 				deployLog,
-				poolFailNotifyFunc,
+				failNotifyFunc,
 				&stages.RepositoryData{
 					CloneURL:     pollConfig.CloneUrl,
 					Name:         repoName,
@@ -317,6 +317,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	}
 
 	if hasErrors {
+		prometheus.PollErrors.WithLabelValues(repoName).Inc()
 		jobLog.Warn("job completed with errors", slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()), slog.String("next_run", nextRun))
 	} else {
 		jobLog.Info("job completed successfully", slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()), slog.String("next_run", nextRun))
@@ -326,8 +327,4 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	prometheus.PollDuration.WithLabelValues(repoName).Observe(elapsedTime.Seconds())
 
 	return results
-}
-
-func poolFailNotifyFunc(deployLog *slog.Logger, err error, metadata notification.Metadata) {
-	pollError(deployLog, metadata, err)
 }

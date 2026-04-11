@@ -233,7 +233,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				metadata.JobID,
 				stages.JobTriggerWebhook,
 				deployLog,
-				webhookFailNotifyFunc,
+				failNotifyFunc,
 				&stages.RepositoryData{
 					CloneURL:     config.HttpUrl(cloneUrl),
 					Name:         repoName,
@@ -285,7 +285,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	prometheus.WebhookDuration.WithLabelValues(repoName).Observe(elapsedTime.Seconds())
 }
 
-func webhookFailNotifyFunc(deployLog *slog.Logger, err error, metadata notification.Metadata) {
+func failNotifyFunc(deployLog *slog.Logger, err error, metadata notification.Metadata) {
 	// Don't write to HTTP from goroutines — just send notification and log
 	go func() {
 		notifyErr := notification.Send(notification.Failure, "Deployment Failed", err.Error(), metadata)
@@ -294,7 +294,9 @@ func webhookFailNotifyFunc(deployLog *slog.Logger, err error, metadata notificat
 		}
 	}()
 
-	deployLog.Error("deployment failed", logger.ErrAttr(err))
+	deployLog.Error("deployment failed",
+		slog.String("stack", metadata.Stack),
+		logger.ErrAttr(err))
 }
 
 // WebhookHandler handles incoming webhook requests.
