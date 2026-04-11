@@ -10,6 +10,8 @@ import (
 	"github.com/moby/moby/api/types/container"
 
 	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/logger"
+	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/stages"
 	"github.com/kimdre/doco-cd/internal/test"
@@ -119,4 +121,18 @@ func handleOneDeploy(ctx context.Context, deployLog *slog.Logger,
 	}
 
 	return nil
+}
+
+func failNotifyFunc(deployLog *slog.Logger, err error, metadata notification.Metadata) {
+	// Don't write to HTTP from goroutines — just send notification and log
+	go func() {
+		notifyErr := notification.Send(notification.Failure, "Deployment Failed", err.Error(), metadata)
+		if notifyErr != nil {
+			deployLog.Error("failed to send notification", logger.ErrAttr(notifyErr))
+		}
+	}()
+
+	deployLog.Error("deployment failed",
+		slog.String("stack", metadata.Stack),
+		logger.ErrAttr(err))
 }

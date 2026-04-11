@@ -226,20 +226,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	prometheus.WebhookDuration.WithLabelValues(repoName).Observe(elapsedTime.Seconds())
 }
 
-func failNotifyFunc(deployLog *slog.Logger, err error, metadata notification.Metadata) {
-	// Don't write to HTTP from goroutines — just send notification and log
-	go func() {
-		notifyErr := notification.Send(notification.Failure, "Deployment Failed", err.Error(), metadata)
-		if notifyErr != nil {
-			deployLog.Error("failed to send notification", logger.ErrAttr(notifyErr))
-		}
-	}()
-
-	deployLog.Error("deployment failed",
-		slog.String("stack", metadata.Stack),
-		logger.ErrAttr(err))
-}
-
 // WebhookHandler handles incoming webhook requests.
 func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := context.WithoutCancel(r.Context())
