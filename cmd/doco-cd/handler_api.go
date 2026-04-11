@@ -20,6 +20,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 	restAPI "github.com/kimdre/doco-cd/internal/restapi"
+	"github.com/kimdre/doco-cd/internal/updater"
 )
 
 // registerApiEndpoints registers the API endpoints based on the application configuration and
@@ -49,6 +50,10 @@ func registerApiEndpoints(c *config.AppConfig, h *handlerData, log *logger.Logge
 			{apiPath + "/stack/{stackName}", h.StackApiHandler},
 			{apiPath + "/stack/{stackName}/{action}", h.StackActionApiHandler},
 			{apiPath + "/poll/run", h.TriggerPollHandler},
+		}
+
+		if c.SelfUpdateEnabled {
+			endpoints = append(endpoints, endpoint{apiPath + "/app/update", h.AppUpdateHandler})
 		}
 
 		for _, ep := range endpoints {
@@ -708,7 +713,10 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 	wait := getQueryParam(r, w, jobLog, jobID, "wait", "bool", true).(bool)
 
 	decoder := json.NewDecoder(r.Body)
-	defer r.Body.Close()
+
+	defer func() {
+		_ = r.Body.Close()
+	}()
 
 	var pollConfigs []config.PollConfig
 	if err := decoder.Decode(&pollConfigs); err != nil {
@@ -777,4 +785,50 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 	err = errors.New("no poll configuration provided in request body")
 	jobLog.Error(err.Error())
 	JSONError(w, err.Error(), "", jobID, http.StatusBadRequest)
+}
+
+// AppUpdateHandler handles API requests to trigger an asynchronous self-update check for the doco-cd container.
+func (h *handlerData) AppUpdateHandler(w http.ResponseWriter, r *http.Request) {
+	jobID := uuid.Must(uuid.NewV7()).String()
+	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
+
+	jobLog.Debug("received self-update api request")
+
+	if !requireMethod(w, jobLog, r, http.MethodPost) {
+		return
+	}
+
+	if !restAPI.ValidateApiKey(r, h.appConfig.ApiSecret) {
+		jobLog.Error(restAPI.ErrInvalidApiKey.Error())
+		JSONError(w, restAPI.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
+
+		return
+	}
+
+	if h.appUpdater == nil {
+		errMsg := "self-update is disabled"
+		jobLog.Error(errMsg)
+		JSONError(w, errMsg, "set SELF_UPDATE_ENABLED=true to enable this endpoint", jobID, http.StatusServiceUnavailable)
+
+		return
+	}
+
+	if err := h.appUpdater.StartAsync(context.WithoutCancel(r.Context())); err != nil {
+		if errors.Is(err, updater.ErrUpdateInProgress) {
+			errMsg := "self-update already in progress"
+			jobLog.Warn(errMsg)
+			JSONError(w, errMsg, "", jobID, http.StatusConflict)
+
+			return
+		}
+
+		errMsg := "failed to start self-update"
+		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+		JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
+
+		return
+	}
+
+	jobLog.Info("self-update started")
+	JSONResponse(w, "self-update started", jobID, http.StatusAccepted)
 }

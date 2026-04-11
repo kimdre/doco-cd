@@ -21,7 +21,19 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/logger"
 	restAPI "github.com/kimdre/doco-cd/internal/restapi"
+	"github.com/kimdre/doco-cd/internal/updater"
 )
+
+type fakeAppUpdater struct {
+	err   error
+	calls int
+}
+
+func (f *fakeAppUpdater) StartAsync(_ context.Context) error {
+	f.calls++
+
+	return f.err
+}
 
 // Make http call to HealthCheckHandler.
 func TestHandlerData_HealthCheckHandler(t *testing.T) {
@@ -312,6 +324,94 @@ func TestHandlerData_TriggerPollHandler(t *testing.T) {
 
 			if !regex.MatchString(rr.Body.String()) {
 				t.Errorf("handler returned unexpected body: got %v want %v", rr.Body.String(), tc.expectedResponse)
+			}
+		})
+	}
+}
+
+func TestRegisterApiEndpoints_AppUpdateHandler(t *testing.T) {
+	t.Parallel()
+
+	log := logger.New(logger.LevelCritical)
+
+	testCases := []struct {
+		name             string
+		selfUpdateEnable bool
+		updaterErr       error
+		expectedStatus   int
+		expectedResponse string
+		expectedCalls    int
+	}{
+		{
+			name:             "enabled",
+			selfUpdateEnable: true,
+			expectedStatus:   http.StatusAccepted,
+			expectedResponse: `{"content":"self-update started","job_id":"[a-f0-9-]{36}"}`,
+			expectedCalls:    1,
+		},
+		{
+			name:             "enabled already in progress",
+			selfUpdateEnable: true,
+			updaterErr:       updater.ErrUpdateInProgress,
+			expectedStatus:   http.StatusConflict,
+			expectedResponse: `{"error":"self-update already in progress","content":"","job_id":"[a-f0-9-]{36}"}`,
+			expectedCalls:    1,
+		},
+		{
+			name:             "disabled",
+			selfUpdateEnable: false,
+			expectedStatus:   http.StatusNotFound,
+			expectedCalls:    0,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			appConfig, err := config.GetAppConfig()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			appConfig.ApiSecret = "test-secret"
+			appConfig.SelfUpdateEnabled = tc.selfUpdateEnable
+
+			fakeUpdater := &fakeAppUpdater{err: tc.updaterErr}
+			h := handlerData{
+				appConfig:  appConfig,
+				appUpdater: fakeUpdater,
+				log:        log,
+			}
+
+			mux := http.NewServeMux()
+			registerApiEndpoints(appConfig, &h, log, mux)
+
+			req := httptest.NewRequest(http.MethodPost, path.Join(apiPath, "/app/update"), nil)
+			req.Header.Set(restAPI.KeyHeader, appConfig.ApiSecret)
+
+			rr := httptest.NewRecorder()
+			mux.ServeHTTP(rr, req)
+
+			if rr.Code != tc.expectedStatus {
+				t.Fatalf("handler returned wrong status code: got %v want %v", rr.Code, tc.expectedStatus)
+			}
+
+			if fakeUpdater.calls != tc.expectedCalls {
+				t.Fatalf("expected updater to be called %d times, got %d", tc.expectedCalls, fakeUpdater.calls)
+			}
+
+			if tc.expectedResponse == "" {
+				return
+			}
+
+			regex, err := regexp.Compile(tc.expectedResponse)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if !regex.MatchString(strings.TrimSpace(rr.Body.String())) {
+				t.Fatalf("handler returned unexpected body: got %v want %v", rr.Body.String(), tc.expectedResponse)
 			}
 		})
 	}

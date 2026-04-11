@@ -30,14 +30,20 @@ import (
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/prometheus"
+	"github.com/kimdre/doco-cd/internal/updater"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
 var ErrInvalidHTTPMethod = errors.New("invalid http method")
 
+type appUpdater interface {
+	StartAsync(ctx context.Context) error
+}
+
 type handlerData struct {
 	appConfig      *config.AppConfig    // Application configuration
 	appVersion     string               // Application version
+	appUpdater     appUpdater           // Self-updater for the doco-cd container itself
 	dataMountPoint container.MountPoint // Mount point for the data directory
 	dockerCli      command.Cli          // Docker CLI client
 	dockerClient   *client.Client       // Docker client
@@ -45,6 +51,8 @@ type handlerData struct {
 	secretProvider *secretprovider.SecretProvider
 	testName       string // Overwrites the deployConfig.Name to make test deployments unique and prevent conflicts between tests when running in parallel. Not used in production.
 }
+
+var _ appUpdater = (*updater.Updater)(nil)
 
 // onError handles errors by logging them, sending a JSON error response, and sending a notification.
 func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any, statusCode int, metadata notification.Metadata) {

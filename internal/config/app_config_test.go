@@ -21,12 +21,15 @@ func TestGetAppConfig(t *testing.T) {
 		{
 			name: "valid config",
 			envVars: map[string]string{
-				"LOG_LEVEL":             "info",
-				"HTTP_PORT":             "8080",
-				"WEBHOOK_SECRET":        "secret",
-				"AUTH_TYPE":             "oauth2",
-				"GIT_ACCESS_TOKEN":      "token",
-				"SKIP_TLS_VERIFICATION": "false",
+				"LOG_LEVEL":                "info",
+				"HTTP_PORT":                "8080",
+				"WEBHOOK_SECRET":           "secret",
+				"AUTH_TYPE":                "oauth2",
+				"GIT_ACCESS_TOKEN":         "token",
+				"SKIP_TLS_VERIFICATION":    "false",
+				"SELF_UPDATE_ENABLED":      "true",
+				"SELF_UPDATE_INTERVAL":     "300",
+				"SELF_UPDATE_WAIT_HEALTHY": "false",
 			},
 			dockerSecrets: nil,
 			expectedErr:   nil,
@@ -69,6 +72,18 @@ func TestGetAppConfig(t *testing.T) {
 				"GIT_ACCESS_TOKEN": "t0ken",
 			},
 			expectedErr: ErrBothSecretsSet,
+		},
+		{
+			name: "invalid self update interval",
+			envVars: map[string]string{
+				"LOG_LEVEL":             "info",
+				"HTTP_PORT":             "8080",
+				"AUTH_TYPE":             "oauth2",
+				"SKIP_TLS_VERIFICATION": "false",
+				"SELF_UPDATE_INTERVAL":  "-1",
+			},
+			dockerSecrets: nil,
+			expectedErr:   ErrParseConfigFailed,
 		},
 	}
 
@@ -136,6 +151,20 @@ func TestGetAppConfig(t *testing.T) {
 
 				if cfg.HttpPort != uint16(httpPort) {
 					t.Errorf("expected HttpPort to be '%d', got '%d'", httpPort, cfg.HttpPort)
+				}
+			}
+
+			if tt.name == "valid config" {
+				if !cfg.SelfUpdateEnabled {
+					t.Error("expected SelfUpdateEnabled to be true")
+				}
+
+				if cfg.SelfUpdateInterval != 300 {
+					t.Errorf("expected SelfUpdateInterval to be 300, got %d", cfg.SelfUpdateInterval)
+				}
+
+				if cfg.SelfUpdateWaitHealthy {
+					t.Error("expected SelfUpdateWaitHealthy to be false")
 				}
 			}
 		})

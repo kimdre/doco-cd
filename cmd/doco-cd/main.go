@@ -29,6 +29,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/prometheus"
+	"github.com/kimdre/doco-cd/internal/updater"
 )
 
 const (
@@ -284,9 +285,27 @@ func main() {
 		log.Info("secret provider initialized", slog.String("provider", secretProvider.Name()))
 	}
 
+	var appUpdater *updater.Updater
+	if c.SelfUpdateEnabled {
+		appUpdater, err = updater.New(dockerClient, appContainerID, log.With(slog.String("container_id", appContainerID)), c.SelfUpdateWaitHealthy)
+		if err != nil {
+			log.Critical("failed to initialize self-updater", logger.ErrAttr(err))
+
+			return
+		}
+
+		log.Info("self-update enabled",
+			slog.Int("interval_seconds", c.SelfUpdateInterval),
+			slog.Bool("wait_healthy", c.SelfUpdateWaitHealthy),
+		)
+	} else {
+		log.Debug("self-update disabled by configuration")
+	}
+
 	h := handlerData{
 		appConfig:      c,
 		appVersion:     config.AppVersion,
+		appUpdater:     appUpdater,
 		dataMountPoint: dataMountPoint,
 		dockerCli:      dockerCli,
 		dockerClient:   dockerClient,
@@ -296,6 +315,19 @@ func main() {
 
 	// Initialize the deployer limiter according to configuration
 	deployerLimiter = NewDeployerLimiter(c.MaxConcurrentDeployments)
+
+	if c.SelfUpdateEnabled && c.SelfUpdateInterval > 0 && appUpdater != nil {
+		go func() {
+			log.Info("starting self-update scheduler", slog.Int("interval_seconds", c.SelfUpdateInterval))
+
+			err := appUpdater.RunScheduled(context.Background(), time.Duration(c.SelfUpdateInterval)*time.Second)
+			if err != nil && !errors.Is(err, context.Canceled) {
+				log.Error("self-update scheduler stopped", logger.ErrAttr(err))
+			}
+		}()
+	} else if c.SelfUpdateEnabled {
+		log.Debug("self-update scheduler disabled", slog.Int("interval_seconds", c.SelfUpdateInterval))
+	}
 
 	// Register API endpoints
 	apiServerMux := http.NewServeMux()
