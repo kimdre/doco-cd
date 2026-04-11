@@ -19,6 +19,7 @@ import (
 	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/api/types/container"
 
+	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
 	"github.com/kimdre/doco-cd/internal/utils/id"
 
@@ -307,6 +308,11 @@ func TestHandleEvent(t *testing.T) {
 				Destination: tmpDir,
 				Mode:        "rw",
 			}
+			metadata := notification.Metadata{
+				JobID:      jobID,
+				Repository: git.GetRepoName(tc.payload.CloneURL),
+				Revision:   notification.GetRevision(tc.payload.Ref, tc.payload.CommitSHA),
+			}
 
 			err = retry.New(
 				retry.Attempts(3),
@@ -323,7 +329,7 @@ func TestHandleEvent(t *testing.T) {
 					testMountPoint,
 					tc.payload,
 					tc.customTarget,
-					jobID,
+					metadata,
 					dockerCli,
 					&secretProvider,
 					stackName,

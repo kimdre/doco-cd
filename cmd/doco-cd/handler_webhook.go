@@ -70,7 +70,7 @@ func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any
 
 // HandleEvent executes the deployment process for a given webhook event.
 func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *config.AppConfig,
-	dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget, jobID string,
+	dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget string, metadata notification.Metadata,
 	dockerCli command.Cli, secretProvider *secretprovider.SecretProvider,
 	testName string,
 ) {
@@ -85,22 +85,17 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		jobLog = jobLog.With(slog.String("custom_target", customTarget))
 	}
 
+	jobLog.Debug("metadata", slog.Any("metadata", metadata))
+
 	jobLog.Info("received new job",
 		slog.Group("trigger",
 			slog.String("commit", payload.CommitSHA), slog.String("ref", payload.Ref),
 			slog.String("event", string(stages.JobTriggerWebhook))))
 
-	metadata := notification.Metadata{
-		JobID:      jobID,
-		Repository: repoName,
-		Stack:      "",
-		Revision:   notification.GetRevision(payload.Ref, payload.CommitSHA),
-	}
-
 	if payload.Ref == "" {
 		msg := "no reference provided in webhook payload, skipping event"
 		jobLog.Warn(msg)
-		JSONError(w, msg, msg, jobID, http.StatusBadRequest)
+		JSONError(w, msg, msg, metadata.JobID, http.StatusBadRequest)
 
 		return
 	}
@@ -167,7 +162,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		dataMountPoint,
 		dockerCli,
 		secretProvider,
-		jobID, stages.JobTriggerWebhook,
+		metadata.JobID, stages.JobTriggerWebhook,
 		stages.RepositoryData{
 			CloneURL:     config.HttpUrl(cloneUrl),
 			Name:         repoName,
@@ -189,7 +184,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	msg := "job completed successfully"
 	elapsedTime := time.Since(startTime)
 	jobLog.Info(msg, slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()))
-	JSONResponse(w, msg, jobID, http.StatusCreated)
+	JSONResponse(w, msg, metadata.JobID, http.StatusCreated)
 
 	prometheus.WebhookRequestsTotal.WithLabelValues(repoName).Inc()
 	prometheus.WebhookDuration.WithLabelValues(repoName).Observe(elapsedTime.Seconds())
@@ -304,7 +299,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 		defer repoLock.Unlock()
 
-		HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, jobID, h.dockerCli, h.secretProvider, h.testName)
+		HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, metadata, h.dockerCli, h.secretProvider, h.testName)
 	}
 
 	if wait {
