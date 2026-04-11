@@ -172,7 +172,7 @@ func TestDeployCompose(t *testing.T) {
 		Name:      uuid.Must(uuid.NewV7()).String(),
 		FullName:  "kimdre/doco-cd_tests",
 		CloneURL:  cloneUrlTest,
-		Private:   true,
+		Private:   false,
 	}
 
 	t.Log("Verify socket connection")

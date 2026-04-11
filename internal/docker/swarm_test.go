@@ -50,7 +50,7 @@ func TestDeploySwarmStack(t *testing.T) {
 		Name:      stackName,
 		FullName:  "kimdre/doco-cd_tests",
 		CloneURL:  cloneUrlTest,
-		Private:   true,
+		Private:   false,
 	}
 
 	repo, err := git.CloneOrUpdateRepository(slog.Default(), p.CloneURL, p.Ref, tmpDir, tmpDir,
