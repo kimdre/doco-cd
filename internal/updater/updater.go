@@ -313,6 +313,8 @@ func (u *Updater) waitForContainer(ctx context.Context, containerID string) erro
 	}
 }
 
+// buildCreateOptions creates a new ContainerCreateOptions based on the provided container inspect data,
+// but with the image reference updated to the new image and any runtime-specific settings reset to their defaults.
 func buildCreateOptions(inspect containerTypes.InspectResponse, imageRef, containerName string) (client.ContainerCreateOptions, error) {
 	configCopy, err := clone(inspect.Config)
 	if err != nil {
