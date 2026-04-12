@@ -173,6 +173,8 @@ func (u *Updater) runIfNeeded(ctx context.Context) (Result, error) {
 		OldImageID:    containerInspect.Image,
 	}
 
+	wasRunning := containerInspect.State != nil && containerInspect.State.Running
+
 	if isSwarmManaged(containerInspect.Config) {
 		return result, ErrUnsupportedSwarmService
 	}
@@ -196,6 +198,31 @@ func (u *Updater) runIfNeeded(ctx context.Context) (Result, error) {
 		return result, fmt.Errorf("failed to rename current container: %w", err)
 	}
 
+	if wasRunning {
+		stopTimeout := getStopTimeout(containerInspect.Config)
+		if _, err := u.dockerClient.ContainerStop(ctx, containerInspect.ID, client.ContainerStopOptions{Timeout: stopTimeout}); err != nil {
+			if _, renameErr := u.dockerClient.ContainerRename(ctx, containerInspect.ID, client.ContainerRenameOptions{NewName: containerName}); renameErr != nil {
+				u.log.Error("failed to restore original container name after stop failure",
+					slog.Any("error", renameErr),
+					slog.String("rollback_container_name", rollbackContainerName),
+				)
+			}
+
+			return result, fmt.Errorf("failed to stop current container: %w", err)
+		}
+
+		if err := u.waitForContainerStopped(ctx, containerInspect.ID); err != nil {
+			if _, renameErr := u.dockerClient.ContainerRename(ctx, containerInspect.ID, client.ContainerRenameOptions{NewName: containerName}); renameErr != nil {
+				u.log.Error("failed to restore original container name after stop wait failure",
+					slog.Any("error", renameErr),
+					slog.String("rollback_container_name", rollbackContainerName),
+				)
+			}
+
+			return result, err
+		}
+	}
+
 	createOptions, err := buildCreateOptions(containerInspect, imageRef, containerName)
 	if err != nil {
 		return result, err
@@ -203,6 +230,15 @@ func (u *Updater) runIfNeeded(ctx context.Context) (Result, error) {
 
 	createResult, err := u.dockerClient.ContainerCreate(ctx, createOptions)
 	if err != nil {
+		if wasRunning {
+			if _, startErr := u.dockerClient.ContainerStart(ctx, containerInspect.ID, client.ContainerStartOptions{}); startErr != nil {
+				u.log.Error("failed to restart previous container after create failure",
+					slog.Any("error", startErr),
+					slog.String("rollback_container_name", rollbackContainerName),
+				)
+			}
+		}
+
 		if _, renameErr := u.dockerClient.ContainerRename(ctx, containerInspect.ID, client.ContainerRenameOptions{NewName: containerName}); renameErr != nil {
 			u.log.Error("failed to restore original container name after create failure",
 				slog.Any("error", renameErr),
@@ -213,12 +249,8 @@ func (u *Updater) runIfNeeded(ctx context.Context) (Result, error) {
 		return result, fmt.Errorf("failed to create replacement container: %w", err)
 	}
 
-	stopTimeout := getStopTimeout(containerInspect.Config)
-	if _, err := u.dockerClient.ContainerStop(ctx, containerInspect.ID, client.ContainerStopOptions{Timeout: stopTimeout}); err != nil {
-		return result, fmt.Errorf("failed to stop current container: %w", err)
-	}
-
 	if _, err := u.dockerClient.ContainerStart(ctx, createResult.ID, client.ContainerStartOptions{}); err != nil {
+		u.rollbackToPreviousContainer(ctx, rollbackContainerName, containerInspect.ID, containerName, createResult.ID, wasRunning)
 		return result, fmt.Errorf("failed to start replacement container: %w", err)
 	}
 
@@ -226,6 +258,7 @@ func (u *Updater) runIfNeeded(ctx context.Context) (Result, error) {
 	defer cancel()
 
 	if err := u.waitForContainer(waitCtx, createResult.ID); err != nil {
+		u.rollbackToPreviousContainer(ctx, rollbackContainerName, containerInspect.ID, containerName, createResult.ID, wasRunning)
 		return result, err
 	}
 
@@ -246,6 +279,33 @@ func (u *Updater) runIfNeeded(ctx context.Context) (Result, error) {
 	result.ContainerID = createResult.ID
 
 	return result, nil
+}
+
+func (u *Updater) rollbackToPreviousContainer(ctx context.Context, rollbackContainerName, previousContainerID, desiredContainerName, replacementContainerID string, wasRunning bool) {
+	if _, err := u.dockerClient.ContainerRemove(ctx, replacementContainerID, client.ContainerRemoveOptions{Force: true, RemoveVolumes: false}); err != nil {
+		u.log.Error("failed to remove replacement container during rollback",
+			slog.Any("error", err),
+			slog.String("replacement_container_id", replacementContainerID),
+		)
+	}
+
+	if _, err := u.dockerClient.ContainerRename(ctx, previousContainerID, client.ContainerRenameOptions{NewName: desiredContainerName}); err != nil {
+		u.log.Error("failed to restore original container name during rollback",
+			slog.Any("error", err),
+			slog.String("rollback_container_name", rollbackContainerName),
+		)
+	}
+
+	if !wasRunning {
+		return
+	}
+
+	if _, err := u.dockerClient.ContainerStart(ctx, previousContainerID, client.ContainerStartOptions{}); err != nil {
+		u.log.Error("failed to restart previous container during rollback",
+			slog.Any("error", err),
+			slog.String("rollback_container_name", rollbackContainerName),
+		)
+	}
 }
 
 func (u *Updater) pullAndInspectImage(ctx context.Context, imageRef string) (client.ImageInspectResult, error) {
@@ -308,6 +368,29 @@ func (u *Updater) waitForContainer(ctx context.Context, containerID string) erro
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("timed out waiting for replacement container: %w", ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
+func (u *Updater) waitForContainerStopped(ctx context.Context, containerID string) error {
+	ticker := time.NewTicker(waitInterval)
+	defer ticker.Stop()
+
+	for {
+		inspectResult, err := u.dockerClient.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to inspect previous container while waiting for stop: %w", err)
+		}
+
+		state := inspectResult.Container.State
+		if state != nil && !state.Running {
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timed out waiting for previous container to stop: %w", ctx.Err())
 		case <-ticker.C:
 		}
 	}
