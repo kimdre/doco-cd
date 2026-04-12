@@ -283,7 +283,11 @@ func (u *Updater) waitForContainer(ctx context.Context, containerID string) erro
 		state := inspectResult.Container.State
 		if state != nil {
 			if !state.Running {
-				return fmt.Errorf("%w: status=%s exit_code=%d error=%s", ErrContainerStartFailed, state.Status, state.ExitCode, state.Error)
+				if isNonRunningTerminalState(string(state.Status)) {
+					return fmt.Errorf("%w: status=%s exit_code=%d error=%s", ErrContainerStartFailed, state.Status, state.ExitCode, state.Error)
+				}
+
+				goto waitNextTick
 			}
 
 			if shouldWaitForHealthy(u.waitHealthy, inspectResult.Container.Config) {
@@ -300,6 +304,7 @@ func (u *Updater) waitForContainer(ctx context.Context, containerID string) erro
 			}
 		}
 
+	waitNextTick:
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("timed out waiting for replacement container: %w", ctx.Err())
@@ -380,6 +385,15 @@ func normalizeContainerName(name string) string {
 
 func buildRollbackContainerName(containerName string, now time.Time) string {
 	return fmt.Sprintf("%s-doco-cd-backup-%d", containerName, now.Unix())
+}
+
+func isNonRunningTerminalState(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "dead", "exited", "removing":
+		return true
+	default:
+		return false
+	}
 }
 
 func shouldWaitForHealthy(waitHealthy bool, config *containerTypes.Config) bool {

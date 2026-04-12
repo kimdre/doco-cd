@@ -8,6 +8,34 @@ import (
 	"github.com/moby/moby/api/types/network"
 )
 
+func TestIsNonRunningTerminalState(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name   string
+		status string
+		want   bool
+	}{
+		{name: "created is transient", status: "created", want: false},
+		{name: "running state value is not terminal", status: "running", want: false},
+		{name: "restarting is transient", status: "restarting", want: false},
+		{name: "empty status is transient", status: "", want: false},
+		{name: "exited is terminal", status: "exited", want: true},
+		{name: "dead is terminal", status: "dead", want: true},
+		{name: "removing is terminal", status: "removing", want: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := isNonRunningTerminalState(tc.status); got != tc.want {
+				t.Fatalf("isNonRunningTerminalState(%q) = %t, want %t", tc.status, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestNormalizeContainerName(t *testing.T) {
 	t.Parallel()
 
