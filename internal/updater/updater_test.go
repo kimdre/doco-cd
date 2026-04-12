@@ -29,7 +29,7 @@ func TestBuildCreateOptionsPreservesCoreSettings(t *testing.T) {
 			Cmd:         []string{"healthcheck"},
 			Labels:      map[string]string{"test": "value"},
 			WorkingDir:  "/",
-			StopTimeout: intPtr(15),
+			StopTimeout: new(15),
 			Healthcheck: &containerTypes.HealthConfig{Test: []string{"CMD", "/doco-cd", "healthcheck"}},
 		},
 		HostConfig: &containerTypes.HostConfig{
