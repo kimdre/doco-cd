@@ -130,7 +130,3 @@ func TestIsSwarmManaged(t *testing.T) {
 		t.Fatal("expected non-swarm config to be ignored")
 	}
 }
-
-func intPtr(v int) *int {
-	return &v
-}
