@@ -388,8 +388,7 @@ func shouldWaitForHealthy(waitHealthy bool, config *containerTypes.Config) bool 
 
 func getStopTimeout(config *containerTypes.Config) *int {
 	if config != nil && config.StopTimeout != nil {
-		timeout := *config.StopTimeout
-		return &timeout
+		return new(*config.StopTimeout)
 	}
 
 	return nil
