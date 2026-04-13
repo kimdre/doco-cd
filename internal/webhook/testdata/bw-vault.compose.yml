@@ -1,0 +1,38 @@
+services:
+  # Service name
+  bitwarden-api:
+    image: ghcr.io/kimdre/bitwarden-rest-api-server:latest
+    # Specify sensitive environment variables in a .env file
+    environment:
+      - BW_HOST=${BW_HOST:-https://vault.bitwarden.com}
+      - BW_CLIENTID=${BW_CLIENTID:?error}
+      - BW_CLIENTSECRET=${BW_CLIENTSECRET:?error}
+      - BW_PASSWORD=${BW_PASSWORD:?error}
+    expose:
+      - "8087"
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    volumes:
+      - data:/data
+#    tmpfs:
+#      - /data:uid=1000,gid=1000,mode=755
+    depends_on:
+      set_permissions:
+        condition: "service_completed_successfully"
+  app:
+    depends_on:
+      bitwarden-api:
+        condition: "service_healthy"
+
+  set_permissions:
+    image: busybox:latest
+    command: sh -c "chown -R 1000:1000 /data"
+    volumes:
+      - data:/data
+    restart: "no"
+
+volumes:
+    data:
