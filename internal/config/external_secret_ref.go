@@ -97,8 +97,6 @@ func EncodeExternalSecretRefs(in map[string]ExternalSecretRef) (map[string]strin
 	out := make(map[string]string, len(in))
 
 	for envName, ref := range in {
-		// avoid capture of loop variable
-
 		encoded, err := ref.EncodedReference()
 		if err != nil {
 			return nil, err
