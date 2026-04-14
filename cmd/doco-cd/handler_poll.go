@@ -22,11 +22,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
-type pollResult struct {
-	Metadata notification.Metadata
-	Err      error
-}
-
 // StartPoll initializes PollJob with the provided configuration and starts the PollHandler goroutine.
 func StartPoll(h *handlerData, pollConfig config.PollConfig, wg *sync.WaitGroup) error {
 	if pollConfig.Interval == 0 && !pollConfig.RunOnce {
@@ -122,9 +117,7 @@ func pollError(jobLog *slog.Logger, metadata notification.Metadata, err error) {
 // RunPoll deploys compose projects based on the provided configuration.
 func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *config.AppConfig, dataMountPoint container.MountPoint,
 	dockerCli command.Cli, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
-) []pollResult {
-	results := make([]pollResult, 0)
-
+) error {
 	startTime := time.Now()
 	cloneUrl := string(pollConfig.CloneUrl)
 	repoName := git.GetRepoName(cloneUrl)
@@ -151,7 +144,6 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 
 	if deployErr != nil {
 		pollError(jobLog, metadata, deployErr)
-		results = append(results, pollResult{Metadata: metadata, Err: deployErr})
 		jobLog.Warn("job completed with errors", log.ErrAttr(deployErr), slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()), slog.String("next_run", nextRun))
 	} else {
 		jobLog.Info("job completed successfully", slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()), slog.String("next_run", nextRun))
@@ -160,5 +152,5 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	prometheus.PollTotal.WithLabelValues(repoName).Inc()
 	prometheus.PollDuration.WithLabelValues(repoName).Observe(elapsedTime.Seconds())
 
-	return results
+	return deployErr
 }
