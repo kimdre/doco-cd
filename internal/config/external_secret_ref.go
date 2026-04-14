@@ -52,7 +52,7 @@ func (r *ExternalSecretRef) UnmarshalYAML(node *yaml.Node) error {
 
 // EncodedReference returns the string representation sent to provider implementations.
 // Legacy refs are returned as-is; structured refs are encoded as JSON.
-func (r ExternalSecretRef) EncodedReference() (string, error) {
+func (r *ExternalSecretRef) EncodedReference() (string, error) {
 	if r.LegacyRef != "" {
 		return r.LegacyRef, nil
 	}
@@ -76,6 +76,8 @@ func EncodeExternalSecretRefs(in map[string]ExternalSecretRef) (map[string]strin
 	out := make(map[string]string, len(in))
 
 	for envName, ref := range in {
+		ref := ref // avoid capture of loop variable
+
 		encoded, err := ref.EncodedReference()
 		if err != nil {
 			return nil, err
