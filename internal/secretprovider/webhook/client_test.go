@@ -160,6 +160,32 @@ jsonPath: "result"
 	}
 }
 
+func TestGetConfig_WebhookStores_DefaultVersion(t *testing.T) {
+	// version field omitted — should default to v1
+	stores := `stores:
+  no-version:
+    url: "https://example.com/{{ .remoteRef.key }}"
+    method: GET
+    jsonPath: "result"
+`
+
+	t.Setenv("SECRET_PROVIDER_WEBHOOK_STORES", stores)
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("unexpected config error when version is omitted: %v", err)
+	}
+
+	store, ok := cfg.Stores["no-version"]
+	if !ok {
+		t.Fatalf("expected store 'no-version' to be present")
+	}
+
+	if store.Version != StoreVersionV1 {
+		t.Fatalf("expected version to default to %q, got %q", StoreVersionV1, store.Version)
+	}
+}
+
 func mustJSONRef(t *testing.T, ref SecretRefPayload) string {
 	t.Helper()
 

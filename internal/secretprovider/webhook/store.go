@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"text/template"
+
+	"github.com/creasty/defaults"
 )
 
 const StoreVersionV1 = "v1"
@@ -16,9 +18,9 @@ var remoteRefFieldPattern = regexp.MustCompile(`\.remoteRef\.([A-Za-z0-9_]+)`) /
 // Store defines one reusable webhook secret-store entry.
 type Store struct {
 	Name     string            `yaml:"name"`
-	Version  string            `yaml:"version"`
+	Version  string            `yaml:"version"  default:"v1"`
 	URL      string            `yaml:"url"`
-	Method   string            `yaml:"method"`
+	Method   string            `yaml:"method"   default:"GET"`
 	Headers  map[string]string `yaml:"headers"`
 	Body     string            `yaml:"body"`
 	JSONPath string            `yaml:"jsonPath"`
@@ -31,12 +33,12 @@ type Store struct {
 }
 
 func (s *Store) validateAndPrepare(funcMap template.FuncMap) error {
-	if s.Name == "" {
-		return errors.New("store name is required")
+	if err := defaults.Set(s); err != nil {
+		return fmt.Errorf("store %q: failed to apply defaults: %w", s.Name, err)
 	}
 
-	if s.Version == "" {
-		return fmt.Errorf("store %q: version is required", s.Name)
+	if s.Name == "" {
+		return errors.New("store name is required")
 	}
 
 	if s.Version != StoreVersionV1 {
@@ -49,10 +51,6 @@ func (s *Store) validateAndPrepare(funcMap template.FuncMap) error {
 
 	if s.JSONPath == "" {
 		return fmt.Errorf("store %q: jsonPath is required", s.Name)
-	}
-
-	if s.Method == "" {
-		s.Method = "GET"
 	}
 
 	s.Method = strings.ToUpper(s.Method)
