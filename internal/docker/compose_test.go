@@ -282,7 +282,12 @@ compose_files:
 		jobLog := testLog.With(slog.String("job_id", jobID))
 
 		if secretProvider != nil && len(deployConf.ExternalSecrets) > 0 {
-			resolvedSecrets, err := secretProvider.ResolveSecretReferences(ctx, deployConf.ExternalSecrets)
+			encodedSecrets, err := config.EncodeExternalSecretRefs(deployConf.ExternalSecrets)
+			if err != nil {
+				t.Fatalf("failed to encode external secret references: %s", err.Error())
+			}
+
+			resolvedSecrets, err := secretProvider.ResolveSecretReferences(ctx, encodedSecrets)
 			if err != nil {
 				t.Fatalf("failed to resolve external secrets: %s", err.Error())
 			}

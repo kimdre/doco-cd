@@ -3,10 +3,13 @@ package webhook
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"text/template"
 
 	jmespath "github.com/jmespath/go-jmespath"
@@ -23,15 +26,31 @@ const (
 	ContentTypeJSON = "application/json"
 )
 
+var (
+	ErrLegacyWebhookRefNotSupported = errors.New("webhook provider no longer supports string external_secrets references; use object format with storeRef and remoteRef")
+	ErrUnknownStoreRef              = errors.New("unknown webhook secret store reference")
+	ErrMissingRemoteRefField        = errors.New("missing required remoteRef field")
+)
+
+type SecretRefPayload struct {
+	StoreRef  string                 `json:"storeRef"`
+	RemoteRef map[string]interface{} `json:"remoteRef"`
+}
+
+func BuildTemplateFuncMap() template.FuncMap {
+	return template.FuncMap{
+		"b64enc": func(input string) string {
+			return base64.StdEncoding.EncodeToString([]byte(input))
+		},
+	}
+}
+
 // ValueProvider provides generic access to remote secrets
 // using a HTTP client for retrieval.
 type ValueProvider struct {
-	endpoint      *template.Template
-	payload       *template.Template
-	query         *jmespath.JMESPath
-	client        *http.Client
-	customHeaders map[string]string
-	bearerToken   string
+	client *http.Client
+	stores map[string]*Store
+	auth   map[string]string
 }
 
 // NewValueProvider returns a new ValueProvider based on the given configuration.
@@ -43,37 +62,31 @@ func NewValueProvider(ctx context.Context, cfg *Config) (*ValueProvider, error) 
 	}
 
 	result := &ValueProvider{
-		client:        &http.Client{Transport: rt},
-		customHeaders: cfg.CustomHeaders,
-		bearerToken:   cfg.BearerToken,
-	}
-
-	result.query, err = jmespath.Compile(cfg.ResultJMESPath)
-	if err != nil {
-		return nil, err
-	}
-
-	result.endpoint, err = template.New("webhook-url").Parse(cfg.SiteUrl)
-	if err != nil {
-		return nil, err
-	}
-
-	if cfg.RequestBody != "" {
-		result.payload, err = template.New("webhook-body").Parse(cfg.RequestBody)
-		if err != nil {
-			return nil, err
-		}
+		client: &http.Client{Transport: rt},
+		stores: cfg.Stores,
+		auth:   cfg.Auth,
 	}
 
 	return result, nil
 }
 
-// GetSecret fetches a single secret value from the remote endpoint using the
-// provided identifier as template input for retrieval logic. The response is
-// expected to be JSON encoded as it will be passed to a JMESPath evaluator
-// in order to extract the resulting value.
+// GetSecret fetches a single secret value from a webhook store reference.
 func (p *ValueProvider) GetSecret(ctx context.Context, id string) (string, error) {
-	req, err := p.newRequest(ctx, id)
+	payload, err := parseSecretRefPayload(id)
+	if err != nil {
+		return "", err
+	}
+
+	store, ok := p.stores[payload.StoreRef]
+	if !ok {
+		return "", fmt.Errorf("%w: %s", ErrUnknownStoreRef, payload.StoreRef)
+	}
+
+	if err := validateRemoteRefFields(store, payload.RemoteRef); err != nil {
+		return "", err
+	}
+
+	req, renderedJSONPath, err := p.newRequest(ctx, store, payload.RemoteRef)
 	if err != nil {
 		return "", err
 	}
@@ -87,62 +100,123 @@ func (p *ValueProvider) GetSecret(ctx context.Context, id string) (string, error
 		_ = resp.Body.Close()
 	}()
 
+	if resp.StatusCode >= http.StatusBadRequest {
+		return "", fmt.Errorf("webhook request failed with status %d", resp.StatusCode)
+	}
+
 	var data interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		return "", err
 	}
 
-	result, err := p.query.Search(data)
+	query, err := jmespath.Compile(renderedJSONPath)
+	if err != nil {
+		return "", err
+	}
+
+	result, err := query.Search(data)
 	if err != nil {
 		return "", err
 	} else if value, ok := result.(string); ok {
 		return value, nil
 	}
 
+	if values, ok := result.([]interface{}); ok && len(values) > 0 {
+		if value, ok := values[0].(string); ok {
+			return value, nil
+		}
+	}
+
 	return "", fmt.Errorf("JMESPath query did not yield a string but a %T", result)
 }
 
-func (p *ValueProvider) newRequest(ctx context.Context, id string) (*http.Request, error) {
+func (p *ValueProvider) newRequest(ctx context.Context, store *Store, remoteRef map[string]interface{}) (*http.Request, string, error) {
 	var body io.Reader
 
 	buf := new(bytes.Buffer)
-	tplParams := map[string]string{
-		"remoteRef":   id,
-		"bearerToken": p.bearerToken,
+	tplParams := map[string]interface{}{
+		"remoteRef": remoteRef,
+		"auth":      p.auth,
 	}
 
-	if err := p.endpoint.Execute(buf, tplParams); err != nil {
-		return nil, err
+	if err := store.urlTemplate.Execute(buf, tplParams); err != nil {
+		return nil, "", err
 	}
 
 	url := buf.String()
-	method := http.MethodGet
+	method := store.Method
 
-	if p.payload != nil {
+	if store.bodyTemplate != nil {
 		buf.Reset() // reuse buffer for payload rendering
 		body = buf
-		method = http.MethodPost
 
-		if err := p.payload.Execute(buf, tplParams); err != nil {
-			return nil, err
+		if err := store.bodyTemplate.Execute(buf, tplParams); err != nil {
+			return nil, "", err
 		}
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	if p.payload != nil {
+	if store.bodyTemplate != nil {
 		req.Header.Set(HeaderContentType, ContentTypeJSON+"; charset=utf-8")
 	}
 
 	req.Header.Set(HeaderAccept, ContentTypeJSON)
 
-	// Apply custom headers last so they can override defaults
-	for key, value := range p.customHeaders {
-		req.Header.Set(key, value)
+	for key, tpl := range store.headerTemplates {
+		buf.Reset()
+		if err := tpl.Execute(buf, tplParams); err != nil {
+			return nil, "", err
+		}
+
+		req.Header.Set(key, buf.String())
 	}
 
-	return req, nil
+	buf.Reset()
+	if err := store.jsonPathTemplate.Execute(buf, tplParams); err != nil {
+		return nil, "", err
+	}
+
+	renderedJSONPath := buf.String()
+	if renderedJSONPath == "" {
+		return nil, "", fmt.Errorf("store %q rendered an empty jsonPath", store.Name)
+	}
+
+	return req, renderedJSONPath, nil
+}
+
+func parseSecretRefPayload(raw string) (*SecretRefPayload, error) {
+	var payload SecretRefPayload
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return nil, ErrLegacyWebhookRefNotSupported
+	}
+
+	if payload.StoreRef == "" {
+		return nil, fmt.Errorf("%w: missing storeRef", ErrLegacyWebhookRefNotSupported)
+	}
+
+	if payload.RemoteRef == nil {
+		payload.RemoteRef = map[string]interface{}{}
+	}
+
+	return &payload, nil
+}
+
+func validateRemoteRefFields(store *Store, remoteRef map[string]interface{}) error {
+	missing := make([]string, 0)
+	for _, field := range store.requiredRemoteRefFields() {
+		if _, ok := remoteRef[field]; !ok {
+			missing = append(missing, field)
+		}
+	}
+
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return fmt.Errorf("%w for store %q: %v", ErrMissingRemoteRefField, store.Name, missing)
+	}
+
+	return nil
 }

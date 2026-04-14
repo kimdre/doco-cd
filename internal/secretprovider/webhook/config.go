@@ -2,27 +2,28 @@ package webhook
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 
 	prococo "github.com/prometheus/common/config"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/kimdre/doco-cd/internal/config"
 )
 
 type Config struct {
-	SiteUrl           string            `env:"SECRET_PROVIDER_SITE_URL,notEmpty"`         // Endpoint template to query for secrets
-	ResultJMESPath    string            `env:"SECRET_PROVIDER_RESULT_JMES_PATH,notEmpty"` // JMESpath query issued against the response data
-	RequestBody       string            `env:"SECRET_PROVIDER_REQUEST_BODY"`              // HTTP request payload template
-	CustomHeadersJSON string            `env:"SECRET_PROVIDER_CUSTOM_HEADERS"`            // JSON-encoded map of custom HTTP headers to include in requests
-	BearerToken       string            `env:"SECRET_PROVIDER_BEARER_TOKEN"`              // #nosec G117 Authentication secret for the Bearer authentication scheme
-	BearerTokenFile   string            `env:"SECRET_PROVIDER_BEARER_TOKEN_FILE,file"`    // File path containing the authentication secret for the Bearer authentication scheme
-	BasicUsername     string            `env:"SECRET_PROVIDER_BASIC_USERNAME"`            // Authentication principal for the Basic authentication scheme
-	BasicUsernameFile string            `env:"SECRET_PROVIDER_BASIC_USERNAME_FILE,file"`  // File path containing the authentication principal for the Basic authentication scheme
-	BasicPassword     string            `env:"SECRET_PROVIDER_BASIC_PASSWORD"`            // Authentication secret for the Basic authentication scheme
-	BasicPasswordFile string            `env:"SECRET_PROVIDER_BASIC_PASSWORD_FILE,file"`  // File path containing the authentication secret for the Basic authentication scheme
-	CustomHeaders     map[string]string `env:"-"`                                         // Parsed custom HTTP headers
+	StoresYAML     string `env:"SECRET_PROVIDER_WEBHOOK_STORES"`
+	StoresYAMLFile string `env:"SECRET_PROVIDER_WEBHOOK_STORES_FILE,file"`
+
+	AuthUsername string `env:"SECRET_PROVIDER_AUTH_USERNAME"`
+	AuthPassword string `env:"SECRET_PROVIDER_AUTH_PASSWORD"`
+	AuthToken    string `env:"SECRET_PROVIDER_AUTH_TOKEN"`
+	AuthAPIKey   string `env:"SECRET_PROVIDER_AUTH_APIKEY"`
+
+	Stores map[string]*Store `env:"-"`
+	Auth   map[string]string `env:"-"`
 }
 
 // GetConfig retrieves and parses the configuration for the Webhook Secrets Provider from environment variables.
@@ -30,9 +31,7 @@ func GetConfig() (*Config, error) {
 	cfg := Config{}
 
 	mappings := []config.EnvVarFileMapping{
-		{EnvName: "SECRET_PROVIDER_BEARER_TOKEN", EnvValue: &cfg.BearerToken, FileValue: &cfg.BearerTokenFile, AllowUnset: true},
-		{EnvName: "SECRET_PROVIDER_BASIC_USERNAME", EnvValue: &cfg.BasicUsername, FileValue: &cfg.BasicUsernameFile, AllowUnset: true},
-		{EnvName: "SECRET_PROVIDER_BASIC_PASSWORD", EnvValue: &cfg.BasicPassword, FileValue: &cfg.BasicPasswordFile, AllowUnset: true},
+		{EnvName: "SECRET_PROVIDER_WEBHOOK_STORES", EnvValue: &cfg.StoresYAML, FileValue: &cfg.StoresYAMLFile, AllowUnset: false},
 	}
 
 	err := config.ParseConfigFromEnv(&cfg, &mappings)
@@ -40,60 +39,143 @@ func GetConfig() (*Config, error) {
 		return nil, fmt.Errorf("%w: %w", config.ErrParseConfigFailed, err)
 	}
 
-	if cfg.CustomHeadersJSON != "" {
-		if err := json.Unmarshal([]byte(cfg.CustomHeadersJSON), &cfg.CustomHeaders); err != nil {
-			return nil, fmt.Errorf("%w: failed to parse custom headers JSON: %w", config.ErrParseConfigFailed, err)
-		}
+	stores, err := parseStoresYAML(cfg.StoresYAML)
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to parse webhook stores: %w", config.ErrParseConfigFailed, err)
+	}
+
+	cfg.Stores = stores
+	cfg.Auth = map[string]string{
+		"username": cfg.AuthUsername,
+		"password": cfg.AuthPassword,
+		"token":    cfg.AuthToken,
+		"apiKey":   cfg.AuthAPIKey,
 	}
 
 	return &cfg, nil
 }
 
-// HTTPBasicAuth returns basic auth credentials created from the internal state.
-// If no username is configured, nil is returned. If no password is configured,
-// the username is reused as authentication secret.
-func (c *Config) HTTPBasicAuth() *prococo.BasicAuth {
-	if c.BasicUsername == "" {
-		return nil
-	}
-
-	result := &prococo.BasicAuth{
-		Username: c.BasicUsername,
-	}
-
-	if c.BasicPassword == "" {
-		result.Password = prococo.Secret(c.BasicUsername)
-	} else {
-		result.Password = prococo.Secret(c.BasicPassword)
-	}
-
-	return result
-}
-
-// HTTPAuthorization returns bearer auth credentials created from the internal state.
-// If no bearer token is configured, nil is returned.
-func (c *Config) HTTPAuthorization() *prococo.Authorization {
-	if c.BearerToken == "" {
-		return nil
-	}
-
-	result := &prococo.Authorization{
-		Type:        "Bearer",
-		Credentials: prococo.Secret(c.BearerToken),
-	}
-
-	return result
-}
-
 func (c *Config) NewRoundTripperWithContext(ctx context.Context) (http.RoundTripper, error) {
-	httpcfg := prococo.HTTPClientConfig{
-		BasicAuth:     c.HTTPBasicAuth(),
-		Authorization: c.HTTPAuthorization(),
-	}
+	httpcfg := prococo.HTTPClientConfig{}
 	if err := httpcfg.Validate(); err != nil {
 		return nil, err
 	}
 
 	return prococo.NewRoundTripperFromConfigWithContext(ctx, httpcfg,
 		"secretprovider-webhook", prococo.WithUserAgent(config.AppName+"/"+config.AppVersion))
+}
+
+func parseStoresYAML(input string) (map[string]*Store, error) {
+	dec := yaml.NewDecoder(strings.NewReader(input))
+	stores := make(map[string]*Store)
+
+	for {
+		var node yaml.Node
+		if err := dec.Decode(&node); err != nil {
+			if err == io.EOF {
+				break
+			}
+
+			return nil, err
+		}
+
+		if node.Kind == 0 {
+			continue
+		}
+
+		if err := parseStoreDocument(&node, stores); err != nil {
+			return nil, err
+		}
+	}
+
+	if len(stores) == 0 {
+		return nil, fmt.Errorf("no stores found in webhook store configuration")
+	}
+
+	funcMap := BuildTemplateFuncMap()
+	for _, store := range stores {
+		if err := store.validateAndPrepare(funcMap); err != nil {
+			return nil, err
+		}
+	}
+
+	return stores, nil
+}
+
+func parseStoreDocument(node *yaml.Node, stores map[string]*Store) error {
+	type genericDoc struct {
+		Stores yaml.Node `yaml:"stores"`
+	}
+
+	var doc genericDoc
+	if err := node.Decode(&doc); err != nil {
+		return err
+	}
+
+	if doc.Stores.Kind == yaml.MappingNode {
+		m := make(map[string]*Store)
+		if err := doc.Stores.Decode(&m); err != nil {
+			return err
+		}
+
+		for name, store := range m {
+			if store == nil {
+				return fmt.Errorf("store %q must not be null", name)
+			}
+
+			if store.Name == "" {
+				store.Name = name
+			}
+
+			if _, exists := stores[store.Name]; exists {
+				return fmt.Errorf("duplicate store %q", store.Name)
+			}
+
+			stores[store.Name] = store
+		}
+
+		return nil
+	}
+
+	if doc.Stores.Kind == yaml.SequenceNode {
+		var list []*Store
+		if err := doc.Stores.Decode(&list); err != nil {
+			return err
+		}
+
+		for _, store := range list {
+			if store == nil {
+				return fmt.Errorf("store entry must not be null")
+			}
+
+			if store.Name == "" {
+				return fmt.Errorf("store name is required when using list format")
+			}
+
+			if _, exists := stores[store.Name]; exists {
+				return fmt.Errorf("duplicate store %q", store.Name)
+			}
+
+			stores[store.Name] = store
+		}
+
+		return nil
+	}
+
+	var single Store
+	if err := node.Decode(&single); err != nil {
+		return err
+	}
+
+	if single.Name == "" {
+		return nil
+	}
+
+	if _, exists := stores[single.Name]; exists {
+		return fmt.Errorf("duplicate store %q", single.Name)
+	}
+
+	stores[single.Name] = &single
+
+	return nil
 }
