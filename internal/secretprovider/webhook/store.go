@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -31,7 +32,7 @@ type Store struct {
 
 func (s *Store) validateAndPrepare(funcMap template.FuncMap) error {
 	if s.Name == "" {
-		return fmt.Errorf("store name is required")
+		return errors.New("store name is required")
 	}
 
 	if s.Version == "" {

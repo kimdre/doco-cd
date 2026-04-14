@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -89,7 +90,7 @@ func parseStoresYAML(input string) (map[string]*Store, error) {
 	}
 
 	if len(stores) == 0 {
-		return nil, fmt.Errorf("no stores found in webhook store configuration")
+		return nil, errors.New("no stores found in webhook store configuration")
 	}
 
 	funcMap := BuildTemplateFuncMap()
@@ -145,11 +146,11 @@ func parseStoreDocument(node *yaml.Node, stores map[string]*Store) error {
 
 		for _, store := range list {
 			if store == nil {
-				return fmt.Errorf("store entry must not be null")
+				return errors.New("store entry must not be null")
 			}
 
 			if store.Name == "" {
-				return fmt.Errorf("store name is required when using list format")
+				return errors.New("store name is required when using list format")
 			}
 
 			if _, exists := stores[store.Name]; exists {

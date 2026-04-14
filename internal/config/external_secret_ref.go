@@ -2,7 +2,7 @@ package config
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -46,7 +46,7 @@ func (r *ExternalSecretRef) UnmarshalYAML(node *yaml.Node) error {
 
 		return nil
 	default:
-		return fmt.Errorf("invalid external secret reference: expected string or object")
+		return errors.New("invalid external secret reference: expected string or object")
 	}
 }
 

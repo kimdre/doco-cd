@@ -203,6 +203,7 @@ func getSecret(w http.ResponseWriter, r *http.Request) {
 
 func postSecret(w http.ResponseWriter, r *http.Request) {
 	var payload map[string]string
+
 	_ = json.NewDecoder(r.Body).Decode(&payload)
 
 	body := map[string]interface{}{

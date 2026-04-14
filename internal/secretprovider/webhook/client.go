@@ -168,6 +168,7 @@ func (p *ValueProvider) newRequest(ctx context.Context, store *Store, remoteRef 
 
 	for key, tpl := range store.headerTemplates {
 		buf.Reset()
+
 		if err := tpl.Execute(buf, tplParams); err != nil {
 			return nil, "", err
 		}
@@ -176,6 +177,7 @@ func (p *ValueProvider) newRequest(ctx context.Context, store *Store, remoteRef 
 	}
 
 	buf.Reset()
+
 	if err := store.jsonPathTemplate.Execute(buf, tplParams); err != nil {
 		return nil, "", err
 	}
@@ -207,6 +209,7 @@ func parseSecretRefPayload(raw string) (*SecretRefPayload, error) {
 
 func validateRemoteRefFields(store *Store, remoteRef map[string]interface{}) error {
 	missing := make([]string, 0)
+
 	for _, field := range store.requiredRemoteRefFields() {
 		if _, ok := remoteRef[field]; !ok {
 			missing = append(missing, field)
