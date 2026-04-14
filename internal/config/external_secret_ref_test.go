@@ -21,14 +21,19 @@ func TestExternalSecretRef_UnmarshalYAML(t *testing.T) {
 			},
 		},
 		{
-			name: "structured ref",
-			yaml: "external_secrets:\n  DB_PASSWORD:\n    storeRef: bitwarden-login\n    remoteRef:\n      key: test\n      property: password\n",
+			name: "structured ref snake_case",
+			yaml: "external_secrets:\n  DB_PASSWORD:\n    store_ref: bitwarden-login\n    remote_ref:\n      key: test\n      property: password\n",
 			want: map[string]ExternalSecretRef{
 				"DB_PASSWORD": {
 					StoreRef:  "bitwarden-login",
 					RemoteRef: map[string]interface{}{"key": "test", "property": "password"},
 				},
 			},
+		},
+		{
+			name: "structured ref legacy camelCase",
+			yaml: "external_secrets:\n  DB_PASSWORD:\n    storeRef: bitwarden-login\n    remoteRef:\n      key: test\n      property: password\n",
+			want: nil,
 		},
 	}
 
@@ -38,7 +43,15 @@ func TestExternalSecretRef_UnmarshalYAML(t *testing.T) {
 				ExternalSecrets map[string]ExternalSecretRef `yaml:"external_secrets"`
 			}
 
-			if err := yaml.Unmarshal([]byte(tc.yaml), &data); err != nil {
+			err := yaml.Unmarshal([]byte(tc.yaml), &data)
+			if tc.want == nil {
+				if err == nil {
+					t.Fatalf("expected unmarshal error")
+				}
+				return
+			}
+
+			if err != nil {
 				t.Fatalf("unexpected unmarshal error: %v", err)
 			}
 

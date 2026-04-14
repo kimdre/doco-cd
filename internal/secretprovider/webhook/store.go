@@ -13,7 +13,7 @@ import (
 
 const StoreVersionV1 = "v1"
 
-var remoteRefFieldPattern = regexp.MustCompile(`\.remoteRef\.([A-Za-z0-9_]+)`) // e.g. {{ .remoteRef.key }}
+var remoteRefFieldPattern = regexp.MustCompile(`\.remote_ref\.([A-Za-z0-9_]+)`) // e.g. {{ .remote_ref.key }}
 
 // Store defines one reusable webhook secret-store entry.
 type Store struct {
@@ -23,7 +23,7 @@ type Store struct {
 	Method   string            `yaml:"method"   default:"GET"`
 	Headers  map[string]string `yaml:"headers"`
 	Body     string            `yaml:"body"`
-	JSONPath string            `yaml:"jsonPath"`
+	JSONPath string            `yaml:"json_path"`
 
 	urlTemplate      *template.Template            `yaml:"-"`
 	bodyTemplate     *template.Template            `yaml:"-"`
@@ -31,6 +31,7 @@ type Store struct {
 	jsonPathTemplate *template.Template            `yaml:"-"`
 	requiredFields   map[string]struct{}           `yaml:"-"`
 }
+
 
 func (s *Store) validateAndPrepare(funcMap template.FuncMap) error {
 	if err := defaults.Set(s); err != nil {
@@ -50,7 +51,7 @@ func (s *Store) validateAndPrepare(funcMap template.FuncMap) error {
 	}
 
 	if s.JSONPath == "" {
-		return fmt.Errorf("store %q: jsonPath is required", s.Name)
+		return fmt.Errorf("store %q: json_path is required", s.Name)
 	}
 
 	s.Method = strings.ToUpper(s.Method)
@@ -99,7 +100,7 @@ func (s *Store) validateAndPrepare(funcMap template.FuncMap) error {
 
 	s.jsonPathTemplate, err = template.New(s.Name + "-jsonpath").Funcs(funcMap).Option("missingkey=error").Parse(s.JSONPath)
 	if err != nil {
-		return fmt.Errorf("store %q: failed to parse jsonPath template: %w", s.Name, err)
+		return fmt.Errorf("store %q: failed to parse json_path template: %w", s.Name, err)
 	}
 
 	s.collectRequiredFields(s.JSONPath)

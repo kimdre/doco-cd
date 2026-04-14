@@ -10,7 +10,7 @@ import (
 )
 
 // BuildTemplateFuncMap returns a map of template functions available for webhook store templates.
-// These functions can be used to transform values in url, headers, body, and jsonPath fields.
+// These functions can be used to transform values in url, headers, body, and json_path fields.
 func BuildTemplateFuncMap() template.FuncMap {
 	return template.FuncMap{
 		"b64enc": func(input string) string {
@@ -51,4 +51,3 @@ func BuildTemplateFuncMap() template.FuncMap {
 		},
 	}
 }
-

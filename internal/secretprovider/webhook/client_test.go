@@ -14,25 +14,25 @@ func TestValueProvider_GetSecret_WebhookStores(t *testing.T) {
 	stores := `stores:
   login:
     version: v1
-    url: "` + ts.URL + `/get/{{ .remoteRef.key }}"
+    url: "` + ts.URL + `/get/{{ .remote_ref.key }}"
     method: GET
     headers:
       Content-Type: application/json
-    jsonPath: "result.{{ .remoteRef.property }}"
+    json_path: "result.{{ .remote_ref.property }}"
   fields:
     version: v1
-    url: "` + ts.URL + `/get/{{ .remoteRef.key }}"
+    url: "` + ts.URL + `/get/{{ .remote_ref.key }}"
     method: GET
-    jsonPath: "fields[?name=='{{ .remoteRef.property }}'].value"
+    json_path: "fields[?name=='{{ .remote_ref.property }}'].value"
   post-auth:
     version: v1
     url: "` + ts.URL + `/post"
     method: POST
     headers:
-      Authorization: "Basic {{ print .auth.username \":\" .auth.password | b64enc }}"
+      Authorization: 'Basic {{ print .auth.username ":" .auth.password | b64enc }}'
       Content-Type: application/json
-    body: '{"secret":"{{ .remoteRef.key }}"}'
-    jsonPath: "result.value"
+    body: '{"secret":"{{ .remote_ref.key }}"}'
+    json_path: "result.value"
 `
 
 	t.Setenv("SECRET_PROVIDER_WEBHOOK_STORES", stores)
@@ -57,6 +57,19 @@ func TestValueProvider_GetSecret_WebhookStores(t *testing.T) {
 				"property": "username",
 			},
 		})
+
+		got, err := subject.GetSecret(t.Context(), ref)
+		if err != nil {
+			t.Fatalf("Unwanted error: %v", err)
+		}
+
+		if got != "alice" {
+			t.Fatalf("got %q, want %q", got, "alice")
+		}
+	})
+
+	t.Run("login_username_snake_case_ref", func(t *testing.T) {
+		ref := `{"store_ref":"login","remote_ref":{"key":"user-1","property":"username"}}`
 
 		got, err := subject.GetSecret(t.Context(), ref)
 		if err != nil {
@@ -137,15 +150,15 @@ func TestGetConfig_WebhookStores_MultiDocument(t *testing.T) {
 stores:
   login:
     version: v1
-    url: "https://example.com/{{ .remoteRef.key }}"
+    url: "https://example.com/{{ .remote_ref.key }}"
     method: GET
-    jsonPath: "result.{{ .remoteRef.property }}"
+    json_path: "result.{{ .remote_ref.property }}"
 ---
 name: fields
 version: v1
-url: "https://example.com/{{ .remoteRef.key }}"
+url: "https://example.com/{{ .remote_ref.key }}"
 method: GET
-jsonPath: "result"
+json_path: "result"
 `
 
 	t.Setenv("SECRET_PROVIDER_WEBHOOK_STORES", stores)
@@ -164,9 +177,9 @@ func TestGetConfig_WebhookStores_DefaultVersion(t *testing.T) {
 	// version field omitted — should default to v1
 	stores := `stores:
   no-version:
-    url: "https://example.com/{{ .remoteRef.key }}"
+    url: "https://example.com/{{ .remote_ref.key }}"
     method: GET
-    jsonPath: "result"
+    json_path: "result"
 `
 
 	t.Setenv("SECRET_PROVIDER_WEBHOOK_STORES", stores)
@@ -242,5 +255,3 @@ func postSecret(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(body)
 }
-
-

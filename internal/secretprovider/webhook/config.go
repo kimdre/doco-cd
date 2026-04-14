@@ -50,6 +50,7 @@ func GetConfig() (*Config, error) {
 		"username": cfg.AuthUsername,
 		"password": cfg.AuthPassword,
 		"token":    cfg.AuthToken,
+		"api_key":  cfg.AuthAPIKey,
 		"apiKey":   cfg.AuthAPIKey,
 	}
 

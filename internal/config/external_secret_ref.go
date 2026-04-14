@@ -18,15 +18,15 @@ type ExternalSecretRef struct {
 	LegacyRef string `json:"-"`
 
 	// StoreRef is the name of the global webhook secret store to use, as defined
-	// in the store YAML file (e.g. `storeRef: bitwarden-login`).
+	// in the store YAML file (e.g. `store_ref: bitwarden-login`).
 	// Used exclusively by the webhook provider.
-	StoreRef string `json:"storeRef,omitempty"`
+	StoreRef string `json:"store_ref,omitempty"`
 
 	// RemoteRef contains the dynamic key/value pairs that are substituted into
-	// the store's URL, headers, body and jsonPath templates at resolution time
+	// the store's URL, headers, body and json_path templates at resolution time
 	// (e.g. `key`, `property`, or any custom field the store templates reference).
 	// Used exclusively by the webhook provider.
-	RemoteRef map[string]interface{} `json:"remoteRef,omitempty"`
+	RemoteRef map[string]interface{} `json:"remote_ref,omitempty"`
 }
 
 func (r *ExternalSecretRef) UnmarshalYAML(node *yaml.Node) error {
@@ -45,15 +45,19 @@ func (r *ExternalSecretRef) UnmarshalYAML(node *yaml.Node) error {
 
 		return nil
 	case yaml.MappingNode:
+		if hasYAMLKey(node, "storeRef") || hasYAMLKey(node, "remoteRef") {
+			return errors.New("invalid external secret reference: use snake_case keys store_ref and remote_ref")
+		}
+
 		// Structured object form used by the webhook provider:
 		//   DB_PASSWORD:
-		//     storeRef: bitwarden-login
-		//     remoteRef:
+		//     store_ref: bitwarden-login
+		//     remote_ref:
 		//       key: 138e3a97-ed58-431c-b366-b35500663411
 		//       property: password
 		type ref struct {
-			StoreRef  string                 `yaml:"storeRef"`
-			RemoteRef map[string]interface{} `yaml:"remoteRef"`
+			StoreRef  string                 `yaml:"store_ref"`
+			RemoteRef map[string]interface{} `yaml:"remote_ref"`
 		}
 
 		var v ref
@@ -79,8 +83,8 @@ func (r *ExternalSecretRef) EncodedReference() (string, error) {
 	}
 
 	b, err := json.Marshal(struct {
-		StoreRef  string                 `json:"storeRef"`
-		RemoteRef map[string]interface{} `json:"remoteRef"`
+		StoreRef  string                 `json:"store_ref"`
+		RemoteRef map[string]interface{} `json:"remote_ref"`
 	}{
 		StoreRef:  r.StoreRef,
 		RemoteRef: r.RemoteRef,
@@ -90,6 +94,20 @@ func (r *ExternalSecretRef) EncodedReference() (string, error) {
 	}
 
 	return string(b), nil
+}
+
+func hasYAMLKey(node *yaml.Node, key string) bool {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return false
+	}
+
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value == key {
+			return true
+		}
+	}
+
+	return false
 }
 
 // EncodeExternalSecretRefs converts typed references to provider input values.

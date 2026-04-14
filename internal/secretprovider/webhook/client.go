@@ -25,16 +25,15 @@ const (
 )
 
 var (
-	ErrLegacyWebhookRefNotSupported = errors.New("webhook provider no longer supports string external_secrets references; use object format with storeRef and remoteRef")
+	ErrLegacyWebhookRefNotSupported = errors.New("webhook provider no longer supports string external_secrets references; use object format with store_ref and remote_ref")
 	ErrUnknownStoreRef              = errors.New("unknown webhook secret store reference")
-	ErrMissingRemoteRefField        = errors.New("missing required remoteRef field")
+	ErrMissingRemoteRefField        = errors.New("missing required remote_ref field")
 )
 
 type SecretRefPayload struct {
-	StoreRef  string                 `json:"storeRef"`
-	RemoteRef map[string]interface{} `json:"remoteRef"`
+	StoreRef  string                 `json:"store_ref"`
+	RemoteRef map[string]interface{} `json:"remote_ref"`
 }
-
 
 // ValueProvider provides generic access to remote secrets
 // using a HTTP client for retrieval.
@@ -126,8 +125,8 @@ func (p *ValueProvider) newRequest(ctx context.Context, store *Store, remoteRef 
 
 	buf := new(bytes.Buffer)
 	tplParams := map[string]interface{}{
-		"remoteRef": remoteRef,
-		"auth":      p.auth,
+		"remote_ref": remoteRef,
+		"auth":       p.auth,
 	}
 
 	if err := store.urlTemplate.Execute(buf, tplParams); err != nil {
@@ -187,8 +186,9 @@ func parseSecretRefPayload(raw string) (*SecretRefPayload, error) {
 		return nil, ErrLegacyWebhookRefNotSupported
 	}
 
+
 	if payload.StoreRef == "" {
-		return nil, fmt.Errorf("%w: missing storeRef", ErrLegacyWebhookRefNotSupported)
+		return nil, fmt.Errorf("%w: missing store_ref", ErrLegacyWebhookRefNotSupported)
 	}
 
 	if payload.RemoteRef == nil {
