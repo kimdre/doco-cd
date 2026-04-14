@@ -2,10 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
-	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -13,15 +10,11 @@ import (
 	"github.com/moby/moby/api/types/container"
 
 	"github.com/kimdre/doco-cd/internal/lock"
-	"github.com/kimdre/doco-cd/internal/reconciliation"
-
-	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/stages"
 
 	"github.com/kimdre/doco-cd/internal/config"
-	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
 	log "github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/prometheus"
@@ -130,27 +123,12 @@ func pollError(jobLog *slog.Logger, metadata notification.Metadata, err error) {
 func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *config.AppConfig, dataMountPoint container.MountPoint,
 	dockerCli command.Cli, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
 ) []pollResult {
-	var err error
-
 	results := make([]pollResult, 0)
 
 	startTime := time.Now()
 	cloneUrl := string(pollConfig.CloneUrl)
 	repoName := git.GetRepoName(cloneUrl)
 	jobLog := logger.With(slog.String("job_id", metadata.JobID))
-
-	// refresh if docker host is running in swarm mode
-	if err := swarm.RefreshModeEnabled(ctx, dockerCli.Client()); err != nil {
-		pollError(jobLog, metadata, fmt.Errorf("failed to check if docker host is running in swarm mode: %w", err))
-
-		return append(results, pollResult{Metadata: metadata, Err: err})
-	}
-
-	if strings.Contains(repoName, "..") {
-		pollError(jobLog, metadata, fmt.Errorf("invalid repository name: %s, contains '..'", repoName))
-
-		return append(results, pollResult{Metadata: metadata, Err: err})
-	}
 
 	if pollConfig.CustomTarget != "" {
 		jobLog = jobLog.With(slog.String("custom_target", pollConfig.CustomTarget))
@@ -161,72 +139,19 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 			slog.String("event", string(stages.JobTriggerPoll)),
 			slog.Any("config", pollConfig)))
 
-	internalRepoPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
-	if err != nil {
-		pollError(jobLog, metadata, fmt.Errorf("failed to verify and sanitize internal filesystem path: %w", err))
-
-		return append(results, pollResult{Metadata: metadata, Err: err})
-	}
-
-	externalRepoPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Source, repoName), dataMountPoint.Source) // Path on the host
-	if err != nil {
-		pollError(jobLog, metadata, fmt.Errorf("failed to verify and sanitize external filesystem path: %w", err))
-
-		return append(results, pollResult{Metadata: metadata, Err: err})
-	}
-
-	if _, err := git.CloneOrUpdateRepository(jobLog,
-		cloneUrl, pollConfig.Reference, internalRepoPath, externalRepoPath,
-		false, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken,
-		appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.GitCloneSubmodules,
-	); err != nil {
-		pollError(jobLog, metadata, fmt.Errorf("failed to clone repository: %w", err))
-		return append(results, pollResult{Metadata: metadata, Err: err})
-	}
-
-	jobLog.Debug("retrieving deployment configuration")
-
-	// shortName is the last part of repoName, which is just the name of the repository
-	shortName := filepath.Base(repoName)
-
-	// Resolve deployment configs (prefer inline in poll config when present)
-	deployConfigs, err := config.ResolveDeployConfigs(pollConfig, internalRepoPath, appConfig.DeployConfigBaseDir, shortName)
-	if err != nil {
-		pollError(jobLog, metadata, fmt.Errorf("failed to get deploy configuration: %w", err))
-
-		return append(results, pollResult{Metadata: metadata, Err: err})
-	}
-
-	err = reconciliation.CleanupObsoleteAutoDiscoveredContainers(ctx, jobLog, dockerCli, string(pollConfig.CloneUrl), deployConfigs, metadata)
-	if err != nil {
-		pollError(jobLog, metadata, fmt.Errorf("failed to cleanup obsolete auto-discovered containers: %w", err))
-
-		return append(results, pollResult{Metadata: metadata, Err: err})
-	}
-
-	deployErr := reconciliation.HandleDeploys(ctx, jobLog,
-		appConfig,
-		dataMountPoint,
-		dockerCli,
-		secretProvider,
-		metadata.JobID,
-		stages.JobTriggerPoll,
-		stages.RepositoryData{
-			CloneURL:     config.HttpUrl(cloneUrl),
-			Name:         repoName,
-			PathInternal: internalRepoPath,
-			PathExternal: externalRepoPath,
-		},
-		deployConfigs,
-		&webhook.ParsedPayload{},
-		"",
+	deployErr := handle(ctx, jobLog,
+		appConfig, dataMountPoint, secretProvider, dockerCli,
+		stages.JobTriggerPoll, cloneUrl, pollConfig.Reference, false,
+		metadata, pollConfig.CustomTarget, "",
+		pollConfig, webhook.ParsedPayload{},
 	)
 
 	nextRun := time.Now().Add(time.Duration(pollConfig.Interval) * time.Second).Format(time.RFC3339)
 	elapsedTime := time.Since(startTime)
 
 	if deployErr != nil {
-		prometheus.PollErrors.WithLabelValues(repoName).Inc()
+		pollError(jobLog, metadata, deployErr)
+		results = append(results, pollResult{Metadata: metadata, Err: deployErr})
 		jobLog.Warn("job completed with errors", log.ErrAttr(deployErr), slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()), slog.String("next_run", nextRun))
 	} else {
 		jobLog.Info("job completed successfully", slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()), slog.String("next_run", nextRun))

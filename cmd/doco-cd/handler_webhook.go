@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -14,15 +13,11 @@ import (
 	"github.com/moby/moby/api/types/container"
 
 	"github.com/kimdre/doco-cd/internal/lock"
-	"github.com/kimdre/doco-cd/internal/reconciliation"
-
-	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/stages"
 
 	"github.com/kimdre/doco-cd/internal/config"
-	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/prometheus"
@@ -74,8 +69,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	dockerCli command.Cli, secretProvider *secretprovider.SecretProvider,
 	testName string,
 ) {
-	var err error
-
 	startTime := time.Now()
 	repoName := git.GetRepoName(payload.CloneURL)
 
@@ -84,8 +77,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	if customTarget != "" {
 		jobLog = jobLog.With(slog.String("custom_target", customTarget))
 	}
-
-	jobLog.Debug("metadata", slog.Any("metadata", metadata))
 
 	jobLog.Info("received new job",
 		slog.Group("trigger",
@@ -100,84 +91,25 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		return
 	}
 
-	// refresh if docker host is running in swarm mode
-	if err := swarm.RefreshModeEnabled(ctx, dockerCli.Client()); err != nil {
-		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to check if docker host is running in swarm mode", err.Error(), http.StatusInternalServerError, metadata)
-
-		return
-	}
-
 	cloneUrl := payload.CloneURL
 	if appConfig.SSHPrivateKey != "" {
 		cloneUrl = payload.SSHUrl
 	}
 
-	// Validate payload.FullName to prevent directory traversal
-	if strings.Contains(payload.FullName, "..") {
-		onError(w, jobLog.With(slog.String("repository", payload.FullName)), "invalid repository name", "", http.StatusBadRequest, metadata)
-
-		return
-	}
-
-	internalRepoPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Destination, repoName), dataMountPoint.Destination) // Path inside the container
-	if err != nil {
-		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to verify and sanitize internal filesystem path", err.Error(), http.StatusBadRequest, metadata)
-
-		return
-	}
-
-	externalRepoPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPoint.Source, repoName), dataMountPoint.Source) // Path on the host
-	if err != nil {
-		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to verify and sanitize external filesystem path", err.Error(), http.StatusBadRequest, metadata)
-
-		return
-	}
-
-	if _, err := git.CloneOrUpdateRepository(jobLog,
-		cloneUrl, payload.Ref, internalRepoPath, externalRepoPath,
-		payload.Private, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken,
-		appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.GitCloneSubmodules,
-	); err != nil {
-		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to clone repository", err.Error(), http.StatusInternalServerError, metadata)
-		return
-	}
-
-	jobLog.Debug("retrieving deployment configuration")
-
-	// Get the deployment configs from the repository
-	deployConfigs, err := config.GetDeployConfigs(internalRepoPath, appConfig.DeployConfigBaseDir, payload.Name, customTarget, payload.Ref)
-	if err != nil {
-		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to get deploy configuration", err.Error(), http.StatusInternalServerError, metadata)
-
-		return
-	}
-
-	err = reconciliation.CleanupObsoleteAutoDiscoveredContainers(ctx, jobLog, dockerCli, cloneUrl, deployConfigs, metadata)
-	if err != nil {
-		onError(w, jobLog.With(logger.ErrAttr(err)), "failed to clean up obsolete auto-discovered containers", err.Error(), http.StatusInternalServerError, metadata)
-	}
-
-	deployErr := reconciliation.HandleDeploys(ctx, jobLog,
-		appConfig,
-		dataMountPoint,
-		dockerCli,
-		secretProvider,
-		metadata.JobID, stages.JobTriggerWebhook,
-		stages.RepositoryData{
-			CloneURL:     config.HttpUrl(cloneUrl),
-			Name:         repoName,
-			PathInternal: internalRepoPath,
-			PathExternal: externalRepoPath,
-		},
-
-		deployConfigs,
-		&payload,
-		testName,
+	deployErr := handle(ctx, jobLog,
+		appConfig, dataMountPoint, secretProvider, dockerCli,
+		stages.JobTriggerWebhook, cloneUrl, payload.Ref, payload.Private,
+		metadata, customTarget, testName, config.PollConfig{}, payload,
 	)
 	if deployErr != nil {
 		// In synchronous mode we should return an error to the caller
 		// For async mode, w is noopResponseWriter and JSONError is a no-op
-		onError(w, jobLog.With(logger.ErrAttr(deployErr)), "deployment failed", deployErr.Error(), http.StatusInternalServerError, metadata)
+		if hr, ok := deployErr.(handleError); ok {
+			onError(w, jobLog.With(logger.ErrAttr(hr.err)), hr.msg, hr.detail, hr.httpStatusCode, metadata)
+		} else {
+			onError(w, jobLog.With(logger.ErrAttr(deployErr)), "deployment failed", deployErr.Error(), http.StatusInternalServerError, metadata)
+		}
+
 		return
 	}
 
