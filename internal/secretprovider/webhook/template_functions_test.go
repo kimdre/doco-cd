@@ -8,6 +8,8 @@ func TestBuildTemplateFuncMap(t *testing.T) {
 	funcMap := BuildTemplateFuncMap()
 
 	t.Run("b64enc", func(t *testing.T) {
+		t.Parallel()
+
 		b64enc := funcMap["b64enc"].(func(string) string)
 		got := b64enc("hello world")
 
@@ -18,6 +20,8 @@ func TestBuildTemplateFuncMap(t *testing.T) {
 	})
 
 	t.Run("b64dec", func(t *testing.T) {
+		t.Parallel()
+
 		b64dec := funcMap["b64dec"].(func(string) (string, error))
 
 		got, err := b64dec("aGVsbG8gd29ybGQ=")
@@ -32,6 +36,8 @@ func TestBuildTemplateFuncMap(t *testing.T) {
 	})
 
 	t.Run("b64dec_error", func(t *testing.T) {
+		t.Parallel()
+
 		b64dec := funcMap["b64dec"].(func(string) (string, error))
 
 		_, err := b64dec("invalid!!!base64")
@@ -41,6 +47,8 @@ func TestBuildTemplateFuncMap(t *testing.T) {
 	})
 
 	t.Run("urlencode", func(t *testing.T) {
+		t.Parallel()
+
 		urlencode := funcMap["urlencode"].(func(string) string)
 		got := urlencode("hello world & special=chars")
 
@@ -51,6 +59,8 @@ func TestBuildTemplateFuncMap(t *testing.T) {
 	})
 
 	t.Run("urldecode", func(t *testing.T) {
+		t.Parallel()
+
 		urldecode := funcMap["urldecode"].(func(string) (string, error))
 
 		got, err := urldecode("hello+world+%26+special%3Dchars")
@@ -65,6 +75,8 @@ func TestBuildTemplateFuncMap(t *testing.T) {
 	})
 
 	t.Run("urldecode_error", func(t *testing.T) {
+		t.Parallel()
+
 		urldecode := funcMap["urldecode"].(func(string) (string, error))
 
 		_, err := urldecode("%ZZ")
@@ -74,6 +86,8 @@ func TestBuildTemplateFuncMap(t *testing.T) {
 	})
 
 	t.Run("json", func(t *testing.T) {
+		t.Parallel()
+
 		jsonFunc := funcMap["json"].(func(interface{}) (string, error))
 
 		got, err := jsonFunc(map[string]string{"key": "value"})
@@ -88,6 +102,8 @@ func TestBuildTemplateFuncMap(t *testing.T) {
 	})
 
 	t.Run("toUpper", func(t *testing.T) {
+		t.Parallel()
+
 		toUpper := funcMap["toUpper"].(func(string) string)
 		got := toUpper("Hello World")
 
@@ -98,6 +114,8 @@ func TestBuildTemplateFuncMap(t *testing.T) {
 	})
 
 	t.Run("toLower", func(t *testing.T) {
+		t.Parallel()
+
 		toLower := funcMap["toLower"].(func(string) string)
 		got := toLower("Hello World")
 
@@ -108,6 +126,8 @@ func TestBuildTemplateFuncMap(t *testing.T) {
 	})
 
 	t.Run("trim", func(t *testing.T) {
+		t.Parallel()
+
 		trim := funcMap["trim"].(func(string) string)
 		got := trim("  hello world  \n")
 

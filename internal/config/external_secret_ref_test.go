@@ -38,7 +38,11 @@ func TestExternalSecretRef_UnmarshalYAML(t *testing.T) {
 	}
 
 	for _, tc := range tests {
+		tc := tc
+
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			var data struct {
 				ExternalSecrets map[string]ExternalSecretRef `yaml:"external_secrets"`
 			}
@@ -64,6 +68,8 @@ func TestExternalSecretRef_UnmarshalYAML(t *testing.T) {
 }
 
 func TestEncodeExternalSecretRefs(t *testing.T) {
+	t.Parallel()
+
 	in := map[string]ExternalSecretRef{
 		"LEGACY": {LegacyRef: "plain-ref"},
 		"JSON": {
