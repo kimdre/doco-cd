@@ -3,14 +3,12 @@ package webhook
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"sort"
-	"text/template"
 
 	"github.com/jmespath/go-jmespath"
 )
@@ -37,13 +35,6 @@ type SecretRefPayload struct {
 	RemoteRef map[string]interface{} `json:"remoteRef"`
 }
 
-func BuildTemplateFuncMap() template.FuncMap {
-	return template.FuncMap{
-		"b64enc": func(input string) string {
-			return base64.StdEncoding.EncodeToString([]byte(input))
-		},
-	}
-}
 
 // ValueProvider provides generic access to remote secrets
 // using a HTTP client for retrieval.
