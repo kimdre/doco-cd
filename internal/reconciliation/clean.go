@@ -18,9 +18,9 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 )
 
-// CleanupObsoleteAutoDiscoveredContainers removes obsolete auto-discovered containers that are no longer defined in
+// cleanupObsoleteAutoDiscoveredContainers removes obsolete auto-discovered containers that are no longer defined in
 // the current deployment configurations but still exist on the Docker host.
-func CleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.Logger,
+func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.Logger,
 	dockerCli command.Cli,
 	cloneUrl string, deployConfigs []*config.DeployConfig, metadata notification.Metadata,
 ) error {

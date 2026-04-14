@@ -165,18 +165,6 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		}
 	}
 
-	if err := reconciliation.CleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
-		dockerCli, cloneURL,
-		deployConfigs,
-		metadata); err != nil {
-		return &handleError{
-			err:            err,
-			msg:            "failed to clean up obsolete auto-discovered containers",
-			detail:         err.Error(),
-			httpStatusCode: http.StatusInternalServerError,
-		}
-	}
-
 	repoData := stages.RepositoryData{
 		CloneURL:     config.HttpUrl(cloneURL),
 		Name:         repoName,
@@ -184,9 +172,16 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		PathExternal: externalRepoPath,
 	}
 
-	deployErr := reconciliation.HandleDeploys(ctx, jobLog, appConfig,
-		dataMountPoint, dockerCli, secretProvider, metadata.JobID, jobTrigger,
-		repoData, deployConfigs, &payload, testName)
+	if err := reconciliation.Deploy(ctx, jobLog, appConfig,
+		dataMountPoint, dockerCli, secretProvider, metadata, jobTrigger,
+		repoData, deployConfigs, &payload, testName); err != nil {
+		return &handleError{
+			err:            err,
+			msg:            "failed to deploy services",
+			detail:         err.Error(),
+			httpStatusCode: http.StatusInternalServerError,
+		}
+	}
 
-	return deployErr
+	return nil
 }

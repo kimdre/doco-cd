@@ -3,6 +3,7 @@ package reconciliation
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 
@@ -18,7 +19,32 @@ import (
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
-func HandleDeploys(ctx context.Context,
+func Deploy(ctx context.Context,
+	jobLog *slog.Logger,
+	appConfig *config.AppConfig,
+	dataMountPoint container.MountPoint,
+	dockerCli command.Cli,
+	secretProvider *secretprovider.SecretProvider,
+	metadata notification.Metadata,
+	jobTrigger stages.JobTrigger,
+	repoData stages.RepositoryData,
+	deployConfigs []*config.DeployConfig,
+	payload *webhook.ParsedPayload,
+	testName string,
+) error {
+	if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
+		dockerCli, string(repoData.CloneURL),
+		deployConfigs,
+		metadata); err != nil {
+		return fmt.Errorf("failed to clean up obsolete auto-discovered containers: %w", err)
+	}
+
+	return handleDeploy(ctx, jobLog, appConfig,
+		dataMountPoint, dockerCli, secretProvider, metadata.JobID, jobTrigger,
+		repoData, deployConfigs, payload, testName)
+}
+
+func handleDeploy(ctx context.Context,
 	jobLog *slog.Logger,
 	appConfig *config.AppConfig,
 	dataMountPoint container.MountPoint,
