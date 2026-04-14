@@ -15,7 +15,7 @@ services:
     cap_drop:
       - ALL
     volumes:
-      - data:/data
+      - bw-data:/data
 #    tmpfs:
 #      - /data:uid=65532,gid=65532,mode=755
     depends_on:
@@ -30,8 +30,8 @@ services:
     image: busybox:latest
     command: sh -c "chown -R 65532:65532 /data"
     volumes:
-      - data:/data
+      - bw-data:/data
     restart: "no"
 
 volumes:
-    data:
+    bw-data:
