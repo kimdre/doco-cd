@@ -1,12 +1,6 @@
 services:
   bitwarden-api:
     image: ghcr.io/kimdre/bitwarden-rest-api-server:latest
-#    pull_policy: build
-#    build:
-#      context: /Users/kimdre/Documents/Projects/privat/bitwarden-rest-api-server-old/src/
-#      dockerfile: Dockerfile
-#      args:
-#        - BW_CLI_VERSION=2026.3.0
     # Specify sensitive environment variables in a .env file
     environment:
       - BW_HOST=${BW_HOST:-https://vault.bitwarden.com}
