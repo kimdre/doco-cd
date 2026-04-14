@@ -1,6 +1,12 @@
 services:
   bitwarden-api:
     image: ghcr.io/kimdre/bitwarden-rest-api-server:latest
+#    pull_policy: build
+#    build:
+#      context: /Users/kimdre/Documents/Projects/privat/bitwarden-rest-api-server-old/src/
+#      dockerfile: Dockerfile
+#      args:
+#        - BW_CLI_VERSION=2026.3.0
     # Specify sensitive environment variables in a .env file
     environment:
       - BW_HOST=${BW_HOST:-https://vault.bitwarden.com}
@@ -22,6 +28,11 @@ services:
       set_permissions:
         condition: "service_completed_successfully"
   app:
+    environment:
+      SECRET_PROVIDER: webhook
+      SECRET_PROVIDER_WEBHOOK_STORES_FILE: /secret-store.yml
+    volumes:
+      - ./internal/secretprovider/webhook/testdata/secret-store.yml:/secret-store.yml:ro
     depends_on:
       bitwarden-api:
         condition: "service_healthy"
