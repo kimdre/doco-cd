@@ -48,6 +48,7 @@ func TestExternalSecretRef_UnmarshalYAML(t *testing.T) {
 				if err == nil {
 					t.Fatalf("expected unmarshal error")
 				}
+
 				return
 			}
 

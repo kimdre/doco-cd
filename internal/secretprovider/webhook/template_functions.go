@@ -21,16 +21,16 @@ func BuildTemplateFuncMap() template.FuncMap {
 			if err != nil {
 				return "", fmt.Errorf("failed to decode base64: %w", err)
 			}
+
 			return string(decoded), nil
 		},
-		"urlencode": func(input string) string {
-			return url.QueryEscape(input)
-		},
+		"urlencode": url.QueryEscape,
 		"urldecode": func(input string) (string, error) {
 			decoded, err := url.QueryUnescape(input)
 			if err != nil {
 				return "", fmt.Errorf("failed to decode URL: %w", err)
 			}
+
 			return decoded, nil
 		},
 		"json": func(input interface{}) (string, error) {
@@ -38,16 +38,11 @@ func BuildTemplateFuncMap() template.FuncMap {
 			if err != nil {
 				return "", fmt.Errorf("failed to marshal to JSON: %w", err)
 			}
+
 			return string(data), nil
 		},
-		"toUpper": func(input string) string {
-			return strings.ToUpper(input)
-		},
-		"toLower": func(input string) string {
-			return strings.ToLower(input)
-		},
-		"trim": func(input string) string {
-			return strings.TrimSpace(input)
-		},
+		"toUpper": strings.ToUpper,
+		"toLower": strings.ToLower,
+		"trim":    strings.TrimSpace,
 	}
 }
