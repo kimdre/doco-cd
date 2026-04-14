@@ -174,7 +174,7 @@ func (p *ValueProvider) newRequest(ctx context.Context, store *Store, remoteRef 
 
 	renderedJSONPath := buf.String()
 	if renderedJSONPath == "" {
-		return nil, "", fmt.Errorf("store %q rendered an empty jsonPath", store.Name)
+		return nil, "", fmt.Errorf("store %q rendered an empty json_path", store.Name)
 	}
 
 	return req, renderedJSONPath, nil
@@ -185,7 +185,6 @@ func parseSecretRefPayload(raw string) (*SecretRefPayload, error) {
 	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
 		return nil, ErrLegacyWebhookRefNotSupported
 	}
-
 
 	if payload.StoreRef == "" {
 		return nil, fmt.Errorf("%w: missing store_ref", ErrLegacyWebhookRefNotSupported)

@@ -64,7 +64,7 @@ type DeployConfig struct {
 		RemoveRepoDir bool `yaml:"remove_dir" json:"remove_dir" default:"true"`         // RemoveRepoDir removes the repository directory after the deployment is destroyed
 	} `yaml:"destroy_opts" json:"destroy_opts"` // DestroyOpts is the destroy options for the deployment
 	Profiles         []string                     `yaml:"profiles" json:"profiles" default:"[]"`              // Profiles is a list of profiles to use for the deployment, e.g., ["dev", "prod"]. See https://docs.docker.com/compose/how-tos/profiles/
-	ExternalSecrets  map[string]ExternalSecretRef `yaml:"external_secrets" json:"external_secrets"`           // ExternalSecrets maps env vars to legacy string references or structured references (e.g. webhook storeRef/remoteRef).
+	ExternalSecrets  map[string]ExternalSecretRef `yaml:"external_secrets" json:"external_secrets"`           // ExternalSecrets maps env vars to legacy string references or structured references (e.g. webhook store_ref/remote_ref).
 	AutoDiscover     bool                         `yaml:"auto_discover" json:"auto_discover" default:"false"` // AutoDiscover enables autodiscovery of services to deploy in the working directory by checking for subdirectories with docker-compose files
 	AutoDiscoverOpts struct {
 		ScanDepth int  `yaml:"depth" json:"depth" default:"0"`      // ScanDepth is the maximum depth of subdirectories to scan for docker-compose files

@@ -32,7 +32,6 @@ type Store struct {
 	requiredFields   map[string]struct{}           `yaml:"-"`
 }
 
-
 func (s *Store) validateAndPrepare(funcMap template.FuncMap) error {
 	if err := defaults.Set(s); err != nil {
 		return fmt.Errorf("store %q: failed to apply defaults: %w", s.Name, err)
