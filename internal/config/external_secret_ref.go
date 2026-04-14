@@ -8,17 +8,32 @@ import (
 )
 
 // ExternalSecretRef represents one external secret reference in deploy config.
-// It supports legacy scalar references (for existing providers) and structured
-// object references used by webhook stores.
+// It supports legacy scalar references (for existing providers like Bitwarden SM,
+// 1Password, AWS Secrets Manager etc.) and structured object references used by
+// the webhook provider's store-based model.
 type ExternalSecretRef struct {
-	LegacyRef string                 `json:"-"`
-	StoreRef  string                 `json:"storeRef,omitempty"`
+	// LegacyRef holds the raw string value when the reference is written as a
+	// plain scalar in YAML (e.g. `DB_PASSWORD: 138e3a97-ed58-431c-b366-b35500663411`).
+	// Used by all non-webhook secret providers. Empty for structured refs.
+	LegacyRef string `json:"-"`
+
+	// StoreRef is the name of the global webhook secret store to use, as defined
+	// in the store YAML file (e.g. `storeRef: bitwarden-login`).
+	// Used exclusively by the webhook provider.
+	StoreRef string `json:"storeRef,omitempty"`
+
+	// RemoteRef contains the dynamic key/value pairs that are substituted into
+	// the store's URL, headers, body and jsonPath templates at resolution time
+	// (e.g. `key`, `property`, or any custom field the store templates reference).
+	// Used exclusively by the webhook provider.
 	RemoteRef map[string]interface{} `json:"remoteRef,omitempty"`
 }
 
 func (r *ExternalSecretRef) UnmarshalYAML(node *yaml.Node) error {
 	switch node.Kind {
 	case yaml.ScalarNode:
+		// Legacy scalar form used by non-webhook providers:
+		//   DB_PASSWORD: 138e3a97-ed58-431c-b366-b35500663411
 		var v string
 		if err := node.Decode(&v); err != nil {
 			return err
@@ -30,6 +45,12 @@ func (r *ExternalSecretRef) UnmarshalYAML(node *yaml.Node) error {
 
 		return nil
 	case yaml.MappingNode:
+		// Structured object form used by the webhook provider:
+		//   DB_PASSWORD:
+		//     storeRef: bitwarden-login
+		//     remoteRef:
+		//       key: 138e3a97-ed58-431c-b366-b35500663411
+		//       property: password
 		type ref struct {
 			StoreRef  string                 `yaml:"storeRef"`
 			RemoteRef map[string]interface{} `yaml:"remoteRef"`
@@ -76,7 +97,7 @@ func EncodeExternalSecretRefs(in map[string]ExternalSecretRef) (map[string]strin
 	out := make(map[string]string, len(in))
 
 	for envName, ref := range in {
-		ref := ref // avoid capture of loop variable
+		// avoid capture of loop variable
 
 		encoded, err := ref.EncodedReference()
 		if err != nil {
