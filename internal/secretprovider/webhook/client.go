@@ -12,7 +12,7 @@ import (
 	"sort"
 	"text/template"
 
-	jmespath "github.com/jmespath/go-jmespath"
+	"github.com/jmespath/go-jmespath"
 )
 
 const (
