@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/docker/cli/cli/command"
@@ -15,6 +16,13 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 )
+
+var swarmJobLock = sync.Map{}
+
+func getSwarmJobLock(name string) *sync.Mutex {
+	lock, _ := swarmJobLock.LoadOrStore(name, &sync.Mutex{})
+	return lock.(*sync.Mutex)
+}
 
 // RunSwarmJob runs a Docker Swarm job container with the specified mode and command.
 // https://docs.docker.com/reference/cli/docker/service/create/#running-as-a-job
@@ -42,10 +50,18 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 	if title == "" {
 		title = "helper-job"
 	}
+	// fix conflict error
+	// Error response from daemon: rpc error: code = Unknown desc = update out of sequence
+
+	name := fmt.Sprintf("%s_%s", config.AppName, title)
+
+	lock := getSwarmJobLock(name)
+	lock.Lock()
+	defer lock.Unlock()
 
 	newServiceSpec := swarmTypes.ServiceSpec{
 		Annotations: swarmTypes.Annotations{
-			Name: fmt.Sprintf("%s_%s", config.AppName, title),
+			Name: name,
 			Labels: map[string]string{
 				DocoCDLabels.Metadata.Manager:   config.AppName,
 				DocoCDLabels.Metadata.Version:   config.AppVersion,
