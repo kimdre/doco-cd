@@ -11,6 +11,7 @@ import (
 	"github.com/moby/moby/api/types/container"
 
 	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
@@ -74,16 +75,23 @@ func (j *job) run(ctx context.Context) {
 			return
 		case <-time.After(time.Second * time.Duration(j.Interval)):
 			jobLog.Debug("time to run reconciliation")
-
-			err := deploy(ctx, j.info.jobLog, j.info.appConfig,
-				j.info.dataMountPoint, j.info.dockerCli, j.info.secretProvider,
-				j.info.metadata, j.info.jobTrigger,
-				j.info.repoData, j.info.deployConfigs,
-				j.info.payload, j.info.testName)
-			if err != nil {
-				slog.Error("failed to deploy", logger.ErrAttr(err))
-			}
+			j.deploy(ctx)
 		}
+	}
+}
+
+func (j *job) deploy(ctx context.Context) {
+	repoLock := lock.GetRepoLock(j.info.metadata.Repository)
+	repoLock.Lock()
+	defer repoLock.Unlock()
+
+	err := deploy(ctx, j.info.jobLog, j.info.appConfig,
+		j.info.dataMountPoint, j.info.dockerCli, j.info.secretProvider,
+		j.info.metadata, j.info.jobTrigger,
+		j.info.repoData, j.info.deployConfigs,
+		j.info.payload, j.info.testName)
+	if err != nil {
+		slog.Error("failed to deploy", logger.ErrAttr(err))
 	}
 }
 
