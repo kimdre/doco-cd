@@ -125,7 +125,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		// Get the deployment configs from the repository
 		deployConfigs, err = config.GetDeployConfigs(internalRepoPath, appConfig.DeployConfigBaseDir, payload.Name, customTarget, payload.Ref)
 		if err != nil {
-			return &handleError{
+			return handleError{
 				err:            err,
 				msg:            "failed to get deploy configuration",
 				httpStatusCode: http.StatusInternalServerError,
@@ -138,7 +138,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		// Resolve deployment configs (prefer inline in poll config when present)
 		deployConfigs, err = config.ResolveDeployConfigs(pollConfig, internalRepoPath, appConfig.DeployConfigBaseDir, shortName)
 		if err != nil {
-			return &handleError{
+			return handleError{
 				err:            err,
 				msg:            "failed to get deploy configuration",
 				httpStatusCode: http.StatusInternalServerError,
@@ -146,7 +146,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		}
 
 	default:
-		return &handleError{
+		return handleError{
 			err:            fmt.Errorf("unsupported job trigger: %s", jobTrigger),
 			msg:            "unsupported job trigger",
 			httpStatusCode: http.StatusBadRequest,
@@ -163,9 +163,9 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 	if err := reconciliation.Deploy(ctx, jobLog, appConfig,
 		dataMountPoint, dockerCli, secretProvider, metadata, jobTrigger,
 		repoData, deployConfigs, &payload, testName); err != nil {
-		return &handleError{
+		return handleError{
 			err:            err,
-			msg:            "failed to deploy services",
+			msg:            "deployment failed",
 			httpStatusCode: http.StatusInternalServerError,
 		}
 	}
