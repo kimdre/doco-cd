@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -258,9 +259,7 @@ func LoadCompose(ctx context.Context, repoPath, workingDir, projectName string, 
 	}
 
 	// Inject external secrets into the environment for variable interpolation
-	for k, v := range environment {
-		options.Environment[k] = v
-	}
+	maps.Copy(options.Environment, environment)
 
 	err = cli.WithDotEnv(options)
 	if err != nil {

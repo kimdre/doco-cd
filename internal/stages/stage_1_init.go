@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"path/filepath"
 	"regexp"
 	"time"
@@ -128,9 +129,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 			s.DeployConfig.Internal.Environment = make(map[string]string)
 		}
 
-		for k, v := range s.DeployConfig.Environment {
-			s.DeployConfig.Internal.Environment[k] = v
-		}
+		maps.Copy(s.DeployConfig.Internal.Environment, s.DeployConfig.Environment)
 	}
 
 	if s.DeployConfig.Destroy {

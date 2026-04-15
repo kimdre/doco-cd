@@ -88,7 +88,7 @@ func TestBuildTemplateFuncMap(t *testing.T) {
 	t.Run("json", func(t *testing.T) {
 		t.Parallel()
 
-		jsonFunc := funcMap["json"].(func(interface{}) (string, error))
+		jsonFunc := funcMap["json"].(func(any) (string, error))
 
 		got, err := jsonFunc(map[string]string{"key": "value"})
 		if err != nil {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -106,9 +107,7 @@ func addSwarmServiceLabels(stack *composetypes.Config, deployConfig *config.Depl
 			s.Labels = make(map[string]string)
 		}
 
-		for key, val := range customLabels {
-			s.Labels[key] = val
-		}
+		maps.Copy(s.Labels, customLabels)
 
 		stack.Services[i] = s
 	}
@@ -136,9 +135,7 @@ func addSwarmVolumeLabels(stack *composetypes.Config, deployConfig *config.Deplo
 			v.Labels = make(map[string]string)
 		}
 
-		for key, val := range customLabels {
-			v.Labels[key] = val
-		}
+		maps.Copy(v.Labels, customLabels)
 
 		stack.Volumes[i] = v
 	}
@@ -166,9 +163,7 @@ func addSwarmConfigLabels(stack *composetypes.Config, deployConfig *config.Deplo
 			c.Labels = make(map[string]string)
 		}
 
-		for key, val := range customLabels {
-			c.Labels[key] = val
-		}
+		maps.Copy(c.Labels, customLabels)
 
 		stack.Configs[i] = c
 	}
@@ -195,9 +190,7 @@ func addSwarmSecretLabels(stack *composetypes.Config, deployConfig *config.Deplo
 			s.Labels = make(map[string]string)
 		}
 
-		for key, val := range customLabels {
-			s.Labels[key] = val
-		}
+		maps.Copy(s.Labels, customLabels)
 
 		stack.Secrets[i] = s
 	}

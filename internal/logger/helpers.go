@@ -84,7 +84,7 @@ func buildPlain(rv reflect.Value, prefix string, ignoreSet map[string]struct{}) 
 		n := rv.Len()
 
 		out := make([]any, 0, n)
-		for i := 0; i < n; i++ {
+		for i := range n {
 			out = append(out, buildPlain(rv.Index(i), prefix, ignoreSet))
 		}
 

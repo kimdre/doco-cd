@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -278,9 +279,7 @@ compose_files:
 				t.Fatalf("failed to resolve external secrets: %s", err.Error())
 			}
 
-			for k, v := range resolvedSecrets {
-				deployConf.Internal.Environment[k] = v
-			}
+			maps.Copy(deployConf.Internal.Environment, resolvedSecrets)
 		}
 
 		err = retry.New(

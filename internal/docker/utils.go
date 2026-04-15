@@ -227,7 +227,7 @@ func RemoveLabeledVolumes(ctx context.Context, dockerClient client.APIClient, st
 	for _, vol := range volumes {
 		retries := 5
 
-		for i := 0; i < retries; i++ {
+		for range retries {
 			_, err = dockerClient.VolumeRemove(ctx, vol.Name, client.VolumeRemoveOptions{Force: true})
 			if err != nil {
 				if strings.Contains(err.Error(), ErrIsInUse.Error()) {

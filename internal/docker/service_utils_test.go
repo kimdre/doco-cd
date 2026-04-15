@@ -474,23 +474,23 @@ services:
 
 	for svc, want := range map[string]struct {
 		Replicas uint64
-		Mode     string
+		Mode     swarm.DeployMode
 	}{
 		"replicas": {
 			Replicas: 2,
-			Mode:     swarmModeReplicated,
+			Mode:     swarm.DeployModeReplicated,
 		},
 		"global": {
 			Replicas: 0,
-			Mode:     swarmModeGlobal,
+			Mode:     swarm.DeployModeGlobal,
 		},
 		"replicated-job": {
 			Replicas: 2,
-			Mode:     swarmModeReplicatedJob,
+			Mode:     swarm.DeployModeReplicatedJob,
 		},
 		"global-job": {
 			Replicas: 0,
-			Mode:     swarmModeGlobalJob,
+			Mode:     swarm.DeployModeGlobalJob,
 		},
 	} {
 		got := latest.DeployedStatus[Service(svc)]
@@ -534,20 +534,20 @@ func TestCheckServiceMismatch(t *testing.T) {
 		"replicated": {
 			Name:   "replicated",
 			Scale:  new(2),
-			Deploy: &types.DeployConfig{Mode: swarmModeReplicated},
+			Deploy: &types.DeployConfig{Mode: string(swarm.DeployModeReplicated)},
 		},
 		"replicated-job": {
 			Name:   "replicated-job",
 			Scale:  new(2),
-			Deploy: &types.DeployConfig{Mode: swarmModeReplicatedJob},
+			Deploy: &types.DeployConfig{Mode: string(swarm.DeployModeReplicatedJob)},
 		},
 		"global": {
 			Name:   "global",
-			Deploy: &types.DeployConfig{Mode: swarmModeGlobal},
+			Deploy: &types.DeployConfig{Mode: string(swarm.DeployModeGlobal)},
 		},
 		"global-job": {
 			Name:   "global-job",
-			Deploy: &types.DeployConfig{Mode: swarmModeGlobalJob},
+			Deploy: &types.DeployConfig{Mode: string(swarm.DeployModeGlobalJob)},
 		},
 	}
 
@@ -652,14 +652,14 @@ func TestCheckServiceMismatch(t *testing.T) {
 		{
 			name: "swarmMode=true, no missing",
 			deployed: map[Service]ServiceStatus{
-				"foo":         {Replicas: 1, SwarmMode: swarmModeReplicated},
-				"replicated":  {Replicas: 1, SwarmMode: swarmModeReplicated},
-				"replicated2": {Replicas: 1, SwarmMode: swarmModeReplicated},
+				"foo":         {Replicas: 1, SwarmMode: swarm.DeployModeReplicated},
+				"replicated":  {Replicas: 1, SwarmMode: swarm.DeployModeReplicated},
+				"replicated2": {Replicas: 1, SwarmMode: swarm.DeployModeReplicated},
 			},
 			swarmModeEnable: true,
 			services: types.Services{
 				"foo": {
-					Deploy: &types.DeployConfig{Mode: swarmModeReplicated, Replicas: new(1)},
+					Deploy: &types.DeployConfig{Mode: string(swarm.DeployModeReplicated), Replicas: new(1)},
 				},
 				"replicated": {
 					Name: "replicated",
@@ -674,13 +674,13 @@ func TestCheckServiceMismatch(t *testing.T) {
 		{
 			name: "swarmMode=true, unnecessary service",
 			deployed: map[Service]ServiceStatus{
-				"foo":        {Replicas: 1, SwarmMode: swarmModeReplicated},
-				"replicated": {Replicas: 1, SwarmMode: swarmModeReplicated},
+				"foo":        {Replicas: 1, SwarmMode: swarm.DeployModeReplicated},
+				"replicated": {Replicas: 1, SwarmMode: swarm.DeployModeReplicated},
 			},
 			swarmModeEnable: true,
 			services: types.Services{
 				"foo": {
-					Deploy: &types.DeployConfig{Mode: swarmModeReplicated, Replicas: new(1)},
+					Deploy: &types.DeployConfig{Mode: string(swarm.DeployModeReplicated), Replicas: new(1)},
 				},
 			},
 			want: []ServiceMismatch{
@@ -697,11 +697,11 @@ func TestCheckServiceMismatch(t *testing.T) {
 		{
 			name: "swarmMode=true, no missing",
 			deployed: map[Service]ServiceStatus{
-				"replicated":     {Replicas: 2, SwarmMode: swarmModeReplicated},
-				"replicated-job": {Replicas: 2, SwarmMode: swarmModeReplicatedJob},
+				"replicated":     {Replicas: 2, SwarmMode: swarm.DeployModeReplicated},
+				"replicated-job": {Replicas: 2, SwarmMode: swarm.DeployModeReplicatedJob},
 				// global ignore replicas
-				"global":     {Replicas: 2, SwarmMode: swarmModeGlobal},
-				"global-job": {Replicas: 2, SwarmMode: swarmModeGlobalJob},
+				"global":     {Replicas: 2, SwarmMode: swarm.DeployModeGlobal},
+				"global-job": {Replicas: 2, SwarmMode: swarm.DeployModeGlobalJob},
 			},
 			swarmModeEnable: true,
 			services:        swarmServices,
@@ -710,9 +710,9 @@ func TestCheckServiceMismatch(t *testing.T) {
 		{
 			name: "swarmMode=true, mismatch",
 			deployed: map[Service]ServiceStatus{
-				"replicated":     {Replicas: 2, SwarmMode: swarmModeReplicatedJob},
-				"replicated-job": {Replicas: 1, SwarmMode: swarmModeReplicatedJob},
-				"global-job":     {Replicas: 2, SwarmMode: swarmModeGlobalJob},
+				"replicated":     {Replicas: 2, SwarmMode: swarm.DeployModeReplicatedJob},
+				"replicated-job": {Replicas: 1, SwarmMode: swarm.DeployModeReplicatedJob},
+				"global-job":     {Replicas: 2, SwarmMode: swarm.DeployModeGlobalJob},
 			},
 			swarmModeEnable: true,
 			services:        swarmServices,
@@ -722,8 +722,8 @@ func TestCheckServiceMismatch(t *testing.T) {
 					Reasons: []ServiceMismatchReason{
 						{
 							Reason: ServiceMismatchReasonSwarmMode,
-							Want:   swarmModeReplicated,
-							Got:    swarmModeReplicatedJob,
+							Want:   swarm.DeployModeReplicated,
+							Got:    swarm.DeployModeReplicatedJob,
 						},
 					},
 				},

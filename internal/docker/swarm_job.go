@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/docker/cli/cli/command"
@@ -16,17 +17,16 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 )
 
-// JobMode represents the mode of a Docker Swarm job.
-type JobMode string
+var swarmJobLock = sync.Map{}
 
-const (
-	JobModeGlobal     JobMode = "global-job"
-	JobModeReplicated JobMode = "replicated-job"
-)
+func getSwarmJobLock(name string) *sync.Mutex {
+	lock, _ := swarmJobLock.LoadOrStore(name, &sync.Mutex{})
+	return lock.(*sync.Mutex)
+}
 
 // RunSwarmJob runs a Docker Swarm job container with the specified mode and command.
 // https://docs.docker.com/reference/cli/docker/service/create/#running-as-a-job
-func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode JobMode, command []string, title string) error {
+func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMode, command []string, title string) error {
 	apiClient := dockerCLI.Client()
 
 	var (
@@ -35,11 +35,11 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode JobMode, comma
 	)
 
 	switch mode {
-	case JobModeGlobal:
+	case swarm.DeployModeGlobalJob:
 		serviceMode = swarmTypes.ServiceMode{
 			GlobalJob: &swarmTypes.GlobalJob{},
 		}
-	case JobModeReplicated:
+	case swarm.DeployModeReplicatedJob:
 		serviceMode = swarmTypes.ServiceMode{
 			ReplicatedJob: &swarmTypes.ReplicatedJob{},
 		}
@@ -50,10 +50,18 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode JobMode, comma
 	if title == "" {
 		title = "helper-job"
 	}
+	// fix conflict error
+	// Error response from daemon: rpc error: code = Unknown desc = update out of sequence
+
+	name := fmt.Sprintf("%s_%s", config.AppName, title)
+
+	lock := getSwarmJobLock(name)
+	lock.Lock()
+	defer lock.Unlock()
 
 	newServiceSpec := swarmTypes.ServiceSpec{
 		Annotations: swarmTypes.Annotations{
-			Name: fmt.Sprintf("%s_%s", config.AppName, title),
+			Name: name,
 			Labels: map[string]string{
 				DocoCDLabels.Metadata.Manager:   config.AppName,
 				DocoCDLabels.Metadata.Version:   config.AppVersion,
@@ -153,11 +161,11 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode JobMode, comma
 
 // RunImagePruneJob runs a Docker Swarm global job to prune unused images on all nodes.
 func RunImagePruneJob(ctx context.Context, dockerCLI command.Cli) error {
-	return RunSwarmJob(ctx, dockerCLI, JobModeGlobal, []string{"docker", "image", "prune", "--force"}, "image-prune")
+	return RunSwarmJob(ctx, dockerCLI, swarm.DeployModeGlobalJob, []string{"docker", "image", "prune", "--force"}, "image-prune")
 }
 
 // RunImageRemoveJob runs a Docker Swarm global job to remove specified images.
 func RunImageRemoveJob(ctx context.Context, dockerCLI command.Cli, images []string) error {
 	args := append([]string{"docker", "image", "rm", "--force"}, images...)
-	return RunSwarmJob(ctx, dockerCLI, JobModeGlobal, args, "image-remove")
+	return RunSwarmJob(ctx, dockerCLI, swarm.DeployModeGlobalJob, args, "image-remove")
 }

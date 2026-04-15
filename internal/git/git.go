@@ -101,8 +101,8 @@ func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 		fullRef := plumbing.ReferenceName(ref)
 
 		remoteRef := fullRef
-		if strings.HasPrefix(ref, BranchPrefix) {
-			remoteRef = plumbing.NewRemoteReferenceName(RemoteName, strings.TrimPrefix(ref, BranchPrefix))
+		if after, ok := strings.CutPrefix(ref, BranchPrefix); ok {
+			remoteRef = plumbing.NewRemoteReferenceName(RemoteName, after)
 		}
 
 		candidates = append(candidates,

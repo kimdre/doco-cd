@@ -128,7 +128,7 @@ func AddKeyToAgent(privateKey []byte, keyPassphrase string) error {
 }
 
 // getRawPrivateKey parses the private key bytes and returns the raw private key object.
-func getRawPrivateKey(pemBytes []byte, passphrase string) (interface{}, error) {
+func getRawPrivateKey(pemBytes []byte, passphrase string) (any, error) {
 	block, _ := pem.Decode(pemBytes)
 	if block == nil {
 		return nil, errors.New("failed to decode PEM block")

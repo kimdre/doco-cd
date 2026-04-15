@@ -254,7 +254,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	httpClient := &http.Client{Timeout: 3 * time.Second}
 
 	resp := &http.Response{}
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		resp, err = httpClient.Get(testURL) // #nosec G107
 		if err != nil {
 			t.Logf("Failed to make GET request to test container (attempt %d): %v", i+1, err)

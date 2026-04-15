@@ -30,8 +30,8 @@ func getAppContainerID() (string, error) {
 func extractContainerIDFromMountInfo(content string) string {
 	containerIdPattern := regexp.MustCompile(`[a-z0-9]{64}`)
 
-	lines := strings.Split(content, "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(content, "\n")
+	for line := range lines {
 		fields := strings.Fields(line)
 		if len(fields) < 4 {
 			continue
