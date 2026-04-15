@@ -17,6 +17,8 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/notification"
+
 	"github.com/kimdre/doco-cd/internal/git/ssh"
 
 	"github.com/kimdre/doco-cd/cmd/doco-cd/healthcheck"
@@ -226,6 +228,14 @@ func main() {
 					slog.String("current", config.AppVersion),
 					slog.String("latest", latestVersion),
 				)
+
+				err = notification.Send(notification.Info,
+					"New version of doco-cd is available",
+					fmt.Sprintf("Current Version: %s\nLatest Version: %s\n\nhttps://github.com/kimdre/doco-cd/releases", config.AppVersion, latestVersion),
+					notification.Metadata{})
+				if err != nil {
+					return
+				}
 			} else {
 				log.Debug("application is up to date", slog.String("version", config.AppVersion))
 			}

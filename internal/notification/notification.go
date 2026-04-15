@@ -134,7 +134,9 @@ func Send(level level, title, message string, metadata Metadata) error {
 
 // formatMessage formats the message by adding a newline after the first colon and appending the revision if provided.
 func formatMessage(message string, m Metadata) string {
-	message = strings.Replace(message, ": ", ":\n", 1)
+	if !strings.Contains(message, "\n") {
+		message = strings.Replace(message, ": ", ":\n", 1)
+	}
 
 	var metadataInfo string
 
