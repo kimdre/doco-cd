@@ -32,6 +32,42 @@ func Deploy(ctx context.Context,
 	payload *webhook.ParsedPayload,
 	testName string,
 ) error {
+	if err := deploy(ctx, jobLog, appConfig,
+		dataMountPoint, dockerCli, secretProvider, metadata,
+		jobTrigger, repoData, deployConfigs, payload, testName); err != nil {
+		return err
+	}
+
+	reconciliationHandler.addJob(ctx, jobInfo{
+		appConfig:      appConfig,
+		dataMountPoint: dataMountPoint,
+		dockerCli:      dockerCli,
+		secretProvider: secretProvider,
+		jobLog:         jobLog,
+		metadata:       metadata,
+		jobTrigger:     jobTrigger,
+		repoData:       repoData,
+		deployConfigs:  deployConfigs,
+		payload:        payload,
+		testName:       testName,
+	})
+
+	return nil
+}
+
+func deploy(ctx context.Context,
+	jobLog *slog.Logger,
+	appConfig *config.AppConfig,
+	dataMountPoint container.MountPoint,
+	dockerCli command.Cli,
+	secretProvider *secretprovider.SecretProvider,
+	metadata notification.Metadata,
+	jobTrigger stages.JobTrigger,
+	repoData stages.RepositoryData,
+	deployConfigs []*config.DeployConfig,
+	payload *webhook.ParsedPayload,
+	testName string,
+) error {
 	if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
 		dockerCli, string(repoData.CloneURL),
 		deployConfigs,
