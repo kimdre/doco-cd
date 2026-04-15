@@ -17,6 +17,15 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker/options"
 )
 
+type DeployMode string
+
+const (
+	DeployModeReplicated    DeployMode = "replicated"
+	DeployModeReplicatedJob DeployMode = "replicated-job"
+	DeployModeGlobal        DeployMode = "global"
+	DeployModeGlobalJob     DeployMode = "global-job"
+)
+
 const defaultNetworkDriver = "overlay"
 
 // ResolveImage constants for controlling image resolution during deployment.
