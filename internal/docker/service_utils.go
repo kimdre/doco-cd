@@ -186,7 +186,7 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 			return ""
 		}
 
-		if svc.Deploy == nil {
+		if svc.Deploy == nil || svc.Deploy.Mode == "" {
 			return swarmModeReplicated
 		}
 
