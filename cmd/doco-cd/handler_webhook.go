@@ -105,7 +105,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		// In synchronous mode we should return an error to the caller
 		// For async mode, w is noopResponseWriter and JSONError is a no-op
 		if hr, ok := deployErr.(handleError); ok {
-			onError(w, jobLog.With(logger.ErrAttr(hr.err)), hr.msg, hr.detail, hr.httpStatusCode, metadata)
+			onError(w, jobLog.With(logger.ErrAttr(hr.err)), hr.msg, hr.err.Error(), hr.httpStatusCode, metadata)
 		} else {
 			onError(w, jobLog.With(logger.ErrAttr(deployErr)), "deployment failed", deployErr.Error(), http.StatusInternalServerError, metadata)
 		}

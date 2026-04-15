@@ -23,18 +23,14 @@ import (
 )
 
 type handleError struct {
-	msg    string // errMsg
-	detail string // detail about the error, can be empty
-	err    error  // detail err, can be nil if not applicable
+	msg string // errMsg
+	err error  // detail err, can be nil if not applicable
 
 	httpStatusCode int // http status code use to respond to http request
 }
 
 func (r handleError) Error() string {
-	ret := "msg: " + r.msg
-	if r.detail != "" {
-		ret += ", detail: " + r.detail
-	}
+	ret := r.msg
 
 	if r.err != nil {
 		ret += fmt.Sprintf(", err: %v", r.err)
@@ -70,7 +66,6 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		return handleError{
 			err:            fmt.Errorf("invalid repository name: %s, contains '..'", repoName),
 			msg:            "invalid repository name",
-			detail:         fmt.Sprintf("invalid repository name: %s, contains '..'", repoName),
 			httpStatusCode: http.StatusBadRequest,
 		}
 	}
@@ -79,7 +74,6 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		return handleError{
 			err:            err,
 			msg:            "failed to check if docker host is running in swarm mode",
-			detail:         err.Error(),
 			httpStatusCode: http.StatusInternalServerError,
 		}
 	}
@@ -93,7 +87,6 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		return handleError{
 			err:            err,
 			msg:            "failed to verify and sanitize internal filesystem path",
-			detail:         err.Error(),
 			httpStatusCode: http.StatusBadRequest,
 		}
 	}
@@ -107,7 +100,6 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		return handleError{
 			err:            err,
 			msg:            "failed to verify and sanitize external filesystem path",
-			detail:         err.Error(),
 			httpStatusCode: http.StatusBadRequest,
 		}
 	}
@@ -120,7 +112,6 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		return handleError{
 			err:            err,
 			msg:            "failed to clone repository",
-			detail:         err.Error(),
 			httpStatusCode: http.StatusInternalServerError,
 		}
 	}
@@ -137,7 +128,6 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 			return &handleError{
 				err:            err,
 				msg:            "failed to get deploy configuration",
-				detail:         err.Error(),
 				httpStatusCode: http.StatusInternalServerError,
 			}
 		}
@@ -151,7 +141,6 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 			return &handleError{
 				err:            err,
 				msg:            "failed to get deploy configuration",
-				detail:         err.Error(),
 				httpStatusCode: http.StatusInternalServerError,
 			}
 		}
@@ -160,7 +149,6 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		return &handleError{
 			err:            fmt.Errorf("unsupported job trigger: %s", jobTrigger),
 			msg:            "unsupported job trigger",
-			detail:         fmt.Sprintf("unsupported job trigger: %s", jobTrigger),
 			httpStatusCode: http.StatusBadRequest,
 		}
 	}
@@ -178,7 +166,6 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		return &handleError{
 			err:            err,
 			msg:            "failed to deploy services",
-			detail:         err.Error(),
 			httpStatusCode: http.StatusInternalServerError,
 		}
 	}
