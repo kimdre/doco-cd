@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -138,7 +139,7 @@ func (c *DeployConfig) validateConfig() error {
 	return nil
 }
 
-func (c *DeployConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *DeployConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	err := defaults.Set(c)
 	if err != nil {
 		return err
@@ -525,9 +526,7 @@ func deepCopy(src, dst *DeployConfig) {
 
 	if src.BuildOpts.Args != nil {
 		dst.BuildOpts.Args = make(map[string]string)
-		for k, v := range src.BuildOpts.Args {
-			dst.BuildOpts.Args[k] = v
-		}
+		maps.Copy(dst.BuildOpts.Args, src.BuildOpts.Args)
 	}
 
 	if src.Profiles != nil {
@@ -537,8 +536,6 @@ func deepCopy(src, dst *DeployConfig) {
 
 	if src.ExternalSecrets != nil {
 		dst.ExternalSecrets = make(map[string]ExternalSecretRef)
-		for k, v := range src.ExternalSecrets {
-			dst.ExternalSecrets[k] = v
-		}
+		maps.Copy(dst.ExternalSecrets, src.ExternalSecrets)
 	}
 }

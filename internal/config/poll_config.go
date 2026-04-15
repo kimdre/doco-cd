@@ -92,7 +92,7 @@ func (c *PollConfig) String() string {
 	return fmt.Sprintf("PollConfig{CloneUrl: %s, Reference: %s, Interval: %d}", c.CloneUrl, c.Reference, c.Interval)
 }
 
-func (c *PollConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *PollConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	err := defaults.Set(c)
 	if err != nil {
 		return err

@@ -13,7 +13,7 @@ import (
 // deepCopy recursively copies src into dst using reflection.
 func deepCopy(dst, src reflect.Value) {
 	switch src.Kind() {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if src.IsNil() {
 			return
 		}

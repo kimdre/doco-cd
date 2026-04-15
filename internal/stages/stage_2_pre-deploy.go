@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"path/filepath"
 	"strings"
 	"time"
@@ -64,9 +65,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			s.DeployConfig.Internal.Environment = make(map[string]string)
 		}
 
-		for k, v := range resolvedSecrets {
-			s.DeployConfig.Internal.Environment[k] = v
-		}
+		maps.Copy(s.DeployConfig.Internal.Environment, resolvedSecrets)
 	}
 
 	var err error

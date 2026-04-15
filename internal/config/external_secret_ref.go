@@ -26,7 +26,7 @@ type ExternalSecretRef struct {
 	// the store's URL, headers, body and json_path templates at resolution time
 	// (e.g. `key`, `property`, or any custom field the store templates reference).
 	// Used exclusively by the webhook provider.
-	RemoteRef map[string]interface{} `json:"remote_ref,omitempty"`
+	RemoteRef map[string]any `json:"remote_ref,omitempty"`
 }
 
 func (r *ExternalSecretRef) UnmarshalYAML(node *yaml.Node) error {
@@ -56,8 +56,8 @@ func (r *ExternalSecretRef) UnmarshalYAML(node *yaml.Node) error {
 		//       key: 138e3a97-ed58-431c-b366-b35500663411
 		//       property: password
 		type ref struct {
-			StoreRef  string                 `yaml:"store_ref"`
-			RemoteRef map[string]interface{} `yaml:"remote_ref"`
+			StoreRef  string         `yaml:"store_ref"`
+			RemoteRef map[string]any `yaml:"remote_ref"`
 		}
 
 		var v ref
@@ -83,8 +83,8 @@ func (r *ExternalSecretRef) EncodedReference() (string, error) {
 	}
 
 	b, err := json.Marshal(struct {
-		StoreRef  string                 `json:"store_ref"`
-		RemoteRef map[string]interface{} `json:"remote_ref"`
+		StoreRef  string         `json:"store_ref"`
+		RemoteRef map[string]any `json:"remote_ref"`
 	}{
 		StoreRef:  r.StoreRef,
 		RemoteRef: r.RemoteRef,
