@@ -23,19 +23,12 @@ type ServiceStatus struct {
 
 	// swarm deploy mode.
 	// Empty if not in swarm mode.
-	SwarmMode string
+	SwarmMode swarmInternal.DeployMode
 
 	// Non-swarm mode: number of running containers
 	// Swarm mode: number of service replicas
 	Replicas uint64
 }
-
-const (
-	swarmModeReplicated    = "replicated"
-	swarmModeReplicatedJob = "replicated-job"
-	swarmModeGlobal        = "global"
-	swarmModeGlobalJob     = "global-job"
-)
 
 type LatestServiceStatus struct {
 	// The labels may be different in different services, but project-level labels should be the same.
@@ -106,15 +99,15 @@ func getDeployStatus(ctx context.Context, client *client.Client, deployName stri
 			mode := service.Spec.Mode
 			switch {
 			case mode.Replicated != nil:
-				status.SwarmMode = swarmModeReplicated
+				status.SwarmMode = swarmInternal.DeployModeReplicated
 				status.Replicas = *mode.Replicated.Replicas
 			case mode.Global != nil:
-				status.SwarmMode = swarmModeGlobal
+				status.SwarmMode = swarmInternal.DeployModeGlobal
 			case mode.ReplicatedJob != nil:
-				status.SwarmMode = swarmModeReplicatedJob
+				status.SwarmMode = swarmInternal.DeployModeReplicatedJob
 				status.Replicas = *mode.ReplicatedJob.TotalCompletions
 			case mode.GlobalJob != nil:
-				status.SwarmMode = swarmModeGlobalJob
+				status.SwarmMode = swarmInternal.DeployModeGlobalJob
 			}
 
 			name := ns.Descope(service.Spec.Name)
@@ -181,16 +174,16 @@ type ServiceMismatchReason struct {
 func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceStatus, services types.Services) []ServiceMismatch {
 	var mismatches []ServiceMismatch
 
-	getSvcMode := func(svc types.ServiceConfig) string {
+	getSvcMode := func(svc types.ServiceConfig) swarmInternal.DeployMode {
 		if !swarmModeEnabled {
 			return ""
 		}
 
 		if svc.Deploy == nil || svc.Deploy.Mode == "" {
-			return swarmModeReplicated
+			return swarmInternal.DeployModeReplicated
 		}
 
-		return svc.Deploy.Mode
+		return swarmInternal.DeployMode(svc.Deploy.Mode)
 	}
 	for svcName, svc := range services {
 		status, ok := deployed[Service(svcName)]
@@ -211,7 +204,7 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 					})
 				} else {
 					switch svcMode {
-					case swarmModeReplicated, swarmModeReplicatedJob:
+					case swarmInternal.DeployModeReplicated, swarmInternal.DeployModeReplicatedJob:
 						//  scale should always be >= 0
 						if uint64(svc.GetScale()) != status.Replicas { //nolint:gosec
 							reasons = append(reasons, ServiceMismatchReason{

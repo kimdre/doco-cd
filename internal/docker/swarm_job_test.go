@@ -23,12 +23,12 @@ func TestRunSwarmJob(t *testing.T) {
 	}
 
 	testCases := []struct {
-		mode    JobMode
+		mode    swarm.DeployMode
 		command []string
 		title   string
 	}{
-		{mode: JobModeGlobal, command: []string{"docker", "info"}, title: "global-docker-info"},
-		{mode: JobModeReplicated, command: []string{"docker", "info"}, title: "replicated-docker-info"},
+		{mode: swarm.DeployModeGlobalJob, command: []string{"docker", "info"}, title: "global-docker-info"},
+		{mode: swarm.DeployModeReplicatedJob, command: []string{"docker", "info"}, title: "replicated-docker-info"},
 	}
 
 	for _, tc := range testCases {
