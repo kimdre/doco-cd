@@ -11,6 +11,8 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing"
 
+	"github.com/kimdre/doco-cd/internal/config"
+
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/utils/set"
 
@@ -47,8 +49,13 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	if s.SecretProvider != nil && *s.SecretProvider != nil && len(s.DeployConfig.ExternalSecrets) > 0 {
 		stageLog.Debug("resolving external secrets", slog.Any("external_secrets", s.DeployConfig.ExternalSecrets))
 
+		encodedSecrets, err := config.EncodeExternalSecretRefs(s.DeployConfig.ExternalSecrets)
+		if err != nil {
+			return fmt.Errorf("failed to encode external secret references: %w", err)
+		}
+
 		// Resolve external secrets
-		resolvedSecrets, err := (*s.SecretProvider).ResolveSecretReferences(ctx, s.DeployConfig.ExternalSecrets)
+		resolvedSecrets, err := (*s.SecretProvider).ResolveSecretReferences(ctx, encodedSecrets)
 		if err != nil {
 			return fmt.Errorf("failed to resolve external secrets: %w", err)
 		}
