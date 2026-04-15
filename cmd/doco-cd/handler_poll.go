@@ -50,14 +50,11 @@ func StartPoll(h *handlerData, pollConfig config.PollConfig, wg *sync.WaitGroup)
 	}
 
 	h.log.Debug("Starting poll handler", "config", pollConfig)
-	wg.Add(1)
 
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		h.PollHandler(context.Background(), pollJob)
 		h.log.Debug("PollJob handler stopped", "config", pollConfig)
-	}()
+	})
 
 	return nil
 }

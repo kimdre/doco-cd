@@ -2,6 +2,7 @@ package secretprovider
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -95,17 +96,13 @@ func (r *RetryingSecretProvider) ResolveSecretReferences(ctx context.Context, se
 	// Create a copy of the input map so that retries don't operate on
 	// a partially-mutated map from a previous failed attempt.
 	original := make(map[string]string, len(secrets))
-	for k, v := range secrets {
-		original[k] = v
-	}
+	maps.Copy(original, secrets)
 
 	return retry.NewWithData[secrettypes.ResolvedSecrets](newOptsWithContext(ctx)...).Do(
 		func() (secrettypes.ResolvedSecrets, error) {
 			// Work on a fresh copy each attempt
 			attempt := make(map[string]string, len(original))
-			for k, v := range original {
-				attempt[k] = v
-			}
+			maps.Copy(attempt, original)
 
 			return r.inner.ResolveSecretReferences(ctx, attempt)
 		},

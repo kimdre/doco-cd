@@ -33,7 +33,7 @@ func BuildTemplateFuncMap() template.FuncMap {
 
 			return decoded, nil
 		},
-		"json": func(input interface{}) (string, error) {
+		"json": func(input any) (string, error) {
 			data, err := json.Marshal(input)
 			if err != nil {
 				return "", fmt.Errorf("failed to marshal to JSON: %w", err)

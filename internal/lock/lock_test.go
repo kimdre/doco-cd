@@ -88,7 +88,7 @@ func TestRepoLock_ConcurrentTryLock_SameRepo(t *testing.T) {
 		winners []string
 	)
 
-	for i := 0; i < goroutines; i++ {
+	for i := range goroutines {
 		jobID := "job-" + strconv.Itoa(i)
 		go func(id string) {
 			defer wg.Done()

@@ -26,7 +26,7 @@ func TestExternalSecretRef_UnmarshalYAML(t *testing.T) {
 			want: map[string]ExternalSecretRef{
 				"DB_PASSWORD": {
 					StoreRef:  "bitwarden-login",
-					RemoteRef: map[string]interface{}{"key": "test", "property": "password"},
+					RemoteRef: map[string]any{"key": "test", "property": "password"},
 				},
 			},
 		},
@@ -72,7 +72,7 @@ func TestEncodeExternalSecretRefs(t *testing.T) {
 		"LEGACY": {LegacyRef: "plain-ref"},
 		"JSON": {
 			StoreRef: "store-1",
-			RemoteRef: map[string]interface{}{
+			RemoteRef: map[string]any{
 				"key": "abc",
 			},
 		},

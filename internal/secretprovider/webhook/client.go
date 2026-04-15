@@ -31,8 +31,8 @@ var (
 )
 
 type SecretRefPayload struct {
-	StoreRef  string                 `json:"store_ref"`
-	RemoteRef map[string]interface{} `json:"remote_ref"`
+	StoreRef  string         `json:"store_ref"`
+	RemoteRef map[string]any `json:"remote_ref"`
 }
 
 // ValueProvider provides generic access to remote secrets
@@ -94,7 +94,7 @@ func (p *ValueProvider) GetSecret(ctx context.Context, id string) (string, error
 		return "", fmt.Errorf("webhook request failed with status %d", resp.StatusCode)
 	}
 
-	var data interface{}
+	var data any
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		return "", err
 	}
@@ -111,7 +111,7 @@ func (p *ValueProvider) GetSecret(ctx context.Context, id string) (string, error
 		return value, nil
 	}
 
-	if values, ok := result.([]interface{}); ok && len(values) > 0 {
+	if values, ok := result.([]any); ok && len(values) > 0 {
 		if value, ok := values[0].(string); ok {
 			return value, nil
 		}
@@ -120,11 +120,11 @@ func (p *ValueProvider) GetSecret(ctx context.Context, id string) (string, error
 	return "", fmt.Errorf("JMESPath query did not yield a string but a %T", result)
 }
 
-func (p *ValueProvider) newRequest(ctx context.Context, store *Store, remoteRef map[string]interface{}) (*http.Request, string, error) {
+func (p *ValueProvider) newRequest(ctx context.Context, store *Store, remoteRef map[string]any) (*http.Request, string, error) {
 	var body io.Reader
 
 	buf := new(bytes.Buffer)
-	tplParams := map[string]interface{}{
+	tplParams := map[string]any{
 		"remote_ref": remoteRef,
 		"auth":       p.auth,
 	}
@@ -191,13 +191,13 @@ func parseSecretRefPayload(raw string) (*SecretRefPayload, error) {
 	}
 
 	if payload.RemoteRef == nil {
-		payload.RemoteRef = map[string]interface{}{}
+		payload.RemoteRef = map[string]any{}
 	}
 
 	return &payload, nil
 }
 
-func validateRemoteRefFields(store *Store, remoteRef map[string]interface{}) error {
+func validateRemoteRefFields(store *Store, remoteRef map[string]any) error {
 	missing := make([]string, 0)
 
 	for _, field := range store.requiredRemoteRefFields() {

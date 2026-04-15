@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -37,14 +38,10 @@ func LoadComposefile(dockerCli command.Cli, opts options.Deploy, environment map
 	}
 
 	// Set any environment variables passed in via .env file
-	for k, v := range opts.Environment {
-		configDetails.Environment[k] = v
-	}
+	maps.Copy(configDetails.Environment, opts.Environment)
 
 	// Add additional env vars into the environment for variable interpolation
-	for k, v := range environment {
-		configDetails.Environment[k] = v
-	}
+	maps.Copy(configDetails.Environment, environment)
 
 	dicts := getDictsFrom(configDetails.ConfigFiles)
 

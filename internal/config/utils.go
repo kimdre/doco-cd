@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,7 +62,7 @@ func LoadFileBasedEnvVars(mappings *[]EnvVarFileMapping) error {
 }
 
 // ParseConfigFromEnv parses the configuration from environment variables and file-based environment variables.
-func ParseConfigFromEnv(config interface{}, mappings *[]EnvVarFileMapping) error {
+func ParseConfigFromEnv(config any, mappings *[]EnvVarFileMapping) error {
 	// Parse the environment variables into the config struct
 	// Also load any values from files if *_FILE env vars are set
 	if err := env.Parse(config); err != nil {
@@ -125,9 +126,7 @@ func LoadLocalDotEnv(deployConfig *DeployConfig, basePath string) error {
 				}
 			}
 
-			for k, v := range envMap {
-				deployConfig.Internal.Environment[k] = v
-			}
+			maps.Copy(deployConfig.Internal.Environment, envMap)
 		} else {
 			f = strings.TrimPrefix(f, remotePrefix)
 			remoteEnvFiles = append(remoteEnvFiles, f)

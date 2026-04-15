@@ -52,7 +52,7 @@ func TestValueProvider_GetSecret_WebhookStores(t *testing.T) {
 	t.Run("login_username", func(t *testing.T) {
 		ref := mustJSONRef(t, SecretRefPayload{
 			StoreRef: "login",
-			RemoteRef: map[string]interface{}{
+			RemoteRef: map[string]any{
 				"key":      "user-1",
 				"property": "username",
 			},
@@ -84,7 +84,7 @@ func TestValueProvider_GetSecret_WebhookStores(t *testing.T) {
 	t.Run("fields_first_result", func(t *testing.T) {
 		ref := mustJSONRef(t, SecretRefPayload{
 			StoreRef: "fields",
-			RemoteRef: map[string]interface{}{
+			RemoteRef: map[string]any{
 				"key":      "user-1",
 				"property": "api_key",
 			},
@@ -103,7 +103,7 @@ func TestValueProvider_GetSecret_WebhookStores(t *testing.T) {
 	t.Run("post_with_basic_auth", func(t *testing.T) {
 		ref := mustJSONRef(t, SecretRefPayload{
 			StoreRef: "post-auth",
-			RemoteRef: map[string]interface{}{
+			RemoteRef: map[string]any{
 				"key": "token",
 			},
 		})
@@ -134,7 +134,7 @@ func TestValueProvider_GetSecret_WebhookStores(t *testing.T) {
 	t.Run("missing_remote_ref_field", func(t *testing.T) {
 		ref := mustJSONRef(t, SecretRefPayload{
 			StoreRef: "login",
-			RemoteRef: map[string]interface{}{
+			RemoteRef: map[string]any{
 				"key": "user-1",
 			},
 		})
@@ -222,7 +222,7 @@ func newMockHandler() http.Handler {
 func getSecret(w http.ResponseWriter, r *http.Request) {
 	lookup := r.PathValue("secret")
 
-	body := map[string]interface{}{
+	body := map[string]any{
 		"result": map[string]string{
 			"username": "alice",
 			"password": "pw-123",
@@ -245,7 +245,7 @@ func postSecret(w http.ResponseWriter, r *http.Request) {
 
 	_ = json.NewDecoder(r.Body).Decode(&payload)
 
-	body := map[string]interface{}{
+	body := map[string]any{
 		"result": map[string]string{
 			"value": r.Header.Get("Authorization"),
 		},
