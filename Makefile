@@ -112,5 +112,5 @@ wiki-serve:
 wiki-version-publish:
 	VERSION=$$(git describe --tags --abbrev=0)
 	cd wiki && \
-	../.venv-wiki/bin/mike deploy --update-aliases $$VERSION latest && \
-	../.venv-wiki/bin/mike set-default latest
+	../.venv-wiki/bin/mike deploy --push --update-aliases $$VERSION latest && \
+	../.venv-wiki/bin/mike set-default --push latest
