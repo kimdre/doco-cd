@@ -53,7 +53,7 @@ Run the tests with `make test` or `make test-verbose` and run specific tests wit
 
 You can provide container registry credentials to avoid rate limiting issues when running tests.
 
-Follow the [Accessing private container registries](https://github.com/kimdre/doco-cd/wiki/Tips-and-Tricks#accessing-private-container-registries) Guide in the Wiki for more information.
+Follow the [Accessing private container registries](https://doco.cd/latest/Tips-and-Tricks/#accessing-private-container-registries) Guide in the docs for more information.
 
 ### Building from Source
 
@@ -87,6 +87,48 @@ Or using Docker with the `DISABLE_BITWARDEN=true` build argument:
 
 ```bash
 docker build --build-arg DISABLE_BITWARDEN=true -t doco-cd:nobitwarden .
+```
+
+### Documentation (wiki)
+
+The new documentation site lives in `wiki/` and is built with Zensical.
+
+#### Write and preview docs locally
+
+1. Install the docs toolchain:
+
+```bash
+make wiki-tools
+```
+
+2. Start the local docs server:
+
+```bash
+make wiki-serve
+```
+
+3. Open the local URL printed by Zensical (usually `http://127.0.0.1:8000`).
+
+Edit Markdown files in `wiki/docs/` and refresh to see changes.
+
+#### Build docs locally
+
+Use the following command to generate the static site:
+
+```bash
+make wiki-build
+```
+
+The generated output is written to `wiki/site/`.
+
+If you prefer running commands directly instead of Make targets:
+
+```bash
+python3 -m venv .venv-wiki
+source .venv-wiki/bin/activate
+pip install -r wiki/requirements.txt
+zensical serve --config-file wiki/zensical.toml
+zensical build --config-file wiki/zensical.toml --clean
 ```
 
 ### Submitting your code

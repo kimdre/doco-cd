@@ -1,0 +1,158 @@
+# ============================================================================
+#
+# The configuration produced by default is meant to highlight the features
+# that Zensical provides and to serve as a starting point for your own
+# projects.
+#
+# ============================================================================
+
+[project]
+site_name = "Doco CD - Docker Compose Continuous Deployment"
+site_description = "Doco CD is a lightweight, declarative GitOps continuous delivery tool for Docker and Docker Swarm"
+site_author = "doco-cd contributors"
+site_url = "https://doco.cd/"
+copyright = "&copy; 2026 Doco CD contributors"
+repo_url = "https://github.com/kimdre/doco-cd"
+repo_name = "kimdre/doco-cd"
+edit_uri = "edit/main/wiki/docs/"
+
+docs_dir = "docs"
+site_dir = "site"
+
+nav = [
+  { Home = "index.md" },
+  { "Getting Started" = [
+    { Quickstart = "Quickstart.md" },
+    { "Setup Access Token" = "Setup-Access-Token.md" },
+    { "Setup SSH Key" = "Setup-SSH-Key.md" },
+    { "Setup Webhook" = "Setup-Webhook.md" }
+  ] },
+  { Configuration = [
+    { "App Settings" = "App-Settings.md" },
+    { "Deploy Settings" = "Deploy-Settings.md" },
+    { "Poll Settings" = "Poll-Settings.md" }
+  ] },
+  { Advanced = [
+    { "External Secrets" = [
+      "external-secrets/index.md",
+      { "AWS Secrets Manager" = "external-secrets/aws-secrets-manager.md" },
+      { "Bitwarden Secrets Manager" = "external-secrets/bitwarden-secrets-manager.md" },
+      { "Bitwarden Vault / Vaultwarden" = "external-secrets/bitwarden-vault-vaultwarden.md" },
+      { "1Password" = "external-secrets/onepassword.md" },
+      { Infisical = "external-secrets/infisical.md" },
+      { OpenBao = "external-secrets/openbao.md" },
+      { Webhook = "external-secrets/webhook.md" }] },
+    { Encryption = "Encryption.md" },
+    { "Pre/Post Scripts" = "Pre-Post-Deployment-Scripts.md" }
+  ] },
+  { Reference = [
+    { "Accessing Private Container Registries" = "Private-Container-Registries.md" },
+    { Endpoints = [
+      { "Prometheus Metrics / Monitoring" = "Endpoints/Metrics.md" },
+      { "REST API" = "Endpoints/REST-API.md" },
+      { "Webhook Listener" = "Endpoints/Webhook-Listener.md" },
+    ] },
+    { Notifications = "Notifications.md" },
+    { "Swarm Mode" = "Swarm-Mode.md" },
+    { "Tips & Tricks" = "Tips-and-Tricks.md" },
+    { "Known Limitations" = "Known-Limitations.md" },
+    { Versions = "versions.md" }
+  ] },
+]
+
+extra_javascript = [
+  "https://unpkg.com/tablesort@5.7.1/dist/tablesort.min.js",
+  "javascripts/tablesort.js"
+]
+extra_css = ["stylesheets/navigation.css"]
+
+[project.theme]
+language = "en"
+logo = "images/doco-cd_containers.svg"
+favicon = "images/doco-cd_containers.svg"
+features = [
+  "content.code.copy",
+  "navigation.expand",
+  "navigation.footer",
+  "navigation.indexes",
+  "navigation.instant",
+  "navigation.instant.prefetch",
+  "navigation.instant.progress",
+  "navigation.path",
+  "navigation.sections",
+  "navigation.tabs",
+  "navigation.tabs.sticky",
+  "navigation.top",
+  "navigation.tracking",
+  "toc.follow",
+  "search.highlight",
+  "search.suggest",
+  "search.share",
+  "content.action.view"  # View source of this page
+]
+
+[project.theme.icon]
+repo = "fontawesome/brands/github"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme)"
+toggle.icon = "lucide/sun-moon"
+toggle.name = "Switch to light mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to system preference"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/kimdre/doco-cd"
+name = "Github"
+
+[project.extra.version]
+provider = "mike"
+default = "latest"
+alias = true
+
+[project.markdown_extensions.abbr]
+[project.markdown_extensions.admonition]
+[project.markdown_extensions.attr_list]
+[project.markdown_extensions.def_list]
+[project.markdown_extensions.footnotes]
+[project.markdown_extensions.md_in_html]
+[project.markdown_extensions.tables]
+[project.markdown_extensions.toc]
+permalink = true
+[project.markdown_extensions.pymdownx.details]
+[project.markdown_extensions.pymdownx.emoji]
+emoji_generator = "zensical.extensions.emoji.to_svg"
+emoji_index = "zensical.extensions.emoji.twemoji"
+[project.markdown_extensions.pymdownx.highlight]
+anchor_linenums = true
+line_spans = "__span"
+pygments_lang_class = true
+[project.markdown_extensions.pymdownx.inlinehilite]
+[project.markdown_extensions.pymdownx.magiclink]
+[project.markdown_extensions.pymdownx.superfences]
+custom_fences = [
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" }
+]
+[project.markdown_extensions.pymdownx.tabbed]
+alternate_style = true
+combine_header_slug = true
+[project.markdown_extensions.pymdownx.tasklist]
+custom_checkbox = true
+[project.markdown_extensions.pymdownx.tilde]
+[project.markdown_extensions.zensical.extensions.preview]
+configurations = [
+  { targets.include = [
+    "*"
+  ]}
+]

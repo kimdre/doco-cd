@@ -1,7 +1,7 @@
 GO_BIN?=$(shell pwd)/.bin
 BINARY_DIR=bin
 BINARY_NAME=doco-cd
-.PHONY: test test-verbose test-coverage test-run build fmt lint update update-all wiki-commit download tools compose-up compose-down
+.PHONY: test test-verbose test-coverage test-run build fmt lint update update-all download tools compose-up compose-down wiki-tools wiki-build wiki-serve wiki-version-publish
 
 ifneq (,$(wildcard ./.env))
     include .env
@@ -97,3 +97,20 @@ webhook:
   		-H "X-GitHub-Event: push" \
   		--data @cmd/doco-cd/testdata/github_payload.json \
   		http://localhost/v1/webhook
+
+wiki-tools:
+	python3 -m venv .venv-wiki
+	.venv-wiki/bin/python -m pip install --upgrade pip
+	.venv-wiki/bin/python -m pip install -r wiki/requirements.txt
+
+wiki-build:
+	.venv-wiki/bin/zensical build --config-file wiki/zensical.toml --clean
+
+wiki-serve:
+	.venv-wiki/bin/zensical serve --config-file wiki/zensical.toml
+
+wiki-version-publish:
+	VERSION=$$(git describe --tags --abbrev=0)
+	cd wiki && \
+	../.venv-wiki/bin/mike deploy --update-aliases $$VERSION latest && \
+	../.venv-wiki/bin/mike set-default latest
