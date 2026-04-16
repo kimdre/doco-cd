@@ -37,7 +37,7 @@ var (
 )
 
 // LoadSwarmStack loads a Docker Swarm stack using the provided project and deploy configuration.
-func LoadSwarmStack(dockerCli *command.Cli, project *types.Project,
+func LoadSwarmStack(dockerCli command.Cli, project *types.Project,
 	deployConfig *config.DeployConfig, externalWorkingDir string,
 ) (*composetypes.Config, *options.Deploy, error) {
 	opts := options.Deploy{
@@ -50,7 +50,7 @@ func LoadSwarmStack(dockerCli *command.Cli, project *types.Project,
 		Environment:      project.Environment,
 	}
 
-	cfg, err := swarmInternal.LoadComposefile(*dockerCli, opts, deployConfig.Internal.Environment, externalWorkingDir)
+	cfg, err := swarmInternal.LoadComposefile(dockerCli, opts, deployConfig.Internal.Environment, externalWorkingDir)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to load compose file: %w", err)
 	}

@@ -421,7 +421,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 // DeployStack deploys the stack using the provided deployment configuration.
 func DeployStack(
 	jobLog *slog.Logger, externalRepoPath string, ctx *context.Context,
-	dockerCli *command.Cli, dockerClient client.APIClient, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
+	dockerCli command.Cli, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
 	detectedChanges []Change, needSignal []SignalService, latestCommit, appVersion string,
 ) error {
 	startTime := time.Now()
@@ -486,7 +486,7 @@ func DeployStack(
 		addSwarmConfigLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
 		addSwarmSecretLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
 
-		err = DeploySwarmStack(*ctx, *dockerCli, cfg, opts)
+		err = DeploySwarmStack(*ctx, dockerCli, cfg, opts)
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 
@@ -495,7 +495,7 @@ func DeployStack(
 			return fmt.Errorf("%s: %w", errMsg, err)
 		}
 
-		err = PruneStackConfigs(*ctx, dockerClient, deployConfig.Name)
+		err = PruneStackConfigs(*ctx, dockerCli.Client(), deployConfig.Name)
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 
@@ -504,7 +504,7 @@ func DeployStack(
 			return fmt.Errorf("%s: %w", errMsg, err)
 		}
 
-		err = PruneStackSecrets(*ctx, dockerClient, deployConfig.Name)
+		err = PruneStackSecrets(*ctx, dockerCli.Client(), deployConfig.Name)
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 
@@ -516,7 +516,7 @@ func DeployStack(
 		if deployConfig.PruneImages {
 			stackLog.Info("prune images on swarm nodes")
 
-			err = RunImagePruneJob(*ctx, *dockerCli)
+			err = RunImagePruneJob(*ctx, dockerCli)
 			if err != nil {
 				prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
 
@@ -554,7 +554,7 @@ func DeployStack(
 			slog.Any("need_signal", needSignal),
 		)
 
-		err = deployCompose(*ctx, *dockerCli, project, deployConfig, recreateMode,
+		err = deployCompose(*ctx, dockerCli, project, deployConfig, recreateMode,
 			forcedServices.ToSlice(), needSignal)
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()

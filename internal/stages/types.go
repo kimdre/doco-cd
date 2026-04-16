@@ -9,7 +9,6 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/go-git/go-git/v5"
 	"github.com/moby/moby/api/types/container"
-	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -117,7 +116,6 @@ type RepositoryData struct {
 // Docker holds the Docker CLI and client instances along with the data mount point.
 type Docker struct {
 	Cmd            command.Cli
-	Client         client.APIClient
 	DataMountPoint container.MountPoint
 	Project        *types.Project
 }

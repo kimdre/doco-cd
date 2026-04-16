@@ -80,7 +80,7 @@ func TestDeploySwarmStack(t *testing.T) {
 
 	ctx := t.Context()
 
-	cfg, opts, err := LoadSwarmStack(&dockerCli, project, deployConfigs[0], tmpDir)
+	cfg, opts, err := LoadSwarmStack(dockerCli, project, deployConfigs[0], tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to load swarm stack: %v", err)
 	}

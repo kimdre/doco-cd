@@ -168,7 +168,6 @@ func handleOneDeploy(ctx context.Context, deployLog *slog.Logger,
 		&repoData,
 		&stages.Docker{
 			Cmd:            dockerCli,
-			Client:         dockerCli.Client(),
 			DataMountPoint: dataMountPoint,
 		},
 		payLad,

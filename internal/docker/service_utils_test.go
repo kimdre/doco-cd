@@ -430,7 +430,7 @@ services:
 		RemoveOrphans: true,
 	}
 
-	swarmStack, opts, err := LoadSwarmStack(&dockerCli, project, deployCfg, tmpDir)
+	swarmStack, opts, err := LoadSwarmStack(dockerCli, project, deployCfg, tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to load swarm stack: %v", err)
 	}

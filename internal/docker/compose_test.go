@@ -289,7 +289,7 @@ compose_files:
 				return strings.Contains(err.Error(), "No such image:")
 			}),
 		).Do(func() error {
-			return DeployStack(jobLog, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
+			return DeployStack(jobLog, repoPath, &ctx, dockerCli, &p, deployConf,
 				nil, nil, latestCommit, "dev")
 		})
 		if err != nil {
