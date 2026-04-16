@@ -20,7 +20,7 @@ Doco-CD then listens on the URL path `/v1/webhook` for incoming webhooks (http r
 The full url would look like this for example: `https://your-server.com/v1/webhook`
 I recommend that you use HTTPS so that your secret key is transmitted in encrypted form.
 
-To find more information about the webhook endpoint, see the [Webhook Listener Endpoint](Endpoints.md#webhook-listener).
+To find more information about the webhook endpoint, see the [Webhook Listener Endpoint](Endpoints/Webhook-Listener.md).
 
 ## GitHub
 
@@ -37,7 +37,7 @@ To find more information about the webhook endpoint, see the [Webhook Listener E
 
 !!! note
     GitHub webhooks are [limited to 10 seconds](https://docs.github.com/en/webhooks/testing-and-troubleshooting-webhooks/troubleshooting-webhooks#timed-out) for the delivery timeout. 
-    If you use the [`wait=true`](Endpoints.md#wait) query parameter and your deployment takes longer than this (e.g., when pulling big images), the webhook will appear as failed in the GitHub UI, but the deployment will still continue.
+    If you use the [`wait=true`](Endpoints/Webhook-Listener.md#wait) query parameter and your deployment takes longer than this (e.g., when pulling big images), the webhook will appear as failed in the GitHub UI, but the deployment will still continue.
     You can check the status of the deployment in the doco-cd logs.
 
 
@@ -130,7 +130,7 @@ Original post: https://github.com/kimdre/doco-cd/discussions/798#discussioncomme
    - **Active**: Enable this to activate the webhook.
 
 !!! note
-    If you use the [`wait=true`](Endpoints.md#wait) query parameter, you may need to extend the webhook delivery timeout in the Gitea config file `app.ini` to allow for longer running deployments (e.g., when pulling big images) 
+    If you use the [`wait=true`](Endpoints/Webhook-Listener.md#wait) query parameter, you may need to extend the webhook delivery timeout in the Gitea config file `app.ini` to allow for longer running deployments (e.g., when pulling big images) 
     This can be done by setting the `DELIVER_TIMEOUT` variable in the `[webhook]` section of the config file. You may want to increase this to 30 seconds or more depending on your deployment time.
 
     In addition, you may need to set the `ALLOWED_HOST_LIST` variable in the `[webhook]` section of the config file to allow the webhook to be delivered to the doco-cd webhook endpoint.
@@ -161,7 +161,7 @@ If you have issues reaching the app endpoint from Gitea, you may need to allow t
 5. Click on the `Test` button and then `Push events` to test the webhook.
 
 !!! note
-    If you use the [`wait=true`](Endpoints.md#wait) query parameter, you may need to extend the webhook delivery timeout in the Gitlab config file `gitlab.rb` to allow for longer running deployments (e.g., when pulling big images)
+    If you use the [`wait=true`](Endpoints/Webhook-Listener.md#wait) query parameter, you may need to extend the webhook delivery timeout in the Gitlab config file `gitlab.rb` to allow for longer running deployments (e.g., when pulling big images)
     This can be done by setting the `webhook_timeout` variable in the `gitlab.rb` file. You may want to increase this to 30 seconds or more depending on your deployment time.
 
 

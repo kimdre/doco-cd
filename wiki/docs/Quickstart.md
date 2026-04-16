@@ -100,8 +100,8 @@ Doco-CD supports sending notifications about deployment events to various servic
 
 ### Rest API
 
-Doco-CD provides a REST API that allows you to interact with the application programmatically. See the [Endpoints -> Rest API](Endpoints.md#rest-api) wiki page.
+Doco-CD provides a REST API that allows you to interact with the application programmatically. See the [Endpoints -> Rest API](Endpoints/REST-API.md) wiki page.
 
 ### Prometheus Metrics
 
-Doco-CD exposes Prometheus metrics that can be used to monitor the application. See the [Endpoints -> Prometheus Metrics](Endpoints.md#prometheus-metrics) wiki page.
+Doco-CD exposes Prometheus metrics that can be used to monitor the application. See the [Endpoints -> Prometheus Metrics](Endpoints/Metrics.md) wiki page.

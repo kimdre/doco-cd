@@ -22,7 +22,7 @@ You can think of it as a simple Portainer or ArgoCD alternative for Docker.
 - Can deploy applications via [webhooks](Quickstart.md#webhooks) and/or [polling](Quickstart.md#polling).
 - Supports various [Git providers](#supported-git-providers) 
 - Supports both Docker Compose projects and Swarm stacks in [Swarm mode](Swarm-Mode.md).
-- Provides [notifications](Notifications.md) and [Prometheus metrics](Endpoints.md#prometheus-metrics) for monitoring.
+- Provides [notifications](Notifications.md) and [Prometheus metrics](Endpoints/Metrics.md) for monitoring.
 
 ## Getting Started
 

@@ -341,7 +341,7 @@ compose_files:
 
 You can specify multiple deployment target configurations in a mono-repo style setup using the application's dynamic webhook path. 
 This allows you to deploy to different targets/locations from a single repository.
-See [Webhook Listener with custom Target](Endpoints.md#with-custom-target) for more information.
+See [Webhook Listener with custom Target](Endpoints/Webhook-Listener.md#with-custom-target) for more information.
 
 ## Running pre- and post-deployment scripts
 
