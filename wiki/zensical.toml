@@ -56,6 +56,7 @@ nav = [
       { "Webhook Listener" = "Endpoints/Webhook-Listener.md" },
     ] },
     { "Known Limitations" = "Known-Limitations.md" },
+    { "Contributing" = "Contributing.md" },
     { "Security" = "Security.md" },
     { License = "License.md" },
   ] },
