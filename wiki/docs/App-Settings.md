@@ -1,3 +1,9 @@
+---
+tags:
+  - Application
+  - Configuration
+---
+
 ## Available Settings
 
 The application can be configured using the following environment variables:
@@ -36,8 +42,7 @@ The application can be configured using the following environment variables:
 Settings to configure the Docker client used by doco-cd to interact with the Docker daemon. 
 By default, the Docker client will use the settings from the host system.
 
-!!! note
-    All of these settings are optional.
+!!! note "All of these settings are optional."
 
 
 | Key                     | Type    | Description                                                                                                                                                                       | Default value |

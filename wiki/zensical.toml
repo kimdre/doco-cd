@@ -56,7 +56,7 @@ nav = [
     { "Swarm Mode" = "Swarm-Mode.md" },
     { "Tips & Tricks" = "Tips-and-Tricks.md" },
     { "Known Limitations" = "Known-Limitations.md" },
-    { Versions = "versions.md" }
+    { "Versioning and Security" = "Security.md" },
   ] },
 ]
 
@@ -131,30 +131,43 @@ alias = true
 [project.markdown_extensions.tables]
 [project.markdown_extensions.toc]
 permalink = true
+
+# pymdownx
 [project.markdown_extensions.pymdownx.details]
 [project.markdown_extensions.pymdownx.emoji]
 emoji_generator = "zensical.extensions.emoji.to_svg"
 emoji_index = "zensical.extensions.emoji.twemoji"
+
 [project.markdown_extensions.pymdownx.highlight]
 anchor_linenums = true
 line_spans = "__span"
 pygments_lang_class = true
+
 [project.markdown_extensions.pymdownx.inlinehilite]
 [project.markdown_extensions.pymdownx.magiclink]
 [project.markdown_extensions.pymdownx.superfences]
 custom_fences = [
   { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" }
 ]
+
 [project.markdown_extensions.pymdownx.tabbed]
 alternate_style = true
 combine_header_slug = true
+
+[project.markdown_extensions.pymdownx.tabbed.slugify]
+object = "pymdownx.slugs.slugify"
+kwds = { case = "lower" }
+
 [project.markdown_extensions.pymdownx.tasklist]
 custom_checkbox = true
+
 [project.markdown_extensions.pymdownx.tilde]
 [project.markdown_extensions.pymdownx.snippets]
+
+# zensical
 [project.markdown_extensions.zensical.extensions.preview]
 configurations = [
   { targets.include = [
     "*"
-  ]}
+  ] }
 ]

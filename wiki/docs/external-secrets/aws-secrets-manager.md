@@ -1,3 +1,9 @@
+---
+tags:
+  - External Secrets
+  - Configuration
+---
+
 # AWS Secrets Manager
 
 ## Environment Variables

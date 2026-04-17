@@ -1,3 +1,9 @@
+---
+tags:
+  - Reference
+  - Endpoints
+---
+
 # REST API
 
 Doco CD exposes a RESTful API at the `/v1/api` endpoint.

@@ -1,3 +1,9 @@
+---
+tags:
+  - External Secrets
+  - Configuration
+---
+
 # OpenBao
 
 ## Environment Variables

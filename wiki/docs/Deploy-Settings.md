@@ -1,4 +1,12 @@
-## Deployment configuration file
+---
+tags:
+  - Configuration
+  - Deployment
+---
+
+# Deploy Settings
+
+## Deployment Configuration File
 
 The deployment configuration file must be placed in the root/base directory of your repository and named one of the following:
 
@@ -16,8 +24,7 @@ Concurrent tasks are grouped by repository and Git reference (e.g. branch or tag
 
 The docker compose deployment can be configured inside the [deployment configuration file](#deployment-configuration-file) using the following settings:
 
-!!! note
-    Settings without a default value are required.
+!!! note "Settings without a default value are required."
 
 
 | Key                | Type             | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Default value                                                                                                          |

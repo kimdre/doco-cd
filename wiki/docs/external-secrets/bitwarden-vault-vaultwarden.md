@@ -1,3 +1,9 @@
+---
+tags:
+  - External Secrets
+  - Configuration
+---
+
 # Bitwarden Vault / Vaultwarden
 
 This section describes how to integrate Doco-CD with Bitwarden Vault or self-hosted Vaultwarden to securely manage and inject secrets during deployments.

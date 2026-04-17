@@ -2,7 +2,20 @@ package prometheus
 
 import "github.com/prometheus/client_golang/prometheus"
 
+func init() {
+	prometheus.MustRegister(
+		AppInfo,
+		PollTotal, PollErrors, PollDuration,
+		WebhookRequestsTotal, WebhookErrorsTotal, WebhookDuration,
+		DeploymentsTotal, DeploymentErrorsTotal, DeploymentDuration,
+		DeploymentsActive, DeploymentsQueued,
+	)
+}
+
 var (
+	/*
+		Add new collectors below this comment
+		--8<-- [start:collectors] */
 	AppInfo = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: MetricsNamespace,
 		Name:      "info",
@@ -68,14 +81,6 @@ var (
 		Name:      "deployments_queued",
 		Help:      "Number of queued deployments waiting to start",
 	}, []string{"repository"})
+	/* --8<-- [end:collectors]
+	Add new collectors above this comment */
 )
-
-func init() {
-	prometheus.MustRegister(
-		AppInfo,
-		PollTotal, PollErrors, PollDuration,
-		WebhookRequestsTotal, WebhookErrorsTotal, WebhookDuration,
-		DeploymentsTotal, DeploymentErrorsTotal, DeploymentDuration,
-		DeploymentsActive, DeploymentsQueued,
-	)
-}

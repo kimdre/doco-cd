@@ -1,3 +1,9 @@
+---
+tags:
+  - Reference
+  - Endpoints
+---
+
 # Prometheus Metrics
 
 The application exposes Prometheus metrics at the `/metrics` endpoint. This endpoint provides various metrics about the application's performance and health, which can be scraped by a Prometheus server for monitoring purposes.
@@ -8,7 +14,7 @@ By default, this endpoint is available on Port `9120`, but can be configured usi
 
 See the following Source Code to find out about the currently available metrics:
 ```go title="Prometheus Collectors"
---8<-- "internal/prometheus/collectors.go"
+--8<-- "internal/prometheus/collectors.go:collectors"
 ```
 
 ## Grafana Dashboard

@@ -1,3 +1,11 @@
+---
+tags:
+  - Setup
+  - Configuration
+---
+
+# Setup SSH Key
+
 This page shows how to set up SSH keys for your deployments.
 
 !!! quote "About SSH Keys"

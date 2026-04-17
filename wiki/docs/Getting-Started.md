@@ -1,6 +1,15 @@
-# Preparing and running Doco-CD
+---
+tags:
+  - Setup
+  - Configuration
+---
 
-Use this example [docker-compose.yml](https://github.com/kimdre/doco-cd/blob/main/docker-compose.yml) as your starting point.
+# Getting Started
+
+???+ note "Use this [docker-compose.yml](https://github.com/kimdre/doco-cd/blob/main/docker-compose.yml) as your starting point"
+    ```go title="docker-compose.yml"
+    --8<-- "docker-compose.yml"
+    ```
 
 You can find all available app settings on the [App Settings](App-Settings.md) wiki page.
 
@@ -100,8 +109,8 @@ Doco-CD supports sending notifications about deployment events to various servic
 
 ### Rest API
 
-Doco-CD provides a REST API that allows you to interact with the application programmatically. See the [Endpoints -> Rest API](Endpoints/REST-API.md) wiki page.
+Doco-CD provides a REST API that allows you to interact with the application programmatically. See the [Rest API](Endpoints/REST-API.md) wiki page.
 
 ### Prometheus Metrics
 
-Doco-CD exposes Prometheus metrics that can be used to monitor the application. See the [Endpoints -> Prometheus Metrics](Endpoints/Metrics.md) wiki page.
+Doco-CD exposes Prometheus metrics that can be used to monitor the application. See the [Prometheus Metrics](Endpoints/Metrics.md) wiki page.

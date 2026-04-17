@@ -1,3 +1,9 @@
+---
+tags:
+  - External Secrets
+  - Configuration
+---
+
 # Infisical
 
 ## Environment Variables

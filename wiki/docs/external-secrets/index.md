@@ -1,3 +1,9 @@
+---
+tags:
+  - External Secrets
+  - Configuration
+---
+
 # External Secrets
 
 External secrets are secrets that are stored in an external secret management service and fetched during a deployment by Doco-CD.

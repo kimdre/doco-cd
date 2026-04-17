@@ -1,14 +1,21 @@
-# Polling configuration file
+---
+tags:
+  - Configuration
+  - Deployment
+---
 
-> Polling is a time-based trigger that checks the repositories for changes to deploy at regular intervals. This method does not require doco-cd to be reachable from the internet but is less efficient and slower than webhooks.
+# Poll Settings
+
+## Polling Configuration File
+
+!!! question "About Polling"
+    Polling is a time-based trigger that checks the repositories for changes to deploy at regular intervals. This method does not require doco-cd to be reachable from the internet but is less efficient and slower than webhooks.
 
 Poll configurations can be set using the `POLL_CONFIG` environment variable or by providing a file with the `POLL_CONFIG_FILE` environment variable.
 
 They must be in the format of a YAML list/array (also called YAML Sequence) and can contain the following settings:
 
-!!! note
-    Settings without a default value are required.
-
+!!! note "Settings without a default value are required."
 
 | Key           | Type                                          | Description                                                                                                                                                                                                                                | Default value                    |
 |---------------|-----------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------|

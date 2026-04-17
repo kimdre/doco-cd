@@ -1,3 +1,9 @@
+---
+tags:
+  - External Secrets
+  - Configuration
+---
+
 # Bitwarden Secrets Manager
 
 !!! warning

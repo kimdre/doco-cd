@@ -1,3 +1,9 @@
+---
+tags:
+  - External Secrets
+  - Configuration
+---
+
 # Webhook
 
 The webhook provider uses global [secret stores](webhook.md#secret-store) defined in YAML.
