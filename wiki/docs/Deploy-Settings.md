@@ -199,6 +199,7 @@ destroy_opts:
 Set `webhook_filter` to a regular expression to whitelist deployment triggers based on the webhook event payload.
 
 Depending on the event, the reference in a webhook payload has a pattern of 
+
 - `refs/heads/<branch>` for branches 
 - `refs/tags/<tag>` for tags
 - Or no reference at all if the event is not associated with a tag or a branch event

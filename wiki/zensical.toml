@@ -30,9 +30,12 @@ nav = [
   { Configuration = [
     { "App Settings" = "App-Settings.md" },
     { "Deploy Settings" = "Deploy-Settings.md" },
-    { "Poll Settings" = "Poll-Settings.md" }
+    { "Poll Settings" = "Poll-Settings.md" },
   ] },
   { Advanced = [
+    { "Swarm Mode" = "Swarm-Mode.md" },
+    { "Private Container Registries" = "Private-Container-Registries.md" },
+    { Encryption = "Encryption.md" },
     { "External Secrets" = [
       "external-secrets/index.md",
       { "AWS Secrets Manager" = "external-secrets/aws-secrets-manager.md" },
@@ -42,21 +45,19 @@ nav = [
       { Infisical = "external-secrets/infisical.md" },
       { OpenBao = "external-secrets/openbao.md" },
       { Webhook = "external-secrets/webhook.md" }] },
-    { Encryption = "Encryption.md" },
-    { "Pre- / Post-Deployment Scripts" = "Pre-Post-Deployment-Scripts.md" }
+    { Notifications = "Notifications.md" },
+    { "Pre- / Post-Deployment Scripts" = "Pre-Post-Deployment-Scripts.md" },
+    { "Tips & Tricks" = "Tips-and-Tricks.md" }
   ] },
   { Reference = [
-    { "Accessing Private Container Registries" = "Private-Container-Registries.md" },
     { Endpoints = [
       { "Prometheus Metrics / Monitoring" = "Endpoints/Metrics.md" },
       { "REST API" = "Endpoints/REST-API.md" },
       { "Webhook Listener" = "Endpoints/Webhook-Listener.md" },
     ] },
-    { Notifications = "Notifications.md" },
-    { "Swarm Mode" = "Swarm-Mode.md" },
-    { "Tips & Tricks" = "Tips-and-Tricks.md" },
     { "Known Limitations" = "Known-Limitations.md" },
-    { "Versioning and Security" = "Security.md" },
+    { "Security" = "Security.md" },
+    { License = "License.md" },
   ] },
 ]
 

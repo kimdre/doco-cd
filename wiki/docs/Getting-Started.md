@@ -101,7 +101,7 @@ See the [Encryption](Encryption.md) wiki page for more information on how to use
 
 ### Pulling images from a private registry
 
-If you want to pull images from a private registry, see [Accessing private container registries](Private-Container-Registries.md) in the wiki.
+If you want to pull images from a private registry, see [Private Container Registries](Private-Container-Registries.md) in the wiki.
 
 ### Sending Notifications
 

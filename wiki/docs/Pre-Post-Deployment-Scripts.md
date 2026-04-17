@@ -2,8 +2,9 @@
 
 In this documentation, we will cover how to run scripts or commands during the deployment and container lifecycle of your Docker Compose services.
 
-!!! question "Why doco-cd does not provide a shell environment for executing scripts"
-    For security reasons doco-cd itself does not provide a shell environment for executing scripts. Instead, it relies on the underlying container runtime (e.g., Docker) to execute these scripts within the context of the deployed containers/compose services.
+!!! question "Why can scripts not be run directly in doco-cd?"
+    To keep the image small and secure doco-cd itself does not provide a shell environment for executing scripts.
+    Instead, it relies on the underlying container runtime (e.g., Docker) to execute these scripts within the context of the deployed containers/compose services.
 
 Available options to run scripts/commands during deployment or container lifecycle include:
 

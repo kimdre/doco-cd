@@ -1,4 +1,4 @@
-# Accessing Private Container Registries
+# Private Container Registries
 
 To access a private container registry, you need to provide the credentials by adding the docker config file `~/.docker/config.json` to the doco-cd container.
 
