@@ -45,7 +45,7 @@ See more info here: [Setup Webhook](Setup-Access-Token.md#git-providers)
 - Gitea
 - Forgejo
 - Gogs
-- Azure DevOps* ([_Service Hooks_ not supported](Setup-Webhook.md#azure-devops))
+- Azure DevOps* ([_Service Hooks_ not supported](Setup-Webhook.md#setup-in-git-providers-azure-devops))
 
 ## Releases and Changelog
 

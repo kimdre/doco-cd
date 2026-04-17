@@ -41,7 +41,7 @@ This page shows how to set up a Git Access Token for your deployments.
         - `Contents` -> `Read-only`
         - `Metadata` -> `Read-only`
 
-=== "Gitea, Forgejo, Gogs, etc..." 
+=== "Gitea, Forgejo, Gogs" 
     1. Go to your user settings.
     2. Click on `Applications`.
     3. Under `Generate New Token`: 
