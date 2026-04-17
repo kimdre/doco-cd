@@ -8,8 +8,6 @@ This page shows how to set up an access token for your deployments.
 
 ## Git Providers
 
-
-
 - [GitHub](#github)
 - [Gitea, Forgejo, Gogs](#gitea-forgejo-and-gogs)
 - [Gitlab](#gitlab)

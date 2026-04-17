@@ -1,7 +1,5 @@
 ## Available Settings
 
-
-
 The application can be configured using the following environment variables:
 
 <!-- Sort table with https://sortfilterreordermarkdowntables.com/ -->
@@ -69,7 +67,7 @@ The doco-cd image contains a docker health check checks against `http://localhos
 
 You can adjust the health check settings in your `docker-compose.yml` file like this:
 
-```yaml
+```yaml title="docker-compose.yml"
 services:
   app:
     container_name: doco-cd
@@ -97,7 +95,7 @@ Both options can be used at the same time.
 ### With `env_file`
 
 Example with `env_file` option:
-```yaml
+```yaml title="docker-compose.yml"
 services:
   app:
     env_file:
@@ -107,7 +105,7 @@ services:
 The settings in the `.env` file should be in the format `KEY=VALUE` or `KEY: VALUE` and separated by a newline.
 
 Example `.env` file:
-```yaml
+```yaml title=".env"
 GIT_ACCESS_TOKEN: xxx
 WEBHOOK_SECRET: xxx
 ```
@@ -115,7 +113,7 @@ WEBHOOK_SECRET: xxx
 ### With `environment`
 
 Example with `environment` option:
-```yaml
+```yaml title="docker-compose.yml"
 services:
   app:
     environment:
@@ -143,7 +141,7 @@ echo "<random secret>" | docker secret create webhook_secret -
 ```
 
 ### Reference Docker Secrets in `docker-compose.yml`
-```yaml
+```yaml title="docker-compose.yml" hl_lines="10-16 24-29"
 services:
   app:
     container_name: doco-cd

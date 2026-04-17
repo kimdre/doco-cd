@@ -1,7 +1,5 @@
 # Polling configuration file
 
-
-
 > Polling is a time-based trigger that checks the repositories for changes to deploy at regular intervals. This method does not require doco-cd to be reachable from the internet but is less efficient and slower than webhooks.
 
 Poll configurations can be set using the `POLL_CONFIG` environment variable or by providing a file with the `POLL_CONFIG_FILE` environment variable.
@@ -29,8 +27,7 @@ They must be in the format of a YAML list/array (also called YAML Sequence) and 
 
 With a YAML anchor, you can define the poll configuration outside the service definition.
 
-```yaml
-# docker-compose.yaml 
+```yaml title="docker-compose.yaml" hl_lines="1-6 19"
 x-poll-config: &poll-config
   POLL_CONFIG: |
     - url: https://github.com/example/some-repo.git
@@ -60,8 +57,7 @@ volumes:
 
 #### Inline configuration
 
-```yaml
-# docker-compose.yaml 
+```yaml title="docker-compose.yaml" hl_lines="12-16"
 services:
   app:
     container_name: doco-cd
@@ -88,16 +84,14 @@ volumes:
 
 ### With `POLL_CONFIG_FILE`
 
-```yaml
-# poll-config.yaml
+```yaml title="poll-config.yaml"
 - url: https://github.com/example/some-repo.git
 - url: https://github.com/example/public-repo.git
   reference: dev
   interval: 300
 ```
 
-```yaml
-# docker-compose.yaml 
+```yaml title="docker-compose.yaml" hl_lines="12 16"
 services:
   app:
     container_name: doco-cd
@@ -120,8 +114,7 @@ volumes:
 ```
 
 #### Using a docker compose config
-```yaml
-# docker-compose.yaml
+```yaml title="docker-compose.yaml" hl_lines="12 16-18 23-31"
 services:
   app:
     container_name: doco-cd
@@ -161,7 +154,7 @@ Inline deployments reuse the same fields as `.doco-cd.yml` files (See [Deploy Se
 
 If the poll config has an inline deploy config and the target repository also contains a `.doco-cd.yml` file, the file will be ignored in favor of the inline deploy config.
 
-```yaml
+```yaml title="Poll Config with inline deploy config"
 - url: https://github.com/example/app.git
   reference: refs/heads/main
   interval: 300

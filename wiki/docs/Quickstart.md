@@ -11,8 +11,8 @@ If you run the application with Docker Swarm, see the [Swarm Mode](Swarm-Mode.md
 The Git access token is used to authenticate with your Git provider (GitHub, GitLab, Gitea, etc.) and to clone or fetch your repositories via HTTP.
 
 !!! note
-    If you use a SSH URL for your Git repositories, the Git access token is not required.
-    Instead, you need to generate a SSH key pair, see [Setup SSH Key](Setup-SSH-Key.md) for more information.
+    If you use an SSH URL for your Git repositories, the Git access token is not required.
+    Instead, you need to generate an SSH key pair, see [Setup SSH Key](Setup-SSH-Key.md) for more information.
 
 
 You can use doco-cd without a Git access token if the repositories you want to use for your deployments are publicly accessible. However, it is still recommended to use one in that case to for example avoid rate limits. 
@@ -49,7 +49,7 @@ You can check the logs of the application with the following command:
 docker compose logs -f
 ```
 
-To be able to reach the application from external Git providers like Github or Gitlab, you need to expose the http endpoint of the application to the internet.
+To be able to reach the application from external Git providers like GitHub or Gitlab, you need to expose the http endpoint of the application to the internet.
 You can use a reverse proxy like [NGINX](https://www.nginx.com/), [Traefik](https://traefik.io) or [Caddy](https://caddyserver.com) for this purpose.
 
 ### Notes for Podman users

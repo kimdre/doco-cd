@@ -2,8 +2,6 @@ Doco-CD supports the encryption of sensitive data in your doco-cd app config and
 
 ## Supported file formats
 
-
-
 SOPS supports files in the following formats:
 
 - YAML files with the `.yaml` or `.yml` extension
@@ -16,7 +14,6 @@ SOPS supports files in the following formats:
 
 !!! note
     I recommend to use [SOPS with age](https://getsops.io/docs/#encrypting-using-age) for encrypting your deployment files.
-
 
 For this, you need to 
 

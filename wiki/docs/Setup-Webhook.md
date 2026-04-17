@@ -1,20 +1,24 @@
 This page shows how to set up a webhook for your deployments.
 
-> Webhooks are event-based triggers that notify doco-cd when there are changes in the repositories to deploy. This is the recommended way to trigger deployments as it is more efficient and faster than polling but requires doco-cd to be reachable from the internet (or local network if you self-host your Git provider) and some setup on your Git provider.
+!!! quote "About Webhooks"
 
-The## Webhook Endpoint
+     Webhooks are event-based triggers that notify doco-cd when there are changes in the repositories to deploy. This is the recommended way to trigger deployments as it is more efficient and faster than polling but requires doco-cd to be reachable from the internet (or local network if you self-host your Git provider) and some setup on your Git provider.
+
+## Webhook Endpoint
 
 To enable the webhook endpoint, you need to set the `WEBHOOK_SECRET` [environment variable](App-Settings.md#available-settings) to a secure secret value and publish the webhook port  (default is `80`, see the `HTTP_PORT` [environment variable](App-Settings.md#available-settings)) in the doco-cd `docker-compose.yml` file.
 
 You can use tools like [pwgen](https://linux.die.net/man/1/pwgen) or [openssl](https://www.openssl.org/) to generate a random secret for the `WEBHOOK_SECRET`.
-  ```sh
-  # Generate a random password with pwgen
-  pwgen -s 40 1
-  ```
-  ```sh
-  # Generate a random password with openssl
-  openssl rand -base64 40
-  ```
+
+=== "pwgen"
+    ```sh title="Generate a random password with pwgen"
+    pwgen -s 40 1
+    ```
+
+=== "openssl"
+    ```sh title="Generate a random password with openssl"
+    openssl rand -base64 40
+    ```
 
 Doco-CD then listens on the URL path `/v1/webhook` for incoming webhooks (http requests).
 The full url would look like this for example: `https://your-server.com/v1/webhook`

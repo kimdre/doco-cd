@@ -1,10 +1,10 @@
 This page shows how to set up SSH keys for your deployments.
 
-> SSH keys are used to authenticate with your Git provider (GitHub, GitLab, Bitbucket, etc.) and to clone or fetch your repositories via SSH.
-> You need to set up SSH keys if you use SSH URLs for your Git repositories (e.g. `git@github.com:kimdre/doco-cd.git`).
+!!! quote "About SSH Keys"
+    SSH keys are used to authenticate with your Git provider (GitHub, GitLab, Bitbucket, etc.) and to clone or fetch your repositories via SSH.
+    You need to set up SSH keys if you use SSH URLs for your Git repositories (e.g. `git@github.com:kimdre/doco-cd.git`).
 
 ## Generate SSH Key Pair
-
 
 You can generate a new SSH key pair using the `ssh-keygen` command. Run the following command in your terminal:
 
@@ -34,7 +34,6 @@ ssh -T git@<your-git-provider>
     ssh -i /path/to/your/id_ed25519 -T git@<your-git-provider>
     ```
 
-
 Replace `<your-git-provider>` with the appropriate domain for your Git provider (e.g. `github.com`, `gitlab.com`, etc.).
 
 If the connection is successful, you should see a message indicating that you have successfully authenticated.
@@ -45,7 +44,7 @@ See the app config on the [App Settings](App-Settings.md) wiki page for more inf
 
 An example using Docker Compose:
 
-```yaml
+```yaml title="docker-compose.yml"
 services:
   app:
     container_name: doco-cd
