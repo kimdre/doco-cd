@@ -1,5 +1,6 @@
 # Infisical
 
+## Environment Variables
 
 To use Infisical, you need to set the following environment variables:
 
@@ -11,7 +12,7 @@ To use Infisical, you need to set the following environment variables:
 | `SECRET_PROVIDER_CLIENT_SECRET`      | The Client Secret of a machine account ([Universal Auth](https://infisical.com/docs/documentation/platform/identities/universal-auth))                   |
 | `SECRET_PROVIDER_CLIENT_SECRET_FILE` | Path to the file containing the client secret inside the container                                                                                       |
 
-**Deployment configuration**
+## Deployment configuration
 
 Add a mapping/reference between the environment variable you want to set in the docker compose project/stack and the reference to the secret in Infisical.
 
@@ -21,10 +22,11 @@ A valid secret reference should use the syntax:
 !!! warning
     Machine accounts can only access projects for which you have granted read permissions.
 
+### Example
 
 For example in your `.doco-cd.yml`:
 
-```yaml
+```yaml title=".doco-cd.yml"
 name: myapp
 external_secrets:
   TEST_PASSWORD: 0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:DATABASE_URL

@@ -1,19 +1,22 @@
+# Pre- / Post-Deployment Scripts
+
 In this documentation, we will cover how to run scripts or commands during the deployment and container lifecycle of your Docker Compose services.
 
-For security reasons doco-cd itself does not provide a shell environment for executing scripts. Instead, it relies on the underlying container runtime (e.g., Docker) to execute these scripts within the context of the deployed containers/compose services.
+!!! question "Why doco-cd does not provide a shell environment for executing scripts"
+    For security reasons doco-cd itself does not provide a shell environment for executing scripts. Instead, it relies on the underlying container runtime (e.g., Docker) to execute these scripts within the context of the deployed containers/compose services.
 
 Available options to run scripts/commands during deployment or container lifecycle include:
+
 - [Init Containers](#init-containers)
 - [Sidecar Containers](#sidecar-containers)
 - [Compose Lifecycle Hooks](#compose-lifecycle-hooks)
 
 ## Init Containers
 
-
-
 Init containers are containers that run before the main application containers in your Docker Compose setup and complete their tasks before the main containers start. They are useful for performing setup tasks, such as initializing databases, running migrations, or preparing configuration files.
 
 Some common use cases for init containers include:
+
 - Database migrations: Running database migration scripts before the main application starts.
 - Running shell scripts to generate configuration files or perform setup tasks.
 - Preloading data into databases or caches.
@@ -22,7 +25,7 @@ We use the `depends_on` option with the `condition: service_completed_successful
 
 ### Example
 
-```yaml
+```yaml title="docker-compose.yml" hl_lines="1-2 4-18 23 28-30"
 x-common-env: &common-env
   MYVAR: world  # We will use this variable in both init and app containers
 
@@ -56,11 +59,12 @@ services:
 ```
 
 - If you have a shell script in your repo for the init stuff, you can remove `entrypoint` and mount the script directly and run it via the `command` option:
-  ```yaml
+  ```yaml title="docker-compose.yml"
   volumes:
     - ./init/:/init
   command: /init/initproject.sh
   ```
+  
 - If you need commands from the app container, try to use the same image as your app container. Many app images also come with a shell (sh, ash, bash) 
 
 ### Troubleshooting
@@ -70,7 +74,7 @@ services:
 If the deployment fails with an error containing a message like `container <init-container-name> exited (0)`, try to add a short sleep at the end of the init container commands. This is a workaround for a known issue where the init container may exit before the main container starts waiting for it, causing the main container to miss the successful completion of the init container. Adding a short sleep ensures that the init container has time to exit properly before the main container checks its status.
 
 **Example**:
-```yaml
+```yaml title="Add a sleep command to the init container in your docker-compose.yml"
 entrypoint: ["/bin/sh", "-c"]
 command: ["<your-commands-here> && sleep 3"]  # Depending on the complexity of your init commands, you may need to adjust the sleep duration.
 ```
@@ -87,7 +91,7 @@ Some common use cases for sidecar containers include:
 
 ### Example
 
-```yaml
+```yaml title="docker-compose.yml" hl_lines="12-25"
 volumes:
   webdata:
 
@@ -95,9 +99,10 @@ services:
   app:
     image: nginx
     ports:
-      - 8080:80
+      - "8080:80"
     volumes:
       - webdata:/usr/share/nginx/html:ro
+
   sidecar:
     image: busybox
     volumes:
@@ -116,9 +121,7 @@ services:
 
 ## Compose Lifecycle Hooks
 
-!!! note
-    Requires Docker Compose [2.30.0](https://github.com/docker/compose/releases/tag/v2.30.0) or later
-
+!!! info "Requires Docker Compose [2.30.0](https://github.com/docker/compose/releases/tag/v2.30.0) or later"
 
 Docker Compose lifecycle hooks allow you to run commands/scripts at specific points in the container lifecycle, such as after starting ([`post_start`](https://docs.docker.com/reference/compose-file/services/#post_start)) or before stopping [`pre_stop`](https://docs.docker.com/reference/compose-file/services/#pre_stop) a container.
 
@@ -137,7 +140,7 @@ This example demonstrates how to use the `post_start` hook to set up the correct
    - Second hook sets appropriate read/write permissions
 4. **Application Runs**: The application can now access the volume with proper permissions
 
-```yaml
+```yaml title="docker-compose.yml"
 services:
   app:
     image: backend
@@ -168,7 +171,7 @@ This example demonstrates how to use the `pre_stop` hook to run cleanup tasks be
     3. Notify monitoring system
 3. **Container Stops**: After hooks complete, container proceeds with shutdown or restart
 
-```yaml
+```yaml title="docker-compose.yml"
 services:
   app:
     image: backend

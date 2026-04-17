@@ -1,17 +1,16 @@
 # Bitwarden Vault / Vaultwarden
 
-
 This section describes how to integrate Doco-CD with Bitwarden Vault or self-hosted Vaultwarden to securely manage and inject secrets during deployments.
 
-### How It Works
+## How It Works
 
-Doco-CD uses the [webhook provider](webhook.md) together with a lightweight Bitwarden REST API sidecar container that exposes your vault items over HTTP. The sidecar securely fetches secrets from Bitwarden/Vaultwarden and makes them available to Doco-CD for injection into your Docker Compose configurations.
+We use the [Webhook Provider](webhook.md) together with a lightweight Bitwarden REST API sidecar container that exposes your vault items over HTTP. The sidecar securely fetches secrets from Bitwarden/Vaultwarden and makes them available to Doco-CD for injection into your Docker Compose configurations.
 
 !!! tip
     This approach is fully compatible with both cloud-hosted Bitwarden Vault and self-hosted Vaultwarden instances.
 
 
-### Architecture Overview
+## Architecture Overview
 
 The integration follows this workflow:
 
@@ -19,11 +18,15 @@ The integration follows this workflow:
 2. **Store Configuration**: Define webhook [secret stores](webhook.md#secret-store) in a YAML file (`SECRET_PROVIDER_WEBHOOK_STORES_FILE`) that specify how to query items from the [Bitwarden Vault Management API](https://bitwarden.com/help/vault-management-api/)
 3. **Secret References**: In your `.doco-cd.yml`, reference vault items using `store_ref` and `remote_ref` to retrieve specific secrets
 
-### Prerequisites
+## Prerequisites
 
 - A Bitwarden Vault account or self-hosted Vaultwarden instance
 - Personal API Key (OAuth2 credentials) from your Bitwarden account or organization (see [Bitwarden Personal API Key](https://bitwarden.com/help/personal-api-key/))
-- Access to your Bitwarden item UUIDs (see [Finding Item UUIDs](#finding-item-uuids) below)
+- Access to your Bitwarden item UUIDs (see [Finding Item UUIDs](#finding-item-uuids))
+
+## Setup Steps
+
+### Example compose setup
 
 !!! note
     The compose example below is not meant to replace your full Doco-CD compose file.
@@ -31,16 +34,11 @@ The integration follows this workflow:
 
     You can for example do this by creating a separate `bitwarden-vault.compose.yml` file and then use it together with your main compose file during deployment:
 
-    ```bash
+    ```sh
     docker compose -f docker-compose.yml -f bitwarden-vault.compose.yml up -d
     ```
 
-
-### Setup Steps
-
-#### Example compose setup
-
-```yaml
+```yaml title="bitwarden-vault.compose.yml"
 services:
   app: # doco-cd
     environment:
@@ -85,11 +83,10 @@ volumes:
   bw-data:
 ```
 
-**Environment variables:**
+### Environment variables
 
 !!! note
     For all configuration options, refer to the image documentation at https://github.com/kimdre/bitwarden-rest-api-server#getting-started.
-
 
 - `BW_HOST` (optional) - Bitwarden or Vaultwarden API host. Defaults to `https://vault.bitwarden.com`.  
   For Vaultwarden, use your self-hosted instance URL (e.g., `https://vault.example.com`)
@@ -105,7 +102,7 @@ For detailed information on setting up your personal API Key, see: https://bitwa
 
 To reference secrets from Bitwarden in your `.doco-cd.yml`, you need the UUID of the Bitwarden item (vault entry).
 
-**Using Bitwarden CLI:**
+##### Using Bitwarden CLI
 
 ```bash
 # Login to Bitwarden (if not already logged in)
@@ -140,15 +137,15 @@ Example CLI output:
 ]
 ```
 
-**Using Bitwarden Web Vault:**
+##### Using Bitwarden Web Vault
 
 1. Open your Bitwarden vault at https://vault.bitwarden.com (or your Vaultwarden URL)
 2. Click on an item to view its details
 3. The UUID can be found in the URL (`itemId=<UUID>`)
 
-#### Example webhook store file for Bitwarden Vault
+### Example webhook store file for Bitwarden Vault
 
-```yaml
+```yaml title="secret-store.yml"
 stores:
   bitwarden-login:
     version: v1
@@ -166,12 +163,13 @@ stores:
 ```
 
 In this example:
+
 - `bitwarden-login` fetches built-in login fields such as `username` and `password`
 - `bitwarden-fields` fetches custom fields by name
 
-#### Minimal `.doco-cd.yml` example
+### Minimal `.doco-cd.yml` example
 
-```yaml
+```yaml title=".doco-cd.yml"
 name: myapp
 external_secrets:
   DB_PASSWORD:
@@ -181,9 +179,9 @@ external_secrets:
       property: password
 ```
 
-#### Extended `.doco-cd.yml` example
+### Extended `.doco-cd.yml` example
 
-```yaml
+```yaml title=".doco-cd.yml"
 name: myapp
 external_secrets:
   DB_USERNAME:
@@ -206,6 +204,7 @@ external_secrets:
 ```
 
 With this setup, Doco-CD resolves the secret value by:
+
 1. rendering the configured store templates using `remote_ref`
 2. calling the Bitwarden sidecar over HTTP
 3. extracting the value from the JSON response with `json_path`

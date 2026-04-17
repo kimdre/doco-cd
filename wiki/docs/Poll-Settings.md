@@ -152,7 +152,7 @@ configs:
 
 Inline deployments reuse the same fields as `.doco-cd.yml` files (See [Deploy Settings](Deploy-Settings.md)), including support for external secrets and destroy workflows. The poll job `url` is always used as the deployment source.
 
-If the poll config has an inline deploy config and the target repository also contains a `.doco-cd.yml` file, the file will be ignored in favor of the inline deploy config.
+If the poll config has an inline deployment config and the target repository also contains a `.doco-cd.yml` file, the file will be ignored in favor of the inline deployment config.
 
 ```yaml title="Poll Config with inline deploy config"
 - url: https://github.com/example/app.git

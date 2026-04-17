@@ -1,8 +1,9 @@
 # Webhook
 
-
 The webhook provider uses global [secret stores](webhook.md#secret-store) defined in YAML.
 Each secret reference in `.doco-cd.yml` points to one store via `store_ref` and passes input values via `remote_ref`.
+
+## Environment Variables
 
 To use it, set the following environment variables:
 
@@ -16,26 +17,28 @@ To use it, set the following environment variables:
 | `SECRET_PROVIDER_AUTH_TOKEN`          | Optional auth value exposed in templates as `{{ .auth.token }}`                            |
 | `SECRET_PROVIDER_AUTH_APIKEY`         | Optional auth value exposed in templates as `{{ .auth.api_key }}`                          |
 
-### Secret Store
+## Secret Store
 
-#### Format
+### Format
 
 A store must define:
+
 - `name`
 - `version` (currently `v1`)
 - `url`
 - `json_path`
 
 And can optionally define:
+
 - `method` (defaults to `GET`)
 - `headers`
 - `body`
 
 `json_path` expressions use [JMESPath](https://jmespath.org/) syntax (for example `data.login.password` and `data.fields[?name=='password'].value`).
 
-##### Example: map/list schema (`stores:`) and multi-document support
+#### Example: map/list schema (`stores:`) and multi-document support
 
-```yaml
+```yaml title="Example Secret Stores (e.g. secret-stores.yml)"
 stores:
   bitwarden-login:
     version: v1
@@ -62,7 +65,7 @@ body: '{"secret_name":"{{ .remote_ref.key }}","auth_method_access_token":"{{ .au
 json_path: "value"
 ```
 
-### Deployment Configuration
+## Deployment Configuration
 
 For webhook, `external_secrets` entries must use object references.
 Legacy string refs (e.g. `DB_PASSWORD: some-id`) are rejected with a clear error.
@@ -89,16 +92,16 @@ external_secrets:
       property: api_key
 ```
 
-### Template Parameters
+## Template Parameters
 
 All store templates (`url`, `headers`, `body`, `json_path`) can use:
 
-| Key          | Description                                                 |
-|--------------|-------------------------------------------------------------|
-| `remote_ref` | The object provided for that secret in `.doco-cd.yml`       |
-| `auth`       | Provider auth values from `SECRET_PROVIDER_AUTH_*` env vars |
+| Key          | Description                                                                                                                              |
+|--------------|------------------------------------------------------------------------------------------------------------------------------------------|
+| `remote_ref` | The object provided for that secret in `.doco-cd.yml`.<br/>Can contain any fields, for example `key` and `property` in the example above |
+| `auth`       | Provider auth values from `SECRET_PROVIDER_AUTH_*` env vars                                                                              |
 
-#### Available Template Functions
+## Template Functions
 
 The following functions are available for use in all template fields:
 
@@ -113,47 +116,61 @@ The following functions are available for use in all template fields:
 | `toLower`   | Convert input to lowercase   | `HELLO`          | `{{ "HELLO" \| toLower }}`         | `hello`           |
 | `trim`      | Trim whitespace from input   | `  hello  `      | `{{ "  hello  " \| trim }}`        | `hello`           |
 
-#### Real-World Examples
+## Examples
 
-**Example 1: Basic Authentication Header**
+### Basic Authentication Header
 ```yaml
 headers:
   Authorization: "Basic {{ print .auth.username \":\" .auth.password | b64enc }}"
 ```
 With `auth.username=admin` and `auth.password=secret123`:
+
 - Result: `Authorization: Basic YWRtaW46c2VjcmV0MTIz`
 
-**Example 2: URL-encoded Query Parameter**
+### URL-encoded Query Parameter
 ```yaml
 url: "https://api.example.com/search?q={{ .remote_ref.query | urlencode }}"
 ```
 With `remote_ref.query=hello world`:
+
 - Result: `https://api.example.com/search?q=hello+world`
 
-**Example 3: JSON Request Body**
+### JSON Request Body
 ```yaml
 body: '{"filters":{{ .remote_ref.filters | json }}}'
 ```
-With `remote_ref.filters=map[status:active type:user]`:
+
+With `remote_ref` containing a map of filters:
+
+```yaml
+remote_ref:
+  filters:
+    status: active
+    type: user
+```
+
 - Result: `{"filters":{"status":"active","type":"user"}}`
 
-**Example 4: Trimmed and Uppercase API Key Header**
+### Trimmed and Uppercase API Key Header
 ```yaml
 headers:
   X-API-Key: "{{ .remote_ref.api_key | trim | toUpper }}"
 ```
-With `remote_ref.api_key=  my-secret-key  `:
+With `remote_ref.api_key=<space>my-secret-key<space>`:
+
 - Result: `X-API-Key: MY-SECRET-KEY`
 
-**Example 5: Decoded and Trimmed Secret**
+### Decoded and Trimmed Secret
 ```yaml
 json_path: "secret[?key=='{{ .remote_ref.encoded_id | b64dec | trim }}']"
 ```
 With `remote_ref.encoded_id=c2VjcmV0LWtleQ==`:
+
 - Result: `secret[?key=='secret-key']`
 
 !!! warning
     The provider fails fast when:
+
     - `store_ref` does not exist
     - a referenced `remote_ref` field is missing
     - `json_path` is missing or renders empty

@@ -19,14 +19,14 @@ You can think of it as a simple Portainer or ArgoCD alternative for Docker.
 - Runs with a minimal (distroless) image
 - Built in Go with tiny RAM and CPU requirements.
 - Supports various [external secret management providers](external-secrets/index.md) and data encryption with [SOPS](Encryption.md)
-- Can deploy applications via [webhooks](Quickstart.md#webhooks) and/or [polling](Quickstart.md#polling).
+- Can deploy applications via [webhooks](Getting-Started.md#webhooks) and/or [polling](Getting-Started.md#polling).
 - Supports various [Git providers](#supported-git-providers) 
 - Supports both Docker Compose projects and Swarm stacks in [Swarm mode](Swarm-Mode.md).
 - Provides [notifications](Notifications.md) and [Prometheus metrics](Endpoints/Metrics.md) for monitoring.
 
 ## Getting Started
 
-Follow the [Quickstart Guide](Quickstart.md) to get started with Doco CD. 
+Follow the [Getting Started Guide](Getting-Started.md) to get started with Doco CD. 
 
 More resources:
 

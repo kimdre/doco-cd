@@ -22,7 +22,7 @@ site_dir = "site"
 nav = [
   { Home = "index.md" },
   { "Getting Started" = [
-    { Quickstart = "Quickstart.md" },
+    { "Getting Started" = "Getting-Started.md" },
     { "Setup Access Token" = "Setup-Access-Token.md" },
     { "Setup SSH Key" = "Setup-SSH-Key.md" },
     { "Setup Webhook" = "Setup-Webhook.md" }
@@ -43,7 +43,7 @@ nav = [
       { OpenBao = "external-secrets/openbao.md" },
       { Webhook = "external-secrets/webhook.md" }] },
     { Encryption = "Encryption.md" },
-    { "Pre/Post Scripts" = "Pre-Post-Deployment-Scripts.md" }
+    { "Pre- / Post-Deployment Scripts" = "Pre-Post-Deployment-Scripts.md" }
   ] },
   { Reference = [
     { "Accessing Private Container Registries" = "Private-Container-Registries.md" },
@@ -151,6 +151,7 @@ combine_header_slug = true
 [project.markdown_extensions.pymdownx.tasklist]
 custom_checkbox = true
 [project.markdown_extensions.pymdownx.tilde]
+[project.markdown_extensions.pymdownx.snippets]
 [project.markdown_extensions.zensical.extensions.preview]
 configurations = [
   { targets.include = [

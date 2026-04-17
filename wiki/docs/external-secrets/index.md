@@ -1,9 +1,9 @@
 # External Secrets
 
 External secrets are secrets that are stored in an external secret management service and fetched during a deployment by Doco-CD.
-This allows you to keep your secrets out of your version control system and manage them in a secure way.
+This allows you to keep your secrets out of your Git repository and manage them in a secure way.
 
-## Supported External Secret Providers
+## Supported Secret Provider
 
 | Provider                                                        | More Information                                                                                |
 |-----------------------------------------------------------------|-------------------------------------------------------------------------------------------------|
@@ -15,7 +15,8 @@ This allows you to keep your secrets out of your version control system and mana
 | [OpenBao](openbao.md)                                           | https://openbao.org/                                                                            |
 | [Webhook](webhook.md)                                           | Fetch secrets from any remote service via HTTP requests with a flexible configuration           |
 
-Additional external secret providers may be supported in the future. If you have a specific provider in mind, please open an issue or submit a pull request.
+!!! tip
+    Additional external secret providers may be supported in the future. If you have a specific provider in mind, please [open a feature request](https://github.com/kimdre/doco-cd/issues/new?template=feature-request.yml) or [submit a pull request](https://github.com/kimdre/doco-cd/compare) if you are able to implement the provider yourself.
 
 ## Setting up an External Secret Provider
 
@@ -25,10 +26,10 @@ See the provider-specific pages for details.
 ## Using External Secrets in Deployments
 
 Doco-CD uses variable interpolation to replace variables in your Compose files with the values fetched from the external secret provider, see the [Compose file reference](https://docs.docker.com/reference/compose-file/interpolation/) for more information and examples.
+
 For example with [Bitwarden Secrets Manager](bitwarden-secrets-manager.md), if you want to use secrets named `DB_PASSWORD` and `LABEL_SECRET` in your Compose file, you can reference it like this:
 
-```yaml
-#.doco-cd.yml
+```yaml title=".doco-cd.yml"
 name: myapp
 external_secrets:
   DB_PASSWORD: a8f1e4eb-d76d-47b4-aa3c-103733e77fce
@@ -42,14 +43,12 @@ Then you can use the variable in your Compose file like this:
     If a variable is set in both an external secret and in a `.env` file, the value from the external secret will be used.
 
 
-```dotenv
-#.env
+```dotenv title=".env"
 DB_PASSWORD=testpassword # This will be overridden by the external secret
 DOMAIN=example.com
 ```
 
-```yaml
-#docker-compose.yml
+```yaml title="docker-compose.yml" hl_lines="6-7 10 14-16"
 services:
   app:
     image: myapp:latest
@@ -69,8 +68,7 @@ services:
 
 This will result in the following docker-compose configuration being used during deployment:
 
-```yaml
-#docker-compose.yml
+```yaml title="docker-compose.yml" hl_lines="6-7 10 14-16"
 services:
   app:
     image: myapp:latest

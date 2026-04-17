@@ -16,6 +16,26 @@ curl -H "x-api-key: your_api_key" http://example.com/v1/api/projects
 
 ## Endpoints
 
+
+### Health Check
+
+Doco CD exposes a health check endpoint at `/v1/health` that, if the application is healthy, returns a `200` status code and the following JSON response:
+
+```json
+{
+  "details": "healthy"
+}
+```
+
+If the application is not healthy, the endpoint returns a `503` status code and the following JSON response:
+
+```json
+{
+  "details": "unhealthy",
+  "error": "some error message"
+}
+```
+
 ### Polling
 
 | Endpoint           | Method | Description                                                    | Query Parameters                                                                        |
@@ -68,6 +88,9 @@ curl --request POST \
 
 ### Compose Projects
 
+!!! note
+    Project management endpoints are only available for compose projects, and will not work for Swarm stacks. To manage Swarm stacks, see the [Swarm Stacks](#swarm-stacks) section below.
+
 | Endpoint                                | Method | Description                               | Query Parameters                                                                                                                                                                           |
 |-----------------------------------------|--------|-------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `/v1/api/projects`                      | GET    | List all deployed compose projects        | - `all` (boolean, default: `false`): Return all projects including inactive ones.                                                                                                          |
@@ -79,6 +102,9 @@ curl --request POST \
 
 ### Swarm Stacks
 
+!!! note 
+    Stack management endpoints are only available if Doco CD is running in a Docker Swarm environment.
+
 | Endpoint                            | Method | Description                                                                                                       | Query Parameters                                                                                                                                                                           |
 |-------------------------------------|--------|-------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `/v1/api/stacks`                    | GET    | List all deployed Swarm stacks                                                                                    |                                                                                                                                                                                            |
@@ -88,7 +114,9 @@ curl --request POST \
 | `/v1/api/stack/{stackName}/restart` | POST   | Restart/Redeploy a Swarm stack or service                                                                         | - `service` (string, optional): Name of service to restart.                                                                                                                                | 
 | `/v1/api/stack/{stackName}/run`     | POST   | Trigger one or all [jobs](https://docs.docker.com/reference/cli/docker/service/create/#running-as-a-job) in stack | - `service` (string, optional): Name of the job service to run.                                                                                                                            |
 
-## Global Query Parameters
+## Query Parameters
+
+All endpoints that support query parameters accept the following common parameters:
 
 | Query Parameter | Type    | Description                         |
 |-----------------|---------|-------------------------------------|
@@ -112,23 +140,4 @@ curl -X DELETE -H "x-api-key: your_api_key" "http://example.com/v1/api/project/m
 
 ```sh
 curl -X POST -H "x-api-key: your_api_key" "http://example.com/v1/api/project/my_project/restart?timeout=60"
-```
-
-# Health Check
-
-The application exposes a health check endpoint at `/v1/health` that, if the application is healthy, returns a `200` status code and the following JSON response:
-
-```json
-{
-  "details": "healthy"
-}
-```
-
-If the application is not healthy, the endpoint returns a `503` status code and the following JSON response:
-
-```json
-{
-  "details": "unhealthy",
-  "error": "some error message"
-}
 ```

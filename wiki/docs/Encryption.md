@@ -1,3 +1,5 @@
+# Encryption with SOPS
+
 Doco-CD supports the encryption of sensitive data in your doco-cd app config and deployment files with [SOPS](https://getsops.io/).
 
 ## Supported file formats
@@ -36,12 +38,13 @@ For this, you need to
     I recommend using the `SOPS_AGE_KEY_FILE` environment variable and mount the age secret key as a Docker secret.
     See the [example below](#doco-cd-configuration) for how to do this.
 
-    > More different options like using SOPS with PGP/GPG can be found in the [SOPS documentation](https://getsops.io/docs/).
+    !!! info 
+        More different options like using SOPS with PGP/GPG can be found in the [SOPS documentation](https://getsops.io/docs/).
 
 5. When triggering a deployment, doco-cd will automatically detect the SOPS-encrypted files and decrypt them using the provided age key.  
    It is important that you give your files the correct file extension, so that the correct file format is used during the decryption process.
 
-!!! note
+!!! tip
     You can also encrypt only parts of a file and keep the rest in plaintext.
     See [Encrypting only parts of a file](https://getsops.io/docs/#encrypting-only-parts-of-a-file) in the SOPS docs for more information.
 
@@ -54,8 +57,7 @@ Example of a `docker-compose.yml` file using SOPS with age:
 
 Use the [docker-compose.yml](https://github.com/kimdre/doco-cd/blob/main/docker-compose.yml) as the base reference and add the following lines to it:
 
-```yaml
-# docker-compose.yml
+```yaml title="docker-compose.yml" hl_lines="3-6 8-11"
 services:
   app:
     environment:
@@ -82,8 +84,7 @@ sops encrypt --age age1g3lcl... git-access-token.txt > git-access-token.enc.txt
 
 Then set the `GIT_ACCESS_TOKEN_FILE` environment variable in your `docker-compose.yml` file to the encrypted file path:
 
-```yaml
-# docker-compose.yml
+```yaml title="docker-compose.yml" hl_lines="3-6 8-11"
 services:
   app:
     environment:
@@ -100,8 +101,7 @@ secrets:
 
 First, I use my age public key from the previously generated key pair to encrypt my `secrets.env` file:
 
-```dotenv
-# secrets.env
+```dotenv title="secrets.env"
 DB_PASSWORD=some-secret-password
 ```
 
@@ -111,12 +111,15 @@ Generate the encrypted file with SOPS:
 sops encrypt --age age1g3lcl... secrets.env > secrets.enc.env
 ```
 
-> You can later edit the encrypted file with `sops edit secrets.enc.env`
+!!! tip
+    You can later edit the encrypted file in-place with 
+    ```sh
+    sops edit secrets.enc.env
+    ```
 
 Then, I set the encrypted file in my `docker-compose.yml` file:
 
-```yaml
-# docker-compose.yml
+```yaml title="docker-compose.yml"
 services:
   app:
     env_file:

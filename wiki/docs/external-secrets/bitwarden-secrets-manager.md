@@ -1,9 +1,9 @@
 # Bitwarden Secrets Manager
 
-
 !!! warning
     Bitwarden Secrets Manager is not available in images for ARMv7 architectures (e.g. Raspberry Pi OS 32-bit).
 
+## Environment Variables
 
 To use Bitwarden Secrets Manager, you need to set the following environment variables:
 
@@ -15,13 +15,15 @@ To use Bitwarden Secrets Manager, you need to set the following environment vari
 | `SECRET_PROVIDER_ACCESS_TOKEN`      | Access token of a machine account, see the docs for [machine accounts](https://bitwarden.com/help/machine-accounts/) and [access-tokens](https://bitwarden.com/help/access-tokens/) |                                        |
 | `SECRET_PROVIDER_ACCESS_TOKEN_FILE` | Path to the file containing the access token inside the container                                                                                                                   |                                        |
 
-**Deployment configuration**
+## Deployment configuration
 
 Add a mapping/reference between the environment variable you want to set in the docker compose project/stack and the ID of the secret in Bitwarden Secrets Manager.
 
+### Example
+
 For example in your `.doco-cd.yml`:
 
-```yaml
+```yaml title=".doco-cd.yml"
 name: myapp
 external_secrets:
   DB_PASSWORD: 138e3a97-ed58-431c-b366-b35500663411

@@ -10,7 +10,7 @@ To access a private container registry, you need to provide the credentials by a
 
 2. Then create a file called `docker-config.json` that contains the authentication information in JSON format:
 
-    ```json
+    ```json title="docker-config.json"
     {
         "auths": {
             "my.registry.example": {
@@ -22,7 +22,7 @@ To access a private container registry, you need to provide the credentials by a
 
 3. Lastly, add the config file as secret and mount it to `/root/.docker/config.json`:
 
-    ```yaml
+    ```yaml title="docker-compose.yml" hl_lines="16-18 20-22"
     services:
       app:
         container_name: doco-cd
