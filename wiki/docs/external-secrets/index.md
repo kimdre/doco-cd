@@ -5,15 +5,15 @@ This allows you to keep your secrets out of your version control system and mana
 
 ## Supported External Secret Providers
 
-| Provider | More Information |
-|---|---|
-| [AWS Secrets Manager](aws-secrets-manager.md) | https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html |
-| [Bitwarden Secrets Manager](bitwarden-secrets-manager.md) | https://bitwarden.com/products/secrets-manager/ |
+| Provider                                                        | More Information                                                                                |
+|-----------------------------------------------------------------|-------------------------------------------------------------------------------------------------|
+| [AWS Secrets Manager](aws-secrets-manager.md)                   | https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html                          |
+| [Bitwarden Secrets Manager](bitwarden-secrets-manager.md)       | https://bitwarden.com/products/secrets-manager/                                                 |
 | [Bitwarden Vault / Vaultwarden](bitwarden-vault-vaultwarden.md) | https://bitwarden.com/help/vault-management-api/ and https://github.com/dani-garcia/vaultwarden |
-| [1Password](onepassword.md) | https://1password.com |
-| [Infisical](infisical.md) | https://infisical.com/ |
-| [OpenBao](openbao.md) | https://openbao.org/ |
-| [Webhook](webhook.md) | Fetch secrets from any remote service via HTTP requests with a flexible configuration |
+| [1Password](1password.md)                                       | https://1password.com                                                                           |
+| [Infisical](infisical.md)                                       | https://infisical.com/                                                                          |
+| [OpenBao](openbao.md)                                           | https://openbao.org/                                                                            |
+| [Webhook](webhook.md)                                           | Fetch secrets from any remote service via HTTP requests with a flexible configuration           |
 
 Additional external secret providers may be supported in the future. If you have a specific provider in mind, please open an issue or submit a pull request.
 
