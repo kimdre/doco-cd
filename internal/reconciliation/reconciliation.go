@@ -60,35 +60,53 @@ func newJob(info jobInfo, deployConfigGroupByInterval map[int][]*config.DeployCo
 }
 
 func (j *job) close() {
+	if j == nil {
+		return
+	}
 	close(j.closeChan)
 }
 
 func (j *job) run(ctx context.Context) {
 	jobLog := j.info.jobLog
-	jobLog.Debug("staring run reconciliation")
+	jobLog.Debug("staring reconciliation")
 
 	wg := sync.WaitGroup{}
-	for interval, dcs := range j.deployConfigGroupByInterval {
-		wg.Add(1)
-		wg.Go(func() {
-			defer wg.Done()
 
-			j.runByInterval(ctx, interval, dcs)
-		})
+	for interval, dcs := range j.deployConfigGroupByInterval {
+		if len(dcs) > 0 {
+			wg.Add(1)
+			wg.Go(func() {
+				defer wg.Done()
+
+				j.runByInterval(ctx, interval, dcs)
+			})
+		}
 	}
 
 	wg.Wait()
+	jobLog.Debug("ending reconciliation")
 }
 
 func (j *job) runByInterval(ctx context.Context, interval int, dcs []*config.DeployConfig) {
+	if len(dcs) == 0 {
+		return
+	}
+
+	jobLog := j.info.jobLog.With(
+		slog.Int("interval", interval),
+	)
+
+	jobLog.Debug("staring reconciliation, by interval")
+
+	defer jobLog.Debug("ending reconciliation, by interval")
+
 	for {
-		jobLog := j.info.jobLog
 		select {
 		case <-ctx.Done():
-			jobLog.Debug("ctx.Done, closing job reconciliation")
+			jobLog.Debug("ctx is done")
 			return
 		case <-j.closeChan:
-			jobLog.Debug("closed, closing job reconciliation interval")
+			jobLog.Debug("channel is closed")
 			return
 		case <-time.After(time.Second * time.Duration(interval)):
 			jobLog.Debug("time to run reconciliation")
