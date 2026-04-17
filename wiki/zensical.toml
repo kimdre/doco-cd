@@ -73,14 +73,12 @@ logo = "images/doco-cd_containers.svg"
 favicon = "images/doco-cd_containers.svg"
 features = [
   "content.code.copy",
-  "navigation.expand",
   "navigation.footer",
   "navigation.indexes",
   "navigation.instant",
   "navigation.instant.prefetch",
   "navigation.instant.progress",
   "navigation.path",
-  "navigation.sections",
   "navigation.tabs",
   "navigation.tabs.sticky",
   "navigation.top",
