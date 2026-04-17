@@ -72,8 +72,8 @@ type DeployConfig struct {
 		Delete    bool `yaml:"delete" json:"delete" default:"true"` // Delete removes obsolete auto-discovered deployments that are no longer present in the repository
 	} `yaml:"auto_discover_opts" json:"auto_discover_opts"` // AutoDiscoverOpts are options for the autodiscovery feature
 	Reconciliation struct {
-		Enabled  bool `yaml:"enabled" json:"enabled" default:"false"` // Enabled enables the reconciliation feature
-		Interval int  `yaml:"interval" json:"interval" default:"60"`  // Interval is the interval in seconds at which the reconciliation job is run
+		Enabled  bool `yaml:"enabled" json:"enabled" default:"true"` // Enabled enables the reconciliation feature
+		Interval int  `yaml:"interval" json:"interval" default:"60"` // Interval is the interval in seconds at which the reconciliation job is run
 	} `yaml:"reconciliation" json:"reconciliation"` // Reconciliation is the configuration for the reconciliation feature
 	Internal struct {
 		File        string            `yaml:"-"` // File is the path to the deployment configuration file in the repository (if RepositoryUrl is not set) or in the cloned repository (if RepositoryUrl is set)
