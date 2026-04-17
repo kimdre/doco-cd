@@ -3,6 +3,7 @@ package webhook
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -195,6 +196,13 @@ func TestValueProvider_GetSecret_Webhook(t *testing.T) {
 			haveBearerTokenFile: "testdata/does/not/exist.txt",
 			wantConfigErr:       true,
 		},
+		"post_auth": {
+			haveSecretID:    "bacgaff",
+			haveURLPath:     "/post",
+			haveRequestBody: `{"secret":"{{.remoteRef}}"}`,
+			haveBearerToken: "DEADBEEFCAFE",
+			wantSecret:      "BACGAFF",
+		},
 		"custom_headers": {
 			haveSecretID:      "x-custom-header",
 			haveCustomHeaders: `{"X-Custom-Header":"custom-value"}`,
@@ -290,8 +298,19 @@ func getSecret(w http.ResponseWriter, r *http.Request) {
 func postSecret(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set(HeaderContentType, ContentTypeJSON+"; charset=utf-8")
 
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		httpRespondError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	if r.ContentLength >= 0 && r.ContentLength != int64(len(bodyBytes)) {
+		httpRespondError(w, http.StatusBadRequest, errors.New("body length mismatch"))
+		return
+	}
+
 	var body map[string]string
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.Unmarshal(bodyBytes, &body); err != nil {
 		httpRespondError(w, http.StatusBadRequest, err)
 		return
 	}

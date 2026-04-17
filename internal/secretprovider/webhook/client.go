@@ -28,6 +28,7 @@ const (
 type ValueProvider struct {
 	endpoint      *template.Template
 	payload       *template.Template
+	queryTpl      *template.Template
 	query         *jmespath.JMESPath
 	client        *http.Client
 	customHeaders map[string]string
@@ -44,6 +45,11 @@ func NewValueProvider(ctx context.Context, cfg *Config) (*ValueProvider, error) 
 	result := &ValueProvider{
 		client:        &http.Client{Transport: rt},
 		customHeaders: cfg.CustomHeaders,
+	}
+
+	result.queryTpl, err = template.New("webhook-query").Parse(cfg.ResultJMESPath)
+	if err != nil {
+		return nil, err
 	}
 
 	result.query, err = jmespath.Compile(cfg.ResultJMESPath)
@@ -71,7 +77,7 @@ func NewValueProvider(ctx context.Context, cfg *Config) (*ValueProvider, error) 
 // expected to be JSON encoded as it will be passed to a JMESPath evaluator
 // in order to extract the resulting value.
 func (p *ValueProvider) GetSecret(ctx context.Context, id string) (string, error) {
-	req, err := p.newRequest(ctx, id)
+	req, query, err := p.newRequest(ctx, id)
 	if err != nil {
 		return "", err
 	}
@@ -90,7 +96,7 @@ func (p *ValueProvider) GetSecret(ctx context.Context, id string) (string, error
 		return "", err
 	}
 
-	result, err := p.query.Search(data)
+	result, err := query.Search(data)
 	if err != nil {
 		return "", err
 	} else if value, ok := result.(string); ok {
@@ -100,7 +106,7 @@ func (p *ValueProvider) GetSecret(ctx context.Context, id string) (string, error
 	return "", fmt.Errorf("JMESPath query did not yield a string but a %T", result)
 }
 
-func (p *ValueProvider) newRequest(ctx context.Context, id string) (*http.Request, error) {
+func (p *ValueProvider) newRequest(ctx context.Context, id string) (*http.Request, *jmespath.JMESPath, error) {
 	var body io.Reader
 
 	buf := new(bytes.Buffer)
@@ -109,7 +115,7 @@ func (p *ValueProvider) newRequest(ctx context.Context, id string) (*http.Reques
 	}
 
 	if err := p.endpoint.Execute(buf, tplParams); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	url := buf.String()
@@ -121,13 +127,13 @@ func (p *ValueProvider) newRequest(ctx context.Context, id string) (*http.Reques
 		method = http.MethodPost
 
 		if err := p.payload.Execute(buf, tplParams); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if p.payload != nil {
@@ -141,5 +147,16 @@ func (p *ValueProvider) newRequest(ctx context.Context, id string) (*http.Reques
 		req.Header.Set(key, value)
 	}
 
-	return req, nil
+	// Render json_path template into a separate buffer, leaving the body buffer untouched
+	jsonPathBuf := new(bytes.Buffer)
+	if err := p.queryTpl.Execute(jsonPathBuf, tplParams); err != nil {
+		return nil, nil, err
+	}
+
+	query, err := jmespath.Compile(jsonPathBuf.String())
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return req, query, nil
 }
