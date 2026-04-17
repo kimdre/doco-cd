@@ -2,6 +2,7 @@
 tags:
   - Reference
   - Endpoints
+  - Metrics
 ---
 
 # Prometheus Metrics

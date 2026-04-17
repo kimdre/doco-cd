@@ -1,6 +1,6 @@
 ---
 tags:
-  - External Secrets
+  - Secrets
   - Configuration
 ---
 

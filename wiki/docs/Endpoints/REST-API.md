@@ -2,6 +2,7 @@
 tags:
   - Reference
   - Endpoints
+  - REST API
 ---
 
 # REST API

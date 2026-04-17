@@ -1,3 +1,10 @@
+---
+tags:
+  - Advanced
+  - Deployment
+  - Docker
+---
+
 # Pre- / Post-Deployment Scripts
 
 In this documentation, we will cover how to run scripts or commands during the deployment and container lifecycle of your Docker Compose services.

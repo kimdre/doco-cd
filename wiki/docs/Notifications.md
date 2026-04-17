@@ -1,6 +1,7 @@
 ---
 tags:
-  - Reference
+  - Advanced
+  - Setup
   - Notifications
 ---
 

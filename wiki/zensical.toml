@@ -58,7 +58,7 @@ nav = [
     { "Known Limitations" = "Known-Limitations.md" },
     { "Contributing" = "Contributing.md" },
     { "Security" = "Security.md" },
-    { License = "License.md" },
+    { "License" = "License.md" },
   ] },
 ]
 

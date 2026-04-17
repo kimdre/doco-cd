@@ -1,6 +1,7 @@
 ---
 tags:
-  - Reference
+  - Advanced
+  - Docker
 ---
 
 # Tips and Tricks

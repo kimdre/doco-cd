@@ -1,7 +1,8 @@
 ---
 tags:
-  - Reference
-  - Docker Swarm
+  - Advanced
+  - Docker
+  - Swarm Mode
 ---
 
 ## Overview

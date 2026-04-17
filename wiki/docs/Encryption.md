@@ -1,3 +1,11 @@
+---
+tags:
+  - Setup
+  - Advanced
+  - Deployment
+  - Secrets
+---
+
 # Encryption with SOPS
 
 Doco-CD supports the encryption of sensitive data in your doco-cd app config and deployment files with [SOPS](https://getsops.io/).

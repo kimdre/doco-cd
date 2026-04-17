@@ -91,7 +91,9 @@ docker build --build-arg DISABLE_BITWARDEN=true -t doco-cd:nobitwarden .
 
 ### Documentation (wiki)
 
-# TODO: Update this section once the new documentation site is live.
+<!--
+TODO: Update this section once the new documentation site is live.
+-->
 
 The new documentation site lives in `wiki/` and is built with Zensical.
 
