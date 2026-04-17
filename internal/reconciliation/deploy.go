@@ -32,12 +32,11 @@ func Deploy(ctx context.Context,
 	payload *webhook.ParsedPayload,
 	testName string,
 ) error {
-	if err := deploy(ctx, jobLog, appConfig,
+	err := deploy(ctx, jobLog, appConfig,
 		dataMountPoint, dockerCli, secretProvider, metadata,
-		jobTrigger, repoData, deployConfigs, payload, testName); err != nil {
-		return err
-	}
+		jobTrigger, repoData, deployConfigs, payload, testName)
 
+	// always add reconciliation job
 	reconciliationHandler.addJob(ctx, jobInfo{
 		appConfig:      appConfig,
 		dataMountPoint: dataMountPoint,
@@ -52,7 +51,7 @@ func Deploy(ctx context.Context,
 		testName:       testName,
 	})
 
-	return nil
+	return err
 }
 
 func deploy(ctx context.Context,

@@ -63,6 +63,7 @@ func (j *job) close() {
 	if j == nil {
 		return
 	}
+
 	close(j.closeChan)
 }
 

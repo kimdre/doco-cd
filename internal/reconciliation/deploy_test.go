@@ -100,6 +100,7 @@ func TestDeploy(t *testing.T) {
 		dc.Name = stackName + "-" + dc.Name
 		dc.Reconciliation.Interval = 10
 	}
+
 	dcs[0].Reconciliation.Enabled = false
 	dcs[1].Reconciliation.Interval = 20
 
@@ -136,9 +137,11 @@ func TestDeploy(t *testing.T) {
 	for _, dc := range dcs {
 		wanted = append(wanted, dc.Name+"-test-1")
 	}
+
 	firstPartWanted := []string{wanted[2], wanted[3], wanted[4]}
 
 	secondPartWanted := []string{wanted[1], wanted[2], wanted[3], wanted[4]}
+
 	t.Cleanup(func() {
 		err := rmContainer(context.Background(), t, dockerCli.Client(), secondPartWanted)
 		if err != nil {
@@ -199,13 +202,16 @@ func getRunningContainerNames(ctx context.Context, cli client.APIClient, prefix 
 	if err != nil {
 		return nil, err
 	}
+
 	got := []string{}
+
 	for _, c := range result.Items {
 		name := strings.TrimPrefix(c.Names[0], "/")
 		if strings.HasPrefix(name, prefix) {
 			got = append(got, name)
 		}
 	}
+
 	slices.Sort(got)
 
 	return got, nil
@@ -220,5 +226,6 @@ func rmContainer(ctx context.Context, t *testing.T, cli client.APIClient, contai
 			t.Errorf("rm container %s err: %v", containerName, err)
 		}
 	}
+
 	return nil
 }
