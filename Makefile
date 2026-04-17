@@ -91,7 +91,7 @@ clean-testcache:
 	go clean -testcache
 
 webhook:
-	@SIGNATURE=$$(openssl dgst -sha256 -hmac "test_Secret1" < cmd/doco-cd/testdata/github_payload.json | sed 's/^.* //'); \
+	@SIGNATURE=$$(openssl dgst -sha256 -hmac "test_Secret1" < cmd/doco-cd/testdata/github_payload.json | sed 's/^.* //') && \
   	curl -X POST -H "X-Hub-Signature-256: sha256=$$SIGNATURE" \
   		-H "Content-Type: application/json" \
   		-H "X-GitHub-Event: push" \
@@ -110,7 +110,9 @@ wiki-serve:
 	.venv-wiki/bin/zensical serve --config-file wiki/zensical.toml
 
 wiki-version-publish:
-	VERSION=$$(git describe --tags --abbrev=0)
-	cd wiki && \
-	../.venv-wiki/bin/mike deploy --push --update-aliases $$VERSION latest && \
-	../.venv-wiki/bin/mike set-default --push latest
+	VERSION=$$(git describe --tags --abbrev=0) && \
+	PATH="$(CURDIR)/.venv-wiki/bin:$$PATH" .venv-wiki/bin/mike deploy --config-file wiki/zensical.toml --push --update-aliases $$VERSION latest && \
+	PATH="$(CURDIR)/.venv-wiki/bin:$$PATH" .venv-wiki/bin/mike set-default --config-file wiki/zensical.toml --push latest
+
+mike-serve:
+	PATH="$(CURDIR)/.venv-wiki/bin:$$PATH" .venv-wiki/bin/mike serve --config-file wiki/zensical.toml

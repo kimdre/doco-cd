@@ -6,36 +6,45 @@ on:
       - published
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 jobs:
   deploy:
     name: Build and publish release docs
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    defaults:
-      run:
-        working-directory: ./wiki
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.x"
 
-      - run: pip install zensical
-      - run: zensical build --config-file wiki/zensical.toml --clean
-      - uses: actions/upload-pages-artifact@v4
-        with:
-          path: site
-      - uses: actions/deploy-pages@v4
-        id: deployment
+      - name: Install docs requirements
+        run: pip install -r wiki/requirements.txt
+
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Ensure gh-pages ref is available
+        run: git fetch origin gh-pages || true
+
+      - name: Publish prerelease docs with mike (no latest)
+        if: ${{ github.event.release.prerelease }}
+        env:
+          VERSION: ${{ github.event.release.tag_name }}
+        run: |
+          mike deploy --config-file wiki/zensical.toml --push --update-aliases "$VERSION" pre-release
+
+      - name: Publish stable docs with mike (update latest)
+        if: ${{ !github.event.release.prerelease }}
+        env:
+          VERSION: ${{ github.event.release.tag_name }}
+        run: |
+          mike deploy --config-file wiki/zensical.toml --push --update-aliases "$VERSION" latest
+          mike set-default --config-file wiki/zensical.toml --push latest

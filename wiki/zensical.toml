@@ -88,7 +88,8 @@ features = [
   "search.highlight",
   "search.suggest",
   "search.share",
-  "content.action.view"  # View source of this page
+  "content.action.edit",
+  "content.action.view",
 ]
 
 [project.theme.icon]
