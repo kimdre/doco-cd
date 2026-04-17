@@ -1,8 +1,8 @@
 # Webhook Listener
 
-The webhook payload is expected to be in JSON format and must contain the payload from a supported the Git provider, see [Supported Git Providers](index.md#supported-git-providers).
+The webhook payload is expected to be in JSON format and must contain the payload from a supported the Git provider, see [Supported Git Providers](../index.md#supported-git-providers).
 
-The application listens for incoming webhooks on the `/v1/webhook` endpoint with the port specified by the `HTTP_PORT` environment variable, see [App Settings](App-Settings.md#available-settings).
+The application listens for incoming webhooks on the `/v1/webhook` endpoint with the port specified by the `HTTP_PORT` environment variable, see [App Settings](../App-Settings.md#available-settings).
 
 ## With custom Target
 

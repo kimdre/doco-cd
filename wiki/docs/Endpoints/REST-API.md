@@ -4,7 +4,7 @@ Doco CD exposes a RESTful API at the `/v1/api` endpoint.
 
 ## Authentication
 
-Set the `API_SECRET` or `API_SECRET_FILE` environment variable in the container to enable the API, see [App Settings](App-Settings.md#available-settings).
+Set the `API_SECRET` or `API_SECRET_FILE` environment variable in the container to enable the API, see [App Settings](../App-Settings.md#available-settings).
 
 Use the `x-api-key` header to authenticate requests to the API using the secret value.
 
@@ -22,7 +22,7 @@ curl -H "x-api-key: your_api_key" http://example.com/v1/api/projects
 |--------------------|--------|----------------------------------------------------------------|-----------------------------------------------------------------------------------------|
 | `/v1/api/poll/run` | POST   | Trigger a poll run for all polling targets in the body (JSON). | - `wait` (boolean, default: `true`): Wait for the poll run to finish before responding. |
 
-The request body must be a JSON array of [poll configurations](Poll-Settings.md), each containing at least a `url` field containing the Git clone URL to the repository.
+The request body must be a JSON array of [poll configurations](../Poll-Settings.md), each containing at least a `url` field containing the Git clone URL to the repository.
 
 The fields `run_once` and `interval` will be ignored for poll runs triggered via the API, as they are only relevant for the scheduled poll runs.
 
