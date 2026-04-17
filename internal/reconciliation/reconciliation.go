@@ -3,7 +3,6 @@ package reconciliation
 import (
 	"context"
 	"log/slog"
-	"math"
 	"sync"
 	"time"
 
@@ -45,17 +44,18 @@ type jobInfo struct {
 }
 
 type job struct {
-	info     jobInfo
-	Interval int // second
+	info jobInfo
 
-	closeChan chan struct{}
+	// key is the interval in second
+	deployConfigGroupByInterval map[int][]*config.DeployConfig
+	closeChan                   chan struct{}
 }
 
-func newJob(info jobInfo, interval int) *job {
+func newJob(info jobInfo, deployConfigGroupByInterval map[int][]*config.DeployConfig) *job {
 	return &job{
-		info:      info,
-		Interval:  interval,
-		closeChan: make(chan struct{}),
+		info:                        info,
+		deployConfigGroupByInterval: deployConfigGroupByInterval,
+		closeChan:                   make(chan struct{}),
 	}
 }
 
@@ -64,6 +64,23 @@ func (j *job) close() {
 }
 
 func (j *job) run(ctx context.Context) {
+	jobLog := j.info.jobLog
+	jobLog.Debug("staring run reconciliation")
+
+	wg := sync.WaitGroup{}
+	for interval, dcs := range j.deployConfigGroupByInterval {
+		wg.Add(1)
+		wg.Go(func() {
+			defer wg.Done()
+
+			j.runByInterval(ctx, interval, dcs)
+		})
+	}
+
+	wg.Wait()
+}
+
+func (j *job) runByInterval(ctx context.Context, interval int, dcs []*config.DeployConfig) {
 	for {
 		jobLog := j.info.jobLog
 		select {
@@ -71,27 +88,33 @@ func (j *job) run(ctx context.Context) {
 			jobLog.Debug("ctx.Done, closing job reconciliation")
 			return
 		case <-j.closeChan:
-			jobLog.Debug("closed, closing job reconciliation")
+			jobLog.Debug("closed, closing job reconciliation interval")
 			return
-		case <-time.After(time.Second * time.Duration(j.Interval)):
+		case <-time.After(time.Second * time.Duration(interval)):
 			jobLog.Debug("time to run reconciliation")
-			j.deploy(ctx)
+			j.deploy(ctx, dcs)
 		}
 	}
 }
 
-func (j *job) deploy(ctx context.Context) {
+func (j *job) deploy(ctx context.Context, dcs []*config.DeployConfig) {
 	repoLock := lock.GetRepoLock(j.info.metadata.Repository)
 	repoLock.Lock()
 	defer repoLock.Unlock()
 
-	err := deploy(ctx, j.info.jobLog, j.info.appConfig,
-		j.info.dataMountPoint, j.info.dockerCli, j.info.secretProvider,
-		j.info.metadata, j.info.jobTrigger,
-		j.info.repoData, j.info.deployConfigs,
-		j.info.payload, j.info.testName)
-	if err != nil {
-		slog.Error("failed to deploy", logger.ErrAttr(err))
+	jobLog := j.info.jobLog
+	if err := cleanupObsoleteAutoDiscoveredContainers(ctx, j.info.jobLog,
+		j.info.dockerCli, string(j.info.repoData.CloneURL),
+		j.info.deployConfigs, // all deploy configs
+		j.info.metadata); err != nil {
+		jobLog.Error("failed to clean up obsolete auto-discovered containers", logger.ErrAttr(err))
+	}
+
+	if err := handleDeploy(ctx, jobLog, j.info.appConfig,
+		j.info.dataMountPoint, j.info.dockerCli,
+		j.info.secretProvider, j.info.metadata.JobID, j.info.jobTrigger,
+		j.info.repoData, dcs, j.info.payload, j.info.testName); err != nil {
+		jobLog.Error("failed to deploy", logger.ErrAttr(err))
 	}
 }
 
@@ -102,12 +125,10 @@ type reconciliation struct {
 }
 
 func (r *reconciliation) addJob(ctx context.Context, info jobInfo) {
-	cfg, interval := getDeployConfig(info.deployConfigs)
+	cfg := getDeployConfigGroupByInterval(info.deployConfigs)
 	if len(cfg) == 0 {
 		return
 	}
-
-	info.deployConfigs = cfg
 
 	r.m.Lock()
 	defer r.m.Unlock()
@@ -116,27 +137,20 @@ func (r *reconciliation) addJob(ctx context.Context, info jobInfo) {
 	old.close()
 
 	// start new
-	newJob := newJob(info, interval)
+	newJob := newJob(info, cfg)
 
 	r.repoJobs[info.repoData.Name] = newJob
 	go newJob.run(context.WithoutCancel(ctx))
 }
 
-func getDeployConfig(deployConfigs []*config.DeployConfig) ([]*config.DeployConfig, int) {
-	enabled := []*config.DeployConfig{}
-	// todo different interval
-	// auto delete need to be considered
-	minInterval := math.MaxInt
+func getDeployConfigGroupByInterval(dcs []*config.DeployConfig) map[int][]*config.DeployConfig {
+	m := make(map[int][]*config.DeployConfig)
 
-	for _, deployConfig := range deployConfigs {
-		if r := deployConfig.Reconciliation; r.Enabled {
-			enabled = append(enabled, deployConfig)
-
-			if r.Interval < minInterval {
-				minInterval = r.Interval
-			}
+	for _, dc := range dcs {
+		if r := dc.Reconciliation; r.Enabled {
+			m[r.Interval] = append(m[r.Interval], dc)
 		}
 	}
 
-	return enabled, minInterval
+	return m
 }

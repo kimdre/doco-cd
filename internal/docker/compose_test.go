@@ -19,6 +19,7 @@ import (
 	"github.com/avast/retry-go/v5"
 
 	"github.com/kimdre/doco-cd/internal/test"
+	"github.com/kimdre/doco-cd/internal/utils/id"
 
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
 
@@ -31,7 +32,6 @@ import (
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
-	"github.com/google/uuid"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/encryption"
@@ -170,7 +170,7 @@ func TestDeployCompose(t *testing.T) {
 	p := webhook.ParsedPayload{
 		Ref:       git.MainBranch,
 		CommitSHA: "4d877107dfa2e3b582bd8f8f803befbd3a1d867e",
-		Name:      uuid.Must(uuid.NewV7()).String(),
+		Name:      id.GenJobID(),
 		FullName:  "kimdre/doco-cd_tests",
 		CloneURL:  cloneUrlTest,
 		Private:   false,
@@ -263,7 +263,7 @@ compose_files:
 
 		t.Logf("Deploying '%s'", deployConf.Name)
 
-		jobID := uuid.Must(uuid.NewV7()).String()
+		jobID := id.GenJobID()
 
 		testLog := logger.New(slog.LevelInfo)
 		jobLog := testLog.With(slog.String("job_id", jobID))
