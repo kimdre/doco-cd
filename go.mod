@@ -42,7 +42,7 @@ require golang.org/x/sync v0.20.0
 require (
 	github.com/avast/retry-go/v5 v5.0.0
 	github.com/bitwarden/sdk-go/v2 v2.0.0
-	github.com/docker/compose/v5 v5.1.2
+	github.com/docker/compose/v5 v5.1.3
 	github.com/jmespath/go-jmespath v0.4.1-0.20220621161143-b0104c826a24
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/prometheus/common v0.67.5
@@ -109,7 +109,7 @@ require (
 	github.com/cncf/xds/go v0.0.0-20251210132809-ee656c7534f5 // indirect
 	github.com/containerd/console v1.0.5 // indirect
 	github.com/containerd/containerd/api v1.10.0 // indirect
-	github.com/containerd/containerd/v2 v2.2.2 // indirect
+	github.com/containerd/containerd/v2 v2.2.3 // indirect
 	github.com/containerd/continuity v0.4.5 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
