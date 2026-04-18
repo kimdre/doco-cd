@@ -95,11 +95,11 @@ docker build --build-arg DISABLE_BITWARDEN=true -t doco-cd:nobitwarden .
 TODO: Update this section once the new documentation site is live.
 -->
 
-The new documentation site lives in `wiki/` and is built with Zensical.
+The new documentation site lives in `wiki/` and is built with [Zensical](https://zensical.org/).
 
 #### Write and preview docs locally
 
-1. Install the docs toolchain:
+1. Install the docs toolchain (requires Python 3.10+):
 
 ```bash
 make wiki-tools
@@ -111,7 +111,7 @@ make wiki-tools
 make wiki-serve
 ```
 
-3. Open the local URL printed by Zensical (usually `http://127.0.0.1:8000`).
+3. Open the local URL printed by Zensical (usually http://localhost:8000).
 
 Edit Markdown files in `wiki/docs/` and refresh to see changes.
 

@@ -137,6 +137,7 @@ alias = true
 permalink = true
 
 # pymdownx
+[project.markdown_extensions.pymdownx.blocks.caption]
 [project.markdown_extensions.pymdownx.details]
 [project.markdown_extensions.pymdownx.emoji]
 emoji_generator = "zensical.extensions.emoji.to_svg"

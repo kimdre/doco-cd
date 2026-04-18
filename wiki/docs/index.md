@@ -4,7 +4,7 @@ title: ""
 
 # Home
 
-<img src="images/doco-cd_logo.svg" alt="Doco CD Logo" height="48px" />
+![Doco CD Logo](images/doco-cd_logo.svg)
 
 ## What is Doco CD?
 
