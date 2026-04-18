@@ -101,39 +101,28 @@ The new documentation site lives in `wiki/` and is built with [Zensical](https:/
 
 1. Install the docs toolchain (requires Python 3.10+):
 
-```bash
-make wiki-tools
-```
+    ```bash
+    make wiki-tools
+    ```
 
 2. Start the local docs server:
 
-```bash
-make wiki-serve
-```
+    ```bash
+    make wiki-serve
+    ```
 
 3. Open the local URL printed by Zensical (usually http://localhost:8000).
 
-Edit Markdown files in `wiki/docs/` and refresh to see changes.
-
-#### Build docs locally
-
-Use the following command to generate the static site:
-
-```bash
-make wiki-build
-```
-
-The generated output is written to `wiki/site/`.
-
-If you prefer running commands directly instead of Make targets:
-
-```bash
-python3 -m venv .venv-wiki
-source .venv-wiki/bin/activate
-pip install -r wiki/requirements.txt
-zensical serve --config-file wiki/zensical.toml
-zensical build --config-file wiki/zensical.toml --clean
-```
+    Edit Markdown files in `wiki/docs/` and refresh to see changes.
+    
+    If you prefer running commands directly instead of Make targets:
+    
+    ```bash
+    python3 -m venv .venv-wiki
+    source .venv-wiki/bin/activate
+    pip install -r wiki/requirements.txt
+    zensical serve --config-file wiki/zensical.toml
+    ```
 
 ### Submitting your code
 
