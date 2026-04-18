@@ -1,12 +1,13 @@
 ---
 tags:
+  - Advanced
   - Secrets
   - Configuration
 ---
 
 # Webhook
 
-The webhook provider uses global [secret stores](webhook.md#secret-store) defined in YAML.
+The webhook provider uses global [secret stores](Webhook.md#secret-store) defined in YAML.
 Each secret reference in `.doco-cd.yml` points to one store via `store_ref` and passes input values via `remote_ref`.
 
 ## Environment Variables

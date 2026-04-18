@@ -11,7 +11,8 @@ This page shows how to set up a Git Access Token for your deployments.
 !!! info
     The Git Access Token is used to authenticate with your Git provider (GitHub, GitLab, Bitbucket, etc.) and to clone or fetch your repositories via HTTP.
     
-    You can use doco-cd without a Git Access Token if the repositories you want to use for your deployments are publicly accessible. However, it is still recommended to use one in that case to for example avoid rate limits.
+    !!! tip
+        You can use doco-cd without a Git Access Token if the repositories you want to use for your deployments are publicly accessible. However, it is still recommended to use one in that case to for example avoid rate limits.
     
     If you set a Git Access Token, doco-cd will always use it to authenticate with your Git provider.
 
@@ -35,20 +36,20 @@ This page shows how to set up a Git Access Token for your deployments.
     === "Fine-grained tokens"
     
         - Repository access
-          - Set to `Public Repositories (read-only)` for only public repositories.
-          - Set to `All Repositories` for all repositories.
-          - The minimum required permissions are:
-        - `Contents` -> `Read-only`
-        - `Metadata` -> `Read-only`
+            - Set to `Public Repositories (read-only)` for only public repositories.
+            - Set to `All Repositories` for all repositories.
+        - The minimum required permissions are:
+            - `Contents` -> `Read-only`
+            - `Metadata` -> `Read-only`
 
 === "Gitea, Forgejo, Gogs" 
     1. Go to your user settings.
     2. Click on `Applications`.
     3. Under `Generate New Token`: 
-    4. Fill in the `Token Name` field.
-    5. Set `Repository and Organization Access` to `All`
-    6. Open `Select Permissions` and set `repository` to `Read`
-    7. Click on `Generate Token` and save the token that is shown on the top of the page.
+        1. Fill in the `Token Name` field.
+        2. Set `Repository and Organization Access` to `All`
+        3. Open `Select Permissions` and set `repository` to `Read`
+        4. Click on `Generate Token` and save the token that is shown on the top of the page.
 
 === "Gitlab"
 

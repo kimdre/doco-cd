@@ -4,7 +4,15 @@ tags:
   - Deployment
 ---
 
-# Deploy Settings
+# Deployment Settings
+
+Deployments in `Doco-CD` run as concurrent tasks. 
+Each deployment is defined by a deployment configuration file (e.g. `.doco-cd.yml`) that controls how it runs. 
+Enable `auto_discover` to generate multiple deployments from a single config by scanning subdirectories for Docker Compose files.
+
+Concurrent tasks are grouped by repository and Git reference (e.g. branch or tag). 
+Deployments from the same repository but different references run sequentially, while those with the same repository and reference run in parallel. 
+See the [App Settings](App-Settings.md) documentation for more information on how to configure the number of concurrent deployments.
 
 ## Deployment Configuration File
 
@@ -16,11 +24,7 @@ The deployment configuration file must be placed in the root/base directory of y
 If you use polling, you can also specify inline deployment configurations in the poll configuration file.
 See [Poll Settings](Poll-Settings.md) and this [example](Poll-Settings.md#inline-deploy-configs) for more information.
 
-## Deployment Settings
-
-Deployments in `Doco-CD` run as concurrent tasks. Each deployment is defined by a deployment configuration file (e.g. `.doco-cd.yml`) that controls how it runs. Enable `auto_discover` to generate multiple deployments from a single config by scanning subdirectories for Docker Compose files.
-
-Concurrent tasks are grouped by repository and Git reference (e.g. branch or tag). Deployments from the same repository but different references run sequentially, while those with the same repository and reference run in parallel. See the app settings documentation for more information on how to configure the number of concurrent deployments.
+## Available Settings
 
 The docker compose deployment can be configured inside the [deployment configuration file](#deployment-configuration-file) using the following settings:
 
@@ -208,7 +212,6 @@ Depending on the event, the reference in a webhook payload has a pattern of
     If the `reference` setting value is unset/empty, the reference of the webhook payload will be used for deployments. 
     If `reference` is set, deployments for all events that pass the `webhook_filter`, will always run from that branch or tag.
 
-
 You can specify the filter explicitly or in a loose form. Explicit regular expressions are recommended.  
 See [Go Regular Expressions](https://pkg.go.dev/regexp/syntax) for more information on the syntax.
 
@@ -353,4 +356,4 @@ See [Webhook Listener with custom Target](Endpoints/Webhook-Listener.md#with-cus
 
 Doco-CD does not provide a shell environment for security reasons. Therefore, running shell scripts inside the Doco-CD container is not supported.
 Instead, you can use init containers, sidecar containers, or compose lifecycle hooks to run scripts in the context of the deployed containers.
-See the [Pre- and Post-Deployment Scripts](Pre-Post-Deployment-Scripts.md) page for more information on how to set this up.
+See the [Pre- and Post-Deployment Scripts](Advanced/Pre-Post-Deployment-Scripts.md) page for more information on how to set this up.

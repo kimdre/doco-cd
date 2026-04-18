@@ -1,5 +1,6 @@
 ---
 tags:
+  - Advanced
   - Secrets
   - Configuration
 ---
@@ -10,7 +11,7 @@ This section describes how to integrate Doco-CD with Bitwarden Vault or self-hos
 
 ## How It Works
 
-We use the [Webhook Provider](webhook.md) together with a lightweight Bitwarden REST API sidecar container that exposes your vault items over HTTP. The sidecar securely fetches secrets from Bitwarden/Vaultwarden and makes them available to Doco-CD for injection into your Docker Compose configurations.
+We use the [Webhook Provider](Webhook.md) together with a lightweight Bitwarden REST API sidecar container that exposes your vault items over HTTP. The sidecar securely fetches secrets from Bitwarden/Vaultwarden and makes them available to Doco-CD for injection into your Docker Compose configurations.
 
 !!! tip
     This approach is fully compatible with both cloud-hosted Bitwarden Vault and self-hosted Vaultwarden instances.
@@ -21,7 +22,7 @@ We use the [Webhook Provider](webhook.md) together with a lightweight Bitwarden 
 The integration follows this workflow:
 
 1. **Sidecar Service**: Run the [`ghcr.io/kimdre/bitwarden-rest-api-server`](https://github.com/kimdre/bitwarden-rest-api-server) container alongside Doco-CD
-2. **Store Configuration**: Define webhook [secret stores](webhook.md#secret-store) in a YAML file (`SECRET_PROVIDER_WEBHOOK_STORES_FILE`) that specify how to query items from the [Bitwarden Vault Management API](https://bitwarden.com/help/vault-management-api/)
+2. **Store Configuration**: Define webhook [secret stores](Webhook.md#secret-store) in a YAML file (`SECRET_PROVIDER_WEBHOOK_STORES_FILE`) that specify how to query items from the [Bitwarden Vault Management API](https://bitwarden.com/help/vault-management-api/)
 3. **Secret References**: In your `.doco-cd.yml`, reference vault items using `store_ref` and `remote_ref` to retrieve specific secrets
 
 ## Prerequisites

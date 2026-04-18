@@ -12,9 +12,9 @@ This is useful for deploying applications across multiple nodes and ensuring hig
 
 If the Docker daemon is running in Swarm mode, doco-cd will detect this automatically and deploy everything as Swarm stacks instead of simple Compose projects.
 
-You can overwrite this to always deploy as Compose projects while running doco-cd in a Swarm environment by setting the `DOCKER_SWARM_FEATURES` environment variable to `false` (See the [Docker-specific App Settings](App-Settings.md#docker-specific-settings)).
+You can overwrite this to always deploy as Compose projects while running doco-cd in a Swarm environment by setting the `DOCKER_SWARM_FEATURES` environment variable to `false` (See the [Docker-specific App Settings](../App-Settings.md#docker-specific-settings)).
 
-The deployment happens the same way as with Docker Compose projects, see the [Deploy Settings](Deploy-Settings.md)
+The deployment happens the same way as with Docker Compose projects, see the [Deploy Settings](../Deploy-Settings.md)
 
 ## Configs and Secrets
 

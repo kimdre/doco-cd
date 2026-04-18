@@ -33,21 +33,21 @@ nav = [
     { "Poll Settings" = "Poll-Settings.md" },
   ] },
   { Advanced = [
-    { "Swarm Mode" = "Swarm-Mode.md" },
-    { "Private Container Registries" = "Private-Container-Registries.md" },
-    { Encryption = "Encryption.md" },
+    { "Swarm Mode" = "Advanced/Swarm-Mode.md" },
+    { "Private Container Registries" = "Advanced/Private-Container-Registries.md" },
+    { Encryption = "Advanced/Encryption.md" },
     { "External Secrets" = [
-      "external-secrets/index.md",
-      { "AWS Secrets Manager" = "external-secrets/aws-secrets-manager.md" },
-      { "Bitwarden Secrets Manager" = "external-secrets/bitwarden-secrets-manager.md" },
-      { "Bitwarden Vault / Vaultwarden" = "external-secrets/bitwarden-vault-vaultwarden.md" },
-      { "1Password" = "external-secrets/1password.md" },
-      { Infisical = "external-secrets/infisical.md" },
-      { OpenBao = "external-secrets/openbao.md" },
-      { Webhook = "external-secrets/webhook.md" }] },
-    { Notifications = "Notifications.md" },
-    { "Pre- / Post-Deployment Scripts" = "Pre-Post-Deployment-Scripts.md" },
-    { "Tips & Tricks" = "Tips-and-Tricks.md" }
+      "External-Secrets/index.md",
+      { "AWS Secrets Manager" = "External-Secrets/AWS-Secrets-Manager.md" },
+      { "Bitwarden Secrets Manager" = "External-Secrets/Bitwarden-Secrets-Manager.md" },
+      { "Bitwarden Vault / Vaultwarden" = "External-Secrets/Bitwarden-Vault-Vaultwarden.md" },
+      { "1Password" = "External-Secrets/1Password.md" },
+      { Infisical = "External-Secrets/Infisical.md" },
+      { OpenBao = "External-Secrets/Openbao.md" },
+      { Webhook = "External-Secrets/Webhook.md" }] },
+    { Notifications = "Advanced/Notifications.md" },
+    { "Pre- / Post-Deployment Scripts" = "Advanced/Pre-Post-Deployment-Scripts.md" },
+    { "Tips & Tricks" = "Advanced/Tips-and-Tricks.md" }
   ] },
   { Reference = [
     { Endpoints = [
@@ -66,13 +66,17 @@ extra_javascript = [
   "https://unpkg.com/tablesort@5.7.1/dist/tablesort.min.js",
   "javascripts/tablesort.js"
 ]
-extra_css = ["stylesheets/navigation.css"]
+extra_css = [
+  "stylesheets/extra.css",
+  "stylesheets/navigation.css"
+]
 
 [project.theme]
 language = "en"
 logo = "images/doco-cd_containers.svg"
 favicon = "images/doco-cd_containers.svg"
 features = [
+  "content.code.select",
   "content.code.copy",
   "navigation.footer",
   "navigation.indexes",

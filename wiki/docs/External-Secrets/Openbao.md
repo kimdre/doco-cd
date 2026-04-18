@@ -1,5 +1,6 @@
 ---
 tags:
+  - Advanced
   - Secrets
   - Configuration
 ---

@@ -3,6 +3,8 @@ tags:
   - Configuration
 ---
 
+# Application Settings
+
 ## Available Settings
 
 The application can be configured using the following environment variables:
@@ -57,13 +59,13 @@ By default, the Docker client will use the settings from the host system.
 
 Doco-CD can be configured to send notifications with [Apprise](https://github.com/caronc/apprise) to various services when a deployment is started, finished, or failed.
 
-See the [Notifications](Notifications.md) wiki page for more information on how to configure notifications.
+See the [Notifications](Advanced/Notifications.md) wiki page for more information on how to configure notifications.
 
 ## Encrypting sensitive data
 
 Doco-CD supports the encryption of sensitive data in your doco-cd app config and deployment files with [SOPS](https://getsops.io/).
 
-See the [Encryption](Encryption.md) wiki page for more information on how to use SOPS with Doco-CD.
+See the [Encryption](Advanced/Encryption.md) wiki page for more information on how to use SOPS with Doco-CD.
 
 ## Healthcheck
 
@@ -199,4 +201,4 @@ docker service ps doco-cd_app
 
 ## Pulling images from a private registry
 
-If you want to pull images from a private registry, see [Private Container Registries](Private-Container-Registries.md) in the wiki.
+If you want to pull images from a private registry, see [Private Container Registries](Advanced/Private-Container-Registries.md) in the wiki.

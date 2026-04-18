@@ -20,4 +20,4 @@ If you need to rename a project, you will need to create a new project with the 
 
 Doco-CD does not provide a shell environment for security reasons. Therefore, running shell scripts inside the Doco-CD container is not supported.
 Instead, you can use init containers, sidecar containers, or compose lifecycle hooks to run scripts in the context of the deployed containers.
-See the [Pre- and Post-Deployment Scripts](Pre-Post-Deployment-Scripts.md) page for more information on how to set this up.
+See the [Pre- and Post-Deployment Scripts](Advanced/Pre-Post-Deployment-Scripts.md) page for more information on how to set this up.

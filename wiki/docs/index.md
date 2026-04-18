@@ -18,11 +18,11 @@ You can think of it as a simple Portainer or ArgoCD alternative for Docker.
 - Easy to set up and use.
 - Runs with a minimal (distroless) image
 - Built in Go with tiny RAM and CPU requirements.
-- Supports various [external secret management providers](external-secrets/index.md) and data encryption with [SOPS](Encryption.md)
+- Supports various [external secret management providers](External-Secrets/index.md) and data encryption with [SOPS](Advanced/Encryption.md)
 - Can deploy applications via [webhooks](Getting-Started.md#webhooks) and/or [polling](Getting-Started.md#polling).
 - Supports various [Git providers](#supported-git-providers) 
-- Supports both Docker Compose projects and Swarm stacks in [Swarm mode](Swarm-Mode.md).
-- Provides [notifications](Notifications.md) and [Prometheus metrics](Endpoints/Metrics.md) for monitoring.
+- Supports both Docker Compose projects and Swarm stacks in [Swarm mode](Advanced/Swarm-Mode.md).
+- Provides [notifications](Advanced/Notifications.md) and [Prometheus metrics](Endpoints/Metrics.md) for monitoring.
 
 ## Getting Started
 
@@ -30,7 +30,7 @@ Follow the [Getting Started Guide](Getting-Started.md) to get started with Doco 
 
 More resources:
 
-1. [Tips and Tricks](Tips-and-Tricks.md) - Some tips and tricks for using the application.
+1. [Tips and Tricks](Advanced/Tips-and-Tricks.md) - Some tips and tricks for using the application.
 2. [Known Limitations](Known-Limitations.md) - Learn about the limitations of the application.
 
 See the right sidebar for links to the wiki pages with more detailed information.
@@ -75,4 +75,4 @@ ghcr.io/kimdre/doco-cd:0.1.0
 
 ## Contributing
 
-Contributions are welcome! Please see the [contributing guidelines](https://github.com/kimdre/doco-cd/blob/main/CONTRIBUTING.md) for more information.
+Contributions are welcome! Please see the [Contributing Guidelines](Contributing.md) for more information.

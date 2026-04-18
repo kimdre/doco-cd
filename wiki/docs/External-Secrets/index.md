@@ -1,5 +1,6 @@
 ---
 tags:
+  - Advanced
   - Secrets
   - Configuration
 ---
@@ -13,13 +14,13 @@ This allows you to keep your secrets out of your Git repository and manage them 
 
 | Provider                                                        | More Information                                                                                |
 |-----------------------------------------------------------------|-------------------------------------------------------------------------------------------------|
-| [AWS Secrets Manager](aws-secrets-manager.md)                   | https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html                          |
-| [Bitwarden Secrets Manager](bitwarden-secrets-manager.md)       | https://bitwarden.com/products/secrets-manager/                                                 |
-| [Bitwarden Vault / Vaultwarden](bitwarden-vault-vaultwarden.md) | https://bitwarden.com/help/vault-management-api/ and https://github.com/dani-garcia/vaultwarden |
-| [1Password](1password.md)                                       | https://1password.com                                                                           |
-| [Infisical](infisical.md)                                       | https://infisical.com/                                                                          |
-| [OpenBao](openbao.md)                                           | https://openbao.org/                                                                            |
-| [Webhook](webhook.md)                                           | Fetch secrets from any remote service via HTTP requests with a flexible configuration           |
+| [AWS Secrets Manager](AWS-Secrets-Manager.md)                   | https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html                          |
+| [Bitwarden Secrets Manager](Bitwarden-Secrets-Manager.md)       | https://bitwarden.com/products/secrets-manager/                                                 |
+| [Bitwarden Vault / Vaultwarden](Bitwarden-Vault-Vaultwarden.md) | https://bitwarden.com/help/vault-management-api/ and https://github.com/dani-garcia/vaultwarden |
+| [1Password](1Password.md)                                       | https://1password.com                                                                           |
+| [Infisical](Infisical.md)                                       | https://infisical.com/                                                                          |
+| [OpenBao](Openbao.md)                                           | https://openbao.org/                                                                            |
+| [Webhook](Webhook.md)                                           | Fetch secrets from any remote service via HTTP requests with a flexible configuration           |
 
 !!! tip
     Additional external secret providers may be supported in the future. If you have a specific provider in mind, please [open a feature request](https://github.com/kimdre/doco-cd/issues/new?template=feature-request.yml) or [submit a pull request](https://github.com/kimdre/doco-cd/compare) if you are able to implement the provider yourself.
@@ -33,7 +34,7 @@ See the provider-specific pages for details.
 
 Doco-CD uses variable interpolation to replace variables in your Compose files with the values fetched from the external secret provider, see the [Compose file reference](https://docs.docker.com/reference/compose-file/interpolation/) for more information and examples.
 
-For example with [Bitwarden Secrets Manager](bitwarden-secrets-manager.md), if you want to use secrets named `DB_PASSWORD` and `LABEL_SECRET` in your Compose file, you can reference it like this:
+For example with [Bitwarden Secrets Manager](Bitwarden-Secrets-Manager.md), if you want to use secrets named `DB_PASSWORD` and `LABEL_SECRET` in your Compose file, you can reference it like this:
 
 ```yaml title=".doco-cd.yml"
 name: myapp

@@ -6,10 +6,10 @@ tags:
 
 # Poll Settings
 
-## Polling Configuration File
-
 !!! question "About Polling"
     Polling is a time-based trigger that checks the repositories for changes to deploy at regular intervals. This method does not require doco-cd to be reachable from the internet but is less efficient and slower than webhooks.
+
+## Polling Configuration File
 
 Poll configurations can be set using the `POLL_CONFIG` environment variable or by providing a file with the `POLL_CONFIG_FILE` environment variable.
 

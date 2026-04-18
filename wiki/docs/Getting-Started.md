@@ -13,7 +13,7 @@ tags:
 
 You can find all available app settings on the [App Settings](App-Settings.md) wiki page.
 
-If you run the application with Docker Swarm, see the [Swarm Mode](Swarm-Mode.md) wiki page for more information.
+If you run the application with Docker Swarm, see the [Swarm Mode](Advanced/Swarm-Mode.md) wiki page for more information.
 
 ##  Create a Git Access Token
 
@@ -23,8 +23,9 @@ The Git access token is used to authenticate with your Git provider (GitHub, Git
     If you use an SSH URL for your Git repositories, the Git access token is not required.
     Instead, you need to generate an SSH key pair, see [Setup SSH Key](Setup-SSH-Key.md) for more information.
 
-
-You can use doco-cd without a Git access token if the repositories you want to use for your deployments are publicly accessible. However, it is still recommended to use one in that case to for example avoid rate limits. 
+!!! tip
+    You can use doco-cd without a Git Access Token if the repositories you want to use for your deployments are publicly accessible. 
+    However, it is still recommended to use one in that case to for example avoid rate limits. 
 
 If you set a Git access token, doco-cd will always use it to authenticate with your Git provider. See [Setup Access Token](Setup-Access-Token.md) to create this access token and set the `GIT_ACCESS_TOKEN` environment variable to the access token value.
 
@@ -97,15 +98,15 @@ compose_files:
 
 Doco-CD supports the encryption of sensitive data in your deployment files with [SOPS](https://getsops.io/).
 
-See the [Encryption](Encryption.md) wiki page for more information on how to use SOPS with Doco-CD.
+See the [Encryption](Advanced/Encryption.md) wiki page for more information on how to use SOPS with Doco-CD.
 
 ### Pulling images from a private registry
 
-If you want to pull images from a private registry, see [Private Container Registries](Private-Container-Registries.md) in the wiki.
+If you want to pull images from a private registry, see [Private Container Registries](Advanced/Private-Container-Registries.md) in the wiki.
 
 ### Sending Notifications
 
-Doco-CD supports sending notifications about deployment events to various services. See the [Notifications](Notifications.md) wiki page for more information on how to set up notifications.
+Doco-CD supports sending notifications about deployment events to various services. See the [Notifications](Advanced/Notifications.md) wiki page for more information on how to set up notifications.
 
 ### Rest API
 
