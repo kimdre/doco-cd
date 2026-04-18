@@ -4,7 +4,7 @@
         <loc>https://doco.cd/v0.80.1/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.80.1/Quickstart/</loc>
+        <loc>https://doco.cd/v0.80.1/Getting-Started/</loc>
       </url>
       <url>
         <loc>https://doco.cd/v0.80.1/Setup-Access-Token/</loc>
@@ -25,37 +25,46 @@
         <loc>https://doco.cd/v0.80.1/Poll-Settings/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.80.1/external-secrets/</loc>
+        <loc>https://doco.cd/v0.80.1/Advanced/Swarm-Mode/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.80.1/external-secrets/aws-secrets-manager/</loc>
+        <loc>https://doco.cd/v0.80.1/Advanced/Private-Container-Registries/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.80.1/external-secrets/bitwarden-secrets-manager/</loc>
+        <loc>https://doco.cd/v0.80.1/Advanced/Encryption/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.80.1/external-secrets/bitwarden-vault-vaultwarden/</loc>
+        <loc>https://doco.cd/v0.80.1/External-Secrets/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.80.1/external-secrets/onepassword/</loc>
+        <loc>https://doco.cd/v0.80.1/External-Secrets/AWS-Secrets-Manager/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.80.1/external-secrets/infisical/</loc>
+        <loc>https://doco.cd/v0.80.1/External-Secrets/Bitwarden-Secrets-Manager/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.80.1/external-secrets/openbao/</loc>
+        <loc>https://doco.cd/v0.80.1/External-Secrets/Bitwarden-Vault-Vaultwarden/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.80.1/external-secrets/webhook/</loc>
+        <loc>https://doco.cd/v0.80.1/External-Secrets/1Password/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.80.1/Encryption/</loc>
+        <loc>https://doco.cd/v0.80.1/External-Secrets/Infisical/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.80.1/Pre-Post-Deployment-Scripts/</loc>
+        <loc>https://doco.cd/v0.80.1/External-Secrets/Openbao/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.80.1/Private-Container-Registries/</loc>
+        <loc>https://doco.cd/v0.80.1/External-Secrets/Webhook/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/v0.80.1/Advanced/Notifications/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/v0.80.1/Advanced/Pre-Post-Deployment-Scripts/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/v0.80.1/Advanced/Tips-and-Tricks/</loc>
       </url>
       <url>
         <loc>https://doco.cd/v0.80.1/Endpoints/Metrics/</loc>
@@ -67,18 +76,15 @@
         <loc>https://doco.cd/v0.80.1/Endpoints/Webhook-Listener/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.80.1/Notifications/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/v0.80.1/Swarm-Mode/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/v0.80.1/Tips-and-Tricks/</loc>
-      </url>
-      <url>
         <loc>https://doco.cd/v0.80.1/Known-Limitations/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.80.1/versions/</loc>
+        <loc>https://doco.cd/v0.80.1/Contributing/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/v0.80.1/Security/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/v0.80.1/License/</loc>
       </url>
 </urlset>

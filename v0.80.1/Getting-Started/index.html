@@ -12,13 +12,13 @@
         <meta name="author" content="doco-cd contributors">
       
       
-        <link rel="canonical" href="https://doco.cd/v0.80.1/App-Settings/">
+        <link rel="canonical" href="https://doco.cd/v0.80.1/Getting-Started/">
       
       
-        <link rel="prev" href="../Setup-Webhook/">
+        <link rel="prev" href="./..">
       
       
-        <link rel="next" href="../Deploy-Settings/">
+        <link rel="next" href="../Setup-Access-Token/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>Application Settings - Doco CD - Docker Compose Continuous Deployment</title>
+        <title>Getting Started - Doco CD - Docker Compose Continuous Deployment</title>
       
     
     
@@ -89,7 +89,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#application-settings" class="md-skip">
+        <a href="#getting-started" class="md-skip">
           Skip to content
         </a>
       
@@ -128,7 +128,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Application Settings
+              Getting Started
             
           </span>
         </div>
@@ -230,11 +230,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="../Getting-Started/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="././" class="md-tabs__link">
           
   
   Getting Started
@@ -249,13 +251,11 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="././" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../App-Settings/" class="md-tabs__link">
           
   
   Configuration
@@ -395,8 +395,10 @@
       
   
   
+    
   
   
+  
     
     
       
@@ -412,17 +414,20 @@
     
     
       
+        
+        
+      
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
         
           
-          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
             
   
   
@@ -440,7 +445,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_2">
             <span class="md-nav__icon md-icon"></span>
             
@@ -455,10 +460,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../Getting-Started/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
         
   
   
@@ -474,6 +506,205 @@
   
 
       </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#create-a-git-access-token" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a Git Access Token
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deployment-triggers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deployment triggers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Deployment triggers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#webhooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Webhooks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#polling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Polling
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#run-doco-cd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run doco-cd
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Run doco-cd">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#notes-for-podman-users" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes for Podman users
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deploy-your-first-application" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deploy your first application
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Deploy your first application">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#more-information" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        More information
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="More information">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#using-encrypted-secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Using encrypted secrets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pulling-images-from-a-private-registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pulling images from a private registry
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sending-notifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sending Notifications
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rest-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rest API
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prometheus-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prometheus Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -574,10 +805,8 @@
       
   
   
-    
   
   
-  
     
     
       
@@ -591,20 +820,17 @@
     
     
       
-        
-        
-      
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
             
   
   
@@ -622,7 +848,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -637,37 +863,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    App Settings
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="././" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../App-Settings/" class="md-nav__link">
         
   
   
@@ -683,204 +882,6 @@
   
 
       </a>
-      
-        
-
-
-<nav class="md-nav md-nav--secondary" aria-label="On this page">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      On this page
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#available-settings" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Available Settings
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#docker-specific-settings" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Docker-specific Settings
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#notification-settings" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Notification Settings
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#encrypting-sensitive-data" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Encrypting sensitive data
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#healthcheck" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Healthcheck
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#specifying-the-settings" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Specifying the settings
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Specifying the settings">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#with-env_file" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        With env_file
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#with-environment" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        With environment
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#usage-with-docker-secrets" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Usage with Docker Secrets
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Usage with Docker Secrets">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#create-docker-secrets" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Create Docker Secrets
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#reference-docker-secrets-in-docker-composeyml" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Reference Docker Secrets in docker-compose.yml
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#deploy-in-docker-swarm-mode" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Deploy in Docker Swarm mode
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#check-the-logs" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Check the logs
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#check-the-status-of-the-service" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Check the status of the service
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#pulling-images-from-a-private-registry" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Pulling images from a private registry
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1845,10 +1846,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#available-settings" class="md-nav__link">
+  <a href="#create-a-git-access-token" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Available Settings
+        Create a Git Access Token
       
     </span>
   </a>
@@ -1856,66 +1857,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#docker-specific-settings" class="md-nav__link">
+  <a href="#deployment-triggers" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Docker-specific Settings
+        Deployment triggers
       
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#notification-settings" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Notification Settings
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#encrypting-sensitive-data" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Encrypting sensitive data
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#healthcheck" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Healthcheck
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#specifying-the-settings" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Specifying the settings
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Specifying the settings">
+    <nav class="md-nav" aria-label="Deployment triggers">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#with-env_file" class="md-nav__link">
+  <a href="#webhooks" class="md-nav__link">
     <span class="md-ellipsis">
       
-        With env_file
+        Webhooks
       
     </span>
   </a>
@@ -1923,10 +1880,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#with-environment" class="md-nav__link">
+  <a href="#polling" class="md-nav__link">
     <span class="md-ellipsis">
       
-        With environment
+        Polling
       
     </span>
   </a>
@@ -1939,66 +1896,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#usage-with-docker-secrets" class="md-nav__link">
+  <a href="#run-doco-cd" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Usage with Docker Secrets
+        Run doco-cd
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Usage with Docker Secrets">
+    <nav class="md-nav" aria-label="Run doco-cd">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#create-docker-secrets" class="md-nav__link">
+  <a href="#notes-for-podman-users" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Create Docker Secrets
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#reference-docker-secrets-in-docker-composeyml" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Reference Docker Secrets in docker-compose.yml
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#deploy-in-docker-swarm-mode" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Deploy in Docker Swarm mode
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#check-the-logs" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Check the logs
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#check-the-status-of-the-service" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Check the status of the service
+        Notes for Podman users
       
     </span>
   </a>
@@ -2011,6 +1924,57 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#deploy-your-first-application" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deploy your first application
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Deploy your first application">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#more-information" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        More information
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="More information">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#using-encrypted-secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Using encrypted secrets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#pulling-images-from-a-private-registry" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2018,6 +1982,44 @@
       
     </span>
   </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sending-notifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sending Notifications
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rest-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rest API
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prometheus-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prometheus Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2067,7 +2069,7 @@
         <a href="././" class="md-path__link">
           
   <span class="md-ellipsis">
-    Configuration
+    Getting Started
   </span>
 
         </a>
@@ -2084,7 +2086,7 @@
                 
                   
   
-    <a href="https://github.com/kimdre/doco-cd/edit/main/wiki/docs/App-Settings.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/kimdre/doco-cd/edit/main/wiki/docs/Getting-Started.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-pen" viewBox="0 0 24 24"><path d="M12.659 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v9.34"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10.378 12.622a1 1 0 0 1 3 3.003L8.36 20.637a2 2 0 0 1-.854.506l-2.867.837a.5.5 0 0 1-.62-.62l.836-2.869a2 2 0 0 1 .506-.853z"/></svg>
     </a>
@@ -2093,338 +2095,132 @@
     
       
     
-    <a href="https://github.com/kimdre/doco-cd/raw/main/wiki/docs/App-Settings.md" title="View source of this page" class="md-content__button md-icon">
+    <a href="https://github.com/kimdre/doco-cd/raw/main/wiki/docs/Getting-Started.md" title="View source of this page" class="md-content__button md-icon">
       
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code-2" viewBox="0 0 24 24"><path d="M4 12.15V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2h-3.35"/><path d="M14 2v5a1 1 0 0 0 1 1h5M5 16l-3 3 3 3M9 22l3-3-3-3"/></svg>
     </a>
   
 
 
-<h1 id="application-settings">Application Settings<a class="headerlink" href="#application-settings" title="Permanent link">&para;</a></h1>
-<h2 id="available-settings">Available Settings<a class="headerlink" href="#available-settings" title="Permanent link">&para;</a></h2>
-<p>The application can be configured using the following environment variables:</p>
-<!-- Sort table with https://sortfilterreordermarkdowntables.com/ -->
-<table>
-<thead>
-<tr>
-<th>Key</th>
-<th>Type</th>
-<th>Description</th>
-<th>Default value</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>API_SECRET</code></td>
-<td>string</td>
-<td>Secret that is used to authenticate requests to the REST API (see <a data-preview="" href="../Endpoints/REST-API/">REST API</a>)</td>
-<td><code></code> (Rest API is disabled when not specified)</td>
-</tr>
-<tr>
-<td><code>API_SECRET_FILE</code></td>
-<td>string</td>
-<td>Path to the file containing the API secret (Mutually exclusive with <code>API_SECRET</code>).</td>
-<td><code></code></td>
-</tr>
-<tr>
-<td><code>AUTH_TYPE</code></td>
-<td>string</td>
-<td>AuthType is the type of authentication to use when cloning repositories via <strong>http</strong></td>
-<td><code>oauth2</code></td>
-</tr>
-<tr>
-<td><code>DEPLOY_CONFIG_BASE_DIR</code></td>
-<td>string</td>
-<td>Relative Path to the directory containing the deployment configuration files <strong>in all repositories</strong>. <strong>NOTE</strong>: This does not affect/alter the <code>working_dir</code> path in the deploy config. It must still be relative to the repository root.</td>
-<td><code>/</code></td>
-</tr>
-<tr>
-<td><code>GIT_ACCESS_TOKEN</code></td>
-<td>string</td>
-<td>Access token for cloning repositories (required for private repositories) via <strong>HTTP</strong>, see <a data-preview="" href="../Setup-Access-Token/">Access Token Setup</a></td>
-<td><code></code> (Optional for public repositories but recommended)</td>
-</tr>
-<tr>
-<td><code>GIT_ACCESS_TOKEN_FILE</code></td>
-<td>string</td>
-<td>Path to the file containing the Git Access Token (Mutually exclusive with <code>GIT_ACCESS_TOKEN</code>).</td>
-<td><code></code></td>
-</tr>
-<tr>
-<td><code>GIT_CLONE_SUBMODULES</code></td>
-<td>boolean</td>
-<td>Whether Git submodules are cloned too</td>
-<td><code>true</code></td>
-</tr>
-<tr>
-<td><code>HTTP_PORT</code></td>
-<td>number</td>
-<td>Port on which the application will listen for incoming webhooks, API requests and <a data-preview="" href="#Healthcheck">healthchecks</a></td>
-<td><code>80</code></td>
-</tr>
-<tr>
-<td><code>HTTP_PROXY</code></td>
-<td>string</td>
-<td>HTTP proxy to use for outgoing requests (e.g. <code>http://username:password@proxy.com:8080</code>)</td>
-<td><code></code> (Ignored when not specified)</td>
-</tr>
-<tr>
-<td><code>LOG_LEVEL</code></td>
-<td>string</td>
-<td>Log level of the app. Possible values: <code>debug</code>, <code>info</code>, <code>warn</code>, <code>error</code></td>
-<td><code>INFO</code></td>
-</tr>
-<tr>
-<td><code>MAX_CONCURRENT_DEPLOYMENTS</code></td>
-<td>number</td>
-<td>Maximum number of concurrent deployments allowed</td>
-<td><code>4</code></td>
-</tr>
-<tr>
-<td><code>MAX_DEPLOYMENT_LOOP_COUNT</code></td>
-<td>number</td>
-<td>When the deployment loop detection should trigger a forced re-deployment on consecutive deployments for the same commit. Set to <code>0</code>, to disable the detection logic.</td>
-<td><code>2</code></td>
-</tr>
-<tr>
-<td><code>MAX_PAYLOAD_SIZE</code></td>
-<td>number</td>
-<td>The maximum size of the webhook payload in bytes that the HTTP server will accept</td>
-<td><code>1048576</code> (1MB = 1 * 1024 * 1024)</td>
-</tr>
-<tr>
-<td><code>METRICS_PORT</code></td>
-<td>number</td>
-<td>Port on which the application will expose <a data-preview="" href="../Endpoints/Metrics/">Prometheus metrics</a></td>
-<td><code>9120</code></td>
-</tr>
-<tr>
-<td><code>PASS_ENV</code></td>
-<td>boolean</td>
-<td>Controls whether environment variables from the doco-cd container should be passed to the deployment environment for docker compose variable interpolation. Use with caution, as this may expose sensitive information to the deployment environment.</td>
-<td><code>false</code></td>
-</tr>
-<tr>
-<td><code>POLL_CONFIG</code></td>
-<td>list</td>
-<td>A list/array of poll configurations provided in YAML format (see <a data-preview="" href="../Poll-Settings/">Poll Settings</a>)</td>
-<td><code></code> (Ignored when not specified)</td>
-</tr>
-<tr>
-<td><code>POLL_CONFIG_FILE</code></td>
-<td>string</td>
-<td>Path to the file inside the container containing the poll configurations in YAML format (see <a data-preview="" href="../Poll-Settings/">Poll Settings</a>)</td>
-<td><code></code> (Ignored when not specified)</td>
-</tr>
-<tr>
-<td><code>SKIP_TLS_VERIFICATION</code></td>
-<td>boolean</td>
-<td>Skip TLS verification when cloning repositories.</td>
-<td><code>false</code></td>
-</tr>
-<tr>
-<td><code>SSH_PRIVATE_KEY</code></td>
-<td>string</td>
-<td>The private key used for cloning repositories via SSH, see <a data-preview="" href="../Setup-SSH-Key/">SSH Key Setup</a></td>
-<td><code></code></td>
-</tr>
-<tr>
-<td><code>SSH_PRIVATE_KEY_FILE</code></td>
-<td>string</td>
-<td>Path to the file containing the SSH private key</td>
-<td><code></code></td>
-</tr>
-<tr>
-<td><code>SSH_PRIVATE_KEY_PASSPHRASE</code></td>
-<td>string</td>
-<td>Passphrase for the SSH private key (if key was generated with a passphrase)</td>
-<td><code></code></td>
-</tr>
-<tr>
-<td><code>SSH_PRIVATE_KEY_PASSPHRASE_FILE</code></td>
-<td>string</td>
-<td>Path to the file containing the SSH private key passphrase</td>
-<td><code></code></td>
-</tr>
-<tr>
-<td><code>TZ</code></td>
-<td>string</td>
-<td>The timezone used in the container and for timestamps in logs</td>
-<td><code>UTC</code></td>
-</tr>
-<tr>
-<td><code>WEBHOOK_SECRET</code></td>
-<td>string</td>
-<td>Secret that is used by webhooks for authentication to the application</td>
-<td><code></code> (Webhook endpoint is disabled when not specified)</td>
-</tr>
-<tr>
-<td><code>WEBHOOK_SECRET_FILE</code></td>
-<td>string</td>
-<td>Path to the file containing the Git access token (Mutually exclusive with <code>WEBHOOK_SECRET</code>).</td>
-<td><code></code></td>
-</tr>
-</tbody>
-</table>
-<h2 id="docker-specific-settings">Docker-specific Settings<a class="headerlink" href="#docker-specific-settings" title="Permanent link">&para;</a></h2>
-<p>Settings to configure the Docker client used by doco-cd to interact with the Docker daemon. 
-By default, the Docker client will use the settings from the host system.</p>
-<div class="admonition note">
-<p class="admonition-title">All of these settings are optional.</p>
-</div>
-<table>
-<thead>
-<tr>
-<th>Key</th>
-<th>Type</th>
-<th>Description</th>
-<th>Default value</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>DOCKER_API_VERSION</code></td>
-<td>string</td>
-<td>Overwrites the API version that doco-cd will use to connect to the Docker Daemon (e.g. <code>"1.49"</code>)</td>
-<td></td>
-</tr>
-<tr>
-<td><code>DOCKER_CERT_PATH</code></td>
-<td>string</td>
-<td>The directory from which to load the TLS certificates ("ca.pem", "cert.pem", "key.pem'). The directory has to be accessible from inside the container, e.g. by using a bind mount</td>
-<td></td>
-</tr>
-<tr>
-<td><code>DOCKER_HOST</code></td>
-<td>string</td>
-<td>The url that doco-cd will use to connect to the Docker Daemon (e.g. <code>tcp://192.168.0.10:2375</code>)</td>
-<td></td>
-</tr>
-<tr>
-<td><code>DOCKER_QUIET_DEPLOY</code></td>
-<td>boolean</td>
-<td>Disable the status output of Docker Compose deployments (e.g. pull, create, start, healthy) in the application logs</td>
-<td><code>true</code></td>
-</tr>
-<tr>
-<td><code>DOCKER_TLS_VERIFY</code></td>
-<td>boolean</td>
-<td>Enable or disable TLS verification</td>
-<td></td>
-</tr>
-<tr>
-<td><code>DOCKER_SWARM_FEATURES</code></td>
-<td>boolean</td>
-<td>Enable the use Docker Swarm Mode features if the app has detected that it is running in a Docker Swarm environment</td>
-<td><code>true</code></td>
-</tr>
-</tbody>
-</table>
-<h2 id="notification-settings">Notification Settings<a class="headerlink" href="#notification-settings" title="Permanent link">&para;</a></h2>
-<p>Doco-CD can be configured to send notifications with <a href="https://github.com/caronc/apprise">Apprise</a> to various services when a deployment is started, finished, or failed.</p>
-<p>See the <a data-preview="" href="../Advanced/Notifications/">Notifications</a> wiki page for more information on how to configure notifications.</p>
-<h2 id="encrypting-sensitive-data">Encrypting sensitive data<a class="headerlink" href="#encrypting-sensitive-data" title="Permanent link">&para;</a></h2>
-<p>Doco-CD supports the encryption of sensitive data in your doco-cd app config and deployment files with <a href="https://getsops.io/">SOPS</a>.</p>
-<p>See the <a data-preview="" href="../Advanced/Encryption/">Encryption</a> wiki page for more information on how to use SOPS with Doco-CD.</p>
-<h2 id="healthcheck">Healthcheck<a class="headerlink" href="#healthcheck" title="Permanent link">&para;</a></h2>
-<p>The doco-cd image contains a docker health check checks against <code>http://localhost:${HTTP_PORT}/v1/health</code> inside the container.</p>
-<p>You can adjust the health check settings in your <code>docker-compose.yml</code> file like this:</p>
-<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">services</span><span class="p">:</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">doco-cd</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">healthcheck</span><span class="p">:</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">      </span><span class="nt">start_period</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">15s</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">      </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30s</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">      </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5s</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">      </span><span class="nt">retries</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+<h1 id="getting-started">Getting Started<a class="headerlink" href="#getting-started" title="Permanent link">&para;</a></h1>
+<details class="note" open="open">
+<summary>Use this <a href="https://github.com/kimdre/doco-cd/blob/main/docker-compose.yml">docker-compose.yml</a> as your starting point</summary>
+<div class="language-go highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="err">##</span><span class="w"> </span><span class="nx">Uncomment</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">poll</span><span class="w"> </span><span class="nx">configuration</span><span class="w"> </span><span class="nx">section</span><span class="w"> </span><span class="nx">here</span><span class="w"> </span><span class="nx">and</span><span class="w"> </span><span class="nx">in</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">service</span><span class="w"> </span><span class="s">`environment:`</span><span class="w"> </span><span class="nx">section</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="nx">you</span><span class="w"> </span><span class="nx">want</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">enable</span><span class="w"> </span><span class="nx">polling</span><span class="w"> </span><span class="nx">of</span><span class="w"> </span><span class="nx">a</span><span class="w"> </span><span class="nx">repository</span><span class="p">.</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="err">#</span><span class="nx">x</span><span class="o">-</span><span class="nx">poll</span><span class="o">-</span><span class="nx">config</span><span class="p">:</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">poll</span><span class="o">-</span><span class="nx">config</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="err">#</span><span class="w">  </span><span class="nx">POLL_CONFIG</span><span class="p">:</span><span class="w"> </span><span class="o">|</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="err">#</span><span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="nx">url</span><span class="p">:</span><span class="w"> </span><span class="nx">https</span><span class="p">:</span><span class="c1">//github.com/kimdre/doco-cd.git  # This is the repository to poll</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="err">#</span><span class="w">      </span><span class="nx">reference</span><span class="p">:</span><span class="w"> </span><span class="nx">main</span><span class="w">  </span><span class="err">#</span><span class="w"> </span><span class="nx">Optional</span><span class="p">:</span><span class="w"> </span><span class="nx">specify</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">branch</span><span class="w"> </span><span class="nx">or</span><span class="w"> </span><span class="nx">tag</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">poll</span><span class="p">,</span><span class="w"> </span><span class="nx">defaults</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="err">&#39;</span><span class="nx">main</span><span class="err">&#39;</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="err">#</span><span class="w">      </span><span class="nx">interval</span><span class="p">:</span><span class="w"> </span><span class="mi">180</span><span class="w">  </span><span class="err">#</span><span class="w"> </span><span class="nx">Optional</span><span class="p">:</span><span class="w"> </span><span class="nx">specify</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">interval</span><span class="w"> </span><span class="nx">in</span><span class="w"> </span><span class="nx">seconds</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">poll</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">repository</span><span class="p">,</span><span class="w"> </span><span class="nx">defaults</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="mi">180</span><span class="w"> </span><span class="nx">seconds</span><span class="w"> </span><span class="p">(</span><span class="mi">3</span><span class="w"> </span><span class="nx">minutes</span><span class="p">)</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="err">#</span><span class="w">      </span><span class="nx">target</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="w">  </span><span class="err">#</span><span class="w"> </span><span class="nx">Optional</span><span class="p">:</span><span class="w"> </span><span class="nx">use</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">target</span><span class="w"> </span><span class="nx">a</span><span class="w"> </span><span class="nx">specific</span><span class="w"> </span><span class="nx">deployment</span><span class="w"> </span><span class="nx">config</span><span class="w"> </span><span class="nx">file</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">g</span><span class="p">.,</span><span class="w"> </span><span class="s">&quot;test&quot;</span><span class="w"> </span><span class="o">-</span><span class="p">&gt;</span><span class="w"> </span><span class="p">.</span><span class="nx">doco</span><span class="o">-</span><span class="nx">cd</span><span class="p">.</span><span class="nx">test</span><span class="p">.</span><span class="nx">yaml</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="nx">services</span><span class="p">:</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span><span class="nx">app</span><span class="p">:</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span><span class="nx">container_name</span><span class="p">:</span><span class="w"> </span><span class="nx">doco</span><span class="o">-</span><span class="nx">cd</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="err">#</span><span class="w"> </span><span class="nx">You</span><span class="w"> </span><span class="nx">can</span><span class="w"> </span><span class="nx">also</span><span class="w"> </span><span class="nx">pin</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">a</span><span class="w"> </span><span class="nx">specific</span><span class="w"> </span><span class="nx">tag</span><span class="w"> </span><span class="p">(</span><span class="nx">version</span><span class="p">)</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span><span class="err">#</span><span class="w"> </span><span class="nx">Available</span><span class="w"> </span><span class="nx">tags</span><span class="w"> </span><span class="nx">can</span><span class="w"> </span><span class="nx">be</span><span class="w"> </span><span class="nx">found</span><span class="w"> </span><span class="nx">here</span><span class="p">:</span><span class="w"> </span><span class="nx">https</span><span class="p">:</span><span class="c1">//github.com/kimdre/doco-cd/pkgs/container/doco-cd</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">    </span><span class="nx">image</span><span class="p">:</span><span class="w"> </span><span class="nx">ghcr</span><span class="p">.</span><span class="nx">io</span><span class="o">/</span><span class="nx">kimdre</span><span class="o">/</span><span class="nx">doco</span><span class="o">-</span><span class="nx">cd</span><span class="p">:</span><span class="nx">latest</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">    </span><span class="nx">restart</span><span class="p">:</span><span class="w"> </span><span class="nx">unless</span><span class="o">-</span><span class="nx">stopped</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">    </span><span class="nx">ports</span><span class="p">:</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="s">&quot;80:80&quot;</span><span class="w"> </span><span class="err">#</span><span class="w"> </span><span class="nx">Webhook</span><span class="w"> </span><span class="nx">endpoint</span>
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="s">&quot;9120:9120&quot;</span><span class="w"> </span><span class="err">#</span><span class="w"> </span><span class="nx">Prometheus</span><span class="w"> </span><span class="nx">metrics</span>
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">    </span><span class="err">#</span><span class="w"> </span><span class="nx">For</span><span class="w"> </span><span class="nx">all</span><span class="w"> </span><span class="nx">available</span><span class="w"> </span><span class="nx">environment</span><span class="w"> </span><span class="nx">variables</span><span class="w"> </span><span class="nx">and</span><span class="w"> </span><span class="nx">explanations</span><span class="p">,</span><span class="w"> </span><span class="nx">see</span><span class="w"> </span><span class="nx">https</span><span class="p">:</span><span class="c1">//doco.cd/latest/App-Settings/</span>
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">    </span><span class="nx">environment</span><span class="p">:</span>
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">      </span><span class="nx">TZ</span><span class="p">:</span><span class="w"> </span><span class="nx">Europe</span><span class="o">/</span><span class="nx">Berlin</span>
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">      </span><span class="nx">GIT_ACCESS_TOKEN</span><span class="p">:</span><span class="w"> </span><span class="nx">xxx</span>
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">      </span><span class="err">#</span><span class="w"> </span><span class="nx">WEBHOOK_SECRET</span><span class="p">:</span><span class="w"> </span><span class="nx">xxx</span><span class="w">  </span><span class="err">#</span><span class="w"> </span><span class="nx">Uncomment</span><span class="w"> </span><span class="nx">this</span><span class="w"> </span><span class="nx">line</span><span class="w"> </span><span class="nx">and</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">webhook</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="nx">above</span><span class="w"> </span><span class="nx">and</span><span class="w"> </span><span class="nx">set</span><span class="w"> </span><span class="nx">a</span><span class="w"> </span><span class="nx">secure</span><span class="w"> </span><span class="nx">secret</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="nx">you</span><span class="w"> </span><span class="nx">want</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">use</span><span class="w"> </span><span class="nx">webhooks</span><span class="p">.</span>
+</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="w">      </span><span class="err">#</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="p">:</span><span class="w"> </span><span class="o">*</span><span class="nx">poll</span><span class="o">-</span><span class="nx">config</span><span class="w">  </span><span class="err">#</span><span class="w"> </span><span class="nx">Uncomment</span><span class="w"> </span><span class="nx">this</span><span class="w"> </span><span class="nx">line</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">use</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">poll</span><span class="w"> </span><span class="nx">configuration</span><span class="w"> </span><span class="nx">from</span><span class="w"> </span><span class="nx">above</span><span class="w"> </span><span class="p">(</span><span class="nx">the</span><span class="w"> </span><span class="s">`x-poll-config`</span><span class="w"> </span><span class="nx">section</span><span class="p">).</span>
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="w">    </span><span class="nx">volumes</span><span class="p">:</span>
+</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="o">/</span><span class="kd">var</span><span class="o">/</span><span class="nx">run</span><span class="o">/</span><span class="nx">docker</span><span class="p">.</span><span class="nx">sock</span><span class="p">:</span><span class="o">/</span><span class="kd">var</span><span class="o">/</span><span class="nx">run</span><span class="o">/</span><span class="nx">docker</span><span class="p">.</span><span class="nx">sock</span>
+</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="w">      </span><span class="err">#</span><span class="w"> </span><span class="nx">The</span><span class="w"> </span><span class="nx">data</span><span class="w"> </span><span class="nx">volume</span><span class="w"> </span><span class="p">(</span><span class="nx">left</span><span class="w"> </span><span class="nx">side</span><span class="p">)</span><span class="w"> </span><span class="nx">can</span><span class="w"> </span><span class="nx">also</span><span class="w"> </span><span class="nx">be</span><span class="w"> </span><span class="nx">replaced</span><span class="w"> </span><span class="nx">with</span><span class="w"> </span><span class="nx">a</span><span class="w"> </span><span class="nx">bind</span><span class="w"> </span><span class="nx">mount</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">a</span><span class="w"> </span><span class="nx">local</span><span class="w"> </span><span class="nx">directory</span><span class="p">,</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nx">example</span><span class="p">:</span>
+</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="w">      </span><span class="err">#</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="p">.</span><span class="o">/</span><span class="nx">data</span><span class="p">:</span><span class="o">/</span><span class="nx">data</span>
+</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="nx">data</span><span class="p">:</span><span class="o">/</span><span class="nx">data</span>
+</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="w">    </span><span class="nx">cap_drop</span><span class="p">:</span>
+</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a><span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="nx">ALL</span>
+</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a><span class="w">    </span><span class="nx">healthcheck</span><span class="p">:</span>
+</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a><span class="w">      </span><span class="nx">test</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="s">&quot;CMD&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;/doco-cd&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;healthcheck&quot;</span><span class="w"> </span><span class="p">]</span>
+</span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a><span class="w">      </span><span class="nx">start_period</span><span class="p">:</span><span class="w"> </span><span class="mi">15</span><span class="nx">s</span>
+</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a><span class="w">      </span><span class="nx">interval</span><span class="p">:</span><span class="w"> </span><span class="mi">30</span><span class="nx">s</span>
+</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a><span class="w">      </span><span class="nx">timeout</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="nx">s</span>
+</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a><span class="w">      </span><span class="nx">retries</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span>
+</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>
+</span><span id="__span-0-39"><a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a><span class="nx">volumes</span><span class="p">:</span>
+</span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a><span class="w">  </span><span class="nx">data</span><span class="p">:</span>
 </span></code></pre></div>
-<p>You can see the health status of the container with the following command:</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>docker<span class="w"> </span>inspect<span class="w"> </span>--format<span class="o">=</span><span class="s1">&#39;{{json .State.Health}}&#39;</span><span class="w"> </span>doco-cd
-</span></code></pre></div>
-<h2 id="specifying-the-settings">Specifying the settings<a class="headerlink" href="#specifying-the-settings" title="Permanent link">&para;</a></h2>
-<p>You can set the settings directly in the <code>docker-compose.yml</code> file with the <code>environment</code> option
-or in a separate <code>.env</code> file with the <code>env_file</code> option.</p>
-<p>Both options can be used at the same time.</p>
-<h3 id="with-env_file">With <code>env_file</code><a class="headerlink" href="#with-env_file" title="Permanent link">&para;</a></h3>
-<p>Example with <code>env_file</code> option:
-<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">services</span><span class="p">:</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="nt">env_file</span><span class="p">:</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.env</span>
-</span></code></pre></div></p>
-<p>The settings in the <code>.env</code> file should be in the format <code>KEY=VALUE</code> or <code>KEY: VALUE</code> and separated by a newline.</p>
-<p>Example <code>.env</code> file:
-<div class="language-yaml highlight"><span class="filename">.env</span><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">GIT_ACCESS_TOKEN</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xxx</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">WEBHOOK_SECRET</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xxx</span>
-</span></code></pre></div></p>
-<h3 id="with-environment">With <code>environment</code><a class="headerlink" href="#with-environment" title="Permanent link">&para;</a></h3>
-<p>Example with <code>environment</code> option:
-<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">services</span><span class="p">:</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">      </span><span class="nt">GIT_ACCESS_TOKEN</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xxx</span>
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">      </span><span class="nt">WEBHOOK_SECRET</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xxx</span>
-</span></code></pre></div></p>
-<h2 id="usage-with-docker-secrets">Usage with Docker Secrets<a class="headerlink" href="#usage-with-docker-secrets" title="Permanent link">&para;</a></h2>
-<p>The application can also be configured to use <a href="https://docs.docker.com/engine/swarm/secrets/">Docker secrets</a> for sensitive information like the Git access token and the webhook secret.</p>
+</details>
+<p>You can find all available app settings on the <a data-preview="" href="../App-Settings/">App Settings</a> wiki page.</p>
+<p>If you run the application with Docker Swarm, see the <a data-preview="" href="../Advanced/Swarm-Mode/">Swarm Mode</a> wiki page for more information.</p>
+<h2 id="create-a-git-access-token">Create a Git Access Token<a class="headerlink" href="#create-a-git-access-token" title="Permanent link">&para;</a></h2>
+<p>The Git access token is used to authenticate with your Git provider (GitHub, GitLab, Gitea, etc.) and to clone or fetch your repositories via HTTP.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>Docker secrets are only fully supported in Docker Swarm mode.
-You can still use <a href="https://docs.docker.com/compose/how-tos/use-secrets/">Docker secrets in the normal (standalone) mode</a>, but it is less secure.</p>
+<p>If you use an SSH URL for your Git repositories, the Git access token is not required.
+Instead, you need to generate an SSH key pair, see <a data-preview="" href="../Setup-SSH-Key/">Setup SSH Key</a> for more information.</p>
 </div>
-<p>To use Docker secrets, you need to create the secrets in Docker and then reference them in the <code>docker-compose.yml</code> file.</p>
-<h3 id="create-docker-secrets">Create Docker Secrets<a class="headerlink" href="#create-docker-secrets" title="Permanent link">&para;</a></h3>
-<p>Create Docker secrets (only with Docker Swarm)</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;&lt;your Git token&gt;&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>docker<span class="w"> </span>secret<span class="w"> </span>create<span class="w"> </span>git_access_token<span class="w"> </span>-
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;&lt;random secret&gt;&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>docker<span class="w"> </span>secret<span class="w"> </span>create<span class="w"> </span>webhook_secret<span class="w"> </span>-
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>You can use doco-cd without a Git Access Token if the repositories you want to use for your deployments are publicly accessible. 
+However, it is still recommended to use one in that case to for example avoid rate limits. </p>
+</div>
+<p>If you set a Git access token, doco-cd will always use it to authenticate with your Git provider. See <a data-preview="" href="../Setup-Access-Token/">Setup Access Token</a> to create this access token and set the <code>GIT_ACCESS_TOKEN</code> environment variable to the access token value.</p>
+<h2 id="deployment-triggers">Deployment triggers<a class="headerlink" href="#deployment-triggers" title="Permanent link">&para;</a></h2>
+<p>Doco-CD can be triggered to check for changes to deploy via webhooks or by polling the Git repositories at regular intervals. You can use either method or both methods together.</p>
+<h3 id="webhooks">Webhooks<a class="headerlink" href="#webhooks" title="Permanent link">&para;</a></h3>
+<p>Webhooks are event-based triggers that notify doco-cd when there are changes in the repositories. This is the recommended way to trigger deployments as it is more efficient and faster than polling but requires doco-cd to be reachable from the internet (or local network if you self-host your Git provider) and some setup on your Git provider.</p>
+<p>If you want to use webhooks, you need to set the <code>WEBHOOK_SECRET</code> environment variable to a secure secret and publish the webhook port. See <a data-preview="" href="../Setup-Webhook/">Setup Webhook</a> for more information.</p>
+<h3 id="polling">Polling<a class="headerlink" href="#polling" title="Permanent link">&para;</a></h3>
+<p>Polling is a time-based trigger that checks the repositories for changes at regular intervals. This method does not require doco-cd to be reachable from the internet but is less efficient and slower than webhooks.</p>
+<p>If you want to use polling, you need to set a poll configuration for each repository you want to use for deployments. See <a data-preview="" href="../Poll-Settings/">Poll Settings</a> for more information.</p>
+<h2 id="run-doco-cd">Run doco-cd<a class="headerlink" href="#run-doco-cd" title="Permanent link">&para;</a></h2>
+<p>After you have created the <code>docker-compose.yml</code> file, you can run doco-cd with the following command:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
 </span></code></pre></div>
-<h3 id="reference-docker-secrets-in-docker-composeyml">Reference Docker Secrets in <code>docker-compose.yml</code><a class="headerlink" href="#reference-docker-secrets-in-docker-composeyml" title="Permanent link">&para;</a></h3>
-<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">services</span><span class="p">:</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">doco-cd</span>
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/kimdre/doco-cd:latest</span>
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;80:80&quot;</span>
-</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">      </span><span class="nt">TZ</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Europe/Berlin</span>
-</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="hll"><span class="w">      </span><span class="c1"># The file name after the /run/secrets/ path is the name of the secret</span>
-</span></span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="hll"><span class="w">      </span><span class="nt">GIT_ACCESS_TOKEN_FILE</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/run/secrets/git_access_token</span>
-</span></span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="hll"><span class="w">      </span><span class="nt">WEBHOOK_SECRET_FILE</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/run/secrets/webhook_secret</span>
-</span></span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="hll"><span class="w">    </span><span class="c1"># The secret names must match with the secrets: section below</span>
-</span></span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="hll"><span class="w">    </span><span class="nt">secrets</span><span class="p">:</span>
-</span></span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git_access_token</span>
-</span></span><span id="__span-6-16"><a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">webhook_secret</span>
-</span></span><span id="__span-6-17"><a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-6-18"><a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/run/docker.sock:/var/run/docker.sock</span>
-</span><span id="__span-6-19"><a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">data:/data</span>
-</span><span id="__span-6-20"><a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a>
-</span><span id="__span-6-21"><a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-6-22"><a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a><span class="w">  </span><span class="nt">data</span><span class="p">:</span>
-</span><span id="__span-6-23"><a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a>
-</span><span id="__span-6-24"><a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a><span class="hll"><span class="nt">secrets</span><span class="p">:</span>
-</span></span><span id="__span-6-25"><a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a><span class="hll"><span class="w">  </span><span class="nt">git_access_token</span><span class="p">:</span>
-</span></span><span id="__span-6-26"><a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a><span class="hll"><span class="w">    </span><span class="nt">external</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-</span></span><span id="__span-6-27"><a id="__codelineno-6-27" name="__codelineno-6-27" href="#__codelineno-6-27"></a><span class="hll"><span class="w">  </span><span class="nt">webhook_secret</span><span class="p">:</span>
-</span></span><span id="__span-6-28"><a id="__codelineno-6-28" name="__codelineno-6-28" href="#__codelineno-6-28"></a><span class="hll"><span class="w">    </span><span class="nt">external</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-</span></span></code></pre></div>
-<h3 id="deploy-in-docker-swarm-mode">Deploy in Docker Swarm mode<a class="headerlink" href="#deploy-in-docker-swarm-mode" title="Permanent link">&para;</a></h3>
-<p>To run the application in Docker Swarm mode, you need to use the <code>docker stack deploy</code> command instead of <code>docker compose up</code>.</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>docker<span class="w"> </span>stack<span class="w"> </span>deploy<span class="w"> </span>-c<span class="w"> </span>docker-compose.yml<span class="w"> </span>doco-cd
+<p>You can check the logs of the application with the following command:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>logs<span class="w"> </span>-f
 </span></code></pre></div>
-<h3 id="check-the-logs">Check the logs<a class="headerlink" href="#check-the-logs" title="Permanent link">&para;</a></h3>
-<p>To check the logs of the application, you can use the following command:</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>docker<span class="w"> </span>service<span class="w"> </span>logs<span class="w"> </span>doco-cd_app
+<p>To be able to reach the application from external Git providers like GitHub or Gitlab, you need to expose the http endpoint of the application to the internet.
+You can use a reverse proxy like <a href="https://www.nginx.com/">NGINX</a>, <a href="https://traefik.io">Traefik</a> or <a href="https://caddyserver.com">Caddy</a> for this purpose.</p>
+<h3 id="notes-for-podman-users">Notes for Podman users<a class="headerlink" href="#notes-for-podman-users" title="Permanent link">&para;</a></h3>
+<p>If you are using Podman instead of Docker, you may need to adjust the <code>docker-compose.yml</code> file to use the Podman socket instead of the Docker socket:</p>
+<div class="language-diff highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>services:
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w"> </span> app:
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w"> </span>   ...
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w"> </span>   volumes:
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="gd">-      - /var/run/docker.sock:/var/run/docker.sock</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="gi">+      - /var/run/podman/podman.sock:/var/run/docker.sock</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w"> </span>   ...
 </span></code></pre></div>
-<h3 id="check-the-status-of-the-service">Check the status of the service<a class="headerlink" href="#check-the-status-of-the-service" title="Permanent link">&para;</a></h3>
-<p>To check the status of the service, you can use the following command:</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>docker<span class="w"> </span>service<span class="w"> </span>ps<span class="w"> </span>doco-cd_app
+<h2 id="deploy-your-first-application">Deploy your first application<a class="headerlink" href="#deploy-your-first-application" title="Permanent link">&para;</a></h2>
+<p>To deploy your first application, you need to configure the deployment settings in your Git repository. These settings are defined in a <code>.doco-cd.yml</code> file in the root of your repository and specify how the deployment should be performed.
+See <a data-preview="" href="../Deploy-Settings/">Deploy Settings</a> for more information on how to configure the deployment of your applications.</p>
+<h3 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h3>
+<p>A simple example of a <code>.doco-cd.yml</code> file that deploys a Docker Compose application:</p>
+<div class="language-yaml highlight"><span class="filename">.doco-cd.yml</span><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-app</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">working_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-app/</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nt">compose_files</span><span class="p">:</span><span class="w"> </span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">docker-compose.yml</span>
 </span></code></pre></div>
-<h2 id="pulling-images-from-a-private-registry">Pulling images from a private registry<a class="headerlink" href="#pulling-images-from-a-private-registry" title="Permanent link">&para;</a></h2>
+<h2 id="more-information">More information<a class="headerlink" href="#more-information" title="Permanent link">&para;</a></h2>
+<h3 id="using-encrypted-secrets">Using encrypted secrets<a class="headerlink" href="#using-encrypted-secrets" title="Permanent link">&para;</a></h3>
+<p>Doco-CD supports the encryption of sensitive data in your deployment files with <a href="https://getsops.io/">SOPS</a>.</p>
+<p>See the <a data-preview="" href="../Advanced/Encryption/">Encryption</a> wiki page for more information on how to use SOPS with Doco-CD.</p>
+<h3 id="pulling-images-from-a-private-registry">Pulling images from a private registry<a class="headerlink" href="#pulling-images-from-a-private-registry" title="Permanent link">&para;</a></h3>
 <p>If you want to pull images from a private registry, see <a data-preview="" href="../Advanced/Private-Container-Registries/">Private Container Registries</a> in the wiki.</p>
+<h3 id="sending-notifications">Sending Notifications<a class="headerlink" href="#sending-notifications" title="Permanent link">&para;</a></h3>
+<p>Doco-CD supports sending notifications about deployment events to various services. See the <a data-preview="" href="../Advanced/Notifications/">Notifications</a> wiki page for more information on how to set up notifications.</p>
+<h3 id="rest-api">Rest API<a class="headerlink" href="#rest-api" title="Permanent link">&para;</a></h3>
+<p>Doco-CD provides a REST API that allows you to interact with the application programmatically. See the <a data-preview="" href="../Endpoints/REST-API/">Rest API</a> wiki page.</p>
+<h3 id="prometheus-metrics">Prometheus Metrics<a class="headerlink" href="#prometheus-metrics" title="Permanent link">&para;</a></h3>
+<p>Doco-CD exposes Prometheus metrics that can be used to monitor the application. See the <a data-preview="" href="../Endpoints/Metrics/">Prometheus Metrics</a> wiki page.</p>
 
 
   <nav class="md-tags" >
+    
+      
+      
+      
+      
+        <span class="md-tag">Setup</span>
+      
     
       
       
@@ -2473,7 +2269,7 @@ You can still use <a href="https://docs.docker.com/compose/how-tos/use-secrets/"
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../Setup-Webhook/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Setup Webhook">
+          <a href="./.." class="md-footer__link md-footer__link--prev" aria-label="Previous: Home">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -2483,20 +2279,20 @@ You can still use <a href="https://docs.docker.com/compose/how-tos/use-secrets/"
                 Previous
               </span>
               <div class="md-ellipsis">
-                Setup Webhook
+                Home
               </div>
             </div>
           </a>
         
         
           
-          <a href="../Deploy-Settings/" class="md-footer__link md-footer__link--next" aria-label="Next: Deploy Settings">
+          <a href="../Setup-Access-Token/" class="md-footer__link md-footer__link--next" aria-label="Next: Setup Access Token">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Deploy Settings
+                Setup Access Token
               </div>
             </div>
             <div class="md-footer__button md-icon">
