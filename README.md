@@ -16,6 +16,9 @@ Doco CD is a lightweight, declarative GitOps continuous delivery tool that autom
 
 You can think of it as a simple Portainer or ArgoCD alternative for Docker.
 
+> [!NOTE]
+> The documentation is now available at [doco.cd](https://doco.cd/latest/). The old GitHub wiki is no longer available.
+
 ## Features
 
 - Easy to set up and use.

@@ -56,10 +56,6 @@ update-all: update
 	git submodule foreach git pull origin master
 	git submodule foreach git checkout master
 
-wiki-commit:
-	git submodule foreach "git add . && git commit -m 'docs: update wiki' && git push"
-	git add docs/ && git commit -m 'docs: update wiki' && git push
-
 download:
 	@echo Download go.mod dependencies
 	@go mod download
