@@ -5,18 +5,22 @@ on:
     types:
       - published
 
-permissions:
-  contents: write
+env:
+  DOCS_BRANCH: gh-pages
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
 jobs:
-  deploy:
-    name: Build and publish release docs
+  build:
+    name: Build documentation
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./wiki
-    env:
-      DOCS_BRANCH: gh-pages
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -51,3 +55,22 @@ jobs:
         run: |
           mike deploy --branch $DOCS_BRANCH --config-file zensical.toml --push --update-aliases "$VERSION" latest
           mike set-default --branch $DOCS_BRANCH --config-file zensical.toml --push latest
+
+  publish:
+    name: Publish documentation
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ env.DOCS_BRANCH }}
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
