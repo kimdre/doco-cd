@@ -93,32 +93,7 @@ docker build --build-arg DISABLE_BITWARDEN=true -t doco-cd:nobitwarden .
 
 The new documentation site lives in `wiki/` and is built with [Zensical](https://zensical.org/).
 
-#### Write and preview docs locally
-
-1. Install the docs toolchain (requires Python 3.10+):
-
-    ```bash
-    make wiki-tools
-    ```
-
-2. Start the local docs server:
-
-    ```bash
-    make wiki-serve
-    ```
-
-3. Open the local URL printed by Zensical (usually http://localhost:8000).
-
-    Edit Markdown files in `wiki/docs/` and refresh to see changes.
-    
-    If you prefer running commands directly instead of Make targets:
-    
-    ```bash
-    python3 -m venv .venv-wiki
-    source .venv-wiki/bin/activate
-    pip install -r wiki/requirements.txt
-    zensical serve --config-file wiki/zensical.toml
-    ```
+See the [wiki/README.md](wiki/README.md) for instructions on how to contribute to the documentation and run the local docs server.
 
 ### Submitting your code
 
