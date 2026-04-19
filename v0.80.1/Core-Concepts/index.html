@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Doco CD is a lightweight, declarative GitOps continuous delivery tool for Docker and Docker Swarm">
+        <meta name="description" content="Doco-CD is a lightweight, declarative GitOps continuous delivery tool for Docker and Docker Swarm">
       
       
         <meta name="author" content="doco-cd contributors">
@@ -29,7 +29,7 @@
     
     
       
-        <title>Core Concepts - Doco CD - Docker Compose Continuous Deployment</title>
+        <title>Core Concepts - Doco-CD Documentation</title>
       
     
     
@@ -121,9 +121,9 @@
 
 <header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="./.." title="Doco CD - Docker Compose Continuous Deployment" class="md-header__button md-logo" aria-label="Doco CD - Docker Compose Continuous Deployment" data-md-component="logo">
+    <a href="./.." title="Doco-CD Documentation" class="md-header__button md-logo" aria-label="Doco-CD Documentation" data-md-component="logo">
       
-  <img src="../images/doco-cd_containers.svg" alt="Doco CD - Docker Compose Continuous Deployment">
+  <img src="../images/doco-cd_containers.svg" alt="Doco-CD Documentation">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
@@ -134,7 +134,7 @@
       <div class="md-header__ellipsis">
         <div class="md-header__topic">
           <span class="md-ellipsis">
-            Doco CD - Docker Compose Continuous Deployment
+            Doco-CD Documentation
           </span>
         </div>
         <div class="md-header__topic" data-md-component="header-topic">
@@ -332,6 +332,22 @@
   
 
       
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="https://github.com/users/kimdre/projects/3/views/1" class="md-tabs__link">
+        
+  
+  Status
+
+      </a>
+    </li>
+  
+
+      
     </ul>
   </div>
 </nav>
@@ -360,12 +376,12 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="./.." title="Doco CD - Docker Compose Continuous Deployment" class="md-nav__button md-logo" aria-label="Doco CD - Docker Compose Continuous Deployment" data-md-component="logo">
+    <a href="./.." title="Doco-CD Documentation" class="md-nav__button md-logo" aria-label="Doco-CD Documentation" data-md-component="logo">
       
-  <img src="../images/doco-cd_containers.svg" alt="Doco CD - Docker Compose Continuous Deployment">
+  <img src="../images/doco-cd_containers.svg" alt="Doco-CD Documentation">
 
     </a>
-    Doco CD - Docker Compose Continuous Deployment
+    Doco-CD Documentation
   </label>
   
     <div class="md-nav__source">
@@ -1401,7 +1417,7 @@
   <a href="#how-doco-cd-works" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How Doco CD Works
+        How Doco-CD Works
       
     </span>
   </a>
@@ -1793,7 +1809,7 @@
   <span class="md-ellipsis">
     
   
-    Security
+    Security Policy
   
 
     
@@ -1869,6 +1885,33 @@
   
 
     
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/users/kimdre/projects/3/views/1" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Status
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
   </ul>
 </nav>
                   </div>
@@ -1913,7 +1956,7 @@
   <a href="#how-doco-cd-works" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How Doco CD Works
+        How Doco-CD Works
       
     </span>
   </a>
@@ -2156,30 +2199,30 @@
 
 
 <h1 id="core-concepts">Core Concepts<a class="headerlink" href="#core-concepts" title="Permanent link">&para;</a></h1>
-<p>This page explains the key terms and concepts used throughout the Doco CD documentation.
+<p>This page explains the key terms and concepts used throughout the Doco-CD documentation.
 Familiarity with <a href="https://git-scm.com/">Git</a>, <a href="https://docs.docker.com/">Docker</a>, and basic <a href="https://about.gitlab.com/topics/gitops/">GitOps</a> principles is assumed.</p>
 <hr />
-<h2 id="how-doco-cd-works">How Doco CD Works<a class="headerlink" href="#how-doco-cd-works" title="Permanent link">&para;</a></h2>
-<p>Doco CD follows a <strong>GitOps</strong> model: your Git repository is the single source of truth for both application code and deployment configuration.
-When a change is pushed to Git, Doco CD detects it (via a webhook or poll), clones the repository, and applies the desired state to your Docker environment.</p>
+<h2 id="how-doco-cd-works">How Doco-CD Works<a class="headerlink" href="#how-doco-cd-works" title="Permanent link">&para;</a></h2>
+<p>Doco-CD follows a <strong>GitOps</strong> model: your Git repository is the single source of truth for both application code and deployment configuration.
+When a change is pushed to Git, Doco-CD detects it (via a webhook or poll), clones the repository, and applies the desired state to your Docker environment.</p>
 <hr />
 <h2 id="deployment-targets">Deployment Targets<a class="headerlink" href="#deployment-targets" title="Permanent link">&para;</a></h2>
 <h3 id="project">Project<a class="headerlink" href="#project" title="Permanent link">&para;</a></h3>
 <p>A named collection of services defined in one or more <code>docker-compose.yml</code> files, deployed together in a standalone Docker environment.
-Each project has a unique name used to identify it both within Doco CD and in the Docker environment.</p>
+Each project has a unique name used to identify it both within Doco-CD and in the Docker environment.</p>
 <h3 id="stack">Stack<a class="headerlink" href="#stack" title="Permanent link">&para;</a></h3>
 <p>The equivalent of a project when <a data-preview="" href="../Advanced/Swarm-Mode/">Docker Swarm mode</a> is enabled.
 Stacks are deployed and managed by Docker Swarm and support multi-node distribution and high availability.
-Doco CD automatically detects whether the Docker daemon is running in Swarm mode and deploys accordingly.</p>
+Doco-CD automatically detects whether the Docker daemon is running in Swarm mode and deploys accordingly.</p>
 <hr />
 <h2 id="deployment-triggers">Deployment Triggers<a class="headerlink" href="#deployment-triggers" title="Permanent link">&para;</a></h2>
 <h3 id="webhook">Webhook<a class="headerlink" href="#webhook" title="Permanent link">&para;</a></h3>
-<p>An event-based HTTP notification sent by your Git provider (GitHub, GitLab, Gitea, etc.) to Doco CD whenever a commit is pushed.
-Webhooks are the recommended trigger method — they are fast and efficient, but require Doco CD to be reachable from the internet or local network.</p>
+<p>An event-based HTTP notification sent by your Git provider (GitHub, GitLab, Gitea, etc.) to Doco-CD whenever a commit is pushed.
+Webhooks are the recommended trigger method — they are fast and efficient, but require Doco-CD to be reachable from the internet or local network.</p>
 <p>Enabled by setting the <code>WEBHOOK_SECRET</code> environment variable. See <a data-preview="" href="../Setup-Webhook/">Setup Webhook</a> and <a data-preview="" href="../Endpoints/Webhook-Listener/">Webhook Listener</a> for details.</p>
 <h3 id="polling">Polling<a class="headerlink" href="#polling" title="Permanent link">&para;</a></h3>
 <p>A time-based trigger that checks one or more Git repositories for new commits at a configurable interval.
-Polling does not require Doco CD to be publicly reachable and is useful in isolated network environments, but is slower and less efficient than webhooks.</p>
+Polling does not require Doco-CD to be publicly reachable and is useful in isolated network environments, but is slower and less efficient than webhooks.</p>
 <p>Configured via the <code>POLL_CONFIG</code> or <code>POLL_CONFIG_FILE</code> environment variable. See <a data-preview="" href="../Poll-Settings/">Poll Settings</a> for details.</p>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
@@ -2190,7 +2233,7 @@ Polling does not require Doco CD to be publicly reachable and is useful in isola
 <h3 id="deployment">Deployment<a class="headerlink" href="#deployment" title="Permanent link">&para;</a></h3>
 <p>The process of applying a <a data-preview="" href="#deployment-configuration">deployment configuration</a> to a project or stack and ensuring that the desired state defined in the Git repository is reflected in the Docker environment.
 A deployment is triggered either by an incoming <a data-preview="" href="../Endpoints/Webhook-Listener/">webhook event</a> or by <a data-preview="" href="../Getting-Started/#polling">polling</a> a Git repository for changes.</p>
-<p>During a deployment, Doco CD will:</p>
+<p>During a deployment, Doco-CD will:</p>
 <ol>
 <li>Pull the latest changes from the Git repository.</li>
 <li>Resolve any <a data-preview="" href="../External-Secrets/">external secrets</a> or <a data-preview="" href="../Advanced/Encryption/">encrypted values</a>.</li>
@@ -2202,16 +2245,16 @@ A deployment is triggered either by an incoming <a data-preview="" href="../Endp
 It specifies the working directory, compose files, environment variables, and other deployment settings.</p>
 <p>See <a data-preview="" href="../Deploy-Settings/">Deploy Settings</a> for the full list of available options.</p>
 <h3 id="poll-configuration">Poll Configuration<a class="headerlink" href="#poll-configuration" title="Permanent link">&para;</a></h3>
-<p>A time-based trigger definition that instructs Doco CD to check one or more Git repositories for changes at a regular interval.
-Polling is an alternative to webhooks and does not require Doco CD to be reachable from the internet.</p>
+<p>A time-based trigger definition that instructs Doco-CD to check one or more Git repositories for changes at a regular interval.
+Polling is an alternative to webhooks and does not require Doco-CD to be reachable from the internet.</p>
 <p>See <a data-preview="" href="../Poll-Settings/">Poll Settings</a> for configuration details.</p>
 <hr />
 <h2 id="secrets-security">Secrets &amp; Security<a class="headerlink" href="#secrets-security" title="Permanent link">&para;</a></h2>
 <h3 id="external-secrets">External Secrets<a class="headerlink" href="#external-secrets" title="Permanent link">&para;</a></h3>
 <p>Secrets fetched at deployment runtime from an external secret manager (e.g. AWS Secrets Manager, Bitwarden, 1Password, Infisical).
-They are injected into the deployment environment as environment variables or Docker secrets, avoiding the need to store sensitive values in the Git repository or in Doco CD's own configuration.</p>
+They are injected into the deployment environment as environment variables or Docker secrets, avoiding the need to store sensitive values in the Git repository or in Doco-CD's own configuration.</p>
 <p>See <a data-preview="" href="../External-Secrets/">External Secrets</a> for supported providers and usage.</p>
-<p>Doco CD supports decrypting files encrypted with <a href="https://getsops.io/">SOPS</a> at deployment time.
+<p>Doco-CD supports decrypting files encrypted with <a href="https://getsops.io/">SOPS</a> at deployment time.
 This allows sensitive values in deployment and compose files to be stored encrypted in the Git repository.</p>
 <p>See <a data-preview="" href="../Advanced/Encryption/">Encryption</a> for setup instructions.</p>
 
@@ -2305,7 +2348,7 @@ This allows sensitive values in deployment and compose files to be stored encryp
       <div class="md-copyright">
   
     <div class="md-copyright__highlight">
-      &copy; 2026 Doco CD Contributors
+      &copy; 2026 Doco-CD Contributors
     </div>
   
   

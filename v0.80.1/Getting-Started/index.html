@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Doco CD is a lightweight, declarative GitOps continuous delivery tool for Docker and Docker Swarm">
+        <meta name="description" content="Doco-CD is a lightweight, declarative GitOps continuous delivery tool for Docker and Docker Swarm">
       
       
         <meta name="author" content="doco-cd contributors">
@@ -29,7 +29,7 @@
     
     
       
-        <title>Getting Started - Doco CD - Docker Compose Continuous Deployment</title>
+        <title>Getting Started - Doco-CD Documentation</title>
       
     
     
@@ -121,9 +121,9 @@
 
 <header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="./.." title="Doco CD - Docker Compose Continuous Deployment" class="md-header__button md-logo" aria-label="Doco CD - Docker Compose Continuous Deployment" data-md-component="logo">
+    <a href="./.." title="Doco-CD Documentation" class="md-header__button md-logo" aria-label="Doco-CD Documentation" data-md-component="logo">
       
-  <img src="../images/doco-cd_containers.svg" alt="Doco CD - Docker Compose Continuous Deployment">
+  <img src="../images/doco-cd_containers.svg" alt="Doco-CD Documentation">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
@@ -134,7 +134,7 @@
       <div class="md-header__ellipsis">
         <div class="md-header__topic">
           <span class="md-ellipsis">
-            Doco CD - Docker Compose Continuous Deployment
+            Doco-CD Documentation
           </span>
         </div>
         <div class="md-header__topic" data-md-component="header-topic">
@@ -332,6 +332,22 @@
   
 
       
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="https://github.com/users/kimdre/projects/3/views/1" class="md-tabs__link">
+        
+  
+  Status
+
+      </a>
+    </li>
+  
+
+      
     </ul>
   </div>
 </nav>
@@ -360,12 +376,12 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="./.." title="Doco CD - Docker Compose Continuous Deployment" class="md-nav__button md-logo" aria-label="Doco CD - Docker Compose Continuous Deployment" data-md-component="logo">
+    <a href="./.." title="Doco-CD Documentation" class="md-nav__button md-logo" aria-label="Doco-CD Documentation" data-md-component="logo">
       
-  <img src="../images/doco-cd_containers.svg" alt="Doco CD - Docker Compose Continuous Deployment">
+  <img src="../images/doco-cd_containers.svg" alt="Doco-CD Documentation">
 
     </a>
-    Doco CD - Docker Compose Continuous Deployment
+    Doco-CD Documentation
   </label>
   
     <div class="md-nav__source">
@@ -664,6 +680,17 @@
     <span class="md-ellipsis">
       
         Using encrypted secrets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fetch-secrets-from-external-secret-providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fetch secrets from external secret providers
       
     </span>
   </a>
@@ -1804,7 +1831,7 @@
   <span class="md-ellipsis">
     
   
-    Security
+    Security Policy
   
 
     
@@ -1868,6 +1895,33 @@
     
   
     Releases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/users/kimdre/projects/3/views/1" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Status
   
 
     
@@ -2050,6 +2104,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#fetch-secrets-from-external-secret-providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fetch secrets from external secret providers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#pulling-images-from-a-private-registry" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2222,7 +2287,13 @@
 </span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a><span class="w">  </span><span class="nx">data</span><span class="p">:</span>
 </span></code></pre></div>
 </details>
-<p>Find out about the <a data-preview="" href="../Core-Concepts/">Core Concepts</a> of Doco CD to understand how the application works and how to configure it.</p>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>To use a specific version, replace the <code>latest</code> tag with the desired release version without the leading <code>v</code> (e.g. <code>0.80.0</code>):
+<code>ghcr.io/kimdre/doco-cd:0.80.0</code></p>
+<p>You can find the available tags/versions on the <a href="https://github.com/kimdre/doco-cd/pkgs/container/doco-cd">GitHub Container Registry</a>.</p>
+</div>
+<p>Find out about the <a data-preview="" href="../Core-Concepts/">Core Concepts</a> of Doco-CD to understand how the application works and how to configure it.</p>
 <p>You can find all available app settings on the <a data-preview="" href="../App-Settings/">App Settings</a> wiki page.</p>
 <p>If you run the application with Docker Swarm, see the <a data-preview="" href="../Advanced/Swarm-Mode/">Swarm Mode</a> wiki page for more information.</p>
 <h2 id="create-a-git-access-token">Create a Git Access Token<a class="headerlink" href="#create-a-git-access-token" title="Permanent link">&para;</a></h2>
@@ -2277,8 +2348,11 @@ See <a data-preview="" href="../Deploy-Settings/">Deploy Settings</a> for more i
 </span></code></pre></div>
 <h2 id="more-information">More information<a class="headerlink" href="#more-information" title="Permanent link">&para;</a></h2>
 <h3 id="using-encrypted-secrets">Using encrypted secrets<a class="headerlink" href="#using-encrypted-secrets" title="Permanent link">&para;</a></h3>
-<p>Doco-CD supports the encryption of sensitive data in your deployment files with <a href="https://getsops.io/">SOPS</a>.</p>
+<p>Doco-CD supports the encryption of sensitive data in your Git repository files with <a href="https://getsops.io/">SOPS</a>.</p>
 <p>See the <a data-preview="" href="../Advanced/Encryption/">Encryption</a> wiki page for more information on how to use SOPS with Doco-CD.</p>
+<h3 id="fetch-secrets-from-external-secret-providers">Fetch secrets from external secret providers<a class="headerlink" href="#fetch-secrets-from-external-secret-providers" title="Permanent link">&para;</a></h3>
+<p>Doco-CD supports fetching secrets from various external secret management providers like OpenBao, AWS Secrets Manager, Bitwarden, and many more.
+See the <a data-preview="" href="../External-Secrets/">External Secrets</a> wiki page for more information on how to use external secret management providers with Doco-CD.</p>
 <h3 id="pulling-images-from-a-private-registry">Pulling images from a private registry<a class="headerlink" href="#pulling-images-from-a-private-registry" title="Permanent link">&para;</a></h3>
 <p>If you want to pull images from a private registry, see <a data-preview="" href="../Advanced/Private-Container-Registries/">Private Container Registries</a> in the wiki.</p>
 <h3 id="sending-notifications">Sending Notifications<a class="headerlink" href="#sending-notifications" title="Permanent link">&para;</a></h3>
@@ -2385,7 +2459,7 @@ See <a data-preview="" href="../Deploy-Settings/">Deploy Settings</a> for more i
       <div class="md-copyright">
   
     <div class="md-copyright__highlight">
-      &copy; 2026 Doco CD Contributors
+      &copy; 2026 Doco-CD Contributors
     </div>
   
   

@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Doco CD is a lightweight, declarative GitOps continuous delivery tool for Docker and Docker Swarm">
+        <meta name="description" content="Doco-CD is a lightweight, declarative GitOps continuous delivery tool for Docker and Docker Swarm">
       
       
         <meta name="author" content="doco-cd contributors">
@@ -29,7 +29,7 @@
     
     
       
-        <title>REST API - Doco CD - Docker Compose Continuous Deployment</title>
+        <title>REST API - Doco-CD Documentation</title>
       
     
     
@@ -121,9 +121,9 @@
 
 <header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="../.." title="Doco CD - Docker Compose Continuous Deployment" class="md-header__button md-logo" aria-label="Doco CD - Docker Compose Continuous Deployment" data-md-component="logo">
+    <a href="../.." title="Doco-CD Documentation" class="md-header__button md-logo" aria-label="Doco-CD Documentation" data-md-component="logo">
       
-  <img src="../../images/doco-cd_containers.svg" alt="Doco CD - Docker Compose Continuous Deployment">
+  <img src="../../images/doco-cd_containers.svg" alt="Doco-CD Documentation">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
@@ -134,7 +134,7 @@
       <div class="md-header__ellipsis">
         <div class="md-header__topic">
           <span class="md-ellipsis">
-            Doco CD - Docker Compose Continuous Deployment
+            Doco-CD Documentation
           </span>
         </div>
         <div class="md-header__topic" data-md-component="header-topic">
@@ -332,6 +332,22 @@
   
 
       
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="https://github.com/users/kimdre/projects/3/views/1" class="md-tabs__link">
+        
+  
+  Status
+
+      </a>
+    </li>
+  
+
+      
     </ul>
   </div>
 </nav>
@@ -360,12 +376,12 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../.." title="Doco CD - Docker Compose Continuous Deployment" class="md-nav__button md-logo" aria-label="Doco CD - Docker Compose Continuous Deployment" data-md-component="logo">
+    <a href="../.." title="Doco-CD Documentation" class="md-nav__button md-logo" aria-label="Doco-CD Documentation" data-md-component="logo">
       
-  <img src="../../images/doco-cd_containers.svg" alt="Doco CD - Docker Compose Continuous Deployment">
+  <img src="../../images/doco-cd_containers.svg" alt="Doco-CD Documentation">
 
     </a>
-    Doco CD - Docker Compose Continuous Deployment
+    Doco-CD Documentation
   </label>
   
     <div class="md-nav__source">
@@ -1778,7 +1794,7 @@
   <span class="md-ellipsis">
     
   
-    Security
+    Security Policy
   
 
     
@@ -1842,6 +1858,33 @@
     
   
     Releases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/users/kimdre/projects/3/views/1" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Status
   
 
     
@@ -2142,7 +2185,7 @@
 
 
 <h1 id="rest-api">REST API<a class="headerlink" href="#rest-api" title="Permanent link">&para;</a></h1>
-<p>Doco CD exposes a RESTful API at the <code>/v1/api</code> endpoint.</p>
+<p>Doco-CD exposes a RESTful API at the <code>/v1/api</code> endpoint.</p>
 <h2 id="authentication">Authentication<a class="headerlink" href="#authentication" title="Permanent link">&para;</a></h2>
 <p>Set the <code>API_SECRET</code> or <code>API_SECRET_FILE</code> environment variable in the container to enable the API, see <a data-preview="" href="../../App-Settings/#available-settings">App Settings</a>.</p>
 <p>Use the <code>x-api-key</code> header to authenticate requests to the API using the secret value.</p>
@@ -2151,7 +2194,7 @@
 </span></code></pre></div>
 <h2 id="endpoints">Endpoints<a class="headerlink" href="#endpoints" title="Permanent link">&para;</a></h2>
 <h3 id="health-check">Health Check<a class="headerlink" href="#health-check" title="Permanent link">&para;</a></h3>
-<p>Doco CD exposes a health check endpoint at <code>/v1/health</code> that, if the application is healthy, returns a <code>200</code> status code and the following JSON response:</p>
+<p>Doco-CD exposes a health check endpoint at <code>/v1/health</code> that, if the application is healthy, returns a <code>200</code> status code and the following JSON response:</p>
 <div class="language-json highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;details&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;healthy&quot;</span>
 </span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="p">}</span>
@@ -2272,7 +2315,7 @@
 <h3 id="swarm-stacks">Swarm Stacks<a class="headerlink" href="#swarm-stacks" title="Permanent link">&para;</a></h3>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>Stack management endpoints are only available if Doco CD is running in a Docker Swarm environment.</p>
+<p>Stack management endpoints are only available if Doco-CD is running in a Docker Swarm environment.</p>
 </div>
 <table>
 <thead>
@@ -2455,7 +2498,7 @@
       <div class="md-copyright">
   
     <div class="md-copyright__highlight">
-      &copy; 2026 Doco CD Contributors
+      &copy; 2026 Doco-CD Contributors
     </div>
   
   
