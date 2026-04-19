@@ -1,7 +1,7 @@
 GO_BIN?=$(shell pwd)/.bin
 BINARY_DIR=bin
 BINARY_NAME=doco-cd
-.PHONY: test test-verbose test-coverage test-run build fmt lint update update-all wiki-commit download tools compose-up compose-down
+.PHONY: test test-verbose test-coverage test-run build fmt lint update update-all download tools compose-up compose-down wiki-tools wiki-build wiki-serve wiki-version-publish
 
 ifneq (,$(wildcard ./.env))
     include .env
@@ -91,9 +91,17 @@ clean-testcache:
 	go clean -testcache
 
 webhook:
-	@SIGNATURE=$$(openssl dgst -sha256 -hmac "test_Secret1" < cmd/doco-cd/testdata/github_payload.json | sed 's/^.* //'); \
+	@SIGNATURE=$$(openssl dgst -sha256 -hmac "test_Secret1" < cmd/doco-cd/testdata/github_payload.json | sed 's/^.* //') && \
   	curl -X POST -H "X-Hub-Signature-256: sha256=$$SIGNATURE" \
   		-H "Content-Type: application/json" \
   		-H "X-GitHub-Event: push" \
   		--data @cmd/doco-cd/testdata/github_payload.json \
   		http://localhost/v1/webhook
+
+wiki-tools:
+	python3 -m venv .venv-wiki
+	.venv-wiki/bin/python -m pip install --upgrade pip
+	.venv-wiki/bin/python -m pip install -r wiki/requirements.txt
+
+wiki-serve:
+	.venv-wiki/bin/zensical serve --config-file wiki/zensical.toml
