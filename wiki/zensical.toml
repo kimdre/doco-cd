@@ -11,7 +11,7 @@ site_name = "Doco CD - Docker Compose Continuous Deployment"
 site_description = "Doco CD is a lightweight, declarative GitOps continuous delivery tool for Docker and Docker Swarm"
 site_author = "doco-cd contributors"
 site_url = "https://doco.cd/"
-copyright = "&copy; 2026 Doco CD contributors"
+copyright = "&copy; 2026 Doco CD Contributors"
 repo_url = "https://github.com/kimdre/doco-cd"
 repo_name = "kimdre/doco-cd"
 edit_uri = "edit/main/wiki/docs/"
@@ -50,6 +50,7 @@ nav = [
     { "Tips & Tricks" = "Advanced/Tips-and-Tricks.md" }
   ] },
   { Reference = [
+    { "Core Concepts" = "Core-Concepts.md" },
     { Endpoints = [
       { "Prometheus Metrics / Monitoring" = "Endpoints/Metrics.md" },
       { "REST API" = "Endpoints/REST-API.md" },
@@ -60,6 +61,7 @@ nav = [
     { "Security" = "Security.md" },
     { "License" = "License.md" },
   ] },
+  { Releases = "https://github.com/kimdre/doco-cd/releases" }
 ]
 
 extra_javascript = [
@@ -76,6 +78,8 @@ language = "en"
 logo = "images/doco-cd_containers.svg"
 favicon = "images/doco-cd_containers.svg"
 features = [
+  "content.action.edit",
+  "content.action.view",
   "content.code.select",
   "content.code.copy",
   "navigation.footer",
@@ -92,9 +96,8 @@ features = [
   "search.highlight",
   "search.suggest",
   "search.share",
-  "content.action.edit",
-  "content.action.view",
 ]
+custom_dir = "overrides"
 
 [project.theme.icon]
 repo = "fontawesome/brands/github"
