@@ -105,13 +105,3 @@ wiki-tools:
 
 wiki-serve:
 	.venv-wiki/bin/zensical serve --config-file wiki/zensical.toml
-
-# TODO: Remove after workflow is in place to automatically publish on release
-wiki-version-publish:
-	VERSION=$$(git describe --tags --abbrev=0) && \
-	PATH="$(CURDIR)/.venv-wiki/bin:$$PATH" .venv-wiki/bin/mike deploy --config-file wiki/zensical.toml --push --update-aliases $$VERSION latest && \
-	PATH="$(CURDIR)/.venv-wiki/bin:$$PATH" .venv-wiki/bin/mike set-default --config-file wiki/zensical.toml --push latest
-
-# TODO: Remove after workflow is in place to automatically publish on release
-mike-serve:
-	PATH="$(CURDIR)/.venv-wiki/bin:$$PATH" .venv-wiki/bin/mike serve --config-file wiki/zensical.toml

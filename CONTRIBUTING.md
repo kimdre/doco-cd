@@ -89,11 +89,7 @@ Or using Docker with the `DISABLE_BITWARDEN=true` build argument:
 docker build --build-arg DISABLE_BITWARDEN=true -t doco-cd:nobitwarden .
 ```
 
-### Documentation (wiki)
-
-<!--
-TODO: Update this section once the new documentation site is live.
--->
+### Documentation (Wiki)
 
 The new documentation site lives in `wiki/` and is built with [Zensical](https://zensical.org/).
 
