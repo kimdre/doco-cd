@@ -61,7 +61,8 @@ nav = [
     { "Security" = "Security.md" },
     { "License" = "License.md" },
   ] },
-  { Releases = "https://github.com/kimdre/doco-cd/releases" }
+  { Releases = "https://github.com/kimdre/doco-cd/releases" },
+  { "Status" = "https://github.com/users/kimdre/projects/3/views/1" }
 ]
 
 extra_javascript = [
