@@ -7,11 +7,11 @@
 # ============================================================================
 
 [project]
-site_name = "Doco CD - Docker Compose Continuous Deployment"
-site_description = "Doco CD is a lightweight, declarative GitOps continuous delivery tool for Docker and Docker Swarm"
+site_name = "Doco-CD Documentation"
+site_description = "Doco-CD is a lightweight, declarative GitOps continuous delivery tool for Docker and Docker Swarm"
 site_author = "doco-cd contributors"
 site_url = "https://doco.cd/"
-copyright = "&copy; 2026 Doco CD Contributors"
+copyright = "&copy; 2026 Doco-CD Contributors"
 repo_url = "https://github.com/kimdre/doco-cd"
 repo_name = "kimdre/doco-cd"
 edit_uri = "edit/main/wiki/docs/"
