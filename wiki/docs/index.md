@@ -1,12 +1,12 @@
 ---
-title: ""
+title: "Home"
 ---
 
 # Home
 
-![Doco CD Logo](images/doco-cd_logo.svg)
+![Doco-CD Logo](images/doco-cd_logo.svg)
 
-## What is Doco CD?
+## What is Doco-CD?
 
 **Doco-CD** stands for _**Do**cker **Co**mpose **C**ontinuous **D**eployment_ and is a lightweight GitOps tool 
 that automatically deploys and updates Docker Compose projects and Swarm stacks via webhooks or polling when a change is pushed to a Git repository.
@@ -26,7 +26,7 @@ You can think of it as a simple Portainer or ArgoCD alternative for Docker.
 
 ## Getting Started
 
-Follow the [Getting Started Guide](Getting-Started.md) to get started with Doco CD. 
+Follow the [Getting Started Guide](Getting-Started.md) to get started with Doco-CD. 
 
 More resources:
 

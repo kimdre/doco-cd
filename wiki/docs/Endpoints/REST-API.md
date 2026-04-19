@@ -7,7 +7,7 @@ tags:
 
 # REST API
 
-Doco CD exposes a RESTful API at the `/v1/api` endpoint.
+Doco-CD exposes a RESTful API at the `/v1/api` endpoint.
 
 ## Authentication
 
@@ -26,7 +26,7 @@ curl -H "x-api-key: your_api_key" http://example.com/v1/api/projects
 
 ### Health Check
 
-Doco CD exposes a health check endpoint at `/v1/health` that, if the application is healthy, returns a `200` status code and the following JSON response:
+Doco-CD exposes a health check endpoint at `/v1/health` that, if the application is healthy, returns a `200` status code and the following JSON response:
 
 ```json
 {
@@ -110,7 +110,7 @@ curl --request POST \
 ### Swarm Stacks
 
 !!! note 
-    Stack management endpoints are only available if Doco CD is running in a Docker Swarm environment.
+    Stack management endpoints are only available if Doco-CD is running in a Docker Swarm environment.
 
 | Endpoint                            | Method | Description                                                                                                       | Query Parameters                                                                                                                                                                           |
 |-------------------------------------|--------|-------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
