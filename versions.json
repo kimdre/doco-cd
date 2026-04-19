@@ -1,10 +1,15 @@
 [
   {
-    "version": "v0.81.0-rc.1",
-    "title": "v0.81.0-rc.1",
+    "version": "v0.81.0-rc.2",
+    "title": "v0.81.0-rc.2",
     "aliases": [
       "pre-release"
     ]
+  },
+  {
+    "version": "v0.81.0-rc.1",
+    "title": "v0.81.0-rc.1",
+    "aliases": []
   },
   {
     "version": "v0.80.1",
