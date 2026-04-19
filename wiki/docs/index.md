@@ -1,8 +1,8 @@
 ---
-title: "Home"
+title: "Doco-CD Documentation"
 ---
 
-# Home
+# Doco-CD Documentation
 
 ![Doco-CD Logo](images/doco-cd_logo.svg)
 
