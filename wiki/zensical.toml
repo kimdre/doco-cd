@@ -58,6 +58,7 @@ nav = [
     ] },
     { "Known Limitations" = "Known-Limitations.md" },
     { "Contributing" = "Contributing.md" },
+    { "Documentation Guidelines" = "wiki/" },
     { "Security Policy" = "Security.md" },
     { "License" = "License.md" },
   ] },

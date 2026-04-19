@@ -20,16 +20,16 @@ Make sure you are in the root of the repository, then run the following commands
 
 3. Open the local URL printed by Zensical (usually http://localhost:8000).
 
-   Edit Markdown files in `wiki/docs/` and refresh to see changes.
+    Edit Markdown files in `wiki/docs/` and refresh to see changes.
 
-   If you prefer running commands directly instead of Make targets:
+If you prefer running commands directly instead of Make targets:
 
-    ```bash
-    python3 -m venv .venv-wiki
-    source .venv-wiki/bin/activate
-    pip install -r wiki/requirements.txt
-    zensical serve --config-file wiki/zensical.toml
-    ```
+```bash
+python3 -m venv .venv-wiki
+source .venv-wiki/bin/activate
+pip install -r wiki/requirements.txt
+zensical serve --config-file wiki/zensical.toml
+```
 
 ## Cleaning the build cache
 
@@ -64,7 +64,7 @@ The workflow in `.github/workflows/docs.yaml` publishes docs to the `gh-pages` b
 Supported release tag formats:
 
 - stable: `vX.Y.Z`
-- prerelease: `vX.Y.Z-rc.1` (and other semver prerelease forms)
+- prerelease: `vX.Y.Z-rc.N` (release candidates)
 
 Each release is published to `/<tag>/` (for example `/v1.2.3/`). The site root redirects to the latest stable release.
 

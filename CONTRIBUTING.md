@@ -93,7 +93,7 @@ docker build --build-arg DISABLE_BITWARDEN=true -t doco-cd:nobitwarden .
 
 The new documentation site lives in `wiki/` and is built with [Zensical](https://zensical.org/).
 
-See the [wiki/README.md](wiki/README.md) for instructions on how to contribute to the documentation and run the local docs server.
+See the [Documentation Guidelines](wiki/README.md) for instructions on how to contribute to the documentation and run the local docs server.
 
 ### Submitting your code
 
