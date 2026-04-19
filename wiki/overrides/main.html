@@ -1,5 +1,25 @@
 {% extends "base.html" %}
 
+{% block extrahead %}
+  {{ super() }}
+  <!-- Patch URL constructor to handle relative URLs (e.g. new URL(".")) without a base -->
+  <script>
+    (function () {
+      var _URL = window.URL;
+      function PatchedURL(url, base) {
+        if (base === undefined && typeof url === "string" && !url.match(/^[a-zA-Z][a-zA-Z0-9+\-.]*:/)) {
+          base = location.href;
+        }
+        return new _URL(url, base);
+      }
+      PatchedURL.prototype = _URL.prototype;
+      PatchedURL.createObjectURL = _URL.createObjectURL.bind(_URL);
+      PatchedURL.revokeObjectURL = _URL.revokeObjectURL.bind(_URL);
+      window.URL = PatchedURL;
+    })();
+  </script>
+{% endblock %}
+
 {% block htmltitle %}
   {% if page and page.title and config.site_name and page.title == config.site_name %}
     <title>{{ page.title }}</title>
