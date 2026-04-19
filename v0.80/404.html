@@ -69,19 +69,25 @@
     
     
   
-  <!-- Patch URL constructor to handle relative URLs (e.g. new URL(".")) without a base -->
+  <!-- Keep native URL behavior and only patch the specific new URL(".") fallback case -->
   <script>
     (function () {
       var _URL = window.URL;
+
       function PatchedURL(url, base) {
-        if (base === undefined && typeof url === "string" && !url.match(/^[a-zA-Z][a-zA-Z0-9+\-.]*:/)) {
-          base = location.href;
+        if (base === undefined && (url === "." || url === "./")) {
+          base = document.baseURI || location.href;
         }
-        return new _URL(url, base);
+
+        if (base === undefined) {
+          return Reflect.construct(_URL, [url], new.target || _URL);
+        }
+
+        return Reflect.construct(_URL, [url, base], new.target || _URL);
       }
+
       PatchedURL.prototype = _URL.prototype;
-      PatchedURL.createObjectURL = _URL.createObjectURL.bind(_URL);
-      PatchedURL.revokeObjectURL = _URL.revokeObjectURL.bind(_URL);
+      Object.setPrototypeOf(PatchedURL, _URL);
       window.URL = PatchedURL;
     })();
   </script>
