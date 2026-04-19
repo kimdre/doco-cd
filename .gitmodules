@@ -1,7 +1,3 @@
-[submodule "docs"]
-	path = docs
-	url = https://github.com/kimdre/doco-cd.wiki.git
-	branch = master
 [submodule "test-cases"]
 	path = test-cases
 	url = https://github.com/kimdre/doco-cd_tests.git
