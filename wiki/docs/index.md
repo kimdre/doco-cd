@@ -30,11 +30,8 @@ Follow the [Getting Started Guide](Getting-Started.md) to get started with Doco-
 
 More resources:
 
-1. [Tips and Tricks](Advanced/Tips-and-Tricks.md) - Some tips and tricks for using the application.
-2. [Known Limitations](Known-Limitations.md) - Learn about the limitations of the application.
-
-See the right sidebar for links to the wiki pages with more detailed information.
-
+1. [Known Limitations](Known-Limitations.md) - Learn about the limitations of the application.
+2. [Tips and Tricks](Advanced/Tips-and-Tricks.md) - Some tips and tricks for using the application.
 
 ## Supported Git Providers
 

@@ -98,9 +98,14 @@ compose_files:
 
 ### Using encrypted secrets
 
-Doco-CD supports the encryption of sensitive data in your deployment files with [SOPS](https://getsops.io/).
+Doco-CD supports the encryption of sensitive data in your Git repository files with [SOPS](https://getsops.io/).
 
 See the [Encryption](Advanced/Encryption.md) wiki page for more information on how to use SOPS with Doco-CD.
+
+### Fetch secrets from external secret providers
+
+Doco-CD supports fetching secrets from various external secret management providers like OpenBao, AWS Secrets Manager, Bitwarden, and many more.
+See the [External Secrets](External-Secrets/index.md) wiki page for more information on how to use external secret management providers with Doco-CD.
 
 ### Pulling images from a private registry
 
