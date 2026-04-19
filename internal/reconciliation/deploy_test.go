@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -28,6 +29,10 @@ import (
 )
 
 func TestDeploy(t *testing.T) {
+	defer func() {
+		reconciliationHandler.close()
+	}()
+
 	encryption.SetupAgeKeyEnvVar(t)
 
 	ctx := t.Context()
@@ -44,12 +49,13 @@ func TestDeploy(t *testing.T) {
 		t.Fatalf("Failed to create docker client: %v", err)
 	}
 
-	t.Cleanup(func() {
+	defer func() {
 		err = dockerCli.Client().Close()
 		if err != nil {
+			t.Log("Failed to close docker client:", err)
 			return
 		}
-	})
+	}()
 
 	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, "v0.0.0-test")
 	if err != nil {
@@ -63,9 +69,7 @@ func TestDeploy(t *testing.T) {
 	}
 
 	if secretProvider != nil {
-		t.Cleanup(func() {
-			secretProvider.Close()
-		})
+		defer secretProvider.Close()
 	}
 
 	jobId := id.GenJobID()
@@ -98,11 +102,11 @@ func TestDeploy(t *testing.T) {
 	// https://github.com/kimdre/doco-cd_tests/blob/7be81e788a40724cee7542eec00a2af0c4340eba/.doco-cd.yml
 	for _, dc := range dcs {
 		dc.Name = stackName + "-" + dc.Name
-		dc.Reconciliation.Interval = 10
+		dc.Reconciliation.Interval = 5
 	}
 
 	dcs[0].Reconciliation.Enabled = false
-	dcs[1].Reconciliation.Interval = 20
+	dcs[1].Reconciliation.Interval = 10
 
 	if err := Deploy(ctx, log, c,
 		container.MountPoint{
@@ -142,12 +146,12 @@ func TestDeploy(t *testing.T) {
 
 	secondPartWanted := []string{wanted[1], wanted[2], wanted[3], wanted[4]}
 
-	t.Cleanup(func() {
+	defer func() {
 		err := rmContainer(context.Background(), t, dockerCli.Client(), secondPartWanted)
 		if err != nil {
 			t.Error("rmContainer err", err)
 		}
-	})
+	}()
 	slices.Sort(wanted)
 
 	got, err := getRunningContainerNames(ctx, dockerCli.Client(), stackName)
@@ -172,7 +176,7 @@ func TestDeploy(t *testing.T) {
 		t.Fatalf("rm container, get containers, expected empty, got %v", got)
 	}
 
-	time.Sleep(time.Second * 15)
+	time.Sleep(time.Second * 7)
 
 	got, err = getRunningContainerNames(ctx, dockerCli.Client(), stackName)
 	if err != nil {
@@ -180,10 +184,10 @@ func TestDeploy(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(firstPartWanted, got) {
-		t.Fatalf("start +15s, get containers, expected %v, got %v", firstPartWanted, got)
+		t.Fatalf("start +7s, get containers, expected %v, got %v", firstPartWanted, got)
 	}
 
-	time.Sleep(time.Second * 10)
+	time.Sleep(time.Second * 5)
 
 	got, err = getRunningContainerNames(ctx, dockerCli.Client(), stackName)
 	if err != nil {
@@ -191,7 +195,7 @@ func TestDeploy(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(secondPartWanted, got) {
-		t.Fatalf("start +35s, get containers, expected %v, got %v", secondPartWanted, got)
+		t.Fatalf("start +12s, get containers, expected %v, got %v", secondPartWanted, got)
 	}
 }
 
@@ -218,14 +222,20 @@ func getRunningContainerNames(ctx context.Context, cli client.APIClient, prefix 
 }
 
 func rmContainer(ctx context.Context, t *testing.T, cli client.APIClient, containerNames []string) error {
+	wg := sync.WaitGroup{}
 	for _, containerName := range containerNames {
-		_, err := cli.ContainerRemove(ctx, containerName, client.ContainerRemoveOptions{
-			Force: true,
-		})
-		if err != nil {
-			t.Errorf("rm container %s err: %v", containerName, err)
-		}
+		wg.Add(1)
+		go func(name string) {
+			defer wg.Done()
+			_, err := cli.ContainerRemove(ctx, name, client.ContainerRemoveOptions{
+				Force: true,
+			})
+			if err != nil {
+				t.Errorf("rm container %s err: %v", name, err)
+			}
+		}(containerName)
 	}
+	wg.Wait()
 
 	return nil
 }
