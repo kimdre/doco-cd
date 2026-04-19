@@ -11,6 +11,8 @@ tags:
     --8<-- "docker-compose.yml"
     ```
 
+Find out about the [Core Concepts](Core-Concepts.md) of Doco CD to understand how the application works and how to configure it.
+
 You can find all available app settings on the [App Settings](App-Settings.md) wiki page.
 
 If you run the application with Docker Swarm, see the [Swarm Mode](Advanced/Swarm-Mode.md) wiki page for more information.
