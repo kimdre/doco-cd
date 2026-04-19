@@ -13,6 +13,7 @@ on:
     paths-ignore:
       - '**/*.md'
       - 'docs/**'
+      - 'wiki/**'
       - 'LICENSE'
       - 'renovate.json'
   pull_request:
@@ -21,6 +22,7 @@ on:
     paths-ignore:
       - '**/*.md'
       - 'docs/**'
+      - 'wiki/**'
       - 'LICENSE'
       - 'renovate.json'
 

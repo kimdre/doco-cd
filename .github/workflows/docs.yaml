@@ -1,0 +1,57 @@
+name: Publish Documentation
+
+on:
+  release:
+    types:
+      - published
+
+env:
+  DOCS_BRANCH: gh-pages
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build documentation
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./wiki
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+          cache: 'pip'
+
+      - name: Install docs requirements
+        run: pip install -r requirements.txt
+
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "docs-deploy@doco.cd"
+
+      - name: Publish prerelease docs with mike (no latest)
+        if: ${{ github.event.release.prerelease }}
+        env:
+          VERSION: ${{ github.event.release.tag_name }}
+        run: |
+          mike deploy --branch $DOCS_BRANCH --config-file zensical.toml --push --update-aliases "$VERSION" pre-release
+
+      - name: Publish stable docs with mike (update latest)
+        if: ${{ !github.event.release.prerelease }}
+        env:
+          VERSION: ${{ github.event.release.tag_name }}
+        run: |
+          mike deploy --branch $DOCS_BRANCH --config-file zensical.toml --push --update-aliases "$VERSION" latest
+          mike set-default --branch $DOCS_BRANCH --config-file zensical.toml --push latest
