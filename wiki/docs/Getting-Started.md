@@ -11,6 +11,12 @@ tags:
     --8<-- "docker-compose.yml"
     ```
 
+!!! tip
+    To use a specific version, replace the `latest` tag with the desired release version without the leading `v` (e.g. `0.80.0`):
+    `ghcr.io/kimdre/doco-cd:0.80.0`
+
+    You can find the available tags/versions on the [GitHub Container Registry](https://github.com/kimdre/doco-cd/pkgs/container/doco-cd).
+
 Find out about the [Core Concepts](Core-Concepts.md) of Doco-CD to understand how the application works and how to configure it.
 
 You can find all available app settings on the [App Settings](App-Settings.md) wiki page.

@@ -49,7 +49,7 @@ See more info here: [Setup Webhook](Setup-Access-Token.md#git-providers)
 [![GitHub Release](https://img.shields.io/github/v/release/kimdre/doco-cd?include_prereleases&sort=semver&display_name=release&style=flat-square&label=Latest%20Version&color=%234CBB17)](https://github.com/kimdre/doco-cd/releases)
 ![GitHub Release Date](https://img.shields.io/github/release-date/kimdre/doco-cd?style=flat-square&label=Release%20Date&color=%234CBB17)
 
-See the [releases page](https://github.com/kimdre/doco-cd/releases) for release notes and changelogs.
+See the [releases page](https://github.com/kimdre/doco-cd/releases) for release notes and changelogs or the [Security Policy](Security.md) for more information.
 
 ## Image
 
@@ -59,10 +59,10 @@ You can find the Docker image in the [GitHub Container Registry](https://github.
 docker pull ghcr.io/kimdre/doco-cd:latest
 ```
 
-To use a specific version, replace `latest` with the desired release version without the leading `v` (e.g. `0.1.0`):
+To use a specific version, replace `latest` with the desired release version without the leading `v` (e.g. `0.80.0`):
 
 ```sh
-ghcr.io/kimdre/doco-cd:0.1.0
+ghcr.io/kimdre/doco-cd:0.80.0
 ```
 
 ## Community

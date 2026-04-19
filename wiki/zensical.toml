@@ -58,7 +58,7 @@ nav = [
     ] },
     { "Known Limitations" = "Known-Limitations.md" },
     { "Contributing" = "Contributing.md" },
-    { "Security" = "Security.md" },
+    { "Security Policy" = "Security.md" },
     { "License" = "License.md" },
   ] },
   { Releases = "https://github.com/kimdre/doco-cd/releases" },

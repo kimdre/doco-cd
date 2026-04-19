@@ -1,5 +1,4 @@
 ---
-title: "Versioning and Security"
 tags:
   - Reference
   - Development
