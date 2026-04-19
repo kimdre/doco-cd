@@ -53,3 +53,34 @@ jobs:
 
           mike deploy --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --push --update-aliases "$MAJOR_MINOR" latest
           mike set-default --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --push latest
+
+  pages-build-deployment:
+    name: pages-build-deployment
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout published docs branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ env.DOCS_BRANCH }}
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          # Upload entire repository
+          path: '.'
+          include-hidden-files: true
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
+
