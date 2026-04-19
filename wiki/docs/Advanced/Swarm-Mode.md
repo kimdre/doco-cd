@@ -5,8 +5,6 @@ tags:
   - Swarm Mode
 ---
 
-## Overview
-
 Doco-CD also supports [Docker Swarm mode](https://docs.docker.com/engine/swarm/), which allows you to manage a cluster of Docker engines as a single virtual engine. 
 This is useful for deploying applications across multiple nodes and ensuring high availability.
 
