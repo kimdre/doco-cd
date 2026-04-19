@@ -105,18 +105,28 @@
               
   <style>
     .md-banner--warning {
-      position: sticky;
+      position: fixed;
       top: 0;
-      z-index: 100;
-    }
-    .md-header {
-      top: var(--md-banner-height, 0);
+      left: 0;
+      right: 0;
+      z-index: 101;
     }
   </style>
   You're not viewing the latest version.
   <a href="../../../latest/External-Secrets/AWS-Secrets-Manager/">
     <strong>Click here to go to latest.</strong>
   </a>
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      var banner = document.querySelector(".md-banner--warning");
+      var header = document.querySelector(".md-header");
+      if (banner && header) {
+        var h = banner.offsetHeight + "px";
+        header.style.top = h;
+        document.body.style.paddingTop = (banner.offsetHeight + header.offsetHeight) + "px";
+      }
+    });
+  </script>
 
             </div>
             <script>var el=document.querySelector("[data-md-component=outdated]"),base=new URL("../.."),outdated=__md_get("__outdated",sessionStorage,base);!0===outdated&&el&&(el.hidden=!1)</script>
