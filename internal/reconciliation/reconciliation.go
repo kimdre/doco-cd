@@ -21,10 +21,7 @@ import (
 var reconciliationHandler *reconciliation
 
 func init() {
-	reconciliationHandler = &reconciliation{
-		repoJobs: make(map[string]*job),
-		m:        sync.Mutex{},
-	}
+	reconciliationHandler = newReconciliation()
 }
 
 type jobInfo struct {
@@ -141,6 +138,22 @@ type reconciliation struct {
 	m sync.Mutex
 
 	repoJobs map[string]*job
+}
+
+func newReconciliation() *reconciliation {
+	return &reconciliation{
+		repoJobs: make(map[string]*job),
+		m:        sync.Mutex{},
+	}
+}
+
+func (r *reconciliation) close() {
+	r.m.Lock()
+	defer r.m.Unlock()
+
+	for _, job := range r.repoJobs {
+		job.close()
+	}
 }
 
 func (r *reconciliation) addJob(ctx context.Context, info jobInfo) {
