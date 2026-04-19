@@ -1,6 +1,9 @@
 name: Publish Documentation
 
 on:
+  push:
+    branches:
+      - main
   release:
     types:
       - published
@@ -38,17 +41,15 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "docs-deploy@doco.cd"
 
-      - name: Publish prerelease docs with mike (no latest)
-        if: ${{ github.event.release.prerelease }}
-        env:
-          VERSION: ${{ github.event.release.tag_name }}
-        run: |
-          mike deploy --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --push --update-aliases "$VERSION" pre-release
+      - name: Publish dev docs
+        run: mike deploy --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --push next
 
-      - name: Publish stable docs with mike (update latest)
-        if: ${{ !github.event.release.prerelease }}
+      - name: Publish release docs
+        if: ${{ github.event_name == 'release' && !github.event.release.prerelease }}
         env:
           VERSION: ${{ github.event.release.tag_name }}
         run: |
-          mike deploy --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --push --update-aliases "$VERSION" latest
+          MAJOR_MINOR="$(echo $VERSION | sed -E 's/^(v[0-9]+\.[0-9]+)\..*$/\1/')"
+
+          mike deploy --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --push --update-aliases "$MAJOR_MINOR" latest
           mike set-default --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --push latest
