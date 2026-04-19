@@ -152,6 +152,7 @@ func TestDeploy(t *testing.T) {
 			t.Error("rmContainer err", err)
 		}
 	}()
+
 	slices.Sort(wanted)
 
 	got, err := getRunningContainerNames(ctx, dockerCli.Client(), stackName)
@@ -225,8 +226,10 @@ func rmContainer(ctx context.Context, t *testing.T, cli client.APIClient, contai
 	wg := sync.WaitGroup{}
 	for _, containerName := range containerNames {
 		wg.Add(1)
+
 		go func(name string) {
 			defer wg.Done()
+
 			_, err := cli.ContainerRemove(ctx, name, client.ContainerRemoveOptions{
 				Force: true,
 			})
@@ -235,6 +238,7 @@ func rmContainer(ctx context.Context, t *testing.T, cli client.APIClient, contai
 			}
 		}(containerName)
 	}
+
 	wg.Wait()
 
 	return nil
