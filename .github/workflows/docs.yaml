@@ -16,9 +16,6 @@ jobs:
   build:
     name: Build documentation
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./wiki
     permissions:
       contents: write
     steps:
@@ -34,7 +31,7 @@ jobs:
           cache: 'pip'
 
       - name: Install docs requirements
-        run: pip install -r requirements.txt
+        run: pip install -r ./wiki/requirements.txt
 
       - name: Configure git author
         run: |
@@ -46,12 +43,12 @@ jobs:
         env:
           VERSION: ${{ github.event.release.tag_name }}
         run: |
-          mike deploy --branch $DOCS_BRANCH --config-file zensical.toml --push --update-aliases "$VERSION" pre-release
+          mike deploy --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --push --update-aliases "$VERSION" pre-release
 
       - name: Publish stable docs with mike (update latest)
         if: ${{ !github.event.release.prerelease }}
         env:
           VERSION: ${{ github.event.release.tag_name }}
         run: |
-          mike deploy --branch $DOCS_BRANCH --config-file zensical.toml --push --update-aliases "$VERSION" latest
-          mike set-default --branch $DOCS_BRANCH --config-file zensical.toml --push latest
+          mike deploy --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --push --update-aliases "$VERSION" latest
+          mike set-default --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --push latest
