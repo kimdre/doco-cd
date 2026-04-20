@@ -82,6 +82,7 @@ func CreateDockerCli(quiet, verifyTLS bool) (command.Cli, error) {
 	dockerCli, err := command.NewDockerCli(
 		command.WithOutputStream(outputStream),
 		command.WithErrorStream(errorStream),
+		command.WithAPIClientOptions(client.FromEnv),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create docker cli: %w", err)
