@@ -52,7 +52,7 @@ jobs:
         run: |
           MAJOR_MINOR="$(echo $VERSION | sed -E 's/^(v[0-9]+\.[0-9]+)\..*$/\1/')"
 
-          mike deploy --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --push --allow-empty --update-aliases "$MAJOR_MINOR" latest
+          mike deploy --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --push --allow-empty --alias-type redirect --update-aliases "$MAJOR_MINOR" latest
           mike set-default --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --allow-empty --push latest
 
   deploy:
