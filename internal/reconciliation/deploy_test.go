@@ -29,10 +29,6 @@ import (
 )
 
 func TestDeploy(t *testing.T) {
-	defer func() {
-		reconciliationHandler.close()
-	}()
-
 	encryption.SetupAgeKeyEnvVar(t)
 
 	ctx := t.Context()
