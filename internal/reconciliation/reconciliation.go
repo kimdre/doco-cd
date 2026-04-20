@@ -154,6 +154,8 @@ func (r *reconciliation) close() {
 	for _, job := range r.repoJobs {
 		job.close()
 	}
+
+	r.repoJobs = make(map[string]*job)
 }
 
 func (r *reconciliation) addJob(ctx context.Context, info jobInfo) {

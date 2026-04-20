@@ -108,6 +108,17 @@ func TestDeploy(t *testing.T) {
 	dcs[0].Reconciliation.Enabled = false
 	dcs[1].Reconciliation.Interval = 10
 
+	defer func() {
+		reconciliationHandler.close()
+
+		for _, dc := range dcs {
+			ctx := context.Background()
+			if err := docker.DestroyStack(log, &ctx, &dockerCli, dc); err != nil {
+				t.Error("docker.DestroyStack err", err)
+			}
+		}
+	}()
+
 	if err := Deploy(ctx, log, c,
 		container.MountPoint{
 			Type:        "bind",
@@ -145,13 +156,6 @@ func TestDeploy(t *testing.T) {
 	firstPartWanted := []string{wanted[2], wanted[3], wanted[4]}
 
 	secondPartWanted := []string{wanted[1], wanted[2], wanted[3], wanted[4]}
-
-	defer func() {
-		err := rmContainer(context.Background(), t, dockerCli.Client(), secondPartWanted)
-		if err != nil {
-			t.Error("rmContainer err", err)
-		}
-	}()
 
 	slices.Sort(wanted)
 
