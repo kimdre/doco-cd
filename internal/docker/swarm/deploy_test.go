@@ -16,6 +16,7 @@ func getDockerClient(t *testing.T) client.APIClient {
 	dockerCli, err := command.NewDockerCli(
 		command.WithOutputStream(os.Stdout),
 		command.WithErrorStream(os.Stderr),
+		command.WithAPIClientOptions(client.FromEnv),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create docker cli: %v", err)
