@@ -27,7 +27,7 @@ func TestComposeSignal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dockerCli, err := CreateDockerCli(false, false)
+	dockerCli, err := CreateDockerCli(false)
 	if err != nil {
 		t.Fatal(err)
 	}

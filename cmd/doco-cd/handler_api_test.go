@@ -36,7 +36,7 @@ func TestHandlerData_HealthCheckHandler(t *testing.T) {
 
 	log := logger.New(logger.LevelCritical)
 
-	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy, !appConfig.SkipTLSVerification)
+	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy)
 	if err != nil {
 		t.Fatalf("Failed to create docker client: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 
 	log := logger.New(logger.LevelCritical)
 
-	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy, !appConfig.SkipTLSVerification)
+	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy)
 	if err != nil {
 		t.Fatalf("Failed to create docker client: %v", err)
 	}
@@ -232,7 +232,7 @@ func TestHandlerData_TriggerPollHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy, !appConfig.SkipTLSVerification)
+	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy)
 	if err != nil {
 		t.Fatalf("Failed to create docker client: %v", err)
 	}

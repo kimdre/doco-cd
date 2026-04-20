@@ -135,7 +135,7 @@ func TestDeployCompose(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy, !c.SkipTLSVerification)
+	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1873,7 +1873,7 @@ func TestRestartProject(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy, !c.SkipTLSVerification)
+	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1898,7 +1898,7 @@ func TestStopProject(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy, !c.SkipTLSVerification)
+	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1923,7 +1923,7 @@ func TestStartProject(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy, !c.SkipTLSVerification)
+	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1958,7 +1958,7 @@ func TestRemoveProject(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy, !c.SkipTLSVerification)
+	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1994,7 +1994,7 @@ func TestGetProject(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy, !c.SkipTLSVerification)
+	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2023,7 +2023,7 @@ func TestGetProjects(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy, !c.SkipTLSVerification)
+	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -22,7 +22,7 @@ import (
 func TestDeploySwarmStack(t *testing.T) {
 	encryption.SetupAgeKeyEnvVar(t)
 
-	dockerCli, err := CreateDockerCli(false, false)
+	dockerCli, err := CreateDockerCli(false)
 	if err != nil {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
 	}

@@ -66,7 +66,7 @@ func TestRunPoll(t *testing.T) {
 		})
 	}
 
-	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy, !appConfig.SkipTLSVerification)
+	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy)
 	if err != nil {
 		t.Fatalf("Failed to create docker client: %v", err)
 	}

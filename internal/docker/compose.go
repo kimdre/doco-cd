@@ -65,7 +65,7 @@ func init() {
 	ComposeVersion = version
 }
 
-func CreateDockerCli(quiet, verifyTLS bool) (command.Cli, error) {
+func CreateDockerCli(quiet bool) (command.Cli, error) {
 	var (
 		outputStream io.Writer
 		errorStream  io.Writer
@@ -88,7 +88,7 @@ func CreateDockerCli(quiet, verifyTLS bool) (command.Cli, error) {
 		return nil, fmt.Errorf("failed to create docker cli: %w", err)
 	}
 
-	opts := &flags.ClientOptions{Context: "default", LogLevel: "error", TLSVerify: verifyTLS}
+	opts := &flags.ClientOptions{Context: "default", LogLevel: "error"}
 
 	err = dockerCli.Initialize(opts)
 	if err != nil {

@@ -40,7 +40,7 @@ func TestDeploy(t *testing.T) {
 
 	log := logger.New(logger.LevelCritical).Logger
 
-	dockerCli, err := docker.CreateDockerCli(c.DockerQuietDeploy, !c.SkipTLSVerification)
+	dockerCli, err := docker.CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
 		t.Fatalf("Failed to create docker client: %v", err)
 	}

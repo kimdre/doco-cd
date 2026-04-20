@@ -55,7 +55,7 @@ func TestMain(m *testing.M) {
 
 	ctx := context.Background()
 
-	dockerCli, err := docker.CreateDockerCli(false, false)
+	dockerCli, err := docker.CreateDockerCli(false)
 	if err != nil {
 		log.Fatalf("Failed to create docker client: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestHandleEvent(t *testing.T) {
 		t.Fatalf("failed to get app config: %s", err.Error())
 	}
 
-	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy, !appConfig.SkipTLSVerification)
+	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy)
 	if err != nil {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
 	}

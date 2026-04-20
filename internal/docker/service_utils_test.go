@@ -268,7 +268,7 @@ func Test_getLatestServiceState(t *testing.T) {
 }
 
 func TestGetLatestServiceState(t *testing.T) {
-	dockerCli, err := CreateDockerCli(false, false)
+	dockerCli, err := CreateDockerCli(false)
 	if err != nil {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
 	}
@@ -360,7 +360,7 @@ services:
 func TestGetLatestServiceSwarm(t *testing.T) {
 	t.Parallel()
 
-	dockerCli, err := CreateDockerCli(false, false)
+	dockerCli, err := CreateDockerCli(false)
 	if err != nil {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
 	}
