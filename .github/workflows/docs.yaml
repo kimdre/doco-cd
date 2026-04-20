@@ -60,6 +60,8 @@ jobs:
         with:
           ref: ${{ env.DOCS_BRANCH }}
 
+      # This is a bit hacky, but it ensures that the latest sitemap.xml always points to the latest version of the docs
+      # TODO: Remove this once the symlink alias bug is fixed in Zensical (https://github.com/zensical/ui/issues/126)
       - name: Create symlink to latest Sitemap.xml
         run: |
           VERSION="$(jq -r '.[] | select(.aliases[] == "latest") | .version' versions.json)"
