@@ -45,13 +45,13 @@ func TestDeploy(t *testing.T) {
 		t.Fatalf("Failed to create docker client: %v", err)
 	}
 
-	defer func() {
+	t.Cleanup(func() {
 		err = dockerCli.Client().Close()
 		if err != nil {
 			t.Log("Failed to close docker client:", err)
 			return
 		}
-	}()
+	})
 
 	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, "v0.0.0-test")
 	if err != nil {
@@ -65,7 +65,9 @@ func TestDeploy(t *testing.T) {
 	}
 
 	if secretProvider != nil {
-		defer secretProvider.Close()
+		t.Cleanup(func() {
+			secretProvider.Close()
+		})
 	}
 
 	jobId := id.GenJobID()
@@ -104,7 +106,7 @@ func TestDeploy(t *testing.T) {
 	dcs[0].Reconciliation.Enabled = false
 	dcs[1].Reconciliation.Interval = 10
 
-	defer func() {
+	t.Cleanup(func() {
 		reconciliationHandler.close()
 
 		for _, dc := range dcs {
@@ -113,7 +115,7 @@ func TestDeploy(t *testing.T) {
 				t.Error("docker.DestroyStack err", err)
 			}
 		}
-	}()
+	})
 
 	if err := Deploy(ctx, log, c,
 		container.MountPoint{
