@@ -121,6 +121,11 @@ toggle.icon = "lucide/moon"
 toggle.name = "Switch to system preference"
 
 [[project.extra.social]]
+icon = "fontawesome/solid/heart"
+link = "https://github.com/sponsors/kimdre"
+name = "Support this project"
+
+[[project.extra.social]]
 icon = "fontawesome/brands/github"
 link = "https://github.com/kimdre/doco-cd"
 name = "Github"
