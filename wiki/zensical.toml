@@ -130,6 +130,11 @@ provider = "mike"
 default = "latest"
 alias = true
 
+[project.extra.analytics]
+provider = "custom"
+scriptSrc = "https://tracking.maki-it.de/api/script.js"
+siteId = "d92a5c3f266b"
+
 [project.markdown_extensions.abbr]
 [project.markdown_extensions.admonition]
 [project.markdown_extensions.attr_list]

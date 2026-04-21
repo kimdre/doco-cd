@@ -1,0 +1,16 @@
+<script>
+  var host = window.location.hostname
+  var isLocalhost =
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "::1" ||
+    host === "[::1]"
+
+  if (!isLocalhost) {
+    var script = document.createElement("script")
+    script.src = "{{ config.extra.analytics.scriptSrc }}"
+    script.setAttribute("data-site-id", "{{ config.extra.analytics.siteId }}")
+    script.defer = true
+    document.head.appendChild(script)
+  }
+</script>
