@@ -93,7 +93,6 @@ features = [
   "navigation.tabs",
   "navigation.tabs.sticky",
   "navigation.top",
-  "navigation.tracking",
   "toc.follow",
   "search.highlight",
   "search.suggest",
@@ -130,6 +129,11 @@ name = "Github"
 provider = "mike"
 default = "latest"
 alias = true
+
+[project.extra.analytics]
+provider = "custom"
+scriptSrc = "https://tracking.maki-it.de/api/script.js"
+siteId = "d92a5c3f266b"
 
 [project.markdown_extensions.abbr]
 [project.markdown_extensions.admonition]
