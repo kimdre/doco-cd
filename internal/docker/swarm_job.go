@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/avast/retry-go/v5"
 	"github.com/docker/cli/cli/command"
+
 	"github.com/moby/moby/api/types/mount"
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
@@ -120,23 +123,41 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 				return errors.New("service already exists but could not find its ID")
 			}
 
-			inspectResult, getErr := apiClient.ServiceInspect(ctx, serviceId, client.ServiceInspectOptions{})
-			if getErr != nil {
-				return fmt.Errorf("error inspecting existing service: %w", getErr)
-			}
+			updateErr := retry.New(
+				retry.Attempts(5),
+				retry.Delay(250*time.Millisecond),
+				retry.DelayType(retry.BackOffDelay),
+				retry.RetryIf(func(err error) bool {
+					return strings.Contains(err.Error(), "update out of sequence")
+				}),
+			).Do(
+				func() error {
+					inspectResult, getErr := apiClient.ServiceInspect(ctx, serviceId, client.ServiceInspectOptions{})
+					if getErr != nil {
+						return fmt.Errorf("error inspecting existing service: %w", getErr)
+					}
 
-			existingService := inspectResult.Service
+					existingService := inspectResult.Service
 
-			// Update the ForceUpdate to trigger a new job run
-			existingService.Spec.TaskTemplate.ContainerSpec.Labels = newServiceSpec.TaskTemplate.ContainerSpec.Labels
-			existingService.Spec.TaskTemplate.ContainerSpec.Command = newServiceSpec.TaskTemplate.ContainerSpec.Command
-			existingService.Spec.TaskTemplate.ForceUpdate = newServiceSpec.TaskTemplate.ForceUpdate
+					// already up to date, no need to update
+					if existingService.Spec.TaskTemplate.ForceUpdate == newServiceSpec.TaskTemplate.ForceUpdate &&
+						reflect.DeepEqual(existingService.Spec.TaskTemplate.ContainerSpec.Labels, newServiceSpec.TaskTemplate.ContainerSpec.Labels) &&
+						reflect.DeepEqual(existingService.Spec.TaskTemplate.ContainerSpec.Command, newServiceSpec.TaskTemplate.ContainerSpec.Command) {
+						return nil
+					}
+					// Update the ForceUpdate to trigger a new job run
+					existingService.Spec.TaskTemplate.ContainerSpec.Labels = newServiceSpec.TaskTemplate.ContainerSpec.Labels
+					existingService.Spec.TaskTemplate.ContainerSpec.Command = newServiceSpec.TaskTemplate.ContainerSpec.Command
+					existingService.Spec.TaskTemplate.ForceUpdate = newServiceSpec.TaskTemplate.ForceUpdate
 
-			_, updateErr := apiClient.ServiceUpdate(ctx, serviceId, client.ServiceUpdateOptions{
-				Version:       existingService.Version,
-				Spec:          existingService.Spec,
-				QueryRegistry: true,
-			})
+					_, updateErr := apiClient.ServiceUpdate(ctx, serviceId, client.ServiceUpdateOptions{
+						Version:       existingService.Version,
+						Spec:          existingService.Spec,
+						QueryRegistry: true,
+					})
+
+					return updateErr
+				})
 			if updateErr != nil {
 				return fmt.Errorf("error updating existing service: %w", updateErr)
 			}
