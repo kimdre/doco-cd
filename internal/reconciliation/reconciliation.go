@@ -66,7 +66,7 @@ func (j *job) close() {
 
 func (j *job) run(ctx context.Context) {
 	jobLog := j.info.jobLog
-	jobLog.Debug("staring reconciliation")
+	jobLog.Debug("starting reconciliation")
 
 	wg := sync.WaitGroup{}
 
@@ -94,7 +94,7 @@ func (j *job) runByInterval(ctx context.Context, interval int, dcs []*config.Dep
 		slog.Int("interval", interval),
 	)
 
-	jobLog.Debug("staring reconciliation, by interval")
+	jobLog.Debug("starting reconciliation, by interval")
 
 	defer jobLog.Debug("ending reconciliation, by interval")
 
