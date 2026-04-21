@@ -1,3 +1,0 @@
-User-agent: *
-Disallow:
-Sitemap: https://doco.cd/latest/sitemap.xml
