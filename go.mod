@@ -28,7 +28,7 @@ require (
 	github.com/infisical/go-sdk v0.7.1
 	github.com/joho/godotenv v1.5.1
 	github.com/moby/moby/api v1.54.2
-	github.com/moby/moby/client v0.4.0
+	github.com/moby/moby/client v0.4.1
 	github.com/openbao/openbao/api/v2 v2.5.1
 	github.com/prometheus/client_golang v1.23.2
 	go.yaml.in/yaml/v3 v3.0.4
@@ -121,7 +121,7 @@ require (
 	github.com/docker/buildx v0.33.0 // indirect
 	github.com/docker/docker v28.5.2+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.5 // indirect
-	github.com/docker/go-connections v0.6.0 // indirect
+	github.com/docker/go-connections v0.7.0 // indirect
 	github.com/docker/go-events v0.0.0-20190806004212-e31b211e4f1c // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dylibso/observe-sdk/go v0.0.0-20240828172851-9145d8ad07e1 // indirect
