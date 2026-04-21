@@ -246,7 +246,7 @@ func TestHandleEvent(t *testing.T) {
 				t.Skip("Skipping test for private repository because GIT_ACCESS_TOKEN is not set")
 			}
 
-			jobID := id.GenJobID()
+			jobID := id.GenID()
 			jobLog := logger.New(logger.LevelCritical).With(slog.String("job_id", jobID))
 
 			ctx := context.Background()

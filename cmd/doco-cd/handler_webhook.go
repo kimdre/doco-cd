@@ -129,7 +129,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	customTarget := r.PathValue("customTarget")
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := id.GenJobID()
+	jobID := id.GenID()
 
 	jobLog := h.log.With(slog.String("job_id", jobID))
 

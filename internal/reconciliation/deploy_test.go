@@ -70,7 +70,7 @@ func TestDeploy(t *testing.T) {
 		})
 	}
 
-	jobId := id.GenJobID()
+	jobId := id.GenID()
 
 	p := webhook.ParsedPayload{
 		Ref:       "7be81e788a40724cee7542eec00a2af0c4340eba",

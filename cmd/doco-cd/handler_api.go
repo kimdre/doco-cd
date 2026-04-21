@@ -84,7 +84,7 @@ func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request)
 		errType error
 	)
 
-	jobID := id.GenJobID()
+	jobID := id.GenID()
 
 	metadata := notification.Metadata{
 		JobID:      jobID,
@@ -167,7 +167,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := id.GenJobID()
+	jobID := id.GenID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")
@@ -247,7 +247,7 @@ func (h *handlerData) GetProjectsApiHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := id.GenJobID()
+	jobID := id.GenID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")
@@ -285,7 +285,7 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 	var err error
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := id.GenJobID()
+	jobID := id.GenID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")
@@ -391,7 +391,7 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 	var err error
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := id.GenJobID()
+	jobID := id.GenID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")
@@ -577,7 +577,7 @@ func (h *handlerData) StackApiHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := id.GenJobID()
+	jobID := id.GenID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")
@@ -652,7 +652,7 @@ func (h *handlerData) GetStacksApiHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := id.GenJobID()
+	jobID := id.GenID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")
@@ -688,7 +688,7 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 	var err error
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := id.GenJobID()
+	jobID := id.GenID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")

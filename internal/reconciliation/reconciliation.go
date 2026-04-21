@@ -15,6 +15,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/stages"
+	"github.com/kimdre/doco-cd/internal/utils/id"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -66,23 +67,20 @@ func (j *job) close() {
 
 func (j *job) run(ctx context.Context) {
 	jobLog := j.info.jobLog
-	jobLog.Debug("starting reconciliation")
+	jobLog.Debug("reconciliation loop started")
+	defer jobLog.Debug("reconciliation loop stopped")
 
 	wg := sync.WaitGroup{}
 
 	for interval, dcs := range j.deployConfigGroupByInterval {
 		if len(dcs) > 0 {
-			wg.Add(1)
 			wg.Go(func() {
-				defer wg.Done()
-
 				j.runByInterval(ctx, interval, dcs)
 			})
 		}
 	}
 
 	wg.Wait()
-	jobLog.Debug("ending reconciliation")
 }
 
 func (j *job) runByInterval(ctx context.Context, interval int, dcs []*config.DeployConfig) {
@@ -93,10 +91,8 @@ func (j *job) runByInterval(ctx context.Context, interval int, dcs []*config.Dep
 	jobLog := j.info.jobLog.With(
 		slog.Int("interval", interval),
 	)
-
-	jobLog.Debug("starting reconciliation, by interval")
-
-	defer jobLog.Debug("ending reconciliation, by interval")
+	jobLog.Debug("reconciliation interval worker started")
+	defer jobLog.Debug("reconciliation interval worker stopped")
 
 	for {
 		select {
@@ -107,19 +103,21 @@ func (j *job) runByInterval(ctx context.Context, interval int, dcs []*config.Dep
 			jobLog.Debug("channel is closed")
 			return
 		case <-time.After(time.Second * time.Duration(interval)):
-			jobLog.Debug("time to run reconciliation")
-			j.deploy(ctx, dcs)
+			j.deploy(ctx, jobLog, dcs)
 		}
 	}
 }
 
-func (j *job) deploy(ctx context.Context, dcs []*config.DeployConfig) {
+func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*config.DeployConfig) {
 	repoLock := lock.GetRepoLock(j.info.metadata.Repository)
 	repoLock.Lock()
 	defer repoLock.Unlock()
 
-	jobLog := j.info.jobLog
-	if err := cleanupObsoleteAutoDiscoveredContainers(ctx, j.info.jobLog,
+	jobLog = jobLog.With(slog.String("reconciliation_id", id.GenID()))
+	jobLog.Debug("reconciliation started")
+	defer jobLog.Debug("reconciliation completed")
+
+	if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
 		j.info.dockerCli, string(j.info.repoData.CloneURL),
 		j.info.deployConfigs, // all deploy configs
 		j.info.metadata); err != nil {

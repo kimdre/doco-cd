@@ -57,7 +57,7 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *config.PollJob) 
 
 	for {
 		if pollJob.LastRun == 0 || time.Now().Unix() >= pollJob.NextRun {
-			jobID := id.GenJobID()
+			jobID := id.GenID()
 			locked := repoLock.TryLock(jobID)
 
 			if !locked {

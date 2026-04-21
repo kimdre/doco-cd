@@ -34,7 +34,7 @@ func TestSend(t *testing.T) {
 		Repository: "test",
 		Stack:      "test-stack",
 		Revision:   "main",
-		JobID:      id.GenJobID(),
+		JobID:      id.GenID(),
 	}
 
 	appriseComposeYAML := `services:
