@@ -67,6 +67,7 @@ func (j *job) close() {
 
 func (j *job) run(ctx context.Context) {
 	jobLog := j.info.jobLog
+
 	jobLog.Debug("reconciliation loop started")
 	defer jobLog.Debug("reconciliation loop stopped")
 
@@ -91,6 +92,7 @@ func (j *job) runByInterval(ctx context.Context, interval int, dcs []*config.Dep
 	jobLog := j.info.jobLog.With(
 		slog.Int("interval", interval),
 	)
+
 	jobLog.Debug("reconciliation interval worker started")
 	defer jobLog.Debug("reconciliation interval worker stopped")
 
@@ -114,6 +116,7 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*config.Dep
 	defer repoLock.Unlock()
 
 	jobLog = jobLog.With(slog.String("reconciliation_id", id.GenID()))
+
 	jobLog.Debug("reconciliation started")
 	defer jobLog.Debug("reconciliation completed")
 
