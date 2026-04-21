@@ -60,10 +60,13 @@ jobs:
         with:
           ref: ${{ env.DOCS_BRANCH }}
 
-      # This is a bit hacky, but it ensures that the latest sitemap.xml always points to the latest version of the docs
-      # TODO: Remove this once the symlink alias bug is fixed in Zensical (https://github.com/zensical/ui/issues/126)
-      - name: Create symlink to latest Sitemap.xml
+      # This is a bit hacky, but it ensures that the sitemap.xml always points to the latest version of the docs
+      - name: Create symlinks to latest Sitemap.xml
         run: |
+          # Add a symlink to the latest sitemap.xml in the root of the gh-pages branch, pointing to the latest version's sitemap.xml
+          ln -fs latest/sitemap.xml sitemap.xml
+          
+          # TODO: Remove this once the symlink alias bug is fixed in Zensical (https://github.com/zensical/ui/issues/126)
           VERSION="$(jq -r '.[] | select(.aliases[] == "latest") | .version' versions.json)"
           ln -sf "../$VERSION/sitemap.xml" latest/sitemap.xml
           git add latest/sitemap.xml
