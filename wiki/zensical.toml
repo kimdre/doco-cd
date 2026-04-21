@@ -93,7 +93,6 @@ features = [
   "navigation.tabs",
   "navigation.tabs.sticky",
   "navigation.top",
-  "navigation.tracking",
   "toc.follow",
   "search.highlight",
   "search.suggest",
