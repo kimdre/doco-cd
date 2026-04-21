@@ -23,7 +23,7 @@ require (
 	github.com/docker/cli v29.4.1+incompatible
 	github.com/getsops/sops/v3 v3.12.2
 	github.com/go-git/go-billy/v5 v5.8.0
-	github.com/go-git/go-git/v5 v5.17.2
+	github.com/go-git/go-git/v5 v5.18.0
 	github.com/google/uuid v1.6.0
 	github.com/infisical/go-sdk v0.7.1
 	github.com/joho/godotenv v1.5.1
