@@ -123,26 +123,28 @@ func (p *ValueProvider) GetSecret(ctx context.Context, id string) (string, error
 func (p *ValueProvider) newRequest(ctx context.Context, store *Store, remoteRef map[string]any) (*http.Request, string, error) {
 	var body io.Reader
 
-	buf := new(bytes.Buffer)
 	tplParams := map[string]any{
 		"remote_ref": remoteRef,
 		"auth":       p.auth,
 	}
 
-	if err := store.urlTemplate.Execute(buf, tplParams); err != nil {
+	urlBuf := new(bytes.Buffer)
+
+	if err := store.urlTemplate.Execute(urlBuf, tplParams); err != nil {
 		return nil, "", err
 	}
 
-	url := buf.String()
+	url := urlBuf.String()
 	method := store.Method
 
 	if store.bodyTemplate != nil {
-		buf.Reset() // reuse buffer for payload rendering
-		body = buf
+		bodyBuf := new(bytes.Buffer)
 
-		if err := store.bodyTemplate.Execute(buf, tplParams); err != nil {
+		if err := store.bodyTemplate.Execute(bodyBuf, tplParams); err != nil {
 			return nil, "", err
 		}
+
+		body = bytes.NewReader(bodyBuf.Bytes())
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
@@ -157,22 +159,22 @@ func (p *ValueProvider) newRequest(ctx context.Context, store *Store, remoteRef 
 	req.Header.Set(HeaderAccept, ContentTypeJSON)
 
 	for key, tpl := range store.headerTemplates {
-		buf.Reset()
+		headerBuf := new(bytes.Buffer)
 
-		if err := tpl.Execute(buf, tplParams); err != nil {
+		if err := tpl.Execute(headerBuf, tplParams); err != nil {
 			return nil, "", err
 		}
 
-		req.Header.Set(key, buf.String())
+		req.Header.Set(key, headerBuf.String())
 	}
 
-	buf.Reset()
+	jsonPathBuf := new(bytes.Buffer)
 
-	if err := store.jsonPathTemplate.Execute(buf, tplParams); err != nil {
+	if err := store.jsonPathTemplate.Execute(jsonPathBuf, tplParams); err != nil {
 		return nil, "", err
 	}
 
-	renderedJSONPath := buf.String()
+	renderedJSONPath := jsonPathBuf.String()
 	if renderedJSONPath == "" {
 		return nil, "", fmt.Errorf("store %q rendered an empty json_path", store.Name)
 	}
