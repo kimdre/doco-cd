@@ -1,6 +1,7 @@
 name: Publish Documentation
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -28,7 +29,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.x"
           cache: 'pip'
@@ -51,5 +52,57 @@ jobs:
         run: |
           MAJOR_MINOR="$(echo $VERSION | sed -E 's/^(v[0-9]+\.[0-9]+)\..*$/\1/')"
 
-          mike deploy --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --push --update-aliases "$MAJOR_MINOR" latest
+          mike deploy --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --push --alias-type redirect --update-aliases "$MAJOR_MINOR" latest
           mike set-default --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --push latest
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ env.DOCS_BRANCH }}
+
+      # This is a bit hacky, but it ensures that the sitemap.xml always points to the latest version of the docs
+      - name: Create symlinks to latest Sitemap.xml
+        run: |
+          # Add a symlink to the latest sitemap.xml in the root of the gh-pages branch, pointing to the latest version's sitemap.xml
+          ln -fs latest/sitemap.xml sitemap.xml
+          git add sitemap.xml
+          
+          # TODO: Remove this once the symlink alias bug is fixed in Zensical (https://github.com/zensical/ui/issues/126)
+          VERSION="$(jq -r '.[] | select(.aliases[] == "latest") | .version' versions.json)"
+          ln -sf "../$VERSION/sitemap.xml" latest/sitemap.xml
+          git add latest/sitemap.xml
+          
+          # Push the changes to the gh-pages branch
+          git commit -m "Update latest sitemap.xml symlink to $VERSION" || echo "No changes to commit"
+          git push origin $DOCS_BRANCH
+#
+#  deploy:
+#    name: Deploy to GitHub Pages
+#    needs:
+#      - build
+#    runs-on: ubuntu-latest
+#    permissions:
+#      contents: read
+#      pages: write
+#      id-token: write
+#    environment:
+#      name: github-pages
+#      url: ${{ steps.deployment.outputs.page_url }}
+#    steps:
+#      - name: Checkout published docs branch
+#        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+#        with:
+#          ref: ${{ env.DOCS_BRANCH }}
+#
+#      - name: Setup Pages
+#        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+#      - name: Upload artifact
+#        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
+#        with:
+#          # Upload entire repository
+#          path: '.'
+#          include-hidden-files: true
+#      - name: Deploy to GitHub Pages
+#        id: deployment
+#        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+#
