@@ -7,14 +7,16 @@ import (
 
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/flags"
+	"github.com/moby/moby/client"
 )
 
-func getDockerCli(t *testing.T) *command.DockerCli {
+func getDockerClient(t *testing.T) client.APIClient {
 	t.Helper()
 
 	dockerCli, err := command.NewDockerCli(
 		command.WithOutputStream(os.Stdout),
 		command.WithErrorStream(os.Stderr),
+		command.WithAPIClientOptions(client.FromEnv),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create docker cli: %v", err)
@@ -27,11 +29,11 @@ func getDockerCli(t *testing.T) *command.DockerCli {
 		t.Fatal(fmt.Errorf("failed to initialize docker cli: %w", err))
 	}
 
-	return dockerCli
+	return dockerCli.Client()
 }
 
 func TestCheckDaemonIsSwarmManager(t *testing.T) {
-	dockerCli := getDockerCli(t)
+	dockerCli := getDockerClient(t)
 
 	_, err := checkDaemonIsSwarmManager(t.Context(), dockerCli)
 	if err != nil {

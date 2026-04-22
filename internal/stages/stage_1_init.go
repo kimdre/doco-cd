@@ -137,7 +137,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		// Check if containers do not belong to this repository or if doco-cd does not manage the stack
 		correctRepo := true
 
-		serviceLabels, err := docker.GetServiceLabels(ctx, s.Docker.Client, s.DeployConfig.Name)
+		serviceLabels, err := docker.GetServiceLabels(ctx, s.Docker.Cmd.Client(), s.DeployConfig.Name)
 		if err != nil {
 			return fmt.Errorf("failed to retrieve service labels: %w", err)
 		}

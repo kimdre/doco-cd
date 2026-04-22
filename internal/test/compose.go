@@ -27,7 +27,7 @@ type ComposeStack struct {
 	Name      string
 	Service   api.Compose
 	DockerCli command.Cli
-	Client    *client.Client
+	Client    client.APIClient
 }
 
 // composeOptions holds the configuration for [ComposeUp].
@@ -98,6 +98,7 @@ func NewDockerCli() (command.Cli, error) {
 	dockerCli, err := command.NewDockerCli(
 		command.WithOutputStream(io.Discard),
 		command.WithErrorStream(os.Stderr),
+		command.WithAPIClientOptions(client.FromEnv),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create docker cli: %w", err)
@@ -182,10 +183,7 @@ func ComposeUp(ctx context.Context, t *testing.T, opts ...ComposeOption) *Compos
 		project.Services[i] = s
 	}
 
-	dockerClient, err := client.New(client.FromEnv)
-	if err != nil {
-		t.Fatalf("failed to create docker client: %v", err)
-	}
+	dockerClient := dockerCli.Client()
 
 	t.Cleanup(func() {
 		if err := dockerClient.Close(); err != nil {

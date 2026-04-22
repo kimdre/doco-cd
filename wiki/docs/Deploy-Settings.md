@@ -49,6 +49,8 @@ The docker compose deployment can be configured inside the [deployment configura
 | `timeout`          | number           | The time in seconds to wait for the deployment to finish before timing out.                                                                                                                                                                                                                                                                                                                                                                                                          | `180`                                                                                                                  |
 | `destroy`          | boolean          | (⚠️ Destructive) Remove the deployed compose stack/project and its resources from the Docker host. Can be further configured using the [destroy_opts](#destroy-settings) setting.                                                                                                                                                                                                                                                                                                    | `false`                                                                                                                |
 | `auto_discover`    | boolean          | Enables autodiscovery of services to deploy in the working directory by scanning for subdirectories with docker-compose files with the naming `docker-compose.y(a)ml` or `compose.y(a)ml`. Can be further configured using the [auto_discover_opts](#auto-discover-settings) setting.                                                                                                                                                                                                | `false`                                                                                                                |
+| `reconciliation`   | object           | Enables periodic reconciliation. Default is `{enable: true, interval: 60}`. see [reconciliation settings](#reconciliation-settings) for more details.                                                                                                                                                                                                                                                                                                                                | `{enable: true, interval: 60}`                                                                                         |
+
 
 ### Example
 
@@ -196,6 +198,25 @@ destroy_opts:
   remove_volumes: true
   remove_images: false
   remove_dir: false
+```
+
+### Reconciliation settings
+
+The following settings can be used to configure periodic reconciliation.
+
+!!! warning
+    The currently implemented state will be lost when doco-cd restarts.
+
+| Key        | Type    | Description                                          | Default value |
+| ---------- | ------- | ---------------------------------------------------- | ------------- |
+| `enable`   | boolean | Enable periodic reconciliation.                      | `true`        |
+| `interval` | int     | The time in seconds between two reconciliation runs. | `60`          |
+
+```yaml title=".doco-cd.yml"
+name: some-project
+reconciliation:
+  enable: true
+  interval: 60
 ```
 
 ### Webhook Filter

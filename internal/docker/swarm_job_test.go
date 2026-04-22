@@ -9,12 +9,12 @@ import (
 func TestRunSwarmJob(t *testing.T) {
 	t.Parallel()
 
-	dockerCli, err := CreateDockerCli(false, false)
+	dockerCli, err := CreateDockerCli(false)
 	if err != nil {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
 	}
 
-	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli); err != nil {
+	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli.Client()); err != nil {
 		t.Errorf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 
@@ -48,12 +48,12 @@ func TestRunSwarmJob(t *testing.T) {
 func TestRunImagePruneJob(t *testing.T) {
 	t.Parallel()
 
-	dockerCli, err := CreateDockerCli(false, false)
+	dockerCli, err := CreateDockerCli(false)
 	if err != nil {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
 	}
 
-	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli); err != nil {
+	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli.Client()); err != nil {
 		t.Errorf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 

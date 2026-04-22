@@ -7,7 +7,7 @@ import (
 func TestSwarmModeEnabled(t *testing.T) {
 	t.Parallel()
 
-	dockerCli := getDockerCli(t)
+	dockerCli := getDockerClient(t)
 
 	if GetModeEnabled() {
 		t.Fatal("GetModeEnabled want false, got true")

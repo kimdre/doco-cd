@@ -23,7 +23,7 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 		return fmt.Errorf("failed to get latest commit: %w", err)
 	}
 
-	err = docker.DeployStack(stageLog, s.Repository.PathExternal, &ctx, &s.Docker.Cmd, s.Docker.Client,
+	err = docker.DeployStack(stageLog, s.Repository.PathExternal, &ctx, s.Docker.Cmd,
 		s.Payload, s.DeployConfig,
 		s.DeployState.changedServices, s.DeployState.ignoredInfo.NeedSendSignal,
 		latestCommit, config.AppVersion)

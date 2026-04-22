@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/google/uuid"
-
 	"github.com/kimdre/doco-cd/internal/test"
+	"github.com/kimdre/doco-cd/internal/utils/id"
 )
 
 func TestSend(t *testing.T) {
@@ -35,7 +34,7 @@ func TestSend(t *testing.T) {
 		Repository: "test",
 		Stack:      "test-stack",
 		Revision:   "main",
-		JobID:      uuid.Must(uuid.NewV7()).String(),
+		JobID:      id.GenID(),
 	}
 
 	appriseComposeYAML := `services:

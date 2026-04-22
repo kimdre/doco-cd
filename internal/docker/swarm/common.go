@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync/atomic"
 
-	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/compose/convert"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/api/types/swarm"
@@ -36,13 +35,13 @@ func getModeEnabled(disableSwarmFeature, modeEnabled bool) bool {
 	return !disableSwarmFeature && modeEnabled
 }
 
-func RefreshModeEnabled(ctx context.Context, dockerCli command.Cli) error {
+func RefreshModeEnabled(ctx context.Context, dockerClient client.APIClient) error {
 	// ignore swarm feature
 	if disableSwarmFeature.Load() {
 		return nil
 	}
 
-	enable, err := checkDaemonIsSwarmManager(ctx, dockerCli)
+	enable, err := checkDaemonIsSwarmManager(ctx, dockerClient)
 	if err != nil {
 		return err
 	}

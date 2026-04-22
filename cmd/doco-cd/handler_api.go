@@ -11,8 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/kimdre/doco-cd/internal/config"
 
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -20,6 +18,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 	restAPI "github.com/kimdre/doco-cd/internal/restapi"
+	"github.com/kimdre/doco-cd/internal/utils/id"
 )
 
 // registerApiEndpoints registers the API endpoints based on the application configuration and
@@ -85,7 +84,7 @@ func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request)
 		errType error
 	)
 
-	jobID := uuid.Must(uuid.NewV7()).String()
+	jobID := id.GenID()
 
 	metadata := notification.Metadata{
 		JobID:      jobID,
@@ -168,7 +167,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := uuid.Must(uuid.NewV7()).String()
+	jobID := id.GenID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")
@@ -248,7 +247,7 @@ func (h *handlerData) GetProjectsApiHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := uuid.Must(uuid.NewV7()).String()
+	jobID := id.GenID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")
@@ -286,7 +285,7 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 	var err error
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := uuid.Must(uuid.NewV7()).String()
+	jobID := id.GenID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")
@@ -392,7 +391,7 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 	var err error
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := uuid.Must(uuid.NewV7()).String()
+	jobID := id.GenID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")
@@ -500,7 +499,7 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 			jobLog.Info("restarting service", slog.String("service", svcName))
 
 			// Swarm restart supports replicated/global and skips job-mode services.
-			err = docker.RestartService(ctx, h.dockerClient, svcName)
+			err = docker.RestartService(ctx, h.dockerCli.Client(), svcName)
 			if err != nil {
 				if errors.Is(err, docker.ErrJobServiceRestartNotSupported) {
 					jobLog.Debug("skipping restart for job-mode service", slog.String("service", svcName))
@@ -536,7 +535,7 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 
 			jobLog.Info("retriggering job service", slog.String("service", svcName))
 
-			err = docker.RerunJobService(ctx, h.dockerClient, svcName)
+			err = docker.RerunJobService(ctx, h.dockerCli.Client(), svcName)
 			if err != nil {
 				if errors.Is(err, docker.ErrNotAJobService) {
 					jobLog.Debug("skipping non-job service for run action", slog.String("service", svcName))
@@ -578,7 +577,7 @@ func (h *handlerData) StackApiHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := uuid.Must(uuid.NewV7()).String()
+	jobID := id.GenID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")
@@ -653,7 +652,7 @@ func (h *handlerData) GetStacksApiHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := uuid.Must(uuid.NewV7()).String()
+	jobID := id.GenID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")
@@ -689,7 +688,7 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 	var err error
 
 	// Add a job id to the context to track deployments in the logs
-	jobID := uuid.Must(uuid.NewV7()).String()
+	jobID := id.GenID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
 
 	jobLog.Debug("received api request")

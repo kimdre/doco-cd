@@ -19,6 +19,7 @@ import (
 	"github.com/avast/retry-go/v5"
 
 	"github.com/kimdre/doco-cd/internal/test"
+	"github.com/kimdre/doco-cd/internal/utils/id"
 
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
 
@@ -31,8 +32,6 @@ import (
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
-	"github.com/google/uuid"
-	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/encryption"
@@ -136,14 +135,12 @@ func TestDeployCompose(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy, !c.SkipTLSVerification)
+	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	dockerClient, _ := client.New(
-		client.FromEnv,
-	)
+	dockerClient := dockerCli.Client()
 
 	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, "v0.0.0-test")
 	if err != nil {
@@ -162,7 +159,7 @@ func TestDeployCompose(t *testing.T) {
 		})
 	}
 
-	if err := swarm.RefreshModeEnabled(ctx, dockerCli); err != nil {
+	if err := swarm.RefreshModeEnabled(ctx, dockerClient); err != nil {
 		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 
@@ -173,10 +170,10 @@ func TestDeployCompose(t *testing.T) {
 	p := webhook.ParsedPayload{
 		Ref:       git.MainBranch,
 		CommitSHA: "4d877107dfa2e3b582bd8f8f803befbd3a1d867e",
-		Name:      uuid.Must(uuid.NewV7()).String(),
+		Name:      id.GenID(),
 		FullName:  "kimdre/doco-cd_tests",
 		CloneURL:  cloneUrlTest,
-		Private:   true,
+		Private:   false,
 	}
 
 	t.Log("Verify socket connection")
@@ -188,22 +185,11 @@ func TestDeployCompose(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	auth, err := git.GetAuthMethod(p.CloneURL, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	repo, err := git.CloneOrUpdateRepository(slog.Default(), p.CloneURL, p.Ref, tmpDir, tmpDir,
+		p.Private, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken, c.SkipTLSVerification,
+		c.HttpProxy, c.GitCloneSubmodules)
 	if err != nil {
-		t.Fatalf("Failed to get auth method: %v", err)
-	}
-
-	if auth != nil {
-		t.Logf("Using auth method: %s", auth.Name())
-	} else {
-		t.Log("No auth method configured, using anonymous access")
-	}
-
-	repo, err := git.CloneRepository(tmpDir, p.CloneURL, p.Ref, c.SkipTLSVerification, c.HttpProxy, auth, c.GitCloneSubmodules)
-	if err != nil {
-		if !errors.Is(err, git.ErrRepositoryAlreadyExists) {
-			t.Fatal(err)
-		}
+		t.Fatal(err)
 	}
 
 	latestCommit, err := git.GetLatestCommit(repo, p.Ref)
@@ -277,7 +263,7 @@ compose_files:
 
 		t.Logf("Deploying '%s'", deployConf.Name)
 
-		jobID := uuid.Must(uuid.NewV7()).String()
+		jobID := id.GenID()
 
 		testLog := logger.New(slog.LevelInfo)
 		jobLog := testLog.With(slog.String("job_id", jobID))
@@ -303,7 +289,7 @@ compose_files:
 				return strings.Contains(err.Error(), "No such image:")
 			}),
 		).Do(func() error {
-			return DeployStack(jobLog, repoPath, &ctx, &dockerCli, dockerClient, &p, deployConf,
+			return DeployStack(jobLog, repoPath, &ctx, dockerCli, &p, deployConf,
 				nil, nil, latestCommit, "dev")
 		})
 		if err != nil {
@@ -1887,7 +1873,7 @@ func TestRestartProject(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy, !c.SkipTLSVerification)
+	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1912,7 +1898,7 @@ func TestStopProject(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy, !c.SkipTLSVerification)
+	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1937,7 +1923,7 @@ func TestStartProject(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy, !c.SkipTLSVerification)
+	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1972,7 +1958,7 @@ func TestRemoveProject(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy, !c.SkipTLSVerification)
+	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2008,7 +1994,7 @@ func TestGetProject(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy, !c.SkipTLSVerification)
+	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2037,7 +2023,7 @@ func TestGetProjects(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy, !c.SkipTLSVerification)
+	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
 		t.Fatal(err)
 	}

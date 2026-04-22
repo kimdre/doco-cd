@@ -11,7 +11,6 @@ import (
 
 	"github.com/avast/retry-go/v5"
 	"github.com/compose-spec/compose-go/v2/types"
-	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -269,12 +268,12 @@ func Test_getLatestServiceState(t *testing.T) {
 }
 
 func TestGetLatestServiceState(t *testing.T) {
-	dockerCli, err := CreateDockerCli(false, false)
+	dockerCli, err := CreateDockerCli(false)
 	if err != nil {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
 	}
 
-	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli); err != nil {
+	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli.Client()); err != nil {
 		t.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 
@@ -361,12 +360,12 @@ services:
 func TestGetLatestServiceSwarm(t *testing.T) {
 	t.Parallel()
 
-	dockerCli, err := CreateDockerCli(false, false)
+	dockerCli, err := CreateDockerCli(false)
 	if err != nil {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
 	}
 
-	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli); err != nil {
+	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli.Client()); err != nil {
 		t.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 
@@ -431,7 +430,7 @@ services:
 		RemoveOrphans: true,
 	}
 
-	swarmStack, opts, err := LoadSwarmStack(&dockerCli, project, deployCfg, tmpDir)
+	swarmStack, opts, err := LoadSwarmStack(dockerCli, project, deployCfg, tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to load swarm stack: %v", err)
 	}
@@ -466,9 +465,7 @@ services:
 
 	t.Logf("Swarm stack deployed successfully")
 
-	dockerClient, _ := client.New(
-		client.FromEnv,
-	)
+	dockerClient := dockerCli.Client()
 
 	latest, err := GetLatestDeployStatus(ctx, dockerClient, repoName, stackName)
 	if err != nil {

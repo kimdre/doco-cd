@@ -38,7 +38,7 @@ type LatestServiceStatus struct {
 }
 
 // GetLatestDeployStatus retrieves the deployed status for a given repository and deploy name.
-func GetLatestDeployStatus(ctx context.Context, client *client.Client, repoName, deployName string) (LatestServiceStatus, error) {
+func GetLatestDeployStatus(ctx context.Context, client client.APIClient, repoName, deployName string) (LatestServiceStatus, error) {
 	serviceLabels, err := getDeployStatus(ctx, client, deployName)
 	if err != nil {
 		return LatestServiceStatus{}, fmt.Errorf("failed to retrieve service labels: %w", err)
@@ -80,7 +80,7 @@ func getLatestServiceStatus(statusMap map[Service]ServiceStatus, repoName string
 	return ret
 }
 
-func getDeployStatus(ctx context.Context, client *client.Client, deployName string) (map[Service]ServiceStatus, error) {
+func getDeployStatus(ctx context.Context, client client.APIClient, deployName string) (map[Service]ServiceStatus, error) {
 	result := make(map[Service]ServiceStatus)
 
 	if swarmInternal.GetModeEnabled() {

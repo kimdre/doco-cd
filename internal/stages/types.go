@@ -9,7 +9,6 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/go-git/go-git/v5"
 	"github.com/moby/moby/api/types/container"
-	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -117,7 +116,6 @@ type RepositoryData struct {
 // Docker holds the Docker CLI and client instances along with the data mount point.
 type Docker struct {
 	Cmd            command.Cli
-	Client         *client.Client
 	DataMountPoint container.MountPoint
 	Project        *types.Project
 }
@@ -132,9 +130,9 @@ type DeploymentState struct {
 type StageManager struct {
 	Stages            *Stages
 	Log               *slog.Logger
-	JobID             string                                          // Unique identifier for the job
-	JobTrigger        JobTrigger                                      // Trigger type for the job (e.g., "webhook", "poll")
-	NotifyFailureFunc func(err error, metadata notification.Metadata) // Function to call on failure
+	JobID             string            // Unique identifier for the job
+	JobTrigger        JobTrigger        // Trigger type for the job (e.g., "webhook", "poll")
+	NotifyFailureFunc NotifyFailureFunc // Function to call on failure
 	AppConfig         *config.AppConfig
 	DeployConfig      *config.DeployConfig
 	DeployState       *DeploymentState
@@ -144,9 +142,11 @@ type StageManager struct {
 	SecretProvider    *secretprovider.SecretProvider
 }
 
+type NotifyFailureFunc func(log *slog.Logger, err error, metadata notification.Metadata)
+
 // NewStageManager creates and initializes a new StageManager instance for managing stages.ß.
 func NewStageManager(jobID string, jobTrigger JobTrigger, log *slog.Logger,
-	failNotifyFunc func(err error, metadata notification.Metadata),
+	failNotifyFunc NotifyFailureFunc,
 	repoData *RepositoryData, dockerData *Docker, payload *webhook.ParsedPayload,
 	appConfig *config.AppConfig, deployConfig *config.DeployConfig,
 	secretProvider *secretprovider.SecretProvider,
@@ -232,7 +232,7 @@ func (s *StageManager) NotifyFailure(notifyErr error) {
 
 		revision := notification.GetRevision(s.DeployConfig.Reference, commitSha)
 
-		s.NotifyFailureFunc(notifyErr, notification.Metadata{
+		s.NotifyFailureFunc(s.Log, notifyErr, notification.Metadata{
 			Repository: s.Repository.Name,
 			Stack:      s.DeployConfig.Name,
 			Revision:   revision,

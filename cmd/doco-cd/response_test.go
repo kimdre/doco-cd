@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/google/uuid"
+	"github.com/kimdre/doco-cd/internal/utils/id"
 )
 
 func TestJSONResponse(t *testing.T) {
@@ -14,7 +14,7 @@ func TestJSONResponse(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 
-	jobId := uuid.Must(uuid.NewV7()).String()
+	jobId := id.GenID()
 
 	JSONResponse(rr, "this is a test", jobId, http.StatusOK)
 
@@ -35,7 +35,7 @@ func TestJSONError(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 
-	jobId := uuid.Must(uuid.NewV7()).String()
+	jobId := id.GenID()
 
 	JSONError(rr, "this is a error", "this is a detail", jobId, http.StatusInternalServerError)
 

@@ -20,6 +20,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 
 	"github.com/kimdre/doco-cd/internal/git/ssh"
+	"github.com/kimdre/doco-cd/internal/reconciliation"
 
 	"github.com/kimdre/doco-cd/cmd/doco-cd/healthcheck"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
@@ -39,8 +40,6 @@ const (
 	healthPath  = "/v1/health"
 	dataPath    = "/data"
 )
-
-var deployerLimiter *DeployerLimiter // deployerLimiter controls the concurrency of deployments across webhook and poll handlers.
 
 // GetProxyUrlRedacted takes a proxy URL string and redacts the password if it exists.
 func GetProxyUrlRedacted(proxyUrl string) string {
@@ -141,12 +140,15 @@ func main() {
 
 	log.Debug("connection to docker socket was successful")
 
-	dockerCli, err := docker.CreateDockerCli(c.DockerQuietDeploy, !c.SkipTLSVerification)
+	dockerCli, err := docker.CreateDockerCli(c.DockerQuietDeploy)
 	if err != nil {
 		log.Critical("failed to create docker client", logger.ErrAttr(err))
 
 		return
 	}
+
+	dockerClient := dockerCli.Client()
+
 	defer func(client client.APIClient) {
 		log.Debug("closing docker client")
 
@@ -154,19 +156,10 @@ func main() {
 		if err != nil {
 			log.Error("failed to close docker client", logger.ErrAttr(err))
 		}
-	}(dockerCli.Client())
-
-	dockerClient, err := client.New(
-		client.FromEnv,
-	)
-	if err != nil {
-		log.Critical("failed to create docker client", logger.ErrAttr(err))
-
-		return
-	}
+	}(dockerClient)
 
 	if c.DockerSwarmFeatures {
-		if err := swarm.RefreshModeEnabled(ctx, dockerCli); err != nil {
+		if err := swarm.RefreshModeEnabled(ctx, dockerClient); err != nil {
 			log.Critical("failed to check if docker daemon is a swarm manager", logger.ErrAttr(err))
 			return
 		}
@@ -299,13 +292,12 @@ func main() {
 		appVersion:     config.AppVersion,
 		dataMountPoint: dataMountPoint,
 		dockerCli:      dockerCli,
-		dockerClient:   dockerClient,
 		log:            log,
 		secretProvider: &secretProvider,
 	}
 
 	// Initialize the deployer limiter according to configuration
-	deployerLimiter = NewDeployerLimiter(c.MaxConcurrentDeployments)
+	reconciliation.InitializeDeployerLimiter(c.MaxConcurrentDeployments)
 
 	// Register API endpoints
 	apiServerMux := http.NewServeMux()

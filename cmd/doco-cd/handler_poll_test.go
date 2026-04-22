@@ -16,7 +16,6 @@ import (
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/api/types/container"
-	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -67,14 +66,10 @@ func TestRunPoll(t *testing.T) {
 		})
 	}
 
-	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy, !appConfig.SkipTLSVerification)
+	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy)
 	if err != nil {
 		t.Fatalf("Failed to create docker client: %v", err)
 	}
-
-	dockerClient, _ := client.New(
-		client.FromEnv,
-	)
 
 	service, err := compose.NewComposeService(dockerCli)
 	if err != nil {
@@ -121,21 +116,14 @@ func TestRunPoll(t *testing.T) {
 	}
 
 	// Run initial poll
-	results := RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With(), metadata, &secretProvider)
-
-	for _, result := range results {
-		if result.Err != nil {
-			t.Fatalf("Initial poll deployment failed: %v", result.Err)
-		}
+	if err := RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, log.With(), metadata, &secretProvider); err != nil {
+		t.Fatalf("Initial poll deployment failed: %v", err)
 	}
 
 	pollConfig.Reference = "destroy"
 
 	// Run the second poll to destroy
-	results = RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, dockerClient, log.With(), metadata, &secretProvider)
-	for _, result := range results {
-		if result.Err != nil {
-			t.Fatalf("Second poll deployment failed: %v", result.Err)
-		}
+	if err := RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, log.With(), metadata, &secretProvider); err != nil {
+		t.Fatalf("Second poll deployment failed: %v", err)
 	}
 }

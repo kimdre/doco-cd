@@ -1,12 +1,12 @@
 package docker
 
 import (
+	"log/slog"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/avast/retry-go/v5"
-	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/test"
@@ -22,12 +22,12 @@ import (
 func TestDeploySwarmStack(t *testing.T) {
 	encryption.SetupAgeKeyEnvVar(t)
 
-	dockerCli, err := CreateDockerCli(false, false)
+	dockerCli, err := CreateDockerCli(false)
 	if err != nil {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
 	}
 
-	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli); err != nil {
+	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli.Client()); err != nil {
 		t.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 
@@ -50,23 +50,14 @@ func TestDeploySwarmStack(t *testing.T) {
 		Name:      stackName,
 		FullName:  "kimdre/doco-cd_tests",
 		CloneURL:  cloneUrlTest,
-		Private:   true,
+		Private:   false,
 	}
 
-	auth, err := git.GetAuthMethod(p.CloneURL, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	repo, err := git.CloneOrUpdateRepository(slog.Default(), p.CloneURL, p.Ref, tmpDir, tmpDir,
+		p.Private, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken, c.SkipTLSVerification,
+		c.HttpProxy, c.GitCloneSubmodules)
 	if err != nil {
-		t.Fatalf("Failed to get auth method: %v", err)
-	}
-
-	if auth != nil {
-		t.Logf("Using auth method: %s", auth.Name())
-	} else {
-		t.Log("No auth method configured, using anonymous access")
-	}
-
-	repo, err := git.CloneRepository(tmpDir, p.CloneURL, git.SwarmModeBranch, c.SkipTLSVerification, c.HttpProxy, auth, c.GitCloneSubmodules)
-	if err != nil {
-		t.Fatalf("Failed to clone repository: %v", err)
+		t.Fatal(err)
 	}
 
 	worktree, err := repo.Worktree()
@@ -89,7 +80,7 @@ func TestDeploySwarmStack(t *testing.T) {
 
 	ctx := t.Context()
 
-	cfg, opts, err := LoadSwarmStack(&dockerCli, project, deployConfigs[0], tmpDir)
+	cfg, opts, err := LoadSwarmStack(dockerCli, project, deployConfigs[0], tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to load swarm stack: %v", err)
 	}
@@ -129,9 +120,7 @@ func TestDeploySwarmStack(t *testing.T) {
 
 	t.Logf("Swarm stack deployed successfully")
 
-	dockerClient, _ := client.New(
-		client.FromEnv,
-	)
+	dockerClient := dockerCli.Client()
 
 	t.Cleanup(func() {
 		err = dockerClient.Close()

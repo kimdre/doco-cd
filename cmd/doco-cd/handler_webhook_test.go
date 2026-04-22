@@ -116,14 +116,12 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 	log := logger.New(logger.LevelCritical)
 
-	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy, !appConfig.SkipTLSVerification)
+	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy)
 	if err != nil {
 		t.Fatalf("Failed to create docker client: %v", err)
 	}
 
-	dockerClient, _ := client.New(
-		client.FromEnv,
-	)
+	dockerClient := dockerCli.Client()
 
 	t.Cleanup(func() {
 		err = dockerCli.Client().Close()
@@ -133,10 +131,9 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	})
 
 	h := handlerData{
-		dockerCli:    dockerCli,
-		dockerClient: dockerClient,
-		appConfig:    appConfig,
-		appVersion:   config.AppVersion,
+		dockerCli:  dockerCli,
+		appConfig:  appConfig,
+		appVersion: config.AppVersion,
 		dataMountPoint: container.MountPoint{
 			Type:        "bind",
 			Source:      tmpDir,
