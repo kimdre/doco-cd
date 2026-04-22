@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -958,6 +959,7 @@ func isRefUnreachableError(err error) bool {
 
 	// go-git may wrap the object-not-found message in other errors
 	msg := err.Error()
+
 	return strings.Contains(msg, "object not found") ||
 		strings.Contains(msg, "reference not found")
 }
@@ -989,7 +991,7 @@ func deepenAndCheckout(repo *git.Repository, url, ref string, skipTLSVerify bool
 	steps := []int{currentDepth * 2, currentDepth * 4, 0}
 
 	for _, newDepth := range steps {
-		label := fmt.Sprintf("%d", newDepth)
+		label := strconv.Itoa(newDepth)
 		if newDepth == 0 {
 			label = "full (unlimited)"
 		}

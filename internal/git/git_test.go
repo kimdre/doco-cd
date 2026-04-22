@@ -935,7 +935,7 @@ func TestCloneRepository_FullClone(t *testing.T) {
 	defer iter.Close()
 
 	commitCount := 0
-	_ = iter.ForEach(func(c *object.Commit) error {
+	_ = iter.ForEach(func(_ *object.Commit) error {
 		commitCount++
 		return nil
 	})
@@ -1000,7 +1000,7 @@ func TestCloneRepository_ShallowClone(t *testing.T) {
 	defer iter.Close()
 
 	commitCount := 0
-	_ = iter.ForEach(func(c *object.Commit) error {
+	_ = iter.ForEach(func(_ *object.Commit) error {
 		commitCount++
 		return nil
 	})
@@ -1083,7 +1083,7 @@ func TestUpdateRepository_FullToShallowTransition(t *testing.T) {
 	}
 
 	fullCommitCount := 0
-	_ = iter.ForEach(func(c *object.Commit) error {
+	_ = iter.ForEach(func(_ *object.Commit) error {
 		fullCommitCount++
 		return nil
 	})
@@ -1113,7 +1113,7 @@ func TestUpdateRepository_FullToShallowTransition(t *testing.T) {
 	}
 
 	shallowCommitCount := 0
-	_ = iter.ForEach(func(c *object.Commit) error {
+	_ = iter.ForEach(func(_ *object.Commit) error {
 		shallowCommitCount++
 		return nil
 	})
