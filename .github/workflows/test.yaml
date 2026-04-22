@@ -12,7 +12,6 @@ on:
       - '*'
     paths-ignore:
       - '**/*.md'
-      - 'docs/**'
       - 'wiki/**'
       - 'LICENSE'
       - 'renovate.json'
@@ -21,7 +20,6 @@ on:
       - '**'
     paths-ignore:
       - '**/*.md'
-      - 'docs/**'
       - 'wiki/**'
       - 'LICENSE'
       - 'renovate.json'

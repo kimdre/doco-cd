@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -199,6 +200,58 @@ func TestGetConfig_WebhookStores_DefaultVersion(t *testing.T) {
 	}
 }
 
+func TestValueProvider_newRequest_BodyNotCorruptedByTemplateRendering(t *testing.T) {
+	stores := `stores:
+  post-auth:
+    version: v1
+    url: "https://example.com/post"
+    method: POST
+    headers:
+      Authorization: 'Basic {{ print .auth.username ":" .auth.password | b64enc }}'
+      Content-Type: application/json
+    body: '{"secret":"{{ .remote_ref.key }}"}'
+    json_path: "x"
+`
+
+	t.Setenv("SECRET_PROVIDER_WEBHOOK_STORES", stores)
+	t.Setenv("SECRET_PROVIDER_AUTH_USERNAME", "username")
+	t.Setenv("SECRET_PROVIDER_AUTH_PASSWORD", "password")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("unexpected config error: %v", err)
+	}
+
+	subject, err := NewValueProvider(t.Context(), cfg)
+	if err != nil {
+		t.Fatalf("failed to create webhook value provider: %v", err)
+	}
+
+	store := cfg.Stores["post-auth"]
+
+	req, renderedJSONPath, err := subject.newRequest(t.Context(), store, map[string]any{"key": "token"})
+	if err != nil {
+		t.Fatalf("unexpected request creation error: %v", err)
+	}
+
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		t.Fatalf("failed to read request body: %v", err)
+	}
+
+	if got, want := string(body), `{"secret":"token"}`; got != want {
+		t.Fatalf("got body %q, want %q", got, want)
+	}
+
+	if got, want := renderedJSONPath, "x"; got != want {
+		t.Fatalf("got json_path %q, want %q", got, want)
+	}
+
+	if got, want := req.ContentLength, int64(len(body)); got != want {
+		t.Fatalf("got content length %d, want %d", got, want)
+	}
+}
+
 func mustJSONRef(t *testing.T, ref SecretRefPayload) string {
 	t.Helper()
 
@@ -243,7 +296,15 @@ func getSecret(w http.ResponseWriter, r *http.Request) {
 func postSecret(w http.ResponseWriter, r *http.Request) {
 	var payload map[string]string
 
-	_ = json.NewDecoder(r.Body).Decode(&payload)
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if payload["secret"] != "token" {
+		http.Error(w, "unexpected secret payload", http.StatusBadRequest)
+		return
+	}
 
 	body := map[string]any{
 		"result": map[string]string{
