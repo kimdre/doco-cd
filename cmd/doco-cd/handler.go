@@ -107,7 +107,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 	if _, err := git.CloneOrUpdateRepository(jobLog,
 		cloneURL, ref, internalRepoPath, externalRepoPath,
 		private, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken,
-		appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.GitCloneSubmodules,
+		appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.GitCloneSubmodules, appConfig.GitCloneDepth,
 	); err != nil {
 		return handleError{
 			err:            err,

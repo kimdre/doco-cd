@@ -55,7 +55,7 @@ func TestDeploySwarmStack(t *testing.T) {
 
 	repo, err := git.CloneOrUpdateRepository(slog.Default(), p.CloneURL, p.Ref, tmpDir, tmpDir,
 		p.Private, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken, c.SkipTLSVerification,
-		c.HttpProxy, c.GitCloneSubmodules)
+		c.HttpProxy, c.GitCloneSubmodules, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -33,7 +33,7 @@ func TestMatchesHead(t *testing.T) {
 
 	dir := t.TempDir()
 
-	repo, err := git.CloneRepository(dir, cloneUrlTest, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
+	repo, err := git.CloneRepository(dir, cloneUrlTest, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules, 0)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestMatchesHead_AfterCheckoutToDifferentBranch(t *testing.T) {
 	// Clone repository to temp dir
 	dir := t.TempDir()
 
-	repo, err := git.CloneRepository(dir, cloneUrlTest, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
+	repo, err := git.CloneRepository(dir, cloneUrlTest, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules, 0)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}

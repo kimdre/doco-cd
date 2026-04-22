@@ -87,7 +87,7 @@ func TestDeploy(t *testing.T) {
 	_, err = git.CloneOrUpdateRepository(log, p.CloneURL, p.Ref,
 		repoPath, repoPath,
 		p.Private, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken, c.SkipTLSVerification,
-		c.HttpProxy, c.GitCloneSubmodules)
+		c.HttpProxy, c.GitCloneSubmodules, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
