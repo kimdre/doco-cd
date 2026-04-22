@@ -1024,7 +1024,7 @@ func pruneImages(ctx context.Context, dockerCli command.Cli, images []string) ([
 				continue
 			}
 
-			if strings.Contains(err.Error(), "no such image") || strings.Contains(err.Error(), "not found") {
+			if strings.Contains(strings.ToLower(err.Error()), "no such image") || strings.Contains(strings.ToLower(err.Error()), "not found") {
 				// Ignore error if image does not exist
 				continue
 			}
