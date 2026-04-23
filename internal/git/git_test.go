@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/kimdre/doco-cd/internal/git"
 
@@ -136,7 +137,7 @@ func TestCloneRepository(t *testing.T) {
 				t.Log("No auth method configured, using anonymous access")
 			}
 
-			repo, err := git.CloneRepository(t.TempDir(), tc.cloneUrl, tc.reference, false, c.HttpProxy, auth, c.GitCloneSubmodules)
+			repo, err := git.CloneRepository(t.TempDir(), tc.cloneUrl, tc.reference, false, c.HttpProxy, auth, c.GitCloneSubmodules, 0)
 			if err != nil {
 				t.Fatalf("Failed to clone repository: %v", err)
 			}
@@ -192,7 +193,7 @@ func TestCloneRepository_WithSubmodule(t *testing.T) {
 		t.Log("No auth method configured, using anonymous access")
 	}
 
-	repo, err := git.CloneRepository(t.TempDir(), cloneUrlTest, "with-submodule", false, c.HttpProxy, auth, true)
+	repo, err := git.CloneRepository(t.TempDir(), cloneUrlTest, "with-submodule", false, c.HttpProxy, auth, true, 0)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -347,7 +348,7 @@ func TestUpdateRepository(t *testing.T) {
 				t.Log("No auth method configured, using anonymous access")
 			}
 
-			repo, err := git.CloneRepository(t.TempDir(), tc.cloneUrl, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
+			repo, err := git.CloneRepository(t.TempDir(), tc.cloneUrl, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules, 0)
 			if err != nil {
 				t.Fatalf("Failed to clone repository %s: %v", tc.cloneUrl, err)
 			}
@@ -361,7 +362,7 @@ func TestUpdateRepository(t *testing.T) {
 				t.Fatalf("Failed to get worktree: %v", err)
 			}
 
-			repo, err = git.UpdateRepository(worktree.Filesystem.Root(), tc.cloneUrl, tc.branchRef, false, c.HttpProxy, auth, c.GitCloneSubmodules)
+			repo, err = git.UpdateRepository(worktree.Filesystem.Root(), tc.cloneUrl, tc.branchRef, false, c.HttpProxy, auth, c.GitCloneSubmodules, 0)
 			if err != nil {
 				if !errors.Is(err, tc.expectedErr) {
 					t.Fatalf("Expected error %v, got %v", tc.expectedErr, err)
@@ -433,7 +434,7 @@ func TestUpdateRepository_WithSubmodule(t *testing.T) {
 		t.Log("No auth method configured, using anonymous access")
 	}
 
-	repo, err := git.CloneRepository(t.TempDir(), cloneUrlTest, git.MainBranch, false, c.HttpProxy, auth, true)
+	repo, err := git.CloneRepository(t.TempDir(), cloneUrlTest, git.MainBranch, false, c.HttpProxy, auth, true, 0)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -457,7 +458,7 @@ func TestUpdateRepository_WithSubmodule(t *testing.T) {
 		t.Fatal("Expected no submodules before update, but found some")
 	}
 
-	repo, err = git.UpdateRepository(worktree.Filesystem.Root(), cloneUrlTest, "with-submodule", false, c.HttpProxy, auth, true)
+	repo, err = git.UpdateRepository(worktree.Filesystem.Root(), cloneUrlTest, "with-submodule", false, c.HttpProxy, auth, true, 0)
 	if err != nil {
 		t.Fatalf("Failed to update repository: %v", err)
 	}
@@ -567,7 +568,7 @@ func TestGetReferenceSet(t *testing.T) {
 		t.Log("No auth method configured, using anonymous access")
 	}
 
-	repo, err := git.CloneRepository(t.TempDir(), cloneUrl, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
+	repo, err := git.CloneRepository(t.TempDir(), cloneUrl, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules, 0)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -619,7 +620,7 @@ func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 		t.Log("No auth method configured, using anonymous access")
 	}
 
-	repo, err := git.CloneRepository(t.TempDir(), url, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
+	repo, err := git.CloneRepository(t.TempDir(), url, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules, 0)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -641,7 +642,7 @@ func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 		t.Fatalf("Failed to create new file: %v", err)
 	}
 
-	repo, err = git.UpdateRepository(worktree.Filesystem.Root(), url, "alternative", false, c.HttpProxy, auth, c.GitCloneSubmodules)
+	repo, err = git.UpdateRepository(worktree.Filesystem.Root(), url, "alternative", false, c.HttpProxy, auth, c.GitCloneSubmodules, 0)
 	if err != nil {
 		t.Fatalf("Failed to update repository: %v", err)
 	}
@@ -690,7 +691,7 @@ func TestGetLatestCommit(t *testing.T) {
 		t.Log("No auth method configured, using anonymous access")
 	}
 
-	repo, err := git.CloneRepository(t.TempDir(), url, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules)
+	repo, err := git.CloneRepository(t.TempDir(), url, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules, 0)
 	if err != nil {
 		t.Fatalf("Failed to clone repository: %v", err)
 	}
@@ -893,5 +894,351 @@ func TestGetRepoName(t *testing.T) {
 				t.Errorf("GetRepoName failed for %s: expected %s, got %s", tt.cloneURL, tt.expected, result)
 			}
 		})
+	}
+}
+
+func TestCloneRepository_FullClone(t *testing.T) {
+	t.Parallel()
+
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("Failed to get app config: %v", err)
+	}
+
+	auth, err := git.GetAuthMethod(cloneUrlTest, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	if err != nil {
+		t.Fatalf("Failed to get auth method: %v", err)
+	}
+
+	dir := t.TempDir()
+
+	repo, err := git.CloneRepository(dir, cloneUrlTest, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules, 0)
+	if err != nil {
+		t.Fatalf("Failed to clone repository: %v", err)
+	}
+
+	if repo == nil {
+		t.Fatal("Repository is nil")
+	}
+
+	// Verify .git/shallow does NOT exist (full clone)
+	shallowFile := dir + "/.git/shallow"
+	if _, err := os.Stat(shallowFile); err == nil {
+		t.Fatal("Expected full clone (no .git/shallow file), but .git/shallow exists")
+	}
+
+	// Verify we can iterate multiple commits (more than 1)
+	iter, err := repo.CommitObjects()
+	if err != nil {
+		t.Fatalf("Failed to get commit objects: %v", err)
+	}
+	defer iter.Close()
+
+	commitCount := 0
+	_ = iter.ForEach(func(_ *object.Commit) error {
+		commitCount++
+		return nil
+	})
+
+	if commitCount <= 1 {
+		t.Fatalf("Expected more than 1 commit in full clone, got %d", commitCount)
+	}
+
+	t.Logf("Full clone has %d commits", commitCount)
+
+	// Verify checkout works
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("Failed to get worktree: %v", err)
+	}
+
+	files, err := worktree.Filesystem.ReadDir(".")
+	if err != nil {
+		t.Fatalf("Failed to read directory: %v", err)
+	}
+
+	if len(files) == 0 {
+		t.Fatal("No files in repository after full clone")
+	}
+}
+
+func TestCloneRepository_ShallowClone(t *testing.T) {
+	t.Parallel()
+
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("Failed to get app config: %v", err)
+	}
+
+	auth, err := git.GetAuthMethod(cloneUrlTest, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	if err != nil {
+		t.Fatalf("Failed to get auth method: %v", err)
+	}
+
+	dir := t.TempDir()
+
+	repo, err := git.CloneRepository(dir, cloneUrlTest, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules, 1)
+	if err != nil {
+		t.Fatalf("Failed to shallow clone repository: %v", err)
+	}
+
+	if repo == nil {
+		t.Fatal("Repository is nil")
+	}
+
+	// Verify .git/shallow EXISTS (shallow clone)
+	shallowFile := dir + "/.git/shallow"
+	if _, err := os.Stat(shallowFile); err != nil {
+		t.Fatalf("Expected shallow clone (.git/shallow file), but it does not exist: %v", err)
+	}
+
+	// Verify commit count is limited
+	iter, err := repo.CommitObjects()
+	if err != nil {
+		t.Fatalf("Failed to get commit objects: %v", err)
+	}
+	defer iter.Close()
+
+	commitCount := 0
+	_ = iter.ForEach(func(_ *object.Commit) error {
+		commitCount++
+		return nil
+	})
+
+	// With depth=1 and all branches/tags fetched, go-git fetches the tip commit of
+	// each ref. The count will be much less than a full clone but more than 1 when
+	// the repo has multiple branches. We use a generous upper bound here.
+	if commitCount > 50 {
+		t.Fatalf("Expected shallow clone to have significantly fewer commits than a full clone, got %d", commitCount)
+	}
+
+	t.Logf("Shallow clone (depth=1) has %d commit(s)", commitCount)
+
+	// Verify checkout works and files are present
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("Failed to get worktree: %v", err)
+	}
+
+	files, err := worktree.Filesystem.ReadDir(".")
+	if err != nil {
+		t.Fatalf("Failed to read directory: %v", err)
+	}
+
+	if len(files) == 0 {
+		t.Fatal("No files in repository after shallow clone")
+	}
+
+	// Verify update with same shallow depth works
+	repo, err = git.UpdateRepository(dir, cloneUrlTest, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules, 1)
+	if err != nil {
+		t.Fatalf("Failed to update shallow repository: %v", err)
+	}
+
+	if repo == nil {
+		t.Fatal("Repository is nil after update")
+	}
+
+	// Still shallow after update
+	if _, err := os.Stat(shallowFile); err != nil {
+		t.Fatalf("Expected repository to remain shallow after update, but .git/shallow is gone: %v", err)
+	}
+}
+
+func TestUpdateRepository_ShallowToFullTransition(t *testing.T) {
+	t.Parallel()
+
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("Failed to get app config: %v", err)
+	}
+
+	auth, err := git.GetAuthMethod(cloneUrlTest, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	if err != nil {
+		t.Fatalf("Failed to get auth method: %v", err)
+	}
+
+	if auth != nil {
+		t.Logf("Using auth method: %s", auth.Name())
+	} else {
+		t.Log("No auth method configured, using anonymous access")
+	}
+
+	dir := t.TempDir()
+
+	// Step 1: Shallow clone (depth=1)
+	repo, err := git.CloneRepository(dir, cloneUrlTest, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules, 1)
+	if err != nil {
+		t.Fatalf("Failed to shallow clone repository: %v", err)
+	}
+
+	if repo == nil {
+		t.Fatal("Repository is nil after shallow clone")
+	}
+
+	// Verify it IS shallow
+	shallowFile := dir + "/.git/shallow"
+	if _, err := os.Stat(shallowFile); err != nil {
+		t.Fatalf("Expected shallow clone (.git/shallow file), but it does not exist: %v", err)
+	}
+
+	// Count commits in shallow clone
+	iter, err := repo.CommitObjects()
+	if err != nil {
+		t.Fatalf("Failed to get commit objects: %v", err)
+	}
+
+	shallowCommitCount := 0
+	_ = iter.ForEach(func(_ *object.Commit) error {
+		shallowCommitCount++
+		return nil
+	})
+	iter.Close()
+
+	t.Logf("Shallow clone (depth=1) has %d commit(s)", shallowCommitCount)
+
+	// Step 2: Update with depth=0 — should trigger re-clone (shallow → full transition)
+	repo, err = git.UpdateRepository(dir, cloneUrlTest, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules, 0)
+	if err != nil {
+		t.Fatalf("Failed to update repository with full depth: %v", err)
+	}
+
+	if repo == nil {
+		t.Fatal("Repository is nil after shallow→full transition")
+	}
+
+	// Verify it is NOT shallow anymore
+	if _, err := os.Stat(shallowFile); err == nil {
+		t.Fatal("Expected full clone after transition (no .git/shallow), but .git/shallow still exists")
+	}
+
+	// Verify commit count increased
+	iter, err = repo.CommitObjects()
+	if err != nil {
+		t.Fatalf("Failed to get commit objects after transition: %v", err)
+	}
+
+	fullCommitCount := 0
+	_ = iter.ForEach(func(_ *object.Commit) error {
+		fullCommitCount++
+		return nil
+	})
+	iter.Close()
+
+	t.Logf("After shallow→full transition: %d commit(s)", fullCommitCount)
+
+	if fullCommitCount <= shallowCommitCount {
+		t.Fatalf("Expected more commits after full transition, got %d (was %d)", fullCommitCount, shallowCommitCount)
+	}
+
+	// Verify worktree still works
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("Failed to get worktree: %v", err)
+	}
+
+	files, err := worktree.Filesystem.ReadDir(".")
+	if err != nil {
+		t.Fatalf("Failed to read directory: %v", err)
+	}
+
+	if len(files) == 0 {
+		t.Fatal("No files in repository after shallow→full transition")
+	}
+}
+
+func TestUpdateRepository_FullToShallowTransition(t *testing.T) {
+	t.Parallel()
+
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("Failed to get app config: %v", err)
+	}
+
+	auth, err := git.GetAuthMethod(cloneUrlTest, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	if err != nil {
+		t.Fatalf("Failed to get auth method: %v", err)
+	}
+
+	dir := t.TempDir()
+
+	// Step 1: Full clone (depth=0)
+	repo, err := git.CloneRepository(dir, cloneUrlTest, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules, 0)
+	if err != nil {
+		t.Fatalf("Failed to clone repository (full): %v", err)
+	}
+
+	if repo == nil {
+		t.Fatal("Repository is nil after full clone")
+	}
+
+	// Verify it's NOT shallow
+	shallowFile := dir + "/.git/shallow"
+	if _, err := os.Stat(shallowFile); err == nil {
+		t.Fatal("Expected full clone (no .git/shallow), but found it")
+	}
+
+	// Count commits in full clone
+	iter, err := repo.CommitObjects()
+	if err != nil {
+		t.Fatalf("Failed to get commit objects: %v", err)
+	}
+
+	fullCommitCount := 0
+	_ = iter.ForEach(func(_ *object.Commit) error {
+		fullCommitCount++
+		return nil
+	})
+	iter.Close()
+
+	t.Logf("Full clone has %d commits", fullCommitCount)
+
+	// Step 2: Update with depth=1 — should trigger re-clone (full → shallow transition)
+	repo, err = git.UpdateRepository(dir, cloneUrlTest, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules, 1)
+	if err != nil {
+		t.Fatalf("Failed to update repository with shallow depth: %v", err)
+	}
+
+	if repo == nil {
+		t.Fatal("Repository is nil after full→shallow transition")
+	}
+
+	// Verify it IS now shallow
+	if _, err := os.Stat(shallowFile); err != nil {
+		t.Fatalf("Expected shallow clone after transition, but .git/shallow does not exist: %v", err)
+	}
+
+	// Verify commit count decreased
+	iter, err = repo.CommitObjects()
+	if err != nil {
+		t.Fatalf("Failed to get commit objects after transition: %v", err)
+	}
+
+	shallowCommitCount := 0
+	_ = iter.ForEach(func(_ *object.Commit) error {
+		shallowCommitCount++
+		return nil
+	})
+	iter.Close()
+
+	t.Logf("After full→shallow transition: %d commit(s)", shallowCommitCount)
+
+	if shallowCommitCount >= fullCommitCount && fullCommitCount > 1 {
+		t.Fatalf("Expected fewer commits after shallow transition, got %d (was %d)", shallowCommitCount, fullCommitCount)
+	}
+
+	// Verify worktree still works
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("Failed to get worktree: %v", err)
+	}
+
+	files, err := worktree.Filesystem.ReadDir(".")
+	if err != nil {
+		t.Fatalf("Failed to read directory: %v", err)
+	}
+
+	if len(files) == 0 {
+		t.Fatal("No files in repository after full→shallow transition")
 	}
 }

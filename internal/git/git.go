@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -233,13 +234,15 @@ func OpenRepository(path string) (*git.Repository, error) {
 }
 
 // FetchRepository fetches updates from the remote repository, including all branches and tags, and prunes deleted references.
-func FetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod) error {
+// If depth > 0, a shallow fetch is performed with the specified number of commits.
+func FetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, depth int) error {
 	opts := &git.FetchOptions{
 		RemoteName: RemoteName,
 		RemoteURL:  url,
 		RefSpecs:   []config.RefSpec{refSpecAllBranches, refSpecAllTags},
 		Prune:      true,
 		Auth:       auth,
+		Depth:      depth,
 	}
 
 	// SSH auth when key is provided
@@ -283,7 +286,10 @@ func FetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxy
 }
 
 // UpdateRepository fetches and checks out the requested ref.
-func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, cloneSubmodules bool) (*git.Repository, error) {
+// If depth > 0, shallow fetches are used. When the requested ref is not reachable
+// within the current depth, the repository is incrementally deepened before falling
+// back to a full fetch.
+func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, cloneSubmodules bool, depth int) (*git.Repository, error) {
 	// Serialize operations on the same path
 	unlock := AcquirePathLock(path)
 	defer unlock()
@@ -293,12 +299,27 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 		return nil, err
 	}
 
+	// Detect shallow/full transition and re-clone if needed
+	if needsReclone(path, depth) {
+		slog.Info("git depth configuration changed, re-cloning repository",
+			slog.String("path", path),
+			slog.Int("requested_depth", depth))
+
+		unlock() // release lock before re-clone (CloneRepository acquires its own)
+
+		if err := os.RemoveAll(path); err != nil {
+			return nil, fmt.Errorf("failed to remove repository for re-clone: %w", err)
+		}
+
+		return CloneRepository(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
+	}
+
 	err = updateRemoteURL(repo, url)
 	if err != nil {
 		return nil, err
 	}
 
-	err = FetchRepository(repo, url, skipTLSVerify, proxyOpts, auth)
+	err = FetchRepository(repo, url, skipTLSVerify, proxyOpts, auth, depth)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrFetchFailed, err)
 	}
@@ -306,6 +327,16 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 	// Pass auth and cloneSubmodules so CheckoutRepository can ensure submodules are updated when needed.
 	err = CheckoutRepository(repo, ref, auth, cloneSubmodules)
 	if err != nil {
+		// Attempt to deepen if the ref is unreachable in a shallow clone
+		if depth > 0 && isRefUnreachableError(err) {
+			repo, deepenErr := deepenAndCheckout(repo, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
+			if deepenErr != nil {
+				return nil, fmt.Errorf("%w: %w", ErrCheckoutFailed, deepenErr)
+			}
+
+			return repo, nil
+		}
+
 		return nil, fmt.Errorf("%w: %w", ErrCheckoutFailed, err)
 	}
 
@@ -314,7 +345,8 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 
 // CheckoutRepository checks out the specified reference in the repository, keeping untracked files intact.
 // If cloneSubmodules is true, submodules will be initialized/updated using the provided auth.
-func CheckoutRepository(repo *git.Repository, ref string, auth transport.AuthMethod, cloneSubmodules bool) error {
+// depth controls the shallow depth for submodule updates (0 = full).
+func CheckoutRepository(repo *git.Repository, ref string, auth transport.AuthMethod, cloneSubmodules bool, depth ...int) error {
 	worktree, err := repo.Worktree()
 	if err != nil {
 		return fmt.Errorf("failed to get worktree: %w", err)
@@ -397,7 +429,12 @@ func CheckoutRepository(repo *git.Repository, ref string, auth transport.AuthMet
 
 	// Ensure submodules match the checked-out parent commit when requested.
 	if cloneSubmodules {
-		if err = updateSubmodules(repo, auth); err != nil {
+		subDepth := 0
+		if len(depth) > 0 {
+			subDepth = depth[0]
+		}
+
+		if err = updateSubmodules(repo, auth, subDepth); err != nil {
 			return fmt.Errorf("failed to update submodules: %w", err)
 		}
 	}
@@ -406,7 +443,8 @@ func CheckoutRepository(repo *git.Repository, ref string, auth transport.AuthMet
 }
 
 // CloneRepository clones a repository with HTTP or SSH auth.
-func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, cloneSubmodules bool) (*git.Repository, error) {
+// If depth > 0, a shallow clone is performed with the specified number of commits.
+func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, cloneSubmodules bool, depth int) (*git.Repository, error) {
 	// Serialize operations on the same path to avoid concurrent partial clones
 	unlock := AcquirePathLock(path)
 	defer unlock()
@@ -421,6 +459,7 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 		URL:        url,
 		Tags:       git.AllTags,
 		Auth:       auth,
+		Depth:      depth,
 	}
 
 	if cloneSubmodules {
@@ -466,7 +505,7 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 		if errors.Is(err, git.ErrRemoteExists) {
 			// If the directory contains a repository, try UpdateRepository
 			if _, openErr := git.PlainOpen(path); openErr == nil {
-				if upd, uErr := UpdateRepository(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules); uErr == nil {
+				if upd, uErr := UpdateRepository(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth); uErr == nil {
 					return upd, nil
 				}
 			}
@@ -485,6 +524,16 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 
 	err = CheckoutRepository(repo, ref, auth, cloneSubmodules)
 	if err != nil {
+		// Attempt to deepen if the ref is unreachable in a shallow clone
+		if depth > 0 && isRefUnreachableError(err) {
+			repo, deepenErr := deepenAndCheckout(repo, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
+			if deepenErr != nil {
+				return nil, fmt.Errorf("%w: %w", ErrCheckoutFailed, deepenErr)
+			}
+
+			return repo, nil
+		}
+
 		return nil, fmt.Errorf("%w: %w", ErrCheckoutFailed, err)
 	}
 
@@ -513,7 +562,7 @@ func cloneWithRetry(path string, opts *git.CloneOptions) (*git.Repository, error
 	return repo, nil
 }
 
-func updateSubmodules(repo *git.Repository, auth transport.AuthMethod) error {
+func updateSubmodules(repo *git.Repository, auth transport.AuthMethod, depth int) error {
 	worktree, err := repo.Worktree()
 	if err != nil {
 		return fmt.Errorf("failed to get worktree: %w", err)
@@ -556,6 +605,7 @@ func updateSubmodules(repo *git.Repository, auth transport.AuthMethod) error {
 			Init:              true,
 			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
 			Auth:              auth,
+			Depth:             depth,
 		}
 
 		err = retrier.Do(
@@ -878,6 +928,102 @@ func MatchesHead(path, ref string) (bool, error) {
 	}
 
 	return head.Hash() == r.Hash(), nil
+}
+
+// needsReclone returns true when the on-disk repository shallow state does not
+// match the requested depth, indicating a transition (e.g. full→shallow or shallow→full).
+func needsReclone(repoPath string, depth int) bool {
+	shallowFile := filepath.Join(repoPath, ".git", "shallow")
+
+	_, err := os.Stat(shallowFile)
+	isShallow := err == nil
+
+	wantShallow := depth > 0
+
+	return isShallow != wantShallow
+}
+
+// isRefUnreachableError returns true when the error indicates the requested ref
+// could not be found, which in a shallow clone likely means the ref is outside
+// the fetched depth.
+func isRefUnreachableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if errors.Is(err, plumbing.ErrObjectNotFound) ||
+		errors.Is(err, ErrInvalidReference) ||
+		errors.Is(err, plumbing.ErrReferenceNotFound) {
+		return true
+	}
+
+	// go-git may wrap the object-not-found message in other errors
+	msg := err.Error()
+
+	return strings.Contains(msg, "object not found") ||
+		strings.Contains(msg, "reference not found")
+}
+
+// isNonRecoverableError returns true for auth, network, or proxy errors that
+// should NOT trigger a deepen attempt.
+func isNonRecoverableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if errors.Is(err, transport.ErrAuthenticationRequired) ||
+		errors.Is(err, transport.ErrAuthorizationFailed) ||
+		errors.Is(err, transport.ErrInvalidAuthMethod) {
+		return true
+	}
+
+	_, isURLErr := errors.AsType[*url.Error](err)
+	netErr, isNetErr := errors.AsType[net.Error](err)
+
+	return isURLErr || (isNetErr && netErr.Timeout())
+}
+
+// deepenAndCheckout incrementally deepens a shallow repository to resolve an
+// unreachable ref. It tries depth×2, depth×4, then a full fetch (depth 0).
+// It emits a warning log at each deepening step so operators understand why
+// clone time increased.
+func deepenAndCheckout(repo *git.Repository, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, cloneSubmodules bool, currentDepth int) (*git.Repository, error) {
+	steps := []int{currentDepth * 2, currentDepth * 4, 0}
+
+	for _, newDepth := range steps {
+		label := strconv.Itoa(newDepth)
+		if newDepth == 0 {
+			label = "full (unlimited)"
+		}
+
+		slog.Warn("shallow fetch insufficient for requested ref, deepening",
+			slog.String("ref", ref),
+			slog.Int("previous_depth", currentDepth),
+			slog.String("new_depth", label))
+
+		err := FetchRepository(repo, url, skipTLSVerify, proxyOpts, auth, newDepth)
+		if err != nil {
+			if isNonRecoverableError(err) {
+				return nil, fmt.Errorf("non-recoverable error during deepen: %w", err)
+			}
+			// Try the next deepening step
+			continue
+		}
+
+		err = CheckoutRepository(repo, ref, auth, cloneSubmodules)
+		if err == nil {
+			return repo, nil
+		}
+
+		if isNonRecoverableError(err) {
+			return nil, fmt.Errorf("non-recoverable error during checkout after deepen: %w", err)
+		}
+
+		// If still unreachable, try next step
+		currentDepth = newDepth
+	}
+
+	return nil, fmt.Errorf("ref %s not reachable even after full fetch", ref)
 }
 
 // normalizeOwnerRepo cleans a path and returns "owner/repo" or empty string when not possible.

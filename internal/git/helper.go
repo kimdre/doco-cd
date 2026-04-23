@@ -12,7 +12,7 @@ import (
 func CloneOrUpdateRepository(log *slog.Logger,
 	cloneUrl string, ref string, internalRepoPath, externalRepoPath string,
 	private bool, sshPrivateKey string, sshPrivateKeyPassphrase string, gitAccessToken string,
-	skipTLSVerify bool, proxyOpts transport.ProxyOptions, cloneSubmodules bool,
+	skipTLSVerify bool, proxyOpts transport.ProxyOptions, cloneSubmodules bool, depth int,
 ) (*git.Repository, error) {
 	// Clone the repository
 	log.Debug("cloning repository",
@@ -40,13 +40,13 @@ func CloneOrUpdateRepository(log *slog.Logger,
 
 	var repo *git.Repository
 	// Try to clone the repository
-	repo, err = CloneRepository(internalRepoPath, cloneUrl, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules)
+	repo, err = CloneRepository(internalRepoPath, cloneUrl, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
 	if err != nil {
 		// If the repository already exists, check it out to the specified commit SHA
 		if errors.Is(err, ErrRepositoryAlreadyExists) {
 			log.Debug("repository already exists, checking out reference "+ref, slog.String("host_path", externalRepoPath))
 
-			repo, err = UpdateRepository(internalRepoPath, cloneUrl, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules)
+			repo, err = UpdateRepository(internalRepoPath, cloneUrl, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
 			if err != nil {
 				return nil, err
 			}

@@ -58,6 +58,7 @@ type DeployConfig struct {
 		Args           map[string]string `yaml:"args" json:"args"`                                         // BuildArgs is a map of build-time arguments to pass to the build process
 		NoCache        bool              `yaml:"no_cache" json:"no_cache" default:"false"`                 // NoCache disables the use of the cache when building images
 	} `yaml:"build_opts"` // BuildOpts is the build options for the deployment
+	GitDepth    int  `yaml:"git_depth" json:"git_depth" default:"0"` // GitDepth limits the number of commits to fetch. 0 means use global GIT_CLONE_DEPTH. A positive value overrides the global setting.
 	Destroy     bool `yaml:"destroy" json:"destroy" default:"false"` // Destroy removes the deployment and all its resources from the Docker host
 	DestroyOpts struct {
 		RemoveVolumes bool `yaml:"remove_volumes" json:"remove_volumes" default:"true"` // RemoveVolumes removes the volumes used by the deployment (always enabled in docker swarm mode)
@@ -82,6 +83,17 @@ type DeployConfig struct {
 	} // Internal holds internal configuration values that are not set by the user
 }
 
+// ResolveGitDepth returns the effective git clone depth.
+// If the deploy-level GitDepth is > 0, it overrides the global value.
+// Otherwise the global depth is used. 0 means full clone (no limit).
+func (c *DeployConfig) ResolveGitDepth(globalDepth int) int {
+	if c.GitDepth > 0 {
+		return c.GitDepth
+	}
+
+	return globalDepth
+}
+
 // DefaultDeployConfig creates a DeployConfig with default values.
 func DefaultDeployConfig(name, reference string) *DeployConfig {
 	return &DeployConfig{
@@ -100,6 +112,10 @@ func (c DeployConfig) LogValue() slog.Value {
 func (c *DeployConfig) validateConfig() error {
 	if c.Name == "" && !c.AutoDiscover {
 		return fmt.Errorf("%w: name", ErrKeyNotFound)
+	}
+
+	if c.GitDepth < 0 {
+		return fmt.Errorf("%w: git_depth must be >= 0", ErrInvalidConfig)
 	}
 
 	c.WorkingDirectory = filepath.Clean(c.WorkingDirectory)
@@ -295,10 +311,10 @@ func GetDeployConfigs(repoRoot, deployConfigBaseDir, name, customTarget, referen
 					repoDir = path.Join(path.Dir(repoRoot), gitInternal.GetRepoName(string(c.RepositoryUrl)))
 
 					// Clone the repository to repoDir if it does not exist, otherwise fetch the latest changes and checkout to the correct reference
-					_, err = gitInternal.CloneRepository(repoDir, string(c.RepositoryUrl), c.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules)
+					_, err = gitInternal.CloneRepository(repoDir, string(c.RepositoryUrl), c.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules, c.ResolveGitDepth(appConfig.GitCloneDepth))
 					if err != nil {
 						if errors.Is(err, git.ErrRepositoryAlreadyExists) {
-							_, err = gitInternal.UpdateRepository(repoDir, string(c.RepositoryUrl), c.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules)
+							_, err = gitInternal.UpdateRepository(repoDir, string(c.RepositoryUrl), c.Reference, appConfig.SkipTLSVerification, appConfig.HttpProxy, auth, appConfig.GitCloneSubmodules, c.ResolveGitDepth(appConfig.GitCloneDepth))
 							if err != nil {
 								return nil, fmt.Errorf("failed to update repository: %w", err)
 							}
