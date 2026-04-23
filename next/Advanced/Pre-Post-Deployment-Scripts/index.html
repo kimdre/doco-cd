@@ -2296,10 +2296,10 @@ Instead, it relies on the underlying container runtime (e.g., Docker) to execute
 </span></span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="hll"><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
 </span></span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./web:/web</span>
 </span></span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="hll"><span class="w">    </span><span class="nt">working_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/web</span>
-</span></span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="hll"><span class="w">    </span><span class="nt">command</span><span class="p">:</span>
+</span></span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="hll"><span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="c1"># (1)!</span>
 </span></span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">|</span>
 </span></span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="hll"><span class="w">        </span><span class="no">echo Starting pre-deployment script</span>
-</span></span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="hll"><span class="w">        </span><span class="no">echo &quot;Hello $${MYVAR}!&quot; &gt; /web/index.html # Double dollar-sign is required here to use the variable in the shell script </span>
+</span></span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="hll"><span class="w">        </span><span class="no">echo &quot;Hello $${MYVAR}!&quot; &gt; /web/index.html</span>
 </span></span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="hll"><span class="w">        </span><span class="no">echo Finished pre-deployment script</span>
 </span></span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="hll"><span class="w">        </span><span class="no">exit 0  # Exit with code 0 to indicate success, not required if the last command already returns 0 but added here for clarity</span>
 </span></span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>
@@ -2313,9 +2313,13 @@ Instead, it relies on the underlying container runtime (e.g., Docker) to execute
 </span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8080:80</span>
 </span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="hll"><span class="w">    </span><span class="nt">depends_on</span><span class="p">:</span>
 </span></span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="hll"><span class="w">      </span><span class="nt">init</span><span class="p">:</span>
-</span></span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="hll"><span class="w">        </span><span class="nt">condition</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">service_completed_successfully</span><span class="w">  </span><span class="c1"># Wait for init container to complete/stop with exit code 0</span>
+</span></span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="hll"><span class="w">        </span><span class="nt">condition</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">service_completed_successfully</span><span class="w"> </span><span class="c1"># (2)!</span>
 </span></span></code></pre></div>
-<ul>
+<ol>
+<li>Double dollar-sign (<code>$$</code>) is required to use variables in the shell script, otherwise Docker Compose will try to resolve it as a variable in the <code>docker-compose.yml</code> file instead of passing it to the container.</li>
+<li>
+<p>Wait for init container to complete/stop with exit code 0</p>
+</li>
 <li>
 <p>If you have a shell script in your repo for the init stuff, you can remove <code>entrypoint</code> and mount the script directly and run it via the <code>command</code> option:
   <div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">volumes</span><span class="p">:</span>
@@ -2326,14 +2330,17 @@ Instead, it relies on the underlying container runtime (e.g., Docker) to execute
 <li>
 <p>If you need commands from the app container, try to use the same image as your app container. Many app images also come with a shell (sh, ash, bash) </p>
 </li>
-</ul>
+</ol>
 <h3 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h3>
 <h4 id="container-exited-0">container exited (0)<a class="headerlink" href="#container-exited-0" title="Permanent link">&para;</a></h4>
 <p>If the deployment fails with an error containing a message like <code>container &lt;init-container-name&gt; exited (0)</code>, try to add a short sleep at the end of the init container commands. This is a workaround for a known issue where the init container may exit before the main container starts waiting for it, causing the main container to miss the successful completion of the init container. Adding a short sleep ensures that the init container has time to exit properly before the main container checks its status.</p>
 <p><strong>Example</strong>:
 <div class="language-yaml highlight"><span class="filename">Add a sleep command to the init container in your docker-compose.yml</span><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">entrypoint</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;/bin/sh&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;-c&quot;</span><span class="p p-Indicator">]</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;&lt;your-commands-here&gt;</span><span class="nv"> </span><span class="s">&amp;&amp;</span><span class="nv"> </span><span class="s">sleep</span><span class="nv"> </span><span class="s">3&quot;</span><span class="p p-Indicator">]</span><span class="w">  </span><span class="c1"># Depending on the complexity of your init commands, you may need to adjust the sleep duration.</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;&lt;your-commands-here&gt;</span><span class="nv"> </span><span class="s">&amp;&amp;</span><span class="nv"> </span><span class="s">sleep</span><span class="nv"> </span><span class="s">3&quot;</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="c1"># (1)!</span>
 </span></code></pre></div></p>
+<ol>
+<li>Depending on the complexity of your init commands, you may need to adjust the sleep duration.</li>
+</ol>
 <p>Related issue: <a href="https://github.com/kimdre/doco-cd/issues/1115">#1115</a></p>
 <h2 id="sidecar-containers">Sidecar Containers<a class="headerlink" href="#sidecar-containers" title="Permanent link">&para;</a></h2>
 <p>Sidecar containers are additional containers that run alongside your main application containers. They can be used to provide auxiliary services, such as background tasks, metrics collection, or log forwarding.</p>
@@ -2583,7 +2590,7 @@ Instead, it relies on the underlying container runtime (e.g., Docker) to execute
     
       
       
-      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["content.action.edit","content.action.view","content.code.select","content.code.copy","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.path","navigation.tabs","navigation.tabs.sticky","navigation.top","toc.follow","search.highlight","search.suggest","search.share"],"search":"../../assets/javascripts/workers/search.e2d2d235.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"alias":true,"default":"latest","provider":"mike"}}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["content.action.edit","content.action.view","content.code.select","content.code.copy","content.code.annotate","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.path","navigation.tabs","navigation.tabs.sticky","navigation.top","toc.follow","search.highlight","search.suggest","search.share"],"search":"../../assets/javascripts/workers/search.e2d2d235.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"alias":true,"default":"latest","provider":"mike"}}</script>
     
     
       <script src="../../assets/javascripts/bundle.9f55f5b1.min.js"></script>
