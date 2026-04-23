@@ -230,7 +230,7 @@ The following settings can be used to configure periodic reconciliation.
 | Key        | Type    | Description                                          | Default value |
 |------------|---------|------------------------------------------------------|---------------|
 | `enabled`  | boolean | Enable periodic reconciliation.                      | `true`        |
-| `interval` | int     | The time in seconds between two reconciliation runs. | `60`          |
+| `interval` | number  | The time in seconds between two reconciliation runs. | `60`          |
 
 --8<-- "wiki/docs/_snippets/reconciliation-note.md"
 
