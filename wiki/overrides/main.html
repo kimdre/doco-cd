@@ -29,8 +29,15 @@
 {% endblock %}
 
 {% block outdated %}
-  You're not viewing the latest version.
-  <a href="{{ '../' ~ base_url }}/{{ config.extra.version.default }}/{{ page.url }}">
-    <strong>Click here to go to latest.</strong>
-  </a>
+  {% if config.extra.version and config.extra.version.identifier == "next" %}
+    You're viewing the <strong>unreleased</strong> (next) version of this documentation. Content may be incomplete or subject to change.
+    <a href="{{ '../' ~ base_url }}/{{ config.extra.version.default }}/{{ page.url }}">
+      <strong>Click here to go to the latest stable version.</strong>
+    </a>
+  {% else %}
+    You're not viewing the latest version.
+    <a href="{{ '../' ~ base_url }}/{{ config.extra.version.default }}/{{ page.url }}">
+      <strong>Click here to go to latest.</strong>
+    </a>
+  {% endif %}
 {% endblock %}
