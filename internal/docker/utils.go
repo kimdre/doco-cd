@@ -78,7 +78,7 @@ func GetServiceLabels(ctx context.Context, cli client.APIClient, stackName strin
 		return result, nil
 	}
 
-	containers, err := GetLabeledContainers(ctx, cli, api.ProjectLabel, stackName)
+	containers, err := GetLabeledContainers(ctx, cli, api.ProjectLabel, stackName, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get containers for stack %s: %w", stackName, err)
 	}
@@ -92,10 +92,10 @@ func GetServiceLabels(ctx context.Context, cli client.APIClient, stackName strin
 }
 
 // GetLabeledContainers retrieves all containers with a specific label key and value.
-func GetLabeledContainers(ctx context.Context, cli client.APIClient, key, value string) (containers []container.Summary, err error) {
+func GetLabeledContainers(ctx context.Context, cli client.APIClient, key, value string, all bool) (containers []container.Summary, err error) {
 	result, err := cli.ContainerList(ctx, client.ContainerListOptions{
 		Filters: make(client.Filters).Add("label", key+"="+value),
-		All:     false,
+		All:     all,
 	})
 	if err != nil {
 		return nil, err
@@ -120,7 +120,7 @@ func GetLabeledServices(ctx context.Context, cli client.APIClient, key, value st
 		return result, nil
 	}
 
-	containers, err := GetLabeledContainers(ctx, cli, key, value)
+	containers, err := GetLabeledContainers(ctx, cli, key, value, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get containers with label %s=%s: %w", key, value, err)
 	}
