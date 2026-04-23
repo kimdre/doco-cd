@@ -180,10 +180,10 @@ type ServiceMismatchReason struct {
 func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceStatus, services types.Services) []ServiceMismatch {
 	var mismatches []ServiceMismatch
 
-	// In non-Swarm mode, services with "on-failure" or "no" restart policy can be considered as "stopped" and won't cause a mismatch.
+	// In non-Swarm mode, services with unset, "on-failure", or "no" restart policy can be considered as "stopped" and won't cause a mismatch.
 	allowStoppedForRestartPolicy := func(svc types.ServiceConfig) bool {
 		restart := strings.ToLower(strings.TrimSpace(svc.Restart))
-		return strings.HasPrefix(restart, "on-failure") || restart == "no"
+		return restart == "" || strings.HasPrefix(restart, "on-failure") || restart == "no"
 	}
 
 	getSvcMode := func(svc types.ServiceConfig) swarmInternal.DeployMode {

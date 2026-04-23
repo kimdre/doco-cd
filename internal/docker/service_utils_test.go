@@ -606,13 +606,14 @@ func TestCheckServiceMismatch(t *testing.T) {
 			want: nil,
 		},
 		{
-			name: "swarmMode=false, mismatch replicas",
+			name: "swarmMode=false, mismatch replicas for restart always",
 			deployed: map[Service]ServiceStatus{
 				"foo": {Replicas: 1},
 			},
 			swarmModeEnable: false,
 			services: types.Services{
 				"foo": {
+					Restart: "always",
 					Scale: new(2),
 				},
 			},
@@ -630,11 +631,12 @@ func TestCheckServiceMismatch(t *testing.T) {
 			},
 		},
 		{
-			name:            "swarmMode=false, no deployed",
+			name:            "swarmMode=false, no deployed for restart always",
 			deployed:        map[Service]ServiceStatus{},
 			swarmModeEnable: false,
 			services: types.Services{
 				"foo": {
+					Restart: "always",
 					Scale: new(2),
 				},
 			},
@@ -648,6 +650,15 @@ func TestCheckServiceMismatch(t *testing.T) {
 					},
 				},
 			},
+		},
+		{
+			name:            "swarmMode=false, no restart policy may remain stopped",
+			deployed:        map[Service]ServiceStatus{},
+			swarmModeEnable: false,
+			services: types.Services{
+				"job": {},
+			},
+			want: nil,
 		},
 		{
 			name:            "swarmMode=false, restart on-failure may remain stopped",

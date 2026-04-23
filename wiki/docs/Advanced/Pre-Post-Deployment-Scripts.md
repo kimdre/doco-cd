@@ -23,6 +23,7 @@ Available options to run scripts/commands during deployment or container lifecyc
     In non-Swarm deployments, periodic reconciliation follows classic Compose `restart` semantics:
     
     - Services with `#!yaml restart: always` or `#!yaml restart: unless-stopped` are expected to stay running.
+    - Services with no explicit `restart` policy are treated as `#!yaml restart: "no"`.
     - Services with `#!yaml restart: on-failure` and `#!yaml restart: "no"` are treated as one-time behavior and may remain stopped after completion.
 
     See [Reconciliation settings](../Deploy-Settings.md#reconciliation-settings), [Known Limitations](../Known-Limitations.md#reconciliation-behavior-for-one-time-services) and [Docker Compose specification](https://docs.docker.com/reference/compose-file/services/#restart).
