@@ -614,7 +614,7 @@ func TestCheckServiceMismatch(t *testing.T) {
 			services: types.Services{
 				"foo": {
 					Restart: "always",
-					Scale: new(2),
+					Scale:   new(2),
 				},
 			},
 			want: []ServiceMismatch{
@@ -637,7 +637,7 @@ func TestCheckServiceMismatch(t *testing.T) {
 			services: types.Services{
 				"foo": {
 					Restart: "always",
-					Scale: new(2),
+					Scale:   new(2),
 				},
 			},
 			want: []ServiceMismatch{
