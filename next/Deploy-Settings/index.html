@@ -2711,6 +2711,12 @@ See <a data-preview="" href="../Poll-Settings/">Poll Settings</a> and this <a da
 <td><code>180</code></td>
 </tr>
 <tr>
+<td><code>git_depth</code></td>
+<td>number</td>
+<td>Limits the number of commits fetched during clone/fetch (shallow clone). <code>0</code> means use the global <a data-preview="" href="../App-Settings/"><code>GIT_CLONE_DEPTH</code></a> value. A positive integer overrides the global setting for this deployment. When a requested ref (tag/SHA) is outside the shallow depth, doco-cd automatically deepens incrementally before falling back to a full fetch. Changing this value on an existing repo triggers an automatic re-clone.</td>
+<td><code>0</code> (use global)</td>
+</tr>
+<tr>
 <td><code>destroy</code></td>
 <td>boolean</td>
 <td>(⚠️ Destructive) Remove the deployed compose stack/project and its resources from the Docker host. Can be further configured using the <a data-preview="" href="#destroy-settings">destroy_opts</a> setting.</td>

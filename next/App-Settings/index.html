@@ -2343,6 +2343,12 @@
 <td><code></code></td>
 </tr>
 <tr>
+<td><code>GIT_CLONE_DEPTH</code></td>
+<td>number</td>
+<td>Limits the number of commits fetched during clone/fetch operations (shallow clone). <code>0</code> means full clone (no depth limit). Can be overridden per deployment via the <a data-preview="" href="../Deploy-Settings/"><code>git_depth</code></a> setting. When a requested ref is outside the shallow depth, doco-cd will automatically deepen incrementally before falling back to a full fetch.</td>
+<td><code>0</code></td>
+</tr>
+<tr>
 <td><code>GIT_CLONE_SUBMODULES</code></td>
 <td>boolean</td>
 <td>Whether Git submodules are cloned too</td>
