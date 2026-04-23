@@ -9,14 +9,14 @@ ARG TARGETVARIANT
 # Set destination for COPY
 WORKDIR /app
 
-# Automatically disable Bitwarden for armv7 and riscv64
-# The Bitwarden Go SDK does not support 32-bit ARM architecture or RISC-V 64-bit architecture
-RUN if ([ "$TARGETARCH" = "arm" ] && [ "$TARGETVARIANT" = "v7" ]) || ([ "$TARGETARCH" = "riscv64" ]); then \
-    echo "Detected unsupported ${TARGETARCH} ${TARGETVARIANT} architecture - Bitwarden support will be disabled"; \
+# Automatically disable Bitwarden for armv7
+# The Bitwarden Go SDK does not support 32-bit ARM architecture
+RUN if [ "$TARGETARCH" = "arm" ] && [ "$TARGETVARIANT" = "v7" ]; then \
+    echo "Detected armv7 architecture - Bitwarden support will be disabled"; \
     fi
 
-# Install prerequisites for Bitwarden SDK (only if not disabled and not armv7 or riscv64)
-RUN if [ "$DISABLE_BITWARDEN" != "true" ] && ! ([ "$TARGETARCH" = "arm" ] && [ "$TARGETVARIANT" = "v7" ]) && ! ([ "$TARGETARCH" = "riscv64" ]); then \
+# Install prerequisites for Bitwarden SDK (only if not disabled and not armv7)
+RUN if [ "$DISABLE_BITWARDEN" != "true" ] && ! ([ "$TARGETARCH" = "arm" ] && [ "$TARGETVARIANT" = "v7" ]); then \
     apt-get update && apt-get install -y \
     musl-tools \
     && rm -rf /var/lib/apt/lists/*; \
@@ -45,13 +45,13 @@ ARG TARGETVARIANT
 COPY . .
 
 # Build with or without Bitwarden support
-# armv7 and riscv64 builds are automatically built without Bitwarden
+# armv7 builds are automatically built without Bitwarden
 # CGO_ENABLED=1 and CC=musl-gcc are required for Bitwarden SDK when enabled
 # For builds without Bitwarden, CGO is not needed
 RUN --mount=type=cache,target=/go/pkg/mod/ \
     --mount=type=cache,target="/root/.cache/go-build" \
     --mount=type=bind,target=. \
-    if [ "$DISABLE_BITWARDEN" = "true" ] || ([ "$TARGETARCH" = "arm" ] && [ "$TARGETVARIANT" = "v7" ]) || ([ "$TARGETARCH" = "riscv64" ]); then \
+    if [ "$DISABLE_BITWARDEN" = "true" ] || ([ "$TARGETARCH" = "arm" ] && [ "$TARGETVARIANT" = "v7" ]); then \
         echo "Building without Bitwarden support"; \
         CGO_ENABLED=1 go build -tags nobitwarden -ldflags="-s -w -X github.com/kimdre/doco-cd/internal/config.AppVersion=${APP_VERSION}" -o / ./...; \
     else \
