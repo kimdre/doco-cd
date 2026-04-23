@@ -2753,7 +2753,7 @@ See <a data-preview="" href="../Poll-Settings/">Poll Settings</a> and this <a da
 <td><code>reconciliation</code></td>
 <td>object</td>
 <td>Enables periodic reconciliation. See <a data-preview="" href="#reconciliation-settings">reconciliation settings</a> for more details.</td>
-<td><code>{enable: true, interval: 60}</code></td>
+<td><code>{enabled: true, interval: 60}</code></td>
 </tr>
 </tbody>
 </table>
@@ -2956,6 +2956,8 @@ When an app is no longer available in the <code>working_dir</code> (e.g. deleted
 </span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">  </span><span class="nt">remove_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
 </span></code></pre></div>
 <h3 id="reconciliation-settings">Reconciliation settings<a class="headerlink" href="#reconciliation-settings" title="Permanent link">&para;</a></h3>
+<p>Reconciliation is an optional periodic check that compares the currently running services with the expected deployment state.
+If drift is detected, doco-cd automatically reapplies the deployment to bring the stack back to the desired state.</p>
 <p>The following settings can be used to configure periodic reconciliation.</p>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
@@ -2972,7 +2974,7 @@ When an app is no longer available in the <code>working_dir</code> (e.g. deleted
 </thead>
 <tbody>
 <tr>
-<td><code>enable</code></td>
+<td><code>enabled</code></td>
 <td>boolean</td>
 <td>Enable periodic reconciliation.</td>
 <td><code>true</code></td>
@@ -2985,9 +2987,20 @@ When an app is no longer available in the <code>working_dir</code> (e.g. deleted
 </tr>
 </tbody>
 </table>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><a data-preview="" href="../../Deploy-Settings/#reconciliation-settings">Reconciliation</a> for non-Swarm deployments follows classic Compose <code>restart</code> semantics:</p>
+<ul>
+<li>Services with <code class="language-yaml highlight"><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">always</span></code> or <code class="language-yaml highlight"><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span></code> are expected to stay running.</li>
+<li>Services with no explicit <code>restart</code> policy are treated as <code class="language-yaml highlight"><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;no&quot;</span></code>.</li>
+<li>Services with <code class="language-yaml highlight"><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">on-failure</span></code> may remain exited after success, and <code class="language-yaml highlight"><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;no&quot;</span></code> is treated as one-time behavior and is not reconciled back to running.</li>
+<li>Swarm handling is separate and uses Swarm service modes and <code class="language-yaml highlight"><span class="l l-Scalar l-Scalar-Plain">deploy.restart_policy</span></code> behavior.</li>
+</ul>
+<p>More information on the restart policies can be found in the <a href="https://docs.docker.com/reference/compose-file/services/#restart">Docker Compose specification</a>.</p>
+</div>
 <div class="language-yaml highlight"><span class="filename">.doco-cd.yml</span><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">some-project</span>
 </span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nt">reconciliation</span><span class="p">:</span>
-</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span><span class="nt">enable</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
 </span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">  </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">60</span>
 </span></code></pre></div>
 <h3 id="webhook-filter">Webhook Filter<a class="headerlink" href="#webhook-filter" title="Permanent link">&para;</a></h3>
