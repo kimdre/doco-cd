@@ -2274,6 +2274,17 @@ Instead, it relies on the underlying container runtime (e.g., Docker) to execute
 <li><a data-preview="" href="#sidecar-containers">Sidecar Containers</a></li>
 <li><a data-preview="" href="#compose-lifecycle-hooks">Compose Lifecycle Hooks</a></li>
 </ul>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><a data-preview="" href="../../Deploy-Settings/#reconciliation-settings">Reconciliation</a> for non-Swarm deployments follows classic Compose <code>restart</code> semantics:</p>
+<ul>
+<li>Services with <code class="language-yaml highlight"><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">always</span></code> or <code class="language-yaml highlight"><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span></code> are expected to stay running.</li>
+<li>Services with no explicit <code>restart</code> policy are treated as <code class="language-yaml highlight"><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;no&quot;</span></code>.</li>
+<li>Services with <code class="language-yaml highlight"><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">on-failure</span></code> may remain exited after success, and <code class="language-yaml highlight"><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;no&quot;</span></code> is treated as one-time behavior and is not reconciled back to running.</li>
+<li>Swarm handling is separate and uses Swarm service modes and <code class="language-yaml highlight"><span class="l l-Scalar l-Scalar-Plain">deploy.restart_policy</span></code> behavior.</li>
+</ul>
+<p>More information on the restart policies can be found in the <a href="https://docs.docker.com/reference/compose-file/services/#restart">Docker Compose specification</a>.</p>
+</div>
 <h2 id="init-containers">Init Containers<a class="headerlink" href="#init-containers" title="Permanent link">&para;</a></h2>
 <p>Init containers are containers that run before the main application containers in your Docker Compose setup and complete their tasks before the main containers start. They are useful for performing setup tasks, such as initializing databases, running migrations, or preparing configuration files.</p>
 <p>Some common use cases for init containers include:</p>
@@ -2283,6 +2294,10 @@ Instead, it relies on the underlying container runtime (e.g., Docker) to execute
 <li>Preloading data into databases or caches.</li>
 </ul>
 <p>We use the <code>depends_on</code> option with the <code>condition: service_completed_successfully</code> condition to ensure that the main application container waits for the init container to complete successfully before starting. The init container will run its specified commands and exit with a status code of 0 to indicate success, allowing the main application container to start afterward.</p>
+<div class="admonition success">
+<p class="admonition-title">Recommended Restart Policy for One-Time Script Services</p>
+<p>It is recommended to use <code class="language-yaml highlight"><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">on-failure</span></code> for one-time script services to allow them to remain stopped after successful completion, while still enabling automatic restarts in case of failures.</p>
+</div>
 <h3 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h3>
 <div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="hll"><span class="nt">x-common-env</span><span class="p">:</span><span class="w"> </span><span class="nl">&amp;common-env</span>
 </span></span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="hll"><span class="w">  </span><span class="nt">MYVAR</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">world</span><span class="w">  </span><span class="c1"># We will use this variable in both init and app containers</span>
@@ -2290,32 +2305,38 @@ Instead, it relies on the underlying container runtime (e.g., Docker) to execute
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="hll"><span class="nt">services</span><span class="p">:</span>
 </span></span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="hll"><span class="w">  </span><span class="nt">init</span><span class="p">:</span>
 </span></span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="hll"><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">busybox</span>
-</span></span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="hll"><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-</span></span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="hll"><span class="w">      </span><span class="nt">&lt;&lt;</span><span class="p">:</span><span class="w"> </span><span class="nv">*common-env</span>
-</span></span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="hll"><span class="w">    </span><span class="nt">entrypoint</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;sh</span><span class="nv"> </span><span class="s">-c&quot;</span><span class="w">  </span><span class="c1"># Use sh -c as the entrypoint to run multiple commands in &quot;command&quot; section</span>
-</span></span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="hll"><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-</span></span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./web:/web</span>
-</span></span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="hll"><span class="w">    </span><span class="nt">working_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/web</span>
-</span></span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="hll"><span class="w">    </span><span class="nt">command</span><span class="p">:</span>
-</span></span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">|</span>
-</span></span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="hll"><span class="w">        </span><span class="no">echo Starting pre-deployment script</span>
-</span></span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="hll"><span class="w">        </span><span class="no">echo &quot;Hello $${MYVAR}!&quot; &gt; /web/index.html # Double dollar-sign is required here to use the variable in the shell script </span>
-</span></span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="hll"><span class="w">        </span><span class="no">echo Finished pre-deployment script</span>
-</span></span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="hll"><span class="w">        </span><span class="no">exit 0  # Exit with code 0 to indicate success, not required if the last command already returns 0 but added here for clarity</span>
-</span></span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>
-</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>
-</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">nginx</span>
-</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="hll"><span class="w">      </span><span class="nt">&lt;&lt;</span><span class="p">:</span><span class="w"> </span><span class="nv">*common-env</span>
-</span></span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./web:/usr/share/nginx/html:ro</span>
-</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8080:80</span>
-</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="hll"><span class="w">    </span><span class="nt">depends_on</span><span class="p">:</span>
-</span></span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="hll"><span class="w">      </span><span class="nt">init</span><span class="p">:</span>
-</span></span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="hll"><span class="w">        </span><span class="nt">condition</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">service_completed_successfully</span><span class="w">  </span><span class="c1"># Wait for init container to complete/stop with exit code 0</span>
-</span></span></code></pre></div>
-<ul>
+</span></span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="hll"><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">on-failure:3</span><span class="w"> </span><span class="c1"># (3)!</span>
+</span></span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="hll"><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+</span></span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="hll"><span class="w">      </span><span class="nt">&lt;&lt;</span><span class="p">:</span><span class="w"> </span><span class="nv">*common-env</span>
+</span></span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="hll"><span class="w">    </span><span class="nt">entrypoint</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;sh</span><span class="nv"> </span><span class="s">-c&quot;</span><span class="w">  </span><span class="c1"># Use sh -c as the entrypoint to run multiple commands in &quot;command&quot; section</span>
+</span></span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="hll"><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+</span></span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./web:/web</span>
+</span></span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="hll"><span class="w">    </span><span class="nt">working_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/web</span>
+</span></span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="hll"><span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="c1"># (1)!</span>
+</span></span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">|</span>
+</span></span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="hll"><span class="w">        </span><span class="no">echo Starting pre-deployment script</span>
+</span></span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="hll"><span class="w">        </span><span class="no">echo &quot;Hello $${MYVAR}!&quot; &gt; /web/index.html</span>
+</span></span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="hll"><span class="w">        </span><span class="no">echo Finished pre-deployment script</span>
+</span></span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">        </span><span class="no">exit 0  # Exit with code 0 to indicate success, not required if the last command already returns 0 but added here for clarity</span>
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">nginx</span>
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="hll"><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+</span></span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="w">      </span><span class="nt">&lt;&lt;</span><span class="p">:</span><span class="w"> </span><span class="nv">*common-env</span>
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./web:/usr/share/nginx/html:ro</span>
+</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
+</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8080:80</span>
+</span></span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="hll"><span class="w">    </span><span class="nt">depends_on</span><span class="p">:</span>
+</span></span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="hll"><span class="w">      </span><span class="nt">init</span><span class="p">:</span>
+</span></span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a><span class="w">        </span><span class="nt">condition</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">service_completed_successfully</span><span class="w"> </span><span class="c1"># (2)!</span>
+</span></code></pre></div>
+<ol>
+<li>Double dollar-sign (<code>$$</code>) is required to use variables in the shell script, otherwise Docker Compose will try to resolve it as a variable in the <code>docker-compose.yml</code> file instead of passing it to the container.</li>
+<li>Wait for init container to complete/stop with exit code 0</li>
+<li>
+<p>Using <code>restart: on-failure:3</code> allows the init container to be retried up to 3 times in case of failure during script execution, while still allowing it to remain stopped after successful completion. To retry indefinitely, you can use <code>restart: on-failure</code> without a retry limit.</p>
+</li>
 <li>
 <p>If you have a shell script in your repo for the init stuff, you can remove <code>entrypoint</code> and mount the script directly and run it via the <code>command</code> option:
   <div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">volumes</span><span class="p">:</span>
@@ -2326,14 +2347,17 @@ Instead, it relies on the underlying container runtime (e.g., Docker) to execute
 <li>
 <p>If you need commands from the app container, try to use the same image as your app container. Many app images also come with a shell (sh, ash, bash) </p>
 </li>
-</ul>
+</ol>
 <h3 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h3>
 <h4 id="container-exited-0">container exited (0)<a class="headerlink" href="#container-exited-0" title="Permanent link">&para;</a></h4>
 <p>If the deployment fails with an error containing a message like <code>container &lt;init-container-name&gt; exited (0)</code>, try to add a short sleep at the end of the init container commands. This is a workaround for a known issue where the init container may exit before the main container starts waiting for it, causing the main container to miss the successful completion of the init container. Adding a short sleep ensures that the init container has time to exit properly before the main container checks its status.</p>
 <p><strong>Example</strong>:
 <div class="language-yaml highlight"><span class="filename">Add a sleep command to the init container in your docker-compose.yml</span><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">entrypoint</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;/bin/sh&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;-c&quot;</span><span class="p p-Indicator">]</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;&lt;your-commands-here&gt;</span><span class="nv"> </span><span class="s">&amp;&amp;</span><span class="nv"> </span><span class="s">sleep</span><span class="nv"> </span><span class="s">3&quot;</span><span class="p p-Indicator">]</span><span class="w">  </span><span class="c1"># Depending on the complexity of your init commands, you may need to adjust the sleep duration.</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;&lt;your-commands-here&gt;</span><span class="nv"> </span><span class="s">&amp;&amp;</span><span class="nv"> </span><span class="s">sleep</span><span class="nv"> </span><span class="s">3&quot;</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="c1"># (1)!</span>
 </span></code></pre></div></p>
+<ol>
+<li>Depending on the complexity of your init commands, you may need to adjust the sleep duration.</li>
+</ol>
 <p>Related issue: <a href="https://github.com/kimdre/doco-cd/issues/1115">#1115</a></p>
 <h2 id="sidecar-containers">Sidecar Containers<a class="headerlink" href="#sidecar-containers" title="Permanent link">&para;</a></h2>
 <p>Sidecar containers are additional containers that run alongside your main application containers. They can be used to provide auxiliary services, such as background tasks, metrics collection, or log forwarding.</p>
@@ -2355,19 +2379,23 @@ Instead, it relies on the underlying container runtime (e.g., Docker) to execute
 </span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>
 </span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="hll"><span class="w">  </span><span class="nt">sidecar</span><span class="p">:</span>
 </span></span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="hll"><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">busybox</span>
-</span></span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="hll"><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-</span></span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">webdata:/webdata</span>
-</span></span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="hll"><span class="w">    </span><span class="nt">depends_on</span><span class="p">:</span>
-</span></span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">app</span>
-</span></span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="hll"><span class="w">    </span><span class="nt">entrypoint</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;sh</span><span class="nv"> </span><span class="s">-c&quot;</span>
-</span></span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a><span class="hll"><span class="w">    </span><span class="nt">command</span><span class="p">:</span>
-</span></span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">|</span>
-</span></span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a><span class="hll"><span class="w">        </span><span class="no">while true; do</span>
-</span></span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a><span class="hll"><span class="w">          </span><span class="no">echo &quot;Updating web content...&quot;</span>
-</span></span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a><span class="hll"><span class="w">          </span><span class="no">echo &quot;The current time is $(date)&quot; &gt; /webdata/index.html </span>
-</span></span><span id="__span-3-24"><a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a><span class="hll"><span class="w">          </span><span class="no">sleep 60</span>
-</span></span><span id="__span-3-25"><a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a><span class="hll"><span class="w">        </span><span class="no">done</span>
-</span></span></code></pre></div>
+</span></span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="hll"><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">always</span><span class="w"> </span><span class="c1"># (1)!</span>
+</span></span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="hll"><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+</span></span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">webdata:/webdata</span>
+</span></span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="hll"><span class="w">    </span><span class="nt">depends_on</span><span class="p">:</span>
+</span></span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">app</span>
+</span></span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a><span class="hll"><span class="w">    </span><span class="nt">entrypoint</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;sh</span><span class="nv"> </span><span class="s">-c&quot;</span>
+</span></span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a><span class="hll"><span class="w">    </span><span class="nt">command</span><span class="p">:</span>
+</span></span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">|</span>
+</span></span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a><span class="hll"><span class="w">        </span><span class="no">while true; do</span>
+</span></span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a><span class="hll"><span class="w">          </span><span class="no">echo &quot;Updating web content...&quot;</span>
+</span></span><span id="__span-3-24"><a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a><span class="hll"><span class="w">          </span><span class="no">echo &quot;The current time is $(date)&quot; &gt; /webdata/index.html </span>
+</span></span><span id="__span-3-25"><a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a><span class="hll"><span class="w">          </span><span class="no">sleep 60</span>
+</span></span><span id="__span-3-26"><a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a><span class="w">        </span><span class="no">done</span>
+</span></code></pre></div>
+<ol>
+<li>Using <code>restart: always</code> ensures that the sidecar container continues to run and perform its tasks as long as the main application container is running.</li>
+</ol>
 <h2 id="compose-lifecycle-hooks">Compose Lifecycle Hooks<a class="headerlink" href="#compose-lifecycle-hooks" title="Permanent link">&para;</a></h2>
 <div class="admonition info">
 <p class="admonition-title">Requires Docker Compose <a href="https://github.com/docker/compose/releases/tag/v2.30.0">2.30.0</a> or later</p>
@@ -2428,6 +2456,8 @@ Instead, it relies on the underlying container runtime (e.g., Docker) to execute
 <li><a href="https://docs.docker.com/compose/how-tos/lifecycle/">Using lifecycle hooks with Compose</a></li>
 <li><a href="https://docs.docker.com/reference/compose-file/services/#post_start">Docker Compose Post Start Hook Documentation</a></li>
 <li><a href="https://docs.docker.com/reference/compose-file/services/#pre_stop">Docker Compose Pre Stop Hook Documentation</a></li>
+<li><a data-preview="" href="../../Deploy-Settings/#reconciliation-settings">Reconciliation settings</a></li>
+<li><a data-preview="" href="../../Known-Limitations/#reconciliation-behavior-for-one-time-services">Known Limitations: Reconciliation behavior for one-time services</a></li>
 </ul>
 
 
@@ -2583,7 +2613,7 @@ Instead, it relies on the underlying container runtime (e.g., Docker) to execute
     
       
       
-      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["content.action.edit","content.action.view","content.code.select","content.code.copy","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.path","navigation.tabs","navigation.tabs.sticky","navigation.top","toc.follow","search.highlight","search.suggest","search.share"],"search":"../../assets/javascripts/workers/search.e2d2d235.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"alias":true,"default":"latest","provider":"mike"}}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["content.action.edit","content.action.view","content.code.select","content.code.copy","content.code.annotate","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.path","navigation.tabs","navigation.tabs.sticky","navigation.top","toc.follow","search.highlight","search.suggest","search.share"],"search":"../../assets/javascripts/workers/search.e2d2d235.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"alias":true,"default":"latest","provider":"mike"}}</script>
     
     
       <script src="../../assets/javascripts/bundle.9f55f5b1.min.js"></script>
