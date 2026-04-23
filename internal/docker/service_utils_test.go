@@ -650,6 +650,76 @@ func TestCheckServiceMismatch(t *testing.T) {
 			},
 		},
 		{
+			name:            "swarmMode=false, restart on-failure may remain stopped",
+			deployed:        map[Service]ServiceStatus{},
+			swarmModeEnable: false,
+			services: types.Services{
+				"job": {
+					Restart: "on-failure",
+				},
+			},
+			want: nil,
+		},
+		{
+			name:            "swarmMode=false, restart no may remain stopped",
+			deployed:        map[Service]ServiceStatus{},
+			swarmModeEnable: false,
+			services: types.Services{
+				"job": {
+					Restart: "no",
+				},
+			},
+			want: nil,
+		},
+		{
+			name: "swarmMode=false, restart always should stay running",
+			deployed: map[Service]ServiceStatus{
+				"web": {Replicas: 0},
+			},
+			swarmModeEnable: false,
+			services: types.Services{
+				"web": {
+					Restart: "always",
+				},
+			},
+			want: []ServiceMismatch{
+				{
+					ServiceName: "web",
+					Reasons: []ServiceMismatchReason{
+						{
+							Reason: ServiceMismatchReasonReplicas,
+							Want:   1,
+							Got:    uint64(0),
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "swarmMode=false, restart unless-stopped should stay running",
+			deployed: map[Service]ServiceStatus{
+				"web": {Replicas: 0},
+			},
+			swarmModeEnable: false,
+			services: types.Services{
+				"web": {
+					Restart: "unless-stopped",
+				},
+			},
+			want: []ServiceMismatch{
+				{
+					ServiceName: "web",
+					Reasons: []ServiceMismatchReason{
+						{
+							Reason: ServiceMismatchReasonReplicas,
+							Want:   1,
+							Got:    uint64(0),
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "swarmMode=true, no missing",
 			deployed: map[Service]ServiceStatus{
 				"foo":         {Replicas: 1, SwarmMode: swarm.DeployModeReplicated},
