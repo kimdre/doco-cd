@@ -219,15 +219,25 @@ destroy_opts:
 
 ### Reconciliation settings
 
+Reconciliation is an optional periodic check that compares the currently running services with the expected deployment state.
+If drift is detected, doco-cd automatically reapplies the deployment to bring the stack back to the desired state.
+
 The following settings can be used to configure periodic reconciliation.
 
 !!! warning
     The currently implemented state will be lost when doco-cd restarts.
 
 | Key        | Type    | Description                                          | Default value |
-| ---------- | ------- | ---------------------------------------------------- | ------------- |
+|------------|---------|------------------------------------------------------|---------------|
 | `enable`   | boolean | Enable periodic reconciliation.                      | `true`        |
 | `interval` | int     | The time in seconds between two reconciliation runs. | `60`          |
+
+!!! note
+    Reconciliation for non-Swarm deployments follows classic Compose `restart` semantics.
+
+    - Services with `#!yaml restart: always` or `#!yaml restart: unless-stopped` are expected to stay running.
+    - Services with `#!yaml restart: on-failure` may remain exited after success, and `#!yaml restart: "no"` is treated as one-time behavior and is not reconciled back to running.
+    - Swarm handling is separate and uses Swarm service modes and `#!yaml deploy.restart_policy` behavior.
 
 ```yaml title=".doco-cd.yml"
 name: some-project
