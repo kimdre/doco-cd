@@ -81,11 +81,11 @@ func getLatestServiceStatus(statusMap map[Service]ServiceStatus, repoName string
 	return ret
 }
 
-func getDeployStatus(ctx context.Context, apiClient client.APIClient, deployName string) (map[Service]ServiceStatus, error) {
+func getDeployStatus(ctx context.Context, client client.APIClient, deployName string) (map[Service]ServiceStatus, error) {
 	result := make(map[Service]ServiceStatus)
 
 	if swarmInternal.GetModeEnabled() {
-		services, err := swarmInternal.GetStackServices(ctx, apiClient, deployName)
+		services, err := swarmInternal.GetStackServices(ctx, client, deployName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get services for stack %s: %w", deployName, err)
 		}
@@ -115,7 +115,7 @@ func getDeployStatus(ctx context.Context, apiClient client.APIClient, deployName
 			result[Service(name)] = status
 		}
 	} else {
-		containers, err := GetLabeledContainers(ctx, apiClient, api.ProjectLabel, deployName, true)
+		containers, err := GetLabeledContainers(ctx, client, api.ProjectLabel, deployName, true)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get containers for project %s: %w", deployName, err)
 		}
