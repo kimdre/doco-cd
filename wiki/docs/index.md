@@ -74,9 +74,11 @@ ghcr.io/kimdre/doco-cd:0.80.0
 
 Doco-CD has been featured by industry media and technical publications:
 
-- `2026-05-01` - c't Magazin - [(German) c't 10/2026](https://www.heise.de/select/ct/2026/10/2609115553794560316)
-- `2026-04-22` - heise+ - [(German) Watchtower and alternatives: how to keep Docker containers automatically up to date](https://heise.de/-11243856)
-- `2025-11-14` - selfh.st - [Weekly: 2025-11-14](https://selfh.st/weekly/2025-11-14/)
+| Date       | Publication | Article                                                                                                                    |
+|------------|-------------|----------------------------------------------------------------------------------------------------------------------------|
+| 2026-05-01 | c't Magazin | [(German) c't 10/2026](https://www.heise.de/select/ct/2026/10/2609115553794560316)                                         |
+| 2026-04-22 | heise+      | [(German) Watchtower and alternatives: how to keep Docker containers automatically up to date](https://heise.de/-11243856) |
+| 2025-11-14 | selfh.st    | [Weekly: 2025-11-14](https://selfh.st/weekly/2025-11-14/)                                                                  |
 
 ## Contributing
 
