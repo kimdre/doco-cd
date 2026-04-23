@@ -46,10 +46,10 @@ services:
     volumes:
       - ./web:/web
     working_dir: /web
-    command:
+    command: # (1)!
       - |
         echo Starting pre-deployment script
-        echo "Hello $${MYVAR}!" > /web/index.html # Double dollar-sign is required here to use the variable in the shell script 
+        echo "Hello $${MYVAR}!" > /web/index.html
         echo Finished pre-deployment script
         exit 0  # Exit with code 0 to indicate success, not required if the last command already returns 0 but added here for clarity
 
@@ -63,8 +63,11 @@ services:
       - 8080:80
     depends_on:
       init:
-        condition: service_completed_successfully  # Wait for init container to complete/stop with exit code 0
+        condition: service_completed_successfully # (2)!
 ```
+
+1. Double dollar-sign (`$$`) is required to use variables in the shell script, otherwise Docker Compose will try to resolve it as a variable in the `docker-compose.yml` file instead of passing it to the container.
+2. Wait for init container to complete/stop with exit code 0
 
 - If you have a shell script in your repo for the init stuff, you can remove `entrypoint` and mount the script directly and run it via the `command` option:
   ```yaml title="docker-compose.yml"
@@ -84,8 +87,10 @@ If the deployment fails with an error containing a message like `container <init
 **Example**:
 ```yaml title="Add a sleep command to the init container in your docker-compose.yml"
 entrypoint: ["/bin/sh", "-c"]
-command: ["<your-commands-here> && sleep 3"]  # Depending on the complexity of your init commands, you may need to adjust the sleep duration.
+command: ["<your-commands-here> && sleep 3"] # (1)!
 ```
+
+1. Depending on the complexity of your init commands, you may need to adjust the sleep duration.
 
 Related issue: [#1115](https://github.com/kimdre/doco-cd/issues/1115)
 
