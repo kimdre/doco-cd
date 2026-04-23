@@ -19,7 +19,7 @@ The `scale` option sets the number of containers to run for the service. Setting
 ```yaml title="docker-compose.yml" hl_lines="3"
 services:
   webserver:
-    scale: 0  # Add this line to remove the service remotely
+    scale: 0
     image: nginx
 ```
 
@@ -37,6 +37,6 @@ Add the following line to the `deploy` section of the service in the `docker-com
 services:
   webserver:
     deploy:
-      replicas: 0  # Add this line to remove the service remotely
+      replicas: 0
     image: nginx
 ```

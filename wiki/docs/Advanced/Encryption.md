@@ -69,7 +69,7 @@ Use the [docker-compose.yml](https://github.com/kimdre/doco-cd/blob/main/docker-
 services:
   app:
     environment:
-      SOPS_AGE_KEY_FILE: /run/secrets/sops_age_key # docker secrets are always mounted to /run/secrets/ if no target is specified
+      SOPS_AGE_KEY_FILE: /run/secrets/sops_age_key # (1)!
     secrets:
       - sops_age_key
 
@@ -77,6 +77,8 @@ secrets:
   sops_age_key:
     file: sops_age_key.txt
 ```
+
+1. docker secrets are always mounted in the `/run/secrets/` directory if no target is specified
 
 ### App configuration with SOPS-encrypted values
 

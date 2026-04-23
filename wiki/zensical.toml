@@ -84,6 +84,7 @@ features = [
   "content.action.view",
   "content.code.select",
   "content.code.copy",
+  "content.code.annotate",
   "navigation.footer",
   "navigation.indexes",
   "navigation.instant",
