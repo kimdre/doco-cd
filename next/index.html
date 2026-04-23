@@ -141,12 +141,31 @@
           <aside class="md-banner md-banner--warning">
             <div class="md-banner__inner md-grid md-typeset">
               
-  
+  <span data-next-version-message hidden>
+    You're viewing the <strong>unreleased</strong> (next) version of this documentation. Content may be incomplete or subject to change.
+    <a href=".././latest/">
+      <strong>Click here to go to the latest stable version.</strong>
+    </a>
+  </span>
+  <span data-non-next-version-message>
     You're not viewing the latest version.
     <a href=".././latest/">
       <strong>Click here to go to latest.</strong>
     </a>
-  
+  </span>
+  <script>
+    (function () {
+      var path = window.location.pathname || "";
+      var isNextVersion = /(^|\/)next(\/|$)/.test(path);
+      var nextMessage = document.querySelector("[data-next-version-message]");
+      var nonNextMessage = document.querySelector("[data-non-next-version-message]");
+      if (!nextMessage || !nonNextMessage) {
+        return;
+      }
+      nextMessage.hidden = !isNextVersion;
+      nonNextMessage.hidden = isNextVersion;
+    })();
+  </script>
 
             </div>
             <script>var el=document.querySelector("[data-md-component=outdated]"),base=new URL("."),outdated=__md_get("__outdated",sessionStorage,base);!0===outdated&&el&&(el.hidden=!1)</script>
