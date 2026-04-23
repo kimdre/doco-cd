@@ -65,7 +65,7 @@ To find more information about the webhook endpoint, see the [Webhook Listener E
     name: Send Dynamic Push Event Webhook
     
     on:
-      repository_dispatch: # replace with your desired trigger event
+      repository_dispatch: # (1)!
         types: [docker_publish_done]
     
     jobs:
@@ -111,6 +111,8 @@ To find more information about the webhook endpoint, see the [Webhook Listener E
                 -H "X-Hub-Signature-256: $SIGNATURE" \
                 -d "$PAYLOAD"
     ```
+
+    1. Replace with your desired trigger event
     
     Trigger this workflow by sending a `repository_dispatch` event with the type `docker_publish_done` (or your desired event type).
     For example in your main workflow job add this step:

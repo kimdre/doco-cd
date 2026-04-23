@@ -158,11 +158,9 @@ services:
       - "80:80"
     environment:
       TZ: Europe/Berlin
-      # The file name after the /run/secrets/ path is the name of the secret
-      GIT_ACCESS_TOKEN_FILE: /run/secrets/git_access_token
+      GIT_ACCESS_TOKEN_FILE: /run/secrets/git_access_token # (1)!
       WEBHOOK_SECRET_FILE: /run/secrets/webhook_secret
-    # The secret names must match with the secrets: section below
-    secrets:
+    secrets: # (2)!
       - git_access_token
       - webhook_secret
     volumes:
@@ -178,6 +176,9 @@ secrets:
   webhook_secret:
     external: true
 ```
+
+1. The file name after the `/run/secrets/` path is the name of the secret
+2. Secret names must match with the `secrets:` top-level section below
 
 ### Deploy in Docker Swarm mode
 To run the application in Docker Swarm mode, you need to use the `docker stack deploy` command instead of `docker compose up`.

@@ -137,7 +137,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - data:/data
-    configs: # Use with POLL_CONFIG_FILE
+    configs: # (1)!
       - source: poll-config.yml
         target: /poll-config.yml
 
@@ -154,6 +154,8 @@ configs:
       - url: https://yet-another-example.com
         branch: dev
 ```
+
+1. Use with the `POLL_CONFIG_FILE` environment variable.
 
 ### Inline Deploy Configs
 

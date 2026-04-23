@@ -58,7 +58,7 @@ services:
     container_name: doco-cd
     environment:
       SSH_PRIVATE_KEY_FILE: /run/secrets/ssh_private_key
-      SSH_PRIVATE_KEY_PASSPHRASE: ""  # Optional, only if you set a passphrase when generating the key
+      SSH_PRIVATE_KEY_PASSPHRASE: "" # (1)!
     secrets:
       - ssh_private_key
       
@@ -66,3 +66,5 @@ secrets:
   ssh_private_key:
     file: ./path/to/your/id_ed25519
 ```
+
+1. Optional, only needed if you set a passphrase when generating the SSH key pair.
