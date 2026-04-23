@@ -29,15 +29,29 @@
 {% endblock %}
 
 {% block outdated %}
-  {% if config.extra.version and config.extra.version.identifier == "next" %}
+  <span data-next-version-message hidden>
     You're viewing the <strong>unreleased</strong> (next) version of this documentation. Content may be incomplete or subject to change.
     <a href="{{ '../' ~ base_url }}/{{ config.extra.version.default }}/{{ page.url }}">
       <strong>Click here to go to the latest stable version.</strong>
     </a>
-  {% else %}
+  </span>
+  <span data-non-next-version-message>
     You're not viewing the latest version.
     <a href="{{ '../' ~ base_url }}/{{ config.extra.version.default }}/{{ page.url }}">
       <strong>Click here to go to latest.</strong>
     </a>
-  {% endif %}
+  </span>
+  <script>
+    (function () {
+      var path = window.location.pathname || "";
+      var isNextVersion = /(^|\/)next(\/|$)/.test(path);
+      var nextMessage = document.querySelector("[data-next-version-message]");
+      var nonNextMessage = document.querySelector("[data-non-next-version-message]");
+      if (!nextMessage || !nonNextMessage) {
+        return;
+      }
+      nextMessage.hidden = !isNextVersion;
+      nonNextMessage.hidden = isNextVersion;
+    })();
+  </script>
 {% endblock %}
