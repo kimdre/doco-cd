@@ -4,10 +4,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/avast/retry-go/v5"
+
+	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/logger"
+	"github.com/kimdre/doco-cd/internal/notification"
 )
 
 // getLatestAppVersion gets the latest application version from the GitHub releases API.
@@ -62,4 +67,28 @@ func getLatestAppReleaseVersion() (string, error) {
 	}
 
 	return "", errors.New("no stable release found")
+}
+
+func notificationForNewAppVersion(log *slog.Logger) {
+	latestVersion, err := getLatestAppReleaseVersion()
+	if err != nil {
+		log.Error("failed to get latest application release version", logger.ErrAttr(err))
+	} else {
+		if config.AppVersion != latestVersion {
+			log.Warn("new application version available",
+				slog.String("current", config.AppVersion),
+				slog.String("latest", latestVersion),
+			)
+
+			err = notification.Send(notification.Info,
+				"New version of doco-cd is available",
+				fmt.Sprintf("Current Version: %s\nLatest Version: %s\n\nhttps://github.com/kimdre/doco-cd/releases", config.AppVersion, latestVersion),
+				notification.Metadata{})
+			if err != nil {
+				return
+			}
+		} else {
+			log.Debug("application is up to date", slog.String("version", config.AppVersion))
+		}
+	}
 }
