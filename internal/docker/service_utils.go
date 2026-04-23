@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"strings"
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/compose/convert"
@@ -114,7 +115,7 @@ func getDeployStatus(ctx context.Context, client client.APIClient, deployName st
 			result[Service(name)] = status
 		}
 	} else {
-		containers, err := GetLabeledContainers(ctx, client, api.ProjectLabel, deployName)
+		containers, err := GetLabeledContainers(ctx, client, api.ProjectLabel, deployName, true)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get containers for project %s: %w", deployName, err)
 		}
@@ -130,22 +131,27 @@ func getServiceStatusFromContainerStatus(projectName string, containers []contai
 	result := make(map[Service]ServiceStatus)
 
 	for _, cont := range containers {
-		if cont.State == container.StateRunning && cont.Labels[api.ProjectLabel] == projectName {
-			serviceName := cont.Labels[api.ServiceLabel]
-
-			status, ok := result[Service(serviceName)]
-			if !ok {
-				// the labels may be different between containers, but they should be the same for the same service,
-				// except com.docker.compose.container-number, com.docker.compose.replace
-				// so just use the labels of the first container we encounter for each service
-				status = ServiceStatus{}
-				status.Labels = cont.Labels
-			}
-
-			status.Replicas++
-
-			result[Service(serviceName)] = status
+		if cont.Labels[api.ProjectLabel] != projectName {
+			continue
 		}
+
+		serviceName := cont.Labels[api.ServiceLabel]
+
+		status, ok := result[Service(serviceName)]
+		if !ok {
+			// the labels may be different between containers, but they should be the same for the same service,
+			// except com.docker.compose.container-number, com.docker.compose.replace
+			// so just use the labels of the first container we encounter for each service
+			status = ServiceStatus{}
+			status.Labels = cont.Labels
+		}
+
+		if cont.State == container.StateRunning {
+			status.Replicas++
+		}
+
+		// Keep service presence even when all containers are stopped.
+		result[Service(serviceName)] = status
 	}
 
 	return result
@@ -174,6 +180,12 @@ type ServiceMismatchReason struct {
 func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceStatus, services types.Services) []ServiceMismatch {
 	var mismatches []ServiceMismatch
 
+	// In non-Swarm mode, services with unset, "on-failure", or "no" restart policy can be considered as "stopped" and won't cause a mismatch.
+	allowStoppedForRestartPolicy := func(svc types.ServiceConfig) bool {
+		restart := strings.ToLower(strings.TrimSpace(svc.Restart))
+		return restart == "" || strings.HasPrefix(restart, "on-failure") || restart == "no"
+	}
+
 	getSvcMode := func(svc types.ServiceConfig) swarmInternal.DeployMode {
 		if !swarmModeEnabled {
 			return ""
@@ -189,12 +201,13 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 		status, ok := deployed[Service(svcName)]
 
 		reasons := []ServiceMismatchReason{}
-		if !ok {
-			reasons = append(reasons, ServiceMismatchReason{
-				Reason: ServiceMismatchReasonNotDeployed,
-			})
-		} else {
-			if swarmModeEnabled {
+
+		if swarmModeEnabled {
+			if !ok {
+				reasons = append(reasons, ServiceMismatchReason{
+					Reason: ServiceMismatchReasonNotDeployed,
+				})
+			} else {
 				svcMode := getSvcMode(svc)
 				if status.SwarmMode != svcMode {
 					reasons = append(reasons, ServiceMismatchReason{
@@ -215,14 +228,18 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 						}
 					}
 				}
-			} else { //nolint:gocritic
-				if uint64(svc.GetScale()) != status.Replicas { //nolint:gosec
-					reasons = append(reasons, ServiceMismatchReason{
-						Reason: ServiceMismatchReasonReplicas,
-						Want:   svc.GetScale(),
-						Got:    status.Replicas,
-					})
-				}
+			}
+		} else if !allowStoppedForRestartPolicy(svc) {
+			if !ok {
+				reasons = append(reasons, ServiceMismatchReason{
+					Reason: ServiceMismatchReasonNotDeployed,
+				})
+			} else if uint64(svc.GetScale()) != status.Replicas { //nolint:gosec
+				reasons = append(reasons, ServiceMismatchReason{
+					Reason: ServiceMismatchReasonReplicas,
+					Want:   svc.GetScale(),
+					Got:    status.Replicas,
+				})
 			}
 		}
 

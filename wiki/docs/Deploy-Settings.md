@@ -50,7 +50,7 @@ The docker compose deployment can be configured inside the [deployment configura
 | `git_depth`        | number           | Limits the number of commits fetched during clone/fetch (shallow clone). `0` means use the global [`GIT_CLONE_DEPTH`](App-Settings.md) value. A positive integer overrides the global setting for this deployment. When a requested ref (tag/SHA) is outside the shallow depth, doco-cd automatically deepens incrementally before falling back to a full fetch. Changing this value on an existing repo triggers an automatic re-clone.                                             | `0` (use global)                                                                                                       |
 | `destroy`          | boolean          | (⚠️ Destructive) Remove the deployed compose stack/project and its resources from the Docker host. Can be further configured using the [destroy_opts](#destroy-settings) setting.                                                                                                                                                                                                                                                                                                    | `false`                                                                                                                |
 | `auto_discover`    | boolean          | Enables autodiscovery of services to deploy in the working directory by scanning for subdirectories with docker-compose files with the naming `docker-compose.y(a)ml` or `compose.y(a)ml`. Can be further configured using the [auto_discover_opts](#auto-discover-settings) setting.                                                                                                                                                                                                | `false`                                                                                                                |
-| `reconciliation`   | object           | Enables periodic reconciliation. See [reconciliation settings](#reconciliation-settings) for more details.                                                                                                                                                                                                                                                                                                                                                                           | `{enable: true, interval: 60}`                                                                                         |
+| `reconciliation`   | object           | Enables periodic reconciliation. See [reconciliation settings](#reconciliation-settings) for more details.                                                                                                                                                                                                                                                                                                                                                                           | `{enabled: true, interval: 60}`                                                                                        |
 
 
 ### Example
@@ -219,20 +219,25 @@ destroy_opts:
 
 ### Reconciliation settings
 
+Reconciliation is an optional periodic check that compares the currently running services with the expected deployment state.
+If drift is detected, doco-cd automatically reapplies the deployment to bring the stack back to the desired state.
+
 The following settings can be used to configure periodic reconciliation.
 
 !!! warning
     The currently implemented state will be lost when doco-cd restarts.
 
 | Key        | Type    | Description                                          | Default value |
-| ---------- | ------- | ---------------------------------------------------- | ------------- |
-| `enable`   | boolean | Enable periodic reconciliation.                      | `true`        |
+|------------|---------|------------------------------------------------------|---------------|
+| `enabled`  | boolean | Enable periodic reconciliation.                      | `true`        |
 | `interval` | int     | The time in seconds between two reconciliation runs. | `60`          |
+
+--8<-- "wiki/docs/_snippets/reconciliation-note.md"
 
 ```yaml title=".doco-cd.yml"
 name: some-project
 reconciliation:
-  enable: true
+  enabled: true
   interval: 60
 ```
 
