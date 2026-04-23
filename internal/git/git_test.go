@@ -1045,6 +1045,108 @@ func TestCloneRepository_ShallowClone(t *testing.T) {
 	}
 }
 
+func TestUpdateRepository_ShallowToFullTransition(t *testing.T) {
+	t.Parallel()
+
+	c, err := config.GetAppConfig()
+	if err != nil {
+		t.Fatalf("Failed to get app config: %v", err)
+	}
+
+	auth, err := git.GetAuthMethod(cloneUrlTest, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	if err != nil {
+		t.Fatalf("Failed to get auth method: %v", err)
+	}
+
+	if auth != nil {
+		t.Logf("Using auth method: %s", auth.Name())
+	} else {
+		t.Log("No auth method configured, using anonymous access")
+	}
+
+	dir := t.TempDir()
+
+	// Step 1: Shallow clone (depth=1)
+	repo, err := git.CloneRepository(dir, cloneUrlTest, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules, 1)
+	if err != nil {
+		t.Fatalf("Failed to shallow clone repository: %v", err)
+	}
+
+	if repo == nil {
+		t.Fatal("Repository is nil after shallow clone")
+	}
+
+	// Verify it IS shallow
+	shallowFile := dir + "/.git/shallow"
+	if _, err := os.Stat(shallowFile); err != nil {
+		t.Fatalf("Expected shallow clone (.git/shallow file), but it does not exist: %v", err)
+	}
+
+	// Count commits in shallow clone
+	iter, err := repo.CommitObjects()
+	if err != nil {
+		t.Fatalf("Failed to get commit objects: %v", err)
+	}
+
+	shallowCommitCount := 0
+	_ = iter.ForEach(func(_ *object.Commit) error {
+		shallowCommitCount++
+		return nil
+	})
+	iter.Close()
+
+	t.Logf("Shallow clone (depth=1) has %d commit(s)", shallowCommitCount)
+
+	// Step 2: Update with depth=0 — should trigger re-clone (shallow → full transition)
+	repo, err = git.UpdateRepository(dir, cloneUrlTest, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules, 0)
+	if err != nil {
+		t.Fatalf("Failed to update repository with full depth: %v", err)
+	}
+
+	if repo == nil {
+		t.Fatal("Repository is nil after shallow→full transition")
+	}
+
+	// Verify it is NOT shallow anymore
+	if _, err := os.Stat(shallowFile); err == nil {
+		t.Fatal("Expected full clone after transition (no .git/shallow), but .git/shallow still exists")
+	}
+
+	// Verify commit count increased
+	iter, err = repo.CommitObjects()
+	if err != nil {
+		t.Fatalf("Failed to get commit objects after transition: %v", err)
+	}
+
+	fullCommitCount := 0
+	_ = iter.ForEach(func(_ *object.Commit) error {
+		fullCommitCount++
+		return nil
+	})
+	iter.Close()
+
+	t.Logf("After shallow→full transition: %d commit(s)", fullCommitCount)
+
+	if fullCommitCount <= shallowCommitCount {
+		t.Fatalf("Expected more commits after full transition, got %d (was %d)", fullCommitCount, shallowCommitCount)
+	}
+
+	// Verify worktree still works
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("Failed to get worktree: %v", err)
+	}
+
+	files, err := worktree.Filesystem.ReadDir(".")
+	if err != nil {
+		t.Fatalf("Failed to read directory: %v", err)
+	}
+
+	if len(files) == 0 {
+		t.Fatal("No files in repository after shallow→full transition")
+	}
+}
+
 func TestUpdateRepository_FullToShallowTransition(t *testing.T) {
 	t.Parallel()
 
