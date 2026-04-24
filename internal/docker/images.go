@@ -200,26 +200,6 @@ func PullImages(ctx context.Context, dockerCli command.Cli, projectName string) 
 	return service.Pull(ctx, project, api.PullOptions{Quiet: true})
 }
 
-// GetImages retrieves all image IDs used by the services in the named compose project.
-func GetImages(ctx context.Context, dockerCli command.Cli, projectName string) (set.Set[string], error) {
-	service, err := compose.NewComposeService(dockerCli)
-	if err != nil {
-		return nil, err
-	}
-
-	imageSummaries, err := service.Images(ctx, projectName, api.ImagesOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get images: %w", err)
-	}
-
-	images := set.New[string]()
-	for _, img := range imageSummaries {
-		images.Add(img.ID)
-	}
-
-	return images, nil
-}
-
 var (
 	registryDigestLookup        = registryDigestForRef
 	deployedServiceDigestLookup = getDeployedServiceImageDigests
