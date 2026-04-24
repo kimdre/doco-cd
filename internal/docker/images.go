@@ -200,7 +200,7 @@ func PullImages(ctx context.Context, dockerCli command.Cli, projectName string) 
 	return service.Pull(ctx, project, api.PullOptions{Quiet: true})
 }
 
-// vars used to allow overriding in tests without needing to mock the entire function
+// vars used to allow overriding in tests without needing to mock the entire function.
 var (
 	registryDigestLookup        = registryDigestForRef           // registryDigestLookup fetches registry digests for image refs, can be overridden in tests
 	deployedServiceDigestLookup = getDeployedServiceImageDigests // deployedServiceDigestLookup fetches deployed service image digests, can be overridden in tests
