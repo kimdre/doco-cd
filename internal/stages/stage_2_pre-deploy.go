@@ -121,19 +121,15 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		} else if s.DeployConfig.ForceImagePull {
 			stageLog.Debug("force image pull enabled, checking deployed image digests against registry")
 
-			if s.Docker.Project != nil {
-				imagesChanged, err = docker.HaveDeployedServiceImageDigestsChanged(ctx, s.Docker.Cmd, s.Docker.Project, stageLog)
-				if err != nil {
-					return fmt.Errorf("failed to compare deployed service image digests: %w", err)
-				}
+			imagesChanged, err = docker.HaveDeployedServiceImageDigestsChanged(ctx, s.Docker.Cmd, s.Docker.Project, stageLog)
+			if err != nil {
+				return fmt.Errorf("failed to compare deployed service image digests: %w", err)
+			}
 
-				if imagesChanged {
-					stageLog.Debug("deployed image digests differ from registry, proceeding with deployment")
-				} else {
-					stageLog.Debug("deployed image digests match registry")
-				}
+			if imagesChanged {
+				stageLog.Debug("deployed image digests differ from registry, proceeding with deployment")
 			} else {
-				stageLog.Debug("compose project not loaded, skipping digest comparison")
+				stageLog.Debug("deployed image digests match registry")
 			}
 		}
 
