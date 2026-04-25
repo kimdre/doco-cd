@@ -50,7 +50,7 @@ The docker compose deployment can be configured inside the [deployment configura
 | `git_depth`        | number           | Limits the number of commits fetched during clone/fetch (shallow clone). `0` means use the global [`GIT_CLONE_DEPTH`](App-Settings.md) value. A positive integer overrides the global setting for this deployment. When a requested ref (tag/SHA) is outside the shallow depth, doco-cd automatically deepens incrementally before falling back to a full fetch. Changing this value on an existing repo triggers an automatic re-clone.                                             | `0` (use global)                                                                                                       |
 | `destroy`          | boolean          | (⚠️ Destructive) Remove the deployed compose stack/project and its resources from the Docker host. Can be further configured using the [destroy_opts](#destroy-settings) setting.                                                                                                                                                                                                                                                                                                    | `false`                                                                                                                |
 | `auto_discover`    | boolean          | Enables autodiscovery of services to deploy in the working directory by scanning for subdirectories with docker-compose files with the naming `docker-compose.y(a)ml` or `compose.y(a)ml`. Can be further configured using the [auto_discover_opts](#auto-discover-settings) setting.                                                                                                                                                                                                | `false`                                                                                                                |
-| `reconciliation`   | object           | Enables periodic reconciliation. See [reconciliation settings](#reconciliation-settings) for more details.                                                                                                                                                                                                                                                                                                                                                                           | `{enabled: true, interval: 60}`                                                                                        |
+| `reconciliation`   | object           | Enables event-driven reconciliation for non-Swarm deployments. See [reconciliation settings](#reconciliation-settings) for more details.                                                                                                                                                                                                                                                                                                                                              | `{enabled: true, events: [die, destroy]}`                                                                             |
 
 
 ### Example
@@ -219,18 +219,47 @@ destroy_opts:
 
 ### Reconciliation settings
 
-Reconciliation is an optional periodic check that compares the currently running services with the expected deployment state.
-If drift is detected, doco-cd automatically reapplies the deployment to bring the stack back to the desired state.
+Reconciliation is an optional event-driven check for non-Swarm deployments that compares the currently running services with the expected deployment state.
+When configured container events occur, doco-cd automatically reapplies the deployment to bring the stack back to the desired state.
 
-The following settings can be used to configure periodic reconciliation.
+!!! note
+    Docker Swarm already manages desired-state reconciliation itself, so this doco-cd reconciliation setting is only relevant for non-Swarm deployments.
+    See Docker's documentation on [desired state reconciliation](https://docs.docker.com/engine/swarm/#desired-state-reconciliation).
+
+The following settings can be used to configure reconciliation triggers.
 
 !!! warning
     The currently implemented state will be lost when doco-cd restarts.
 
-| Key        | Type    | Description                                          | Default value |
-|------------|---------|------------------------------------------------------|---------------|
-| `enabled`  | boolean | Enable periodic reconciliation.                      | `true`        |
-| `interval` | number  | The time in seconds between two reconciliation runs. | `60`          |
+| Key       | Type             | Description                                                                 | Default value          |
+|-----------|------------------|-----------------------------------------------------------------------------|------------------------|
+| `enabled` | boolean          | Enable reconciliation for non-Swarm deployments.                            | `true`                 |
+| `events`  | array of strings | Docker container events that trigger reconciliation. See supported values below. | `['die', 'destroy']` |
+
+Supported `reconciliation.events` values:
+
+- `die` - the container process exited.
+- `destroy` - the container was removed.
+- `stop` - the container was stopped gracefully.
+- `kill` - the container was terminated by a signal.
+- `oom` - the container was killed because it ran out of memory.
+- `unhealthy` - the container health check changed to unhealthy.
+
+!!! note
+    `unhealthy` is the user-facing config token for Docker's `health_status: unhealthy` event.
+
+```yaml title=".doco-cd.yml"
+name: some-project
+reconciliation:
+  enabled: true
+  events:
+    - die
+    - destroy
+    - unhealthy
+```
+
+!!! warning
+    Broader event sets (for example adding `stop`, `kill`, `oom`, or `unhealthy`) can increase reconciliation trigger frequency.
 
 --8<-- "wiki/docs/_snippets/reconciliation-note.md"
 
@@ -238,7 +267,7 @@ The following settings can be used to configure periodic reconciliation.
 name: some-project
 reconciliation:
   enabled: true
-  interval: 60
+  events: [die, destroy]
 ```
 
 ### Webhook Filter
