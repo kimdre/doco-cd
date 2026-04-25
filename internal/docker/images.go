@@ -267,9 +267,13 @@ func HaveDeployedServiceImageDigestsChanged(ctx context.Context, dockerCli comma
 		if deployedDigest != registryDigest {
 			logger.Info("service image digest changed",
 				slog.String("service", serviceName),
-				slog.String("ref", configuredRef),
-				slog.String("deployed", deployedDigest),
-				slog.String("registry", registryDigest),
+				slog.Group("image",
+					slog.String("ref", configuredRef),
+					slog.Group("digest",
+						slog.String("deployed", deployedDigest),
+						slog.String("registry", registryDigest),
+					),
+				),
 			)
 
 			return true, nil
