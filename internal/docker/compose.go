@@ -323,7 +323,10 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	if deployConfig.PruneImages {
 		beforeImages, err = service.Images(ctx, project.Name, api.ImagesOptions{})
 		if err != nil {
-			return fmt.Errorf("failed to get existing images: %w", err)
+			// No such image error is okay since we wanted to remove the image anyway
+			if !strings.Contains(strings.ToLower(err.Error()), ErrNoSuchImage.Error()) {
+				return fmt.Errorf("failed to get existing images: %w", err)
+			}
 		}
 	}
 
@@ -396,7 +399,10 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	if deployConfig.PruneImages {
 		afterImages, err = service.Images(ctx, project.Name, api.ImagesOptions{})
 		if err != nil {
-			return fmt.Errorf("failed to get images after deployment: %w", err)
+			// No such image error is okay since we wanted to remove the image anyway
+			if !strings.Contains(strings.ToLower(err.Error()), ErrNoSuchImage.Error()) {
+				return fmt.Errorf("failed to get images after deployment: %w", err)
+			}
 		}
 
 		// Determine unused images by comparing image SHAs used by services before and after the deployment
@@ -1006,89 +1012,6 @@ func GetProjectContainers(ctx context.Context, dockerCli command.Cli, projectNam
 	return service.Ps(ctx, projectName, api.PsOptions{
 		All: true,
 	})
-}
-
-// pruneImages tries to remove the specified image IDs from the Docker host and returns a list of pruned image IDs.
-// If an image is still in use by a running container, the image won't be removed.
-func pruneImages(ctx context.Context, dockerCli command.Cli, images []string) ([]string, error) {
-	var prunedImages []string
-
-	for _, img := range images {
-		result, err := dockerCli.Client().ImageRemove(ctx, img, client.ImageRemoveOptions{
-			Force:         true,
-			PruneChildren: true,
-		})
-		if err != nil {
-			if strings.Contains(err.Error(), "image is being used by running container") {
-				// Ignore error if image is being used by a running container
-				continue
-			}
-
-			if strings.Contains(strings.ToLower(err.Error()), "no such image") || strings.Contains(strings.ToLower(err.Error()), "not found") {
-				// Ignore error if image does not exist
-				continue
-			}
-
-			return nil, fmt.Errorf("failed to remove image %s: %w", img, err)
-		}
-
-		for _, r := range result.Items {
-			if r.Deleted != "" {
-				prunedImages = append(prunedImages, r.Deleted)
-			} else if r.Untagged != "" {
-				prunedImages = append(prunedImages, r.Untagged)
-			}
-		}
-	}
-
-	return prunedImages, nil
-}
-
-// PullImages pulls all images defined in the compose project.
-func PullImages(ctx context.Context, dockerCli command.Cli, projectName string) error {
-	service, err := compose.NewComposeService(dockerCli)
-	if err != nil {
-		return err
-	}
-
-	containers, err := GetProjectContainers(ctx, dockerCli, projectName)
-	if err != nil {
-		return fmt.Errorf("failed to get project containers: %w", err)
-	}
-
-	containerNames := make([]string, 0, len(containers))
-	for _, c := range containers {
-		containerNames = append(containerNames, c.Name)
-	}
-
-	project, err := service.Generate(ctx, api.GenerateOptions{ProjectName: projectName, Containers: containerNames})
-	if err != nil {
-		return fmt.Errorf("failed to generate project: %w", err)
-	}
-
-	return service.Pull(ctx, project, api.PullOptions{
-		Quiet: true,
-	})
-}
-
-// GetImages retrieves all image IDs used by the services in the compose project.
-func GetImages(ctx context.Context, dockerCli command.Cli, projectName string) (set.Set[string], error) {
-	service, err := compose.NewComposeService(dockerCli)
-	if err != nil {
-		return nil, err
-	}
-
-	imageSummaries, err := service.Images(ctx, projectName, api.ImagesOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get images: %w", err)
-	}
-
-	images := set.New[string]()
-	for _, img := range imageSummaries {
-		images.Add(img.ID)
-	}
-
-	return images, nil
 }
 
 // CheckDefaultComposeFiles checks if the default compose files are used and returns them if true.
