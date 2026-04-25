@@ -318,7 +318,7 @@ func TestHandleEvent(t *testing.T) {
 				retry.Attempts(3),
 				retry.Delay(1*time.Second),
 				retry.RetryIf(func(err error) bool {
-					return strings.Contains(err.Error(), "No such image:")
+					return strings.Contains(strings.ToLower(err.Error()), "no such image")
 				}),
 			).Do(func() error {
 				HandleEvent(

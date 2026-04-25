@@ -286,7 +286,7 @@ compose_files:
 			retry.Attempts(3),
 			retry.Delay(1*time.Second),
 			retry.RetryIf(func(err error) bool {
-				return strings.Contains(err.Error(), "No such image:")
+				return strings.Contains(strings.ToLower(err.Error()), ErrNoSuchImage.Error())
 			}),
 		).Do(func() error {
 			return DeployStack(jobLog, repoPath, &ctx, dockerCli, &p, deployConf,

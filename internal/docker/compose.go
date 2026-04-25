@@ -323,7 +323,10 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	if deployConfig.PruneImages {
 		beforeImages, err = service.Images(ctx, project.Name, api.ImagesOptions{})
 		if err != nil {
-			return fmt.Errorf("failed to get existing images: %w", err)
+			// No such image error is okay since we wanted to remove the image anyway
+			if !strings.Contains(strings.ToLower(err.Error()), ErrNoSuchImage.Error()) {
+				return fmt.Errorf("failed to get existing images: %w", err)
+			}
 		}
 	}
 
@@ -396,7 +399,10 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	if deployConfig.PruneImages {
 		afterImages, err = service.Images(ctx, project.Name, api.ImagesOptions{})
 		if err != nil {
-			return fmt.Errorf("failed to get images after deployment: %w", err)
+			// No such image error is okay since we wanted to remove the image anyway
+			if !strings.Contains(strings.ToLower(err.Error()), ErrNoSuchImage.Error()) {
+				return fmt.Errorf("failed to get images after deployment: %w", err)
+			}
 		}
 
 		// Determine unused images by comparing image SHAs used by services before and after the deployment

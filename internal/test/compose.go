@@ -213,7 +213,7 @@ func ComposeUp(ctx context.Context, t *testing.T, opts ...ComposeOption) *Compos
 		retry.Attempts(3),
 		retry.RetryIf(func(err error) bool {
 			// Retry if error contains "No such image"
-			return strings.Contains(err.Error(), "No such image:")
+			return strings.Contains(strings.ToLower(err.Error()), "no such image")
 		}),
 	).Do(
 		func() error {

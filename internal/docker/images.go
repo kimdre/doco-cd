@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -17,6 +18,8 @@ import (
 	swarmInternal "github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/utils/set"
 )
+
+var ErrNoSuchImage = errors.New("no such image") // Image does not exist
 
 // registryAuthForImage returns a base64-encoded auth string for the registry
 // that hosts the given image ref, sourced from the Docker config file.
@@ -154,7 +157,7 @@ func pruneImages(ctx context.Context, dockerCli command.Cli, images []string) ([
 			switch {
 			case strings.Contains(err.Error(), "image is being used by running container"):
 				continue
-			case strings.Contains(strings.ToLower(err.Error()), "no such image"),
+			case strings.Contains(strings.ToLower(err.Error()), ErrNoSuchImage.Error()),
 				strings.Contains(strings.ToLower(err.Error()), "not found"):
 				continue
 			default:
@@ -257,7 +260,7 @@ func HaveDeployedServiceImageDigestsChanged(ctx context.Context, dockerCli comma
 
 		deployedDigest, ok := deployedDigests[serviceName]
 		if !ok {
-			logger.Info("deployed service digest unavailable, treating as changed", slog.String("service", serviceName), slog.String("ref", configuredRef))
+			logger.Info("deployed service image digest unavailable, treating as changed", slog.String("service", serviceName), slog.String("ref", configuredRef))
 			return true, nil
 		}
 
