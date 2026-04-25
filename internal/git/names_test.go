@@ -1,9 +1,7 @@
-package stages
+package git
 
 import (
 	"testing"
-
-	"github.com/kimdre/doco-cd/internal/config"
 )
 
 func TestGetFullName(t *testing.T) {
@@ -49,7 +47,7 @@ func TestGetFullName(t *testing.T) {
 		t.Run(tt.cloneURL, func(t *testing.T) {
 			t.Parallel()
 
-			result := getFullName(config.HttpUrl(tt.cloneURL))
+			result := GetFullName(tt.cloneURL)
 			if result != tt.expected {
 				t.Errorf("getFullName failed for %s: expected %s, got %s", tt.cloneURL, tt.expected, result)
 			}

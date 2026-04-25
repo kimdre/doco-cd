@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"strings"
+	"sync"
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/compose/convert"
@@ -13,6 +14,7 @@ import (
 	"github.com/moby/moby/client"
 
 	swarmInternal "github.com/kimdre/doco-cd/internal/docker/swarm"
+	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/utils/set"
 )
 
@@ -32,35 +34,45 @@ type ServiceStatus struct {
 }
 
 type LatestServiceStatus struct {
-	// The labels may be different in different services, but project-level labels should be the same.
-	Labels Labels
+	deploymentCommitSHA   string
+	deploymentComposeHash string
 
 	DeployedStatus map[Service]ServiceStatus
 }
 
+func (l LatestServiceStatus) GetDeploymentCommitSHA() string {
+	return l.deploymentCommitSHA
+}
+
+func (l LatestServiceStatus) GetDeploymentComposeHash() string {
+	return l.deploymentComposeHash
+}
+
 // GetLatestDeployStatus retrieves the deployed status for a given repository and deploy name.
-func GetLatestDeployStatus(ctx context.Context, client client.APIClient, repoName, deployName string) (LatestServiceStatus, error) {
+func GetLatestDeployStatus(ctx context.Context, client client.APIClient, cloneURL string, deployName string) (LatestServiceStatus, error) {
 	serviceLabels, err := getDeployStatus(ctx, client, deployName)
 	if err != nil {
 		return LatestServiceStatus{}, fmt.Errorf("failed to retrieve service labels: %w", err)
 	}
 
-	return getLatestServiceStatus(serviceLabels, repoName), nil
+	return getLatestServiceStatus(&deployStatusCache, serviceLabels, cloneURL, deployName), nil
 }
 
-func getLatestServiceStatus(statusMap map[Service]ServiceStatus, repoName string) LatestServiceStatus {
+func getLatestServiceStatus(cacheMap *sync.Map, statusMap map[Service]ServiceStatus, cloneURL string, deployName string) LatestServiceStatus {
 	ret := LatestServiceStatus{
 		DeployedStatus: make(map[Service]ServiceStatus),
-		Labels:         make(Labels),
 	}
 
-	var latestTimestamp string
+	var (
+		latestLabels    Labels
+		latestTimestamp string
+	)
 
 	for serviceName, state := range statusMap {
 		labels := state.Labels
 
 		name, ok := labels[DocoCDLabels.Repository.Name]
-		if !ok || name != repoName {
+		if !ok || name != git.GetFullName(cloneURL) {
 			// When a service matches and others don't,
 			// using 'break' will return a random result.
 			continue
@@ -72,10 +84,19 @@ func getLatestServiceStatus(statusMap map[Service]ServiceStatus, repoName string
 		// TODO: If timestamps are equal, the result may be random for simultaneous deployments.
 		if timestamp >= latestTimestamp {
 			latestTimestamp = timestamp
-			ret.Labels = labels
+			latestLabels = labels
 		}
 
 		ret.DeployedStatus[serviceName] = state
+	}
+
+	cache, ok := getDeployStatusFromCache(cacheMap, git.GetRepoName(cloneURL), deployName)
+	if ok {
+		ret.deploymentCommitSHA = cache.CommitSHA
+		ret.deploymentComposeHash = cache.ComposeHash
+	} else {
+		ret.deploymentCommitSHA, _ = latestLabels.getDeploymentCommitSHA()
+		ret.deploymentComposeHash, _ = latestLabels.getDeploymentComposeHash()
 	}
 
 	return ret

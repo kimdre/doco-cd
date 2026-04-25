@@ -1,17 +1,14 @@
-package stages
+package git
 
 import (
 	"strings"
-
-	"github.com/kimdre/doco-cd/internal/config"
-	"github.com/kimdre/doco-cd/internal/git"
 )
 
-// getFullName extracts the full repository name without the domain part from the clone URL.
+// GetFullName extracts the full repository name without the domain part from the clone URL.
 // E.g., "github.com/kimdre/doco-cd" becomes "kimdre/doco-cd"
 // or "git.example.com/doco-cd" becomes "doco-cd".
-func getFullName(cloneURL config.HttpUrl) string {
-	repoName := git.GetRepoName(string(cloneURL))
+func GetFullName(cloneURL string) string {
+	repoName := GetRepoName(cloneURL)
 	parts := strings.Split(repoName, "/")
 	fullName := repoName
 

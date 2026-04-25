@@ -54,11 +54,11 @@ func (l Labels) Get(key string) (string, bool) {
 	return v, ok
 }
 
-func (l Labels) GetDeploymentCommitSHA() (string, bool) {
+func (l Labels) getDeploymentCommitSHA() (string, bool) {
 	return l.Get(DocoCDLabels.Deployment.CommitSHA)
 }
 
-func (l Labels) GetDeploymentComposeHash() (string, bool) {
+func (l Labels) getDeploymentComposeHash() (string, bool) {
 	return l.Get(DocoCDLabels.Deployment.ComposeHash)
 }
 
