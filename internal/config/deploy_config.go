@@ -33,6 +33,15 @@ var (
 	ErrInvalidConfig                 = errors.New("invalid deploy configuration")
 	ErrKeyNotFound                   = errors.New("key not found")
 	ErrInvalidFilePath               = errors.New("invalid file path")
+	defaultReconciliationEvents      = []string{"die", "destroy"}
+	supportedReconciliationEvents    = map[string]struct{}{
+		"die":       {},
+		"destroy":   {},
+		"stop":      {},
+		"kill":      {},
+		"oom":       {},
+		"unhealthy": {},
+	}
 )
 
 const DefaultReference = "refs/heads/main"
@@ -73,8 +82,8 @@ type DeployConfig struct {
 		Delete    bool `yaml:"delete" json:"delete" default:"true"` // Delete removes obsolete auto-discovered deployments that are no longer present in the repository
 	} `yaml:"auto_discover_opts" json:"auto_discover_opts"` // AutoDiscoverOpts are options for the autodiscovery feature
 	Reconciliation struct {
-		Enabled  bool `yaml:"enabled" json:"enabled" default:"true"` // Enabled enables the reconciliation feature
-		Interval int  `yaml:"interval" json:"interval" default:"60"` // Interval is the interval in seconds at which the reconciliation job is run
+		Enabled bool     `yaml:"enabled" json:"enabled" default:"true"`                 // Enabled enables the reconciliation feature
+		Events  []string `yaml:"events" json:"events" default:"[\"die\", \"destroy\"]"` // Events is the list of Docker container actions that trigger reconciliation
 	} `yaml:"reconciliation" json:"reconciliation"` // Reconciliation is the configuration for the reconciliation feature
 	Internal struct {
 		File        string            `yaml:"-"` // File is the path to the deployment configuration file in the repository (if RepositoryUrl is not set) or in the cloned repository (if RepositoryUrl is set)
@@ -105,7 +114,7 @@ func DefaultDeployConfig(name, reference string) *DeployConfig {
 }
 
 // LogValue implements the slog.LogValuer interface for DeployConfig.
-func (c DeployConfig) LogValue() slog.Value {
+func (c *DeployConfig) LogValue() slog.Value {
 	return logger.BuildLogValue(c, "Internal")
 }
 
@@ -155,6 +164,44 @@ func (c *DeployConfig) validateConfig() error {
 	}
 
 	c.ComposeFiles = cleanComposeFiles
+
+	if err := c.normalizeReconciliationEvents(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *DeployConfig) normalizeReconciliationEvents() error {
+	if len(c.Reconciliation.Events) == 0 {
+		c.Reconciliation.Events = append([]string(nil), defaultReconciliationEvents...)
+		return nil
+	}
+
+	normalized := make([]string, 0, len(c.Reconciliation.Events))
+	seen := make(map[string]struct{}, len(c.Reconciliation.Events))
+
+	for _, rawEvent := range c.Reconciliation.Events {
+		event := strings.ToLower(strings.TrimSpace(rawEvent))
+		event = strings.Join(strings.Fields(event), " ")
+
+		if event == "" {
+			return fmt.Errorf("%w: reconciliation.events contains an empty event", ErrInvalidConfig)
+		}
+
+		if _, ok := supportedReconciliationEvents[event]; !ok {
+			return fmt.Errorf("%w: unsupported reconciliation event %q", ErrInvalidConfig, rawEvent)
+		}
+
+		if _, exists := seen[event]; exists {
+			continue
+		}
+
+		seen[event] = struct{}{}
+		normalized = append(normalized, event)
+	}
+
+	c.Reconciliation.Events = normalized
 
 	return nil
 }

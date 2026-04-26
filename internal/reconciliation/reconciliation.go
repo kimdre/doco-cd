@@ -2,14 +2,20 @@ package reconciliation
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"strings"
 	"sync"
-	"time"
 
 	"github.com/docker/cli/cli/command"
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/events"
+	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
+	gitInternal "github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -44,16 +50,16 @@ type jobInfo struct {
 type job struct {
 	info jobInfo
 
-	// key is the interval in second
-	deployConfigGroupByInterval map[int][]*config.DeployConfig
-	closeChan                   chan struct{}
+	// key is the docker event action name (for example "die" or "health_status: unhealthy").
+	deployConfigGroupByEvent map[string][]*config.DeployConfig
+	closeChan                chan struct{}
 }
 
-func newJob(info jobInfo, deployConfigGroupByInterval map[int][]*config.DeployConfig) *job {
+func newJob(info jobInfo, deployConfigGroupByEvent map[string][]*config.DeployConfig) *job {
 	return &job{
-		info:                        info,
-		deployConfigGroupByInterval: deployConfigGroupByInterval,
-		closeChan:                   make(chan struct{}),
+		info:                     info,
+		deployConfigGroupByEvent: deployConfigGroupByEvent,
+		closeChan:                make(chan struct{}),
 	}
 }
 
@@ -66,35 +72,33 @@ func (j *job) close() {
 }
 
 func (j *job) run(ctx context.Context) {
-	jobLog := j.info.jobLog
+	jobLog := j.info.jobLog.With(
+		slog.Any("events", mapsKeys(j.deployConfigGroupByEvent)),
+	)
 
 	jobLog.Debug("reconciliation loop started")
 	defer jobLog.Debug("reconciliation loop stopped")
 
-	wg := sync.WaitGroup{}
+	filterArgs := make(client.Filters)
+	filterArgs.Add("type", "container")
+	filterArgs.Add("label", docker.DocoCDLabels.Metadata.Manager+"="+config.AppName)
 
-	for interval, dcs := range j.deployConfigGroupByInterval {
-		if len(dcs) > 0 {
-			wg.Go(func() {
-				j.runByInterval(ctx, interval, dcs)
-			})
-		}
+	repositoryLabelValue := normalizeRepositoryLabelFromCloneURL(j.info.repoData.CloneURL)
+	if j.info.payload != nil && strings.TrimSpace(j.info.payload.FullName) != "" {
+		repositoryLabelValue = j.info.payload.FullName
 	}
 
-	wg.Wait()
-}
+	filterArgs.Add("label", docker.DocoCDLabels.Repository.Name+"="+repositoryLabelValue)
 
-func (j *job) runByInterval(ctx context.Context, interval int, dcs []*config.DeployConfig) {
-	if len(dcs) == 0 {
-		return
-	}
+	listenerCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	jobLog := j.info.jobLog.With(
-		slog.Int("interval", interval),
-	)
+	eventResult := j.info.dockerCli.Client().Events(listenerCtx, client.EventsListOptions{
+		Filters: filterArgs,
+	})
 
-	jobLog.Debug("reconciliation interval worker started")
-	defer jobLog.Debug("reconciliation interval worker stopped")
+	eventCh := eventResult.Messages
+	errCh := eventResult.Err
 
 	for {
 		select {
@@ -104,10 +108,57 @@ func (j *job) runByInterval(ctx context.Context, interval int, dcs []*config.Dep
 		case <-j.closeChan:
 			jobLog.Debug("channel is closed")
 			return
-		case <-time.After(time.Second * time.Duration(interval)):
-			j.deploy(ctx, jobLog, dcs)
+		case err, ok := <-errCh:
+			if !ok {
+				jobLog.Debug("docker events error channel closed")
+				return
+			}
+
+			if err != nil && !errors.Is(err, context.Canceled) {
+				jobLog.Error("docker event listener failed", logger.ErrAttr(err))
+			}
+		case event, ok := <-eventCh:
+			if !ok {
+				jobLog.Debug("docker events channel closed")
+				return
+			}
+
+			j.handleEvent(ctx, jobLog, event)
 		}
 	}
+}
+
+// normalizeRepositoryLabelFromCloneURL mirrors the repository-name normalization used during poll deployment labeling.
+func normalizeRepositoryLabelFromCloneURL(cloneURL config.HttpUrl) string {
+	repoName := gitInternal.GetRepoName(string(cloneURL))
+	parts := strings.Split(repoName, "/")
+
+	if len(parts) > 2 {
+		return strings.Join(parts[1:], "/")
+	}
+
+	if len(parts) == 2 {
+		return parts[1]
+	}
+
+	return repoName
+}
+
+func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events.Message) {
+	action := normalizeReconciliationEventAction(string(event.Action))
+
+	dcs := j.deployConfigGroupByEvent[action]
+	if len(dcs) == 0 {
+		return
+	}
+
+	eventLog := jobLog.With(
+		slog.String("action", action),
+		slog.String("container_id", event.Actor.ID),
+		slog.String("stack", event.Actor.Attributes[docker.DocoCDLabels.Deployment.Name]),
+	)
+
+	j.deploy(ctx, eventLog, dcs)
 }
 
 func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*config.DeployConfig) {
@@ -160,7 +211,12 @@ func (r *reconciliation) close() {
 }
 
 func (r *reconciliation) addJob(ctx context.Context, info jobInfo) {
-	cfg := getDeployConfigGroupByInterval(info.deployConfigs)
+	if swarm.GetModeEnabled() {
+		info.jobLog.Debug("skipping reconciliation event listener in swarm mode")
+		return
+	}
+
+	cfg := getDeployConfigGroupByEvent(info.deployConfigs)
 	if len(cfg) == 0 {
 		return
 	}
@@ -178,14 +234,52 @@ func (r *reconciliation) addJob(ctx context.Context, info jobInfo) {
 	go newJob.run(context.WithoutCancel(ctx))
 }
 
-func getDeployConfigGroupByInterval(dcs []*config.DeployConfig) map[int][]*config.DeployConfig {
-	m := make(map[int][]*config.DeployConfig)
+func getDeployConfigGroupByEvent(dcs []*config.DeployConfig) map[string][]*config.DeployConfig {
+	m := make(map[string][]*config.DeployConfig)
 
 	for _, dc := range dcs {
 		if r := dc.Reconciliation; r.Enabled {
-			m[r.Interval] = append(m[r.Interval], dc)
+			for _, event := range r.Events {
+				action := normalizeReconciliationEventAction(event)
+				if action == "" {
+					continue
+				}
+
+				m[action] = append(m[action], dc)
+			}
 		}
 	}
 
 	return m
+}
+
+func normalizeReconciliationEventAction(action string) string {
+	action = strings.ToLower(strings.TrimSpace(action))
+	action = strings.Join(strings.Fields(action), " ")
+
+	if strings.HasPrefix(action, "health_status:") {
+		parts := strings.SplitN(action, ":", 2)
+		if len(parts) == 2 {
+			action = strings.TrimSpace(parts[0]) + ": " + strings.TrimSpace(parts[1])
+			if action == "health_status: unhealthy" {
+				return "unhealthy"
+			}
+		}
+	}
+
+	if action == "unhealthy" {
+		return action
+	}
+
+	return action
+}
+
+func mapsKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+
+	for k := range m {
+		keys = append(keys, k)
+	}
+
+	return keys
 }

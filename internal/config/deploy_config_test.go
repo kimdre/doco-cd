@@ -1070,3 +1070,92 @@ auto_discover: true
 		t.Errorf("expected to find %d configs with correct properties, found %d", expectedTotal, found)
 	}
 }
+
+func TestDeployConfig_ReconciliationEvents_Default(t *testing.T) {
+	t.Parallel()
+
+	filePath := filepath.Join(t.TempDir(), ".doco-cd.yaml")
+
+	err := createTestFile(t, filePath, `name: test
+compose_files: ["compose.yaml"]
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	configs, err := GetDeployConfigFromYAML(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = configs[0].validateConfig(); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"die", "destroy"}
+	if !reflect.DeepEqual(want, configs[0].Reconciliation.Events) {
+		t.Fatalf("expected reconciliation events %v, got %v", want, configs[0].Reconciliation.Events)
+	}
+}
+
+func TestDeployConfig_ReconciliationEvents_Normalize(t *testing.T) {
+	t.Parallel()
+
+	filePath := filepath.Join(t.TempDir(), ".doco-cd.yaml")
+
+	err := createTestFile(t, filePath, `name: test
+compose_files: ["compose.yaml"]
+reconciliation:
+  events:
+    - " DIE "
+    - destroy
+    - " UNHEALTHY "
+    - " unhealthy "
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	configs, err := GetDeployConfigFromYAML(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = configs[0].validateConfig(); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"die", "destroy", "unhealthy"}
+	if !reflect.DeepEqual(want, configs[0].Reconciliation.Events) {
+		t.Fatalf("expected normalized reconciliation events %v, got %v", want, configs[0].Reconciliation.Events)
+	}
+}
+
+func TestDeployConfig_ReconciliationEvents_Invalid(t *testing.T) {
+	t.Parallel()
+
+	filePath := filepath.Join(t.TempDir(), ".doco-cd.yaml")
+
+	err := createTestFile(t, filePath, `name: test
+compose_files: ["compose.yaml"]
+reconciliation:
+  events: ["created"]
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	configs, err := GetDeployConfigFromYAML(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = configs[0].validateConfig()
+	if err == nil {
+		t.Fatal("expected invalid reconciliation event error")
+	}
+
+	if !strings.Contains(err.Error(), "unsupported reconciliation event") {
+		t.Fatalf("expected unsupported reconciliation event error, got %v", err)
+	}
+}
