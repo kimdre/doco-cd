@@ -174,13 +174,15 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		return
 	}
 
-	eventLog := jobLog.With(
-		slog.Group("reconciliation",
-			slog.String("event", action),
-			slog.String("trace_id", id.GenID()),
-		),
-		slog.String("stack", event.Actor.Attributes[docker.DocoCDLabels.Deployment.Name]),
-	)
+	eventLog := logger.
+		WithoutAttr(jobLog, "job_id").
+		With(
+			slog.Group("reconciliation",
+				slog.String("event", action),
+				slog.String("trace_id", id.GenID()),
+			),
+			slog.String("stack", event.Actor.Attributes[docker.DocoCDLabels.Deployment.Name]),
+		)
 
 	j.deploy(ctx, eventLog, dcs)
 }

@@ -79,7 +79,7 @@ func New(logLevel slog.Level) *Logger {
 	)
 
 	overwriter := slog.New(
-		slogdedup.NewOverwriteHandler(jh, nil),
+		newAttrFilterHandler(slogdedup.NewOverwriteHandler(jh, nil)),
 	)
 
 	slog.SetDefault(overwriter)
