@@ -222,10 +222,6 @@ destroy_opts:
 Reconciliation is an optional event-driven check that compares the currently running Docker services/containers with the expected deployment state.
 When configured container events occur, doco-cd automatically reapplies the deployment to bring the stack back to the desired state.
 
-!!! note
-    Docker Swarm already manages desired-state reconciliation itself, so this doco-cd reconciliation setting is only relevant for non-Swarm deployments.
-    See Docker's documentation on [desired state reconciliation](https://docs.docker.com/engine/swarm/#desired-state-reconciliation).
-
 The following settings can be used to configure reconciliation triggers.
 
 | Key       | Type             | Description                                                                                           | Default value        |
@@ -239,6 +235,7 @@ The following settings can be used to configure reconciliation triggers.
 
 - `die` - the container process exited.
 - `destroy` - the container was removed.
+- `update` - the service/container configuration was updated (for example scale changes in Swarm).
 - `stop` - the container was stopped gracefully.
 - `kill` - the container was terminated by a signal.
 - `oom` - the container was killed because it ran out of memory.

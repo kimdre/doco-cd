@@ -8,4 +8,5 @@
     More information on the restart policies can be found in the [Docker Compose specification](https://docs.docker.com/reference/compose-file/services/#restart).
 
     !!! abstract "Reconciliation in Docker Swarm"
-        Docker Swarm already manages desired-state reconciliation itself with Swarm service modes and [`#!yaml deploy.restart_policy`](https://docs.docker.com/reference/compose-file/deploy/#restart_policy) behavior. See Docker's documentation on [desired state reconciliation](https://docs.docker.com/engine/swarm/#desired-state-reconciliation).
+        Docker Swarm manages some desired-state reconciliation by itself with Swarm service modes and [`#!yaml deploy.restart_policy`](https://docs.docker.com/reference/compose-file/deploy/#restart_policy) behavior. See Docker's documentation on [desired state reconciliation](https://docs.docker.com/engine/swarm/#desired-state-reconciliation).  
+        Doco-CD's reconciliation for Swarm deployments only manages service updates and scaling, but not container restarts or health status.
