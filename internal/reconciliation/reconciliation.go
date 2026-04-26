@@ -87,6 +87,7 @@ func (j *job) run(ctx context.Context) {
 	}
 
 	filterArgs.Add("label", docker.DocoCDLabels.Repository.Name+"="+repositoryLabelValue)
+
 	for _, eventFilter := range dockerEventFiltersForActions(mapsKeys(j.deployConfigGroupByEvent)) {
 		filterArgs.Add("event", eventFilter)
 	}
@@ -293,4 +294,14 @@ func normalizeReconciliationEventAction(action string) string {
 	}
 
 	return action
+}
+
+func mapsKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+
+	for key := range m {
+		keys = append(keys, key)
+	}
+
+	return keys
 }

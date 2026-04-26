@@ -2,6 +2,7 @@ package reconciliation
 
 import (
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/kimdre/doco-cd/internal/config"
@@ -55,5 +56,17 @@ func TestNormalizeReconciliationEventAction(t *testing.T) {
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("expected normalized action %q for input %q, got %q", want, input, got)
 		}
+	}
+}
+
+func TestDockerEventFiltersForActions(t *testing.T) {
+	t.Parallel()
+
+	got := dockerEventFiltersForActions([]string{" die ", "destroy", "unhealthy", "health_status: unhealthy", "die"})
+	slices.Sort(got)
+
+	want := []string{"destroy", "die", "health_status"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected docker event filters %v, got %v", want, got)
 	}
 }
