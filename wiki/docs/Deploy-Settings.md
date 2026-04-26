@@ -217,7 +217,7 @@ destroy_opts:
   remove_dir: false
 ```
 
-### Reconciliation settings
+### Reconciliation Settings
 
 Reconciliation is an optional event-driven check for non-Swarm deployments that compares the currently running services with the expected deployment state.
 When configured container events occur, doco-cd automatically reapplies the deployment to bring the stack back to the desired state.
@@ -228,25 +228,26 @@ When configured container events occur, doco-cd automatically reapplies the depl
 
 The following settings can be used to configure reconciliation triggers.
 
-!!! warning
-    The currently implemented state will be lost when doco-cd restarts.
-
-| Key       | Type             | Description                                                                 | Default value          |
-|-----------|------------------|-----------------------------------------------------------------------------|------------------------|
-| `enabled` | boolean          | Enable reconciliation for non-Swarm deployments.                            | `true`                 |
+| Key       | Type             | Description                                                                      | Default value        |
+|-----------|------------------|----------------------------------------------------------------------------------|----------------------|
+| `enabled` | boolean          | Enable reconciliation for non-Swarm deployments.                                 | `true`               |
 | `events`  | array of strings | Docker container events that trigger reconciliation. See supported values below. | `['die', 'destroy']` |
 
-Supported `reconciliation.events` values:
+--8<-- "wiki/docs/_snippets/reconciliation-note.md"
+
+#### Supported Events
 
 - `die` - the container process exited.
 - `destroy` - the container was removed.
 - `stop` - the container was stopped gracefully.
 - `kill` - the container was terminated by a signal.
 - `oom` - the container was killed because it ran out of memory.
-- `unhealthy` - the container health check changed to unhealthy.
+- `unhealthy` - the container health check status changed to _unhealthy_.
 
-!!! note
-    `unhealthy` is the user-facing config token for Docker's `health_status: unhealthy` event.
+!!! warning
+    Broader event sets (for example adding `stop`, `kill`, `oom`, or `unhealthy`) can increase reconciliation trigger frequency.
+
+#### Examples
 
 ```yaml title=".doco-cd.yml"
 name: some-project
@@ -257,11 +258,6 @@ reconciliation:
     - destroy
     - unhealthy
 ```
-
-!!! warning
-    Broader event sets (for example adding `stop`, `kill`, `oom`, or `unhealthy`) can increase reconciliation trigger frequency.
-
---8<-- "wiki/docs/_snippets/reconciliation-note.md"
 
 ```yaml title=".doco-cd.yml"
 name: some-project
