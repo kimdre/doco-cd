@@ -102,12 +102,26 @@ func addSwarmServiceLabels(stack *composetypes.Config, deployConfig *config.Depl
 		DocoCDLabels.Repository.URL:                payload.WebURL,
 	}
 
+	// Service-level labels (ServiceSpec.Annotations.Labels) are required for Docker
+	// service events to be filterable by label. These are set via Deploy.Labels.
+	serviceLevelLabels := map[string]string{
+		DocoCDLabels.Metadata.Manager: config.AppName,
+		DocoCDLabels.Deployment.Name:  deployConfig.Name,
+		DocoCDLabels.Repository.Name:  payload.FullName,
+	}
+
 	for i, s := range stack.Services {
 		if s.Labels == nil {
 			s.Labels = make(map[string]string)
 		}
 
 		maps.Copy(s.Labels, customLabels)
+
+		if s.Deploy.Labels == nil {
+			s.Deploy.Labels = make(map[string]string)
+		}
+
+		maps.Copy(s.Deploy.Labels, serviceLevelLabels)
 
 		stack.Services[i] = s
 	}

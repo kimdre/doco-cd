@@ -77,18 +77,23 @@ func (j *job) run(ctx context.Context) {
 	jobLog.Debug("reconciliation loop started")
 	defer jobLog.Debug("reconciliation loop stopped")
 
-	filterArgs := make(client.Filters)
-	filterArgs.Add("type", "container")
-	filterArgs.Add("label", docker.DocoCDLabels.Metadata.Manager+"="+config.AppName)
+	swarmMode := swarm.GetModeEnabled()
 
-	repositoryLabelValue := normalizeRepositoryLabelFromCloneURL(j.info.repoData.CloneURL)
-	if j.info.payload != nil && strings.TrimSpace(j.info.payload.FullName) != "" {
-		repositoryLabelValue = j.info.payload.FullName
+	filterArgs := make(client.Filters)
+	filterArgs.Add("type", dockerEventTypeForMode(swarmMode))
+
+	if !swarmMode {
+		filterArgs.Add("label", docker.DocoCDLabels.Metadata.Manager+"="+config.AppName)
+
+		repositoryLabelValue := normalizeRepositoryLabelFromCloneURL(j.info.repoData.CloneURL)
+		if j.info.payload != nil && strings.TrimSpace(j.info.payload.FullName) != "" {
+			repositoryLabelValue = j.info.payload.FullName
+		}
+
+		filterArgs.Add("label", docker.DocoCDLabels.Repository.Name+"="+repositoryLabelValue)
 	}
 
-	filterArgs.Add("label", docker.DocoCDLabels.Repository.Name+"="+repositoryLabelValue)
-
-	for _, eventFilter := range dockerEventFiltersForActions(mapsKeys(j.deployConfigGroupByEvent)) {
+	for _, eventFilter := range dockerEventFiltersForActions(mapsKeys(j.deployConfigGroupByEvent), swarmMode) {
 		filterArgs.Add("event", eventFilter)
 	}
 
@@ -146,7 +151,15 @@ func normalizeRepositoryLabelFromCloneURL(cloneURL config.HttpUrl) string {
 	return repoName
 }
 
-func dockerEventFiltersForActions(actions []string) []string {
+func dockerEventTypeForMode(swarmMode bool) string {
+	if swarmMode {
+		return "service"
+	}
+
+	return "container"
+}
+
+func dockerEventFiltersForActions(actions []string, swarmMode bool) []string {
 	filters := make(map[string]struct{}, len(actions))
 
 	for _, rawAction := range actions {
@@ -157,7 +170,14 @@ func dockerEventFiltersForActions(actions []string) []string {
 
 		switch action {
 		case "unhealthy":
-			filters["health_status"] = struct{}{}
+			filters["unhealthy"] = struct{}{}
+		case "destroy":
+			if swarmMode {
+				filters["remove"] = struct{}{}
+				continue
+			}
+
+			filters["destroy"] = struct{}{}
 		default:
 			filters[action] = struct{}{}
 		}
@@ -168,13 +188,22 @@ func dockerEventFiltersForActions(actions []string) []string {
 
 func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events.Message) {
 	action := normalizeReconciliationEventAction(string(event.Action))
-
 	dcs := j.deployConfigGroupByEvent[action]
+
 	if len(dcs) == 0 {
 		return
 	}
 
-	stackName := event.Actor.Attributes[docker.DocoCDLabels.Deployment.Name]
+	stackName := stackNameFromEvent(event, dcs)
+	if stackName == "" {
+		return
+	}
+
+	stackDCs := deployConfigsByName(dcs, stackName)
+	if len(stackDCs) == 0 {
+		return
+	}
+
 	stackID := j.info.metadata.Repository + "/" + stackName
 	stackLock := lock.GetRepoLock(stackID)
 
@@ -194,7 +223,47 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 			slog.String("stack", stackName),
 		)
 
-	j.deploy(ctx, eventLog, dcs)
+	j.deploy(ctx, eventLog, stackDCs)
+}
+
+func deployConfigsByName(dcs []*config.DeployConfig, name string) []*config.DeployConfig {
+	result := make([]*config.DeployConfig, 0, len(dcs))
+
+	for _, dc := range dcs {
+		if dc.Name == name {
+			result = append(result, dc)
+		}
+	}
+
+	return result
+}
+
+func stackNameFromEvent(event events.Message, candidates []*config.DeployConfig) string {
+	attrs := event.Actor.Attributes
+
+	for _, key := range []string{docker.DocoCDLabels.Deployment.Name, swarm.StackNamespaceLabel} {
+		v := strings.TrimSpace(attrs[key])
+		if v != "" {
+			return v
+		}
+	}
+
+	serviceName := strings.TrimSpace(attrs["name"])
+	if serviceName == "" {
+		serviceName = strings.TrimSpace(attrs["service"])
+	}
+
+	if serviceName == "" {
+		return ""
+	}
+
+	for _, dc := range candidates {
+		if serviceName == dc.Name || strings.HasPrefix(serviceName, dc.Name+"_") {
+			return dc.Name
+		}
+	}
+
+	return ""
 }
 
 func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*config.DeployConfig) {
@@ -245,11 +314,6 @@ func (r *reconciliation) close() {
 }
 
 func (r *reconciliation) addJob(ctx context.Context, info jobInfo) {
-	if swarm.GetModeEnabled() {
-		info.jobLog.Debug("skipping reconciliation event listener in swarm mode")
-		return
-	}
-
 	cfg := getDeployConfigGroupByEvent(info.deployConfigs)
 	if len(cfg) == 0 {
 		return
@@ -291,18 +355,9 @@ func normalizeReconciliationEventAction(action string) string {
 	action = strings.ToLower(strings.TrimSpace(action))
 	action = strings.Join(strings.Fields(action), " ")
 
-	if strings.HasPrefix(action, "health_status:") {
-		parts := strings.SplitN(action, ":", 2)
-		if len(parts) == 2 {
-			action = strings.TrimSpace(parts[0]) + ": " + strings.TrimSpace(parts[1])
-			if action == "health_status: unhealthy" {
-				return "unhealthy"
-			}
-		}
-	}
-
-	if action == "unhealthy" {
-		return action
+	switch action {
+	case "remove", "delete":
+		return "destroy"
 	}
 
 	return action

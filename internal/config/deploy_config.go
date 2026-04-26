@@ -37,6 +37,7 @@ var (
 	supportedReconciliationEvents    = map[string]struct{}{
 		"die":       {},
 		"destroy":   {},
+		"update":    {},
 		"stop":      {},
 		"kill":      {},
 		"oom":       {},
@@ -184,6 +185,11 @@ func (c *DeployConfig) normalizeReconciliationEvents() error {
 	for _, rawEvent := range c.Reconciliation.Events {
 		event := strings.ToLower(strings.TrimSpace(rawEvent))
 		event = strings.Join(strings.Fields(event), " ")
+
+		switch event {
+		case "remove", "delete":
+			event = "destroy"
+		}
 
 		if event == "" {
 			return fmt.Errorf("%w: reconciliation.events contains an empty event", ErrInvalidConfig)

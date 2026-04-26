@@ -1111,6 +1111,9 @@ reconciliation:
     - destroy
     - " UNHEALTHY "
     - " unhealthy "
+    - update
+    - remove
+    - delete
 `)
 	if err != nil {
 		t.Fatal(err)
@@ -1125,7 +1128,7 @@ reconciliation:
 		t.Fatal(err)
 	}
 
-	want := []string{"die", "destroy", "unhealthy"}
+	want := []string{"die", "destroy", "unhealthy", "update"}
 	if !reflect.DeepEqual(want, configs[0].Reconciliation.Events) {
 		t.Fatalf("expected normalized reconciliation events %v, got %v", want, configs[0].Reconciliation.Events)
 	}
