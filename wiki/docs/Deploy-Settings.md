@@ -219,7 +219,7 @@ destroy_opts:
 
 ### Reconciliation Settings
 
-Reconciliation is an optional event-driven check for non-Swarm deployments that compares the currently running services with the expected deployment state.
+Reconciliation is an optional event-driven check that compares the currently running Docker services/containers with the expected deployment state.
 When configured container events occur, doco-cd automatically reapplies the deployment to bring the stack back to the desired state.
 
 !!! note
