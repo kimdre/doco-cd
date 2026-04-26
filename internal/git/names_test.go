@@ -1,9 +1,7 @@
-package stages
+package git
 
 import (
 	"testing"
-
-	"github.com/kimdre/doco-cd/internal/config"
 )
 
 func TestGetFullName(t *testing.T) {
@@ -44,12 +42,24 @@ func TestGetFullName(t *testing.T) {
 			cloneURL: "https://oauth2:TOKEN@github.com/kimdre/doco-cd_tests.git", // #nosec G101 -- This is a test URL, not a real token
 			expected: "kimdre/doco-cd_tests",
 		},
+		{
+			cloneURL: "http://git.example.com/infra/alpha/local/netbird-doco.git",
+			expected: "infra/alpha/local/netbird-doco",
+		},
+		{
+			cloneURL: "git@gitlab.com:gitlab-org/5-minute-production-app/sandbox/cats.git",
+			expected: "gitlab-org/5-minute-production-app/sandbox/cats",
+		},
+		{
+			cloneURL: "https://gitlab.com/gitlab-org/5-minute-production-app/sandbox/cats.git",
+			expected: "gitlab-org/5-minute-production-app/sandbox/cats",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.cloneURL, func(t *testing.T) {
 			t.Parallel()
 
-			result := getFullName(config.HttpUrl(tt.cloneURL))
+			result := GetFullName(tt.cloneURL)
 			if result != tt.expected {
 				t.Errorf("getFullName failed for %s: expected %s, got %s", tt.cloneURL, tt.expected, result)
 			}

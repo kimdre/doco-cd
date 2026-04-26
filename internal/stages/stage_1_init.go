@@ -145,7 +145,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		for _, labels := range serviceLabels {
 			name, ok := labels[docker.DocoCDLabels.Repository.Name]
 
-			if !ok || name != getFullName(s.Repository.CloneURL) {
+			if !ok || name != git.GetFullName(string(s.Repository.CloneURL)) {
 				correctRepo = false
 				break
 			}
@@ -181,7 +181,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 			Name:      git.GetRepoName(string(s.Repository.CloneURL)),
 			Ref:       s.DeployConfig.Reference,
 			CommitSHA: string(JobTriggerPoll),
-			FullName:  getFullName(s.Repository.CloneURL),
+			FullName:  git.GetFullName(string(s.Repository.CloneURL)),
 			CloneURL:  string(s.Repository.CloneURL),
 			WebURL:    string(s.Repository.CloneURL),
 		}
