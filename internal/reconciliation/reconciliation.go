@@ -174,6 +174,16 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		return
 	}
 
+	stackName := event.Actor.Attributes[docker.DocoCDLabels.Deployment.Name]
+	stackID := j.info.metadata.Repository + "/" + stackName
+	stackLock := lock.GetRepoLock(stackID)
+
+	if !stackLock.TryLock(id.GenID()) {
+		jobLog.Debug("skipping reconciliation, already in progress for this stack", slog.String("stack", stackName))
+		return
+	}
+	defer stackLock.Unlock()
+
 	eventLog := logger.
 		WithoutAttr(jobLog, "job_id").
 		With(
@@ -181,7 +191,7 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 				slog.String("event", action),
 				slog.String("trace_id", id.GenID()),
 			),
-			slog.String("stack", event.Actor.Attributes[docker.DocoCDLabels.Deployment.Name]),
+			slog.String("stack", stackName),
 		)
 
 	j.deploy(ctx, eventLog, dcs)
