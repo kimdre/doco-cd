@@ -235,7 +235,7 @@ The following settings can be used to configure reconciliation triggers.
 
 - `die` - the container process exited.
 - `destroy` - the container was removed.
-- `update` - the service/container configuration was updated (for example scale changes in Swarm).
+- `update` - the service/container configuration was updated (for example scale changes in Docker Swarm).
 - `stop` - the container was stopped gracefully.
 - `kill` - the container was terminated by a signal.
 - `oom` - the container was killed because it ran out of memory.
