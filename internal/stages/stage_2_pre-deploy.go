@@ -27,7 +27,7 @@ func shouldSkipDeployment(composeChanged bool,
 ) bool {
 	return !composeChanged &&
 		len(changedServices) == 0 &&
-		ignoredInfo.IsNeedSignal() &&
+		!ignoredInfo.IsNeedSignal() &&
 		!imagesChanged &&
 		len(mismatchServices) == 0
 }
@@ -73,12 +73,12 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		return fmt.Errorf("failed to hash deploy configuration: %w", err)
 	}
 
-	deployedState, err := docker.GetLatestDeployStatus(ctx, s.Docker.Cmd.Client(), getFullName(s.Repository.CloneURL), s.DeployConfig.Name)
+	deployedState, err := docker.GetLatestDeployStatus(ctx, s.Docker.Cmd.Client(), string(s.Repository.CloneURL), s.DeployConfig.Name)
 	if err != nil {
 		return fmt.Errorf("failed to get latest state from deployed services: %w", err)
 	}
 
-	if deployedCommit, _ := deployedState.Labels.GetDeploymentCommitSHA(); deployedCommit != "" {
+	if deployedCommit := deployedState.GetDeploymentCommitSHA(); deployedCommit != "" {
 		latestCommit, err := git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
 		if err != nil {
 			return fmt.Errorf("failed to get latest commit: %w", err)
@@ -138,7 +138,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			return fmt.Errorf("failed to get project hash: %w", err)
 		}
 
-		curProjectHash, _ := deployedState.Labels.GetDeploymentComposeHash()
+		curProjectHash := deployedState.GetDeploymentComposeHash()
 
 		composeChanged := newHash != curProjectHash
 		if composeChanged {

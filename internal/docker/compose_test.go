@@ -368,6 +368,26 @@ compose_files:
 			t.Fatalf("expected no labeled containers after destruction, got %d", len(serviceLabels))
 		}
 
+		stats, err := GetLatestDeployStatus(ctx, dockerClient, p.CloneURL, stackName)
+		if err != nil {
+			t.Fatalf("GetLatestDeployStatus err: %v", err)
+		}
+
+		t.Log("Verifying deployment status after destruction", stats)
+
+		if stats.GetDeploymentCommitSHA() != latestCommit {
+			t.Fatalf("expected latest deployed commit SHA to be '%s', got '%s'", latestCommit, stats.GetDeploymentCommitSHA())
+		}
+
+		projectHash, err := ProjectHash(project)
+		if err != nil {
+			t.Fatalf("ProjectHash err: %v", err)
+		}
+
+		if stats.GetDeploymentComposeHash() != projectHash {
+			t.Fatalf("expected latest deployed compose hash to be '%s', got '%s'", projectHash, stats.GetDeploymentComposeHash())
+		}
+
 		t.Log("Finished destroying deployment with no errors")
 	}
 }

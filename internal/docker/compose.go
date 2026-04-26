@@ -569,6 +569,14 @@ func DeployStack(
 		}
 	}
 
+	// cache the deployment status after successful deployment
+	setDeployStatusToCache(gitInternal.GetRepoName(payload.CloneURL), deployConfig.Name,
+		deployStatus{
+			CommitSHA:   latestCommit,
+			ComposeHash: projectHash,
+		},
+	)
+
 	prometheus.DeploymentsTotal.WithLabelValues(deployConfig.Name).Inc()
 	prometheus.DeploymentDuration.WithLabelValues(deployConfig.Name).Observe(time.Since(startTime).Seconds())
 
@@ -863,7 +871,7 @@ func (i IgnoredInfo) IsEmpty() bool {
 }
 
 func (i IgnoredInfo) IsNeedSignal() bool {
-	return len(i.NeedSendSignal) == 0
+	return len(i.NeedSendSignal) > 0
 }
 
 type SignalService struct {
