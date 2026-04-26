@@ -87,6 +87,9 @@ func (j *job) run(ctx context.Context) {
 	}
 
 	filterArgs.Add("label", docker.DocoCDLabels.Repository.Name+"="+repositoryLabelValue)
+	for _, eventFilter := range dockerEventFiltersForActions(mapsKeys(j.deployConfigGroupByEvent)) {
+		filterArgs.Add("event", eventFilter)
+	}
 
 	listenerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -142,6 +145,26 @@ func normalizeRepositoryLabelFromCloneURL(cloneURL config.HttpUrl) string {
 	return repoName
 }
 
+func dockerEventFiltersForActions(actions []string) []string {
+	filters := make(map[string]struct{}, len(actions))
+
+	for _, rawAction := range actions {
+		action := normalizeReconciliationEventAction(rawAction)
+		if action == "" {
+			continue
+		}
+
+		switch action {
+		case "unhealthy":
+			filters["health_status"] = struct{}{}
+		default:
+			filters[action] = struct{}{}
+		}
+	}
+
+	return mapsKeys(filters)
+}
+
 func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events.Message) {
 	action := normalizeReconciliationEventAction(string(event.Action))
 
@@ -151,7 +174,10 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 	}
 
 	eventLog := jobLog.With(
-		slog.Group("trigger", slog.String("event", action)),
+		slog.Group("reconciliation",
+			slog.String("event", action),
+			slog.String("trace_id", id.GenID()),
+		),
 		slog.String("stack", event.Actor.Attributes[docker.DocoCDLabels.Deployment.Name]),
 	)
 
@@ -163,10 +189,8 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*config.Dep
 	repoLock.Lock()
 	defer repoLock.Unlock()
 
-	jobLog = jobLog.With(slog.String("reconciliation_id", id.GenID()))
-
-	jobLog.Debug("reconciliation started")
-	defer jobLog.Debug("reconciliation completed")
+	jobLog.Info("reconciliation started")
+	defer jobLog.Info("reconciliation completed")
 
 	if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
 		j.info.dockerCli, string(j.info.repoData.CloneURL),
