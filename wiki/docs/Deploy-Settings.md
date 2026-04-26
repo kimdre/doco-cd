@@ -228,10 +228,10 @@ When configured container events occur, doco-cd automatically reapplies the depl
 
 The following settings can be used to configure reconciliation triggers.
 
-| Key       | Type             | Description                                                                      | Default value        |
-|-----------|------------------|----------------------------------------------------------------------------------|----------------------|
-| `enabled` | boolean          | Enable reconciliation for non-Swarm deployments.                                 | `true`               |
-| `events`  | array of strings | Docker container events that trigger reconciliation. See supported values below. | `['die', 'destroy']` |
+| Key       | Type             | Description                                                                                           | Default value        |
+|-----------|------------------|-------------------------------------------------------------------------------------------------------|----------------------|
+| `enabled` | boolean          | Enable reconciliation.                                                                                | `true`               |
+| `events`  | array of strings | Docker container events that trigger reconciliation. See [supported events](#supported-events) below. | `['die', 'destroy']` |
 
 --8<-- "wiki/docs/_snippets/reconciliation-note.md"
 
