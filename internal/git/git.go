@@ -1036,17 +1036,6 @@ func normalizeOwnerRepo(p string) string {
 	// Trim trailing '.git'
 	p = strings.TrimSuffix(p, ".git")
 
-	// Clean path and split
-	clean := path.Clean(p)
-
-	parts := strings.Split(clean, "/")
-	if len(parts) < 2 {
-		// Not enough segments to form owner/repo
-		return clean // safest fallback; avoids panic
-	}
-
-	owner := parts[len(parts)-2]
-	repo := parts[len(parts)-1]
-
-	return owner + "/" + repo
+	// Clean path
+	return path.Clean(p)
 }

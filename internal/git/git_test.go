@@ -886,6 +886,18 @@ func TestGetRepoName(t *testing.T) {
 			cloneURL: "https://oauth2:TOKEN@github.com/kimdre/doco-cd_tests.git", // #nosec G101 -- This is a test URL, not a real token
 			expected: "github.com/kimdre/doco-cd_tests",
 		},
+		{
+			cloneURL: "http://git.example.com/infra/alpha/local/netbird-doco.git",
+			expected: "git.example.com/infra/alpha/local/netbird-doco",
+		},
+		{
+			cloneURL: "git@gitlab.com:gitlab-org/5-minute-production-app/sandbox/cats.git",
+			expected: "gitlab.com/gitlab-org/5-minute-production-app/sandbox/cats",
+		},
+		{
+			cloneURL: "https://gitlab.com/gitlab-org/5-minute-production-app/sandbox/cats.git",
+			expected: "gitlab.com/gitlab-org/5-minute-production-app/sandbox/cats",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.cloneURL, func(t *testing.T) {
