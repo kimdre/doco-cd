@@ -23,7 +23,7 @@ import (
 )
 
 // StartPoll initializes PollJob with the provided configuration and starts the PollHandler goroutine.
-func StartPoll(h *handlerData, pollConfig config.PollConfig, wg *sync.WaitGroup) error {
+func StartPoll(ctx context.Context, h *handlerData, pollConfig config.PollConfig, wg *sync.WaitGroup) error {
 	if pollConfig.Interval == 0 && !pollConfig.RunOnce {
 		h.log.Info("polling job disabled by config", "config", pollConfig)
 
@@ -39,7 +39,7 @@ func StartPoll(h *handlerData, pollConfig config.PollConfig, wg *sync.WaitGroup)
 	h.log.Debug("Starting poll handler", "config", pollConfig)
 
 	wg.Go(func() {
-		h.PollHandler(context.Background(), pollJob)
+		h.PollHandler(ctx, pollJob)
 		h.log.Debug("PollJob handler stopped", "config", pollConfig)
 	})
 
@@ -91,7 +91,14 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *config.PollJob) 
 		}
 
 		pollJob.LastRun = time.Now().Unix()
-		time.Sleep(time.Duration(pollJob.Config.Interval) * time.Second)
+
+		select {
+		case <-ctx.Done():
+			logger.Debug("ctx is done in poll handler")
+			return
+		case <-time.After(time.Duration(pollJob.Config.Interval) * time.Second):
+			continue
+		}
 	}
 }
 

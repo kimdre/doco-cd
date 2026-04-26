@@ -87,7 +87,8 @@ func CreateMountpointSymlink(m container.MountPoint) error {
 }
 
 func main() {
-	ctx := context.Background()
+	ctx, rootCancel := context.WithCancel(context.Background())
+	defer rootCancel()
 
 	// Set the default log level to debug
 	log := logger.New(slog.LevelDebug)
@@ -256,7 +257,7 @@ func main() {
 		)
 
 		for _, pollConfig := range c.PollConfig {
-			err = StartPoll(&h, pollConfig, &wg)
+			err = StartPoll(ctx, &h, pollConfig, &wg)
 			if err != nil {
 				log.Critical("failed to scheduling polling jobs", logger.ErrAttr(err))
 
@@ -265,12 +266,12 @@ func main() {
 		}
 	}
 
-	wg.Wait()
-
 	registryApiServer(c, &h, log)
 	prometheus.RegisterServer(c.MetricsPort, log)
 
 	if err := graceful.Serve(log.Logger); err != nil {
 		log.Critical("failed to serve", logger.ErrAttr(err))
 	}
+	rootCancel()
+	wg.Wait()
 }
