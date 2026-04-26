@@ -50,7 +50,7 @@ type jobInfo struct {
 type job struct {
 	info jobInfo
 
-	// key is the docker event action name (for example "die" or "health_status: unhealthy").
+	// key is the docker event action name (for example "die" or "unhealthy").
 	deployConfigGroupByEvent map[string][]*config.DeployConfig
 	closeChan                chan struct{}
 }
@@ -72,9 +72,7 @@ func (j *job) close() {
 }
 
 func (j *job) run(ctx context.Context) {
-	jobLog := j.info.jobLog.With(
-		slog.Any("events", mapsKeys(j.deployConfigGroupByEvent)),
-	)
+	jobLog := j.info.jobLog
 
 	jobLog.Debug("reconciliation loop started")
 	defer jobLog.Debug("reconciliation loop stopped")
@@ -153,8 +151,7 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 	}
 
 	eventLog := jobLog.With(
-		slog.String("action", action),
-		slog.String("container_id", event.Actor.ID),
+		slog.Group("trigger", slog.String("event", action)),
 		slog.String("stack", event.Actor.Attributes[docker.DocoCDLabels.Deployment.Name]),
 	)
 
@@ -272,14 +269,4 @@ func normalizeReconciliationEventAction(action string) string {
 	}
 
 	return action
-}
-
-func mapsKeys[V any](m map[string]V) []string {
-	keys := make([]string, 0, len(m))
-
-	for k := range m {
-		keys = append(keys, k)
-	}
-
-	return keys
 }
