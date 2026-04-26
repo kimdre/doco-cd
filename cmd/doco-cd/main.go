@@ -212,7 +212,7 @@ func main() {
 
 	var wg sync.WaitGroup
 
-	graceful.Go(&wg, log.Logger,
+	graceful.SafeGo(&wg, log.Logger,
 		func() {
 			notificationForNewAppVersion(log.Logger)
 		},

@@ -5,9 +5,9 @@ import (
 	"sync"
 )
 
-// Go starts a new goroutine and adds it to the global wait group.
+// SafeGo starts a new goroutine and adds it to wg.
 // it also recovers from any panic in the goroutine and logs it using the provided logger.
-func Go(wg *sync.WaitGroup, log *slog.Logger, f func()) {
+func SafeGo(wg *sync.WaitGroup, log *slog.Logger, f func()) {
 	wg.Go(func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -18,9 +18,4 @@ func Go(wg *sync.WaitGroup, log *slog.Logger, f func()) {
 
 		f()
 	})
-}
-
-// Wait for all goroutines to finish.
-func Wait(wg *sync.WaitGroup) {
-	wg.Wait()
 }
