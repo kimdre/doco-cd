@@ -88,7 +88,6 @@ func CreateMountpointSymlink(m container.MountPoint) error {
 
 func main() {
 	ctx, rootCancel := context.WithCancel(context.Background())
-	defer rootCancel()
 
 	// Set the default log level to debug
 	log := logger.New(slog.LevelDebug)
@@ -272,6 +271,7 @@ func main() {
 	if err := graceful.Serve(log.Logger); err != nil {
 		log.Critical("failed to serve", logger.ErrAttr(err))
 	}
+
 	rootCancel()
 	wg.Wait()
 }

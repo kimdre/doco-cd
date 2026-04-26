@@ -85,6 +85,7 @@ const shutdownTimeout = 10 * time.Second
 // When a shutdown signal is received or any server stops, it will attempt to gracefully shut down all servers.
 // It returns an error if any server in encounters an error during serving or shutdown.
 // It will wait for all servers to shut down gracefully before returning.
+// It will call all registered shutdown functions before returning.
 func Serve(log *slog.Logger) error {
 	signalCtx, signalStop := signal.NotifyContext(
 		context.Background(),
@@ -189,7 +190,13 @@ func Serve(log *slog.Logger) error {
 		}
 	}
 
-	log.Info("Server shut down gracefully.")
+	log.Info("calling registered shutdown functions")
+
+	for _, f := range getShutdownFuncs() {
+		f()
+	}
+
+	log.Info("server shutdown gracefully.")
 
 	return errors.Join(errs...)
 }

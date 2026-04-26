@@ -10,6 +10,7 @@ import (
 	"github.com/moby/moby/api/types/container"
 
 	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/graceful"
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -188,4 +189,10 @@ func getDeployConfigGroupByInterval(dcs []*config.DeployConfig) map[int][]*confi
 	}
 
 	return m
+}
+
+func init() {
+	graceful.RegistryShutdownFunc(func() {
+		reconciliationHandler.close()
+	})
 }
