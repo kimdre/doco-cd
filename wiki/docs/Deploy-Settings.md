@@ -140,7 +140,7 @@ Specify all auto-discover settings in a nested `auto_discover_opts` object in th
 | `depth`  | number  | Maximum depth of subdirectories to scan for docker-compose files, set to `0` for no limit            | `0`           |
 | `delete` | boolean | Auto-remove obsolete auto-discovered deployments that are no longer present in the working directory | `true`        |
 
-### Example
+#### Example
 
 With a file structure like this
 ```
