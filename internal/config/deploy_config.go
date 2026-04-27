@@ -85,7 +85,9 @@ type DeployConfig struct {
 	Reconciliation struct {
 		Enabled        bool     `yaml:"enabled" json:"enabled" default:"true"`                 // Enabled enables the reconciliation feature
 		Events         []string `yaml:"events" json:"events" default:"[\"die\", \"destroy\"]"` // Events is the list of Docker container actions that trigger reconciliation
-		RestartTimeout int      `yaml:"restart_timeout" json:"restart_timeout" default:"10"`   // RestartTimeout is the timeout in seconds to wait before killing a container during a restart (used for unhealthy and oom events)
+		RestartTimeout int      `yaml:"restart_timeout" json:"restart_timeout" default:"10"`   // RestartTimeout is the timeout in seconds to wait before killing a container during a restart (used for restart-oriented reconciliation events)
+		RestartLimit   int      `yaml:"restart_limit" json:"restart_limit" default:"5"`        // RestartLimit suppresses further unhealthy-triggered restarts after this many restarts in the configured window. Set to 0 to disable suppression.
+		RestartWindow  int      `yaml:"restart_window" json:"restart_window" default:"300"`    // RestartWindow is the time window in seconds used with RestartLimit.
 	} `yaml:"reconciliation" json:"reconciliation"` // Reconciliation is the configuration for the reconciliation feature
 	Internal struct {
 		File        string            `yaml:"-"` // File is the path to the deployment configuration file in the repository (if RepositoryUrl is not set) or in the cloned repository (if RepositoryUrl is set)
@@ -127,6 +129,22 @@ func (c *DeployConfig) validateConfig() error {
 
 	if c.GitDepth < 0 {
 		return fmt.Errorf("%w: git_depth must be >= 0", ErrInvalidConfig)
+	}
+
+	if c.Reconciliation.RestartTimeout < 0 {
+		return fmt.Errorf("%w: reconciliation.restart_timeout must be >= 0", ErrInvalidConfig)
+	}
+
+	if c.Reconciliation.RestartLimit < 0 {
+		return fmt.Errorf("%w: reconciliation.restart_limit must be >= 0", ErrInvalidConfig)
+	}
+
+	if c.Reconciliation.RestartWindow < 0 {
+		return fmt.Errorf("%w: reconciliation.restart_window must be >= 0", ErrInvalidConfig)
+	}
+
+	if c.Reconciliation.RestartLimit > 0 && c.Reconciliation.RestartWindow == 0 {
+		return fmt.Errorf("%w: reconciliation.restart_window must be > 0 when reconciliation.restart_limit is set", ErrInvalidConfig)
 	}
 
 	c.WorkingDirectory = filepath.Clean(c.WorkingDirectory)

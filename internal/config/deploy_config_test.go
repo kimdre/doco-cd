@@ -1096,6 +1096,18 @@ compose_files: ["compose.yaml"]
 	if !reflect.DeepEqual(want, configs[0].Reconciliation.Events) {
 		t.Fatalf("expected reconciliation events %v, got %v", want, configs[0].Reconciliation.Events)
 	}
+
+	if configs[0].Reconciliation.RestartTimeout != 10 {
+		t.Fatalf("expected default reconciliation restart_timeout 10, got %d", configs[0].Reconciliation.RestartTimeout)
+	}
+
+	if configs[0].Reconciliation.RestartLimit != 5 {
+		t.Fatalf("expected default restart_limit 5, got %d", configs[0].Reconciliation.RestartLimit)
+	}
+
+	if configs[0].Reconciliation.RestartWindow != 300 {
+		t.Fatalf("expected default restart_window 300, got %d", configs[0].Reconciliation.RestartWindow)
+	}
 }
 
 func TestDeployConfig_ReconciliationEvents_Normalize(t *testing.T) {
@@ -1162,3 +1174,68 @@ reconciliation:
 		t.Fatalf("expected unsupported reconciliation event error, got %v", err)
 	}
 }
+
+func TestDeployConfig_ReconciliationRestartSuppression_Invalid(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		yaml   string
+		match  string
+	}{
+		{
+			name: "negative limit",
+			yaml: `name: test
+compose_files: ["compose.yaml"]
+reconciliation:
+  restart_limit: -1
+`,
+			match: "reconciliation.restart_limit",
+		},
+		{
+			name: "negative window",
+			yaml: `name: test
+compose_files: ["compose.yaml"]
+reconciliation:
+  restart_window: -10
+`,
+			match: "reconciliation.restart_window",
+		},
+		{
+			name: "limit requires positive window",
+			yaml: `name: test
+compose_files: ["compose.yaml"]
+reconciliation:
+  restart_limit: 3
+  restart_window: 0
+`,
+			match: "reconciliation.restart_window",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			filePath := filepath.Join(t.TempDir(), ".doco-cd.yaml")
+			if err := createTestFile(t, filePath, tc.yaml); err != nil {
+				t.Fatal(err)
+			}
+
+			configs, err := GetDeployConfigFromYAML(filePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			err = configs[0].validateConfig()
+			if err == nil {
+				t.Fatalf("expected validation error containing %q", tc.match)
+			}
+
+			if !strings.Contains(err.Error(), tc.match) {
+				t.Fatalf("expected error to contain %q, got %v", tc.match, err)
+			}
+		})
+	}
+}
+

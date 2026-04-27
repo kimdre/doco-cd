@@ -54,6 +54,8 @@ type job struct {
 
 	// key is the docker event action name (for example "die" or "unhealthy").
 	deployConfigGroupByEvent map[string][]*config.DeployConfig
+	unhealthyRestartHistory  map[string][]time.Time
+	restartSuppressUntil     map[string]time.Time
 	closeChan                chan struct{}
 }
 
@@ -61,6 +63,8 @@ func newJob(info jobInfo, deployConfigGroupByEvent map[string][]*config.DeployCo
 	return &job{
 		info:                     info,
 		deployConfigGroupByEvent: deployConfigGroupByEvent,
+		unhealthyRestartHistory:  make(map[string][]time.Time),
+		restartSuppressUntil:     make(map[string]time.Time),
 		closeChan:                make(chan struct{}),
 	}
 }
@@ -240,6 +244,15 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		return
 	}
 
+	if j.shouldSuppressRestartFollowupEvent(action, event) {
+		jobLog.Debug("suppressing follow-up event from self-initiated container restart",
+			slog.String("event", action),
+			slog.String("container_id", event.Actor.ID),
+			slog.String("stack", stackName),
+		)
+		return
+	}
+
 	stackID := j.info.metadata.Repository + "/" + stackName
 	stackLock := lock.GetRepoLock(stackID)
 
@@ -324,12 +337,28 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*config.Dep
 		jobLog.Error("failed to clean up obsolete auto-discovered containers", logger.ErrAttr(err))
 	}
 
+	// Reconciliation deploys should always force recreate so missing containers are restored
+	// even when there are no Git/compose changes.
+	reconcileDCs := cloneDeployConfigsWithForcedRecreate(dcs)
+
 	if err := handleDeploy(ctx, jobLog, j.info.appConfig,
 		j.info.dataMountPoint, j.info.dockerCli,
 		j.info.secretProvider, j.info.metadata.JobID, j.info.jobTrigger,
-		j.info.repoData, dcs, j.info.payload, j.info.testName); err != nil {
+		j.info.repoData, reconcileDCs, j.info.payload, j.info.testName); err != nil {
 		jobLog.Error("failed to deploy", logger.ErrAttr(err))
 	}
+}
+
+func cloneDeployConfigsWithForcedRecreate(dcs []*config.DeployConfig) []*config.DeployConfig {
+	reconcileDCs := make([]*config.DeployConfig, len(dcs))
+
+	for i, dc := range dcs {
+		dcCopy := *dc
+		dcCopy.ForceRecreate = true
+		reconcileDCs[i] = &dcCopy
+	}
+
+	return reconcileDCs
 }
 
 // restartContainer restarts a single container identified by the Docker event,
@@ -350,6 +379,12 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 		slog.Int("restart_timeout", timeout),
 	)
 
+	if suppressed := j.shouldSuppressUnhealthyRestart(restartLog, event, dcs); suppressed {
+		return
+	}
+
+	j.markRestartFollowupSuppression(containerID, timeout)
+
 	restartLog.Info("restarting container")
 
 	metadata := notification.Metadata{
@@ -361,6 +396,7 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 	if _, err := j.info.dockerCli.Client().ContainerRestart(ctx, containerID, client.ContainerRestartOptions{
 		Timeout: &timeout,
 	}); err != nil {
+		delete(j.restartSuppressUntil, containerID)
 		restartLog.Error("failed to restart container", logger.ErrAttr(err))
 
 		if notifyErr := notification.Send(
@@ -385,6 +421,124 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 	); notifyErr != nil {
 		restartLog.Error("failed to send restart success notification", logger.ErrAttr(notifyErr))
 	}
+}
+
+func (j *job) shouldSuppressRestartFollowupEvent(action string, event events.Message) bool {
+	if !isRestartFollowupAction(action) {
+		return false
+	}
+
+	containerID := event.Actor.ID
+	if containerID == "" {
+		return false
+	}
+
+	until, ok := j.restartSuppressUntil[containerID]
+	if !ok {
+		return false
+	}
+
+	now := time.Now()
+	if !now.Before(until) {
+		delete(j.restartSuppressUntil, containerID)
+		return false
+	}
+
+	delete(j.restartSuppressUntil, containerID)
+	return true
+}
+
+func (j *job) markRestartFollowupSuppression(containerID string, timeoutSeconds int) {
+	if containerID == "" {
+		return
+	}
+
+	suppressionWindow := restartFollowupSuppressionWindow(timeoutSeconds)
+	j.restartSuppressUntil[containerID] = time.Now().Add(suppressionWindow)
+}
+
+func restartFollowupSuppressionWindow(timeoutSeconds int) time.Duration {
+	if timeoutSeconds < 0 {
+		timeoutSeconds = 0
+	}
+
+	// ContainerRestart may block up to the restart timeout before the follow-up die/stop/kill
+	// event is processed by this loop, so include the configured timeout plus a small buffer.
+	return time.Duration(timeoutSeconds)*time.Second + 10*time.Second
+}
+
+func isRestartFollowupAction(action string) bool {
+	switch action {
+	case "die", "stop", "kill":
+		return true
+	default:
+		return false
+	}
+}
+
+func (j *job) shouldSuppressUnhealthyRestart(jobLog *slog.Logger, event events.Message, dcs []*config.DeployConfig) bool {
+	action := normalizeReconciliationEventAction(string(event.Action))
+	if action != "unhealthy" {
+		return false
+	}
+
+	containerID := event.Actor.ID
+	if containerID == "" || len(dcs) == 0 {
+		return false
+	}
+
+	limit := dcs[0].Reconciliation.RestartLimit
+	windowSeconds := dcs[0].Reconciliation.RestartWindow
+	if limit <= 0 || windowSeconds <= 0 {
+		return false
+	}
+
+	now := time.Now()
+	window := time.Duration(windowSeconds) * time.Second
+	history := j.unhealthyRestartHistory[containerID]
+	suppressed, updatedHistory := evaluateUnhealthyRestartLimit(history, now, limit, window)
+	j.unhealthyRestartHistory[containerID] = updatedHistory
+
+	if !suppressed {
+		return false
+	}
+
+	msg := fmt.Sprintf("suppressed unhealthy auto-restart after %d restarts in %s", limit, window)
+	jobLog.Warn(msg,
+		slog.Int("restart_limit", limit),
+		slog.Int("restart_window_seconds", windowSeconds),
+	)
+
+	if notifyErr := notification.Send(
+		notification.Warning,
+		"Container restart suppressed",
+		msg,
+		j.info.metadata,
+	); notifyErr != nil {
+		jobLog.Error("failed to send unhealthy restart suppression notification", logger.ErrAttr(notifyErr))
+	}
+
+	return true
+}
+
+func evaluateUnhealthyRestartLimit(history []time.Time, now time.Time, limit int, window time.Duration) (bool, []time.Time) {
+	if limit <= 0 || window <= 0 {
+		return false, history
+	}
+
+	pruned := make([]time.Time, 0, len(history)+1)
+	for _, ts := range history {
+		if now.Sub(ts) < window {
+			pruned = append(pruned, ts)
+		}
+	}
+
+	if len(pruned) >= limit {
+		return true, pruned
+	}
+
+	pruned = append(pruned, now)
+	return false, pruned
 }
 
 func isRestartReconciliationAction(action string) bool {

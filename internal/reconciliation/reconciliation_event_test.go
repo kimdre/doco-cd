@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/moby/moby/api/types/events"
 
@@ -124,6 +125,183 @@ func TestIsRestartReconciliationAction(t *testing.T) {
 				t.Fatalf("expected restart routing %t for action %q, got %t", want, action, got)
 			}
 		})
+	}
+}
+
+func TestIsRestartFollowupAction(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]bool{
+		"die":       true,
+		"stop":      true,
+		"kill":      true,
+		"unhealthy": false,
+		"oom":       false,
+		"destroy":   false,
+	}
+
+	for action, want := range tests {
+		t.Run(action, func(t *testing.T) {
+			t.Parallel()
+
+			got := isRestartFollowupAction(action)
+			if got != want {
+				t.Fatalf("expected follow-up suppression %t for action %q, got %t", want, action, got)
+			}
+		})
+	}
+}
+
+func TestRestartFollowupSuppressionWindow(t *testing.T) {
+	t.Parallel()
+
+	if got := restartFollowupSuppressionWindow(30); got != 40*time.Second {
+		t.Fatalf("expected suppression window 40s, got %s", got)
+	}
+
+	if got := restartFollowupSuppressionWindow(0); got != 10*time.Second {
+		t.Fatalf("expected suppression window 10s, got %s", got)
+	}
+}
+
+func TestEvaluateUnhealthyRestartLimit(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	window := 10 * time.Second
+
+	t.Run("allow when below limit", func(t *testing.T) {
+		t.Parallel()
+
+		history := []time.Time{now.Add(-9 * time.Second), now.Add(-3 * time.Second)}
+		suppressed, updated := evaluateUnhealthyRestartLimit(history, now, 3, window)
+		if suppressed {
+			t.Fatal("expected restart to be allowed")
+		}
+
+		if len(updated) != 3 {
+			t.Fatalf("expected history size 3, got %d", len(updated))
+		}
+	})
+
+	t.Run("suppress when limit reached in window", func(t *testing.T) {
+		t.Parallel()
+
+		history := []time.Time{now.Add(-9 * time.Second), now.Add(-3 * time.Second), now.Add(-1 * time.Second)}
+		suppressed, updated := evaluateUnhealthyRestartLimit(history, now, 3, window)
+		if !suppressed {
+			t.Fatal("expected restart to be suppressed")
+		}
+
+		if len(updated) != 3 {
+			t.Fatalf("expected history size 3, got %d", len(updated))
+		}
+	})
+
+	t.Run("prunes entries outside window", func(t *testing.T) {
+		t.Parallel()
+
+		history := []time.Time{now.Add(-25 * time.Second), now.Add(-15 * time.Second), now.Add(-1 * time.Second)}
+		suppressed, updated := evaluateUnhealthyRestartLimit(history, now, 3, window)
+		if suppressed {
+			t.Fatal("expected restart to be allowed after old entries are pruned")
+		}
+
+		if len(updated) != 2 {
+			t.Fatalf("expected history size 2 after prune+append, got %d", len(updated))
+		}
+	})
+}
+
+func TestCloneDeployConfigsWithForcedRecreate(t *testing.T) {
+	t.Parallel()
+
+	dc1 := config.DefaultDeployConfig("stack-a", "main")
+	dc1.ForceRecreate = false
+	dc2 := config.DefaultDeployConfig("stack-b", "main")
+	dc2.ForceRecreate = false
+
+	cloned := cloneDeployConfigsWithForcedRecreate([]*config.DeployConfig{dc1, dc2})
+
+	if len(cloned) != 2 {
+		t.Fatalf("expected 2 cloned deploy configs, got %d", len(cloned))
+	}
+
+	for i, dc := range cloned {
+		if dc == nil {
+			t.Fatalf("expected cloned deploy config at index %d to be non-nil", i)
+		}
+
+		if !dc.ForceRecreate {
+			t.Fatalf("expected ForceRecreate to be true for cloned config at index %d", i)
+		}
+	}
+
+	if dc1.ForceRecreate || dc2.ForceRecreate {
+		t.Fatal("expected source deploy configs to remain unmodified")
+	}
+}
+
+func TestShouldSuppressRestartFollowupEvent(t *testing.T) {
+	t.Parallel()
+
+	containerID := "container-1"
+	j := &job{
+		restartSuppressUntil: map[string]time.Time{
+			containerID: time.Now().Add(5 * time.Second),
+		},
+	}
+
+	event := events.Message{Actor: events.Actor{ID: containerID}}
+
+	if !j.shouldSuppressRestartFollowupEvent("die", event) {
+		t.Fatal("expected die follow-up event to be suppressed")
+	}
+
+	if _, ok := j.restartSuppressUntil[containerID]; ok {
+		t.Fatal("expected suppression marker to be consumed after matching event")
+	}
+}
+
+func TestShouldSuppressRestartFollowupEvent_Expired(t *testing.T) {
+	t.Parallel()
+
+	containerID := "container-1"
+	j := &job{
+		restartSuppressUntil: map[string]time.Time{
+			containerID: time.Now().Add(-1 * time.Second),
+		},
+	}
+
+	event := events.Message{Actor: events.Actor{ID: containerID}}
+
+	if j.shouldSuppressRestartFollowupEvent("die", event) {
+		t.Fatal("expected expired suppression marker to be ignored")
+	}
+
+	if _, ok := j.restartSuppressUntil[containerID]; ok {
+		t.Fatal("expected expired suppression marker to be cleaned up")
+	}
+}
+
+func TestShouldSuppressRestartFollowupEvent_NonFollowupAction(t *testing.T) {
+	t.Parallel()
+
+	containerID := "container-1"
+	j := &job{
+		restartSuppressUntil: map[string]time.Time{
+			containerID: time.Now().Add(5 * time.Second),
+		},
+	}
+
+	event := events.Message{Actor: events.Actor{ID: containerID}}
+
+	if j.shouldSuppressRestartFollowupEvent("destroy", event) {
+		t.Fatal("expected non-follow-up action not to be suppressed")
+	}
+
+	if _, ok := j.restartSuppressUntil[containerID]; !ok {
+		t.Fatal("expected suppression marker to remain for unrelated actions")
 	}
 }
 

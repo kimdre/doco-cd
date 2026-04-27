@@ -224,11 +224,13 @@ When configured container events occur, doco-cd either reapplies the deployment 
 
 The following settings can be used to configure reconciliation triggers.
 
-| Key               | Type             | Description                                                                                                   | Default value        |
-|-------------------|------------------|---------------------------------------------------------------------------------------------------------------|----------------------|
-| `enabled`         | boolean          | Enable reconciliation.                                                                                        | `true`               |
-| `events`          | array of strings | Docker container/service events that trigger reconciliation. See [supported events](#supported-events) below. | `['die', 'destroy']` |
-| `restart_timeout` | number           | Timeout in seconds used when restarting containers for `unhealthy`, `oom`, `kill`, and `stop` events.         | `10`                 |
+| Key               | Type             | Description                                                                                                               | Default value        |
+|-------------------|------------------|---------------------------------------------------------------------------------------------------------------------------|----------------------|
+| `enabled`         | boolean          | Enable reconciliation.                                                                                                    | `true`               |
+| `events`          | array of strings | Docker container/service events that trigger reconciliation. See [supported events](#supported-events) below.             | `['die', 'destroy']` |
+| `restart_timeout` | number           | Timeout in seconds used when restarting containers for reconciliation [events](#supported-events) that trigger a restart. | `10`                 |
+| `restart_limit`   | number           | Maximum number of automatic restarts allowed for a container in the restart window. Set to `0` to disable suppression.    | `5`                  |
+| `restart_window`  | number           | Time window in seconds used with `restart_limit` to detect flapping health checks.                                        | `300`                |
 
 --8<-- "wiki/docs/_snippets/reconciliation-note.md"
 
@@ -250,6 +252,9 @@ The following events are supported as reconciliation triggers in Docker (Standal
 !!! warning
     Broader event sets (for example adding `stop`, `kill`, `oom`, or `unhealthy`) can increase reconciliation trigger frequency.
 
+!!! note "Restart events and flapping health checks"
+    For `unhealthy` events, doco-cd suppresses further automatic restarts after `restart_limit` restarts within `restart_window` seconds.
+
 #### Examples
 
 ```yaml title=".doco-cd.yml"
@@ -257,6 +262,8 @@ name: some-project
 reconciliation:
   enabled: true
   restart_timeout: 30
+  restart_limit: 5
+  restart_window: 300
   events:
     - die
     - stop
