@@ -37,6 +37,8 @@ func getLog() *slog.Logger {
 }
 
 func TestServe_ShutsDownServersOnStop(t *testing.T) {
+	t.Parallel()
+
 	handler := newHandler()
 
 	shutdownCalled := make(chan struct{})
@@ -85,6 +87,8 @@ func TestServe_ShutsDownServersOnStop(t *testing.T) {
 }
 
 func TestServeRecoversFromPanic(t *testing.T) {
+	t.Parallel()
+
 	handler := newHandler()
 
 	shutdownCalled := make(chan struct{})
@@ -134,6 +138,8 @@ func TestServeRecoversFromPanic(t *testing.T) {
 }
 
 func TestServe_ReturnsCombinedErrors(t *testing.T) {
+	t.Parallel()
+
 	handler := newHandler()
 
 	handler.RegisterServerFunc("error-server",
@@ -221,6 +227,8 @@ func TestServe_HandlesSignalAndShutsDown(t *testing.T) {
 }
 
 func TestServe_MultipleServersShutdownConcurrently(t *testing.T) {
+	t.Parallel()
+
 	handler := newHandler()
 
 	shutdownEvents := make(chan string, 2)
