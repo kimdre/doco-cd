@@ -90,6 +90,8 @@ func main() {
 	// split to app to make defer work when os.Exit().
 	if err := app(); err != nil {
 		os.Exit(1)
+	} else {
+		slog.Info("application stopped")
 	}
 }
 
@@ -263,6 +265,8 @@ func app() error {
 	reconciliation.InitializeDeployerLimiter(c.MaxConcurrentDeployments)
 
 	if len(c.PollConfig) > 0 {
+		// cancel poll jobs
+		defer rootCancel()
 		log.Info(
 			"poll configuration found, scheduling polling jobs",
 			slog.Any("poll_config", logger.BuildSliceLogValue(c.PollConfig, "Deployments.Internal")),
