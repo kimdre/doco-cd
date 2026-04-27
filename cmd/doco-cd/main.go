@@ -89,10 +89,11 @@ func CreateMountpointSymlink(m container.MountPoint) error {
 func main() {
 	// split to app to make defer work when os.Exit().
 	if err := app(); err != nil {
+		slog.Error("application stopped with error", logger.ErrAttr(err))
 		os.Exit(1)
-	} else {
-		slog.Info("application stopped")
 	}
+
+	slog.Info("application stopped normally")
 }
 
 func app() error {
@@ -267,6 +268,7 @@ func app() error {
 	if len(c.PollConfig) > 0 {
 		// cancel poll jobs
 		defer rootCancel()
+
 		log.Info(
 			"poll configuration found, scheduling polling jobs",
 			slog.Any("poll_config", logger.BuildSliceLogValue(c.PollConfig, "Deployments.Internal")),
