@@ -83,8 +83,9 @@ type DeployConfig struct {
 		Delete    bool `yaml:"delete" json:"delete" default:"true"` // Delete removes obsolete auto-discovered deployments that are no longer present in the repository
 	} `yaml:"auto_discover_opts" json:"auto_discover_opts"` // AutoDiscoverOpts are options for the autodiscovery feature
 	Reconciliation struct {
-		Enabled bool     `yaml:"enabled" json:"enabled" default:"true"`                 // Enabled enables the reconciliation feature
-		Events  []string `yaml:"events" json:"events" default:"[\"die\", \"destroy\"]"` // Events is the list of Docker container actions that trigger reconciliation
+		Enabled        bool     `yaml:"enabled" json:"enabled" default:"true"`                 // Enabled enables the reconciliation feature
+		Events         []string `yaml:"events" json:"events" default:"[\"die\", \"destroy\"]"` // Events is the list of Docker container actions that trigger reconciliation
+		RestartTimeout int      `yaml:"restart_timeout" json:"restart_timeout" default:"10"`   // RestartTimeout is the timeout in seconds to wait before killing a container during a restart (used for unhealthy and oom events)
 	} `yaml:"reconciliation" json:"reconciliation"` // Reconciliation is the configuration for the reconciliation feature
 	Internal struct {
 		File        string            `yaml:"-"` // File is the path to the deployment configuration file in the repository (if RepositoryUrl is not set) or in the cloned repository (if RepositoryUrl is set)

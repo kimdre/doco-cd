@@ -5,7 +5,7 @@ tags:
   - Notifications
 ---
 
-Doco-CD can be configured to send notifications with [Apprise](https://github.com/caronc/apprise) to various services when a deployment is started, finished, or failed.
+Doco-CD can be configured to send notifications with [Apprise](https://github.com/caronc/apprise) to various services when a deployment is started, finished, or failed and on [reconciliation](../Deploy-Settings.md#reconciliation-settings) events.
 You can find a list of all supported services and platforms in the [Apprise documentation](https://github.com/caronc/apprise/wiki#notification-services).
 
 For that, specify the required settings in the app `environment` section and add an Apprise container to your `docker-compose.yml` file.

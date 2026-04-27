@@ -50,10 +50,12 @@ func TestNormalizeReconciliationEventAction(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]string{
-		" DIE ":    "die",
-		"remove":   "destroy",
-		" delete ": "destroy",
-		" UPDATE ": "update",
+		" DIE ":                    "die",
+		"remove":                   "destroy",
+		" delete ":                 "destroy",
+		" UPDATE ":                 "update",
+		"health_status: unhealthy": "unhealthy",
+		"health_status: healthy":   "health_status: healthy",
 	}
 
 	for input, want := range tests {
@@ -67,10 +69,10 @@ func TestNormalizeReconciliationEventAction(t *testing.T) {
 func TestDockerEventFiltersForActions(t *testing.T) {
 	t.Parallel()
 
-	got := dockerEventFiltersForActions([]string{" die ", "destroy", "unhealthy", "die", "delete"}, false)
+	got := dockerEventFiltersForActions([]string{" die ", "destroy", "unhealthy", "health_status: unhealthy", "die", "delete"}, false)
 	slices.Sort(got)
 
-	want := []string{"destroy", "die", "unhealthy"}
+	want := []string{"destroy", "die", "health_status: unhealthy"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("expected docker event filters %v, got %v", want, got)
 	}
@@ -97,6 +99,31 @@ func TestDockerEventFiltersForActions_SwarmUpdate(t *testing.T) {
 	want := []string{"update"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("expected docker event filters %v, got %v", want, got)
+	}
+}
+
+func TestIsRestartReconciliationAction(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]bool{
+		"unhealthy": true,
+		"oom":       true,
+		"kill":      true,
+		"stop":      true,
+		"die":       false,
+		"destroy":   false,
+		"update":    false,
+	}
+
+	for action, want := range tests {
+		t.Run(action, func(t *testing.T) {
+			t.Parallel()
+
+			got := isRestartReconciliationAction(action)
+			if got != want {
+				t.Fatalf("expected restart routing %t for action %q, got %t", want, action, got)
+			}
+		})
 	}
 }
 

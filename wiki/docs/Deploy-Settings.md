@@ -50,7 +50,7 @@ The docker compose deployment can be configured inside the [deployment configura
 | `git_depth`        | number           | Limits the number of commits fetched during clone/fetch (shallow clone). `0` means use the global [`GIT_CLONE_DEPTH`](App-Settings.md) value. A positive integer overrides the global setting for this deployment. When a requested ref (tag/SHA) is outside the shallow depth, doco-cd automatically deepens incrementally before falling back to a full fetch. Changing this value on an existing repo triggers an automatic re-clone.                                             | `0` (use global)                                                                                                       |
 | `destroy`          | boolean          | (⚠️ Destructive) Remove the deployed compose stack/project and its resources from the Docker host. Can be further configured using the [destroy_opts](#destroy-settings) setting.                                                                                                                                                                                                                                                                                                    | `false`                                                                                                                |
 | `auto_discover`    | boolean          | Enables autodiscovery of services to deploy in the working directory by scanning for subdirectories with docker-compose files with the naming `docker-compose.y(a)ml` or `compose.y(a)ml`. Can be further configured using the [auto_discover_opts](#auto-discover-settings) setting.                                                                                                                                                                                                | `false`                                                                                                                |
-| `reconciliation`   | object           | Enables event-driven reconciliation for deployments. See [reconciliation settings](#reconciliation-settings) for more details.                                                                                                                                                                                                                                                                                                                                                       | `{enabled: true, events: [die, destroy]}`                                                                              |
+| `reconciliation`   | object           | Enables event-driven reconciliation for deployments. See [reconciliation settings](#reconciliation-settings) for more details.                                                                                                                                                                                                                                                                                                                                                       | `{enabled: true, events: [die, destroy], restart_timeout: 10}`                                                         |
 
 
 ### Example
@@ -220,31 +220,32 @@ destroy_opts:
 ### Reconciliation Settings
 
 Reconciliation is an optional event-driven check that compares the currently running Docker services/containers with the expected deployment state.
-When configured container events occur, doco-cd automatically reapplies the deployment to bring the stack back to the desired state.
+When configured container events occur, doco-cd either reapplies the deployment or directly restarts the affected container, depending on the event type.
 
 The following settings can be used to configure reconciliation triggers.
 
-| Key       | Type             | Description                                                                                                   | Default value        |
-|-----------|------------------|---------------------------------------------------------------------------------------------------------------|----------------------|
-| `enabled` | boolean          | Enable reconciliation.                                                                                        | `true`               |
-| `events`  | array of strings | Docker container/service events that trigger reconciliation. See [supported events](#supported-events) below. | `['die', 'destroy']` |
+| Key               | Type             | Description                                                                                                   | Default value        |
+|-------------------|------------------|---------------------------------------------------------------------------------------------------------------|----------------------|
+| `enabled`         | boolean          | Enable reconciliation.                                                                                        | `true`               |
+| `events`          | array of strings | Docker container/service events that trigger reconciliation. See [supported events](#supported-events) below. | `['die', 'destroy']` |
+| `restart_timeout` | number           | Timeout in seconds used when restarting containers for `unhealthy`, `oom`, `kill`, and `stop` events.         | `10`                 |
 
 --8<-- "wiki/docs/_snippets/reconciliation-note.md"
 
 #### Supported Events
 
-Events can bet triggered by changes in the container state, configuration updates outside Doco-CD (e.g. via Docker CLI), or health status changes.
+Events can be triggered by changes in the container state, configuration updates outside Doco-CD (e.g. via Docker CLI), or health status changes.
 The following events are supported as reconciliation triggers in Docker (Standalone) and Docker Swarm deployments:
 
-| Event       | Description                                                            | Standalone | Swarm Mode |
-|-------------|------------------------------------------------------------------------|------------|------------|
-| `die`       | The container process exited.                                          | Yes        | No         |
-| `destroy`   | The container was removed / service was removed.                       | Yes        | Yes        |
-| `update`    | The service/container configuration was updated (for example scaling). | No         | Yes        |
-| `stop`      | The container was stopped gracefully.                                  | Yes        | No         |
-| `kill`      | The container was terminated by a signal.                              | Yes        | No         |
-| `oom`       | The container was killed because it ran out of memory.                 | Yes        | No         |
-| `unhealthy` | The container health check status changed to _unhealthy_.              | Yes        | No         |
+| Event       | Description                                                            | Standalone | Swarm | Action   |
+|-------------|------------------------------------------------------------------------|------------|-------|----------|
+| `die`       | The container process exited.                                          | Yes        | No    | Redeploy |
+| `destroy`   | The container was removed / service was removed.                       | Yes        | Yes   | Redeploy |
+| `update`    | The service/container configuration was updated (for example scaling). | No         | Yes   | Redeploy |
+| `stop`      | The container was stopped gracefully.                                  | Yes        | No    | Restart  |
+| `kill`      | The container was terminated by a signal.                              | Yes        | No    | Restart  |
+| `oom`       | The container was killed because it ran out of memory.                 | Yes        | No    | Restart  |
+| `unhealthy` | The container health check status changed to _unhealthy_.              | Yes        | No    | Restart  |
 
 !!! warning
     Broader event sets (for example adding `stop`, `kill`, `oom`, or `unhealthy`) can increase reconciliation trigger frequency.
@@ -255,10 +256,13 @@ The following events are supported as reconciliation triggers in Docker (Standal
 name: some-project
 reconciliation:
   enabled: true
+  restart_timeout: 30
   events:
     - die
-    - destroy
+    - stop
+    - kill
     - unhealthy
+    - oom
 ```
 
 ```yaml title=".doco-cd.yml"
