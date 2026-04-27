@@ -192,7 +192,7 @@ func getDeployConfigGroupByInterval(dcs []*config.DeployConfig) map[int][]*confi
 }
 
 func init() {
-	graceful.RegistryShutdownFunc(func() {
+	graceful.RegistryShutdownFunc("close_reconciliation", func() {
 		reconciliationHandler.close()
 	})
 }

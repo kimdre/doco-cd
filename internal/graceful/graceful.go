@@ -29,7 +29,12 @@ type handler struct {
 	lock    sync.Mutex
 	servers []Server
 	// shutdownFuncs is a list of functions to be called on shutdown
-	shutdownFuncs []func()
+	shutdownFuncs []shutdownFunc
+}
+
+type shutdownFunc struct {
+	name string
+	f    func()
 }
 
 var defaultHandler handler

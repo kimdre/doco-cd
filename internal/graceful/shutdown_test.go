@@ -11,7 +11,7 @@ func TestRunRegisteredShutdownFuncs(t *testing.T) {
 
 	called := atomic.Bool{}
 	handler := newHandler()
-	handler.RegistryShutdownFunc(func() {
+	handler.RegistryShutdownFunc("test", func() {
 		called.Store(true)
 	})
 	handler.RegisterServerFunc("svc", func(_ context.Context) error {

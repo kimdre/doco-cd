@@ -2,22 +2,26 @@ package graceful
 
 import (
 	"log/slog"
+	"sync"
 )
 
 // RegistryShutdownFunc registers function called on shutdown.
-func (h *handler) RegistryShutdownFunc(f func()) {
+func (h *handler) RegistryShutdownFunc(name string, f func()) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 
-	h.shutdownFuncs = append(h.shutdownFuncs, f)
+	h.shutdownFuncs = append(h.shutdownFuncs, shutdownFunc{
+		name: name,
+		f:    f,
+	})
 }
 
 // RegistryShutdownFunc registers function called on shutdown to default handler.
-func RegistryShutdownFunc(f func()) {
-	defaultHandler.RegistryShutdownFunc(f)
+func RegistryShutdownFunc(name string, f func()) {
+	defaultHandler.RegistryShutdownFunc(name, f)
 }
 
-func (h *handler) getRegisteredShutdownFuncs() []func() {
+func (h *handler) getRegisteredShutdownFuncs() []shutdownFunc {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 
@@ -29,9 +33,17 @@ func (h *handler) runRegisteredShutdownFuncs(log *slog.Logger) {
 
 	log.Info("calling registered shutdown functions")
 
+	wg := sync.WaitGroup{}
 	for _, f := range funcs {
-		f()
+		SafeGo(&wg, log, func() {
+			log.Info("started run shutdown function", slog.String("name", f.name))
+			defer log.Info("finished run shutdown function", slog.String("name", f.name))
+
+			f.f()
+		})
 	}
+
+	wg.Wait()
 
 	log.Info("finished registered shutdown functions")
 }
