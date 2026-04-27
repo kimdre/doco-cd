@@ -107,6 +107,9 @@ func startSSHAgent(ctx context.Context, log *slog.Logger, socketPath string, pri
 		}
 	})
 
+	// Wait for context cancellation
+	<-ctx.Done()
+
 	return nil
 }
 
