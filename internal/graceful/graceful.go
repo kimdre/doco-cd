@@ -129,7 +129,6 @@ func (h *handler) Serve(log *slog.Logger) error {
 
 			defer func() {
 				if r := recover(); r != nil {
-					// log the panic if needed
 					log.Error("goroutine panicked on server.Serve",
 						slog.Any("recover", r),
 						slog.String("name", serverName),
@@ -177,7 +176,6 @@ func (h *handler) Serve(log *slog.Logger) error {
 
 			defer func() {
 				if r := recover(); r != nil {
-					// log the panic if needed
 					log.Error("goroutine panicked on server.Shutdown",
 						slog.Any("recover", r),
 						slog.String("name", serverName),

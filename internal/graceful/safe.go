@@ -11,7 +11,6 @@ func SafeGo(wg *sync.WaitGroup, log *slog.Logger, f func()) {
 	wg.Go(func() {
 		defer func() {
 			if r := recover(); r != nil {
-				// log the panic if needed
 				log.Error("goroutine panicked", slog.Any("recover", r))
 			}
 		}()
