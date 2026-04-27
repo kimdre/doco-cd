@@ -3,6 +3,7 @@ package graceful
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os/signal"
 	"sync"
@@ -24,12 +25,40 @@ type Server interface {
 	Serve(ctx context.Context) error
 }
 
-var handler struct {
+type handler struct {
+	lock    sync.Mutex
 	servers []Server
 }
 
+var defaultHandler handler
+
+func init() {
+	defaultHandler = newHandler()
+}
+
+func newHandler() handler {
+	return handler{}
+}
+
+// RegisterServer registers a server to be started and stopped gracefully.
+func (h *handler) RegisterServer(server Server) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+
+	h.servers = append(h.servers, server)
+}
+
+// see [handler.RegisterServer].
 func RegisterServer(server Server) {
-	handler.servers = append(handler.servers, server)
+	defaultHandler.RegisterServer(server)
+}
+
+// GetServers returns all registered servers.
+func (h *handler) GetServers() []Server {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+
+	return h.servers
 }
 
 type graceFuncServer struct {
@@ -50,22 +79,33 @@ func (s *graceFuncServer) Serve(ctx context.Context) error {
 	return s.serveFunc(ctx)
 }
 
-func RegisterServerFunc(name string, serveFunc func(ctx context.Context) error, shutdownFunc func(ctx context.Context) error) {
-	RegisterServer(&graceFuncServer{
+// RegisterServerFunc registers server and shutdown function to be started and stopped gracefully.
+func (h *handler) RegisterServerFunc(name string, serveFunc func(ctx context.Context) error, shutdownFunc func(ctx context.Context) error) {
+	h.RegisterServer(&graceFuncServer{
 		name:         name,
 		serveFunc:    serveFunc,
 		shutdownFunc: shutdownFunc,
 	})
 }
 
+// see [handler.RegisterServerFunc].
+func RegisterServerFunc(name string, serveFunc func(ctx context.Context) error, shutdownFunc func(ctx context.Context) error) {
+	defaultHandler.RegisterServerFunc(name, serveFunc, shutdownFunc)
+}
+
 const shutdownTimeout = 10 * time.Second
+
+// see [handler.Serve].
+func Serve(log *slog.Logger) error {
+	return defaultHandler.Serve(log)
+}
 
 // Serve starts all registered servers and waits for a shutdown signal or any server to stop.
 // When a shutdown signal is received or any server stops, it will attempt to gracefully shut down all servers.
 // It returns an error if any server in encounters an error during serving or shutdown.
 // It will wait for all servers to shut down gracefully before returning.
 // It will call all registered shutdown functions before returning.
-func Serve(log *slog.Logger) error {
+func (h *handler) Serve(log *slog.Logger) error {
 	signalCtx, signalStop := signal.NotifyContext(
 		context.Background(),
 		syscall.SIGINT, syscall.SIGTERM)
@@ -78,8 +118,10 @@ func Serve(log *slog.Logger) error {
 	serveCtx, serveStop := context.WithCancel(context.Background())
 	defer serveStop()
 
-	errChan := make(chan error, len(handler.servers)*2)
-	for _, server := range handler.servers {
+	servers := h.GetServers()
+
+	errChan := make(chan error, len(servers)*2)
+	for _, server := range servers {
 		wg.Go(func() {
 			serverName := server.Name()
 
@@ -90,20 +132,22 @@ func Serve(log *slog.Logger) error {
 						slog.Any("recover", r),
 						slog.String("name", serverName),
 					)
+
+					errChan <- fmt.Errorf("%s server.Serve panic: %v", serverName, r)
 				}
 			}()
 
 			// Stop all servers if any server is stopped
 			defer func() {
 				serveCloseChan.Close()
-				log.Debug("server.Serve stopped", slog.String("name", serverName))
+				log.Info("server.Serve stopped", slog.String("name", serverName))
 			}()
 
-			log.Debug("server.Serve started", slog.String("name", serverName))
+			log.Info("server.Serve started", slog.String("name", serverName))
 
 			if err := server.Serve(serveCtx); err != nil {
 				// Log the error if needed
-				log.Debug("server.Serve failed", slog.String("name", serverName), logger.ErrAttr(err))
+				log.Warn("server.Serve failed", slog.String("name", serverName), logger.ErrAttr(err))
 
 				errChan <- errors.New(serverName + " server error: " + err.Error())
 			}
@@ -126,7 +170,7 @@ func Serve(log *slog.Logger) error {
 	shutdownCtx, shutdownStop := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutdownStop()
 
-	for _, server := range handler.servers {
+	for _, server := range servers {
 		wg.Go(func() {
 			serverName := server.Name()
 
@@ -137,13 +181,15 @@ func Serve(log *slog.Logger) error {
 						slog.Any("recover", r),
 						slog.String("name", serverName),
 					)
+
+					errChan <- fmt.Errorf("%s server.Shutdown panic: %v", serverName, r)
 				}
 			}()
 
-			log.Debug("call server.Shutdown", slog.String("name", serverName))
+			log.Info("call server.Shutdown", slog.String("name", serverName))
 
 			if err := server.Shutdown(shutdownCtx); err != nil {
-				log.Debug("server.Shutdown failed",
+				log.Warn("server.Shutdown failed",
 					slog.String("name", serverName),
 					logger.ErrAttr(err),
 				)
