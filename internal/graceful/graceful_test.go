@@ -99,7 +99,7 @@ func TestServeRecoversFromPanic(t *testing.T) {
 		},
 		func(_ context.Context) error {
 			close(shutdownCalled)
-			return nil
+			panic("panic on shutdown")
 		},
 	)
 
