@@ -1,7 +1,7 @@
 package graceful
 
 import (
-	"log/slog"
+	"context"
 	"sync/atomic"
 	"testing"
 )
@@ -10,13 +10,21 @@ func TestRunRegisteredShutdownFuncs(t *testing.T) {
 	t.Parallel()
 
 	called := atomic.Bool{}
-
-	RegistryShutdownFunc(func() {
+	handler := newHandler()
+	handler.RegistryShutdownFunc(func() {
 		called.Store(true)
 	})
-	runRegisteredShutdownFuncs(slog.Default())
+	handler.RegisterServerFunc("svc", func(_ context.Context) error {
+		return nil
+	}, func(_ context.Context) error {
+		return nil
+	})
+
+	if err := handler.Serve(getLog()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if !called.Load() {
-		t.Errorf("expected called to be true")
+		t.Fatalf("expected called to be true")
 	}
 }

@@ -28,6 +28,8 @@ type Server interface {
 type handler struct {
 	lock    sync.Mutex
 	servers []Server
+	// shutdownFuncs is a list of functions to be called on shutdown
+	shutdownFuncs []func()
 }
 
 var defaultHandler handler
@@ -215,7 +217,7 @@ func (h *handler) Serve(log *slog.Logger) error {
 		}
 	}
 
-	runRegisteredShutdownFuncs(log)
+	h.runRegisteredShutdownFuncs(log)
 	log.Info("server shutdown gracefully.")
 
 	return errors.Join(errs...)
