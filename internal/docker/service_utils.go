@@ -69,6 +69,14 @@ func getLatestServiceStatus(cacheMap *sync.Map, statusMap map[Service]ServiceSta
 	)
 
 	for serviceName, state := range statusMap {
+		// Always include the service in the deployed inventory, regardless of whether it has
+		// cd.doco.* labels. Containers that are missing those labels (e.g. started via the
+		// Docker CLI directly or deployed before doco-cd stamped them) are still genuinely
+		// running and must not be reported as "service not deployed" by CheckServiceMismatch.
+		ret.DeployedStatus[serviceName] = state
+
+		// Only use containers that carry doco-cd repository labels for deployment metadata
+		// (latest commit SHA, compose hash). This keeps the two concerns separate.
 		labels := state.Labels
 
 		name, ok := labels[DocoCDLabels.Repository.Name]
@@ -86,8 +94,6 @@ func getLatestServiceStatus(cacheMap *sync.Map, statusMap map[Service]ServiceSta
 			latestTimestamp = timestamp
 			latestLabels = labels
 		}
-
-		ret.DeployedStatus[serviceName] = state
 	}
 
 	cache, ok := getDeployStatusFromCache(cacheMap, git.GetRepoName(cloneURL), deployName)
