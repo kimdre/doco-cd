@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -42,7 +43,7 @@ func TestListenSocketAgentAddKeyToAgent(t *testing.T) {
 	defer cancel()
 	// Start the SSH agent
 	wg.Go(func() {
-		_ = startSSHAgent(ctx, socketPath, privateKeyPEM, "")
+		_ = startSSHAgent(ctx, slog.Default(), socketPath, privateKeyPEM, "")
 	})
 
 	// Wait until the socket appears or timeout

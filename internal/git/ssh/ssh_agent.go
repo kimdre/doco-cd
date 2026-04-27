@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -15,6 +15,8 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
+
+	"github.com/kimdre/doco-cd/internal/logger"
 )
 
 const (
@@ -32,7 +34,7 @@ func cleanupSocketFile(socketPath string) {
 
 // startSSHAgent starts an SSH agent that listens on a Unix domain socket at the specified path.
 // The function runs until the provided context is canceled.
-func startSSHAgent(ctx context.Context, socketPath string, privateKey []byte, keyPassphrase string) error {
+func startSSHAgent(ctx context.Context, log *slog.Logger, socketPath string, privateKey []byte, keyPassphrase string) error {
 	if socketPath == "" {
 		return ErrSSHAgentSocketPathEmpty
 	}
@@ -42,14 +44,14 @@ func startSSHAgent(ctx context.Context, socketPath string, privateKey []byte, ke
 	// Remove stale socket if it exists
 	cleanupSocketFile(socketPath)
 
-	wg := &sync.WaitGroup{}
-
 	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
 		return fmt.Errorf("failed to start socket agent listener: %w", err)
 	}
 	defer listener.Close() // nolint:errcheck
 
+	wg := &sync.WaitGroup{}
+	defer wg.Wait()
 	// close the listener on context cancellation
 	wg.Go(func() {
 		defer listener.Close() // nolint:errcheck
@@ -87,7 +89,7 @@ func startSSHAgent(ctx context.Context, socketPath string, privateKey []byte, ke
 					return
 				}
 				// Log and continue on transient errors
-				log.Println(err)
+				log.Warn("Failed to accept SSH agent connection", logger.ErrAttr(err))
 
 				continue
 			}
@@ -98,17 +100,12 @@ func startSSHAgent(ctx context.Context, socketPath string, privateKey []byte, ke
 				if err := agent.ServeAgent(keyring, conn); err != nil {
 					// Ignore expected close conditions
 					if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
-						log.Println("Error serving SSH agent:", err)
+						log.Warn("Error serving SSH agent:", logger.ErrAttr(err))
 					}
 				}
 			})
 		}
 	})
-
-	// Wait for context cancellation
-	<-ctx.Done()
-
-	wg.Wait()
 
 	return nil
 }

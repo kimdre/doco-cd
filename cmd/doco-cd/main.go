@@ -233,7 +233,7 @@ func app() error {
 
 	// Initialize SSH agent if SSH private key is provided
 	if c.SSHPrivateKey != "" {
-		ssh.RegisterSSHAgent(ctx, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
+		ssh.RegisterSSHAgent(ctx, log.Logger, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
 	}
 
 	// Initialize the secret provider
