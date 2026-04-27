@@ -169,12 +169,7 @@ func Serve(log *slog.Logger) error {
 		}
 	}
 
-	log.Info("calling registered shutdown functions")
-
-	for _, f := range getShutdownFuncs() {
-		f()
-	}
-
+	runRegisteredShutdownFuncs(log)
 	log.Info("server shutdown gracefully.")
 
 	return errors.Join(errs...)

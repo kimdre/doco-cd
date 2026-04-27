@@ -1,6 +1,9 @@
 package graceful
 
-import "sync"
+import (
+	"log/slog"
+	"sync"
+)
 
 var (
 	shutdownFuncs    []func()
@@ -15,9 +18,21 @@ func RegistryShutdownFunc(f func()) {
 	shutdownFuncs = append(shutdownFuncs, f)
 }
 
-func getShutdownFuncs() []func() {
+func getRegisteredShutdownFuncs() []func() {
 	shutdownFuncLock.Lock()
 	defer shutdownFuncLock.Unlock()
 
 	return shutdownFuncs
+}
+
+func runRegisteredShutdownFuncs(log *slog.Logger) {
+	funcs := getRegisteredShutdownFuncs()
+
+	log.Info("calling registered shutdown functions")
+
+	for _, f := range funcs {
+		f()
+	}
+
+	log.Info("finished registered shutdown functions")
 }
