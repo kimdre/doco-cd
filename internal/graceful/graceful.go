@@ -148,7 +148,6 @@ func (h *handler) Serve(log *slog.Logger) error {
 			log.Info("server.Serve started", slog.String("name", serverName))
 
 			if err := server.Serve(serveCtx); err != nil {
-				// Log the error if needed
 				log.Warn("server.Serve failed", slog.String("name", serverName), logger.ErrAttr(err))
 
 				errChan <- errors.New(serverName + " server error: " + err.Error())
