@@ -275,7 +275,7 @@ func TestServe_MultipleServersShutdownConcurrently(t *testing.T) {
 
 	received := map[string]bool{}
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		select {
 		case event := <-shutdownEvents:
 			received[event] = true
