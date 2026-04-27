@@ -245,6 +245,38 @@ func TestCloneDeployConfigsWithForcedRecreate(t *testing.T) {
 	}
 }
 
+func TestStackDeploymentInProgressTracking(t *testing.T) {
+	t.Parallel()
+
+	r := newReconciliation()
+	repo := "github.com/example/repo"
+	stack := "stack-a"
+
+	if r.isStackDeploymentInProgress(repo, stack) {
+		t.Fatal("expected stack deployment to be initially not in progress")
+	}
+
+	r.startStackDeployment(repo, stack)
+
+	if !r.isStackDeploymentInProgress(repo, stack) {
+		t.Fatal("expected stack deployment to be marked in progress")
+	}
+
+	// Reference counting should keep stack marked as in-progress until all marks are cleared.
+	r.startStackDeployment(repo, stack)
+	r.finishStackDeployment(repo, stack)
+
+	if !r.isStackDeploymentInProgress(repo, stack) {
+		t.Fatal("expected stack deployment to remain in progress after one of two marks is cleared")
+	}
+
+	r.finishStackDeployment(repo, stack)
+
+	if r.isStackDeploymentInProgress(repo, stack) {
+		t.Fatal("expected stack deployment to be cleared after all marks are removed")
+	}
+}
+
 func TestRestartOptionsFromDeployConfig(t *testing.T) {
 	t.Parallel()
 

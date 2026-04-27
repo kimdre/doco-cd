@@ -33,7 +33,6 @@ var (
 	ErrInvalidConfig                 = errors.New("invalid deploy configuration")
 	ErrKeyNotFound                   = errors.New("key not found")
 	ErrInvalidFilePath               = errors.New("invalid file path")
-	defaultReconciliationEvents      = []string{"die", "destroy"}
 	supportedReconciliationEvents    = map[string]struct{}{
 		"die":       {},
 		"destroy":   {},
@@ -197,7 +196,7 @@ func (c *DeployConfig) validateConfig() error {
 
 func (c *DeployConfig) normalizeReconciliationEvents() error {
 	if len(c.Reconciliation.Events) == 0 {
-		c.Reconciliation.Events = append([]string(nil), defaultReconciliationEvents...)
+		c.Reconciliation.Enabled = false
 		return nil
 	}
 

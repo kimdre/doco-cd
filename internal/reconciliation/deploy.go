@@ -110,10 +110,13 @@ func handleDeploy(ctx context.Context,
 			deployConfig.Name = test.ConvertTestName(testName)
 		}
 
+		reconciliationHandler.startStackDeployment(repoData.Name, deployConfig.Name)
+
 		wg.Add(1)
 
 		go func(dc *config.DeployConfig) {
 			defer wg.Done()
+			defer reconciliationHandler.finishStackDeployment(repoData.Name, dc.Name)
 
 			err := handleOneDeploy(ctx, deployLog,
 				appConfig, dataMountPoint, dockerCli, secretProvider,

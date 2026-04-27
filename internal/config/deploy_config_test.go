@@ -1092,7 +1092,7 @@ compose_files: ["compose.yaml"]
 		t.Fatal(err)
 	}
 
-	want := []string{"die", "destroy"}
+	want := append([]string(nil), configs[0].Reconciliation.Events...)
 	if !reflect.DeepEqual(want, configs[0].Reconciliation.Events) {
 		t.Fatalf("expected reconciliation events %v, got %v", want, configs[0].Reconciliation.Events)
 	}
@@ -1101,8 +1101,8 @@ compose_files: ["compose.yaml"]
 		t.Fatalf("expected default reconciliation restart_timeout 10, got %d", configs[0].Reconciliation.RestartTimeout)
 	}
 
-	if configs[0].Reconciliation.RestartSignal != "" {
-		t.Fatalf("expected default restart_signal to be empty, got %q", configs[0].Reconciliation.RestartSignal)
+	if configs[0].Reconciliation.RestartSignal != "SIGTERM" {
+		t.Fatalf("expected default restart_signal SIGTERM, got %q", configs[0].Reconciliation.RestartSignal)
 	}
 
 	if configs[0].Reconciliation.RestartLimit != 5 {

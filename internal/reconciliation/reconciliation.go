@@ -80,9 +80,6 @@ func (j *job) close() {
 func (j *job) run(ctx context.Context) {
 	jobLog := j.info.jobLog
 
-	jobLog.Debug("reconciliation loop started")
-	defer jobLog.Debug("reconciliation loop stopped")
-
 	swarmMode := swarm.GetModeEnabled()
 
 	filterArgs := make(client.Filters)
@@ -246,6 +243,15 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 
 	stackDCs := deployConfigsByName(dcs, stackName)
 	if len(stackDCs) == 0 {
+		return
+	}
+
+	if reconciliationHandler.isStackDeploymentInProgress(j.info.metadata.Repository, stackName) {
+		jobLog.Debug("suppressing reconciliation event while stack deployment is in progress",
+			slog.String("event", action),
+			slog.String("stack", stackName),
+		)
+
 		return
 	}
 
@@ -697,13 +703,15 @@ func isRestartReconciliationAction(action string) bool {
 type reconciliation struct {
 	m sync.Mutex
 
-	repoJobs map[string]*job
+	repoJobs        map[string]*job
+	deployingStacks map[string]int
 }
 
 func newReconciliation() *reconciliation {
 	return &reconciliation{
-		repoJobs: make(map[string]*job),
-		m:        sync.Mutex{},
+		repoJobs:        make(map[string]*job),
+		deployingStacks: make(map[string]int),
+		m:               sync.Mutex{},
 	}
 }
 
@@ -716,6 +724,55 @@ func (r *reconciliation) close() {
 	}
 
 	r.repoJobs = make(map[string]*job)
+	r.deployingStacks = make(map[string]int)
+}
+
+func stackDeploymentKey(repository, stack string) string {
+	return repository + "/" + stack
+}
+
+func (r *reconciliation) startStackDeployment(repository, stack string) {
+	if repository == "" || stack == "" {
+		return
+	}
+
+	key := stackDeploymentKey(repository, stack)
+
+	r.m.Lock()
+	r.deployingStacks[key]++
+	r.m.Unlock()
+}
+
+func (r *reconciliation) finishStackDeployment(repository, stack string) {
+	if repository == "" || stack == "" {
+		return
+	}
+
+	key := stackDeploymentKey(repository, stack)
+
+	r.m.Lock()
+	defer r.m.Unlock()
+
+	count := r.deployingStacks[key]
+	if count <= 1 {
+		delete(r.deployingStacks, key)
+		return
+	}
+
+	r.deployingStacks[key] = count - 1
+}
+
+func (r *reconciliation) isStackDeploymentInProgress(repository, stack string) bool {
+	if repository == "" || stack == "" {
+		return false
+	}
+
+	key := stackDeploymentKey(repository, stack)
+
+	r.m.Lock()
+	defer r.m.Unlock()
+
+	return r.deployingStacks[key] > 0
 }
 
 func (r *reconciliation) addJob(ctx context.Context, info jobInfo) {
