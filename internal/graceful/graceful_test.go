@@ -163,10 +163,6 @@ func TestServe_ReturnsCombinedErrors(t *testing.T) {
 }
 
 func TestServe_HandlesSignalAndShutsDown(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping signal test in short mode")
-	}
-
 	handler := newHandler()
 
 	shutdownCalled := make(chan struct{})
