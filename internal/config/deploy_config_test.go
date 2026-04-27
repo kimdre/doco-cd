@@ -1101,6 +1101,10 @@ compose_files: ["compose.yaml"]
 		t.Fatalf("expected default reconciliation restart_timeout 10, got %d", configs[0].Reconciliation.RestartTimeout)
 	}
 
+	if configs[0].Reconciliation.RestartSignal != "" {
+		t.Fatalf("expected default restart_signal to be empty, got %q", configs[0].Reconciliation.RestartSignal)
+	}
+
 	if configs[0].Reconciliation.RestartLimit != 5 {
 		t.Fatalf("expected default restart_limit 5, got %d", configs[0].Reconciliation.RestartLimit)
 	}
@@ -1146,6 +1150,34 @@ reconciliation:
 	}
 }
 
+func TestDeployConfig_ReconciliationRestartSignal_Normalize(t *testing.T) {
+	t.Parallel()
+
+	filePath := filepath.Join(t.TempDir(), ".doco-cd.yaml")
+
+	err := createTestFile(t, filePath, `name: test
+compose_files: ["compose.yaml"]
+reconciliation:
+  restart_signal: "  sigquit  "
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	configs, err := GetDeployConfigFromYAML(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = configs[0].validateConfig(); err != nil {
+		t.Fatal(err)
+	}
+
+	if configs[0].Reconciliation.RestartSignal != "SIGQUIT" {
+		t.Fatalf("expected normalized restart_signal SIGQUIT, got %q", configs[0].Reconciliation.RestartSignal)
+	}
+}
+
 func TestDeployConfig_ReconciliationEvents_Invalid(t *testing.T) {
 	t.Parallel()
 
@@ -1179,9 +1211,9 @@ func TestDeployConfig_ReconciliationRestartSuppression_Invalid(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		yaml   string
-		match  string
+		name  string
+		yaml  string
+		match string
 	}{
 		{
 			name: "negative limit",
@@ -1238,4 +1270,3 @@ reconciliation:
 		})
 	}
 }
-

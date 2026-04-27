@@ -103,6 +103,10 @@ func (j *job) run(ctx context.Context) {
 		filterArgs.Add("event", eventFilter)
 	}
 
+	// On job startup, perform a one-time check for already-unhealthy containers
+	// so reconciliation can recover them without waiting for a new health event.
+	j.restartUnhealthyContainersOnStartup(ctx, jobLog)
+
 	const reconnectDelay = 5 * time.Second
 
 	for {
@@ -124,6 +128,7 @@ func (j *job) run(ctx context.Context) {
 		})
 
 		reconnect := j.runEventLoop(ctx, jobLog, eventResult.Messages, eventResult.Err)
+
 		cancel()
 
 		if !reconnect {
@@ -250,6 +255,7 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 			slog.String("container_id", event.Actor.ID),
 			slog.String("stack", stackName),
 		)
+
 		return
 	}
 
@@ -275,7 +281,18 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 	// For restart-oriented events the container is still present — restart it
 	// directly instead of going through a full redeploy pipeline.
 	if isRestartReconciliationAction(action) {
-		j.restartContainer(ctx, eventLog, event, stackDCs)
+		restartDC := selectRestartDeployConfig(stackDCs, event.Actor.Attributes)
+		if restartDC == nil {
+			eventLog.Warn("skipping restart reconciliation, no deploy config matched stack")
+			return
+		}
+
+		if len(stackDCs) > 1 {
+			eventLog.Warn("multiple deploy configs matched restart event, using first match", slog.Int("deploy_config_count", len(stackDCs)))
+		}
+
+		j.restartContainer(ctx, eventLog, event, restartDC)
+
 		return
 	}
 
@@ -364,26 +381,30 @@ func cloneDeployConfigsWithForcedRecreate(dcs []*config.DeployConfig) []*config.
 // restartContainer restarts a single container identified by the Docker event,
 // using the restart timeout configured in the deploy config (default 10 s).
 // Used for restart-oriented events where the container is still present.
-func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event events.Message, dcs []*config.DeployConfig) {
+func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event events.Message, dc *config.DeployConfig) {
 	containerID := event.Actor.ID
 	containerName := event.Actor.Attributes["name"]
+	restartOpts := restartOptionsFromDeployConfig(dc)
 
-	timeout := 10 // seconds — safe default
-	if len(dcs) > 0 && dcs[0].Reconciliation.RestartTimeout > 0 {
-		timeout = dcs[0].Reconciliation.RestartTimeout
+	restartTimeout := 10
+	if restartOpts.Timeout != nil {
+		restartTimeout = *restartOpts.Timeout
 	}
 
 	restartLog := jobLog.With(
 		slog.String("container_id", containerID),
 		slog.String("container_name", containerName),
-		slog.Int("restart_timeout", timeout),
+		slog.Int("restart_timeout", restartTimeout),
 	)
+	if restartOpts.Signal != "" {
+		restartLog = restartLog.With(slog.String("restart_signal", restartOpts.Signal))
+	}
 
-	if suppressed := j.shouldSuppressUnhealthyRestart(restartLog, event, dcs); suppressed {
+	if suppressed := j.shouldSuppressUnhealthyRestart(restartLog, event, dc); suppressed {
 		return
 	}
 
-	j.markRestartFollowupSuppression(containerID, timeout)
+	j.markRestartFollowupSuppression(containerID, restartTimeout)
 
 	restartLog.Info("restarting container")
 
@@ -393,9 +414,7 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 		JobID:      j.info.metadata.JobID,
 	}
 
-	if _, err := j.info.dockerCli.Client().ContainerRestart(ctx, containerID, client.ContainerRestartOptions{
-		Timeout: &timeout,
-	}); err != nil {
+	if _, err := j.info.dockerCli.Client().ContainerRestart(ctx, containerID, restartOpts); err != nil {
 		delete(j.restartSuppressUntil, containerID)
 		restartLog.Error("failed to restart container", logger.ErrAttr(err))
 
@@ -445,6 +464,7 @@ func (j *job) shouldSuppressRestartFollowupEvent(action string, event events.Mes
 	}
 
 	delete(j.restartSuppressUntil, containerID)
+
 	return true
 }
 
@@ -476,19 +496,20 @@ func isRestartFollowupAction(action string) bool {
 	}
 }
 
-func (j *job) shouldSuppressUnhealthyRestart(jobLog *slog.Logger, event events.Message, dcs []*config.DeployConfig) bool {
+func (j *job) shouldSuppressUnhealthyRestart(jobLog *slog.Logger, event events.Message, dc *config.DeployConfig) bool {
 	action := normalizeReconciliationEventAction(string(event.Action))
 	if action != "unhealthy" {
 		return false
 	}
 
 	containerID := event.Actor.ID
-	if containerID == "" || len(dcs) == 0 {
+	if containerID == "" || dc == nil {
 		return false
 	}
 
-	limit := dcs[0].Reconciliation.RestartLimit
-	windowSeconds := dcs[0].Reconciliation.RestartWindow
+	limit := dc.Reconciliation.RestartLimit
+
+	windowSeconds := dc.Reconciliation.RestartWindow
 	if limit <= 0 || windowSeconds <= 0 {
 		return false
 	}
@@ -521,6 +542,128 @@ func (j *job) shouldSuppressUnhealthyRestart(jobLog *slog.Logger, event events.M
 	return true
 }
 
+func restartOptionsFromDeployConfig(dc *config.DeployConfig) client.ContainerRestartOptions {
+	timeout := 10
+	if dc != nil && dc.Reconciliation.RestartTimeout > 0 {
+		timeout = dc.Reconciliation.RestartTimeout
+	}
+
+	opts := client.ContainerRestartOptions{Timeout: &timeout}
+
+	if dc != nil {
+		signal := strings.TrimSpace(dc.Reconciliation.RestartSignal)
+		if signal != "" {
+			opts.Signal = signal
+		}
+	}
+
+	return opts
+}
+
+func selectRestartDeployConfig(dcs []*config.DeployConfig, labels map[string]string) *config.DeployConfig {
+	configHash := ""
+	if labels != nil {
+		configHash = strings.TrimSpace(labels[docker.DocoCDLabels.Deployment.ConfigHash])
+	}
+
+	if configHash != "" {
+		for _, dc := range dcs {
+			if dc == nil {
+				continue
+			}
+
+			if strings.TrimSpace(dc.Internal.Hash) == configHash {
+				return dc
+			}
+		}
+	}
+
+	for _, dc := range dcs {
+		if dc != nil {
+			return dc
+		}
+	}
+
+	return nil
+}
+
+func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *slog.Logger) {
+	unhealthyDCs := j.deployConfigGroupByEvent["unhealthy"]
+	if len(unhealthyDCs) == 0 || swarm.GetModeEnabled() {
+		return
+	}
+
+	repositoryLabelValue := normalizeRepositoryLabelFromCloneURL(j.info.repoData.CloneURL)
+	if j.info.payload != nil && strings.TrimSpace(j.info.payload.FullName) != "" {
+		repositoryLabelValue = j.info.payload.FullName
+	}
+
+	filterArgs := make(client.Filters)
+	filterArgs.Add("label", docker.DocoCDLabels.Metadata.Manager+"="+config.AppName)
+	filterArgs.Add("label", docker.DocoCDLabels.Repository.Name+"="+repositoryLabelValue)
+
+	containerResult, err := j.info.dockerCli.Client().ContainerList(ctx, client.ContainerListOptions{All: true, Filters: filterArgs})
+	if err != nil {
+		jobLog.Error("failed to list containers for startup unhealthy scan", logger.ErrAttr(err))
+		return
+	}
+
+	for _, c := range containerResult.Items {
+		stackName := strings.TrimSpace(c.Labels[docker.DocoCDLabels.Deployment.Name])
+		if stackName == "" {
+			continue
+		}
+
+		stackDCs := deployConfigsByName(unhealthyDCs, stackName)
+
+		restartDC := selectRestartDeployConfig(stackDCs, c.Labels)
+		if restartDC == nil {
+			continue
+		}
+
+		inspectResult, err := j.info.dockerCli.Client().ContainerInspect(ctx, c.ID, client.ContainerInspectOptions{})
+		if err != nil {
+			jobLog.Debug("failed to inspect container during startup unhealthy scan",
+				slog.String("container_id", c.ID),
+				logger.ErrAttr(err),
+			)
+
+			continue
+		}
+
+		inspect := inspectResult.Container
+
+		if inspect.State == nil || inspect.State.Health == nil || strings.ToLower(strings.TrimSpace(string(inspect.State.Health.Status))) != "unhealthy" {
+			continue
+		}
+
+		containerName := ""
+		if len(c.Names) > 0 {
+			containerName = strings.TrimPrefix(c.Names[0], "/")
+		}
+
+		eventLog := logger.
+			WithoutAttr(jobLog, "job_id").
+			With(
+				slog.Group("reconciliation",
+					slog.String("event", "startup_unhealthy"),
+					slog.String("trace_id", id.GenID()),
+				),
+				slog.String("stack", stackName),
+			)
+
+		j.restartContainer(ctx, eventLog, events.Message{
+			Action: events.Action("unhealthy"),
+			Actor: events.Actor{
+				ID: c.ID,
+				Attributes: map[string]string{
+					"name": containerName,
+				},
+			},
+		}, restartDC)
+	}
+}
+
 func evaluateUnhealthyRestartLimit(history []time.Time, now time.Time, limit int, window time.Duration) (bool, []time.Time) {
 	if limit <= 0 || window <= 0 {
 		return false, history
@@ -538,6 +681,7 @@ func evaluateUnhealthyRestartLimit(history []time.Time, now time.Time, limit int
 	}
 
 	pruned = append(pruned, now)
+
 	return false, pruned
 }
 

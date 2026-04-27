@@ -174,6 +174,7 @@ func TestEvaluateUnhealthyRestartLimit(t *testing.T) {
 		t.Parallel()
 
 		history := []time.Time{now.Add(-9 * time.Second), now.Add(-3 * time.Second)}
+
 		suppressed, updated := evaluateUnhealthyRestartLimit(history, now, 3, window)
 		if suppressed {
 			t.Fatal("expected restart to be allowed")
@@ -188,6 +189,7 @@ func TestEvaluateUnhealthyRestartLimit(t *testing.T) {
 		t.Parallel()
 
 		history := []time.Time{now.Add(-9 * time.Second), now.Add(-3 * time.Second), now.Add(-1 * time.Second)}
+
 		suppressed, updated := evaluateUnhealthyRestartLimit(history, now, 3, window)
 		if !suppressed {
 			t.Fatal("expected restart to be suppressed")
@@ -202,6 +204,7 @@ func TestEvaluateUnhealthyRestartLimit(t *testing.T) {
 		t.Parallel()
 
 		history := []time.Time{now.Add(-25 * time.Second), now.Add(-15 * time.Second), now.Add(-1 * time.Second)}
+
 		suppressed, updated := evaluateUnhealthyRestartLimit(history, now, 3, window)
 		if suppressed {
 			t.Fatal("expected restart to be allowed after old entries are pruned")
@@ -239,6 +242,65 @@ func TestCloneDeployConfigsWithForcedRecreate(t *testing.T) {
 
 	if dc1.ForceRecreate || dc2.ForceRecreate {
 		t.Fatal("expected source deploy configs to remain unmodified")
+	}
+}
+
+func TestRestartOptionsFromDeployConfig(t *testing.T) {
+	t.Parallel()
+
+	t.Run("defaults", func(t *testing.T) {
+		t.Parallel()
+
+		opts := restartOptionsFromDeployConfig(nil)
+		if opts.Timeout == nil || *opts.Timeout != 10 {
+			t.Fatalf("expected default restart timeout 10, got %+v", opts.Timeout)
+		}
+
+		if opts.Signal != "" {
+			t.Fatalf("expected empty restart signal, got %q", opts.Signal)
+		}
+	})
+
+	t.Run("from deploy config", func(t *testing.T) {
+		t.Parallel()
+
+		dc := config.DefaultDeployConfig("stack-a", "main")
+		dc.Reconciliation.RestartTimeout = 30
+		dc.Reconciliation.RestartSignal = "SIGQUIT"
+
+		opts := restartOptionsFromDeployConfig(dc)
+		if opts.Timeout == nil || *opts.Timeout != 30 {
+			t.Fatalf("expected restart timeout 30, got %+v", opts.Timeout)
+		}
+
+		if opts.Signal != "SIGQUIT" {
+			t.Fatalf("expected restart signal SIGQUIT, got %q", opts.Signal)
+		}
+	})
+}
+
+func TestSelectRestartDeployConfig(t *testing.T) {
+	t.Parallel()
+
+	if got := selectRestartDeployConfig(nil, nil); got != nil {
+		t.Fatalf("expected nil for empty deploy config list, got %#v", got)
+	}
+
+	dc1 := config.DefaultDeployConfig("stack-a", "main")
+	dc1.Internal.Hash = "hash-a"
+	dc2 := config.DefaultDeployConfig("stack-b", "main")
+	dc2.Internal.Hash = "hash-b"
+
+	got := selectRestartDeployConfig([]*config.DeployConfig{nil, dc1, dc2}, nil)
+	if got != dc1 {
+		t.Fatalf("expected first non-nil deploy config to be selected")
+	}
+
+	got = selectRestartDeployConfig([]*config.DeployConfig{dc1, dc2}, map[string]string{
+		docker.DocoCDLabels.Deployment.ConfigHash: "hash-b",
+	})
+	if got != dc2 {
+		t.Fatalf("expected config hash match to be selected")
 	}
 }
 
