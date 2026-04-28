@@ -1,93 +1,93 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
       <url>
-        <loc>https://doco.cd/v0.83/</loc>
+        <loc>https://doco.cd/latest/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/Getting-Started/</loc>
+        <loc>https://doco.cd/latest/Getting-Started/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/Setup-Access-Token/</loc>
+        <loc>https://doco.cd/latest/Setup-Access-Token/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/Setup-SSH-Key/</loc>
+        <loc>https://doco.cd/latest/Setup-SSH-Key/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/Setup-Webhook/</loc>
+        <loc>https://doco.cd/latest/Setup-Webhook/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/App-Settings/</loc>
+        <loc>https://doco.cd/latest/App-Settings/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/Deploy-Settings/</loc>
+        <loc>https://doco.cd/latest/Deploy-Settings/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/Poll-Settings/</loc>
+        <loc>https://doco.cd/latest/Poll-Settings/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/Advanced/Swarm-Mode/</loc>
+        <loc>https://doco.cd/latest/Advanced/Swarm-Mode/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/Advanced/Private-Container-Registries/</loc>
+        <loc>https://doco.cd/latest/Advanced/Private-Container-Registries/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/Advanced/Encryption/</loc>
+        <loc>https://doco.cd/latest/Advanced/Encryption/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/External-Secrets/</loc>
+        <loc>https://doco.cd/latest/External-Secrets/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/External-Secrets/AWS-Secrets-Manager/</loc>
+        <loc>https://doco.cd/latest/External-Secrets/AWS-Secrets-Manager/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/External-Secrets/Bitwarden-Secrets-Manager/</loc>
+        <loc>https://doco.cd/latest/External-Secrets/Bitwarden-Secrets-Manager/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/External-Secrets/Bitwarden-Vault-Vaultwarden/</loc>
+        <loc>https://doco.cd/latest/External-Secrets/Bitwarden-Vault-Vaultwarden/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/External-Secrets/1Password/</loc>
+        <loc>https://doco.cd/latest/External-Secrets/1Password/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/External-Secrets/Infisical/</loc>
+        <loc>https://doco.cd/latest/External-Secrets/Infisical/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/External-Secrets/Openbao/</loc>
+        <loc>https://doco.cd/latest/External-Secrets/Openbao/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/External-Secrets/Webhook/</loc>
+        <loc>https://doco.cd/latest/External-Secrets/Webhook/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/Advanced/Notifications/</loc>
+        <loc>https://doco.cd/latest/Advanced/Notifications/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/Advanced/Pre-Post-Deployment-Scripts/</loc>
+        <loc>https://doco.cd/latest/Advanced/Pre-Post-Deployment-Scripts/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/Advanced/Tips-and-Tricks/</loc>
+        <loc>https://doco.cd/latest/Advanced/Tips-and-Tricks/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/Core-Concepts/</loc>
+        <loc>https://doco.cd/latest/Core-Concepts/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/Endpoints/Metrics/</loc>
+        <loc>https://doco.cd/latest/Endpoints/Metrics/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/Endpoints/REST-API/</loc>
+        <loc>https://doco.cd/latest/Endpoints/REST-API/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/Endpoints/Webhook-Listener/</loc>
+        <loc>https://doco.cd/latest/Endpoints/Webhook-Listener/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/Known-Limitations/</loc>
+        <loc>https://doco.cd/latest/Known-Limitations/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/Contributing/</loc>
+        <loc>https://doco.cd/latest/Contributing/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/Security/</loc>
+        <loc>https://doco.cd/latest/Security/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/v0.83/License/</loc>
+        <loc>https://doco.cd/latest/License/</loc>
       </url>
 </urlset>
