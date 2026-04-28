@@ -1,0 +1,480 @@
+package reconciliation
+
+import (
+	"reflect"
+	"slices"
+	"testing"
+	"time"
+
+	"github.com/moby/moby/api/types/events"
+
+	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
+)
+
+func TestGetDeployConfigGroupByEvent(t *testing.T) {
+	t.Parallel()
+
+	dc1 := config.DefaultDeployConfig("stack-1", "main")
+	dc1.Reconciliation.Enabled = true
+	dc1.Reconciliation.Events = []string{"die", "destroy"}
+
+	dc2 := config.DefaultDeployConfig("stack-2", "main")
+	dc2.Reconciliation.Enabled = true
+	dc2.Reconciliation.Events = []string{"unhealthy"}
+
+	dc3 := config.DefaultDeployConfig("stack-3", "main")
+	dc3.Reconciliation.Enabled = false
+	dc3.Reconciliation.Events = []string{"die"}
+
+	grouped := getDeployConfigGroupByEvent([]*config.DeployConfig{dc1, dc2, dc3})
+
+	if len(grouped["die"]) != 1 || grouped["die"][0].Name != "stack-1" {
+		t.Fatalf("expected die event to include only stack-1, got %#v", grouped["die"])
+	}
+
+	if len(grouped["destroy"]) != 1 || grouped["destroy"][0].Name != "stack-1" {
+		t.Fatalf("expected destroy event to include only stack-1, got %#v", grouped["destroy"])
+	}
+
+	if len(grouped["unhealthy"]) != 1 || grouped["unhealthy"][0].Name != "stack-2" {
+		t.Fatalf("expected unhealthy event to include only stack-2, got %#v", grouped["unhealthy"])
+	}
+
+	if _, ok := grouped["stop"]; ok {
+		t.Fatalf("did not expect stop event group, got %#v", grouped["stop"])
+	}
+}
+
+func TestNormalizeReconciliationEventAction(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		" DIE ":                    "die",
+		"remove":                   "destroy",
+		" delete ":                 "destroy",
+		" UPDATE ":                 "update",
+		"health_status: unhealthy": "unhealthy",
+		"health_status: healthy":   "health_status: healthy",
+	}
+
+	for input, want := range tests {
+		got := normalizeReconciliationEventAction(input)
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("expected normalized action %q for input %q, got %q", want, input, got)
+		}
+	}
+}
+
+func TestDockerEventFiltersForActions(t *testing.T) {
+	t.Parallel()
+
+	got := dockerEventFiltersForActions([]string{" die ", "destroy", "unhealthy", "health_status: unhealthy", "die", "delete"}, false)
+	slices.Sort(got)
+
+	want := []string{"destroy", "die", "health_status: unhealthy"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected docker event filters %v, got %v", want, got)
+	}
+}
+
+func TestDockerEventFiltersForActions_Swarm(t *testing.T) {
+	t.Parallel()
+
+	got := dockerEventFiltersForActions([]string{"destroy", "delete"}, true)
+	slices.Sort(got)
+
+	want := []string{"remove"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected docker event filters %v, got %v", want, got)
+	}
+}
+
+func TestDockerEventFiltersForActions_SwarmUpdate(t *testing.T) {
+	t.Parallel()
+
+	got := dockerEventFiltersForActions([]string{"update"}, true)
+	slices.Sort(got)
+
+	want := []string{"update"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected docker event filters %v, got %v", want, got)
+	}
+}
+
+func TestIsRestartReconciliationAction(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]bool{
+		"unhealthy": true,
+		"oom":       true,
+		"kill":      true,
+		"stop":      true,
+		"die":       false,
+		"destroy":   false,
+		"update":    false,
+	}
+
+	for action, want := range tests {
+		t.Run(action, func(t *testing.T) {
+			t.Parallel()
+
+			got := isRestartReconciliationAction(action)
+			if got != want {
+				t.Fatalf("expected restart routing %t for action %q, got %t", want, action, got)
+			}
+		})
+	}
+}
+
+func TestIsRestartFollowupAction(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]bool{
+		"die":       true,
+		"stop":      true,
+		"kill":      true,
+		"unhealthy": false,
+		"oom":       false,
+		"destroy":   false,
+	}
+
+	for action, want := range tests {
+		t.Run(action, func(t *testing.T) {
+			t.Parallel()
+
+			got := isRestartFollowupAction(action)
+			if got != want {
+				t.Fatalf("expected follow-up suppression %t for action %q, got %t", want, action, got)
+			}
+		})
+	}
+}
+
+func TestRestartFollowupSuppressionWindow(t *testing.T) {
+	t.Parallel()
+
+	if got := restartFollowupSuppressionWindow(30); got != 40*time.Second {
+		t.Fatalf("expected suppression window 40s, got %s", got)
+	}
+
+	if got := restartFollowupSuppressionWindow(0); got != 10*time.Second {
+		t.Fatalf("expected suppression window 10s, got %s", got)
+	}
+}
+
+func TestEvaluateUnhealthyRestartLimit(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	window := 10 * time.Second
+
+	t.Run("allow when below limit", func(t *testing.T) {
+		t.Parallel()
+
+		history := []time.Time{now.Add(-9 * time.Second), now.Add(-3 * time.Second)}
+
+		suppressed, updated := evaluateUnhealthyRestartLimit(history, now, 3, window)
+		if suppressed {
+			t.Fatal("expected restart to be allowed")
+		}
+
+		if len(updated) != 3 {
+			t.Fatalf("expected history size 3, got %d", len(updated))
+		}
+	})
+
+	t.Run("suppress when limit reached in window", func(t *testing.T) {
+		t.Parallel()
+
+		history := []time.Time{now.Add(-9 * time.Second), now.Add(-3 * time.Second), now.Add(-1 * time.Second)}
+
+		suppressed, updated := evaluateUnhealthyRestartLimit(history, now, 3, window)
+		if !suppressed {
+			t.Fatal("expected restart to be suppressed")
+		}
+
+		if len(updated) != 3 {
+			t.Fatalf("expected history size 3, got %d", len(updated))
+		}
+	})
+
+	t.Run("prunes entries outside window", func(t *testing.T) {
+		t.Parallel()
+
+		history := []time.Time{now.Add(-25 * time.Second), now.Add(-15 * time.Second), now.Add(-1 * time.Second)}
+
+		suppressed, updated := evaluateUnhealthyRestartLimit(history, now, 3, window)
+		if suppressed {
+			t.Fatal("expected restart to be allowed after old entries are pruned")
+		}
+
+		if len(updated) != 2 {
+			t.Fatalf("expected history size 2 after prune+append, got %d", len(updated))
+		}
+	})
+}
+
+func TestCloneDeployConfigsWithForcedRecreate(t *testing.T) {
+	t.Parallel()
+
+	dc1 := config.DefaultDeployConfig("stack-a", "main")
+	dc1.ForceRecreate = false
+	dc2 := config.DefaultDeployConfig("stack-b", "main")
+	dc2.ForceRecreate = false
+
+	cloned := cloneDeployConfigsWithForcedRecreate([]*config.DeployConfig{dc1, dc2})
+
+	if len(cloned) != 2 {
+		t.Fatalf("expected 2 cloned deploy configs, got %d", len(cloned))
+	}
+
+	for i, dc := range cloned {
+		if dc == nil {
+			t.Fatalf("expected cloned deploy config at index %d to be non-nil", i)
+		}
+
+		if !dc.ForceRecreate {
+			t.Fatalf("expected ForceRecreate to be true for cloned config at index %d", i)
+		}
+	}
+
+	if dc1.ForceRecreate || dc2.ForceRecreate {
+		t.Fatal("expected source deploy configs to remain unmodified")
+	}
+}
+
+func TestStackDeploymentInProgressTracking(t *testing.T) {
+	t.Parallel()
+
+	r := newReconciliation()
+	repo := "github.com/example/repo"
+	stack := "stack-a"
+
+	if r.isStackDeploymentInProgress(repo, stack) {
+		t.Fatal("expected stack deployment to be initially not in progress")
+	}
+
+	r.startStackDeployment(repo, stack)
+
+	if !r.isStackDeploymentInProgress(repo, stack) {
+		t.Fatal("expected stack deployment to be marked in progress")
+	}
+
+	// Reference counting should keep stack marked as in-progress until all marks are cleared.
+	r.startStackDeployment(repo, stack)
+	r.finishStackDeployment(repo, stack)
+
+	if !r.isStackDeploymentInProgress(repo, stack) {
+		t.Fatal("expected stack deployment to remain in progress after one of two marks is cleared")
+	}
+
+	r.finishStackDeployment(repo, stack)
+
+	if r.isStackDeploymentInProgress(repo, stack) {
+		t.Fatal("expected stack deployment to be cleared after all marks are removed")
+	}
+}
+
+func TestRestartOptionsFromDeployConfig(t *testing.T) {
+	t.Parallel()
+
+	t.Run("defaults", func(t *testing.T) {
+		t.Parallel()
+
+		opts := restartOptionsFromDeployConfig(nil)
+		if opts.Timeout == nil || *opts.Timeout != 10 {
+			t.Fatalf("expected default restart timeout 10, got %+v", opts.Timeout)
+		}
+
+		if opts.Signal != "" {
+			t.Fatalf("expected empty restart signal, got %q", opts.Signal)
+		}
+	})
+
+	t.Run("from deploy config", func(t *testing.T) {
+		t.Parallel()
+
+		dc := config.DefaultDeployConfig("stack-a", "main")
+		dc.Reconciliation.RestartTimeout = 30
+		dc.Reconciliation.RestartSignal = "SIGQUIT"
+
+		opts := restartOptionsFromDeployConfig(dc)
+		if opts.Timeout == nil || *opts.Timeout != 30 {
+			t.Fatalf("expected restart timeout 30, got %+v", opts.Timeout)
+		}
+
+		if opts.Signal != "SIGQUIT" {
+			t.Fatalf("expected restart signal SIGQUIT, got %q", opts.Signal)
+		}
+	})
+}
+
+func TestSelectRestartDeployConfig(t *testing.T) {
+	t.Parallel()
+
+	if got := selectRestartDeployConfig(nil, nil); got != nil {
+		t.Fatalf("expected nil for empty deploy config list, got %#v", got)
+	}
+
+	dc1 := config.DefaultDeployConfig("stack-a", "main")
+	dc1.Internal.Hash = "hash-a"
+	dc2 := config.DefaultDeployConfig("stack-b", "main")
+	dc2.Internal.Hash = "hash-b"
+
+	got := selectRestartDeployConfig([]*config.DeployConfig{nil, dc1, dc2}, nil)
+	if got != dc1 {
+		t.Fatalf("expected first non-nil deploy config to be selected")
+	}
+
+	got = selectRestartDeployConfig([]*config.DeployConfig{dc1, dc2}, map[string]string{
+		docker.DocoCDLabels.Deployment.ConfigHash: "hash-b",
+	})
+	if got != dc2 {
+		t.Fatalf("expected config hash match to be selected")
+	}
+}
+
+func TestShouldSuppressRestartFollowupEvent(t *testing.T) {
+	t.Parallel()
+
+	containerID := "container-1"
+	j := &job{
+		restartSuppressUntil: map[string]time.Time{
+			containerID: time.Now().Add(5 * time.Second),
+		},
+	}
+
+	event := events.Message{Actor: events.Actor{ID: containerID}}
+
+	if !j.shouldSuppressRestartFollowupEvent("die", event) {
+		t.Fatal("expected die follow-up event to be suppressed")
+	}
+
+	if _, ok := j.restartSuppressUntil[containerID]; ok {
+		t.Fatal("expected suppression marker to be consumed after matching event")
+	}
+}
+
+func TestShouldSuppressRestartFollowupEvent_Expired(t *testing.T) {
+	t.Parallel()
+
+	containerID := "container-1"
+	j := &job{
+		restartSuppressUntil: map[string]time.Time{
+			containerID: time.Now().Add(-1 * time.Second),
+		},
+	}
+
+	event := events.Message{Actor: events.Actor{ID: containerID}}
+
+	if j.shouldSuppressRestartFollowupEvent("die", event) {
+		t.Fatal("expected expired suppression marker to be ignored")
+	}
+
+	if _, ok := j.restartSuppressUntil[containerID]; ok {
+		t.Fatal("expected expired suppression marker to be cleaned up")
+	}
+}
+
+func TestShouldSuppressRestartFollowupEvent_NonFollowupAction(t *testing.T) {
+	t.Parallel()
+
+	containerID := "container-1"
+	j := &job{
+		restartSuppressUntil: map[string]time.Time{
+			containerID: time.Now().Add(5 * time.Second),
+		},
+	}
+
+	event := events.Message{Actor: events.Actor{ID: containerID}}
+
+	if j.shouldSuppressRestartFollowupEvent("destroy", event) {
+		t.Fatal("expected non-follow-up action not to be suppressed")
+	}
+
+	if _, ok := j.restartSuppressUntil[containerID]; !ok {
+		t.Fatal("expected suppression marker to remain for unrelated actions")
+	}
+}
+
+func TestStackNameFromEvent(t *testing.T) {
+	t.Parallel()
+
+	candidates := []*config.DeployConfig{
+		config.DefaultDeployConfig("stack-a", "main"),
+		config.DefaultDeployConfig("stack-b", "main"),
+	}
+
+	tests := []struct {
+		name  string
+		event events.Message
+		want  string
+	}{
+		{
+			name: "deployment label",
+			event: events.Message{Actor: events.Actor{
+				Attributes: map[string]string{docker.DocoCDLabels.Deployment.Name: "stack-a"},
+			}},
+			want: "stack-a",
+		},
+		{
+			name: "stack namespace label",
+			event: events.Message{Actor: events.Actor{
+				Attributes: map[string]string{swarm.StackNamespaceLabel: "stack-b"},
+			}},
+			want: "stack-b",
+		},
+		{
+			name: "service name fallback",
+			event: events.Message{Actor: events.Actor{
+				Attributes: map[string]string{"name": "stack-a_web"},
+			}},
+			want: "stack-a",
+		},
+		{
+			name: "service attr fallback",
+			event: events.Message{Actor: events.Actor{
+				Attributes: map[string]string{"service": "stack-b_api"},
+			}},
+			want: "stack-b",
+		},
+		{
+			name: "unknown service",
+			event: events.Message{Actor: events.Actor{
+				Attributes: map[string]string{"name": "other_web"},
+			}},
+			want: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := stackNameFromEvent(tc.event, candidates)
+			if got != tc.want {
+				t.Fatalf("expected stack name %q, got %q", tc.want, got)
+			}
+		})
+	}
+}
+
+func TestDeployConfigsByName(t *testing.T) {
+	t.Parallel()
+
+	dc1 := config.DefaultDeployConfig("stack-a", "main")
+	dc2 := config.DefaultDeployConfig("stack-b", "main")
+	dc3 := config.DefaultDeployConfig("stack-a", "main")
+
+	got := deployConfigsByName([]*config.DeployConfig{dc1, dc2, dc3}, "stack-a")
+
+	if len(got) != 2 {
+		t.Fatalf("expected 2 deploy configs, got %d", len(got))
+	}
+
+	if got[0].Name != "stack-a" || got[1].Name != "stack-a" {
+		t.Fatalf("expected only stack-a deploy configs, got %#v", got)
+	}
+}
