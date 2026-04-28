@@ -14,11 +14,12 @@ import (
 	"github.com/moby/moby/api/types/events"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/graceful"
+
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
-	"github.com/kimdre/doco-cd/internal/graceful"
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -58,6 +59,12 @@ type job struct {
 	unhealthyRestartHistory  map[string][]time.Time
 	restartSuppressUntil     map[string]time.Time
 	closeChan                chan struct{}
+}
+
+func init() {
+	graceful.RegistryShutdownFunc("close_reconciliation", func() {
+		reconciliationHandler.close()
+	})
 }
 
 func newJob(info jobInfo, deployConfigGroupByEvent map[string][]*config.DeployConfig) *job {
@@ -836,10 +843,4 @@ func mapsKeys[V any](m map[string]V) []string {
 	}
 
 	return keys
-}
-
-func init() {
-	graceful.RegistryShutdownFunc("close_reconciliation", func() {
-		reconciliationHandler.close()
-	})
 }
