@@ -68,9 +68,10 @@ jobs:
           
           # TODO: Remove this once the symlink alias bug is fixed in Zensical (https://github.com/zensical/ui/issues/126)
           sed -E -i 's#/v[0-9]+\.[0-9]+/#/latest/#g' latest/sitemap.xml
+          git add $(realpath latest/sitemap.xml)
           
           # Push the changes to the gh-pages branch
-          git commit -am "Update latest sitemap.xml to $VERSION" || echo "No changes to commit"
+          git commit --amend --no-edit || echo "No changes to commit"
           git push origin $DOCS_BRANCH
 #
 #  deploy:
