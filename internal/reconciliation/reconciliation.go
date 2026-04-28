@@ -18,6 +18,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
+	"github.com/kimdre/doco-cd/internal/graceful"
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -835,4 +836,10 @@ func mapsKeys[V any](m map[string]V) []string {
 	}
 
 	return keys
+}
+
+func init() {
+	graceful.RegistryShutdownFunc("close_reconciliation", func() {
+		reconciliationHandler.close()
+	})
 }

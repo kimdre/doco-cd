@@ -7,36 +7,36 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
+
+	"github.com/kimdre/doco-cd/internal/logger"
 )
 
 const (
 	SocketAgentSocketEnvVar = "SSH_AUTH_SOCK"
 )
 
-var SocketAgentSocketPath = filepath.Join(os.TempDir(), "ssh_agent.sock")
+var socketAgentSocketPath = filepath.Join(os.TempDir(), "ssh_agent.sock")
+
+var ErrSSHAgentSocketPathEmpty = errors.New("socket path cannot be empty")
 
 // cleanupSocketFile removes the socket file at the specified path.
 func cleanupSocketFile(socketPath string) {
-	if socketPath == "" {
-		socketPath = SocketAgentSocketPath
-	}
-
 	_ = os.Remove(socketPath)
 }
 
-// StartSSHAgent starts an SSH agent that listens on a Unix domain socket at the specified path.
-// If no path is provided, it defaults to SocketAgentSocketPath.
+// startSSHAgent starts an SSH agent that listens on a Unix domain socket at the specified path.
 // The function runs until the provided context is canceled.
-func StartSSHAgent(ctx context.Context, socketPath string) error {
+func startSSHAgent(ctx context.Context, log *slog.Logger, socketPath string, privateKey []byte, keyPassphrase string) error {
 	if socketPath == "" {
-		socketPath = SocketAgentSocketPath
+		return ErrSSHAgentSocketPathEmpty
 	}
 
 	socketPath = filepath.Clean(socketPath)
@@ -50,6 +50,15 @@ func StartSSHAgent(ctx context.Context, socketPath string) error {
 	}
 	defer listener.Close() // nolint:errcheck
 
+	wg := &sync.WaitGroup{}
+	defer wg.Wait()
+	// close the listener on context cancellation
+	wg.Go(func() {
+		defer listener.Close() // nolint:errcheck
+
+		<-ctx.Done()
+	})
+
 	// Set the SSH_AUTH_SOCK environment variable to point to the socket
 	err = os.Setenv(SocketAgentSocketEnvVar, socketPath)
 	if err != nil {
@@ -59,13 +68,12 @@ func StartSSHAgent(ctx context.Context, socketPath string) error {
 	defer cleanupSocketFile(socketPath)
 
 	keyring := agent.NewKeyring()
+	if err := addKeyToAgent(keyring, privateKey, keyPassphrase); err != nil {
+		return err
+	}
 
 	// Accept loop with context awareness
-	errCh := make(chan error, 1)
-
-	go func() {
-		defer close(errCh)
-
+	wg.Go(func() {
 		for {
 			// Non-blocking stop check
 			select {
@@ -81,23 +89,23 @@ func StartSSHAgent(ctx context.Context, socketPath string) error {
 					return
 				}
 				// Log and continue on transient errors
-				log.Println(err)
+				log.Warn("Failed to accept SSH agent connection", logger.ErrAttr(err))
 
 				continue
 			}
 
-			go func(c net.Conn) {
-				defer c.Close() // nolint:errcheck
+			wg.Go(func() {
+				defer conn.Close() // nolint:errcheck
 
-				if err := agent.ServeAgent(keyring, c); err != nil {
+				if err := agent.ServeAgent(keyring, conn); err != nil {
 					// Ignore expected close conditions
 					if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
-						log.Println("Error serving SSH agent:", err)
+						log.Warn("Error serving SSH agent:", logger.ErrAttr(err))
 					}
 				}
-			}(conn)
+			})
 		}
-	}()
+	})
 
 	// Wait for context cancellation
 	<-ctx.Done()
@@ -105,16 +113,8 @@ func StartSSHAgent(ctx context.Context, socketPath string) error {
 	return nil
 }
 
-// AddKeyToAgent adds a private key to the SSH agent running at the socket specified.
-func AddKeyToAgent(privateKey []byte, keyPassphrase string) error {
-	conn, err := net.Dial("unix", SocketAgentSocketPath)
-	if err != nil {
-		return fmt.Errorf("failed to connect to SSH agent socket: %w", err)
-	}
-	defer conn.Close() // nolint:errcheck
-
-	agentClient := agent.NewClient(conn)
-
+// addKeyToAgent adds a private key to the SSH agent running at the socket specified.
+func addKeyToAgent(agentClient agent.Agent, privateKey []byte, keyPassphrase string) error {
 	rawKey, err := getRawPrivateKey(privateKey, keyPassphrase)
 	if err != nil {
 		return err

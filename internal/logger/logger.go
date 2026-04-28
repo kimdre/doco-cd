@@ -91,8 +91,7 @@ func New(logLevel slog.Level) *Logger {
 	}
 }
 
-// Critical logs a message at the critical level and exits the application.
+// Critical logs a message at the critical level.
 func (l *Logger) Critical(msg string, args ...any) {
 	l.Log(context.Background(), LevelCritical, msg, args...)
-	os.Exit(1)
 }

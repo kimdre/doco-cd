@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -17,9 +16,9 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
-	"github.com/kimdre/doco-cd/internal/notification"
-
 	"github.com/kimdre/doco-cd/internal/git/ssh"
+	"github.com/kimdre/doco-cd/internal/graceful"
+
 	"github.com/kimdre/doco-cd/internal/reconciliation"
 
 	"github.com/kimdre/doco-cd/cmd/doco-cd/healthcheck"
@@ -88,7 +87,19 @@ func CreateMountpointSymlink(m container.MountPoint) error {
 }
 
 func main() {
-	ctx := context.Background()
+	// split to app to make defer work when os.Exit().
+	if err := app(); err != nil {
+		slog.Error("application stopped with error", logger.ErrAttr(err))
+		os.Exit(1)
+	}
+
+	slog.Info("application stopped normally")
+}
+
+func app() error {
+	ctx, rootCancel := context.WithCancel(context.Background())
+
+	defer rootCancel()
 
 	// Set the default log level to debug
 	log := logger.New(slog.LevelDebug)
@@ -97,6 +108,7 @@ func main() {
 	c, err := config.GetAppConfig()
 	if err != nil {
 		log.Critical("failed to get application configuration", logger.ErrAttr(err))
+		return err
 	}
 
 	// Parse the log level from the app configuration
@@ -111,14 +123,15 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
 		checkUrl := fmt.Sprintf("http://localhost:%d%s", c.HttpPort, healthPath)
 
-		err = healthcheck.Check(ctx, checkUrl)
+		err := healthcheck.Check(ctx, checkUrl)
 		if err != nil {
 			log.Critical("health check failed", logger.ErrAttr(err), slog.String("url", checkUrl))
-			os.Exit(1)
+			return err
 		}
 
 		log.Info("health check successful", slog.String("url", checkUrl))
-		os.Exit(0)
+
+		return nil
 	}
 
 	log.Info("starting application", slog.String("version", config.AppVersion), slog.String("log_level", c.LogLevel))
@@ -136,6 +149,7 @@ func main() {
 	err, errType := docker.VerifyDockerAPIAccess()
 	if err != nil {
 		log.Critical(errType.Error(), logger.ErrAttr(err))
+		return err
 	}
 
 	log.Debug("connection to docker socket was successful")
@@ -144,7 +158,7 @@ func main() {
 	if err != nil {
 		log.Critical("failed to create docker client", logger.ErrAttr(err))
 
-		return
+		return err
 	}
 
 	dockerClient := dockerCli.Client()
@@ -161,7 +175,7 @@ func main() {
 	if c.DockerSwarmFeatures {
 		if err := swarm.RefreshModeEnabled(ctx, dockerClient); err != nil {
 			log.Critical("failed to check if docker daemon is a swarm manager", logger.ErrAttr(err))
-			return
+			return err
 		}
 	} else {
 		swarm.SetDisableSwarmFeature(true)
@@ -180,7 +194,7 @@ func main() {
 	if err != nil {
 		log.Critical("failed to retrieve doco-cd container id", logger.ErrAttr(err))
 
-		return
+		return err
 	}
 
 	log.Debug("retrieved doco-cd container id", slog.String("container_id", appContainerID))
@@ -189,6 +203,7 @@ func main() {
 	dataMountPoint, err := docker.GetMountPointByDestination(dockerClient, appContainerID, dataPath)
 	if err != nil {
 		log.Critical(fmt.Sprintf("failed to retrieve %s mount point for container %s", dataPath, appContainerID), logger.ErrAttr(err))
+		return err
 	}
 
 	log.Debug("retrieved doco-cd data mount point",
@@ -199,78 +214,29 @@ func main() {
 	)
 
 	// Check if data mount point is writable
-	err = docker.CheckMountPointWriteable(dataMountPoint)
-	if err != nil {
+	if err := docker.CheckMountPointWriteable(dataMountPoint); err != nil {
 		log.Critical(fmt.Sprintf("failed to check if %s mount point is writable", dataPath), logger.ErrAttr(err))
+		return err
 	}
 
-	err = CreateMountpointSymlink(dataMountPoint)
-	if err != nil {
+	if err := CreateMountpointSymlink(dataMountPoint); err != nil {
 		log.Critical(fmt.Sprintf("failed to create symlink for %s mount point", dataMountPoint.Destination), logger.ErrAttr(err))
 
-		return
+		return err
 	}
 
-	go func() {
-		latestVersion, err := getLatestAppReleaseVersion()
-		if err != nil {
-			log.Error("failed to get latest application release version", logger.ErrAttr(err))
-		} else {
-			if config.AppVersion != latestVersion {
-				log.Warn("new application version available",
-					slog.String("current", config.AppVersion),
-					slog.String("latest", latestVersion),
-				)
+	var wg sync.WaitGroup
+	defer wg.Wait()
 
-				err = notification.Send(notification.Info,
-					"New version of doco-cd is available",
-					fmt.Sprintf("Current Version: %s\nLatest Version: %s\n\nhttps://github.com/kimdre/doco-cd/releases", config.AppVersion, latestVersion),
-					notification.Metadata{})
-				if err != nil {
-					return
-				}
-			} else {
-				log.Debug("application is up to date", slog.String("version", config.AppVersion))
-			}
-		}
-	}()
+	graceful.SafeGo(&wg, log.Logger,
+		func() {
+			notificationForNewAppVersion(log.Logger)
+		},
+	)
 
 	// Initialize SSH agent if SSH private key is provided
 	if c.SSHPrivateKey != "" {
-		agentCtx, cancel := context.WithCancel(ctx)
-		defer cancel()
-
-		go func() {
-			err = ssh.StartSSHAgent(agentCtx, ssh.SocketAgentSocketPath)
-			if err != nil {
-				log.Critical("failed to start SSH agent", logger.ErrAttr(err)) // nolint:contextcheck
-			} else {
-				log.Debug("SSH agent started")
-			}
-		}()
-
-		// Wait for the agent socket to appear (max 2s)
-		deadline := time.Now().Add(2 * time.Second)
-
-		for {
-			if _, err = os.Stat(ssh.SocketAgentSocketPath); err == nil {
-				break
-			}
-
-			if time.Now().After(deadline) {
-				log.Critical("SSH agent socket file does not exist", slog.String("path", ssh.SocketAgentSocketPath))
-				return
-			}
-
-			time.Sleep(10 * time.Millisecond)
-		}
-
-		// Add the SSH private key to the agent
-		err = ssh.AddKeyToAgent([]byte(c.SSHPrivateKey), c.SSHPrivateKeyPassphrase)
-		if err != nil {
-			log.Critical("failed to add SSH private key to agent", logger.ErrAttr(err))
-			return
-		}
+		ssh.RegisterSSHAgent(ctx, log.Logger, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
 	}
 
 	// Initialize the secret provider
@@ -278,7 +244,7 @@ func main() {
 	if err != nil {
 		log.Critical("failed to initialize secret provider", logger.ErrAttr(err))
 
-		return
+		return err
 	}
 
 	if secretProvider != nil {
@@ -299,54 +265,32 @@ func main() {
 	// Initialize the deployer limiter according to configuration
 	reconciliation.InitializeDeployerLimiter(c.MaxConcurrentDeployments)
 
-	// Register API endpoints
-	apiServerMux := http.NewServeMux()
-	enabledApiEndpoints := registerApiEndpoints(c, &h, log, apiServerMux)
-
-	log.Info(
-		"listening for events",
-		slog.Int("http_port", int(c.HttpPort)),
-		slog.Any("enabled_endpoints", enabledApiEndpoints),
-	)
-
-	var wg sync.WaitGroup
-
 	if len(c.PollConfig) > 0 {
+		// cancel poll jobs
+		defer rootCancel()
+
 		log.Info(
 			"poll configuration found, scheduling polling jobs",
 			slog.Any("poll_config", logger.BuildSliceLogValue(c.PollConfig, "Deployments.Internal")),
 		)
 
 		for _, pollConfig := range c.PollConfig {
-			err = StartPoll(&h, pollConfig, &wg)
+			err = StartPoll(ctx, &h, pollConfig, &wg)
 			if err != nil {
 				log.Critical("failed to scheduling polling jobs", logger.ErrAttr(err))
 
-				return
+				return err
 			}
 		}
 	}
 
-	go func() {
-		log.Info("serving prometheus metrics", slog.Int("http_port", int(c.MetricsPort)), slog.String("path", prometheus.MetricsPath))
+	registryApiServer(c, &h, log)
+	prometheus.RegisterServer(c.MetricsPort, log)
 
-		if err = prometheus.Serve(c.MetricsPort); err != nil {
-			log.Critical("failed to start Prometheus metrics server", logger.ErrAttr(err))
-		} else {
-			log.Debug("Prometheus metrics server started successfully", slog.Int("port", int(c.MetricsPort)))
-		}
-	}()
-
-	server := &http.Server{
-		Addr:              fmt.Sprintf(":%d", c.HttpPort),
-		ReadHeaderTimeout: 3 * time.Second,
-		Handler:           apiServerMux,
+	if err := graceful.Serve(log.Logger); err != nil {
+		log.Critical("failed to serve", logger.ErrAttr(err))
+		return err
 	}
 
-	err = server.ListenAndServe()
-	if err != nil {
-		log.Error(fmt.Sprintf("failed to listen on port: %v", c.HttpPort), logger.ErrAttr(err))
-	}
-
-	wg.Wait()
+	return nil
 }
