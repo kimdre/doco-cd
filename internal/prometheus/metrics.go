@@ -2,10 +2,14 @@ package prometheus
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"github.com/kimdre/doco-cd/internal/graceful"
+	"github.com/kimdre/doco-cd/internal/logger"
 )
 
 const (
@@ -13,8 +17,13 @@ const (
 	MetricsPath      = "/metrics" // Path for exposing metrics via HTTP
 )
 
-// Serve starts the Prometheus metrics server.
-func Serve(port uint16) error {
+// RegisterServer registers the Prometheus metrics server.
+func RegisterServer(port uint16, log *logger.Logger) {
+	log.Info("serving prometheus metrics",
+		slog.Int("http_port", int(port)),
+		slog.String("path", MetricsPath),
+	)
+
 	mux := http.NewServeMux()
 	mux.Handle(MetricsPath, promhttp.Handler())
 
@@ -24,12 +33,5 @@ func Serve(port uint16) error {
 		Handler:           mux,
 	}
 
-	http.Handle(MetricsPath, promhttp.Handler())
-
-	err := server.ListenAndServe()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	graceful.RegisterServer(graceful.NewHttpServer("prometheus", server))
 }
