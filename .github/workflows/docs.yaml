@@ -44,11 +44,11 @@ jobs:
 
       - name: Clean docs branch
         run: |
-          CURRENT_BRANCH=$(git rev-parse --abrev-ref HEAD)
+          CURRENT_COMMIT=$(git rev-parse HEAD)
           git fetch origin "$DOCS_BRANCH"
           git checkout $DOCS_BRANCH
           git reset --hard origin/$DOCS_BRANCH
-          git checkout $CURRENT_BRANCH
+          git checkout $CURRENT_COMMIT
 
       - name: Publish dev docs
         run: mike deploy --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --push next
