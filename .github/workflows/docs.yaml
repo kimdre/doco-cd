@@ -42,6 +42,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "docs-deploy@doco.cd"
 
+      - name: Clean docs branch
+        run: |
+          CURRENT_BRANCH=$(git rev-parse --abrev-ref HEAD)
+          git fetch origin "$DOCS_BRANCH"
+          git checkout $DOCS_BRANCH
+          git reset --hard origin/$DOCS_BRANCH
+          git checkout $CURRENT_BRANCH
+
       - name: Publish dev docs
         run: mike deploy --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --push next
 
