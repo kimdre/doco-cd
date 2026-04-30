@@ -1,3 +1,4 @@
 User-agent: *
-Disallow:
+Disallow: /v*/
+Disallow: /next/
 Sitemap: https://doco.cd/latest/sitemap.xml
