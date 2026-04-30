@@ -1388,34 +1388,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Removing a container service">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#docker-standalone" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Docker Standalone
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#docker-swarm" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Docker Swarm
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
     </ul>
@@ -1928,34 +1900,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Removing a container service">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#docker-standalone" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Docker Standalone
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#docker-swarm" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Docker Swarm
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
     </ul>
@@ -2040,7 +1984,9 @@
 <h1 id="tips-and-tricks">Tips and Tricks<a class="headerlink" href="#tips-and-tricks" title="Permanent link">&para;</a></h1>
 <p>Some Tips and Tricks for using application.</p>
 <h2 id="removing-a-container-service">Removing a container service<a class="headerlink" href="#removing-a-container-service" title="Permanent link">&para;</a></h2>
-<h3 id="docker-standalone">Docker Standalone<a class="headerlink" href="#docker-standalone" title="Permanent link">&para;</a></h3>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="removing-a-container-service-docker-standalone" name="__tabbed_1" type="radio" /><input id="removing-a-container-service-docker-swarm" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="removing-a-container-service-docker-standalone">Docker Standalone</label><label for="removing-a-container-service-docker-swarm">Docker Swarm</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
 <p>You can add the <code>scale: 0</code> option in the <code>docker-compose.yml</code> file to remove a service (container). 
 The <code>scale</code> option sets the number of containers to run for the service. Setting it to <code>0</code> will scale the service down to zero containers.</p>
 <div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">services</span><span class="p">:</span>
@@ -2048,13 +1994,8 @@ The <code>scale</code> option sets the number of containers to run for the servi
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="hll"><span class="w">    </span><span class="nt">scale</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
 </span></span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">nginx</span>
 </span></code></pre></div>
-<div class="admonition tip">
-<p class="admonition-title">Tip</p>
-<p>If you set the <code>scale: 0</code> option to all services in the docker compose file, the entire project will be stopped 
-and removed, excluding any volumes, networks, and images.</p>
-<p>To delete volumes, networks, and images, you can use the <code>destroy</code> option in the deployment configuration file (See <a data-preview="" href="../Deploy-Settings/#destroy-settings">Destroy settings</a>).</p>
 </div>
-<h3 id="docker-swarm">Docker Swarm<a class="headerlink" href="#docker-swarm" title="Permanent link">&para;</a></h3>
+<div class="tabbed-block">
 <p>Add the following line to the <code>deploy</code> section of the service in the <code>docker-compose.yml</code> file to remove a service (container) in Docker Swarm mode:</p>
 <div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">services</span><span class="p">:</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">webserver</span><span class="p">:</span>
@@ -2062,6 +2003,18 @@ and removed, excluding any volumes, networks, and images.</p>
 </span></span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="hll"><span class="w">      </span><span class="nt">replicas</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
 </span></span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">nginx</span>
 </span></code></pre></div>
+</div>
+</div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>If you scale down all services in a Docker project or Swarm stack, the entire project will be stopped
+and removed, <strong>excluding</strong> any volumes, networks, and images.</p>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>To delete volumes, networks, and images, you can use the <code>destroy</code> option in the deployment configuration file (See <a data-preview="" href="../../Deploy-Settings/#destroy-settings">Destroy settings</a>).</p>
+</div>
+</div>
 
 
   <nav class="md-tags" >

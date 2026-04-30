@@ -2107,17 +2107,45 @@
 <p>Doco-CD supports the encryption of sensitive data in your doco-cd app config and deployment files with <a href="https://getsops.io/">SOPS</a>.</p>
 <h2 id="supported-file-formats">Supported file formats<a class="headerlink" href="#supported-file-formats" title="Permanent link">&para;</a></h2>
 <p>SOPS supports files in the following formats:</p>
-<ul>
-<li>YAML files with the <code>.yaml</code> or <code>.yml</code> extension</li>
-<li>JSON files with the <code>.json</code> extension</li>
-<li>Dotenv files with the <code>.env</code> extension</li>
-<li>Ini files with the <code>.ini</code> extension</li>
-<li>Binary/text files (default format)</li>
-</ul>
+<table>
+<thead>
+<tr>
+<th>Format</th>
+<th>Required file extension</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>YAML</td>
+<td><code>.yaml</code> or <code>.yml</code></td>
+<td><code>example.yaml</code></td>
+</tr>
+<tr>
+<td>JSON</td>
+<td><code>.json</code></td>
+<td><code>example.json</code></td>
+</tr>
+<tr>
+<td>Dotenv</td>
+<td><code>.env</code></td>
+<td><code>example.env</code></td>
+</tr>
+<tr>
+<td>INI</td>
+<td><code>.ini</code></td>
+<td><code>example.ini</code></td>
+</tr>
+<tr>
+<td>Binary/Text</td>
+<td><em>any other or none</em></br><strong>Fallback/Default format</strong></td>
+<td><code>example.txt</code></br><code>example</code> (no extension)</td>
+</tr>
+</tbody>
+</table>
 <h2 id="usage-with-sops-and-age">Usage with SOPS and age<a class="headerlink" href="#usage-with-sops-and-age" title="Permanent link">&para;</a></h2>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>I recommend to use <a href="https://getsops.io/docs/#encrypting-using-age">SOPS with age</a> for encrypting your deployment files.</p>
+<div class="admonition tip">
+<p class="admonition-title">I recommend to use <a href="https://getsops.io/docs/#encrypting-using-age">SOPS with age</a> for encrypting your deployment files.</p>
 </div>
 <p>For this, you need to </p>
 <ol>
@@ -2190,7 +2218,9 @@ See <a href="https://getsops.io/docs/#encrypting-only-parts-of-a-file">Encryptin
 <p>To use encrypted values in the doco-cd app configuration, store secrets in encrypted text files and reference them with
 <code>*_FILE</code> environment variables (for example, <code>GIT_ACCESS_TOKEN_FILE</code>).
 Each variable should point to the encrypted file path inside the container.</p>
-<p>For example, to use an encrypted Git access token, create a text file with the token and encrypt it with SOPS:
+<div class="admonition example">
+<p class="admonition-title">Encrypted Git access token</p>
+<p>To use an encrypted Git access token, create a text file with the token and encrypt it with SOPS:
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">printf</span><span class="w"> </span><span class="s2">&quot;my-git-access-token&quot;</span><span class="w"> </span>&gt;<span class="w"> </span>git-access-token.txt
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>sops<span class="w"> </span>encrypt<span class="w"> </span>--age<span class="w"> </span>age1g3lcl...<span class="w"> </span>git-access-token.txt<span class="w"> </span>&gt;<span class="w"> </span>git-access-token.enc.txt
 </span></code></pre></div></p>
@@ -2206,6 +2236,7 @@ Each variable should point to the encrypted file path inside the container.</p>
 </span></span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="hll"><span class="w">  </span><span class="nt">git_access_token</span><span class="p">:</span>
 </span></span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="hll"><span class="w">    </span><span class="nt">file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git-access-token.enc.txt</span>
 </span></span></code></pre></div>
+</div>
 <h3 id="deployment-with-a-sops-encrypted-file">Deployment with a SOPS-encrypted file<a class="headerlink" href="#deployment-with-a-sops-encrypted-file" title="Permanent link">&para;</a></h3>
 <p>First, I use my age public key from the previously generated key pair to encrypt my <code>secrets.env</code> file:</p>
 <div class="language-text highlight"><span class="filename">secrets.env</span><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>DB_PASSWORD=some-secret-password
@@ -2214,10 +2245,9 @@ Each variable should point to the encrypted file path inside the container.</p>
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>sops<span class="w"> </span>encrypt<span class="w"> </span>--age<span class="w"> </span>age1g3lcl...<span class="w"> </span>secrets.env<span class="w"> </span>&gt;<span class="w"> </span>secrets.enc.env
 </span></code></pre></div>
 <div class="admonition tip">
-<p class="admonition-title">Tip</p>
-<p>You can later edit the encrypted file in-place with 
+<p class="admonition-title">You can later edit the encrypted file in-place with</p>
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>sops<span class="w"> </span>edit<span class="w"> </span>secrets.enc.env
-</span></code></pre></div></p>
+</span></code></pre></div>
 </div>
 <p>Then, I set the encrypted file in my <code>docker-compose.yml</code> file:</p>
 <div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">services</span><span class="p">:</span>

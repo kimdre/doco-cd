@@ -1321,22 +1321,16 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Format">
-      <ul class="md-nav__list">
+</li>
         
           <li class="md-nav__item">
-  <a href="#example-maplist-schema-stores-and-multi-document-support" class="md-nav__link">
+  <a href="#example-store-definitions" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Example: map/list schema (<code>stores:</code>) and multi-document support
+        Example store definitions
       </span>
     </span>
   </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
         
@@ -2075,22 +2069,16 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Format">
-      <ul class="md-nav__list">
+</li>
         
           <li class="md-nav__item">
-  <a href="#example-maplist-schema-stores-and-multi-document-support" class="md-nav__link">
+  <a href="#example-store-definitions" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Example: map/list schema (<code>stores:</code>) and multi-document support
+        Example store definitions
       </span>
     </span>
   </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
         
@@ -2346,22 +2334,78 @@ Each secret reference in <code>.doco-cd.yml</code> points to one store via <code
 </table>
 <h2 id="secret-store">Secret Store<a class="headerlink" href="#secret-store" title="Permanent link">&para;</a></h2>
 <h3 id="format">Format<a class="headerlink" href="#format" title="Permanent link">&para;</a></h3>
-<p>A store must define:</p>
+<p>A store supports the following fields:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>Yes</td>
+<td>Store name (must be unique).</td>
+</tr>
+<tr>
+<td><code>version</code></td>
+<td>Yes</td>
+<td>Store schema version (currently <code>v1</code>).</td>
+</tr>
+<tr>
+<td><code>url</code></td>
+<td>Yes</td>
+<td>Request URL template.</td>
+</tr>
+<tr>
+<td><code>json_path</code></td>
+<td>Yes</td>
+<td><a href="https://jmespath.org/">JMESPath</a> expression used to extract the final secret value.</td>
+</tr>
+<tr>
+<td><code>method</code></td>
+<td>No</td>
+<td>HTTP method. Defaults to <code>GET</code>.</td>
+</tr>
+<tr>
+<td><code>headers</code></td>
+<td>No</td>
+<td>Optional HTTP headers map (template-supported).</td>
+</tr>
+<tr>
+<td><code>body</code></td>
+<td>No</td>
+<td>Optional HTTP request body template.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition warning">
+<p class="admonition-title">The provider fails fast when:</p>
 <ul>
-<li><code>name</code></li>
-<li><code>version</code> (currently <code>v1</code>)</li>
-<li><code>url</code></li>
-<li><code>json_path</code></li>
+<li><code>store_ref</code> does not exist</li>
+<li>a referenced <code>remote_ref</code> field is missing</li>
+<li><code>json_path</code> is missing or renders empty</li>
 </ul>
-<p>And can optionally define:</p>
+</div>
+<div class="admonition example">
+<p class="admonition-title">Examples for <code>json_path</code></p>
 <ul>
-<li><code>method</code> (defaults to <code>GET</code>)</li>
-<li><code>headers</code></li>
-<li><code>body</code></li>
+<li><code>data.login.password</code></li>
+<li><code>data.fields[?name=='password'].value</code></li>
 </ul>
-<p><code>json_path</code> expressions use <a href="https://jmespath.org/">JMESPath</a> syntax (for example <code>data.login.password</code> and <code>data.fields[?name=='password'].value</code>).</p>
-<h4 id="example-maplist-schema-stores-and-multi-document-support">Example: map/list schema (<code>stores:</code>) and multi-document support<a class="headerlink" href="#example-maplist-schema-stores-and-multi-document-support" title="Permanent link">&para;</a></h4>
-<div class="language-yaml highlight"><span class="filename">Example Secret Stores (e.g. secret-stores.yml)</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">stores</span><span class="p">:</span>
+</div>
+<h3 id="example-store-definitions">Example store definitions<a class="headerlink" href="#example-store-definitions" title="Permanent link">&para;</a></h3>
+<p>The webhook provider supports two definition styles:</p>
+<ul>
+<li><code class="language-yaml highlight"><span class="nt">stores</span><span class="p">:</span></code> map style (multiple named stores in one document)</li>
+<li>top-level single-store style (can be combined using YAML multi-document <code class="language-yaml highlight"><span class="nn">---</span></code>)</li>
+</ul>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="example-store-definitions-stores-map-style" name="__tabbed_1" type="radio" /><input id="example-store-definitions-single-store-multi-document-style" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="example-store-definitions-stores-map-style"><code class="language-yaml highlight"><span class="nt">stores</span><span class="p">:</span></code> map style</label><label for="example-store-definitions-single-store-multi-document-style">Single-store multi-document style</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-yaml highlight"><span class="filename">secret-stores.yml</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">stores</span><span class="p">:</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">bitwarden-login</span><span class="p">:</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://bitwarden-api:8087/object/item/{{</span><span class="nv"> </span><span class="s">.remote_ref.key</span><span class="nv"> </span><span class="s">}}&quot;</span>
@@ -2375,183 +2419,194 @@ Each secret reference in <code>.doco-cd.yml</code> points to one store via <code
 </span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://bitwarden-api:8087/object/item/{{</span><span class="nv"> </span><span class="s">.remote_ref.key</span><span class="nv"> </span><span class="s">}}&quot;</span>
 </span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">GET</span>
 </span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">    </span><span class="nt">json_path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;data.fields[?name==&#39;{{</span><span class="nv"> </span><span class="s">.remote_ref.property</span><span class="nv"> </span><span class="s">}}&#39;].value&quot;</span>
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="nn">---</span>
-</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">akeyless</span>
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
-</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.akeyless.io/v2/get-secret-value&quot;</span>
-</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">POST</span>
-</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="nt">headers</span><span class="p">:</span>
-</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">  </span><span class="nt">Content-Type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">application/json</span>
-</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">  </span><span class="nt">Authorization</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Basic</span><span class="nv"> </span><span class="s">{{</span><span class="nv"> </span><span class="s">print</span><span class="nv"> </span><span class="s">.auth.username</span><span class="nv"> </span><span class="s">\&quot;:\&quot;</span><span class="nv"> </span><span class="s">.auth.password</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">b64enc</span><span class="nv"> </span><span class="s">}}&quot;</span>
-</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="nt">body</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;{&quot;secret_name&quot;:&quot;{{</span><span class="nv"> </span><span class="s">.remote_ref.key</span><span class="nv"> </span><span class="s">}}&quot;,&quot;auth_method_access_token&quot;:&quot;{{</span><span class="nv"> </span><span class="s">.auth.token</span><span class="nv"> </span><span class="s">}}&quot;}&#39;</span>
-</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="nt">json_path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;value&quot;</span>
 </span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="language-yaml highlight"><span class="filename">secret-stores.yml</span><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bitwarden-login</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://bitwarden-api:8087/object/item/{{</span><span class="nv"> </span><span class="s">.remote_ref.key</span><span class="nv"> </span><span class="s">}}&quot;</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">GET</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="nt">headers</span><span class="p">:</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">Content-Type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">application/json</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="nt">json_path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;data.login.{{</span><span class="nv"> </span><span class="s">.remote_ref.property</span><span class="nv"> </span><span class="s">}}&quot;</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="nn">---</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">akeyless</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.akeyless.io/v2/get-secret-value&quot;</span>
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">POST</span>
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="nt">headers</span><span class="p">:</span>
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="w">  </span><span class="nt">Content-Type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">application/json</span>
+</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="w">  </span><span class="nt">Authorization</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Basic</span><span class="nv"> </span><span class="s">{{</span><span class="nv"> </span><span class="s">print</span><span class="nv"> </span><span class="s">.auth.username</span><span class="nv"> </span><span class="s">\&quot;:\&quot;</span><span class="nv"> </span><span class="s">.auth.password</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">b64enc</span><span class="nv"> </span><span class="s">}}&quot;</span>
+</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="nt">body</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;{&quot;secret_name&quot;:&quot;{{</span><span class="nv"> </span><span class="s">.remote_ref.key</span><span class="nv"> </span><span class="s">}}&quot;,&quot;auth_method_access_token&quot;:&quot;{{</span><span class="nv"> </span><span class="s">.auth.token</span><span class="nv"> </span><span class="s">}}&quot;}&#39;</span>
+</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="nt">json_path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;value&quot;</span>
+</span></code></pre></div>
+</div>
+</div>
+</div>
 <h2 id="deployment-configuration">Deployment Configuration<a class="headerlink" href="#deployment-configuration" title="Permanent link">&para;</a></h2>
 <p>For webhook, <code>external_secrets</code> entries must use object references.
-Legacy string refs (e.g. <code>DB_PASSWORD: some-id</code>) are rejected with a clear error.</p>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myapp</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">external_secrets</span><span class="p">:</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">DB_USERNAME</span><span class="p">:</span>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nt">store_ref</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bitwarden-login</span>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="nt">remote_ref</span><span class="p">:</span>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">      </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12345678-aaaa-bbbb-cccc-123456789abc</span>
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">      </span><span class="nt">property</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">username</span>
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">  </span><span class="nt">DB_PASSWORD</span><span class="p">:</span>
-</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">    </span><span class="nt">store_ref</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bitwarden-login</span>
-</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">    </span><span class="nt">remote_ref</span><span class="p">:</span>
-</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="w">      </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12345678-aaaa-bbbb-cccc-123456789abc</span>
-</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="w">      </span><span class="nt">property</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">password</span>
-</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>
-</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="w">  </span><span class="nt">API_KEY</span><span class="p">:</span>
-</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="w">    </span><span class="nt">store_ref</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bitwarden-fields</span>
-</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="w">    </span><span class="nt">remote_ref</span><span class="p">:</span>
-</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="w">      </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dddddddd-1111-2222-3333-eeeeeeeeeeee</span>
-</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="w">      </span><span class="nt">property</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">api_key</span>
+Legacy string refs (e.g. <code class="language-yaml highlight"><span class="nt">DB_PASSWORD</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">some-id</span></code>) are rejected with a clear error.</p>
+<div class="language-yaml highlight"><span class="filename">.doco-cd.yml</span><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myapp</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">external_secrets</span><span class="p">:</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">DB_USERNAME</span><span class="p">:</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="nt">store_ref</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bitwarden-login</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">    </span><span class="nt">remote_ref</span><span class="p">:</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">      </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12345678-aaaa-bbbb-cccc-123456789abc</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">      </span><span class="nt">property</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">username</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">  </span><span class="nt">DB_PASSWORD</span><span class="p">:</span>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">    </span><span class="nt">store_ref</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bitwarden-login</span>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">    </span><span class="nt">remote_ref</span><span class="p">:</span>
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="w">      </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12345678-aaaa-bbbb-cccc-123456789abc</span>
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="w">      </span><span class="nt">property</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">password</span>
+</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>
+</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="w">  </span><span class="nt">API_KEY</span><span class="p">:</span>
+</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="w">    </span><span class="nt">store_ref</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bitwarden-fields</span>
+</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="w">    </span><span class="nt">remote_ref</span><span class="p">:</span>
+</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="w">      </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dddddddd-1111-2222-3333-eeeeeeeeeeee</span>
+</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="w">      </span><span class="nt">property</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">api_key</span>
 </span></code></pre></div>
 <h2 id="template-parameters">Template Parameters<a class="headerlink" href="#template-parameters" title="Permanent link">&para;</a></h2>
-<p>All store templates (<code>url</code>, <code>headers</code>, <code>body</code>, <code>json_path</code>) can use:</p>
+<p>All templated store fields (<code>url</code>, <code>headers</code>, <code>body</code>, <code>json_path</code>) can access the following objects:</p>
 <table>
 <thead>
 <tr>
-<th>Key</th>
+<th>Parameter</th>
 <th>Description</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><code>remote_ref</code></td>
-<td>The object provided for that secret in <code>.doco-cd.yml</code>.<br/>Can contain any fields, for example <code>key</code> and <code>property</code> in the example above</td>
+<td>The per-secret object from <code>.doco-cd.yml</code> under <code>external_secrets.&lt;NAME&gt;.remote_ref</code>.</br>You can define any keys (for example <code>key</code>, <code>property</code>, <code>query</code>, <code>filters</code>).</td>
 </tr>
 <tr>
 <td><code>auth</code></td>
-<td>Provider auth values from <code>SECRET_PROVIDER_AUTH_*</code> env vars</td>
+<td>Provider auth values from <code>SECRET_PROVIDER_AUTH_*</code> environment variables.</br>Available keys: <code>username</code>, <code>password</code>, <code>token</code>, <code>api_key</code>.</td>
 </tr>
 </tbody>
 </table>
+<div class="admonition example">
+<p class="admonition-title">Example</p>
+<div class="language-yaml highlight"><span class="filename">.doco-cd.yml</span><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">external_secrets</span><span class="p">:</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">DB_PASSWORD</span><span class="p">:</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="nt">store_ref</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bitwarden-login</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="nt">remote_ref</span><span class="p">:</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">      </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12345678-aaaa-bbbb-cccc-123456789abc</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">      </span><span class="nt">property</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">password</span>
+</span></code></pre></div>
+<div class="language-yaml highlight"><span class="filename">store definition</span><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://bitwarden-api:8087/object/item/{{</span><span class="nv"> </span><span class="s">.remote_ref.key</span><span class="nv"> </span><span class="s">}}&quot;</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">json_path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;data.login.{{</span><span class="nv"> </span><span class="s">.remote_ref.property</span><span class="nv"> </span><span class="s">}}&quot;</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nt">headers</span><span class="p">:</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">Authorization</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Bearer</span><span class="nv"> </span><span class="s">{{</span><span class="nv"> </span><span class="s">.auth.token</span><span class="nv"> </span><span class="s">}}&quot;</span>
+</span></code></pre></div>
+<p>Rendered values (example):</p>
+<ul>
+<li><code>url</code>: <code>http://bitwarden-api:8087/object/item/12345678-aaaa-bbbb-cccc-123456789abc</code></li>
+<li><code>json_path</code>: <code>data.login.password</code></li>
+</ul>
+</div>
 <h2 id="template-functions">Template Functions<a class="headerlink" href="#template-functions" title="Permanent link">&para;</a></h2>
-<p>The following functions are available for use in all template fields:</p>
+<p>Template functions are available in all templated fields (<code>url</code>, <code>headers</code>, <code>body</code>, <code>json_path</code>).
+Functions can be chained with <code>|</code> from left to right.</p>
 <table>
 <thead>
 <tr>
 <th>Function</th>
-<th>Description</th>
-<th>Input</th>
-<th>Template</th>
-<th>Result</th>
+<th>Purpose</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><code>b64enc</code></td>
-<td>Encode input to base64</td>
-<td><code>secret123</code></td>
-<td><code>{{ "secret123" \| b64enc }}</code></td>
-<td><code>c2VjcmV0MTIz</code></td>
+<td>Base64-encode a value</td>
 </tr>
 <tr>
 <td><code>b64dec</code></td>
-<td>Decode base64 input</td>
-<td><code>c2VjcmV0MTIz</code></td>
-<td><code>{{ "c2VjcmV0MTIz" \| b64dec }}</code></td>
-<td><code>secret123</code></td>
+<td>Base64-decode a value</td>
 </tr>
 <tr>
 <td><code>urlencode</code></td>
-<td>URL encode input</td>
-<td><code>hello world</code></td>
-<td><code>{{ "hello world" \| urlencode }}</code></td>
-<td><code>hello+world</code></td>
+<td>URL-encode a value</td>
 </tr>
 <tr>
 <td><code>urldecode</code></td>
-<td>URL decode input</td>
-<td><code>hello+world</code></td>
-<td><code>{{ "hello+world" \| urldecode }}</code></td>
-<td><code>hello world</code></td>
+<td>URL-decode a value</td>
 </tr>
 <tr>
 <td><code>json</code></td>
-<td>Convert input to JSON string</td>
-<td><code>map[key:value]</code></td>
-<td><code>{{ .remote_ref.data \| json }}</code></td>
-<td><code>{"key":"value"}</code></td>
+<td>Convert a value to a JSON string</td>
 </tr>
 <tr>
 <td><code>toUpper</code></td>
-<td>Convert input to uppercase</td>
-<td><code>hello</code></td>
-<td><code>{{ "hello" \| toUpper }}</code></td>
-<td><code>HELLO</code></td>
+<td>Convert text to uppercase</td>
 </tr>
 <tr>
 <td><code>toLower</code></td>
-<td>Convert input to lowercase</td>
-<td><code>HELLO</code></td>
-<td><code>{{ "HELLO" \| toLower }}</code></td>
-<td><code>hello</code></td>
+<td>Convert text to lowercase</td>
 </tr>
 <tr>
 <td><code>trim</code></td>
-<td>Trim whitespace from input</td>
-<td><code>hello</code></td>
-<td><code>{{ "  hello  " \| trim }}</code></td>
-<td><code>hello</code></td>
+<td>Remove leading and trailing whitespace</td>
 </tr>
 </tbody>
 </table>
+<details class="example">
+<summary>Function examples</summary>
+<ul>
+<li><code>{{ "secret123" | b64enc }}</code> -&gt; <code>c2VjcmV0MTIz</code></li>
+<li><code>{{ "c2VjcmV0MTIz" | b64dec }}</code> -&gt; <code>secret123</code></li>
+<li><code>{{ "hello world" | urlencode }}</code> -&gt; <code>hello+world</code></li>
+<li><code>{{ "hello+world" | urldecode }}</code> -&gt; <code>hello world</code></li>
+<li><code>{{ .remote_ref.data | json }}</code> -&gt; <code>{"key":"value"}</code></li>
+<li><code>{{ "hello" | toUpper }}</code> -&gt; <code>HELLO</code></li>
+<li><code>{{ "HELLO" | toLower }}</code> -&gt; <code>hello</code></li>
+<li><code>{{ "  hello  " | trim }}</code> -&gt; <code>hello</code></li>
+</ul>
+</details>
 <h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h2>
 <h3 id="basic-authentication-header">Basic Authentication Header<a class="headerlink" href="#basic-authentication-header" title="Permanent link">&para;</a></h3>
-<p><div class="language-yaml highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">headers</span><span class="p">:</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">Authorization</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Basic</span><span class="nv"> </span><span class="s">{{</span><span class="nv"> </span><span class="s">print</span><span class="nv"> </span><span class="s">.auth.username</span><span class="nv"> </span><span class="s">\&quot;:\&quot;</span><span class="nv"> </span><span class="s">.auth.password</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">b64enc</span><span class="nv"> </span><span class="s">}}&quot;</span>
+<p><div class="language-yaml highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">headers</span><span class="p">:</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">Authorization</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Basic</span><span class="nv"> </span><span class="s">{{</span><span class="nv"> </span><span class="s">print</span><span class="nv"> </span><span class="s">.auth.username</span><span class="nv"> </span><span class="s">\&quot;:\&quot;</span><span class="nv"> </span><span class="s">.auth.password</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">b64enc</span><span class="nv"> </span><span class="s">}}&quot;</span>
 </span></code></pre></div>
 With <code>auth.username=admin</code> and <code>auth.password=secret123</code>:</p>
 <ul>
 <li>Result: <code>Authorization: Basic YWRtaW46c2VjcmV0MTIz</code></li>
 </ul>
 <h3 id="url-encoded-query-parameter">URL-encoded Query Parameter<a class="headerlink" href="#url-encoded-query-parameter" title="Permanent link">&para;</a></h3>
-<p><div class="language-yaml highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.example.com/search?q={{</span><span class="nv"> </span><span class="s">.remote_ref.query</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">urlencode</span><span class="nv"> </span><span class="s">}}&quot;</span>
+<p><div class="language-yaml highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.example.com/search?q={{</span><span class="nv"> </span><span class="s">.remote_ref.query</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">urlencode</span><span class="nv"> </span><span class="s">}}&quot;</span>
 </span></code></pre></div>
 With <code>remote_ref.query=hello world</code>:</p>
 <ul>
 <li>Result: <code>https://api.example.com/search?q=hello+world</code></li>
 </ul>
 <h3 id="json-request-body">JSON Request Body<a class="headerlink" href="#json-request-body" title="Permanent link">&para;</a></h3>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">body</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;{&quot;filters&quot;:{{</span><span class="nv"> </span><span class="s">.remote_ref.filters</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">json</span><span class="nv"> </span><span class="s">}}}&#39;</span>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nt">body</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;{&quot;filters&quot;:{{</span><span class="nv"> </span><span class="s">.remote_ref.filters</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">json</span><span class="nv"> </span><span class="s">}}}&#39;</span>
 </span></code></pre></div>
 <p>With <code>remote_ref</code> containing a map of filters:</p>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">remote_ref</span><span class="p">:</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">filters</span><span class="p">:</span>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">active</span>
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">user</span>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">remote_ref</span><span class="p">:</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">filters</span><span class="p">:</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">active</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">user</span>
 </span></code></pre></div>
 <ul>
 <li>Result: <code>{"filters":{"status":"active","type":"user"}}</code></li>
 </ul>
 <h3 id="trimmed-and-uppercase-api-key-header">Trimmed and Uppercase API Key Header<a class="headerlink" href="#trimmed-and-uppercase-api-key-header" title="Permanent link">&para;</a></h3>
-<p><div class="language-yaml highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">headers</span><span class="p">:</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">X-API-Key</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{{</span><span class="nv"> </span><span class="s">.remote_ref.api_key</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">trim</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">toUpper</span><span class="nv"> </span><span class="s">}}&quot;</span>
+<p><div class="language-yaml highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nt">headers</span><span class="p">:</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span><span class="nt">X-API-Key</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{{</span><span class="nv"> </span><span class="s">.remote_ref.api_key</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">trim</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">toUpper</span><span class="nv"> </span><span class="s">}}&quot;</span>
 </span></code></pre></div>
 With <code>remote_ref.api_key=&lt;space&gt;my-secret-key&lt;space&gt;</code>:</p>
 <ul>
 <li>Result: <code>X-API-Key: MY-SECRET-KEY</code></li>
 </ul>
 <h3 id="decoded-and-trimmed-secret">Decoded and Trimmed Secret<a class="headerlink" href="#decoded-and-trimmed-secret" title="Permanent link">&para;</a></h3>
-<p><div class="language-yaml highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nt">json_path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;secret[?key==&#39;{{</span><span class="nv"> </span><span class="s">.remote_ref.encoded_id</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">b64dec</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">trim</span><span class="nv"> </span><span class="s">}}&#39;]&quot;</span>
+<p><div class="language-yaml highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nt">json_path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;secret[?key==&#39;{{</span><span class="nv"> </span><span class="s">.remote_ref.encoded_id</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">b64dec</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">trim</span><span class="nv"> </span><span class="s">}}&#39;]&quot;</span>
 </span></code></pre></div>
 With <code>remote_ref.encoded_id=c2VjcmV0LWtleQ==</code>:</p>
 <ul>
 <li>Result: <code>secret[?key=='secret-key']</code></li>
 </ul>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p>The provider fails fast when:</p>
-<ul>
-<li><code>store_ref</code> does not exist</li>
-<li>a referenced <code>remote_ref</code> field is missing</li>
-<li><code>json_path</code> is missing or renders empty</li>
-</ul>
-</div>
 
 
   <nav class="md-tags" >

@@ -2275,8 +2275,7 @@ Instead, it relies on the underlying container runtime (e.g., Docker) to execute
 <li><a data-preview="" href="#compose-lifecycle-hooks">Compose Lifecycle Hooks</a></li>
 </ul>
 <div class="admonition note">
-<p class="admonition-title">Note</p>
-<p><a data-preview="" href="../../Deploy-Settings/#reconciliation-settings">Reconciliation</a> for non-Swarm deployments follows classic Compose <code>restart</code> semantics:</p>
+<p class="admonition-title"><a data-preview="" href="../../Deploy-Settings/#reconciliation-settings">Reconciliation</a> for non-Swarm deployments follows classic Compose <code>restart</code> semantics</p>
 <ul>
 <li>Services with <code class="language-yaml highlight"><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">always</span></code> or <code class="language-yaml highlight"><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span></code> are expected to stay running.</li>
 <li>Services with no explicit <code>restart</code> policy are treated as <code class="language-yaml highlight"><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;no&quot;</span></code>.</li>
@@ -2350,14 +2349,19 @@ Instead, it relies on the underlying container runtime (e.g., Docker) to execute
 </ol>
 <h3 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h3>
 <h4 id="container-exited-0">container exited (0)<a class="headerlink" href="#container-exited-0" title="Permanent link">&para;</a></h4>
-<p>If the deployment fails with an error containing a message like <code>container &lt;init-container-name&gt; exited (0)</code>, try to add a short sleep at the end of the init container commands. This is a workaround for a known issue where the init container may exit before the main container starts waiting for it, causing the main container to miss the successful completion of the init container. Adding a short sleep ensures that the init container has time to exit properly before the main container checks its status.</p>
-<p><strong>Example</strong>:
-<div class="language-yaml highlight"><span class="filename">Add a sleep command to the init container in your docker-compose.yml</span><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">entrypoint</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;/bin/sh&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;-c&quot;</span><span class="p p-Indicator">]</span>
+<p>If the deployment fails with an error containing a message like <code>container &lt;init-container-name&gt; exited (0)</code>, try to add a short sleep at the end of the init container commands.
+This is a workaround for a known issue where the init container may exit before the main container starts waiting for it, causing the main container to miss the successful completion of the init container.
+Adding a short sleep ensures that the init container has time to exit properly before the main container checks its status.</p>
+<div class="admonition example">
+<p class="admonition-title">Add a sleep command to the init container in your docker-compose.yml</p>
+<p>The sleep duration can be adjusted based on the expected time for the init commands to complete.
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">entrypoint</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;/bin/sh&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;-c&quot;</span><span class="p p-Indicator">]</span>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;&lt;your-commands-here&gt;</span><span class="nv"> </span><span class="s">&amp;&amp;</span><span class="nv"> </span><span class="s">sleep</span><span class="nv"> </span><span class="s">3&quot;</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="c1"># (1)!</span>
 </span></code></pre></div></p>
 <ol>
 <li>Depending on the complexity of your init commands, you may need to adjust the sleep duration.</li>
 </ol>
+</div>
 <p>Related issue: <a href="https://github.com/kimdre/doco-cd/issues/1115">#1115</a></p>
 <h2 id="sidecar-containers">Sidecar Containers<a class="headerlink" href="#sidecar-containers" title="Permanent link">&para;</a></h2>
 <p>Sidecar containers are additional containers that run alongside your main application containers. They can be used to provide auxiliary services, such as background tasks, metrics collection, or log forwarding.</p>
@@ -2457,7 +2461,6 @@ Instead, it relies on the underlying container runtime (e.g., Docker) to execute
 <li><a href="https://docs.docker.com/reference/compose-file/services/#post_start">Docker Compose Post Start Hook Documentation</a></li>
 <li><a href="https://docs.docker.com/reference/compose-file/services/#pre_stop">Docker Compose Pre Stop Hook Documentation</a></li>
 <li><a data-preview="" href="../../Deploy-Settings/#reconciliation-settings">Reconciliation settings</a></li>
-<li><a data-preview="" href="../../Known-Limitations/#reconciliation-behavior-for-one-time-services">Known Limitations: Reconciliation behavior for one-time services</a></li>
 </ul>
 
 

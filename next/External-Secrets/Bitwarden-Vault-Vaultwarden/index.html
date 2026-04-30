@@ -1242,8 +1242,7 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Environment variables">
-      <ul class="md-nav__list">
+</li>
         
           <li class="md-nav__item">
   <a href="#finding-item-uuids" class="md-nav__link">
@@ -1284,11 +1283,6 @@
   
 </li>
         
-      </ul>
-    </nav>
-  
-</li>
-        
           <li class="md-nav__item">
   <a href="#example-webhook-store-file-for-bitwarden-vault" class="md-nav__link">
     <span class="md-ellipsis">
@@ -1301,21 +1295,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#minimal-doco-cdyml-example" class="md-nav__link">
+  <a href="#example-doco-cdyml-with-bitwarden-vault-secrets" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Minimal <code>.doco-cd.yml</code> example
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#extended-doco-cdyml-example" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Extended <code>.doco-cd.yml</code> example
+        Example <code>.doco-cd.yml</code> with Bitwarden Vault secrets
       </span>
     </span>
   </a>
@@ -2097,8 +2080,7 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Environment variables">
-      <ul class="md-nav__list">
+</li>
         
           <li class="md-nav__item">
   <a href="#finding-item-uuids" class="md-nav__link">
@@ -2139,11 +2121,6 @@
   
 </li>
         
-      </ul>
-    </nav>
-  
-</li>
-        
           <li class="md-nav__item">
   <a href="#example-webhook-store-file-for-bitwarden-vault" class="md-nav__link">
     <span class="md-ellipsis">
@@ -2156,21 +2133,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#minimal-doco-cdyml-example" class="md-nav__link">
+  <a href="#example-doco-cdyml-with-bitwarden-vault-secrets" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Minimal <code>.doco-cd.yml</code> example
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#extended-doco-cdyml-example" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Extended <code>.doco-cd.yml</code> example
+        Example <code>.doco-cd.yml</code> with Bitwarden Vault secrets
       </span>
     </span>
   </a>
@@ -2358,18 +2324,48 @@ Instead, treat it as the additional services, environment variables, volumes, an
 <p class="admonition-title">Note</p>
 <p>For all configuration options, refer to the image documentation at <a href="https://github.com/kimdre/bitwarden-rest-api-server#getting-started">https://github.com/kimdre/bitwarden-rest-api-server#getting-started</a>.</p>
 </div>
-<ul>
-<li><code>BW_HOST</code> (optional) - Bitwarden or Vaultwarden API host. Defaults to <code>https://vault.bitwarden.com</code>.<br />
-  For Vaultwarden, use your self-hosted instance URL (e.g., <code>https://vault.example.com</code>)</li>
-<li><code>BW_CLIENTID</code> (required) - Client ID from your personal API Key credentials</li>
-<li><code>BW_CLIENTSECRET</code> (required) - Client Secret from your personal API Key credentials</li>
-<li><code>BW_PASSWORD</code> (required) - Master password for your Bitwarden account</li>
-</ul>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BW_HOST</code></td>
+<td>No</td>
+<td>Bitwarden or Vaultwarden API host.</br>For Vaultwarden, use your self-hosted instance URL (for example, <code>https://vault.example.com</code>).</td>
+<td><code>https://vault.bitwarden.com</code></td>
+</tr>
+<tr>
+<td><code>BW_CLIENTID</code></td>
+<td>Yes</td>
+<td>Client ID from your personal API Key credentials.</td>
+<td>N/A</td>
+</tr>
+<tr>
+<td><code>BW_CLIENTSECRET</code></td>
+<td>Yes</td>
+<td>Client Secret from your personal API Key credentials.</td>
+<td>N/A</td>
+</tr>
+<tr>
+<td><code>BW_PASSWORD</code></td>
+<td>Yes</td>
+<td>Master password for your Bitwarden account.</td>
+<td>N/A</td>
+</tr>
+</tbody>
+</table>
 <p>Store these values in a <code>.env</code> file or set them inside the compose file.</p>
 <p>For detailed information on setting up your personal API Key, see: <a href="https://bitwarden.com/help/personal-api-key/">https://bitwarden.com/help/personal-api-key/</a></p>
-<h4 id="finding-item-uuids">Finding Item UUIDs<a class="headerlink" href="#finding-item-uuids" title="Permanent link">&para;</a></h4>
-<p>To reference secrets from Bitwarden in your <code>.doco-cd.yml</code>, you need the UUID of the Bitwarden item (vault entry).</p>
-<h5 id="using-bitwarden-cli">Using Bitwarden CLI<a class="headerlink" href="#using-bitwarden-cli" title="Permanent link">&para;</a></h5>
+<h3 id="finding-item-uuids">Finding Item UUIDs<a class="headerlink" href="#finding-item-uuids" title="Permanent link">&para;</a></h3>
+<p>To reference secrets from Bitwarden in your <code>.doco-cd.yml</code>, you need the UUID of the Bitwarden item (vault entry).
+A UUID has the format <code>12345678-aaaa-bbbb-cccc-123456789abc</code>.</p>
+<h4 id="using-bitwarden-cli">Using Bitwarden CLI<a class="headerlink" href="#using-bitwarden-cli" title="Permanent link">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Login to Bitwarden (if not already logged in)</span>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>bw<span class="w"> </span>login<span class="w"> </span>your-email@example.com
 </span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
@@ -2398,7 +2394,7 @@ Instead, treat it as the additional services, environment variables, volumes, an
 </span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="w">  </span><span class="p">}</span>
 </span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="p">]</span>
 </span></code></pre></div>
-<h5 id="using-bitwarden-web-vault">Using Bitwarden Web Vault<a class="headerlink" href="#using-bitwarden-web-vault" title="Permanent link">&para;</a></h5>
+<h4 id="using-bitwarden-web-vault">Using Bitwarden Web Vault<a class="headerlink" href="#using-bitwarden-web-vault" title="Permanent link">&para;</a></h4>
 <ol>
 <li>Open your Bitwarden vault at <a href="https://vault.bitwarden.com">https://vault.bitwarden.com</a> (or your Vaultwarden URL)</li>
 <li>Click on an item to view its details</li>
@@ -2425,7 +2421,10 @@ Instead, treat it as the additional services, environment variables, volumes, an
 <li><code>bitwarden-login</code> fetches built-in login fields such as <code>username</code> and <code>password</code></li>
 <li><code>bitwarden-fields</code> fetches custom fields by name</li>
 </ul>
-<h3 id="minimal-doco-cdyml-example">Minimal <code>.doco-cd.yml</code> example<a class="headerlink" href="#minimal-doco-cdyml-example" title="Permanent link">&para;</a></h3>
+<h3 id="example-doco-cdyml-with-bitwarden-vault-secrets">Example <code>.doco-cd.yml</code> with Bitwarden Vault secrets<a class="headerlink" href="#example-doco-cdyml-with-bitwarden-vault-secrets" title="Permanent link">&para;</a></h3>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="example-doco-cdyml-with-bitwarden-vault-secrets-basic-example" name="__tabbed_1" type="radio" /><input id="example-doco-cdyml-with-bitwarden-vault-secrets-extended-example" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="example-doco-cdyml-with-bitwarden-vault-secrets-basic-example">Basic example</label><label for="example-doco-cdyml-with-bitwarden-vault-secrets-extended-example">Extended example</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
 <div class="language-yaml highlight"><span class="filename">.doco-cd.yml</span><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myapp</span>
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nt">external_secrets</span><span class="p">:</span>
 </span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span><span class="nt">DB_PASSWORD</span><span class="p">:</span>
@@ -2434,7 +2433,8 @@ Instead, treat it as the additional services, environment variables, volumes, an
 </span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">      </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12345678-aaaa-bbbb-cccc-123456789abc</span>
 </span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">      </span><span class="nt">property</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">password</span>
 </span></code></pre></div>
-<h3 id="extended-doco-cdyml-example">Extended <code>.doco-cd.yml</code> example<a class="headerlink" href="#extended-doco-cdyml-example" title="Permanent link">&para;</a></h3>
+</div>
+<div class="tabbed-block">
 <div class="language-yaml highlight"><span class="filename">.doco-cd.yml</span><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myapp</span>
 </span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nt">external_secrets</span><span class="p">:</span>
 </span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="nt">DB_USERNAME</span><span class="p">:</span>
@@ -2456,6 +2456,9 @@ Instead, treat it as the additional services, environment variables, volumes, an
 </span><span id="__span-6-19"><a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="w">      </span><span class="nt">property</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">api_key</span>
 </span></code></pre></div>
 <p>With this setup, Doco-CD resolves the secret value by:</p>
+</div>
+</div>
+</div>
 <ol>
 <li>rendering the configured store templates using <code>remote_ref</code></li>
 <li>calling the Bitwarden sidecar over HTTP</li>
