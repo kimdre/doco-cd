@@ -2008,8 +2008,8 @@ The <code>scale</code> option sets the number of containers to run for the servi
 </div>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>If you scale down all services in a Docker project or Swarm stack, the entire project will be stopped
-and removed, <strong>excluding</strong> any volumes, networks, and images.</p>
+<p>If you scale down all services in a Docker project or Swarm stack, the entire project will be stopped, 
+but the volumes, configs, secrets, and networks will still exist.</p>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
 <p>To delete volumes, networks, and images, you can use the <code>destroy</code> option in the deployment configuration file (See <a data-preview="" href="../../Deploy-Settings/#destroy-settings">Destroy settings</a>).</p>
