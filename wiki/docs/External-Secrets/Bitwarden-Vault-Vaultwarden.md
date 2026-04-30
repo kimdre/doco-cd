@@ -95,21 +95,23 @@ volumes:
 !!! note
     For all configuration options, refer to the image documentation at https://github.com/kimdre/bitwarden-rest-api-server#getting-started.
 
-- `BW_HOST` (optional) - Bitwarden or Vaultwarden API host. Defaults to `https://vault.bitwarden.com`.  
-  For Vaultwarden, use your self-hosted instance URL (e.g., `https://vault.example.com`)
-- `BW_CLIENTID` (required) - Client ID from your personal API Key credentials
-- `BW_CLIENTSECRET` (required) - Client Secret from your personal API Key credentials
-- `BW_PASSWORD` (required) - Master password for your Bitwarden account
+| Variable          | Required | Description                                                                                                                           | Default                       |
+|-------------------|----------|---------------------------------------------------------------------------------------------------------------------------------------|-------------------------------|
+| `BW_HOST`         | No       | Bitwarden or Vaultwarden API host.</br>For Vaultwarden, use your self-hosted instance URL (for example, `https://vault.example.com`). | `https://vault.bitwarden.com` |
+| `BW_CLIENTID`     | Yes      | Client ID from your personal API Key credentials.                                                                                     | N/A                           |
+| `BW_CLIENTSECRET` | Yes      | Client Secret from your personal API Key credentials.                                                                                 | N/A                           |
+| `BW_PASSWORD`     | Yes      | Master password for your Bitwarden account.                                                                                           | N/A                           |
 
 Store these values in a `.env` file or set them inside the compose file.
 
 For detailed information on setting up your personal API Key, see: https://bitwarden.com/help/personal-api-key/
 
-#### Finding Item UUIDs
+### Finding Item UUIDs
 
 To reference secrets from Bitwarden in your `.doco-cd.yml`, you need the UUID of the Bitwarden item (vault entry).
+A UUID has the format `12345678-aaaa-bbbb-cccc-123456789abc`.
 
-##### Using Bitwarden CLI
+#### Using Bitwarden CLI
 
 ```bash
 # Login to Bitwarden (if not already logged in)
@@ -144,7 +146,7 @@ Example CLI output:
 ]
 ```
 
-##### Using Bitwarden Web Vault
+#### Using Bitwarden Web Vault
 
 1. Open your Bitwarden vault at https://vault.bitwarden.com (or your Vaultwarden URL)
 2. Click on an item to view its details
@@ -174,44 +176,46 @@ In this example:
 - `bitwarden-login` fetches built-in login fields such as `username` and `password`
 - `bitwarden-fields` fetches custom fields by name
 
-### Minimal `.doco-cd.yml` example
+### Example `.doco-cd.yml` with Bitwarden Vault secrets
 
-```yaml title=".doco-cd.yml"
-name: myapp
-external_secrets:
-  DB_PASSWORD:
-    store_ref: bitwarden-login
-    remote_ref:
-      key: 12345678-aaaa-bbbb-cccc-123456789abc
-      property: password
-```
+=== "Basic example"
 
-### Extended `.doco-cd.yml` example
+    ```yaml title=".doco-cd.yml"
+    name: myapp
+    external_secrets:
+      DB_PASSWORD:
+        store_ref: bitwarden-login
+        remote_ref:
+          key: 12345678-aaaa-bbbb-cccc-123456789abc
+          property: password
+    ```
 
-```yaml title=".doco-cd.yml"
-name: myapp
-external_secrets:
-  DB_USERNAME:
-    store_ref: bitwarden-login
-    remote_ref:
-      key: 12345678-aaaa-bbbb-cccc-123456789abc
-      property: username
+=== "Extended example"
 
-  DB_PASSWORD:
-    store_ref: bitwarden-login
-    remote_ref:
-      key: 12345678-aaaa-bbbb-cccc-123456789abc
-      property: password
-
-  API_KEY:
-    store_ref: bitwarden-fields
-    remote_ref:
-      key: dddddddd-1111-2222-3333-eeeeeeeeeeee
-      property: api_key
-```
-
-With this setup, Doco-CD resolves the secret value by:
-
+    ```yaml title=".doco-cd.yml"
+    name: myapp
+    external_secrets:
+      DB_USERNAME:
+        store_ref: bitwarden-login
+        remote_ref:
+          key: 12345678-aaaa-bbbb-cccc-123456789abc
+          property: username
+    
+      DB_PASSWORD:
+        store_ref: bitwarden-login
+        remote_ref:
+          key: 12345678-aaaa-bbbb-cccc-123456789abc
+          property: password
+    
+      API_KEY:
+        store_ref: bitwarden-fields
+        remote_ref:
+          key: dddddddd-1111-2222-3333-eeeeeeeeeeee
+          property: api_key
+    ```
+    
+    With this setup, Doco-CD resolves the secret value by:
+    
 1. rendering the configured store templates using `remote_ref`
 2. calling the Bitwarden sidecar over HTTP
 3. extracting the value from the JSON response with `json_path`

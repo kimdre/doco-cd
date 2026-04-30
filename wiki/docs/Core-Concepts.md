@@ -8,8 +8,6 @@ tags:
 This page explains the key terms and concepts used throughout the Doco-CD documentation.
 Familiarity with [Git](https://git-scm.com/), [Docker](https://docs.docker.com/), and basic [GitOps](https://about.gitlab.com/topics/gitops/) principles is assumed.
 
----
-
 ## How Doco-CD Works
 
 Doco-CD follows a **GitOps** model: your Git repository is the single source of truth for both application code and deployment configuration.

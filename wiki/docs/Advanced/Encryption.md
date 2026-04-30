@@ -14,16 +14,17 @@ Doco-CD supports the encryption of sensitive data in your doco-cd app config and
 
 SOPS supports files in the following formats:
 
-- YAML files with the `.yaml` or `.yml` extension
-- JSON files with the `.json` extension
-- Dotenv files with the `.env` extension
-- Ini files with the `.ini` extension
-- Binary/text files (default format)
+| Format      | Required file extension                             | Example                                    |
+|-------------|-----------------------------------------------------|--------------------------------------------|
+| YAML        | `.yaml` or `.yml`                                   | `example.yaml`                             |
+| JSON        | `.json`                                             | `example.json`                             |
+| Dotenv      | `.env`                                              | `example.env`                              |
+| INI         | `.ini`                                              | `example.ini`                              |
+| Binary/Text | _any other or none_</br>**Fallback/Default format** | `example.txt`</br>`example` (no extension) |
 
 ## Usage with SOPS and age
 
-!!! note
-    I recommend to use [SOPS with age](https://getsops.io/docs/#encrypting-using-age) for encrypting your deployment files.
+!!! tip "I recommend to use [SOPS with age](https://getsops.io/docs/#encrypting-using-age) for encrypting your deployment files."
 
 For this, you need to 
 
@@ -86,26 +87,27 @@ To use encrypted values in the doco-cd app configuration, store secrets in encry
 `*_FILE` environment variables (for example, `GIT_ACCESS_TOKEN_FILE`).
 Each variable should point to the encrypted file path inside the container.
 
-For example, to use an encrypted Git access token, create a text file with the token and encrypt it with SOPS:
-```bash
-printf "my-git-access-token" > git-access-token.txt
-sops encrypt --age age1g3lcl... git-access-token.txt > git-access-token.enc.txt
-```
+!!! example "Encrypted Git access token"
+    To use an encrypted Git access token, create a text file with the token and encrypt it with SOPS:
+    ```bash
+    printf "my-git-access-token" > git-access-token.txt
+    sops encrypt --age age1g3lcl... git-access-token.txt > git-access-token.enc.txt
+    ```
 
-Then set the `GIT_ACCESS_TOKEN_FILE` environment variable in your `docker-compose.yml` file to the encrypted file path:
-
-```yaml title="docker-compose.yml" hl_lines="3-6 8-11"
-services:
-  app:
-    environment:
-      GIT_ACCESS_TOKEN_FILE: /path/to/git-access-token
+    Then set the `GIT_ACCESS_TOKEN_FILE` environment variable in your `docker-compose.yml` file to the encrypted file path:
+    
+    ```yaml title="docker-compose.yml" hl_lines="3-6 8-11"
+    services:
+      app:
+        environment:
+          GIT_ACCESS_TOKEN_FILE: /path/to/git-access-token
+        secrets:
+          - git_access_token
+     
     secrets:
-      - git_access_token
- 
-secrets:
-  git_access_token:
-    file: git-access-token.enc.txt
-```
+      git_access_token:
+        file: git-access-token.enc.txt
+    ```
 
 ### Deployment with a SOPS-encrypted file
 
@@ -121,8 +123,7 @@ Generate the encrypted file with SOPS:
 sops encrypt --age age1g3lcl... secrets.env > secrets.enc.env
 ```
 
-!!! tip
-    You can later edit the encrypted file in-place with 
+!!! tip "You can later edit the encrypted file in-place with"
     ```sh
     sops edit secrets.enc.env
     ```
