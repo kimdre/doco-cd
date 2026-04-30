@@ -82,6 +82,8 @@ They are injected into the deployment environment as environment variables or Do
 
 See [External Secrets](External-Secrets/index.md) for supported providers and usage.
 
+### Encryption
+
 Doco-CD supports decrypting files encrypted with [SOPS](https://getsops.io/) at deployment time.
 This allows sensitive values in deployment and compose files to be stored encrypted in the Git repository.
 
