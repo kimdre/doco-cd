@@ -36,8 +36,8 @@ Some Tips and Tricks for using application.
     ```
 
 !!! note
-    If you scale down all services in a Docker project or Swarm stack, the entire project will be stopped
-    and removed, **excluding** any volumes, networks, and images.
+    If you scale down all services in a Docker project or Swarm stack, the entire project will be stopped, 
+    but the volumes, configs, secrets, and networks will still exist.
 
     !!! tip
         To delete volumes, networks, and images, you can use the `destroy` option in the deployment configuration file (See [Destroy settings](../Deploy-Settings.md#destroy-settings)).
