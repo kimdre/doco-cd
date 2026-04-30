@@ -89,15 +89,18 @@ services:
 
 #### container exited (0)
 
-If the deployment fails with an error containing a message like `container <init-container-name> exited (0)`, try to add a short sleep at the end of the init container commands. This is a workaround for a known issue where the init container may exit before the main container starts waiting for it, causing the main container to miss the successful completion of the init container. Adding a short sleep ensures that the init container has time to exit properly before the main container checks its status.
+If the deployment fails with an error containing a message like `container <init-container-name> exited (0)`, try to add a short sleep at the end of the init container commands.
+This is a workaround for a known issue where the init container may exit before the main container starts waiting for it, causing the main container to miss the successful completion of the init container.
+Adding a short sleep ensures that the init container has time to exit properly before the main container checks its status.
 
-**Example**:
-```yaml title="Add a sleep command to the init container in your docker-compose.yml"
-entrypoint: ["/bin/sh", "-c"]
-command: ["<your-commands-here> && sleep 3"] # (1)!
-```
+!!! example "Add a sleep command to the init container in your docker-compose.yml"
+     The sleep duration can be adjusted based on the expected time for the init commands to complete.
+    ```yaml title="docker-compose.yml"
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["<your-commands-here> && sleep 3"] # (1)!
+    ```
 
-1. Depending on the complexity of your init commands, you may need to adjust the sleep duration.
+    1. Depending on the complexity of your init commands, you may need to adjust the sleep duration.
 
 Related issue: [#1115](https://github.com/kimdre/doco-cd/issues/1115)
 
