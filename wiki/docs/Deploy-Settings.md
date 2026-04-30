@@ -40,7 +40,7 @@ The docker compose deployment can be configured inside the [deployment configura
 | `compose_files`    | array of strings | List of docker-compose and overwrite files to use (in descending order, first file gets read first and following files overwrite/merge previous configs). Unknown/Non-existing files get skipped.                                                                                                                                                                                                                                                                                    | `["compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml"]`                                         |
 | `environment`      | map of strings   | A map of environment variables to use for [variable interpolation](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation) in the compose files. Overwrites entries from `env_files` with the same key/name.                                                                                                                                                                                                                                           | `null` (No environment variables)                                                                                      |
 | `env_files`        | array of strings | List of dotenv files to use for [variable interpolation](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation). Subsequent .env files overwrite each other. If the default `.env` file does not exist, it will be ignored.<br>If `repository_url` is also specified to deploy from a different repo, you can use the `remote:<filepath>` syntax to specify, that the dotenv file is located in the remote repository and should be loaded from there | `[".env"]`                                                                                                             |
-| `profiles`         | array of strings | List of [compose profiles](https://docs.docker.com/compose/how-tos/profiles/) to use for the deployment, e.g., ["prod", "debug"].                                                                                                                                                                                                                                                                                                                                                    | `[]`                                                                                                                   |
+| `profiles`         | array of strings | List of [compose profiles](https://docs.docker.com/compose/how-tos/profiles/) to use for the deployment, e.g., `#!yaml ["prod", "debug"]`.                                                                                                                                                                                                                                                                                                                                           | `[]`                                                                                                                   |
 | `webhook_filter`   | string           | A regular expression to whitelist deployment triggers based on the webhook event payload. See the [Webhook Filter](#webhook-filter) Section below.                                                                                                                                                                                                                                                                                                                                   | ` ` (Ignored when not specified)                                                                                       |
 | `remove_orphans`   | boolean          | Remove/Prune containers/services that are not (or no longer) defined in the Compose file.                                                                                                                                                                                                                                                                                                                                                                                            | `true`                                                                                                                 |
 | `prune_images`     | boolean          | Prune images that are no longer in use after a deployment. If the image is still used by any other container, it won't get deleted.                                                                                                                                                                                                                                                                                                                                                  | `true`                                                                                                                 |
@@ -53,79 +53,79 @@ The docker compose deployment can be configured inside the [deployment configura
 | `reconciliation`   | object           | Enables periodic reconciliation. See [reconciliation settings](#reconciliation-settings) for more details.                                                                                                                                                                                                                                                                                                                                                                           | `{enabled: true, interval: 60}`                                                                                        |
 
 
-### Example
+!!! example
 
-#### With default values
-
-When using the default values, most settings can be omitted.
-
-```yaml title=".doco-cd.yml"
-name: some-project # (1)!
-```
-
-1. Name of the deployed stack/project
-
-#### With custom values
-
-```yaml title=".doco-cd.yml"
-name: some-project # (1)!
-reference: other-branch # (2)!
-working_dir: myapp/deployment # (3)!
-compose_files: # (4)!
-  - prod.compose.yml
-  - service-overwrite.yml
-profiles:
-  - debug # (5)!
-```
-
-1. Name of the deployed stack/project
-2. The branch or tag to deploy from
-3. The working directory for the deployment, relative to the root of the repository. In this case, doco-cd will look for the compose files in the `myapp/deployment` subdirectory.
-4. The list of compose files to use for the deployment in descending order. In this case, doco-cd will first read the `prod.compose.yml` file and then overwrite/merge it with the `service-overwrite.yml` file.
-5. Deploys services with the `debug` profile in addition to the core/main services (that have no profiles)
-
-#### From remote repository
-
-When deploying your docker compose stack from a different repository, the `repository_url` setting must be specified. 
-The `reference` and `working_dir` are used in this case to specify the branch/tag and subdirectory of the other repository that contains the docker compose files.
-
-You can use the `env_files` setting to define which dotenv files will be loaded from the local and which from the remote repository.
-To specify, that a dotenv file should be loaded from the remote repository, use the `remote:<filepath>` syntax.
-Entries/Keys, that appear in multiple files, get overwritten by the next occurrence and remote dotenv files have higher priority than local ones.
-
-```yaml title=".doco-cd.yml"
-name: some-project # (1)!
-repository_url: https://github.com/my-org/myapp.git # (2)!
-reference: main # (3)!
-working_dir: myapp/docker # (4)!
-env_files: # (5)!
-  - base.env # (6)!
-  - remote:test.env # (7)!
-```
-
-1. Name of the deployed stack/project
-2. Clone and deploy from this repository instead of the repository where the deployment config file is located.
-3. The branch or tag to deploy from in the remote repository (`my-org/myapp`).
-4. The working directory for the deployment, relative to the root of the remote repository. In this case, doco-cd will look for the compose files in the `myapp/docker` subdirectory.
-5. List of dotenv files to use in descending order. Existing variables get overwritten by the next occurrence. In this case, variables from `test.env` in the remote repository will overwrite variables from `base.env` in the local repository.
-6. Read file from local repository
-7. Read file from remote repository
-
-```dotenv title="base.env"
-TEST=base
-HELLO=world
-```
-
-```dotenv title="test.env in remote repository"
-TEST=changed
-```
-
-This will result in the following environment variables being set for the deployment in the remote repository:
-
-```dotenv
-TEST=changed
-HELLO=world
-```
+    === "With default values"
+    
+        When using the default values, most settings can be omitted.
+        
+        ```yaml title=".doco-cd.yml"
+        name: some-project # (1)!
+        ```
+    
+        1. Name of the deployed stack/project
+    
+    === "With custom values"
+    
+        ```yaml title=".doco-cd.yml"
+        name: some-project # (1)!
+        reference: other-branch # (2)!
+        working_dir: myapp/deployment # (3)!
+        compose_files: # (4)!
+          - prod.compose.yml
+          - service-overwrite.yml
+        profiles:
+          - debug # (5)!
+        ```
+        
+        1. Name of the deployed stack/project
+           2. The branch or tag to deploy from
+           3. The working directory for the deployment, relative to the root of the repository. In this case, doco-cd will look for the compose files in the `myapp/deployment` subdirectory.
+           4. The list of compose files to use for the deployment in descending order. In this case, doco-cd will first read the `prod.compose.yml` file and then overwrite/merge it with the `service-overwrite.yml` file.
+           5. Deploys services with the `debug` profile in addition to the core/main services (that have no profiles)
+    
+    === "From remote repository"
+    
+        When deploying your docker compose stack from a different repository, the `repository_url` setting must be specified. 
+        The `reference` and `working_dir` are used in this case to specify the branch/tag and subdirectory of the other repository that contains the docker compose files.
+        
+        You can use the `env_files` setting to define which dotenv files will be loaded from the local and which from the remote repository.
+        To specify, that a dotenv file should be loaded from the remote repository, use the `remote:<filepath>` syntax.
+        Entries/Keys, that appear in multiple files, get overwritten by the next occurrence and remote dotenv files have higher priority than local ones.
+        
+        ```yaml title=".doco-cd.yml"
+        name: some-project # (1)!
+        repository_url: https://github.com/my-org/myapp.git # (2)!
+        reference: main # (3)!
+        working_dir: myapp/docker # (4)!
+        env_files: # (5)!
+          - base.env # (6)!
+          - remote:test.env # (7)!
+        ```
+    
+        1. Name of the deployed stack/project
+        2. Clone and deploy from this repository instead of the repository where the deployment config file is located.
+        3. The branch or tag to deploy from in the remote repository (`my-org/myapp`).
+        4. The working directory for the deployment, relative to the root of the remote repository. In this case, doco-cd will look for the compose files in the `myapp/docker` subdirectory.
+        5. List of dotenv files to use in descending order. Existing variables get overwritten by the next occurrence. In this case, variables from `test.env` in the remote repository will overwrite variables from `base.env` in the local repository.
+        6. Read file from local repository
+        7. Read file from remote repository
+    
+        ```dotenv title="base.env"
+        TEST=base
+        HELLO=world
+        ```
+        
+        ```dotenv title="test.env in remote repository"
+        TEST=changed
+        ```
+        
+        This will result in the following environment variables being set for the deployment in the remote repository:
+        
+        ```dotenv
+        TEST=changed
+        HELLO=world
+        ```
 
 ### Auto discover settings
 
@@ -140,34 +140,37 @@ Specify all auto-discover settings in a nested `auto_discover_opts` object in th
 | `depth`  | number  | Maximum depth of subdirectories to scan for docker-compose files, set to `0` for no limit            | `0`           |
 | `delete` | boolean | Auto-remove obsolete auto-discovered deployments that are no longer present in the working directory | `true`        |
 
-### Example
+!!! example
+    <div class="grid cards" markdown>
 
-With a file structure like this
-```
-.doco-cd.yml
-apps/
-├── wordpress/
-│   ├── docker-compose.yml
-│   └── .env
-├── nginx/
-│   ├── docker-compose.yaml
-│   └── configs/
-│       └── nginx.conf
-└── misc/
-    └── image.png
-```
+    - With a file structure like this
+      ``` title="File structure"
+      .doco-cd.yml
+      apps/
+      ├── wordpress/
+      │   ├── docker-compose.yml
+      │   └── .env
+      ├── nginx/
+      │   ├── docker-compose.yaml
+      │   └── configs/
+      │       └── nginx.conf
+      └── misc/
+          └── image.png
+      ```
+    
+    - And a `.doco-cd.yml` with the following content:
+      ```yaml title=".doco-cd.yml"
+      working_dir: apps/
+      auto_discover: true
+      auto_discover_opts:
+        depth: 1
+      ```
+    </div>
 
-and a `.doco-cd.yml` with the following content:
-```yaml title=".doco-cd.yml"
-working_dir: apps/
-auto_discover: true
-auto_discover_opts:
-  depth: 1
-```
+    Doco-cd would deploy 2 stacks to the docker host:
 
-doco-cd would deploy 2 stacks to the docker host:
-- wordpress
-- nginx
+      - wordpress
+      - nginx
 
 ### Build settings
 
@@ -182,17 +185,16 @@ Specify all build-settings in a nested `build_opts` object in the deployment con
 | `args`             | map of strings | A map of build-time arguments to pass to the build process | `null`        |
 | `no_cache`         | boolean        | Disables the use of the cache when building images         | `false`       |
 
-#### Example
-
-```yaml title=".doco-cd.yml"
-name: some-project
-build_opts:
-  force_image_pull: true
-  args:
-    BUILD_DATE: 2021-01-01
-    VCS_REF: 123456
-  no_cache: true
-```
+!!! example
+    ```yaml title=".doco-cd.yml"
+    name: some-project
+    build_opts:
+      force_image_pull: true
+      args:
+        BUILD_DATE: 2021-01-01
+        VCS_REF: 123456
+      no_cache: true
+    ```
 
 ### Destroy settings
 
@@ -206,16 +208,15 @@ Specify all destroy-settings in a nested `destroy_opts` object in the deployment
 | `remove_images`  | boolean | Remove all images used by the deployment (currently not supported in docker swarm mode)                                                                                        | `true`        |
 | `remove_dir`     | boolean | Remove the cloned repository in the data directory after the deployment is removed (Setting this to `false` is useful e.g. when you use bind mounts and want to keep the data) | `true`        |
 
-#### Example
-
-```yaml title=".doco-cd.yml"
-name: some-project
-destroy: true
-destroy_opts:
-  remove_volumes: true
-  remove_images: false
-  remove_dir: false
-```
+!!! example
+    ```yaml title=".doco-cd.yml"
+    name: some-project
+    destroy: true
+    destroy_opts:
+      remove_volumes: true
+      remove_images: false
+      remove_dir: false
+    ```
 
 ### Reconciliation settings
 
@@ -234,12 +235,13 @@ The following settings can be used to configure periodic reconciliation.
 
 --8<-- "wiki/docs/_snippets/reconciliation-note.md"
 
-```yaml title=".doco-cd.yml"
-name: some-project
-reconciliation:
-  enabled: true
-  interval: 60
-```
+!!! example
+    ```yaml title=".doco-cd.yml"
+    name: some-project
+    reconciliation:
+      enabled: true
+      interval: 60
+    ```
 
 ### Webhook Filter
 
@@ -258,22 +260,24 @@ Depending on the event, the reference in a webhook payload has a pattern of
 You can specify the filter explicitly or in a loose form. Explicit regular expressions are recommended.  
 See [Go Regular Expressions](https://pkg.go.dev/regexp/syntax) for more information on the syntax.
 
-#### Explicit examples
-- Only on events on the main branch: `^refs/heads/main$`
-- Only on tag events with semantic versioning: `^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$`)
+!!! example
+    === "Explicit regular expression"
 
-#### Loose examples
-- Must contain `stable` somewhere in the reference: `stable`
+        - Only on events on the main branch: `^refs/heads/main$`
+        - Only on tag events with semantic versioning: `^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$`
 
-!!! warning
-    Loose expressions can allow references that might not be wanted.
+    === "Loose regular expression"
+        - Must contain `stable` somewhere in the reference: `stable`
 
-E.g. `refs/heads/main` (without `^` and `$`) also allows `refs/heads/main-something`
+        !!! warning
+            Loose expressions can allow references that might not be wanted.
+
+            E.g. `refs/heads/main` (without `^` and `$`) also allows `refs/heads/main-something`
 
 
 ### Service Labels
 
-#### Avoid service recreation when configs, secrets or bind mounts change
+#### Prevent recreation on config, secret, or bind mount changes
 
 When using docker compose with configs, secrets or bind mounts, changes to these resources will trigger a recreation of the service containers by default.
 To avoid this, you can set the `cd.doco.deployment.recreate.ignore` service label to a YAML list of scopes that should be ignored for recreation.
@@ -284,31 +288,34 @@ It accepts one or more of the following scopes: `configs`, `secrets`, `bindMount
 1. `configs` and `secrets` items refer to names defined in the top-level `configs` and `secrets` sections.
 2. `bindMounts` items refer to the **target paths** of bind mounts (not the source paths).
 
-##### Example
+!!! example
 
-**Single line YAML value**
+    === "Single line YAML value"
+    
+        !!! warning "Quotes are required"
+            Quotes are required to prevent YAML parsing errors due to the colons and brackets in the value
+        
+        ```yaml title="docker-compose.yml"
+        cd.doco.deployment.recreate.ignore: "{configs: [app, nginx], secrets: [db], bindMounts: [/etc/caddy]}"
+        ```
 
-!!! example "Quotes are required"
-    Quotes are required to prevent YAML parsing errors due to the colons and brackets in the value
+    === "Multiline YAML value"
 
-```yaml title="docker-compose.yml"
-cd.doco.deployment.recreate.ignore: "{configs: [app, nginx], secrets: [db], bindMounts: [/etc/caddy]}"
-```
+        !!! tip "Use multiline YAML for better readability"
 
-**Multiline YAML value**
+        ```yaml title="docker-compose.yml"
+        cd.doco.deployment.recreate.ignore: >-
+          {
+            configs: [app, nginx],
+            secrets: [db],
+            bindMounts: [/etc/caddy]
+          }
+        ```
 
-Or as a multiline YAML for better readability:
+#### Send signal on ignored recreation
 
-```yaml title="docker-compose.yml"
-cd.doco.deployment.recreate.ignore: >-
-  {
-    configs: [app, nginx],
-    secrets: [db],
-    bindMounts: [/etc/caddy]
-  }
-```
-
-Add the `cd.doco.deployment.recreate.ignore.signal` label to send a signal to a service when it is ignored. By default, no signal is sent. This requires `cd.doco.deployment.recreate.ignore` to be set.
+Add the `cd.doco.deployment.recreate.ignore.signal` label to send a signal to a service when it is ignored. 
+By default, no signal is sent. This requires [`cd.doco.deployment.recreate.ignore`](#prevent-recreation-on-config-secret-or-bind-mount-changes) to be set.
 
 Both labels must not be empty if they are present.
 
@@ -347,53 +354,55 @@ services:
 
 ## Multiple service deployments
 
-Multiple service deployments can be configured in a single deployment config file by specifying multiple YAML documents (separated by `---`).
+Multiple service deployments can be configured in a single deployment config file by specifying multiple YAML documents (separated by `#!yaml ---`).
 
-```yaml title=".doco-cd.yml"
-name: app1
-working_dir: app1
----
-name: app2
-working_dir: app2
-timeout: 600
----
-name: app3
-working_dir: app3
-compose_files:
-  - custom.yml
-```
+!!! example
 
-### Example
+    === "Basic"
 
-#### Same directory
+        ```yaml title=".doco-cd.yml"
+        name: app1
+        working_dir: app1
+        ---
+        name: app2
+        working_dir: app2
+        timeout: 600
+        ---
+        name: app3
+        working_dir: app3
+        compose_files:
+          - custom.yml
+        ```
 
-All docker compose files are located in the same base directory.
+    === "Same directory"
 
-```yaml title=".doco-cd.yml"
-name: gitea
-compose_files: 
-  - gitea.yml
----
-name: paperless-ngx
-compose_files:
-  - paperless.yml
-  - paperless-overwrite.yml
-```
+        All docker compose files are located in the same base directory.
+        
+        ```yaml title=".doco-cd.yml"
+        name: gitea
+        compose_files: 
+          - gitea.yml
+        ---
+        name: paperless-ngx
+        compose_files:
+          - paperless.yml
+          - paperless-overwrite.yml
+        ```
 
-#### Sub-directories
+    === "Sub-directories"
 
-When docker compose files are located in subdirectories.
-
-```yaml title=".doco-cd.yml"
-name: gitea
-working_dir: gitea
----
-name: paperless-ngx
-working_dir: paperless-ngx
-compose_files:
-  - docker-compose.yml
-  - docker-compose.overwrite.yml
-```
+        When docker compose files are located in subdirectories.
+        
+        ```yaml title=".doco-cd.yml"
+        name: gitea
+        working_dir: gitea
+        ---
+        name: paperless-ngx
+        working_dir: paperless-ngx
+        compose_files:
+          - docker-compose.yml
+          - docker-compose.overwrite.yml
+        ```
 
 ## Multiple deployment targets
 

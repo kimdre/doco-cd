@@ -210,4 +210,3 @@ services:
 - [Docker Compose Post Start Hook Documentation](https://docs.docker.com/reference/compose-file/services/#post_start)
 - [Docker Compose Pre Stop Hook Documentation](https://docs.docker.com/reference/compose-file/services/#pre_stop)
 - [Reconciliation settings](../Deploy-Settings.md#reconciliation-settings)
-- [Known Limitations: Reconciliation behavior for one-time services](../Known-Limitations.md#reconciliation-behavior-for-one-time-services)
