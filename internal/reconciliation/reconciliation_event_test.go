@@ -499,3 +499,68 @@ func TestDeployConfigsByName(t *testing.T) {
 		t.Fatalf("expected only stack-a deploy configs, got %#v", got)
 	}
 }
+
+func TestUniqueRedeployDCsFromGroupByEvent(t *testing.T) {
+	t.Parallel()
+
+	dcDie := config.DefaultDeployConfig("stack-die", "main")
+	dcDestroy := config.DefaultDeployConfig("stack-destroy", "main")
+	dcBoth := config.DefaultDeployConfig("stack-both", "main")       // registered under two redeploy events
+	dcRestart := config.DefaultDeployConfig("stack-restart", "main") // only restart events → must be excluded
+
+	grouped := map[string][]*config.DeployConfig{
+		"die":       {dcDie, dcBoth},
+		"destroy":   {dcDestroy, dcBoth}, // dcBoth appears again — must be deduplicated
+		"unhealthy": {dcRestart},         // restart-oriented — must be excluded
+		"stop":      {dcRestart},         // restart-oriented — must be excluded
+	}
+
+	got := uniqueRedeployDCsFromGroupByEvent(grouped)
+
+	// Build a name set for order-independent assertion.
+	names := make(map[string]struct{}, len(got))
+	for _, dc := range got {
+		names[dc.Name] = struct{}{}
+	}
+
+	if len(got) != 3 {
+		t.Fatalf("expected 3 unique redeploy configs, got %d: %v", len(got), names)
+	}
+
+	for _, wantName := range []string{"stack-die", "stack-destroy", "stack-both"} {
+		if _, ok := names[wantName]; !ok {
+			t.Errorf("expected %q to be included, got %v", wantName, names)
+		}
+	}
+
+	if _, ok := names["stack-restart"]; ok {
+		t.Error("expected stack-restart to be excluded (only restart-oriented events)")
+	}
+}
+
+func TestUniqueRedeployDCsFromGroupByEvent_EmptyWhenOnlyRestartEvents(t *testing.T) {
+	t.Parallel()
+
+	dc := config.DefaultDeployConfig("stack-a", "main")
+
+	grouped := map[string][]*config.DeployConfig{
+		"unhealthy": {dc},
+		"oom":       {dc},
+		"kill":      {dc},
+		"stop":      {dc},
+	}
+
+	got := uniqueRedeployDCsFromGroupByEvent(grouped)
+	if len(got) != 0 {
+		t.Fatalf("expected empty result for all-restart events, got %d configs", len(got))
+	}
+}
+
+func TestUniqueRedeployDCsFromGroupByEvent_EmptyInput(t *testing.T) {
+	t.Parallel()
+
+	got := uniqueRedeployDCsFromGroupByEvent(map[string][]*config.DeployConfig{})
+	if len(got) != 0 {
+		t.Fatalf("expected empty result for empty input, got %d", len(got))
+	}
+}
