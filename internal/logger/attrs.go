@@ -22,6 +22,8 @@ func WithoutAttr(l *slog.Logger, key string) *slog.Logger {
 	})
 }
 
+// attrFilterHandler captures logger-level attrs and reapplies them to each record.
+// It lets WithoutAttr remove already-attached attrs when this wrapper is present.
 type attrFilterHandler struct {
 	next  slog.Handler
 	attrs []slog.Attr
@@ -83,6 +85,8 @@ func (h *attrFilterHandler) withoutAttr(key string) *attrFilterHandler {
 	}
 }
 
+// recordAttrFilterHandler removes one attribute key from emitted records.
+// It is used when the underlying handler is not attrFilterHandler.
 type recordAttrFilterHandler struct {
 	next      slog.Handler
 	removeKey string
