@@ -41,7 +41,7 @@ func TestGetLatestAppReleaseVersion(t *testing.T) {
 func TestGetLatestAppReleaseVersion_StatusError(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "rate limited", http.StatusForbidden)
 	}))
 	defer server.Close()
@@ -59,7 +59,7 @@ func TestGetLatestAppReleaseVersion_StatusError(t *testing.T) {
 func TestGetLatestAppReleaseVersion_NoStableRelease(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
 		_, err := w.Write([]byte(`[
