@@ -9,6 +9,34 @@ tags:
 
 To access a private container registry, you need to provide the credentials by adding the docker config file `~/.docker/config.json` to the doco-cd container.
 
+## Mounting an existing docker config file
+
+You can mount your existing `~/.docker/config.json` file from the host to the container if you have already added the credentials using `docker login` on the host machine.
+
+??? example "How to add credentials using `docker login`"
+
+    Run `docker login` to add the credentials to the config file:
+    
+    ```sh
+    docker login my.registry.example
+    ```
+
+    If the login is successful, the credentials will be stored in the `~/.docker/config.json` file on your host machine. You can then mount this file to the doco-cd container to allow it to access the private registry.
+
+Mount the config file to the container:
+
+```yaml title="docker-compose.yml" hl_lines="7"
+services:
+  app:
+    container_name: doco-cd
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - data:/data
+      - ~/.docker/config.json:/root/.docker/config.json:ro
+```
+
+## Using a custom docker config file
+
 1. Encode your credentials to base64 (here we use `printf` to avoid the trailing newline, you can also use `echo -n`):
 
     ```sh

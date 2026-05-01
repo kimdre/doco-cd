@@ -8,8 +8,6 @@ tags:
 This page explains the key terms and concepts used throughout the Doco-CD documentation.
 Familiarity with [Git](https://git-scm.com/), [Docker](https://docs.docker.com/), and basic [GitOps](https://about.gitlab.com/topics/gitops/) principles is assumed.
 
----
-
 ## How Doco-CD Works
 
 Doco-CD follows a **GitOps** model: your Git repository is the single source of truth for both application code and deployment configuration.
@@ -83,6 +81,8 @@ Secrets fetched at deployment runtime from an external secret manager (e.g. AWS 
 They are injected into the deployment environment as environment variables or Docker secrets, avoiding the need to store sensitive values in the Git repository or in Doco-CD's own configuration.
 
 See [External Secrets](External-Secrets/index.md) for supported providers and usage.
+
+### Encryption
 
 Doco-CD supports decrypting files encrypted with [SOPS](https://getsops.io/) at deployment time.
 This allows sensitive values in deployment and compose files to be stored encrypted in the Git repository.

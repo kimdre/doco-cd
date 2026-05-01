@@ -52,29 +52,26 @@ jobs:
         run: |
           MAJOR_MINOR="$(echo $VERSION | sed -E 's/^(v[0-9]+\.[0-9]+)\..*$/\1/')"
 
-          mike deploy --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --push --alias-type redirect --update-aliases "$MAJOR_MINOR" latest
-          mike set-default --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --push latest
-
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          ref: ${{ env.DOCS_BRANCH }}
+          mike deploy --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --alias-type symlink --update-aliases "$MAJOR_MINOR" latest
+          mike set-default --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml latest
 
       # This is a bit hacky, but it ensures that the sitemap.xml always points to the latest version of the docs
       - name: Create symlinks to latest Sitemap.xml
         run: |
+          git fetch origin "$DOCS_BRANCH"
+          git checkout $DOCS_BRANCH
+          
           # Add a symlink to the latest sitemap.xml in the root of the gh-pages branch, pointing to the latest version's sitemap.xml
           ln -fs latest/sitemap.xml sitemap.xml
           git add sitemap.xml
           
           # TODO: Remove this once the symlink alias bug is fixed in Zensical (https://github.com/zensical/ui/issues/126)
-          VERSION="$(jq -r '.[] | select(.aliases[] == "latest") | .version' versions.json)"
-          ln -sf "../$VERSION/sitemap.xml" latest/sitemap.xml
-          git add latest/sitemap.xml
+          sed -E -i 's#/v[0-9]+\.[0-9]+/#/latest/#g' latest/sitemap.xml
+          git add $(realpath latest/sitemap.xml)
           
           # Push the changes to the gh-pages branch
-          git commit -m "Update latest sitemap.xml symlink to $VERSION" || echo "No changes to commit"
-          git push origin $DOCS_BRANCH
+          git commit --amend --no-edit || echo "No changes to commit"
+          git push --force-with-lease origin $DOCS_BRANCH
 #
 #  deploy:
 #    name: Deploy to GitHub Pages
