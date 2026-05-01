@@ -184,7 +184,7 @@ func (j *job) runEventLoop(ctx context.Context, jobLog *slog.Logger, eventCh <-c
 
 // normalizeRepositoryLabelFromCloneURL mirrors the repository-name normalization used during poll deployment labeling.
 func normalizeRepositoryLabelFromCloneURL(cloneURL config.HttpUrl) string {
-	repoName := gitInternal.GetRepoName(string(cloneURL))
+	repoName := gitInternal.GetFullName(string(cloneURL))
 	parts := strings.Split(repoName, "/")
 
 	if len(parts) > 2 {
