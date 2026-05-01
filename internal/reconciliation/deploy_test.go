@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/containerd/errdefs"
+	composeapi "github.com/docker/compose/v5/pkg/api"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
@@ -108,12 +110,16 @@ func TestDeploy(t *testing.T) {
 	dcs[1].Reconciliation.Events = []string{"stop"}
 
 	t.Cleanup(func() {
+		for _, dc := range dcs {
+			waitForStackDeploymentToFinish(t, repoName, dc.Name, 20*time.Second)
+		}
+
 		reconciliationHandler.close()
 
 		for _, dc := range dcs {
 			ctx := context.Background()
-			if err := docker.DestroyStack(log, &ctx, &dockerCli, dc); err != nil {
-				t.Error("docker.DestroyStack err", err)
+			if err := destroyTestStack(ctx, dockerCli.Client(), dc.Name); err != nil {
+				t.Error("destroyTestStack err", err)
 			}
 		}
 	})
@@ -241,6 +247,58 @@ func rmContainer(ctx context.Context, t *testing.T, cli client.APIClient, contai
 	}
 
 	wg.Wait()
+
+	return nil
+}
+
+func waitForStackDeploymentToFinish(t *testing.T, repository, stack string, timeout time.Duration) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+
+	for {
+		if !reconciliationHandler.isStackDeploymentInProgress(repository, stack) {
+			return
+		}
+
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for reconciliation deployment to finish for stack %q in repository %q", stack, repository)
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func destroyTestStack(ctx context.Context, cli client.APIClient, stackName string) error {
+	containers, err := docker.GetLabeledContainers(ctx, cli, composeapi.ProjectLabel, stackName, true)
+	if err != nil {
+		return err
+	}
+
+	for _, c := range containers {
+		_, err = cli.ContainerRemove(ctx, c.ID, client.ContainerRemoveOptions{Force: true, RemoveVolumes: true})
+		if err != nil && !errdefs.IsNotFound(err) {
+			return err
+		}
+	}
+
+	networks, err := cli.NetworkList(ctx, client.NetworkListOptions{
+		Filters: make(client.Filters).Add("label", composeapi.ProjectLabel+"="+stackName),
+	})
+	if err != nil {
+		return err
+	}
+
+	for _, nw := range networks.Items {
+		_, err = cli.NetworkRemove(ctx, nw.ID, client.NetworkRemoveOptions{})
+		if err != nil && !errdefs.IsNotFound(err) {
+			return err
+		}
+	}
+
+	if err := docker.RemoveLabeledVolumes(ctx, cli, stackName); err != nil {
+		return err
+	}
 
 	return nil
 }
