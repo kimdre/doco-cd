@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/containerd/errdefs"
 	"github.com/docker/cli/cli/command"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/events"
@@ -309,7 +310,70 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		return
 	}
 
+	// When the event references a container that is being force-removed, Docker may
+	// still report it as "Removing" by the time we begin reconciliation, which causes
+	// docker compose to fail with "container is marked for removal and cannot be
+	// started". Wait briefly for the container to either be fully removed or settle
+	// into a stable state before re-deploying.
+	if event.Actor.ID != "" {
+		waitForContainerRemovalSettled(ctx, eventLog, j.info.dockerCli.Client(), event.Actor.ID, containerRemovalSettleTimeout)
+	}
+
 	j.deploy(ctx, eventLog, stackDCs)
+}
+
+// containerRemovalSettleTimeout caps how long handleEvent waits for a force-removed
+// container to be fully gone before kicking off a reconciliation deploy.
+const containerRemovalSettleTimeout = 15 * time.Second
+
+// waitForContainerRemovalSettled polls the given container until it is either gone
+// (inspect returns not-found) or no longer reported as "removing", or until the
+// timeout elapses. This prevents a race between Docker's async container teardown
+// and docker compose trying to recreate the container.
+func waitForContainerRemovalSettled(ctx context.Context, jobLog *slog.Logger, cli client.APIClient, containerID string, timeout time.Duration) {
+	if containerID == "" || timeout <= 0 {
+		return
+	}
+
+	deadline := time.Now().Add(timeout)
+
+	for {
+		inspectResult, err := cli.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
+		if err != nil {
+			// Treat any inspect error (most importantly "no such container") as
+			// "container is gone, safe to proceed".
+			if errdefs.IsNotFound(err) {
+				return
+			}
+
+			jobLog.Debug("failed to inspect container while waiting for removal to settle",
+				slog.String("container_id", containerID),
+				logger.ErrAttr(err),
+			)
+
+			return
+		}
+
+		state := inspectResult.Container.State
+		if state == nil || !strings.EqualFold(strings.TrimSpace(string(state.Status)), "removing") {
+			return
+		}
+
+		if !time.Now().Before(deadline) {
+			jobLog.Debug("timed out waiting for container removal to settle",
+				slog.String("container_id", containerID),
+				slog.Duration("timeout", timeout),
+			)
+
+			return
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
 }
 
 func deployConfigsByName(dcs []*config.DeployConfig, name string) []*config.DeployConfig {
