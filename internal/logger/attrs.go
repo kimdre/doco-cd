@@ -40,10 +40,7 @@ func (h *attrFilterHandler) Enabled(ctx context.Context, level slog.Level) bool 
 func (h *attrFilterHandler) Handle(ctx context.Context, record slog.Record) error {
 	filtered := slog.NewRecord(record.Time, record.Level, record.Message, record.PC)
 	filtered.AddAttrs(h.attrs...)
-	record.Attrs(func(attr slog.Attr) bool {
-		filtered.AddAttrs(attr)
-		return true
-	})
+	appendFilteredRecordAttrs(&filtered, record, "")
 
 	return h.next.Handle(ctx, filtered)
 }
@@ -70,18 +67,9 @@ func (h *attrFilterHandler) WithGroup(name string) slog.Handler {
 }
 
 func (h *attrFilterHandler) withoutAttr(key string) *attrFilterHandler {
-	filteredAttrs := make([]slog.Attr, 0, len(h.attrs))
-	for _, attr := range h.attrs {
-		if attr.Key == key {
-			continue
-		}
-
-		filteredAttrs = append(filteredAttrs, attr)
-	}
-
 	return &attrFilterHandler{
 		next:  h.next,
-		attrs: filteredAttrs,
+		attrs: filterAttrs(h.attrs, key),
 	}
 }
 
@@ -98,15 +86,7 @@ func (h *recordAttrFilterHandler) Enabled(ctx context.Context, level slog.Level)
 
 func (h *recordAttrFilterHandler) Handle(ctx context.Context, record slog.Record) error {
 	filtered := slog.NewRecord(record.Time, record.Level, record.Message, record.PC)
-	record.Attrs(func(attr slog.Attr) bool {
-		if attr.Key == h.removeKey {
-			return true
-		}
-
-		filtered.AddAttrs(attr)
-
-		return true
-	})
+	appendFilteredRecordAttrs(&filtered, record, h.removeKey)
 
 	return h.next.Handle(ctx, filtered)
 }
@@ -136,4 +116,16 @@ func filterAttrs(attrs []slog.Attr, removeKey string) []slog.Attr {
 	}
 
 	return filtered
+}
+
+func appendFilteredRecordAttrs(dst *slog.Record, src slog.Record, removeKey string) {
+	src.Attrs(func(attr slog.Attr) bool {
+		if removeKey != "" && attr.Key == removeKey {
+			return true
+		}
+
+		dst.AddAttrs(attr)
+
+		return true
+	})
 }
