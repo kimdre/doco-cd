@@ -52,12 +52,10 @@ type jobInfo struct {
 }
 
 type job struct {
-	info jobInfo
-
-	// key is the docker event action name (for example "die" or "unhealthy").
-	deployConfigGroupByEvent map[string][]*config.DeployConfig
-	unhealthyRestartHistory  map[string][]time.Time
-	restartSuppressUntil     map[string]time.Time
+	info                     jobInfo
+	deployConfigGroupByEvent map[string][]*config.DeployConfig // key is the docker event action name (for example "die" or "unhealthy").
+	unhealthyRestartHistory  map[string][]time.Time            // key is the docker container ID, value is the list of timestamps of recent unhealthy restart events for that container.
+	restartSuppressUntil     map[string]time.Time              // key is the docker container ID that was restarted, value is the timestamp until which follow-up events from that restart should be suppressed.
 	closeChan                chan struct{}
 }
 
