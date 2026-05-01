@@ -26,6 +26,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/stages"
 	"github.com/kimdre/doco-cd/internal/utils/id"
+	"github.com/kimdre/doco-cd/internal/utils/set"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -207,7 +208,7 @@ func dockerEventTypeForMode(swarmMode bool) string {
 }
 
 func dockerEventFiltersForActions(actions []string, swarmMode bool) []string {
-	filters := make(map[string]struct{}, len(actions))
+	filters := set.New[string]()
 
 	for _, rawAction := range actions {
 		action := normalizeReconciliationEventAction(rawAction)
@@ -218,20 +219,20 @@ func dockerEventFiltersForActions(actions []string, swarmMode bool) []string {
 		switch action {
 		case "unhealthy":
 			// Only subscribe to unhealthy health transitions, not healthy ones.
-			filters["health_status: unhealthy"] = struct{}{}
+			filters.Add("health_status: unhealthy")
 		case "destroy":
 			if swarmMode {
-				filters["remove"] = struct{}{}
+				filters.Add("remove")
 				continue
 			}
 
-			filters["destroy"] = struct{}{}
+			filters.Add("destroy")
 		default:
-			filters[action] = struct{}{}
+			filters.Add(action)
 		}
 	}
 
-	return mapsKeys(filters)
+	return filters.ToSlice()
 }
 
 func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events.Message) {
@@ -833,6 +834,7 @@ func normalizeReconciliationEventAction(action string) string {
 	return action
 }
 
+// mapsKeys returns the keys of the given map as a slice.
 func mapsKeys[V any](m map[string]V) []string {
 	keys := make([]string, 0, len(m))
 
