@@ -223,6 +223,9 @@ Specify all destroy-settings in a nested `destroy_opts` object in the deployment
 Reconciliation is an optional event-driven check that compares the currently running Docker services/containers with the expected deployment state.
 When configured container events occur, doco-cd either reapplies the deployment or directly restarts the affected container, depending on the event type.
 
+!!! warning
+    The currently implemented state will be lost when doco-cd gets restarted and will be restored in the next poll or webhook event.
+
 The following settings can be used to configure reconciliation triggers.
 
 | Key               | Type             | Description                                                                                                               | Default value          |
