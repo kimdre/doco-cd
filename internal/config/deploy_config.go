@@ -205,7 +205,6 @@ func (c *DeployConfig) normalizeReconciliationEvents() error {
 
 	for _, rawEvent := range c.Reconciliation.Events {
 		event := strings.ToLower(strings.TrimSpace(rawEvent))
-		event = strings.Join(strings.Fields(event), " ")
 
 		switch event {
 		case "remove", "delete":
