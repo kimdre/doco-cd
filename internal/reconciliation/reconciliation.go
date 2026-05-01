@@ -118,11 +118,13 @@ func (j *job) run(ctx context.Context) {
 
 	go func() {
 		defer startupRecoveryWG.Done()
+
 		j.restartUnhealthyContainersOnStartup(ctx, jobLog)
 	}()
 
 	go func() {
 		defer startupRecoveryWG.Done()
+
 		j.redeployMissingServicesOnStartup(ctx, jobLog)
 	}()
 
