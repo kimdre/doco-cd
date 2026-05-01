@@ -15,20 +15,30 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 )
 
+type githubRelease struct {
+	TagName      string `json:"tag_name"`
+	IsPreRelease bool   `json:"prerelease"`
+	IsDraft      bool   `json:"draft"`
+}
+
 // getLatestAppVersion gets the latest application version from the GitHub releases API.
 func getLatestAppReleaseVersion() (string, error) {
 	const releaseApiUrl = "https://api.github.com/repos/kimdre/doco-cd/releases"
 
-	var (
-		releases []struct {
-			TagName      string `json:"tag_name"`
-			IsPreRelease bool   `json:"prerelease"`
-			IsDraft      bool   `json:"draft"`
-		}
-		resp *http.Response
-	)
-
 	httpClient := &http.Client{Timeout: 3 * time.Second}
+
+	return getLatestAppReleaseVersionFromURL(releaseApiUrl, httpClient)
+}
+
+func getLatestAppReleaseVersionFromURL(releaseApiURL string, httpClient *http.Client) (string, error) {
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+
+	var (
+		releases []githubRelease
+		resp     *http.Response
+	)
 
 	err := retry.New(
 		retry.Attempts(5),
@@ -38,14 +48,14 @@ func getLatestAppReleaseVersion() (string, error) {
 		func() error {
 			var err error
 
-			resp, err = httpClient.Get(releaseApiUrl)
+			resp, err = httpClient.Get(releaseApiURL)
 			if err != nil {
 				return err
 			}
 
 			defer func() {
 				if resp.Body != nil {
-					resp.Body.Close()
+					_ = resp.Body.Close()
 				}
 			}()
 
