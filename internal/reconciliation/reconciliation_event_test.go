@@ -427,9 +427,30 @@ func TestStackNameFromEvent(t *testing.T) {
 			want: "stack-b",
 		},
 		{
+			name: "stack namespace label not in candidates",
+			event: events.Message{Actor: events.Actor{
+				Attributes: map[string]string{swarm.StackNamespaceLabel: "other-stack"},
+			}},
+			want: "",
+		},
+		{
 			name: "service name fallback",
 			event: events.Message{Actor: events.Actor{
 				Attributes: map[string]string{"name": "stack-a_web"},
+			}},
+			want: "stack-a",
+		},
+		{
+			name: "swarm service name attribute",
+			event: events.Message{Actor: events.Actor{
+				Attributes: map[string]string{"com.docker.swarm.service.name": "stack-b_api"},
+			}},
+			want: "stack-b",
+		},
+		{
+			name: "swarm task name attribute",
+			event: events.Message{Actor: events.Actor{
+				Attributes: map[string]string{"com.docker.swarm.task.name": "stack-a_web.1.abc123"},
 			}},
 			want: "stack-a",
 		},

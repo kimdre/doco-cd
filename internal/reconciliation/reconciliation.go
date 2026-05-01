@@ -388,27 +388,63 @@ func deployConfigsByName(dcs []*config.DeployConfig, name string) []*config.Depl
 	return result
 }
 
+// stackNameFromEvent attempts to determine the stack name referenced by the given Docker event
+// by examining various event attributes and matching them against the candidate config.DeployConfig configs.
+// Returns an empty string when no stack name could be determined or matched.
 func stackNameFromEvent(event events.Message, candidates []*config.DeployConfig) string {
 	attrs := event.Actor.Attributes
 
 	for _, key := range []string{docker.DocoCDLabels.Deployment.Name, swarm.StackNamespaceLabel} {
 		v := strings.TrimSpace(attrs[key])
 		if v != "" {
-			return v
+			if matched := matchCandidateStackName(v, candidates); matched != "" {
+				return matched
+			}
 		}
 	}
 
-	serviceName := strings.TrimSpace(attrs["name"])
-	if serviceName == "" {
-		serviceName = strings.TrimSpace(attrs["service"])
+	for _, key := range []string{"name", "service", "com.docker.swarm.service.name", "com.docker.swarm.task.name"} {
+		identifier := strings.TrimSpace(attrs[key])
+		if identifier == "" {
+			continue
+		}
+
+		if matched := matchCandidateStackName(identifier, candidates); matched != "" {
+			return matched
+		}
 	}
 
-	if serviceName == "" {
+	return ""
+}
+
+// matchCandidateStackName checks if the given identifier matches any of the candidate DeployConfig stack names,
+// either as an exact match or as a prefix followed by typical Docker naming separators.
+func matchCandidateStackName(identifier string, candidates []*config.DeployConfig) string {
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" {
 		return ""
 	}
 
 	for _, dc := range candidates {
-		if serviceName == dc.Name || strings.HasPrefix(serviceName, dc.Name+"_") {
+		if dc == nil {
+			continue
+		}
+
+		name := strings.TrimSpace(dc.Name)
+		if name == "" {
+			continue
+		}
+
+		if identifier == name {
+			return name
+		}
+
+		// Docker Swarm service names are typically formatted as <stack>_<service>.
+		// Some event attributes can also contain task/container names such as
+		// <stack>_<service>.<slot>.<id>, so matching by prefix keeps this resilient.
+		if strings.HasPrefix(identifier, name+"_") ||
+			strings.HasPrefix(identifier, name+".") ||
+			strings.HasPrefix(identifier, name+"-") {
 			return dc.Name
 		}
 	}
