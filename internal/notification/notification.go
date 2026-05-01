@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 type level int
@@ -33,6 +34,7 @@ var levelEmojis = map[level]string{
 }
 
 var (
+	appriseConfigMu    sync.RWMutex
 	appriseApiURL      = ""
 	appriseNotifyUrls  = ""
 	appriseNotifyLevel = Info
@@ -89,7 +91,9 @@ func send(apiUrl, notifyUrls, title, message, level string) error {
 		return fmt.Errorf("failed to send request to Apprise: %w", err)
 	}
 
-	defer resp.Body.Close() // nolint:errcheck
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	switch resp.StatusCode {
 	case http.StatusOK:
@@ -105,18 +109,30 @@ func send(apiUrl, notifyUrls, title, message, level string) error {
 
 // SetAppriseConfig sets the configuration for the Apprise notification service.
 func SetAppriseConfig(apiURL, notifyUrls, notifyLevel string) {
+	appriseConfigMu.Lock()
+	defer appriseConfigMu.Unlock()
+
 	appriseApiURL = apiURL
 	appriseNotifyUrls = notifyUrls
 	appriseNotifyLevel = parseLevel(notifyLevel)
 }
 
+func getAppriseConfig() (string, string, level) {
+	appriseConfigMu.RLock()
+	defer appriseConfigMu.RUnlock()
+
+	return appriseApiURL, appriseNotifyUrls, appriseNotifyLevel
+}
+
 // Send sends a notification using the Apprise service based on the provided configuration and parameters.
 func Send(level level, title, message string, metadata Metadata) error {
-	if appriseApiURL == "" || appriseNotifyUrls == "" {
+	apiURL, notifyURLs, notifyLevel := getAppriseConfig()
+
+	if apiURL == "" || notifyURLs == "" {
 		return nil
 	}
 
-	if level < appriseNotifyLevel {
+	if level < notifyLevel {
 		return nil // Do not send notification if the level is lower than the configured level
 	}
 
@@ -124,7 +140,7 @@ func Send(level level, title, message string, metadata Metadata) error {
 
 	message = formatMessage(message, metadata)
 
-	err := send(appriseApiURL, appriseNotifyUrls, title, message, logLevels[level])
+	err := send(apiURL, notifyURLs, title, message, logLevels[level])
 	if err != nil {
 		return fmt.Errorf("failed to send notification: %w", err)
 	}
