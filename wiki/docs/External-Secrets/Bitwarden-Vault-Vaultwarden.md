@@ -214,7 +214,7 @@ In this example:
           property: api_key
     ```
     
-    With this setup, Doco-CD resolves the secret value by:
+With this setup, Doco-CD resolves the secret value by:
     
 1. rendering the configured store templates using `remote_ref`
 2. calling the Bitwarden sidecar over HTTP
