@@ -163,7 +163,7 @@ func (h *handler) Serve(log *slog.Logger) error {
 	select {
 	case <-signalCtx.Done():
 		log.Info("shutdown signal received",
-			logger.ErrAttr(signalCtx.Err()),
+			slog.Any("signal", signalCtx.Err()),
 		)
 	case <-serveCloseChan.Done():
 		log.Info("some server stopped")
@@ -202,7 +202,7 @@ func (h *handler) Serve(log *slog.Logger) error {
 	}
 
 	// wait for servers to shutdown gracefully
-	log.Info("Waiting for ongoing requests to finish")
+	log.Info("Waiting for ongoing jobs to finish")
 	wg.Wait()
 
 	serveStop()
