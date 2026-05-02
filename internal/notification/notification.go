@@ -175,6 +175,7 @@ func formatTitle(level level, title string, metadata Metadata) string {
 // formatMessage renders notifications as plain message text followed by structured metadata.
 func formatMessage(message string, m Metadata) string {
 	var sb strings.Builder
+
 	trimmedMessage := strings.TrimRight(message, "\n")
 	isReconciliation := strings.TrimSpace(m.ReconciliationEvent) != ""
 
@@ -239,6 +240,7 @@ func formatMessage(message string, m Metadata) string {
 	for key := range fields {
 		keys = append(keys, key)
 	}
+
 	sort.Strings(keys)
 
 	for idx, key := range keys {
@@ -260,6 +262,7 @@ func formatMessage(message string, m Metadata) string {
 		for key := range reconciliationFields {
 			reconciliationKeys = append(reconciliationKeys, key)
 		}
+
 		sort.Strings(reconciliationKeys)
 
 		for _, key := range reconciliationKeys {

@@ -286,6 +286,7 @@ func withReconciliationTraceID(event events.Message, traceID string) events.Mess
 	for key, value := range event.Actor.Attributes {
 		attributes[key] = value
 	}
+
 	attributes[reconciliationTraceIDAttr] = traceID
 
 	event.Actor.Attributes = attributes
