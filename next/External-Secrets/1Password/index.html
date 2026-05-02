@@ -1244,6 +1244,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#client-side-caching" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Client-Side Caching
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1960,6 +1971,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#client-side-caching" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Client-Side Caching
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2086,6 +2108,10 @@
 </tr>
 </tbody>
 </table>
+<div class="admonition tip">
+<p class="admonition-title">API Rate Limit</p>
+<p>If you hit the API rate limit, you can also enable client-side caching for resolved secrets. See the <a data-preview="" href="#client-side-caching">Client-Side Caching</a> section below for more details.</p>
+</div>
 <h2 id="deployment-configuration">Deployment configuration<a class="headerlink" href="#deployment-configuration" title="Permanent link">&para;</a></h2>
 <p>Add a mapping/reference between the environment variable you want to set in the docker compose project/stack and the URI to the secret in 1Password.</p>
 <p>See their docs for the correct syntax and how to get a secret reference of your secret: <a href="https://developer.1password.com/docs/cli/secret-reference-syntax/">https://developer.1password.com/docs/cli/secret-reference-syntax/</a></p>
@@ -2103,6 +2129,32 @@
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">external_secrets</span><span class="p">:</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">DB_PASSWORD</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;op://vault/item/field&quot;</span>
 </span></code></pre></div>
+<h2 id="client-side-caching">Client-Side Caching<a class="headerlink" href="#client-side-caching" title="Permanent link">&para;</a></h2>
+<p>Optional client-side caching reduces 1Password API calls. Enable and configure caching with the following environment variables:</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Value</th>
+<th style="text-align: left;">Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SECRET_PROVIDER_CACHE_ENABLED</code></td>
+<td>Enables in-memory caching for resolved secrets</td>
+<td style="text-align: left;"><code>false</code></td>
+</tr>
+<tr>
+<td><code>SECRET_PROVIDER_CACHE_TTL</code></td>
+<td>Cache TTL for resolved secrets as a Go duration string (for example: <code>30s</code>, <code>5m</code>, <code>1h</code>)</td>
+<td style="text-align: left;"><code>5m</code></td>
+</tr>
+</tbody>
+</table>
+<div class="admonition warning">
+<p class="admonition-title">If the cache TTL is too long, secrets may become outdated.</p>
+</div>
 
 
   <nav class="md-tags" >
