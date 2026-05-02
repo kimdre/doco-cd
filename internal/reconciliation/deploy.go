@@ -36,20 +36,24 @@ func Deploy(ctx context.Context,
 		dataMountPoint, dockerCli, secretProvider, metadata,
 		jobTrigger, repoData, deployConfigs, payload, testName)
 
-	// always add reconciliation job
-	reconciliationHandler.addJob(ctx, jobInfo{
-		appConfig:      appConfig,
-		dataMountPoint: dataMountPoint,
-		dockerCli:      dockerCli,
-		secretProvider: secretProvider,
-		jobLog:         jobLog,
-		metadata:       metadata,
-		jobTrigger:     jobTrigger,
-		repoData:       repoData,
-		deployConfigs:  deployConfigs,
-		payload:        payload,
-		testName:       testName,
-	})
+	// Skip long-lived reconciliation listeners for test-triggered deployments.
+	// Test runs use testName only to make stacks unique and do not need background
+	// Docker event watchers that can outlive the test and race with TempDir cleanup.
+	if testName == "" {
+		reconciliationHandler.addJob(ctx, jobInfo{
+			appConfig:      appConfig,
+			dataMountPoint: dataMountPoint,
+			dockerCli:      dockerCli,
+			secretProvider: secretProvider,
+			jobLog:         jobLog,
+			metadata:       metadata,
+			jobTrigger:     jobTrigger,
+			repoData:       repoData,
+			deployConfigs:  deployConfigs,
+			payload:        payload,
+			testName:       testName,
+		})
+	}
 
 	return err
 }
