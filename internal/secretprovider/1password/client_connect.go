@@ -3,10 +3,14 @@ package onepassword
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	connectsdk "github.com/1Password/connect-sdk-go/connect"
 	connectonepassword "github.com/1Password/connect-sdk-go/onepassword"
+	"github.com/opentracing/opentracing-go"
 )
+
+var connectGlobalTracerInit sync.Once
 
 type connectClient interface {
 	GetItem(itemQuery, vaultQuery string) (*connectonepassword.Item, error)
@@ -21,9 +25,18 @@ func (c connectSDKClient) GetItem(itemQuery, vaultQuery string) (*connectonepass
 }
 
 func (p *Provider) initializeConnectClient() error {
+	ensureConnectSDKGlobalTracerDisabled()
+
 	p.connectClient = connectSDKClient{inner: connectsdk.NewClientWithUserAgent(p.connectHost, p.connectToken, "doco-cd/"+p.version)}
 
 	return nil
+}
+
+func ensureConnectSDKGlobalTracerDisabled() {
+	connectGlobalTracerInit.Do(func() {
+		// Disable global tracing so the Connect SDK cannot initialize Jaeger tracing.
+		opentracing.SetGlobalTracer(opentracing.NoopTracer{})
+	})
 }
 
 func (p *Provider) resolveConnectSecret(_ context.Context, uri string) (string, error) {

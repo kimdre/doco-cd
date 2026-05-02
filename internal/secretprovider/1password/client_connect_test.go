@@ -2,7 +2,11 @@ package onepassword
 
 import (
 	"strings"
+	"sync"
 	"testing"
+
+	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/mocktracer"
 
 	connectonepassword "github.com/1Password/connect-sdk-go/onepassword"
 )
@@ -118,5 +122,43 @@ func TestProvider_ResolveConnectSecret_FieldSelection(t *testing.T) {
 				t.Fatalf("expected vault query %q, got %q", tc.expectedVault, mock.lastVaultQuery)
 			}
 		})
+	}
+}
+
+func TestEnsureConnectSDKGlobalTracerDisabled_OverridesWithNoopTracer(t *testing.T) {
+	connectGlobalTracerInit = sync.Once{}
+
+	existingTracer := mocktracer.New()
+	opentracing.SetGlobalTracer(existingTracer)
+
+	ensureConnectSDKGlobalTracerDisabled()
+
+	if _, ok := opentracing.GlobalTracer().(opentracing.NoopTracer); !ok {
+		t.Fatal("expected global tracer to be opentracing.NoopTracer")
+	}
+}
+
+func TestProvider_InitializeConnectClient_DisablesGlobalTracing(t *testing.T) {
+	connectGlobalTracerInit = sync.Once{}
+
+	existingTracer := mocktracer.New()
+	opentracing.SetGlobalTracer(existingTracer)
+
+	provider := &Provider{
+		connectHost:  "http://op-connect-api:8080",
+		connectToken: "test-token",
+		version:      "test",
+	}
+
+	if err := provider.initializeConnectClient(); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if provider.connectClient == nil {
+		t.Fatal("expected connect client to be initialized")
+	}
+
+	if _, ok := opentracing.GlobalTracer().(opentracing.NoopTracer); !ok {
+		t.Fatal("expected initializeConnectClient to set global tracer to opentracing.NoopTracer")
 	}
 }
