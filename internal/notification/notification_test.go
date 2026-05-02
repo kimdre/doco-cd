@@ -2,6 +2,7 @@ package notification
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -13,19 +14,20 @@ func TestSend(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name          string
-		appriseUrl    string
-		expectedError string
+		name        string
+		appriseURL  string
+		expectedErr error
 	}{
 		{
-			name:          "Valid Service URL",
-			appriseUrl:    "apprise://%s",
-			expectedError: "",
+			name:       "Valid Service URL",
+			appriseURL: "apprise://%s",
+			// nil means success is expected
+			expectedErr: nil,
 		},
 		{
-			name:          "Invalid Service URL",
-			appriseUrl:    "pover://wrong@test",
-			expectedError: "failed to send notification: " + ErrNotifyFailed.Error(),
+			name:        "Invalid Service URL",
+			appriseURL:  "pover://wrong@test",
+			expectedErr: ErrNotifyFailed,
 		},
 	}
 
@@ -56,15 +58,19 @@ func TestSend(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Cannot run tests in parallel because SetAppriseConfig modifies global variables
-			SetAppriseConfig("http://"+endpoint+"/notify", fmt.Sprint(tc.appriseUrl, endpoint), "info")
+			SetAppriseConfig("http://"+endpoint+"/notify", fmt.Sprintf(tc.appriseURL, endpoint), "info")
 
 			err := Send(Info, "Test Notification", "This is a test message", metadata)
-			if err != nil {
-				if tc.expectedError == "" {
-					t.Errorf("unexpected error: %v", err)
-				} else if err.Error() != tc.expectedError {
-					t.Errorf("expected error: %s, got: %s", tc.expectedError, err.Error())
+			if tc.expectedErr == nil {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
 				}
+
+				return
+			}
+
+			if !errors.Is(err, tc.expectedErr) {
+				t.Fatalf("expected error wrapping %q, got: %v", tc.expectedErr, err)
 			}
 		})
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -88,12 +89,19 @@ func send(apiUrl, notifyUrls, title, message, level string) error {
 
 	resp, err := http.Post(apiUrl, "application/json", bytes.NewBuffer(jsonData)) // #nosec G107
 	if err != nil {
+		if strings.Contains(err.Error(), "malformed HTTP status code") {
+			return ErrNotifyFailed
+		}
+
 		return fmt.Errorf("failed to send request to Apprise: %w", err)
 	}
 
 	defer func() {
 		_ = resp.Body.Close()
 	}()
+
+	// Drain the body so the underlying transport can safely reuse the connection.
+	_, _ = io.Copy(io.Discard, resp.Body)
 
 	switch resp.StatusCode {
 	case http.StatusOK:
