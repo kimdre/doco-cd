@@ -233,7 +233,7 @@ The following settings can be used to configure reconciliation triggers.
 | `enabled`         | boolean          | Enable reconciliation.                                                                                                    | `true`                 |
 | `events`          | array of strings | Docker container/service events that trigger reconciliation. See [supported events](#supported-events) below.             | `['die', 'unhealthy']` |
 | `restart_timeout` | number           | Timeout in seconds used when restarting containers for reconciliation [events](#supported-events) that trigger a restart. | `10`                   |
-| `restart_signal`  | string           | Signal used for reconciliation restarts.                                                                                  | `"SIGTERM"`            |
+| `restart_signal`  | string           | Signal used for reconciliation restarts.                                                                                  | `SIGTERM`              |
 | `restart_limit`   | number           | Maximum number of automatic restarts allowed for a container in the restart window. Set to `0` to disable suppression.    | `5`                    |
 | `restart_window`  | number           | Time window in seconds used with `restart_limit` to detect flapping health checks.                                        | `300`                  |
 
@@ -244,18 +244,38 @@ The following settings can be used to configure reconciliation triggers.
 Events can be triggered by changes in the container state, configuration updates outside Doco-CD (e.g. via Docker CLI), or health status changes.
 The following events are supported as reconciliation triggers in Docker (Standalone) and Docker Swarm deployments:
 
-| Event       | Description                                                            | Standalone | Swarm | Action   |
-|-------------|------------------------------------------------------------------------|------------|-------|----------|
-| `die`       | The container process exited.                                          | Yes        | No    | Redeploy |
-| `destroy`   | The container was removed / service was removed.                       | Yes        | Yes   | Redeploy |
-| `update`    | The service/container configuration was updated (for example scaling). | No         | Yes   | Redeploy |
-| `stop`      | The container was stopped gracefully.                                  | Yes        | No    | Restart  |
-| `kill`      | The container was terminated by a signal.                              | Yes        | No    | Restart  |
-| `oom`       | The container was killed because it ran out of memory.                 | Yes        | No    | Restart  |
-| `unhealthy` | The container health check status changed to _unhealthy_.              | Yes        | No    | Restart  |
+=== "Docker Standalone"
+    
+    | Event       | Description                                              | Action   |
+    |-------------|----------------------------------------------------------|----------|
+    | `die`       | The container process exited                             | Redeploy |
+    | `destroy`   | The container was removed                                | Redeploy |
+    | `stop`      | The container was stopped gracefull.                     | Restart  |
+    | `kill`      | The container was terminated by a signal                 | Restart  |
+    | `oom`       | The container was killed because it ran out of memory    | Restart  |
+    | `unhealthy` | The container health check status changed to _unhealthy_ | Restart  |
 
-!!! info "Flapping health checks"
-    For `unhealthy` events, doco-cd suppresses further automatic restarts after `restart_limit` restarts within `restart_window` seconds.
+
+    !!! info "Flapping health checks"
+        For `unhealthy` events, doco-cd suppresses further automatic restarts after `restart_limit` restarts within `restart_window` seconds (See [reconciliation settings](#reconciliation-settings)).
+
+    !!! warning "Overlapping events"
+        Some events, like the `die` event, also get triggered when a container is stopped or killed, so make sure to 
+        configure the events according to the desired behavior.
+
+        To prevent unexpected behavior, doco-cd suppresses follow-up events for a container after the first event 
+        that triggered a reconciliation for that container until the reconciliation process is finished.
+
+        ??? example
+            If both `die` and `stop` events are configured, and a container is stopped, the `stop` event will also trigger a `die` event. 
+            However, doco-cd will only react to the first event (e.g. `stop`) and suppress the follow-up `die` event.
+
+=== "Docker Swarm Mode"
+    
+    | Event     | Description                                                 | Action   |
+    |-----------|-------------------------------------------------------------|----------|
+    | `destroy` | The service was removed                                     | Redeploy |
+    | `update`  | The service configuration was updated (for example scaling) | Redeploy |
 
 #### Examples
 

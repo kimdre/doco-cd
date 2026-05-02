@@ -361,7 +361,7 @@ func TestRestartNotificationMetadata(t *testing.T) {
 		Repository: "owner/repo",
 		Stack:      "stack-a",
 		JobID:      "job-1",
-	}, "unhealthy", "container", "1234567890abcdef", "stack-a-web-1")
+	}, "unhealthy", "container", "1234567890abcdef", "stack-a-web-1", "trace-1")
 
 	if metadata.Repository != "owner/repo" || metadata.Stack != "stack-a" || metadata.JobID != "job-1" {
 		t.Fatalf("expected base metadata to be preserved, got %#v", metadata)
@@ -369,6 +369,10 @@ func TestRestartNotificationMetadata(t *testing.T) {
 
 	if metadata.ReconciliationEvent != "unhealthy" {
 		t.Fatalf("expected reconciliation event unhealthy, got %q", metadata.ReconciliationEvent)
+	}
+
+	if metadata.TraceID != "trace-1" {
+		t.Fatalf("expected trace id trace-1, got %q", metadata.TraceID)
 	}
 
 	if metadata.AffectedActorKind != "container" {

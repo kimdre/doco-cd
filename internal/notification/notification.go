@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -57,6 +58,7 @@ type Metadata struct {
 	Stack               string
 	Revision            string
 	JobID               string
+	TraceID             string
 	ReconciliationEvent string
 	AffectedActorKind   string
 	AffectedActorID     string
@@ -148,7 +150,7 @@ func Send(level level, title, message string, metadata Metadata) error {
 		return nil // Do not send notification if the level is lower than the configured level
 	}
 
-	title = levelEmojis[level] + " " + title
+	title = formatTitle(level, title, metadata)
 
 	message = formatMessage(message, metadata)
 
@@ -160,49 +162,112 @@ func Send(level level, title, message string, metadata Metadata) error {
 	return nil
 }
 
-// formatMessage formats the message by adding a newline after the first colon and appending the revision if provided.
+func formatTitle(level level, title string, metadata Metadata) string {
+	formattedTitle := strings.TrimSpace(title)
+
+	if strings.TrimSpace(metadata.ReconciliationEvent) != "" {
+		formattedTitle = "[R] " + formattedTitle
+	}
+
+	return levelEmojis[level] + " " + formattedTitle
+}
+
+// formatMessage renders notifications as plain message text followed by structured metadata.
 func formatMessage(message string, m Metadata) string {
-	if !strings.Contains(message, "\n") {
-		message = strings.Replace(message, ": ", ":\n", 1)
-	}
-
-	var metadataInfo string
-
-	fields := []struct {
-		key, value string
-	}{
-		{"repository", m.Repository},
-		{"stack", m.Stack},
-		{"revision", m.Revision},
-		{"job_id", m.JobID},
-		{"reconciliation_event", m.ReconciliationEvent},
-	}
-
 	var sb strings.Builder
+	trimmedMessage := strings.TrimRight(message, "\n")
+	isReconciliation := strings.TrimSpace(m.ReconciliationEvent) != ""
 
-	for _, f := range fields {
-		if f.value != "" {
-			_, _ = fmt.Fprintf(&sb, "\n%s: %s", f.key, f.value)
-		}
+	sb.WriteString(trimmedMessage)
+
+	fields := map[string]string{}
+	reconciliationFields := map[string]string{}
+
+	if m.Repository != "" {
+		fields["repository"] = m.Repository
+	}
+
+	if m.Stack != "" {
+		fields["stack"] = m.Stack
+	}
+
+	if m.Revision != "" {
+		fields["revision"] = m.Revision
+	}
+
+	if m.JobID != "" && !isReconciliation {
+		fields["job_id"] = m.JobID
+	}
+
+	if m.ReconciliationEvent != "" {
+		reconciliationFields["event"] = m.ReconciliationEvent
+	}
+
+	if m.TraceID != "" && isReconciliation {
+		reconciliationFields["trace_id"] = m.TraceID
 	}
 
 	actorKind := strings.TrimSpace(strings.ToLower(m.AffectedActorKind))
+	switch actorKind {
+	case "container":
+		if m.AffectedActorID != "" {
+			reconciliationFields["container_id"] = m.AffectedActorID
+		}
 
-	if actorKind != "" {
-		_, _ = fmt.Fprintf(&sb, "\naffected_actor_kind: %s", actorKind)
+		if m.AffectedActorName != "" {
+			reconciliationFields["container_name"] = m.AffectedActorName
+		}
+	case "service":
+		if m.AffectedActorID != "" {
+			reconciliationFields["service_id"] = m.AffectedActorID
+		}
+
+		if m.AffectedActorName != "" {
+			reconciliationFields["service_name"] = m.AffectedActorName
+		}
 	}
 
-	if m.AffectedActorID != "" {
-		_, _ = fmt.Fprintf(&sb, "\naffected_actor_id: %s", m.AffectedActorID)
+	if len(fields) == 0 && len(reconciliationFields) == 0 {
+		return sb.String()
 	}
 
-	if m.AffectedActorName != "" {
-		_, _ = fmt.Fprintf(&sb, "\naffected_actor_name: %s", m.AffectedActorName)
+	if trimmedMessage != "" {
+		sb.WriteString("\n\n")
 	}
 
-	metadataInfo += sb.String()
+	keys := make([]string, 0, len(fields))
+	for key := range fields {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
 
-	return fmt.Sprintf("%s\n%s", message, metadataInfo)
+	for idx, key := range keys {
+		if idx > 0 {
+			sb.WriteString("\n")
+		}
+
+		_, _ = fmt.Fprintf(&sb, "%s: %s", key, fields[key])
+	}
+
+	if len(reconciliationFields) > 0 {
+		if len(keys) > 0 {
+			sb.WriteString("\n")
+		}
+
+		sb.WriteString("reconciliation:")
+
+		reconciliationKeys := make([]string, 0, len(reconciliationFields))
+		for key := range reconciliationFields {
+			reconciliationKeys = append(reconciliationKeys, key)
+		}
+		sort.Strings(reconciliationKeys)
+
+		for _, key := range reconciliationKeys {
+			_, _ = fmt.Fprintf(&sb, "\n  %s: %s", key, reconciliationFields[key])
+		}
+	}
+
+	return sb.String()
 }
 
 func GetRevision(reference, commitSHA string) string {

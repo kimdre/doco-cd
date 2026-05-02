@@ -130,7 +130,7 @@ func TestFormatMessage(t *testing.T) {
 		t.Parallel()
 
 		message := formatMessage("Deployment failed: timeout reached", Metadata{})
-		expected := "Deployment failed:\ntimeout reached\n"
+		expected := "Deployment failed: timeout reached"
 
 		if message != expected {
 			t.Errorf("expected %q, got %q", expected, message)
@@ -141,7 +141,7 @@ func TestFormatMessage(t *testing.T) {
 		t.Parallel()
 
 		message := formatMessage("Current Version: v0.80.0\nLatest Version: v0.80.1", Metadata{})
-		expected := "Current Version: v0.80.0\nLatest Version: v0.80.1\n"
+		expected := "Current Version: v0.80.0\nLatest Version: v0.80.1"
 
 		if message != expected {
 			t.Errorf("expected %q, got %q", expected, message)
@@ -154,15 +154,113 @@ func TestFormatMessage(t *testing.T) {
 		message := formatMessage("Deployment triggered", Metadata{
 			Repository:          "acme/api",
 			Stack:               "prod",
+			JobID:               "job-1",
+			TraceID:             "trace-123",
 			ReconciliationEvent: "unhealthy",
 			AffectedActorKind:   "service",
 			AffectedActorID:     "abc123def456",
 			AffectedActorName:   "prod_api",
 		})
-		expected := "Deployment triggered\n\nrepository: acme/api\nstack: prod\nreconciliation_event: unhealthy\naffected_actor_id: abc123def456\naffected_actor_name: prod_api\naffected_actor_kind: service"
+		expected := "Deployment triggered\n\nrepository: acme/api\nstack: prod\nreconciliation:\n  event: unhealthy\n  service_id: abc123def456\n  service_name: prod_api\n  trace_id: trace-123"
 
 		if message != expected {
 			t.Errorf("expected %q, got %q", expected, message)
+		}
+	})
+
+	t.Run("reconciliation-only metadata is nested under reconciliation", func(t *testing.T) {
+		t.Parallel()
+
+		message := formatMessage("Restart suppressed", Metadata{
+			ReconciliationEvent: "unhealthy",
+			AffectedActorKind:   "container",
+			AffectedActorID:     "abc123",
+			AffectedActorName:   "web_1",
+		})
+		expected := "Restart suppressed\n\nreconciliation:\n  container_id: abc123\n  container_name: web_1\n  event: unhealthy"
+
+		if message != expected {
+			t.Errorf("expected %q, got %q", expected, message)
+		}
+	})
+
+	t.Run("metadata values remain unquoted", func(t *testing.T) {
+		t.Parallel()
+
+		message := formatMessage("Deploy done", Metadata{
+			Repository: "acme/o'hara",
+		})
+		expected := "Deploy done\n\nrepository: acme/o'hara"
+
+		if message != expected {
+			t.Errorf("expected %q, got %q", expected, message)
+		}
+	})
+
+	t.Run("non-reconciliation message keeps job id", func(t *testing.T) {
+		t.Parallel()
+
+		message := formatMessage("Deploy done", Metadata{
+			Repository: "acme/repo",
+			JobID:      "job-99",
+		})
+		expected := "Deploy done\n\njob_id: job-99\nrepository: acme/repo"
+
+		if message != expected {
+			t.Errorf("expected %q, got %q", expected, message)
+		}
+	})
+
+	t.Run("unknown actor kind does not emit actor id or name keys", func(t *testing.T) {
+		t.Parallel()
+
+		message := formatMessage("Reconciled", Metadata{
+			ReconciliationEvent: "update",
+			AffectedActorKind:   "task",
+			AffectedActorID:     "zzz111",
+			AffectedActorName:   "ignored",
+		})
+		expected := "Reconciled\n\nreconciliation:\n  event: update"
+
+		if message != expected {
+			t.Errorf("expected %q, got %q", expected, message)
+		}
+	})
+}
+
+func TestFormatTitle(t *testing.T) {
+	t.Parallel()
+
+	t.Run("regular title does not include reconciliation marker", func(t *testing.T) {
+		t.Parallel()
+
+		title := formatTitle(Success, "Deployment completed", Metadata{})
+		expected := "✅ Deployment completed"
+
+		if title != expected {
+			t.Errorf("expected %q, got %q", expected, title)
+		}
+	})
+
+	t.Run("reconciliation title includes short marker", func(t *testing.T) {
+		t.Parallel()
+
+		title := formatTitle(Success, "Deployment completed", Metadata{ReconciliationEvent: "unhealthy"})
+		expected := "✅ [R] Deployment completed"
+
+		if title != expected {
+			t.Errorf("expected %q, got %q", expected, title)
+		}
+	})
+
+	t.Run("whitespace reconciliation event is ignored", func(t *testing.T) {
+		t.Parallel()
+
+		title := formatTitle(Warning, "Service restarted", Metadata{ReconciliationEvent: "   "})
+		expected := "⚠️ Service restarted"
+
+		if title != expected {
+			t.Errorf("expected %q, got %q", expected, title)
 		}
 	})
 }

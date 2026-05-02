@@ -20,6 +20,8 @@ import (
 	"github.com/kimdre/doco-cd/internal/utils/id"
 )
 
+const reconciliationTraceIDAttr = "doco_cd_reconciliation_trace_id"
+
 func (j *job) run(ctx context.Context) {
 	jobLog := j.info.jobLog
 
@@ -188,6 +190,9 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		actorGroupName = "service"
 	}
 
+	traceID := id.GenID()
+	event = withReconciliationTraceID(event, traceID)
+
 	eventLog := logger.
 		WithoutAttr(jobLog, "job_id").
 		With(
@@ -197,7 +202,7 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 					slog.String("id", shortID(event.Actor.ID)),
 					slog.String("name", event.Actor.Attributes["name"]),
 				),
-				slog.String("trace_id", id.GenID()),
+				slog.String("trace_id", traceID),
 			),
 			slog.String("stack", stackName),
 		)
@@ -229,10 +234,10 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		waitForContainerRemovalSettled(ctx, eventLog, j.info.dockerCli.Client(), event.Actor.ID, containerRemovalSettleTimeout)
 	}
 
-	j.deploy(ctx, eventLog, stackDCs, action, event)
+	j.deploy(ctx, eventLog, stackDCs, action, event, traceID)
 }
 
-func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*config.DeployConfig, action string, event events.Message) {
+func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*config.DeployConfig, action string, event events.Message, traceID string) {
 	repoLock := lock.GetRepoLock(j.info.metadata.Repository)
 	repoLock.Lock()
 	defer repoLock.Unlock()
@@ -259,6 +264,7 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*config.Dep
 
 	metadata := j.info.metadata
 	metadata.ReconciliationEvent = action
+	metadata.TraceID = strings.TrimSpace(traceID)
 	metadata.AffectedActorKind = actorKind
 	metadata.AffectedActorID = shortID(event.Actor.ID)
 	metadata.AffectedActorName = strings.TrimSpace(event.Actor.Attributes["name"])
@@ -269,4 +275,28 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*config.Dep
 		j.info.repoData, reconcileDCs, j.info.payload, j.info.testName, metadata); err != nil {
 		jobLog.Error("failed to deploy", logger.ErrAttr(err))
 	}
+}
+
+func withReconciliationTraceID(event events.Message, traceID string) events.Message {
+	if strings.TrimSpace(traceID) == "" {
+		return event
+	}
+
+	attributes := map[string]string{}
+	for key, value := range event.Actor.Attributes {
+		attributes[key] = value
+	}
+	attributes[reconciliationTraceIDAttr] = traceID
+
+	event.Actor.Attributes = attributes
+
+	return event
+}
+
+func reconciliationTraceIDFromEvent(event events.Message) string {
+	if event.Actor.Attributes == nil {
+		return ""
+	}
+
+	return strings.TrimSpace(event.Actor.Attributes[reconciliationTraceIDAttr])
 }

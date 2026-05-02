@@ -2,8 +2,8 @@ x-poll-config: &poll-config
   POLL_CONFIG: |
     - url: https://github.com/kimdre/doco-cd_tests.git
       #url: git@github.com:kimdre/doco-cd_tests.git
-      reference: main
-      interval: 10
+      reference: main #swarm-mode
+      interval: 600
       #target: "bitwarden-sm"
 
 services:
@@ -33,14 +33,14 @@ services:
     environment:
       TZ: Europe/Berlin
       HTTP_PORT: 80
-      LOG_LEVEL: debug
+      LOG_LEVEL: info
       # DOCKER_API_VERSION: 1.47
       <<: *poll-config
       #POLL_CONFIG_FILE: /poll.yml
       #HTTP_PROXY: http://username:password@proxy:8888
       #SSH_PRIVATE_KEY_FILE: /run/secrets/ssh-private-key
-      #APPRISE_API_URL: http://apprise:8000/notify
-      #APPRISE_NOTIFY_LEVEL: info
+      APPRISE_API_URL: http://apprise:8000/notify
+      APPRISE_NOTIFY_LEVEL: info
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - data:/data

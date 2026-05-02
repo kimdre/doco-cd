@@ -235,11 +235,12 @@ func (s *StageManager) NotifyFailure(notifyErr error) {
 
 		revision := notification.GetRevision(s.DeployConfig.Reference, commitSha)
 
-		s.NotifyFailureFunc(s.Log, notifyErr, notification.Metadata{
-			Repository: s.Repository.Name,
-			Stack:      s.DeployConfig.Name,
-			Revision:   revision,
-			JobID:      s.JobID,
-		})
+		metadata := s.Metadata
+		metadata.Repository = s.Repository.Name
+		metadata.Stack = s.DeployConfig.Name
+		metadata.Revision = revision
+		metadata.JobID = s.JobID
+
+		s.NotifyFailureFunc(s.Log, notifyErr, metadata)
 	}
 }

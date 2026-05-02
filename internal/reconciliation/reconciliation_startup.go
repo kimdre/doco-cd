@@ -72,21 +72,24 @@ func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *s
 			containerName = strings.TrimPrefix(c.Names[0], "/")
 		}
 
+		traceID := id.GenID()
+
 		eventLog := logger.
 			WithoutAttr(jobLog, "job_id").
 			With(
+				// Keep one trace ID for both logs and notifications for this reconciliation action.
 				slog.Group("reconciliation",
 					slog.String("event", "startup_unhealthy"),
 					slog.Group("container",
 						slog.String("id", shortID(c.ID)),
 						slog.String("name", containerName),
 					),
-					slog.String("trace_id", id.GenID()),
+					slog.String("trace_id", traceID),
 				),
 				slog.String("stack", stackName),
 			)
 
-		j.restartContainer(ctx, eventLog, events.Message{
+		restartEvent := withReconciliationTraceID(events.Message{
 			Action: events.Action("unhealthy"),
 			Actor: events.Actor{
 				ID: c.ID,
@@ -94,7 +97,9 @@ func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *s
 					"name": containerName,
 				},
 			},
-		}, restartDC)
+		}, traceID)
+
+		j.restartContainer(ctx, eventLog, restartEvent, restartDC)
 	}
 }
 
@@ -147,16 +152,18 @@ func (j *job) redeployMissingServicesOnStartup(ctx context.Context, jobLog *slog
 		return
 	}
 
+	traceID := id.GenID()
+
 	eventLog := logger.
 		WithoutAttr(jobLog, "job_id").
 		With(
 			slog.Group("reconciliation",
 				slog.String("event", "startup_missing"),
-				slog.String("trace_id", id.GenID()),
+				slog.String("trace_id", traceID),
 			),
 		)
 
-	j.deploy(ctx, eventLog, missingDCs, "startup_missing", events.Message{})
+	j.deploy(ctx, eventLog, missingDCs, "startup_missing", events.Message{}, traceID)
 }
 
 // findMissingContainersOnStartup lists all running containers for this repository and returns

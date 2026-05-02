@@ -49,7 +49,7 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 
 	restartLog.Info("restarting " + actorKind)
 
-	metadata := restartNotificationMetadata(j.info.metadata, action, actorKind, containerID, containerName)
+	metadata := restartNotificationMetadata(j.info.metadata, action, actorKind, containerID, containerName, reconciliationTraceIDFromEvent(event))
 
 	if _, err := j.info.dockerCli.Client().ContainerRestart(ctx, containerID, restartOpts); err != nil {
 		delete(j.restartSuppressUntil, containerID)
@@ -79,9 +79,10 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 	}
 }
 
-func restartNotificationMetadata(base notification.Metadata, action, actorKind, actorID, actorName string) notification.Metadata {
+func restartNotificationMetadata(base notification.Metadata, action, actorKind, actorID, actorName, traceID string) notification.Metadata {
 	metadata := base
 	metadata.ReconciliationEvent = action
+	metadata.TraceID = strings.TrimSpace(traceID)
 	metadata.AffectedActorKind = actorKind
 	metadata.AffectedActorID = shortID(actorID)
 	metadata.AffectedActorName = strings.TrimSpace(actorName)
@@ -192,7 +193,7 @@ func (j *job) shouldSuppressUnhealthyRestart(jobLog *slog.Logger, event events.M
 	)
 
 	actorKind := restartNotificationActorKind()
-	metadata := restartNotificationMetadata(j.info.metadata, action, actorKind, containerID, event.Actor.Attributes["name"])
+	metadata := restartNotificationMetadata(j.info.metadata, action, actorKind, containerID, event.Actor.Attributes["name"], reconciliationTraceIDFromEvent(event))
 
 	if notifyErr := notification.Send(
 		notification.Warning,
