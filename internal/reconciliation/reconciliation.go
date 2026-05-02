@@ -284,12 +284,17 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 	}
 	defer stackLock.Unlock()
 
+	actorGroupName := "container"
+	if swarm.GetModeEnabled() {
+		actorGroupName = "service"
+	}
+
 	eventLog := logger.
 		WithoutAttr(jobLog, "job_id").
 		With(
 			slog.Group("reconciliation",
 				slog.String("event", action),
-				slog.Group("container",
+				slog.Group(actorGroupName,
 					slog.String("id", shortID(event.Actor.ID)),
 					slog.String("name", event.Actor.Attributes["name"]),
 				),
