@@ -96,7 +96,7 @@ func (j *job) run(ctx context.Context) {
 	if !swarmMode {
 		filterArgs.Add("label", docker.DocoCDLabels.Metadata.Manager+"="+config.AppName)
 
-		repositoryLabelValue := normalizeRepositoryLabelFromCloneURL(j.info.repoData.CloneURL)
+		repositoryLabelValue := gitInternal.GetFullName(string(j.info.repoData.CloneURL))
 		if j.info.payload != nil && strings.TrimSpace(j.info.payload.FullName) != "" {
 			repositoryLabelValue = j.info.payload.FullName
 		}
@@ -202,22 +202,6 @@ func (j *job) runEventLoop(ctx context.Context, jobLog *slog.Logger, eventCh <-c
 	}
 }
 
-// normalizeRepositoryLabelFromCloneURL mirrors the repository-name normalization used during poll deployment labeling.
-func normalizeRepositoryLabelFromCloneURL(cloneURL config.HttpUrl) string {
-	repoName := gitInternal.GetFullName(string(cloneURL))
-	parts := strings.Split(repoName, "/")
-
-	if len(parts) > 2 {
-		return strings.Join(parts[1:], "/")
-	}
-
-	if len(parts) == 2 {
-		return parts[1]
-	}
-
-	return repoName
-}
-
 func dockerEventTypeForMode(swarmMode bool) string {
 	if swarmMode {
 		return "service"
@@ -284,7 +268,7 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 	if j.shouldSuppressRestartFollowupEvent(action, event) {
 		jobLog.Debug("suppressing follow-up event from self-initiated container restart",
 			slog.String("event", action),
-			slog.String("container_id", event.Actor.ID),
+			slog.String("container_name", event.Actor.Attributes["name"]),
 			slog.String("stack", stackName),
 		)
 
@@ -305,6 +289,10 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		With(
 			slog.Group("reconciliation",
 				slog.String("event", action),
+				slog.Group("container",
+					slog.String("id", shortID(event.Actor.ID)),
+					slog.String("name", event.Actor.Attributes["name"]),
+				),
 				slog.String("trace_id", id.GenID()),
 			),
 			slog.String("stack", stackName),
@@ -365,7 +353,7 @@ func waitForContainerRemovalSettled(ctx context.Context, jobLog *slog.Logger, cl
 			}
 
 			jobLog.Debug("failed to inspect container while waiting for removal to settle",
-				slog.String("container_id", containerID),
+				slog.String("container_id", shortID(containerID)),
 				logger.ErrAttr(err),
 			)
 
@@ -379,7 +367,7 @@ func waitForContainerRemovalSettled(ctx context.Context, jobLog *slog.Logger, cl
 
 		if !time.Now().Before(deadline) {
 			jobLog.Debug("timed out waiting for container removal to settle",
-				slog.String("container_id", containerID),
+				slog.String("container_id", shortID(containerID)),
 				slog.Duration("timeout", timeout),
 			)
 
@@ -523,8 +511,6 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 	}
 
 	restartLog := jobLog.With(
-		slog.String("container_id", containerID),
-		slog.String("container_name", containerName),
 		slog.Int("restart_timeout", restartTimeout),
 	)
 	if restartOpts.Signal != "" {
@@ -724,7 +710,7 @@ func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *s
 		return
 	}
 
-	repositoryLabelValue := normalizeRepositoryLabelFromCloneURL(j.info.repoData.CloneURL)
+	repositoryLabelValue := gitInternal.GetFullName(string(j.info.repoData.CloneURL))
 	if j.info.payload != nil && strings.TrimSpace(j.info.payload.FullName) != "" {
 		repositoryLabelValue = j.info.payload.FullName
 	}
@@ -755,7 +741,7 @@ func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *s
 		inspectResult, err := j.info.dockerCli.Client().ContainerInspect(ctx, c.ID, client.ContainerInspectOptions{})
 		if err != nil {
 			jobLog.Debug("failed to inspect container during startup unhealthy scan",
-				slog.String("container_id", c.ID),
+				slog.String("container_id", shortID(c.ID)),
 				logger.ErrAttr(err),
 			)
 
@@ -778,6 +764,10 @@ func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *s
 			With(
 				slog.Group("reconciliation",
 					slog.String("event", "startup_unhealthy"),
+					slog.Group("container",
+						slog.String("id", shortID(c.ID)),
+						slog.String("name", containerName),
+					),
 					slog.String("trace_id", id.GenID()),
 				),
 				slog.String("stack", stackName),
@@ -859,7 +849,7 @@ func (j *job) redeployMissingServicesOnStartup(ctx context.Context, jobLog *slog
 // findMissingContainersOnStartup lists all running containers for this repository and returns
 // deploy configs whose stacks have no running containers at all.
 func (j *job) findMissingContainersOnStartup(ctx context.Context, jobLog *slog.Logger, candidates []*config.DeployConfig) []*config.DeployConfig {
-	repositoryLabelValue := normalizeRepositoryLabelFromCloneURL(j.info.repoData.CloneURL)
+	repositoryLabelValue := gitInternal.GetFullName(string(j.info.repoData.CloneURL))
 	if j.info.payload != nil && strings.TrimSpace(j.info.payload.FullName) != "" {
 		repositoryLabelValue = j.info.payload.FullName
 	}
@@ -900,7 +890,7 @@ func (j *job) findMissingContainersOnStartup(ctx context.Context, jobLog *slog.L
 // findMissingSwarmServicesOnStartup lists all swarm services for this repository and returns
 // deploy configs whose stacks have no deployed services at all.
 func (j *job) findMissingSwarmServicesOnStartup(ctx context.Context, jobLog *slog.Logger, candidates []*config.DeployConfig) []*config.DeployConfig {
-	repositoryLabelValue := normalizeRepositoryLabelFromCloneURL(j.info.repoData.CloneURL)
+	repositoryLabelValue := gitInternal.GetFullName(string(j.info.repoData.CloneURL))
 	if j.info.payload != nil && strings.TrimSpace(j.info.payload.FullName) != "" {
 		repositoryLabelValue = j.info.payload.FullName
 	}
@@ -1091,6 +1081,15 @@ func normalizeReconciliationEventAction(action string) string {
 	}
 
 	return action
+}
+
+// shortID returns the first 12 characters of a container ID, matching the Docker CLI convention.
+func shortID(id string) string {
+	if len(id) > 12 {
+		return id[:12]
+	}
+
+	return id
 }
 
 // mapsKeys returns the keys of the given map as a slice.
