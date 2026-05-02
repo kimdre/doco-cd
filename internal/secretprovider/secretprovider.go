@@ -81,7 +81,7 @@ func Initialize(ctx context.Context, provider, version string) (SecretProvider, 
 			return nil, cfgErr
 		}
 
-		p, err = onepassword.NewProvider(ctx, cfg.AccessToken, version, cfg.CacheEnabled, cfg.CacheTTL)
+		p, err = onepassword.NewProvider(ctx, cfg, version)
 	case infisical.Name:
 		cfg, cfgErr := infisical.GetConfig()
 		if cfgErr != nil {

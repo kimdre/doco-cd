@@ -1,14 +1,11 @@
 package onepassword
 
 import (
+	"container/list"
 	"context"
 	"errors"
-	"fmt"
-	"strings"
 	"sync"
 	"time"
-
-	"github.com/1password/onepassword-sdk-go"
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
@@ -19,15 +16,31 @@ const (
 
 var ErrInvalidClientID = errors.New("invalid client id")
 
+type authMode string
+
+const (
+	authModeServiceAccount authMode = "service_account"
+	authModeConnect        authMode = "connect"
+)
+
 type Provider struct {
-	Client      *onepassword.Client
-	accessToken string
-	version     string
+	mode authMode
+
+	serviceClient *serviceAccountClient
+	connectClient connectClient
+
+	accessToken  string
+	connectHost  string
+	connectToken string
+	version      string
 
 	cacheEnabled bool
 	cacheTTL     time.Duration
+	cacheMaxSize int
 	cacheMu      sync.RWMutex
 	cache        map[string]cacheEntry
+	cacheOrder   *list.List
+	cacheNodes   map[string]*list.Element
 }
 
 type cacheEntry struct {
@@ -39,40 +52,39 @@ func (p *Provider) Name() string {
 	return Name
 }
 
-// NewProvider creates a new Provider instance for 1Password and performs login using the provided service account token.
-func NewProvider(ctx context.Context, accessToken, version string, cacheEnabled bool, cacheTTL time.Duration) (*Provider, error) {
-	client, err := onepassword.NewClient(
-		ctx,
-		onepassword.WithServiceAccountToken(accessToken),
-		onepassword.WithIntegrationInfo("doco-cd", version),
-	)
-	if err != nil {
+// NewProvider creates a new Provider instance for 1Password using Connect if configured, otherwise service-account auth.
+func NewProvider(ctx context.Context, cfg *Config, version string) (*Provider, error) {
+	provider := &Provider{
+		accessToken:  cfg.AccessToken,
+		connectHost:  cfg.ConnectHost,
+		connectToken: cfg.ConnectToken,
+		version:      version,
+		cacheEnabled: cfg.CacheEnabled,
+		cacheTTL:     cfg.CacheTTL,
+		cacheMaxSize: cfg.CacheMaxSize,
+		cache:        make(map[string]cacheEntry),
+		cacheOrder:   list.New(),
+		cacheNodes:   make(map[string]*list.Element),
+	}
+
+	if cfg.UseConnect() {
+		provider.mode = authModeConnect
+		provider.cacheEnabled = false
+
+		if err := provider.initializeConnectClient(); err != nil {
+			return nil, err
+		}
+
+		return provider, nil
+	}
+
+	provider.mode = authModeServiceAccount
+
+	if err := provider.initializeServiceAccountClient(ctx); err != nil {
 		return nil, err
 	}
 
-	provider := &Provider{
-		Client:       client,
-		accessToken:  accessToken,
-		version:      version,
-		cacheEnabled: cacheEnabled,
-		cacheTTL:     cacheTTL,
-		cache:        make(map[string]cacheEntry),
-	}
-
 	return provider, nil
-}
-
-// renewSession renews the session for the Provider Client by creating a new Client instance with the same access token and version.
-func renewSession(ctx context.Context, p *Provider) error {
-	newProvider, err := NewProvider(ctx, p.accessToken, p.version, p.cacheEnabled, p.cacheTTL)
-	if err != nil {
-		return fmt.Errorf("failed to renew secret provider client session: %w", err)
-	}
-
-	// Set new client
-	p.Client = newProvider.Client
-
-	return nil
 }
 
 func (p *Provider) getCachedSecret(uri string) (string, bool) {
@@ -82,23 +94,24 @@ func (p *Provider) getCachedSecret(uri string) (string, bool) {
 
 	now := time.Now()
 
-	p.cacheMu.RLock()
+	p.cacheMu.Lock()
+	defer p.cacheMu.Unlock()
+
 	entry, ok := p.cache[uri]
-	p.cacheMu.RUnlock()
 
 	if !ok {
 		return "", false
 	}
 
 	if now.After(entry.expiresAt) {
-		p.cacheMu.Lock()
 		if current, exists := p.cache[uri]; exists && now.After(current.expiresAt) {
-			delete(p.cache, uri)
+			p.deleteCacheEntry(uri)
 		}
-		p.cacheMu.Unlock()
 
 		return "", false
 	}
+
+	p.touchCacheEntry(uri)
 
 	return entry.value, true
 }
@@ -109,35 +122,84 @@ func (p *Provider) setCachedSecret(uri, value string) {
 	}
 
 	p.cacheMu.Lock()
+	defer p.cacheMu.Unlock()
+
+	if p.cache == nil {
+		p.cache = make(map[string]cacheEntry)
+	}
+
+	if p.cacheOrder == nil {
+		p.cacheOrder = list.New()
+	}
+
+	if p.cacheNodes == nil {
+		p.cacheNodes = make(map[string]*list.Element)
+	}
+
+	if _, exists := p.cache[uri]; !exists && p.cacheMaxSize > 0 && len(p.cache) >= p.cacheMaxSize {
+		p.evictLeastRecentlyUsed()
+	}
+
 	p.cache[uri] = cacheEntry{value: value, expiresAt: time.Now().Add(p.cacheTTL)}
-	p.cacheMu.Unlock()
+	p.touchCacheEntry(uri)
+}
+
+func (p *Provider) touchCacheEntry(uri string) {
+	if p.cacheOrder == nil {
+		p.cacheOrder = list.New()
+	}
+
+	if p.cacheNodes == nil {
+		p.cacheNodes = make(map[string]*list.Element)
+	}
+
+	if node, ok := p.cacheNodes[uri]; ok {
+		p.cacheOrder.MoveToFront(node)
+
+		return
+	}
+
+	p.cacheNodes[uri] = p.cacheOrder.PushFront(uri)
+}
+
+func (p *Provider) deleteCacheEntry(uri string) {
+	delete(p.cache, uri)
+
+	if node, ok := p.cacheNodes[uri]; ok {
+		p.cacheOrder.Remove(node)
+		delete(p.cacheNodes, uri)
+	}
+}
+
+func (p *Provider) evictLeastRecentlyUsed() {
+	if p.cacheOrder == nil {
+		return
+	}
+
+	leastRecent := p.cacheOrder.Back()
+	if leastRecent == nil {
+		return
+	}
+
+	uri, ok := leastRecent.Value.(string)
+	if !ok {
+		p.cacheOrder.Remove(leastRecent)
+
+		return
+	}
+
+	p.deleteCacheEntry(uri)
 }
 
 // GetSecret retrieves a secret value from 1Password using the provided URI.
 func (p *Provider) GetSecret(ctx context.Context, uri string) (string, error) {
-	if err := onepassword.Secrets.ValidateSecretReference(ctx, uri); err != nil {
-		return "", err
-	}
-
 	if cachedSecret, ok := p.getCachedSecret(uri); ok {
 		return cachedSecret, nil
 	}
 
-	secret, err := p.Client.Secrets().Resolve(ctx, uri)
+	secret, err := p.resolveSecret(ctx, uri)
 	if err != nil {
-		if strings.Contains(err.Error(), ErrInvalidClientID.Error()) {
-			// Attempt to renew session and retry
-			if err = renewSession(ctx, p); err != nil {
-				return "", fmt.Errorf("failed to renew secret provider client session: %w", err)
-			}
-
-			secret, err = p.Client.Secrets().Resolve(ctx, uri)
-			if err != nil {
-				return "", fmt.Errorf("failed to resolve secret after renewing session: %w", err)
-			}
-		} else {
-			return "", err
-		}
+		return "", err
 	}
 
 	p.setCachedSecret(uri, secret)
@@ -147,12 +209,6 @@ func (p *Provider) GetSecret(ctx context.Context, uri string) (string, error) {
 
 // GetSecrets retrieves multiple secrets from 1Password using the provided list of secret references.
 func (p *Provider) GetSecrets(ctx context.Context, uris []string) (map[string]string, error) {
-	for _, uri := range uris {
-		if err := onepassword.Secrets.ValidateSecretReference(ctx, uri); err != nil {
-			return nil, err
-		}
-	}
-
 	result := make(map[string]string, len(uris))
 	missing := make([]string, 0, len(uris))
 
@@ -169,30 +225,14 @@ func (p *Provider) GetSecrets(ctx context.Context, uris []string) (map[string]st
 		return result, nil
 	}
 
-	secrets, err := p.Client.Secrets().ResolveAll(ctx, missing)
+	resolved, err := p.resolveSecrets(ctx, missing)
 	if err != nil {
-		if strings.Contains(err.Error(), ErrInvalidClientID.Error()) {
-			// Attempt to renew session and retry
-			if err = renewSession(ctx, p); err != nil {
-				return nil, fmt.Errorf("failed to renew secret provider client session: %w", err)
-			}
-
-			secrets, err = p.Client.Secrets().ResolveAll(ctx, missing)
-			if err != nil {
-				return nil, fmt.Errorf("failed to resolve secrets after renewing session: %w", err)
-			}
-		} else {
-			return nil, err
-		}
+		return nil, err
 	}
 
-	for uri, secret := range secrets.IndividualResponses {
-		if secret.Error != nil {
-			return nil, fmt.Errorf("error resolving secret '%s': %s", uri, secret.Error.Type)
-		}
-
-		result[uri] = secret.Content.Secret
-		p.setCachedSecret(uri, secret.Content.Secret)
+	for uri, secret := range resolved {
+		result[uri] = secret
+		p.setCachedSecret(uri, secret)
 	}
 
 	return result, nil

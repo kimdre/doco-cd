@@ -42,6 +42,7 @@ nav = [
       { "Bitwarden Secrets Manager" = "External-Secrets/Bitwarden-Secrets-Manager.md" },
       { "Bitwarden Vault / Vaultwarden" = "External-Secrets/Bitwarden-Vault-Vaultwarden.md" },
       { "1Password" = "External-Secrets/1Password.md" },
+      { "1Password Connect" = "External-Secrets/1Password-Connect.md" },
       { Infisical = "External-Secrets/Infisical.md" },
       { OpenBao = "External-Secrets/Openbao.md" },
       { Webhook = "External-Secrets/Webhook.md" }] },
