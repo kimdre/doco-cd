@@ -20,6 +20,9 @@ To use 1Password, you need to set the following environment variables:
 | `SECRET_PROVIDER_ACCESS_TOKEN`      | Access token of a service account, see [the docs](https://developer.1password.com/docs/service-accounts/security/) and [here](https://developer.1password.com/docs/sdks/setup-tutorial/#part-1-set-up-a-1password-service-account) |
 | `SECRET_PROVIDER_ACCESS_TOKEN_FILE` | Path to the file containing the access token inside the container                                                                                                                                                                  |
 
+!!! tip "API Rate Limit"
+    If you hit the API rate limit, you can also enable client-side caching for resolved secrets. See the [Client-Side Caching](#client-side-caching) section below for more details.
+
 ## Deployment configuration
 
 Add a mapping/reference between the environment variable you want to set in the docker compose project/stack and the URI to the secret in 1Password.
@@ -44,3 +47,14 @@ name: myapp
 external_secrets:
   DB_PASSWORD: "op://vault/item/field"
 ```
+
+## Client-Side Caching
+
+Optional client-side caching reduces 1Password API calls. Enable and configure caching with the following environment variables:
+
+| Key                             | Value                                                                                   | Default |
+|---------------------------------|-----------------------------------------------------------------------------------------|:--------|
+| `SECRET_PROVIDER_CACHE_ENABLED` | Enables in-memory caching for resolved secrets                                          | `false` |
+| `SECRET_PROVIDER_CACHE_TTL`     | Cache TTL for resolved secrets as a Go duration string (for example: `30s`, `5m`, `1h`) | `5m`    |
+
+!!! warning "If the cache TTL is too long, secrets may become outdated."
