@@ -250,7 +250,7 @@ The following events are supported as reconciliation triggers in Docker (Standal
     |-------------|----------------------------------------------------------|----------|
     | `die`       | The container process exited                             | Redeploy |
     | `destroy`   | The container was removed                                | Redeploy |
-    | `stop`      | The container was stopped gracefull.                     | Restart  |
+    | `stop`      | The container was stopped gracefully                     | Restart  |
     | `kill`      | The container was terminated by a signal                 | Restart  |
     | `oom`       | The container was killed because it ran out of memory    | Restart  |
     | `unhealthy` | The container health check status changed to _unhealthy_ | Restart  |
