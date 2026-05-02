@@ -53,10 +53,14 @@ type appriseRequest struct {
 }
 
 type Metadata struct {
-	Repository string
-	Stack      string
-	Revision   string
-	JobID      string
+	Repository          string
+	Stack               string
+	Revision            string
+	JobID               string
+	ReconciliationEvent string
+	AffectedActorKind   string
+	AffectedActorID     string
+	AffectedActorName   string
 }
 
 // parseLevel converts a string representation of a log level to the level type.
@@ -171,6 +175,7 @@ func formatMessage(message string, m Metadata) string {
 		{"stack", m.Stack},
 		{"revision", m.Revision},
 		{"job_id", m.JobID},
+		{"reconciliation_event", m.ReconciliationEvent},
 	}
 
 	var sb strings.Builder
@@ -179,6 +184,20 @@ func formatMessage(message string, m Metadata) string {
 		if f.value != "" {
 			_, _ = fmt.Fprintf(&sb, "\n%s: %s", f.key, f.value)
 		}
+	}
+
+	actorKind := strings.TrimSpace(strings.ToLower(m.AffectedActorKind))
+
+	if actorKind != "" {
+		_, _ = fmt.Fprintf(&sb, "\naffected_actor_kind: %s", actorKind)
+	}
+
+	if m.AffectedActorID != "" {
+		_, _ = fmt.Fprintf(&sb, "\naffected_actor_id: %s", m.AffectedActorID)
+	}
+
+	if m.AffectedActorName != "" {
+		_, _ = fmt.Fprintf(&sb, "\naffected_actor_name: %s", m.AffectedActorName)
 	}
 
 	metadataInfo += sb.String()

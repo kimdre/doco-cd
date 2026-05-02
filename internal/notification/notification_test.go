@@ -147,4 +147,22 @@ func TestFormatMessage(t *testing.T) {
 			t.Errorf("expected %q, got %q", expected, message)
 		}
 	})
+
+	t.Run("reconciliation metadata includes event and affected actor", func(t *testing.T) {
+		t.Parallel()
+
+		message := formatMessage("Deployment triggered", Metadata{
+			Repository:          "acme/api",
+			Stack:               "prod",
+			ReconciliationEvent: "unhealthy",
+			AffectedActorKind:   "service",
+			AffectedActorID:     "abc123def456",
+			AffectedActorName:   "prod_api",
+		})
+		expected := "Deployment triggered\n\nrepository: acme/api\nstack: prod\nreconciliation_event: unhealthy\naffected_actor_id: abc123def456\naffected_actor_name: prod_api\naffected_actor_kind: service"
+
+		if message != expected {
+			t.Errorf("expected %q, got %q", expected, message)
+		}
+	})
 }

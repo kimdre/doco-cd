@@ -26,10 +26,8 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 	restartOpts := restartOptionsFromDeployConfig(dc)
 	action := normalizeReconciliationEventAction(string(event.Action))
 
-	actorKind := "Container"
-	if swarm.GetModeEnabled() {
-		actorKind = "Service"
-	}
+	actorKind := restartNotificationActorKind()
+	actorKindTitle := restartNotificationActorKindTitle(actorKind)
 
 	restartTimeout := 10
 	if restartOpts.Timeout != nil {
@@ -49,13 +47,9 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 
 	j.markRestartFollowupSuppression(containerID, restartTimeout)
 
-	restartLog.Info("restarting container")
+	restartLog.Info("restarting " + actorKind)
 
-	metadata := notification.Metadata{
-		Repository: j.info.metadata.Repository,
-		Stack:      j.info.metadata.Stack,
-		JobID:      j.info.metadata.JobID,
-	}
+	metadata := restartNotificationMetadata(j.info.metadata, action, actorKind, containerID, containerName)
 
 	if _, err := j.info.dockerCli.Client().ContainerRestart(ctx, containerID, restartOpts); err != nil {
 		delete(j.restartSuppressUntil, containerID)
@@ -63,8 +57,8 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 
 		if notifyErr := notification.Send(
 			notification.Failure,
-			actorKind+" restart failed",
-			fmt.Sprintf("%s %s (%s) could not be restarted on %q event: %s", actorKind, containerName, shortID(containerID), action, err.Error()),
+			actorKindTitle+" restart failed",
+			fmt.Sprintf("%s %s (%s) could not be restarted on %q event: %s", actorKindTitle, containerName, shortID(containerID), action, err.Error()),
 			metadata,
 		); notifyErr != nil {
 			restartLog.Error("failed to send restart failure notification", logger.ErrAttr(notifyErr))
@@ -73,16 +67,42 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 		return
 	}
 
-	restartLog.Info("container restarted successfully")
+	restartLog.Info(actorKind + " restarted successfully")
 
 	if notifyErr := notification.Send(
 		notification.Success,
-		actorKind+" restarted",
-		fmt.Sprintf("%s %s (%s) was restarted successfully on %q event", actorKind, containerName, shortID(containerID), action),
+		actorKindTitle+" restarted",
+		fmt.Sprintf("%s %s (%s) was restarted successfully on %q event", actorKindTitle, containerName, shortID(containerID), action),
 		metadata,
 	); notifyErr != nil {
 		restartLog.Error("failed to send restart success notification", logger.ErrAttr(notifyErr))
 	}
+}
+
+func restartNotificationMetadata(base notification.Metadata, action, actorKind, actorID, actorName string) notification.Metadata {
+	metadata := base
+	metadata.ReconciliationEvent = action
+	metadata.AffectedActorKind = actorKind
+	metadata.AffectedActorID = shortID(actorID)
+	metadata.AffectedActorName = strings.TrimSpace(actorName)
+
+	return metadata
+}
+
+func restartNotificationActorKind() string {
+	if swarm.GetModeEnabled() {
+		return "service"
+	}
+
+	return "container"
+}
+
+func restartNotificationActorKindTitle(actorKind string) string {
+	if actorKind == "" {
+		return ""
+	}
+
+	return strings.ToUpper(actorKind[:1]) + actorKind[1:]
 }
 
 func (j *job) shouldSuppressRestartFollowupEvent(action string, event events.Message) bool {
@@ -171,11 +191,14 @@ func (j *job) shouldSuppressUnhealthyRestart(jobLog *slog.Logger, event events.M
 		slog.Int("restart_window_seconds", windowSeconds),
 	)
 
+	actorKind := restartNotificationActorKind()
+	metadata := restartNotificationMetadata(j.info.metadata, action, actorKind, containerID, event.Actor.Attributes["name"])
+
 	if notifyErr := notification.Send(
 		notification.Warning,
-		"Container restart suppressed",
+		restartNotificationActorKindTitle(actorKind)+" restart suppressed",
 		msg,
-		j.info.metadata,
+		metadata,
 	); notifyErr != nil {
 		jobLog.Error("failed to send unhealthy restart suppression notification", logger.ErrAttr(notifyErr))
 	}

@@ -156,7 +156,7 @@ func (j *job) redeployMissingServicesOnStartup(ctx context.Context, jobLog *slog
 			),
 		)
 
-	j.deploy(ctx, eventLog, missingDCs)
+	j.deploy(ctx, eventLog, missingDCs, "startup_missing", events.Message{})
 }
 
 // findMissingContainersOnStartup lists all running containers for this repository and returns

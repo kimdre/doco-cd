@@ -229,10 +229,10 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		waitForContainerRemovalSettled(ctx, eventLog, j.info.dockerCli.Client(), event.Actor.ID, containerRemovalSettleTimeout)
 	}
 
-	j.deploy(ctx, eventLog, stackDCs)
+	j.deploy(ctx, eventLog, stackDCs, action, event)
 }
 
-func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*config.DeployConfig) {
+func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*config.DeployConfig, action string, event events.Message) {
 	repoLock := lock.GetRepoLock(j.info.metadata.Repository)
 	repoLock.Lock()
 	defer repoLock.Unlock()
@@ -251,10 +251,22 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*config.Dep
 	// even when there are no Git/compose changes.
 	reconcileDCs := cloneDeployConfigsWithForcedRecreate(dcs)
 
+	// Enrich metadata with reconciliation event information for deploy notifications
+	actorKind := "container"
+	if swarm.GetModeEnabled() {
+		actorKind = "service"
+	}
+
+	metadata := j.info.metadata
+	metadata.ReconciliationEvent = action
+	metadata.AffectedActorKind = actorKind
+	metadata.AffectedActorID = shortID(event.Actor.ID)
+	metadata.AffectedActorName = strings.TrimSpace(event.Actor.Attributes["name"])
+
 	if err := handleDeploy(ctx, jobLog, j.info.appConfig,
 		j.info.dataMountPoint, j.info.dockerCli,
-		j.info.secretProvider, j.info.metadata.JobID, j.info.jobTrigger,
-		j.info.repoData, reconcileDCs, j.info.payload, j.info.testName); err != nil {
+		j.info.secretProvider, metadata.JobID, j.info.jobTrigger,
+		j.info.repoData, reconcileDCs, j.info.payload, j.info.testName, metadata); err != nil {
 		jobLog.Error("failed to deploy", logger.ErrAttr(err))
 	}
 }

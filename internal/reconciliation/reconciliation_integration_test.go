@@ -172,6 +172,7 @@ func TestReconciliationStopEventRestartSuppressionIntegration(t *testing.T) {
 	}, getDeployConfigGroupByEvent([]*config.DeployConfig{dc}))
 
 	runCtx, cancel := context.WithCancel(ctx)
+
 	t.Cleanup(func() {
 		cancel()
 		reconcileJob.close()

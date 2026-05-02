@@ -12,6 +12,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
+	"github.com/kimdre/doco-cd/internal/notification"
 )
 
 func TestNormalizeRepositoryLabelFromCloneURL(t *testing.T) {
@@ -351,6 +352,52 @@ func TestRestartOptionsFromDeployConfig(t *testing.T) {
 			t.Fatalf("expected restart signal SIGQUIT, got %q", opts.Signal)
 		}
 	})
+}
+
+func TestRestartNotificationMetadata(t *testing.T) {
+	t.Parallel()
+
+	metadata := restartNotificationMetadata(notification.Metadata{
+		Repository: "owner/repo",
+		Stack:      "stack-a",
+		JobID:      "job-1",
+	}, "unhealthy", "container", "1234567890abcdef", "stack-a-web-1")
+
+	if metadata.Repository != "owner/repo" || metadata.Stack != "stack-a" || metadata.JobID != "job-1" {
+		t.Fatalf("expected base metadata to be preserved, got %#v", metadata)
+	}
+
+	if metadata.ReconciliationEvent != "unhealthy" {
+		t.Fatalf("expected reconciliation event unhealthy, got %q", metadata.ReconciliationEvent)
+	}
+
+	if metadata.AffectedActorKind != "container" {
+		t.Fatalf("expected actor kind container, got %q", metadata.AffectedActorKind)
+	}
+
+	if metadata.AffectedActorID != "1234567890ab" {
+		t.Fatalf("expected short actor id 1234567890ab, got %q", metadata.AffectedActorID)
+	}
+
+	if metadata.AffectedActorName != "stack-a-web-1" {
+		t.Fatalf("expected actor name stack-a-web-1, got %q", metadata.AffectedActorName)
+	}
+}
+
+func TestRestartNotificationActorKindTitle(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"container": "Container",
+		"service":   "Service",
+		"":          "",
+	}
+
+	for input, want := range tests {
+		if got := restartNotificationActorKindTitle(input); got != want {
+			t.Fatalf("expected title %q for %q, got %q", want, input, got)
+		}
+	}
 }
 
 func TestSelectRestartDeployConfig(t *testing.T) {
