@@ -12,6 +12,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 )
@@ -23,6 +24,12 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 	containerID := event.Actor.ID
 	containerName := event.Actor.Attributes["name"]
 	restartOpts := restartOptionsFromDeployConfig(dc)
+	action := normalizeReconciliationEventAction(string(event.Action))
+
+	actorKind := "Container"
+	if swarm.GetModeEnabled() {
+		actorKind = "Service"
+	}
 
 	restartTimeout := 10
 	if restartOpts.Timeout != nil {
@@ -56,8 +63,8 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 
 		if notifyErr := notification.Send(
 			notification.Failure,
-			"Container restart failed",
-			fmt.Sprintf("container %s (%s) could not be restarted: %s", containerName, containerID, err.Error()),
+			actorKind+" restart failed",
+			fmt.Sprintf("%s %s (%s) could not be restarted on %q event: %s", actorKind, containerName, shortID(containerID), action, err.Error()),
 			metadata,
 		); notifyErr != nil {
 			restartLog.Error("failed to send restart failure notification", logger.ErrAttr(notifyErr))
@@ -70,8 +77,8 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 
 	if notifyErr := notification.Send(
 		notification.Success,
-		"Container restarted",
-		fmt.Sprintf("container %s (%s) was restarted successfully", containerName, containerID),
+		actorKind+" restarted",
+		fmt.Sprintf("%s %s (%s) was restarted successfully on %q event", actorKind, containerName, shortID(containerID), action),
 		metadata,
 	); notifyErr != nil {
 		restartLog.Error("failed to send restart success notification", logger.ErrAttr(notifyErr))
