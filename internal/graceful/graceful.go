@@ -146,10 +146,10 @@ func (h *handler) Serve(log *slog.Logger) error {
 			// Stop all servers if any server is stopped
 			defer func() {
 				serveCloseChan.Close()
-				log.Info("server.Serve stopped", slog.String("name", serverName))
+				log.Debug("server.Serve stopped", slog.String("name", serverName))
 			}()
 
-			log.Info("server.Serve started", slog.String("name", serverName))
+			log.Debug("server.Serve started", slog.String("name", serverName))
 
 			if err := server.Serve(serveCtx); err != nil {
 				log.Warn("server.Serve failed", slog.String("name", serverName), logger.ErrAttr(err))
@@ -168,8 +168,6 @@ func (h *handler) Serve(log *slog.Logger) error {
 	case <-serveCloseChan.Done():
 		log.Info("some server stopped")
 	}
-
-	log.Info("shutting down.")
 
 	// shutdown all servers gracefully
 	shutdownCtx, shutdownStop := context.WithTimeout(context.Background(), shutdownTimeout)
@@ -190,7 +188,7 @@ func (h *handler) Serve(log *slog.Logger) error {
 				}
 			}()
 
-			log.Info("call server.Shutdown", slog.String("name", serverName))
+			log.Debug("call server.Shutdown", slog.String("name", serverName))
 
 			if err := server.Shutdown(shutdownCtx); err != nil {
 				log.Warn("server.Shutdown failed",
@@ -204,7 +202,7 @@ func (h *handler) Serve(log *slog.Logger) error {
 	}
 
 	// wait for servers to shutdown gracefully
-	log.Info("Waiting for ongoing requests to finish.")
+	log.Info("Waiting for ongoing requests to finish")
 	wg.Wait()
 
 	serveStop()
@@ -220,7 +218,7 @@ func (h *handler) Serve(log *slog.Logger) error {
 	}
 
 	h.runRegisteredShutdownFuncs(log)
-	log.Info("server shutdown gracefully.")
+	log.Info("server shutdown gracefully")
 
 	return errors.Join(errs...)
 }
