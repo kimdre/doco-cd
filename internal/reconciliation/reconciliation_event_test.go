@@ -394,8 +394,31 @@ func TestShouldSuppressRestartFollowupEvent(t *testing.T) {
 		t.Fatal("expected die follow-up event to be suppressed")
 	}
 
-	if _, ok := j.restartSuppressUntil[containerID]; ok {
-		t.Fatal("expected suppression marker to be consumed after matching event")
+	if _, ok := j.restartSuppressUntil[containerID]; !ok {
+		t.Fatal("expected suppression marker to remain active during suppression window")
+	}
+}
+
+func TestShouldSuppressRestartFollowupEvent_MultipleFollowupEvents(t *testing.T) {
+	t.Parallel()
+
+	containerID := "container-1"
+	j := &job{
+		restartSuppressUntil: map[string]time.Time{
+			containerID: time.Now().Add(5 * time.Second),
+		},
+	}
+
+	event := events.Message{Actor: events.Actor{ID: containerID}}
+
+	for _, action := range []string{"stop", "die", "kill"} {
+		if !j.shouldSuppressRestartFollowupEvent(action, event) {
+			t.Fatalf("expected %q follow-up event to be suppressed", action)
+		}
+	}
+
+	if _, ok := j.restartSuppressUntil[containerID]; !ok {
+		t.Fatal("expected suppression marker to remain until the suppression window expires")
 	}
 }
 

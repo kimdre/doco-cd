@@ -3,15 +3,23 @@ package reconciliation
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/docker"
 	dockerSwarm "github.com/kimdre/doco-cd/internal/docker/swarm"
+	"github.com/kimdre/doco-cd/internal/logger"
+	"github.com/kimdre/doco-cd/internal/notification"
+	"github.com/kimdre/doco-cd/internal/stages"
 	internaltest "github.com/kimdre/doco-cd/internal/test"
+	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
 const dockerIntegrationEnvVar = "DOCO_CD_RUN_DOCKER_INTEGRATION_TESTS"
@@ -126,6 +134,68 @@ func TestReconciliationDockerEventActions(t *testing.T) {
 	}
 }
 
+func TestReconciliationStopEventRestartSuppressionIntegration(t *testing.T) {
+	requireDockerIntegrationTestGate(t)
+
+	ctx := t.Context()
+	stackName := internaltest.ConvertTestName(t.Name())
+	repositoryName := "kimdre/doco-cd_tests"
+
+	stack := internaltest.ComposeUp(ctx, t,
+		internaltest.WithName(stackName),
+		internaltest.WithYAML(restartMarkerComposeYAML()),
+		internaltest.WithWaitTimeout(90*time.Second),
+		internaltest.WithCustomLabel(map[string]string{
+			docker.DocoCDLabels.Metadata.Manager:     config.AppName,
+			docker.DocoCDLabels.Repository.Name:      repositoryName,
+			docker.DocoCDLabels.Deployment.Name:      stackName,
+			docker.DocoCDLabels.Deployment.TargetRef: "main",
+		}),
+	)
+
+	logSince := time.Now().Add(-2 * time.Second)
+	waitForBootMarkerCount(ctx, t, stack, logSince, 1, 20*time.Second)
+
+	dc := config.DefaultDeployConfig(stackName, "main")
+	dc.Reconciliation.Enabled = true
+	dc.Reconciliation.Events = []string{"stop"}
+	dc.Reconciliation.RestartTimeout = 1
+
+	jobLog := logger.New(slog.LevelError).Logger
+	reconcileJob := newJob(jobInfo{
+		jobLog:        jobLog,
+		dockerCli:     stack.DockerCli,
+		metadata:      notification.Metadata{Repository: repositoryName, Stack: stackName, JobID: "test-job"},
+		repoData:      stages.RepositoryData{CloneURL: config.HttpUrl("https://github.com/kimdre/doco-cd_tests.git"), Name: repositoryName},
+		payload:       &webhook.ParsedPayload{FullName: repositoryName},
+		deployConfigs: []*config.DeployConfig{dc},
+	}, getDeployConfigGroupByEvent([]*config.DeployConfig{dc}))
+
+	runCtx, cancel := context.WithCancel(ctx)
+	t.Cleanup(func() {
+		cancel()
+		reconcileJob.close()
+	})
+
+	go reconcileJob.run(runCtx)
+
+	// Give the reconciliation listener a brief moment to subscribe before triggering the restart.
+	time.Sleep(1 * time.Second)
+
+	containerID := stack.ServiceContainerID(ctx, t, "app")
+	restartTimeout := 1
+
+	if _, err := stack.Client.ContainerRestart(ctx, containerID, client.ContainerRestartOptions{Timeout: &restartTimeout}); err != nil {
+		t.Fatalf("failed to restart container %s: %v", containerID, err)
+	}
+
+	// Initial start + user restart + one reconciliation restart.
+	waitForBootMarkerCount(ctx, t, stack, logSince, 3, 35*time.Second)
+
+	// Regression assertion: no additional restart loop should happen after follow-up stop/die/kill events.
+	assertBootMarkerCountStable(ctx, t, stack, logSince, 3, 6*time.Second)
+}
+
 func requireDockerIntegrationTestGate(t *testing.T) {
 	t.Helper()
 
@@ -207,6 +277,49 @@ func mapKeys(m map[string]struct{}) []string {
 	return ret
 }
 
+func waitForBootMarkerCount(ctx context.Context, t *testing.T, stack *internaltest.ComposeStack, since time.Time, want int, timeout time.Duration) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+
+	for {
+		if time.Now().After(deadline) {
+			got := bootMarkerCount(stack.ContainerLogs(ctx, t, "app", since))
+			t.Fatalf("timed out waiting for %d boot markers, got %d", want, got)
+		}
+
+		got := bootMarkerCount(stack.ContainerLogs(ctx, t, "app", since))
+		if got >= want {
+			return
+		}
+
+		time.Sleep(250 * time.Millisecond)
+	}
+}
+
+func assertBootMarkerCountStable(ctx context.Context, t *testing.T, stack *internaltest.ComposeStack, since time.Time, expected int, duration time.Duration) {
+	t.Helper()
+
+	deadline := time.Now().Add(duration)
+
+	for {
+		got := bootMarkerCount(stack.ContainerLogs(ctx, t, "app", since))
+		if got != expected {
+			t.Fatalf("expected boot marker count to remain %d, got %d", expected, got)
+		}
+
+		if time.Now().After(deadline) {
+			return
+		}
+
+		time.Sleep(250 * time.Millisecond)
+	}
+}
+
+func bootMarkerCount(logs string) int {
+	return strings.Count(logs, "BOOT_MARKER")
+}
+
 func runningServiceComposeYAML() string {
 	return `services:
   app:
@@ -238,5 +351,14 @@ func unhealthyOnDemandComposeYAML() string {
       timeout: 1s
       retries: 1
       start_period: 1s
+`
+}
+
+func restartMarkerComposeYAML() string {
+	return `services:
+  app:
+	image: alpine:3.20
+	restart: "no"
+	command: ["sh", "-c", "echo BOOT_MARKER; trap : TERM INT; while true; do sleep 1; done"]
 `
 }

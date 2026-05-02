@@ -106,8 +106,6 @@ func (j *job) shouldSuppressRestartFollowupEvent(action string, event events.Mes
 		return false
 	}
 
-	delete(j.restartSuppressUntil, containerID)
-
 	return true
 }
 
