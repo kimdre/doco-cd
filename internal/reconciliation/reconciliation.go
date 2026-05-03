@@ -51,19 +51,14 @@ func (j *job) run(ctx context.Context) {
 	// finish before subscribing to Docker events so all startup healing happens
 	// against a stable initial view of the daemon state.
 	var startupRecoveryWG sync.WaitGroup
-	startupRecoveryWG.Add(2)
 
-	go func() {
-		defer startupRecoveryWG.Done()
-
+	startupRecoveryWG.Go(func() {
 		j.restartUnhealthyContainersOnStartup(ctx, jobLog)
-	}()
+	})
 
-	go func() {
-		defer startupRecoveryWG.Done()
-
+	startupRecoveryWG.Go(func() {
 		j.redeployMissingServicesOnStartup(ctx, jobLog)
-	}()
+	})
 
 	startupRecoveryWG.Wait()
 
