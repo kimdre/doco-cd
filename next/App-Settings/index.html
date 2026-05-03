@@ -2570,8 +2570,9 @@ By default, the Docker client will use the settings from the host system.</p>
 </tbody>
 </table>
 <h2 id="notification-settings">Notification Settings<a class="headerlink" href="#notification-settings" title="Permanent link">&para;</a></h2>
-<p>Doco-CD can be configured to send notifications with <a href="https://github.com/caronc/apprise">Apprise</a> to various services when a deployment is started, finished, or failed.</p>
-<p>See the <a data-preview="" href="../Advanced/Notifications/">Notifications</a> wiki page for more information on how to configure notifications.</p>
+<p>Doco-CD can be configured to send notifications with <a href="https://github.com/caronc/apprise">Apprise</a> to various services when a deployment is started, finished, failed, or triggered by <a data-preview="" href="../Deploy-Settings/#reconciliation-settings">reconciliation</a>.</p>
+<p>Reconciliation-triggered notifications use a short <code>[R]</code> marker in the title.</p>
+<p>See the <a data-preview="" href="../Advanced/Notifications/#reconciliation-notifications">Notifications</a> wiki page for configuration and format details.</p>
 <h2 id="encrypting-sensitive-data">Encrypting sensitive data<a class="headerlink" href="#encrypting-sensitive-data" title="Permanent link">&para;</a></h2>
 <p>Doco-CD supports the encryption of sensitive data in your doco-cd app config and deployment files with <a href="https://getsops.io/">SOPS</a>.</p>
 <p>See the <a data-preview="" href="../Advanced/Encryption/">Encryption</a> wiki page for more information on how to use SOPS with Doco-CD.</p>

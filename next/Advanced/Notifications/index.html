@@ -1371,6 +1371,45 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#metadata-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Metadata fields
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reconciliation-notifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Reconciliation notifications
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Reconciliation notifications">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#metadata-fields_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Metadata fields
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1946,6 +1985,45 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#metadata-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Metadata fields
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reconciliation-notifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Reconciliation notifications
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Reconciliation notifications">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#metadata-fields_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Metadata fields
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2027,7 +2105,7 @@
 
   <h1 id="__skip">Notifications</h1>
 
-<p>Doco-CD can be configured to send notifications with <a href="https://github.com/caronc/apprise">Apprise</a> to various services when a deployment is started, finished, or failed.
+<p>Doco-CD can be configured to send notifications with <a href="https://github.com/caronc/apprise">Apprise</a> to various services when a deployment is started, finished, or failed and on <a data-preview="" href="../../Deploy-Settings/#reconciliation-settings">reconciliation</a> events.
 You can find a list of all supported services and platforms in the <a href="https://appriseit.com/">Apprise documentation</a>.</p>
 <p>For that, specify the required settings in the app <code>environment</code> section and add an Apprise container to your <code>docker-compose.yml</code> file.</p>
 <h2 id="settings">Settings<a class="headerlink" href="#settings" title="Permanent link">&para;</a></h2>
@@ -2089,6 +2167,110 @@ You can find a list of all supported services and platforms in the <a href="http
 </span></span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="hll"><span class="w">      </span><span class="nt">TZ</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Europe/Berlin</span>
 </span></span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="hll"><span class="w">      </span><span class="nt">APPRISE_WORKER_COUNT</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
 </span></span></code></pre></div>
+<h2 id="metadata-fields">Metadata fields<a class="headerlink" href="#metadata-fields" title="Permanent link">&para;</a></h2>
+<p>When a notification is sent, the following metadata fields are included in the notification body:</p>
+<table>
+<thead>
+<tr>
+<th>Field name</th>
+<th>Description</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>job_id</code></td>
+<td>Unique ID of the deployment job that triggered the notification (not included for <a data-preview="" href="#reconciliation-notifications">reconciliation notifications</a>)</td>
+<td></td>
+</tr>
+<tr>
+<td><code>repository</code></td>
+<td>Repository name</td>
+<td><code>github.com/my/repo</code></td>
+</tr>
+<tr>
+<td><code>revision</code></td>
+<td>Branch/tag and Commit SHA that was deployed</td>
+<td><code>main (abc123)</code>, <code>v1.0.0 (def456)</code></td>
+</tr>
+<tr>
+<td><code>stack</code></td>
+<td>Project/Stack name</td>
+<td><code>my-stack</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="reconciliation-notifications">Reconciliation notifications<a class="headerlink" href="#reconciliation-notifications" title="Permanent link">&para;</a></h2>
+<p>If a notification was triggered by reconciliation, the title gets a short <code>[R]</code> marker.</p>
+<div class="admonition example">
+<p class="admonition-title">Example notification titles</p>
+<ul>
+<li>Regular deploy notification title: <code>✅ Deployment completed</code></li>
+<li>Reconciliation notification title: <code>✅ [R] Deployment completed</code></li>
+</ul>
+</div>
+<p>Reconciliation notifications also include a <code>reconciliation:</code> block in the body <a data-preview="" href="#metadata-fields">metadata</a>.</p>
+<h3 id="metadata-fields_1">Metadata fields<a class="headerlink" href="#metadata-fields_1" title="Permanent link">&para;</a></h3>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="metadata-fields_1-docker-standalone" name="__tabbed_1" type="radio" /><input id="metadata-fields_1-docker-swarm" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="metadata-fields_1-docker-standalone">Docker Standalone</label><label for="metadata-fields_1-docker-swarm">Docker Swarm</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<table>
+<thead>
+<tr>
+<th>Field name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>event</code></td>
+<td>reconciliation event that triggered the action</td>
+</tr>
+<tr>
+<td><code>container_id</code></td>
+<td>affected container name</td>
+</tr>
+<tr>
+<td><code>container_name</code></td>
+<td>affected container name</td>
+</tr>
+<tr>
+<td><code>trace_id</code></td>
+<td>reconciliation trace ID for log correlation</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="tabbed-block">
+<table>
+<thead>
+<tr>
+<th>Field name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>event</code></td>
+<td>reconciliation event that triggered the action</td>
+</tr>
+<tr>
+<td><code>service_id</code></td>
+<td>affected service name</td>
+</tr>
+<tr>
+<td><code>service_name</code></td>
+<td>affected service name</td>
+</tr>
+<tr>
+<td><code>trace_id</code></td>
+<td>reconciliation trace ID for log correlation</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
 
 
   <nav class="md-tags" >
