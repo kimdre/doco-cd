@@ -43,7 +43,7 @@ To get a one-time password, append the `?attribute=otp` query parameter to a sec
 `op://<vault>/<item>/[section/]one-time password?attribute=otp`
 
 !!! warning
-    Machine accounts can only access vaults for which you have granted read permissions during creation. The default `Personal` vault can't be access by machine accounts!
+    Connect tokens can only access vaults for which you have granted read permissions during token creation.
 
 ## Setup Steps
 
