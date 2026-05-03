@@ -3,12 +3,18 @@ package docker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
+	"github.com/docker/cli/cli/config/configfile"
 )
 
 func TestDigestFromReference(t *testing.T) {
@@ -55,6 +61,77 @@ func TestDigestFromRepoDigests(t *testing.T) {
 
 			if got := digestFromRepoDigests(tc.repoDigests); got != tc.want {
 				t.Fatalf("digestFromRepoDigests() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRegistryManifestURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		imageRef    string
+		wantURL     string
+		wantAuthKey string
+		wantScope   string
+	}{
+		{
+			name:        "gcr.io",
+			imageRef:    "gcr.io/google-containers/pause:3.9",
+			wantURL:     "https://gcr.io/v2/google-containers/pause/manifests/3.9",
+			wantAuthKey: "gcr.io",
+			wantScope:   "repository:google-containers/pause:pull",
+		},
+		{
+			name:        "ghcr.io",
+			imageRef:    "ghcr.io/octo-org/octo-image:1.2.3",
+			wantURL:     "https://ghcr.io/v2/octo-org/octo-image/manifests/1.2.3",
+			wantAuthKey: "ghcr.io",
+			wantScope:   "repository:octo-org/octo-image:pull",
+		},
+		{
+			name:        "registry.gitlab.com",
+			imageRef:    "registry.gitlab.com/group/project/image:latest",
+			wantURL:     "https://registry.gitlab.com/v2/group/project/image/manifests/latest",
+			wantAuthKey: "registry.gitlab.com",
+			wantScope:   "repository:group/project/image:pull",
+		},
+		{
+			name:        "docker.io maps to Docker Hub registry host and auth key",
+			imageRef:    "docker.io/library/nginx:latest",
+			wantURL:     "https://registry-1.docker.io/v2/library/nginx/manifests/latest",
+			wantAuthKey: "https://index.docker.io/v1/",
+			wantScope:   "repository:library/nginx:pull",
+		},
+		{
+			name:        "index.docker.io maps to Docker Hub registry host and auth key",
+			imageRef:    "index.docker.io/library/nginx:latest",
+			wantURL:     "https://registry-1.docker.io/v2/library/nginx/manifests/latest",
+			wantAuthKey: "https://index.docker.io/v1/",
+			wantScope:   "repository:library/nginx:pull",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			gotURL, gotAuthKey, gotScope, err := registryManifestURL(tc.imageRef)
+			if err != nil {
+				t.Fatalf("registryManifestURL(%q) error = %v", tc.imageRef, err)
+			}
+
+			if gotURL != tc.wantURL {
+				t.Fatalf("registryManifestURL(%q) url = %q, want %q", tc.imageRef, gotURL, tc.wantURL)
+			}
+
+			if gotAuthKey != tc.wantAuthKey {
+				t.Fatalf("registryManifestURL(%q) auth key = %q, want %q", tc.imageRef, gotAuthKey, tc.wantAuthKey)
+			}
+
+			if gotScope != tc.wantScope {
+				t.Fatalf("registryManifestURL(%q) scope = %q, want %q", tc.imageRef, gotScope, tc.wantScope)
 			}
 		})
 	}
@@ -206,5 +283,141 @@ func TestHaveDeployedServiceImageDigestsChanged(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRegistryDigestForRefPrefersHEAD(t *testing.T) {
+	t.Parallel()
+
+	oldHeadLookup := registryDigestHeadLookup
+	oldDistributionLookup := registryDigestDistributionLookup
+
+	t.Cleanup(func() {
+		registryDigestHeadLookup = oldHeadLookup
+		registryDigestDistributionLookup = oldDistributionLookup
+	})
+
+	registryDigestHeadLookup = func(context.Context, command.Cli, string) (string, error) {
+		return "sha256:head", nil
+	}
+	registryDigestDistributionLookup = func(context.Context, command.Cli, string) (string, error) {
+		t.Fatal("distribution inspect fallback should not be called")
+		return "", nil
+	}
+
+	got, err := registryDigestForRef(context.Background(), nil, "nginx:latest")
+	if err != nil {
+		t.Fatalf("registryDigestForRef() unexpected error: %v", err)
+	}
+
+	if got != "sha256:head" {
+		t.Fatalf("registryDigestForRef() = %q, want %q", got, "sha256:head")
+	}
+}
+
+func TestRegistryDigestForRefFallsBackToDistributionInspect(t *testing.T) {
+	t.Parallel()
+
+	oldHeadLookup := registryDigestHeadLookup
+	oldDistributionLookup := registryDigestDistributionLookup
+
+	t.Cleanup(func() {
+		registryDigestHeadLookup = oldHeadLookup
+		registryDigestDistributionLookup = oldDistributionLookup
+	})
+
+	registryDigestHeadLookup = func(context.Context, command.Cli, string) (string, error) {
+		return "", errors.New("head failed")
+	}
+	registryDigestDistributionLookup = func(context.Context, command.Cli, string) (string, error) {
+		return "sha256:fallback", nil
+	}
+
+	got, err := registryDigestForRef(context.Background(), nil, "nginx:latest")
+	if err != nil {
+		t.Fatalf("registryDigestForRef() unexpected error: %v", err)
+	}
+
+	if got != "sha256:fallback" {
+		t.Fatalf("registryDigestForRef() = %q, want %q", got, "sha256:fallback")
+	}
+}
+
+func TestRegistryDigestForRefViaHEADWithClientUsesHEAD(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodHead {
+			t.Fatalf("unexpected method: got %s, want %s", r.Method, http.MethodHead)
+		}
+
+		if r.URL.Path != "/v2/team/app/manifests/latest" {
+			t.Fatalf("unexpected path: got %s", r.URL.Path)
+		}
+
+		w.Header().Set(dockerContentDigest, "sha256:from-head")
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	parsed, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("failed to parse test server URL: %v", err)
+	}
+
+	imageRef := parsed.Host + "/team/app:latest"
+
+	got, err := registryDigestForRefViaHEADWithClient(context.Background(), &configfile.ConfigFile{}, imageRef, server.Client())
+	if err != nil {
+		t.Fatalf("registryDigestForRefViaHEADWithClient() unexpected error: %v", err)
+	}
+
+	if got != "sha256:from-head" {
+		t.Fatalf("registryDigestForRefViaHEADWithClient() = %q, want %q", got, "sha256:from-head")
+	}
+}
+
+func TestRegistryDigestForRefViaHEADWithClientBearerChallenge(t *testing.T) {
+	t.Parallel()
+
+	var tokenURL string
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"token":"registry-token"}`))
+		case "/v2/team/app/manifests/latest":
+			if !strings.HasPrefix(r.Header.Get("Authorization"), registryAuthBearer+" ") || r.Header.Get("Authorization") != registryAuthBearer+" registry-token" {
+				w.Header().Set(wwwAuthenticateHeader, fmt.Sprintf(`Bearer realm=%q,service=%q,scope=%q`, tokenURL, "test-registry", "repository:team/app:pull"))
+				w.WriteHeader(http.StatusUnauthorized)
+
+				return
+			}
+
+			w.Header().Set(dockerContentDigest, "sha256:from-bearer")
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	tokenURL = server.URL + "/token"
+
+	parsed, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("failed to parse test server URL: %v", err)
+	}
+
+	imageRef := parsed.Host + "/team/app:latest"
+
+	got, err := registryDigestForRefViaHEADWithClient(context.Background(), &configfile.ConfigFile{}, imageRef, server.Client())
+	if err != nil {
+		t.Fatalf("registryDigestForRefViaHEADWithClient() unexpected error: %v", err)
+	}
+
+	if got != "sha256:from-bearer" {
+		t.Fatalf("registryDigestForRefViaHEADWithClient() = %q, want %q", got, "sha256:from-bearer")
 	}
 }
