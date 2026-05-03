@@ -62,9 +62,13 @@ func registryAuthForImage(dockerCli command.Cli, imageRef string) string {
 // registryDigestForRef queries the registry for the current manifest digest of
 // the given image reference without downloading any image layers.
 func registryDigestForRef(ctx context.Context, dockerCli command.Cli, imageRef string) (string, error) {
-	if digest, err := registryDigestHeadLookup(ctx, dockerCli, imageRef); err == nil {
+	digest, err := registryDigestHeadLookup(ctx, dockerCli, imageRef)
+	if err == nil {
+		slog.Debug("registry HEAD digest lookup successful", slog.String("ref", imageRef), slog.String("digest", digest))
 		return digest, nil
 	}
+
+	slog.Debug("registry HEAD digest lookup failed, falling back to distribution inspect", slog.String("ref", imageRef), slog.String("err", err.Error()))
 
 	return registryDigestDistributionLookup(ctx, dockerCli, imageRef)
 }
