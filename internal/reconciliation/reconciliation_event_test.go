@@ -104,6 +104,53 @@ func TestDockerEventFiltersForActions_SwarmUpdate(t *testing.T) {
 	}
 }
 
+func TestDockerEventsSinceValue(t *testing.T) {
+	t.Parallel()
+
+	if got := dockerEventsSinceValue(time.Time{}); got != "" {
+		t.Fatalf("expected empty since value for zero cursor, got %q", got)
+	}
+
+	cursor := time.Unix(1735689600, 500).UTC()
+	if got := dockerEventsSinceValue(cursor); got != "1735689600" {
+		t.Fatalf("expected unix-seconds since value, got %q", got)
+	}
+}
+
+func TestDockerEventTime(t *testing.T) {
+	t.Parallel()
+
+	t.Run("prefers time nano", func(t *testing.T) {
+		t.Parallel()
+
+		event := events.Message{Time: 100, TimeNano: 200_000_000_300}
+		want := time.Unix(0, 200_000_000_300).UTC()
+
+		if got := dockerEventTime(event); !got.Equal(want) {
+			t.Fatalf("expected %s, got %s", want, got)
+		}
+	})
+
+	t.Run("falls back to seconds", func(t *testing.T) {
+		t.Parallel()
+
+		event := events.Message{Time: 1710000000}
+		want := time.Unix(1710000000, 0).UTC()
+
+		if got := dockerEventTime(event); !got.Equal(want) {
+			t.Fatalf("expected %s, got %s", want, got)
+		}
+	})
+
+	t.Run("zero when event has no time", func(t *testing.T) {
+		t.Parallel()
+
+		if got := dockerEventTime(events.Message{}); !got.IsZero() {
+			t.Fatalf("expected zero time, got %s", got)
+		}
+	})
+}
+
 func TestIsRestartReconciliationAction(t *testing.T) {
 	t.Parallel()
 

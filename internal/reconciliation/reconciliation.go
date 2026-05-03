@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -21,6 +22,10 @@ import (
 )
 
 const reconciliationTraceIDAttr = "doco_cd_reconciliation_trace_id"
+
+// Rewind the Docker events since-cursor slightly to avoid precision edge cases
+// around listener restarts and startup recovery.
+const reconciliationSinceSafetySkew = 3 * time.Second
 
 func (j *job) run(ctx context.Context) {
 	jobLog := j.info.jobLog
@@ -44,6 +49,8 @@ func (j *job) run(ctx context.Context) {
 	for _, eventFilter := range dockerEventFiltersForActions(mapsKeys(j.deployConfigGroupByEvent), swarmMode) {
 		filterArgs.Add("event", eventFilter)
 	}
+
+	eventSinceCursor := time.Now().UTC().Add(-reconciliationSinceSafetySkew)
 
 	// On job startup, perform a one-time check for already-unhealthy containers
 	// so reconciliation can recover them without waiting for a new health event.
@@ -80,9 +87,17 @@ func (j *job) run(ctx context.Context) {
 
 		eventResult := j.info.dockerCli.Client().Events(listenerCtx, client.EventsListOptions{
 			Filters: filterArgs,
+			Since:   dockerEventsSinceValue(eventSinceCursor),
 		})
 
-		reconnect := j.runEventLoop(ctx, jobLog, eventResult.Messages, eventResult.Err)
+		reconnect, newestEventTime := j.runEventLoop(ctx, jobLog, eventResult.Messages, eventResult.Err)
+
+		if !newestEventTime.IsZero() {
+			nextCursor := newestEventTime.UTC().Add(-reconciliationSinceSafetySkew)
+			if nextCursor.After(eventSinceCursor) {
+				eventSinceCursor = nextCursor
+			}
+		}
 
 		cancel()
 
@@ -106,32 +121,61 @@ func (j *job) run(ctx context.Context) {
 
 // runEventLoop processes Docker events until the listener disconnects or the job is stopped.
 // Returns true when the caller should reconnect, false when it should exit permanently.
-func (j *job) runEventLoop(ctx context.Context, jobLog *slog.Logger, eventCh <-chan events.Message, errCh <-chan error) bool {
+func (j *job) runEventLoop(ctx context.Context, jobLog *slog.Logger, eventCh <-chan events.Message, errCh <-chan error) (bool, time.Time) {
+	var newestEventTime time.Time
+
 	for {
 		select {
 		case <-ctx.Done():
-			return false
+			return false, newestEventTime
 		case <-j.closeChan:
-			return false
+			return false, newestEventTime
 		case err, ok := <-errCh:
 			if !ok {
 				jobLog.Debug("docker events error channel closed")
-				return true // reconnect
+				return true, newestEventTime // reconnect
 			}
 
 			if err != nil && !errors.Is(err, context.Canceled) {
 				jobLog.Error("docker event listener failed", logger.ErrAttr(err))
-				return true // reconnect after error
+				return true, newestEventTime // reconnect after error
 			}
 		case event, ok := <-eventCh:
 			if !ok {
 				jobLog.Debug("docker events channel closed")
-				return true // reconnect
+				return true, newestEventTime // reconnect
+			}
+
+			eventTime := dockerEventTime(event)
+			if eventTime.After(newestEventTime) {
+				newestEventTime = eventTime
 			}
 
 			j.handleEvent(ctx, jobLog, event)
 		}
 	}
+}
+
+// dockerEventsSinceValue returns a string representation of the given time to be used as the "since" parameter for the Docker events API.
+// If the given time is zero, it returns an empty string to indicate no "since" filter.
+func dockerEventsSinceValue(cursor time.Time) string {
+	if cursor.IsZero() {
+		return ""
+	}
+
+	return strconv.FormatInt(cursor.UTC().Unix(), 10)
+}
+
+func dockerEventTime(event events.Message) time.Time {
+	if event.TimeNano > 0 {
+		return time.Unix(0, event.TimeNano).UTC()
+	}
+
+	if event.Time > 0 {
+		return time.Unix(event.Time, 0).UTC()
+	}
+
+	return time.Time{}
 }
 
 func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events.Message) {
