@@ -237,7 +237,7 @@ The following settings can be used to configure reconciliation triggers.
 | `restart_limit`   | number           | Maximum number of automatic restarts allowed for a container in the restart window. Set to `0` to disable suppression.    | `5`                    |
 | `restart_window`  | number           | Time window in seconds used with `restart_limit` to detect flapping health checks.                                        | `300`                  |
 
---8<-- "wiki/docs/_snippets/reconciliation-note.md"
+--8<-- "wiki/includes/reconciliation-note.md"
 
 #### Supported Events
 

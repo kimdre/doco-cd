@@ -10,15 +10,21 @@ tags:
 !!! info
     The start time and memory usage of the doco-cd container, as well as the runtime of a job, can increase significantly when using this secret provider.
 
+!!! tip "Using 1Password Connect Server"
+    For improved performance and to avoid API rate limits in high-volume deployments, consider using [1Password Connect Server](1Password-Connect.md) instead of service account authentication.
+
 ## Environment Variables
 
-To use 1Password, you need to set the following environment variables:
+To use 1Password, configure these variables for the `doco-cd` container
 
-| Key                                 | Value                                                                                                                                                                                                                              |
-|-------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `SECRET_PROVIDER`                   | `1password`                                                                                                                                                                                                                        |
-| `SECRET_PROVIDER_ACCESS_TOKEN`      | Access token of a service account, see [the docs](https://developer.1password.com/docs/service-accounts/security/) and [here](https://developer.1password.com/docs/sdks/setup-tutorial/#part-1-set-up-a-1password-service-account) |
-| `SECRET_PROVIDER_ACCESS_TOKEN_FILE` | Path to the file containing the access token inside the container                                                                                                                                                                  |
+| Key                                  | Value                                                                                                                                                                                                                              |
+|--------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `SECRET_PROVIDER`                    | `1password`                                                                                                                                                                                                                        |
+| `SECRET_PROVIDER_ACCESS_TOKEN`       | Access token of a service account, see [the docs](https://developer.1password.com/docs/service-accounts/security/) and [here](https://developer.1password.com/docs/sdks/setup-tutorial/#part-1-set-up-a-1password-service-account) |
+| `SECRET_PROVIDER_ACCESS_TOKEN_FILE`  | Path to the file containing the service account token inside the container                                                                                                                                                         |
+
+!!! tip "API Rate Limit"
+    If you hit the API rate limit, you can also enable client-side caching for resolved secrets. See the [Client-Side Caching](#client-side-caching) section below for more details.
 
 ## Deployment configuration
 
@@ -44,3 +50,19 @@ name: myapp
 external_secrets:
   DB_PASSWORD: "op://vault/item/field"
 ```
+
+## Client-Side Caching
+
+Optional client-side caching[^1] reduces 1Password API calls when using service account authentication. Enable and configure caching with the following environment variables:
+
+| Key                              | Type      | Value                                                                                                                            | Default |
+|----------------------------------|-----------|----------------------------------------------------------------------------------------------------------------------------------|:--------|
+| `SECRET_PROVIDER_CACHE_ENABLED`  | `boolean` | Enables in-memory caching for resolved secrets                                                                                   | `false` |
+| `SECRET_PROVIDER_CACHE_TTL`      | `string`  | Cache TTL for resolved secrets as a [Go duration](https://pkg.go.dev/time#ParseDuration) string (for example: `30s`, `5m`, `1h`) | `5m`    |
+| `SECRET_PROVIDER_CACHE_MAX_SIZE` | `number`  | Maximum number of secrets stored in cache before least-recently-used entries are evicted                                         | `100`   |
+
+!!! warning "If the cache TTL is too long, secrets may become outdated."
+
+[^1]: 
+    Client-side caching can only be used with service account authentication. 
+    When using [1Password Connect Server](1Password-Connect.md), client-side caching is automatically disabled because the Connect Server already handles caching for you.

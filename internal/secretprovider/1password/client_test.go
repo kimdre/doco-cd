@@ -52,7 +52,7 @@ func TestProvider_GetSecret_OnePassword(t *testing.T) {
 		t.Fatalf("unable to get config: %v", err)
 	}
 
-	provider, err := NewProvider(t.Context(), cfg.AccessToken, "test")
+	provider, err := NewProvider(t.Context(), cfg, "test")
 	if err != nil {
 		t.Fatalf("Failed to create OnePassword provider: %v", err)
 	}

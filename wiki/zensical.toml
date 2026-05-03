@@ -42,6 +42,7 @@ nav = [
       { "Bitwarden Secrets Manager" = "External-Secrets/Bitwarden-Secrets-Manager.md" },
       { "Bitwarden Vault / Vaultwarden" = "External-Secrets/Bitwarden-Vault-Vaultwarden.md" },
       { "1Password" = "External-Secrets/1Password.md" },
+      { "1Password Connect" = "External-Secrets/1Password-Connect.md" },
       { Infisical = "External-Secrets/Infisical.md" },
       { OpenBao = "External-Secrets/Openbao.md" },
       { Webhook = "External-Secrets/Webhook.md" }] },
@@ -85,6 +86,7 @@ features = [
   "content.code.select",
   "content.code.copy",
   "content.code.annotate",
+  "content.footnote.tooltips",
   "navigation.footer",
   "navigation.indexes",
   "navigation.instant",
@@ -183,6 +185,8 @@ custom_checkbox = true
 
 [project.markdown_extensions.pymdownx.tilde]
 [project.markdown_extensions.pymdownx.snippets]
+auto_append = ["wiki/includes/abbreviations.md"]
+check_paths = true
 
 # zensical
 [project.markdown_extensions.zensical.extensions.preview]

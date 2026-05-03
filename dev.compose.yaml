@@ -23,7 +23,7 @@ services:
       proxy:
         condition: "service_started"
       apprise:
-        condition: "service_started"
+        condition: "service_healthy"
         required: false
     ports:
       - "80:80"
@@ -74,10 +74,11 @@ services:
       TZ: Europe/Berlin
       APPRISE_WORKER_COUNT: 1
     #healthcheck:
-    #  test: [ "CMD", "curl", "-f", "http://localhost:8000/" ]
-    #  interval: 2s
+    #  test: [ "CMD-SHELL", "curl -fsS http://localhost:8000/status >/dev/null || exit 1" ]
+    #  interval: 30s
     #  timeout: 5s
-    #  retries: 10
+    #  retries: 3
+    #  start_period: 20s
 
   grafana:
     # Dashboard: https://github.com/kimdre/doco-cd/discussions/583
