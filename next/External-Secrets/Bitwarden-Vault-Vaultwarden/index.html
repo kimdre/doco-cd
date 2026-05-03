@@ -1002,6 +1002,8 @@
       
         
       
+        
+      
     
     
     
@@ -1334,6 +1336,34 @@
     
   
     1Password
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../1Password-Connect/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    1Password Connect
   
 
     
@@ -2363,8 +2393,8 @@ Instead, treat it as the additional services, environment variables, volumes, an
 <p>Store these values in a <code>.env</code> file or set them inside the compose file.</p>
 <p>For detailed information on setting up your personal API Key, see: <a href="https://bitwarden.com/help/personal-api-key/">https://bitwarden.com/help/personal-api-key/</a></p>
 <h3 id="finding-item-uuids">Finding Item UUIDs<a class="headerlink" href="#finding-item-uuids" title="Permanent link">&para;</a></h3>
-<p>To reference secrets from Bitwarden in your <code>.doco-cd.yml</code>, you need the UUID of the Bitwarden item (vault entry).
-A UUID has the format <code>12345678-aaaa-bbbb-cccc-123456789abc</code>.</p>
+<p>To reference secrets from Bitwarden in your <code>.doco-cd.yml</code>, you need the <abbr title="Universally Unique Identifier">UUID</abbr> of the Bitwarden item (vault entry).
+A <abbr title="Universally Unique Identifier">UUID</abbr> has the format <code>12345678-aaaa-bbbb-cccc-123456789abc</code>.</p>
 <h4 id="using-bitwarden-cli">Using Bitwarden CLI<a class="headerlink" href="#using-bitwarden-cli" title="Permanent link">&para;</a></h4>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Login to Bitwarden (if not already logged in)</span>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>bw<span class="w"> </span>login<span class="w"> </span>your-email@example.com
@@ -2398,7 +2428,7 @@ A UUID has the format <code>12345678-aaaa-bbbb-cccc-123456789abc</code>.</p>
 <ol>
 <li>Open your Bitwarden vault at <a href="https://vault.bitwarden.com">https://vault.bitwarden.com</a> (or your Vaultwarden URL)</li>
 <li>Click on an item to view its details</li>
-<li>The UUID can be found in the URL (<code>itemId=&lt;UUID&gt;</code>)</li>
+<li>The <abbr title="Universally Unique Identifier">UUID</abbr> can be found in the URL (<code>itemId=&lt;UUID&gt;</code>)</li>
 </ol>
 <h3 id="example-webhook-store-file-for-bitwarden-vault">Example webhook store file for Bitwarden Vault<a class="headerlink" href="#example-webhook-store-file-for-bitwarden-vault" title="Permanent link">&para;</a></h3>
 <div class="language-yaml highlight"><span class="filename">secret-store.yml</span><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">stores</span><span class="p">:</span>
@@ -2618,7 +2648,7 @@ A UUID has the format <code>12345678-aaaa-bbbb-cccc-123456789abc</code>.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["content.action.edit","content.action.view","content.code.select","content.code.copy","content.code.annotate","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.path","navigation.tabs","navigation.tabs.sticky","navigation.top","toc.follow","search.highlight","search.suggest","search.share"],"search":"../../assets/javascripts/workers/search.e2d2d235.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"alias":true,"default":"latest","provider":"mike"}}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["content.action.edit","content.action.view","content.code.select","content.code.copy","content.code.annotate","content.footnote.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.path","navigation.tabs","navigation.tabs.sticky","navigation.top","toc.follow","search.highlight","search.suggest","search.share"],"search":"../../assets/javascripts/workers/search.e2d2d235.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"alias":true,"default":"latest","provider":"mike"}}</script>
     
     
       <script src="../../assets/javascripts/bundle.dbc0afdc.min.js"></script>

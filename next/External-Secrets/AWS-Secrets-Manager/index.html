@@ -1002,6 +1002,8 @@
       
         
       
+        
+      
     
     
     
@@ -1240,6 +1242,34 @@
     
   
     1Password
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../1Password-Connect/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    1Password Connect
   
 
     
@@ -2057,9 +2087,9 @@
   
 
 
-<h1 id="aws-secrets-manager">AWS Secrets Manager<a class="headerlink" href="#aws-secrets-manager" title="Permanent link">&para;</a></h1>
+<h1 id="aws-secrets-manager"><abbr title="Amazon Web Services">AWS</abbr> Secrets Manager<a class="headerlink" href="#aws-secrets-manager" title="Permanent link">&para;</a></h1>
 <h2 id="environment-variables">Environment Variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h2>
-<p>To use AWS Secrets Manager, you need to set the following environment variables:</p>
+<p>To use <abbr title="Amazon Web Services">AWS</abbr> Secrets Manager, you need to set the following environment variables:</p>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
 <p>Create an access token via IAM, see <a href="https://repost.aws/knowledge-center/create-access-key">https://repost.aws/knowledge-center/create-access-key</a></p>
@@ -2078,15 +2108,15 @@
 </tr>
 <tr>
 <td><code>SECRET_PROVIDER_REGION</code></td>
-<td>AWS Region to use, e.g. <code>eu-west-1</code></td>
+<td><abbr title="Amazon Web Services">AWS</abbr> Region to use, e.g. <code>eu-west-1</code></td>
 </tr>
 <tr>
 <td><code>SECRET_PROVIDER_ACCESS_KEY_ID</code></td>
-<td>Access key ID of an IAM user with access to AWS Secrets Manager</td>
+<td>Access key ID of an IAM user with access to <abbr title="Amazon Web Services">AWS</abbr> Secrets Manager</td>
 </tr>
 <tr>
 <td><code>SECRET_PROVIDER_SECRET_ACCESS_KEY</code></td>
-<td>Secret access key of an IAM user with access to AWS Secrets Manager</td>
+<td>Secret access key of an IAM user with access to <abbr title="Amazon Web Services">AWS</abbr> Secrets Manager</td>
 </tr>
 <tr>
 <td><code>SECRET_PROVIDER_SECRET_ACCESS_KEY_FILE</code></td>
@@ -2095,7 +2125,7 @@
 </tbody>
 </table>
 <h2 id="deployment-configuration">Deployment configuration<a class="headerlink" href="#deployment-configuration" title="Permanent link">&para;</a></h2>
-<p>Add a mapping/reference between the environment variable you want to set in the docker compose project/stack and the ARN of the secret in AWS Secrets Manager.</p>
+<p>Add a mapping/reference between the environment variable you want to set in the docker compose project/stack and the <abbr title="Amazon Resource Name (ARN): A unique identifier for resources within Amazon Web Services (AWS)">ARN</abbr> of the secret in <abbr title="Amazon Web Services">AWS</abbr> Secrets Manager.</p>
 <p>Secrets can be retrieved in two ways:</p>
 <ul>
 <li>As clear text/plain string: 
@@ -2106,7 +2136,7 @@
 </span></code></pre></div></li>
 </ul>
 <p>For example in your account <code>1234567890</code>, the secret <code>myapp</code> in the region <code>eu-west-1</code> contains this JSON value: <code>{"username":"foo","password":"bar"}</code></p>
-<p>If you want to get the secret value of the <code>password</code> field, use the ARN in addition with a slash (<code>/</code>) and the field name/key as the path:
+<p>If you want to get the secret value of the <code>password</code> field, use the <abbr title="Amazon Resource Name (ARN): A unique identifier for resources within Amazon Web Services (AWS)">ARN</abbr> in addition with a slash (<code>/</code>) and the field name/key as the path:
 <div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>arn:aws:secretsmanager:eu-west-1:1234567890:secret:myapp/password
 </span></code></pre></div></p>
 <div class="admonition note">
@@ -2273,7 +2303,7 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["content.action.edit","content.action.view","content.code.select","content.code.copy","content.code.annotate","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.path","navigation.tabs","navigation.tabs.sticky","navigation.top","toc.follow","search.highlight","search.suggest","search.share"],"search":"../../assets/javascripts/workers/search.e2d2d235.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"alias":true,"default":"latest","provider":"mike"}}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["content.action.edit","content.action.view","content.code.select","content.code.copy","content.code.annotate","content.footnote.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.path","navigation.tabs","navigation.tabs.sticky","navigation.top","toc.follow","search.highlight","search.suggest","search.share"],"search":"../../assets/javascripts/workers/search.e2d2d235.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"alias":true,"default":"latest","provider":"mike"}}</script>
     
     
       <script src="../../assets/javascripts/bundle.dbc0afdc.min.js"></script>
