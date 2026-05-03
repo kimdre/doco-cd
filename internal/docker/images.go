@@ -2,14 +2,20 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/compose-spec/compose-go/v2/types"
+	distreference "github.com/distribution/reference"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/compose/convert"
+	"github.com/docker/cli/cli/config/configfile"
+	configtypes "github.com/docker/cli/cli/config/types"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/api/types/container"
@@ -20,6 +26,26 @@ import (
 )
 
 var ErrNoSuchImage = errors.New("no such image") // Image does not exist
+
+const (
+	dockerHubDomain        = "docker.io"
+	dockerHubIndexDomain   = "index.docker.io"
+	dockerHubRegistryHost  = "registry-1.docker.io"
+	dockerHubAuthConfigKey = "https://index.docker.io/v1/"
+	dockerContentDigest    = "Docker-Content-Digest"
+	wwwAuthenticateHeader  = "Www-Authenticate"
+	registryAuthBearer     = "Bearer"
+)
+
+var (
+	registryManifestAccepts = strings.Join([]string{
+		"application/vnd.oci.image.index.v1+json",
+		"application/vnd.oci.image.manifest.v1+json",
+		"application/vnd.docker.distribution.manifest.list.v2+json",
+		"application/vnd.docker.distribution.manifest.v2+json",
+	}, ",")
+	registryDigestHTTPClient = http.DefaultClient
+)
 
 // registryAuthForImage returns a base64-encoded auth string for the registry
 // that hosts the given image ref, sourced from the Docker config file.
@@ -36,6 +62,20 @@ func registryAuthForImage(dockerCli command.Cli, imageRef string) string {
 // registryDigestForRef queries the registry for the current manifest digest of
 // the given image reference without downloading any image layers.
 func registryDigestForRef(ctx context.Context, dockerCli command.Cli, imageRef string) (string, error) {
+	digest, err := registryDigestHeadLookup(ctx, dockerCli, imageRef)
+	if err == nil {
+		slog.Debug("registry HEAD digest lookup successful", slog.String("ref", imageRef), slog.String("digest", digest))
+		return digest, nil
+	}
+
+	slog.Warn("registry HEAD digest lookup failed, falling back to distribution inspect", slog.String("ref", imageRef), slog.String("err", err.Error()))
+
+	return registryDigestDistributionLookup(ctx, dockerCli, imageRef)
+}
+
+// registryDigestForRefViaDistributionInspect asks the Docker Engine API for
+// the remote descriptor digest of the image reference.
+func registryDigestForRefViaDistributionInspect(ctx context.Context, dockerCli command.Cli, imageRef string) (string, error) {
 	info, err := dockerCli.Client().DistributionInspect(ctx, imageRef, client.DistributionInspectOptions{
 		EncodedRegistryAuth: registryAuthForImage(dockerCli, imageRef),
 	})
@@ -44,6 +84,255 @@ func registryDigestForRef(ctx context.Context, dockerCli command.Cli, imageRef s
 	}
 
 	return info.Descriptor.Digest.String(), nil
+}
+
+// registryDigestForRefViaHEAD queries the registry manifest endpoint directly
+// using HEAD and returns Docker-Content-Digest when available.
+func registryDigestForRefViaHEAD(ctx context.Context, dockerCli command.Cli, imageRef string) (string, error) {
+	return registryDigestForRefViaHEADWithClient(ctx, dockerCli.ConfigFile(), imageRef, registryDigestHTTPClient)
+}
+
+func registryDigestForRefViaHEADWithClient(ctx context.Context, cfg *configfile.ConfigFile, imageRef string, httpClient *http.Client) (string, error) {
+	manifestURL, authConfigKey, scope, err := registryManifestURL(imageRef)
+	if err != nil {
+		return "", fmt.Errorf("invalid image reference %q: %w", imageRef, err)
+	}
+
+	authConfig := registryAuthConfigForKey(cfg, authConfigKey)
+
+	digest, err := registryManifestDigestHEAD(ctx, httpClient, manifestURL, scope, authConfig)
+	if err != nil {
+		return "", fmt.Errorf("registry HEAD inspect failed for %s: %w", imageRef, err)
+	}
+
+	return digest, nil
+}
+
+func registryManifestURL(imageRef string) (string, string, string, error) {
+	namedRef, err := distreference.ParseNormalizedNamed(imageRef)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	domain := distreference.Domain(namedRef)
+	registryHost := domain
+
+	authConfigKey := domain
+	if domain == dockerHubDomain || domain == dockerHubIndexDomain {
+		registryHost = dockerHubRegistryHost
+		authConfigKey = dockerHubAuthConfigKey
+	}
+
+	repositoryPath := distreference.Path(namedRef)
+
+	manifestRef := ""
+	if taggedRef, ok := distreference.TagNameOnly(namedRef).(distreference.NamedTagged); ok {
+		manifestRef = taggedRef.Tag()
+	}
+
+	if canonicalRef, ok := namedRef.(distreference.Canonical); ok {
+		manifestRef = canonicalRef.Digest().String()
+	}
+
+	if manifestRef == "" {
+		return "", "", "", errors.New("manifest reference could not be resolved")
+	}
+
+	manifestURL := fmt.Sprintf("https://%s/v2/%s/manifests/%s", registryHost, repositoryPath, url.PathEscape(manifestRef))
+	scope := fmt.Sprintf("repository:%s:pull", repositoryPath)
+
+	return manifestURL, authConfigKey, scope, nil
+}
+
+func registryAuthConfigForKey(cfg *configfile.ConfigFile, authConfigKey string) configtypes.AuthConfig {
+	if cfg == nil {
+		return configtypes.AuthConfig{}
+	}
+
+	authConfig, err := cfg.GetAuthConfig(authConfigKey)
+	if err != nil {
+		return configtypes.AuthConfig{}
+	}
+
+	return authConfig
+}
+
+func registryManifestDigestHEAD(ctx context.Context, httpClient *http.Client, manifestURL, scope string, authConfig configtypes.AuthConfig) (string, error) {
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+
+	resp, err := executeRegistryManifestHeadRequest(ctx, httpClient, manifestURL, authConfig, "")
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		challenge, parseErr := parseBearerAuthChallenge(resp.Header.Get(wwwAuthenticateHeader))
+		if parseErr != nil {
+			return "", fmt.Errorf("registry unauthorized and challenge parse failed: %w", parseErr)
+		}
+
+		token, tokenErr := fetchRegistryBearerToken(ctx, httpClient, challenge, scope, authConfig)
+		if tokenErr != nil {
+			return "", tokenErr
+		}
+
+		retryResp, retryErr := executeRegistryManifestHeadRequest(ctx, httpClient, manifestURL, authConfig, token)
+		if retryErr != nil {
+			return "", retryErr
+		}
+		defer retryResp.Body.Close()
+
+		return digestFromRegistryResponse(retryResp)
+	}
+
+	return digestFromRegistryResponse(resp)
+}
+
+func executeRegistryManifestHeadRequest(ctx context.Context, httpClient *http.Client, manifestURL string, authConfig configtypes.AuthConfig, bearerToken string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, manifestURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Accept", registryManifestAccepts)
+
+	switch {
+	case bearerToken != "":
+		req.Header.Set("Authorization", registryAuthBearer+" "+bearerToken)
+	case authConfig.RegistryToken != "":
+		req.Header.Set("Authorization", registryAuthBearer+" "+authConfig.RegistryToken)
+	case authConfig.IdentityToken != "":
+		req.Header.Set("Authorization", registryAuthBearer+" "+authConfig.IdentityToken)
+	case authConfig.Username != "" || authConfig.Password != "":
+		req.SetBasicAuth(authConfig.Username, authConfig.Password)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
+
+func digestFromRegistryResponse(resp *http.Response) (string, error) {
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return "", fmt.Errorf("registry returned status %d", resp.StatusCode)
+	}
+
+	digest := strings.TrimSpace(resp.Header.Get(dockerContentDigest))
+	if digest == "" {
+		return "", fmt.Errorf("registry response missing %s header", dockerContentDigest)
+	}
+
+	return digest, nil
+}
+
+type bearerAuthChallenge struct {
+	Realm   string
+	Service string
+	Scope   string
+}
+
+func parseBearerAuthChallenge(value string) (bearerAuthChallenge, error) {
+	scheme, params, ok := strings.Cut(strings.TrimSpace(value), " ")
+	if !ok || !strings.EqualFold(scheme, registryAuthBearer) {
+		return bearerAuthChallenge{}, fmt.Errorf("unsupported challenge %q", value)
+	}
+
+	challenge := bearerAuthChallenge{}
+
+	for _, pair := range strings.Split(params, ",") {
+		key, rawVal, found := strings.Cut(strings.TrimSpace(pair), "=")
+		if !found {
+			continue
+		}
+
+		val := strings.Trim(strings.TrimSpace(rawVal), "\"")
+
+		switch strings.ToLower(key) {
+		case "realm":
+			challenge.Realm = val
+		case "service":
+			challenge.Service = val
+		case "scope":
+			challenge.Scope = val
+		}
+	}
+
+	if challenge.Realm == "" {
+		return bearerAuthChallenge{}, errors.New("challenge missing realm")
+	}
+
+	return challenge, nil
+}
+
+func fetchRegistryBearerToken(ctx context.Context, httpClient *http.Client, challenge bearerAuthChallenge, fallbackScope string, authConfig configtypes.AuthConfig) (string, error) {
+	tokenURL, err := url.Parse(challenge.Realm)
+	if err != nil {
+		return "", fmt.Errorf("invalid bearer realm %q: %w", challenge.Realm, err)
+	}
+
+	query := tokenURL.Query()
+	if challenge.Service != "" {
+		query.Set("service", challenge.Service)
+	}
+
+	scope := challenge.Scope
+	if scope == "" {
+		scope = fallbackScope
+	}
+
+	if scope != "" {
+		query.Set("scope", scope)
+	}
+
+	tokenURL.RawQuery = query.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, tokenURL.String(), nil)
+	if err != nil {
+		return "", err
+	}
+
+	switch {
+	case authConfig.RegistryToken != "":
+		req.Header.Set("Authorization", registryAuthBearer+" "+authConfig.RegistryToken)
+	case authConfig.Username != "" || authConfig.Password != "":
+		req.SetBasicAuth(authConfig.Username, authConfig.Password)
+	case authConfig.IdentityToken != "":
+		req.Header.Set("Authorization", registryAuthBearer+" "+authConfig.IdentityToken)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return "", fmt.Errorf("token service returned status %d", resp.StatusCode)
+	}
+
+	var payload struct {
+		Token       string `json:"token"`
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return "", err
+	}
+
+	if payload.Token != "" {
+		return payload.Token, nil
+	}
+
+	if payload.AccessToken != "" {
+		return payload.AccessToken, nil
+	}
+
+	return "", errors.New("token response missing token")
 }
 
 // digestFromReference extracts the digest part from an image reference in
@@ -205,8 +494,10 @@ func PullImages(ctx context.Context, dockerCli command.Cli, projectName string) 
 
 // vars used to allow overriding in tests without needing to mock the entire function.
 var (
-	registryDigestLookup        = registryDigestForRef           // registryDigestLookup fetches registry digests for image refs, can be overridden in tests
-	deployedServiceDigestLookup = getDeployedServiceImageDigests // deployedServiceDigestLookup fetches deployed service image digests, can be overridden in tests
+	registryDigestLookup             = registryDigestForRef           // registryDigestLookup fetches registry digests for image refs, can be overridden in tests
+	deployedServiceDigestLookup      = getDeployedServiceImageDigests // deployedServiceDigestLookup fetches deployed service image digests, can be overridden in tests
+	registryDigestHeadLookup         = registryDigestForRefViaHEAD
+	registryDigestDistributionLookup = registryDigestForRefViaDistributionInspect
 )
 
 // HaveDeployedServiceImageDigestsChanged checks if any currently deployed
