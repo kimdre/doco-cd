@@ -1247,6 +1247,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#deployment-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Deployment configuration
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#setup-steps" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1974,6 +1985,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#deployment-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Deployment configuration
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#setup-steps" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2148,6 +2170,17 @@
 <p>For the Connect containers themselves, you also need a <code>1password-credentials.json</code> credentials file 
 to authenticate <code>op-connect-api</code>/<code>op-connect-sync</code> with your 1Password account and allow vault sync.
 Download it from your <a href="https://developer.1password.com/docs/connect/get-started/?deploy=docker#step-1">1Password Connect setup</a>.</p>
+<h2 id="deployment-configuration">Deployment configuration<a class="headerlink" href="#deployment-configuration" title="Permanent link">&para;</a></h2>
+<p>Add a mapping/reference between the environment variable you want to set in the docker compose project/stack and the URI to the secret in 1Password.</p>
+<p>See their docs for the correct syntax and how to get a secret reference of your secret: <a href="https://developer.1password.com/docs/cli/secret-reference-syntax/">https://developer.1password.com/docs/cli/secret-reference-syntax/</a></p>
+<p>A valid secret reference should use the syntax:
+<code>op://&lt;vault&gt;/&lt;item&gt;/[section/]&lt;field&gt;</code></p>
+<p>To get a one-time password, append the <code>?attribute=otp</code> query parameter to a secret reference that points to a one-time password field in 1Password:
+<code>op://&lt;vault&gt;/&lt;item&gt;/[section/]one-time password?attribute=otp</code></p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Machine accounts can only access vaults for which you have granted read permissions during creation. The default <code>Personal</code> vault can't be access by machine accounts!</p>
+</div>
 <h2 id="setup-steps">Setup Steps<a class="headerlink" href="#setup-steps" title="Permanent link">&para;</a></h2>
 <h3 id="example-compose-setup">Example Compose Setup<a class="headerlink" href="#example-compose-setup" title="Permanent link">&para;</a></h3>
 <p>Deploy 1Password Connect alongside doco-cd:</p>
