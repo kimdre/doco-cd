@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/containerd/errdefs"
+	composeapi "github.com/docker/compose/v5/pkg/api"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
@@ -81,7 +83,9 @@ func TestDeploy(t *testing.T) {
 	}
 
 	tmpDir := t.TempDir()
-	repoName := git.GetRepoName(p.CloneURL)
+	// Use a test-unique repository name so this test's reconciliation job key does not
+	// collide with other package tests that may run in parallel.
+	repoName := test.ConvertTestName(t.Name()) + "-repo"
 	repoPath := filepath.Join(tmpDir, repoName)
 
 	_, err = git.CloneOrUpdateRepository(log, p.CloneURL, p.Ref,
@@ -100,19 +104,22 @@ func TestDeploy(t *testing.T) {
 	// https://github.com/kimdre/doco-cd_tests/blob/7be81e788a40724cee7542eec00a2af0c4340eba/.doco-cd.yml
 	for _, dc := range dcs {
 		dc.Name = stackName + "-" + dc.Name
-		dc.Reconciliation.Interval = 5
 	}
 
 	dcs[0].Reconciliation.Enabled = false
-	dcs[1].Reconciliation.Interval = 10
+	dcs[1].Reconciliation.Events = []string{"stop"}
 
 	t.Cleanup(func() {
+		for _, dc := range dcs {
+			waitForStackDeploymentToFinish(t, repoName, dc.Name, 20*time.Second)
+		}
+
 		reconciliationHandler.close()
 
 		for _, dc := range dcs {
 			ctx := context.Background()
-			if err := docker.DestroyStack(log, &ctx, &dockerCli, dc); err != nil {
-				t.Error("docker.DestroyStack err", err)
+			if err := destroyTestStack(ctx, dockerCli.Client(), dc.Name); err != nil {
+				t.Error("destroyTestStack err", err)
 			}
 		}
 	})
@@ -153,8 +160,6 @@ func TestDeploy(t *testing.T) {
 
 	firstPartWanted := []string{wanted[2], wanted[3], wanted[4]}
 
-	secondPartWanted := []string{wanted[1], wanted[2], wanted[3], wanted[4]}
-
 	slices.Sort(wanted)
 
 	got, err := getRunningContainerNames(ctx, dockerCli.Client(), stackName)
@@ -165,6 +170,9 @@ func TestDeploy(t *testing.T) {
 	if !reflect.DeepEqual(wanted, got) {
 		t.Fatalf("first get running , expected %v, got %v", wanted, got)
 	}
+
+	// Give the reconciliation event listener a moment to subscribe before deleting containers.
+	time.Sleep(time.Second)
 
 	if err := rmContainer(ctx, t, dockerCli.Client(), wanted); err != nil {
 		t.Fatal("rm container err:", err)
@@ -179,26 +187,23 @@ func TestDeploy(t *testing.T) {
 		t.Fatalf("rm container, get containers, expected empty, got %v", got)
 	}
 
-	time.Sleep(time.Second * 7)
+	deadline := time.Now().Add(20 * time.Second)
 
-	got, err = getRunningContainerNames(ctx, dockerCli.Client(), stackName)
-	if err != nil {
-		t.Fatal("get containers err:", err)
-	}
+	for {
+		got, err = getRunningContainerNames(ctx, dockerCli.Client(), stackName)
+		if err != nil {
+			t.Fatal("get containers err:", err)
+		}
 
-	if !reflect.DeepEqual(firstPartWanted, got) {
-		t.Fatalf("start +7s, get containers, expected %v, got %v", firstPartWanted, got)
-	}
+		if reflect.DeepEqual(firstPartWanted, got) {
+			break
+		}
 
-	time.Sleep(time.Second * 5)
+		if time.Now().After(deadline) {
+			t.Fatalf("start +20s, get containers, expected %v, got %v", firstPartWanted, got)
+		}
 
-	got, err = getRunningContainerNames(ctx, dockerCli.Client(), stackName)
-	if err != nil {
-		t.Fatal("get containers err:", err)
-	}
-
-	if !reflect.DeepEqual(secondPartWanted, got) {
-		t.Fatalf("start +12s, get containers, expected %v, got %v", secondPartWanted, got)
+		time.Sleep(250 * time.Millisecond)
 	}
 }
 
@@ -242,6 +247,58 @@ func rmContainer(ctx context.Context, t *testing.T, cli client.APIClient, contai
 	}
 
 	wg.Wait()
+
+	return nil
+}
+
+func waitForStackDeploymentToFinish(t *testing.T, repository, stack string, timeout time.Duration) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+
+	for {
+		if !reconciliationHandler.isStackDeploymentInProgress(repository, stack) {
+			return
+		}
+
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for reconciliation deployment to finish for stack %q in repository %q", stack, repository)
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func destroyTestStack(ctx context.Context, cli client.APIClient, stackName string) error {
+	containers, err := docker.GetLabeledContainers(ctx, cli, composeapi.ProjectLabel, stackName, true)
+	if err != nil {
+		return err
+	}
+
+	for _, c := range containers {
+		_, err = cli.ContainerRemove(ctx, c.ID, client.ContainerRemoveOptions{Force: true, RemoveVolumes: true})
+		if err != nil && !errdefs.IsNotFound(err) {
+			return err
+		}
+	}
+
+	networks, err := cli.NetworkList(ctx, client.NetworkListOptions{
+		Filters: make(client.Filters).Add("label", composeapi.ProjectLabel+"="+stackName),
+	})
+	if err != nil {
+		return err
+	}
+
+	for _, nw := range networks.Items {
+		_, err = cli.NetworkRemove(ctx, nw.ID, client.NetworkRemoveOptions{})
+		if err != nil && !errdefs.IsNotFound(err) {
+			return err
+		}
+	}
+
+	if err := docker.RemoveLabeledVolumes(ctx, cli, stackName); err != nil {
+		return err
+	}
 
 	return nil
 }

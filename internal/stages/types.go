@@ -140,6 +140,7 @@ type StageManager struct {
 	Payload           *webhook.ParsedPayload
 	Repository        *RepositoryData
 	SecretProvider    *secretprovider.SecretProvider
+	Metadata          notification.Metadata // Notification metadata (may include reconciliation event info)
 }
 
 type NotifyFailureFunc func(log *slog.Logger, err error, metadata notification.Metadata)
@@ -150,6 +151,7 @@ func NewStageManager(jobID string, jobTrigger JobTrigger, log *slog.Logger,
 	repoData *RepositoryData, dockerData *Docker, payload *webhook.ParsedPayload,
 	appConfig *config.AppConfig, deployConfig *config.DeployConfig,
 	secretProvider *secretprovider.SecretProvider,
+	metadata notification.Metadata,
 ) *StageManager {
 	return &StageManager{
 		Log:               log.With(),
@@ -163,6 +165,7 @@ func NewStageManager(jobID string, jobTrigger JobTrigger, log *slog.Logger,
 		Payload:           payload,
 		Repository:        repoData,
 		SecretProvider:    secretProvider,
+		Metadata:          metadata,
 		Stages: &Stages{
 			Init: &InitStageData{
 				MetaData: NewMetaData(StageInit),
@@ -232,11 +235,12 @@ func (s *StageManager) NotifyFailure(notifyErr error) {
 
 		revision := notification.GetRevision(s.DeployConfig.Reference, commitSha)
 
-		s.NotifyFailureFunc(s.Log, notifyErr, notification.Metadata{
-			Repository: s.Repository.Name,
-			Stack:      s.DeployConfig.Name,
-			Revision:   revision,
-			JobID:      s.JobID,
-		})
+		metadata := s.Metadata
+		metadata.Repository = s.Repository.Name
+		metadata.Stack = s.DeployConfig.Name
+		metadata.Revision = revision
+		metadata.JobID = s.JobID
+
+		s.NotifyFailureFunc(s.Log, notifyErr, metadata)
 	}
 }

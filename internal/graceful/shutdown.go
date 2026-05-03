@@ -31,13 +31,13 @@ func (h *handler) getRegisteredShutdownFuncs() []shutdownFunc {
 func (h *handler) runRegisteredShutdownFuncs(log *slog.Logger) {
 	funcs := h.getRegisteredShutdownFuncs()
 
-	log.Info("calling registered shutdown functions")
+	log.Debug("calling registered shutdown functions")
 
 	wg := sync.WaitGroup{}
 	for _, f := range funcs {
 		SafeGo(&wg, log, func() {
-			log.Info("started run shutdown function", slog.String("name", f.name))
-			defer log.Info("finished run shutdown function", slog.String("name", f.name))
+			log.Debug("started run shutdown function", slog.String("name", f.name))
+			defer log.Debug("finished run shutdown function", slog.String("name", f.name))
 
 			f.f()
 		})
@@ -45,5 +45,5 @@ func (h *handler) runRegisteredShutdownFuncs(log *slog.Logger) {
 
 	wg.Wait()
 
-	log.Info("finished registered shutdown functions")
+	log.Debug("finished registered shutdown functions")
 }

@@ -36,20 +36,24 @@ func Deploy(ctx context.Context,
 		dataMountPoint, dockerCli, secretProvider, metadata,
 		jobTrigger, repoData, deployConfigs, payload, testName)
 
-	// always add reconciliation job
-	reconciliationHandler.addJob(ctx, jobInfo{
-		appConfig:      appConfig,
-		dataMountPoint: dataMountPoint,
-		dockerCli:      dockerCli,
-		secretProvider: secretProvider,
-		jobLog:         jobLog,
-		metadata:       metadata,
-		jobTrigger:     jobTrigger,
-		repoData:       repoData,
-		deployConfigs:  deployConfigs,
-		payload:        payload,
-		testName:       testName,
-	})
+	// Skip long-lived reconciliation listeners for test-triggered deployments.
+	// Test runs use testName only to make stacks unique and do not need background
+	// Docker event watchers that can outlive the test and race with TempDir cleanup.
+	if testName == "" {
+		reconciliationHandler.addJob(ctx, jobInfo{
+			appConfig:      appConfig,
+			dataMountPoint: dataMountPoint,
+			dockerCli:      dockerCli,
+			secretProvider: secretProvider,
+			jobLog:         jobLog,
+			metadata:       metadata,
+			jobTrigger:     jobTrigger,
+			repoData:       repoData,
+			deployConfigs:  deployConfigs,
+			payload:        payload,
+			testName:       testName,
+		})
+	}
 
 	return err
 }
@@ -76,7 +80,7 @@ func deploy(ctx context.Context,
 
 	return handleDeploy(ctx, jobLog, appConfig,
 		dataMountPoint, dockerCli, secretProvider, metadata.JobID, jobTrigger,
-		repoData, deployConfigs, payload, testName)
+		repoData, deployConfigs, payload, testName, metadata)
 }
 
 func handleDeploy(ctx context.Context,
@@ -91,6 +95,7 @@ func handleDeploy(ctx context.Context,
 	deployConfigs []*config.DeployConfig,
 	payload *webhook.ParsedPayload,
 	testName string,
+	metadata notification.Metadata,
 ) error {
 	// We'll run each deployment concurrently but grouped by repo+reference and limited by the global deployerLimiter.
 	var wg sync.WaitGroup
@@ -110,14 +115,17 @@ func handleDeploy(ctx context.Context,
 			deployConfig.Name = test.ConvertTestName(testName)
 		}
 
+		reconciliationHandler.startStackDeployment(repoData.Name, deployConfig.Name)
+
 		wg.Add(1)
 
 		go func(dc *config.DeployConfig) {
 			defer wg.Done()
+			defer reconciliationHandler.finishStackDeployment(repoData.Name, dc.Name)
 
 			err := handleOneDeploy(ctx, deployLog,
 				appConfig, dataMountPoint, dockerCli, secretProvider,
-				dc, jobID, jobTrigger, repoData, payload)
+				dc, jobID, jobTrigger, repoData, payload, metadata)
 
 			resultCh <- err
 		}(deployConfig)
@@ -148,6 +156,7 @@ func handleOneDeploy(ctx context.Context, deployLog *slog.Logger,
 	jobTrigger stages.JobTrigger,
 	repoData stages.RepositoryData,
 	payLad *webhook.ParsedPayload,
+	metadata notification.Metadata,
 ) error {
 	if deployerLimiter != nil {
 		deployLog.Debug("queuing deployment")
@@ -173,6 +182,7 @@ func handleOneDeploy(ctx context.Context, deployLog *slog.Logger,
 		appConfig,
 		dc,
 		secretProvider,
+		metadata,
 	)
 
 	err := stageMgr.RunStages(ctx)

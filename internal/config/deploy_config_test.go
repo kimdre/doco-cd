@@ -1070,3 +1070,203 @@ auto_discover: true
 		t.Errorf("expected to find %d configs with correct properties, found %d", expectedTotal, found)
 	}
 }
+
+func TestDeployConfig_ReconciliationEvents_Default(t *testing.T) {
+	t.Parallel()
+
+	filePath := filepath.Join(t.TempDir(), ".doco-cd.yaml")
+
+	err := createTestFile(t, filePath, `name: test
+compose_files: ["compose.yaml"]
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	configs, err := GetDeployConfigFromYAML(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = configs[0].validateConfig(); err != nil {
+		t.Fatal(err)
+	}
+
+	want := append([]string(nil), configs[0].Reconciliation.Events...)
+	if !reflect.DeepEqual(want, configs[0].Reconciliation.Events) {
+		t.Fatalf("expected reconciliation events %v, got %v", want, configs[0].Reconciliation.Events)
+	}
+
+	if configs[0].Reconciliation.RestartTimeout != 10 {
+		t.Fatalf("expected default reconciliation restart_timeout 10, got %d", configs[0].Reconciliation.RestartTimeout)
+	}
+
+	if configs[0].Reconciliation.RestartSignal != "" {
+		t.Fatalf("expected default restart_signal empty string, got %q", configs[0].Reconciliation.RestartSignal)
+	}
+
+	if configs[0].Reconciliation.RestartLimit != 5 {
+		t.Fatalf("expected default restart_limit 5, got %d", configs[0].Reconciliation.RestartLimit)
+	}
+
+	if configs[0].Reconciliation.RestartWindow != 300 {
+		t.Fatalf("expected default restart_window 300, got %d", configs[0].Reconciliation.RestartWindow)
+	}
+}
+
+func TestDeployConfig_ReconciliationEvents_Normalize(t *testing.T) {
+	t.Parallel()
+
+	filePath := filepath.Join(t.TempDir(), ".doco-cd.yaml")
+
+	err := createTestFile(t, filePath, `name: test
+compose_files: ["compose.yaml"]
+reconciliation:
+  events:
+    - " DIE "
+    - destroy
+    - " UNHEALTHY "
+    - " unhealthy "
+    - update
+    - remove
+    - delete
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	configs, err := GetDeployConfigFromYAML(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = configs[0].validateConfig(); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"die", "destroy", "unhealthy", "update"}
+	if !reflect.DeepEqual(want, configs[0].Reconciliation.Events) {
+		t.Fatalf("expected normalized reconciliation events %v, got %v", want, configs[0].Reconciliation.Events)
+	}
+}
+
+func TestDeployConfig_ReconciliationRestartSignal_Normalize(t *testing.T) {
+	t.Parallel()
+
+	filePath := filepath.Join(t.TempDir(), ".doco-cd.yaml")
+
+	err := createTestFile(t, filePath, `name: test
+compose_files: ["compose.yaml"]
+reconciliation:
+  restart_signal: "  sigquit  "
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	configs, err := GetDeployConfigFromYAML(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = configs[0].validateConfig(); err != nil {
+		t.Fatal(err)
+	}
+
+	if configs[0].Reconciliation.RestartSignal != "SIGQUIT" {
+		t.Fatalf("expected normalized restart_signal SIGQUIT, got %q", configs[0].Reconciliation.RestartSignal)
+	}
+}
+
+func TestDeployConfig_ReconciliationEvents_Invalid(t *testing.T) {
+	t.Parallel()
+
+	filePath := filepath.Join(t.TempDir(), ".doco-cd.yaml")
+
+	err := createTestFile(t, filePath, `name: test
+compose_files: ["compose.yaml"]
+reconciliation:
+  events: ["created"]
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	configs, err := GetDeployConfigFromYAML(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = configs[0].validateConfig()
+	if err == nil {
+		t.Fatal("expected invalid reconciliation event error")
+	}
+
+	if !strings.Contains(err.Error(), "unsupported reconciliation event") {
+		t.Fatalf("expected unsupported reconciliation event error, got %v", err)
+	}
+}
+
+func TestDeployConfig_ReconciliationRestartSuppression_Invalid(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		yaml  string
+		match string
+	}{
+		{
+			name: "negative limit",
+			yaml: `name: test
+compose_files: ["compose.yaml"]
+reconciliation:
+  restart_limit: -1
+`,
+			match: "reconciliation.restart_limit",
+		},
+		{
+			name: "negative window",
+			yaml: `name: test
+compose_files: ["compose.yaml"]
+reconciliation:
+  restart_window: -10
+`,
+			match: "reconciliation.restart_window",
+		},
+		{
+			name: "limit requires positive window",
+			yaml: `name: test
+compose_files: ["compose.yaml"]
+reconciliation:
+  restart_limit: 3
+  restart_window: 0
+`,
+			match: "reconciliation.restart_window",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			filePath := filepath.Join(t.TempDir(), ".doco-cd.yaml")
+			if err := createTestFile(t, filePath, tc.yaml); err != nil {
+				t.Fatal(err)
+			}
+
+			configs, err := GetDeployConfigFromYAML(filePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			err = configs[0].validateConfig()
+			if err == nil {
+				t.Fatalf("expected validation error containing %q", tc.match)
+			}
+
+			if !strings.Contains(err.Error(), tc.match) {
+				t.Fatalf("expected error to contain %q, got %v", tc.match, err)
+			}
+		})
+	}
+}

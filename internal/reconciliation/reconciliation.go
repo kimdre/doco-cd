@@ -2,102 +2,77 @@ package reconciliation
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/docker/cli/cli/command"
-	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/events"
+	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/config"
-	"github.com/kimdre/doco-cd/internal/graceful"
+	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
+	gitInternal "github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/logger"
-	"github.com/kimdre/doco-cd/internal/notification"
-	"github.com/kimdre/doco-cd/internal/secretprovider"
-	"github.com/kimdre/doco-cd/internal/stages"
 	"github.com/kimdre/doco-cd/internal/utils/id"
-	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
-var reconciliationHandler *reconciliation
+const reconciliationTraceIDAttr = "doco_cd_reconciliation_trace_id"
 
-func init() {
-	reconciliationHandler = newReconciliation()
-}
-
-type jobInfo struct {
-	appConfig      *config.AppConfig
-	dataMountPoint container.MountPoint
-	dockerCli      command.Cli
-	secretProvider *secretprovider.SecretProvider
-
-	jobLog *slog.Logger
-
-	metadata      notification.Metadata
-	jobTrigger    stages.JobTrigger
-	repoData      stages.RepositoryData
-	deployConfigs []*config.DeployConfig
-	payload       *webhook.ParsedPayload
-	testName      string
-}
-
-type job struct {
-	info jobInfo
-
-	// key is the interval in second
-	deployConfigGroupByInterval map[int][]*config.DeployConfig
-	closeChan                   chan struct{}
-}
-
-func newJob(info jobInfo, deployConfigGroupByInterval map[int][]*config.DeployConfig) *job {
-	return &job{
-		info:                        info,
-		deployConfigGroupByInterval: deployConfigGroupByInterval,
-		closeChan:                   make(chan struct{}),
-	}
-}
-
-func (j *job) close() {
-	if j == nil {
-		return
-	}
-
-	close(j.closeChan)
-}
+// Rewind the Docker events since-cursor slightly to avoid precision edge cases
+// around listener restarts and startup recovery.
+const reconciliationSinceSafetySkew = 3 * time.Second
 
 func (j *job) run(ctx context.Context) {
 	jobLog := j.info.jobLog
 
-	jobLog.Debug("reconciliation loop started")
-	defer jobLog.Debug("reconciliation loop stopped")
+	swarmMode := swarm.GetModeEnabled()
 
-	wg := sync.WaitGroup{}
+	filterArgs := make(client.Filters)
+	filterArgs.Add("type", dockerEventTypeForMode(swarmMode))
 
-	for interval, dcs := range j.deployConfigGroupByInterval {
-		if len(dcs) > 0 {
-			wg.Go(func() {
-				j.runByInterval(ctx, interval, dcs)
-			})
+	if !swarmMode {
+		filterArgs.Add("label", docker.DocoCDLabels.Metadata.Manager+"="+config.AppName)
+
+		repositoryLabelValue := gitInternal.GetFullName(string(j.info.repoData.CloneURL))
+		if j.info.payload != nil && strings.TrimSpace(j.info.payload.FullName) != "" {
+			repositoryLabelValue = j.info.payload.FullName
 		}
+
+		filterArgs.Add("label", docker.DocoCDLabels.Repository.Name+"="+repositoryLabelValue)
 	}
 
-	wg.Wait()
-}
-
-func (j *job) runByInterval(ctx context.Context, interval int, dcs []*config.DeployConfig) {
-	if len(dcs) == 0 {
-		return
+	for _, eventFilter := range dockerEventFiltersForActions(mapsKeys(j.deployConfigGroupByEvent), swarmMode) {
+		filterArgs.Add("event", eventFilter)
 	}
 
-	jobLog := j.info.jobLog.With(
-		slog.Int("interval", interval),
-	)
+	eventSinceCursor := time.Now().UTC().Add(-reconciliationSinceSafetySkew)
 
-	jobLog.Debug("reconciliation interval worker started")
-	defer jobLog.Debug("reconciliation interval worker stopped")
+	// On job startup, perform a one-time check for already-unhealthy containers
+	// so reconciliation can recover them without waiting for a new health event.
+	// Run the one-time startup recovery checks in parallel, but wait for both to
+	// finish before subscribing to Docker events so all startup healing happens
+	// against a stable initial view of the daemon state.
+	var startupRecoveryWG sync.WaitGroup
+
+	startupRecoveryWG.Go(func() {
+		j.restartUnhealthyContainersOnStartup(ctx, jobLog)
+	})
+
+	startupRecoveryWG.Go(func() {
+		j.redeployMissingServicesOnStartup(ctx, jobLog)
+	})
+
+	startupRecoveryWG.Wait()
+
+	const reconnectDelay = 5 * time.Second
 
 	for {
+		// Check exit conditions before (re)connecting.
 		select {
 		case <-ctx.Done():
 			jobLog.Debug("ctx is done")
@@ -105,21 +80,217 @@ func (j *job) runByInterval(ctx context.Context, interval int, dcs []*config.Dep
 		case <-j.closeChan:
 			jobLog.Debug("channel is closed")
 			return
-		case <-time.After(time.Second * time.Duration(interval)):
-			j.deploy(ctx, jobLog, dcs)
+		default:
+		}
+
+		listenerCtx, cancel := context.WithCancel(ctx)
+
+		eventResult := j.info.dockerCli.Client().Events(listenerCtx, client.EventsListOptions{
+			Filters: filterArgs,
+			Since:   dockerEventsSinceValue(eventSinceCursor),
+		})
+
+		reconnect, newestEventTime := j.runEventLoop(ctx, jobLog, eventResult.Messages, eventResult.Err)
+
+		if !newestEventTime.IsZero() {
+			nextCursor := newestEventTime.UTC().Add(-reconciliationSinceSafetySkew)
+			if nextCursor.After(eventSinceCursor) {
+				eventSinceCursor = nextCursor
+			}
+		}
+
+		cancel()
+
+		if !reconnect {
+			return
+		}
+
+		jobLog.Debug("docker event listener disconnected, reconnecting", slog.Duration("delay", reconnectDelay))
+
+		select {
+		case <-ctx.Done():
+			jobLog.Debug("ctx is done")
+			return
+		case <-j.closeChan:
+			jobLog.Debug("channel is closed")
+			return
+		case <-time.After(reconnectDelay):
 		}
 	}
 }
 
-func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*config.DeployConfig) {
+// runEventLoop processes Docker events until the listener disconnects or the job is stopped.
+// Returns true when the caller should reconnect, false when it should exit permanently.
+func (j *job) runEventLoop(ctx context.Context, jobLog *slog.Logger, eventCh <-chan events.Message, errCh <-chan error) (bool, time.Time) {
+	var newestEventTime time.Time
+
+	for {
+		select {
+		case <-ctx.Done():
+			return false, newestEventTime
+		case <-j.closeChan:
+			return false, newestEventTime
+		case err, ok := <-errCh:
+			if !ok {
+				jobLog.Debug("docker events error channel closed")
+				return true, newestEventTime // reconnect
+			}
+
+			if err != nil && !errors.Is(err, context.Canceled) {
+				jobLog.Error("docker event listener failed", logger.ErrAttr(err))
+				return true, newestEventTime // reconnect after error
+			}
+		case event, ok := <-eventCh:
+			if !ok {
+				jobLog.Debug("docker events channel closed")
+				return true, newestEventTime // reconnect
+			}
+
+			eventTime := dockerEventTime(event)
+			if eventTime.After(newestEventTime) {
+				newestEventTime = eventTime
+			}
+
+			j.handleEvent(ctx, jobLog, event)
+		}
+	}
+}
+
+// dockerEventsSinceValue returns a string representation of the given time to be used as the "since" parameter for the Docker events API.
+// If the given time is zero, it returns an empty string to indicate no "since" filter.
+func dockerEventsSinceValue(cursor time.Time) string {
+	if cursor.IsZero() {
+		return ""
+	}
+
+	return strconv.FormatInt(cursor.UTC().Unix(), 10)
+}
+
+func dockerEventTime(event events.Message) time.Time {
+	if event.TimeNano > 0 {
+		return time.Unix(0, event.TimeNano).UTC()
+	}
+
+	if event.Time > 0 {
+		return time.Unix(event.Time, 0).UTC()
+	}
+
+	return time.Time{}
+}
+
+func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events.Message) {
+	action := normalizeReconciliationEventAction(string(event.Action))
+	dcs := j.deployConfigGroupByEvent[action]
+
+	if len(dcs) == 0 {
+		return
+	}
+
+	stackName := stackNameFromEvent(event, dcs)
+	if stackName == "" {
+		return
+	}
+
+	stackDCs := deployConfigsByName(dcs, stackName)
+	if len(stackDCs) == 0 {
+		return
+	}
+
+	if reconciliationHandler.isStackDeploymentInProgress(j.info.metadata.Repository, stackName) {
+		jobLog.Debug("suppressing reconciliation event while stack deployment is in progress",
+			slog.String("event", action),
+			slog.String("stack", stackName),
+		)
+
+		return
+	}
+
+	if suppress, remaining := j.shouldSuppressRestartFollowupEvent(action, event); suppress {
+		jobLog.Debug("suppressing follow-up event from self-initiated container restart",
+			slog.String("event", action),
+			slog.String("container_name", event.Actor.Attributes["name"]),
+			slog.String("restart_cooldown_remaining", remaining.Truncate(time.Second).String()),
+			slog.String("stack", stackName),
+		)
+
+		return
+	}
+
+	stackID := j.info.metadata.Repository + "/" + stackName
+	stackLock := lock.GetRepoLock(stackID)
+
+	if !stackLock.TryLock(id.GenID()) {
+		jobLog.Debug("skipping reconciliation, already in progress for this stack", slog.String("stack", stackName))
+		return
+	}
+	defer stackLock.Unlock()
+
+	actorGroupName := "container"
+	if swarm.GetModeEnabled() {
+		actorGroupName = "service"
+	}
+
+	traceID := id.GenID()
+	event = withReconciliationTraceID(event, traceID)
+
+	eventLog := logger.
+		WithoutAttr(jobLog, "job_id").
+		With(
+			slog.Group("reconciliation",
+				slog.String("event", action),
+				slog.Group(actorGroupName,
+					slog.String("id", shortID(event.Actor.ID)),
+					slog.String("name", event.Actor.Attributes["name"]),
+				),
+				slog.String("trace_id", traceID),
+			),
+			slog.String("stack", stackName),
+		)
+
+	// For restart-oriented events the container is still present — restart it
+	// directly instead of going through a full redeploy pipeline.
+	if isRestartReconciliationAction(action) {
+		restartDC := selectRestartDeployConfig(stackDCs, event.Actor.Attributes)
+		if restartDC == nil {
+			eventLog.Warn("skipping restart reconciliation, no deploy config matched stack")
+			return
+		}
+
+		if len(stackDCs) > 1 {
+			eventLog.Warn("multiple deploy configs matched restart event, using first match", slog.Int("deploy_config_count", len(stackDCs)))
+		}
+
+		restartResult := j.restartContainer(ctx, eventLog, event, restartDC)
+		if restartResult.fallbackToDeploy {
+			if event.Actor.ID != "" {
+				waitForContainerRemovalSettled(ctx, eventLog, j.info.dockerCli.Client(), event.Actor.ID, containerRemovalSettleTimeout)
+			}
+
+			j.deploy(ctx, eventLog, stackDCs, action, event, traceID)
+		}
+
+		return
+	}
+
+	// When the event references a container that is being force-removed, Docker may
+	// still report it as "Removing" by the time we begin reconciliation, which causes
+	// docker compose to fail with "container is marked for removal and cannot be
+	// started". Wait briefly for the container to either be fully removed or settle
+	// into a stable state before re-deploying.
+	if event.Actor.ID != "" {
+		waitForContainerRemovalSettled(ctx, eventLog, j.info.dockerCli.Client(), event.Actor.ID, containerRemovalSettleTimeout)
+	}
+
+	j.deploy(ctx, eventLog, stackDCs, action, event, traceID)
+}
+
+func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*config.DeployConfig, action string, event events.Message, traceID string) {
 	repoLock := lock.GetRepoLock(j.info.metadata.Repository)
 	repoLock.Lock()
 	defer repoLock.Unlock()
 
-	jobLog = jobLog.With(slog.String("reconciliation_id", id.GenID()))
-
-	jobLog.Debug("reconciliation started")
-	defer jobLog.Debug("reconciliation completed")
+	jobLog.Info("reconciliation started")
+	defer jobLog.Info("reconciliation completed")
 
 	if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
 		j.info.dockerCli, string(j.info.repoData.CloneURL),
@@ -128,71 +299,52 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*config.Dep
 		jobLog.Error("failed to clean up obsolete auto-discovered containers", logger.ErrAttr(err))
 	}
 
+	// Reconciliation deploys should always force recreate so missing containers are restored
+	// even when there are no Git/compose changes.
+	reconcileDCs := cloneDeployConfigsWithForcedRecreate(dcs)
+
+	// Enrich metadata with reconciliation event information for deploy notifications
+	actorKind := "container"
+	if swarm.GetModeEnabled() {
+		actorKind = "service"
+	}
+
+	metadata := j.info.metadata
+	metadata.ReconciliationEvent = action
+	metadata.TraceID = strings.TrimSpace(traceID)
+	metadata.AffectedActorKind = actorKind
+	metadata.AffectedActorID = shortID(event.Actor.ID)
+	metadata.AffectedActorName = strings.TrimSpace(event.Actor.Attributes["name"])
+
 	if err := handleDeploy(ctx, jobLog, j.info.appConfig,
 		j.info.dataMountPoint, j.info.dockerCli,
-		j.info.secretProvider, j.info.metadata.JobID, j.info.jobTrigger,
-		j.info.repoData, dcs, j.info.payload, j.info.testName); err != nil {
+		j.info.secretProvider, metadata.JobID, j.info.jobTrigger,
+		j.info.repoData, reconcileDCs, j.info.payload, j.info.testName, metadata); err != nil {
 		jobLog.Error("failed to deploy", logger.ErrAttr(err))
 	}
 }
 
-type reconciliation struct {
-	m sync.Mutex
-
-	repoJobs map[string]*job
-}
-
-func newReconciliation() *reconciliation {
-	return &reconciliation{
-		repoJobs: make(map[string]*job),
-		m:        sync.Mutex{},
-	}
-}
-
-func (r *reconciliation) close() {
-	r.m.Lock()
-	defer r.m.Unlock()
-
-	for _, job := range r.repoJobs {
-		job.close()
+func withReconciliationTraceID(event events.Message, traceID string) events.Message {
+	if strings.TrimSpace(traceID) == "" {
+		return event
 	}
 
-	r.repoJobs = make(map[string]*job)
-}
-
-func (r *reconciliation) addJob(ctx context.Context, info jobInfo) {
-	cfg := getDeployConfigGroupByInterval(info.deployConfigs)
-	if len(cfg) == 0 {
-		return
+	attributes := map[string]string{}
+	for key, value := range event.Actor.Attributes {
+		attributes[key] = value
 	}
 
-	r.m.Lock()
-	defer r.m.Unlock()
+	attributes[reconciliationTraceIDAttr] = traceID
 
-	old := r.repoJobs[info.repoData.Name]
-	old.close()
+	event.Actor.Attributes = attributes
 
-	// start new
-	newJob := newJob(info, cfg)
-
-	r.repoJobs[info.repoData.Name] = newJob
-	go newJob.run(context.WithoutCancel(ctx))
+	return event
 }
 
-func getDeployConfigGroupByInterval(dcs []*config.DeployConfig) map[int][]*config.DeployConfig {
-	m := make(map[int][]*config.DeployConfig)
-
-	for _, dc := range dcs {
-		if r := dc.Reconciliation; r.Enabled {
-			m[r.Interval] = append(m[r.Interval], dc)
-		}
+func reconciliationTraceIDFromEvent(event events.Message) string {
+	if event.Actor.Attributes == nil {
+		return ""
 	}
 
-	return m
-}
-
-func init() {
-	graceful.RegistryShutdownFunc("close_reconciliation", func() {
-		reconciliationHandler.close()
-	})
+	return strings.TrimSpace(event.Actor.Attributes[reconciliationTraceIDAttr])
 }

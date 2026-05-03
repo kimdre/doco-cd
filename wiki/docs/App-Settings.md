@@ -58,9 +58,11 @@ By default, the Docker client will use the settings from the host system.
 
 ## Notification Settings
 
-Doco-CD can be configured to send notifications with [Apprise](https://github.com/caronc/apprise) to various services when a deployment is started, finished, or failed.
+Doco-CD can be configured to send notifications with [Apprise](https://github.com/caronc/apprise) to various services when a deployment is started, finished, failed, or triggered by [reconciliation](Deploy-Settings.md#reconciliation-settings).
 
-See the [Notifications](Advanced/Notifications.md) wiki page for more information on how to configure notifications.
+Reconciliation-triggered notifications use a short `[R]` marker in the title.
+
+See the [Notifications](Advanced/Notifications.md#reconciliation-notifications) wiki page for configuration and format details.
 
 ## Encrypting sensitive data
 

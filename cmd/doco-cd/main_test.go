@@ -211,6 +211,12 @@ func TestHandleEvent(t *testing.T) {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
 	}
 
+	t.Cleanup(func() {
+		if closeErr := dockerCli.Client().Close(); closeErr != nil {
+			t.Logf("Failed to close Docker client: %v", closeErr)
+		}
+	})
+
 	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli.Client()); err != nil {
 		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
@@ -250,13 +256,6 @@ func TestHandleEvent(t *testing.T) {
 			jobLog := logger.New(logger.LevelCritical).With(slog.String("job_id", jobID))
 
 			ctx := context.Background()
-
-			t.Cleanup(func() {
-				err = dockerCli.Client().Close()
-				if err != nil {
-					return
-				}
-			})
 
 			err = docker.VerifySocketConnection()
 			if err != nil {

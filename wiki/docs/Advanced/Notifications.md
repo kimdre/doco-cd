@@ -5,7 +5,7 @@ tags:
   - Notifications
 ---
 
-Doco-CD can be configured to send notifications with [Apprise](https://github.com/caronc/apprise) to various services when a deployment is started, finished, or failed.
+Doco-CD can be configured to send notifications with [Apprise](https://github.com/caronc/apprise) to various services when a deployment is started, finished, or failed and on [reconciliation](../Deploy-Settings.md#reconciliation-settings) events.
 You can find a list of all supported services and platforms in the [Apprise documentation](https://appriseit.com/).
 
 For that, specify the required settings in the app `environment` section and add an Apprise container to your `docker-compose.yml` file.
@@ -44,3 +44,45 @@ services:
       TZ: Europe/Berlin
       APPRISE_WORKER_COUNT: 1
 ```
+
+## Metadata fields
+
+When a notification is sent, the following metadata fields are included in the notification body:
+
+| Field name   | Description                                                                                                                                      | Example                            |
+|--------------|--------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------|
+| `job_id`     | Unique ID of the deployment job that triggered the notification (not included for [reconciliation notifications](#reconciliation-notifications)) |                                    |
+| `repository` | Repository name                                                                                                                                  | `github.com/my/repo`               |
+| `revision`   | Branch/tag and Commit SHA that was deployed                                                                                                      | `main (abc123)`, `v1.0.0 (def456)` |
+| `stack`      | Project/Stack name                                                                                                                               | `my-stack`                         |
+
+## Reconciliation notifications
+
+If a notification was triggered by reconciliation, the title gets a short `[R]` marker.
+
+!!! example "Example notification titles"
+
+    - Regular deploy notification title: `✅ Deployment completed`
+    - Reconciliation notification title: `✅ [R] Deployment completed`
+
+Reconciliation notifications also include a `reconciliation:` block in the body [metadata](#metadata-fields).
+
+### Metadata fields
+
+=== "Docker Standalone"
+  
+    | Field name       | Description                                    |
+    |------------------|------------------------------------------------|
+    | `event`          | reconciliation event that triggered the action |
+    | `container_id`   | affected container name                        |
+    | `container_name` | affected container name                        |
+    | `trace_id`       | reconciliation trace ID for log correlation    |
+
+=== "Docker Swarm"
+    
+    | Field name      | Description                                    |
+    |-----------------|------------------------------------------------|
+    | `event`         | reconciliation event that triggered the action |
+    | `service_id`    | affected service name                          |
+    | `service_name`  | affected service name                          |
+    | `trace_id`      | reconciliation trace ID for log correlation    |

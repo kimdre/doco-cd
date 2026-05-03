@@ -28,14 +28,13 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 		return fmt.Errorf("failed to get short commit SHA: %w", err)
 	}
 
-	metadata := notification.Metadata{
-		Repository: s.Repository.Name,
-		Stack:      s.DeployConfig.Name,
-		Revision:   notification.GetRevision(s.DeployConfig.Reference, shortCommit),
-		JobID:      s.JobID,
-	}
+	metadata := s.Metadata
+	metadata.Repository = s.Repository.Name
+	metadata.Stack = s.DeployConfig.Name
+	metadata.Revision = notification.GetRevision(s.DeployConfig.Reference, shortCommit)
+	metadata.JobID = s.JobID
 
-	err = notification.Send(notification.Success, "Stack deployed", "successfully deployed stack "+s.DeployConfig.Name, metadata)
+	err = notification.Send(notification.Success, "Deployment completed", "Successfully deployed stack "+s.DeployConfig.Name, metadata)
 	if err != nil {
 		stageLog.Error("failed to send notification", logger.ErrAttr(err))
 	}

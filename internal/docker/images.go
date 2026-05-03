@@ -260,7 +260,7 @@ func HaveDeployedServiceImageDigestsChanged(ctx context.Context, dockerCli comma
 
 		deployedDigest, ok := deployedDigests[serviceName]
 		if !ok {
-			logger.Info("deployed service image digest unavailable, treating as changed", slog.String("service", serviceName), slog.String("ref", configuredRef))
+			logger.Debug("deployed service image digest unavailable, treating as changed", slog.String("service", serviceName), slog.String("ref", configuredRef))
 			return true, nil
 		}
 

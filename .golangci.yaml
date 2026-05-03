@@ -54,6 +54,7 @@ linters:
             - fmt.Println
             - io.Closer.Close
             - io.Writer.Write
+            - strings.Builder.WriteString
         - name: unreachable-code
         - name: unused-parameter
         - name: var-declaration

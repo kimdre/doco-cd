@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"sort"
 	"strings"
+	"sync"
 )
 
 type level int
@@ -33,6 +36,7 @@ var levelEmojis = map[level]string{
 }
 
 var (
+	appriseConfigMu    sync.RWMutex
 	appriseApiURL      = ""
 	appriseNotifyUrls  = ""
 	appriseNotifyLevel = Info
@@ -50,10 +54,15 @@ type appriseRequest struct {
 }
 
 type Metadata struct {
-	Repository string
-	Stack      string
-	Revision   string
-	JobID      string
+	Repository          string
+	Stack               string
+	Revision            string
+	JobID               string
+	TraceID             string
+	ReconciliationEvent string
+	AffectedActorKind   string
+	AffectedActorID     string
+	AffectedActorName   string
 }
 
 // parseLevel converts a string representation of a log level to the level type.
@@ -86,10 +95,19 @@ func send(apiUrl, notifyUrls, title, message, level string) error {
 
 	resp, err := http.Post(apiUrl, "application/json", bytes.NewBuffer(jsonData)) // #nosec G107
 	if err != nil {
+		if strings.Contains(err.Error(), "malformed HTTP status code") {
+			return ErrNotifyFailed
+		}
+
 		return fmt.Errorf("failed to send request to Apprise: %w", err)
 	}
 
-	defer resp.Body.Close() // nolint:errcheck
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	// Drain the body so the underlying transport can safely reuse the connection.
+	_, _ = io.Copy(io.Discard, resp.Body)
 
 	switch resp.StatusCode {
 	case http.StatusOK:
@@ -105,26 +123,38 @@ func send(apiUrl, notifyUrls, title, message, level string) error {
 
 // SetAppriseConfig sets the configuration for the Apprise notification service.
 func SetAppriseConfig(apiURL, notifyUrls, notifyLevel string) {
+	appriseConfigMu.Lock()
+	defer appriseConfigMu.Unlock()
+
 	appriseApiURL = apiURL
 	appriseNotifyUrls = notifyUrls
 	appriseNotifyLevel = parseLevel(notifyLevel)
 }
 
+func getAppriseConfig() (string, string, level) {
+	appriseConfigMu.RLock()
+	defer appriseConfigMu.RUnlock()
+
+	return appriseApiURL, appriseNotifyUrls, appriseNotifyLevel
+}
+
 // Send sends a notification using the Apprise service based on the provided configuration and parameters.
 func Send(level level, title, message string, metadata Metadata) error {
-	if appriseApiURL == "" || appriseNotifyUrls == "" {
+	apiURL, notifyURLs, notifyLevel := getAppriseConfig()
+
+	if apiURL == "" || notifyURLs == "" {
 		return nil
 	}
 
-	if level < appriseNotifyLevel {
+	if level < notifyLevel {
 		return nil // Do not send notification if the level is lower than the configured level
 	}
 
-	title = levelEmojis[level] + " " + title
+	title = formatTitle(level, title, metadata)
 
 	message = formatMessage(message, metadata)
 
-	err := send(appriseApiURL, appriseNotifyUrls, title, message, logLevels[level])
+	err := send(apiURL, notifyURLs, title, message, logLevels[level])
 	if err != nil {
 		return fmt.Errorf("failed to send notification: %w", err)
 	}
@@ -132,34 +162,115 @@ func Send(level level, title, message string, metadata Metadata) error {
 	return nil
 }
 
-// formatMessage formats the message by adding a newline after the first colon and appending the revision if provided.
+func formatTitle(level level, title string, metadata Metadata) string {
+	formattedTitle := strings.TrimSpace(title)
+
+	if strings.TrimSpace(metadata.ReconciliationEvent) != "" {
+		formattedTitle = "[R] " + formattedTitle
+	}
+
+	return levelEmojis[level] + " " + formattedTitle
+}
+
+// formatMessage renders notifications as plain message text followed by structured metadata.
 func formatMessage(message string, m Metadata) string {
-	if !strings.Contains(message, "\n") {
-		message = strings.Replace(message, ": ", ":\n", 1)
-	}
-
-	var metadataInfo string
-
-	fields := []struct {
-		key, value string
-	}{
-		{"repository", m.Repository},
-		{"stack", m.Stack},
-		{"revision", m.Revision},
-		{"job_id", m.JobID},
-	}
-
 	var sb strings.Builder
 
-	for _, f := range fields {
-		if f.value != "" {
-			_, _ = fmt.Fprintf(&sb, "\n%s: %s", f.key, f.value)
+	trimmedMessage := strings.TrimRight(message, "\n")
+	isReconciliation := strings.TrimSpace(m.ReconciliationEvent) != ""
+
+	sb.WriteString(trimmedMessage)
+
+	fields := map[string]string{}
+	reconciliationFields := map[string]string{}
+
+	if m.Repository != "" {
+		fields["repository"] = m.Repository
+	}
+
+	if m.Stack != "" {
+		fields["stack"] = m.Stack
+	}
+
+	if m.Revision != "" {
+		fields["revision"] = m.Revision
+	}
+
+	if m.JobID != "" && !isReconciliation {
+		fields["job_id"] = m.JobID
+	}
+
+	if m.ReconciliationEvent != "" {
+		reconciliationFields["event"] = m.ReconciliationEvent
+	}
+
+	if m.TraceID != "" && isReconciliation {
+		reconciliationFields["trace_id"] = m.TraceID
+	}
+
+	actorKind := strings.TrimSpace(strings.ToLower(m.AffectedActorKind))
+	switch actorKind {
+	case "container":
+		if m.AffectedActorID != "" {
+			reconciliationFields["container_id"] = m.AffectedActorID
+		}
+
+		if m.AffectedActorName != "" {
+			reconciliationFields["container_name"] = m.AffectedActorName
+		}
+	case "service":
+		if m.AffectedActorID != "" {
+			reconciliationFields["service_id"] = m.AffectedActorID
+		}
+
+		if m.AffectedActorName != "" {
+			reconciliationFields["service_name"] = m.AffectedActorName
 		}
 	}
 
-	metadataInfo += sb.String()
+	if len(fields) == 0 && len(reconciliationFields) == 0 {
+		return sb.String()
+	}
 
-	return fmt.Sprintf("%s\n%s", message, metadataInfo)
+	if trimmedMessage != "" {
+		sb.WriteString("\n\n")
+	}
+
+	keys := make([]string, 0, len(fields))
+	for key := range fields {
+		keys = append(keys, key)
+	}
+
+	sort.Strings(keys)
+
+	for idx, key := range keys {
+		if idx > 0 {
+			sb.WriteString("\n")
+		}
+
+		_, _ = fmt.Fprintf(&sb, "%s: %s", key, fields[key])
+	}
+
+	if len(reconciliationFields) > 0 {
+		if len(keys) > 0 {
+			sb.WriteString("\n")
+		}
+
+		sb.WriteString("reconciliation:")
+
+		reconciliationKeys := make([]string, 0, len(reconciliationFields))
+		for key := range reconciliationFields {
+			reconciliationKeys = append(reconciliationKeys, key)
+		}
+
+		sort.Strings(reconciliationKeys)
+
+		for _, key := range reconciliationKeys {
+			_, _ = fmt.Fprintf(&sb, "\n  %s: %s", key, reconciliationFields[key])
+		}
+	}
+
+	return sb.String()
 }
 
 func GetRevision(reference, commitSHA string) string {
