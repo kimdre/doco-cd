@@ -361,8 +361,8 @@ func TestRegistryDigestForRefFallsBackWhenHEADMissingDigestHeader(t *testing.T) 
 	imageRef := parsed.Host + "/team/app:latest"
 
 	// Confirm the HEAD path alone returns an error.
-	_, headErr := registryDigestForRefViaHEADWithClient(context.Background(), &configfile.ConfigFile{}, imageRef, server.Client())
-	if headErr == nil {
+	_, hErr := registryDigestForRefViaHEADWithClient(context.Background(), &configfile.ConfigFile{}, imageRef, server.Client())
+	if hErr == nil {
 		t.Fatal("expected HEAD lookup to fail without Docker-Content-Digest header, but it succeeded")
 	}
 
