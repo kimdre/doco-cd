@@ -1,6 +1,7 @@
 package reconciliation
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"slices"
@@ -370,33 +371,33 @@ func TestStackDeploymentInProgressTracking(t *testing.T) {
 func TestRestartOptionsFromDeployConfig(t *testing.T) {
 	t.Parallel()
 
-	t.Run("defaults", func(t *testing.T) {
+	t.Run("defaults to SIGINT", func(t *testing.T) {
 		t.Parallel()
 
-		opts := restartOptionsFromDeployConfig(nil)
+		opts := restartOptionsFromDeployConfig(context.Background(), nil, nil, "", nil)
 		if opts.Timeout == nil || *opts.Timeout != 10 {
 			t.Fatalf("expected default restart timeout 10, got %+v", opts.Timeout)
 		}
 
-		if opts.Signal != "" {
-			t.Fatalf("expected empty restart signal, got %q", opts.Signal)
+		if opts.Signal != "SIGINT" {
+			t.Fatalf("expected default restart signal SIGINT, got %q", opts.Signal)
 		}
 	})
 
-	t.Run("from deploy config", func(t *testing.T) {
+	t.Run("from deploy config takes priority", func(t *testing.T) {
 		t.Parallel()
 
 		dc := config.DefaultDeployConfig("stack-a", "main")
 		dc.Reconciliation.RestartTimeout = 30
 		dc.Reconciliation.RestartSignal = "SIGQUIT"
 
-		opts := restartOptionsFromDeployConfig(dc)
+		opts := restartOptionsFromDeployConfig(context.Background(), nil, nil, "", dc)
 		if opts.Timeout == nil || *opts.Timeout != 30 {
 			t.Fatalf("expected restart timeout 30, got %+v", opts.Timeout)
 		}
 
 		if opts.Signal != "SIGQUIT" {
-			t.Fatalf("expected restart signal SIGQUIT, got %q", opts.Signal)
+			t.Fatalf("expected restart signal SIGQUIT from deploy config, got %q", opts.Signal)
 		}
 	})
 }

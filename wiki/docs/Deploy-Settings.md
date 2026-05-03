@@ -233,7 +233,7 @@ The following settings can be used to configure reconciliation triggers.
 | `enabled`         | boolean          | Enable reconciliation.                                                                                                    | `true`                 |
 | `events`          | array of strings | Docker container/service events that trigger reconciliation. See [supported events](#supported-events) below.             | `['die', 'unhealthy']` |
 | `restart_timeout` | number           | Timeout in seconds used when restarting containers for reconciliation [events](#supported-events) that trigger a restart. | `10`                   |
-| `restart_signal`  | string           | Signal used for reconciliation restarts.                                                                                  | `SIGTERM`              |
+| `restart_signal`  | string           | Signal used for reconciliation restarts. If not set, the `StopSignal` of the container image is used (defaults to `SIGINT`).      |                   |
 | `restart_limit`   | number           | Maximum number of automatic restarts allowed for a container in the restart window. Set to `0` to disable suppression.    | `5`                    |
 | `restart_window`  | number           | Time window in seconds used with `restart_limit` to detect flapping health checks.                                        | `300`                  |
 

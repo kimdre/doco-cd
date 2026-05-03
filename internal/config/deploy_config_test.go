@@ -1101,8 +1101,8 @@ compose_files: ["compose.yaml"]
 		t.Fatalf("expected default reconciliation restart_timeout 10, got %d", configs[0].Reconciliation.RestartTimeout)
 	}
 
-	if configs[0].Reconciliation.RestartSignal != "SIGTERM" {
-		t.Fatalf("expected default restart_signal SIGTERM, got %q", configs[0].Reconciliation.RestartSignal)
+	if configs[0].Reconciliation.RestartSignal != "" {
+		t.Fatalf("expected default restart_signal empty string, got %q", configs[0].Reconciliation.RestartSignal)
 	}
 
 	if configs[0].Reconciliation.RestartLimit != 5 {
