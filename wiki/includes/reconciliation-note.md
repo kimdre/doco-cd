@@ -1,4 +1,4 @@
-!!! note "[Reconciliation](../Deploy-Settings.md#reconciliation-settings) for non-Swarm deployments follows classic Compose `restart` semantics"
+!!! note "[Reconciliation](../docs/Deploy-Settings.md#reconciliation-settings) for non-Swarm deployments follows classic Compose `restart` semantics"
 
     - Services with `#!yaml restart: always` or `#!yaml restart: unless-stopped` are expected to stay running.
     - Services with no explicit `restart` policy are treated as `#!yaml restart: "no"`.

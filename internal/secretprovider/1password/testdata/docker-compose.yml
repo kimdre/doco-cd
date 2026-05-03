@@ -1,0 +1,27 @@
+services:
+  op-connect-api:
+    image: 1password/connect-api:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./internal/secretprovider/1password/testdata/1password-credentials.json:/home/opuser/.op/1password-credentials.json
+      - op_data:/home/opuser/.op/data
+
+  op-connect-sync:
+    image: 1password/connect-sync:latest
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./internal/secretprovider/1password/testdata/1password-credentials.json:/home/opuser/.op/1password-credentials.json
+      - op_data:/home/opuser/.op/data
+
+  app: # doco-cd
+    environment:
+      SECRET_PROVIDER: 1password
+      SECRET_PROVIDER_CONNECT_HOST: http://op-connect-api:8080
+      SECRET_PROVIDER_CONNECT_TOKEN: ${SECRET_PROVIDER_CONNECT_TOKEN}
+    depends_on:
+      - op-connect-api
+
+volumes:
+  op_data:
