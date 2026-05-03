@@ -9,40 +9,36 @@ tags:
 
 [1Password Connect Server](https://developer.1password.com/docs/connect/) is a self-hosted proxy that caches vault data locally and serves secrets over a simple HTTP API. This is useful when you are deploying frequently or have multiple instances that would otherwise hit 1Password API rate limits.
 
-Unlike service account authentication (which makes direct calls to the 1Password cloud API), Connect Server allows you to:
+Unlike service account authentication (see the [1Password provider](1Password.md)) (which makes direct calls to the 1Password cloud API), Connect Server allows you to:
 
 - Avoid rate limiting by caching vault data locally
 - Reduce latency for secret lookups
 - Keep all secret requests within your infrastructure
 
-!!! info
-    Client-side caching is automatically disabled when using Connect Server because Connect already handles caching for you.
-
 ## Environment Variables
 
 To use 1Password Connect, configure these variables for the `doco-cd` container:
 
-| Key                                  | Value                                                                                                  |
-|--------------------------------------|--------------------------------------------------------------------------------------------------------|
-| `SECRET_PROVIDER`                    | `1password`                                                                                            |
-| `SECRET_PROVIDER_CONNECT_HOST`       | Base URL of your Connect API Server (for example: `http://op-connect-api:8080`).                       |
-| `SECRET_PROVIDER_CONNECT_TOKEN`      | API token used by `doco-cd` to authenticate against Connect API. Generated in 1Password Connect setup. |
-| `SECRET_PROVIDER_CONNECT_TOKEN_FILE` | Path to the file containing the Connect API token inside the container.                                |
+| Key                                  | Value                                                                                                                                                                                           |
+|--------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `SECRET_PROVIDER`                    | `1password`                                                                                                                                                                                     |
+| `SECRET_PROVIDER_CONNECT_HOST`       | Base URL of your Connect API Server (for example: `http://op-connect-api:8080`).                                                                                                                |
+| `SECRET_PROVIDER_CONNECT_TOKEN`      | API token used by `doco-cd` to authenticate against Connect API. Generated in [1Password Connect setup][1password-connect-setup]. Mutually exclusive with `SECRET_PROVIDER_CONNECT_TOKEN_FILE`. |
+| `SECRET_PROVIDER_CONNECT_TOKEN_FILE` | Path to the file containing the Connect API token inside the container. Mutually exclusive with `SECRET_PROVIDER_CONNECT_TOKEN`.                                                                |
 
-!!! info
-    Use **either** `SECRET_PROVIDER_CONNECT_TOKEN` **or** `SECRET_PROVIDER_CONNECT_TOKEN_FILE`.
-
-For the Connect containers themselves, you also need a credentials file:
-
-| File | Purpose | Source |
-|------|---------|--------|
-| `./1password-credentials.json` | Authenticates `op-connect-api`/`op-connect-sync` with your 1Password account and allows vault sync. | Downloaded from your 1Password Connect setup |
+For the Connect containers themselves, you also need a `1password-credentials.json` credentials file 
+to authenticate `op-connect-api`/`op-connect-sync` with your 1Password account and allow vault sync.
+Download it from your [1Password Connect setup][1password-connect-setup].
 
 ## Setup Steps
 
 ### Example Compose Setup
 
 Deploy 1Password Connect alongside doco-cd:
+
+- Follow the [1Password Connect Server documentation](https://developer.1password.com/docs/connect/get-started/?deploy=docker) to get your Connect server credentials and set up the `op-connect-api` and `op-connect-sync` containers.
+- For the server configuration options, refer to the [1Password Connect Server Configuration](https://developer.1password.com/docs/connect/server-configuration/) docs.
+- Place `1password-credentials.json` next to your compose file (as shown below), or adjust the bind mount path to your preferred secure location (For a token file example, see the [Using a token file](#configuring-doco-cd-to-authenticate-with-connect-server-using-a-token-file) section below).
 
 ```yaml title="docker-compose.yml" hl_lines="2-16 21-25 27-28"
 services:
@@ -51,23 +47,23 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - "./1password-credentials.json:/home/opuser/.op/1password-credentials.json"
-      - "op_data:/home/opuser/.op/data"
+      - ./1password-credentials.json:/home/opuser/.op/1password-credentials.json # (1)!
+      - op_data:/home/opuser/.op/data
 
   op-connect-sync:
     image: 1password/connect-sync:latest
     ports:
       - "8081:8080"
     volumes:
-      - "./1password-credentials.json:/home/opuser/.op/1password-credentials.json"
-      - "op_data:/home/opuser/.op/data"
+      - ./1password-credentials.json:/home/opuser/.op/1password-credentials.json # (2)!
+      - op_data:/home/opuser/.op/data
 
-  doco-cd:
+  app: # your doco-cd container
     image: kimdre/doco-cd:latest
     environment:
       SECRET_PROVIDER: 1password
       SECRET_PROVIDER_CONNECT_HOST: http://op-connect-api:8080
-      SECRET_PROVIDER_CONNECT_TOKEN: ${SECRET_PROVIDER_CONNECT_TOKEN}
+      SECRET_PROVIDER_CONNECT_TOKEN: ${SECRET_PROVIDER_CONNECT_TOKEN} # (3)!
     depends_on:
       - op-connect-api
 
@@ -75,48 +71,54 @@ volumes:
   op_data:
 ```
 
+1. Download the `1password-credentials.json` file from your [Secrets Automation workflow][1password-connect-setup] and mount it into both `op-connect-api` and `op-connect-sync` containers.
+2. Download the `1password-credentials.json` file from your [Secrets Automation workflow][1password-connect-setup] and mount it into both `op-connect-api` and `op-connect-sync` containers.
+3. Create the Connect server _Secrets Automation_ workflow by following the [docs][1password-connect-setup]. 
+
 Example `.env` values for the compose file above:
 
-```bash
-# Used by doco-cd to call op-connect-api
-SECRET_PROVIDER_CONNECT_TOKEN=xxxxxx
+```bash title=".env"
+SECRET_PROVIDER_CONNECT_TOKEN=xxxxxx # (1)!
 ```
 
-Place `1password-credentials.json` next to your compose file (as shown above), or adjust the bind mount path to your preferred secure location.
+1. Used by doco-cd to call op-connect-api
 
+### Configuring doco-cd to authenticate with Connect Server
 
-### Configuring doco-cd to use Connect Server
+Set these [environment variables](#environment-variables) to use 1Password Connect Sever in your `doco-cd` container:
 
-Set these [environment variables](#environment-variables) to use 1Password Connect instead of service account authentication:
+=== "Using a direct token"
 
-```bash
-SECRET_PROVIDER=1password
-SECRET_PROVIDER_CONNECT_HOST=http://op-connect-api:8080
-SECRET_PROVIDER_CONNECT_TOKEN=your-connect-token
-```
+    ```bash title="Environment Variables for doco-cd"
+    SECRET_PROVIDER=1password
+    SECRET_PROVIDER_CONNECT_HOST=http://op-connect-api:8080
+    SECRET_PROVIDER_CONNECT_TOKEN=your-connect-token
+    ```
 
-Or use a file-based token:
+=== "Using a token file"
 
-```bash
-SECRET_PROVIDER=1password
-SECRET_PROVIDER_CONNECT_HOST=http://op-connect-api:8080
-SECRET_PROVIDER_CONNECT_TOKEN_FILE=/run/secrets/op_connect_token
-```
+    ```bash title="Environment Variables for doco-cd"
+    SECRET_PROVIDER=1password
+    SECRET_PROVIDER_CONNECT_HOST=http://op-connect-api:8080
+    SECRET_PROVIDER_CONNECT_TOKEN_FILE=/run/secrets/op_connect_token
+    ```
 
-!!! tip
-    Prefer `SECRET_PROVIDER_CONNECT_TOKEN_FILE` in production so the token is mounted as a secret file instead of a plain environment variable.
+    Mount the Connect token file as a secret or volume into the `doco-cd` container at the specified path:
 
-### Getting your Connect Server credentials
+    ```yaml title="docker-compose.yml"
+    services:
+      app:
+        image: kimdre/doco-cd:latest
+        environment:
+          SECRET_PROVIDER: 1password
+          SECRET_PROVIDER_CONNECT_HOST: http://op-connect-api:8080
+          SECRET_PROVIDER_CONNECT_TOKEN_FILE: /run/secrets/op_connect_token
+        secrets:
+          - op_connect_token
+    
+    secrets:
+      op_connect_token:
+        file: ./op_connect_token.txt
+    ```
 
-For detailed setup instructions, refer to the [1Password Connect Server documentation](https://developer.1password.com/docs/connect/).
-
-To generate a Connect token:
-
-1. Open 1Password
-2. Go to the Admin Console
-3. Select the 1Password Connect integration (or create a new one)
-4. Generate a new token
-5. Save the token in a secure location
-
-To generate the `1password-credentials.json` file used by `op-connect-api` and `op-connect-sync`, follow the [1Password Connect authentication guide](https://developer.1password.com/docs/connect/authentication/).
-
+[1password-connect-setup]: https://developer.1password.com/docs/connect/get-started/?deploy=docker#step-1

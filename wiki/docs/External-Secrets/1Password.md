@@ -53,15 +53,16 @@ external_secrets:
 
 ## Client-Side Caching
 
-Optional client-side caching reduces 1Password API calls when using service account authentication. Enable and configure caching with the following environment variables:
+Optional client-side caching[^1] reduces 1Password API calls when using service account authentication. Enable and configure caching with the following environment variables:
 
-| Key                              | Type                                                | Value                                                                                    | Default |
-|----------------------------------|-----------------------------------------------------|------------------------------------------------------------------------------------------|:--------|
-| `SECRET_PROVIDER_CACHE_ENABLED`  | `boolean`                                           | Enables in-memory caching for resolved secrets                                           | `false` |
-| `SECRET_PROVIDER_CACHE_TTL`      | [`duration`](https://pkg.go.dev/time#ParseDuration) | Cache TTL for resolved secrets as a Go duration string (for example: `30s`, `5m`, `1h`)  | `5m`    |
-| `SECRET_PROVIDER_CACHE_MAX_SIZE` | `int`                                               | Maximum number of secrets stored in cache before least-recently-used entries are evicted | `100`   |
+| Key                              | Type      | Value                                                                                                                            | Default |
+|----------------------------------|-----------|----------------------------------------------------------------------------------------------------------------------------------|:--------|
+| `SECRET_PROVIDER_CACHE_ENABLED`  | `boolean` | Enables in-memory caching for resolved secrets                                                                                   | `false` |
+| `SECRET_PROVIDER_CACHE_TTL`      | `string`  | Cache TTL for resolved secrets as a [Go duration](https://pkg.go.dev/time#ParseDuration) string (for example: `30s`, `5m`, `1h`) | `5m`    |
+| `SECRET_PROVIDER_CACHE_MAX_SIZE` | `number`  | Maximum number of secrets stored in cache before least-recently-used entries are evicted                                         | `100`   |
 
 !!! warning "If the cache TTL is too long, secrets may become outdated."
 
-!!! info
-    Client-side caching can only be used with service account authentication. When using [1Password Connect Server](1Password-Connect.md), client-side caching is automatically disabled because Connect already handles caching for you.
+[^1]: 
+    Client-side caching can only be used with service account authentication. 
+    When using [1Password Connect Server](1Password-Connect.md), client-side caching is automatically disabled because the Connect Server already handles caching for you.
