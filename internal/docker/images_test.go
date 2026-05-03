@@ -343,6 +343,57 @@ func TestRegistryDigestForRefFallsBackToDistributionInspect(t *testing.T) {
 	}
 }
 
+func TestRegistryDigestForRefFallsBackWhenHEADMissingDigestHeader(t *testing.T) {
+	t.Parallel()
+
+	// HEAD server returns 200 but omits Docker-Content-Digest, so the HEAD path errors.
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// deliberately omit the Docker-Content-Digest header
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	parsed, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("failed to parse test server URL: %v", err)
+	}
+
+	imageRef := parsed.Host + "/team/app:latest"
+
+	// Confirm the HEAD path alone returns an error.
+	_, headErr := registryDigestForRefViaHEADWithClient(context.Background(), &configfile.ConfigFile{}, imageRef, server.Client())
+	if headErr == nil {
+		t.Fatal("expected HEAD lookup to fail without Docker-Content-Digest header, but it succeeded")
+	}
+
+	// Now wire up the full registryDigestForRef call:
+	// - override the HEAD lookup to use the test server's HTTP client
+	// - override the distribution lookup to return a known digest (simulating Docker Engine fallback)
+	oldHeadLookup := registryDigestHeadLookup
+	oldDistributionLookup := registryDigestDistributionLookup
+
+	t.Cleanup(func() {
+		registryDigestHeadLookup = oldHeadLookup
+		registryDigestDistributionLookup = oldDistributionLookup
+	})
+
+	registryDigestHeadLookup = func(ctx context.Context, _ command.Cli, ref string) (string, error) {
+		return registryDigestForRefViaHEADWithClient(ctx, &configfile.ConfigFile{}, ref, server.Client())
+	}
+	registryDigestDistributionLookup = func(_ context.Context, _ command.Cli, _ string) (string, error) {
+		return "sha256:from-distribution-fallback", nil
+	}
+
+	got, err := registryDigestForRef(context.Background(), nil, imageRef)
+	if err != nil {
+		t.Fatalf("registryDigestForRef() unexpected error: %v", err)
+	}
+
+	if got != "sha256:from-distribution-fallback" {
+		t.Fatalf("registryDigestForRef() = %q, want %q", got, "sha256:from-distribution-fallback")
+	}
+}
+
 func TestRegistryDigestForRefViaHEADWithClientUsesHEAD(t *testing.T) {
 	t.Parallel()
 
