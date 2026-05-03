@@ -28,7 +28,7 @@ type restartAttemptResult struct {
 func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event events.Message, dc *config.DeployConfig) restartAttemptResult {
 	containerID := event.Actor.ID
 	containerName := event.Actor.Attributes["name"]
-	restartOpts := restartOptionsFromDeployConfig(ctx, jobLog, j.info.dockerCli.Client(), containerID, dc)
+	restartOpts := restartOptionsFromDeployConfig(dc)
 	action := normalizeReconciliationEventAction(string(event.Action))
 
 	actorKind := restartNotificationActorKind()
@@ -237,7 +237,7 @@ func (j *job) shouldSuppressUnhealthyRestart(jobLog *slog.Logger, event events.M
 	return true
 }
 
-func restartOptionsFromDeployConfig(ctx context.Context, jobLog *slog.Logger, cli client.APIClient, containerID string, dc *config.DeployConfig) client.ContainerRestartOptions {
+func restartOptionsFromDeployConfig(dc *config.DeployConfig) client.ContainerRestartOptions {
 	timeout := 10
 	if dc != nil && dc.Reconciliation.RestartTimeout > 0 {
 		timeout = dc.Reconciliation.RestartTimeout
@@ -245,52 +245,12 @@ func restartOptionsFromDeployConfig(ctx context.Context, jobLog *slog.Logger, cl
 
 	opts := client.ContainerRestartOptions{Timeout: &timeout}
 
-	signal := ""
-
-	// Priority: user-configured signal → image StopSignal → default SIGINT
+	// Priority: user-configured signal -> default Docker signal (default SIGTERM)
 	if dc != nil {
-		signal = strings.TrimSpace(dc.Reconciliation.RestartSignal)
+		opts.Signal = strings.TrimSpace(dc.Reconciliation.RestartSignal)
 	}
-
-	if signal == "" && containerID != "" {
-		signal = getImageStopSignalForContainer(ctx, jobLog, cli, containerID)
-	}
-
-	if signal == "" {
-		signal = "SIGINT"
-	}
-
-	opts.Signal = signal
 
 	return opts
-}
-
-func getImageStopSignalForContainer(ctx context.Context, jobLog *slog.Logger, cli client.APIClient, containerID string) string {
-	inspectResult, err := cli.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
-	if err != nil {
-		jobLog.Debug("failed to inspect container for image stop signal", slog.String("container_id", shortID(containerID)), logger.ErrAttr(err))
-		return ""
-	}
-
-	imageRef := strings.TrimSpace(inspectResult.Container.Image)
-	if imageRef == "" {
-		return ""
-	}
-
-	imageInspectResult, err := cli.ImageInspect(ctx, imageRef)
-	if err != nil {
-		jobLog.Debug("failed to inspect image for stop signal", slog.String("image_ref", imageRef), logger.ErrAttr(err))
-		return ""
-	}
-
-	config := imageInspectResult.Config
-	if config == nil {
-		return ""
-	}
-
-	stopsignal := strings.TrimSpace(config.StopSignal)
-
-	return stopsignal
 }
 
 func selectRestartDeployConfig(dcs []*config.DeployConfig, labels map[string]string) *config.DeployConfig {

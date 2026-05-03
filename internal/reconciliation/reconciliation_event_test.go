@@ -1,7 +1,6 @@
 package reconciliation
 
 import (
-	"context"
 	"errors"
 	"reflect"
 	"slices"
@@ -371,19 +370,6 @@ func TestStackDeploymentInProgressTracking(t *testing.T) {
 func TestRestartOptionsFromDeployConfig(t *testing.T) {
 	t.Parallel()
 
-	t.Run("defaults to SIGINT", func(t *testing.T) {
-		t.Parallel()
-
-		opts := restartOptionsFromDeployConfig(context.Background(), nil, nil, "", nil)
-		if opts.Timeout == nil || *opts.Timeout != 10 {
-			t.Fatalf("expected default restart timeout 10, got %+v", opts.Timeout)
-		}
-
-		if opts.Signal != "SIGINT" {
-			t.Fatalf("expected default restart signal SIGINT, got %q", opts.Signal)
-		}
-	})
-
 	t.Run("from deploy config takes priority", func(t *testing.T) {
 		t.Parallel()
 
@@ -391,7 +377,7 @@ func TestRestartOptionsFromDeployConfig(t *testing.T) {
 		dc.Reconciliation.RestartTimeout = 30
 		dc.Reconciliation.RestartSignal = "SIGQUIT"
 
-		opts := restartOptionsFromDeployConfig(context.Background(), nil, nil, "", dc)
+		opts := restartOptionsFromDeployConfig(dc)
 		if opts.Timeout == nil || *opts.Timeout != 30 {
 			t.Fatalf("expected restart timeout 30, got %+v", opts.Timeout)
 		}
