@@ -30,6 +30,21 @@ For the Connect containers themselves, you also need a `1password-credentials.js
 to authenticate `op-connect-api`/`op-connect-sync` with your 1Password account and allow vault sync.
 Download it from your [1Password Connect setup][1password-connect-setup].
 
+## Deployment configuration
+
+Add a mapping/reference between the environment variable you want to set in the docker compose project/stack and the URI to the secret in 1Password.
+
+See their docs for the correct syntax and how to get a secret reference of your secret: https://developer.1password.com/docs/cli/secret-reference-syntax/
+
+A valid secret reference should use the syntax:
+`op://<vault>/<item>/[section/]<field>`
+
+To get a one-time password, append the `?attribute=otp` query parameter to a secret reference that points to a one-time password field in 1Password:
+`op://<vault>/<item>/[section/]one-time password?attribute=otp`
+
+!!! warning
+    Machine accounts can only access vaults for which you have granted read permissions during creation. The default `Personal` vault can't be access by machine accounts!
+
 ## Setup Steps
 
 ### Example Compose Setup
