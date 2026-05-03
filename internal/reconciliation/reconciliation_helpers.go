@@ -125,16 +125,14 @@ func deployConfigsByName(dcs []*config.DeployConfig, name string) []*config.Depl
 func stackNameFromEvent(event events.Message, candidates []*config.DeployConfig) string {
 	attrs := event.Actor.Attributes
 
-	for _, key := range []string{docker.DocoCDLabels.Deployment.Name, swarm.StackNamespaceLabel} {
-		v := strings.TrimSpace(attrs[key])
-		if v != "" {
-			if matched := matchCandidateStackName(v, candidates); matched != "" {
-				return matched
-			}
-		}
-	}
-
-	for _, key := range []string{"name", "service", "com.docker.swarm.service.name", "com.docker.swarm.task.name"} {
+	for _, key := range []string{
+		docker.DocoCDLabels.Deployment.Name,
+		swarm.StackNamespaceLabel,
+		"name",
+		"service",
+		"com.docker.swarm.service.name",
+		"com.docker.swarm.task.name",
+	} {
 		identifier := strings.TrimSpace(attrs[key])
 		if identifier == "" {
 			continue
