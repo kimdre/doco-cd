@@ -5,9 +5,9 @@ tags:
   - Configuration
 ---
 
-# 1Password Connect Server
+# 1Password Connect
 
-[1Password Connect Server](https://developer.1password.com/docs/connect/) is a self-hosted proxy that caches vault data locally and serves secrets over a simple HTTP API. This is useful when you are deploying frequently or have multiple instances that would otherwise hit 1Password API rate limits.
+A [1Password Connect](https://developer.1password.com/docs/connect/) Server is a self-hosted proxy that caches vault data locally and serves secrets over a simple HTTP API. This is useful when you are deploying frequently or have multiple instances that would otherwise hit 1Password API rate limits.
 
 Unlike service account authentication (see the [1Password provider](1Password.md)) (which makes direct calls to the 1Password cloud API), Connect Server allows you to:
 
