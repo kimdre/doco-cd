@@ -233,7 +233,7 @@ The following settings can be used to configure periodic reconciliation.
 | `enabled`  | boolean | Enable periodic reconciliation.                      | `true`        |
 | `interval` | number  | The time in seconds between two reconciliation runs. | `60`          |
 
---8<-- "wiki/docs/_snippets/reconciliation-note.md"
+--8<-- "wiki/includes/reconciliation-note.md"
 
 !!! example
     ```yaml title=".doco-cd.yml"

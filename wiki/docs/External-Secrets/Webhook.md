@@ -181,9 +181,11 @@ Functions can be chained with `|` from left to right.
     - `{{ "hello world" | urlencode }}` -> `hello+world`
     - `{{ "hello+world" | urldecode }}` -> `hello world`
     - `{{ .remote_ref.data | json }}` -> `{"key":"value"}`
+    - `{{ .remote_ref.data | json | b64enc }}` -> `eyJrZXkiOiJ2YWx1ZSJ9` (JSON string encoded in Base64)
     - `{{ "hello" | toUpper }}` -> `HELLO`
     - `{{ "HELLO" | toLower }}` -> `hello`
     - `{{ "  hello  " | trim }}` -> `hello`
+    - `{{ "  hello  " | trim | toUpper }}` -> `HELLO`
 
 ## Examples
 
