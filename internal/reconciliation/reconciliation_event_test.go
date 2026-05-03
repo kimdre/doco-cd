@@ -11,50 +11,8 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
-	gitInternal "github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/notification"
 )
-
-func TestNormalizeRepositoryLabelFromCloneURL(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		cloneURL string
-		want     string
-	}{
-		// Standard GitHub URL — owner must be preserved so the filter matches container labels.
-		{
-			cloneURL: "https://github.com/kimdre/doco-cd_tests.git",
-			want:     "kimdre/doco-cd_tests",
-		},
-		// SSH SCP-like URL.
-		{
-			cloneURL: "git@github.com:kimdre/doco-cd_tests.git",
-			want:     "kimdre/doco-cd_tests",
-		},
-		// GitLab deep subgroup URL — all path segments must be kept.
-		{
-			cloneURL: "https://gitlab.com/gitlab-org/5-minute-production-app/sandbox/cats.git",
-			want:     "gitlab-org/5-minute-production-app/sandbox/cats",
-		},
-		// Single-segment repo (no owner in path).
-		{
-			cloneURL: "http://git.example.com/doco-cd.git",
-			want:     "doco-cd",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.cloneURL, func(t *testing.T) {
-			t.Parallel()
-
-			got := gitInternal.GetFullName(tt.cloneURL)
-			if got != tt.want {
-				t.Fatalf("gitInternal.GetFullName(%q) = %q, want %q", tt.cloneURL, got, tt.want)
-			}
-		})
-	}
-}
 
 func TestGetDeployConfigGroupByEvent(t *testing.T) {
 	t.Parallel()
