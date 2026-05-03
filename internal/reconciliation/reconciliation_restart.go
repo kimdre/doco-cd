@@ -245,7 +245,6 @@ func restartOptionsFromDeployConfig(dc *config.DeployConfig) client.ContainerRes
 
 	opts := client.ContainerRestartOptions{Timeout: &timeout}
 
-	// Priority: user-configured signal -> default Docker signal (default SIGTERM)
 	if dc != nil {
 		opts.Signal = strings.TrimSpace(dc.Reconciliation.RestartSignal)
 	}
