@@ -9,13 +9,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/config/configfile"
+	configtypes "github.com/docker/cli/cli/config/types"
 )
+
+const registryIntegrationEnvVar = "DOCO_CD_RUN_REGISTRY_INTEGRATION_TESTS"
 
 func TestDigestFromReference(t *testing.T) {
 	t.Parallel()
@@ -315,7 +319,7 @@ func TestRegistryDigestForRefPrefersHEAD(t *testing.T) {
 	}
 }
 
-func TestRegistryDigestForRefFallsBackToDistributionInspect(t *testing.T) {
+func TestRegistryDigestForRef_FallsBackToDistributionInspect(t *testing.T) {
 	t.Parallel()
 
 	oldHeadLookup := registryDigestHeadLookup
@@ -343,7 +347,7 @@ func TestRegistryDigestForRefFallsBackToDistributionInspect(t *testing.T) {
 	}
 }
 
-func TestRegistryDigestForRefFallsBackWhenHEADMissingDigestHeader(t *testing.T) {
+func TestRegistryDigestForRef_FallsBackWhenHEADMissingDigestHeader(t *testing.T) {
 	t.Parallel()
 
 	// HEAD server returns 200 but omits Docker-Content-Digest, so the HEAD path errors.
@@ -394,7 +398,7 @@ func TestRegistryDigestForRefFallsBackWhenHEADMissingDigestHeader(t *testing.T) 
 	}
 }
 
-func TestRegistryDigestForRefViaHEADWithClientUsesHEAD(t *testing.T) {
+func TestRegistryDigestForRefViaHEADWithClient_UsesHEAD(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -428,7 +432,7 @@ func TestRegistryDigestForRefViaHEADWithClientUsesHEAD(t *testing.T) {
 	}
 }
 
-func TestRegistryDigestForRefViaHEADWithClientBearerChallenge(t *testing.T) {
+func TestRegistryDigestForRefViaHEADWithClient_BearerChallenge(t *testing.T) {
 	t.Parallel()
 
 	var tokenURL string
@@ -470,5 +474,76 @@ func TestRegistryDigestForRefViaHEADWithClientBearerChallenge(t *testing.T) {
 
 	if got != "sha256:from-bearer" {
 		t.Fatalf("registryDigestForRefViaHEADWithClient() = %q, want %q", got, "sha256:from-bearer")
+	}
+}
+
+func TestRegistryDigestForRefViaHEADWithClient_GHCR_DocoCD_Integration(t *testing.T) {
+	t.Parallel()
+
+	requireRegistryIntegrationTestGate(t)
+
+	const imageRef = "ghcr.io/kimdre/doco-cd:latest"
+
+	var digestWithoutCreds string
+
+	t.Run("without registry credentials", func(t *testing.T) {
+		t.Parallel()
+
+		digest, err := registryDigestForRefViaHEADWithClient(t.Context(), &configfile.ConfigFile{}, imageRef, http.DefaultClient)
+		if err != nil {
+			t.Fatalf("registryDigestForRefViaHEADWithClient() unexpected error: %v", err)
+		}
+
+		if !strings.HasPrefix(digest, "sha256:") {
+			t.Fatalf("digest = %q, want sha256:*", digest)
+		}
+
+		digestWithoutCreds = digest
+	})
+
+	t.Run("with registry credentials if set", func(t *testing.T) {
+		t.Parallel()
+
+		username := strings.TrimSpace(os.Getenv("GHCR_USERNAME"))
+
+		token := strings.TrimSpace(os.Getenv("GHCR_TOKEN"))
+		if username == "" || token == "" {
+			t.Skip("set GHCR_USERNAME and GHCR_TOKEN to run credentialed ghcr.io integration lookup")
+		}
+
+		cfg := &configfile.ConfigFile{
+			AuthConfigs: map[string]configtypes.AuthConfig{
+				"ghcr.io": {
+					Username:      username,
+					Password:      token,
+					ServerAddress: "ghcr.io",
+				},
+			},
+		}
+
+		digest, err := registryDigestForRefViaHEADWithClient(t.Context(), cfg, imageRef, http.DefaultClient)
+		if err != nil {
+			t.Fatalf("registryDigestForRefViaHEADWithClient() unexpected error: %v", err)
+		}
+
+		if !strings.HasPrefix(digest, "sha256:") {
+			t.Fatalf("digest = %q, want sha256:*", digest)
+		}
+
+		if digestWithoutCreds == "" {
+			t.Fatalf("digest from unauthenticated subtest must be set")
+		}
+	})
+}
+
+func requireRegistryIntegrationTestGate(t *testing.T) {
+	t.Helper()
+
+	if testing.Short() {
+		t.Skip("skipping registry integration tests in short mode")
+	}
+
+	if os.Getenv(registryIntegrationEnvVar) != "1" {
+		t.Skipf("set %s=1 to run registry integration tests", registryIntegrationEnvVar)
 	}
 }
