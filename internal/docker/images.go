@@ -68,7 +68,7 @@ func registryDigestForRef(ctx context.Context, dockerCli command.Cli, imageRef s
 		return digest, nil
 	}
 
-	slog.Debug("registry HEAD digest lookup failed, falling back to distribution inspect", slog.String("ref", imageRef), slog.String("err", err.Error()))
+	slog.Warn("registry HEAD digest lookup failed, falling back to distribution inspect", slog.String("ref", imageRef), slog.String("err", err.Error()))
 
 	return registryDigestDistributionLookup(ctx, dockerCli, imageRef)
 }
