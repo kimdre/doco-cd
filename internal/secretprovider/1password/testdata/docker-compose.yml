@@ -1,6 +1,6 @@
 services:
   op-connect-api:
-    image: 1password/connect-api:latest
+    image: 1password/connect-api:latest@sha256:e915c0c843972f02b0e7e2de502bda8bd4a092288b3f1866098a857bd715a281
     ports:
       - "8080:8080"
     volumes:
@@ -8,7 +8,7 @@ services:
       - op_data:/home/opuser/.op/data
 
   op-connect-sync:
-    image: 1password/connect-sync:latest
+    image: 1password/connect-sync:latest@sha256:6297ca6136c0f0fb096bc64c49e1bc8df2aab35282ebff8c7bb60745ef176d0d
     ports:
       - "8081:8080"
     volumes:
