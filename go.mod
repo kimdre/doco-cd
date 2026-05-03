@@ -40,11 +40,13 @@ require (
 require golang.org/x/sync v0.20.0
 
 require (
+	github.com/1Password/connect-sdk-go v1.5.3
 	github.com/avast/retry-go/v5 v5.0.0
 	github.com/bitwarden/sdk-go/v2 v2.0.0
 	github.com/docker/compose/v5 v5.1.3
 	github.com/jmespath/go-jmespath v0.4.1-0.20220621161143-b0104c826a24
 	github.com/opencontainers/go-digest v1.0.0
+	github.com/opentracing/opentracing-go v1.2.0
 	github.com/prometheus/common v0.67.5
 	github.com/veqryn/slog-dedup v0.6.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -65,7 +67,6 @@ require (
 	filippo.io/age v1.3.1 // indirect
 	filippo.io/edwards25519 v1.1.1 // indirect
 	filippo.io/hpke v0.4.0 // indirect
-	github.com/1Password/connect-sdk-go v1.5.3 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.13.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.11.2 // indirect
@@ -99,7 +100,7 @@ require (
 	github.com/aws/smithy-go v1.25.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
-	github.com/bombsimon/wsl/v5 v5.7.0 // indirect
+	github.com/bombsimon/wsl/v5 v5.8.0 // indirect
 	github.com/buger/goterm v1.0.4 // indirect
 	github.com/catenacyber/perfsprint v0.10.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
@@ -212,7 +213,6 @@ require (
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f // indirect
 	github.com/onsi/gomega v1.37.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
-	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/oracle/oci-go-sdk/v65 v65.95.2 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/pjbgf/sha1cd v0.3.2 // indirect
