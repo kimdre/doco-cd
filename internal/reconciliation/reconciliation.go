@@ -205,10 +205,11 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		return
 	}
 
-	if j.shouldSuppressRestartFollowupEvent(action, event) {
+	if suppress, remaining := j.shouldSuppressRestartFollowupEvent(action, event); suppress {
 		jobLog.Debug("suppressing follow-up event from self-initiated container restart",
 			slog.String("event", action),
 			slog.String("container_name", event.Actor.Attributes["name"]),
+			slog.String("restart_cooldown_remaining", remaining.Truncate(time.Second).String()),
 			slog.String("stack", stackName),
 		)
 
@@ -259,7 +260,14 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 			eventLog.Warn("multiple deploy configs matched restart event, using first match", slog.Int("deploy_config_count", len(stackDCs)))
 		}
 
-		j.restartContainer(ctx, eventLog, event, restartDC)
+		restartResult := j.restartContainer(ctx, eventLog, event, restartDC)
+		if restartResult.fallbackToDeploy {
+			if event.Actor.ID != "" {
+				waitForContainerRemovalSettled(ctx, eventLog, j.info.dockerCli.Client(), event.Actor.ID, containerRemovalSettleTimeout)
+			}
+
+			j.deploy(ctx, eventLog, stackDCs, action, event, traceID)
+		}
 
 		return
 	}

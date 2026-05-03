@@ -1,6 +1,7 @@
 package reconciliation
 
 import (
+	"errors"
 	"reflect"
 	"slices"
 	"testing"
@@ -149,6 +150,47 @@ func TestDockerEventTime(t *testing.T) {
 			t.Fatalf("expected zero time, got %s", got)
 		}
 	})
+}
+
+func TestShouldFallbackToDeployOnRestartError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "nil error",
+			err:  nil,
+			want: false,
+		},
+		{
+			name: "container marked for removal",
+			err:  errors.New("Error response from daemon: Cannot restart container abc: container is marked for removal and cannot be started"),
+			want: true,
+		},
+		{
+			name: "missing container",
+			err:  errors.New("Error response from daemon: No such container: abc"),
+			want: true,
+		},
+		{
+			name: "other restart error",
+			err:  errors.New("Error response from daemon: cannot stop container"),
+			want: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := shouldFallbackToDeployOnRestartError(tc.err); got != tc.want {
+				t.Fatalf("expected fallback=%t, got %t", tc.want, got)
+			}
+		})
+	}
 }
 
 func TestIsRestartReconciliationAction(t *testing.T) {
@@ -446,8 +488,10 @@ func TestShouldSuppressRestartFollowupEvent(t *testing.T) {
 
 	event := events.Message{Actor: events.Actor{ID: containerID}}
 
-	if !j.shouldSuppressRestartFollowupEvent("die", event) {
+	if suppress, remaining := j.shouldSuppressRestartFollowupEvent("die", event); !suppress {
 		t.Fatal("expected die follow-up event to be suppressed")
+	} else if remaining <= 0 {
+		t.Fatalf("expected positive remaining suppression duration, got %s", remaining)
 	}
 
 	if _, ok := j.restartSuppressUntil[containerID]; !ok {
@@ -468,8 +512,10 @@ func TestShouldSuppressRestartFollowupEvent_MultipleFollowupEvents(t *testing.T)
 	event := events.Message{Actor: events.Actor{ID: containerID}}
 
 	for _, action := range []string{"stop", "die", "kill"} {
-		if !j.shouldSuppressRestartFollowupEvent(action, event) {
+		if suppress, remaining := j.shouldSuppressRestartFollowupEvent(action, event); !suppress {
 			t.Fatalf("expected %q follow-up event to be suppressed", action)
+		} else if remaining <= 0 {
+			t.Fatalf("expected positive remaining suppression duration for %q, got %s", action, remaining)
 		}
 	}
 
@@ -490,8 +536,10 @@ func TestShouldSuppressRestartFollowupEvent_Expired(t *testing.T) {
 
 	event := events.Message{Actor: events.Actor{ID: containerID}}
 
-	if j.shouldSuppressRestartFollowupEvent("die", event) {
+	if suppress, remaining := j.shouldSuppressRestartFollowupEvent("die", event); suppress {
 		t.Fatal("expected expired suppression marker to be ignored")
+	} else if remaining != 0 {
+		t.Fatalf("expected zero remaining duration for expired marker, got %s", remaining)
 	}
 
 	if _, ok := j.restartSuppressUntil[containerID]; ok {
@@ -511,8 +559,10 @@ func TestShouldSuppressRestartFollowupEvent_NonFollowupAction(t *testing.T) {
 
 	event := events.Message{Actor: events.Actor{ID: containerID}}
 
-	if j.shouldSuppressRestartFollowupEvent("destroy", event) {
+	if suppress, remaining := j.shouldSuppressRestartFollowupEvent("destroy", event); suppress {
 		t.Fatal("expected non-follow-up action not to be suppressed")
+	} else if remaining != 0 {
+		t.Fatalf("expected zero remaining duration for non-follow-up action, got %s", remaining)
 	}
 
 	if _, ok := j.restartSuppressUntil[containerID]; !ok {

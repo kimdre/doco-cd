@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/events"
 	"github.com/moby/moby/client"
 
@@ -17,10 +18,14 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 )
 
+type restartAttemptResult struct {
+	fallbackToDeploy bool
+}
+
 // restartContainer restarts a single container identified by the Docker event,
 // using the restart timeout configured in the deploy config (default 10 s).
 // Used for restart-oriented events where the container is still present.
-func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event events.Message, dc *config.DeployConfig) {
+func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event events.Message, dc *config.DeployConfig) restartAttemptResult {
 	containerID := event.Actor.ID
 	containerName := event.Actor.Attributes["name"]
 	restartOpts := restartOptionsFromDeployConfig(dc)
@@ -42,7 +47,7 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 	}
 
 	if suppressed := j.shouldSuppressUnhealthyRestart(restartLog, event, dc); suppressed {
-		return
+		return restartAttemptResult{}
 	}
 
 	j.markRestartFollowupSuppression(containerID, restartTimeout)
@@ -53,6 +58,12 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 
 	if _, err := j.info.dockerCli.Client().ContainerRestart(ctx, containerID, restartOpts); err != nil {
 		delete(j.restartSuppressUntil, containerID)
+
+		if shouldFallbackToDeployOnRestartError(err) {
+			restartLog.Warn("container restart failed because the target is no longer restartable, falling back to redeploy", logger.ErrAttr(err))
+			return restartAttemptResult{fallbackToDeploy: true}
+		}
+
 		restartLog.Error("failed to restart container", logger.ErrAttr(err))
 
 		if notifyErr := notification.Send(
@@ -64,7 +75,7 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 			restartLog.Error("failed to send restart failure notification", logger.ErrAttr(notifyErr))
 		}
 
-		return
+		return restartAttemptResult{}
 	}
 
 	restartLog.Info(actorKind + " restarted successfully")
@@ -77,6 +88,25 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 	); notifyErr != nil {
 		restartLog.Error("failed to send restart success notification", logger.ErrAttr(notifyErr))
 	}
+
+	return restartAttemptResult{}
+}
+
+func shouldFallbackToDeployOnRestartError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if errdefs.IsNotFound(err) {
+		return true
+	}
+
+	errText := strings.ToLower(strings.TrimSpace(err.Error()))
+	if strings.Contains(errText, "no such container") {
+		return true
+	}
+
+	return strings.Contains(errText, "marked for removal") && strings.Contains(errText, "cannot be started")
 }
 
 func restartNotificationMetadata(base notification.Metadata, action, actorKind, actorID, actorName, traceID string) notification.Metadata {
@@ -106,28 +136,28 @@ func restartNotificationActorKindTitle(actorKind string) string {
 	return strings.ToUpper(actorKind[:1]) + actorKind[1:]
 }
 
-func (j *job) shouldSuppressRestartFollowupEvent(action string, event events.Message) bool {
+func (j *job) shouldSuppressRestartFollowupEvent(action string, event events.Message) (bool, time.Duration) {
 	if !isRestartFollowupAction(action) {
-		return false
+		return false, 0
 	}
 
 	containerID := event.Actor.ID
 	if containerID == "" {
-		return false
+		return false, 0
 	}
 
 	until, ok := j.restartSuppressUntil[containerID]
 	if !ok {
-		return false
+		return false, 0
 	}
 
 	now := time.Now()
 	if !now.Before(until) {
 		delete(j.restartSuppressUntil, containerID)
-		return false
+		return false, 0
 	}
 
-	return true
+	return true, until.Sub(now)
 }
 
 func (j *job) markRestartFollowupSuppression(containerID string, timeoutSeconds int) {
