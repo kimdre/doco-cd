@@ -50,7 +50,7 @@ The docker compose deployment can be configured inside the [deployment configura
 | `git_depth`        | number           | Limits the number of commits fetched during clone/fetch (shallow clone). `0` means use the global [`GIT_CLONE_DEPTH`](App-Settings.md) value. A positive integer overrides the global setting for this deployment. When a requested ref (tag/SHA) is outside the shallow depth, doco-cd automatically deepens incrementally before falling back to a full fetch. Changing this value on an existing repo triggers an automatic re-clone.                                             | `0` (use global)                                                                                                       |
 | `destroy`          | boolean          | (⚠️ Destructive) Remove the deployed compose stack/project and its resources from the Docker host. Can be further configured using the [destroy_opts](#destroy-settings) setting.                                                                                                                                                                                                                                                                                                    | `false`                                                                                                                |
 | `auto_discover`    | boolean          | Enables autodiscovery of services to deploy in the working directory by scanning for subdirectories with docker-compose files with the naming `docker-compose.y(a)ml` or `compose.y(a)ml`. Can be further configured using the [auto_discover_opts](#auto-discover-settings) setting.                                                                                                                                                                                                | `false`                                                                                                                |
-| `reconciliation`   | object           | Enables event-driven reconciliation for deployments. See [reconciliation settings](#reconciliation-settings) for more details.                                                                                                                                                                                                                                                                                                                                                       | `{enabled: true, events: [die, destroy], restart_timeout: 10}`                                                         |
+| `reconciliation`   | object           | Enables event-driven reconciliation for deployments. See [reconciliation settings](#reconciliation-settings) for more details.                                                                                                                                                                                                                                                                                                                                                       | see [Reconciliation Settings](#reconciliation-settings)                                                                |
 
 
 !!! example
@@ -231,7 +231,7 @@ The following settings can be used to configure reconciliation triggers.
 | Key               | Type             | Description                                                                                                                   | Default value          |
 |-------------------|------------------|-------------------------------------------------------------------------------------------------------------------------------|------------------------|
 | `enabled`         | boolean          | Enable reconciliation.                                                                                                        | `true`                 |
-| `events`          | array of strings | Docker container/service events that trigger reconciliation. See [supported events](#supported-events) below.                 | `['die', 'unhealthy']` |
+| `events`          | array of strings | Docker container/service events that trigger reconciliation. See [supported events](#supported-events) below.                 | `['unhealthy']`        |
 | `restart_timeout` | number           | Timeout in seconds used when restarting containers for reconciliation [events](#supported-events) that trigger a restart.     | `10`                   |
 | `restart_signal`  | string           | Signal used for reconciliation restarts. If not set, the `StopSignal` of the container image is used (defaults to `SIGTERM`). |                        |
 | `restart_limit`   | number           | Maximum number of automatic restarts allowed for a container in the restart window. Set to `0` to disable suppression.        | `5`                    |
@@ -288,18 +288,15 @@ reconciliation:
   restart_limit: 5
   restart_window: 300
   events:
-    - die
-    - stop
-    - kill
+    - destroy
     - unhealthy
-    - oom
 ```
 
 ```yaml title=".doco-cd.yml"
 name: some-project
 reconciliation:
   enabled: true
-  events: [die, destroy]
+  events: [unhealthy]
 ```
 
 ### Webhook Filter
