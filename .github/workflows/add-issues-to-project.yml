@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Add issue to project dashboard
-        uses: actions/add-to-project@v1
+        uses: actions/add-to-project@v1.0.2
         with:
           project-url: https://github.com/users/kimdre/projects/3
           github-token: ${{ secrets.GITHUB_TOKEN }}
