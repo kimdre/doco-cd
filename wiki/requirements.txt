@@ -1,2 +1,2 @@
 zensical==0.0.39
-git+https://github.com/squidfunk/mike.git
+git+https://github.com/squidfunk/mike.git@2.2.0+zensical-0.1.0
