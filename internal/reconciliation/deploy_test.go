@@ -109,6 +109,13 @@ func TestDeploy(t *testing.T) {
 	dcs[0].Reconciliation.Enabled = false
 	dcs[1].Reconciliation.Events = []string{"stop"}
 
+	// The default reconciliation events don't include "die".
+	// Explicitly enable it for dcs[2..4] so the test's forceful container
+	// removal (which emits a "die" event) triggers reconciliation as expected.
+	for _, dc := range dcs[2:] {
+		dc.Reconciliation.Events = []string{"die"}
+	}
+
 	t.Cleanup(func() {
 		for _, dc := range dcs {
 			waitForStackDeploymentToFinish(t, repoName, dc.Name, 20*time.Second)
