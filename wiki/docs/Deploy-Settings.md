@@ -260,7 +260,7 @@ The following events are supported as reconciliation triggers in Docker (Standal
         For `unhealthy` events, doco-cd suppresses further automatic restarts after `restart_limit` restarts within `restart_window` seconds (See [reconciliation settings](#reconciliation-settings)).
 
     !!! warning "Overlapping events"
-        Some events, like the `die` event, also get triggered when a container is stopped or killed, so make sure to 
+        Some events, like the `die` event, also get triggered when a container is restarted, stopped or killed, so make sure to 
         configure the events according to the desired behavior.
 
         To prevent unexpected behavior, doco-cd suppresses follow-up events for a container after the first event 
