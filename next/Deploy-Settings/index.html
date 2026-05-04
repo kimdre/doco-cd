@@ -2491,7 +2491,7 @@ See <a data-preview="" href="../Poll-Settings/">Poll Settings</a> and this <a da
 <td><code>reconciliation</code></td>
 <td>object</td>
 <td>Enables event-driven reconciliation for deployments. See <a data-preview="" href="#reconciliation-settings">reconciliation settings</a> for more details.</td>
-<td><code>{enabled: true, events: [die, destroy], restart_timeout: 10}</code></td>
+<td>see <a data-preview="" href="#reconciliation-settings">Reconciliation Settings</a></td>
 </tr>
 </tbody>
 </table>
@@ -2746,7 +2746,7 @@ When configured container events occur, doco-cd either reapplies the deployment 
 <td><code>events</code></td>
 <td>array of strings</td>
 <td>Docker container/service events that trigger reconciliation. See <a data-preview="" href="#supported-events">supported events</a> below.</td>
-<td><code>['die', 'unhealthy']</code></td>
+<td><code>['unhealthy']</code></td>
 </tr>
 <tr>
 <td><code>restart_timeout</code></td>
@@ -2843,7 +2843,7 @@ The following events are supported as reconciliation triggers in Docker (Standal
 </div>
 <div class="admonition warning">
 <p class="admonition-title">Overlapping events</p>
-<p>Some events, like the <code>die</code> event, also get triggered when a container is stopped or killed, so make sure to 
+<p>Some events, like the <code>die</code> event, also get triggered when a container is restarted, stopped or killed, so make sure to 
 configure the events according to the desired behavior.</p>
 <p>To prevent unexpected behavior, doco-cd suppresses follow-up events for a container after the first event 
 that triggered a reconciliation for that container until the reconciliation process is finished.</p>
@@ -2888,16 +2888,13 @@ However, doco-cd will only react to the first event (e.g. <code>stop</code>) and
 </span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">  </span><span class="nt">restart_limit</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span>
 </span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">  </span><span class="nt">restart_window</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">300</span>
 </span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">  </span><span class="nt">events</span><span class="p">:</span>
-</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">die</span>
-</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">stop</span>
-</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kill</span>
-</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unhealthy</span>
-</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">oom</span>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">destroy</span>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unhealthy</span>
 </span></code></pre></div>
 <div class="language-yaml highlight"><span class="filename">.doco-cd.yml</span><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">some-project</span>
 </span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="nt">reconciliation</span><span class="p">:</span>
 </span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">  </span><span class="nt">events</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">die</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">destroy</span><span class="p p-Indicator">]</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">  </span><span class="nt">events</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">unhealthy</span><span class="p p-Indicator">]</span>
 </span></code></pre></div>
 <h3 id="webhook-filter">Webhook Filter<a class="headerlink" href="#webhook-filter" title="Permanent link">&para;</a></h3>
 <p>Set <code>webhook_filter</code> to a regular expression to whitelist deployment triggers based on the webhook event payload.</p>
