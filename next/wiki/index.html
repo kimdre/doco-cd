@@ -2146,12 +2146,12 @@ This happens especially when trying to update embedded source code snippets, tha
 </ul>
 <h2 id="publishing-and-versioning">Publishing and versioning<a class="headerlink" href="#publishing-and-versioning" title="Permanent link">&para;</a></h2>
 <p>The workflow in <code>.github/workflows/docs.yaml</code> publishes docs to the <code>gh-pages</code> branch when a GitHub release is published, which GitHub Pages serves from.</p>
-<p>Supported release tag formats:</p>
 <ul>
-<li>stable: <code>vX.Y.Z</code></li>
-<li>prerelease: <code>vX.Y.Z-rc.N</code> (release candidates)</li>
+<li>Release tag format for stable/normal docs releases: <code>vX.Y.Z</code></li>
+<li>Each stable release is published to <code>/&lt;tag&gt;/</code> without the patch version (for example <code>v0.80.3</code> -&gt; <code>/v0.80/</code>). </li>
+<li>The site root redirects to the <code>/latest/</code> alias, which always serves the latest stable release. This allows users to link to <code>doco.cd/latest/</code> for the most recent stable docs without needing to update links for each release.</li>
+<li>Changes to <code>main</code> are published to <code>/next/</code> for testing and preview purpose.</li>
 </ul>
-<p>Each release is published to <code>/&lt;tag&gt;/</code> (for example <code>/v1.2.3/</code>). The site root redirects to the latest stable release.</p>
 <h2 id="custom-domain">Custom domain<a class="headerlink" href="#custom-domain" title="Permanent link">&para;</a></h2>
 <p><code>wiki/CNAME</code> is included so GitHub Pages serves the site at <code>doco.cd</code>.</p>
 
