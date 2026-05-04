@@ -61,12 +61,10 @@ Please follow these rules when contributing to the wiki:
 
 The workflow in `.github/workflows/docs.yaml` publishes docs to the `gh-pages` branch when a GitHub release is published, which GitHub Pages serves from.
 
-Supported release tag formats:
-
-- stable: `vX.Y.Z`
-- prerelease: `vX.Y.Z-rc.N` (release candidates)
-
-Each release is published to `/<tag>/` (for example `/v1.2.3/`). The site root redirects to the latest stable release.
+- Release tag format for stable/normal docs releases: `vX.Y.Z`
+- Each stable release is published to `/<tag>/` without the patch version (for example `v0.80.3` -> `/v0.80/`). 
+- The site root redirects to the `/latest/` alias, which always serves the latest stable release. This allows users to link to `doco.cd/latest/` for the most recent stable docs without needing to update links for each release.
+- Changes to `main` are published to `/next/` for testing and preview purpose.
 
 ## Custom domain
 
