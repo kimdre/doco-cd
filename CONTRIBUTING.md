@@ -5,7 +5,7 @@ Thank you for your support. Help is always appreciated!
 ## Have an issue, idea or question?
 
 - Ask questions or discuss ideas on [GitHub Discussions](https://github.com/kimdre/doco-cd/discussions)
-- Report bugs or suggest features by [opening an issue](https://github.com/kimdre/doco-cd/issues/new)
+- Report bugs or suggest features by [opening an issue](https://github.com/kimdre/doco-cd/issues/new/choose)
 
 ## Want to contribute your code?
 
