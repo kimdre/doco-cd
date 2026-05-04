@@ -8,7 +8,10 @@ import (
 	connectsdk "github.com/1Password/connect-sdk-go/connect"
 	connectonepassword "github.com/1Password/connect-sdk-go/onepassword"
 	"github.com/opentracing/opentracing-go"
+	"golang.org/x/sync/errgroup"
 )
+
+const defaultMaxConcurrentSecrets = 10
 
 var connectGlobalTracerInit sync.Once
 
@@ -59,15 +62,34 @@ func (p *Provider) resolveConnectSecret(_ context.Context, uri string) (string, 
 }
 
 func (p *Provider) resolveConnectSecrets(ctx context.Context, uris []string) (map[string]string, error) {
+	if len(uris) == 0 {
+		return make(map[string]string), nil
+	}
+
 	result := make(map[string]string, len(uris))
 
-	for _, uri := range uris {
-		secret, err := p.resolveConnectSecret(ctx, uri)
-		if err != nil {
-			return nil, err
-		}
+	var resultMutex sync.Mutex
 
-		result[uri] = secret
+	eg, egCtx := errgroup.WithContext(ctx)
+	eg.SetLimit(defaultMaxConcurrentSecrets)
+
+	for _, uri := range uris {
+		eg.Go(func() error {
+			secret, err := p.resolveConnectSecret(egCtx, uri)
+			if err != nil {
+				return fmt.Errorf("failed to resolve secret for %s: %w", uri, err)
+			}
+
+			resultMutex.Lock()
+			result[uri] = secret
+			resultMutex.Unlock()
+
+			return nil
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return nil, err
 	}
 
 	return result, nil
