@@ -48,50 +48,62 @@ var (
 
 const DefaultReference = "refs/heads/main"
 
+// AutoDiscoveryConfig holds auto-discovery settings for a deployment.
+type AutoDiscoveryConfig struct {
+	Enable    bool `yaml:"enable" json:"enable" default:"false"` // Enable enables autodiscovery of services to deploy in the working directory
+	ScanDepth int  `yaml:"depth" json:"depth" default:"0"`       // ScanDepth is the maximum depth of subdirectories to scan for docker-compose files
+	Delete    bool `yaml:"delete" json:"delete" default:"true"`  // Delete removes obsolete auto-discovered deployments that are no longer present in the repository
+}
+
+// BuildConfig holds build options for a deployment.
+type BuildConfig struct {
+	ForceImagePull bool              `yaml:"force_image_pull" json:"force_image_pull" default:"false"` // ForceImagePull always attempt to pull a newer version of the image
+	Quiet          bool              `yaml:"quiet" json:"quiet" default:"false"`                       // Quiet suppresses the build output
+	Args           map[string]string `yaml:"args" json:"args"`                                         // BuildArgs is a map of build-time arguments to pass to the build process
+	NoCache        bool              `yaml:"no_cache" json:"no_cache" default:"false"`                 // NoCache disables the use of the cache when building images
+}
+
+// DestroyConfig holds options for destroying a deployment.
+type DestroyConfig struct {
+	Enable        bool `yaml:"enable" json:"enable" default:"false"`                // Enable removes the deployment and all its resources from the Docker host
+	RemoveVolumes bool `yaml:"remove_volumes" json:"remove_volumes" default:"true"` // RemoveVolumes removes the volumes used by the deployment (always enabled in docker swarm mode)
+	RemoveImages  bool `yaml:"remove_images" json:"remove_images" default:"true"`   // RemoveImages removes the images used by the deployment (currently not supported in docker swarm mode)
+	RemoveRepoDir bool `yaml:"remove_dir" json:"remove_dir" default:"true"`         // RemoveRepoDir removes the repository directory after the deployment is destroyed
+}
+
+// ReconciliationConfig holds settings for the reconciliation feature.
+type ReconciliationConfig struct {
+	Enabled        bool     `yaml:"enabled" json:"enabled" default:"true"`               // Enabled enables the reconciliation feature
+	Events         []string `yaml:"events" json:"events" default:"[\"unhealthy\"]"`      // Events is the list of Docker container actions that trigger reconciliation
+	RestartTimeout int      `yaml:"restart_timeout" json:"restart_timeout" default:"10"` // RestartTimeout is the timeout in seconds to wait before killing a container during a restart
+	RestartSignal  string   `yaml:"restart_signal" json:"restart_signal" default:""`     // RestartSignal is the signal sent to stop containers during a restart. If not set, the default of the Docker daemon is used (SIGTERM).
+	RestartLimit   int      `yaml:"restart_limit" json:"restart_limit" default:"5"`      // RestartLimit suppresses further unhealthy-triggered restarts after this many restarts in the configured window. Set to 0 to disable suppression.
+	RestartWindow  int      `yaml:"restart_window" json:"restart_window" default:"300"`  // RestartWindow is the time window in seconds used with RestartLimit.
+}
+
 // DeployConfig is the structure of the deployment configuration file.
 type DeployConfig struct {
-	Name               string            `yaml:"name" json:"name" doco:"allowOverride"`                                                                                                                  // Name of the docker-compose deployment / stack
-	RepositoryUrl      HttpUrl           `yaml:"repository_url" json:"repository_url" default:"" validate:"httpUrl"`                                                                                     // RepositoryUrl is the http URL of the Git repository to deploy
-	WebhookEventFilter string            `yaml:"webhook_filter" json:"webhook_filter" default:"" doco:"allowOverride"`                                                                                   // WebhookEventFilter is a regular expression to whitelist deployment triggers based on the webhook event payload (e.g., branch like "^refs/heads/main$" or "main", tag like "^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$" or "v[0-9]+\.[0-9]+\.[0-9]+")
-	Reference          string            `yaml:"reference" json:"reference" default:""`                                                                                                                  // Reference is the Git reference to the deployment, e.g., refs/heads/main, main, refs/tags/v1.0.0 or v1.0.0
-	WorkingDirectory   string            `yaml:"working_dir" json:"working_dir" default:"." doco:"allowOverride"`                                                                                        // WorkingDirectory is the working directory for the deployment
-	ComposeFiles       []string          `yaml:"compose_files" json:"compose_files" default:"[\"compose.yaml\", \"compose.yml\", \"docker-compose.yml\", \"docker-compose.yaml\"]" doco:"allowOverride"` // ComposeFiles is the list of docker-compose files to use
-	Environment        map[string]string `yaml:"environment" json:"environment" doco:"allowOverride"`                                                                                                    // Environment is a map of environment variables to use for variable interpolation in the compose files
-	EnvFiles           []string          `yaml:"env_files" json:"env_files" default:"[\".env\"]" doco:"allowOverride"`                                                                                   // EnvFiles is the list of dotenv files to use for variable interpolation
-	RemoveOrphans      bool              `yaml:"remove_orphans" json:"remove_orphans" default:"true" doco:"allowOverride"`                                                                               // RemoveOrphans removes containers for services not defined in the Compose file
-	PruneImages        bool              `yaml:"prune_images" json:"prune_images" default:"true" doco:"allowOverride"`                                                                                   // PruneImages removes images that are no longer used by any service
-	ForceRecreate      bool              `yaml:"force_recreate" json:"force_recreate" default:"false" doco:"allowOverride"`                                                                              // ForceRecreate forces the recreation/redeployment of containers even if the configuration has not changed
-	ForceImagePull     bool              `yaml:"force_image_pull" json:"force_image_pull" default:"false" doco:"allowOverride"`                                                                          // ForceImagePull always pulls the latest version of the image tags you've specified if a newer version is available
-	Timeout            int               `yaml:"timeout" json:"timeout" default:"180" doco:"allowOverride"`                                                                                              // Timeout is the time in seconds to wait for the deployment to finish before timing out
-	BuildOpts          struct {
-		ForceImagePull bool              `yaml:"force_image_pull" json:"force_image_pull" default:"false"` // ForceImagePull always attempt to pull a newer version of the image
-		Quiet          bool              `yaml:"quiet" json:"quiet" default:"false"`                       // Quiet suppresses the build output
-		Args           map[string]string `yaml:"args" json:"args"`                                         // BuildArgs is a map of build-time arguments to pass to the build process
-		NoCache        bool              `yaml:"no_cache" json:"no_cache" default:"false"`                 // NoCache disables the use of the cache when building images
-	} `yaml:"build_opts" doco:"allowOverride"` // BuildOpts is the build options for the deployment
-	GitDepth    int  `yaml:"git_depth" json:"git_depth" default:"0"`                      // GitDepth limits the number of commits to fetch. 0 means use global GIT_CLONE_DEPTH. A positive value overrides the global setting.
-	Destroy     bool `yaml:"destroy" json:"destroy" default:"false" doco:"allowOverride"` // Destroy removes the deployment and all its resources from the Docker host
-	DestroyOpts struct {
-		RemoveVolumes bool `yaml:"remove_volumes" json:"remove_volumes" default:"true"` // RemoveVolumes removes the volumes used by the deployment (always enabled in docker swarm mode)
-		RemoveImages  bool `yaml:"remove_images" json:"remove_images" default:"true"`   // RemoveImages removes the images used by the deployment (currently not supported in docker swarm mode)
-		RemoveRepoDir bool `yaml:"remove_dir" json:"remove_dir" default:"true"`         // RemoveRepoDir removes the repository directory after the deployment is destroyed
-	} `yaml:"destroy_opts" json:"destroy_opts" doco:"allowOverride"` // DestroyOpts is the destroy options for the deployment
-	Profiles         []string                     `yaml:"profiles" json:"profiles" default:"[]" doco:"allowOverride"`    // Profiles is a list of profiles to use for the deployment, e.g., ["dev", "prod"]. See https://docs.docker.com/compose/how-tos/profiles/
-	ExternalSecrets  map[string]ExternalSecretRef `yaml:"external_secrets" json:"external_secrets" doco:"allowOverride"` // ExternalSecrets maps env vars to legacy string references or structured references (e.g. webhook store_ref/remote_ref).
-	AutoDiscover     bool                         `yaml:"auto_discover" json:"auto_discover" default:"false"`            // AutoDiscover enables autodiscovery of services to deploy in the working directory
-	AutoDiscoverOpts struct {
-		ScanDepth int  `yaml:"depth" json:"depth" default:"0"`      // ScanDepth is the maximum depth of subdirectories to scan for docker-compose files
-		Delete    bool `yaml:"delete" json:"delete" default:"true"` // Delete removes obsolete auto-discovered deployments that are no longer present in the repository
-	} `yaml:"auto_discover_opts" json:"auto_discover_opts"` // AutoDiscoverOpts are options for the autodiscovery feature
-	Reconciliation struct {
-		Enabled        bool     `yaml:"enabled" json:"enabled" default:"true"`               // Enabled enables the reconciliation feature
-		Events         []string `yaml:"events" json:"events" default:"[\"unhealthy\"]"`      // Events is the list of Docker container actions that trigger reconciliation
-		RestartTimeout int      `yaml:"restart_timeout" json:"restart_timeout" default:"10"` // RestartTimeout is the timeout in seconds to wait before killing a container during a restart
-		RestartSignal  string   `yaml:"restart_signal" json:"restart_signal" default:""`     // RestartSignal is the signal sent to stop containers during a restart. If not set, the default of the Docker daemon is used (SIGTERM).
-		RestartLimit   int      `yaml:"restart_limit" json:"restart_limit" default:"5"`      // RestartLimit suppresses further unhealthy-triggered restarts after this many restarts in the configured window. Set to 0 to disable suppression.
-		RestartWindow  int      `yaml:"restart_window" json:"restart_window" default:"300"`  // RestartWindow is the time window in seconds used with RestartLimit.
-	} `yaml:"reconciliation" json:"reconciliation" doco:"allowOverride"` // Reconciliation is the configuration for the reconciliation feature
-	Internal struct {
+	Name               string                       `yaml:"name" json:"name" doco:"allowOverride"`                                                                                                                  // Name of the docker-compose deployment / stack
+	RepositoryUrl      HttpUrl                      `yaml:"repository_url" json:"repository_url" default:"" validate:"httpUrl"`                                                                                     // RepositoryUrl is the http URL of the Git repository to deploy
+	WebhookEventFilter string                       `yaml:"webhook_filter" json:"webhook_filter" default:"" doco:"allowOverride"`                                                                                   // WebhookEventFilter is a regular expression to whitelist deployment triggers based on the webhook event payload (e.g., branch like "^refs/heads/main$" or "main", tag like "^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$" or "v[0-9]+\.[0-9]+\.[0-9]+")
+	Reference          string                       `yaml:"reference" json:"reference" default:""`                                                                                                                  // Reference is the Git reference to the deployment, e.g., refs/heads/main, main, refs/tags/v1.0.0 or v1.0.0
+	WorkingDirectory   string                       `yaml:"working_dir" json:"working_dir" default:"." doco:"allowOverride"`                                                                                        // WorkingDirectory is the working directory for the deployment
+	ComposeFiles       []string                     `yaml:"compose_files" json:"compose_files" default:"[\"compose.yaml\", \"compose.yml\", \"docker-compose.yml\", \"docker-compose.yaml\"]" doco:"allowOverride"` // ComposeFiles is the list of docker-compose files to use
+	Environment        map[string]string            `yaml:"environment" json:"environment" doco:"allowOverride"`                                                                                                    // Environment is a map of environment variables to use for variable interpolation in the compose files
+	EnvFiles           []string                     `yaml:"env_files" json:"env_files" default:"[\".env\"]" doco:"allowOverride"`                                                                                   // EnvFiles is the list of dotenv files to use for variable interpolation
+	RemoveOrphans      bool                         `yaml:"remove_orphans" json:"remove_orphans" default:"true" doco:"allowOverride"`                                                                               // RemoveOrphans removes containers for services not defined in the Compose file
+	PruneImages        bool                         `yaml:"prune_images" json:"prune_images" default:"true" doco:"allowOverride"`                                                                                   // PruneImages removes images that are no longer used by any service
+	ForceRecreate      bool                         `yaml:"force_recreate" json:"force_recreate" default:"false" doco:"allowOverride"`                                                                              // ForceRecreate forces the recreation/redeployment of containers even if the configuration has not changed
+	ForceImagePull     bool                         `yaml:"force_image_pull" json:"force_image_pull" default:"false" doco:"allowOverride"`                                                                          // ForceImagePull always pulls the latest version of the image tags you've specified if a newer version is available
+	Timeout            int                          `yaml:"timeout" json:"timeout" default:"180" doco:"allowOverride"`                                                                                              // Timeout is the time in seconds to wait for the deployment to finish before timing out
+	BuildOpts          BuildConfig                  `yaml:"build_opts" doco:"allowOverride"`                                                                                                                        // BuildOpts is the build options for the deployment
+	GitDepth           int                          `yaml:"git_depth" json:"git_depth" default:"0"`                                                                                                                 // GitDepth limits the number of commits to fetch. 0 means use global GIT_CLONE_DEPTH. A positive value overrides the global setting.
+	Destroy            DestroyConfig                `yaml:"destroy" json:"destroy" doco:"allowOverride"`                                                                                                            // Destroy configures destruction of the deployment and related resources
+	Profiles           []string                     `yaml:"profiles" json:"profiles" default:"[]" doco:"allowOverride"`                                                                                             // Profiles is a list of profiles to use for the deployment, e.g., ["dev", "prod"]. See https://docs.docker.com/compose/how-tos/profiles/
+	ExternalSecrets    map[string]ExternalSecretRef `yaml:"external_secrets" json:"external_secrets" doco:"allowOverride"`                                                                                          // ExternalSecrets maps env vars to legacy string references or structured references (e.g. webhook store_ref/remote_ref).
+	AutoDiscovery      AutoDiscoveryConfig          `yaml:"auto_discovery" json:"auto_discovery"`                                                                                                                   // AutoDiscovery configures autodiscovery of services to deploy in the working directory
+	Reconciliation     ReconciliationConfig         `yaml:"reconciliation" json:"reconciliation" doco:"allowOverride"`                                                                                              // Reconciliation is the configuration for the reconciliation feature
+	Internal           struct {
 		File        string            `yaml:"-"` // File is the path to the deployment configuration file
 		Environment map[string]string // Environment stores environment variables for variable interpolation in the compose project
 		Hash        string            `yaml:"-"` // Hash is a hash of the DeployConfig struct
@@ -125,7 +137,7 @@ func (c *DeployConfig) LogValue() slog.Value {
 }
 
 func (c *DeployConfig) validateConfig() error {
-	if c.Name == "" && !c.AutoDiscover {
+	if c.Name == "" && !c.AutoDiscovery.Enable {
 		return fmt.Errorf("%w: name", ErrKeyNotFound)
 	}
 
@@ -390,7 +402,7 @@ func GetDeployConfigs(repoRoot, deployConfigBaseDir, name, customTarget, referen
 
 			repoDir := repoRoot
 			// Check for deployConfigs with AutoDiscover enabled, if true then remove this config and add new configs based on discovered compose files
-			if c.AutoDiscover {
+			if c.AutoDiscovery.Enable {
 				if c.RepositoryUrl != "" {
 					auth, err := gitInternal.GetAuthMethod(string(c.RepositoryUrl), appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken)
 					if err != nil {
@@ -532,7 +544,7 @@ func expandInlineAutoDiscoverConfigs(repoRoot string, deployments []*DeployConfi
 	expanded := make([]*DeployConfig, 0, len(deployments))
 
 	for _, deployment := range deployments {
-		if !deployment.AutoDiscover {
+		if !deployment.AutoDiscovery.Enable {
 			expanded = append(expanded, deployment)
 			continue
 		}
@@ -574,7 +586,7 @@ func autoDiscoverDeployments(repoRoot string, baseDeployConfig *DeployConfig) ([
 		}
 
 		// Skip directories that exceed the maximum depth if ScanDepth is set greater than 0
-		if d.IsDir() && depth > baseDeployConfig.AutoDiscoverOpts.ScanDepth && baseDeployConfig.AutoDiscoverOpts.ScanDepth > 0 {
+		if d.IsDir() && depth > baseDeployConfig.AutoDiscovery.ScanDepth && baseDeployConfig.AutoDiscovery.ScanDepth > 0 {
 			return filepath.SkipDir
 		}
 
@@ -646,7 +658,7 @@ func autoDiscoverDeployments(repoRoot string, baseDeployConfig *DeployConfig) ([
 
 // mergeDeployConfig merges fields from override into base, but only for fields
 // tagged with `doco:"allowOverride"`. Protected fields (reference, repository_url,
-// auto_discover, auto_discover_opts, git_depth) are never overridden.
+// auto_discovery, git_depth) are never overridden.
 // Merge semantics:
 //   - Maps: merged key-by-key (override wins on key collision)
 //   - Slices: replaced entirely if the override slice is non-empty

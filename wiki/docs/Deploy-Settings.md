@@ -8,7 +8,7 @@ tags:
 
 Deployments in `Doco-CD` run as concurrent tasks. 
 Each deployment is defined by a deployment configuration file (e.g. `.doco-cd.yml`) that controls how it runs. 
-Enable `auto_discover` to generate multiple deployments from a single config by scanning subdirectories for Docker Compose files.
+Enable `auto_discovery` to generate multiple deployments from a single config by scanning subdirectories for Docker Compose files.
 
 Concurrent tasks are grouped by repository and Git reference (e.g. branch or tag). 
 Deployments from the same repository but different references run sequentially, while those with the same repository and reference run in parallel. 
@@ -48,9 +48,9 @@ The docker compose deployment can be configured inside the [deployment configura
 | `force_image_pull` | boolean          | Always pulls the latest version of the image tags you've specified if a newer version is available.                                                                                                                                                                                                                                                                                                                                                                                  | `false`                                                                                                                |
 | `timeout`          | number           | The time in seconds to wait for the deployment to finish before timing out.                                                                                                                                                                                                                                                                                                                                                                                                          | `180`                                                                                                                  |
 | `git_depth`        | number           | Limits the number of commits fetched during clone/fetch (shallow clone). `0` means use the global [`GIT_CLONE_DEPTH`](App-Settings.md) value. A positive integer overrides the global setting for this deployment. When a requested ref (tag/SHA) is outside the shallow depth, doco-cd automatically deepens incrementally before falling back to a full fetch. Changing this value on an existing repo triggers an automatic re-clone.                                             | `0` (use global)                                                                                                       |
-| `destroy`          | boolean          | (⚠️ Destructive) Remove the deployed compose stack/project and its resources from the Docker host. Can be further configured using the [destroy_opts](#destroy-settings) setting.                                                                                                                                                                                                                                                                                                    | `false`                                                                                                                |
-| `auto_discover`    | boolean          | Enables [autodiscovery](#auto-discovery) of services to deploy in the working directory by scanning for subdirectories with docker-compose files with the naming `docker-compose.y(a)ml` or `compose.y(a)ml`. Can be further configured using the [auto_discover_opts](#auto-discover-settings) setting.                                                                                                                                                                             | `false`                                                                                                                |
-| `reconciliation`   | object           | Enables event-driven reconciliation for deployments. See [reconciliation settings](#reconciliation-settings) for more details.                                                                                                                                                                                                                                                                                                                                                       | see [Reconciliation Settings](#reconciliation-settings)                                                                |
+| `destroy`          | object           | (⚠️ Destructive) Configure stack/project destruction behavior. Set `destroy.enable` to `true` to remove the deployment and its resources from the Docker host. See [Destroy settings](#destroy-settings).                                                                                                                                                                                                                                                                            | see [Destroy settings](#destroy-settings)                                                                              |
+| `auto_discovery`   | object           | Enables [autodiscovery](#auto-discovery) of services to deploy in the working directory by scanning for subdirectories with Docker Compose files (see the `compose_files` setting). See [Auto-Discovery Settings](#auto-discovery-settings).                                                                                                                                                                                                                                         | see [Auto-Discovery Settings](#auto-discovery-settings)                                                                |
+| `reconciliation`   | object           | Enables event-driven reconciliation for deployments. See [reconciliation settings](#reconciliation-settings).                                                                                                                                                                                                                                                                                                                                                                        | see [Reconciliation Settings](#reconciliation-settings)                                                                |
 
 
 !!! example
@@ -129,16 +129,17 @@ The docker compose deployment can be configured inside the [deployment configura
 
 ### Auto-Discovery
 
-If `auto_discover` is set to `true`, doco-cd will try to auto-discover projects/stacks to deploy by searching for `docker-compose.y(a)ml` or `compose.y(a)ml` files in subdirectories in the working directory (`working_dir`). 
+If `auto_discovery.enable` is set to `true`, doco-cd will try to auto-discover projects/stacks to deploy by searching for docker compose files (see the `compose_files` setting) in subdirectories in the working directory (`working_dir`). 
 Doco-cd will internally generate new deploy configs based on the directory name and inherits all other settings from the base deploy config inside the `.doco-cd.yml` file or the inline deployment config inside the poll config.
 When an app is no longer available in the `working_dir` (e.g. deleted or moved to another directory outside the working dir), doco-cd will automatically remove the deployed project/stack from the docker host.
 
-#### Auto-discover settings
+#### Auto-Discovery settings
 
-Specify all auto-discover settings in a nested `auto_discover_opts` object in the deployment configuration file (See example below).
+Specify all auto-discovery settings in a nested `auto_discovery` object in the deployment configuration file (See example below).
 
 | Key      | Type    | Description                                                                                          | Default value |
 |----------|---------|------------------------------------------------------------------------------------------------------|---------------|
+| `enable` | boolean | Enables auto-discovery of services to deploy in the working directory                                | `false`       |
 | `depth`  | number  | Maximum depth of subdirectories to scan for docker-compose files, set to `0` for no limit            | `0`           |
 | `delete` | boolean | Auto-remove obsolete auto-discovered deployments that are no longer present in the working directory | `true`        |
 
@@ -163,8 +164,8 @@ Specify all auto-discover settings in a nested `auto_discover_opts` object in th
     - And a `.doco-cd.yml` with the following content:
       ```yaml title=".doco-cd.yml"
       working_dir: apps/
-      auto_discover: true
-      auto_discover_opts:
+      auto_discovery:
+        enable: true
         depth: 1
       ```
     </div>
@@ -185,7 +186,7 @@ If a nested config file exists, doco-cd merges it on top of the discovered deplo
 - Maps are merged key-by-key (`external_secrets`, `environment`, `build_opts.args`)
 - Slices replace the base value when the nested value is non-empty
 - Scalar values override the base value when the nested value is non-zero/non-empty
-- Nested objects (such as `build_opts`, `destroy_opts`, `reconciliation`) are merged recursively
+- Nested objects (such as `build_opts`, `destroy`, `reconciliation`) are merged recursively
 
 ##### Non-overridable Fields
 
@@ -193,8 +194,7 @@ The following fields are always inherited from the base/root deployment config:
 
 - `reference`
 - `repository_url`
-- `auto_discover`
-- `auto_discover_opts`
+- `auto_discovery`
 - `git_depth`
 
 #### Example
@@ -217,8 +217,8 @@ The following fields are always inherited from the base/root deployment config:
 
     ```yaml title=".doco-cd.yml (root)"
     working_dir: apps/
-    auto_discover: true
-    auto_discover_opts:
+    auto_discovery:
+      enable: true
       depth: 1
     external_secrets:
       SHARED_SECRET: "op://vault/shared/field"
@@ -264,12 +264,13 @@ Specify all build-settings in a nested `build_opts` object in the deployment con
 
 ### Destroy settings
 
-The following settings can be used to configure further how the deployed compose stack/project will be removed (if `destroy` is set to `true`):
+The following settings can be used to configure how the deployed compose stack/project will be removed.
 
-Specify all destroy-settings in a nested `destroy_opts` object in the deployment configuration file (See example below).
+Specify all destroy settings in a nested `destroy` object in the deployment configuration file (See example below).
 
 | Key              | Type    | Description                                                                                                                                                                    | Default value |
 |------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `enable`         | boolean | Enable destructive removal of the deployment and its resources.                                                                                                                 | `false`       |
 | `remove_volumes` | boolean | Remove all volumes used by the deployment (always `true` in docker swarm mode)                                                                                                 | `true`        |
 | `remove_images`  | boolean | Remove all images used by the deployment (currently not supported in docker swarm mode)                                                                                        | `true`        |
 | `remove_dir`     | boolean | Remove the cloned repository in the data directory after the deployment is removed (Setting this to `false` is useful e.g. when you use bind mounts and want to keep the data) | `true`        |
@@ -277,8 +278,8 @@ Specify all destroy-settings in a nested `destroy_opts` object in the deployment
 !!! example
     ```yaml title=".doco-cd.yml"
     name: some-project
-    destroy: true
-    destroy_opts:
+    destroy:
+      enable: true
       remove_volumes: true
       remove_images: false
       remove_dir: false
