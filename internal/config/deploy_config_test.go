@@ -598,8 +598,8 @@ repository_url: https://github.com/kimdre/doco-cd_tests.git
 				t.Fatalf("expected 1 config, got %d", len(configs))
 			}
 
-			if tc.expectedConfigs == 1 && configs[0].Name != t.Name() {
-				t.Errorf("expected name to be %v, got %s", t.Name(), configs[0].Name)
+			if tc.expectedConfigs == 1 && configs[0].Name != "test-deploy" {
+				t.Errorf("expected name to be 'test-deploy' (from nested config), got %s", configs[0].Name)
 			} else if tc.expectedConfigs == 2 {
 				if configs[0].Name != "app1" && configs[1].Name != "app2" {
 					t.Fatalf("expected names to be 'app1' and 'app2', got '%s' and '%s'", configs[0].Name, configs[1].Name)
@@ -1060,7 +1060,8 @@ auto_discover: true
 		case "https://github.com/kimdre/doco-cd_tests.git":
 			if (cfg.Name == "app1" || cfg.Name == "app2") && cfg.Reference == "dual" {
 				found++
-			} else if cfg.Name == "main-stack" && cfg.Reference == "main" {
+			} else if cfg.Name == "test-deploy" && cfg.Reference == "main" {
+				// Name overridden by nested .doco-cd.yaml in the remote repo (was "main-stack")
 				found++
 			}
 		}
@@ -1083,7 +1084,7 @@ compose_files: ["compose.yaml"]
 		t.Fatal(err)
 	}
 
-	configs, err := GetDeployConfigFromYAML(filePath)
+	configs, err := GetDeployConfigFromYAML(filePath, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1135,7 +1136,7 @@ reconciliation:
 		t.Fatal(err)
 	}
 
-	configs, err := GetDeployConfigFromYAML(filePath)
+	configs, err := GetDeployConfigFromYAML(filePath, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1164,7 +1165,7 @@ reconciliation:
 		t.Fatal(err)
 	}
 
-	configs, err := GetDeployConfigFromYAML(filePath)
+	configs, err := GetDeployConfigFromYAML(filePath, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1192,7 +1193,7 @@ reconciliation:
 		t.Fatal(err)
 	}
 
-	configs, err := GetDeployConfigFromYAML(filePath)
+	configs, err := GetDeployConfigFromYAML(filePath, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1254,7 +1255,7 @@ reconciliation:
 				t.Fatal(err)
 			}
 
-			configs, err := GetDeployConfigFromYAML(filePath)
+			configs, err := GetDeployConfigFromYAML(filePath, true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1268,5 +1269,411 @@ reconciliation:
 				t.Fatalf("expected error to contain %q, got %v", tc.match, err)
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// mergeDeployConfig tests
+// ---------------------------------------------------------------------------
+
+func TestMergeDeployConfig(t *testing.T) {
+	t.Parallel()
+
+	t.Run("MergeExternalSecrets_KeyByKey", func(t *testing.T) {
+		t.Parallel()
+
+		base := &DeployConfig{
+			Name: "base",
+			ExternalSecrets: map[string]ExternalSecretRef{
+				"BASE_SECRET": {LegacyRef: "base-ref"},
+			},
+		}
+		override := &DeployConfig{
+			ExternalSecrets: map[string]ExternalSecretRef{
+				"OVERRIDE_SECRET": {LegacyRef: "override-ref"},
+			},
+		}
+
+		mergeDeployConfig(base, override)
+
+		if base.ExternalSecrets["BASE_SECRET"].LegacyRef != "base-ref" {
+			t.Error("base key should be preserved")
+		}
+
+		if base.ExternalSecrets["OVERRIDE_SECRET"].LegacyRef != "override-ref" {
+			t.Error("override key should be merged in")
+		}
+	})
+
+	t.Run("MergeExternalSecrets_OverrideWinsOnCollision", func(t *testing.T) {
+		t.Parallel()
+
+		base := &DeployConfig{
+			ExternalSecrets: map[string]ExternalSecretRef{
+				"SECRET": {LegacyRef: "base-ref"},
+			},
+		}
+		override := &DeployConfig{
+			ExternalSecrets: map[string]ExternalSecretRef{
+				"SECRET": {LegacyRef: "override-ref"},
+			},
+		}
+
+		mergeDeployConfig(base, override)
+
+		if base.ExternalSecrets["SECRET"].LegacyRef != "override-ref" {
+			t.Errorf("override value should win, got %q", base.ExternalSecrets["SECRET"].LegacyRef)
+		}
+	})
+
+	t.Run("MergeEnvironment_KeyByKey", func(t *testing.T) {
+		t.Parallel()
+
+		base := &DeployConfig{
+			Environment: map[string]string{"BASE_VAR": "base"},
+		}
+		override := &DeployConfig{
+			Environment: map[string]string{"OVERRIDE_VAR": "override"},
+		}
+
+		mergeDeployConfig(base, override)
+
+		if base.Environment["BASE_VAR"] != "base" {
+			t.Error("base env var should be preserved")
+		}
+
+		if base.Environment["OVERRIDE_VAR"] != "override" {
+			t.Error("override env var should be merged")
+		}
+	})
+
+	t.Run("MergeBuildArgs_KeyByKey", func(t *testing.T) {
+		t.Parallel()
+
+		base := &DeployConfig{}
+		base.BuildOpts.Args = map[string]string{"BASE_ARG": "base"}
+
+		override := &DeployConfig{}
+		override.BuildOpts.Args = map[string]string{"OVERRIDE_ARG": "override"}
+
+		mergeDeployConfig(base, override)
+
+		if base.BuildOpts.Args["BASE_ARG"] != "base" {
+			t.Error("base build arg should be preserved")
+		}
+
+		if base.BuildOpts.Args["OVERRIDE_ARG"] != "override" {
+			t.Error("override build arg should be merged")
+		}
+	})
+
+	t.Run("MergeSlice_ReplacedWhenNonEmpty", func(t *testing.T) {
+		t.Parallel()
+
+		base := &DeployConfig{Profiles: []string{"base-profile"}}
+		override := &DeployConfig{Profiles: []string{"override-profile"}}
+
+		mergeDeployConfig(base, override)
+
+		if len(base.Profiles) != 1 || base.Profiles[0] != "override-profile" {
+			t.Errorf("profiles should be replaced, got %v", base.Profiles)
+		}
+	})
+
+	t.Run("MergeSlice_UnchangedWhenEmpty", func(t *testing.T) {
+		t.Parallel()
+
+		base := &DeployConfig{Profiles: []string{"base-profile"}}
+		override := &DeployConfig{} // no profiles set
+
+		mergeDeployConfig(base, override)
+
+		if len(base.Profiles) != 1 || base.Profiles[0] != "base-profile" {
+			t.Errorf("profiles should be unchanged, got %v", base.Profiles)
+		}
+	})
+
+	t.Run("MergeScalar_Timeout", func(t *testing.T) {
+		t.Parallel()
+
+		base := &DeployConfig{Timeout: 180}
+		override := &DeployConfig{Timeout: 60}
+
+		mergeDeployConfig(base, override)
+
+		if base.Timeout != 60 {
+			t.Errorf("timeout should be overridden to 60, got %d", base.Timeout)
+		}
+	})
+
+	t.Run("MergeScalar_Name", func(t *testing.T) {
+		t.Parallel()
+
+		base := &DeployConfig{Name: "base-name"}
+		override := &DeployConfig{Name: "override-name"}
+
+		mergeDeployConfig(base, override)
+
+		if base.Name != "override-name" {
+			t.Errorf("name should be overridden, got %q", base.Name)
+		}
+	})
+
+	t.Run("ProtectedFields_NotOverridden", func(t *testing.T) {
+		t.Parallel()
+
+		base := &DeployConfig{
+			Reference:     "refs/heads/main",
+			RepositoryUrl: "https://example.com/base.git",
+			GitDepth:      5,
+		}
+		base.AutoDiscoverOpts.ScanDepth = 3
+
+		override := &DeployConfig{
+			Reference:     "refs/heads/other",
+			RepositoryUrl: "https://example.com/override.git",
+			GitDepth:      99,
+		}
+		override.AutoDiscoverOpts.ScanDepth = 99
+
+		mergeDeployConfig(base, override)
+
+		if base.Reference != "refs/heads/main" {
+			t.Errorf("Reference should not be overridden, got %q", base.Reference)
+		}
+
+		if base.RepositoryUrl != "https://example.com/base.git" {
+			t.Errorf("RepositoryUrl should not be overridden, got %q", base.RepositoryUrl)
+		}
+
+		if base.GitDepth != 5 {
+			t.Errorf("GitDepth should not be overridden, got %d", base.GitDepth)
+		}
+
+		if base.AutoDiscoverOpts.ScanDepth != 3 {
+			t.Errorf("AutoDiscoverOpts.ScanDepth should not be overridden, got %d", base.AutoDiscoverOpts.ScanDepth)
+		}
+	})
+
+	t.Run("MergeReconciliation_NestedStruct", func(t *testing.T) {
+		t.Parallel()
+
+		base := &DeployConfig{}
+		base.Reconciliation.RestartLimit = 5
+		base.Reconciliation.RestartWindow = 300
+
+		override := &DeployConfig{}
+		override.Reconciliation.RestartLimit = 10
+
+		mergeDeployConfig(base, override)
+
+		if base.Reconciliation.RestartLimit != 10 {
+			t.Errorf("RestartLimit should be overridden to 10, got %d", base.Reconciliation.RestartLimit)
+		}
+
+		if base.Reconciliation.RestartWindow != 300 {
+			t.Errorf("RestartWindow should remain 300, got %d", base.Reconciliation.RestartWindow)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// autoDiscoverDeployments with nested config tests
+// ---------------------------------------------------------------------------
+
+func TestAutoDiscoverDeployments_WithNestedConfig(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+	serviceDir := filepath.Join(repoRoot, "service1")
+
+	if err := os.MkdirAll(serviceDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := createTestFile(t, filepath.Join(serviceDir, "compose.yaml"), "services:\n  web:\n    image: nginx"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a nested .doco-cd.yaml in service1/ that adds external secrets
+	nestedCfg := `external_secrets:
+  MY_SECRET: "op://vault/item/field"
+environment:
+  EXTRA_VAR: "hello"
+`
+	if err := createTestFile(t, filepath.Join(serviceDir, ".doco-cd.yaml"), nestedCfg); err != nil {
+		t.Fatal(err)
+	}
+
+	baseConfig := &DeployConfig{
+		WorkingDirectory: ".",
+		ComposeFiles:     []string{"compose.yaml"},
+		AutoDiscover:     true,
+		ExternalSecrets: map[string]ExternalSecretRef{
+			"BASE_SECRET": {LegacyRef: "base-ref"},
+		},
+	}
+
+	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(configs) != 1 {
+		t.Fatalf("expected 1 config, got %d", len(configs))
+	}
+
+	cfg := configs[0]
+
+	// base secret should be preserved
+	if cfg.ExternalSecrets["BASE_SECRET"].LegacyRef != "base-ref" {
+		t.Errorf("base secret should be preserved, got %q", cfg.ExternalSecrets["BASE_SECRET"].LegacyRef)
+	}
+
+	// nested secret should be merged in
+	if cfg.ExternalSecrets["MY_SECRET"].LegacyRef != "op://vault/item/field" {
+		t.Errorf("nested secret should be merged, got %q", cfg.ExternalSecrets["MY_SECRET"].LegacyRef)
+	}
+
+	// nested environment should be merged in
+	if cfg.Environment["EXTRA_VAR"] != "hello" {
+		t.Errorf("nested env var should be merged, got %q", cfg.Environment["EXTRA_VAR"])
+	}
+}
+
+func TestAutoDiscoverDeployments_WithNestedConfig_EnvironmentOnly_DoesNotOverrideComposeFiles(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+	serviceDir := filepath.Join(repoRoot, "service1")
+
+	if err := os.MkdirAll(serviceDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := createTestFile(t, filepath.Join(serviceDir, "test.compose.yaml"), "services:\n  web:\n    image: nginx"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := createTestFile(t, filepath.Join(serviceDir, ".doco-cd.yml"), "environment:\n  SUB: nested\n"); err != nil {
+		t.Fatal(err)
+	}
+
+	baseConfig := &DeployConfig{
+		WorkingDirectory: ".",
+		ComposeFiles:     []string{"test.compose.yaml"},
+		AutoDiscover:     true,
+		Environment:      map[string]string{"BASE": "root"},
+	}
+
+	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(configs) != 1 {
+		t.Fatalf("expected 1 config, got %d", len(configs))
+	}
+
+	cfg := configs[0]
+
+	if cfg.Name != "service1" {
+		t.Errorf("expected discovered name 'service1', got %q", cfg.Name)
+	}
+
+	if cfg.WorkingDirectory != "service1" {
+		t.Errorf("expected working directory 'service1', got %q", cfg.WorkingDirectory)
+	}
+
+	if !reflect.DeepEqual(cfg.ComposeFiles, []string{"test.compose.yaml"}) {
+		t.Errorf("expected compose_files to remain [test.compose.yaml], got %v", cfg.ComposeFiles)
+	}
+
+	if cfg.Environment["BASE"] != "root" {
+		t.Errorf("expected base env BASE=root to be preserved, got %q", cfg.Environment["BASE"])
+	}
+
+	if cfg.Environment["SUB"] != "nested" {
+		t.Errorf("expected nested env SUB=nested to be merged, got %q", cfg.Environment["SUB"])
+	}
+}
+
+func TestAutoDiscoverDeployments_NestedConfig_MultipleDocumentsError(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+	serviceDir := filepath.Join(repoRoot, "service1")
+
+	if err := os.MkdirAll(serviceDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := createTestFile(t, filepath.Join(serviceDir, "compose.yaml"), "services:\n  web:\n    image: nginx"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Two YAML documents in the nested config – should error
+	multiDoc := `external_secrets:
+  SECRET1: ref1
+---
+external_secrets:
+  SECRET2: ref2
+`
+	if err := createTestFile(t, filepath.Join(serviceDir, ".doco-cd.yaml"), multiDoc); err != nil {
+		t.Fatal(err)
+	}
+
+	baseConfig := &DeployConfig{
+		WorkingDirectory: ".",
+		ComposeFiles:     []string{"compose.yaml"},
+		AutoDiscover:     true,
+	}
+
+	_, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	if err == nil {
+		t.Fatal("expected error for multiple YAML documents in nested config, got nil")
+	}
+
+	if !errors.Is(err, ErrMultipleYAMLDocuments) {
+		t.Errorf("expected ErrMultipleYAMLDocuments, got %v", err)
+	}
+}
+
+func TestAutoDiscoverDeployments_NoNestedConfig_BackwardsCompatible(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+	serviceDir := filepath.Join(repoRoot, "myservice")
+
+	if err := os.MkdirAll(serviceDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := createTestFile(t, filepath.Join(serviceDir, "compose.yaml"), "services:\n  web:\n    image: nginx"); err != nil {
+		t.Fatal(err)
+	}
+
+	baseConfig := &DeployConfig{
+		WorkingDirectory: ".",
+		ComposeFiles:     []string{"compose.yaml"},
+		AutoDiscover:     true,
+		Timeout:          300,
+	}
+
+	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(configs) != 1 {
+		t.Fatalf("expected 1 config, got %d", len(configs))
+	}
+
+	if configs[0].Timeout != 300 {
+		t.Errorf("expected timeout 300 from base config, got %d", configs[0].Timeout)
+	}
+
+	if configs[0].Name != "myservice" {
+		t.Errorf("expected name 'myservice', got %q", configs[0].Name)
 	}
 }

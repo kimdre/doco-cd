@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"github.com/compose-spec/compose-go/v2/cli"
@@ -33,6 +34,7 @@ var (
 	ErrInvalidConfig                 = errors.New("invalid deploy configuration")
 	ErrKeyNotFound                   = errors.New("key not found")
 	ErrInvalidFilePath               = errors.New("invalid file path")
+	ErrMultipleYAMLDocuments         = errors.New("nested .doco-cd configuration file must contain only a single YAML document")
 	supportedReconciliationEvents    = map[string]struct{}{
 		"die":       {},
 		"destroy":   {},
@@ -48,35 +50,35 @@ const DefaultReference = "refs/heads/main"
 
 // DeployConfig is the structure of the deployment configuration file.
 type DeployConfig struct {
-	Name               string            `yaml:"name" json:"name"`                                                                                                                  // Name of the docker-compose deployment / stack
-	RepositoryUrl      HttpUrl           `yaml:"repository_url" json:"repository_url" default:"" validate:"httpUrl"`                                                                // RepositoryUrl is the http URL of the Git repository to deploy
-	WebhookEventFilter string            `yaml:"webhook_filter" json:"webhook_filter" default:""`                                                                                   // WebhookEventFilter is a regular expression to whitelist deployment triggers based on the webhook event payload (e.g., branch like "^refs/heads/main$" or "main", tag like "^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$" or "v[0-9]+\.[0-9]+\.[0-9]+")
-	Reference          string            `yaml:"reference" json:"reference" default:""`                                                                                             // Reference is the Git reference to the deployment, e.g., refs/heads/main, main, refs/tags/v1.0.0 or v1.0.0
-	WorkingDirectory   string            `yaml:"working_dir" json:"working_dir" default:"."`                                                                                        // WorkingDirectory is the working directory for the deployment
-	ComposeFiles       []string          `yaml:"compose_files" json:"compose_files" default:"[\"compose.yaml\", \"compose.yml\", \"docker-compose.yml\", \"docker-compose.yaml\"]"` // ComposeFiles is the list of docker-compose files to use
-	Environment        map[string]string `yaml:"environment" json:"environment"`                                                                                                    // Environment is a map of environment variables to use for variable interpolation in the compose files
-	EnvFiles           []string          `yaml:"env_files" json:"env_files" default:"[\".env\"]"`                                                                                   // EnvFiles is the list of dotenv files to use for variable interpolation
-	RemoveOrphans      bool              `yaml:"remove_orphans" json:"remove_orphans" default:"true"`                                                                               // RemoveOrphans removes containers for services not defined in the Compose file
-	PruneImages        bool              `yaml:"prune_images" json:"prune_images" default:"true"`                                                                                   // PruneImages removes images that are no longer used by any service in the deployment or any other running container
-	ForceRecreate      bool              `yaml:"force_recreate" json:"force_recreate" default:"false"`                                                                              // ForceRecreate forces the recreation/redeployment of containers even if the configuration has not changed
-	ForceImagePull     bool              `yaml:"force_image_pull" json:"force_image_pull" default:"false"`                                                                          // ForceImagePull always pulls the latest version of the image tags you've specified if a newer version is available
-	Timeout            int               `yaml:"timeout" json:"timeout" default:"180"`                                                                                              // Timeout is the time in seconds to wait for the deployment to finish in seconds before timing out
+	Name               string            `yaml:"name" json:"name" doco:"allowOverride"`                                                                                                                  // Name of the docker-compose deployment / stack
+	RepositoryUrl      HttpUrl           `yaml:"repository_url" json:"repository_url" default:"" validate:"httpUrl"`                                                                                     // RepositoryUrl is the http URL of the Git repository to deploy
+	WebhookEventFilter string            `yaml:"webhook_filter" json:"webhook_filter" default:"" doco:"allowOverride"`                                                                                   // WebhookEventFilter is a regular expression to whitelist deployment triggers based on the webhook event payload (e.g., branch like "^refs/heads/main$" or "main", tag like "^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$" or "v[0-9]+\.[0-9]+\.[0-9]+")
+	Reference          string            `yaml:"reference" json:"reference" default:""`                                                                                                                  // Reference is the Git reference to the deployment, e.g., refs/heads/main, main, refs/tags/v1.0.0 or v1.0.0
+	WorkingDirectory   string            `yaml:"working_dir" json:"working_dir" default:"." doco:"allowOverride"`                                                                                        // WorkingDirectory is the working directory for the deployment
+	ComposeFiles       []string          `yaml:"compose_files" json:"compose_files" default:"[\"compose.yaml\", \"compose.yml\", \"docker-compose.yml\", \"docker-compose.yaml\"]" doco:"allowOverride"` // ComposeFiles is the list of docker-compose files to use
+	Environment        map[string]string `yaml:"environment" json:"environment" doco:"allowOverride"`                                                                                                    // Environment is a map of environment variables to use for variable interpolation in the compose files
+	EnvFiles           []string          `yaml:"env_files" json:"env_files" default:"[\".env\"]" doco:"allowOverride"`                                                                                   // EnvFiles is the list of dotenv files to use for variable interpolation
+	RemoveOrphans      bool              `yaml:"remove_orphans" json:"remove_orphans" default:"true" doco:"allowOverride"`                                                                               // RemoveOrphans removes containers for services not defined in the Compose file
+	PruneImages        bool              `yaml:"prune_images" json:"prune_images" default:"true" doco:"allowOverride"`                                                                                   // PruneImages removes images that are no longer used by any service
+	ForceRecreate      bool              `yaml:"force_recreate" json:"force_recreate" default:"false" doco:"allowOverride"`                                                                              // ForceRecreate forces the recreation/redeployment of containers even if the configuration has not changed
+	ForceImagePull     bool              `yaml:"force_image_pull" json:"force_image_pull" default:"false" doco:"allowOverride"`                                                                          // ForceImagePull always pulls the latest version of the image tags you've specified if a newer version is available
+	Timeout            int               `yaml:"timeout" json:"timeout" default:"180" doco:"allowOverride"`                                                                                              // Timeout is the time in seconds to wait for the deployment to finish before timing out
 	BuildOpts          struct {
 		ForceImagePull bool              `yaml:"force_image_pull" json:"force_image_pull" default:"false"` // ForceImagePull always attempt to pull a newer version of the image
 		Quiet          bool              `yaml:"quiet" json:"quiet" default:"false"`                       // Quiet suppresses the build output
 		Args           map[string]string `yaml:"args" json:"args"`                                         // BuildArgs is a map of build-time arguments to pass to the build process
 		NoCache        bool              `yaml:"no_cache" json:"no_cache" default:"false"`                 // NoCache disables the use of the cache when building images
-	} `yaml:"build_opts"` // BuildOpts is the build options for the deployment
-	GitDepth    int  `yaml:"git_depth" json:"git_depth" default:"0"` // GitDepth limits the number of commits to fetch. 0 means use global GIT_CLONE_DEPTH. A positive value overrides the global setting.
-	Destroy     bool `yaml:"destroy" json:"destroy" default:"false"` // Destroy removes the deployment and all its resources from the Docker host
+	} `yaml:"build_opts" doco:"allowOverride"` // BuildOpts is the build options for the deployment
+	GitDepth    int  `yaml:"git_depth" json:"git_depth" default:"0"`                      // GitDepth limits the number of commits to fetch. 0 means use global GIT_CLONE_DEPTH. A positive value overrides the global setting.
+	Destroy     bool `yaml:"destroy" json:"destroy" default:"false" doco:"allowOverride"` // Destroy removes the deployment and all its resources from the Docker host
 	DestroyOpts struct {
 		RemoveVolumes bool `yaml:"remove_volumes" json:"remove_volumes" default:"true"` // RemoveVolumes removes the volumes used by the deployment (always enabled in docker swarm mode)
 		RemoveImages  bool `yaml:"remove_images" json:"remove_images" default:"true"`   // RemoveImages removes the images used by the deployment (currently not supported in docker swarm mode)
 		RemoveRepoDir bool `yaml:"remove_dir" json:"remove_dir" default:"true"`         // RemoveRepoDir removes the repository directory after the deployment is destroyed
-	} `yaml:"destroy_opts" json:"destroy_opts"` // DestroyOpts is the destroy options for the deployment
-	Profiles         []string                     `yaml:"profiles" json:"profiles" default:"[]"`              // Profiles is a list of profiles to use for the deployment, e.g., ["dev", "prod"]. See https://docs.docker.com/compose/how-tos/profiles/
-	ExternalSecrets  map[string]ExternalSecretRef `yaml:"external_secrets" json:"external_secrets"`           // ExternalSecrets maps env vars to legacy string references or structured references (e.g. webhook store_ref/remote_ref).
-	AutoDiscover     bool                         `yaml:"auto_discover" json:"auto_discover" default:"false"` // AutoDiscover enables autodiscovery of services to deploy in the working directory by checking for subdirectories with docker-compose files
+	} `yaml:"destroy_opts" json:"destroy_opts" doco:"allowOverride"` // DestroyOpts is the destroy options for the deployment
+	Profiles         []string                     `yaml:"profiles" json:"profiles" default:"[]" doco:"allowOverride"`    // Profiles is a list of profiles to use for the deployment, e.g., ["dev", "prod"]. See https://docs.docker.com/compose/how-tos/profiles/
+	ExternalSecrets  map[string]ExternalSecretRef `yaml:"external_secrets" json:"external_secrets" doco:"allowOverride"` // ExternalSecrets maps env vars to legacy string references or structured references (e.g. webhook store_ref/remote_ref).
+	AutoDiscover     bool                         `yaml:"auto_discover" json:"auto_discover" default:"false"`            // AutoDiscover enables autodiscovery of services to deploy in the working directory
 	AutoDiscoverOpts struct {
 		ScanDepth int  `yaml:"depth" json:"depth" default:"0"`      // ScanDepth is the maximum depth of subdirectories to scan for docker-compose files
 		Delete    bool `yaml:"delete" json:"delete" default:"true"` // Delete removes obsolete auto-discovered deployments that are no longer present in the repository
@@ -84,15 +86,15 @@ type DeployConfig struct {
 	Reconciliation struct {
 		Enabled        bool     `yaml:"enabled" json:"enabled" default:"true"`               // Enabled enables the reconciliation feature
 		Events         []string `yaml:"events" json:"events" default:"[\"unhealthy\"]"`      // Events is the list of Docker container actions that trigger reconciliation
-		RestartTimeout int      `yaml:"restart_timeout" json:"restart_timeout" default:"10"` // RestartTimeout is the timeout in seconds to wait before killing a container during a restart (used for restart-oriented reconciliation events)
+		RestartTimeout int      `yaml:"restart_timeout" json:"restart_timeout" default:"10"` // RestartTimeout is the timeout in seconds to wait before killing a container during a restart
 		RestartSignal  string   `yaml:"restart_signal" json:"restart_signal" default:""`     // RestartSignal is the signal sent to stop containers during a restart. If not set, the default of the Docker daemon is used (SIGTERM).
 		RestartLimit   int      `yaml:"restart_limit" json:"restart_limit" default:"5"`      // RestartLimit suppresses further unhealthy-triggered restarts after this many restarts in the configured window. Set to 0 to disable suppression.
 		RestartWindow  int      `yaml:"restart_window" json:"restart_window" default:"300"`  // RestartWindow is the time window in seconds used with RestartLimit.
-	} `yaml:"reconciliation" json:"reconciliation"` // Reconciliation is the configuration for the reconciliation feature
+	} `yaml:"reconciliation" json:"reconciliation" doco:"allowOverride"` // Reconciliation is the configuration for the reconciliation feature
 	Internal struct {
-		File        string            `yaml:"-"` // File is the path to the deployment configuration file in the repository (if RepositoryUrl is not set) or in the cloned repository (if RepositoryUrl is set)
-		Environment map[string]string // Environment is stores environment variables for variable interpolation in the compose project
-		Hash        string            `yaml:"-"` // Hash is a hash of the DeployConfig struct (without changing the order of its elements)
+		File        string            `yaml:"-"` // File is the path to the deployment configuration file
+		Environment map[string]string // Environment stores environment variables for variable interpolation in the compose project
+		Hash        string            `yaml:"-"` // Hash is a hash of the DeployConfig struct
 	} // Internal holds internal configuration values that are not set by the user
 }
 
@@ -258,21 +260,35 @@ func (c *DeployConfig) Hash() (string, error) {
 }
 
 // GetDeployConfigFromYAML reads a YAML file and unmarshals it into a slice of DeployConfig structs.
-func GetDeployConfigFromYAML(f string) ([]*DeployConfig, error) {
+// When applyDefaults is true, default values are applied to each config (normal usage).
+// When applyDefaults is false, omitted fields remain zero/nil — used for nested auto-discovery
+// overrides so unset fields do not accidentally replace base/discovered values during merge.
+func GetDeployConfigFromYAML(f string, applyDefaults bool) ([]*DeployConfig, error) {
 	b, err := os.ReadFile(f) // #nosec G304
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %v", err)
 	}
 
-	// Read all YAML documents in the file and unmarshal them into a slice of DeployConfig structs
 	dec := yaml.NewDecoder(bytes.NewReader(b))
 
 	var configs []*DeployConfig
 
+	// Use a type alias to bypass the UnmarshalYAML hook (which injects defaults)
+	// when the caller explicitly does not want defaults applied.
+	type deployConfigNoDefaults DeployConfig
+
 	for {
 		var c DeployConfig
 
-		err = dec.Decode(&c)
+		if applyDefaults {
+			err = dec.Decode(&c)
+		} else {
+			var raw deployConfigNoDefaults
+
+			err = dec.Decode(&raw)
+			c = DeployConfig(raw)
+		}
+
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -455,7 +471,7 @@ func getDeployConfigsFromFile(dir string, files []os.DirEntry, configFile string
 
 		if f.Name() == configFile {
 			// Get contents of deploy config file
-			configs, err := GetDeployConfigFromYAML(path.Join(dir, f.Name()))
+			configs, err := GetDeployConfigFromYAML(path.Join(dir, f.Name()), true)
 			if err != nil {
 				return nil, err
 			}
@@ -587,6 +603,32 @@ func autoDiscoverDeployments(repoRoot string, baseDeployConfig *DeployConfig) ([
 					return err
 				}
 
+				// Check for a nested .doco-cd config file alongside the compose file and
+				// merge any overridable fields from it on top of the base config copy.
+				for _, cfgName := range DefaultDeploymentConfigFileNames {
+					localCfgPath := filepath.Join(p, cfgName)
+					if _, statErr := os.Stat(localCfgPath); statErr != nil {
+						continue
+					}
+
+					localConfigs, parseErr := GetDeployConfigFromYAML(localCfgPath, false)
+					if parseErr != nil {
+						return fmt.Errorf("failed to parse nested .doco-cd config at %s: %w", localCfgPath, parseErr)
+					}
+
+					if len(localConfigs) > 1 {
+						return fmt.Errorf("%w: %s contains %d documents", ErrMultipleYAMLDocuments, localCfgPath, len(localConfigs))
+					}
+
+					mergeDeployConfig(c, localConfigs[0])
+
+					break // use first found config file name (.yaml preferred over .yml)
+				}
+
+				if err = c.validateConfig(); err != nil {
+					return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+				}
+
 				configs = append(configs, c)
 
 				break
@@ -600,6 +642,73 @@ func autoDiscoverDeployments(repoRoot string, baseDeployConfig *DeployConfig) ([
 	}
 
 	return configs, nil
+}
+
+// mergeDeployConfig merges fields from override into base, but only for fields
+// tagged with `doco:"allowOverride"`. Protected fields (reference, repository_url,
+// auto_discover, auto_discover_opts, git_depth) are never overridden.
+// Merge semantics:
+//   - Maps: merged key-by-key (override wins on key collision)
+//   - Slices: replaced entirely if the override slice is non-empty
+//   - Nested structs: all sub-fields are merged (parent tag opts them in)
+//   - Scalars: replaced if the override value is non-zero
+func mergeDeployConfig(base, override *DeployConfig) {
+	mergeStructByTag(reflect.ValueOf(base).Elem(), reflect.ValueOf(override).Elem())
+}
+
+// mergeStructByTag iterates a struct's fields and merges only those tagged doco:"allowOverride".
+func mergeStructByTag(base, override reflect.Value) {
+	t := base.Type()
+	for i := 0; i < t.NumField(); i++ {
+		if t.Field(i).Tag.Get("doco") != "allowOverride" {
+			continue
+		}
+
+		mergeField(base.Field(i), override.Field(i))
+	}
+}
+
+// mergeField applies a single field merge from override into base.
+// For structs the merge recurses into all sub-fields (no tag check – parent has opted in).
+func mergeField(base, override reflect.Value) {
+	switch base.Kind() {
+	case reflect.Map:
+		if override.IsNil() || override.Len() == 0 {
+			return
+		}
+
+		if base.IsNil() {
+			base.Set(reflect.MakeMap(base.Type()))
+		}
+
+		for _, k := range override.MapKeys() {
+			base.SetMapIndex(k, override.MapIndex(k))
+		}
+
+	case reflect.Slice:
+		if override.IsNil() || override.Len() == 0 {
+			return
+		}
+
+		base.Set(override)
+
+	case reflect.Struct:
+		// Recurse into all sub-fields; the parent tag already opted them in.
+		mergeAllStructFields(base, override)
+
+	default:
+		// Scalar: apply only when the override holds a non-zero value.
+		if !override.IsZero() {
+			base.Set(override)
+		}
+	}
+}
+
+// mergeAllStructFields merges every field of override into base without tag checks.
+func mergeAllStructFields(base, override reflect.Value) {
+	for i := 0; i < base.NumField(); i++ {
+		mergeField(base.Field(i), override.Field(i))
+	}
 }
 
 // deepCopy creates a deep copy of a DeployConfig struct.
