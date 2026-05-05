@@ -27,8 +27,8 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 	autoDiscoveredNames := make(map[string]bool)
 
 	for _, cfg := range deployConfigs {
-		if cfg.AutoDiscover {
-			autoDiscoveredNames[cfg.Name] = cfg.AutoDiscoverOpts.Delete
+		if cfg.AutoDiscovery.Enable {
+			autoDiscoveredNames[cfg.Name] = cfg.AutoDiscovery.Delete
 		}
 	}
 
@@ -36,7 +36,20 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 
 	var processedStacks []string
 
-	serviceLabels, err := docker.GetLabeledServices(ctx, dockerCli.Client(), docker.DocoCDLabels.Deployment.AutoDiscover, "true")
+	// Query containers using the new label; fall back to the deprecated label for containers
+	// deployed before the label rename. The deprecated label support will be removed in a future version.
+	serviceLabels, err := docker.GetLabeledServices(ctx, dockerCli.Client(), docker.DocoCDLabels.Deployment.AutoDiscovery, "true")
+	if err != nil {
+		// Fallback: try the deprecated label name
+		serviceLabels, err = docker.GetLabeledServices(ctx, dockerCli.Client(), docker.DeprecatedAutoDiscoverLabel, "true") //nolint:staticcheck // fallback for pre-rename containers
+		if err == nil && len(serviceLabels) > 0 {
+			jobLog.Warn("found containers with deprecated label, please recreate them to migrate to the new label",
+				slog.String("deprecated_label", docker.DeprecatedAutoDiscoverLabel), //nolint:staticcheck // include deprecated label key in warning for migration clarity
+				slog.String("new_label", docker.DocoCDLabels.Deployment.AutoDiscovery),
+			)
+		}
+	}
+
 	if err == nil {
 		for _, labels := range serviceLabels {
 			stackName := labels[docker.DocoCDLabels.Deployment.Name]
@@ -72,7 +85,12 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 				stackLog.Debug("checking auto-discovered stack for obsolescence")
 
 				if _, found := autoDiscoveredNames[stackName]; !found {
-					autoDiscoverDelete := labels[docker.DocoCDLabels.Deployment.AutoDiscoverDelete]
+					autoDiscoverDelete := labels[docker.DocoCDLabels.Deployment.AutoDiscoveryDelete]
+					if autoDiscoverDelete == "" {
+						// Fall back to deprecated label
+						autoDiscoverDelete = labels[docker.DeprecatedAutoDiscoverDeleteLabel] //nolint:staticcheck // fallback for pre-rename containers
+					}
+
 					if autoDiscoverDelete == "" {
 						autoDiscoverDelete = "true" // Default to true if label is missing
 					}
@@ -92,10 +110,11 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 
 					stackLog.Info("removing obsolete auto-discovered stack")
 
-					removeConfig := &config.DeployConfig{Name: stackName, Destroy: true}
-					removeConfig.DestroyOpts.RemoveVolumes = true
-					removeConfig.DestroyOpts.RemoveImages = true
-					removeConfig.DestroyOpts.RemoveRepoDir = false // Do not remove repo dir for auto-discovered stacks
+					removeConfig := &config.DeployConfig{Name: stackName}
+					removeConfig.Destroy.Enable = true
+					removeConfig.Destroy.RemoveVolumes = true
+					removeConfig.Destroy.RemoveImages = true
+					removeConfig.Destroy.RemoveRepoDir = false // Do not remove repo dir for auto-discovered stacks
 
 					err = docker.DestroyStack(jobLog, &ctx, &dockerCli, removeConfig)
 					if err != nil {

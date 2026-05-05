@@ -290,7 +290,7 @@ func TestResolveDeployConfigs_InlineAutoDiscover(t *testing.T) {
 		Reference: "refs/heads/main",
 		Interval:  60,
 		Deployments: []*DeployConfig{
-			{WorkingDirectory: "services", AutoDiscover: true},
+			{WorkingDirectory: "services", AutoDiscovery: AutoDiscoveryConfig{Enable: true}},
 		},
 	}
 
@@ -438,7 +438,8 @@ func TestGetDeployConfigs_WithAutoDiscovery(t *testing.T) {
 
 	deployConfig := fmt.Sprintf(`name: %s
 reference: main
-auto_discover: true
+auto_discovery:
+  enable: true
 `, t.Name())
 
 	filePath := filepath.Join(repoRoot, ".doco-cd.yaml")
@@ -462,8 +463,8 @@ auto_discover: true
 		t.Errorf("expected name to be %v, got %s", t.Name(), configs[0].Name)
 	}
 
-	if !configs[0].AutoDiscover {
-		t.Errorf("expected AutoDiscover to be true, got false")
+	if !configs[0].AutoDiscovery.Enable {
+		t.Errorf("expected AutoDiscovery.Enable to be true, got false")
 	}
 }
 
@@ -516,7 +517,8 @@ func TestGetDeployConfigs_WithAutoDiscovery_OnDifferentBranch(t *testing.T) {
 
 	deployConfig := fmt.Sprintf(`name: %s
 reference: refs/heads/feature-branch
-auto_discover: true
+auto_discovery:
+  enable: true
 `, t.Name())
 
 	filePath := filepath.Join(repoRoot, ".doco-cd.yaml")
@@ -540,8 +542,8 @@ auto_discover: true
 		t.Errorf("expected name to be %v, got %s", t.Name(), configs[0].Name)
 	}
 
-	if !configs[0].AutoDiscover {
-		t.Errorf("expected AutoDiscover to be true, got false")
+	if !configs[0].AutoDiscovery.Enable {
+		t.Errorf("expected AutoDiscovery.Enable to be true, got false")
 	}
 }
 
@@ -577,7 +579,8 @@ func TestGetDeployConfigs_WithAutoDiscovery_WithRemoteUrl(t *testing.T) {
 
 			deployConfig := fmt.Sprintf(`name: %s
 reference: %s
-auto_discover: true
+auto_discovery:
+  enable: true
 repository_url: https://github.com/kimdre/doco-cd_tests.git
 `, t.Name(), tc.branch)
 
@@ -606,8 +609,8 @@ repository_url: https://github.com/kimdre/doco-cd_tests.git
 				}
 			}
 
-			if !configs[0].AutoDiscover {
-				t.Errorf("expected AutoDiscover to be true, got false")
+			if !configs[0].AutoDiscovery.Enable {
+				t.Errorf("expected AutoDiscovery.Enable to be true, got false")
 			}
 
 			if configs[0].Reference != tc.branch {
@@ -700,7 +703,7 @@ func TestAutoDiscoverDeployments_BasicDiscovery(t *testing.T) {
 	baseConfig := &DeployConfig{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml", "docker-compose.yml"},
-		AutoDiscover:     true,
+		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
 	}
 
 	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
@@ -765,7 +768,7 @@ func TestAutoDiscoverDeployments_WithWorkingDirectory(t *testing.T) {
 	baseConfig := &DeployConfig{
 		WorkingDirectory: "services",
 		ComposeFiles:     []string{"compose.yaml"},
-		AutoDiscover:     true,
+		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
 	}
 
 	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
@@ -822,9 +825,9 @@ func TestAutoDiscoverDeployments_WithDepthLimit(t *testing.T) {
 	baseConfig := &DeployConfig{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml"},
-		AutoDiscover:     true,
+		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
 	}
-	baseConfig.AutoDiscoverOpts.ScanDepth = 2
+	baseConfig.AutoDiscovery.ScanDepth = 2
 
 	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
 	if err != nil {
@@ -865,7 +868,7 @@ func TestAutoDiscoverDeployments_NoComposeFiles(t *testing.T) {
 	baseConfig := &DeployConfig{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml"},
-		AutoDiscover:     true,
+		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
 	}
 
 	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
@@ -898,7 +901,7 @@ func TestAutoDiscoverDeployments_InheritBaseConfig(t *testing.T) {
 	baseConfig := &DeployConfig{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml"},
-		AutoDiscover:     true,
+		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
 		Reference:        "refs/heads/main",
 		RemoveOrphans:    false,
 		ForceRecreate:    true,
@@ -1012,7 +1015,8 @@ func TestGetDeployConfigs_WithAutoDiscovery_WithRemoteUrl_WithMultipleConfigs(t 
 name: main-stack
 repository_url: https://github.com/kimdre/doco-cd_tests.git
 reference: main
-auto_discover: true
+auto_discovery:
+  enable: true
 ---
 # Config for doco-cd repo - should discover 1 deployment with name 'test''
 name: test-stack
@@ -1020,13 +1024,15 @@ repository_url: https://github.com/kimdre/doco-cd.git
 reference: main
 compose_files: ["test.compose.yaml"]
 working_dir: test
-auto_discover: true
+auto_discovery:
+  enable: true
 ---
 # Config for dual branch - should discover 2 deployments with names 'app1' and 'app2'
 name: dual-stack
 repository_url: https://github.com/kimdre/doco-cd_tests.git
 reference: dual
-auto_discover: true
+auto_discovery:
+  enable: true
 `
 
 	filePath := filepath.Join(repoRoot, ".doco-cd.yaml")
@@ -1427,14 +1433,14 @@ func TestMergeDeployConfig(t *testing.T) {
 			RepositoryUrl: "https://example.com/base.git",
 			GitDepth:      5,
 		}
-		base.AutoDiscoverOpts.ScanDepth = 3
+		base.AutoDiscovery.ScanDepth = 3
 
 		override := &DeployConfig{
 			Reference:     "refs/heads/other",
 			RepositoryUrl: "https://example.com/override.git",
 			GitDepth:      99,
 		}
-		override.AutoDiscoverOpts.ScanDepth = 99
+		override.AutoDiscovery.ScanDepth = 99
 
 		mergeDeployConfig(base, override)
 
@@ -1450,8 +1456,8 @@ func TestMergeDeployConfig(t *testing.T) {
 			t.Errorf("GitDepth should not be overridden, got %d", base.GitDepth)
 		}
 
-		if base.AutoDiscoverOpts.ScanDepth != 3 {
-			t.Errorf("AutoDiscoverOpts.ScanDepth should not be overridden, got %d", base.AutoDiscoverOpts.ScanDepth)
+		if base.AutoDiscovery.ScanDepth != 3 {
+			t.Errorf("AutoDiscovery.ScanDepth should not be overridden, got %d", base.AutoDiscovery.ScanDepth)
 		}
 	})
 
@@ -1508,7 +1514,7 @@ environment:
 	baseConfig := &DeployConfig{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml"},
-		AutoDiscover:     true,
+		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
 		ExternalSecrets: map[string]ExternalSecretRef{
 			"BASE_SECRET": {LegacyRef: "base-ref"},
 		},
@@ -1562,7 +1568,7 @@ func TestAutoDiscoverDeployments_WithNestedConfig_EnvironmentOnly_DoesNotOverrid
 	baseConfig := &DeployConfig{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"test.compose.yaml"},
-		AutoDiscover:     true,
+		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
 		Environment:      map[string]string{"BASE": "root"},
 	}
 
@@ -1626,7 +1632,7 @@ external_secrets:
 	baseConfig := &DeployConfig{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml"},
-		AutoDiscover:     true,
+		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
 	}
 
 	_, err := autoDiscoverDeployments(repoRoot, baseConfig)
@@ -1656,7 +1662,7 @@ func TestAutoDiscoverDeployments_NoNestedConfig_BackwardsCompatible(t *testing.T
 	baseConfig := &DeployConfig{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml"},
-		AutoDiscover:     true,
+		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
 		Timeout:          300,
 	}
 
