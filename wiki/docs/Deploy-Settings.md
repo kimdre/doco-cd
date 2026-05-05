@@ -49,7 +49,7 @@ The docker compose deployment can be configured inside the [deployment configura
 | `timeout`          | number           | The time in seconds to wait for the deployment to finish before timing out.                                                                                                                                                                                                                                                                                                                                                                                                          | `180`                                                                                                                  |
 | `git_depth`        | number           | Limits the number of commits fetched during clone/fetch (shallow clone). `0` means use the global [`GIT_CLONE_DEPTH`](App-Settings.md) value. A positive integer overrides the global setting for this deployment. When a requested ref (tag/SHA) is outside the shallow depth, doco-cd automatically deepens incrementally before falling back to a full fetch. Changing this value on an existing repo triggers an automatic re-clone.                                             | `0` (use global)                                                                                                       |
 | `destroy`          | boolean          | (⚠️ Destructive) Remove the deployed compose stack/project and its resources from the Docker host. Can be further configured using the [destroy_opts](#destroy-settings) setting.                                                                                                                                                                                                                                                                                                    | `false`                                                                                                                |
-| `auto_discover`    | boolean          | Enables autodiscovery of services to deploy in the working directory by scanning for subdirectories with docker-compose files with the naming `docker-compose.y(a)ml` or `compose.y(a)ml`. Can be further configured using the [auto_discover_opts](#auto-discover-settings) setting.                                                                                                                                                                                                | `false`                                                                                                                |
+| `auto_discover`    | boolean          | Enables [autodiscovery](#auto-discovery) of services to deploy in the working directory by scanning for subdirectories with docker-compose files with the naming `docker-compose.y(a)ml` or `compose.y(a)ml`. Can be further configured using the [auto_discover_opts](#auto-discover-settings) setting.                                                                                                                                                                             | `false`                                                                                                                |
 | `reconciliation`   | object           | Enables event-driven reconciliation for deployments. See [reconciliation settings](#reconciliation-settings) for more details.                                                                                                                                                                                                                                                                                                                                                       | see [Reconciliation Settings](#reconciliation-settings)                                                                |
 
 
@@ -127,11 +127,13 @@ The docker compose deployment can be configured inside the [deployment configura
         HELLO=world
         ```
 
-### Auto discover settings
+### Auto-Discovery
 
 If `auto_discover` is set to `true`, doco-cd will try to auto-discover projects/stacks to deploy by searching for `docker-compose.y(a)ml` or `compose.y(a)ml` files in subdirectories in the working directory (`working_dir`). 
 Doco-cd will internally generate new deploy configs based on the directory name and inherits all other settings from the base deploy config inside the `.doco-cd.yml` file or the inline deployment config inside the poll config.
 When an app is no longer available in the `working_dir` (e.g. deleted or moved to another directory outside the working dir), doco-cd will automatically remove the deployed project/stack from the docker host.
+
+#### Auto-discover settings
 
 Specify all auto-discover settings in a nested `auto_discover_opts` object in the deployment configuration file (See example below).
 
@@ -167,10 +169,74 @@ Specify all auto-discover settings in a nested `auto_discover_opts` object in th
       ```
     </div>
 
-    Doco-cd would deploy 2 stacks to the docker host:
+    Doco-cd would deploy 2 stacks to the docker host: `wordpress` and `nginx`
 
-      - wordpress
-      - nginx
+#### Nested config overrides
+
+For each auto-discovered compose directory, doco-cd also checks for a local [deployment config file](#deployment-configuration-file) in that directory.
+
+If a nested config file exists, doco-cd merges it on top of the discovered deployment config.
+
+!!! warning "Nested `.doco-cd.yml` files must contain exactly one YAML document."
+    If a nested file contains multiple documents (`#!yaml ---`), auto-discovery fails for that run with an error.
+
+##### Merge behavior
+
+- Maps are merged key-by-key (`external_secrets`, `environment`, `build_opts.args`)
+- Slices replace the base value when the nested value is non-empty
+- Scalar values override the base value when the nested value is non-zero/non-empty
+- Nested objects (such as `build_opts`, `destroy_opts`, `reconciliation`) are merged recursively
+
+##### Non-overridable Fields
+
+The following fields are always inherited from the base/root deployment config:
+
+- `reference`
+- `repository_url`
+- `auto_discover`
+- `auto_discover_opts`
+- `git_depth`
+
+#### Example
+
+!!! example
+
+    ``` title="File structure"
+    .doco-cd.yml
+    apps/
+    ├── wordpress/
+    │   ├── .doco-cd.yml
+    │   ├── docker-compose.yml
+    │   └── .env
+    ├── nginx/
+    │   ├── .doco-cd.yml
+    │   └── docker-compose.yaml
+    └── misc/
+        └── image.png
+    ```
+
+    ```yaml title=".doco-cd.yml (root)"
+    working_dir: apps/
+    auto_discover: true
+    auto_discover_opts:
+      depth: 1
+    external_secrets:
+      SHARED_SECRET: "op://vault/shared/field"
+    ```
+
+    ```yaml title="apps/wordpress/.doco-cd.yml"
+    name: wordpress-prod
+    external_secrets:
+      WORDPRESS_SECRET_1: "op://vault/item/field"
+    environment:
+      WP_ENV: production
+    ```
+
+    Result for discovered `wordpress` deployment:
+
+    - `name` becomes `wordpress-prod`
+    - `working_dir` remains auto-discovered (`apps/wordpress/`)  unless explicitly overridden
+    - `external_secrets` contains both `SHARED_SECRET` and `WORDPRESS_SECRET_1`
 
 ### Build settings
 
