@@ -1,19 +1,13 @@
 package onepassword
 
 import (
-	"container/list"
 	"testing"
 	"time"
 )
 
 func TestProviderCache_GetAndExpire(t *testing.T) {
 	provider := &Provider{
-		cacheEnabled: true,
-		cacheTTL:     15 * time.Millisecond,
-		cacheMaxSize: 100,
-		cache:        make(map[string]cacheEntry),
-		cacheOrder:   list.New(),
-		cacheNodes:   make(map[string]*list.Element),
+		cache: NewCache(true, 15*time.Millisecond, 100),
 	}
 
 	provider.setCachedSecret("op://vault/item/field", "cached-value")
@@ -37,12 +31,7 @@ func TestProviderCache_GetAndExpire(t *testing.T) {
 
 func TestProviderCache_Disabled(t *testing.T) {
 	provider := &Provider{
-		cacheEnabled: false,
-		cacheTTL:     time.Minute,
-		cacheMaxSize: 100,
-		cache:        make(map[string]cacheEntry),
-		cacheOrder:   list.New(),
-		cacheNodes:   make(map[string]*list.Element),
+		cache: NewCache(false, time.Minute, 100),
 	}
 
 	provider.setCachedSecret("op://vault/item/field", "cached-value")
@@ -55,12 +44,7 @@ func TestProviderCache_Disabled(t *testing.T) {
 
 func TestProviderCache_EvictsLeastRecentlyUsedWhenFull(t *testing.T) {
 	provider := &Provider{
-		cacheEnabled: true,
-		cacheTTL:     time.Minute,
-		cacheMaxSize: 2,
-		cache:        make(map[string]cacheEntry),
-		cacheOrder:   list.New(),
-		cacheNodes:   make(map[string]*list.Element),
+		cache: NewCache(true, time.Minute, 2),
 	}
 
 	provider.setCachedSecret("op://vault/item/a", "A")
