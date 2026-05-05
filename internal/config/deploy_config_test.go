@@ -1084,7 +1084,7 @@ compose_files: ["compose.yaml"]
 		t.Fatal(err)
 	}
 
-	configs, err := GetDeployConfigFromYAML(filePath)
+	configs, err := GetDeployConfigFromYAML(filePath, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1136,7 +1136,7 @@ reconciliation:
 		t.Fatal(err)
 	}
 
-	configs, err := GetDeployConfigFromYAML(filePath)
+	configs, err := GetDeployConfigFromYAML(filePath, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1165,7 +1165,7 @@ reconciliation:
 		t.Fatal(err)
 	}
 
-	configs, err := GetDeployConfigFromYAML(filePath)
+	configs, err := GetDeployConfigFromYAML(filePath, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1193,7 +1193,7 @@ reconciliation:
 		t.Fatal(err)
 	}
 
-	configs, err := GetDeployConfigFromYAML(filePath)
+	configs, err := GetDeployConfigFromYAML(filePath, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1255,7 +1255,7 @@ reconciliation:
 				t.Fatal(err)
 			}
 
-			configs, err := GetDeployConfigFromYAML(filePath)
+			configs, err := GetDeployConfigFromYAML(filePath, true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1538,6 +1538,63 @@ environment:
 	// nested environment should be merged in
 	if cfg.Environment["EXTRA_VAR"] != "hello" {
 		t.Errorf("nested env var should be merged, got %q", cfg.Environment["EXTRA_VAR"])
+	}
+}
+
+func TestAutoDiscoverDeployments_WithNestedConfig_EnvironmentOnly_DoesNotOverrideComposeFiles(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+	serviceDir := filepath.Join(repoRoot, "service1")
+
+	if err := os.MkdirAll(serviceDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := createTestFile(t, filepath.Join(serviceDir, "test.compose.yaml"), "services:\n  web:\n    image: nginx"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := createTestFile(t, filepath.Join(serviceDir, ".doco-cd.yml"), "environment:\n  SUB: nested\n"); err != nil {
+		t.Fatal(err)
+	}
+
+	baseConfig := &DeployConfig{
+		WorkingDirectory: ".",
+		ComposeFiles:     []string{"test.compose.yaml"},
+		AutoDiscover:     true,
+		Environment:      map[string]string{"BASE": "root"},
+	}
+
+	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(configs) != 1 {
+		t.Fatalf("expected 1 config, got %d", len(configs))
+	}
+
+	cfg := configs[0]
+
+	if cfg.Name != "service1" {
+		t.Errorf("expected discovered name 'service1', got %q", cfg.Name)
+	}
+
+	if cfg.WorkingDirectory != "service1" {
+		t.Errorf("expected working directory 'service1', got %q", cfg.WorkingDirectory)
+	}
+
+	if !reflect.DeepEqual(cfg.ComposeFiles, []string{"test.compose.yaml"}) {
+		t.Errorf("expected compose_files to remain [test.compose.yaml], got %v", cfg.ComposeFiles)
+	}
+
+	if cfg.Environment["BASE"] != "root" {
+		t.Errorf("expected base env BASE=root to be preserved, got %q", cfg.Environment["BASE"])
+	}
+
+	if cfg.Environment["SUB"] != "nested" {
+		t.Errorf("expected nested env SUB=nested to be merged, got %q", cfg.Environment["SUB"])
 	}
 }
 

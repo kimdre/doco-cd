@@ -260,21 +260,35 @@ func (c *DeployConfig) Hash() (string, error) {
 }
 
 // GetDeployConfigFromYAML reads a YAML file and unmarshals it into a slice of DeployConfig structs.
-func GetDeployConfigFromYAML(f string) ([]*DeployConfig, error) {
+// When applyDefaults is true, default values are applied to each config (normal usage).
+// When applyDefaults is false, omitted fields remain zero/nil — used for nested auto-discovery
+// overrides so unset fields do not accidentally replace base/discovered values during merge.
+func GetDeployConfigFromYAML(f string, applyDefaults bool) ([]*DeployConfig, error) {
 	b, err := os.ReadFile(f) // #nosec G304
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %v", err)
 	}
 
-	// Read all YAML documents in the file and unmarshal them into a slice of DeployConfig structs
 	dec := yaml.NewDecoder(bytes.NewReader(b))
 
 	var configs []*DeployConfig
 
+	// Use a type alias to bypass the UnmarshalYAML hook (which injects defaults)
+	// when the caller explicitly does not want defaults applied.
+	type deployConfigNoDefaults DeployConfig
+
 	for {
 		var c DeployConfig
 
-		err = dec.Decode(&c)
+		if applyDefaults {
+			err = dec.Decode(&c)
+		} else {
+			var raw deployConfigNoDefaults
+
+			err = dec.Decode(&raw)
+			c = DeployConfig(raw)
+		}
+
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -457,7 +471,7 @@ func getDeployConfigsFromFile(dir string, files []os.DirEntry, configFile string
 
 		if f.Name() == configFile {
 			// Get contents of deploy config file
-			configs, err := GetDeployConfigFromYAML(path.Join(dir, f.Name()))
+			configs, err := GetDeployConfigFromYAML(path.Join(dir, f.Name()), true)
 			if err != nil {
 				return nil, err
 			}
@@ -597,7 +611,7 @@ func autoDiscoverDeployments(repoRoot string, baseDeployConfig *DeployConfig) ([
 						continue
 					}
 
-					localConfigs, parseErr := GetDeployConfigFromYAML(localCfgPath)
+					localConfigs, parseErr := GetDeployConfigFromYAML(localCfgPath, false)
 					if parseErr != nil {
 						return fmt.Errorf("failed to parse nested .doco-cd config at %s: %w", localCfgPath, parseErr)
 					}
