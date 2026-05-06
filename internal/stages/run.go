@@ -41,12 +41,14 @@ func (s *StageManager) GetDestroyStageOrder() StageOrder {
 		Order: []StageName{
 			StageInit,
 			StageDestroy,
+			StagePostDestroy,
 			StageCleanup,
 		},
 		Funcs: map[StageName]StageFunc{
-			StageInit:    func(ctx context.Context, stageLog *slog.Logger) error { return s.RunInitStage(ctx, stageLog) },
-			StageDestroy: func(ctx context.Context, stageLog *slog.Logger) error { return s.RunDestroyStage(ctx, stageLog) },
-			StageCleanup: func(ctx context.Context, stageLog *slog.Logger) error { return s.RunCleanupStage(ctx, stageLog) },
+			StageInit:        func(ctx context.Context, stageLog *slog.Logger) error { return s.RunInitStage(ctx, stageLog) },
+			StageDestroy:     func(ctx context.Context, stageLog *slog.Logger) error { return s.RunDestroyStage(ctx, stageLog) },
+			StagePostDestroy: func(ctx context.Context, stageLog *slog.Logger) error { return s.RunPostDestroyStage(ctx, stageLog) },
+			StageCleanup:     func(ctx context.Context, stageLog *slog.Logger) error { return s.RunCleanupStage(ctx, stageLog) },
 		},
 	}
 }

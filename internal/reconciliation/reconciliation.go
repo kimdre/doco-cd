@@ -198,6 +198,26 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		return
 	}
 
+	// Skip reconciliation if all matching configs have destroy enabled
+	// to prevent attempting to redeploy stacks that are being destroyed
+	allDestroyEnabled := true
+
+	for _, dc := range stackDCs {
+		if !dc.Destroy.Enable {
+			allDestroyEnabled = false
+			break
+		}
+	}
+
+	if allDestroyEnabled {
+		jobLog.Debug("skipping reconciliation for stack with destroy enabled",
+			slog.String("event", action),
+			slog.String("stack", stackName),
+		)
+
+		return
+	}
+
 	if reconciliationHandler.isStackDeploymentInProgress(j.info.metadata.Repository, stackName) {
 		jobLog.Debug("suppressing reconciliation event while stack deployment is in progress",
 			slog.String("event", action),
