@@ -28,7 +28,7 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 	autoDiscoveredNames := make(map[string]bool)
 
 	for _, cfg := range deployConfigs {
-		if cfg.AutoDiscovery.Enable {
+		if cfg.AutoDiscovery.Enabled {
 			autoDiscoveredNames[cfg.Name] = cfg.AutoDiscovery.Delete
 		}
 	}
@@ -126,7 +126,7 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 				stackLog.Info("removing obsolete auto-discovered stack")
 
 				removeConfig := &deployConfig.Config{Name: stackName}
-				removeConfig.Destroy.Enable = true
+				removeConfig.Destroy.Enabled = true
 				removeConfig.Destroy.RemoveVolumes = true
 				removeConfig.Destroy.RemoveImages = true
 				removeConfig.Destroy.RemoveRepoDir = false // Do not remove repo dir for auto-discovered stacks

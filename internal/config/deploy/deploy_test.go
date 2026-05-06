@@ -285,7 +285,7 @@ func TestResolveConfigs_InlineAutoDiscover(t *testing.T) {
 
 	deployment := &Config{
 		WorkingDirectory: "services",
-		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
+		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
 	}
 	// Apply defaults to deployment
 	if err := defaults.Set(deployment); err != nil {
@@ -437,7 +437,7 @@ func TestGetConfigs_WithAutoDiscovery(t *testing.T) {
 	dc := fmt.Sprintf(`name: %s
 reference: main
 auto_discovery:
-  enable: true
+  enabled: true
 `, t.Name())
 
 	filePath := filepath.Join(repoRoot, ".doco-cd.yaml")
@@ -461,8 +461,8 @@ auto_discovery:
 		t.Errorf("expected name to be %v, got %s", t.Name(), configs[0].Name)
 	}
 
-	if !configs[0].AutoDiscovery.Enable {
-		t.Errorf("expected AutoDiscovery.Enable to be true, got false")
+	if !configs[0].AutoDiscovery.Enabled {
+		t.Errorf("expected AutoDiscovery.Enabled to be true, got false")
 	}
 }
 
@@ -516,7 +516,7 @@ func TestGetConfigs_WithAutoDiscovery_OnDifferentBranch(t *testing.T) {
 	dc := fmt.Sprintf(`name: %s
 reference: refs/heads/feature-branch
 auto_discovery:
-  enable: true
+  enabled: true
 `, t.Name())
 
 	filePath := filepath.Join(repoRoot, ".doco-cd.yaml")
@@ -540,8 +540,8 @@ auto_discovery:
 		t.Errorf("expected name to be %v, got %s", t.Name(), configs[0].Name)
 	}
 
-	if !configs[0].AutoDiscovery.Enable {
-		t.Errorf("expected AutoDiscovery.Enable to be true, got false")
+	if !configs[0].AutoDiscovery.Enabled {
+		t.Errorf("expected AutoDiscovery.Enabled to be true, got false")
 	}
 }
 
@@ -578,7 +578,7 @@ func TestGetConfigs_WithAutoDiscovery_WithRemoteUrl(t *testing.T) {
 			dc := fmt.Sprintf(`name: %s
 reference: %s
 auto_discovery:
-  enable: true
+  enabled: true
 repository_url: https://github.com/kimdre/doco-cd_tests.git
 `, t.Name(), tc.branch)
 
@@ -607,8 +607,8 @@ repository_url: https://github.com/kimdre/doco-cd_tests.git
 				}
 			}
 
-			if !configs[0].AutoDiscovery.Enable {
-				t.Errorf("expected AutoDiscovery.Enable to be true, got false")
+			if !configs[0].AutoDiscovery.Enabled {
+				t.Errorf("expected AutoDiscovery.Enabled to be true, got false")
 			}
 
 			if configs[0].Reference != tc.branch {
@@ -695,7 +695,7 @@ func TestAutoDiscoverDeployments_BasicDiscovery(t *testing.T) {
 	baseConfig := &Config{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml", "docker-compose.yml"},
-		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
+		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
 	}
 
 	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
@@ -760,7 +760,7 @@ func TestAutoDiscoverDeployments_WithWorkingDirectory(t *testing.T) {
 	baseConfig := &Config{
 		WorkingDirectory: "services",
 		ComposeFiles:     []string{"compose.yaml"},
-		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
+		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
 	}
 
 	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
@@ -817,7 +817,7 @@ func TestAutoDiscoverDeployments_WithDepthLimit(t *testing.T) {
 	baseConfig := &Config{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml"},
-		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
+		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
 	}
 	baseConfig.AutoDiscovery.ScanDepth = 2
 
@@ -860,7 +860,7 @@ func TestAutoDiscoverDeployments_NoComposeFiles(t *testing.T) {
 	baseConfig := &Config{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml"},
-		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
+		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
 	}
 
 	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
@@ -893,7 +893,7 @@ func TestAutoDiscoverDeployments_InheritBaseConfig(t *testing.T) {
 	baseConfig := &Config{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml"},
-		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
+		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
 		Reference:        "refs/heads/main",
 		RemoveOrphans:    false,
 		ForceRecreate:    true,
@@ -1008,7 +1008,7 @@ name: main-stack
 repository_url: https://github.com/kimdre/doco-cd_tests.git
 reference: main
 auto_discovery:
-  enable: true
+  enabled: true
 ---
 # Config for doco-cd repo - should discover 1 deployment with name 'test''
 name: test-stack
@@ -1017,14 +1017,14 @@ reference: main
 compose_files: ["test.compose.yaml"]
 working_dir: test
 auto_discovery:
-  enable: true
+  enabled: true
 ---
 # Config for dual branch - should discover 2 deployments with names 'app1' and 'app2'
 name: dual-stack
 repository_url: https://github.com/kimdre/doco-cd_tests.git
 reference: dual
 auto_discovery:
-  enable: true
+  enabled: true
 `
 
 	filePath := filepath.Join(repoRoot, ".doco-cd.yaml")

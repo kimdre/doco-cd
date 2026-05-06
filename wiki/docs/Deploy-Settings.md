@@ -48,7 +48,7 @@ The docker compose deployment can be configured inside the [deployment configura
 | `force_image_pull` | boolean           | Always pulls the latest version of the image tags you've specified if a newer version is available.                                                                                                                                                                                                                                                                                                                                                                                  | `false`                                                                                                                |
 | `timeout`          | number            | The time in seconds to wait for the deployment to finish before timing out.                                                                                                                                                                                                                                                                                                                                                                                                          | `180`                                                                                                                  |
 | `git_depth`        | number            | Limits the number of commits fetched during clone/fetch (shallow clone). `0` means use the global [`GIT_CLONE_DEPTH`](App-Settings.md) value. A positive integer overrides the global setting for this deployment. When a requested ref (tag/SHA) is outside the shallow depth, doco-cd automatically deepens incrementally before falling back to a full fetch. Changing this value on an existing repo triggers an automatic re-clone.                                             | `0` (use global)                                                                                                       |
-| `destroy`          | boolean \| object | (⚠️ Destructive) Configure stack/project destruction behavior. Use `destroy: true` as shorthand to enable destruction with default options, or use `destroy.enable: true` inside the object form to customize removal behavior. See [Destroy settings](#destroy-settings).                                                                                                                                                                                                           | see [Destroy settings](#destroy-settings)                                                                              |
+| `destroy`          | boolean \| object | (⚠️ Destructive) Configure stack/project destruction behavior. Use `destroy: true` as shorthand to enable destruction with default options, or use `destroy.enabled: true` inside the object form to customize removal behavior. See [Destroy settings](#destroy-settings).                                                                                                                                                                                                          | see [Destroy settings](#destroy-settings)                                                                              |
 | `auto_discovery`   | boolean \| object | Enables [autodiscovery](#auto-discovery) of services to deploy in the working directory by scanning for subdirectories with Docker Compose files (see the `compose_files` setting). Use `auto_discovery: true` as shorthand to enable it with default options, or use the object form to customize settings such as `depth` and `delete`. See [Auto-Discovery Settings](#auto-discovery-settings).                                                                                   | see [Auto-Discovery Settings](#auto-discovery-settings)                                                                |
 | `reconciliation`   | boolean \| object | Enables event-driven reconciliation for deployments. Use `reconciliation: true` as shorthand to enable reconciliation with default options, or use the object form to customize settings. See [reconciliation settings](#reconciliation-settings).                                                                                                                                                                                                                                   | see [Reconciliation Settings](#reconciliation-settings)                                                                |
 
@@ -137,11 +137,11 @@ When an app is no longer available in the `working_dir` (e.g. deleted or moved t
 
 `auto_discovery` accepts either a boolean or a nested object in the deployment configuration file. Use `auto_discovery: true` to enable it with defaults, or use the object form below to customize `depth` and `delete`.
 
-| Key      | Type    | Description                                                                                          | Default value |
-|----------|---------|------------------------------------------------------------------------------------------------------|---------------|
-| `enable` | boolean | Enables auto-discovery of services to deploy in the working directory                                | `false`       |
-| `depth`  | number  | Maximum depth of subdirectories to scan for docker-compose files, set to `0` for no limit            | `0`           |
-| `delete` | boolean | Auto-remove obsolete auto-discovered deployments that are no longer present in the working directory | `true`        |
+| Key       | Type    | Description                                                                                          | Default value |
+|-----------|---------|------------------------------------------------------------------------------------------------------|---------------|
+| `enabled` | boolean | Enables auto-discovery of services to deploy in the working directory                                | `false`       |
+| `depth`   | number  | Maximum depth of subdirectories to scan for docker-compose files, set to `0` for no limit            | `0`           |
+| `delete`  | boolean | Auto-remove obsolete auto-discovered deployments that are no longer present in the working directory | `true`        |
 
 !!! example
     <div class="grid cards" markdown>
@@ -170,7 +170,7 @@ When an app is no longer available in the `working_dir` (e.g. deleted or moved t
         ```yaml title=".doco-cd.yml With custom settings"
         working_dir: apps/
         auto_discovery:
-          enable: true
+          enabled: true
           depth: 1
         ```
     </div>
@@ -223,7 +223,7 @@ The following fields are always inherited from the base/root deployment config:
     ```yaml title=".doco-cd.yml (root)"
     working_dir: apps/
     auto_discovery:
-      enable: true
+      enabled: true
       depth: 1
     external_secrets:
       SHARED_SECRET: "op://vault/shared/field"
@@ -273,11 +273,11 @@ The following settings can be used to configure how the deployed compose stack/p
 
 `destroy` accepts either a boolean or a nested object in the deployment configuration file. Use `destroy: true` to enable destructive removal with default options, or use the object form below to customize which resources are removed.
 
-| Key              | Type    | Description                                                                                                                                                                    | Default value |
-|------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| `enable`         | boolean | Enable destructive removal of the deployment and its resources.                                                                                                                | `false`       |
-| `remove_volumes` | boolean | Remove all volumes used by the deployment (always `true` in docker swarm mode)                                                                                                 | `true`        |
-| `remove_images`  | boolean | Remove all images used by the deployment (currently not supported in docker swarm mode)                                                                                        | `true`        |
+| Key              | Type    | Description                                                                                                                                                                                                                                                                       | Default value |
+|------------------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `enabled`        | boolean | Enable destructive removal of the deployment and its resources.                                                                                                                                                                                                                   | `false`       |
+| `remove_volumes` | boolean | Remove all volumes used by the deployment (always `true` in docker swarm mode)                                                                                                                                                                                                    | `true`        |
+| `remove_images`  | boolean | Remove all images used by the deployment (currently not supported in docker swarm mode)                                                                                                                                                                                           | `true`        |
 | `remove_dir`     | boolean | Remove the cloned repository in the data directory after the deployment is removed (Setting this to `false` is useful e.g. when you use bind mounts with relative paths and want to keep the data or if you have multiple services in the same repo and only wish to destroy one) | `true`        |
 
 !!! example
@@ -296,7 +296,7 @@ The following settings can be used to configure how the deployed compose stack/p
         ```yaml title=".doco-cd.yml"
         name: some-project
         destroy:
-          enable: true
+          enabled: true
           remove_volumes: true
           remove_images: false
           remove_dir: false

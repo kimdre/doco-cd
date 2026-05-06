@@ -27,8 +27,8 @@ destroy: true
 			t.Fatal(err)
 		}
 
-		if !configs[0].Destroy.Enable {
-			t.Fatal("expected destroy.enable to be true")
+		if !configs[0].Destroy.Enabled {
+			t.Fatal("expected destroy.enabled to be true")
 		}
 
 		if !configs[0].Destroy.RemoveVolumes || !configs[0].Destroy.RemoveImages || !configs[0].Destroy.RemoveRepoDir {
@@ -44,7 +44,7 @@ destroy: true
 		err := createTestFile(t, filePath, `name: test
 compose_files: ["compose.yaml"]
 destroy:
-  enable: true
+  enabled: true
   remove_volumes: false
   remove_images: false
   remove_dir: false
@@ -58,8 +58,8 @@ destroy:
 			t.Fatal(err)
 		}
 
-		if !configs[0].Destroy.Enable {
-			t.Fatal("expected destroy.enable to be true")
+		if !configs[0].Destroy.Enabled {
+			t.Fatal("expected destroy.enabled to be true")
 		}
 
 		if configs[0].Destroy.RemoveVolumes || configs[0].Destroy.RemoveImages || configs[0].Destroy.RemoveRepoDir {
@@ -85,8 +85,8 @@ destroy: true
 			t.Fatal(err)
 		}
 
-		if !configs[0].Destroy.Enable {
-			t.Fatal("expected destroy.enable to be true")
+		if !configs[0].Destroy.Enabled {
+			t.Fatal("expected destroy.enabled to be true")
 		}
 
 		if configs[0].Destroy.RemoveVolumes || configs[0].Destroy.RemoveImages || configs[0].Destroy.RemoveRepoDir {
@@ -102,8 +102,8 @@ destroy: true
 			t.Fatal(err)
 		}
 
-		if !cfg.Destroy.Enable {
-			t.Fatal("expected destroy.enable to be true")
+		if !cfg.Destroy.Enabled {
+			t.Fatal("expected destroy.enabled to be true")
 		}
 
 		if !cfg.Destroy.RemoveVolumes || !cfg.Destroy.RemoveImages || !cfg.Destroy.RemoveRepoDir {

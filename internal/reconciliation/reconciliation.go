@@ -203,7 +203,7 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 	allDestroyEnabled := true
 
 	for _, dc := range stackDCs {
-		if !dc.Destroy.Enable {
+		if !dc.Destroy.Enabled {
 			allDestroyEnabled = false
 			break
 		}

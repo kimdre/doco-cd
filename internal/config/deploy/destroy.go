@@ -10,7 +10,7 @@ import (
 
 // DestroyConfig holds options for destroying a deployment.
 type DestroyConfig struct {
-	Enable        bool `yaml:"enable" json:"enable" default:"false"`                // Enable removes the deployment and all its resources from the Docker host
+	Enabled       bool `yaml:"enabled" json:"enabled" default:"false"`              // Enabled removes the deployment and all its resources from the Docker host
 	RemoveVolumes bool `yaml:"remove_volumes" json:"remove_volumes" default:"true"` // RemoveVolumes removes the volumes used by the deployment (always enabled in docker swarm mode)
 	RemoveImages  bool `yaml:"remove_images" json:"remove_images" default:"true"`   // RemoveImages removes the images used by the deployment (currently not supported in docker swarm mode)
 	RemoveRepoDir bool `yaml:"remove_dir" json:"remove_dir" default:"true"`         // RemoveRepoDir removes the repository directory after the deployment is destroyed
@@ -24,7 +24,7 @@ func (c *DestroyConfig) UnmarshalYAML(node *yaml.Node) error {
 			return errors.New("invalid destroy value: expected bool or object")
 		}
 
-		c.Enable = enabled
+		c.Enabled = enabled
 
 		return nil
 	case yaml.MappingNode:
@@ -50,7 +50,7 @@ func (c *DestroyConfig) UnmarshalJSON(data []byte) error {
 			return errors.New("invalid destroy value: expected bool or object")
 		}
 
-		c.Enable = enabled
+		c.Enabled = enabled
 
 		return nil
 	}
