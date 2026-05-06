@@ -18,9 +18,9 @@ import (
 
 // AutoDiscoveryConfig holds auto-discovery settings for a deployment.
 type AutoDiscoveryConfig struct {
-	Enable    bool `yaml:"enable" json:"enable" default:"false"` // Enable enables autodiscovery of services to deploy in the working directory
-	ScanDepth int  `yaml:"depth" json:"depth" default:"0"`       // ScanDepth is the maximum depth of subdirectories to scan for docker-compose files
-	Delete    bool `yaml:"delete" json:"delete" default:"true"`  // Delete removes obsolete auto-discovered deployments that are no longer present in the repository
+	Enabled   bool `yaml:"enabled" json:"enabled" default:"false"` // Enabled enables autodiscovery of services to deploy in the working directory
+	ScanDepth int  `yaml:"depth" json:"depth" default:"0"`         // ScanDepth is the maximum depth of subdirectories to scan for docker-compose files
+	Delete    bool `yaml:"delete" json:"delete" default:"true"`    // Delete removes obsolete auto-discovered deployments that are no longer present in the repository
 }
 
 func (c *AutoDiscoveryConfig) UnmarshalYAML(node *yaml.Node) error {
@@ -31,7 +31,7 @@ func (c *AutoDiscoveryConfig) UnmarshalYAML(node *yaml.Node) error {
 			return errors.New("invalid auto_discovery value: expected bool or object")
 		}
 
-		c.Enable = enabled
+		c.Enabled = enabled
 
 		return nil
 	case yaml.MappingNode:
@@ -57,7 +57,7 @@ func (c *AutoDiscoveryConfig) UnmarshalJSON(data []byte) error {
 			return errors.New("invalid auto_discovery value: expected bool or object")
 		}
 
-		c.Enable = enabled
+		c.Enabled = enabled
 
 		return nil
 	}
@@ -80,7 +80,7 @@ func expandInlineAutoDiscoverConfigs(repoRoot string, deployments []*Config) ([]
 	expanded := make([]*Config, 0, len(deployments))
 
 	for _, deployment := range deployments {
-		if !deployment.AutoDiscovery.Enable {
+		if !deployment.AutoDiscovery.Enabled {
 			expanded = append(expanded, deployment)
 			continue
 		}

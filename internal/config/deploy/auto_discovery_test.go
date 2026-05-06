@@ -32,8 +32,8 @@ auto_discovery: true
 			t.Fatal(err)
 		}
 
-		if !configs[0].AutoDiscovery.Enable {
-			t.Fatal("expected auto_discovery.enable to be true")
+		if !configs[0].AutoDiscovery.Enabled {
+			t.Fatal("expected auto_discovery.enabled to be true")
 		}
 
 		if configs[0].AutoDiscovery.ScanDepth != 0 {
@@ -53,7 +53,7 @@ auto_discovery: true
 		err := createTestFile(t, filePath, `name: test
 compose_files: ["compose.yaml"]
 auto_discovery:
-  enable: true
+  enabled: true
   depth: 2
   delete: false
 `)
@@ -66,8 +66,8 @@ auto_discovery:
 			t.Fatal(err)
 		}
 
-		if !configs[0].AutoDiscovery.Enable {
-			t.Fatal("expected auto_discovery.enable to be true")
+		if !configs[0].AutoDiscovery.Enabled {
+			t.Fatal("expected auto_discovery.enabled to be true")
 		}
 
 		if configs[0].AutoDiscovery.ScanDepth != 2 {
@@ -87,8 +87,8 @@ auto_discovery:
 			t.Fatal(err)
 		}
 
-		if !cfg.AutoDiscovery.Enable {
-			t.Fatal("expected auto_discovery.enable to be true")
+		if !cfg.AutoDiscovery.Enabled {
+			t.Fatal("expected auto_discovery.enabled to be true")
 		}
 
 		if cfg.AutoDiscovery.ScanDepth != 0 {
@@ -337,7 +337,7 @@ environment:
 	baseConfig := &Config{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml"},
-		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
+		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
 		ExternalSecrets: map[string]secrettypes.ExternalSecretRef{
 			"BASE_SECRET": {LegacyRef: "base-ref"},
 		},
@@ -391,7 +391,7 @@ func TestAutoDiscoverDeployments_WithNestedConfig_EnvironmentOnly_DoesNotOverrid
 	baseConfig := &Config{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"test.compose.yaml"},
-		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
+		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
 		Environment:      map[string]string{"BASE": "root"},
 	}
 
@@ -455,7 +455,7 @@ external_secrets:
 	baseConfig := &Config{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml"},
-		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
+		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
 	}
 
 	_, err := autoDiscoverDeployments(repoRoot, baseConfig)
@@ -485,7 +485,7 @@ func TestAutoDiscoverDeployments_NoNestedConfig_BackwardsCompatible(t *testing.T
 	baseConfig := &Config{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml"},
-		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
+		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
 		Timeout:          300,
 	}
 

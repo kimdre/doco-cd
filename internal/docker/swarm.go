@@ -97,7 +97,7 @@ func addSwarmServiceLabels(stack *composetypes.Config, deployConfig *deploy.Conf
 		DocoCDLabels.Deployment.CommitSHA:           latestCommit,
 		DocoCDLabels.Deployment.TargetRef:           deployConfig.Reference,
 		DocoCDLabels.Deployment.ConfigHash:          deployConfig.Internal.Hash,
-		DocoCDLabels.Deployment.AutoDiscovery:       strconv.FormatBool(deployConfig.AutoDiscovery.Enable),
+		DocoCDLabels.Deployment.AutoDiscovery:       strconv.FormatBool(deployConfig.AutoDiscovery.Enabled),
 		DocoCDLabels.Deployment.AutoDiscoveryDelete: strconv.FormatBool(deployConfig.AutoDiscovery.Delete),
 		DocoCDLabels.Repository.Name:                payload.FullName,
 		DocoCDLabels.Repository.URL:                 payload.WebURL,

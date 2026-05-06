@@ -96,7 +96,7 @@ func (c *Config) LogValue() slog.Value {
 }
 
 func (c *Config) Validate() error {
-	if c.Name == "" && !c.AutoDiscovery.Enable {
+	if c.Name == "" && !c.AutoDiscovery.Enabled {
 		return fmt.Errorf("%w: name", ErrKeyNotFound)
 	}
 
@@ -340,7 +340,7 @@ func GetConfigs(repoRoot, configBaseDir, name, customTarget, reference string, g
 
 			repoDir := repoRoot
 			// Check for configs with AutoDiscover enabled, if true then remove this config and add new configs based on discovered compose files
-			if c.AutoDiscovery.Enable {
+			if c.AutoDiscovery.Enabled {
 				if c.RepositoryUrl != "" {
 					auth, err := gitInternal.GetAuthMethod(string(c.RepositoryUrl), opts.SSHPrivateKey, opts.SSHPrivateKeyPassphrase, opts.GitAccessToken)
 					if err != nil {
