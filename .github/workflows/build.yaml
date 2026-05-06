@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    uses: docker/github-builder/.github/workflows/build.yml@d4bb88e5e4420d56d283d658b6b5992c1dce04da # v1
+    uses: docker/github-builder/.github/workflows/build.yml@c2782c55efa56a01b9c30021db8f5ec3993228a3 # v1
     permissions:
       contents: read # to fetch the repository content
       id-token: write # for signing attestation(s) with GitHub OIDC Token
