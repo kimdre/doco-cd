@@ -278,7 +278,7 @@ The following settings can be used to configure how the deployed compose stack/p
 | `enable`         | boolean | Enable destructive removal of the deployment and its resources.                                                                                                                | `false`       |
 | `remove_volumes` | boolean | Remove all volumes used by the deployment (always `true` in docker swarm mode)                                                                                                 | `true`        |
 | `remove_images`  | boolean | Remove all images used by the deployment (currently not supported in docker swarm mode)                                                                                        | `true`        |
-| `remove_dir`     | boolean | Remove the cloned repository in the data directory after the deployment is removed (Setting this to `false` is useful e.g. when you use bind mounts and want to keep the data) | `true`        |
+| `remove_dir`     | boolean | Remove the cloned repository in the data directory after the deployment is removed (Setting this to `false` is useful e.g. when you use bind mounts with relative paths and want to keep the data or if you have multiple services in the same repo and only wish to destroy one) | `true`        |
 
 !!! example
 
