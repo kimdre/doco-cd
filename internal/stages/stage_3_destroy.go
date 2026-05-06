@@ -53,14 +53,14 @@ func (s *StageManager) RunDestroyStage(ctx context.Context, stageLog *slog.Logge
 		return fmt.Errorf("failed to destroy stack: %w", err)
 	}
 
-	if swarm.GetModeEnabled() && s.DeployConfig.DestroyOpts.RemoveVolumes {
+	if swarm.GetModeEnabled() && s.DeployConfig.Destroy.RemoveVolumes {
 		err = docker.RemoveLabeledVolumes(ctx, s.Docker.Cmd.Client(), s.DeployConfig.Name)
 		if err != nil {
 			return fmt.Errorf("failed to remove volumes: %w", err)
 		}
 	}
 
-	if s.DeployConfig.DestroyOpts.RemoveRepoDir {
+	if s.DeployConfig.Destroy.RemoveRepoDir {
 		// Remove the repository directory after destroying the stack
 		stageLog.Debug("removing deployment directory", slog.String("path", s.Repository.PathExternal))
 		// Check if the parent directory has multiple subdirectories/repos

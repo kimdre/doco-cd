@@ -116,27 +116,27 @@ func addComposeServiceLabels(project *types.Project, deployConfig *config.Deploy
 		}
 
 		s.CustomLabels = map[string]string{
-			DocoCDLabels.Metadata.Manager:              config.AppName,
-			DocoCDLabels.Metadata.Version:              appVersion,
-			DocoCDLabels.Deployment.Name:               deployConfig.Name,
-			DocoCDLabels.Deployment.Timestamp:          timestamp,
-			DocoCDLabels.Deployment.ComposeHash:        projectHash,
-			DocoCDLabels.Deployment.WorkingDir:         workingDir,
-			DocoCDLabels.Deployment.Trigger:            payload.CommitSHA,
-			DocoCDLabels.Deployment.CommitSHA:          latestCommit,
-			DocoCDLabels.Deployment.TargetRef:          deployConfig.Reference,
-			DocoCDLabels.Deployment.ConfigHash:         deployConfig.Internal.Hash,
-			DocoCDLabels.Deployment.AutoDiscover:       strconv.FormatBool(deployConfig.AutoDiscover),
-			DocoCDLabels.Deployment.AutoDiscoverDelete: strconv.FormatBool(deployConfig.AutoDiscoverOpts.Delete),
-			DocoCDLabels.Repository.Name:               payload.FullName,
-			DocoCDLabels.Repository.URL:                payload.WebURL,
-			api.ProjectLabel:                           project.Name,
-			api.ServiceLabel:                           s.Name,
-			api.WorkingDirLabel:                        project.WorkingDir,
-			api.ConfigFilesLabel:                       strings.Join(project.ComposeFiles, ","),
-			api.VersionLabel:                           composeVersion,
-			api.OneoffLabel:                            "False", // default, will be overridden by docker compose
-			api.DependenciesLabel:                      strings.Join(dependencies, ","),
+			DocoCDLabels.Metadata.Manager:               config.AppName,
+			DocoCDLabels.Metadata.Version:               appVersion,
+			DocoCDLabels.Deployment.Name:                deployConfig.Name,
+			DocoCDLabels.Deployment.Timestamp:           timestamp,
+			DocoCDLabels.Deployment.ComposeHash:         projectHash,
+			DocoCDLabels.Deployment.WorkingDir:          workingDir,
+			DocoCDLabels.Deployment.Trigger:             payload.CommitSHA,
+			DocoCDLabels.Deployment.CommitSHA:           latestCommit,
+			DocoCDLabels.Deployment.TargetRef:           deployConfig.Reference,
+			DocoCDLabels.Deployment.ConfigHash:          deployConfig.Internal.Hash,
+			DocoCDLabels.Deployment.AutoDiscovery:       strconv.FormatBool(deployConfig.AutoDiscovery.Enable),
+			DocoCDLabels.Deployment.AutoDiscoveryDelete: strconv.FormatBool(deployConfig.AutoDiscovery.Delete),
+			DocoCDLabels.Repository.Name:                payload.FullName,
+			DocoCDLabels.Repository.URL:                 payload.WebURL,
+			api.ProjectLabel:                            project.Name,
+			api.ServiceLabel:                            s.Name,
+			api.WorkingDirLabel:                         project.WorkingDir,
+			api.ConfigFilesLabel:                        strings.Join(project.ComposeFiles, ","),
+			api.VersionLabel:                            composeVersion,
+			api.OneoffLabel:                             "False", // default, will be overridden by docker compose
+			api.DependenciesLabel:                       strings.Join(dependencies, ","),
 		}
 		project.Services[i] = s
 	}
@@ -610,10 +610,10 @@ func DestroyStack(
 
 	downOpts := api.DownOptions{
 		RemoveOrphans: deployConfig.RemoveOrphans,
-		Volumes:       deployConfig.DestroyOpts.RemoveVolumes,
+		Volumes:       deployConfig.Destroy.RemoveVolumes,
 	}
 
-	if deployConfig.DestroyOpts.RemoveImages {
+	if deployConfig.Destroy.RemoveImages {
 		downOpts.Images = "all"
 	}
 

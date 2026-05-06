@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"go.yaml.in/yaml/v3"
 	"gopkg.in/validator.v2"
 
 	"github.com/kimdre/doco-cd/internal/filesystem"
@@ -290,7 +292,7 @@ func TestResolveDeployConfigs_InlineAutoDiscover(t *testing.T) {
 		Reference: "refs/heads/main",
 		Interval:  60,
 		Deployments: []*DeployConfig{
-			{WorkingDirectory: "services", AutoDiscover: true},
+			{WorkingDirectory: "services", AutoDiscovery: AutoDiscoveryConfig{Enable: true}},
 		},
 	}
 
@@ -438,7 +440,8 @@ func TestGetDeployConfigs_WithAutoDiscovery(t *testing.T) {
 
 	deployConfig := fmt.Sprintf(`name: %s
 reference: main
-auto_discover: true
+auto_discovery:
+  enable: true
 `, t.Name())
 
 	filePath := filepath.Join(repoRoot, ".doco-cd.yaml")
@@ -462,8 +465,8 @@ auto_discover: true
 		t.Errorf("expected name to be %v, got %s", t.Name(), configs[0].Name)
 	}
 
-	if !configs[0].AutoDiscover {
-		t.Errorf("expected AutoDiscover to be true, got false")
+	if !configs[0].AutoDiscovery.Enable {
+		t.Errorf("expected AutoDiscovery.Enable to be true, got false")
 	}
 }
 
@@ -516,7 +519,8 @@ func TestGetDeployConfigs_WithAutoDiscovery_OnDifferentBranch(t *testing.T) {
 
 	deployConfig := fmt.Sprintf(`name: %s
 reference: refs/heads/feature-branch
-auto_discover: true
+auto_discovery:
+  enable: true
 `, t.Name())
 
 	filePath := filepath.Join(repoRoot, ".doco-cd.yaml")
@@ -540,8 +544,8 @@ auto_discover: true
 		t.Errorf("expected name to be %v, got %s", t.Name(), configs[0].Name)
 	}
 
-	if !configs[0].AutoDiscover {
-		t.Errorf("expected AutoDiscover to be true, got false")
+	if !configs[0].AutoDiscovery.Enable {
+		t.Errorf("expected AutoDiscovery.Enable to be true, got false")
 	}
 }
 
@@ -577,7 +581,8 @@ func TestGetDeployConfigs_WithAutoDiscovery_WithRemoteUrl(t *testing.T) {
 
 			deployConfig := fmt.Sprintf(`name: %s
 reference: %s
-auto_discover: true
+auto_discovery:
+  enable: true
 repository_url: https://github.com/kimdre/doco-cd_tests.git
 `, t.Name(), tc.branch)
 
@@ -606,8 +611,8 @@ repository_url: https://github.com/kimdre/doco-cd_tests.git
 				}
 			}
 
-			if !configs[0].AutoDiscover {
-				t.Errorf("expected AutoDiscover to be true, got false")
+			if !configs[0].AutoDiscovery.Enable {
+				t.Errorf("expected AutoDiscovery.Enable to be true, got false")
 			}
 
 			if configs[0].Reference != tc.branch {
@@ -700,7 +705,7 @@ func TestAutoDiscoverDeployments_BasicDiscovery(t *testing.T) {
 	baseConfig := &DeployConfig{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml", "docker-compose.yml"},
-		AutoDiscover:     true,
+		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
 	}
 
 	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
@@ -765,7 +770,7 @@ func TestAutoDiscoverDeployments_WithWorkingDirectory(t *testing.T) {
 	baseConfig := &DeployConfig{
 		WorkingDirectory: "services",
 		ComposeFiles:     []string{"compose.yaml"},
-		AutoDiscover:     true,
+		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
 	}
 
 	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
@@ -822,9 +827,9 @@ func TestAutoDiscoverDeployments_WithDepthLimit(t *testing.T) {
 	baseConfig := &DeployConfig{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml"},
-		AutoDiscover:     true,
+		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
 	}
-	baseConfig.AutoDiscoverOpts.ScanDepth = 2
+	baseConfig.AutoDiscovery.ScanDepth = 2
 
 	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
 	if err != nil {
@@ -865,7 +870,7 @@ func TestAutoDiscoverDeployments_NoComposeFiles(t *testing.T) {
 	baseConfig := &DeployConfig{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml"},
-		AutoDiscover:     true,
+		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
 	}
 
 	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
@@ -898,7 +903,7 @@ func TestAutoDiscoverDeployments_InheritBaseConfig(t *testing.T) {
 	baseConfig := &DeployConfig{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml"},
-		AutoDiscover:     true,
+		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
 		Reference:        "refs/heads/main",
 		RemoveOrphans:    false,
 		ForceRecreate:    true,
@@ -1012,7 +1017,8 @@ func TestGetDeployConfigs_WithAutoDiscovery_WithRemoteUrl_WithMultipleConfigs(t 
 name: main-stack
 repository_url: https://github.com/kimdre/doco-cd_tests.git
 reference: main
-auto_discover: true
+auto_discovery:
+  enable: true
 ---
 # Config for doco-cd repo - should discover 1 deployment with name 'test''
 name: test-stack
@@ -1020,13 +1026,15 @@ repository_url: https://github.com/kimdre/doco-cd.git
 reference: main
 compose_files: ["test.compose.yaml"]
 working_dir: test
-auto_discover: true
+auto_discovery:
+  enable: true
 ---
 # Config for dual branch - should discover 2 deployments with names 'app1' and 'app2'
 name: dual-stack
 repository_url: https://github.com/kimdre/doco-cd_tests.git
 reference: dual
-auto_discover: true
+auto_discovery:
+  enable: true
 `
 
 	filePath := filepath.Join(repoRoot, ".doco-cd.yaml")
@@ -1112,6 +1120,226 @@ compose_files: ["compose.yaml"]
 
 	if configs[0].Reconciliation.RestartWindow != 300 {
 		t.Fatalf("expected default restart_window 300, got %d", configs[0].Reconciliation.RestartWindow)
+	}
+}
+
+func TestDeployConfig_AutoDiscoveryBoolOrObject(t *testing.T) {
+	t.Parallel()
+
+	t.Run("yaml bool true uses defaults", func(t *testing.T) {
+		t.Parallel()
+
+		filePath := filepath.Join(t.TempDir(), ".doco-cd.yaml")
+
+		err := createTestFile(t, filePath, `name: test
+compose_files: ["compose.yaml"]
+auto_discovery: true
+`)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		configs, err := GetDeployConfigFromYAML(filePath, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !configs[0].AutoDiscovery.Enable {
+			t.Fatal("expected auto_discovery.enable to be true")
+		}
+
+		if configs[0].AutoDiscovery.ScanDepth != 0 {
+			t.Fatalf("expected default auto_discovery.depth 0, got %d", configs[0].AutoDiscovery.ScanDepth)
+		}
+
+		if !configs[0].AutoDiscovery.Delete {
+			t.Fatal("expected default auto_discovery.delete to be true")
+		}
+	})
+
+	t.Run("yaml object still works", func(t *testing.T) {
+		t.Parallel()
+
+		filePath := filepath.Join(t.TempDir(), ".doco-cd.yaml")
+
+		err := createTestFile(t, filePath, `name: test
+compose_files: ["compose.yaml"]
+auto_discovery:
+  enable: true
+  depth: 2
+  delete: false
+`)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		configs, err := GetDeployConfigFromYAML(filePath, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !configs[0].AutoDiscovery.Enable {
+			t.Fatal("expected auto_discovery.enable to be true")
+		}
+
+		if configs[0].AutoDiscovery.ScanDepth != 2 {
+			t.Fatalf("expected auto_discovery.depth 2, got %d", configs[0].AutoDiscovery.ScanDepth)
+		}
+
+		if configs[0].AutoDiscovery.Delete {
+			t.Fatal("expected auto_discovery.delete to be false")
+		}
+	})
+
+	t.Run("json bool true uses defaults", func(t *testing.T) {
+		t.Parallel()
+
+		var cfg DeployConfig
+		if err := json.Unmarshal([]byte(`{"name":"test","compose_files":["compose.yaml"],"auto_discovery":true}`), &cfg); err != nil {
+			t.Fatal(err)
+		}
+
+		if !cfg.AutoDiscovery.Enable {
+			t.Fatal("expected auto_discovery.enable to be true")
+		}
+
+		if cfg.AutoDiscovery.ScanDepth != 0 {
+			t.Fatalf("expected default auto_discovery.depth 0, got %d", cfg.AutoDiscovery.ScanDepth)
+		}
+
+		if !cfg.AutoDiscovery.Delete {
+			t.Fatal("expected default auto_discovery.delete to be true")
+		}
+	})
+}
+
+func TestDeployConfig_DestroyBoolOrObject(t *testing.T) {
+	t.Parallel()
+
+	t.Run("yaml bool true uses defaults", func(t *testing.T) {
+		t.Parallel()
+
+		filePath := filepath.Join(t.TempDir(), ".doco-cd.yaml")
+
+		err := createTestFile(t, filePath, `name: test
+compose_files: ["compose.yaml"]
+destroy: true
+`)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		configs, err := GetDeployConfigFromYAML(filePath, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !configs[0].Destroy.Enable {
+			t.Fatal("expected destroy.enable to be true")
+		}
+
+		if !configs[0].Destroy.RemoveVolumes || !configs[0].Destroy.RemoveImages || !configs[0].Destroy.RemoveRepoDir {
+			t.Fatalf("expected destroy defaults to stay true, got %+v", configs[0].Destroy)
+		}
+	})
+
+	t.Run("yaml object still works", func(t *testing.T) {
+		t.Parallel()
+
+		filePath := filepath.Join(t.TempDir(), ".doco-cd.yaml")
+
+		err := createTestFile(t, filePath, `name: test
+compose_files: ["compose.yaml"]
+destroy:
+  enable: true
+  remove_volumes: false
+  remove_images: false
+  remove_dir: false
+`)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		configs, err := GetDeployConfigFromYAML(filePath, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !configs[0].Destroy.Enable {
+			t.Fatal("expected destroy.enable to be true")
+		}
+
+		if configs[0].Destroy.RemoveVolumes || configs[0].Destroy.RemoveImages || configs[0].Destroy.RemoveRepoDir {
+			t.Fatalf("expected destroy object values to be respected, got %+v", configs[0].Destroy)
+		}
+	})
+
+	t.Run("yaml bool no-default decode only toggles enable", func(t *testing.T) {
+		t.Parallel()
+
+		filePath := filepath.Join(t.TempDir(), ".doco-cd.yaml")
+
+		err := createTestFile(t, filePath, `name: test
+compose_files: ["compose.yaml"]
+destroy: true
+`)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		configs, err := GetDeployConfigFromYAML(filePath, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !configs[0].Destroy.Enable {
+			t.Fatal("expected destroy.enable to be true")
+		}
+
+		if configs[0].Destroy.RemoveVolumes || configs[0].Destroy.RemoveImages || configs[0].Destroy.RemoveRepoDir {
+			t.Fatalf("expected no-default decode to leave destroy option flags unset, got %+v", configs[0].Destroy)
+		}
+	})
+
+	t.Run("json bool true uses defaults", func(t *testing.T) {
+		t.Parallel()
+
+		var cfg DeployConfig
+		if err := json.Unmarshal([]byte(`{"name":"test","compose_files":["compose.yaml"],"destroy":true}`), &cfg); err != nil {
+			t.Fatal(err)
+		}
+
+		if !cfg.Destroy.Enable {
+			t.Fatal("expected destroy.enable to be true")
+		}
+
+		if !cfg.Destroy.RemoveVolumes || !cfg.Destroy.RemoveImages || !cfg.Destroy.RemoveRepoDir {
+			t.Fatalf("expected destroy defaults to stay true, got %+v", cfg.Destroy)
+		}
+	})
+}
+
+func TestDeployConfig_BoolOrObjectRejectsInvalidScalarTypes(t *testing.T) {
+	t.Parallel()
+
+	var cfg DeployConfig
+
+	err := json.Unmarshal([]byte(`{"name":"test","compose_files":["compose.yaml"],"auto_discovery":1}`), &cfg)
+	if err == nil {
+		t.Fatal("expected error for numeric auto_discovery")
+	}
+
+	if !strings.Contains(err.Error(), "cannot unmarshal") {
+		t.Fatalf("expected unmarshal error, got %v", err)
+	}
+
+	var raw struct {
+		AutoDiscovery AutoDiscoveryConfig `yaml:"auto_discovery"`
+	}
+
+	err = yaml.Unmarshal([]byte("auto_discovery: 1\n"), &raw)
+	if err == nil {
+		t.Fatal("expected error for numeric auto_discovery yaml value")
 	}
 }
 
@@ -1427,14 +1655,14 @@ func TestMergeDeployConfig(t *testing.T) {
 			RepositoryUrl: "https://example.com/base.git",
 			GitDepth:      5,
 		}
-		base.AutoDiscoverOpts.ScanDepth = 3
+		base.AutoDiscovery.ScanDepth = 3
 
 		override := &DeployConfig{
 			Reference:     "refs/heads/other",
 			RepositoryUrl: "https://example.com/override.git",
 			GitDepth:      99,
 		}
-		override.AutoDiscoverOpts.ScanDepth = 99
+		override.AutoDiscovery.ScanDepth = 99
 
 		mergeDeployConfig(base, override)
 
@@ -1450,8 +1678,8 @@ func TestMergeDeployConfig(t *testing.T) {
 			t.Errorf("GitDepth should not be overridden, got %d", base.GitDepth)
 		}
 
-		if base.AutoDiscoverOpts.ScanDepth != 3 {
-			t.Errorf("AutoDiscoverOpts.ScanDepth should not be overridden, got %d", base.AutoDiscoverOpts.ScanDepth)
+		if base.AutoDiscovery.ScanDepth != 3 {
+			t.Errorf("AutoDiscovery.ScanDepth should not be overridden, got %d", base.AutoDiscovery.ScanDepth)
 		}
 	})
 
@@ -1508,7 +1736,7 @@ environment:
 	baseConfig := &DeployConfig{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml"},
-		AutoDiscover:     true,
+		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
 		ExternalSecrets: map[string]ExternalSecretRef{
 			"BASE_SECRET": {LegacyRef: "base-ref"},
 		},
@@ -1562,7 +1790,7 @@ func TestAutoDiscoverDeployments_WithNestedConfig_EnvironmentOnly_DoesNotOverrid
 	baseConfig := &DeployConfig{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"test.compose.yaml"},
-		AutoDiscover:     true,
+		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
 		Environment:      map[string]string{"BASE": "root"},
 	}
 
@@ -1626,7 +1854,7 @@ external_secrets:
 	baseConfig := &DeployConfig{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml"},
-		AutoDiscover:     true,
+		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
 	}
 
 	_, err := autoDiscoverDeployments(repoRoot, baseConfig)
@@ -1656,7 +1884,7 @@ func TestAutoDiscoverDeployments_NoNestedConfig_BackwardsCompatible(t *testing.T
 	baseConfig := &DeployConfig{
 		WorkingDirectory: ".",
 		ComposeFiles:     []string{"compose.yaml"},
-		AutoDiscover:     true,
+		AutoDiscovery:    AutoDiscoveryConfig{Enable: true},
 		Timeout:          300,
 	}
 
@@ -1675,5 +1903,172 @@ func TestAutoDiscoverDeployments_NoNestedConfig_BackwardsCompatible(t *testing.T
 
 	if configs[0].Name != "myservice" {
 		t.Errorf("expected name 'myservice', got %q", configs[0].Name)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ReconciliationConfig unmarshaling tests
+// ---------------------------------------------------------------------------
+
+func TestReconciliationConfig_UnmarshalYAML_BooleanTrue(t *testing.T) {
+	t.Parallel()
+
+	yamlStr := `
+name: test-deploy
+reconciliation: true
+`
+
+	var cfg DeployConfig
+
+	err := yaml.Unmarshal([]byte(yamlStr), &cfg)
+	if err != nil {
+		t.Fatalf("failed to unmarshal yaml: %v", err)
+	}
+
+	if !cfg.Reconciliation.Enabled {
+		t.Errorf("expected reconciliation.enabled to be true, got false")
+	}
+
+	// Should have default events
+	if len(cfg.Reconciliation.Events) != 1 || cfg.Reconciliation.Events[0] != "unhealthy" {
+		t.Errorf("expected default event [unhealthy], got %v", cfg.Reconciliation.Events)
+	}
+}
+
+func TestReconciliationConfig_UnmarshalYAML_BooleanFalse(t *testing.T) {
+	t.Parallel()
+
+	yamlStr := `
+name: test-deploy
+reconciliation: false
+`
+
+	var cfg DeployConfig
+
+	err := yaml.Unmarshal([]byte(yamlStr), &cfg)
+	if err != nil {
+		t.Fatalf("failed to unmarshal yaml: %v", err)
+	}
+
+	if cfg.Reconciliation.Enabled {
+		t.Errorf("expected reconciliation.enabled to be false, got true")
+	}
+}
+
+func TestReconciliationConfig_UnmarshalYAML_Object(t *testing.T) {
+	t.Parallel()
+
+	yamlStr := `
+name: test-deploy
+reconciliation:
+  enabled: true
+  restart_timeout: 30
+  restart_signal: SIGQUIT
+  restart_limit: 5
+  restart_window: 300
+  events:
+    - destroy
+    - unhealthy
+`
+
+	var cfg DeployConfig
+
+	err := yaml.Unmarshal([]byte(yamlStr), &cfg)
+	if err != nil {
+		t.Fatalf("failed to unmarshal yaml: %v", err)
+	}
+
+	if !cfg.Reconciliation.Enabled {
+		t.Errorf("expected reconciliation.enabled to be true, got false")
+	}
+
+	if cfg.Reconciliation.RestartTimeout != 30 {
+		t.Errorf("expected restart_timeout 30, got %d", cfg.Reconciliation.RestartTimeout)
+	}
+
+	if cfg.Reconciliation.RestartSignal != "SIGQUIT" {
+		t.Errorf("expected restart_signal SIGQUIT, got %s", cfg.Reconciliation.RestartSignal)
+	}
+
+	if len(cfg.Reconciliation.Events) != 2 {
+		t.Errorf("expected 2 events, got %d", len(cfg.Reconciliation.Events))
+	}
+}
+
+func TestReconciliationConfig_UnmarshalJSON_BooleanTrue(t *testing.T) {
+	t.Parallel()
+
+	jsonStr := `{"name":"test-deploy","reconciliation":true}`
+
+	var cfg DeployConfig
+
+	err := json.Unmarshal([]byte(jsonStr), &cfg)
+	if err != nil {
+		t.Fatalf("failed to unmarshal json: %v", err)
+	}
+
+	if !cfg.Reconciliation.Enabled {
+		t.Errorf("expected reconciliation.enabled to be true, got false")
+	}
+
+	// Should have default events
+	if len(cfg.Reconciliation.Events) != 1 || cfg.Reconciliation.Events[0] != "unhealthy" {
+		t.Errorf("expected default event [unhealthy], got %v", cfg.Reconciliation.Events)
+	}
+}
+
+func TestReconciliationConfig_UnmarshalJSON_BooleanFalse(t *testing.T) {
+	t.Parallel()
+
+	jsonStr := `{"name":"test-deploy","reconciliation":false}`
+
+	var cfg DeployConfig
+
+	err := json.Unmarshal([]byte(jsonStr), &cfg)
+	if err != nil {
+		t.Fatalf("failed to unmarshal json: %v", err)
+	}
+
+	if cfg.Reconciliation.Enabled {
+		t.Errorf("expected reconciliation.enabled to be false, got true")
+	}
+}
+
+func TestReconciliationConfig_UnmarshalJSON_Object(t *testing.T) {
+	t.Parallel()
+
+	jsonStr := `{
+		"name":"test-deploy",
+		"reconciliation":{
+			"enabled":true,
+			"restart_timeout":30,
+			"restart_signal":"SIGQUIT",
+			"restart_limit":5,
+			"restart_window":300,
+			"events":["destroy","unhealthy"]
+		}
+	}`
+
+	var cfg DeployConfig
+
+	err := json.Unmarshal([]byte(jsonStr), &cfg)
+	if err != nil {
+		t.Fatalf("failed to unmarshal json: %v", err)
+	}
+
+	if !cfg.Reconciliation.Enabled {
+		t.Errorf("expected reconciliation.enabled to be true, got false")
+	}
+
+	if cfg.Reconciliation.RestartTimeout != 30 {
+		t.Errorf("expected restart_timeout 30, got %d", cfg.Reconciliation.RestartTimeout)
+	}
+
+	if cfg.Reconciliation.RestartSignal != "SIGQUIT" {
+		t.Errorf("expected restart_signal SIGQUIT, got %s", cfg.Reconciliation.RestartSignal)
+	}
+
+	if len(cfg.Reconciliation.Events) != 2 {
+		t.Errorf("expected 2 events, got %d", len(cfg.Reconciliation.Events))
 	}
 }

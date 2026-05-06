@@ -16,8 +16,8 @@ type docoCdLabelNamesDeployment struct {
 	Trigger              string // Poll or SHA of the commit that triggered the deployment
 	CommitSHA            string // SHA of the commit that is currently deployed
 	ConfigHash           string // SHA256 hash of the deploy-config used during deployment
-	AutoDiscover         string // Whether the deployment was auto-discovered
-	AutoDiscoverDelete   string // Whether auto-discovered deployment is allowed to be deleted
+	AutoDiscovery        string // Whether the deployment was auto-discovered
+	AutoDiscoveryDelete  string // Whether auto-discovered deployment is allowed to be deleted
 	RecreateIgnore       string // Whether the deployment file changes should ignore recreate
 	RecreateIgnoreSignal string // Signal service when deployment file changes and ignore recreate
 }
@@ -50,8 +50,8 @@ var DocoCDLabels = docoCdLabelNames{
 		CommitSHA:            "cd.doco.deployment.target.sha",
 		Trigger:              "cd.doco.deployment.trigger",
 		ConfigHash:           "cd.doco.deployment.config.sha",
-		AutoDiscover:         "cd.doco.deployment.auto_discover",
-		AutoDiscoverDelete:   "cd.doco.deployment.auto_discover.delete",
+		AutoDiscovery:        "cd.doco.deployment.auto_discovery",
+		AutoDiscoveryDelete:  "cd.doco.deployment.auto_discovery.delete",
 		RecreateIgnore:       "cd.doco.deployment.recreate.ignore",
 		RecreateIgnoreSignal: "cd.doco.deployment.recreate.ignore.signal",
 	},
@@ -60,6 +60,19 @@ var DocoCDLabels = docoCdLabelNames{
 		URL:  "cd.doco.repository.url",
 	},
 }
+
+/*
+DeprecatedAutoDiscoverLabel and DeprecatedAutoDiscoverDeleteLabel are the old label names
+kept for backwards-compatible reads. New deployments only write the new labels.
+
+Deprecated: Use DocoCDLabels.Deployment.AutoDiscovery and DocoCDLabels.Deployment.AutoDiscoveryDelete instead.
+
+TODO: Remove in a future release.
+*/
+const (
+	DeprecatedAutoDiscoverLabel       = "cd.doco.deployment.auto_discover"
+	DeprecatedAutoDiscoverDeleteLabel = "cd.doco.deployment.auto_discover.delete"
+)
 
 var docoCDJobLabelNames = struct {
 	JobSchedule string // Schedule of the job (if applicable) in cron format

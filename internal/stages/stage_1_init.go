@@ -132,7 +132,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		maps.Copy(s.DeployConfig.Internal.Environment, s.DeployConfig.Environment)
 	}
 
-	if s.DeployConfig.Destroy {
+	if s.DeployConfig.Destroy.Enable {
 		// Skip deployment if another project with the same name already exists
 		// Check if containers do not belong to this repository or if doco-cd does not manage the stack
 		correctRepo := true
