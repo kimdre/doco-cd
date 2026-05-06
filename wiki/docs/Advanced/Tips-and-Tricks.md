@@ -40,4 +40,4 @@ Some Tips and Tricks for using application.
     but the volumes, configs, secrets, and networks will still exist.
 
     !!! tip
-        To delete volumes, networks, and images, you can use the `destroy` option in the deployment configuration file (See [Destroy settings](../Deploy-Settings.md#destroy-settings)).
+        To delete volumes, networks, and images, you can use `destroy: true` for the default destructive cleanup behavior, or the full `destroy` object for custom removal options (See [Destroy settings](../Deploy-Settings.md#destroy-settings)).

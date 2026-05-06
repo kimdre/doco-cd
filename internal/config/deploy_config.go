@@ -3,6 +3,7 @@ package config
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -55,6 +56,57 @@ type AutoDiscoveryConfig struct {
 	Delete    bool `yaml:"delete" json:"delete" default:"true"`  // Delete removes obsolete auto-discovered deployments that are no longer present in the repository
 }
 
+func (c *AutoDiscoveryConfig) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		var enabled bool
+		if err := node.Decode(&enabled); err != nil {
+			return errors.New("invalid auto_discovery value: expected bool or object")
+		}
+
+		c.Enable = enabled
+
+		return nil
+	case yaml.MappingNode:
+		type plain AutoDiscoveryConfig
+
+		decoded := plain(*c)
+		if err := node.Decode(&decoded); err != nil {
+			return err
+		}
+
+		*c = AutoDiscoveryConfig(decoded)
+
+		return nil
+	default:
+		return errors.New("invalid auto_discovery value: expected bool or object")
+	}
+}
+
+func (c *AutoDiscoveryConfig) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(bytes.TrimSpace(data), []byte("true")) || bytes.Equal(bytes.TrimSpace(data), []byte("false")) {
+		var enabled bool
+		if err := json.Unmarshal(data, &enabled); err != nil {
+			return errors.New("invalid auto_discovery value: expected bool or object")
+		}
+
+		c.Enable = enabled
+
+		return nil
+	}
+
+	type plain AutoDiscoveryConfig
+
+	decoded := plain(*c)
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+
+	*c = AutoDiscoveryConfig(decoded)
+
+	return nil
+}
+
 // BuildConfig holds build options for a deployment.
 type BuildConfig struct {
 	ForceImagePull bool              `yaml:"force_image_pull" json:"force_image_pull" default:"false"` // ForceImagePull always attempt to pull a newer version of the image
@@ -71,6 +123,57 @@ type DestroyConfig struct {
 	RemoveRepoDir bool `yaml:"remove_dir" json:"remove_dir" default:"true"`         // RemoveRepoDir removes the repository directory after the deployment is destroyed
 }
 
+func (c *DestroyConfig) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		var enabled bool
+		if err := node.Decode(&enabled); err != nil {
+			return errors.New("invalid destroy value: expected bool or object")
+		}
+
+		c.Enable = enabled
+
+		return nil
+	case yaml.MappingNode:
+		type plain DestroyConfig
+
+		decoded := plain(*c)
+		if err := node.Decode(&decoded); err != nil {
+			return err
+		}
+
+		*c = DestroyConfig(decoded)
+
+		return nil
+	default:
+		return errors.New("invalid destroy value: expected bool or object")
+	}
+}
+
+func (c *DestroyConfig) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(bytes.TrimSpace(data), []byte("true")) || bytes.Equal(bytes.TrimSpace(data), []byte("false")) {
+		var enabled bool
+		if err := json.Unmarshal(data, &enabled); err != nil {
+			return errors.New("invalid destroy value: expected bool or object")
+		}
+
+		c.Enable = enabled
+
+		return nil
+	}
+
+	type plain DestroyConfig
+
+	decoded := plain(*c)
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+
+	*c = DestroyConfig(decoded)
+
+	return nil
+}
+
 // ReconciliationConfig holds settings for the reconciliation feature.
 type ReconciliationConfig struct {
 	Enabled        bool     `yaml:"enabled" json:"enabled" default:"true"`               // Enabled enables the reconciliation feature
@@ -79,6 +182,57 @@ type ReconciliationConfig struct {
 	RestartSignal  string   `yaml:"restart_signal" json:"restart_signal" default:""`     // RestartSignal is the signal sent to stop containers during a restart. If not set, the default of the Docker daemon is used (SIGTERM).
 	RestartLimit   int      `yaml:"restart_limit" json:"restart_limit" default:"5"`      // RestartLimit suppresses further unhealthy-triggered restarts after this many restarts in the configured window. Set to 0 to disable suppression.
 	RestartWindow  int      `yaml:"restart_window" json:"restart_window" default:"300"`  // RestartWindow is the time window in seconds used with RestartLimit.
+}
+
+func (c *ReconciliationConfig) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		var enabled bool
+		if err := node.Decode(&enabled); err != nil {
+			return errors.New("invalid reconciliation value: expected bool or object")
+		}
+
+		c.Enabled = enabled
+
+		return nil
+	case yaml.MappingNode:
+		type plain ReconciliationConfig
+
+		decoded := plain(*c)
+		if err := node.Decode(&decoded); err != nil {
+			return err
+		}
+
+		*c = ReconciliationConfig(decoded)
+
+		return nil
+	default:
+		return errors.New("invalid reconciliation value: expected bool or object")
+	}
+}
+
+func (c *ReconciliationConfig) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(bytes.TrimSpace(data), []byte("true")) || bytes.Equal(bytes.TrimSpace(data), []byte("false")) {
+		var enabled bool
+		if err := json.Unmarshal(data, &enabled); err != nil {
+			return errors.New("invalid reconciliation value: expected bool or object")
+		}
+
+		c.Enabled = enabled
+
+		return nil
+	}
+
+	type plain ReconciliationConfig
+
+	decoded := plain(*c)
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+
+	*c = ReconciliationConfig(decoded)
+
+	return nil
 }
 
 // DeployConfig is the structure of the deployment configuration file.
@@ -96,7 +250,7 @@ type DeployConfig struct {
 	ForceRecreate      bool                         `yaml:"force_recreate" json:"force_recreate" default:"false" doco:"allowOverride"`                                                                              // ForceRecreate forces the recreation/redeployment of containers even if the configuration has not changed
 	ForceImagePull     bool                         `yaml:"force_image_pull" json:"force_image_pull" default:"false" doco:"allowOverride"`                                                                          // ForceImagePull always pulls the latest version of the image tags you've specified if a newer version is available
 	Timeout            int                          `yaml:"timeout" json:"timeout" default:"180" doco:"allowOverride"`                                                                                              // Timeout is the time in seconds to wait for the deployment to finish before timing out
-	BuildOpts          BuildConfig                  `yaml:"build_opts" doco:"allowOverride"`                                                                                                                        // BuildOpts is the build options for the deployment
+	BuildOpts          BuildConfig                  `yaml:"build" json:"build" doco:"allowOverride"`                                                                                                                // BuildOpts is the build options for the deployment
 	GitDepth           int                          `yaml:"git_depth" json:"git_depth" default:"0"`                                                                                                                 // GitDepth limits the number of commits to fetch. 0 means use global GIT_CLONE_DEPTH. A positive value overrides the global setting.
 	Destroy            DestroyConfig                `yaml:"destroy" json:"destroy" doco:"allowOverride"`                                                                                                            // Destroy configures destruction of the deployment and related resources
 	Profiles           []string                     `yaml:"profiles" json:"profiles" default:"[]" doco:"allowOverride"`                                                                                             // Profiles is a list of profiles to use for the deployment, e.g., ["dev", "prod"]. See https://docs.docker.com/compose/how-tos/profiles/
@@ -255,6 +409,21 @@ func (c *DeployConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	type Plain DeployConfig
 
 	if err := unmarshal((*Plain)(c)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *DeployConfig) UnmarshalJSON(data []byte) error {
+	err := defaults.Set(c)
+	if err != nil {
+		return err
+	}
+
+	type Plain DeployConfig
+
+	if err := json.Unmarshal(data, (*Plain)(c)); err != nil {
 		return err
 	}
 
