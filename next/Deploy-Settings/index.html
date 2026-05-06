@@ -2859,7 +2859,7 @@ When an app is no longer available in the <code>working_dir</code> (e.g. deleted
 <tr>
 <td><code>remove_dir</code></td>
 <td>boolean</td>
-<td>Remove the cloned repository in the data directory after the deployment is removed (Setting this to <code>false</code> is useful e.g. when you use bind mounts and want to keep the data)</td>
+<td>Remove the cloned repository in the data directory after the deployment is removed (Setting this to <code>false</code> is useful e.g. when you use bind mounts with relative paths and want to keep the data or if you have multiple services in the same repo and only wish to destroy one)</td>
 <td><code>true</code></td>
 </tr>
 </tbody>
