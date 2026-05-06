@@ -36,105 +36,116 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 
 	var processedStacks []string
 
-	// Query containers using the new label; fall back to the deprecated label for containers
-	// deployed before the label rename. The deprecated label support will be removed in a future version.
-	serviceLabels, err := docker.GetLabeledServices(ctx, dockerCli.Client(), docker.DocoCDLabels.Deployment.AutoDiscovery, "true")
+	// Query both new and deprecated labels. We keep reading the deprecated label to
+	// handle containers deployed before the label rename.
+	newServiceLabels, err := docker.GetLabeledServices(ctx, dockerCli.Client(), docker.DocoCDLabels.Deployment.AutoDiscovery, "true")
 	if err != nil {
-		// Fallback: try the deprecated label name
-		serviceLabels, err = docker.GetLabeledServices(ctx, dockerCli.Client(), docker.DeprecatedAutoDiscoverLabel, "true") //nolint:staticcheck // fallback for pre-rename containers
-		if err == nil && len(serviceLabels) > 0 {
-			jobLog.Warn("found containers with deprecated label, please recreate them to migrate to the new label",
-				slog.String("deprecated_label", docker.DeprecatedAutoDiscoverLabel), //nolint:staticcheck // include deprecated label key in warning for migration clarity
-				slog.String("new_label", docker.DocoCDLabels.Deployment.AutoDiscovery),
-			)
-		}
+		return fmt.Errorf("failed to retrieve containers for auto-discovery cleanup: %w", err)
 	}
 
-	if err == nil {
-		for _, labels := range serviceLabels {
-			stackName := labels[docker.DocoCDLabels.Deployment.Name]
-
-			// Skip container if it has already been removed in this cleanup run
-			if slices.Contains(processedStacks, stackName) {
-				continue
-			}
-
-			stackLog := jobLog.With(slog.String("stack", stackName))
-
-			labelUrl := labels[docker.DocoCDLabels.Repository.URL]
-
-			// cloneUrl may not be in the same format as labelUrl
-			//  (e.g., "https://github.com/kimdre/doco-cd.git" vs. "https://github.com/kimdre/doco-cd")
-			// or my different protocols (e.g., "ssh://git@github.com/kimdre/doco-cd.git" vs. "https://github.com/kimdre/doco-cd")
-			cloneUrlRepoName := git.GetRepoName(cloneUrl)
-			labelUrlRepoName := git.GetRepoName(labelUrl)
-
-			match := cloneUrlRepoName == labelUrlRepoName
-
-			stackLog.Debug("checking auto-discovered stack for repository match",
-				slog.Group("repo_url",
-					slog.String("clone_url", cloneUrl),
-					slog.String("clone_url_repo_name", cloneUrlRepoName),
-					slog.String("label_url", labelUrl),
-					slog.String("label_url_repo_name", labelUrlRepoName),
-				),
-				slog.Bool("match", match),
-			)
-
-			if match {
-				stackLog.Debug("checking auto-discovered stack for obsolescence")
-
-				if _, found := autoDiscoveredNames[stackName]; !found {
-					autoDiscoverDelete := labels[docker.DocoCDLabels.Deployment.AutoDiscoveryDelete]
-					if autoDiscoverDelete == "" {
-						// Fall back to deprecated label
-						autoDiscoverDelete = labels[docker.DeprecatedAutoDiscoverDeleteLabel] //nolint:staticcheck // fallback for pre-rename containers
-					}
-
-					if autoDiscoverDelete == "" {
-						autoDiscoverDelete = "true" // Default to true if label is missing
-					}
-
-					deleteEnabled, err := strconv.ParseBool(autoDiscoverDelete)
-					if err != nil {
-						return err
-					}
-
-					if !deleteEnabled {
-						stackLog.Debug("skipping removal of obsolete auto-discovered stack as per configuration")
-
-						processedStacks = append(processedStacks, stackName)
-
-						continue
-					}
-
-					stackLog.Info("removing obsolete auto-discovered stack")
-
-					removeConfig := &config.DeployConfig{Name: stackName}
-					removeConfig.Destroy.Enable = true
-					removeConfig.Destroy.RemoveVolumes = true
-					removeConfig.Destroy.RemoveImages = true
-					removeConfig.Destroy.RemoveRepoDir = false // Do not remove repo dir for auto-discovered stacks
-
-					err = docker.DestroyStack(jobLog, &ctx, &dockerCli, removeConfig)
-					if err != nil {
-						return fmt.Errorf("failed to remove obsolete auto-discovered stack '%s': %w", stackName, err)
-					}
-
-					err = notification.Send(notification.Success, "Stack destroyed", "successfully destroyed stack "+removeConfig.Name, metadata)
-					if err != nil {
-						stackLog.Error("failed to send notification", logger.ErrAttr(err))
-					}
-
-					stackLog.Info("removed obsolete auto-discovered stack", slog.String("stack", stackName))
-					processedStacks = append(processedStacks, stackName)
-				}
-			} else {
-				stackLog.Debug("skipping auto-discovered stack as it belongs to a different repository")
-			}
-		}
-	} else {
+	deprecatedServiceLabels, err := docker.GetLabeledServices(ctx, dockerCli.Client(), docker.DeprecatedAutoDiscoverLabel, "true") //nolint:staticcheck // fallback for pre-rename containers
+	if err != nil {
 		return fmt.Errorf("failed to retrieve containers for auto-discovery cleanup: %w", err)
+	}
+
+	if len(deprecatedServiceLabels) > 0 {
+		jobLog.Warn("found containers with deprecated label, please recreate them to migrate to the new label",
+			slog.String("deprecated_label", docker.DeprecatedAutoDiscoverLabel), //nolint:staticcheck // include deprecated label key in warning for migration clarity
+			slog.String("new_label", docker.DocoCDLabels.Deployment.AutoDiscovery),
+		)
+	}
+
+	// Merge label maps and prefer the new label set when a service appears in both.
+	serviceLabels := make(map[docker.Service]map[string]string, len(deprecatedServiceLabels)+len(newServiceLabels))
+	for service, labels := range deprecatedServiceLabels {
+		serviceLabels[service] = labels
+	}
+
+	for service, labels := range newServiceLabels {
+		serviceLabels[service] = labels
+	}
+
+	for _, labels := range serviceLabels {
+		stackName := labels[docker.DocoCDLabels.Deployment.Name]
+
+		// Skip container if it has already been removed in this cleanup run
+		if slices.Contains(processedStacks, stackName) {
+			continue
+		}
+
+		stackLog := jobLog.With(slog.String("stack", stackName))
+
+		labelUrl := labels[docker.DocoCDLabels.Repository.URL]
+
+		// cloneUrl may not be in the same format as labelUrl
+		//  (e.g., "https://github.com/kimdre/doco-cd.git" vs. "https://github.com/kimdre/doco-cd")
+		// or my different protocols (e.g., "ssh://git@github.com/kimdre/doco-cd.git" vs. "https://github.com/kimdre/doco-cd")
+		cloneUrlRepoName := git.GetRepoName(cloneUrl)
+		labelUrlRepoName := git.GetRepoName(labelUrl)
+
+		match := cloneUrlRepoName == labelUrlRepoName
+
+		stackLog.Debug("checking auto-discovered stack for repository match",
+			slog.Group("repo_url",
+				slog.String("clone_url", cloneUrl),
+				slog.String("clone_url_repo_name", cloneUrlRepoName),
+				slog.String("label_url", labelUrl),
+				slog.String("label_url_repo_name", labelUrlRepoName),
+			),
+			slog.Bool("match", match),
+		)
+
+		if match {
+			stackLog.Debug("checking auto-discovered stack for obsolescence")
+
+			if _, found := autoDiscoveredNames[stackName]; !found {
+				autoDiscoverDelete := labels[docker.DocoCDLabels.Deployment.AutoDiscoveryDelete]
+				if autoDiscoverDelete == "" {
+					// Fall back to deprecated label
+					autoDiscoverDelete = labels[docker.DeprecatedAutoDiscoverDeleteLabel] //nolint:staticcheck // fallback for pre-rename containers
+				}
+
+				if autoDiscoverDelete == "" {
+					autoDiscoverDelete = "true" // Default to true if label is missing
+				}
+
+				deleteEnabled, err := strconv.ParseBool(autoDiscoverDelete)
+				if err != nil {
+					return err
+				}
+
+				if !deleteEnabled {
+					stackLog.Debug("skipping removal of obsolete auto-discovered stack as per configuration")
+
+					processedStacks = append(processedStacks, stackName)
+
+					continue
+				}
+
+				stackLog.Info("removing obsolete auto-discovered stack")
+
+				removeConfig := &config.DeployConfig{Name: stackName}
+				removeConfig.Destroy.Enable = true
+				removeConfig.Destroy.RemoveVolumes = true
+				removeConfig.Destroy.RemoveImages = true
+				removeConfig.Destroy.RemoveRepoDir = false // Do not remove repo dir for auto-discovered stacks
+
+				err = docker.DestroyStack(jobLog, &ctx, &dockerCli, removeConfig)
+				if err != nil {
+					return fmt.Errorf("failed to remove obsolete auto-discovered stack '%s': %w", stackName, err)
+				}
+
+				err = notification.Send(notification.Success, "Stack destroyed", "successfully destroyed stack "+removeConfig.Name, metadata)
+				if err != nil {
+					stackLog.Error("failed to send notification", logger.ErrAttr(err))
+				}
+
+				stackLog.Info("removed obsolete auto-discovered stack", slog.String("stack", stackName))
+				processedStacks = append(processedStacks, stackName)
+			}
+		} else {
+			stackLog.Debug("skipping auto-discovered stack as it belongs to a different repository")
+		}
 	}
 
 	return nil
