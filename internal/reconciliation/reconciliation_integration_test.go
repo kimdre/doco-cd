@@ -13,6 +13,9 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/config"
+
+	"github.com/kimdre/doco-cd/internal/config/app"
+	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
 	dockerSwarm "github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/logger"
@@ -146,7 +149,7 @@ func TestReconciliationStopEventRestartSuppressionIntegration(t *testing.T) {
 		internaltest.WithYAML(restartMarkerComposeYAML()),
 		internaltest.WithWaitTimeout(90*time.Second),
 		internaltest.WithCustomLabel(map[string]string{
-			docker.DocoCDLabels.Metadata.Manager:     config.AppName,
+			docker.DocoCDLabels.Metadata.Manager:     app.Name,
 			docker.DocoCDLabels.Repository.Name:      repositoryName,
 			docker.DocoCDLabels.Deployment.Name:      stackName,
 			docker.DocoCDLabels.Deployment.TargetRef: "main",
@@ -156,7 +159,7 @@ func TestReconciliationStopEventRestartSuppressionIntegration(t *testing.T) {
 	logSince := time.Now().Add(-2 * time.Second)
 	waitForBootMarkerCount(ctx, t, stack, logSince, 1, 20*time.Second)
 
-	dc := config.DefaultDeployConfig(stackName, "main")
+	dc := deployConfig.New(stackName, "main")
 	dc.Reconciliation.Enabled = true
 	dc.Reconciliation.Events = []string{"stop"}
 	dc.Reconciliation.RestartTimeout = 1
@@ -168,8 +171,8 @@ func TestReconciliationStopEventRestartSuppressionIntegration(t *testing.T) {
 		metadata:      notification.Metadata{Repository: repositoryName, Stack: stackName, JobID: "test-job"},
 		repoData:      stages.RepositoryData{CloneURL: config.HttpUrl("https://github.com/kimdre/doco-cd_tests.git"), Name: repositoryName},
 		payload:       &webhook.ParsedPayload{FullName: repositoryName},
-		deployConfigs: []*config.DeployConfig{dc},
-	}, getDeployConfigGroupByEvent([]*config.DeployConfig{dc}))
+		deployConfigs: []*deployConfig.Config{dc},
+	}, getDeployConfigGroupByEvent([]*deployConfig.Config{dc}))
 
 	runCtx, cancel := context.WithCancel(ctx)
 

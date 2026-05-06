@@ -9,7 +9,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/config/app"
 )
 
 // TestServe tests the metrics endpoint serving functionality.
@@ -19,7 +19,7 @@ func TestServe(t *testing.T) {
 	expectedStatusCode := 200
 	expectedContentType := "text/plain; version=0.0.4; charset=utf-8; escaping=underscores"
 
-	appConfig, err := config.GetAppConfig()
+	appConfig, err := app.GetConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
 	}

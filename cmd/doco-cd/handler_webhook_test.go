@@ -21,13 +21,14 @@ import (
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/config/app"
+
 	"github.com/kimdre/doco-cd/internal/git"
 
 	"github.com/kimdre/doco-cd/internal/test"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 
-	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/logger"
@@ -45,7 +46,7 @@ const (
 `
 )
 
-func newWebhookRequest(t *testing.T, url string, payload []byte, appConfig *config.AppConfig) *http.Request {
+func newWebhookRequest(t *testing.T, url string, payload []byte, appConfig *app.Config) *http.Request {
 	t.Helper()
 
 	req, err := http.NewRequest("POST", url, bytes.NewReader(payload))
@@ -109,7 +110,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	appConfig, err := config.GetAppConfig()
+	appConfig, err := app.GetConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +134,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	h := handlerData{
 		dockerCli:  dockerCli,
 		appConfig:  appConfig,
-		appVersion: config.AppVersion,
+		appVersion: app.Version,
 		dataMountPoint: container.MountPoint{
 			Type:        "bind",
 			Source:      tmpDir,
@@ -310,7 +311,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 func TestWebhookHandler_WaitQueryParam(t *testing.T) {
 	encryption.SetupAgeKeyEnvVar(t)
 
-	appConfig, err := config.GetAppConfig()
+	appConfig, err := app.GetConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +320,7 @@ func TestWebhookHandler_WaitQueryParam(t *testing.T) {
 
 	h := handlerData{
 		appConfig:  appConfig,
-		appVersion: config.AppVersion,
+		appVersion: app.Version,
 		dataMountPoint: container.MountPoint{
 			Type:        "bind",
 			Source:      t.TempDir(),

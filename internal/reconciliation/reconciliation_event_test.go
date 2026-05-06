@@ -9,7 +9,8 @@ import (
 
 	"github.com/moby/moby/api/types/events"
 
-	"github.com/kimdre/doco-cd/internal/config"
+	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
+
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -18,19 +19,19 @@ import (
 func TestGetDeployConfigGroupByEvent(t *testing.T) {
 	t.Parallel()
 
-	dc1 := config.DefaultDeployConfig("stack-1", "main")
+	dc1 := deployConfig.New("stack-1", "main")
 	dc1.Reconciliation.Enabled = true
 	dc1.Reconciliation.Events = []string{"die", "destroy"}
 
-	dc2 := config.DefaultDeployConfig("stack-2", "main")
+	dc2 := deployConfig.New("stack-2", "main")
 	dc2.Reconciliation.Enabled = true
 	dc2.Reconciliation.Events = []string{"unhealthy"}
 
-	dc3 := config.DefaultDeployConfig("stack-3", "main")
+	dc3 := deployConfig.New("stack-3", "main")
 	dc3.Reconciliation.Enabled = false
 	dc3.Reconciliation.Events = []string{"die"}
 
-	grouped := getDeployConfigGroupByEvent([]*config.DeployConfig{dc1, dc2, dc3})
+	grouped := getDeployConfigGroupByEvent([]*deployConfig.Config{dc1, dc2, dc3})
 
 	if len(grouped["die"]) != 1 || grouped["die"][0].Name != "stack-1" {
 		t.Fatalf("expected die event to include only stack-1, got %#v", grouped["die"])
@@ -309,12 +310,12 @@ func TestEvaluateUnhealthyRestartLimit(t *testing.T) {
 func TestCloneDeployConfigsWithForcedRecreate(t *testing.T) {
 	t.Parallel()
 
-	dc1 := config.DefaultDeployConfig("stack-a", "main")
+	dc1 := deployConfig.New("stack-a", "main")
 	dc1.ForceRecreate = false
-	dc2 := config.DefaultDeployConfig("stack-b", "main")
+	dc2 := deployConfig.New("stack-b", "main")
 	dc2.ForceRecreate = false
 
-	cloned := cloneDeployConfigsWithForcedRecreate([]*config.DeployConfig{dc1, dc2})
+	cloned := cloneDeployConfigsWithForcedRecreate([]*deployConfig.Config{dc1, dc2})
 
 	if len(cloned) != 2 {
 		t.Fatalf("expected 2 cloned deploy configs, got %d", len(cloned))
@@ -373,7 +374,7 @@ func TestRestartOptionsFromDeployConfig(t *testing.T) {
 	t.Run("from deploy config takes priority", func(t *testing.T) {
 		t.Parallel()
 
-		dc := config.DefaultDeployConfig("stack-a", "main")
+		dc := deployConfig.New("stack-a", "main")
 		dc.Reconciliation.RestartTimeout = 30
 		dc.Reconciliation.RestartSignal = "SIGQUIT"
 
@@ -445,17 +446,17 @@ func TestSelectRestartDeployConfig(t *testing.T) {
 		t.Fatalf("expected nil for empty deploy config list, got %#v", got)
 	}
 
-	dc1 := config.DefaultDeployConfig("stack-a", "main")
+	dc1 := deployConfig.New("stack-a", "main")
 	dc1.Internal.Hash = "hash-a"
-	dc2 := config.DefaultDeployConfig("stack-b", "main")
+	dc2 := deployConfig.New("stack-b", "main")
 	dc2.Internal.Hash = "hash-b"
 
-	got := selectRestartDeployConfig([]*config.DeployConfig{nil, dc1, dc2}, nil)
+	got := selectRestartDeployConfig([]*deployConfig.Config{nil, dc1, dc2}, nil)
 	if got != dc1 {
 		t.Fatalf("expected first non-nil deploy config to be selected")
 	}
 
-	got = selectRestartDeployConfig([]*config.DeployConfig{dc1, dc2}, map[string]string{
+	got = selectRestartDeployConfig([]*deployConfig.Config{dc1, dc2}, map[string]string{
 		docker.DocoCDLabels.Deployment.ConfigHash: "hash-b",
 	})
 	if got != dc2 {
@@ -560,9 +561,9 @@ func TestShouldSuppressRestartFollowupEvent_NonFollowupAction(t *testing.T) {
 func TestStackNameFromEvent(t *testing.T) {
 	t.Parallel()
 
-	candidates := []*config.DeployConfig{
-		config.DefaultDeployConfig("stack-a", "main"),
-		config.DefaultDeployConfig("stack-b", "main"),
+	candidates := []*deployConfig.Config{
+		deployConfig.New("stack-a", "main"),
+		deployConfig.New("stack-b", "main"),
 	}
 
 	tests := []struct {
@@ -643,11 +644,11 @@ func TestStackNameFromEvent(t *testing.T) {
 func TestDeployConfigsByName(t *testing.T) {
 	t.Parallel()
 
-	dc1 := config.DefaultDeployConfig("stack-a", "main")
-	dc2 := config.DefaultDeployConfig("stack-b", "main")
-	dc3 := config.DefaultDeployConfig("stack-a", "main")
+	dc1 := deployConfig.New("stack-a", "main")
+	dc2 := deployConfig.New("stack-b", "main")
+	dc3 := deployConfig.New("stack-a", "main")
 
-	got := deployConfigsByName([]*config.DeployConfig{dc1, dc2, dc3}, "stack-a")
+	got := deployConfigsByName([]*deployConfig.Config{dc1, dc2, dc3}, "stack-a")
 
 	if len(got) != 2 {
 		t.Fatalf("expected 2 deploy configs, got %d", len(got))
@@ -661,12 +662,12 @@ func TestDeployConfigsByName(t *testing.T) {
 func TestUniqueRedeployDCsFromGroupByEvent(t *testing.T) {
 	t.Parallel()
 
-	dcDie := config.DefaultDeployConfig("stack-die", "main")
-	dcDestroy := config.DefaultDeployConfig("stack-destroy", "main")
-	dcBoth := config.DefaultDeployConfig("stack-both", "main")       // registered under two redeploy events
-	dcRestart := config.DefaultDeployConfig("stack-restart", "main") // only restart events → must be excluded
+	dcDie := deployConfig.New("stack-die", "main")
+	dcDestroy := deployConfig.New("stack-destroy", "main")
+	dcBoth := deployConfig.New("stack-both", "main")       // registered under two redeploy events
+	dcRestart := deployConfig.New("stack-restart", "main") // only restart events → must be excluded
 
-	grouped := map[string][]*config.DeployConfig{
+	grouped := map[string][]*deployConfig.Config{
 		"die":       {dcDie, dcBoth},
 		"destroy":   {dcDestroy, dcBoth}, // dcBoth appears again — must be deduplicated
 		"unhealthy": {dcRestart},         // restart-oriented — must be excluded
@@ -699,9 +700,9 @@ func TestUniqueRedeployDCsFromGroupByEvent(t *testing.T) {
 func TestUniqueRedeployDCsFromGroupByEvent_EmptyWhenOnlyRestartEvents(t *testing.T) {
 	t.Parallel()
 
-	dc := config.DefaultDeployConfig("stack-a", "main")
+	dc := deployConfig.New("stack-a", "main")
 
-	grouped := map[string][]*config.DeployConfig{
+	grouped := map[string][]*deployConfig.Config{
 		"unhealthy": {dc},
 		"oom":       {dc},
 		"kill":      {dc},
@@ -717,7 +718,7 @@ func TestUniqueRedeployDCsFromGroupByEvent_EmptyWhenOnlyRestartEvents(t *testing
 func TestUniqueRedeployDCsFromGroupByEvent_EmptyInput(t *testing.T) {
 	t.Parallel()
 
-	got := uniqueRedeployDCsFromGroupByEvent(map[string][]*config.DeployConfig{})
+	got := uniqueRedeployDCsFromGroupByEvent(map[string][]*deployConfig.Config{})
 	if len(got) != 0 {
 		t.Fatalf("expected empty result for empty input, got %d", len(got))
 	}

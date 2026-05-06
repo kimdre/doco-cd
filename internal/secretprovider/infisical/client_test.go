@@ -3,14 +3,14 @@ package infisical
 import (
 	"testing"
 
-	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/config/app"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
 
 func skipWrongProvider(t *testing.T) {
 	t.Helper()
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatalf("unable to get app config: %v", err)
 	}

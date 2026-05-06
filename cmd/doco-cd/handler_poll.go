@@ -9,12 +9,14 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/moby/moby/api/types/container"
 
+	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/poll"
+
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/stages"
 
-	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/git"
 	log "github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/prometheus"
@@ -23,31 +25,31 @@ import (
 )
 
 // StartPoll initializes PollJob with the provided configuration and starts the PollHandler goroutine.
-func StartPoll(ctx context.Context, h *handlerData, pollConfig config.PollConfig, wg *sync.WaitGroup) error {
+func StartPoll(ctx context.Context, h *handlerData, pollConfig poll.Config, wg *sync.WaitGroup) error {
 	if pollConfig.Interval == 0 && !pollConfig.RunOnce {
-		h.log.Info("polling job disabled by config", "config", pollConfig)
+		h.log.Info("polling job disabled by config", "config", &pollConfig)
 
 		return nil
 	}
 
-	pollJob := &config.PollJob{
+	pollJob := &poll.Job{
 		Config:  pollConfig,
 		LastRun: 0,
 		NextRun: 0,
 	}
 
-	h.log.Debug("Starting poll handler", "config", pollConfig)
+	h.log.Debug("Starting poll handler", "config", &pollConfig)
 
 	wg.Go(func() {
 		h.PollHandler(ctx, pollJob)
-		h.log.Debug("PollJob handler stopped", "config", pollConfig)
+		h.log.Debug("PollJob handler stopped", "config", &pollConfig)
 	})
 
 	return nil
 }
 
 // PollHandler is a function that handles polling for changes in a repository.
-func (h *handlerData) PollHandler(ctx context.Context, pollJob *config.PollJob) {
+func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 	repoName := git.GetRepoName(string(pollJob.Config.CloneUrl))
 
 	logger := h.log.With(slog.String("repository", repoName))
@@ -122,7 +124,7 @@ func pollError(jobLog *slog.Logger, metadata notification.Metadata, err error) {
 }
 
 // RunPoll deploys compose projects based on the provided configuration.
-func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *config.AppConfig, dataMountPoint container.MountPoint,
+func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config, dataMountPoint container.MountPoint,
 	dockerCli command.Cli, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
 ) error {
 	startTime := time.Now()
@@ -137,7 +139,7 @@ func RunPoll(ctx context.Context, pollConfig config.PollConfig, appConfig *confi
 	jobLog.Info("polling repository",
 		slog.Group("trigger",
 			slog.String("event", string(stages.JobTriggerPoll)),
-			slog.Any("config", pollConfig)))
+			slog.Any("config", &pollConfig)))
 
 	deployErr := handle(ctx, jobLog,
 		appConfig, dataMountPoint, secretProvider, dockerCli,

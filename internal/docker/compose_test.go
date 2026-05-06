@@ -18,6 +18,10 @@ import (
 
 	"github.com/avast/retry-go/v5"
 
+	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/deploy"
+	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
+
 	"github.com/kimdre/doco-cd/internal/test"
 	"github.com/kimdre/doco-cd/internal/utils/id"
 
@@ -33,7 +37,6 @@ import (
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
 
-	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
@@ -130,7 +133,7 @@ func TestDeployCompose(t *testing.T) {
 
 	ctx := context.Background()
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +238,7 @@ compose_files:
 		t.Fatal(err)
 	}
 
-	deployConfigs, err := config.GetDeployConfigs(tmpDir, c.DeployConfigBaseDir, stackName, customTarget, p.Ref)
+	deployConfigs, err := deploy.GetConfigs(tmpDir, c.DeployConfigBaseDir, stackName, customTarget, p.Ref, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +272,7 @@ compose_files:
 		jobLog := testLog.With(slog.String("job_id", jobID))
 
 		if secretProvider != nil && len(deployConf.ExternalSecrets) > 0 {
-			encodedSecrets, err := config.EncodeExternalSecretRefs(deployConf.ExternalSecrets)
+			encodedSecrets, err := secrettypes.EncodeExternalSecretRefs(deployConf.ExternalSecrets)
 			if err != nil {
 				t.Fatalf("failed to encode external secret references: %s", err.Error())
 			}
@@ -1462,7 +1465,7 @@ func TestProjectFilesHaveChanges(t *testing.T) {
 		},
 	}
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
@@ -1492,7 +1495,7 @@ func TestProjectFilesHaveChanges(t *testing.T) {
 				t.Fatalf("Failed to checkout old commit: %v", err)
 			}
 
-			deployConfigs, err := config.GetDeployConfigs(tmpDir, ".", t.Name(), "", "")
+			deployConfigs, err := deploy.GetConfigs(tmpDir, ".", t.Name(), "", "", nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1793,7 +1796,7 @@ func TestInjectSecretsToProject(t *testing.T) {
 	filePath := filepath.Join(tmpDir, "test.compose.yaml")
 	createComposeFile(t, filePath, composeContents)
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1888,7 +1891,7 @@ func TestRestartProject(t *testing.T) {
 
 	test.ComposeUp(ctx, t, test.WithYAML(generateComposeContents()))
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1913,7 +1916,7 @@ func TestStopProject(t *testing.T) {
 
 	test.ComposeUp(ctx, t, test.WithYAML(generateComposeContents()))
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1938,7 +1941,7 @@ func TestStartProject(t *testing.T) {
 
 	test.ComposeUp(ctx, t, test.WithYAML(generateComposeContents()))
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1973,7 +1976,7 @@ func TestRemoveProject(t *testing.T) {
 
 	test.ComposeUp(ctx, t, test.WithYAML(generateComposeContents()))
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2009,7 +2012,7 @@ func TestGetProject(t *testing.T) {
 
 	test.ComposeUp(ctx, t, test.WithYAML(generateComposeContents()))
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2038,7 +2041,7 @@ func TestGetProjects(t *testing.T) {
 
 	test.ComposeUp(ctx, t, test.WithYAML(generateComposeContents()))
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatal(err)
 	}

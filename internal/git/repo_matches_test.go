@@ -3,7 +3,7 @@ package git_test
 import (
 	"testing"
 
-	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/git"
 )
 
@@ -21,7 +21,7 @@ func TestMatchesHead(t *testing.T) {
 		{"matches commit SHA", "a6e74091c5bb5913c0daff4d3fc8c1d1b2ad826b"},
 	}
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestMatchesHead(t *testing.T) {
 func TestMatchesHead_AfterCheckoutToDifferentBranch(t *testing.T) {
 	t.Parallel()
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
 	}

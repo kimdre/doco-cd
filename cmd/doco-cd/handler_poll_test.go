@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
@@ -17,7 +19,6 @@ import (
 	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/api/types/container"
 
-	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/logger"
@@ -29,7 +30,7 @@ func TestRunPoll(t *testing.T) {
 	log := logger.New(logger.LevelCritical)
 	ctx := context.Background()
 
-	pollConfig := config.PollConfig{
+	pollConfig := poll.Config{
 		CloneUrl:     "https://github.com/kimdre/doco-cd_tests.git",
 		Reference:    "main",
 		Interval:     10,
@@ -44,7 +45,7 @@ func TestRunPoll(t *testing.T) {
 		t.Log("Testing in Swarm mode, using 'swarm-mode' reference")
 	}
 
-	appConfig, err := config.GetAppConfig()
+	appConfig, err := app.GetConfig()
 	if err != nil {
 		t.Fatal(err)
 	}

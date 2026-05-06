@@ -1,9 +1,12 @@
-package config
+package app
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/notification"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -11,13 +14,16 @@ import (
 	"gopkg.in/validator.v2"
 )
 
-const AppName = "doco-cd" // Name of the application
+const Name = "doco-cd" // Name of the application
 
-var AppVersion = "dev" // Version of the application, to be set during build time
+var (
+	Version            = "dev" // Version of the application, to be set during build time
+	ErrInvalidLogLevel = validator.TextErr{Err: errors.New("invalid log level, must be one of debug, info, warn, error")}
+)
 
-// AppConfig is used to configure this application
+// Config is used to configure this application
 // https://github.com/caarlos0/env?tab=readme-ov-file#env-tag-options
-type AppConfig struct {
+type Config struct {
 	LogLevel                    string                 `env:"LOG_LEVEL,notEmpty" envDefault:"info"`                          // LogLevel is the log level for the application
 	HttpPort                    uint16                 `env:"HTTP_PORT,notEmpty" envDefault:"80" validate:"min=1,max=65535"` // HttpPort is the port the HTTP server will listen on
 	HttpProxyString             string                 `env:"HTTP_PROXY"`                                                    // HttpProxyString is the HTTP proxy URL as a string
@@ -42,10 +48,10 @@ type AppConfig struct {
 	PassEnv                     bool                   `env:"PASS_ENV"`                                                            // PassEnv controls whether environment variables from the doco-cd container should be passed to the deployment environment for docker compose variable interpolation. Use with caution, as this may expose sensitive information to the deployment environment.
 	PollConfigYAML              string                 `env:"POLL_CONFIG"`                                                         // PollConfigYAML is the unparsed string containing the PollConfig in YAML format
 	PollConfigFile              string                 `env:"POLL_CONFIG_FILE,file"`                                               // PollConfigFile is the file containing the PollConfig in YAML format
-	PollConfig                  []PollConfig           `yaml:"-"`                                                                  // PollConfig is the YAML configuration for polling Git repositories for changes
+	PollConfig                  []poll.Config          `yaml:"-"`                                                                  // PollConfig is the YAML configuration for polling Git repositories for changes
 	MaxPayloadSize              int64                  `env:"MAX_PAYLOAD_SIZE,notEmpty" envDefault:"1048576"`                      // MaxPayloadSize is the maximum size of the payload in bytes that the HTTP server will accept (default 1MB = 1048576 bytes)
 	MetricsPort                 uint16                 `env:"METRICS_PORT,notEmpty" envDefault:"9120" validate:"min=1,max=65535"`  // MetricsPort is the port the prometheus metrics server will listen on
-	AppriseApiURL               HttpUrl                `env:"APPRISE_API_URL" validate:"httpUrl"`                                  // AppriseApiURL is the URL of the Apprise notification service
+	AppriseApiURL               config.HttpUrl         `env:"APPRISE_API_URL" validate:"httpUrl"`                                  // AppriseApiURL is the URL of the Apprise notification service
 	AppriseNotifyUrls           string                 `env:"APPRISE_NOTIFY_URLS"`                                                 // AppriseNotifyUrls is a comma-separated list of URLs to notify via the Apprise notification service
 	AppriseNotifyUrlsFile       string                 `env:"APPRISE_NOTIFY_URLS_FILE,file"`                                       // AppriseNotifyUrlsFile is the file containing the AppriseNotifyUrls
 	AppriseNotifyLevel          string                 `env:"APPRISE_NOTIFY_LEVEL,notEmpty" envDefault:"success"`                  // AppriseNotifyLevel is the level of notifications to send via the Apprise notification service
@@ -54,11 +60,11 @@ type AppConfig struct {
 	MaxConcurrentDeployments    uint                   `env:"MAX_CONCURRENT_DEPLOYMENTS,notEmpty" envDefault:"4" validate:"min=1"` // Maximum number of concurrent deployments allowed
 }
 
-// GetAppConfig returns the configuration.
-func GetAppConfig() (*AppConfig, error) {
-	cfg := AppConfig{}
+// GetConfig returns the app Config.
+func GetConfig() (*Config, error) {
+	cfg := Config{}
 
-	mappings := []EnvVarFileMapping{
+	mappings := []config.EnvVarFileMapping{
 		{EnvName: "API_SECRET", EnvValue: &cfg.ApiSecret, FileValue: &cfg.ApiSecretFile, AllowUnset: true},
 		{EnvName: "APPRISE_NOTIFY_URLS", EnvValue: &cfg.AppriseNotifyUrls, FileValue: &cfg.AppriseNotifyUrlsFile, AllowUnset: true},
 		{EnvName: "GIT_ACCESS_TOKEN", EnvValue: &cfg.GitAccessToken, FileValue: &cfg.GitAccessTokenFile, AllowUnset: true},
@@ -67,19 +73,19 @@ func GetAppConfig() (*AppConfig, error) {
 		{EnvName: "WEBHOOK_SECRET", EnvValue: &cfg.WebhookSecret, FileValue: &cfg.WebhookSecretFile, AllowUnset: true},
 	}
 
-	err := ParseConfigFromEnv(&cfg, &mappings)
+	err := config.ParseConfigFromEnv(&cfg, &mappings)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrParseConfigFailed, err)
+		return nil, fmt.Errorf("%w: %w", config.ErrParseConfigFailed, err)
 	}
 
-	err = cfg.ParsePollConfig()
+	err = cfg.parsePollConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse poll config: %w", err)
 	}
 
 	for _, pollConfig := range cfg.PollConfig {
 		if err = pollConfig.Validate(); err != nil {
-			return nil, fmt.Errorf("%w: %w", ErrInvalidPollConfig, err)
+			return nil, fmt.Errorf("%w: %w", poll.ErrInvalidConfig, err)
 		}
 	}
 
@@ -116,10 +122,10 @@ func GetAppConfig() (*AppConfig, error) {
 	return &cfg, nil
 }
 
-// ParsePollConfig parses the PollConfig from either the PollConfigYAML string or the PollConfigFile.
-func (cfg *AppConfig) ParsePollConfig() error {
+// parsePollConfig parses the PollConfig from either the PollConfigYAML string or the PollConfigFile.
+func (cfg *Config) parsePollConfig() error {
 	if cfg.PollConfigYAML != "" && cfg.PollConfigFile != "" {
-		return ErrBothPollConfigSet
+		return poll.ErrBothConfigSet
 	}
 
 	if cfg.PollConfigYAML != "" {
@@ -130,7 +136,7 @@ func (cfg *AppConfig) ParsePollConfig() error {
 		return yaml.Unmarshal([]byte(cfg.PollConfigFile), &cfg.PollConfig)
 	}
 
-	cfg.PollConfig = []PollConfig{} // Default to an empty slice if no config is provided
+	cfg.PollConfig = []poll.Config{} // Default to an empty slice if no config is provided
 
 	return nil
 }

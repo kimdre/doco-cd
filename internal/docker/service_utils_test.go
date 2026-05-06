@@ -13,7 +13,8 @@ import (
 	"github.com/avast/retry-go/v5"
 	"github.com/compose-spec/compose-go/v2/types"
 
-	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/config/deploy"
+
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/test"
@@ -610,7 +611,7 @@ services:
 
 	repoName := "repoName"
 
-	deployCfg := &config.DeployConfig{
+	deployCfg := &deploy.Config{
 		Name:          stackName,
 		RemoveOrphans: true,
 	}

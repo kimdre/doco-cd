@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/utils/module"
@@ -37,7 +39,6 @@ import (
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
 
-	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
@@ -103,7 +104,7 @@ addComposeServiceLabels adds the labels docker compose expects to exist on servi
 This is required for future compose operations to work, such as finding
 containers that are part of a service.
 */
-func addComposeServiceLabels(project *types.Project, deployConfig *config.DeployConfig, payload *webhook.ParsedPayload,
+func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
 	workingDir, appVersion, timestamp, composeVersion, latestCommit, projectHash string,
 ) {
 	for i, s := range project.Services {
@@ -116,7 +117,7 @@ func addComposeServiceLabels(project *types.Project, deployConfig *config.Deploy
 		}
 
 		s.CustomLabels = map[string]string{
-			DocoCDLabels.Metadata.Manager:               config.AppName,
+			DocoCDLabels.Metadata.Manager:               app.Name,
 			DocoCDLabels.Metadata.Version:               appVersion,
 			DocoCDLabels.Deployment.Name:                deployConfig.Name,
 			DocoCDLabels.Deployment.Timestamp:           timestamp,
@@ -142,12 +143,12 @@ func addComposeServiceLabels(project *types.Project, deployConfig *config.Deploy
 	}
 }
 
-func addComposeVolumeLabels(project *types.Project, deployConfig *config.DeployConfig, payload *webhook.ParsedPayload,
+func addComposeVolumeLabels(project *types.Project, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
 	appVersion, timestamp, composeVersion, latestCommit, projectHash string,
 ) {
 	for i, v := range project.Volumes {
 		v.CustomLabels = map[string]string{
-			DocoCDLabels.Metadata.Manager:       config.AppName,
+			DocoCDLabels.Metadata.Manager:       app.Name,
 			DocoCDLabels.Metadata.Version:       appVersion,
 			DocoCDLabels.Deployment.Name:        deployConfig.Name,
 			DocoCDLabels.Deployment.Timestamp:   timestamp,
@@ -175,7 +176,7 @@ func LoadCompose(ctx context.Context, repoPath, workingDir, projectName string, 
 	// the specified working directory. Without this, concurrent deployments with
 	// different working directories would fail since they share the same process
 	// working directory.
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get app config: %w", err)
 	}
@@ -300,7 +301,7 @@ func LoadCompose(ctx context.Context, repoPath, workingDir, projectName string, 
 
 // deployCompose deploys a project as specified by the Docker Compose specification (LoadCompose).
 func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Project,
-	deployConfig *config.DeployConfig, recreateMode string, services []string,
+	deployConfig *deploy.Config, recreateMode string, services []string,
 	needSignal []SignalService,
 ) error {
 	var (
@@ -428,7 +429,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 // DeployStack deploys the stack using the provided deployment configuration.
 func DeployStack(
 	jobLog *slog.Logger, externalRepoPath string, ctx *context.Context,
-	dockerCli command.Cli, payload *webhook.ParsedPayload, deployConfig *config.DeployConfig,
+	dockerCli command.Cli, payload *webhook.ParsedPayload, deployConfig *deploy.Config,
 	detectedChanges []Change, needSignal []SignalService, latestCommit, appVersion string,
 ) error {
 	startTime := time.Now()
@@ -586,7 +587,7 @@ func DeployStack(
 // DestroyStack destroys the stack using the provided deployment configuration.
 func DestroyStack(
 	jobLog *slog.Logger, ctx *context.Context,
-	dockerCli *command.Cli, deployConfig *config.DeployConfig,
+	dockerCli *command.Cli, deployConfig *deploy.Config,
 ) error {
 	stackLog := jobLog.
 		With(slog.String("stack", deployConfig.Name))

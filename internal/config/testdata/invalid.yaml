@@ -1,3 +1,0 @@
-name: invalid example
-reference=12.345
-compose_files: { this is invalid }

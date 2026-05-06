@@ -12,6 +12,10 @@ import (
 	"github.com/moby/moby/api/types/container"
 
 	"github.com/kimdre/doco-cd/internal/config"
+
+	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/deploy"
+	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
@@ -40,7 +44,7 @@ func (r handleError) Error() string {
 }
 
 func handle(ctx context.Context, jobLog *slog.Logger,
-	appConfig *config.AppConfig,
+	appConfig *app.Config,
 	dataMountPoint container.MountPoint,
 	secretProvider *secretprovider.SecretProvider,
 	dockerCli command.Cli,
@@ -48,7 +52,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 	cloneURL string, ref string, private bool,
 	metadata notification.Metadata,
 	customTarget string, testName string,
-	pollConfig config.PollConfig,
+	pollConfig poll.Config,
 	payload webhook.ParsedPayload,
 ) error {
 	repoName := git.GetRepoName(cloneURL)
@@ -118,12 +122,22 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 
 	jobLog.Debug("retrieving deployment configuration")
 
-	var deployConfigs []*config.DeployConfig
+	var deployConfigs []*deploy.Config
+
+	gitOpts := &deploy.GitOptions{
+		SSHPrivateKey:           appConfig.SSHPrivateKey,
+		SSHPrivateKeyPassphrase: appConfig.SSHPrivateKeyPassphrase,
+		GitAccessToken:          appConfig.GitAccessToken,
+		SkipTLSVerification:     appConfig.SkipTLSVerification,
+		HttpProxy:               appConfig.HttpProxy,
+		GitCloneSubmodules:      appConfig.GitCloneSubmodules,
+		GitCloneDepth:           appConfig.GitCloneDepth,
+	}
 
 	switch jobTrigger {
 	case stages.JobTriggerWebhook:
 		// Get the deployment configs from the repository
-		deployConfigs, err = config.GetDeployConfigs(internalRepoPath, appConfig.DeployConfigBaseDir, payload.Name, customTarget, payload.Ref)
+		deployConfigs, err = deploy.GetConfigs(internalRepoPath, appConfig.DeployConfigBaseDir, payload.Name, customTarget, payload.Ref, gitOpts)
 		if err != nil {
 			return handleError{
 				err:            err,
@@ -136,7 +150,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		shortName := filepath.Base(repoName)
 
 		// Resolve deployment configs (prefer inline in poll config when present)
-		deployConfigs, err = config.ResolveDeployConfigs(pollConfig, internalRepoPath, appConfig.DeployConfigBaseDir, shortName)
+		deployConfigs, err = deploy.ResolveConfigs(pollConfig.Deployments, pollConfig.CustomTarget, pollConfig.Reference, internalRepoPath, appConfig.DeployConfigBaseDir, shortName, gitOpts)
 		if err != nil {
 			return handleError{
 				err:            err,

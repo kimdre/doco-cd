@@ -1,4 +1,4 @@
-package config
+package app
 
 import (
 	"errors"
@@ -7,10 +7,11 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 )
 
-func TestGetAppConfig(t *testing.T) {
+func TestGetConfig(t *testing.T) {
 	// Set up test cases
 	tests := []struct {
 		name          string
@@ -68,7 +69,7 @@ func TestGetAppConfig(t *testing.T) {
 				"WEBHOOK_SECRET":   "webh00k_secret",
 				"GIT_ACCESS_TOKEN": "t0ken",
 			},
-			expectedErr: ErrBothSecretsSet,
+			expectedErr: config.ErrBothSecretsSet,
 		},
 	}
 
@@ -110,7 +111,7 @@ func TestGetAppConfig(t *testing.T) {
 			}
 
 			// Run the test
-			cfg, err := GetAppConfig()
+			cfg, err := GetConfig()
 			if err != nil {
 				if errors.Is(err, tt.expectedErr) {
 					return

@@ -8,9 +8,10 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
+	"github.com/kimdre/doco-cd/internal/config/app"
+
 	"github.com/kimdre/doco-cd/internal/git"
 
-	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/encryption"
 )
 
@@ -71,7 +72,7 @@ func TestHttpTokenAuth(t *testing.T) {
 func TestCloneRepository(t *testing.T) {
 	t.Parallel()
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
@@ -177,7 +178,7 @@ func TestCloneRepository(t *testing.T) {
 func TestCloneRepository_WithSubmodule(t *testing.T) {
 	t.Parallel()
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
@@ -332,7 +333,7 @@ func TestUpdateRepository(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			c, err := config.GetAppConfig()
+			c, err := app.GetConfig()
 			if err != nil {
 				t.Fatalf("Failed to get app config: %v", err)
 			}
@@ -418,7 +419,7 @@ func TestUpdateRepository(t *testing.T) {
 func TestUpdateRepository_WithSubmodule(t *testing.T) {
 	t.Parallel()
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
@@ -552,7 +553,7 @@ func TestGetReferenceSet(t *testing.T) {
 		},
 	}
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
@@ -602,7 +603,7 @@ func TestGetReferenceSet(t *testing.T) {
 func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 	t.Parallel()
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
@@ -673,7 +674,7 @@ func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 func TestGetLatestCommit(t *testing.T) {
 	t.Parallel()
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
@@ -724,7 +725,7 @@ suGsdNHOvMRQWLzq9VJiJUyOG29zayIQ4Q3pZlcoRINpUI9yl4/eFza7P4MEHDVBLF531K
 X3nAnZomTg2czfus92AmR+3kYDWvBE1WkpieAaRfVTuBtNcB41rOAZMLQ001zhVF2qdb+D
 +tvLTkrbIyLPEbZOBHuCH+mVgPefYCRXsB9Nw=
 -----END OPENSSH PRIVATE KEY-----`
-		encryptedKeyPassphrase = config.AppName
+		encryptedKeyPassphrase = app.Name
 		unencryptedKey         = `-----BEGIN OPENSSH PRIVATE KEY-----
 b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
 QyNTUxOQAAACCU6Sk58h0kd2bUvHHvyS1JQiLgBf6yKaIbpGlK8TEfVAAAAJgBQMSpAUDE
@@ -912,7 +913,7 @@ func TestGetRepoName(t *testing.T) {
 func TestCloneRepository_FullClone(t *testing.T) {
 	t.Parallel()
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
@@ -977,7 +978,7 @@ func TestCloneRepository_FullClone(t *testing.T) {
 func TestCloneRepository_ShallowClone(t *testing.T) {
 	t.Parallel()
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
@@ -1060,7 +1061,7 @@ func TestCloneRepository_ShallowClone(t *testing.T) {
 func TestUpdateRepository_ShallowToFullTransition(t *testing.T) {
 	t.Parallel()
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
@@ -1162,7 +1163,7 @@ func TestUpdateRepository_ShallowToFullTransition(t *testing.T) {
 func TestUpdateRepository_FullToShallowTransition(t *testing.T) {
 	t.Parallel()
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
 	}

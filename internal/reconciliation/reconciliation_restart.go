@@ -11,7 +11,8 @@ import (
 	"github.com/moby/moby/api/types/events"
 	"github.com/moby/moby/client"
 
-	"github.com/kimdre/doco-cd/internal/config"
+	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
+
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/logger"
@@ -25,7 +26,7 @@ type restartAttemptResult struct {
 // restartContainer restarts a single container identified by the Docker event,
 // using the restart timeout configured in the deploy config (default 10 s).
 // Used for restart-oriented events where the container is still present.
-func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event events.Message, dc *config.DeployConfig) restartAttemptResult {
+func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event events.Message, dc *deployConfig.Config) restartAttemptResult {
 	containerID := event.Actor.ID
 	containerName := event.Actor.Attributes["name"]
 	restartOpts := restartOptionsFromDeployConfig(dc)
@@ -188,7 +189,7 @@ func isRestartFollowupAction(action string) bool {
 	}
 }
 
-func (j *job) shouldSuppressUnhealthyRestart(jobLog *slog.Logger, event events.Message, dc *config.DeployConfig) bool {
+func (j *job) shouldSuppressUnhealthyRestart(jobLog *slog.Logger, event events.Message, dc *deployConfig.Config) bool {
 	action := normalizeReconciliationEventAction(string(event.Action))
 	if action != "unhealthy" {
 		return false
@@ -237,7 +238,7 @@ func (j *job) shouldSuppressUnhealthyRestart(jobLog *slog.Logger, event events.M
 	return true
 }
 
-func restartOptionsFromDeployConfig(dc *config.DeployConfig) client.ContainerRestartOptions {
+func restartOptionsFromDeployConfig(dc *deployConfig.Config) client.ContainerRestartOptions {
 	timeout := 10
 	if dc != nil && dc.Reconciliation.RestartTimeout > 0 {
 		timeout = dc.Reconciliation.RestartTimeout
@@ -252,7 +253,7 @@ func restartOptionsFromDeployConfig(dc *config.DeployConfig) client.ContainerRes
 	return opts
 }
 
-func selectRestartDeployConfig(dcs []*config.DeployConfig, labels map[string]string) *config.DeployConfig {
+func selectRestartDeployConfig(dcs []*deployConfig.Config, labels map[string]string) *deployConfig.Config {
 	configHash := ""
 	if labels != nil {
 		configHash = strings.TrimSpace(labels[docker.DocoCDLabels.Deployment.ConfigHash])
