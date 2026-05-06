@@ -180,10 +180,13 @@ func NewStageManager(jobID string, jobTrigger JobTrigger, log *slog.Logger,
 				MetaData: NewMetaData(StageDeploy),
 			},
 			Destroy: &DestroyStageData{
-				MetaData: NewMetaData(StageDeploy),
+				MetaData: NewMetaData(StageDestroy),
 			},
 			PostDeploy: &PostDeployStageData{
 				MetaData: NewMetaData(StagePostDeploy),
+			},
+			PostDestroy: &PostDestroyStageData{
+				MetaData: NewMetaData(StagePostDestroy),
 			},
 			Cleanup: &CleanupStageData{
 				MetaData: NewMetaData(StageCleanup),
