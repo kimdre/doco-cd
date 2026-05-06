@@ -15,7 +15,12 @@ jobs:
     with:
       build-args: |
         APP_VERSION=${{ github.ref_name }}
-      platforms: linux/amd64,linux/arm64,linux/arm/v7
+      platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/riscv64
+      runner: |
+        default=ubuntu-24.04
+        linux/arm=ubuntu-24.04-arm
+        linux/arm64=ubuntu-24.04-arm
+        linux/riscv64=ubuntu-24.04-riscv
       cache: true
       cache-mode: max
       output: image
