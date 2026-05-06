@@ -17,6 +17,9 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/config"
+
+	"github.com/kimdre/doco-cd/internal/config/app"
+	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/git"
@@ -35,7 +38,7 @@ func TestDeploy(t *testing.T) {
 
 	ctx := t.Context()
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +101,7 @@ func TestDeploy(t *testing.T) {
 
 	stackName := test.ConvertTestName(t.Name())
 
-	dcs, err := config.GetDeployConfigs(repoPath, c.DeployConfigBaseDir, stackName, "", p.Ref)
+	dcs, err := deployConfig.GetConfigs(repoPath, c.DeployConfigBaseDir, stackName, "", p.Ref, nil)
 
 	// commit have 5 apps
 	// https://github.com/kimdre/doco-cd_tests/blob/7be81e788a40724cee7542eec00a2af0c4340eba/.doco-cd.yml

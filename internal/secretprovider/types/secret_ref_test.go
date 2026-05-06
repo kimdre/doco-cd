@@ -1,4 +1,4 @@
-package config
+package secrettypes
 
 import (
 	"reflect"

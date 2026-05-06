@@ -1,21 +1,23 @@
-package config
+package poll
 
 import (
 	"errors"
 	"testing"
+
+	"github.com/kimdre/doco-cd/internal/config/deploy"
 )
 
-func TestPollConfig_Validate(t *testing.T) {
+func TestConfig_Validate(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
 		name     string
-		config   PollConfig
+		config   Config
 		expected error
 	}{
 		{
 			name: "Valid config",
-			config: PollConfig{
+			config: Config{
 				CloneUrl:  "https://example.com/repo.git",
 				Reference: "main",
 				Interval:  10,
@@ -24,43 +26,43 @@ func TestPollConfig_Validate(t *testing.T) {
 		},
 		{
 			name: "Invalid config - empty CloneUrl",
-			config: PollConfig{
+			config: Config{
 				CloneUrl:  "",
 				Reference: "main",
 				Interval:  10,
 			},
-			expected: ErrKeyNotFound,
+			expected: deploy.ErrKeyNotFound,
 		},
 		{
 			name: "Invalid config - empty Reference",
-			config: PollConfig{
+			config: Config{
 				CloneUrl:  "https://example.com/repo.git",
 				Reference: "",
 				Interval:  10,
 			},
-			expected: ErrKeyNotFound,
+			expected: deploy.ErrKeyNotFound,
 		},
 		{
 			name: "Invalid config - negative Interval",
-			config: PollConfig{
+			config: Config{
 				CloneUrl:  "https://example.com/repo.git",
 				Reference: "main",
 				Interval:  -5,
 			},
-			expected: ErrPollIntervalTooLow,
+			expected: ErrIntervalTooLow,
 		},
 		{
 			name: "Invalid config - 5s Interval",
-			config: PollConfig{
+			config: Config{
 				CloneUrl:  "https://example.com/repo.git",
 				Reference: "main",
 				Interval:  5,
 			},
-			expected: ErrPollIntervalTooLow,
+			expected: ErrIntervalTooLow,
 		},
 		{
 			name: "Invalid config - zero Interval (Disabled)",
-			config: PollConfig{
+			config: Config{
 				CloneUrl:  "https://example.com/repo.git",
 				Reference: "main",
 				Interval:  0,
@@ -80,31 +82,31 @@ func TestPollConfig_Validate(t *testing.T) {
 	}
 }
 
-func TestPollConfig_String(t *testing.T) {
+func TestConfig_String(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
 		name     string
-		config   PollConfig
+		config   Config
 		expected string
 	}{
 		{
 			name: "Valid config",
-			config: PollConfig{
+			config: Config{
 				CloneUrl:  "https://example.com/repo.git",
 				Reference: "main",
 				Interval:  10,
 			},
-			expected: "PollConfig{CloneUrl: https://example.com/repo.git, Reference: main, Interval: 10}",
+			expected: "Config{CloneUrl: https://example.com/repo.git, Reference: main, Interval: 10}",
 		},
 		{
 			name: "Basic config",
-			config: PollConfig{
+			config: Config{
 				CloneUrl:  "https://example.com/repo.git",
 				Reference: "main",
 				Interval:  180,
 			},
-			expected: "PollConfig{CloneUrl: https://example.com/repo.git, Reference: main, Interval: 180}",
+			expected: "Config{CloneUrl: https://example.com/repo.git, Reference: main, Interval: 180}",
 		},
 	}
 	for _, tc := range testCases {

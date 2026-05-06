@@ -19,6 +19,8 @@ import (
 	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/api/types/container"
 
+	"github.com/kimdre/doco-cd/internal/config/app"
+
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
 	"github.com/kimdre/doco-cd/internal/utils/id"
@@ -28,7 +30,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 
-	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/git"
@@ -201,7 +202,7 @@ func TestHandleEvent(t *testing.T) {
 		},
 	}
 
-	appConfig, err := config.GetAppConfig()
+	appConfig, err := app.GetConfig()
 	if err != nil {
 		t.Fatalf("failed to get app config: %s", err.Error())
 	}

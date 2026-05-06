@@ -8,7 +8,9 @@ import (
 	"github.com/moby/moby/api/types/events"
 	"github.com/moby/moby/client"
 
-	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/config/app"
+	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
+
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
@@ -29,7 +31,7 @@ func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *s
 	}
 
 	filterArgs := make(client.Filters)
-	filterArgs.Add("label", docker.DocoCDLabels.Metadata.Manager+"="+config.AppName)
+	filterArgs.Add("label", docker.DocoCDLabels.Metadata.Manager+"="+app.Name)
 	filterArgs.Add("label", docker.DocoCDLabels.Repository.Name+"="+repositoryLabelValue)
 
 	containerResult, err := j.info.dockerCli.Client().ContainerList(ctx, client.ContainerListOptions{All: true, Filters: filterArgs})
@@ -106,10 +108,10 @@ func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *s
 // uniqueRedeployDCsFromGroupByEvent returns a deduplicated slice (by stack name) of deploy configs
 // that have at least one non-restart reconciliation event configured (e.g. "die", "destroy", "update").
 // These are the stacks that should be redeployed when their containers/services go missing.
-func uniqueRedeployDCsFromGroupByEvent(grouped map[string][]*config.DeployConfig) []*config.DeployConfig {
+func uniqueRedeployDCsFromGroupByEvent(grouped map[string][]*deployConfig.Config) []*deployConfig.Config {
 	seen := set.New[string]()
 
-	var result []*config.DeployConfig
+	var result []*deployConfig.Config
 
 	for action, dcs := range grouped {
 		if isRestartReconciliationAction(action) {
@@ -140,7 +142,7 @@ func (j *job) redeployMissingServicesOnStartup(ctx context.Context, jobLog *slog
 		return
 	}
 
-	var missingDCs []*config.DeployConfig
+	var missingDCs []*deployConfig.Config
 
 	if swarm.GetModeEnabled() {
 		missingDCs = j.findMissingSwarmServicesOnStartup(ctx, jobLog, candidates)
@@ -168,14 +170,14 @@ func (j *job) redeployMissingServicesOnStartup(ctx context.Context, jobLog *slog
 
 // findMissingContainersOnStartup lists all running containers for this repository and returns
 // deploy configs whose stacks have no running containers at all.
-func (j *job) findMissingContainersOnStartup(ctx context.Context, jobLog *slog.Logger, candidates []*config.DeployConfig) []*config.DeployConfig {
+func (j *job) findMissingContainersOnStartup(ctx context.Context, jobLog *slog.Logger, candidates []*deployConfig.Config) []*deployConfig.Config {
 	repositoryLabelValue := gitInternal.GetFullName(string(j.info.repoData.CloneURL))
 	if j.info.payload != nil && strings.TrimSpace(j.info.payload.FullName) != "" {
 		repositoryLabelValue = j.info.payload.FullName
 	}
 
 	filterArgs := make(client.Filters)
-	filterArgs.Add("label", docker.DocoCDLabels.Metadata.Manager+"="+config.AppName)
+	filterArgs.Add("label", docker.DocoCDLabels.Metadata.Manager+"="+app.Name)
 	filterArgs.Add("label", docker.DocoCDLabels.Repository.Name+"="+repositoryLabelValue)
 
 	containerResult, err := j.info.dockerCli.Client().ContainerList(ctx, client.ContainerListOptions{
@@ -195,7 +197,7 @@ func (j *job) findMissingContainersOnStartup(ctx context.Context, jobLog *slog.L
 		}
 	}
 
-	var missing []*config.DeployConfig
+	var missing []*deployConfig.Config
 
 	for _, dc := range candidates {
 		if !runningStacks.Contains(dc.Name) {
@@ -209,13 +211,13 @@ func (j *job) findMissingContainersOnStartup(ctx context.Context, jobLog *slog.L
 
 // findMissingSwarmServicesOnStartup lists all swarm services for this repository and returns
 // deploy configs whose stacks have no deployed services at all.
-func (j *job) findMissingSwarmServicesOnStartup(ctx context.Context, jobLog *slog.Logger, candidates []*config.DeployConfig) []*config.DeployConfig {
+func (j *job) findMissingSwarmServicesOnStartup(ctx context.Context, jobLog *slog.Logger, candidates []*deployConfig.Config) []*deployConfig.Config {
 	repositoryLabelValue := gitInternal.GetFullName(string(j.info.repoData.CloneURL))
 	if j.info.payload != nil && strings.TrimSpace(j.info.payload.FullName) != "" {
 		repositoryLabelValue = j.info.payload.FullName
 	}
 
-	services, err := swarm.GetServicesByLabel(ctx, j.info.dockerCli.Client(), docker.DocoCDLabels.Metadata.Manager, config.AppName)
+	services, err := swarm.GetServicesByLabel(ctx, j.info.dockerCli.Client(), docker.DocoCDLabels.Metadata.Manager, app.Name)
 	if err != nil {
 		jobLog.Error("failed to list swarm services for startup missing scan", logger.ErrAttr(err))
 		return nil
@@ -234,7 +236,7 @@ func (j *job) findMissingSwarmServicesOnStartup(ctx context.Context, jobLog *slo
 		}
 	}
 
-	var missing []*config.DeployConfig
+	var missing []*deployConfig.Config
 
 	for _, dc := range candidates {
 		if !existingStacks.Contains(dc.Name) {

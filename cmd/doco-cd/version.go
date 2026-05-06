@@ -10,7 +10,8 @@ import (
 
 	"github.com/avast/retry-go/v5"
 
-	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/config/app"
+
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 )
@@ -84,21 +85,21 @@ func notificationForNewAppVersion(log *slog.Logger) {
 	if err != nil {
 		log.Error("failed to get latest application release version", logger.ErrAttr(err))
 	} else {
-		if config.AppVersion != latestVersion {
+		if app.Version != latestVersion {
 			log.Warn("new application version available",
-				slog.String("current", config.AppVersion),
+				slog.String("current", app.Version),
 				slog.String("latest", latestVersion),
 			)
 
 			err = notification.Send(notification.Info,
 				"New version of doco-cd is available",
-				fmt.Sprintf("Current Version: %s\nLatest Version: %s\n\nhttps://github.com/kimdre/doco-cd/releases", config.AppVersion, latestVersion),
+				fmt.Sprintf("Current Version: %s\nLatest Version: %s\n\nhttps://github.com/kimdre/doco-cd/releases", app.Version, latestVersion),
 				notification.Metadata{})
 			if err != nil {
 				return
 			}
 		} else {
-			log.Debug("application is up to date", slog.String("version", config.AppVersion))
+			log.Debug("application is up to date", slog.String("version", app.Version))
 		}
 	}
 }

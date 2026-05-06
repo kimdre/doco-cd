@@ -16,6 +16,8 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/config/app"
+
 	"github.com/kimdre/doco-cd/internal/git/ssh"
 	"github.com/kimdre/doco-cd/internal/graceful"
 
@@ -26,7 +28,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 
-	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/logger"
@@ -88,7 +89,7 @@ func CreateMountpointSymlink(m container.MountPoint) error {
 
 func main() {
 	// split to app to make defer work when os.Exit().
-	if err := app(); err != nil {
+	if err := run(); err != nil {
 		slog.Error("application stopped with error", logger.ErrAttr(err))
 		os.Exit(1)
 	}
@@ -96,7 +97,9 @@ func main() {
 	slog.Info("application stopped normally")
 }
 
-func app() error {
+// run is the main entry point for the application.
+// It initializes the application, sets up necessary resources, and starts the server.
+func run() error {
 	ctx, rootCancel := context.WithCancel(context.Background())
 
 	defer rootCancel()
@@ -105,7 +108,7 @@ func app() error {
 	log := logger.New(slog.LevelDebug)
 
 	// Get the application configuration
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		log.Critical("failed to get application configuration", logger.ErrAttr(err))
 		return err
@@ -134,9 +137,9 @@ func app() error {
 		return nil
 	}
 
-	log.Info("starting application", slog.String("version", config.AppVersion), slog.String("log_level", c.LogLevel))
+	log.Info("starting application", slog.String("version", app.Version), slog.String("log_level", c.LogLevel))
 
-	prometheus.AppInfo.WithLabelValues(config.AppVersion, c.LogLevel, time.Now().Format(time.RFC3339)).Set(1)
+	prometheus.AppInfo.WithLabelValues(app.Version, c.LogLevel, time.Now().Format(time.RFC3339)).Set(1)
 
 	// Log if proxy is used
 	if c.HttpProxy != (transport.ProxyOptions{}) {
@@ -240,7 +243,7 @@ func app() error {
 	}
 
 	// Initialize the secret provider
-	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, config.AppVersion)
+	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, app.Version)
 	if err != nil {
 		log.Critical("failed to initialize secret provider", logger.ErrAttr(err))
 
@@ -255,7 +258,7 @@ func app() error {
 
 	h := handlerData{
 		appConfig:      c,
-		appVersion:     config.AppVersion,
+		appVersion:     app.Version,
 		dataMountPoint: dataMountPoint,
 		dockerCli:      dockerCli,
 		log:            log,

@@ -10,7 +10,8 @@ import (
 	"github.com/moby/moby/api/types/events"
 	"github.com/moby/moby/client"
 
-	"github.com/kimdre/doco-cd/internal/config"
+	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
+
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/logger"
@@ -107,8 +108,8 @@ func waitForContainerRemovalSettled(ctx context.Context, jobLog *slog.Logger, cl
 	}
 }
 
-func deployConfigsByName(dcs []*config.DeployConfig, name string) []*config.DeployConfig {
-	result := make([]*config.DeployConfig, 0, len(dcs))
+func deployConfigsByName(dcs []*deployConfig.Config, name string) []*deployConfig.Config {
+	result := make([]*deployConfig.Config, 0, len(dcs))
 
 	for _, dc := range dcs {
 		if dc.Name == name {
@@ -122,7 +123,7 @@ func deployConfigsByName(dcs []*config.DeployConfig, name string) []*config.Depl
 // stackNameFromEvent attempts to determine the stack name referenced by the given Docker event
 // by examining various event attributes and matching them against the candidate config.DeployConfig configs.
 // Returns an empty string when no stack name could be determined or matched.
-func stackNameFromEvent(event events.Message, candidates []*config.DeployConfig) string {
+func stackNameFromEvent(event events.Message, candidates []*deployConfig.Config) string {
 	attrs := event.Actor.Attributes
 
 	for _, key := range []string{
@@ -148,7 +149,7 @@ func stackNameFromEvent(event events.Message, candidates []*config.DeployConfig)
 
 // matchCandidateStackName checks if the given identifier matches any of the candidate DeployConfig stack names,
 // either as an exact match or as a prefix followed by typical Docker naming separators.
-func matchCandidateStackName(identifier string, candidates []*config.DeployConfig) string {
+func matchCandidateStackName(identifier string, candidates []*deployConfig.Config) string {
 	identifier = strings.TrimSpace(identifier)
 	if identifier == "" {
 		return ""
@@ -181,8 +182,8 @@ func matchCandidateStackName(identifier string, candidates []*config.DeployConfi
 	return ""
 }
 
-func cloneDeployConfigsWithForcedRecreate(dcs []*config.DeployConfig) []*config.DeployConfig {
-	reconcileDCs := make([]*config.DeployConfig, len(dcs))
+func cloneDeployConfigsWithForcedRecreate(dcs []*deployConfig.Config) []*deployConfig.Config {
+	reconcileDCs := make([]*deployConfig.Config, len(dcs))
 
 	for i, dc := range dcs {
 		dcCopy := *dc

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
 )
@@ -14,7 +14,7 @@ func TestInitialize(t *testing.T) {
 
 	ctx := t.Context()
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatal(err)
 	}

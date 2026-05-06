@@ -9,12 +9,13 @@ import (
 
 	"github.com/docker/cli/cli/command"
 
+	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
+
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
 
 	"github.com/kimdre/doco-cd/internal/notification"
 
-	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 )
 
@@ -22,7 +23,7 @@ import (
 // the current deployment configurations but still exist on the Docker host.
 func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.Logger,
 	dockerCli command.Cli,
-	cloneUrl string, deployConfigs []*config.DeployConfig, metadata notification.Metadata,
+	cloneUrl string, deployConfigs []*deployConfig.Config, metadata notification.Metadata,
 ) error {
 	autoDiscoveredNames := make(map[string]bool)
 
@@ -124,7 +125,7 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 
 				stackLog.Info("removing obsolete auto-discovered stack")
 
-				removeConfig := &config.DeployConfig{Name: stackName}
+				removeConfig := &deployConfig.Config{Name: stackName}
 				removeConfig.Destroy.Enable = true
 				removeConfig.Destroy.RemoveVolumes = true
 				removeConfig.Destroy.RemoveImages = true

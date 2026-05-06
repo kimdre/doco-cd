@@ -8,6 +8,9 @@ import (
 
 	"github.com/avast/retry-go/v5"
 
+	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/deploy"
+
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/test"
 
@@ -15,7 +18,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/git"
 
-	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -39,7 +41,7 @@ func TestDeploySwarmStack(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
 	}
@@ -73,7 +75,7 @@ func TestDeploySwarmStack(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	deployConfigs, err := config.GetDeployConfigs(tmpDir, c.DeployConfigBaseDir, stackName, customTarget, p.Ref)
+	deployConfigs, err := deploy.GetConfigs(tmpDir, c.DeployConfigBaseDir, stackName, customTarget, p.Ref, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

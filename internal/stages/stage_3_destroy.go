@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 )
@@ -38,7 +38,7 @@ func (s *StageManager) RunDestroyStage(ctx context.Context, stageLog *slog.Logge
 
 	// Find deployed commit and external secrets hash from labels of deployed services
 	for _, labels := range serviceLabels {
-		if labels[docker.DocoCDLabels.Metadata.Manager] == config.AppName {
+		if labels[docker.DocoCDLabels.Metadata.Manager] == app.Name {
 			managed = true
 			break
 		}

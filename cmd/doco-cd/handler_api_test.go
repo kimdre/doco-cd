@@ -13,9 +13,10 @@ import (
 	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/api/types/container"
 
+	"github.com/kimdre/doco-cd/internal/config/app"
+
 	"github.com/kimdre/doco-cd/internal/test"
 
-	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/logger"
@@ -29,7 +30,7 @@ func TestHandlerData_HealthCheckHandler(t *testing.T) {
 	expectedResponse := `{"content":"healthy","job_id":"[a-f0-9-]{36}"}`
 	expectedStatusCode := http.StatusOK
 
-	appConfig, err := config.GetAppConfig()
+	appConfig, err := app.GetConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +52,7 @@ func TestHandlerData_HealthCheckHandler(t *testing.T) {
 	h := handlerData{
 		dockerCli:  dockerCli,
 		appConfig:  appConfig,
-		appVersion: config.AppVersion,
+		appVersion: app.Version,
 		log:        log,
 	}
 
@@ -79,7 +80,7 @@ func TestHandlerData_HealthCheckHandler(t *testing.T) {
 }
 
 func TestHandlerData_ProjectApiHandler(t *testing.T) {
-	appConfig, err := config.GetAppConfig()
+	appConfig, err := app.GetConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +104,7 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 	h := handlerData{
 		dockerCli:  dockerCli,
 		appConfig:  appConfig,
-		appVersion: config.AppVersion,
+		appVersion: app.Version,
 		dataMountPoint: container.MountPoint{
 			Type:        "bind",
 			Source:      tmpDir,
@@ -227,7 +228,7 @@ func TestHandlerData_TriggerPollHandler(t *testing.T) {
 		},
 	}
 
-	appConfig, err := config.GetAppConfig()
+	appConfig, err := app.GetConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +257,7 @@ func TestHandlerData_TriggerPollHandler(t *testing.T) {
 			h := handlerData{
 				dockerCli:  dockerCli,
 				appConfig:  appConfig,
-				appVersion: config.AppVersion,
+				appVersion: app.Version,
 				log:        logger.New(logger.LevelCritical),
 				testName:   test.ConvertTestName(t.Name()),
 			}

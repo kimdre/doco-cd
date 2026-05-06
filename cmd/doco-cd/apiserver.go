@@ -6,12 +6,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/graceful"
 	"github.com/kimdre/doco-cd/internal/logger"
 )
 
-func registryApiServer(c *config.AppConfig, h *handlerData, log *logger.Logger) {
+func registryApiServer(c *app.Config, h *handlerData, log *logger.Logger) {
 	// Register API endpoints
 	apiServerMux := http.NewServeMux()
 	enabledApiEndpoints := registerApiEndpoints(c, h, log, apiServerMux)

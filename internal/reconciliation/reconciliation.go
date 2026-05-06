@@ -12,7 +12,9 @@ import (
 	"github.com/moby/moby/api/types/events"
 	"github.com/moby/moby/client"
 
-	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/config/app"
+	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
+
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
@@ -36,7 +38,7 @@ func (j *job) run(ctx context.Context) {
 	filterArgs.Add("type", dockerEventTypeForMode(swarmMode))
 
 	if !swarmMode {
-		filterArgs.Add("label", docker.DocoCDLabels.Metadata.Manager+"="+config.AppName)
+		filterArgs.Add("label", docker.DocoCDLabels.Metadata.Manager+"="+app.Name)
 
 		repositoryLabelValue := gitInternal.GetFullName(string(j.info.repoData.CloneURL))
 		if j.info.payload != nil && strings.TrimSpace(j.info.payload.FullName) != "" {
@@ -284,7 +286,7 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 	j.deploy(ctx, eventLog, stackDCs, action, event, traceID)
 }
 
-func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*config.DeployConfig, action string, event events.Message, traceID string) {
+func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConfig.Config, action string, event events.Message, traceID string) {
 	repoLock := lock.GetRepoLock(j.info.metadata.Repository)
 	repoLock.Lock()
 	defer repoLock.Unlock()

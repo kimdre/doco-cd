@@ -12,11 +12,12 @@ import (
 	"github.com/avast/retry-go/v5"
 	"github.com/docker/cli/cli/command"
 
+	"github.com/kimdre/doco-cd/internal/config/app"
+
 	"github.com/moby/moby/api/types/mount"
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
-	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 )
 
@@ -56,7 +57,7 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 	// fix conflict error
 	// Error response from daemon: rpc error: code = Unknown desc = update out of sequence
 
-	name := fmt.Sprintf("%s_%s", config.AppName, title)
+	name := fmt.Sprintf("%s_%s", app.Name, title)
 
 	lock := getSwarmJobLock(name)
 	lock.Lock()
@@ -66,8 +67,8 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 		Annotations: swarmTypes.Annotations{
 			Name: name,
 			Labels: map[string]string{
-				DocoCDLabels.Metadata.Manager:   config.AppName,
-				DocoCDLabels.Metadata.Version:   config.AppVersion,
+				DocoCDLabels.Metadata.Manager:   app.Name,
+				DocoCDLabels.Metadata.Version:   app.Version,
 				DocoCDLabels.Deployment.Trigger: title,
 			},
 		},

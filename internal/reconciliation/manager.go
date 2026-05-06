@@ -9,7 +9,9 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/moby/moby/api/types/container"
 
-	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/config/app"
+	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
+
 	"github.com/kimdre/doco-cd/internal/graceful"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
@@ -30,7 +32,7 @@ func init() {
 }
 
 type jobInfo struct {
-	appConfig      *config.AppConfig
+	appConfig      *app.Config
 	dataMountPoint container.MountPoint
 	dockerCli      command.Cli
 	secretProvider *secretprovider.SecretProvider
@@ -40,20 +42,20 @@ type jobInfo struct {
 	metadata      notification.Metadata
 	jobTrigger    stages.JobTrigger
 	repoData      stages.RepositoryData
-	deployConfigs []*config.DeployConfig
+	deployConfigs []*deployConfig.Config
 	payload       *webhook.ParsedPayload
 	testName      string
 }
 
 type job struct {
 	info                     jobInfo
-	deployConfigGroupByEvent map[string][]*config.DeployConfig // key is the docker event action name (for example "die" or "unhealthy").
+	deployConfigGroupByEvent map[string][]*deployConfig.Config // key is the docker event action name (for example "die" or "unhealthy").
 	unhealthyRestartHistory  map[string][]time.Time            // key is the docker container ID, value is the list of timestamps of recent unhealthy restart events for that container.
 	restartSuppressUntil     map[string]time.Time              // key is the docker container ID that was restarted, value is the timestamp until which follow-up events from that restart should be suppressed.
 	closeChan                chan struct{}
 }
 
-func newJob(info jobInfo, deployConfigGroupByEvent map[string][]*config.DeployConfig) *job {
+func newJob(info jobInfo, deployConfigGroupByEvent map[string][]*deployConfig.Config) *job {
 	return &job{
 		info:                     info,
 		deployConfigGroupByEvent: deployConfigGroupByEvent,
@@ -165,8 +167,8 @@ func (r *reconciliation) addJob(ctx context.Context, info jobInfo) {
 	go newJob.run(context.WithoutCancel(ctx))
 }
 
-func getDeployConfigGroupByEvent(dcs []*config.DeployConfig) map[string][]*config.DeployConfig {
-	m := make(map[string][]*config.DeployConfig)
+func getDeployConfigGroupByEvent(dcs []*deployConfig.Config) map[string][]*deployConfig.Config {
+	m := make(map[string][]*deployConfig.Config)
 
 	for _, dc := range dcs {
 		if r := dc.Reconciliation; r.Enabled {

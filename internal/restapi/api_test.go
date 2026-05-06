@@ -4,13 +4,13 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/config/app"
 )
 
 func TestValidateApiKey(t *testing.T) {
 	t.Parallel()
 
-	appConfig, err := config.GetAppConfig()
+	appConfig, err := app.GetConfig()
 	if err != nil {
 		t.Fatalf("Failed to get app config: %v", err)
 	}

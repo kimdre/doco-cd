@@ -11,6 +11,8 @@ import (
 	prococo "github.com/prometheus/common/config"
 	"go.yaml.in/yaml/v3"
 
+	"github.com/kimdre/doco-cd/internal/config/app"
+
 	"github.com/kimdre/doco-cd/internal/config"
 )
 
@@ -63,7 +65,7 @@ func (c *Config) NewRoundTripperWithContext(ctx context.Context) (http.RoundTrip
 	}
 
 	return prococo.NewRoundTripperFromConfigWithContext(ctx, httpcfg,
-		"secretprovider-webhook", prococo.WithUserAgent(config.AppName+"/"+config.AppVersion))
+		"secretprovider-webhook", prococo.WithUserAgent(app.Name+"/"+app.Version))
 }
 
 func parseStoresYAML(input string) (map[string]*Store, error) {

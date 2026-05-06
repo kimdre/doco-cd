@@ -11,7 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/poll"
 
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -23,7 +24,7 @@ import (
 
 // registerApiEndpoints registers the API endpoints based on the application configuration and
 // returns a list of all enabled endpoints.
-func registerApiEndpoints(c *config.AppConfig, h *handlerData, log *logger.Logger, mux *http.ServeMux) []string {
+func registerApiEndpoints(c *app.Config, h *handlerData, log *logger.Logger, mux *http.ServeMux) []string {
 	var enabledEndpoints []string
 
 	type endpoint struct {
@@ -709,7 +710,7 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 	decoder := json.NewDecoder(r.Body)
 	defer r.Body.Close()
 
-	var pollConfigs []config.PollConfig
+	var pollConfigs []poll.Config
 	if err := decoder.Decode(&pollConfigs); err != nil {
 		errMsg := "failed to decode json in body"
 		h.log.Error(errMsg, logger.ErrAttr(err))
@@ -744,7 +745,7 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 			p.RunOnce = true
 			p.Interval = 0
 
-			pollJob := &config.PollJob{
+			pollJob := &poll.Job{
 				Config:  p,
 				LastRun: 0,
 				NextRun: 0,

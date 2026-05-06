@@ -7,7 +7,7 @@ import (
 
 	"github.com/bitwarden/sdk-go/v2"
 
-	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/config/app"
 )
 
 const (
@@ -17,7 +17,7 @@ const (
 )
 
 func skipWrongProvider(t *testing.T) {
-	c, err := config.GetAppConfig()
+	c, err := app.GetConfig()
 	if err != nil {
 		t.Fatalf("unable to get app config: %v", err)
 	}

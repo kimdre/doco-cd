@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/git"
 )
@@ -26,7 +26,7 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 	err = docker.DeployStack(stageLog, s.Repository.PathExternal, &ctx, s.Docker.Cmd,
 		s.Payload, s.DeployConfig,
 		s.DeployState.changedServices, s.DeployState.ignoredInfo.NeedSendSignal,
-		latestCommit, config.AppVersion)
+		latestCommit, app.Version)
 	if err != nil {
 		return fmt.Errorf("failed to deploy stack %s: %w", s.DeployConfig.Name, err)
 	}
