@@ -2355,10 +2355,12 @@ Adding a short sleep ensures that the init container has time to exit properly b
 <p>Related issue: <a href="https://github.com/kimdre/doco-cd/issues/1115">#1115</a></p>
 <h2 id="sidecar-containers">Sidecar Containers<a class="headerlink" href="#sidecar-containers" title="Permanent link">&para;</a></h2>
 <p>Sidecar containers are additional containers that run alongside your main application containers. They can be used to provide auxiliary services, such as background tasks, metrics collection, or log forwarding.</p>
-<p>Some common use cases for sidecar containers include:
-- Background tasks, e.g. cron jobs or scheduled tasks
-- Metrics collection for monitoring tools like Prometheus
-- Log forwarding to external systems</p>
+<p>Some common use cases for sidecar containers include:</p>
+<ul>
+<li>Background tasks, e.g. cron jobs or scheduled tasks</li>
+<li>Metrics collection for monitoring tools like Prometheus</li>
+<li>Log forwarding to external systems</li>
+</ul>
 <h3 id="example_1">Example<a class="headerlink" href="#example_1" title="Permanent link">&para;</a></h3>
 <div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">volumes</span><span class="p">:</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">webdata</span><span class="p">:</span>
