@@ -117,7 +117,7 @@ Some common use cases for sidecar containers include:
 
 ### Example
 
-```yaml title="docker-compose.yml" hl_lines="12-25"
+```yaml title="docker-compose.yml" hl_lines="12-26"
 volumes:
   webdata:
 
@@ -169,7 +169,7 @@ This example demonstrates how to use the `post_start` hook to set up the correct
    - Second hook sets appropriate read/write permissions
 4. **Application Runs**: The application can now access the volume with proper permissions
 
-```yaml title="docker-compose.yml"
+```yaml title="docker-compose.yml" hl_lines="7-11"
 services:
   app:
     image: backend
@@ -200,7 +200,7 @@ This example demonstrates how to use the `pre_stop` hook to run cleanup tasks be
     3. Notify monitoring system
 3. **Container Stops**: After hooks complete, container proceeds with shutdown or restart
 
-```yaml title="docker-compose.yml"
+```yaml title="docker-compose.yml" hl_lines="4-7"
 services:
   app:
     image: backend
