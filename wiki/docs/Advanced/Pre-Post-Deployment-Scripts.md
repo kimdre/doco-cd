@@ -33,7 +33,7 @@ Some common use cases for init containers include:
 
 We use the `depends_on` option with the `condition: service_completed_successfully` condition to ensure that the main application container waits for the init container to complete successfully before starting. The init container will run its specified commands and exit with a status code of 0 to indicate success, allowing the main application container to start afterward.
 
-!!! success "Recommended Restart Policy for One-Time Script Services"
+!!! success "Recommended [Restart Policy](https://docs.docker.com/reference/compose-file/services/#restart) for One-Time Script Services"
     It is recommended to use `#!yaml restart: on-failure` for one-time script services to allow them to remain stopped after successful completion, while still enabling automatic restarts in case of failures.
 
 ### Example
