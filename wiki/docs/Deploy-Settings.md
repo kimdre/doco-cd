@@ -163,16 +163,20 @@ When an app is no longer available in the `working_dir` (e.g. deleted or moved t
     
     - And a `.doco-cd.yml` with the following content:
 
-        ```yaml title=".doco-cd.yml With default settings"
-        auto_discovery: true
-        ```
-  
-        ```yaml title=".doco-cd.yml With custom settings"
-        working_dir: apps/
-        auto_discovery:
-          enabled: true
-          depth: 1
-        ```
+        === "Default settings"
+
+            ```yaml title=".doco-cd.yml"
+            auto_discovery: true
+            ```
+
+        === "Custom settings"
+
+            ```yaml title=".doco-cd.yml"
+            working_dir: apps/
+            auto_discovery:
+              enabled: true
+              depth: 1
+            ```
     </div>
 
     Doco-cd would deploy 2 stacks to the docker host: `wordpress` and `nginx`
