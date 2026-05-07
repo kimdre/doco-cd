@@ -71,15 +71,18 @@ jobs:
           git add sitemap.xml
           
           # TODO: Remove this once the symlink alias bug is fixed in Zensical (https://github.com/zensical/ui/issues/126)
-          sed -E -i 's#/v[0-9]+\.[0-9]+/#/latest/#g' latest/sitemap.xml
+          # Resolve the real path of the sitemap through the 'latest' symlink and replace versioned URLs with /latest/
+          REAL_SITEMAP="$(git ls-files --full-name $(realpath latest/sitemap.xml))"
+          sed -E -i 's#/v[0-9]+\.[0-9]+/#/latest/#g' "$REAL_SITEMAP"
           
-          cat latest/sitemap.xml
+          cat "$REAL_SITEMAP"
           
-          VERSIONED_SITEMAP="$(readlink latest)/sitemap.xml"
-          git add "$VERSIONED_SITEMAP"
+          git add "$REAL_SITEMAP"
+          
+          git status --short
           
           # Push the changes to the gh-pages branch
-          git commit --amend --no-edit || echo "No changes to commit"
+          git diff --cached --quiet && echo "No changes to commit" || git commit --amend --no-edit
           git push --force-with-lease origin $DOCS_BRANCH
 #
 #  deploy:
