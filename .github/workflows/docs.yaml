@@ -75,7 +75,8 @@ jobs:
           
           cat latest/sitemap.xml
           
-          git add $(realpath latest/sitemap.xml)
+          VERSIONED_SITEMAP="$(readlink latest)/sitemap.xml"
+          git add "$VERSIONED_SITEMAP"
           
           # Push the changes to the gh-pages branch
           git commit --amend --no-edit || echo "No changes to commit"
