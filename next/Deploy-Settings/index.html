@@ -2500,7 +2500,7 @@ See <a data-preview="" href="../Poll-Settings/">Poll Settings</a> and this <a da
 <tr>
 <td><code>compose_files</code></td>
 <td>array of strings</td>
-<td>List of docker-compose and overwrite files to use (in descending order, first file gets read first and following files overwrite/merge previous configs). Unknown/Non-existing files get skipped.</td>
+<td>List of docker-compose and overwrite files to use (in descending order, first file gets read first and following files <a href="https://docs.docker.com/reference/compose-file/merge/">overwrite/merge</a> previous configs). Unknown/Non-existing files get skipped.</td>
 <td><code>["compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml"]</code></td>
 </tr>
 <tr>
