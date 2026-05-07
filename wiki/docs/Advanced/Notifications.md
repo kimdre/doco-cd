@@ -23,13 +23,14 @@ For that, specify the required settings in the app `environment` section and add
 
 Adjust your `docker-compose.yml` file to include the Apprise service and the necessary environment variables for the app:
 
-```yaml title="docker-compose.yml" hl_lines="5-10 12-19"
+```yaml title="docker-compose.yml" hl_lines="5-11 13-26"
 services:
   app:
     container_name: doco-cd
     # add the code below to your existing docker-compose.yml file
     depends_on:
-      - apprise
+      apprise:
+        condition: service_healthy
     environment:
       APPRISE_API_URL: http://apprise:8000/notify
       APPRISE_NOTIFY_LEVEL: success
@@ -43,6 +44,12 @@ services:
     environment:
       TZ: Europe/Berlin
       APPRISE_WORKER_COUNT: 1
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS http://localhost:8000/status >/dev/null || exit 1" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 ```
 
 ## Metadata fields
