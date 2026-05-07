@@ -2196,7 +2196,7 @@ See <a href="https://getsops.io/docs/#encrypting-only-parts-of-a-file">Encryptin
 </span></span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="hll"><span class="w">    </span><span class="nt">file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sops_age_key.txt</span>
 </span></span></code></pre></div>
 <ol>
-<li>docker secrets are always mounted in the <code>/run/secrets/</code> directory if no target is specified</li>
+<li>Docker <a href="https://docs.docker.com/reference/compose-file/services/#secrets">Secrets</a> are always mounted in the <code>/run/secrets/</code> directory if no target is specified</li>
 </ol>
 <h3 id="app-configuration-with-sops-encrypted-values">App configuration with SOPS-encrypted values<a class="headerlink" href="#app-configuration-with-sops-encrypted-values" title="Permanent link">&para;</a></h3>
 <p>To use encrypted values in the doco-cd app configuration, store secrets in encrypted text files and reference them with
