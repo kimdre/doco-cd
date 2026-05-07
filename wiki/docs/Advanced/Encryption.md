@@ -79,7 +79,7 @@ secrets:
     file: sops_age_key.txt
 ```
 
-1. docker secrets are always mounted in the `/run/secrets/` directory if no target is specified
+1. Docker [Secrets](https://docs.docker.com/reference/compose-file/services/#secrets) are always mounted in the `/run/secrets/` directory if no target is specified
 
 ### App configuration with SOPS-encrypted values
 
