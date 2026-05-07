@@ -2706,13 +2706,21 @@ When an app is no longer available in the <code>working_dir</code> (e.g. deleted
 </li>
 <li>
 <p>And a <code>.doco-cd.yml</code> with the following content:</p>
-<div class="language-yaml highlight"><span class="filename">.doco-cd.yml With default settings</span><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nt">auto_discovery</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<div class="tabbed-set tabbed-alternate" data-tabs="2:2"><input checked="checked" id="auto-discovery-settings-default-settings" name="__tabbed_2" type="radio" /><input id="auto-discovery-settings-custom-settings" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="auto-discovery-settings-default-settings">Default settings</label><label for="auto-discovery-settings-custom-settings">Custom settings</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-yaml highlight"><span class="filename">.doco-cd.yml</span><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nt">auto_discovery</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
 </span></code></pre></div>
-<div class="language-yaml highlight"><span class="filename">.doco-cd.yml With custom settings</span><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">working_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">apps/</span>
+</div>
+<div class="tabbed-block">
+<div class="language-yaml highlight"><span class="filename">.doco-cd.yml</span><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">working_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">apps/</span>
 </span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nt">auto_discovery</span><span class="p">:</span>
 </span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
 </span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span><span class="nt">depth</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
 </span></code></pre></div>
+</div>
+</div>
+</div>
 </li>
 </ul>
 </div>
@@ -2866,7 +2874,7 @@ When an app is no longer available in the <code>working_dir</code> (e.g. deleted
 </table>
 <div class="admonition example">
 <p class="admonition-title">Example</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="2:2"><input checked="checked" id="destroy-settings-boolean-with-default-options" name="__tabbed_2" type="radio" /><input id="destroy-settings-object-with-custom-options" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="destroy-settings-boolean-with-default-options">Boolean with default options</label><label for="destroy-settings-object-with-custom-options">Object with custom options</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="3:2"><input checked="checked" id="destroy-settings-boolean-with-default-options" name="__tabbed_3" type="radio" /><input id="destroy-settings-object-with-custom-options" name="__tabbed_3" type="radio" /><div class="tabbed-labels"><label for="destroy-settings-boolean-with-default-options">Boolean with default options</label><label for="destroy-settings-object-with-custom-options">Object with custom options</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="language-yaml highlight"><span class="filename">.doco-cd.yml</span><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">some-project</span>
@@ -2962,7 +2970,7 @@ Doco-CD's reconciliation for Swarm deployments only manages service updates and 
 <h4 id="supported-events">Supported Events<a class="headerlink" href="#supported-events" title="Permanent link">&para;</a></h4>
 <p>Events can be triggered by changes in the container state, configuration updates outside Doco-CD (e.g. via Docker CLI), or health status changes.
 The following events are supported as reconciliation triggers in Docker (Standalone) and Docker Swarm deployments:</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="3:2"><input checked="checked" id="supported-events-docker-standalone" name="__tabbed_3" type="radio" /><input id="supported-events-docker-swarm-mode" name="__tabbed_3" type="radio" /><div class="tabbed-labels"><label for="supported-events-docker-standalone">Docker Standalone</label><label for="supported-events-docker-swarm-mode">Docker Swarm Mode</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="4:2"><input checked="checked" id="supported-events-docker-standalone" name="__tabbed_4" type="radio" /><input id="supported-events-docker-swarm-mode" name="__tabbed_4" type="radio" /><div class="tabbed-labels"><label for="supported-events-docker-standalone">Docker Standalone</label><label for="supported-events-docker-swarm-mode">Docker Swarm Mode</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <table>
@@ -3049,7 +3057,7 @@ However, doco-cd will only react to the first event (e.g. <code>stop</code>) and
 </div>
 </div>
 <h4 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h4>
-<div class="tabbed-set tabbed-alternate" data-tabs="4:2"><input checked="checked" id="examples-boolean-with-default-options" name="__tabbed_4" type="radio" /><input id="examples-object-with-custom-options" name="__tabbed_4" type="radio" /><div class="tabbed-labels"><label for="examples-boolean-with-default-options">Boolean with default options</label><label for="examples-object-with-custom-options">Object with custom options</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="5:2"><input checked="checked" id="examples-boolean-with-default-options" name="__tabbed_5" type="radio" /><input id="examples-object-with-custom-options" name="__tabbed_5" type="radio" /><div class="tabbed-labels"><label for="examples-boolean-with-default-options">Boolean with default options</label><label for="examples-object-with-custom-options">Object with custom options</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <p>Enable reconciliation with default options:</p>
@@ -3089,7 +3097,7 @@ If <code>reference</code> is set, deployments for all events that pass the <code
 See <a href="https://pkg.go.dev/regexp/syntax">Go Regular Expressions</a> for more information on the syntax.</p>
 <div class="admonition example">
 <p class="admonition-title">Example</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="5:2"><input checked="checked" id="webhook-filter-explicit-regular-expression" name="__tabbed_5" type="radio" /><input id="webhook-filter-loose-regular-expression" name="__tabbed_5" type="radio" /><div class="tabbed-labels"><label for="webhook-filter-explicit-regular-expression">Explicit regular expression</label><label for="webhook-filter-loose-regular-expression">Loose regular expression</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="6:2"><input checked="checked" id="webhook-filter-explicit-regular-expression" name="__tabbed_6" type="radio" /><input id="webhook-filter-loose-regular-expression" name="__tabbed_6" type="radio" /><div class="tabbed-labels"><label for="webhook-filter-explicit-regular-expression">Explicit regular expression</label><label for="webhook-filter-loose-regular-expression">Loose regular expression</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <ul>
@@ -3122,7 +3130,7 @@ It accepts one or more of the following scopes: <code>configs</code>, <code>secr
 </ol>
 <div class="admonition example">
 <p class="admonition-title">Example</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="6:2"><input checked="checked" id="prevent-recreation-on-config-secret-or-bind-mount-changes-single-line-yaml-value" name="__tabbed_6" type="radio" /><input id="prevent-recreation-on-config-secret-or-bind-mount-changes-multiline-yaml-value" name="__tabbed_6" type="radio" /><div class="tabbed-labels"><label for="prevent-recreation-on-config-secret-or-bind-mount-changes-single-line-yaml-value">Single line YAML value</label><label for="prevent-recreation-on-config-secret-or-bind-mount-changes-multiline-yaml-value">Multiline YAML value</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="7:2"><input checked="checked" id="prevent-recreation-on-config-secret-or-bind-mount-changes-single-line-yaml-value" name="__tabbed_7" type="radio" /><input id="prevent-recreation-on-config-secret-or-bind-mount-changes-multiline-yaml-value" name="__tabbed_7" type="radio" /><div class="tabbed-labels"><label for="prevent-recreation-on-config-secret-or-bind-mount-changes-single-line-yaml-value">Single line YAML value</label><label for="prevent-recreation-on-config-secret-or-bind-mount-changes-multiline-yaml-value">Multiline YAML value</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="admonition warning">
@@ -3186,7 +3194,7 @@ By default, no signal is sent. This requires <a data-preview="" href="#prevent-r
 <p>Multiple service deployments can be configured in a single deployment config file by specifying multiple YAML documents (separated by <code class="language-yaml highlight"><span class="nn">---</span></code>).</p>
 <div class="admonition example">
 <p class="admonition-title">Example</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="7:3"><input checked="checked" id="multiple-service-deployments-basic" name="__tabbed_7" type="radio" /><input id="multiple-service-deployments-same-directory" name="__tabbed_7" type="radio" /><input id="multiple-service-deployments-sub-directories" name="__tabbed_7" type="radio" /><div class="tabbed-labels"><label for="multiple-service-deployments-basic">Basic</label><label for="multiple-service-deployments-same-directory">Same directory</label><label for="multiple-service-deployments-sub-directories">Sub-directories</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="8:3"><input checked="checked" id="multiple-service-deployments-basic" name="__tabbed_8" type="radio" /><input id="multiple-service-deployments-same-directory" name="__tabbed_8" type="radio" /><input id="multiple-service-deployments-sub-directories" name="__tabbed_8" type="radio" /><div class="tabbed-labels"><label for="multiple-service-deployments-basic">Basic</label><label for="multiple-service-deployments-same-directory">Same directory</label><label for="multiple-service-deployments-sub-directories">Sub-directories</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="language-yaml highlight"><span class="filename">.doco-cd.yml</span><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">app1</span>
