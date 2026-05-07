@@ -7,7 +7,6 @@ on:
         description: 'Version to publish docs for (e.g., v1.2.3)'
         required: false
         type: string
-        pattern: '^v[0-9]+\.[0-9]+\.[0-9]+$'
   push:
     branches:
       - main
@@ -73,6 +72,9 @@ jobs:
           
           # TODO: Remove this once the symlink alias bug is fixed in Zensical (https://github.com/zensical/ui/issues/126)
           sed -E -i 's#/v[0-9]+\.[0-9]+/#/latest/#g' latest/sitemap.xml
+          
+          cat latest/sitemap.xml
+          
           git add $(realpath latest/sitemap.xml)
           
           # Push the changes to the gh-pages branch
