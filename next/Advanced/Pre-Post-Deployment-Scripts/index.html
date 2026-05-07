@@ -2284,7 +2284,7 @@ Doco-CD's reconciliation for Swarm deployments only manages service updates and 
 </ul>
 <p>We use the <code>depends_on</code> option with the <code>condition: service_completed_successfully</code> condition to ensure that the main application container waits for the init container to complete successfully before starting. The init container will run its specified commands and exit with a status code of 0 to indicate success, allowing the main application container to start afterward.</p>
 <div class="admonition success">
-<p class="admonition-title">Recommended Restart Policy for One-Time Script Services</p>
+<p class="admonition-title">Recommended <a href="https://docs.docker.com/reference/compose-file/services/#restart">Restart Policy</a> for One-Time Script Services</p>
 <p>It is recommended to use <code class="language-yaml highlight"><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">on-failure</span></code> for one-time script services to allow them to remain stopped after successful completion, while still enabling automatic restarts in case of failures.</p>
 </div>
 <h3 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h3>
