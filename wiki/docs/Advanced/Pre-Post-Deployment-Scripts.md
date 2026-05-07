@@ -38,7 +38,7 @@ We use the `depends_on` option with the `condition: service_completed_successful
 
 ### Example
 
-```yaml title="docker-compose.yml" hl_lines="1-2 4-18 23 28-30"
+```yaml title="docker-compose.yml" hl_lines="1-2 5-19 24 29-31"
 x-common-env: &common-env # (4)!
   MYVAR: world  # We will use this variable in both init and app containers
 
