@@ -80,7 +80,7 @@ jobs:
           git status --short
           
           # Push the changes to the gh-pages branch
-          git diff --cached --quiet && echo "No changes to commit" || git commit --amend --no-edit
+          git diff --cached --quiet && echo "No changes to commit" || git commit --amend --no-edit || git commit -m "docs: fix sitemap URLs to use /latest/"
           git push --force-with-lease origin $DOCS_BRANCH
 #
 #  deploy:
