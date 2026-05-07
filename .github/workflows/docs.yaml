@@ -2,6 +2,12 @@ name: Publish Documentation
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish docs for (e.g., v1.2.3)'
+        required: false
+        type: string
+        pattern: '^v[0-9]+\.[0-9]+\.[0-9]+$'
   push:
     branches:
       - main
@@ -46,9 +52,9 @@ jobs:
         run: mike deploy --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --push next
 
       - name: Publish release docs
-        if: ${{ github.event_name == 'release' && !github.event.release.prerelease }}
+        if: ${{ (github.event_name == 'release' && !github.event.release.prerelease) || (github.event_name == 'workflow_dispatch' && github.event.inputs.version) }}
         env:
-          VERSION: ${{ github.event.release.tag_name }}
+          VERSION: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.version }}
         run: |
           MAJOR_MINOR="$(echo $VERSION | sed -E 's/^(v[0-9]+\.[0-9]+)\..*$/\1/')"
 
