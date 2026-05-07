@@ -32,7 +32,7 @@ They must be in the format of a YAML list/array (also called YAML Sequence) and 
 
 #### Using a YAML anchor
 
-With a YAML anchor, you can define the poll configuration outside the service definition.
+With a YAML anchor (See [Fragments](https://docs.docker.com/reference/compose-file/fragments/) and [sExtensions](https://docs.docker.com/reference/compose-file/extension/) in Docker Compose), you can define the poll configuration outside the service definition.
 
 ```yaml title="docker-compose.yaml" hl_lines="1-6 19"
 x-poll-config: &poll-config

@@ -39,7 +39,7 @@ We use the `depends_on` option with the `condition: service_completed_successful
 ### Example
 
 ```yaml title="docker-compose.yml" hl_lines="1-2 4-18 23 28-30"
-x-common-env: &common-env
+x-common-env: &common-env # (4)!
   MYVAR: world  # We will use this variable in both init and app containers
 
 services:
@@ -48,7 +48,7 @@ services:
     restart: on-failure:3 # (3)!
     environment:
       <<: *common-env
-    entrypoint: "sh -c"  # Use sh -c as the entrypoint to run multiple commands in "command" section
+    entrypoint: "sh -c" # (5)!
     volumes:
       - ./web:/web
     working_dir: /web
@@ -73,8 +73,10 @@ services:
 ```
 
 1. Double dollar-sign (`$$`) is required to use variables in the shell script, otherwise Docker Compose will try to resolve it as a variable in the `docker-compose.yml` file instead of passing it to the container.
-2. Wait for init container to complete/stop with exit code 0
-3. Using `restart: on-failure:3` allows the init container to be retried up to 3 times in case of failure during script execution, while still allowing it to remain stopped after successful completion. To retry indefinitely, you can use `restart: on-failure` without a retry limit.
+2. Wait for init container to complete/stop with exit code `0` using [`depends_on`](https://docs.docker.com/reference/compose-file/services/#depends_on)
+3. Using `restart: on-failure:3` allows the init container to be retried up to 3 times in case of failure during script execution, while still allowing it to remain stopped after successful completion. To retry indefinitely, you can use `restart: on-failure` without a retry limit. See [Restart Policy Documentation](https://docs.docker.com/reference/compose-file/services/#restart).
+4. See [Fragments](https://docs.docker.com/reference/compose-file/fragments/) and [Extensions](https://docs.docker.com/reference/compose-file/extension/) in the Compose File Reference for more details on how to use YAML anchors and aliases to share common configuration between services.
+5. Use `sh -c` as the [entrypoint](https://docs.docker.com/reference/compose-file/services/#entrypoint) to run multiple commands in the [`command`](https://docs.docker.com/reference/compose-file/services/#command) section
 
 - If you have a shell script in your repo for the init stuff, you can remove `entrypoint` and mount the script directly and run it via the `command` option:
   ```yaml title="docker-compose.yml"
