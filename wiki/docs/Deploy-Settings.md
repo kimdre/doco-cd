@@ -521,7 +521,7 @@ Supported `spec` fields are currently: `replicas`, `mode`.
         ```yaml title="docker-compose.yml"
         services:
           cleanup-job:
-            image: crazymax/swarm-cronjob:latest
+            image: my/app:latest
             labels:
               cd.doco.service.externally_managed: "true"
         ```
@@ -531,7 +531,7 @@ Supported `spec` fields are currently: `replicas`, `mode`.
         ```yaml title="docker-compose.yml"
         services:
           cleanup-job:
-            image: crazymax/swarm-cronjob:latest
+            image: my/app:latest
             labels:
               cd.doco.deployment.recreate.ignore: "{spec: [replicas]}"
         ```
