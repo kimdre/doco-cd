@@ -502,6 +502,40 @@ services:
       - NET_BIND_SERVICE
 ```
 
+#### Ignore service spec drift for externally managed services
+
+If another controller updates service spec fields at runtime (for example `swarm-cronjob` toggling `replicas`),
+you can mark the service as externally managed so poll/reconciliation drift detection ignores those spec changes.
+
+Two label shapes are supported:
+
+1. Coarse (ignore all currently supported spec fields): `cd.doco.service.externally_managed: "true"`
+2. Scoped: `cd.doco.deployment.recreate.ignore` with `spec: [...]`
+
+Supported `spec` fields are currently: `replicas`, `mode`.
+
+!!! example
+
+    === "Coarse: externally managed"
+
+        ```yaml title="docker-compose.yml"
+        services:
+          cleanup-job:
+            image: crazymax/swarm-cronjob:latest
+            labels:
+              cd.doco.service.externally_managed: "true"
+        ```
+
+    === "Scoped: ignore only replicas"
+
+        ```yaml title="docker-compose.yml"
+        services:
+          cleanup-job:
+            image: crazymax/swarm-cronjob:latest
+            labels:
+              cd.doco.deployment.recreate.ignore: "{spec: [replicas]}"
+        ```
+
 ## Multiple service deployments
 
 Multiple service deployments can be configured in a single deployment config file by specifying multiple YAML documents (separated by `#!yaml ---`).

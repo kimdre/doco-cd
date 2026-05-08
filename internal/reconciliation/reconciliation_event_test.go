@@ -106,6 +106,53 @@ func TestDockerEventFiltersForActions_SwarmUpdate(t *testing.T) {
 	}
 }
 
+func TestShouldSuppressUpdateEventForServiceLabels(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		action string
+		labels map[string]string
+		want   bool
+	}{
+		{
+			name:   "non-update action",
+			action: "die",
+			labels: map[string]string{docker.DocoCDLabels.Service.ExternallyManaged: "true"},
+			want:   false,
+		},
+		{
+			name:   "update action with externally managed label",
+			action: "update",
+			labels: map[string]string{docker.DocoCDLabels.Service.ExternallyManaged: "true"},
+			want:   true,
+		},
+		{
+			name:   "update action with scoped spec ignore",
+			action: "update",
+			labels: map[string]string{docker.DocoCDLabels.Deployment.RecreateIgnore: "{spec: [replicas]}"},
+			want:   true,
+		},
+		{
+			name:   "update action with unrelated ignore scope",
+			action: "update",
+			labels: map[string]string{docker.DocoCDLabels.Deployment.RecreateIgnore: "{configs: [app]}"},
+			want:   false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := shouldSuppressUpdateEventForServiceLabels(tc.action, tc.labels)
+			if got != tc.want {
+				t.Fatalf("expected suppression=%t, got %t", tc.want, got)
+			}
+		})
+	}
+}
+
 func TestDockerEventsSinceValue(t *testing.T) {
 	t.Parallel()
 

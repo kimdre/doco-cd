@@ -226,6 +226,8 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 	}
 	for svcName, svc := range services {
 		status, ok := deployed[Service(svcName)]
+		ignoreReplicas := IsServiceSpecFieldIgnoredByLabels(svc.Labels, ServiceSpecFieldReplicas)
+		ignoreMode := IsServiceSpecFieldIgnoredByLabels(svc.Labels, ServiceSpecFieldMode)
 
 		reasons := []ServiceMismatchReason{}
 
@@ -236,7 +238,7 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 				})
 			} else {
 				svcMode := getSvcMode(svc)
-				if status.SwarmMode != svcMode {
+				if status.SwarmMode != svcMode && !ignoreMode {
 					reasons = append(reasons, ServiceMismatchReason{
 						Reason: ServiceMismatchReasonSwarmMode,
 						Want:   svcMode,
@@ -246,7 +248,7 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 					switch svcMode {
 					case swarmInternal.DeployModeReplicated, swarmInternal.DeployModeReplicatedJob:
 						//  scale should always be >= 0
-						if uint64(svc.GetScale()) != status.Replicas { //nolint:gosec
+						if uint64(svc.GetScale()) != status.Replicas && !ignoreReplicas { //nolint:gosec
 							reasons = append(reasons, ServiceMismatchReason{
 								Reason: ServiceMismatchReasonReplicas,
 								Want:   svc.GetScale(),
@@ -261,7 +263,7 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 				reasons = append(reasons, ServiceMismatchReason{
 					Reason: ServiceMismatchReasonNotDeployed,
 				})
-			} else if uint64(svc.GetScale()) != status.Replicas { //nolint:gosec
+			} else if uint64(svc.GetScale()) != status.Replicas && !ignoreReplicas { //nolint:gosec
 				reasons = append(reasons, ServiceMismatchReason{
 					Reason: ServiceMismatchReasonReplicas,
 					Want:   svc.GetScale(),
