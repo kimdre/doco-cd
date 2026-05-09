@@ -989,27 +989,16 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#service-labels" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Service Labels
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Service Labels">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
   <a href="#prevent-recreation-on-config-secret-or-bind-mount-changes" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Prevent recreation on config, secret, or bind mount changes
+        Prevent recreation on config, secret or bind mount changes
       </span>
     </span>
   </a>
   
-</li>
+    <nav class="md-nav" aria-label="Prevent recreation on config, secret or bind mount changes">
+      <ul class="md-nav__list">
         
           <li class="md-nav__item">
   <a href="#send-signal-on-ignored-recreation" class="md-nav__link">
@@ -1116,6 +1105,8 @@
   
     
     
+      
+        
       
         
       
@@ -1598,6 +1589,33 @@
     
   
   Pre- / Post-Deployment Scripts
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Advanced/Scheduled-Jobs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Scheduling / Cron Jobs
 
     
   </span>
@@ -2288,27 +2306,16 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#service-labels" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Service Labels
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Service Labels">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
   <a href="#prevent-recreation-on-config-secret-or-bind-mount-changes" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Prevent recreation on config, secret, or bind mount changes
+        Prevent recreation on config, secret or bind mount changes
       </span>
     </span>
   </a>
   
-</li>
+    <nav class="md-nav" aria-label="Prevent recreation on config, secret or bind mount changes">
+      <ul class="md-nav__list">
         
           <li class="md-nav__item">
   <a href="#send-signal-on-ignored-recreation" class="md-nav__link">
@@ -3118,8 +3125,7 @@ See <a href="https://pkg.go.dev/regexp/syntax">Go Regular Expressions</a> for mo
 </div>
 </div>
 </div>
-<h3 id="service-labels">Service Labels<a class="headerlink" href="#service-labels" title="Permanent link">&para;</a></h3>
-<h4 id="prevent-recreation-on-config-secret-or-bind-mount-changes">Prevent recreation on config, secret, or bind mount changes<a class="headerlink" href="#prevent-recreation-on-config-secret-or-bind-mount-changes" title="Permanent link">&para;</a></h4>
+<h3 id="prevent-recreation-on-config-secret-or-bind-mount-changes">Prevent recreation on config, secret or bind mount changes<a class="headerlink" href="#prevent-recreation-on-config-secret-or-bind-mount-changes" title="Permanent link">&para;</a></h3>
 <p>When using docker compose with configs, secrets or bind mounts, changes to these resources will trigger a recreation of the service containers by default.
 To avoid this, you can set the <code>cd.doco.deployment.recreate.ignore</code> service label to a YAML list of scopes that should be ignored for recreation.</p>
 <p>It's a map of scope → items to ignore; <code>null</code> or an empty value tells doco-cd to ignore all items in that scope.
