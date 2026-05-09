@@ -22,6 +22,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
+	"github.com/kimdre/doco-cd/internal/utils/id"
 )
 
 const (
@@ -356,9 +357,11 @@ func (s *scheduler) triggerRun(ctx context.Context, job scheduledJob, cfg docker
 	graceful.SafeGo(s.wg, s.log, func() {
 		defer s.setRunInProgress(job.key, false)
 
+		runID := id.GenID()
 		stackName := getJobStackName(job)
 
 		runLog := s.log.With(
+			slog.String("job_id", runID),
 			slog.String("job", job.name),
 			slog.String("stack", stackName),
 			slog.String("mode", string(job.mode)),
@@ -378,13 +381,13 @@ func (s *scheduler) triggerRun(ctx context.Context, job scheduledJob, cfg docker
 		err := s.executeScheduledRun(ctx, job, cfg)
 		if err != nil {
 			runLog.Error("scheduled run failed", logger.ErrAttr(err))
-			s.sendRunNotification(job, cfg, false, "Scheduled job failed", err.Error())
+			s.sendRunNotification(job, cfg, runID, false, "Scheduled job failed", fmt.Sprintf("scheduled job '%s' failed to run: %v", job.name, err))
 
 			return
 		}
 
 		runLog.Info("scheduled run completed", slog.String("next_run", s.states[job.key].nextRun.Format(time.RFC3339)))
-		s.sendRunNotification(job, cfg, true, "Scheduled job completed", "scheduled job completed successfully")
+		s.sendRunNotification(job, cfg, runID, true, "Scheduled job completed", fmt.Sprintf("scheduled job '%s' completed successfully", job.name))
 	})
 }
 
@@ -421,7 +424,7 @@ func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, c
 	}
 }
 
-func (s *scheduler) sendRunNotification(job scheduledJob, cfg docker.JobScheduleConfig, success bool, title, msg string) {
+func (s *scheduler) sendRunNotification(job scheduledJob, cfg docker.JobScheduleConfig, runID string, success bool, title, msg string) {
 	shouldSend := cfg.ShouldNotifyFailure()
 	lvl := notification.Failure
 
@@ -434,11 +437,18 @@ func (s *scheduler) sendRunNotification(job scheduledJob, cfg docker.JobSchedule
 		return
 	}
 
+	actorKind := "container"
+	if job.mode == scheduledjobModeSwarm {
+		actorKind = "service"
+	}
+
 	metadata := notification.Metadata{
-		Repository: job.labels[docker.DocoCDLabels.Repository.Name],
-		Stack:      job.labels[docker.DocoCDLabels.Deployment.Name],
-		Revision:   notification.GetRevision("", job.labels[docker.DocoCDLabels.Deployment.CommitSHA]),
-		JobID:      "scheduled",
+		Repository:        job.labels[docker.DocoCDLabels.Repository.Name],
+		Stack:             job.labels[docker.DocoCDLabels.Deployment.Name],
+		Revision:          notification.GetRevision("", job.labels[docker.DocoCDLabels.Deployment.CommitSHA]),
+		JobID:             runID,
+		AffectedActorKind: actorKind,
+		AffectedActorName: job.name,
 	}
 
 	if err := notification.Send(lvl, title, msg, metadata); err != nil {
