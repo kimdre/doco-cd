@@ -12,7 +12,7 @@ You can schedule service/container runs using `cd.doco.job.*` labels.
 
 By default, a scheduled run triggers a normal service restart/rerun behavior:
 
-- Docker standalone: restart the target container
+- Docker standalone: restart the job container
 - Docker Swarm: rerun job-mode services, restart long-running services
 
 Use `#!yaml cd.doco.job.execution_mode: one_shot` to run an ephemeral one-shot execution instead.

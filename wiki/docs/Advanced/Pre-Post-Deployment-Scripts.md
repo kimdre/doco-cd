@@ -111,7 +111,7 @@ Sidecar containers are additional containers that run alongside your main applic
 
 Some common use cases for sidecar containers include:
 
-- Background tasks, e.g. cron jobs or scheduled tasks (See also [Scheduling / Cron Jobs](Scheduled-jobs.md) for the built-in scheduling feature)
+- Background tasks, e.g. cron jobs or scheduled tasks (See also [Scheduling / Cron Jobs](Scheduled-Jobs.md) for the built-in scheduling feature)
 - Metrics collection for monitoring tools like Prometheus
 - Log forwarding to external systems
 
