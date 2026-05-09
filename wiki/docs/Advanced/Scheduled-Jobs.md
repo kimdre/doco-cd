@@ -81,18 +81,25 @@ This is useful for running periodic tasks such as backups, maintenance scripts, 
               cd.doco.job.schedule: "@monthly"
         ```
 
+## Execution modes
+
+The execution mode determines how scheduled jobs are run and managed by doco-cd and can be configured using the `cd.doco.job.execution_mode` label on the service.
+
+### `restart`
+
+By default, scheduled jobs will be executed in `restart` mode, which means the service container 
+will be created on deployment and then re-/started at the scheduled time without being removed after completion.
+
+### `one_shot`
+
+Alternatively, you can configure scheduled jobs to run in `one_shot` mode, which means a new ephemeral container will 
+be created for each scheduled run and removed after completion.
+
+Note that this means that you won't be able to see the container or its logs after the job has completed, 
+so make sure to configure appropriate logging (e.g., log to a persistent file or external logging service like [Loki](https://grafana.com/docs/loki/latest/)) 
+if you need to keep track of job runs and [notifications](Notifications.md) if needed.
+
 ## Configuration
-
-By default, a scheduled run triggers a normal service restart/rerun behavior:
-
-- Docker standalone: restart the job container
-- Docker Swarm: rerun job-mode services, restart long-running services
-
-Use `#!yaml cd.doco.job.execution_mode: one_shot` to run an ephemeral one-shot execution instead.
-
-In Docker Swarm Mode, `one_shot` creates a temporary job service and removes it after completion.
-If the source service uses `#!yaml deploy.mode: global`, the one-shot run is created as `global-job`;
-otherwise it is created as `replicated-job`.
 
 ??? example "How to set service labels in a docker compose file"
     To set service labels in a docker compose file, include them in the `labels` section of your service definition:
@@ -121,6 +128,13 @@ Use the following service labels to configure scheduled jobs:
 | `cd.doco.job.skip_running`         | boolean | Do not run the job if a previous scheduled run is still active/running                            | `false`   |
 | `cd.doco.job.notify_on`            | string  | [Notification](Notifications.md) behavior for scheduled runs: `none`, `success`, `failure`, `all` | `all`     |
 | `cd.doco.job.swarm.replicas`       | integer | Number of completions/concurrency for swarm one-shot jobs in `replicated-job` mode                | `1`       |
+
+### Swarm `deploy.mode`
+
+When using Docker Swarm, you can configure the deploy mode for scheduled jobs using the `deploy.mode` field in your docker compose file.
+
+- If the service uses `#!yaml deploy.mode: global`, the job run is created as `global-job`
+- If the service uses `#!yaml deploy.mode: replicated` or does not specify a deploy mode, the job run is created as `replicated-job` with the number of completions/concurrency determined by the `cd.doco.job.swarm.replicas` label.
 
 ## Examples
 
