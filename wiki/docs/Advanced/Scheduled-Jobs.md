@@ -28,7 +28,7 @@ This is useful for running periodic tasks such as backups, maintenance scripts, 
 
         ```yaml title="docker-compose.yml"
         services:
-          app:
+          backup:
             image: example/backup:latest
             labels:
               cd.doco.job.enabled: "true"
@@ -39,7 +39,7 @@ This is useful for running periodic tasks such as backups, maintenance scripts, 
 
         ```yaml title="docker-compose.yml"
         services:
-          app:
+          backup:
             image: example/backup:latest
             labels:
               cd.doco.job.enabled: "true"
