@@ -12,13 +12,13 @@
         <meta name="author" content="doco-cd contributors">
       
       
-        <link rel="canonical" href="https://doco.cd/next/Endpoints/Metrics/">
+        <link rel="canonical" href="https://doco.cd/next/Advanced/Schedules-Jobs/">
       
       
-        <link rel="prev" href="../../Core-Concepts/">
+        <link rel="prev" href="../Pre-Post-Deployment-Scripts/">
       
       
-        <link rel="next" href="../REST-API/">
+        <link rel="next" href="../Tips-and-Tricks/">
       
       
         
@@ -31,7 +31,7 @@
   
     
       
-        <title>Prometheus Metrics - Doco-CD Documentation</title>
+        <title>Scheduled jobs - Doco-CD Documentation</title>
       
     
   
@@ -133,7 +133,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#prometheus-metrics" class="md-skip">
+        <a href="#scheduled-jobs" class="md-skip">
           Skip to content
         </a>
       
@@ -149,13 +149,13 @@
               
   <span data-next-version-message hidden>
     You're viewing the <strong>unreleased</strong> (next) version of this documentation. Content may be incomplete or subject to change.
-    <a href="../../../latest/Endpoints/Metrics/">
+    <a href="../../../latest/Advanced/Schedules-Jobs/">
       <strong>Click here to go to the latest stable version.</strong>
     </a>
   </span>
   <span data-non-next-version-message>
     You're not viewing the latest version.
-    <a href="../../../latest/Endpoints/Metrics/">
+    <a href="../../../latest/Advanced/Schedules-Jobs/">
       <strong>Click here to go to latest.</strong>
     </a>
   </span>
@@ -205,7 +205,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Prometheus Metrics
+              Scheduled jobs
             
           </span>
         </div>
@@ -345,11 +345,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="../../Advanced/Swarm-Mode/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../Swarm-Mode/" class="md-tabs__link">
           
   
   Advanced
@@ -364,12 +366,10 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
+      <li class="md-tabs__item">
         <a href="../../Core-Concepts/" class="md-tabs__link">
           
   
@@ -810,8 +810,10 @@
       
   
   
+    
   
   
+  
     
     
       
@@ -835,17 +837,20 @@
     
     
       
+        
+        
+      
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
             
   
   
@@ -862,7 +867,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
@@ -879,7 +884,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Swarm-Mode/" class="md-nav__link">
+      <a href="../Swarm-Mode/" class="md-nav__link">
         
   
   
@@ -906,7 +911,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Private-Container-Registries/" class="md-nav__link">
+      <a href="../Private-Container-Registries/" class="md-nav__link">
         
   
   
@@ -933,7 +938,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Encryption/" class="md-nav__link">
+      <a href="../Encryption/" class="md-nav__link">
         
   
   
@@ -1263,7 +1268,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Notifications/" class="md-nav__link">
+      <a href="../Notifications/" class="md-nav__link">
         
   
   
@@ -1290,7 +1295,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Pre-Post-Deployment-Scripts/" class="md-nav__link">
+      <a href="../Pre-Post-Deployment-Scripts/" class="md-nav__link">
         
   
   
@@ -1314,10 +1319,36 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../Advanced/Schedules-Jobs/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Scheduling / Cron Jobs
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1332,6 +1363,88 @@
   
 
       </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#schedule-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Schedule formats
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Schedule formats">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Examples
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Configuration
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Examples
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#daylight-saving-time-dst" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Daylight saving time (DST)
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1344,7 +1457,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Tips-and-Tricks/" class="md-nav__link">
+      <a href="../Tips-and-Tricks/" class="md-nav__link">
         
   
   
@@ -1375,10 +1488,8 @@
       
   
   
-    
   
   
-  
     
     
       
@@ -1400,20 +1511,17 @@
     
     
       
-        
-        
-      
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
             
   
   
@@ -1430,7 +1538,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1471,10 +1579,8 @@
                 
   
   
-    
   
   
-  
     
     
       
@@ -1491,11 +1597,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_2" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_2" >
         
           
           <label class="md-nav__link" for="__nav_5_2" id="__nav_5_2_label" tabindex="0">
@@ -1515,7 +1621,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_2_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_2_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_5_2">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1529,36 +1635,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Prometheus Metrics / Monitoring
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="././" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../Endpoints/Metrics/" class="md-nav__link">
         
   
   
@@ -1573,49 +1653,6 @@
   
 
       </a>
-      
-        
-
-
-<nav class="md-nav md-nav--secondary" aria-label="On this page">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      On this page
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#available-metrics" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Available Metrics
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#grafana-dashboard" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Grafana Dashboard
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1628,7 +1665,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../REST-API/" class="md-nav__link">
+      <a href="../../Endpoints/REST-API/" class="md-nav__link">
         
   
   
@@ -1655,7 +1692,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../Webhook-Listener/" class="md-nav__link">
+      <a href="../../Endpoints/Webhook-Listener/" class="md-nav__link">
         
   
   
@@ -1918,10 +1955,38 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#available-metrics" class="md-nav__link">
+  <a href="#schedule-formats" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Available Metrics
+        Schedule formats
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Schedule formats">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Examples
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Configuration
       </span>
     </span>
   </a>
@@ -1929,10 +1994,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#grafana-dashboard" class="md-nav__link">
+  <a href="#examples_1" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Grafana Dashboard
+        Examples
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#daylight-saving-time-dst" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Daylight saving time (DST)
       </span>
     </span>
   </a>
@@ -1982,28 +2058,10 @@
     
     
       <li class="md-path__item">
-        <a href="../../Core-Concepts/" class="md-path__link">
+        <a href="../Swarm-Mode/" class="md-path__link">
           
   <span class="md-ellipsis">
-    Reference
-  </span>
-
-        </a>
-      </li>
-    
-  
-
-      
-        
-  
-  
-    
-    
-      <li class="md-path__item">
-        <a href="././" class="md-path__link">
-          
-  <span class="md-ellipsis">
-    Endpoints
+    Advanced
   </span>
 
         </a>
@@ -2020,7 +2078,7 @@
                 
                   
   
-    <a href="https://github.com/kimdre/doco-cd/edit/main/wiki/docs/Endpoints/Metrics.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/kimdre/doco-cd/edit/main/wiki/docs/Advanced/Schedules-Jobs.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-pen" viewBox="0 0 24 24"><path d="M12.659 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v9.34"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10.378 12.622a1 1 0 0 1 3 3.003L8.36 20.637a2 2 0 0 1-.854.506l-2.867.837a.5.5 0 0 1-.62-.62l.836-2.869a2 2 0 0 1 .506-.853z"/></svg>
     </a>
@@ -2029,86 +2087,207 @@
     
       
     
-    <a href="https://github.com/kimdre/doco-cd/raw/main/wiki/docs/Endpoints/Metrics.md" title="View source of this page" class="md-content__button md-icon">
+    <a href="https://github.com/kimdre/doco-cd/raw/main/wiki/docs/Advanced/Schedules-Jobs.md" title="View source of this page" class="md-content__button md-icon">
       
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code-2" viewBox="0 0 24 24"><path d="M4 12.15V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2h-3.35"/><path d="M14 2v5a1 1 0 0 0 1 1h5M5 16l-3 3 3 3M9 22l3-3-3-3"/></svg>
     </a>
   
 
 
-<h1 id="prometheus-metrics">Prometheus Metrics<a class="headerlink" href="#prometheus-metrics" title="Permanent link">&para;</a></h1>
-<p>The application exposes Prometheus metrics at the <code>/metrics</code> endpoint. This endpoint provides various metrics about the application's performance and health, which can be scraped by a Prometheus server for monitoring purposes.</p>
-<p>By default, this endpoint is available on Port <code>9120</code>, but can be configured using the <code>METRICS_PORT</code> environment variable, see <a data-preview="" href="../../App-Settings/#available-settings">App Settings</a>.</p>
-<h2 id="available-metrics">Available Metrics<a class="headerlink" href="#available-metrics" title="Permanent link">&para;</a></h2>
-<p>See the following Source Code to find out about the currently available metrics:
-<div class="language-go highlight"><span class="filename">Prometheus Collectors</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="w">    </span><span class="nx">AppInfo</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">NewGaugeVec</span><span class="p">(</span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">GaugeOpts</span><span class="p">{</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">        </span><span class="nx">Namespace</span><span class="p">:</span><span class="w"> </span><span class="nx">MetricsNamespace</span><span class="p">,</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">        </span><span class="nx">Name</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;info&quot;</span><span class="p">,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">        </span><span class="nx">Help</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;Application information&quot;</span><span class="p">,</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="p">},</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">        </span><span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">&quot;version&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;log_level&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;start_time&quot;</span><span class="p">},</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="p">)</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nx">PollTotal</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">NewCounterVec</span><span class="p">(</span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">CounterOpts</span><span class="p">{</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">        </span><span class="nx">Namespace</span><span class="p">:</span><span class="w"> </span><span class="nx">MetricsNamespace</span><span class="p">,</span>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">        </span><span class="nx">Name</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;polls_total&quot;</span><span class="p">,</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">        </span><span class="nx">Help</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;Number of successful polls&quot;</span><span class="p">,</span>
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="p">},</span><span class="w"> </span><span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">&quot;repository&quot;</span><span class="p">})</span>
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span><span class="nx">PollErrors</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">NewCounterVec</span><span class="p">(</span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">CounterOpts</span><span class="p">{</span>
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">        </span><span class="nx">Namespace</span><span class="p">:</span><span class="w"> </span><span class="nx">MetricsNamespace</span><span class="p">,</span>
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">        </span><span class="nx">Name</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;poll_errors_total&quot;</span><span class="p">,</span>
-</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">        </span><span class="nx">Help</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;Failed polling attempts&quot;</span><span class="p">,</span>
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">    </span><span class="p">},</span><span class="w"> </span><span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">&quot;repository&quot;</span><span class="p">})</span>
-</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">    </span><span class="nx">PollDuration</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">NewHistogramVec</span><span class="p">(</span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">HistogramOpts</span><span class="p">{</span>
-</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">        </span><span class="nx">Namespace</span><span class="p">:</span><span class="w"> </span><span class="nx">MetricsNamespace</span><span class="p">,</span>
-</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">        </span><span class="nx">Name</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;poll_duration_seconds&quot;</span><span class="p">,</span>
-</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">        </span><span class="nx">Help</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;Duration of polling operations in seconds&quot;</span><span class="p">,</span>
-</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">        </span><span class="nx">Buckets</span><span class="p">:</span><span class="w">   </span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">DefBuckets</span><span class="p">,</span>
-</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">    </span><span class="p">},</span><span class="w"> </span><span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">&quot;repository&quot;</span><span class="p">})</span>
-</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="w">    </span><span class="nx">WebhookRequestsTotal</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">NewCounterVec</span><span class="p">(</span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">CounterOpts</span><span class="p">{</span>
-</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="w">        </span><span class="nx">Namespace</span><span class="p">:</span><span class="w"> </span><span class="nx">MetricsNamespace</span><span class="p">,</span>
-</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="w">        </span><span class="nx">Name</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;webhook_requests_total&quot;</span><span class="p">,</span>
-</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="w">        </span><span class="nx">Help</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;Total number of webhook requests received&quot;</span><span class="p">,</span>
-</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="w">    </span><span class="p">},</span><span class="w"> </span><span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">&quot;repository&quot;</span><span class="p">})</span>
-</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="w">    </span><span class="nx">WebhookErrorsTotal</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">NewCounterVec</span><span class="p">(</span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">CounterOpts</span><span class="p">{</span>
-</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="w">        </span><span class="nx">Namespace</span><span class="p">:</span><span class="w"> </span><span class="nx">MetricsNamespace</span><span class="p">,</span>
-</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a><span class="w">        </span><span class="nx">Name</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;webhook_errors_total&quot;</span><span class="p">,</span>
-</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a><span class="w">        </span><span class="nx">Help</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;Total number of errors in webhook processing&quot;</span><span class="p">,</span>
-</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a><span class="w">    </span><span class="p">},</span><span class="w"> </span><span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">&quot;repository&quot;</span><span class="p">})</span>
-</span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a><span class="w">    </span><span class="nx">WebhookDuration</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">NewHistogramVec</span><span class="p">(</span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">HistogramOpts</span><span class="p">{</span>
-</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a><span class="w">        </span><span class="nx">Namespace</span><span class="p">:</span><span class="w"> </span><span class="nx">MetricsNamespace</span><span class="p">,</span>
-</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a><span class="w">        </span><span class="nx">Name</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;webhook_duration_seconds&quot;</span><span class="p">,</span>
-</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a><span class="w">        </span><span class="nx">Help</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;Duration of webhook processing in seconds&quot;</span><span class="p">,</span>
-</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a><span class="w">        </span><span class="nx">Buckets</span><span class="p">:</span><span class="w">   </span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">DefBuckets</span><span class="p">,</span>
-</span><span id="__span-0-39"><a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a><span class="w">    </span><span class="p">},</span><span class="w"> </span><span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">&quot;repository&quot;</span><span class="p">})</span>
-</span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a><span class="w">    </span><span class="nx">DeploymentsTotal</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">NewCounterVec</span><span class="p">(</span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">CounterOpts</span><span class="p">{</span>
-</span><span id="__span-0-41"><a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a><span class="w">        </span><span class="nx">Namespace</span><span class="p">:</span><span class="w"> </span><span class="nx">MetricsNamespace</span><span class="p">,</span>
-</span><span id="__span-0-42"><a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a><span class="w">        </span><span class="nx">Name</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;deployments_total&quot;</span><span class="p">,</span>
-</span><span id="__span-0-43"><a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a><span class="w">        </span><span class="nx">Help</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;Total number of deployments processed&quot;</span><span class="p">,</span>
-</span><span id="__span-0-44"><a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a><span class="w">    </span><span class="p">},</span><span class="w"> </span><span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">&quot;repository&quot;</span><span class="p">})</span>
-</span><span id="__span-0-45"><a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a><span class="w">    </span><span class="nx">DeploymentErrorsTotal</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">NewCounterVec</span><span class="p">(</span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">CounterOpts</span><span class="p">{</span>
-</span><span id="__span-0-46"><a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a><span class="w">        </span><span class="nx">Namespace</span><span class="p">:</span><span class="w"> </span><span class="nx">MetricsNamespace</span><span class="p">,</span>
-</span><span id="__span-0-47"><a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a><span class="w">        </span><span class="nx">Name</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;deployment_errors_total&quot;</span><span class="p">,</span>
-</span><span id="__span-0-48"><a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a><span class="w">        </span><span class="nx">Help</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;Total number of errors during deployments&quot;</span><span class="p">,</span>
-</span><span id="__span-0-49"><a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a><span class="w">    </span><span class="p">},</span><span class="w"> </span><span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">&quot;repository&quot;</span><span class="p">})</span>
-</span><span id="__span-0-50"><a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a><span class="w">    </span><span class="nx">DeploymentDuration</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">NewHistogramVec</span><span class="p">(</span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">HistogramOpts</span><span class="p">{</span>
-</span><span id="__span-0-51"><a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a><span class="w">        </span><span class="nx">Namespace</span><span class="p">:</span><span class="w"> </span><span class="nx">MetricsNamespace</span><span class="p">,</span>
-</span><span id="__span-0-52"><a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a><span class="w">        </span><span class="nx">Name</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;deployment_duration_seconds&quot;</span><span class="p">,</span>
-</span><span id="__span-0-53"><a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a><span class="w">        </span><span class="nx">Help</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;Duration of deployment operations in seconds&quot;</span><span class="p">,</span>
-</span><span id="__span-0-54"><a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a><span class="w">        </span><span class="nx">Buckets</span><span class="p">:</span><span class="w">   </span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">DefBuckets</span><span class="p">,</span>
-</span><span id="__span-0-55"><a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a><span class="w">    </span><span class="p">},</span><span class="w"> </span><span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">&quot;repository&quot;</span><span class="p">})</span>
-</span><span id="__span-0-56"><a id="__codelineno-0-56" name="__codelineno-0-56" href="#__codelineno-0-56"></a><span class="w">    </span><span class="nx">DeploymentsActive</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">NewGaugeVec</span><span class="p">(</span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">GaugeOpts</span><span class="p">{</span>
-</span><span id="__span-0-57"><a id="__codelineno-0-57" name="__codelineno-0-57" href="#__codelineno-0-57"></a><span class="w">        </span><span class="nx">Namespace</span><span class="p">:</span><span class="w"> </span><span class="nx">MetricsNamespace</span><span class="p">,</span>
-</span><span id="__span-0-58"><a id="__codelineno-0-58" name="__codelineno-0-58" href="#__codelineno-0-58"></a><span class="w">        </span><span class="nx">Name</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;deployments_active&quot;</span><span class="p">,</span>
-</span><span id="__span-0-59"><a id="__codelineno-0-59" name="__codelineno-0-59" href="#__codelineno-0-59"></a><span class="w">        </span><span class="nx">Help</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;Number of currently active deployments&quot;</span><span class="p">,</span>
-</span><span id="__span-0-60"><a id="__codelineno-0-60" name="__codelineno-0-60" href="#__codelineno-0-60"></a><span class="w">    </span><span class="p">},</span><span class="w"> </span><span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">&quot;repository&quot;</span><span class="p">})</span>
-</span><span id="__span-0-61"><a id="__codelineno-0-61" name="__codelineno-0-61" href="#__codelineno-0-61"></a><span class="w">    </span><span class="nx">DeploymentsQueued</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">NewGaugeVec</span><span class="p">(</span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">GaugeOpts</span><span class="p">{</span>
-</span><span id="__span-0-62"><a id="__codelineno-0-62" name="__codelineno-0-62" href="#__codelineno-0-62"></a><span class="w">        </span><span class="nx">Namespace</span><span class="p">:</span><span class="w"> </span><span class="nx">MetricsNamespace</span><span class="p">,</span>
-</span><span id="__span-0-63"><a id="__codelineno-0-63" name="__codelineno-0-63" href="#__codelineno-0-63"></a><span class="w">        </span><span class="nx">Name</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;deployments_queued&quot;</span><span class="p">,</span>
-</span><span id="__span-0-64"><a id="__codelineno-0-64" name="__codelineno-0-64" href="#__codelineno-0-64"></a><span class="w">        </span><span class="nx">Help</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;Number of queued deployments waiting to start&quot;</span><span class="p">,</span>
-</span><span id="__span-0-65"><a id="__codelineno-0-65" name="__codelineno-0-65" href="#__codelineno-0-65"></a><span class="w">    </span><span class="p">},</span><span class="w"> </span><span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">&quot;repository&quot;</span><span class="p">})</span>
-</span></code></pre></div></p>
-<h2 id="grafana-dashboard">Grafana Dashboard<a class="headerlink" href="#grafana-dashboard" title="Permanent link">&para;</a></h2>
-<p>An example for a Grafana Dashboard can be found at <a href="https://github.com/kimdre/doco-cd/discussions/583">Grafana Dashboard #583</a>.</p>
+<h1 id="scheduled-jobs">Scheduled jobs<a class="headerlink" href="#scheduled-jobs" title="Permanent link">&para;</a></h1>
+<p>You can schedule service/container runs using <code>cd.doco.job.*</code> labels.</p>
+<p>By default, a scheduled run triggers a normal service restart/rerun behavior:</p>
+<ul>
+<li>Docker standalone: restart the target container</li>
+<li>Docker Swarm: rerun job-mode services, restart long-running services</li>
+</ul>
+<p>Use <code class="language-yaml highlight"><span class="nt">cd.doco.job.execution_mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">one_shot</span></code> to run an ephemeral one-shot execution instead.</p>
+<p>In Docker Swarm Mode, <code>one_shot</code> creates a temporary job service and removes it after completion. 
+If the source service uses <code class="language-yaml highlight"><span class="nt">deploy.mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">global</span></code>, the one-shot run is created as <code>global-job</code>; 
+otherwise it is created as <code>replicated-job</code>. </p>
+<h2 id="schedule-formats">Schedule formats<a class="headerlink" href="#schedule-formats" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="https://pkg.go.dev/github.com/robfig/cron#hdr-CRON_Expression_Format">Cron expressions</a> <strong>without</strong> seconds (<code>minute hour day-of-month month day-of-week</code>)</li>
+<li><a href="https://pkg.go.dev/github.com/robfig/cron#hdr-Predefined_schedules">Predefined schedules</a> like <code>@hourly</code>, <code>@daily</code>, <code>@weekly</code>, <code>@monthly</code>, <code>@yearly</code></li>
+<li><a href="https://pkg.go.dev/github.com/robfig/cron#hdr-Intervals">Intervals</a> like <code>@every &lt;duration&gt;</code> (for example <code>@every 30m</code>)</li>
+</ul>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>Use an online cron expression generator like <a href="https://crontab.guru/">crontab.guru</a> to create and validate cron expressions.</p>
+</div>
+<h3 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h3>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:3"><input checked="checked" id="examples-every-15-minutes" name="__tabbed_1" type="radio" /><input id="examples-weekdays-at-0230" name="__tabbed_1" type="radio" /><input id="examples-first-day-of-month-at-midnight" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="examples-every-15-minutes">Every 15 minutes</label><label for="examples-weekdays-at-0230">Weekdays at 02:30</label><label for="examples-first-day-of-month-at-midnight">First day of month at midnight</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="tabbed-set tabbed-alternate" data-tabs="2:2"><input checked="checked" id="examples-using-cron-expression" name="__tabbed_2" type="radio" /><input id="examples-using-interval-format" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="examples-using-cron-expression">Using cron expression</label><label for="examples-using-interval-format">Using interval format</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">example/backup:latest</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">      </span><span class="nt">cd.doco.job.enabled</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">      </span><span class="nt">cd.doco.job.schedule</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;*/15</span><span class="nv"> </span><span class="s">*</span><span class="nv"> </span><span class="s">*</span><span class="nv"> </span><span class="s">*</span><span class="nv"> </span><span class="s">*&quot;</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">example/backup:latest</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">      </span><span class="nt">cd.doco.job.enabled</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">      </span><span class="nt">cd.doco.job.schedule</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;@every</span><span class="nv"> </span><span class="s">15m&quot;</span>
+</span></code></pre></div>
+</div>
+</div>
+</div>
+</div>
+<div class="tabbed-block">
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">backup</span><span class="p">:</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">example/backup:latest</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">      </span><span class="nt">cd.doco.job.enabled</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">      </span><span class="nt">cd.doco.job.schedule</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;30</span><span class="nv"> </span><span class="s">2</span><span class="nv"> </span><span class="s">*</span><span class="nv"> </span><span class="s">*</span><span class="nv"> </span><span class="s">1-5&quot;</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="tabbed-set tabbed-alternate" data-tabs="3:2"><input checked="checked" id="examples-using-cron-expression_1" name="__tabbed_3" type="radio" /><input id="examples-using-predefined-schedule" name="__tabbed_3" type="radio" /><div class="tabbed-labels"><label for="examples-using-cron-expression_1">Using cron expression</label><label for="examples-using-predefined-schedule">Using predefined schedule</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">cleanup</span><span class="p">:</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">example/backup:latest</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">      </span><span class="nt">cd.doco.job.enabled</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">      </span><span class="nt">cd.doco.job.schedule</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0</span><span class="nv"> </span><span class="s">0</span><span class="nv"> </span><span class="s">1</span><span class="nv"> </span><span class="s">*</span><span class="nv"> </span><span class="s">*&quot;</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">cleanup</span><span class="p">:</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">example/backup:latest</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">      </span><span class="nt">cd.doco.job.enabled</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">      </span><span class="nt">cd.doco.job.schedule</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;@monthly&quot;</span>
+</span></code></pre></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
+<p>Use the following service labels to configure scheduled jobs:</p>
+<details class="example">
+<summary>How to set service labels in a docker compose file</summary>
+<p>To set service labels in a docker compose file, include them in the <code>labels</code> section of your service definition:</p>
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/example/app:latest</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">      </span><span class="nt">cd.doco.job.enabled</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">      </span><span class="nt">cd.doco.job.schedule</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;@every</span><span class="nv"> </span><span class="s">15m&quot;</span>
+</span></code></pre></div>
+</details>
+<div class="admonition note">
+<p class="admonition-title">Restart policy constraints</p>
+<ul>
+<li>Docker (Standalone): service <code>restart</code> must be unset or <code>no</code></li>
+<li>Docker Swarm: service <code>deploy.restart_policy.condition</code> must be unset or <code>none</code></li>
+</ul>
+</div>
+<table>
+<thead>
+<tr>
+<th>Label</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cd.doco.job.enabled</code></td>
+<td>boolean</td>
+<td>Enable scheduling for this service/container</td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td><code>cd.doco.job.schedule</code></td>
+<td>string</td>
+<td><a data-preview="" href="#schedule-formats">Schedule format</a> to use</td>
+<td></td>
+</tr>
+<tr>
+<td><code>cd.doco.job.execution_mode</code></td>
+<td>string</td>
+<td><code>restart</code> (default behavior) or <code>one_shot</code> (ephemeral execution)</td>
+<td><code>restart</code></td>
+</tr>
+<tr>
+<td><code>cd.doco.job.skip_running</code></td>
+<td>boolean</td>
+<td>Do not run the job if a previous scheduled run is still active/running</td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td><code>cd.doco.job.notify_on</code></td>
+<td>string</td>
+<td><a data-preview="" href="../Notifications/">Notification</a> behavior for scheduled runs: <code>none</code>, <code>success</code>, <code>failure</code>, <code>all</code></td>
+<td><code>all</code></td>
+</tr>
+<tr>
+<td><code>cd.doco.job.swarm.replicas</code></td>
+<td>integer</td>
+<td>Number of completions/concurrency for swarm one-shot jobs in <code>replicated-job</code> mode</td>
+<td><code>1</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="examples_1">Examples<a class="headerlink" href="#examples_1" title="Permanent link">&para;</a></h2>
+<div class="tabbed-set tabbed-alternate" data-tabs="4:2"><input checked="checked" id="examples_1-prune-swarm-nodes" name="__tabbed_4" type="radio" /><input id="examples_1-backup" name="__tabbed_4" type="radio" /><div class="tabbed-labels"><label for="examples_1-prune-swarm-nodes">Prune swarm nodes</label><label for="examples_1-backup">Backup</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<p>Prune Docker system every hour on all swarm nodes using a global one-shot job service</p>
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">prune</span><span class="p">:</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">docker:latest</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;docker&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;system&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;prune&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;-f&quot;</span><span class="p p-Indicator">]</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;/var/run/docker.sock:/var/run/docker.sock&quot;</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span><span class="nt">deploy</span><span class="p">:</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">      </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">global</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">      </span><span class="nt">restart_policy</span><span class="p">:</span>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">        </span><span class="nt">condition</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">none</span>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">    </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">      </span><span class="nt">cd.doco.job.enabled</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span>
+</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">      </span><span class="nt">cd.doco.job.schedule</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;@hourly&quot;</span>
+</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="w">      </span><span class="nt">cd.doco.job.execution_mode</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;one_shot&quot;</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<p>Run a backup script every day at 02:00, but skip if the previous run is still active</p>
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="nt">backup</span><span class="p">:</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/my-org/backup:1.2.3</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;/backup.sh&quot;</span><span class="p p-Indicator">]</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">no</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">    </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">      </span><span class="nt">cd.doco.job.enabled</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="w">      </span><span class="nt">cd.doco.job.schedule</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0</span><span class="nv"> </span><span class="s">2</span><span class="nv"> </span><span class="s">*</span><span class="nv"> </span><span class="s">*</span><span class="nv"> </span><span class="s">*&quot;</span>
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">      </span><span class="nt">cd.doco.job.skip_running</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span>
+</span></code></pre></div>
+</div>
+</div>
+</div>
+<h2 id="daylight-saving-time-dst">Daylight saving time (DST)<a class="headerlink" href="#daylight-saving-time-dst" title="Permanent link">&para;</a></h2>
+<p>Scheduled jobs are triggered based on the timezone of the doco-cd instance, which is determined by the <code>TZ</code> environment variable or defaults to UTC if not set.</p>
+<p>When DST changes occur in the configured timezone, scheduled jobs will adjust accordingly:</p>
+<ul>
+<li>If a scheduled time is skipped due to DST (e.g., clocks move forward), the job will not run at that time.</li>
+<li>If a scheduled time occurs twice due to DST (e.g., clocks move backward), the job will run at both occurrences of that time.</li>
+</ul>
 
 
   <nav class="md-tags" >
@@ -2117,21 +2296,28 @@
       
       
       
-        <span class="md-tag">Reference</span>
+        <span class="md-tag">Advanced</span>
       
     
       
       
       
       
-        <span class="md-tag">Endpoints</span>
+        <span class="md-tag">Deployment</span>
       
     
       
       
       
       
-        <span class="md-tag">Metrics</span>
+        <span class="md-tag">Docker</span>
+      
+    
+      
+      
+      
+      
+        <span class="md-tag">Swarm Mode</span>
       
     
   </nav>
@@ -2176,7 +2362,7 @@
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../../Core-Concepts/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Core Concepts">
+          <a href="../Pre-Post-Deployment-Scripts/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Pre- &#x2f; Post-Deployment Scripts">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -2186,20 +2372,20 @@
                 Previous
               </span>
               <div class="md-ellipsis">
-                Core Concepts
+                Pre- / Post-Deployment Scripts
               </div>
             </div>
           </a>
         
         
           
-          <a href="../REST-API/" class="md-footer__link md-footer__link--next" aria-label="Next: REST API">
+          <a href="../Tips-and-Tricks/" class="md-footer__link md-footer__link--next" aria-label="Next: Tips &amp; Tricks">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                REST API
+                Tips & Tricks
               </div>
             </div>
             <div class="md-footer__button md-icon">
