@@ -95,7 +95,7 @@ func (s *scheduler) run(ctx context.Context) {
 
 		select {
 		case <-ctx.Done():
-			s.log.Info("scheduler loop")
+			s.log.Info("scheduler stopped")
 			return
 		case _, ok := <-jobChanges:
 			if !ok {
@@ -270,9 +270,7 @@ func (s *scheduler) discoverJobs(ctx context.Context) ([]scheduledJob, error) {
 	}
 
 	if swarm.GetModeEnabled() {
-		services, err := s.dockerCli.Client().ServiceList(ctx, client.ServiceListOptions{
-			Filters: make(client.Filters).Add("label", docker.DocoCDJobLabels.JobEnabled),
-		})
+		services, err := s.dockerCli.Client().ServiceList(ctx, client.ServiceListOptions{})
 		if err != nil {
 			return nil, err
 		}
