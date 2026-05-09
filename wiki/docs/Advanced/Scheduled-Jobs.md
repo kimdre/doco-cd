@@ -8,18 +8,8 @@ tags:
 
 # Scheduled jobs
 
-You can schedule service/container runs using `cd.doco.job.*` labels.
-
-By default, a scheduled run triggers a normal service restart/rerun behavior:
-
-- Docker standalone: restart the job container
-- Docker Swarm: rerun job-mode services, restart long-running services
-
-Use `#!yaml cd.doco.job.execution_mode: one_shot` to run an ephemeral one-shot execution instead.
-
-In Docker Swarm Mode, `one_shot` creates a temporary job service and removes it after completion. 
-If the source service uses `#!yaml deploy.mode: global`, the one-shot run is created as `global-job`; 
-otherwise it is created as `replicated-job`. 
+The built-in job scheduler allows you to run containers/services defined in your docker compose files as scheduled jobs based on cron-like schedules or predefined intervals.
+This is useful for running periodic tasks such as backups, maintenance scripts, or any recurring workloads without needing an external scheduler.
 
 ## Schedule formats
 
@@ -93,7 +83,16 @@ otherwise it is created as `replicated-job`.
 
 ## Configuration
 
-Use the following service labels to configure scheduled jobs:
+By default, a scheduled run triggers a normal service restart/rerun behavior:
+
+- Docker standalone: restart the job container
+- Docker Swarm: rerun job-mode services, restart long-running services
+
+Use `#!yaml cd.doco.job.execution_mode: one_shot` to run an ephemeral one-shot execution instead.
+
+In Docker Swarm Mode, `one_shot` creates a temporary job service and removes it after completion.
+If the source service uses `#!yaml deploy.mode: global`, the one-shot run is created as `global-job`;
+otherwise it is created as `replicated-job`.
 
 ??? example "How to set service labels in a docker compose file"
     To set service labels in a docker compose file, include them in the `labels` section of your service definition:
@@ -111,6 +110,8 @@ Use the following service labels to configure scheduled jobs:
 
     - Docker (Standalone): service `restart` must be unset or `no`
     - Docker Swarm: service `deploy.restart_policy.condition` must be unset or `none`
+
+Use the following service labels to configure scheduled jobs:
 
 | Label                              | Type    | Description                                                                                       | Default   |
 |------------------------------------|---------|---------------------------------------------------------------------------------------------------|-----------|
