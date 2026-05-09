@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
 	"strconv"
 
@@ -58,13 +59,9 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 
 	// Merge label maps and prefer the new label set when a service appears in both.
 	serviceLabels := make(map[docker.Service]map[string]string, len(deprecatedServiceLabels)+len(newServiceLabels))
-	for service, labels := range deprecatedServiceLabels {
-		serviceLabels[service] = labels
-	}
+	maps.Copy(serviceLabels, deprecatedServiceLabels)
 
-	for service, labels := range newServiceLabels {
-		serviceLabels[service] = labels
-	}
+	maps.Copy(serviceLabels, newServiceLabels)
 
 	for _, labels := range serviceLabels {
 		stackName := labels[docker.DocoCDLabels.Deployment.Name]

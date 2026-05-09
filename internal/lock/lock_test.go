@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 )
 
 // reset helper to isolate tests.
@@ -176,4 +177,67 @@ func TestRepoLock_IndependentRepos(t *testing.T) {
 
 	la.Unlock()
 	lb.Unlock()
+}
+
+func TestScheduledDeployLock_MutualExclusion(t *testing.T) {
+	t.Parallel()
+
+	ready := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan struct{})
+
+	go func() {
+		LockScheduledDeploy()
+		close(ready)
+		<-release
+		UnlockScheduledDeploy()
+		close(done)
+	}()
+
+	<-ready
+
+	acquired := make(chan struct{})
+
+	go func() {
+		LockScheduledDeploy()
+		close(acquired)
+		UnlockScheduledDeploy()
+	}()
+
+	select {
+	case <-acquired:
+		t.Fatalf("expected second lock acquisition to block while first holder is active")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(release)
+
+	select {
+	case <-acquired:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for blocked lock acquisition")
+	}
+
+	<-done
+}
+
+func TestScheduledDeployLock_ReacquireAfterUnlock(t *testing.T) {
+	t.Parallel()
+
+	LockScheduledDeploy()
+	UnlockScheduledDeploy()
+
+	done := make(chan struct{})
+
+	go func() {
+		LockScheduledDeploy()
+		UnlockScheduledDeploy()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("expected lock reacquisition to succeed after unlock")
+	}
 }

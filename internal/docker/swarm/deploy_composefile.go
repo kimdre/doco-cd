@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/containerd/errdefs"
 	"github.com/docker/cli/cli/command"
@@ -89,7 +91,18 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Dep
 		return nil
 	}
 
-	return WaitOnServices(ctx, dockerCli, serviceIDs)
+	// Exclude job-mode and scheduler-managed services from the wait.
+	// Job-mode services converge only after completions, and scheduler-managed
+	// services are intentionally allowed to be non-running at deploy time.
+	waitIDs := make([]string, 0, len(serviceIDs))
+
+	for _, entry := range serviceIDs {
+		if shouldWaitForService(entry) {
+			waitIDs = append(waitIDs, entry.id)
+		}
+	}
+
+	return WaitOnServices(ctx, dockerCli, waitIDs)
 }
 
 func getServicesDeclaredNetworks(serviceConfigs []composetypes.ServiceConfig) set.Set[string] {
@@ -218,7 +231,15 @@ func createNetworks(ctx context.Context, dockerCLI command.Cli, namespace conver
 	return nil
 }
 
-func deployServices(ctx context.Context, dockerCLI command.Cli, services map[string]swarmTypes.ServiceSpec, namespace convert.Namespace, sendAuth bool, resolveImage string) ([]string, error) {
+type deployedService struct {
+	id          string
+	isJobMode   bool
+	isScheduled bool
+}
+
+const scheduledJobEnabledLabel = "cd.doco.job.enabled"
+
+func deployServices(ctx context.Context, dockerCLI command.Cli, services map[string]swarmTypes.ServiceSpec, namespace convert.Namespace, sendAuth bool, resolveImage string) ([]deployedService, error) {
 	apiClient := dockerCLI.Client()
 	out := dockerCLI.Out()
 
@@ -232,7 +253,7 @@ func deployServices(ctx context.Context, dockerCLI command.Cli, services map[str
 		existingServiceMap[service.Spec.Name] = service
 	}
 
-	var serviceIDs []string
+	var deployed []deployedService
 
 	for internalName, serviceSpec := range services {
 		var (
@@ -240,6 +261,9 @@ func deployServices(ctx context.Context, dockerCLI command.Cli, services map[str
 			image       = serviceSpec.TaskTemplate.ContainerSpec.Image
 			encodedAuth string
 		)
+
+		isJob := serviceSpec.Mode.ReplicatedJob != nil || serviceSpec.Mode.GlobalJob != nil
+		isScheduled := isScheduledServiceSpec(serviceSpec)
 
 		if sendAuth {
 			// Retrieve encoded auth token from the image reference
@@ -298,7 +322,7 @@ func deployServices(ctx context.Context, dockerCLI command.Cli, services map[str
 				_, _ = fmt.Fprintln(dockerCLI.Err(), warning)
 			}
 
-			serviceIDs = append(serviceIDs, service.ID)
+			deployed = append(deployed, deployedService{id: service.ID, isJobMode: isJob, isScheduled: isScheduled})
 		} else {
 			_, _ = fmt.Fprintln(out, "Creating service", name)
 
@@ -317,11 +341,33 @@ func deployServices(ctx context.Context, dockerCLI command.Cli, services map[str
 				return nil, fmt.Errorf("failed to create service %s: %w", name, err)
 			}
 
-			serviceIDs = append(serviceIDs, response.ID)
+			deployed = append(deployed, deployedService{id: response.ID, isJobMode: isJob, isScheduled: isScheduled})
 		}
 	}
 
-	return serviceIDs, nil
+	return deployed, nil
+}
+
+func shouldWaitForService(svc deployedService) bool {
+	return !svc.isJobMode && !svc.isScheduled
+}
+
+func isScheduledServiceSpec(spec swarmTypes.ServiceSpec) bool {
+	if spec.TaskTemplate.ContainerSpec == nil || spec.TaskTemplate.ContainerSpec.Labels == nil {
+		return false
+	}
+
+	raw, ok := spec.TaskTemplate.ContainerSpec.Labels[scheduledJobEnabledLabel]
+	if !ok {
+		return false
+	}
+
+	enabled, err := strconv.ParseBool(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+
+	return enabled
 }
 
 // WaitOnServices waits for the specified Swarm services to complete.
