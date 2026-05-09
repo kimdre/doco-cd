@@ -37,8 +37,22 @@ func (l *RepoLock) Holder() string {
 
 var repoLocks sync.Map // Map to hold locks for each repository
 
+// scheduledDeployLock enforces strict mutual exclusion between scheduled runs and deployments.
+var scheduledDeployLock sync.Mutex
+
 // GetRepoLock retrieves or creates a RepoLock for the given repoName.
 func GetRepoLock(repoName string) *RepoLock {
 	lockIface, _ := repoLocks.LoadOrStore(repoName, &RepoLock{})
 	return lockIface.(*RepoLock)
+}
+
+// LockScheduledDeploy acquires the global scheduler/deployment lock.
+// While held, scheduled runs and deployments are mutually exclusive.
+func LockScheduledDeploy() {
+	scheduledDeployLock.Lock()
+}
+
+// UnlockScheduledDeploy releases the scheduler/deployment lock.
+func UnlockScheduledDeploy() {
+	scheduledDeployLock.Unlock()
 }
