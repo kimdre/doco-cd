@@ -829,8 +829,6 @@
       
         
       
-        
-      
     
     
     
@@ -1317,33 +1315,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Schedules-Jobs/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Scheduling / Cron Jobs
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../Advanced/Tips-and-Tricks/" class="md-nav__link">
         
   
@@ -1643,17 +1614,6 @@
       On this page
     </label>
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#allowdeny-trigger-events" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Allow/deny trigger events
-      </span>
-    </span>
-  </a>
-  
-</li>
       
         <li class="md-nav__item">
   <a href="#with-custom-target" class="md-nav__link">
@@ -1963,17 +1923,6 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#allowdeny-trigger-events" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Allow/deny trigger events
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#with-custom-target" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2129,9 +2078,6 @@
 <h1 id="webhook-listener">Webhook Listener<a class="headerlink" href="#webhook-listener" title="Permanent link">&para;</a></h1>
 <p>The webhook payload is expected to be in JSON format and must contain the payload from a supported the Git provider, see <a data-preview="" href="../../#supported-git-providers">Supported Git Providers</a>.</p>
 <p>The application listens for incoming webhooks on the <code>/v1/webhook</code> endpoint with the port specified by the <code>HTTP_PORT</code> environment variable, see <a data-preview="" href="../../App-Settings/#available-settings">App Settings</a>.</p>
-<h2 id="allowdeny-trigger-events">Allow/deny trigger events<a class="headerlink" href="#allowdeny-trigger-events" title="Permanent link">&para;</a></h2>
-<p>By default, all incoming webhooks are accepted and trigger deployments if they match a deployment configuration.
-See <a data-preview="" href="../../Deploy-Settings/#webhook-filter">Webhook Filter</a> for more granular control over which webhooks should trigger deployments.</p>
 <h2 id="with-custom-target">With custom Target<a class="headerlink" href="#with-custom-target" title="Permanent link">&para;</a></h2>
 <p>You can specify multiple deployment target configurations in a mono-repo style setup using the application's dynamic webhook path.
 This allows you to deploy to different targets/locations from a single repository.</p>
