@@ -109,6 +109,8 @@ be created for each scheduled run and removed after completion.
     This means the original service may still show `replicated`/`global` when inspected,
     while each one-shot execution runs as a temporary `replicated-job`/`global-job` service.
 
+    See also [Swarm `deploy.mode` configuration](#swarm-deploymode) for how the original service's deploy mode affects the temporary job service's deploy mode in one-shot executions.
+
     **Behavior summary**
     
     | `cd.doco.job.execution_mode` | What doco-cd acts on | Service mode after run |
@@ -154,8 +156,6 @@ The following mapping applies to scheduled runs in `one_shot` mode:
 
 - If the service uses `#!yaml deploy.mode: global`, the job run is created as `global-job`
 - If the service uses `#!yaml deploy.mode: replicated` or does not specify a deploy mode, the job run is created as `replicated-job` with the number of completions/concurrency determined by the `cd.doco.job.swarm.replicas` label.
-
-For `restart` mode, doco-cd does not convert service modes.
 
 ## Examples
 
