@@ -424,7 +424,10 @@ See [Go Regular Expressions](https://pkg.go.dev/regexp/syntax) for more informat
 
             E.g. `refs/heads/main` (without `^` and `$`) also allows `refs/heads/main-something`
 
-### Prevent recreation on config, secret or bind mount changes
+
+### Service Labels
+
+#### Prevent recreation on config, secret, or bind mount changes
 
 When using docker compose with configs, secrets or bind mounts, changes to these resources will trigger a recreation of the service containers by default.
 To avoid this, you can set the `cd.doco.deployment.recreate.ignore` service label to a YAML list of scopes that should be ignored for recreation.

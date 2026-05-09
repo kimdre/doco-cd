@@ -20,7 +20,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/filesystem"
-	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/utils/module"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -377,22 +376,10 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		QuietPull:            true,
 	}
 
-	startServices, err := getStartServicesForDeploy(project)
-	if err != nil {
-		return err
-	}
-
 	startOpts := api.StartOptions{
 		Project:     project,
 		Wait:        true,
 		WaitTimeout: time.Duration(deployConfig.Timeout) * time.Second,
-	}
-	if len(startServices) == 0 {
-		// All services are scheduler-managed; don't block deployment on running/healthy state.
-		startOpts.Wait = false
-	} else if len(startServices) < len(project.Services) {
-		// Start and wait only for non scheduled services.
-		startOpts.Services = startServices
 	}
 
 	err = service.Up(ctx, project, api.UpOptions{
@@ -450,13 +437,6 @@ func DeployStack(
 	stackLog := jobLog.
 		With(slog.String("stack", deployConfig.Name))
 
-	stackLog.Debug("waiting for scheduler/deploy lock")
-	lock.LockScheduledDeploy()
-
-	defer lock.UnlockScheduledDeploy()
-
-	stackLog.Debug("acquired scheduler/deploy lock")
-
 	// Path on the host
 	externalWorkingDir := path.Join(externalRepoPath, deployConfig.WorkingDirectory)
 
@@ -472,10 +452,6 @@ func DeployStack(
 		deployConfig.EnvFiles, deployConfig.Profiles, deployConfig.Internal.Environment)
 	if err != nil {
 		return fmt.Errorf("failed to load compose config: %w", err)
-	}
-
-	if err = validateScheduledJobPolicies(project, swarm.GetModeEnabled()); err != nil {
-		return fmt.Errorf("invalid scheduled job restart policy: %w", err)
 	}
 
 	done := make(chan struct{})
@@ -1174,23 +1150,4 @@ func DecryptProjectFiles(repoPath string, p *types.Project) ([]string, error) {
 	}
 
 	return decryptedFiles, nil
-}
-
-func getStartServicesForDeploy(project *types.Project) ([]string, error) {
-	startServices := make([]string, 0, len(project.Services))
-
-	for serviceName, svc := range project.Services {
-		_, enabled, err := ParseJobScheduleLabels(svc.Labels)
-		if err != nil {
-			return nil, fmt.Errorf("service %s: %w", serviceName, err)
-		}
-
-		if enabled {
-			continue
-		}
-
-		startServices = append(startServices, serviceName)
-	}
-
-	return startServices, nil
 }
