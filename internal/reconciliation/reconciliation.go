@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"maps"
 	"strconv"
 	"strings"
 	"sync"
@@ -409,9 +410,7 @@ func withReconciliationTraceID(event events.Message, traceID string) events.Mess
 	}
 
 	attributes := map[string]string{}
-	for key, value := range event.Actor.Attributes {
-		attributes[key] = value
-	}
+	maps.Copy(attributes, event.Actor.Attributes)
 
 	attributes[reconciliationTraceIDAttr] = traceID
 

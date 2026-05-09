@@ -84,11 +84,24 @@ const (
 )
 
 var docoCDJobLabelNames = struct {
-	JobSchedule string // Schedule of the job (if applicable) in cron format
-	JobLastRun  string // Timestamp of the last run in RFC3339 format
-	JobNextRun  string // Timestamp of the next scheduled run in RFC3339 format
+	JobEnabled       string // Enable scheduling for a service/container
+	JobSchedule      string // Schedule of the job in 5-field cron format or @every duration
+	JobSkipRunning   string // Skip a schedule trigger when a previous run is still in progress
+	JobExecutionMode string // Defines if a run restarts/reruns the job or starts an ephemeral one-shot execution
+	JobNotifyOn      string // Controls notification behavior: none, success, failure, all
+	JobSwarmReplicas string // Number of replicas for one-shot replicated-job runs in swarm mode
+	JobLastRun       string // Timestamp of the last run in RFC3339 format
+	JobNextRun       string // Timestamp of the next scheduled run in RFC3339 format
 }{
-	JobSchedule: "cd.doco.job.schedule",
-	JobLastRun:  "cd.doco.job.last_run",
-	JobNextRun:  "cd.doco.job.next_run",
+	JobEnabled:       "cd.doco.job.enabled",
+	JobSchedule:      "cd.doco.job.schedule",
+	JobSkipRunning:   "cd.doco.job.skip_running",
+	JobExecutionMode: "cd.doco.job.execution_mode",
+	JobNotifyOn:      "cd.doco.job.notify_on",
+	JobSwarmReplicas: "cd.doco.job.swarm.replicas",
+	JobLastRun:       "cd.doco.job.last_run",
+	JobNextRun:       "cd.doco.job.next_run",
 }
+
+// DocoCDJobLabels exposes the scheduler/job labels for consumers outside this package.
+var DocoCDJobLabels = docoCDJobLabelNames

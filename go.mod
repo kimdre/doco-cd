@@ -1,6 +1,6 @@
 module github.com/kimdre/doco-cd
 
-go 1.26.2
+go 1.26.3
 
 tool (
 	github.com/bombsimon/wsl/v5/cmd/wsl
@@ -48,6 +48,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/prometheus/common v0.67.5
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/veqryn/slog-dedup v0.6.0
 	gopkg.in/yaml.v3 v3.0.1
 )

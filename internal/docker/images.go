@@ -245,7 +245,7 @@ func parseBearerAuthChallenge(value string) (bearerAuthChallenge, error) {
 
 	challenge := bearerAuthChallenge{}
 
-	for _, pair := range strings.Split(params, ",") {
+	for pair := range strings.SplitSeq(params, ",") {
 		key, rawVal, found := strings.Cut(strings.TrimSpace(pair), "=")
 		if !found {
 			continue

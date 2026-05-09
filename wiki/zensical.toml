@@ -48,7 +48,8 @@ nav = [
       { Webhook = "External-Secrets/Webhook.md" }] },
     { Notifications = "Advanced/Notifications.md" },
     { "Pre- / Post-Deployment Scripts" = "Advanced/Pre-Post-Deployment-Scripts.md" },
-    { "Tips & Tricks" = "Advanced/Tips-and-Tricks.md" }
+    { "Scheduling / Cron Jobs" = "Advanced/Scheduled-Jobs.md" },
+    { "Tips & Tricks" = "Advanced/Tips-and-Tricks.md" },
   ] },
   { Reference = [
     { "Core Concepts" = "Core-Concepts.md" },

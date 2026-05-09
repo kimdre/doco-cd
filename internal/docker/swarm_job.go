@@ -191,3 +191,84 @@ func RunImageRemoveJob(ctx context.Context, dockerCLI command.Cli, images []stri
 	args := append([]string{"docker", "image", "rm", "--force"}, images...)
 	return RunSwarmJob(ctx, dockerCLI, swarm.DeployModeGlobalJob, args, "image-remove")
 }
+
+type SwarmOneShotFromServiceOptions struct {
+	Replicas         uint64
+	SendRegistryAuth bool
+}
+
+// RunSwarmOneShotFromService creates a temporary job service from an existing service spec and waits for completion.
+func RunSwarmOneShotFromService(ctx context.Context, dockerCLI command.Cli, serviceName string, opts SwarmOneShotFromServiceOptions) error {
+	apiClient := dockerCLI.Client()
+
+	if opts.Replicas == 0 {
+		opts.Replicas = 1
+	}
+
+	inspectResult, err := apiClient.ServiceInspect(ctx, serviceName, client.ServiceInspectOptions{})
+	if err != nil {
+		return fmt.Errorf("inspect service %s: %w", serviceName, err)
+	}
+
+	sourceService := inspectResult.Service
+	oneShotSpec := sourceService.Spec
+	oneShotSpec.Name = fmt.Sprintf("%s-doco-job-%d", sourceService.Spec.Name, time.Now().UTC().UnixNano())
+
+	if oneShotSpec.TaskTemplate.ContainerSpec == nil {
+		return fmt.Errorf("service %s has no task container spec", serviceName)
+	}
+
+	if oneShotSpec.Labels == nil {
+		oneShotSpec.Labels = map[string]string{}
+	}
+
+	oneShotSpec.Labels[DocoCDLabels.Metadata.Manager] = app.Name
+	oneShotSpec.Labels[DocoCDLabels.Deployment.Trigger] = "job.schedule"
+
+	if sourceService.Spec.Mode.Global != nil || sourceService.Spec.Mode.GlobalJob != nil {
+		oneShotSpec.Mode = swarmTypes.ServiceMode{
+			GlobalJob: &swarmTypes.GlobalJob{},
+		}
+	} else {
+		oneShotSpec.Mode = swarmTypes.ServiceMode{
+			ReplicatedJob: &swarmTypes.ReplicatedJob{
+				TotalCompletions: &opts.Replicas,
+				MaxConcurrent:    &opts.Replicas,
+			},
+		}
+	}
+
+	oneShotSpec.UpdateConfig = nil
+	oneShotSpec.RollbackConfig = nil
+	oneShotSpec.TaskTemplate.RestartPolicy = &swarmTypes.RestartPolicy{
+		Condition: swarmTypes.RestartPolicyConditionNone,
+	}
+
+	createOpts := client.ServiceCreateOptions{
+		Spec: oneShotSpec,
+	}
+
+	if opts.SendRegistryAuth {
+		encodedAuth, authErr := command.RetrieveAuthTokenFromImage(dockerCLI.ConfigFile(), oneShotSpec.TaskTemplate.ContainerSpec.Image)
+		if authErr != nil {
+			return fmt.Errorf("retrieve auth token from image: %w", authErr)
+		}
+
+		createOpts.EncodedRegistryAuth = encodedAuth
+	}
+
+	createResult, err := apiClient.ServiceCreate(ctx, createOpts)
+	if err != nil {
+		return fmt.Errorf("create one-shot service from %s: %w", serviceName, err)
+	}
+
+	defer func() {
+		_, _ = apiClient.ServiceRemove(context.WithoutCancel(ctx), createResult.ID, client.ServiceRemoveOptions{})
+	}()
+
+	if err = swarm.WaitOnServices(ctx, dockerCLI, []string{createResult.ID}); err != nil {
+		return fmt.Errorf("wait one-shot service %s: %w", createResult.ID, err)
+	}
+
+	return nil
+}
