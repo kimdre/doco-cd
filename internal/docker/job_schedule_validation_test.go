@@ -16,13 +16,46 @@ func TestValidateScheduledJobPolicies(t *testing.T) {
 		wantErr   bool
 	}{
 		{
-			name:      "standalone allows restart no",
+			name:      "standalone allows restart no for scheduled restart mode",
 			swarmMode: false,
 			project: &types.Project{
 				Services: types.Services{
 					"ok": {
 						Name:    "ok",
 						Restart: "no",
+						Labels: map[string]string{
+							docoCDJobLabelNames.JobEnabled:  "true",
+							docoCDJobLabelNames.JobSchedule: "*/10 * * * *",
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:      "standalone rejects restart always for scheduled restart mode",
+			swarmMode: false,
+			project: &types.Project{
+				Services: types.Services{
+					"bad": {
+						Name:    "bad",
+						Restart: "always",
+						Labels: map[string]string{
+							docoCDJobLabelNames.JobEnabled:  "true",
+							docoCDJobLabelNames.JobSchedule: "*/10 * * * *",
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name:      "standalone allows one_shot with restart unset",
+			swarmMode: false,
+			project: &types.Project{
+				Services: types.Services{
+					"ok-one-shot": {
+						Name: "ok-one-shot",
 						Labels: map[string]string{
 							docoCDJobLabelNames.JobEnabled:       "true",
 							docoCDJobLabelNames.JobSchedule:      "*/10 * * * *",
@@ -34,32 +67,13 @@ func TestValidateScheduledJobPolicies(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:      "standalone rejects restart always",
-			swarmMode: false,
-			project: &types.Project{
-				Services: types.Services{
-					"bad": {
-						Name:    "bad",
-						Restart: "always",
-						Labels: map[string]string{
-							docoCDJobLabelNames.JobEnabled:       "true",
-							docoCDJobLabelNames.JobSchedule:      "*/10 * * * *",
-							docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneShot),
-						},
-					},
-				},
-			},
-			wantErr: true,
-		},
-		{
-			name:      "swarm job-mode rejects restart policy condition any",
+			name:      "swarm rejects restart policy condition any",
 			swarmMode: true,
 			project: &types.Project{
 				Services: types.Services{
 					"bad-job": {
 						Name: "bad-job",
 						Deploy: &types.DeployConfig{
-							Mode: "replicated-job",
 							RestartPolicy: &types.RestartPolicy{
 								Condition: "any",
 							},
@@ -75,7 +89,7 @@ func TestValidateScheduledJobPolicies(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:      "swarm job-mode allows restart policy none",
+			name:      "swarm allows restart policy none",
 			swarmMode: true,
 			project: &types.Project{
 				Services: types.Services{
@@ -91,6 +105,42 @@ func TestValidateScheduledJobPolicies(t *testing.T) {
 							docoCDJobLabelNames.JobEnabled:       "true",
 							docoCDJobLabelNames.JobSchedule:      "@every 1h",
 							docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneShot),
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:      "swarm rejects empty restart policy condition when policy is set",
+			swarmMode: true,
+			project: &types.Project{
+				Services: types.Services{
+					"bad-empty": {
+						Name: "bad-empty",
+						Deploy: &types.DeployConfig{
+							RestartPolicy: &types.RestartPolicy{},
+						},
+						Labels: map[string]string{
+							docoCDJobLabelNames.JobEnabled:  "true",
+							docoCDJobLabelNames.JobSchedule: "*/5 * * * *",
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name:      "swarm allows unset restart policy",
+			swarmMode: true,
+			project: &types.Project{
+				Services: types.Services{
+					"ok-unset": {
+						Name:   "ok-unset",
+						Deploy: &types.DeployConfig{},
+						Labels: map[string]string{
+							docoCDJobLabelNames.JobEnabled:  "true",
+							docoCDJobLabelNames.JobSchedule: "*/5 * * * *",
 						},
 					},
 				},
