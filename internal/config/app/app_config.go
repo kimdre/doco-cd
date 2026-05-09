@@ -7,6 +7,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/poll"
+	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/notification"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -34,6 +35,9 @@ type Config struct {
 	WebhookSecretFile           string                 `env:"WEBHOOK_SECRET_FILE,file"`                                            // WebhookSecretFile is the file containing the WebhookSecret
 	GitAccessToken              string                 `env:"GIT_ACCESS_TOKEN"`                                                    // GitAccessToken is the access token used to authenticate with the Git server (e.g. GitHub) for private repositories
 	GitAccessTokenFile          string                 `env:"GIT_ACCESS_TOKEN_FILE,file"`                                          // GitAccessTokenFile is the file containing the GitAccessToken
+	GitAuthDomainsYAML          string                 `env:"GIT_AUTH_DOMAINS"`                                                    // GitAuthDomainsYAML is the YAML configuration for domain-scoped Git credentials
+	GitAuthDomainsFile          string                 `env:"GIT_AUTH_DOMAINS_FILE,file"`                                          // GitAuthDomainsFile is the file containing the YAML configuration for domain-scoped Git credentials
+	GitAuthDomains              []git.ScopedAuthConfig `yaml:"-"`                                                                  // GitAuthDomains holds parsed domain-scoped Git credentials
 	GitCloneDepth               int                    `env:"GIT_CLONE_DEPTH,notEmpty" envDefault:"0" validate:"min=0"`            // GitCloneDepth limits the number of commits to fetch. 0 means full clone (no depth limit). A positive value enables shallow clones.
 	GitCloneSubmodules          bool                   `env:"GIT_CLONE_SUBMODULES,notEmpty" envDefault:"true"`                     // GitCloneSubmodules controls whether git submodules are cloned
 	SSHPrivateKey               string                 `env:"SSH_PRIVATE_KEY"`                                                     // SSHPrivateKey is the SSH private key used for SSH authentication with Git repositories
@@ -68,6 +72,7 @@ func GetConfig() (*Config, error) {
 		{EnvName: "API_SECRET", EnvValue: &cfg.ApiSecret, FileValue: &cfg.ApiSecretFile, AllowUnset: true},
 		{EnvName: "APPRISE_NOTIFY_URLS", EnvValue: &cfg.AppriseNotifyUrls, FileValue: &cfg.AppriseNotifyUrlsFile, AllowUnset: true},
 		{EnvName: "GIT_ACCESS_TOKEN", EnvValue: &cfg.GitAccessToken, FileValue: &cfg.GitAccessTokenFile, AllowUnset: true},
+		{EnvName: "GIT_AUTH_DOMAINS", EnvValue: &cfg.GitAuthDomainsYAML, FileValue: &cfg.GitAuthDomainsFile, AllowUnset: true},
 		{EnvName: "SSH_PRIVATE_KEY", EnvValue: &cfg.SSHPrivateKey, FileValue: &cfg.SSHPrivateKeyFile, AllowUnset: true},
 		{EnvName: "SSH_PRIVATE_KEY_PASSPHRASE", EnvValue: &cfg.SSHPrivateKeyPassphrase, FileValue: &cfg.SSHPrivateKeyPassphraseFile, AllowUnset: true},
 		{EnvName: "WEBHOOK_SECRET", EnvValue: &cfg.WebhookSecret, FileValue: &cfg.WebhookSecretFile, AllowUnset: true},
@@ -81,6 +86,11 @@ func GetConfig() (*Config, error) {
 	err = cfg.parsePollConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse poll config: %w", err)
+	}
+
+	err = cfg.parseGitAuthDomains()
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse GIT_AUTH_DOMAINS: %w", err)
 	}
 
 	for _, pollConfig := range cfg.PollConfig {
@@ -120,6 +130,21 @@ func GetConfig() (*Config, error) {
 	)
 
 	return &cfg, nil
+}
+
+// parseGitAuthDomains parses domain-scoped Git credentials from GIT_AUTH_DOMAINS (or *_FILE content).
+func (cfg *Config) parseGitAuthDomains() error {
+	if strings.TrimSpace(cfg.GitAuthDomainsYAML) == "" {
+		cfg.GitAuthDomains = []git.ScopedAuthConfig{}
+
+		return nil
+	}
+
+	if err := yaml.Unmarshal([]byte(cfg.GitAuthDomainsYAML), &cfg.GitAuthDomains); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // parsePollConfig parses the PollConfig from either the PollConfigYAML string or the PollConfigFile.

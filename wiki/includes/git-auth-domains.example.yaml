@@ -1,0 +1,14 @@
+# Example value for GIT_AUTH_DOMAINS
+- domains:
+    - github.com
+  git_access_token: ghp_xxx
+
+- domains:
+    - gitlab.com
+    - '*.corp.example.com'
+  ssh_private_key: |
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    ...
+    -----END OPENSSH PRIVATE KEY-----
+  ssh_private_key_passphrase: ""
+
