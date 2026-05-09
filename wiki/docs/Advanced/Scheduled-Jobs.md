@@ -20,66 +20,66 @@ This is useful for running periodic tasks such as backups, maintenance scripts, 
 !!! tip 
     Use an online cron expression generator like [crontab.guru](https://crontab.guru/) to create and validate cron expressions.
 
-### Examples
+!!! example "Schedule examples"
 
-=== "Every 15 minutes"
-
-    === "Using cron expression"
-
+    === "Every 15 minutes"
+    
+        === "Using cron expression"
+    
+            ```yaml title="docker-compose.yml"
+            services:
+              backup:
+                image: example/backup:latest
+                labels:
+                  cd.doco.job.enabled: "true"
+                  cd.doco.job.schedule: "*/15 * * * *"
+            ```
+    
+        === "Using interval format"
+    
+            ```yaml title="docker-compose.yml"
+            services:
+              backup:
+                image: example/backup:latest
+                labels:
+                  cd.doco.job.enabled: "true"
+                  cd.doco.job.schedule: "@every 15m"
+            ```
+    
+    === "Weekdays at 02:30"
+    
         ```yaml title="docker-compose.yml"
         services:
           backup:
             image: example/backup:latest
             labels:
               cd.doco.job.enabled: "true"
-              cd.doco.job.schedule: "*/15 * * * *"
+              cd.doco.job.schedule: "30 2 * * 1-5"
         ```
-
-    === "Using interval format"
-
-        ```yaml title="docker-compose.yml"
-        services:
-          backup:
-            image: example/backup:latest
-            labels:
-              cd.doco.job.enabled: "true"
-              cd.doco.job.schedule: "@every 15m"
-        ```
-
-=== "Weekdays at 02:30"
-
-    ```yaml title="docker-compose.yml"
-    services:
-      backup:
-        image: example/backup:latest
-        labels:
-          cd.doco.job.enabled: "true"
-          cd.doco.job.schedule: "30 2 * * 1-5"
-    ```
-
-=== "First day of month at midnight"
-
-    === "Using cron expression"
-
-        ```yaml title="docker-compose.yml"
-        services:
-          cleanup:
-            image: example/backup:latest
-            labels:
-              cd.doco.job.enabled: "true"
-              cd.doco.job.schedule: "0 0 1 * *"
-        ```
-
-    === "Using predefined schedule"
-
-        ```yaml title="docker-compose.yml"
-        services:
-          cleanup:
-            image: example/backup:latest
-            labels:
-              cd.doco.job.enabled: "true"
-              cd.doco.job.schedule: "@monthly"
-        ```
+    
+    === "First day of month at midnight"
+    
+        === "Using cron expression"
+    
+            ```yaml title="docker-compose.yml"
+            services:
+              cleanup:
+                image: example/backup:latest
+                labels:
+                  cd.doco.job.enabled: "true"
+                  cd.doco.job.schedule: "0 0 1 * *"
+            ```
+    
+        === "Using predefined schedule"
+    
+            ```yaml title="docker-compose.yml"
+            services:
+              cleanup:
+                image: example/backup:latest
+                labels:
+                  cd.doco.job.enabled: "true"
+                  cd.doco.job.schedule: "@monthly"
+            ```
 
 ## Execution modes
 
