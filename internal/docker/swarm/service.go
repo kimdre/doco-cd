@@ -19,9 +19,9 @@ import (
 type Service struct {
 	ID string
 	swarm.Meta
-	Spec         swarm.ServiceSpec   `json:",omitempty"`
-	PreviousSpec *swarm.ServiceSpec  `json:",omitempty"`
-	Endpoint     swarm.Endpoint      `json:",omitempty"`
+	Spec         swarm.ServiceSpec
+	PreviousSpec *swarm.ServiceSpec `json:",omitempty"`
+	Endpoint     swarm.Endpoint
 	UpdateStatus *swarm.UpdateStatus `json:",omitempty"`
 
 	// ServiceStatus is an optional, extra field indicating the number of
