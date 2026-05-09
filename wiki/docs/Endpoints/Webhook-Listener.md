@@ -11,6 +11,11 @@ The webhook payload is expected to be in JSON format and must contain the payloa
 
 The application listens for incoming webhooks on the `/v1/webhook` endpoint with the port specified by the `HTTP_PORT` environment variable, see [App Settings](../App-Settings.md#available-settings).
 
+## Allow/deny trigger events
+
+By default, all incoming webhooks are accepted and trigger deployments if they match a deployment configuration.
+See [Webhook Filter](../Deploy-Settings.md#webhook-filter) for more granular control over which webhooks should trigger deployments.
+
 ## With custom Target
 
 You can specify multiple deployment target configurations in a mono-repo style setup using the application's dynamic webhook path.

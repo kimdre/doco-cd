@@ -24,6 +24,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/reconciliation"
 
 	"github.com/kimdre/doco-cd/cmd/doco-cd/healthcheck"
+	"github.com/kimdre/doco-cd/internal/scheduler"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -286,6 +287,10 @@ func run() error {
 			}
 		}
 	}
+
+	graceful.SafeGo(&wg, log.Logger, func() {
+		scheduler.Start(ctx, h.dockerCli, log.Logger, &wg)
+	})
 
 	registryApiServer(c, &h, log)
 	prometheus.RegisterServer(c.MetricsPort, log)
