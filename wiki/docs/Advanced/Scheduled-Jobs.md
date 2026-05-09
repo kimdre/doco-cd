@@ -87,17 +87,34 @@ The execution mode determines how scheduled jobs are run and managed by doco-cd 
 
 ### `restart`
 
-By default, scheduled jobs will be executed in `restart` mode, which means the service container 
-will be created on deployment and then re-/started at the scheduled time without being removed after completion.
+By default, scheduled jobs will be executed in `restart` mode, which means the service will be created on deployment 
+and then re-/started at the scheduled time without being removed after completion.
 
 ### `one_shot`
 
 Alternatively, you can configure scheduled jobs to run in `one_shot` mode, which means a new ephemeral container will 
 be created for each scheduled run and removed after completion.
 
-Note that this means that you won't be able to see the container or its logs after the job has completed, 
-so make sure to configure appropriate logging (e.g., log to a persistent file or external logging service like [Loki](https://grafana.com/docs/loki/latest/)) 
-if you need to keep track of job runs and [notifications](Notifications.md) if needed.
+!!! note
+    You won't be able to see the container or its logs after the job has completed, 
+    so make sure to configure appropriate logging (e.g., log to a persistent file or logging service like [Loki](https://grafana.com/docs/loki/latest/)) 
+    if you need to keep track of job runs and [notifications](Notifications.md) if needed.
+
+??? info "`one_shot` behavior in Docker Swarm"
+
+    In Docker Swarm, `one_shot` does **not** modify the source service mode permanently.
+    Instead, doco-cd creates a temporary job service for each scheduled run, waits for completion,
+    and removes that temporary service afterwards.
+    
+    This means the original service may still show `replicated`/`global` when inspected,
+    while each one-shot execution runs as a temporary `replicated-job`/`global-job` service.
+
+    **Behavior summary**
+    
+    | `cd.doco.job.execution_mode` | What doco-cd acts on | Service mode after run |
+    |------------------------------|----------------------|------------------------|
+    | `restart`                    | Existing service     | Unchanged              |
+    | `one_shot`                   | Temporary clone      | Source unchanged       |
 
 ## Configuration
 
@@ -133,8 +150,12 @@ Use the following service labels to configure scheduled jobs:
 
 When using Docker Swarm, you can configure the deploy mode for scheduled jobs using the `deploy.mode` field in your docker compose file.
 
+The following mapping applies to scheduled runs in `one_shot` mode:
+
 - If the service uses `#!yaml deploy.mode: global`, the job run is created as `global-job`
 - If the service uses `#!yaml deploy.mode: replicated` or does not specify a deploy mode, the job run is created as `replicated-job` with the number of completions/concurrency determined by the `cd.doco.job.swarm.replicas` label.
+
+For `restart` mode, doco-cd does not convert service modes.
 
 ## Examples
 
