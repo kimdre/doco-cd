@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"strconv"
 	"strings"
 	"sync"
@@ -35,6 +36,9 @@ var (
 	ErrScheduledJobNotFound  = errors.New("scheduled job not found")
 	ErrScheduledJobDisabled  = errors.New("scheduled job is disabled")
 	ErrScheduledJobAmbiguous = errors.New("multiple scheduled jobs matched, narrow your selection")
+
+	runtimeStatesMu sync.RWMutex
+	runtimeStates   = map[string]scheduledJobState{}
 )
 
 type scheduledJobMode string
@@ -55,6 +59,7 @@ type scheduledJob struct {
 type scheduledJobState struct {
 	fingerprint string
 	schedule    cron.Schedule
+	lastRun     time.Time
 	nextRun     time.Time
 	cfg         docker.JobScheduleConfig
 }
@@ -80,7 +85,7 @@ type JobInfo struct {
 	ExecutionMode  docker.JobExecutionMode `json:"execution_mode,omitempty"`
 	SkipRunning    bool                    `json:"skip_running"`
 	NotifyOn       docker.JobNotifyOn      `json:"notify_on,omitempty"`
-	SwarmReplicas  uint64                  `json:"swarm_replicas,omitempty"`
+	Replicas       uint64                  `json:"replicas,omitempty"`
 	LastRunAt      *time.Time              `json:"last_run_at,omitempty"`
 	NextRunAt      *time.Time              `json:"next_run_at,omitempty"`
 	LabelNextRunAt *time.Time              `json:"label_next_run_at,omitempty"`
@@ -121,6 +126,7 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 	now := time.Now().UTC()
 	stackName = strings.TrimSpace(stackName)
 	result := make([]JobInfo, 0, len(jobs))
+	states := getRuntimeStatesSnapshot()
 
 	for _, job := range jobs {
 		stack := getJobStackName(job)
@@ -158,7 +164,7 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 		info.ExecutionMode = cfg.ExecutionMode
 		info.SkipRunning = cfg.SkipRunning
 		info.NotifyOn = cfg.NotifyOn
-		info.SwarmReplicas = cfg.SwarmReplicas
+		info.Replicas = cfg.SwarmReplicas
 
 		schedule, scheduleErr := docker.ParseJobScheduleExpression(cfg.Schedule)
 		if scheduleErr != nil {
@@ -169,8 +175,16 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 			continue
 		}
 
-		next := schedule.Next(now)
-		info.NextRunAt = &next
+		nextRun := schedule.Next(now)
+		if state, ok := states[job.key]; ok && !state.nextRun.IsZero() {
+			if !state.lastRun.IsZero() {
+				info.LastRunAt = new(state.lastRun)
+			}
+
+			nextRun = state.nextRun
+		}
+
+		info.NextRunAt = &nextRun
 
 		result = append(result, info)
 	}
@@ -224,6 +238,8 @@ func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jo
 	defer lock.UnlockScheduledDeploy()
 
 	err = s.executeScheduledRun(ctx, job, cfg)
+	setRuntimeLastRun(job.key, time.Now().UTC())
+
 	if err != nil {
 		runLog.Error("scheduled run failed", logger.ErrAttr(err))
 		s.sendRunNotification(job, cfg, runID, false, "Scheduled job failed", fmt.Sprintf("scheduled job '%s' failed to run: %v", job.name, err))
@@ -374,6 +390,7 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 
 		if !now.Before(state.nextRun) {
 			scheduledAt := state.nextRun
+			state.lastRun = scheduledAt
 			state.nextRun = nextScheduledRun(state.schedule, scheduledAt, now)
 			s.states[job.key] = state
 
@@ -408,6 +425,8 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 	if nearestNextRun.IsZero() {
 		nearestNextRun, _ = getNearestNextRun(s.states)
 	}
+
+	setRuntimeStatesSnapshot(s.states)
 
 	return nearestNextRun, !nearestNextRun.IsZero()
 }
@@ -820,4 +839,37 @@ func parseRFC3339Time(raw string) *time.Time {
 	u := t.UTC()
 
 	return &u
+}
+
+func setRuntimeStatesSnapshot(states map[string]scheduledJobState) {
+	runtimeStatesMu.Lock()
+	defer runtimeStatesMu.Unlock()
+
+	next := make(map[string]scheduledJobState, len(states))
+	maps.Copy(next, states)
+
+	runtimeStates = next
+}
+
+func getRuntimeStatesSnapshot() map[string]scheduledJobState {
+	runtimeStatesMu.RLock()
+	defer runtimeStatesMu.RUnlock()
+
+	ret := make(map[string]scheduledJobState, len(runtimeStates))
+	maps.Copy(ret, runtimeStates)
+
+	return ret
+}
+
+func setRuntimeLastRun(key string, lastRun time.Time) {
+	if key == "" {
+		return
+	}
+
+	runtimeStatesMu.Lock()
+	defer runtimeStatesMu.Unlock()
+
+	state := runtimeStates[key]
+	state.lastRun = lastRun
+	runtimeStates[key] = state
 }
