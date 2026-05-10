@@ -72,21 +72,21 @@ type scheduler struct {
 
 // JobInfo describes one scheduler-managed target and its runtime scheduling status.
 type JobInfo struct {
-	Name            string                  `json:"name"`
-	Stack           string                  `json:"stack,omitempty"`
-	Mode            string                  `json:"mode"`
-	Enabled         bool                    `json:"enabled"`
-	Schedule        string                  `json:"schedule,omitempty"`
-	ExecutionMode   docker.JobExecutionMode `json:"execution_mode,omitempty"`
-	SkipRunning     bool                    `json:"skip_running"`
-	NotifyOn        docker.JobNotifyOn      `json:"notify_on,omitempty"`
-	SwarmReplicas   uint64                  `json:"swarm_replicas,omitempty"`
-	LastRunAt       *time.Time              `json:"last_run_at,omitempty"`
-	NextRunAt       *time.Time              `json:"next_run_at,omitempty"`
-	LabelNextRunAt  *time.Time              `json:"label_next_run_at,omitempty"`
-	Repository      string                  `json:"repository,omitempty"`
-	ScheduleError   string                  `json:"schedule_error,omitempty"`
-	ConfigurationOk bool                    `json:"configuration_ok"`
+	Name           string                  `json:"name"`
+	Enabled        bool                    `json:"enabled"`
+	Stack          string                  `json:"stack,omitempty"`
+	Mode           string                  `json:"mode"`
+	Schedule       string                  `json:"schedule,omitempty"`
+	ExecutionMode  docker.JobExecutionMode `json:"execution_mode,omitempty"`
+	SkipRunning    bool                    `json:"skip_running"`
+	NotifyOn       docker.JobNotifyOn      `json:"notify_on,omitempty"`
+	SwarmReplicas  uint64                  `json:"swarm_replicas,omitempty"`
+	LastRunAt      *time.Time              `json:"last_run_at,omitempty"`
+	NextRunAt      *time.Time              `json:"next_run_at,omitempty"`
+	LabelNextRunAt *time.Time              `json:"label_next_run_at,omitempty"`
+	Repository     string                  `json:"repository,omitempty"`
+	ScheduleError  string                  `json:"schedule_error,omitempty"`
+	Valid          bool                    `json:"valid"`
 }
 
 func Start(ctx context.Context, dockerCli command.Cli, log *slog.Logger, wg *sync.WaitGroup) {
@@ -129,11 +129,11 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 		}
 
 		info := JobInfo{
-			Name:            job.name,
-			Stack:           stack,
-			Mode:            string(job.mode),
-			Repository:      job.labels[docker.DocoCDLabels.Repository.Name],
-			ConfigurationOk: true,
+			Name:       job.name,
+			Stack:      stack,
+			Mode:       string(job.mode),
+			Repository: job.labels[docker.DocoCDLabels.Repository.Name],
+			Valid:      true,
 		}
 
 		info.LastRunAt = parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobLastRun])
@@ -141,7 +141,7 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 
 		cfg, enabled, parseErr := docker.ParseJobScheduleLabels(job.labels)
 		if parseErr != nil {
-			info.ConfigurationOk = false
+			info.Valid = false
 			info.ScheduleError = parseErr.Error()
 			result = append(result, info)
 
@@ -162,7 +162,7 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 
 		schedule, scheduleErr := docker.ParseJobScheduleExpression(cfg.Schedule)
 		if scheduleErr != nil {
-			info.ConfigurationOk = false
+			info.Valid = false
 			info.ScheduleError = scheduleErr.Error()
 			result = append(result, info)
 
