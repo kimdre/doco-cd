@@ -2416,7 +2416,7 @@ Instead, you need to generate an SSH key pair, see <a data-preview="" href="../S
 <p>You can use doco-cd without a Git Access Token if the repositories you want to use for your deployments are publicly accessible. 
 However, it is still recommended to use one in that case to for example avoid rate limits. </p>
 </div>
-<p>If you set a Git access token, doco-cd will always use it to authenticate with your Git provider. See <a data-preview="" href="../Setup-Access-Token/">Setup Access Token</a> to create this access token and set the <code>GIT_ACCESS_TOKEN</code> environment variable to the access token value.</p>
+<p>Set <code>GIT_ACCESS_TOKEN</code> for a global fallback token, or use <code>GIT_AUTH_DOMAINS</code> / <code>GIT_AUTH_DOMAINS_FILE</code> for per-domain credentials. See <a data-preview="" href="../Setup-Access-Token/">Setup Access Token</a> for examples.</p>
 <h2 id="deployment-triggers">Deployment triggers<a class="headerlink" href="#deployment-triggers" title="Permanent link">&para;</a></h2>
 <p>Doco-CD can be triggered to check for changes to deploy via webhooks or by polling the Git repositories at regular intervals. You can use either method or both methods together.</p>
 <h3 id="webhooks">Webhooks<a class="headerlink" href="#webhooks" title="Permanent link">&para;</a></h3>

@@ -2106,6 +2106,11 @@ For example:
 <h2 id="configure-doco-cd-to-use-the-private-key">Configure doco-cd to use the Private Key<a class="headerlink" href="#configure-doco-cd-to-use-the-private-key" title="Permanent link">&para;</a></h2>
 <p>You need to configure doco-cd to use the private key (<code>id_ed25519</code> or the file path you specified) for SSH authentication.
 See the app config on the <a data-preview="" href="../App-Settings/">App Settings</a> wiki page for more information on how to set the SSH private key in doco-cd.</p>
+<div class="admonition tip">
+<p class="admonition-title">About Git Authentication</p>
+<p>For multiple domains/providers, configure SSH keys per domain with <code>GIT_AUTH_DOMAINS</code> (or <code>GIT_AUTH_DOMAINS_FILE</code>).
+See <a data-preview="" href="../App-Settings/#domain-scoped-git-authentication">Domain-scoped Git authentication</a> for more information.</p>
+</div>
 <p>An example using Docker Compose:</p>
 <div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">services</span><span class="p">:</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>

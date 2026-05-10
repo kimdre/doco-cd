@@ -883,6 +883,95 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#domain-scoped-git-authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Domain-scoped Git authentication
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Domain-scoped Git authentication">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#syntax-and-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Syntax and Format
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Syntax and Format">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#entry-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Entry Structure
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#available-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Available Options
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#authentication-method-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Authentication Method Selection
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#matching-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Matching Behavior
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Examples
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#usage-with-docker-secrets" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2165,6 +2254,95 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#domain-scoped-git-authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Domain-scoped Git authentication
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Domain-scoped Git authentication">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#syntax-and-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Syntax and Format
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Syntax and Format">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#entry-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Entry Structure
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#available-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Available Options
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#authentication-method-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Authentication Method Selection
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#matching-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Matching Behavior
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Examples
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#usage-with-docker-secrets" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2374,6 +2552,18 @@
 <td><code>GIT_ACCESS_TOKEN_FILE</code></td>
 <td>string</td>
 <td>Path to the file containing the Git Access Token (Mutually exclusive with <code>GIT_ACCESS_TOKEN</code>).</td>
+<td><code></code></td>
+</tr>
+<tr>
+<td><code>GIT_AUTH_DOMAINS</code></td>
+<td>list</td>
+<td>YAML list of domain-scoped Git credentials (HTTP token and/or SSH key). Supports exact domains and wildcard subdomains like <code>*.example.com</code> (see <a data-preview="" href="#domain-scoped-git-authentication">Domain-scoped Git auth</a>). Mutually exclusive with <code>GIT_AUTH_DOMAINS_FILE</code>.</td>
+<td><code></code></td>
+</tr>
+<tr>
+<td><code>GIT_AUTH_DOMAINS_FILE</code></td>
+<td>string</td>
+<td>Path to a file containing the YAML configuration for <code>GIT_AUTH_DOMAINS</code>. Mutually exclusive with <code>GIT_AUTH_DOMAINS</code>.</td>
 <td><code></code></td>
 </tr>
 <tr>
@@ -2598,6 +2788,127 @@ or in a separate <code>.env</code> file with the <code>env_file</code> option.</
 </span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">      </span><span class="nt">GIT_ACCESS_TOKEN</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xxx</span>
 </span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">      </span><span class="nt">WEBHOOK_SECRET</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xxx</span>
 </span></code></pre></div></p>
+<h2 id="domain-scoped-git-authentication">Domain-scoped Git authentication<a class="headerlink" href="#domain-scoped-git-authentication" title="Permanent link">&para;</a></h2>
+<p>Use domain-scoped config when you fetch from multiple Git providers/domains and need separate credentials.</p>
+<h3 id="syntax-and-format">Syntax and Format<a class="headerlink" href="#syntax-and-format" title="Permanent link">&para;</a></h3>
+<p>The domain-scoped authentication configuration is a YAML list where each entry defines credentials for one or more domains.</p>
+<h4 id="entry-structure">Entry Structure<a class="headerlink" href="#entry-structure" title="Permanent link">&para;</a></h4>
+<p>Each entry in the list has the following structure:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">domains</span><span class="p">:</span><span class="w">                          </span><span class="c1"># (Required) List of domain names or patterns</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">domain1.com</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">domain2.com</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&#39;*.example.com&#39;</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span><span class="nt">git_access_token</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xxx</span><span class="w">             </span><span class="c1"># (Optional) HTTP token for git access</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">  </span><span class="nt">ssh_private_key</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span><span class="w">                </span><span class="c1"># (Optional) SSH private key content</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span><span class="no">-----BEGIN OPENSSH PRIVATE KEY-----</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">    </span><span class="no">...</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">    </span><span class="no">-----END OPENSSH PRIVATE KEY-----</span>
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">  </span><span class="nt">ssh_private_key_passphrase</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xxx</span><span class="w">   </span><span class="c1"># (Optional) Passphrase for encrypted SSH key</span>
+</span></code></pre></div>
+<h4 id="available-options">Available Options<a class="headerlink" href="#available-options" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>domains</code></td>
+<td>list</td>
+<td>Yes</td>
+<td>List of domain names to apply these credentials to. Supports exact domains and wildcard patterns.</td>
+</tr>
+<tr>
+<td><code>git_access_token</code></td>
+<td>string</td>
+<td>No</td>
+<td>HTTP(S) access token for authenticating with the Git provider. Cannot be used with <code>ssh_private_key</code>.</td>
+</tr>
+<tr>
+<td><code>ssh_private_key</code></td>
+<td>string</td>
+<td>No</td>
+<td>SSH private key content (multi-line). Cannot be used with <code>git_access_token</code>.</td>
+</tr>
+<tr>
+<td><code>ssh_private_key_passphrase</code></td>
+<td>string</td>
+<td>No</td>
+<td>Passphrase for the SSH private key if it was generated with encryption. Only used with <code>ssh_private_key</code>.</td>
+</tr>
+</tbody>
+</table>
+<h4 id="authentication-method-selection">Authentication Method Selection<a class="headerlink" href="#authentication-method-selection" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Use <code>git_access_token</code></strong> for HTTP(S) based Git access</li>
+<li><strong>Use <code>ssh_private_key</code></strong> (and optionally <code>ssh_private_key_passphrase</code>) for SSH-based Git access</li>
+<li>Do not mix both methods in the same entry</li>
+</ul>
+<h3 id="matching-behavior">Matching Behavior<a class="headerlink" href="#matching-behavior" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Exact domain match wins over wildcard entries.</li>
+<li>If multiple wildcard patterns match, the longest suffix wins (most specific).</li>
+<li>Wildcards only match subdomains. Example: <code>*.example.com</code> matches <code>git.example.com</code>, but not <code>example.com</code>.</li>
+<li>If no domain entry matches, doco-cd falls back to global <code>GIT_ACCESS_TOKEN</code> / <code>SSH_PRIVATE_KEY</code> values if set.</li>
+<li>Submodule remotes are resolved independently, so each submodule can use credentials for its own domain.</li>
+</ul>
+<h3 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h3>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="examples-using-git_auth_domains" name="__tabbed_1" type="radio" /><input id="examples-using-git_auth_domains_file" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="examples-using-git_auth_domains">Using <code>GIT_AUTH_DOMAINS</code></label><label for="examples-using-git_auth_domains_file">Using <code>GIT_AUTH_DOMAINS_FILE</code></label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">      </span><span class="nt">GIT_AUTH_DOMAINS</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">        </span><span class="no"># Example value for GIT_AUTH_DOMAINS</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">        </span><span class="no">- domains:</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">            </span><span class="no">- github.com</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">          </span><span class="no">git_access_token: ghp_xxx</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">        </span><span class="no">- domains:</span>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">            </span><span class="no">- gitlab.com</span>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">            </span><span class="no">- &#39;*.corp.example.com&#39;</span>
+</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">          </span><span class="no">ssh_private_key: |</span>
+</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="w">            </span><span class="no">-----BEGIN OPENSSH PRIVATE KEY-----</span>
+</span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="w">            </span><span class="no">...</span>
+</span><span id="__span-6-16"><a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="w">            </span><span class="no">-----END OPENSSH PRIVATE KEY-----</span>
+</span><span id="__span-6-17"><a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="w">          </span><span class="no">ssh_private_key_passphrase: &quot;&quot;</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<p>You can also store the YAML in a file and load it with <code>GIT_AUTH_DOMAINS_FILE</code>.</p>
+<div class="language-yaml highlight"><span class="filename">git-auth-domains.yaml</span><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Example value for GIT_AUTH_DOMAINS</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">domains</span><span class="p">:</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">github.com</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span><span class="nt">git_access_token</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghp_xxx</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">domains</span><span class="p">:</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gitlab.com</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&#39;*.corp.example.com&#39;</span>
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">  </span><span class="nt">ssh_private_key</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="w">    </span><span class="no">-----BEGIN OPENSSH PRIVATE KEY-----</span>
+</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="w">    </span><span class="no">...</span>
+</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="w">    </span><span class="no">-----END OPENSSH PRIVATE KEY-----</span>
+</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="w">  </span><span class="nt">ssh_private_key_passphrase</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&quot;</span>
+</span></code></pre></div>
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">      </span><span class="nt">GIT_AUTH_DOMAINS_FILE</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/run/secrets/git_auth_domains</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">    </span><span class="nt">secrets</span><span class="p">:</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git_auth_domains</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="nt">secrets</span><span class="p">:</span>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">  </span><span class="nt">git_auth_domains</span><span class="p">:</span>
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="w">    </span><span class="nt">file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./git-auth-domains.yaml</span>
+</span></code></pre></div>
+</div>
+</div>
+</div>
 <h2 id="usage-with-docker-secrets">Usage with Docker Secrets<a class="headerlink" href="#usage-with-docker-secrets" title="Permanent link">&para;</a></h2>
 <p>The application can also be configured to use <a href="https://docs.docker.com/engine/swarm/secrets/">Docker secrets</a> for sensitive information like the Git access token and the webhook secret.</p>
 <div class="admonition note">
@@ -2608,36 +2919,36 @@ You can still use <a href="https://docs.docker.com/compose/how-tos/use-secrets/"
 <p>To use Docker secrets, you need to create the secrets in Docker and then reference them in the <code>docker-compose.yml</code> file.</p>
 <h3 id="create-docker-secrets">Create Docker Secrets<a class="headerlink" href="#create-docker-secrets" title="Permanent link">&para;</a></h3>
 <p>Create Docker secrets (only with Docker Swarm)</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;&lt;your Git token&gt;&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>docker<span class="w"> </span>secret<span class="w"> </span>create<span class="w"> </span>git_access_token<span class="w"> </span>-
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;&lt;random secret&gt;&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>docker<span class="w"> </span>secret<span class="w"> </span>create<span class="w"> </span>webhook_secret<span class="w"> </span>-
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;&lt;your Git token&gt;&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>docker<span class="w"> </span>secret<span class="w"> </span>create<span class="w"> </span>git_access_token<span class="w"> </span>-
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;&lt;random secret&gt;&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>docker<span class="w"> </span>secret<span class="w"> </span>create<span class="w"> </span>webhook_secret<span class="w"> </span>-
 </span></code></pre></div>
 <h3 id="reference-docker-secrets-in-docker-composeyml">Reference Docker Secrets in <code>docker-compose.yml</code><a class="headerlink" href="#reference-docker-secrets-in-docker-composeyml" title="Permanent link">&para;</a></h3>
-<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">services</span><span class="p">:</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">doco-cd</span>
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/kimdre/doco-cd:latest</span>
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;80:80&quot;</span>
-</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">      </span><span class="nt">TZ</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Europe/Berlin</span>
-</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="hll"><span class="w">      </span><span class="nt">GIT_ACCESS_TOKEN_FILE</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/run/secrets/git_access_token</span><span class="w"> </span><span class="c1"># (1)!</span>
-</span></span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="hll"><span class="w">      </span><span class="nt">WEBHOOK_SECRET_FILE</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/run/secrets/webhook_secret</span>
-</span></span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="hll"><span class="w">    </span><span class="nt">secrets</span><span class="p">:</span><span class="w"> </span><span class="c1"># (2)!</span>
-</span></span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git_access_token</span>
-</span></span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">webhook_secret</span>
-</span></span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="hll"><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-</span></span><span id="__span-6-16"><a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/run/docker.sock:/var/run/docker.sock</span>
-</span></span><span id="__span-6-17"><a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">data:/data</span>
-</span><span id="__span-6-18"><a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a>
-</span><span id="__span-6-19"><a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-6-20"><a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="w">  </span><span class="nt">data</span><span class="p">:</span>
-</span><span id="__span-6-21"><a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a>
-</span><span id="__span-6-22"><a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a><span class="nt">secrets</span><span class="p">:</span>
-</span><span id="__span-6-23"><a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a><span class="w">  </span><span class="nt">git_access_token</span><span class="p">:</span>
-</span><span id="__span-6-24"><a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a><span class="hll"><span class="w">    </span><span class="nt">external</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-</span></span><span id="__span-6-25"><a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a><span class="hll"><span class="w">  </span><span class="nt">webhook_secret</span><span class="p">:</span>
-</span></span><span id="__span-6-26"><a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a><span class="hll"><span class="w">    </span><span class="nt">external</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">doco-cd</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/kimdre/doco-cd:latest</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;80:80&quot;</span>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">      </span><span class="nt">TZ</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Europe/Berlin</span>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="hll"><span class="w">      </span><span class="nt">GIT_ACCESS_TOKEN_FILE</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/run/secrets/git_access_token</span><span class="w"> </span><span class="c1"># (1)!</span>
+</span></span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="hll"><span class="w">      </span><span class="nt">WEBHOOK_SECRET_FILE</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/run/secrets/webhook_secret</span>
+</span></span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="hll"><span class="w">    </span><span class="nt">secrets</span><span class="p">:</span><span class="w"> </span><span class="c1"># (2)!</span>
+</span></span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git_access_token</span>
+</span></span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">webhook_secret</span>
+</span></span><span id="__span-10-15"><a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="hll"><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+</span></span><span id="__span-10-16"><a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/run/docker.sock:/var/run/docker.sock</span>
+</span></span><span id="__span-10-17"><a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">data:/data</span>
+</span><span id="__span-10-18"><a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a>
+</span><span id="__span-10-19"><a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a><span class="nt">volumes</span><span class="p">:</span>
+</span><span id="__span-10-20"><a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a><span class="w">  </span><span class="nt">data</span><span class="p">:</span>
+</span><span id="__span-10-21"><a id="__codelineno-10-21" name="__codelineno-10-21" href="#__codelineno-10-21"></a>
+</span><span id="__span-10-22"><a id="__codelineno-10-22" name="__codelineno-10-22" href="#__codelineno-10-22"></a><span class="nt">secrets</span><span class="p">:</span>
+</span><span id="__span-10-23"><a id="__codelineno-10-23" name="__codelineno-10-23" href="#__codelineno-10-23"></a><span class="w">  </span><span class="nt">git_access_token</span><span class="p">:</span>
+</span><span id="__span-10-24"><a id="__codelineno-10-24" name="__codelineno-10-24" href="#__codelineno-10-24"></a><span class="hll"><span class="w">    </span><span class="nt">external</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span></span><span id="__span-10-25"><a id="__codelineno-10-25" name="__codelineno-10-25" href="#__codelineno-10-25"></a><span class="hll"><span class="w">  </span><span class="nt">webhook_secret</span><span class="p">:</span>
+</span></span><span id="__span-10-26"><a id="__codelineno-10-26" name="__codelineno-10-26" href="#__codelineno-10-26"></a><span class="hll"><span class="w">    </span><span class="nt">external</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
 </span></span></code></pre></div>
 <ol>
 <li>The file name after the <code>/run/secrets/</code> path is the name of the secret</li>
@@ -2645,15 +2956,15 @@ You can still use <a href="https://docs.docker.com/compose/how-tos/use-secrets/"
 </ol>
 <h3 id="deploy-in-docker-swarm-mode">Deploy in Docker Swarm mode<a class="headerlink" href="#deploy-in-docker-swarm-mode" title="Permanent link">&para;</a></h3>
 <p>To run the application in Docker Swarm mode, you need to use the <code>docker stack deploy</code> command instead of <code>docker compose up</code>.</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>docker<span class="w"> </span>stack<span class="w"> </span>deploy<span class="w"> </span>-c<span class="w"> </span>docker-compose.yml<span class="w"> </span>doco-cd
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>docker<span class="w"> </span>stack<span class="w"> </span>deploy<span class="w"> </span>-c<span class="w"> </span>docker-compose.yml<span class="w"> </span>doco-cd
 </span></code></pre></div>
 <h3 id="check-the-logs">Check the logs<a class="headerlink" href="#check-the-logs" title="Permanent link">&para;</a></h3>
 <p>To check the logs of the application, you can use the following command:</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>docker<span class="w"> </span>service<span class="w"> </span>logs<span class="w"> </span>doco-cd_app
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>docker<span class="w"> </span>service<span class="w"> </span>logs<span class="w"> </span>doco-cd_app
 </span></code></pre></div>
 <h3 id="check-the-status-of-the-service">Check the status of the service<a class="headerlink" href="#check-the-status-of-the-service" title="Permanent link">&para;</a></h3>
 <p>To check the status of the service, you can use the following command:</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>docker<span class="w"> </span>service<span class="w"> </span>ps<span class="w"> </span>doco-cd_app
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>docker<span class="w"> </span>service<span class="w"> </span>ps<span class="w"> </span>doco-cd_app
 </span></code></pre></div>
 <h2 id="pulling-images-from-a-private-registry">Pulling images from a private registry<a class="headerlink" href="#pulling-images-from-a-private-registry" title="Permanent link">&para;</a></h2>
 <p>If you want to pull images from a private registry, see <a data-preview="" href="../Advanced/Private-Container-Registries/">Private Container Registries</a> in the wiki.</p>

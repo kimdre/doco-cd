@@ -2003,7 +2003,12 @@
 <p class="admonition-title">Tip</p>
 <p>You can use doco-cd without a Git Access Token if the repositories you want to use for your deployments are publicly accessible. However, it is still recommended to use one in that case to for example avoid rate limits.</p>
 </div>
-<p>If you set a Git Access Token, doco-cd will always use it to authenticate with your Git provider.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">About Git Authentication</p>
+<p>If you set a global <code>GIT_ACCESS_TOKEN</code>, doco-cd uses it as fallback for Git domains without a scoped entry.
+For per-domain credentials, use <code>GIT_AUTH_DOMAINS</code> / <code>GIT_AUTH_DOMAINS_FILE</code>.</p>
+<p>See <a data-preview="" href="../App-Settings/#domain-scoped-git-authentication">Domain-scoped Git authentication</a> for more information on how to set up domain-scoped Git authentication.</p>
 </div>
 <h2 id="git-providers">Git Providers<a class="headerlink" href="#git-providers" title="Permanent link">&para;</a></h2>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:4"><input checked="checked" id="git-providers-github" name="__tabbed_1" type="radio" /><input id="git-providers-gitea-forgejo-gogs" name="__tabbed_1" type="radio" /><input id="git-providers-gitlab" name="__tabbed_1" type="radio" /><input id="git-providers-azure-devops" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="git-providers-github">GitHub</label><label for="git-providers-gitea-forgejo-gogs">Gitea, Forgejo, Gogs</label><label for="git-providers-gitlab">Gitlab</label><label for="git-providers-azure-devops">Azure DevOps</label></div>
