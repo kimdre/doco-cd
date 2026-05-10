@@ -22,6 +22,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
+	"github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/utils/id"
 )
 
@@ -118,10 +119,13 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 	}
 
 	active := make(map[string]struct{}, len(jobs))
+	discoveredByKey := make(map[string]scheduledJob, len(jobs))
 
 	var nearestNextRun time.Time
 
 	for _, job := range jobs {
+		discoveredByKey[job.key] = job
+
 		cfg, enabled, parseErr := docker.ParseJobScheduleLabels(job.labels)
 		if parseErr != nil {
 			s.log.Warn("ignoring job with invalid schedule labels",
@@ -185,6 +189,20 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 
 	for key := range s.states {
 		if _, exists := active[key]; !exists {
+			if job, ok := discoveredByKey[key]; ok {
+				s.log.Info("job unscheduled",
+					slog.String("job", job.name),
+					slog.String("stack", getJobStackName(job)),
+					slog.String("mode", string(job.mode)),
+					slog.String("reason", "disabled"),
+				)
+			} else {
+				s.log.Info("job unscheduled",
+					slog.String("job_key", key),
+					slog.String("reason", "removed"),
+				)
+			}
+
 			delete(s.states, key)
 		}
 	}
@@ -341,11 +359,17 @@ func (s *scheduler) discoverJobs(ctx context.Context) ([]scheduledJob, error) {
 }
 
 func (s *scheduler) triggerRun(ctx context.Context, job scheduledJob, cfg docker.JobScheduleConfig, now time.Time) {
+	stackName := getJobStackName(job)
+	metricLabels := getScheduledRunMetricLabels(job, cfg, stackName)
+
 	if cfg.SkipRunning && s.isRunInProgress(job.key) {
 		s.log.Warn("skipping scheduled run because previous run is still in progress",
 			slog.String("job", job.name),
+			slog.String("stack", stackName),
 			slog.String("mode", string(job.mode)),
 		)
+
+		prometheus.ScheduledRunSkippedTotal.WithLabelValues(append(metricLabels, "still_running")...).Inc()
 
 		return
 	}
@@ -355,8 +379,22 @@ func (s *scheduler) triggerRun(ctx context.Context, job scheduledJob, cfg docker
 	graceful.SafeGo(s.wg, s.log, func() {
 		defer s.setRunInProgress(job.key, false)
 
+		runStart := time.Now()
+		runFailed := false
+
+		prometheus.ScheduledRunsActive.WithLabelValues(metricLabels...).Inc()
+		defer prometheus.ScheduledRunsActive.WithLabelValues(metricLabels...).Dec()
+		defer func() {
+			prometheus.ScheduledRunDuration.WithLabelValues(metricLabels...).Observe(time.Since(runStart).Seconds())
+		}()
+		defer prometheus.ScheduledRunsTotal.WithLabelValues(metricLabels...).Inc()
+		defer func() {
+			if runFailed {
+				prometheus.ScheduledRunErrorsTotal.WithLabelValues(metricLabels...).Inc()
+			}
+		}()
+
 		runID := id.GenID()
-		stackName := getJobStackName(job)
 
 		runLog := s.log.With(
 			slog.String("job_id", runID),
@@ -378,6 +416,8 @@ func (s *scheduler) triggerRun(ctx context.Context, job scheduledJob, cfg docker
 
 		err := s.executeScheduledRun(ctx, job, cfg)
 		if err != nil {
+			runFailed = true
+
 			runLog.Error("scheduled run failed", logger.ErrAttr(err))
 			s.sendRunNotification(job, cfg, runID, false, "Scheduled job failed", fmt.Sprintf("scheduled job '%s' failed to run: %v", job.name, err))
 
@@ -481,6 +521,10 @@ func getScheduleFingerprint(cfg docker.JobScheduleConfig) string {
 		string(cfg.NotifyOn),
 		strconv.FormatUint(cfg.SwarmReplicas, 10),
 	}, "|")
+}
+
+func getScheduledRunMetricLabels(job scheduledJob, cfg docker.JobScheduleConfig, stackName string) []string {
+	return []string{stackName, job.name, string(job.mode), string(cfg.ExecutionMode)}
 }
 
 func nextScheduledRun(schedule cron.Schedule, scheduledAt, now time.Time) time.Time {

@@ -9,6 +9,8 @@ func init() {
 		WebhookRequestsTotal, WebhookErrorsTotal, WebhookDuration,
 		DeploymentsTotal, DeploymentErrorsTotal, DeploymentDuration,
 		DeploymentsActive, DeploymentsQueued,
+		ScheduledRunsTotal, ScheduledRunErrorsTotal, ScheduledRunSkippedTotal,
+		ScheduledRunDuration, ScheduledRunsActive,
 	)
 }
 
@@ -81,6 +83,32 @@ var (
 		Name:      "deployments_queued",
 		Help:      "Number of queued deployments waiting to start",
 	}, []string{"repository"})
+	ScheduledRunsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: MetricsNamespace,
+		Name:      "scheduled_runs_total",
+		Help:      "Total number of scheduled job runs processed",
+	}, []string{"stack", "job", "mode", "execution_mode"})
+	ScheduledRunErrorsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: MetricsNamespace,
+		Name:      "scheduled_run_errors_total",
+		Help:      "Total number of failed scheduled job runs",
+	}, []string{"stack", "job", "mode", "execution_mode"})
+	ScheduledRunSkippedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: MetricsNamespace,
+		Name:      "scheduled_run_skipped_total",
+		Help:      "Total number of skipped scheduled job runs",
+	}, []string{"stack", "job", "mode", "execution_mode", "reason"})
+	ScheduledRunDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: MetricsNamespace,
+		Name:      "scheduled_run_duration_seconds",
+		Help:      "Duration of scheduled job runs in seconds",
+		Buckets:   prometheus.DefBuckets,
+	}, []string{"stack", "job", "mode", "execution_mode"})
+	ScheduledRunsActive = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: MetricsNamespace,
+		Name:      "scheduled_runs_active",
+		Help:      "Number of currently active scheduled job runs",
+	}, []string{"stack", "job", "mode", "execution_mode"})
 	/* --8<-- [end:collectors]
 	Add new collectors above this comment */
 )

@@ -25,6 +25,7 @@ func TestServe(t *testing.T) {
 	}
 
 	AppInfo.WithLabelValues("test", appConfig.LogLevel, time.Now().Format(time.RFC3339)).Set(1)
+	ScheduledRunsTotal.WithLabelValues("test-stack", "backup", "container", "restart").Inc()
 
 	req, err := http.NewRequest("GET", MetricsPath, nil)
 	if err != nil {
@@ -52,5 +53,9 @@ func TestServe(t *testing.T) {
 	// Check if the response body contains the expected metrics
 	if !strings.Contains(rr.Body.String(), "doco_cd_info") {
 		t.Error("Expected response body to contain 'doco_cd_info' metric, but it does not")
+	}
+
+	if !strings.Contains(rr.Body.String(), "doco_cd_scheduled_runs_total") {
+		t.Error("Expected response body to contain 'doco_cd_scheduled_runs_total' metric, but it does not")
 	}
 }
