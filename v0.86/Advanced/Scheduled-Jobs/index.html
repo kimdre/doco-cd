@@ -2406,7 +2406,8 @@ while each one-shot execution runs as a temporary <code>replicated-job</code>/<c
 </div>
 </div>
 <h2 id="daylight-saving-time-dst">Daylight saving time (DST)<a class="headerlink" href="#daylight-saving-time-dst" title="Permanent link">&para;</a></h2>
-<p>Scheduled jobs are triggered based on the timezone of the doco-cd instance, which is determined by the <code>TZ</code> environment variable or defaults to UTC if not set.</p>
+<p>Scheduled jobs are triggered based on the timezone of the doco-cd instance, which is determined by the <code>TZ</code> environment variable or defaults to UTC if not set.
+You can find a list of all possible timezone values on <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones">wikipedia</a>.</p>
 <p>When DST changes occur in the configured timezone, scheduled jobs will adjust accordingly:</p>
 <ul>
 <li>If a scheduled time is skipped due to DST (e.g., clocks move forward), the job will not run at that time.</li>
