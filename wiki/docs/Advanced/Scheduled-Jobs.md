@@ -199,6 +199,7 @@ The following mapping applies to scheduled runs in `one_shot` mode:
 ## Daylight saving time (DST)
 
 Scheduled jobs are triggered based on the timezone of the doco-cd instance, which is determined by the `TZ` environment variable or defaults to UTC if not set.
+You can find a list of all possible timezone values on [wikipedia](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones).
 
 When DST changes occur in the configured timezone, scheduled jobs will adjust accordingly:
 
