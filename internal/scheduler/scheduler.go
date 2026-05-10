@@ -836,11 +836,10 @@ func parseRFC3339Time(raw string) *time.Time {
 		return nil
 	}
 
-	u := t.UTC()
-
-	return &u
+	return new(t.UTC())
 }
 
+// schedulerNow returns the current time in local timezone for consistent scheduling behavior regardless of host timezone settings.
 func schedulerNow() time.Time {
 	return time.Now().In(time.Local)
 }
