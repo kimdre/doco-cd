@@ -18,6 +18,8 @@ The application can be configured using the following environment variables:
 | `DEPLOY_CONFIG_BASE_DIR`          | string  | Relative Path to the directory containing the deployment configuration files **in all repositories**. **NOTE**: This does not affect/alter the `working_dir` path in the deploy config. It must still be relative to the repository root.                                                                                                              | `/`                                                    |
 | `GIT_ACCESS_TOKEN`                | string  | Access token for cloning repositories (required for private repositories) via **HTTP**, see [Access Token Setup](Setup-Access-Token.md)                                                                                                                                                                                                                | ` ` (Optional for public repositories but recommended) |
 | `GIT_ACCESS_TOKEN_FILE`           | string  | Path to the file containing the Git Access Token (Mutually exclusive with `GIT_ACCESS_TOKEN`).                                                                                                                                                                                                                                                         | ` `                                                    |
+| `GIT_AUTH_DOMAINS`                | list    | YAML list of domain-scoped Git credentials (HTTP token and/or SSH key). Supports exact domains and wildcard subdomains like `*.example.com` (see [Domain-scoped Git auth](#domain-scoped-git-authentication)). Mutually exclusive with `GIT_AUTH_DOMAINS_FILE`.                                                                                        | ` `                                                    |
+| `GIT_AUTH_DOMAINS_FILE`           | string  | Path to a file containing the YAML configuration for `GIT_AUTH_DOMAINS`. Mutually exclusive with `GIT_AUTH_DOMAINS`.                                                                                                                                                                                                                                   | ` `                                                    |
 | `GIT_CLONE_DEPTH`                 | number  | Limits the number of commits fetched during clone/fetch operations (shallow clone). `0` means full clone (no depth limit). Can be overridden per deployment via the [`git_depth`](Deploy-Settings.md) setting. When a requested ref is outside the shallow depth, doco-cd will automatically deepen incrementally before falling back to a full fetch. | `0`                                                    |
 | `GIT_CLONE_SUBMODULES`            | boolean | Whether Git submodules are cloned too                                                                                                                                                                                                                                                                                                                  | `true`                                                 |
 | `HTTP_PORT`                       | number  | Port on which the application will listen for incoming webhooks, API requests and [healthchecks](#healthcheck)                                                                                                                                                                                                                                         | `80`                                                   |
@@ -129,6 +131,87 @@ services:
       GIT_ACCESS_TOKEN: xxx
       WEBHOOK_SECRET: xxx
 ```
+
+## Domain-scoped Git authentication
+
+Use domain-scoped config when you fetch from multiple Git providers/domains and need separate credentials.
+
+### Syntax and Format
+
+The domain-scoped authentication configuration is a YAML list where each entry defines credentials for one or more domains.
+
+#### Entry Structure
+
+Each entry in the list has the following structure:
+
+```yaml
+- domains:                          # (Required) List of domain names or patterns
+    - domain1.com
+    - domain2.com
+    - '*.example.com'
+  git_access_token: xxx             # (Optional) HTTP token for git access
+  ssh_private_key: |                # (Optional) SSH private key content
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    ...
+    -----END OPENSSH PRIVATE KEY-----
+  ssh_private_key_passphrase: xxx   # (Optional) Passphrase for encrypted SSH key
+```
+
+#### Available Options
+
+| Field                        | Type   | Required | Description                                                                                               |
+|------------------------------|--------|----------|-----------------------------------------------------------------------------------------------------------|
+| `domains`                    | list   | Yes      | List of domain names to apply these credentials to. Supports exact domains and wildcard patterns.         |
+| `git_access_token`           | string | No       | HTTP(S) access token for authenticating with the Git provider. Cannot be used with `ssh_private_key`.     |
+| `ssh_private_key`            | string | No       | SSH private key content (multi-line). Cannot be used with `git_access_token`.                             |
+| `ssh_private_key_passphrase` | string | No       | Passphrase for the SSH private key if it was generated with encryption. Only used with `ssh_private_key`. |
+
+#### Authentication Method Selection
+
+- **Use `git_access_token`** for HTTP(S) based Git access
+- **Use `ssh_private_key`** (and optionally `ssh_private_key_passphrase`) for SSH-based Git access
+- Do not mix both methods in the same entry
+
+### Matching Behavior
+
+- Exact domain match wins over wildcard entries.
+- If multiple wildcard patterns match, the longest suffix wins (most specific).
+- Wildcards only match subdomains. Example: `*.example.com` matches `git.example.com`, but not `example.com`.
+- If no domain entry matches, doco-cd falls back to global `GIT_ACCESS_TOKEN` / `SSH_PRIVATE_KEY` values if set.
+- Submodule remotes are resolved independently, so each submodule can use credentials for its own domain.
+
+### Examples
+
+=== "Using `GIT_AUTH_DOMAINS`"
+
+    ```yaml title="docker-compose.yml"
+    services:
+      app:
+        environment:
+          GIT_AUTH_DOMAINS: |
+            --8<-- "wiki/includes/git-auth-domains.example.yaml"
+    ```
+
+=== "Using `GIT_AUTH_DOMAINS_FILE`"
+
+    You can also store the YAML in a file and load it with `GIT_AUTH_DOMAINS_FILE`.
+
+    ```yaml title="git-auth-domains.yaml"
+    --8<-- "wiki/includes/git-auth-domains.example.yaml"
+    ```
+    
+    ```yaml title="docker-compose.yml"
+    services:
+      app:
+        environment:
+          GIT_AUTH_DOMAINS_FILE: /run/secrets/git_auth_domains
+        secrets:
+          - git_auth_domains
+    
+    secrets:
+      git_auth_domains:
+        file: ./git-auth-domains.yaml
+    ```
 
 ## Usage with Docker Secrets
 

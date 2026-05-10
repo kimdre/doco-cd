@@ -17,6 +17,7 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/git"
 
 	"github.com/kimdre/doco-cd/internal/git/ssh"
 	"github.com/kimdre/doco-cd/internal/graceful"
@@ -114,6 +115,8 @@ func run() error {
 		log.Critical("failed to get application configuration", logger.ErrAttr(err))
 		return err
 	}
+
+	git.ConfigureAuthResolver(c.GitAuthDomains, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
 
 	// Parse the log level from the app configuration
 	logLevel, err := logger.ParseLevel(c.LogLevel)

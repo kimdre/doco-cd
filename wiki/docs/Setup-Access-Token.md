@@ -13,8 +13,12 @@ This page shows how to set up a Git Access Token for your deployments.
     
     !!! tip
         You can use doco-cd without a Git Access Token if the repositories you want to use for your deployments are publicly accessible. However, it is still recommended to use one in that case to for example avoid rate limits.
-    
-    If you set a Git Access Token, doco-cd will always use it to authenticate with your Git provider.
+
+!!! info "About Git Authentication"
+    If you set a global `GIT_ACCESS_TOKEN`, doco-cd uses it as fallback for Git domains without a scoped entry.
+    For per-domain credentials, use `GIT_AUTH_DOMAINS` / `GIT_AUTH_DOMAINS_FILE`.
+
+    See [Domain-scoped Git authentication](App-Settings.md#domain-scoped-git-authentication) for more information on how to set up domain-scoped Git authentication.
 
 ## Git Providers
 

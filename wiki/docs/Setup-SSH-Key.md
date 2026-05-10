@@ -50,6 +50,11 @@ If the connection is successful, you should see a message indicating that you ha
 You need to configure doco-cd to use the private key (`id_ed25519` or the file path you specified) for SSH authentication.
 See the app config on the [App Settings](App-Settings.md) wiki page for more information on how to set the SSH private key in doco-cd.
 
+
+!!! tip "About Git Authentication"
+    For multiple domains/providers, configure SSH keys per domain with `GIT_AUTH_DOMAINS` (or `GIT_AUTH_DOMAINS_FILE`).
+    See [Domain-scoped Git authentication](App-Settings.md#domain-scoped-git-authentication) for more information.
+
 An example using Docker Compose:
 
 ```yaml title="docker-compose.yml"
