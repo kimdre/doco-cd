@@ -93,6 +93,58 @@ curl --request POST \
 ]'
 ```
 
+### Scheduled Jobs
+
+| Endpoint                    | Method | Description                                     | Query Parameters                                                                                                                                                           |
+|-----------------------------|--------|-------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `/v1/api/jobs`              | GET    | List all discovered scheduled jobs.             | - `stack` (string, optional): Return scheduled jobs only for one stack/project.                                                                                            |
+| `/v1/api/job/{jobName}/run` | POST   | Trigger a configured scheduled job immediately. | - `stack` (string, optional): Limit matching to a specific stack/project.<br/>- `wait` (boolean, default: `true`): Wait for the triggered run to finish before responding. |
+
+??? question "What is the `jobName` for a scheduled job?"
+    `jobName` is the runtime name of the scheduled target:
+
+    - Docker (standalone): the container name (for example `my-stack-backup-1`)
+    - Docker Swarm: the service name (for example `my-stack_backup`)
+
+??? question "How do I find the `jobName` for a scheduled job?"
+    You can get the `jobName` from the scheduler logs (`"job":"..."`) or from `GET /v1/api/jobs`.
+
+- If multiple jobs share the same `jobName`, provide `stack` to disambiguate for the run endpoint.
+- If the matched job is disabled, the run endpoint returns a conflict response.
+
+**Common run endpoint outcomes**
+
+- `200 OK`: run triggered and completed (`wait=true`).
+- `202 Accepted`: run accepted and running in background (`wait=false`).
+- `404 Not Found`: no scheduled job matched `jobName` (and optional `stack`).
+- `409 Conflict`: matched job is disabled or the selection is ambiguous.
+
+#### Example Request
+
+=== "Trigger a job by container name"
+
+    ```sh
+    curl --request POST \
+      --url 'https://cd.example.com/v1/api/job/my-stack-backup-1/run?wait=true' \
+      --header 'x-api-key: your-api-key'
+    ```
+
+=== "Trigger a job by service name in a specific stack"
+
+    ```sh
+    curl --request POST \
+      --url 'https://cd.example.com/v1/api/job/backup/run?stack=my-stack&wait=true' \
+      --header 'x-api-key: your-api-key'
+    ```
+
+=== "List all scheduled jobs for a specific stack"
+
+    ```sh
+    curl --request GET \
+      --url 'https://cd.example.com/v1/api/jobs?stack=my-stack' \
+      --header 'x-api-key: your-api-key'
+    ```
+
 ### Compose Projects
 
 !!! note

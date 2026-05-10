@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,6 +32,15 @@ const (
 	schedulerRefreshRetryDelay   = time.Second
 )
 
+var (
+	ErrScheduledJobNotFound  = errors.New("scheduled job not found")
+	ErrScheduledJobDisabled  = errors.New("scheduled job is disabled")
+	ErrScheduledJobAmbiguous = errors.New("multiple scheduled jobs matched, narrow your selection")
+
+	runtimeStatesMu sync.RWMutex
+	runtimeStates   = map[string]scheduledJobState{}
+)
+
 type scheduledJobMode string
 
 const (
@@ -49,6 +59,7 @@ type scheduledJob struct {
 type scheduledJobState struct {
 	fingerprint string
 	schedule    cron.Schedule
+	lastRun     time.Time
 	nextRun     time.Time
 	cfg         docker.JobScheduleConfig
 }
@@ -62,6 +73,25 @@ type scheduler struct {
 
 	runningMu sync.Mutex
 	running   map[string]bool
+}
+
+// JobInfo describes one scheduler-managed target and its runtime scheduling status.
+type JobInfo struct {
+	Name           string                  `json:"name"`
+	Enabled        bool                    `json:"enabled"`
+	Stack          string                  `json:"stack,omitempty"`
+	Mode           string                  `json:"mode"`
+	Schedule       string                  `json:"schedule,omitempty"`
+	ExecutionMode  docker.JobExecutionMode `json:"execution_mode,omitempty"`
+	SkipRunning    bool                    `json:"skip_running"`
+	NotifyOn       docker.JobNotifyOn      `json:"notify_on,omitempty"`
+	Replicas       uint64                  `json:"replicas,omitempty"`
+	LastRunAt      *time.Time              `json:"last_run_at,omitempty"`
+	NextRunAt      *time.Time              `json:"next_run_at,omitempty"`
+	LabelNextRunAt *time.Time              `json:"label_next_run_at,omitempty"`
+	Repository     string                  `json:"repository,omitempty"`
+	ScheduleError  string                  `json:"schedule_error,omitempty"`
+	Valid          bool                    `json:"valid"`
 }
 
 func Start(ctx context.Context, dockerCli command.Cli, log *slog.Logger, wg *sync.WaitGroup) {
@@ -80,6 +110,190 @@ func Start(ctx context.Context, dockerCli command.Cli, log *slog.Logger, wg *syn
 	s.run(ctx)
 }
 
+// ListJobs returns all discovered scheduler jobs, optionally filtered by stack name.
+func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]JobInfo, error) {
+	if dockerCli == nil {
+		return nil, errors.New("docker cli is required")
+	}
+
+	s := &scheduler{dockerCli: dockerCli}
+
+	jobs, err := s.discoverJobs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to discover scheduled jobs: %w", err)
+	}
+
+	now := schedulerNow()
+	stackName = strings.TrimSpace(stackName)
+	result := make([]JobInfo, 0, len(jobs))
+	states := getRuntimeStatesSnapshot()
+
+	for _, job := range jobs {
+		stack := getJobStackName(job)
+		if stackName != "" && stack != stackName {
+			continue
+		}
+
+		info := JobInfo{
+			Name:       job.name,
+			Stack:      stack,
+			Mode:       string(job.mode),
+			Repository: job.labels[docker.DocoCDLabels.Repository.Name],
+			Valid:      true,
+		}
+
+		info.LastRunAt = parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobLastRun])
+		info.LabelNextRunAt = parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobNextRun])
+
+		cfg, enabled, parseErr := docker.ParseJobScheduleLabels(job.labels)
+		if parseErr != nil {
+			info.Valid = false
+			info.ScheduleError = parseErr.Error()
+			result = append(result, info)
+
+			continue
+		}
+
+		info.Enabled = enabled
+		if !enabled {
+			result = append(result, info)
+			continue
+		}
+
+		info.Schedule = cfg.Schedule
+		info.ExecutionMode = cfg.ExecutionMode
+		info.SkipRunning = cfg.SkipRunning
+		info.NotifyOn = cfg.NotifyOn
+		info.Replicas = cfg.SwarmReplicas
+
+		schedule, scheduleErr := docker.ParseJobScheduleExpression(cfg.Schedule)
+		if scheduleErr != nil {
+			info.Valid = false
+			info.ScheduleError = scheduleErr.Error()
+			result = append(result, info)
+
+			continue
+		}
+
+		nextRun := schedule.Next(now)
+		if state, ok := states[job.key]; ok && !state.nextRun.IsZero() {
+			if !state.lastRun.IsZero() {
+				info.LastRunAt = new(state.lastRun)
+			}
+
+			nextRun = state.nextRun
+		}
+
+		info.NextRunAt = &nextRun
+
+		result = append(result, info)
+	}
+
+	return result, nil
+}
+
+// TriggerNow executes one configured scheduled job immediately.
+// Job selection matches by container/service name and optional stack name.
+func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jobName, stackName string) (string, error) {
+	if dockerCli == nil {
+		return "", errors.New("docker cli is required")
+	}
+
+	if strings.TrimSpace(jobName) == "" {
+		return "", errors.New("job name is required")
+	}
+
+	if log == nil {
+		log = slog.Default()
+	}
+
+	s := &scheduler{
+		dockerCli: dockerCli,
+		log:       log.With(slog.String("component", "scheduler")),
+	}
+
+	jobs, err := s.discoverJobs(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to discover scheduled jobs: %w", err)
+	}
+
+	job, cfg, err := findRunnableJob(jobs, strings.TrimSpace(jobName), strings.TrimSpace(stackName))
+	if err != nil {
+		return "", err
+	}
+
+	runID := id.GenID()
+	runLog := s.log.With(
+		slog.String("job_id", runID),
+		slog.String("job", job.name),
+		slog.String("stack", getJobStackName(job)),
+		slog.String("mode", string(job.mode)),
+		slog.String("execution_mode", string(cfg.ExecutionMode)),
+	)
+
+	runLog.Info("triggering scheduled run via API")
+
+	lock.LockScheduledDeploy()
+
+	defer lock.UnlockScheduledDeploy()
+
+	err = s.executeScheduledRun(ctx, job, cfg)
+	setRuntimeLastRun(job.key, schedulerNow())
+
+	if err != nil {
+		runLog.Error("scheduled run failed", logger.ErrAttr(err))
+		s.sendRunNotification(job, cfg, runID, false, "Scheduled job failed", fmt.Sprintf("scheduled job '%s' failed to run: %v", job.name, err))
+
+		return runID, err
+	}
+
+	runLog.Info("scheduled run completed")
+	s.sendRunNotification(job, cfg, runID, true, "Scheduled job completed", fmt.Sprintf("scheduled job '%s' completed successfully", job.name))
+
+	return runID, nil
+}
+
+func findRunnableJob(jobs []scheduledJob, jobName, stackName string) (scheduledJob, docker.JobScheduleConfig, error) {
+	var (
+		matchedJob scheduledJob
+		matchedCfg docker.JobScheduleConfig
+		matches    int
+	)
+
+	for _, job := range jobs {
+		if job.name != jobName {
+			continue
+		}
+
+		if stackName != "" && getJobStackName(job) != stackName {
+			continue
+		}
+
+		cfg, enabled, err := docker.ParseJobScheduleLabels(job.labels)
+		if err != nil {
+			return scheduledJob{}, docker.JobScheduleConfig{}, fmt.Errorf("job %q has invalid schedule labels: %w", jobName, err)
+		}
+
+		if !enabled {
+			return scheduledJob{}, docker.JobScheduleConfig{}, ErrScheduledJobDisabled
+		}
+
+		matchedJob = job
+		matchedCfg = cfg
+		matches++
+	}
+
+	if matches == 0 {
+		return scheduledJob{}, docker.JobScheduleConfig{}, ErrScheduledJobNotFound
+	}
+
+	if matches > 1 {
+		return scheduledJob{}, docker.JobScheduleConfig{}, ErrScheduledJobAmbiguous
+	}
+
+	return matchedJob, matchedCfg, nil
+}
+
 func (s *scheduler) run(ctx context.Context) {
 	jobChanges := s.watchJobChanges(ctx)
 	timer := time.NewTimer(time.Hour)
@@ -89,10 +303,10 @@ func (s *scheduler) run(ctx context.Context) {
 
 	s.log.Info("starting scheduler")
 
-	nextRun, hasNextRun := s.refreshJobs(ctx, time.Now().UTC())
+	nextRun, hasNextRun := s.refreshJobs(ctx, schedulerNow())
 
 	for {
-		setTimerToNextRun(timer, time.Now().UTC(), nextRun, hasNextRun)
+		setTimerToNextRun(timer, schedulerNow(), nextRun, hasNextRun)
 
 		select {
 		case <-ctx.Done():
@@ -104,9 +318,9 @@ func (s *scheduler) run(ctx context.Context) {
 				continue
 			}
 
-			nextRun, hasNextRun = s.refreshJobs(ctx, time.Now().UTC())
+			nextRun, hasNextRun = s.refreshJobs(ctx, schedulerNow())
 		case t := <-timer.C:
-			nextRun, hasNextRun = s.refreshJobs(ctx, t.UTC())
+			nextRun, hasNextRun = s.refreshJobs(ctx, t)
 		}
 	}
 }
@@ -176,6 +390,7 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 
 		if !now.Before(state.nextRun) {
 			scheduledAt := state.nextRun
+			state.lastRun = scheduledAt
 			state.nextRun = nextScheduledRun(state.schedule, scheduledAt, now)
 			s.states[job.key] = state
 
@@ -210,6 +425,8 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 	if nearestNextRun.IsZero() {
 		nearestNextRun, _ = getNearestNextRun(s.states)
 	}
+
+	setRuntimeStatesSnapshot(s.states)
 
 	return nearestNextRun, !nearestNextRun.IsZero()
 }
@@ -606,4 +823,56 @@ func firstContainerName(names []string) string {
 	}
 
 	return names[0]
+}
+
+func parseRFC3339Time(raw string) *time.Time {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return nil
+	}
+
+	return new(t.UTC())
+}
+
+// schedulerNow returns the current time in local timezone for consistent scheduling behavior regardless of host timezone settings.
+func schedulerNow() time.Time {
+	return time.Now().In(time.Local)
+}
+
+func setRuntimeStatesSnapshot(states map[string]scheduledJobState) {
+	runtimeStatesMu.Lock()
+	defer runtimeStatesMu.Unlock()
+
+	next := make(map[string]scheduledJobState, len(states))
+	maps.Copy(next, states)
+
+	runtimeStates = next
+}
+
+func getRuntimeStatesSnapshot() map[string]scheduledJobState {
+	runtimeStatesMu.RLock()
+	defer runtimeStatesMu.RUnlock()
+
+	ret := make(map[string]scheduledJobState, len(runtimeStates))
+	maps.Copy(ret, runtimeStates)
+
+	return ret
+}
+
+func setRuntimeLastRun(key string, lastRun time.Time) {
+	if key == "" {
+		return
+	}
+
+	runtimeStatesMu.Lock()
+	defer runtimeStatesMu.Unlock()
+
+	state := runtimeStates[key]
+	state.lastRun = lastRun
+	runtimeStates[key] = state
 }

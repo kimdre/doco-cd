@@ -19,6 +19,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 	restAPI "github.com/kimdre/doco-cd/internal/restapi"
+	"github.com/kimdre/doco-cd/internal/scheduler"
 	"github.com/kimdre/doco-cd/internal/utils/id"
 )
 
@@ -42,6 +43,8 @@ func registerApiEndpoints(c *app.Config, h *handlerData, log *logger.Logger, mux
 		enabledEndpoints = append(enabledEndpoints, apiPath)
 
 		endpoints := []endpoint{
+			{apiPath + "/jobs", h.GetScheduledJobsHandler},
+			{apiPath + "/job/{jobName}/run", h.TriggerScheduledJobHandler},
 			{apiPath + "/projects", h.GetProjectsApiHandler},
 			{apiPath + "/project/{projectName}", h.ProjectApiHandler},
 			{apiPath + "/project/{projectName}/{action}", h.ProjectActionApiHandler},
@@ -76,6 +79,113 @@ func registerApiEndpoints(c *app.Config, h *handlerData, log *logger.Logger, mux
 	}
 
 	return enabledEndpoints
+}
+
+// GetScheduledJobsHandler handles API requests to list scheduler-managed jobs.
+func (h *handlerData) GetScheduledJobsHandler(w http.ResponseWriter, r *http.Request) {
+	jobID := id.GenID()
+	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
+
+	jobLog.Debug("received api request")
+
+	if !requireMethod(w, jobLog, r, http.MethodGet) {
+		return
+	}
+
+	if !restAPI.ValidateApiKey(r, h.appConfig.ApiSecret) {
+		jobLog.Error(restAPI.ErrInvalidApiKey.Error())
+		JSONError(w, restAPI.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
+
+		return
+	}
+
+	stackName := getQueryParam(r, w, jobLog, jobID, "stack", "string", "").(string)
+
+	jobs, err := scheduler.ListJobs(r.Context(), h.dockerCli, stackName)
+	if err != nil {
+		errMsg := "failed to list scheduled jobs"
+		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+		JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
+
+		return
+	}
+
+	JSONResponse(w, jobs, jobID, http.StatusOK)
+}
+
+// TriggerScheduledJobHandler handles API requests to run one configured scheduled job immediately.
+func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.Request) {
+	jobID := id.GenID()
+	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
+
+	jobLog.Debug("received api request")
+
+	if !requireMethod(w, jobLog, r, http.MethodPost) {
+		return
+	}
+
+	if !restAPI.ValidateApiKey(r, h.appConfig.ApiSecret) {
+		jobLog.Error(restAPI.ErrInvalidApiKey.Error())
+		JSONError(w, restAPI.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
+
+		return
+	}
+
+	jobName := r.PathValue("jobName")
+	if jobName == "" {
+		err := errors.New("missing job name")
+		jobLog.Error(err.Error())
+		JSONError(w, err, "", jobID, http.StatusBadRequest)
+
+		return
+	}
+
+	stackName := getQueryParam(r, w, jobLog, jobID, "stack", "string", "").(string)
+	wait := getQueryParam(r, w, jobLog, jobID, "wait", "bool", true).(bool)
+
+	triggerFn := func(ctx context.Context) error {
+		runID, err := scheduler.TriggerNow(ctx, h.dockerCli, h.log.Logger, jobName, stackName)
+
+		runLog := jobLog
+		if runID != "" {
+			runLog = runLog.With(slog.String("scheduled_run_id", runID))
+		}
+
+		if err == nil {
+			runLog.Info("scheduled job run triggered", slog.String("job", jobName), slog.String("stack", stackName))
+			return nil
+		}
+
+		runLog.With(logger.ErrAttr(err)).Error("failed to trigger scheduled job run", slog.String("job", jobName), slog.String("stack", stackName))
+
+		return err
+	}
+
+	if !wait {
+		go func(ctx context.Context) {
+			_ = triggerFn(ctx)
+		}(context.WithoutCancel(r.Context()))
+
+		JSONResponse(w, "scheduled job run accepted", jobID, http.StatusAccepted)
+
+		return
+	}
+
+	err := triggerFn(r.Context())
+	if err != nil {
+		switch {
+		case errors.Is(err, scheduler.ErrScheduledJobNotFound):
+			JSONError(w, err.Error(), "", jobID, http.StatusNotFound)
+		case errors.Is(err, scheduler.ErrScheduledJobDisabled), errors.Is(err, scheduler.ErrScheduledJobAmbiguous):
+			JSONError(w, err.Error(), "", jobID, http.StatusConflict)
+		default:
+			JSONError(w, "failed to trigger scheduled job run", err.Error(), jobID, http.StatusInternalServerError)
+		}
+
+		return
+	}
+
+	JSONResponse(w, "scheduled job run completed", jobID, http.StatusOK)
 }
 
 // HealthCheckHandler handles health check requests.

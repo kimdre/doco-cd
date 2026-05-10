@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -118,5 +119,106 @@ func TestGetJobStackName(t *testing.T) {
 				t.Fatalf("getJobStackName() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestFindRunnableJob(t *testing.T) {
+	t.Parallel()
+
+	validLabels := map[string]string{
+		docker.DocoCDJobLabels.JobEnabled:  "true",
+		docker.DocoCDJobLabels.JobSchedule: "@every 1m",
+	}
+
+	tests := []struct {
+		name      string
+		jobs      []scheduledJob
+		jobName   string
+		stackName string
+		wantErr   error
+	}{
+		{
+			name: "single matching job",
+			jobs: []scheduledJob{
+				{name: "stack-backup-1", labels: validLabels},
+			},
+			jobName: "stack-backup-1",
+		},
+		{
+			name: "stack filter avoids ambiguity",
+			jobs: []scheduledJob{
+				{name: "backup", labels: map[string]string{docker.DocoCDJobLabels.JobEnabled: "true", docker.DocoCDJobLabels.JobSchedule: "@every 1m", api.ProjectLabel: "stack-a"}},
+				{name: "backup", labels: map[string]string{docker.DocoCDJobLabels.JobEnabled: "true", docker.DocoCDJobLabels.JobSchedule: "@every 1m", api.ProjectLabel: "stack-b"}},
+			},
+			jobName:   "backup",
+			stackName: "stack-a",
+		},
+		{
+			name: "job not found",
+			jobs: []scheduledJob{
+				{name: "other", labels: validLabels},
+			},
+			jobName: "backup",
+			wantErr: ErrScheduledJobNotFound,
+		},
+		{
+			name: "job disabled",
+			jobs: []scheduledJob{
+				{name: "backup", labels: map[string]string{docker.DocoCDJobLabels.JobEnabled: "false", docker.DocoCDJobLabels.JobSchedule: "@every 1m"}},
+			},
+			jobName: "backup",
+			wantErr: ErrScheduledJobDisabled,
+		},
+		{
+			name: "ambiguous job name",
+			jobs: []scheduledJob{
+				{name: "backup", labels: validLabels},
+				{name: "backup", labels: validLabels},
+			},
+			jobName: "backup",
+			wantErr: ErrScheduledJobAmbiguous,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, _, err := findRunnableJob(tt.jobs, tt.jobName, tt.stackName)
+			if tt.wantErr == nil && err != nil {
+				t.Fatalf("findRunnableJob() unexpected error = %v", err)
+			}
+
+			if tt.wantErr != nil && !errors.Is(err, tt.wantErr) {
+				t.Fatalf("findRunnableJob() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestParseJobScheduleExpression_NextRunUsesLocalTimezone_Berlin(t *testing.T) {
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		t.Fatalf("time.LoadLocation() failed: %v", err)
+	}
+
+	originalLocal := time.Local
+	time.Local = berlin
+
+	t.Cleanup(func() {
+		time.Local = originalLocal
+	})
+
+	schedule, err := docker.ParseJobScheduleExpression("0 */6 * * *")
+	if err != nil {
+		t.Fatalf("ParseJobScheduleExpression() failed: %v", err)
+	}
+
+	now := time.Date(2026, time.May, 11, 0, 30, 0, 0, time.Local)
+	got := schedule.Next(now)
+	want := time.Date(2026, time.May, 11, 6, 0, 0, 0, time.Local)
+
+	if !got.Equal(want) {
+		t.Fatalf("schedule.Next() = %s, want %s", got.Format(time.RFC3339), want.Format(time.RFC3339))
 	}
 }
