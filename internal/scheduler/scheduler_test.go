@@ -195,3 +195,29 @@ func TestFindRunnableJob(t *testing.T) {
 		})
 	}
 }
+
+func TestParseJobScheduleExpression_NextRunUsesLocalTimezone_Berlin(t *testing.T) {
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		t.Fatalf("time.LoadLocation() failed: %v", err)
+	}
+
+	originalLocal := time.Local
+	time.Local = berlin
+	t.Cleanup(func() {
+		time.Local = originalLocal
+	})
+
+	schedule, err := docker.ParseJobScheduleExpression("0 */6 * * *")
+	if err != nil {
+		t.Fatalf("ParseJobScheduleExpression() failed: %v", err)
+	}
+
+	now := time.Date(2026, time.May, 11, 0, 30, 0, 0, time.Local)
+	got := schedule.Next(now)
+	want := time.Date(2026, time.May, 11, 6, 0, 0, 0, time.Local)
+
+	if !got.Equal(want) {
+		t.Fatalf("schedule.Next() = %s, want %s", got.Format(time.RFC3339), want.Format(time.RFC3339))
+	}
+}

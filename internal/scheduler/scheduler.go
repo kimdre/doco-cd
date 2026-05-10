@@ -123,7 +123,7 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 		return nil, fmt.Errorf("failed to discover scheduled jobs: %w", err)
 	}
 
-	now := time.Now().UTC()
+	now := schedulerNow()
 	stackName = strings.TrimSpace(stackName)
 	result := make([]JobInfo, 0, len(jobs))
 	states := getRuntimeStatesSnapshot()
@@ -238,7 +238,7 @@ func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jo
 	defer lock.UnlockScheduledDeploy()
 
 	err = s.executeScheduledRun(ctx, job, cfg)
-	setRuntimeLastRun(job.key, time.Now().UTC())
+	setRuntimeLastRun(job.key, schedulerNow())
 
 	if err != nil {
 		runLog.Error("scheduled run failed", logger.ErrAttr(err))
@@ -303,10 +303,10 @@ func (s *scheduler) run(ctx context.Context) {
 
 	s.log.Info("starting scheduler")
 
-	nextRun, hasNextRun := s.refreshJobs(ctx, time.Now().UTC())
+	nextRun, hasNextRun := s.refreshJobs(ctx, schedulerNow())
 
 	for {
-		setTimerToNextRun(timer, time.Now().UTC(), nextRun, hasNextRun)
+		setTimerToNextRun(timer, schedulerNow(), nextRun, hasNextRun)
 
 		select {
 		case <-ctx.Done():
@@ -318,9 +318,9 @@ func (s *scheduler) run(ctx context.Context) {
 				continue
 			}
 
-			nextRun, hasNextRun = s.refreshJobs(ctx, time.Now().UTC())
+			nextRun, hasNextRun = s.refreshJobs(ctx, schedulerNow())
 		case t := <-timer.C:
-			nextRun, hasNextRun = s.refreshJobs(ctx, t.UTC())
+			nextRun, hasNextRun = s.refreshJobs(ctx, t)
 		}
 	}
 }
@@ -839,6 +839,10 @@ func parseRFC3339Time(raw string) *time.Time {
 	u := t.UTC()
 
 	return &u
+}
+
+func schedulerNow() time.Time {
+	return time.Now().In(time.Local)
 }
 
 func setRuntimeStatesSnapshot(states map[string]scheduledJobState) {
