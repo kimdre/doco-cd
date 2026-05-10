@@ -382,35 +382,22 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		return err
 	}
 
-	if len(startServices) == 0 {
-		// All services are scheduler-managed. Create resources without starting containers.
-		err = service.Create(ctx, project, createOpts)
-		if err != nil {
-			return err
-		}
-	} else {
+	err = service.Create(ctx, project, createOpts)
+	if err != nil {
+		return err
+	}
+
+	if len(startServices) > 0 {
 		startOpts := api.StartOptions{
 			Project:     project,
 			Wait:        true,
 			WaitTimeout: time.Duration(deployConfig.Timeout) * time.Second,
+			Services:    startServices,
 		}
 
-		if len(startServices) < len(project.Services) {
-			// Start and wait only for non scheduled services.
-			startOpts.Services = startServices
-		}
-
-		err = service.Up(ctx, project, api.UpOptions{
-			Create: createOpts,
-			Start:  startOpts,
-		})
+		err = service.Start(ctx, project.Name, startOpts)
 		if err != nil {
-			if errors.Is(err, ErrNoContainerToStart) {
-				err = service.Start(ctx, project.Name, startOpts)
-				if err != nil {
-					return err
-				}
-			} else {
+			if !errors.Is(err, ErrNoContainerToStart) {
 				return err
 			}
 		}
@@ -1195,6 +1182,10 @@ func getStartServicesForDeploy(project *types.Project) ([]string, error) {
 		}
 
 		if enabled || hasScheduleLabel {
+			continue
+		}
+
+		if svc.GetScale() == 0 {
 			continue
 		}
 

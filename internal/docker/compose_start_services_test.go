@@ -14,6 +14,10 @@ func TestGetStartServicesForDeploy(t *testing.T) {
 			"api": {
 				Name: "api",
 			},
+			"scaled-down": {
+				Name:  "scaled-down",
+				Scale: new(0),
+			},
 			"disabled": {
 				Name: "disabled",
 				Labels: map[string]string{
