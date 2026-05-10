@@ -119,10 +119,13 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 	}
 
 	active := make(map[string]struct{}, len(jobs))
+	discoveredByKey := make(map[string]scheduledJob, len(jobs))
 
 	var nearestNextRun time.Time
 
 	for _, job := range jobs {
+		discoveredByKey[job.key] = job
+
 		cfg, enabled, parseErr := docker.ParseJobScheduleLabels(job.labels)
 		if parseErr != nil {
 			s.log.Warn("ignoring job with invalid schedule labels",
@@ -186,6 +189,20 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 
 	for key := range s.states {
 		if _, exists := active[key]; !exists {
+			if job, ok := discoveredByKey[key]; ok {
+				s.log.Info("job unscheduled",
+					slog.String("job", job.name),
+					slog.String("stack", getJobStackName(job)),
+					slog.String("mode", string(job.mode)),
+					slog.String("reason", "disabled"),
+				)
+			} else {
+				s.log.Info("job unscheduled",
+					slog.String("job_key", key),
+					slog.String("reason", "removed"),
+				)
+			}
+
 			delete(s.states, key)
 		}
 	}
