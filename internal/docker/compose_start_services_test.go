@@ -14,11 +14,24 @@ func TestGetStartServicesForDeploy(t *testing.T) {
 			"api": {
 				Name: "api",
 			},
+			"disabled": {
+				Name: "disabled",
+				Labels: map[string]string{
+					docoCDJobLabelNames.JobEnabled: "false",
+				},
+			},
 			"web": {
 				Name: "web",
 				Labels: map[string]string{
 					docoCDJobLabelNames.JobEnabled:  "true",
 					docoCDJobLabelNames.JobSchedule: "*/5 * * * *",
+				},
+			},
+			"custom": {
+				Name: "custom",
+				CustomLabels: map[string]string{
+					docoCDJobLabelNames.JobEnabled:  "true",
+					docoCDJobLabelNames.JobSchedule: "@every 30m",
 				},
 			},
 			"job": {

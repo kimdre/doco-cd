@@ -382,31 +382,37 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		return err
 	}
 
-	startOpts := api.StartOptions{
-		Project:     project,
-		Wait:        true,
-		WaitTimeout: time.Duration(deployConfig.Timeout) * time.Second,
-	}
 	if len(startServices) == 0 {
-		// All services are scheduler-managed; don't block deployment on running/healthy state.
-		startOpts.Wait = false
-	} else if len(startServices) < len(project.Services) {
-		// Start and wait only for non scheduled services.
-		startOpts.Services = startServices
-	}
+		// All services are scheduler-managed. Create resources without starting containers.
+		err = service.Create(ctx, project, createOpts)
+		if err != nil {
+			return err
+		}
+	} else {
+		startOpts := api.StartOptions{
+			Project:     project,
+			Wait:        true,
+			WaitTimeout: time.Duration(deployConfig.Timeout) * time.Second,
+		}
 
-	err = service.Up(ctx, project, api.UpOptions{
-		Create: createOpts,
-		Start:  startOpts,
-	})
-	if err != nil {
-		if errors.Is(err, ErrNoContainerToStart) {
-			err = service.Start(ctx, project.Name, startOpts)
-			if err != nil {
+		if len(startServices) < len(project.Services) {
+			// Start and wait only for non scheduled services.
+			startOpts.Services = startServices
+		}
+
+		err = service.Up(ctx, project, api.UpOptions{
+			Create: createOpts,
+			Start:  startOpts,
+		})
+		if err != nil {
+			if errors.Is(err, ErrNoContainerToStart) {
+				err = service.Start(ctx, project.Name, startOpts)
+				if err != nil {
+					return err
+				}
+			} else {
 				return err
 			}
-		} else {
-			return err
 		}
 	}
 
@@ -1180,12 +1186,15 @@ func getStartServicesForDeploy(project *types.Project) ([]string, error) {
 	startServices := make([]string, 0, len(project.Services))
 
 	for serviceName, svc := range project.Services {
-		_, enabled, err := ParseJobScheduleLabels(svc.Labels)
+		labels := getServiceSchedulerLabels(svc)
+		_, hasScheduleLabel := labels[docoCDJobLabelNames.JobEnabled]
+
+		_, enabled, err := ParseJobScheduleLabels(labels)
 		if err != nil {
 			return nil, fmt.Errorf("service %s: %w", serviceName, err)
 		}
 
-		if enabled {
+		if enabled || hasScheduleLabel {
 			continue
 		}
 
@@ -1193,4 +1202,17 @@ func getStartServicesForDeploy(project *types.Project) ([]string, error) {
 	}
 
 	return startServices, nil
+}
+
+func getServiceSchedulerLabels(svc types.ServiceConfig) map[string]string {
+	if len(svc.CustomLabels) == 0 {
+		return svc.Labels
+	}
+
+	labels := make(map[string]string, len(svc.Labels)+len(svc.CustomLabels))
+	maps.Copy(labels, svc.Labels)
+
+	maps.Copy(labels, svc.CustomLabels)
+
+	return labels
 }
