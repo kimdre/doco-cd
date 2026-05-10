@@ -136,6 +136,52 @@ services:
 
 Use domain-scoped config when you fetch from multiple Git providers/domains and need separate credentials.
 
+### Syntax and Format
+
+The domain-scoped authentication configuration is a YAML list where each entry defines credentials for one or more domains.
+
+#### Entry Structure
+
+Each entry in the list has the following structure:
+
+```yaml
+- domains:                          # (Required) List of domain names or patterns
+    - domain1.com
+    - domain2.com
+    - '*.example.com'
+  git_access_token: xxx             # (Optional) HTTP token for git access
+  ssh_private_key: |                # (Optional) SSH private key content
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    ...
+    -----END OPENSSH PRIVATE KEY-----
+  ssh_private_key_passphrase: xxx   # (Optional) Passphrase for encrypted SSH key
+```
+
+#### Available Options
+
+| Field                        | Type   | Required | Description                                                                                               |
+|------------------------------|--------|----------|-----------------------------------------------------------------------------------------------------------|
+| `domains`                    | list   | Yes      | List of domain names to apply these credentials to. Supports exact domains and wildcard patterns.         |
+| `git_access_token`           | string | No       | HTTP(S) access token for authenticating with the Git provider. Cannot be used with `ssh_private_key`.     |
+| `ssh_private_key`            | string | No       | SSH private key content (multi-line). Cannot be used with `git_access_token`.                             |
+| `ssh_private_key_passphrase` | string | No       | Passphrase for the SSH private key if it was generated with encryption. Only used with `ssh_private_key`. |
+
+#### Authentication Method Selection
+
+- **Use `git_access_token`** for HTTP(S) based Git access
+- **Use `ssh_private_key`** (and optionally `ssh_private_key_passphrase`) for SSH-based Git access
+- Do not mix both methods in the same entry
+
+### Matching Behavior
+
+- Exact domain match wins over wildcard entries.
+- If multiple wildcard patterns match, the longest suffix wins (most specific).
+- Wildcards only match subdomains. Example: `*.example.com` matches `git.example.com`, but not `example.com`.
+- If no domain entry matches, doco-cd falls back to global `GIT_ACCESS_TOKEN` / `SSH_PRIVATE_KEY` values if set.
+- Submodule remotes are resolved independently, so each submodule can use credentials for its own domain.
+
+### Examples
+
 === "Using `GIT_AUTH_DOMAINS`"
 
     ```yaml title="docker-compose.yml"
@@ -166,14 +212,6 @@ Use domain-scoped config when you fetch from multiple Git providers/domains and 
       git_auth_domains:
         file: ./git-auth-domains.yaml
     ```
-
-Matching behavior:
-
-- Exact domain match wins over wildcard entries.
-- If multiple wildcard patterns match, the longest suffix wins (most specific).
-- Wildcards only match subdomains. Example: `*.example.com` matches `git.example.com`, but not `example.com`.
-- If no domain entry matches, doco-cd falls back to global `GIT_ACCESS_TOKEN` / `SSH_PRIVATE_KEY` values if set.
-- Submodule remotes are resolved independently, so each submodule can use credentials for its own domain.
 
 ## Usage with Docker Secrets
 
