@@ -31,6 +31,12 @@ const (
 	schedulerRefreshRetryDelay   = time.Second
 )
 
+var (
+	ErrScheduledJobNotFound  = errors.New("scheduled job not found")
+	ErrScheduledJobDisabled  = errors.New("scheduled job is disabled")
+	ErrScheduledJobAmbiguous = errors.New("multiple scheduled jobs matched, narrow your selection")
+)
+
 type scheduledJobMode string
 
 const (
@@ -64,6 +70,25 @@ type scheduler struct {
 	running   map[string]bool
 }
 
+// JobInfo describes one scheduler-managed target and its runtime scheduling status.
+type JobInfo struct {
+	Name            string                  `json:"name"`
+	Stack           string                  `json:"stack,omitempty"`
+	Mode            string                  `json:"mode"`
+	Enabled         bool                    `json:"enabled"`
+	Schedule        string                  `json:"schedule,omitempty"`
+	ExecutionMode   docker.JobExecutionMode `json:"execution_mode,omitempty"`
+	SkipRunning     bool                    `json:"skip_running"`
+	NotifyOn        docker.JobNotifyOn      `json:"notify_on,omitempty"`
+	SwarmReplicas   uint64                  `json:"swarm_replicas,omitempty"`
+	LastRunAt       *time.Time              `json:"last_run_at,omitempty"`
+	NextRunAt       *time.Time              `json:"next_run_at,omitempty"`
+	LabelNextRunAt  *time.Time              `json:"label_next_run_at,omitempty"`
+	Repository      string                  `json:"repository,omitempty"`
+	ScheduleError   string                  `json:"schedule_error,omitempty"`
+	ConfigurationOk bool                    `json:"configuration_ok"`
+}
+
 func Start(ctx context.Context, dockerCli command.Cli, log *slog.Logger, wg *sync.WaitGroup) {
 	if dockerCli == nil || log == nil || wg == nil {
 		return
@@ -78,6 +103,179 @@ func Start(ctx context.Context, dockerCli command.Cli, log *slog.Logger, wg *syn
 	}
 
 	s.run(ctx)
+}
+
+// ListJobs returns all discovered scheduler jobs, optionally filtered by stack name.
+func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]JobInfo, error) {
+	if dockerCli == nil {
+		return nil, errors.New("docker cli is required")
+	}
+
+	s := &scheduler{dockerCli: dockerCli}
+
+	jobs, err := s.discoverJobs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to discover scheduled jobs: %w", err)
+	}
+
+	now := time.Now().UTC()
+	stackName = strings.TrimSpace(stackName)
+	result := make([]JobInfo, 0, len(jobs))
+
+	for _, job := range jobs {
+		stack := getJobStackName(job)
+		if stackName != "" && stack != stackName {
+			continue
+		}
+
+		info := JobInfo{
+			Name:            job.name,
+			Stack:           stack,
+			Mode:            string(job.mode),
+			Repository:      job.labels[docker.DocoCDLabels.Repository.Name],
+			ConfigurationOk: true,
+		}
+
+		info.LastRunAt = parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobLastRun])
+		info.LabelNextRunAt = parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobNextRun])
+
+		cfg, enabled, parseErr := docker.ParseJobScheduleLabels(job.labels)
+		if parseErr != nil {
+			info.ConfigurationOk = false
+			info.ScheduleError = parseErr.Error()
+			result = append(result, info)
+
+			continue
+		}
+
+		info.Enabled = enabled
+		if !enabled {
+			result = append(result, info)
+			continue
+		}
+
+		info.Schedule = cfg.Schedule
+		info.ExecutionMode = cfg.ExecutionMode
+		info.SkipRunning = cfg.SkipRunning
+		info.NotifyOn = cfg.NotifyOn
+		info.SwarmReplicas = cfg.SwarmReplicas
+
+		schedule, scheduleErr := docker.ParseJobScheduleExpression(cfg.Schedule)
+		if scheduleErr != nil {
+			info.ConfigurationOk = false
+			info.ScheduleError = scheduleErr.Error()
+			result = append(result, info)
+
+			continue
+		}
+
+		next := schedule.Next(now)
+		info.NextRunAt = &next
+
+		result = append(result, info)
+	}
+
+	return result, nil
+}
+
+// TriggerNow executes one configured scheduled job immediately.
+// Job selection matches by container/service name and optional stack name.
+func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jobName, stackName string) (string, error) {
+	if dockerCli == nil {
+		return "", errors.New("docker cli is required")
+	}
+
+	if strings.TrimSpace(jobName) == "" {
+		return "", errors.New("job name is required")
+	}
+
+	if log == nil {
+		log = slog.Default()
+	}
+
+	s := &scheduler{
+		dockerCli: dockerCli,
+		log:       log.With(slog.String("component", "scheduler")),
+	}
+
+	jobs, err := s.discoverJobs(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to discover scheduled jobs: %w", err)
+	}
+
+	job, cfg, err := findRunnableJob(jobs, strings.TrimSpace(jobName), strings.TrimSpace(stackName))
+	if err != nil {
+		return "", err
+	}
+
+	runID := id.GenID()
+	runLog := s.log.With(
+		slog.String("job_id", runID),
+		slog.String("job", job.name),
+		slog.String("stack", getJobStackName(job)),
+		slog.String("mode", string(job.mode)),
+		slog.String("execution_mode", string(cfg.ExecutionMode)),
+	)
+
+	runLog.Info("triggering scheduled run via API")
+
+	lock.LockScheduledDeploy()
+
+	defer lock.UnlockScheduledDeploy()
+
+	err = s.executeScheduledRun(ctx, job, cfg)
+	if err != nil {
+		runLog.Error("scheduled run failed", logger.ErrAttr(err))
+		s.sendRunNotification(job, cfg, runID, false, "Scheduled job failed", fmt.Sprintf("scheduled job '%s' failed to run: %v", job.name, err))
+
+		return runID, err
+	}
+
+	runLog.Info("scheduled run completed")
+	s.sendRunNotification(job, cfg, runID, true, "Scheduled job completed", fmt.Sprintf("scheduled job '%s' completed successfully", job.name))
+
+	return runID, nil
+}
+
+func findRunnableJob(jobs []scheduledJob, jobName, stackName string) (scheduledJob, docker.JobScheduleConfig, error) {
+	var (
+		matchedJob scheduledJob
+		matchedCfg docker.JobScheduleConfig
+		matches    int
+	)
+
+	for _, job := range jobs {
+		if job.name != jobName {
+			continue
+		}
+
+		if stackName != "" && getJobStackName(job) != stackName {
+			continue
+		}
+
+		cfg, enabled, err := docker.ParseJobScheduleLabels(job.labels)
+		if err != nil {
+			return scheduledJob{}, docker.JobScheduleConfig{}, fmt.Errorf("job %q has invalid schedule labels: %w", jobName, err)
+		}
+
+		if !enabled {
+			return scheduledJob{}, docker.JobScheduleConfig{}, ErrScheduledJobDisabled
+		}
+
+		matchedJob = job
+		matchedCfg = cfg
+		matches++
+	}
+
+	if matches == 0 {
+		return scheduledJob{}, docker.JobScheduleConfig{}, ErrScheduledJobNotFound
+	}
+
+	if matches > 1 {
+		return scheduledJob{}, docker.JobScheduleConfig{}, ErrScheduledJobAmbiguous
+	}
+
+	return matchedJob, matchedCfg, nil
 }
 
 func (s *scheduler) run(ctx context.Context) {
@@ -606,4 +804,20 @@ func firstContainerName(names []string) string {
 	}
 
 	return names[0]
+}
+
+func parseRFC3339Time(raw string) *time.Time {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return nil
+	}
+
+	u := t.UTC()
+
+	return &u
 }
