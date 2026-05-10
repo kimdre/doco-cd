@@ -204,6 +204,7 @@ func TestParseJobScheduleExpression_NextRunUsesLocalTimezone_Berlin(t *testing.T
 
 	originalLocal := time.Local
 	time.Local = berlin
+
 	t.Cleanup(func() {
 		time.Local = originalLocal
 	})
