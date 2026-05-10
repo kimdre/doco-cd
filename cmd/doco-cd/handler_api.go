@@ -43,7 +43,7 @@ func registerApiEndpoints(c *app.Config, h *handlerData, log *logger.Logger, mux
 		enabledEndpoints = append(enabledEndpoints, apiPath)
 
 		endpoints := []endpoint{
-			{apiPath + "/jobs/scheduled", h.GetScheduledJobsHandler},
+			{apiPath + "/jobs", h.GetScheduledJobsHandler},
 			{apiPath + "/job/{jobName}/run", h.TriggerScheduledJobHandler},
 			{apiPath + "/projects", h.GetProjectsApiHandler},
 			{apiPath + "/project/{projectName}", h.ProjectApiHandler},

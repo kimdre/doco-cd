@@ -97,17 +97,17 @@ curl --request POST \
 
 | Endpoint                    | Method | Description                                     | Query Parameters                                                                                                                                                           |
 |-----------------------------|--------|-------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `/v1/api/jobs/scheduled`    | GET    | List all discovered scheduled jobs.             | - `stack` (string, optional): Return scheduled jobs only for one stack/project.                                                                                            |
+| `/v1/api/jobs`              | GET    | List all discovered scheduled jobs.             | - `stack` (string, optional): Return scheduled jobs only for one stack/project.                                                                                            |
 | `/v1/api/job/{jobName}/run` | POST   | Trigger a configured scheduled job immediately. | - `stack` (string, optional): Limit matching to a specific stack/project.<br/>- `wait` (boolean, default: `true`): Wait for the triggered run to finish before responding. |
 
-!!! question "What is the `jobName` for a scheduled job?"
+??? question "What is the `jobName` for a scheduled job?"
     `jobName` is the runtime name of the scheduled target:
 
     - Docker (standalone): the container name (for example `my-stack-backup-1`)
     - Docker Swarm: the service name (for example `my-stack_backup`)
 
-!!! question "How do I find the `jobName` for a scheduled job?"
-    You can get the `jobName` from the scheduler logs (`"job":"..."`) or from `GET /v1/api/jobs/scheduled`.
+??? question "How do I find the `jobName` for a scheduled job?"
+    You can get the `jobName` from the scheduler logs (`"job":"..."`) or from `GET /v1/api/jobs`.
 
 - If multiple jobs share the same `jobName`, provide `stack` to disambiguate for the run endpoint.
 - If the matched job is disabled, the run endpoint returns a conflict response.
@@ -141,7 +141,7 @@ curl --request POST \
 
     ```sh
     curl --request GET \
-      --url 'https://cd.example.com/v1/api/jobs/scheduled?stack=my-stack' \
+      --url 'https://cd.example.com/v1/api/jobs?stack=my-stack' \
       --header 'x-api-key: your-api-key'
     ```
 

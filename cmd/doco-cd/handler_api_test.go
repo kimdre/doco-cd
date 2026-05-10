@@ -406,7 +406,7 @@ func TestHandlerData_GetScheduledJobsHandlerValidation(t *testing.T) {
 		},
 	}
 
-	endpoint := path.Join(apiPath, "/jobs/scheduled")
+	endpoint := path.Join(apiPath, "/jobs")
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
