@@ -97,8 +97,9 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	git.ConfigureAuthResolver(appConfig.GitAuthDomains, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken)
 
-	if payload.SSHUrl != "" {
-		sshAuth, authErr := git.GetAuthMethod(payload.SSHUrl, "", "", "")
+	// Only attempt SSH clone if we have SSH credentials (either global or domain-scoped)
+	if payload.SSHUrl != "" && (appConfig.SSHPrivateKey != "" || len(appConfig.GitAuthDomains) > 0) {
+		sshAuth, authErr := git.GetAuthMethod(payload.SSHUrl, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken)
 		if authErr != nil {
 			onError(w, jobLog.With(logger.ErrAttr(authErr)), "failed to resolve SSH auth method", authErr.Error(), http.StatusInternalServerError, metadata)
 
