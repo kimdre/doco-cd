@@ -1680,6 +1680,34 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#scheduled-jobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Scheduled Jobs
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Scheduled Jobs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-request_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Example Request
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#compose-projects" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1718,7 +1746,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#example-request_1" class="md-nav__link">
+  <a href="#example-request_2" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
         Example Request
@@ -2108,6 +2136,34 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#scheduled-jobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Scheduled Jobs
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Scheduled Jobs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-request_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Example Request
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#compose-projects" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2146,7 +2202,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#example-request_1" class="md-nav__link">
+  <a href="#example-request_2" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
         Example Request
@@ -2367,6 +2423,77 @@
 </span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="s1">  }</span>
 </span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="s1">]&#39;</span>
 </span></code></pre></div>
+<h3 id="scheduled-jobs">Scheduled Jobs<a class="headerlink" href="#scheduled-jobs" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Endpoint</th>
+<th>Method</th>
+<th>Description</th>
+<th>Query Parameters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/v1/api/jobs</code></td>
+<td>GET</td>
+<td>List all discovered scheduled jobs.</td>
+<td>- <code>stack</code> (string, optional): Return scheduled jobs only for one stack/project.</td>
+</tr>
+<tr>
+<td><code>/v1/api/job/{jobName}/run</code></td>
+<td>POST</td>
+<td>Trigger a configured scheduled job immediately.</td>
+<td>- <code>stack</code> (string, optional): Limit matching to a specific stack/project.<br/>- <code>wait</code> (boolean, default: <code>true</code>): Wait for the triggered run to finish before responding.</td>
+</tr>
+</tbody>
+</table>
+<details class="question">
+<summary>What is the <code>jobName</code> for a scheduled job?</summary>
+<p><code>jobName</code> is the runtime name of the scheduled target:</p>
+<ul>
+<li>Docker (standalone): the container name (for example <code>my-stack-backup-1</code>)</li>
+<li>Docker Swarm: the service name (for example <code>my-stack_backup</code>)</li>
+</ul>
+</details>
+<details class="question">
+<summary>How do I find the <code>jobName</code> for a scheduled job?</summary>
+<p>You can get the <code>jobName</code> from the scheduler logs (<code>"job":"..."</code>) or from <code>GET /v1/api/jobs</code>.</p>
+</details>
+<ul>
+<li>If multiple jobs share the same <code>jobName</code>, provide <code>stack</code> to disambiguate for the run endpoint.</li>
+<li>If the matched job is disabled, the run endpoint returns a conflict response.</li>
+</ul>
+<p><strong>Common run endpoint outcomes</strong></p>
+<ul>
+<li><code>200 OK</code>: run triggered and completed (<code>wait=true</code>).</li>
+<li><code>202 Accepted</code>: run accepted and running in background (<code>wait=false</code>).</li>
+<li><code>404 Not Found</code>: no scheduled job matched <code>jobName</code> (and optional <code>stack</code>).</li>
+<li><code>409 Conflict</code>: matched job is disabled or the selection is ambiguous.</li>
+</ul>
+<h4 id="example-request_1">Example Request<a class="headerlink" href="#example-request_1" title="Permanent link">&para;</a></h4>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:3"><input checked="checked" id="example-request_1-trigger-a-job-by-container-name" name="__tabbed_1" type="radio" /><input id="example-request_1-trigger-a-job-by-service-name-in-a-specific-stack" name="__tabbed_1" type="radio" /><input id="example-request_1-list-all-scheduled-jobs-for-a-specific-stack" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="example-request_1-trigger-a-job-by-container-name">Trigger a job by container name</label><label for="example-request_1-trigger-a-job-by-service-name-in-a-specific-stack">Trigger a job by service name in a specific stack</label><label for="example-request_1-list-all-scheduled-jobs-for-a-specific-stack">List all scheduled jobs for a specific stack</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>curl<span class="w"> </span>--request<span class="w"> </span>POST<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span>--url<span class="w"> </span><span class="s1">&#39;https://cd.example.com/v1/api/job/my-stack-backup-1/run?wait=true&#39;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span>--header<span class="w"> </span><span class="s1">&#39;x-api-key: your-api-key&#39;</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>curl<span class="w"> </span>--request<span class="w"> </span>POST<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span>--url<span class="w"> </span><span class="s1">&#39;https://cd.example.com/v1/api/job/backup/run?stack=my-stack&amp;wait=true&#39;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span>--header<span class="w"> </span><span class="s1">&#39;x-api-key: your-api-key&#39;</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>curl<span class="w"> </span>--request<span class="w"> </span>GET<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span>--url<span class="w"> </span><span class="s1">&#39;https://cd.example.com/v1/api/jobs?stack=my-stack&#39;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span>--header<span class="w"> </span><span class="s1">&#39;x-api-key: your-api-key&#39;</span>
+</span></code></pre></div>
+</div>
+</div>
+</div>
 <h3 id="compose-projects">Compose Projects<a class="headerlink" href="#compose-projects" title="Permanent link">&para;</a></h3>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
@@ -2491,15 +2618,15 @@
 </tr>
 </tbody>
 </table>
-<h2 id="example-request_1">Example Request<a class="headerlink" href="#example-request_1" title="Permanent link">&para;</a></h2>
+<h2 id="example-request_2">Example Request<a class="headerlink" href="#example-request_2" title="Permanent link">&para;</a></h2>
 <h3 id="list-all-deployed-compose-projects">List all deployed compose projects<a class="headerlink" href="#list-all-deployed-compose-projects" title="Permanent link">&para;</a></h3>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;x-api-key: your_api_key&quot;</span><span class="w"> </span><span class="s2">&quot;http://example.com/v1/api/projects?all=true&quot;</span>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;x-api-key: your_api_key&quot;</span><span class="w"> </span><span class="s2">&quot;http://example.com/v1/api/projects?all=true&quot;</span>
 </span></code></pre></div>
 <h3 id="remove-a-specific-project-without-removing-associated-volumes">Remove a specific project without removing associated volumes<a class="headerlink" href="#remove-a-specific-project-without-removing-associated-volumes" title="Permanent link">&para;</a></h3>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>curl<span class="w"> </span>-X<span class="w"> </span>DELETE<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;x-api-key: your_api_key&quot;</span><span class="w"> </span><span class="s2">&quot;http://example.com/v1/api/project/my_project?volumes=false&quot;</span>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>curl<span class="w"> </span>-X<span class="w"> </span>DELETE<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;x-api-key: your_api_key&quot;</span><span class="w"> </span><span class="s2">&quot;http://example.com/v1/api/project/my_project?volumes=false&quot;</span>
 </span></code></pre></div>
 <h3 id="restart-a-specific-project-with-a-custom-timeout">Restart a specific project with a custom timeout<a class="headerlink" href="#restart-a-specific-project-with-a-custom-timeout" title="Permanent link">&para;</a></h3>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;x-api-key: your_api_key&quot;</span><span class="w"> </span><span class="s2">&quot;http://example.com/v1/api/project/my_project/restart?timeout=60&quot;</span>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;x-api-key: your_api_key&quot;</span><span class="w"> </span><span class="s2">&quot;http://example.com/v1/api/project/my_project/restart?timeout=60&quot;</span>
 </span></code></pre></div>
 
 
