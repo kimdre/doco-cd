@@ -95,10 +95,10 @@ curl --request POST \
 
 ### Scheduled Jobs
 
-| Endpoint                    | Method | Description                                     | Query Parameters                                                                                                                                                           |
-|-----------------------------|--------|-------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `/v1/api/jobs`              | GET    | List all discovered scheduled jobs.             | - `stack` (string, optional): Return scheduled jobs only for one stack/project.                                                                                            |
-| `/v1/api/job/{jobName}/run` | POST   | Trigger a configured scheduled job immediately. | - `stack` (string, optional): Limit matching to a specific stack/project.<br/>- `wait` (boolean, default: `true`): Wait for the triggered run to finish before responding. |
+| Endpoint                    | Method | Description                                                                      | Query Parameters                                                                                                                                                           |
+|-----------------------------|--------|----------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `/v1/api/jobs`              | GET    | List all discovered [scheduled jobs](../Advanced/Scheduled-Jobs.md)              | - `stack` (string, optional): Return scheduled jobs only for one stack/project.                                                                                            |
+| `/v1/api/job/{jobName}/run` | POST   | Trigger a configured [scheduled job](../Advanced/Scheduled-Jobs.md) immediately. | - `stack` (string, optional): Limit matching to a specific stack/project.<br/>- `wait` (boolean, default: `true`): Wait for the triggered run to finish before responding. |
 
 ??? question "What is the `jobName` for a scheduled job?"
     `jobName` is the runtime name of the scheduled target:
