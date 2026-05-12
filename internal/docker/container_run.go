@@ -87,11 +87,16 @@ func RunContainerOneOffFromExisting(ctx context.Context, apiClient client.APICli
 		return fmt.Errorf("create one-off container from %s: %w", containerID, err)
 	}
 
+	// Subscribe to wait BEFORE starting so we don't race with a fast-exiting
+	// (auto-removed) container: if ContainerStart is called first the container
+	// may finish and be removed before ContainerWait registers, causing a
+	// "No such container" error.
+	waitResult := apiClient.ContainerWait(ctx, createResult.ID, client.ContainerWaitOptions{Condition: containerTypes.WaitConditionNotRunning})
+
 	if _, err = apiClient.ContainerStart(ctx, createResult.ID, client.ContainerStartOptions{}); err != nil {
 		return fmt.Errorf("start one-off container %s: %w", createResult.ID, err)
 	}
 
-	waitResult := apiClient.ContainerWait(ctx, createResult.ID, client.ContainerWaitOptions{Condition: containerTypes.WaitConditionNotRunning})
 	select {
 	case waitErr := <-waitResult.Error:
 		if waitErr != nil {
