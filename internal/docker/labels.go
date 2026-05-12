@@ -77,6 +77,7 @@ const (
 var docoCDJobLabelNames = struct {
 	JobEnabled       string // Enable scheduling for a service/container
 	JobSchedule      string // Schedule of the job in 5-field cron format or @every duration
+	JobRunOnDeploy   string // Run one immediate execution when a new deployment identity is detected
 	JobSkipRunning   string // Skip a schedule trigger when a previous run is still in progress
 	JobExecutionMode string // Defines if a run restarts/reruns the job or starts an ephemeral one-shot execution
 	JobNotifyOn      string // Controls notification behavior: none, success, failure, all
@@ -86,6 +87,7 @@ var docoCDJobLabelNames = struct {
 }{
 	JobEnabled:       "cd.doco.job.enabled",
 	JobSchedule:      "cd.doco.job.schedule",
+	JobRunOnDeploy:   "cd.doco.job.run_on_deploy",
 	JobSkipRunning:   "cd.doco.job.skip_running",
 	JobExecutionMode: "cd.doco.job.execution_mode",
 	JobNotifyOn:      "cd.doco.job.notify_on",

@@ -34,6 +34,7 @@ func TestParseJobScheduleLabels(t *testing.T) {
 	labels := map[string]string{
 		docoCDJobLabelNames.JobEnabled:       "true",
 		docoCDJobLabelNames.JobSchedule:      "*/10 * * * *",
+		docoCDJobLabelNames.JobRunOnDeploy:   "true",
 		docoCDJobLabelNames.JobSkipRunning:   "true",
 		docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneShot),
 		docoCDJobLabelNames.JobNotifyOn:      string(JobNotifyFailure),
@@ -59,6 +60,10 @@ func TestParseJobScheduleLabels(t *testing.T) {
 
 	if !cfg.SkipRunning {
 		t.Fatalf("expected skip_running=true")
+	}
+
+	if !cfg.RunOnDeploy {
+		t.Fatalf("expected run_on_deploy=true")
 	}
 
 	if cfg.SwarmReplicas != 3 {
@@ -93,7 +98,24 @@ func TestParseJobScheduleLabels_Defaults(t *testing.T) {
 		t.Fatalf("expected default skip_running=false")
 	}
 
+	if cfg.RunOnDeploy {
+		t.Fatalf("expected default run_on_deploy=false")
+	}
+
 	if cfg.SwarmReplicas != 1 {
 		t.Fatalf("expected default swarm replicas=1, got %d", cfg.SwarmReplicas)
+	}
+}
+
+func TestParseJobScheduleLabels_InvalidRunOnDeploy(t *testing.T) {
+	t.Parallel()
+
+	_, _, err := ParseJobScheduleLabels(map[string]string{
+		docoCDJobLabelNames.JobEnabled:     "true",
+		docoCDJobLabelNames.JobSchedule:    "*/10 * * * *",
+		docoCDJobLabelNames.JobRunOnDeploy: "not-bool",
+	})
+	if err == nil {
+		t.Fatalf("expected error for invalid run_on_deploy value")
 	}
 }
