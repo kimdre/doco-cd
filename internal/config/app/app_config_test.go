@@ -204,3 +204,51 @@ func TestGetConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestGetConfig_GlobalGitHubAppValidation(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("GITHUB_APP_ID", "12345")
+	t.Setenv("GITHUB_APP_PRIVATE_KEY", "test-private-key")
+
+	if _, err := GetConfig(); err != nil {
+		t.Fatalf("expected global GitHub App config to be accepted, got %v", err)
+	}
+}
+
+func TestGetConfig_GlobalGitHubAppRejectsTokenMix(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("GITHUB_APP_ID", "12345")
+	t.Setenv("GITHUB_APP_PRIVATE_KEY", "test-private-key")
+	t.Setenv("GIT_ACCESS_TOKEN", "token")
+
+	if _, err := GetConfig(); err == nil {
+		t.Fatal("expected an error when combining GIT_ACCESS_TOKEN with global GitHub App credentials")
+	}
+}
+
+func TestGetConfig_ScopedGitHubAppValidation(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("GIT_AUTH_DOMAINS", "- domains:\n  - github.com\n  github_app_id: '12345'\n  github_app_private_key: test-private-key")
+
+	if _, err := GetConfig(); err != nil {
+		t.Fatalf("expected scoped GitHub App config to be accepted, got %v", err)
+	}
+}
+
+func TestGetConfig_ScopedGitHubAppRejectsTokenMix(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("GIT_AUTH_DOMAINS", "- domains:\n  - github.com\n  git_access_token: gh-token\n  github_app_id: '12345'\n  github_app_private_key: test-private-key")
+
+	if _, err := GetConfig(); err == nil {
+		t.Fatal("expected an error when combining scoped git_access_token with scoped github app credentials")
+	}
+}
+

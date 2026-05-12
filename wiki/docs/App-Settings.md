@@ -18,6 +18,11 @@ The application can be configured using the following environment variables:
 | `DEPLOY_CONFIG_BASE_DIR`          | string  | Relative Path to the directory containing the deployment configuration files **in all repositories**. **NOTE**: This does not affect/alter the `working_dir` path in the deploy config. It must still be relative to the repository root.                                                                                                              | `/`                                                    |
 | `GIT_ACCESS_TOKEN`                | string  | Access token for cloning repositories (required for private repositories) via **HTTP**, see [Access Token Setup](Setup-Access-Token.md). For domain-scoped authentication, see [Domain-scoped Git auth](#domain-scoped-git-authentication).                                                                                                            | ` ` (Optional for public repositories but recommended) |
 | `GIT_ACCESS_TOKEN_FILE`           | string  | Path to the file containing the Git Access Token (Mutually exclusive with `GIT_ACCESS_TOKEN`).                                                                                                                                                                                                                                                         | ` `                                                    |
+| `GITHUB_APP_ID`                   | string  | GitHub App ID used to mint installation access tokens for GitHub repositories. Requires `GITHUB_APP_PRIVATE_KEY`. Mutually exclusive with global `GIT_ACCESS_TOKEN`.                                                                                                                                                                                   | ` `                                                    |
+| `GITHUB_APP_ID_FILE`              | string  | Path to the file containing `GITHUB_APP_ID`. Mutually exclusive with `GITHUB_APP_ID`.                                                                                                                                                                                                                                                                  | ` `                                                    |
+| `GITHUB_APP_PRIVATE_KEY`          | string  | GitHub App private key in PEM format. Requires `GITHUB_APP_ID`.                                                                                                                                                                                                                                                                                        | ` `                                                    |
+| `GITHUB_APP_PRIVATE_KEY_FILE`     | string  | Path to the file containing `GITHUB_APP_PRIVATE_KEY`. Mutually exclusive with `GITHUB_APP_PRIVATE_KEY`.                                                                                                                                                                                                                                                | ` `                                                    |
+| `GITHUB_APP_INSTALLATION_ID`      | number  | Optional installation ID override for global GitHub App auth. If unset, doco-cd resolves installation by owner/repository automatically.                                                                                                                                                                                                               | `0` (auto-detect)                                      |
 | `GIT_AUTH_DOMAINS`                | list    | YAML list of domain-scoped Git credentials (HTTP token and/or SSH key). Supports exact domains and wildcard subdomains like `*.example.com` (see [Domain-scoped Git auth](#domain-scoped-git-authentication)). Mutually exclusive with `GIT_AUTH_DOMAINS_FILE`.                                                                                        | ` `                                                    |
 | `GIT_AUTH_DOMAINS_FILE`           | string  | Path to a file containing the YAML configuration for `GIT_AUTH_DOMAINS`. Mutually exclusive with `GIT_AUTH_DOMAINS`.                                                                                                                                                                                                                                   | ` `                                                    |
 | `GIT_CLONE_DEPTH`                 | number  | Limits the number of commits fetched during clone/fetch operations (shallow clone). `0` means full clone (no depth limit). Can be overridden per deployment via the [`git_depth`](Deploy-Settings.md) setting. When a requested ref is outside the shallow depth, doco-cd will automatically deepen incrementally before falling back to a full fetch. | `0`                                                    |
@@ -159,18 +164,22 @@ Each entry in the list has the following structure:
 
 #### Available Options
 
-| Field                        | Type   | Required | Description                                                                                               |
-|------------------------------|--------|----------|-----------------------------------------------------------------------------------------------------------|
-| `domains`                    | list   | Yes      | List of domain names to apply these credentials to. Supports exact domains and wildcard patterns.         |
-| `git_access_token`           | string | No       | HTTP(S) access token for authenticating with the Git provider. Cannot be used with `ssh_private_key`.     |
-| `ssh_private_key`            | string | No       | SSH private key content (multi-line). Cannot be used with `git_access_token`.                             |
-| `ssh_private_key_passphrase` | string | No       | Passphrase for the SSH private key if it was generated with encryption. Only used with `ssh_private_key`. |
+| Field                        | Type   | Required | Description                                                                                                          |
+|------------------------------|--------|----------|----------------------------------------------------------------------------------------------------------------------|
+| `domains`                    | list   | Yes      | List of domain names to apply these credentials to. Supports exact domains and wildcard patterns.                    |
+| `git_access_token`           | string | No       | HTTP(S) access token for authenticating with the Git provider. Cannot be used with `ssh_private_key`.                |
+| `ssh_private_key`            | string | No       | SSH private key content (multi-line). Cannot be used with `git_access_token`.                                        |
+| `ssh_private_key_passphrase` | string | No       | Passphrase for the SSH private key if it was generated with encryption. Only used with `ssh_private_key`.            |
+| `github_app_id`              | string | No       | GitHub App ID. Requires `github_app_private_key`. Cannot be used with `git_access_token` or `ssh_private_key`.       |
+| `github_app_private_key`     | string | No       | GitHub App private key (PEM). Requires `github_app_id`. Cannot be used with `git_access_token` or `ssh_private_key`. |
+| `github_app_installation_id` | number | No       | Optional installation ID override for this domain entry. If omitted, installation is auto-detected by owner/repo.    |
 
 #### Authentication Method Selection
 
 - **Use `git_access_token`** for HTTP(S) based Git access
 - **Use `ssh_private_key`** (and optionally `ssh_private_key_passphrase`) for SSH-based Git access
-- Do not mix both methods in the same entry
+- **Use `github_app_id` + `github_app_private_key`** for GitHub App based HTTP(S) access
+- Do not mix methods in the same entry
 
 ### Matching Behavior
 

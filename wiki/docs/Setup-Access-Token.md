@@ -24,6 +24,9 @@ This page shows how to set up a Git Access Token for your deployments.
 
 === "GitHub"
     You can either use a Personal Access Token (PAT) or a GitHub App.
+
+    GitHub App auth is supported natively. Configure the app id and private key globally (`GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`) or per domain in `GIT_AUTH_DOMAINS` (`github_app_id`, `github_app_private_key`).
+    doco-cd will auto-detect the installation by repository owner/name and mint short-lived installation access tokens.
     
     !!! question "How to create an access token"
         See the GitHub docs for
