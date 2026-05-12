@@ -118,6 +118,10 @@ be created for each scheduled run and removed after completion.
     | `restart`                    | Existing service     | Unchanged              |
     | `one_off`                    | Temporary clone      | Source unchanged       |
 
+??? warning "Deprecated: `one_shot` has been renamed to `one_off`"
+    `one_shot` has been renamed to `one_off` and will be removed in a future release.
+    Use `one_off` instead. The old value is still accepted for backward compatibility but will log a warning.
+
 ## Configuration
 
 ??? example "How to set service labels in a docker compose file"
@@ -179,10 +183,6 @@ The following mapping applies to scheduled runs in `one_off` mode:
           cd.doco.job.schedule: "@hourly"
           cd.doco.job.execution_mode: "one_off"
     ```
-
-!!! warning "Deprecated: `one_shot`"
-    The value `one_shot` is deprecated and will be removed in a future release.
-    Use `one_off` instead. The old value is still accepted for backward compatibility but will log a warning.
 
 === "Backup"
 
