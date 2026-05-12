@@ -251,4 +251,3 @@ func TestGetConfig_ScopedGitHubAppRejectsTokenMix(t *testing.T) {
 		t.Fatal("expected an error when combining scoped git_access_token with scoped github app credentials")
 	}
 }
-

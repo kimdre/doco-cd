@@ -16,6 +16,7 @@ const (
 	JobExecutionModeOneOff  JobExecutionMode = "one_off"
 
 	// JobExecutionModeOneShotDeprecated is the deprecated alias for JobExecutionModeOneOff.
+	//
 	// Deprecated: still accepted for backward compatibility but will log a warning
 	// TODO: Remove in a future release.
 	JobExecutionModeOneShotDeprecated JobExecutionMode = "one_shot"

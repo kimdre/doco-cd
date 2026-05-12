@@ -5,7 +5,6 @@ import (
 )
 
 func TestResolveScopedCredentials_ExactBeatsWildcard(t *testing.T) {
-
 	ConfigureAuthResolver([]ScopedAuthConfig{
 		{
 			Domains:        []string{"*.github.com"},
@@ -27,7 +26,6 @@ func TestResolveScopedCredentials_ExactBeatsWildcard(t *testing.T) {
 }
 
 func TestResolveScopedCredentials_LongestWildcardSuffixWins(t *testing.T) {
-
 	ConfigureAuthResolver([]ScopedAuthConfig{
 		{
 			Domains:        []string{"*.example.com"},
@@ -49,7 +47,6 @@ func TestResolveScopedCredentials_LongestWildcardSuffixWins(t *testing.T) {
 }
 
 func TestResolveScopedCredentials_WildcardDoesNotMatchApex(t *testing.T) {
-
 	ConfigureAuthResolver([]ScopedAuthConfig{
 		{
 			Domains:        []string{"*.example.com"},
@@ -67,7 +64,6 @@ func TestResolveScopedCredentials_WildcardDoesNotMatchApex(t *testing.T) {
 }
 
 func TestResolveScopedCredentials_GlobalFallback(t *testing.T) {
-
 	ConfigureAuthResolver(nil, "", "", "global-token", GitHubAppConfig{})
 	t.Cleanup(func() {
 		ConfigureAuthResolver(nil, "", "", "", GitHubAppConfig{})
@@ -80,7 +76,6 @@ func TestResolveScopedCredentials_GlobalFallback(t *testing.T) {
 }
 
 func TestGetAuthMethod_UsesScopedHTTPToken(t *testing.T) {
-
 	ConfigureAuthResolver([]ScopedAuthConfig{
 		{
 			Domains:        []string{"gitlab.com"},
@@ -106,7 +101,6 @@ func TestGetAuthMethod_UsesScopedHTTPToken(t *testing.T) {
 }
 
 func TestGetAuthMethod_UsesGlobalGitHubAppToken(t *testing.T) {
-
 	ConfigureAuthResolver(nil, "", "", "", GitHubAppConfig{
 		ID:         "12345",
 		PrivateKey: "test-private-key",
@@ -136,7 +130,6 @@ func TestGetAuthMethod_UsesGlobalGitHubAppToken(t *testing.T) {
 }
 
 func TestGetAuthMethod_UsesScopedGitHubAppToken(t *testing.T) {
-
 	ConfigureAuthResolver([]ScopedAuthConfig{
 		{
 			Domains:             []string{"github.com"},
@@ -171,4 +164,3 @@ func TestGetAuthMethod_UsesScopedGitHubAppToken(t *testing.T) {
 		t.Fatalf("expected http-basic-auth, got '%s'", auth.Name())
 	}
 }
-

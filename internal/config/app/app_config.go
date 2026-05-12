@@ -164,6 +164,7 @@ func (cfg *Config) validateGitAuthConfig() error {
 	cfg.GitHubAppPrivateKey = strings.TrimSpace(cfg.GitHubAppPrivateKey)
 
 	globalToken := strings.TrimSpace(cfg.GitAccessToken)
+
 	hasCompleteGlobalApp := cfg.GitHubAppID != "" && cfg.GitHubAppPrivateKey != ""
 	if hasCompleteGlobalApp {
 		if globalToken != "" {

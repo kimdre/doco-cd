@@ -3,6 +3,7 @@ package githubapp
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -48,14 +49,15 @@ type accessTokenResponse struct {
 // ResolveInstallationToken mints (or reuses a cached) installation access token for a repository URL.
 func ResolveInstallationToken(repoURL string, cfg Config) (string, error) {
 	appID := strings.TrimSpace(cfg.ID)
+
 	privateKey := strings.TrimSpace(cfg.PrivateKey)
 	if appID == "" || privateKey == "" {
-		return "", fmt.Errorf("github app id and private key are required")
+		return "", errors.New("github app id and private key are required")
 	}
 
 	host := parseGitHost(repoURL)
 	if host == "" {
-		return "", fmt.Errorf("failed to parse host from repository URL")
+		return "", errors.New("failed to parse host from repository URL")
 	}
 
 	owner, repo, err := ownerRepoFromURL(repoURL)
@@ -88,8 +90,11 @@ func ResolveInstallationToken(repoURL string, cfg Config) (string, error) {
 
 func getCachedToken(cacheKey string) (string, bool) {
 	tokenCacheMu.RLock()
+
 	entry, ok := tokenCache[cacheKey]
+
 	tokenCacheMu.RUnlock()
+
 	if !ok {
 		return "", false
 	}
@@ -111,18 +116,18 @@ func cacheToken(cacheKey, token string, expiresAt time.Time) {
 func ownerRepoFromURL(repoURL string) (string, string, error) {
 	u := strings.TrimSpace(repoURL)
 	if u == "" {
-		return "", "", fmt.Errorf("failed to parse owner/repo from URL")
+		return "", "", errors.New("failed to parse owner/repo from URL")
 	}
 
 	if strings.Contains(u, "@") && strings.Contains(u, ":") && !strings.Contains(u, "://") {
 		parts := strings.SplitN(u, "@", 2)
 		if len(parts) != 2 {
-			return "", "", fmt.Errorf("failed to parse owner/repo from URL")
+			return "", "", errors.New("failed to parse owner/repo from URL")
 		}
 
 		hostPath := strings.SplitN(parts[1], ":", 2)
 		if len(hostPath) != 2 {
-			return "", "", fmt.Errorf("failed to parse owner/repo from URL")
+			return "", "", errors.New("failed to parse owner/repo from URL")
 		}
 
 		return splitOwnerRepo(hostPath[1])
@@ -130,7 +135,7 @@ func ownerRepoFromURL(repoURL string) (string, string, error) {
 
 	parsed, err := url.Parse(u)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to parse owner/repo from URL")
+		return "", "", errors.New("failed to parse owner/repo from URL")
 	}
 
 	return splitOwnerRepo(strings.TrimPrefix(parsed.Path, "/"))
@@ -141,15 +146,17 @@ func splitOwnerRepo(path string) (string, string, error) {
 	p = strings.TrimPrefix(p, "/")
 	p = strings.TrimSuffix(p, "/")
 	p = strings.TrimSuffix(p, ".git")
+
 	parts := strings.Split(p, "/")
 	if len(parts) < 2 {
-		return "", "", fmt.Errorf("failed to parse owner/repo from URL")
+		return "", "", errors.New("failed to parse owner/repo from URL")
 	}
 
 	owner := strings.TrimSpace(parts[0])
+
 	repo := strings.TrimSpace(parts[1])
 	if owner == "" || repo == "" {
-		return "", "", fmt.Errorf("failed to parse owner/repo from URL")
+		return "", "", errors.New("failed to parse owner/repo from URL")
 	}
 
 	return owner, repo, nil
@@ -170,7 +177,7 @@ func lookupInstallationID(host, owner, repo, appID, privateKey string) (int64, e
 	}
 
 	if resp.ID == 0 {
-		return 0, fmt.Errorf("github installation id not found for repository")
+		return 0, errors.New("github installation id not found for repository")
 	}
 
 	return resp.ID, nil
@@ -191,7 +198,7 @@ func createInstallationToken(host string, installationID int64, appID, privateKe
 	}
 
 	if resp.Token == "" {
-		return accessTokenResponse{}, fmt.Errorf("github installation access token is empty")
+		return accessTokenResponse{}, errors.New("github installation access token is empty")
 	}
 
 	if resp.ExpiresAt.IsZero() {
@@ -226,6 +233,7 @@ func createAppJWT(appID, privateKey string) (string, error) {
 
 func doAPIRequest(method, endpoint, jwtToken string, payload any, out any) error {
 	var body io.Reader
+
 	if payload != nil {
 		raw, err := json.Marshal(payload)
 		if err != nil {
@@ -243,6 +251,7 @@ func doAPIRequest(method, endpoint, jwtToken string, payload any, out any) error
 	req.Header.Set("Authorization", "Bearer "+jwtToken)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -319,4 +328,3 @@ func normalizeHost(host string) string {
 
 	return strings.TrimSuffix(host, ".")
 }
-
