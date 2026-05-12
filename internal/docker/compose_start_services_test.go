@@ -43,7 +43,7 @@ func TestGetStartServicesForDeploy(t *testing.T) {
 				Labels: map[string]string{
 					docoCDJobLabelNames.JobEnabled:       "true",
 					docoCDJobLabelNames.JobSchedule:      "@hourly",
-					docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneShot),
+					docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneOff),
 				},
 			},
 		},
