@@ -2,6 +2,7 @@ package docker
 
 import (
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -12,7 +13,12 @@ type JobExecutionMode string
 
 const (
 	JobExecutionModeRestart JobExecutionMode = "restart"
-	JobExecutionModeOneShot JobExecutionMode = "one_shot"
+	JobExecutionModeOneOff  JobExecutionMode = "one_off"
+
+	// JobExecutionModeOneShotDeprecated is the deprecated alias for JobExecutionModeOneOff.
+	// Deprecated: still accepted for backward compatibility but will log a warning
+	// TODO: Remove in a future release.
+	JobExecutionModeOneShotDeprecated JobExecutionMode = "one_shot"
 )
 
 type JobNotifyOn string
@@ -55,7 +61,14 @@ func ParseJobScheduleExpression(spec string) (cron.Schedule, error) {
 	return schedule, nil
 }
 
-func ParseJobScheduleLabels(labels map[string]string) (JobScheduleConfig, bool, error) {
+func ParseJobScheduleLabels(labels map[string]string, log ...*slog.Logger) (JobScheduleConfig, bool, error) {
+	var logger *slog.Logger
+	if len(log) > 0 && log[0] != nil {
+		logger = log[0]
+	} else {
+		logger = slog.Default()
+	}
+
 	cfg := JobScheduleConfig{
 		ExecutionMode: JobExecutionModeRestart,
 		NotifyOn:      JobNotifyAll,
@@ -101,8 +114,14 @@ func ParseJobScheduleLabels(labels map[string]string) (JobScheduleConfig, bool, 
 	if modeRaw, ok := labels[docoCDJobLabelNames.JobExecutionMode]; ok {
 		mode := JobExecutionMode(strings.TrimSpace(modeRaw))
 		switch mode {
-		case JobExecutionModeRestart, JobExecutionModeOneShot:
+		case JobExecutionModeRestart, JobExecutionModeOneOff:
 			cfg.ExecutionMode = mode
+		case JobExecutionModeOneShotDeprecated:
+			logger.Warn(
+				fmt.Sprintf("label %s: value %q is deprecated, use %q instead", docoCDJobLabelNames.JobExecutionMode, JobExecutionModeOneShotDeprecated, JobExecutionModeOneOff),
+				slog.String("label", docoCDJobLabelNames.JobExecutionMode),
+			)
+			cfg.ExecutionMode = JobExecutionModeOneOff
 		default:
 			return cfg, false, fmt.Errorf("invalid %s label value %q", docoCDJobLabelNames.JobExecutionMode, modeRaw)
 		}
