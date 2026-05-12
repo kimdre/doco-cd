@@ -61,6 +61,7 @@ type scheduledJobState struct {
 	schedule    cron.Schedule
 	lastRun     time.Time
 	nextRun     time.Time
+	deployment  string
 	cfg         docker.JobScheduleConfig
 }
 
@@ -68,6 +69,7 @@ type scheduler struct {
 	dockerCli command.Cli
 	log       *slog.Logger
 	wg        *sync.WaitGroup
+	startedAt time.Time
 
 	states map[string]scheduledJobState
 
@@ -82,6 +84,7 @@ type JobInfo struct {
 	Stack          string                  `json:"stack,omitempty"`
 	Mode           string                  `json:"mode"`
 	Schedule       string                  `json:"schedule,omitempty"`
+	RunOnDeploy    bool                    `json:"run_on_deploy"`
 	ExecutionMode  docker.JobExecutionMode `json:"execution_mode,omitempty"`
 	SkipRunning    bool                    `json:"skip_running"`
 	NotifyOn       docker.JobNotifyOn      `json:"notify_on,omitempty"`
@@ -103,6 +106,7 @@ func Start(ctx context.Context, dockerCli command.Cli, log *slog.Logger, wg *syn
 		dockerCli: dockerCli,
 		log:       log.With(slog.String("component", "scheduler")),
 		wg:        wg,
+		startedAt: schedulerNow(),
 		states:    map[string]scheduledJobState{},
 		running:   map[string]bool{},
 	}
@@ -161,6 +165,7 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 		}
 
 		info.Schedule = cfg.Schedule
+		info.RunOnDeploy = cfg.RunOnDeploy
 		info.ExecutionMode = cfg.ExecutionMode
 		info.SkipRunning = cfg.SkipRunning
 		info.NotifyOn = cfg.NotifyOn
@@ -326,6 +331,10 @@ func (s *scheduler) run(ctx context.Context) {
 }
 
 func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, bool) {
+	if s.startedAt.IsZero() {
+		s.startedAt = now
+	}
+
 	jobs, err := s.discoverJobs(ctx)
 	if err != nil {
 		s.log.Error("failed to discover scheduled jobs", logger.ErrAttr(err))
@@ -359,7 +368,11 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 
 		fingerprint := getScheduleFingerprint(cfg)
 
-		state, ok := s.states[job.key]
+		deploymentID, deploymentAt := getJobDeploymentIdentity(job.labels)
+
+		prevState, ok := s.states[job.key]
+		state := prevState
+
 		if !ok || state.fingerprint != fingerprint {
 			schedule, scheduleErr := docker.ParseJobScheduleExpression(cfg.Schedule)
 			if scheduleErr != nil {
@@ -376,6 +389,7 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 				fingerprint: fingerprint,
 				schedule:    schedule,
 				nextRun:     schedule.Next(now),
+				deployment:  deploymentID,
 				cfg:         cfg,
 			}
 
@@ -386,6 +400,20 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 				slog.String("schedule", cfg.Schedule),
 				slog.String("next_run", state.nextRun.Format(time.RFC3339)),
 			)
+		}
+
+		runOnDeployNow := shouldTriggerRunOnDeploy(cfg, deploymentID, deploymentAt, s.startedAt, ok, prevState.deployment)
+
+		if state.deployment != deploymentID {
+			state.deployment = deploymentID
+			s.states[job.key] = state
+		}
+
+		if runOnDeployNow {
+			state.lastRun = now
+			s.states[job.key] = state
+
+			s.triggerRun(context.WithoutCancel(ctx), job, state.cfg, now)
 		}
 
 		if !now.Before(state.nextRun) {
@@ -733,11 +761,53 @@ func (s *scheduler) setRunInProgress(key string, inProgress bool) {
 func getScheduleFingerprint(cfg docker.JobScheduleConfig) string {
 	return strings.Join([]string{
 		cfg.Schedule,
+		strconv.FormatBool(cfg.RunOnDeploy),
 		string(cfg.ExecutionMode),
 		strconv.FormatBool(cfg.SkipRunning),
 		string(cfg.NotifyOn),
 		strconv.FormatUint(cfg.SwarmReplicas, 10),
 	}, "|")
+}
+
+func getJobDeploymentIdentity(labels map[string]string) (string, time.Time) {
+	deploymentID := strings.TrimSpace(labels[docker.DocoCDLabels.Deployment.Timestamp])
+	if deploymentID == "" {
+		deploymentID = strings.TrimSpace(labels[docker.DocoCDLabels.Deployment.ComposeHash])
+	}
+
+	if deploymentID == "" {
+		deploymentID = strings.TrimSpace(labels[docker.DocoCDLabels.Deployment.CommitSHA])
+	}
+
+	deploymentAt := parseRFC3339Time(labels[docker.DocoCDLabels.Deployment.Timestamp])
+	if deploymentAt == nil {
+		return deploymentID, time.Time{}
+	}
+
+	return deploymentID, *deploymentAt
+}
+
+func shouldTriggerRunOnDeploy(
+	cfg docker.JobScheduleConfig,
+	deploymentID string,
+	deploymentAt time.Time,
+	schedulerStartedAt time.Time,
+	stateExists bool,
+	previousDeploymentID string,
+) bool {
+	if !cfg.RunOnDeploy || deploymentID == "" || deploymentAt.IsZero() {
+		return false
+	}
+
+	if !deploymentAt.After(schedulerStartedAt) {
+		return false
+	}
+
+	if stateExists && previousDeploymentID == deploymentID {
+		return false
+	}
+
+	return true
 }
 
 func getScheduledRunMetricLabels(job scheduledJob, cfg docker.JobScheduleConfig, stackName string) []string {

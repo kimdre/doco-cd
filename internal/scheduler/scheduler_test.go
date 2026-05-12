@@ -222,3 +222,99 @@ func TestParseJobScheduleExpression_NextRunUsesLocalTimezone_Berlin(t *testing.T
 		t.Fatalf("schedule.Next() = %s, want %s", got.Format(time.RFC3339), want.Format(time.RFC3339))
 	}
 }
+
+func TestGetJobDeploymentIdentity(t *testing.T) {
+	t.Parallel()
+
+	timestamp := "2026-05-12T12:30:00Z"
+	id, at := getJobDeploymentIdentity(map[string]string{
+		docker.DocoCDLabels.Deployment.Timestamp:   timestamp,
+		docker.DocoCDLabels.Deployment.ComposeHash: "compose-sha",
+		docker.DocoCDLabels.Deployment.CommitSHA:   "commit-sha",
+	})
+
+	if id != timestamp {
+		t.Fatalf("getJobDeploymentIdentity() id=%q want=%q", id, timestamp)
+	}
+
+	wantAt := time.Date(2026, time.May, 12, 12, 30, 0, 0, time.UTC)
+	if !at.Equal(wantAt) {
+		t.Fatalf("getJobDeploymentIdentity() at=%s want=%s", at.Format(time.RFC3339), wantAt.Format(time.RFC3339))
+	}
+}
+
+func TestShouldTriggerRunOnDeploy(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Date(2026, time.May, 12, 10, 0, 0, 0, time.UTC)
+	deployedAt := time.Date(2026, time.May, 12, 10, 5, 0, 0, time.UTC)
+
+	tests := []struct {
+		name                 string
+		cfg                  docker.JobScheduleConfig
+		deploymentID         string
+		deploymentAt         time.Time
+		stateExists          bool
+		previousDeploymentID string
+		want                 bool
+	}{
+		{
+			name:         "disabled label",
+			cfg:          docker.JobScheduleConfig{RunOnDeploy: false},
+			deploymentID: "dep-1",
+			deploymentAt: deployedAt,
+			want:         false,
+		},
+		{
+			name:         "deployment before scheduler start",
+			cfg:          docker.JobScheduleConfig{RunOnDeploy: true},
+			deploymentID: "dep-1",
+			deploymentAt: startedAt,
+			want:         false,
+		},
+		{
+			name:         "initial discovery after deploy",
+			cfg:          docker.JobScheduleConfig{RunOnDeploy: true},
+			deploymentID: "dep-2",
+			deploymentAt: deployedAt,
+			want:         true,
+		},
+		{
+			name:                 "already processed deployment",
+			cfg:                  docker.JobScheduleConfig{RunOnDeploy: true},
+			deploymentID:         "dep-2",
+			deploymentAt:         deployedAt,
+			stateExists:          true,
+			previousDeploymentID: "dep-2",
+			want:                 false,
+		},
+		{
+			name:                 "new deployment after previous",
+			cfg:                  docker.JobScheduleConfig{RunOnDeploy: true},
+			deploymentID:         "dep-3",
+			deploymentAt:         deployedAt.Add(time.Minute),
+			stateExists:          true,
+			previousDeploymentID: "dep-2",
+			want:                 true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := shouldTriggerRunOnDeploy(
+				tt.cfg,
+				tt.deploymentID,
+				tt.deploymentAt,
+				startedAt,
+				tt.stateExists,
+				tt.previousDeploymentID,
+			)
+
+			if got != tt.want {
+				t.Fatalf("shouldTriggerRunOnDeploy()=%v want=%v", got, tt.want)
+			}
+		})
+	}
+}
