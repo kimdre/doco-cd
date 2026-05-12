@@ -79,9 +79,9 @@ var docoCDJobLabelNames = struct {
 	JobSchedule      string // Schedule of the job in 5-field cron format or @every duration
 	JobRunOnDeploy   string // Run one immediate execution when a new deployment identity is detected
 	JobSkipRunning   string // Skip a schedule trigger when a previous run is still in progress
-	JobExecutionMode string // Defines if a run restarts/reruns the job or starts an ephemeral one-shot execution
+	JobExecutionMode string // Defines if a run restarts/reruns the job or starts an ephemeral one-off execution
 	JobNotifyOn      string // Controls notification behavior: none, success, failure, all
-	JobSwarmReplicas string // Number of replicas for one-shot replicated-job runs in swarm mode
+	JobSwarmReplicas string // Number of replicas for one-off replicated-job runs in swarm mode
 	JobLastRun       string // Timestamp of the last run in RFC3339 format
 	JobNextRun       string // Timestamp of the next scheduled run in RFC3339 format
 }{

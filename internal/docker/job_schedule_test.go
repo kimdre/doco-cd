@@ -36,7 +36,7 @@ func TestParseJobScheduleLabels(t *testing.T) {
 		docoCDJobLabelNames.JobSchedule:      "*/10 * * * *",
 		docoCDJobLabelNames.JobRunOnDeploy:   "true",
 		docoCDJobLabelNames.JobSkipRunning:   "true",
-		docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneShot),
+		docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneOff),
 		docoCDJobLabelNames.JobNotifyOn:      string(JobNotifyFailure),
 		docoCDJobLabelNames.JobSwarmReplicas: "3",
 	}
@@ -50,7 +50,7 @@ func TestParseJobScheduleLabels(t *testing.T) {
 		t.Fatalf("expected enabled=true")
 	}
 
-	if cfg.ExecutionMode != JobExecutionModeOneShot {
+	if cfg.ExecutionMode != JobExecutionModeOneOff {
 		t.Fatalf("unexpected execution mode: %s", cfg.ExecutionMode)
 	}
 
@@ -68,6 +68,27 @@ func TestParseJobScheduleLabels(t *testing.T) {
 
 	if cfg.SwarmReplicas != 3 {
 		t.Fatalf("unexpected swarm replicas: %d", cfg.SwarmReplicas)
+	}
+}
+
+func TestParseJobScheduleLabels_OneShotDeprecatedAlias(t *testing.T) {
+	t.Parallel()
+
+	cfg, enabled, err := ParseJobScheduleLabels(map[string]string{
+		docoCDJobLabelNames.JobEnabled:       "true",
+		docoCDJobLabelNames.JobSchedule:      "0 * * * *",
+		docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneShotDeprecated),
+	})
+	if err != nil {
+		t.Fatalf("ParseJobScheduleLabels() failed with deprecated one_shot alias: %v", err)
+	}
+
+	if !enabled {
+		t.Fatalf("expected enabled=true")
+	}
+
+	if cfg.ExecutionMode != JobExecutionModeOneOff {
+		t.Fatalf("expected execution mode to be normalized to %q, got %q", JobExecutionModeOneOff, cfg.ExecutionMode)
 	}
 }
 

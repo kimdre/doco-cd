@@ -50,16 +50,16 @@ func TestValidateScheduledJobPolicies(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:      "standalone allows one_shot with restart unset",
+			name:      "standalone allows one_off with restart unset",
 			swarmMode: false,
 			project: &types.Project{
 				Services: types.Services{
-					"ok-one-shot": {
-						Name: "ok-one-shot",
+					"ok-one-off": {
+						Name: "ok-one-off",
 						Labels: map[string]string{
 							docoCDJobLabelNames.JobEnabled:       "true",
 							docoCDJobLabelNames.JobSchedule:      "*/10 * * * *",
-							docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneShot),
+							docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneOff),
 						},
 					},
 				},
@@ -81,7 +81,7 @@ func TestValidateScheduledJobPolicies(t *testing.T) {
 						Labels: map[string]string{
 							docoCDJobLabelNames.JobEnabled:       "true",
 							docoCDJobLabelNames.JobSchedule:      "0 * * * *",
-							docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneShot),
+							docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneOff),
 						},
 					},
 				},
@@ -104,7 +104,7 @@ func TestValidateScheduledJobPolicies(t *testing.T) {
 						Labels: map[string]string{
 							docoCDJobLabelNames.JobEnabled:       "true",
 							docoCDJobLabelNames.JobSchedule:      "@every 1h",
-							docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneShot),
+							docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneOff),
 						},
 					},
 				},
