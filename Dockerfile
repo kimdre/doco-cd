@@ -61,6 +61,9 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
         CGO_ENABLED=1 CC=musl-gcc go build -ldflags="-s -w -X github.com/kimdre/doco-cd/internal/config/app.Version=${APP_VERSION} ${BW_SDK_BUILD_FLAGS}" -o / ./...; \
     fi
 
+# buildx plugin so compose v5 picks BuildKit instead of the legacy ``/build`` endpoint
+FROM docker/buildx-bin:0.33.0@sha256:450be95fa632a3986797cd23b8b5d8d5fff47e9fd8e1fa483c9d44b07da2a559 AS buildx
+
 FROM gcr.io/distroless/base-debian13@sha256:c83f022002fc917a92501a8c30c605efdad3010157ba2c8998a2cbf213299201 AS release
 
 WORKDIR /
@@ -69,6 +72,7 @@ WORKDIR /
 VOLUME /data
 
 COPY --from=build /doco-cd /doco-cd
+COPY --from=buildx /buildx /usr/local/libexec/docker/cli-plugins/docker-buildx
 
 ENV TZ=UTC \
     HTTP_PORT=80 \
