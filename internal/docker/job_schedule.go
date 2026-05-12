@@ -34,6 +34,7 @@ const (
 type JobScheduleConfig struct {
 	Enabled       bool
 	Schedule      string
+	RunOnDeploy   bool
 	SkipRunning   bool
 	ExecutionMode JobExecutionMode
 	NotifyOn      JobNotifyOn
@@ -102,6 +103,15 @@ func ParseJobScheduleLabels(labels map[string]string, log ...*slog.Logger) (JobS
 	}
 
 	cfg.Schedule = schedule
+
+	if runOnDeployRaw, ok := labels[docoCDJobLabelNames.JobRunOnDeploy]; ok {
+		runOnDeploy, parseErr := strconv.ParseBool(strings.TrimSpace(runOnDeployRaw))
+		if parseErr != nil {
+			return cfg, false, fmt.Errorf("invalid %s label value %q", docoCDJobLabelNames.JobRunOnDeploy, runOnDeployRaw)
+		}
+
+		cfg.RunOnDeploy = runOnDeploy
+	}
 
 	if skipRaw, ok := labels[docoCDJobLabelNames.JobSkipRunning]; ok {
 		skip, parseErr := strconv.ParseBool(strings.TrimSpace(skipRaw))
