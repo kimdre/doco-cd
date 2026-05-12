@@ -1479,10 +1479,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#one_shot" class="md-nav__link">
+  <a href="#one_off" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        <code>one_shot</code>
+        <code>one_off</code>
       </span>
     </span>
   </a>
@@ -2103,10 +2103,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#one_shot" class="md-nav__link">
+  <a href="#one_off" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        <code>one_shot</code>
+        <code>one_off</code>
       </span>
     </span>
   </a>
@@ -2363,8 +2363,8 @@ This is useful for running periodic tasks such as backups, maintenance scripts, 
 <h3 id="restart"><code>restart</code><a class="headerlink" href="#restart" title="Permanent link">&para;</a></h3>
 <p>By default, scheduled jobs will be executed in <code>restart</code> mode, which means the service will be created on deployment 
 and then re-/started at the scheduled time without being removed after completion.</p>
-<h3 id="one_shot"><code>one_shot</code><a class="headerlink" href="#one_shot" title="Permanent link">&para;</a></h3>
-<p>Alternatively, you can configure scheduled jobs to run in <code>one_shot</code> mode, which means a new ephemeral container will 
+<h3 id="one_off"><code>one_off</code><a class="headerlink" href="#one_off" title="Permanent link">&para;</a></h3>
+<p>Alternatively, you can configure scheduled jobs to run in <code>one_off</code> mode, which means a new ephemeral container will 
 be created for each scheduled run and removed after completion.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
@@ -2373,13 +2373,13 @@ so make sure to configure appropriate logging (e.g., log to a persistent file or
 if you need to keep track of job runs and <a data-preview="" href="../Notifications/">notifications</a> if needed.</p>
 </div>
 <details class="info">
-<summary><code>one_shot</code> behavior in Docker Swarm</summary>
-<p>In Docker Swarm, <code>one_shot</code> does <strong>not</strong> modify the source service mode permanently.
+<summary><code>one_off</code> behavior in Docker Swarm</summary>
+<p>In Docker Swarm, <code>one_off</code> does <strong>not</strong> modify the source service mode permanently.
 Instead, doco-cd creates a temporary job service for each scheduled run, waits for completion,
 and removes that temporary service afterwards.</p>
 <p>This means the original service may still show <code>replicated</code>/<code>global</code> when inspected,
-while each one-shot execution runs as a temporary <code>replicated-job</code>/<code>global-job</code> service.</p>
-<p>See also <a data-preview="" href="#swarm-deploymode">Swarm <code>deploy.mode</code> configuration</a> for how the original service's deploy mode affects the temporary job service's deploy mode in one-shot executions.</p>
+while each one-off execution runs as a temporary <code>replicated-job</code>/<code>global-job</code> service.</p>
+<p>See also <a data-preview="" href="#swarm-deploymode">Swarm <code>deploy.mode</code> configuration</a> for how the original service's deploy mode affects the temporary job service's deploy mode in one-off executions.</p>
 <p><strong>Behavior summary</strong></p>
 <table>
 <thead>
@@ -2396,12 +2396,17 @@ while each one-shot execution runs as a temporary <code>replicated-job</code>/<c
 <td>Unchanged</td>
 </tr>
 <tr>
-<td><code>one_shot</code></td>
+<td><code>one_off</code></td>
 <td>Temporary clone</td>
 <td>Source unchanged</td>
 </tr>
 </tbody>
 </table>
+</details>
+<details class="warning">
+<summary>Deprecated: <code>one_shot</code> has been renamed to <code>one_off</code></summary>
+<p><code>one_shot</code> has been renamed to <code>one_off</code> and will be removed in a future release.
+Use <code>one_off</code> instead. The old value is still accepted for backward compatibility but will log a warning.</p>
 </details>
 <h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
 <details class="example">
@@ -2448,7 +2453,7 @@ while each one-shot execution runs as a temporary <code>replicated-job</code>/<c
 <tr>
 <td><code>cd.doco.job.execution_mode</code></td>
 <td>string</td>
-<td><a data-preview="" href="#restart"><code>restart</code></a> (default behavior) or <a data-preview="" href="#one_shot"><code>one_shot</code></a> (ephemeral execution)</td>
+<td><a data-preview="" href="#restart"><code>restart</code></a> (default behavior) or <a data-preview="" href="#one_off"><code>one_off</code></a> (ephemeral execution)</td>
 <td><code>restart</code></td>
 </tr>
 <tr>
@@ -2466,14 +2471,14 @@ while each one-shot execution runs as a temporary <code>replicated-job</code>/<c
 <tr>
 <td><code>cd.doco.job.swarm.replicas</code></td>
 <td>integer</td>
-<td>Number of completions/concurrency for swarm one-shot jobs in <code>replicated</code> <a data-preview="" href="#swarm-deploymode">deploy mode</a></td>
+<td>Number of completions/concurrency for swarm one-off jobs in <code>replicated</code> <a data-preview="" href="#swarm-deploymode">deploy mode</a></td>
 <td><code>1</code></td>
 </tr>
 </tbody>
 </table>
 <h3 id="swarm-deploymode">Swarm <code>deploy.mode</code><a class="headerlink" href="#swarm-deploymode" title="Permanent link">&para;</a></h3>
 <p>When using Docker Swarm, you can configure the deploy mode for scheduled jobs using the <code>deploy.mode</code> field in your docker compose file.</p>
-<p>The following mapping applies to scheduled runs in <code>one_shot</code> mode:</p>
+<p>The following mapping applies to scheduled runs in <code>one_off</code> mode:</p>
 <ul>
 <li>If the service uses <code class="language-yaml highlight"><span class="nt">deploy.mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">global</span></code>, the job run is created as <code>global-job</code></li>
 <li>If the service uses <code class="language-yaml highlight"><span class="nt">deploy.mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">replicated</span></code> or does not specify a deploy mode, the job run is created as <code>replicated-job</code> with the number of completions/concurrency determined by the <code>cd.doco.job.swarm.replicas</code> label.</li>
@@ -2482,7 +2487,7 @@ while each one-shot execution runs as a temporary <code>replicated-job</code>/<c
 <div class="tabbed-set tabbed-alternate" data-tabs="4:2"><input checked="checked" id="examples-prune-swarm-nodes" name="__tabbed_4" type="radio" /><input id="examples-backup" name="__tabbed_4" type="radio" /><div class="tabbed-labels"><label for="examples-prune-swarm-nodes">Prune swarm nodes</label><label for="examples-backup">Backup</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<p>Prune Docker system every hour on all swarm nodes using a global one-shot job service</p>
+<p>Prune Docker system every hour on all swarm nodes using a global one-off job service</p>
 <div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">services</span><span class="p">:</span>
 </span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">prune</span><span class="p">:</span>
 </span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">docker:latest</span>
@@ -2496,7 +2501,7 @@ while each one-shot execution runs as a temporary <code>replicated-job</code>/<c
 </span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">    </span><span class="nt">labels</span><span class="p">:</span>
 </span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">      </span><span class="nt">cd.doco.job.enabled</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span>
 </span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">      </span><span class="nt">cd.doco.job.schedule</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;@hourly&quot;</span>
-</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="w">      </span><span class="nt">cd.doco.job.execution_mode</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;one_shot&quot;</span>
+</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="w">      </span><span class="nt">cd.doco.job.execution_mode</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;one_off&quot;</span>
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
