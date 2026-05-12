@@ -145,7 +145,7 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 		info.LastRunAt = parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobLastRun])
 		info.LabelNextRunAt = parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobNextRun])
 
-		cfg, enabled, parseErr := docker.ParseJobScheduleLabels(job.labels)
+		cfg, enabled, parseErr := docker.ParseJobScheduleLabels(job.labels, s.log)
 		if parseErr != nil {
 			info.Valid = false
 			info.ScheduleError = parseErr.Error()
@@ -340,7 +340,7 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 	for _, job := range jobs {
 		discoveredByKey[job.key] = job
 
-		cfg, enabled, parseErr := docker.ParseJobScheduleLabels(job.labels)
+		cfg, enabled, parseErr := docker.ParseJobScheduleLabels(job.labels, s.log)
 		if parseErr != nil {
 			s.log.Warn("ignoring job with invalid schedule labels",
 				slog.String("job", job.name),
@@ -650,15 +650,15 @@ func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, c
 	switch job.mode {
 	case scheduledJobModeContainer:
 		switch cfg.ExecutionMode {
-		case docker.JobExecutionModeOneShot:
-			return docker.RunContainerOneShotFromExisting(ctx, s.dockerCli.Client(), job.id)
+		case docker.JobExecutionModeOneOff:
+			return docker.RunContainerOneOffFromExisting(ctx, s.dockerCli.Client(), job.id)
 		default:
 			return docker.RestartContainer(ctx, s.dockerCli.Client(), job.id)
 		}
 	case scheduledjobModeSwarm:
 		switch cfg.ExecutionMode {
-		case docker.JobExecutionModeOneShot:
-			return docker.RunSwarmOneShotFromService(ctx, s.dockerCli, job.id, docker.SwarmOneShotFromServiceOptions{
+		case docker.JobExecutionModeOneOff:
+			return docker.RunSwarmOneOffFromService(ctx, s.dockerCli, job.id, docker.SwarmOneOffFromServiceOptions{
 				Replicas:         cfg.SwarmReplicas,
 				SendRegistryAuth: true,
 			})

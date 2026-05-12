@@ -50,7 +50,7 @@ func getContainerRunAction(inspectResult containerTypes.InspectResponse) contain
 	return containerRunActionRestart
 }
 
-func RunContainerOneShotFromExisting(ctx context.Context, apiClient client.APIClient, containerID string) error {
+func RunContainerOneOffFromExisting(ctx context.Context, apiClient client.APIClient, containerID string) error {
 	inspectResult, err := apiClient.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
 	if err != nil {
 		return fmt.Errorf("inspect container %s: %w", containerID, err)
@@ -84,7 +84,7 @@ func RunContainerOneShotFromExisting(ctx context.Context, apiClient client.APICl
 		Name:             tmpName,
 	})
 	if err != nil {
-		return fmt.Errorf("create one-shot container from %s: %w", containerID, err)
+		return fmt.Errorf("create one-off container from %s: %w", containerID, err)
 	}
 
 	// Subscribe to wait BEFORE starting so we don't race with a fast-exiting
@@ -94,21 +94,21 @@ func RunContainerOneShotFromExisting(ctx context.Context, apiClient client.APICl
 	waitResult := apiClient.ContainerWait(ctx, createResult.ID, client.ContainerWaitOptions{Condition: containerTypes.WaitConditionNotRunning})
 
 	if _, err = apiClient.ContainerStart(ctx, createResult.ID, client.ContainerStartOptions{}); err != nil {
-		return fmt.Errorf("start one-shot container %s: %w", createResult.ID, err)
+		return fmt.Errorf("start one-off container %s: %w", createResult.ID, err)
 	}
 
 	select {
 	case waitErr := <-waitResult.Error:
 		if waitErr != nil {
-			return fmt.Errorf("wait for one-shot container %s: %w", createResult.ID, waitErr)
+			return fmt.Errorf("wait for one-off container %s: %w", createResult.ID, waitErr)
 		}
 	case waitStatus := <-waitResult.Result:
 		if waitStatus.Error != nil && waitStatus.Error.Message != "" {
-			return fmt.Errorf("one-shot container %s failed: %s", createResult.ID, waitStatus.Error.Message)
+			return fmt.Errorf("one-off container %s failed: %s", createResult.ID, waitStatus.Error.Message)
 		}
 
 		if waitStatus.StatusCode != 0 {
-			return fmt.Errorf("one-shot container %s exited with status %d", createResult.ID, waitStatus.StatusCode)
+			return fmt.Errorf("one-off container %s exited with status %d", createResult.ID, waitStatus.StatusCode)
 		}
 	}
 
