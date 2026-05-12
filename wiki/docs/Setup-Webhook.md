@@ -14,7 +14,7 @@ This page shows how to set up a webhook for your deployments.
 
 ## Webhook Endpoint
 
-To enable the webhook endpoint, you need to set the `WEBHOOK_SECRET` [environment variable](App-Settings.md#available-settings) to a secure secret value and publish the webhook port  (default is `80`, see the `HTTP_PORT` [environment variable](App-Settings.md#available-settings)) in the doco-cd `docker-compose.yml` file.
+To enable the webhook endpoint, you need to set the `WEBHOOK_SECRET` [environment variable](App-Settings.md#general-settings) to a secure secret value and publish the webhook port  (default is `80`, see the `HTTP_PORT` [environment variable](App-Settings.md#general-settings)) in the doco-cd `docker-compose.yml` file.
 
 You can use tools like [pwgen](https://linux.die.net/man/1/pwgen) or [openssl](https://www.openssl.org/) to generate a random secret for the `WEBHOOK_SECRET`.
 

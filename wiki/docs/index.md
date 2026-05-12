@@ -23,6 +23,7 @@ You can think of it as a simple Portainer or ArgoCD alternative for Docker.
 - Supports various [Git providers](#supported-git-providers) 
 - Supports both Docker Compose projects and Swarm stacks in [Swarm mode](Advanced/Swarm-Mode.md).
 - Provides [notifications](Advanced/Notifications.md) and [Prometheus metrics](Endpoints/Metrics.md) for monitoring.
+- Supports [Job Scheduling / Cron Jobs](Advanced/Job-Scheduling.md) for running periodic tasks.
 
 ## Getting Started
 

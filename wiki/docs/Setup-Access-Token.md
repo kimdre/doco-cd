@@ -8,46 +8,47 @@ tags:
 
 This page shows how to set up a Git Access Token for your deployments.
 
-!!! info
-    The Git Access Token is used to authenticate with your Git provider (GitHub, GitLab, Bitbucket, etc.) and to clone or fetch your repositories via HTTP.
-    
-    !!! tip
-        You can use doco-cd without a Git Access Token if the repositories you want to use for your deployments are publicly accessible. However, it is still recommended to use one in that case to for example avoid rate limits.
+The Git Access Token is used to authenticate with your Git provider (GitHub, GitLab, Bitbucket, etc.) and to clone or fetch your repositories via HTTP.
+
+!!! tip "Usage without Git Access Token"
+    You can use doco-cd without a Git Access Token if the repositories you want to use for your deployments are publicly accessible. However, it is still recommended to use one in that case to for example avoid rate limits.
 
 !!! info "About Git Authentication"
-    If you set a global `GIT_ACCESS_TOKEN`, doco-cd uses it as fallback for Git domains without a scoped entry.
-    For per-domain credentials, use `GIT_AUTH_DOMAINS` / `GIT_AUTH_DOMAINS_FILE`.
-
-    See [Domain-scoped Git authentication](App-Settings.md#domain-scoped-git-authentication) for more information on how to set up domain-scoped Git authentication.
+    See [Git Authentication](Git-Settings.md#authentication) for more information on how doco-cd handles Git authentication
+    and how to set up global and per-domain credentials.
 
 ## Git Providers
 
 === "GitHub"
+    
     You can either use a Personal Access Token (PAT) or a GitHub App.
-
-    GitHub App auth is supported natively. Configure the app id and private key globally (`GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`) or per domain in `GIT_AUTH_DOMAINS` (`github_app_id`, `github_app_private_key`).
-    doco-cd will auto-detect the installation by repository owner/name and mint short-lived installation access tokens.
-    
-    !!! question "How to create an access token"
-        See the GitHub docs for
-
-        - [Personal Access Tokens](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens).
-        - [GitHub Apps](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app).
-    
-    **Permissions**
     
     === "Personal Access Token (Classic)"
     
-        - The minimum required scope is `repo`
+        See the GitHub docs for [Personal Access Token (Classic)](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-personal-access-token-classic).
+        
+        The minimum required scope is `repo`
     
     === "Fine-grained tokens"
-    
+
+        See the GitHub docs for [Fine-grained tokens](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token).
+        
         - Repository access
             - Set to `Public Repositories (read-only)` for only public repositories.
             - Set to `All Repositories` for all repositories.
         - The minimum required permissions are:
             - `Contents` -> `Read-only`
             - `Metadata` -> `Read-only`
+
+    === "GitHub Apps"
+
+        GitHub Apps are [supported natively](Git-Settings.md#github-apps) in Doco-CD.
+
+        See the GitHub docs for registering a [GitHub Apps](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app).
+
+        - The minimum required permissions are:
+            - `Repository contents` -> `Read-only`
+            - `Repository metadata` -> `Read-only`
 
 === "Gitea, Forgejo, Gogs" 
     1. Go to your user settings.

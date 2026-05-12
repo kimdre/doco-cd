@@ -52,8 +52,8 @@ See the app config on the [App Settings](App-Settings.md) wiki page for more inf
 
 
 !!! tip "About Git Authentication"
-    For multiple domains/providers, configure SSH keys per domain with `GIT_AUTH_DOMAINS` (or `GIT_AUTH_DOMAINS_FILE`).
-    See [Domain-scoped Git authentication](App-Settings.md#domain-scoped-git-authentication) for more information.
+    See [Git Authentication](Git-Settings.md#authentication) for more information on how doco-cd handles Git authentication 
+    and how to set up global and per-domain credentials.
 
 An example using Docker Compose:
 
