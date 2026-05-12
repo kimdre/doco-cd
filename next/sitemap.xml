@@ -22,6 +22,12 @@
         <loc>https://doco.cd/next/Deploy-Settings/</loc>
       </url>
       <url>
+        <loc>https://doco.cd/next/Docker-Settings/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/Git-Settings/</loc>
+      </url>
+      <url>
         <loc>https://doco.cd/next/Poll-Settings/</loc>
       </url>
       <url>
@@ -67,13 +73,16 @@
         <loc>https://doco.cd/next/Advanced/Pre-Post-Deployment-Scripts/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/next/Advanced/Scheduled-Jobs/</loc>
+        <loc>https://doco.cd/next/Advanced/Job-Scheduling/</loc>
       </url>
       <url>
         <loc>https://doco.cd/next/Advanced/Tips-and-Tricks/</loc>
       </url>
       <url>
         <loc>https://doco.cd/next/Core-Concepts/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/Endpoints/Healthcheck/</loc>
       </url>
       <url>
         <loc>https://doco.cd/next/Endpoints/Metrics/</loc>

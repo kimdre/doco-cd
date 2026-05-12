@@ -349,6 +349,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -741,6 +745,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -824,6 +832,60 @@
     
   
   Deploy Settings
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Docker-Settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Docker Settings
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Git-Settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Git Settings
 
     
   </span>
@@ -1381,14 +1443,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Scheduled-Jobs/" class="md-nav__link">
+      <a href="../../Advanced/Job-Scheduling/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-  Scheduling / Cron Jobs
+  Job Scheduling / Cron Jobs
 
     
   </span>
@@ -1548,6 +1610,8 @@
       
         
       
+        
+      
     
     
     
@@ -1588,6 +1652,33 @@
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Healthcheck/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Healthcheck
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -2403,12 +2494,14 @@
       
         
       
+        
+      
     
     
     
     
       <li class="md-path__item">
-        <a href="../Metrics/" class="md-path__link">
+        <a href="../Healthcheck/" class="md-path__link">
           
   
   <span class="md-ellipsis">
@@ -2448,7 +2541,7 @@
 <h1 id="rest-api">REST API<a class="headerlink" href="#rest-api" title="Permanent link">&para;</a></h1>
 <p>Doco-CD exposes a RESTful API at the <code>/v1/api</code> endpoint.</p>
 <h2 id="authentication">Authentication<a class="headerlink" href="#authentication" title="Permanent link">&para;</a></h2>
-<p>Set the <code>API_SECRET</code> or <code>API_SECRET_FILE</code> environment variable in the container to enable the API, see <a data-preview="" href="../../App-Settings/#available-settings">App Settings</a>.</p>
+<p>Set the <code>API_SECRET</code> or <code>API_SECRET_FILE</code> environment variable in the container to enable the API, see <a data-preview="" href="../../App-Settings/#general-settings">App Settings</a>.</p>
 <p>Use the <code>x-api-key</code> header to authenticate requests to the API using the secret value.</p>
 <p>Example:</p>
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;x-api-key: your_api_key&quot;</span><span class="w"> </span>http://example.com/v1/api/projects
@@ -2534,13 +2627,13 @@
 <tr>
 <td><code>/v1/api/jobs</code></td>
 <td>GET</td>
-<td>List all discovered <a data-preview="" href="../../Advanced/Scheduled-Jobs/">scheduled jobs</a></td>
+<td>List all discovered <a data-preview="" href="../../Advanced/Job-Scheduling/">scheduled jobs</a></td>
 <td>- <code>stack</code> (string, optional): Return scheduled jobs only for one stack/project.</td>
 </tr>
 <tr>
 <td><code>/v1/api/job/{jobName}/run</code></td>
 <td>POST</td>
-<td>Trigger a configured <a data-preview="" href="../../Advanced/Scheduled-Jobs/">scheduled job</a> immediately.</td>
+<td>Trigger a configured <a data-preview="" href="../../Advanced/Job-Scheduling/">scheduled job</a> immediately.</td>
 <td>- <code>stack</code> (string, optional): Limit matching to a specific stack/project.<br/>- <code>wait</code> (boolean, default: <code>true</code>): Wait for the triggered run to finish before responding.</td>
 </tr>
 </tbody>

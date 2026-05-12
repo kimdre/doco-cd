@@ -351,6 +351,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -832,6 +836,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -915,6 +923,60 @@
     
   
   Deploy Settings
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Docker-Settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Docker Settings
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Git-Settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Git Settings
 
     
   </span>
@@ -1472,14 +1534,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../Advanced/Scheduled-Jobs/" class="md-nav__link">
+      <a href="../Advanced/Job-Scheduling/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-  Scheduling / Cron Jobs
+  Job Scheduling / Cron Jobs
 
     
   </span>
@@ -1632,6 +1694,8 @@
       
         
       
+        
+      
     
     
     
@@ -1672,6 +1736,33 @@
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Endpoints/Healthcheck/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Healthcheck
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -2136,7 +2227,7 @@
 <p>Webhooks are event-based triggers that notify doco-cd when there are changes in the repositories to deploy. This is the recommended way to trigger deployments as it is more efficient and faster than polling but requires doco-cd to be reachable from the internet (or local network if you self-host your Git provider) and some setup on your Git provider.</p>
 </div>
 <h2 id="webhook-endpoint">Webhook Endpoint<a class="headerlink" href="#webhook-endpoint" title="Permanent link">&para;</a></h2>
-<p>To enable the webhook endpoint, you need to set the <code>WEBHOOK_SECRET</code> <a data-preview="" href="../App-Settings/#available-settings">environment variable</a> to a secure secret value and publish the webhook port  (default is <code>80</code>, see the <code>HTTP_PORT</code> <a data-preview="" href="../App-Settings/#available-settings">environment variable</a>) in the doco-cd <code>docker-compose.yml</code> file.</p>
+<p>To enable the webhook endpoint, you need to set the <code>WEBHOOK_SECRET</code> <a data-preview="" href="../App-Settings/#general-settings">environment variable</a> to a secure secret value and publish the webhook port  (default is <code>80</code>, see the <code>HTTP_PORT</code> <a data-preview="" href="../App-Settings/#general-settings">environment variable</a>) in the doco-cd <code>docker-compose.yml</code> file.</p>
 <p>You can use tools like <a href="https://linux.die.net/man/1/pwgen">pwgen</a> or <a href="https://www.openssl.org/">openssl</a> to generate a random secret for the <code>WEBHOOK_SECRET</code>.</p>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="webhook-endpoint-pwgen" name="__tabbed_1" type="radio" /><input id="webhook-endpoint-openssl" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="webhook-endpoint-pwgen">pwgen</label><label for="webhook-endpoint-openssl">openssl</label></div>
 <div class="tabbed-content">

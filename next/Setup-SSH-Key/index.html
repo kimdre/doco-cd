@@ -351,6 +351,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -843,6 +847,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -926,6 +934,60 @@
     
   
   Deploy Settings
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Docker-Settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Docker Settings
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Git-Settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Git Settings
 
     
   </span>
@@ -1483,14 +1545,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../Advanced/Scheduled-Jobs/" class="md-nav__link">
+      <a href="../Advanced/Job-Scheduling/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-  Scheduling / Cron Jobs
+  Job Scheduling / Cron Jobs
 
     
   </span>
@@ -1643,6 +1705,8 @@
       
         
       
+        
+      
     
     
     
@@ -1683,6 +1747,33 @@
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Endpoints/Healthcheck/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Healthcheck
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -2187,8 +2278,8 @@ For example:
 See the app config on the <a data-preview="" href="../App-Settings/">App Settings</a> wiki page for more information on how to set the SSH private key in doco-cd.</p>
 <div class="admonition tip">
 <p class="admonition-title">About Git Authentication</p>
-<p>For multiple domains/providers, configure SSH keys per domain with <code>GIT_AUTH_DOMAINS</code> (or <code>GIT_AUTH_DOMAINS_FILE</code>).
-See <a data-preview="" href="../App-Settings/#domain-scoped-git-authentication">Domain-scoped Git authentication</a> for more information.</p>
+<p>See <a data-preview="" href="../Git-Settings/#authentication">Git Authentication</a> for more information on how doco-cd handles Git authentication 
+and how to set up global and per-domain credentials.</p>
 </div>
 <p>An example using Docker Compose:</p>
 <div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">services</span><span class="p">:</span>

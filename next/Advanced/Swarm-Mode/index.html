@@ -349,6 +349,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -741,6 +745,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -824,6 +832,60 @@
     
   
   Deploy Settings
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Docker-Settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Docker Settings
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Git-Settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Git Settings
 
     
   </span>
@@ -1440,14 +1502,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../Scheduled-Jobs/" class="md-nav__link">
+      <a href="../Job-Scheduling/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-  Scheduling / Cron Jobs
+  Job Scheduling / Cron Jobs
 
     
   </span>
@@ -1600,6 +1662,8 @@
       
         
       
+        
+      
     
     
     
@@ -1640,6 +1704,33 @@
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Endpoints/Healthcheck/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Healthcheck
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -2078,7 +2169,7 @@
 <p>Doco-CD also supports <a href="https://docs.docker.com/engine/swarm/">Docker Swarm mode</a>, which allows you to manage a cluster of Docker engines as a single virtual engine. 
 This is useful for deploying applications across multiple nodes and ensuring high availability.</p>
 <p>If the Docker daemon is running in Swarm mode, doco-cd will detect this automatically and deploy everything as Swarm stacks instead of simple Compose projects.</p>
-<p>You can overwrite this to always deploy as Compose projects while running doco-cd in a Swarm environment by setting the <code>DOCKER_SWARM_FEATURES</code> environment variable to <code>false</code> (See the <a data-preview="" href="../../App-Settings/#docker-specific-settings">Docker-specific App Settings</a>).</p>
+<p>You can overwrite this to always deploy as Compose projects while running doco-cd in a Swarm environment by setting the <code>DOCKER_SWARM_FEATURES</code> environment variable to <code>false</code> (See the <a data-preview="" href="../../Docker-Settings/">Docker Settings</a>).</p>
 <p>The deployment happens the same way as with Docker Compose projects, see the <a data-preview="" href="../../Deploy-Settings/">Deploy Settings</a></p>
 <h2 id="configs-and-secrets">Configs and Secrets<a class="headerlink" href="#configs-and-secrets" title="Permanent link">&para;</a></h2>
 <p>When deploying configs or secrets in Swarm mode, doco-cd will add a suffix to the name of configs and secrets. 
