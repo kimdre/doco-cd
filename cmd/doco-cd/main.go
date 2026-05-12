@@ -116,7 +116,17 @@ func run() error {
 		return err
 	}
 
-	git.ConfigureAuthResolver(c.GitAuthDomains, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase, c.GitAccessToken)
+	git.ConfigureAuthResolver(
+		c.GitAuthDomains,
+		c.SSHPrivateKey,
+		c.SSHPrivateKeyPassphrase,
+		c.GitAccessToken,
+		git.GitHubAppConfig{
+			ID:             c.GitHubAppID,
+			PrivateKey:     c.GitHubAppPrivateKey,
+			InstallationID: c.GitHubAppInstallationID,
+		},
+	)
 
 	// Parse the log level from the app configuration
 	logLevel, err := logger.ParseLevel(c.LogLevel)

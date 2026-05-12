@@ -117,6 +117,10 @@ See the [External Secrets](External-Secrets/index.md) wiki page for more informa
 
 If you want to pull images from a private registry, see [Private Container Registries](Advanced/Private-Container-Registries.md) in the wiki.
 
+### Job Scheduling / Cron Jobs
+
+Doco-CD supports job scheduling and cron jobs for running periodic tasks. See the [Job Scheduling](Advanced/Job-Scheduling.md) wiki page for more information on how to configure and use this feature.
+
 ### Sending Notifications
 
 Doco-CD supports sending notifications about deployment events to various services. See the [Notifications](Advanced/Notifications.md) wiki page for more information on how to set up notifications.
