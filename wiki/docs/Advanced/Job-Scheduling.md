@@ -6,7 +6,7 @@ tags:
   - Swarm Mode
 ---
 
-# Scheduled jobs
+# Job Scheduling
 
 The built-in job scheduler allows you to run containers/services defined in your docker compose files as scheduled jobs based on cron-like schedules or predefined intervals.
 This is useful for running periodic tasks such as backups, maintenance scripts, or any recurring workloads without needing an external scheduler.
