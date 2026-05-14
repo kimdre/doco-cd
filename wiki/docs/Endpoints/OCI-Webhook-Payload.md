@@ -13,88 +13,71 @@ The OCI webhook payload is a JSON message that notifies doco-cd about OCI artifa
 
 ```json
 {
-  "ref": "string",
+  "source": "oci",
   "digest": "string",
-  "repository": "string",
   "artifact": "string"
 }
 ```
 
 ## Field Definitions
 
-| Field        | Type   | Description                                               | Example                                                                  |
-|--------------|--------|-----------------------------------------------------------|--------------------------------------------------------------------------|
-| `ref`        | string | The tag or reference name of the artifact                 | `latest`, `main`, `v1.2.3`, `production`                                 |
-| `digest`     | string | The OCI digest (image ID) in format `algorithm:hexdigest` | `sha256:7d6c7f8e9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6` |
-| `repository` | string | Repository name without the registry host                 | `kimdre/doco-cd`, `myorg/myapp-config`                                   |
-| `artifact`   | string | Full artifact reference with registry host                | `ghcr.io/kimdre/doco-cd:main`, `docker.io/library/ubuntu:latest`         |
+| Field      | Type   | Description                                                       | Example                                                                  |
+|------------|--------|-------------------------------------------------------------------|--------------------------------------------------------------------------|
+| `source`   | string | Payload discriminator and must be `oci`                           | `oci`                                                                    |
+| `digest`   | string | The OCI digest (image ID) in format `algorithm:hexdigest`         | `sha256:7d6c7f8e9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6` |
+| `artifact` | string | Full artifact reference with registry host and tag/digest         | `ghcr.io/my/app:main`, `docker.io/library/ubuntu:latest`                 |
 
 ## Examples
 
-### GitHub Container Registry
+=== "GitHub Container Registry"
 
-```json
-{
-  "ref": "main",
-  "digest": "sha256:7d6c7f8e9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6",
-  "repository": "kimdre/doco-cd",
-  "artifact": "ghcr.io/kimdre/doco-cd:main"
-}
-```
+    ```json
+    {
+      "source": "oci",
+      "digest": "sha256:7d6c7f8e9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6",
+      "artifact": "ghcr.io/my/app:main"
+    }
+    ```
 
-#### Nested namespace/group path (for example, GitLab-style groups)
+=== "Nested namespace/group path (e.g. GitLab)"
 
-```json
-{
-  "ref": "latest",
-  "digest": "sha256:1f2e3d4c5b6a79808f7e6d5c4b3a2910ffeeddccbbaa99887766554433221100",
-  "repository": "apps/app1/backend",
-  "artifact": "ghcr.io/myorg/apps/app1/backend:latest"
-}
-```
+    ```json
+    {
+      "source": "oci",
+      "digest": "sha256:1f2e3d4c5b6a79808f7e6d5c4b3a2910ffeeddccbbaa99887766554433221100",
+      "artifact": "registry.example.com/myorg/apps/app1/backend:latest"
+    }
+    ```
 
-### Docker Hub
+=== "Docker Hub"
 
-```json
-{
-  "ref": "latest",
-  "digest": "sha256:abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567abc890def",
-  "repository": "myusername/myapp-config",
-  "artifact": "docker.io/myusername/myapp-config:latest"
-}
-```
+    ```json
+    {
+      "source": "oci",
+      "digest": "sha256:abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567abc890def",
+      "artifact": "docker.io/myusername/myapp-config:latest"
+    }
+    ```
 
-### Private Registry
+=== "Private Registry"
 
-```json
-{
-  "ref": "v1.0.0",
-  "digest": "sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
-  "repository": "internal/deployment-config",
-  "artifact": "registry.example.com:5000/internal/deployment-config:v1.0.0"
-}
-```
+    ```json
+    {
+      "source": "oci",
+      "digest": "sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+      "artifact": "registry.example.com:5000/internal/deployment-config:v1.0.0"
+    }
+    ```
 
-### Custom Tag
-
-```json
-{
-  "ref": "production",
-  "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-  "repository": "myorg/config",
-  "artifact": "ghcr.io/myorg/config:production"
-}
-```
-
-## How doco-cd Uses the Payload
+## How doco-cd uses the Payload
 
 When doco-cd receives an OCI webhook payload:
 
 1. **Verifies the signature** using `WEBHOOK_SECRET` (via `X-Doco-OCI-Signature-256` header)
-2. **Extracts the artifact reference** from the `artifact` field
+2. **Validates the payload source** (`source` must be `oci`)
 3. **Matches against polling configs** to find deployments using this artifact
 4. **Pulls the artifact** from the registry using the `artifact` reference
-5. **Validates the artifact layout** (must be doco.v1)
+5. **Validates the artifact layout** (must be [`doco.v1`](../OCI-Usage.md#docov1-artifact-layout))
 6. **Deploys** based on matching deployment configuration
 
 ## Security
@@ -153,9 +136,8 @@ jobs:
         run: |
           PAYLOAD=$(cat <<EOF
           {
-            "ref": "${ARTIFACT_TAG}",
+            "source": "oci",
             "digest": "${ARTIFACT_DIGEST}",
-            "repository": "${ARTIFACT_REF#*/}",
             "artifact": "ghcr.io/${ARTIFACT_REF}:${ARTIFACT_TAG}"
           }
           EOF
@@ -178,15 +160,12 @@ WEBHOOK_URL="https://doco.example.com/v1/webhook"
 WEBHOOK_SECRET="your-webhook-secret"
 ARTIFACT="ghcr.io/myorg/config:main"
 DIGEST="sha256:abc123..."
-REPOSITORY="myorg/config"
-REF="main"
 
 # Create JSON payload
 PAYLOAD=$(cat <<EOF
 {
-  "ref": "$REF",
+  "source": "oci",
   "digest": "$DIGEST",
-  "repository": "$REPOSITORY",
   "artifact": "$ARTIFACT"
 }
 EOF

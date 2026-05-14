@@ -102,7 +102,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			slog.String("commit", payload.CommitSHA), slog.String("ref", payload.Ref),
 			slog.String("event", string(stages.JobTriggerWebhook))))
 
-	if payload.Ref == "" {
+	if payload.Source != webhook.PayloadSourceOCI && payload.Ref == "" {
 		msg := "no reference provided in webhook payload, skipping event"
 		jobLog.Warn(msg)
 		JSONError(w, msg, msg, metadata.JobID, http.StatusBadRequest)

@@ -2,6 +2,10 @@ package webhook
 
 import (
 	"encoding/json"
+	"path"
+	"strings"
+
+	"github.com/google/go-containerregistry/pkg/name"
 )
 
 type PayloadSource string
@@ -45,10 +49,9 @@ type GitlabPushPayload struct {
 
 // OCIArtifactPayload is a generic webhook payload for OCI artifact events.
 type OCIArtifactPayload struct {
-	Ref        string `json:"ref"`
-	Digest     string `json:"digest"`
-	Repository string `json:"repository"`
-	Artifact   string `json:"artifact"`
+	Source   string `json:"source"`
+	Digest   string `json:"digest"`
+	Artifact string `json:"artifact"`
 }
 
 // ParsedPayload is a struct that contains the parsed payload data.
@@ -127,12 +130,18 @@ func parsePayload(payload []byte, provider ScmProvider) (ParsedPayload, error) {
 			return ParsedPayload{}, err
 		}
 
+		if strings.TrimSpace(ociPayload.Source) != string(PayloadSourceOCI) {
+			return ParsedPayload{}, ErrParsingPayload
+		}
+
+		repositoryName, ref := parseRepositoryAndReferenceFromArtifact(ociPayload.Artifact)
+
 		parsedPayload := ParsedPayload{
 			Source:    PayloadSourceOCI,
-			Ref:       ociPayload.Ref,
+			Ref:       ref,
 			CommitSHA: ociPayload.Digest,
-			Name:      ociPayload.Repository,
-			FullName:  ociPayload.Repository,
+			Name:      path.Base(repositoryName),
+			FullName:  repositoryName,
 			Artifact:  ociPayload.Artifact,
 			Digest:    ociPayload.Digest,
 		}
@@ -141,4 +150,18 @@ func parsePayload(payload []byte, provider ScmProvider) (ParsedPayload, error) {
 	default:
 		return ParsedPayload{}, ErrParsingPayload
 	}
+}
+
+func parseRepositoryAndReferenceFromArtifact(artifact string) (string, string) {
+	trimmed := strings.TrimSpace(artifact)
+	if trimmed == "" {
+		return "", ""
+	}
+
+	ref, err := name.ParseReference(trimmed, name.WeakValidation)
+	if err != nil {
+		return trimmed, ""
+	}
+
+	return ref.Context().RepositoryStr(), ref.Identifier()
 }

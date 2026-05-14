@@ -41,60 +41,66 @@ Doco-cd can pull artifacts from any OCI-compliant registry:
 - **Azure Container Registry** (`*.azurecr.io`)
 - **Private/Self-hosted registries** (supporting OCI Image Spec v1.0+)
 
-!!! note
-    Authentication to private registries uses the local Docker credentials (typically in `~/.docker/config.json`).
+!!! note "See [Private Container Registries](Advanced/Private-Container-Registries.md) for authentication to private registries."
 
 ---
 
-## doco.v1 Artifact Layout
+## `doco.v1` Artifact Layout
 
 The **doco.v1** layout is a strict, versioned specification for packaging deployment configurations as OCI artifacts. It ensures consistency and enables validation.
 
 ### Artifact Structure
 
-A doco.v1 artifact must have the following structure:
+A doco.v1 artifact must have a root-level deployment configuration file (`.doco-cd.y(a)ml`) in the root (`/`) of the artifact
+that includes the `#!yaml layout: doco.v1` field. 
 
-```
-artifact/
-├── .doco-cd.yaml         # OR .doco-cd.yml - Main deployment config with `layout: doco.v1`
-├── docker-compose.yml    # (optional) Docker Compose configuration
-└── (other files as needed)
-```
+The rest of the artifact can contain any files needed for deployment, as with deployments from Git repository (e.g., compose files, app configuration, assets, scripts), see [Deploy Settings](Deploy-Settings.md).
+
+!!! example "Artifact Layout Examples"
+
+    === "Single Deployment"
+        ```
+        artifact-root/
+        ├── .doco-cd.yaml        # Main deployment config with `layout: doco.v1`
+        ├── docker-compose.yml    # Docker Compose configuration
+        └── (other files as needed)
+        ```
+    
+    === "Multiple Deployments"
+        ```
+        artifact-root/
+        ├── .doco-cd.yaml        # Main deployment config with `layout: doco.v1`
+        ├── web/
+        │   ├── .doco-cd.yaml    # Extra deployment config for web service
+        │   └── docker-compose.yml
+        │   └── config/
+        │       └── nginx.conf
+        └── app/
+            └── docker-compose.yml
+            └── app.env
+            └── migrations/
+                └── 001-init.sql
+        ```
 
 ### Required Files
 
-#### `.doco-cd.yaml` or `.doco-cd.yml`
-**Required** - The main deployment configuration file.
+#### `.doco-cd.y(a)ml`
+**Required** - The main [deployment configuration](Deploy-Settings.md) file.
 
-- **Format**: YAML
-- **Layout version**: Must include top-level `layout: doco.v1`
-- **Purpose**: Contains deployment specifications (compose files, profiles, replacements, pre/post scripts, etc.)
+- **Layout version**: Each deployment configuration must include `#!yaml layout: doco.v1` to indicate it follows the doco.v1 artifact layout specification.
 - **Example**:
   ```yaml
   layout: doco.v1
-  deployments:
-    - name: production
-      compose_files:
-        - docker-compose.yml
-      profiles:
-        - app
-        - db
+  name: production
+  compose_files:
+    - docker-compose.yml
+  profiles:
+    - production
   ```
 
-For detailed configuration options, see the [Deploy Settings](Deploy-Settings.md) documentation.
+### Example: Creating a doco.v1 OCI Artifact
 
-### Optional Files
-
-Any additional files can be included and will be extracted to the deployment directory:
-
-- `docker-compose.yml` - Docker Compose configuration
-- `.env` files - Environment files for compose variable interpolation
-- Scripts for pre/post-deployment hooks
-- Documentation or other supporting files
-
-### Example: Creating a doco.v1 Artifact
-
-Here's a complete example of creating and pushing a doco.v1 artifact:
+Here's a complete example of creating and pushing a doco.v1 OCI artifact:
 
 === "Step 1: Create the artifact directory"
     ```sh
@@ -104,18 +110,13 @@ Here's a complete example of creating and pushing a doco.v1 artifact:
     # Create deployment configuration
     cat > .doco-cd.yaml << 'EOF'
     layout: doco.v1
-    deployments:
-      - name: web-app
-        compose_files:
-          - docker-compose.yml
-        profiles:
-          - app
-          - nginx
+    name: web-app
+    compose_files:
+      - docker-compose.yml
     EOF
     
     # Create docker-compose.yml
     cat > docker-compose.yml << 'EOF'
-    version: '3.8'
     services:
       app:
         image: myapp:latest
@@ -124,108 +125,105 @@ Here's a complete example of creating and pushing a doco.v1 artifact:
     EOF
     ```
 
-=== "Step 2: Create the OCI artifact (using Docker)"
-    ```sh
-    # Create a TAR archive of the artifact
-    tar -czf artifact.tar.gz -C artifact .
-    
-    # Create a temporary Dockerfile
-    cat > Dockerfile << 'EOF'
-    FROM scratch
-    ADD artifact.tar.gz /
-    EOF
-    
-    # Build and push the artifact
-    docker build -t ghcr.io/myorg/myapp-config:main .
-    docker push ghcr.io/myorg/myapp-config:main
-    ```
+=== "Step 2: Create the OCI artifact"
 
-=== "Step 3: Create the OCI artifact (using doco-cd tool)"
-    If you create a doco-cd tool/script:
-    ```sh
-    # Using skopeo or similar tools
-    skopeo copy dir://artifact oci:oras-artifact:latest
-    ```
+    === "Using Docker CLI"
+        ```sh
+        # Create a minimal Dockerfile inside the artifact directory
+        cat > artifact/Dockerfile << 'EOF'
+        FROM scratch
+        COPY . /
+        EOF
+        
+        # Build and push the artifact
+        docker build -t ghcr.io/myorg/myapp-config:main artifact/
+        docker push ghcr.io/myorg/myapp-config:main
+        ```
 
-### Validation Rules
+    === "Using OCI tools"
+        We use [skopeo](https://github.com/containers/skopeo) to copy the directory directly to an OCI registry without needing to create a Docker image:
 
-The doco.v1 layout is validated when the artifact is pulled. Validation checks:
-
-1. ✅ At least one of `.doco-cd.yaml` or `.doco-cd.yml` exists
-2. ✅ Artifact layout version is `doco.v1` (from top-level `layout` in `.doco-cd.yaml/.yml`)
-3. ✅ No path traversal attempts in extracted files
-4. ✅ All files are properly extracted from TAR layers
-
-If validation fails, the deployment is rejected with an error.
+        ```sh
+        # Using skopeo or similar tools
+        skopeo copy dir://artifact oci:oras-artifact:latest
+        ```
 
 ---
 
 ## Polling with OCI
 
-Use polling to periodically check for new versions of OCI artifacts.
+Use [Polling](Core-Concepts.md#polling) to periodically check for new versions of OCI artifacts.
 
 ### Configuration
 
-Add an OCI polling configuration to `POLL_CONFIG`:
+Add an OCI [polling configuration](Poll-Settings.md) to `POLL_CONFIG`:
 
 ```yaml
 - source: oci
-  artifact: ghcr.io/myorg/myapp-config:latest
+  artifact: ghcr.io/myorg/myapp-config:main
   layout: doco.v1
-  reference: main           # git-like reference for tagging
-  interval: 300             # poll every 5 minutes
-  deployments:
+  interval: 300
+  deployments:  # (optional) override deployments defined in artifact
     - name: production
       compose_files:
         - docker-compose.yml
+      profiles:
+        - production
 ```
 
 ### Parameters
 
-| Parameter | Required | Default | Description |
-|-----------|----------|---------|-------------|
-| `source` | ✅ | - | Must be `oci` |
-| `artifact` | ✅ | - | Full OCI artifact reference (e.g., `ghcr.io/myorg/app:main`) |
-| `layout` | ❌ | `doco.v1` | OCI artifact layout version (currently only `doco.v1` supported) |
-| `reference` | ✅ | - | Reference tag for correlation (e.g., `main`, `production`) |
-| `interval` | ❌ | `180` | Poll interval in seconds (minimum: 10) |
-| `deployments` | ✅ | - | Array of deployment configurations |
+| Parameter     | Default   | Description                                                                                                                                       |
+|---------------|-----------|---------------------------------------------------------------------------------------------------------------------------------------------------|
+| `source`      |           | (required) Must be `oci`.                                                                                                                         |
+| `artifact`    |           | (required) Full OCI artifact reference including the tag to pull (e.g., `ghcr.io/myorg/app:main`)                                                 |
+| `layout`      | `doco.v1` | OCI artifact layout version (currently only `doco.v1` supported)                                                                                  |
+| `interval`    | `180`     | Poll interval in seconds (minimum: 10)                                                                                                            |
+| `deployments` |           | (optional) Array of [inline deployment configurations](Poll-Settings.md#inline-deploy-configs). When provided, overrides configs in the artifact. |
 
 ### Example: Full Polling Configuration
 
-```yaml
-POLL_CONFIG: |
-  - source: oci
-    artifact: ghcr.io/myorg/config:latest
-    layout: doco.v1
-    reference: production
-    interval: 300
-    deployments:
-      - name: web-production
-        compose_files:
-          - docker-compose.yml
-        profiles:
-          - webapp
-          - redis
+=== "Deployments defined in the artifact"
+    ```yaml title="poll-config.yaml"
+    - source: oci
+      layout: doco.v1
+      artifact: ghcr.io/myorg/config:production
+      interval: 300
 
-  - source: oci
-    artifact: ghcr.io/myorg/config:staging
-    layout: doco.v1
-    reference: staging
-    interval: 180
-    deployments:
-      - name: web-staging
-        compose_files:
-          - docker-compose.yml
-        profiles:
-          - webapp
-```
+    - source: oci
+      layout: doco.v1
+      artifact: ghcr.io/myorg/config:staging
+      interval: 180
+    ```
+
+=== "Overriding deployments with inline configuration"
+    ```yaml title="poll-config.yaml"
+    - source: oci
+      layout: doco.v1
+      artifact: ghcr.io/myorg/config:production
+      interval: 300
+      deployments:
+        - name: web-production
+          compose_files:
+            - docker-compose.yml
+          profiles:
+            - production
+  
+    - source: oci
+      layout: doco.v1
+      artifact: ghcr.io/myorg/config:staging
+      interval: 180
+      deployments:
+        - name: web-staging
+          compose_files:
+            - docker-compose.yml
+    ```
 
 ---
 
 ## Webhooks with OCI
 
-Use OCI webhooks to trigger immediate deployments when artifacts are pushed.
+Use OCI webhooks to trigger immediate deployments when artifacts are pushed/available.
 
 ### OCI Webhook Payload Schema
 
@@ -233,30 +231,29 @@ The OCI webhook payload follows this JSON schema:
 
 ```json
 {
-  "ref": "latest",
-  "digest": "sha256:abcdef1234567890...",
-  "repository": "myorg/myapp-config",
+  "source": "oci",
+  "digest": "sha256:abcdef1234567890...", // (1)!
   "artifact": "ghcr.io/myorg/myapp-config:latest"
 }
 ```
 
+1. The complete OCI digest of the artifact, including the algorithm (e.g., `sha256:...`). This allows doco-cd to verify the exact artifact version that triggered the webhook.
+
 ### Payload Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `ref` | string | Tag or reference of the artifact (e.g., `latest`, `main`, `v1.0.0`) |
-| `digest` | string | Complete OCI digest including algorithm (e.g., `sha256:abc123...`) |
-| `repository` | string | Repository name without registry host (e.g., `myorg/myapp-config`) |
+| Field      | Type   | Description                                                                            |
+|------------|--------|----------------------------------------------------------------------------------------|
+| `source`   | string | Payload discriminator; must be `oci`                                                   |
+| `digest`   | string | Complete OCI digest including algorithm (e.g., `sha256:abc123...`)                     |
 | `artifact` | string | Full artifact reference including registry (e.g., `ghcr.io/myorg/myapp-config:latest`) |
 
-### Example Payloads
+#### Example Payloads
 
 === "GitHub Container Registry Webhook"
     ```json
     {
-      "ref": "main",
+      "source": "oci",
       "digest": "sha256:7d6c7f8e9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6",
-      "repository": "kimdre/doco-cd",
       "artifact": "ghcr.io/kimdre/doco-cd:main"
     }
     ```
@@ -264,65 +261,11 @@ The OCI webhook payload follows this JSON schema:
 === "Custom OCI Registry Webhook"
     ```json
     {
-      "ref": "v1.2.3",
+      "source": "oci",
       "digest": "sha256:abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567abc890def",
-      "repository": "myorg/config",
       "artifact": "registry.example.com/myorg/config:v1.2.3"
     }
     ```
-
-### Setting Up OCI Webhooks
-
-Most OCI registries support webhooks. Configuration varies by registry:
-
-=== "GitHub Container Registry"
-    Currently, GCR doesn't provide native webhook support. Use GitHub Actions to send webhooks:
-    
-    ```yaml
-    name: Notify Doco-CD
-    on:
-      push:
-        tags:
-          - 'v*'
-    
-    jobs:
-      notify:
-        runs-on: ubuntu-latest
-        steps:
-          - name: Send webhook
-            env:
-              WEBHOOK_URL: ${{ secrets.DOCO_WEBHOOK_URL }}
-              WEBHOOK_SECRET: ${{ secrets.DOCO_WEBHOOK_SECRET }}
-            run: |
-              DIGEST=$(echo -n "artifact-digest" | sha256sum | cut -d' ' -f1)
-              curl -X POST "$WEBHOOK_URL" \
-                -H "X-Doco-OCI-Signature-256: sha256=$(echo -n '{\"ref\":\"${{ github.ref_name }}\",\"digest\":\"sha256:'$DIGEST'\",\"repository\":\"org/repo\",\"artifact\":\"ghcr.io/org/repo:${{ github.ref_name }}\"}' | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" -hex | cut -d' ' -f2)" \
-                -H "Content-Type: application/json" \
-                -d '{
-                  "ref": "${{ github.ref_name }}",
-                  "digest": "sha256:'$DIGEST'",
-                  "repository": "org/repo",
-                  "artifact": "ghcr.io/org/repo:${{ github.ref_name }}"
-                }'
-    ```
-
-=== "Docker Hub"
-    Docker Hub supports native webhooks:
-    
-    1. Go to your repository settings
-    2. Click "Webhooks"
-    3. Add a new webhook with:
-       - **Webhook URL**: `https://your-doco-server/v1/webhook`
-       - Configure the payload to match the doco.v1 OCI webhook schema
-
-=== "Harbor / Private Registry"
-    Most private registries support webhooks in their admin panel. Configure them to POST to:
-    
-    ```
-    https://your-doco-server/v1/webhook
-    ```
-    
-    Transform the payload to match the doco.v1 schema if needed.
 
 ### Webhook Security
 
@@ -339,20 +282,193 @@ X-Doco-OCI-Signature-256: sha256:abc123def456...
 
 The signature is calculated using the raw request body and your `WEBHOOK_SECRET`:
 
-```python
-import hmac
-import hashlib
+=== "Shell"
+    ```sh
+    # Calculate HMAC signature of the payload using OpenSSL
+    SIGNATURE=$(echo -n "$PAYLOAD" | \
+    openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" -hex | cut -d' ' -f2)
+    ```
 
-payload = request.get_data()
-secret = os.getenv('WEBHOOK_SECRET')
-expected_signature = hmac.new(
-    secret.encode(),
-    payload,
-    hashlib.sha256
-).hexdigest()
-```
+=== "Python"
 
-For more information, see [Setup Webhook](Setup-Webhook.md).
+    ```python
+    import hmac
+    import hashlib
+    
+    payload = request.get_data() # (1)!
+    secret = os.getenv('WEBHOOK_SECRET')
+    expected_signature = hmac.new(
+        secret.encode(),
+        payload,
+        hashlib.sha256
+    ).hexdigest()
+    ```
+
+    1. Use the raw request body bytes for signature calculation to ensure it matches what doco-cd receives.
+
+For more information, see [Webhook Endpoint](Setup-Webhook.md).
+
+### Example for sending Webhooks
+
+#### GitHub
+
+=== "Using `workflow_run` event trigger"
+    Use GitHub Actions with two workflows:
+    
+    === "Workflow 1: Build and push artifact"
+     
+        ```yaml title=".github/workflows/build-oci-artifact.yml"
+        name: Build OCI Artifact
+        on:
+          push:
+            tags:
+              - 'v*'
+        
+        jobs:
+          build:
+            runs-on: ubuntu-latest
+            permissions:
+              contents: read
+              packages: write
+            outputs:
+              digest: ${{ steps.build.outputs.digest }}
+              artifact: ghcr.io/${{ github.repository }}-config:${{ github.ref_name }}
+            steps:
+              - name: Checkout
+                uses: actions/checkout@v4
+              
+              - name: Set up Docker Buildx
+                uses: docker/setup-buildx-action@v3
+              
+              - name: Login to GHCR
+                uses: docker/login-action@v3
+                with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+              
+              - name: Build and push to GHCR
+                uses: docker/build-push-action@v5
+                id: build
+                with:
+                  context: .
+                  push: true
+                  tags: ghcr.io/${{ github.repository }}-config:${{ github.ref_name }}
+        ```
+    
+    === "Workflow 2: Notify doco-cd"
+    
+        ```yaml title=".github/workflows/notify-doco-cd.yml"
+        name: Notify Doco-CD
+        on:
+          workflow_run:
+            workflows:
+              - Build OCI Artifact
+            types:
+              - completed
+        
+        jobs:
+          notify:
+            if: ${{ github.event.workflow_run.conclusion == 'success' }}
+            runs-on: ubuntu-latest
+            steps:
+              - name: Download artifact metadata
+                uses: actions/github-script@v7
+                id: metadata
+                with:
+                  script: |
+                    const run = context.payload.workflow_run;
+                    const tag = run.head_branch.replace('refs/tags/', '');
+                    console.log(`Tag: ${tag}`);
+                    return {
+                      tag: tag,
+                      repository: context.repo.repo
+                    }
+              
+              - name: Send webhook to doco-cd
+                env:
+                  WEBHOOK_URL: ${{ secrets.DOCO_WEBHOOK_URL }}
+                  WEBHOOK_SECRET: ${{ secrets.DOCO_WEBHOOK_SECRET }}
+                  TAG: ${{ github.event.workflow_run.head_branch }}
+                  REPO: ${{ github.event.workflow_run.repository.full_name }}
+                run: |
+                  # Note: In production, you'd want to retrieve the actual digest from the build job
+                  # For now, you can use a placeholder and query the registry for the latest digest
+                  
+                  # Option 1: Query GHCR for the digest of the pushed image
+                  DIGEST=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                    "https://ghcr.io/v2/$REPO-config/manifests/$TAG" \
+                    -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+                    | jq -r '.config.digest')
+                  
+                  # Create the JSON payload
+                  PAYLOAD='{
+                    "source": "oci",
+                    "digest": "'$DIGEST'",
+                    "artifact": "ghcr.io/'$REPO'-config:'$TAG'"
+                  }'
+                  
+                  # Calculate HMAC signature of the payload
+                  SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" -hex | cut -d' ' -f2)
+                  
+                  # Send webhook with signature
+                  curl -X POST "$WEBHOOK_URL" \
+                    -H "X-Doco-OCI-Signature-256: sha256=$SIGNATURE" \
+                    -H "Content-Type: application/json" \
+                    -d "$PAYLOAD"
+        ```
+    
+=== "Pass digest between workflows using job outputs"
+    
+    For a cleaner approach, you can store the digest as an artifact from the build workflow and retrieve it in the notify workflow:
+    
+    === "Save the digest"
+        ```yaml title=".github/workflows/build-oci-artifact.yml"
+        ...
+
+        - name: Save build metadata
+          run: |
+            echo "${{ steps.build.outputs.digest }}" > digest.txt
+            echo "ghcr.io/${{ github.repository }}-config:${{ github.ref_name }}" > artifact.txt
+        
+        - name: Upload metadata
+          uses: actions/upload-artifact@v4
+          with:
+            name: build-metadata
+            path: |
+              digest.txt
+              artifact.txt
+        ```
+    
+    === "Download and use it"
+        ```yaml title=".github/workflows/notify-doco-cd.yml"
+        - name: Download build metadata
+          uses: actions/download-artifact@v4
+          with:
+            name: build-metadata
+            path: metadata
+        
+        - name: Read metadata and notify
+          env:
+            WEBHOOK_URL: ${{ secrets.DOCO_WEBHOOK_URL }}
+            WEBHOOK_SECRET: ${{ secrets.DOCO_WEBHOOK_SECRET }}
+          run: |
+            DIGEST=$(cat metadata/digest.txt)
+            ARTIFACT=$(cat metadata/artifact.txt)
+            
+            PAYLOAD='{
+              "source": "oci",
+              "digest": "'$DIGEST'",
+              "artifact": "'$ARTIFACT'"
+            }'
+            
+            SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" -hex | cut -d' ' -f2)
+            
+            curl -X POST "$WEBHOOK_URL" \
+              -H "X-Doco-OCI-Signature-256: sha256=$SIGNATURE" \
+              -H "Content-Type: application/json" \
+              -d "$PAYLOAD"
+        ```
 
 ---
 
@@ -515,7 +631,7 @@ To verify your trust policy is configured correctly:
 
 ## Complete Examples
 
-### Example 1: Poll GitHub Container Registry
+### Poll GitHub Container Registry
 
 Configuration for polling deployment configs from GitHub Container Registry:
 
@@ -524,39 +640,14 @@ POLL_CONFIG: |
   - source: oci
     artifact: ghcr.io/kimdre/doco-cd-config:main
     layout: doco.v1
-    reference: main
     interval: 300
     deployments:
       - name: doco-production
         compose_files:
           - docker-compose.yml
-        profiles:
-          - app
-          - database
 ```
 
-### Example 2: Webhook from Docker Hub
-
-Accept webhooks from Docker Hub and deploy immediately:
-
-```bash
-docker run \
-  -e WEBHOOK_SECRET="your-secret" \
-  -e POLL_CONFIG='
-    - source: oci
-      artifact: docker.io/myusername/config:latest
-      layout: doco.v1
-      reference: latest
-      interval: 0          # 0 = webhook only, no polling
-      deployments:
-        - name: web-app
-          compose_file: docker-compose.yml
-  ' \
-  -p 80:80 \
-  ghcr.io/kimdre/doco-cd:latest
-```
-
-### Example 3: Signature Verification with GitHub Actions
+### Signature Verification with GitHub Actions
 
 Build and sign artifacts using Cosign, then verify with trust policy:
 
@@ -577,7 +668,6 @@ POLL_CONFIG: |
   - source: oci
     artifact: ghcr.io/myorg/config:main
     layout: doco.v1
-    reference: main
     interval: 300
     deployments:
       - name: production
@@ -599,7 +689,6 @@ docker run \
     - source: oci
       artifact: registry.example.com/internal/config:latest
       layout: doco.v1
-      reference: latest
       interval: 300
       deployments:
         - name: internal-app
@@ -656,7 +745,3 @@ docker run \
 - [Deploy Settings](Deploy-Settings.md) - Deployment configuration options
 - [Poll Settings](Poll-Settings.md) - Polling configuration details
 - [App Settings](App-Settings.md#oci-configuration) - OCI environment variables
-
-
-
-

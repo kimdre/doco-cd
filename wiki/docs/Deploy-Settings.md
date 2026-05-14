@@ -8,7 +8,6 @@ tags:
 
 Deployments in `Doco-CD` run as concurrent tasks. 
 Each deployment is defined by a deployment configuration file (e.g. `.doco-cd.yml`) that controls how it runs. 
-Enable `auto_discovery` to generate multiple deployments from a single config by scanning subdirectories for Docker Compose files. It can be configured either as a boolean shorthand (`true`/`false`) or as a nested object.
 
 Concurrent tasks are grouped by repository and Git reference (e.g. branch or tag). 
 Deployments from the same repository but different references run sequentially, while those with the same repository and reference run in parallel. 

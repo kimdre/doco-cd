@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/creasty/defaults"
+	"github.com/google/go-containerregistry/pkg/name"
 	"gopkg.in/validator.v2"
 
 	"github.com/kimdre/doco-cd/internal/config"
@@ -60,6 +61,10 @@ func (c *Config) Validate() error {
 		if c.CloneUrl == "" {
 			return fmt.Errorf("%w: url", deploy.ErrKeyNotFound)
 		}
+
+		if c.Reference == "" {
+			return fmt.Errorf("%w: reference", deploy.ErrKeyNotFound)
+		}
 	case config.SourceTypeOCI:
 		if strings.TrimSpace(c.Artifact) == "" {
 			return fmt.Errorf("%w: artifact", deploy.ErrKeyNotFound)
@@ -73,10 +78,11 @@ func (c *Config) Validate() error {
 		if c.Layout != config.OciArtifactLayoutV1 {
 			return fmt.Errorf("%w: unsupported oci layout %q", ErrInvalidConfig, c.Layout)
 		}
-	}
 
-	if c.Reference == "" {
-		return fmt.Errorf("%w: reference", deploy.ErrKeyNotFound)
+		// Always derive reference from the artifact tag so users don't need to specify it separately.
+		if ref, err := name.ParseReference(strings.TrimSpace(c.Artifact), name.WeakValidation); err == nil {
+			c.Reference = ref.Identifier()
+		}
 	}
 
 	if c.Interval < MinPollInterval && c.Interval != 0 {

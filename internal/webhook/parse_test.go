@@ -101,3 +101,37 @@ func TestParse(t *testing.T) {
 		})
 	}
 }
+
+func TestParseOCIRequiresSourceField(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`{"digest":"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","artifact":"ghcr.io/example/platform-config:main"}`)
+	r := httptest.NewRequest(http.MethodPost, webhookPath, bytes.NewReader(payload))
+	r.Header.Set(ScmProviderSecurityHeaders[OCIRegistry], "sha256="+GenerateHMAC(payload, testSecret))
+
+	_, _, err := Parse(r, testSecret)
+	if !errors.Is(err, ErrParsingPayload) {
+		t.Fatalf("expected %v, got %v", ErrParsingPayload, err)
+	}
+}
+
+func TestParseOCIDerivesRepositoryAndRefFromArtifact(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`{"source":"oci","digest":"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","artifact":"ghcr.io/example/platform-config:main"}`)
+	r := httptest.NewRequest(http.MethodPost, webhookPath, bytes.NewReader(payload))
+	r.Header.Set(ScmProviderSecurityHeaders[OCIRegistry], "sha256="+GenerateHMAC(payload, testSecret))
+
+	_, p, err := Parse(r, testSecret)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if p.Ref != "main" {
+		t.Fatalf("expected ref main, got %q", p.Ref)
+	}
+
+	if p.FullName != "example/platform-config" {
+		t.Fatalf("expected full name example/platform-config, got %q", p.FullName)
+	}
+}
