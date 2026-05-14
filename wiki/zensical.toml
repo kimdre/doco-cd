@@ -38,9 +38,10 @@ nav = [
     { "Swarm Mode" = "Advanced/Swarm-Mode.md" },
     { "Private Container Registries" = "Advanced/Private-Container-Registries.md" },
     { "OCI Artifacts" = [
-      { "Artifact Usage" = "OCI-Usage.md" },
-      { "Trust Policy" = "Advanced/OCI-Trust-Policy.md" },
-      { "Webhook Payload" = "Endpoints/OCI-Webhook-Payload.md" },
+      { "Artifact Usage" = "Advanced/OCI/Artifact-Usage.md" },
+      { "Polling" = "Advanced/OCI/Polling.md" },
+      { "Trust Policy" = "Advanced/OCI/Trust-Policy.md" },
+      { "Webhooks" = "Advanced/OCI/Webhooks.md" },
     ] },
     { Encryption = "Advanced/Encryption.md" },
     { "External Secrets" = [
