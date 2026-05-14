@@ -55,6 +55,18 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 	pollConfig poll.Config,
 	payload webhook.ParsedPayload,
 ) error {
+	git.ConfigureAuthResolver(
+		appConfig.GitAuthDomains,
+		appConfig.SSHPrivateKey,
+		appConfig.SSHPrivateKeyPassphrase,
+		appConfig.GitAccessToken,
+		git.GitHubAppConfig{
+			ID:             appConfig.GitHubAppID,
+			PrivateKey:     appConfig.GitHubAppPrivateKey,
+			InstallationID: appConfig.GitHubAppInstallationID,
+		},
+	)
+
 	repoName := git.GetRepoName(cloneURL)
 
 	jobLog = jobLog.With(

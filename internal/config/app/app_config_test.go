@@ -71,6 +71,42 @@ func TestGetConfig(t *testing.T) {
 			},
 			expectedErr: config.ErrBothSecretsSet,
 		},
+		{
+			name: "valid config with scoped git auth domains",
+			envVars: map[string]string{
+				"LOG_LEVEL":        "info",
+				"HTTP_PORT":        "8080",
+				"WEBHOOK_SECRET":   "secret",
+				"GIT_AUTH_DOMAINS": "- domains:\n  - github.com\n  git_access_token: gh-token\n- domains:\n  - '*.example.com'\n  ssh_private_key: test-key\n  ssh_private_key_passphrase: pass",
+			},
+			dockerSecrets: nil,
+			expectedErr:   nil,
+		},
+		{
+			name: "valid config with scoped git auth domains from file",
+			envVars: map[string]string{
+				"LOG_LEVEL":      "info",
+				"HTTP_PORT":      "8080",
+				"WEBHOOK_SECRET": "secret",
+			},
+			dockerSecrets: map[string]string{
+				"GIT_AUTH_DOMAINS": "- domains:\n  - gitlab.com\n  git_access_token: gl-token",
+			},
+			expectedErr: nil,
+		},
+		{
+			name: "config with duplicate scoped git auth domains",
+			envVars: map[string]string{
+				"LOG_LEVEL":        "info",
+				"HTTP_PORT":        "8080",
+				"WEBHOOK_SECRET":   "secret",
+				"GIT_AUTH_DOMAINS": "- domains:\n  - github.com\n  git_access_token: gh-token",
+			},
+			dockerSecrets: map[string]string{
+				"GIT_AUTH_DOMAINS": "- domains:\n  - gitlab.com\n  git_access_token: gl-token",
+			},
+			expectedErr: config.ErrBothSecretsSet,
+		},
 	}
 
 	for _, tt := range tests {
@@ -122,12 +158,12 @@ func TestGetConfig(t *testing.T) {
 
 			if tt.dockerSecrets != nil {
 				// Compare the config values with the expected values
-				if cfg.WebhookSecret != tt.dockerSecrets["WEBHOOK_SECRET"] {
-					t.Errorf("expected WebhookSecret to be '%s', got '%s'", tt.dockerSecrets["WEBHOOK_SECRET"], cfg.WebhookSecret)
+				if expectedWebhookSecret, ok := tt.dockerSecrets["WEBHOOK_SECRET"]; ok && cfg.WebhookSecret != expectedWebhookSecret {
+					t.Errorf("expected WebhookSecret to be '%s', got '%s'", expectedWebhookSecret, cfg.WebhookSecret)
 				}
 
-				if cfg.GitAccessToken != tt.dockerSecrets["GIT_ACCESS_TOKEN"] {
-					t.Errorf("expected GitAccessToken to be '%s', got '%s'", tt.dockerSecrets["GIT_ACCESS_TOKEN"], cfg.GitAccessToken)
+				if expectedGitAccessToken, ok := tt.dockerSecrets["GIT_ACCESS_TOKEN"]; ok && cfg.GitAccessToken != expectedGitAccessToken {
+					t.Errorf("expected GitAccessToken to be '%s', got '%s'", expectedGitAccessToken, cfg.GitAccessToken)
 				}
 
 				httpPort, err := strconv.ParseUint(tt.envVars["HTTP_PORT"], 10, 16)
@@ -139,6 +175,85 @@ func TestGetConfig(t *testing.T) {
 					t.Errorf("expected HttpPort to be '%d', got '%d'", httpPort, cfg.HttpPort)
 				}
 			}
+
+			if _, ok := tt.envVars["GIT_AUTH_DOMAINS"]; ok {
+				if len(cfg.GitAuthDomains) != 2 {
+					t.Fatalf("expected 2 scoped git auth entries, got %d", len(cfg.GitAuthDomains))
+				}
+
+				if cfg.GitAuthDomains[0].GitAccessToken != "gh-token" {
+					t.Fatalf("expected first scoped token to be 'gh-token', got '%s'", cfg.GitAuthDomains[0].GitAccessToken)
+				}
+
+				if len(cfg.GitAuthDomains[1].Domains) != 1 || cfg.GitAuthDomains[1].Domains[0] != "*.example.com" {
+					t.Fatalf("expected wildcard domain '*.example.com', got '%v'", cfg.GitAuthDomains[1].Domains)
+				}
+			}
+
+			if tt.dockerSecrets != nil {
+				if _, ok := tt.dockerSecrets["GIT_AUTH_DOMAINS"]; ok {
+					if len(cfg.GitAuthDomains) != 1 {
+						t.Fatalf("expected 1 scoped git auth entry from file, got %d", len(cfg.GitAuthDomains))
+					}
+
+					if cfg.GitAuthDomains[0].GitAccessToken != "gl-token" {
+						t.Fatalf("expected scoped token from file to be 'gl-token', got '%s'", cfg.GitAuthDomains[0].GitAccessToken)
+					}
+				}
+			}
 		})
+	}
+}
+
+func TestGetConfig_GlobalGitHubAppValidation(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("GIT_ACCESS_TOKEN", "")
+	t.Setenv("GIT_ACCESS_TOKEN_FILE", "")
+	t.Setenv("GITHUB_APP_ID", "12345")
+	t.Setenv("GITHUB_APP_PRIVATE_KEY", "test-private-key")
+
+	if _, err := GetConfig(); err != nil {
+		t.Fatalf("expected global GitHub App config to be accepted, got %v", err)
+	}
+}
+
+func TestGetConfig_GlobalGitHubAppRejectsTokenMix(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("GIT_ACCESS_TOKEN_FILE", "")
+	t.Setenv("GITHUB_APP_ID", "12345")
+	t.Setenv("GITHUB_APP_PRIVATE_KEY", "test-private-key")
+	t.Setenv("GIT_ACCESS_TOKEN", "token")
+
+	if _, err := GetConfig(); err == nil {
+		t.Fatal("expected an error when combining GIT_ACCESS_TOKEN with global GitHub App credentials")
+	}
+}
+
+func TestGetConfig_ScopedGitHubAppValidation(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("GIT_ACCESS_TOKEN", "")
+	t.Setenv("GIT_ACCESS_TOKEN_FILE", "")
+	t.Setenv("GIT_AUTH_DOMAINS", "- domains:\n  - github.com\n  github_app_id: '12345'\n  github_app_private_key: test-private-key")
+
+	if _, err := GetConfig(); err != nil {
+		t.Fatalf("expected scoped GitHub App config to be accepted, got %v", err)
+	}
+}
+
+func TestGetConfig_ScopedGitHubAppRejectsTokenMix(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("GIT_ACCESS_TOKEN_FILE", "")
+	t.Setenv("GIT_AUTH_DOMAINS", "- domains:\n  - github.com\n  git_access_token: gh-token\n  github_app_id: '12345'\n  github_app_private_key: test-private-key")
+
+	if _, err := GetConfig(); err == nil {
+		t.Fatal("expected an error when combining scoped git_access_token with scoped github app credentials")
 	}
 }

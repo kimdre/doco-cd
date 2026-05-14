@@ -30,6 +30,8 @@ nav = [
   { Configuration = [
     { "App Settings" = "App-Settings.md" },
     { "Deploy Settings" = "Deploy-Settings.md" },
+    { "Docker Settings" = "Docker-Settings.md" },
+    { "Git Settings" = "Git-Settings.md" },
     { "Poll Settings" = "Poll-Settings.md" },
   ] },
   { Advanced = [
@@ -48,12 +50,13 @@ nav = [
       { Webhook = "External-Secrets/Webhook.md" }] },
     { Notifications = "Advanced/Notifications.md" },
     { "Pre- / Post-Deployment Scripts" = "Advanced/Pre-Post-Deployment-Scripts.md" },
-    { "Scheduling / Cron Jobs" = "Advanced/Scheduled-Jobs.md" },
+    { "Job Scheduling / Cron Jobs" = "Advanced/Job-Scheduling.md" },
     { "Tips & Tricks" = "Advanced/Tips-and-Tricks.md" },
   ] },
   { Reference = [
     { "Core Concepts" = "Core-Concepts.md" },
     { Endpoints = [
+      { "Healthcheck" = "Endpoints/Healthcheck.md" },
       { "Prometheus Metrics / Monitoring" = "Endpoints/Metrics.md" },
       { "REST API" = "Endpoints/REST-API.md" },
       { "Webhook Listener" = "Endpoints/Webhook-Listener.md" },

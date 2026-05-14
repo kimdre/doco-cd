@@ -7,6 +7,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/poll"
+	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/notification"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -34,6 +35,14 @@ type Config struct {
 	WebhookSecretFile           string                 `env:"WEBHOOK_SECRET_FILE,file"`                                            // WebhookSecretFile is the file containing the WebhookSecret
 	GitAccessToken              string                 `env:"GIT_ACCESS_TOKEN"`                                                    // GitAccessToken is the access token used to authenticate with the Git server (e.g. GitHub) for private repositories
 	GitAccessTokenFile          string                 `env:"GIT_ACCESS_TOKEN_FILE,file"`                                          // GitAccessTokenFile is the file containing the GitAccessToken
+	GitHubAppID                 string                 `env:"GITHUB_APP_ID"`                                                       // GitHubAppID is the GitHub App identifier used to mint installation access tokens
+	GitHubAppIDFile             string                 `env:"GITHUB_APP_ID_FILE,file"`                                             // GitHubAppIDFile is the file containing the GitHub App identifier
+	GitHubAppPrivateKey         string                 `env:"GITHUB_APP_PRIVATE_KEY"`                                              // GitHubAppPrivateKey is the PEM private key for the GitHub App
+	GitHubAppPrivateKeyFile     string                 `env:"GITHUB_APP_PRIVATE_KEY_FILE,file"`                                    // GitHubAppPrivateKeyFile is the file containing the GitHub App private key
+	GitHubAppInstallationID     int64                  `env:"GITHUB_APP_INSTALLATION_ID"`                                          // GitHubAppInstallationID optionally pins a specific installation id (0 means auto-detect via owner/repo)
+	GitAuthDomainsYAML          string                 `env:"GIT_AUTH_DOMAINS"`                                                    // GitAuthDomainsYAML is the YAML configuration for domain-scoped Git credentials
+	GitAuthDomainsFile          string                 `env:"GIT_AUTH_DOMAINS_FILE,file"`                                          // GitAuthDomainsFile is the file containing the YAML configuration for domain-scoped Git credentials
+	GitAuthDomains              []git.ScopedAuthConfig `yaml:"-"`                                                                  // GitAuthDomains holds parsed domain-scoped Git credentials
 	GitCloneDepth               int                    `env:"GIT_CLONE_DEPTH,notEmpty" envDefault:"0" validate:"min=0"`            // GitCloneDepth limits the number of commits to fetch. 0 means full clone (no depth limit). A positive value enables shallow clones.
 	GitCloneSubmodules          bool                   `env:"GIT_CLONE_SUBMODULES,notEmpty" envDefault:"true"`                     // GitCloneSubmodules controls whether git submodules are cloned
 	SSHPrivateKey               string                 `env:"SSH_PRIVATE_KEY"`                                                     // SSHPrivateKey is the SSH private key used for SSH authentication with Git repositories
@@ -68,6 +77,9 @@ func GetConfig() (*Config, error) {
 		{EnvName: "API_SECRET", EnvValue: &cfg.ApiSecret, FileValue: &cfg.ApiSecretFile, AllowUnset: true},
 		{EnvName: "APPRISE_NOTIFY_URLS", EnvValue: &cfg.AppriseNotifyUrls, FileValue: &cfg.AppriseNotifyUrlsFile, AllowUnset: true},
 		{EnvName: "GIT_ACCESS_TOKEN", EnvValue: &cfg.GitAccessToken, FileValue: &cfg.GitAccessTokenFile, AllowUnset: true},
+		{EnvName: "GITHUB_APP_ID", EnvValue: &cfg.GitHubAppID, FileValue: &cfg.GitHubAppIDFile, AllowUnset: true},
+		{EnvName: "GITHUB_APP_PRIVATE_KEY", EnvValue: &cfg.GitHubAppPrivateKey, FileValue: &cfg.GitHubAppPrivateKeyFile, AllowUnset: true},
+		{EnvName: "GIT_AUTH_DOMAINS", EnvValue: &cfg.GitAuthDomainsYAML, FileValue: &cfg.GitAuthDomainsFile, AllowUnset: true},
 		{EnvName: "SSH_PRIVATE_KEY", EnvValue: &cfg.SSHPrivateKey, FileValue: &cfg.SSHPrivateKeyFile, AllowUnset: true},
 		{EnvName: "SSH_PRIVATE_KEY_PASSPHRASE", EnvValue: &cfg.SSHPrivateKeyPassphrase, FileValue: &cfg.SSHPrivateKeyPassphraseFile, AllowUnset: true},
 		{EnvName: "WEBHOOK_SECRET", EnvValue: &cfg.WebhookSecret, FileValue: &cfg.WebhookSecretFile, AllowUnset: true},
@@ -81,6 +93,16 @@ func GetConfig() (*Config, error) {
 	err = cfg.parsePollConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse poll config: %w", err)
+	}
+
+	err = cfg.parseGitAuthDomains()
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse GIT_AUTH_DOMAINS: %w", err)
+	}
+
+	err = cfg.validateGitAuthConfig()
+	if err != nil {
+		return nil, err
 	}
 
 	for _, pollConfig := range cfg.PollConfig {
@@ -120,6 +142,58 @@ func GetConfig() (*Config, error) {
 	)
 
 	return &cfg, nil
+}
+
+// parseGitAuthDomains parses domain-scoped Git credentials from GIT_AUTH_DOMAINS (or *_FILE content).
+func (cfg *Config) parseGitAuthDomains() error {
+	if strings.TrimSpace(cfg.GitAuthDomainsYAML) == "" {
+		cfg.GitAuthDomains = []git.ScopedAuthConfig{}
+
+		return nil
+	}
+
+	if err := yaml.Unmarshal([]byte(cfg.GitAuthDomainsYAML), &cfg.GitAuthDomains); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (cfg *Config) validateGitAuthConfig() error {
+	cfg.GitHubAppID = strings.TrimSpace(cfg.GitHubAppID)
+	cfg.GitHubAppPrivateKey = strings.TrimSpace(cfg.GitHubAppPrivateKey)
+
+	globalToken := strings.TrimSpace(cfg.GitAccessToken)
+
+	hasCompleteGlobalApp := cfg.GitHubAppID != "" && cfg.GitHubAppPrivateKey != ""
+	if hasCompleteGlobalApp {
+		if globalToken != "" {
+			return errors.New("GIT_ACCESS_TOKEN cannot be combined with global GitHub App credentials")
+		}
+	} else {
+		// Incomplete global app credentials are ignored to keep startup resilient in mixed environments.
+		cfg.GitHubAppID = ""
+		cfg.GitHubAppPrivateKey = ""
+		cfg.GitHubAppInstallationID = 0
+	}
+
+	for i, entry := range cfg.GitAuthDomains {
+		hasToken := strings.TrimSpace(entry.GitAccessToken) != ""
+		hasSSH := strings.TrimSpace(entry.SSHPrivateKey) != ""
+		hasApp := strings.TrimSpace(entry.GitHubAppID) != "" || strings.TrimSpace(entry.GitHubAppPrivateKey) != ""
+
+		if hasApp {
+			if strings.TrimSpace(entry.GitHubAppID) == "" || strings.TrimSpace(entry.GitHubAppPrivateKey) == "" {
+				return fmt.Errorf("GIT_AUTH_DOMAINS[%d]: both github_app_id and github_app_private_key are required", i)
+			}
+
+			if hasToken || hasSSH {
+				return fmt.Errorf("GIT_AUTH_DOMAINS[%d]: github app credentials cannot be combined with git_access_token or ssh_private_key", i)
+			}
+		}
+	}
+
+	return nil
 }
 
 // parsePollConfig parses the PollConfig from either the PollConfigYAML string or the PollConfigFile.

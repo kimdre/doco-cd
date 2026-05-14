@@ -94,8 +94,32 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	cloneUrl := payload.CloneURL
-	if appConfig.SSHPrivateKey != "" {
-		cloneUrl = payload.SSHUrl
+
+	git.ConfigureAuthResolver(
+		appConfig.GitAuthDomains,
+		appConfig.SSHPrivateKey,
+		appConfig.SSHPrivateKeyPassphrase,
+		appConfig.GitAccessToken,
+		git.GitHubAppConfig{
+			ID:             appConfig.GitHubAppID,
+			PrivateKey:     appConfig.GitHubAppPrivateKey,
+			InstallationID: appConfig.GitHubAppInstallationID,
+		},
+	)
+
+	// Only attempt SSH clone when URL-specific credentials include an SSH private key.
+	resolvedSSH := git.ResolveAuthConfig(payload.SSHUrl, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken)
+	if payload.SSHUrl != "" && resolvedSSH.SSHPrivateKey != "" {
+		sshAuth, authErr := git.GetAuthMethod(payload.SSHUrl, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken)
+		if authErr != nil {
+			onError(w, jobLog.With(logger.ErrAttr(authErr)), "failed to resolve SSH auth method", authErr.Error(), http.StatusInternalServerError, metadata)
+
+			return
+		}
+
+		if sshAuth != nil {
+			cloneUrl = payload.SSHUrl
+		}
 	}
 
 	deployErr := handle(ctx, jobLog,

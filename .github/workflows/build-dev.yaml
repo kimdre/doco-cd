@@ -53,6 +53,7 @@ jobs:
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7
         with:
           context: .
+          platforms: linux/amd64
           build-args: |
             APP_VERSION=dev-build.${{ steps.vars.outputs.short_sha }}
           push: false
@@ -78,18 +79,9 @@ jobs:
         with:
           sarif_file: 'trivy-results.sarif'
 
-      - name: Build and push dev image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7
-        with:
-          context: .
-          platforms: linux/amd64
-          build-args: |
-            APP_VERSION=dev-build.${{ steps.vars.outputs.short_sha }}
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          annotations: ${{ steps.meta.outputs.annotations }}
-          provenance: false
-          sbom: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Push dev image
+        shell: bash
+        if: "${{ github.event_name != 'pull_request' }}"
+        run: |
+          set -ex
+          docker push ${{ steps.meta.outputs.tags }}

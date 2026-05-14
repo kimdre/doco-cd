@@ -311,3 +311,124 @@ func TestHandlerData_TriggerPollHandler(t *testing.T) {
 		})
 	}
 }
+
+func TestHandlerData_TriggerScheduledJobHandlerValidation(t *testing.T) {
+	t.Parallel()
+
+	appConfig, err := app.GetConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	h := handlerData{
+		appConfig: appConfig,
+		log:       logger.New(logger.LevelCritical),
+	}
+
+	tests := []struct {
+		name           string
+		method         string
+		setAPIKey      bool
+		expectedStatus int
+	}{
+		{
+			name:           "invalid method",
+			method:         http.MethodGet,
+			setAPIKey:      true,
+			expectedStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:           "missing api key",
+			method:         http.MethodPost,
+			setAPIKey:      false,
+			expectedStatus: http.StatusUnauthorized,
+		},
+	}
+
+	endpoint := path.Join(apiPath, "/job/{jobName}/run")
+	requestPath := path.Join(apiPath, "/job/example-job/run")
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req, err := http.NewRequest(tc.method, requestPath, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if tc.setAPIKey {
+				req.Header.Set(restAPI.KeyHeader, appConfig.ApiSecret)
+			}
+
+			rr := httptest.NewRecorder()
+			mux := http.NewServeMux()
+			mux.HandleFunc(endpoint, h.TriggerScheduledJobHandler)
+			mux.ServeHTTP(rr, req)
+
+			if rr.Code != tc.expectedStatus {
+				t.Fatalf("handler returned wrong status code: got %v want %v", rr.Code, tc.expectedStatus)
+			}
+		})
+	}
+}
+
+func TestHandlerData_GetScheduledJobsHandlerValidation(t *testing.T) {
+	t.Parallel()
+
+	appConfig, err := app.GetConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	h := handlerData{
+		appConfig: appConfig,
+		log:       logger.New(logger.LevelCritical),
+	}
+
+	tests := []struct {
+		name           string
+		method         string
+		setAPIKey      bool
+		expectedStatus int
+	}{
+		{
+			name:           "invalid method",
+			method:         http.MethodPost,
+			setAPIKey:      true,
+			expectedStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:           "missing api key",
+			method:         http.MethodGet,
+			setAPIKey:      false,
+			expectedStatus: http.StatusUnauthorized,
+		},
+	}
+
+	endpoint := path.Join(apiPath, "/jobs")
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req, err := http.NewRequest(tc.method, endpoint, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if tc.setAPIKey {
+				req.Header.Set(restAPI.KeyHeader, appConfig.ApiSecret)
+			}
+
+			rr := httptest.NewRecorder()
+			mux := http.NewServeMux()
+			mux.HandleFunc(endpoint, h.GetScheduledJobsHandler)
+			mux.ServeHTTP(rr, req)
+
+			if rr.Code != tc.expectedStatus {
+				t.Fatalf("handler returned wrong status code: got %v want %v", rr.Code, tc.expectedStatus)
+			}
+		})
+	}
+}

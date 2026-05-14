@@ -1,0 +1,19 @@
+# Example value for GIT_AUTH_DOMAINS
+- domains:
+    - github.com
+  github_app_id: "123456"
+  github_app_private_key: |
+    -----BEGIN RSA PRIVATE KEY-----
+    ...
+    -----END RSA PRIVATE KEY-----
+  # Optional: pin a known installation id. If omitted, doco-cd resolves it by owner/repo.
+  # github_app_installation_id: 987654321
+
+- domains:
+    - gitlab.com
+    - '*.corp.example.com'
+  ssh_private_key: |
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    ...
+    -----END OPENSSH PRIVATE KEY-----
+  ssh_private_key_passphrase: ""

@@ -14,6 +14,16 @@ func TestGetStartServicesForDeploy(t *testing.T) {
 			"api": {
 				Name: "api",
 			},
+			"scaled-down": {
+				Name:  "scaled-down",
+				Scale: new(0),
+			},
+			"disabled": {
+				Name: "disabled",
+				Labels: map[string]string{
+					docoCDJobLabelNames.JobEnabled: "false",
+				},
+			},
 			"web": {
 				Name: "web",
 				Labels: map[string]string{
@@ -21,12 +31,19 @@ func TestGetStartServicesForDeploy(t *testing.T) {
 					docoCDJobLabelNames.JobSchedule: "*/5 * * * *",
 				},
 			},
+			"custom": {
+				Name: "custom",
+				CustomLabels: map[string]string{
+					docoCDJobLabelNames.JobEnabled:  "true",
+					docoCDJobLabelNames.JobSchedule: "@every 30m",
+				},
+			},
 			"job": {
 				Name: "job",
 				Labels: map[string]string{
 					docoCDJobLabelNames.JobEnabled:       "true",
 					docoCDJobLabelNames.JobSchedule:      "@hourly",
-					docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneShot),
+					docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneOff),
 				},
 			},
 		},

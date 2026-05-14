@@ -38,6 +38,7 @@ cover.out
 cover.html
 
 docker-config.json
+git-auth-domains.yaml
 
 # Agents/Copilot files
 issue.md
