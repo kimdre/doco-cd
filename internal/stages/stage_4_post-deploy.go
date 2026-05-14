@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -18,14 +20,19 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 		s.Stages.PostDeploy.FinishedAt = time.Now()
 	}()
 
-	latestCommit, err := git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
-	if err != nil {
-		return fmt.Errorf("failed to get latest commit: %w", err)
-	}
+	var err error
 
-	shortCommit, err := git.GetShortestUniqueCommitSHA(s.Repository.Git, latestCommit, git.DefaultShortSHALength)
-	if err != nil {
-		return fmt.Errorf("failed to get short commit SHA: %w", err)
+	shortCommit := strings.TrimSpace(s.Repository.Revision)
+	if s.Repository.Source != config.SourceTypeOCI {
+		latestCommit, err := git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
+		if err != nil {
+			return fmt.Errorf("failed to get latest commit: %w", err)
+		}
+
+		shortCommit, err = git.GetShortestUniqueCommitSHA(s.Repository.Git, latestCommit, git.DefaultShortSHALength)
+		if err != nil {
+			return fmt.Errorf("failed to get short commit SHA: %w", err)
+		}
 	}
 
 	metadata := s.Metadata

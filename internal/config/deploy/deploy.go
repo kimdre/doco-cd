@@ -43,6 +43,7 @@ var (
 // Config is the structure of the deployment configuration file.
 type Config struct {
 	Name               string                                   `yaml:"name" json:"name" doco:"allowOverride"`                                                                                                                  // Name of the docker-compose deployment / stack
+	Source             config.SourceType                        `yaml:"source" json:"source" default:"git"`                                                                                                                     // Source selects the deployment source backend (git or oci)
 	RepositoryUrl      config.HttpUrl                           `yaml:"repository_url" json:"repository_url" default:"" validate:"httpUrl"`                                                                                     // RepositoryUrl is the http URL of the Git repository to deploy
 	WebhookEventFilter string                                   `yaml:"webhook_filter" json:"webhook_filter" default:"" doco:"allowOverride"`                                                                                   // WebhookEventFilter is a regular expression to whitelist deployment triggers based on the webhook event payload (e.g., branch like "^refs/heads/main$" or "main", tag like "^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$" or "v[0-9]+\.[0-9]+\.[0-9]+")
 	Reference          string                                   `yaml:"reference" json:"reference" default:""`                                                                                                                  // Reference is the Git reference to the deployment, e.g., refs/heads/main, main, refs/tags/v1.0.0 or v1.0.0
@@ -62,6 +63,7 @@ type Config struct {
 	ExternalSecrets    map[string]secrettypes.ExternalSecretRef `yaml:"external_secrets" json:"external_secrets" doco:"allowOverride"`                                                                                          // ExternalSecrets maps env vars to legacy string references or structured references (e.g. webhook store_ref/remote_ref).
 	AutoDiscovery      AutoDiscoveryConfig                      `yaml:"auto_discovery" json:"auto_discovery"`                                                                                                                   // AutoDiscovery configures autodiscovery of services to deploy in the working directory
 	Reconciliation     ReconciliationConfig                     `yaml:"reconciliation" json:"reconciliation" doco:"allowOverride"`                                                                                              // Reconciliation is the configuration for the reconciliation feature
+	Oci                config.OciTrustPolicyOverride            `yaml:"oci" json:"oci" doco:"allowOverride"`                                                                                                                    // Oci allows per-target overrides for OCI signature verification policy
 	Internal           struct {
 		File        string            `yaml:"-"` // File is the path to the deployment configuration file
 		Environment map[string]string // Environment stores environment variables for variable interpolation in the compose project
@@ -96,6 +98,11 @@ func (c *Config) LogValue() slog.Value {
 }
 
 func (c *Config) Validate() error {
+	c.Source = config.NormalizeSourceType(c.Source)
+	if err := config.ValidateSourceType(c.Source); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+	}
+
 	if c.Name == "" && !c.AutoDiscovery.Enabled {
 		return fmt.Errorf("%w: name", ErrKeyNotFound)
 	}

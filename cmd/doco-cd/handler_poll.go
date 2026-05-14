@@ -9,6 +9,7 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/moby/moby/api/types/container"
 
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/git"
 	log "github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/prometheus"
+	"github.com/kimdre/doco-cd/internal/source/oci"
 	"github.com/kimdre/doco-cd/internal/utils/id"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
@@ -51,6 +53,9 @@ func StartPoll(ctx context.Context, h *handlerData, pollConfig poll.Config, wg *
 // PollHandler is a function that handles polling for changes in a repository.
 func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 	repoName := git.GetRepoName(string(pollJob.Config.CloneUrl))
+	if config.NormalizeSourceType(pollJob.Config.Source) == config.SourceTypeOCI {
+		repoName = oci.RepositoryNameFromArtifact(pollJob.Config.Artifact)
+	}
 
 	logger := h.log.With(slog.String("repository", repoName))
 	logger.Debug("Start poll handler")
@@ -128,8 +133,15 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 	dockerCli command.Cli, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
 ) error {
 	startTime := time.Now()
-	cloneUrl := string(pollConfig.CloneUrl)
-	repoName := git.GetRepoName(cloneUrl)
+	sourceType := config.NormalizeSourceType(pollConfig.Source)
+	sourceRef := string(pollConfig.CloneUrl)
+
+	repoName := git.GetRepoName(sourceRef)
+	if sourceType == config.SourceTypeOCI {
+		sourceRef = pollConfig.Artifact
+		repoName = oci.RepositoryNameFromArtifact(sourceRef)
+	}
+
 	jobLog := logger.With(slog.String("job_id", metadata.JobID))
 
 	if pollConfig.CustomTarget != "" {
@@ -139,11 +151,12 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 	jobLog.Info("polling repository",
 		slog.Group("trigger",
 			slog.String("event", string(stages.JobTriggerPoll)),
+			slog.String("source", string(sourceType)),
 			slog.Any("config", &pollConfig)))
 
 	deployErr := handle(ctx, jobLog,
 		appConfig, dataMountPoint, secretProvider, dockerCli,
-		stages.JobTriggerPoll, cloneUrl, pollConfig.Reference, false,
+		stages.JobTriggerPoll, sourceType, sourceRef, pollConfig.Reference, false,
 		metadata, pollConfig.CustomTarget, "",
 		pollConfig, webhook.ParsedPayload{},
 	)

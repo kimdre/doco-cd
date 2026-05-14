@@ -3,6 +3,7 @@ package stages
 import (
 	"errors"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/compose-spec/compose-go/v2/types"
@@ -109,11 +110,14 @@ type Stages struct {
 
 // RepositoryData holds information about the triggering repository.
 type RepositoryData struct {
-	CloneURL     types2.HttpUrl  // Repository clone URL (e.g., "https://github.com/user/my-repo.git")
-	Name         string          // Repository name (e.g., "user/my-repo")
-	PathInternal string          // Path to the repository inside the container
-	PathExternal string          // Path to the repository on the host machine
-	Git          *git.Repository // Git repository instance
+	Source       types2.SourceType // Source backend used for this deployment (git or oci)
+	CloneURL     types2.HttpUrl    // Repository clone URL (e.g., "https://github.com/user/my-repo.git")
+	Name         string            // Repository name (e.g., "user/my-repo")
+	PathInternal string            // Path to the repository inside the container
+	PathExternal string            // Path to the repository on the host machine
+	Git          *git.Repository   // Git repository instance
+	Artifact     string            // OCI artifact reference (when source=oci)
+	Revision     string            // Resolved immutable revision (commit SHA or digest)
 }
 
 // Docker holds the Docker CLI and client instances along with the data mount point.
@@ -222,9 +226,8 @@ func (s *StageManager) NotifyFailure(notifyErr error) {
 	var (
 		latestCommit string
 		commitErr    error
+		commitSha    string
 	)
-
-	commitSha := latestCommit
 
 	if s.NotifyFailureFunc != nil {
 		if s.Repository.Git != nil {
@@ -237,6 +240,10 @@ func (s *StageManager) NotifyFailure(notifyErr error) {
 			if commitErr != nil {
 				commitSha = latestCommit
 			}
+		}
+
+		if s.Repository.Git == nil {
+			commitSha = strings.TrimSpace(s.Repository.Revision)
 		}
 
 		revision := notification.GetRevision(s.DeployConfig.Reference, commitSha)

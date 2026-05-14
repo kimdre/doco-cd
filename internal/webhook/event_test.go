@@ -193,6 +193,17 @@ func TestIsBranchOrTagDeletionEvent(t *testing.T) {
 		},
 		// Error cases
 		{
+			name:        "OCI event is never treated as deletion",
+			provider:    OCIRegistry,
+			eventHeader: "artifact.published",
+			payload: ParsedPayload{
+				Source: PayloadSourceOCI,
+			},
+			expectedResult: false,
+			expectedError:  false,
+		},
+		// Error cases
+		{
 			name:           "Missing event header",
 			provider:       Github,
 			eventHeader:    "",

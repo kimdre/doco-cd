@@ -14,6 +14,7 @@ import (
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/git"
@@ -76,6 +77,10 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	deployedState, err := docker.GetLatestDeployStatus(ctx, s.Docker.Cmd.Client(), string(s.Repository.CloneURL), s.DeployConfig.Name)
 	if err != nil {
 		return fmt.Errorf("failed to get latest state from deployed services: %w", err)
+	}
+
+	if s.Repository.Source == config.SourceTypeOCI {
+		return nil
 	}
 
 	if deployedCommit := deployedState.GetDeploymentCommitSHA(); deployedCommit != "" {

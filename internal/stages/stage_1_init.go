@@ -6,14 +6,17 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"os"
 	"path/filepath"
 	"regexp"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
+	"github.com/kimdre/doco-cd/internal/source/oci"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -63,6 +66,29 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 	s.Repository.PathExternal, err = filesystem.VerifyAndSanitizePath(filepath.Join(s.Docker.DataMountPoint.Source, s.Repository.Name), s.Docker.DataMountPoint.Source) // Path on the host
 	if err != nil {
 		return fmt.Errorf("failed to verify and sanitize external filesystem path: %w", err)
+	}
+
+	if s.Repository.Source == config.SourceTypeOCI {
+		if _, err := os.Stat(s.Repository.PathInternal); err != nil {
+			return fmt.Errorf("failed to access extracted OCI artifact directory: %w", err)
+		}
+
+		if err := oci.VerifyWithCosign(ctx, s.Repository.Artifact, s.Repository.Revision, s.AppConfig.OciTrustPolicy, s.DeployConfig.Oci); err != nil {
+			return fmt.Errorf("failed OCI signature verification: %w", err)
+		}
+
+		err = deploy.LoadLocalDotEnv(s.DeployConfig, filepath.Join(s.Repository.PathInternal, s.DeployConfig.WorkingDirectory))
+		if err != nil {
+			return fmt.Errorf("failed to parse env files from OCI artifact: %w", err)
+		}
+
+		s.Log = s.Log.With(
+			slog.String("stack", s.DeployConfig.Name),
+			slog.String("repository", s.Repository.Name),
+			slog.String("reference", s.DeployConfig.Reference),
+		)
+
+		return nil
 	}
 
 	stageLog = stageLog.With(
@@ -177,13 +203,27 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 	}
 
 	if s.JobTrigger == JobTriggerPoll {
-		s.Payload = &webhook.ParsedPayload{
-			Name:      git.GetRepoName(string(s.Repository.CloneURL)),
-			Ref:       s.DeployConfig.Reference,
-			CommitSHA: string(JobTriggerPoll),
-			FullName:  git.GetFullName(string(s.Repository.CloneURL)),
-			CloneURL:  string(s.Repository.CloneURL),
-			WebURL:    string(s.Repository.CloneURL),
+		if s.Repository.Source == config.SourceTypeOCI {
+			s.Payload = &webhook.ParsedPayload{
+				Source:    webhook.PayloadSourceOCI,
+				Name:      s.Repository.Name,
+				Ref:       s.DeployConfig.Reference,
+				CommitSHA: s.Repository.Revision,
+				FullName:  s.Repository.Name,
+				WebURL:    s.Repository.Artifact,
+				Artifact:  s.Repository.Artifact,
+				Digest:    s.Repository.Revision,
+			}
+		} else {
+			s.Payload = &webhook.ParsedPayload{
+				Source:    webhook.PayloadSourceGit,
+				Name:      git.GetRepoName(string(s.Repository.CloneURL)),
+				Ref:       s.DeployConfig.Reference,
+				CommitSHA: string(JobTriggerPoll),
+				FullName:  git.GetFullName(string(s.Repository.CloneURL)),
+				CloneURL:  string(s.Repository.CloneURL),
+				WebURL:    string(s.Repository.CloneURL),
+			}
 		}
 	}
 

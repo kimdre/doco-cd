@@ -12,11 +12,12 @@ var ErrUnknownProvider = errors.New("unknown SCM provider")
 
 // ScmProviderEventHeaders maps ScmProvider to their respective event header names.
 var ScmProviderEventHeaders = map[ScmProvider]string{
-	Github:  "X-GitHub-Event",
-	Gitlab:  "X-Gitlab-Event",
-	Gitea:   "X-Gitea-Event",
-	Gogs:    "X-Gogs-Event",
-	Forgejo: "X-Forgejo-Event",
+	Github:      "X-GitHub-Event",
+	Gitlab:      "X-Gitlab-Event",
+	Gitea:       "X-Gitea-Event",
+	Gogs:        "X-Gogs-Event",
+	Forgejo:     "X-Forgejo-Event",
+	OCIRegistry: "X-Doco-OCI-Event",
 }
 
 // IsBranchOrTagDeletionEvent checks if the incoming webhook event is a branch or tag deletion event for the given provider.
@@ -47,6 +48,9 @@ func IsBranchOrTagDeletionEvent(r *http.Request, payload ParsedPayload, provider
 		}
 		// Also verify checkout_sha is null for deletion events
 		return payload.CommitSHA == "", nil
+	case OCIRegistry:
+		// OCI events do not encode branch/tag deletion semantics.
+		return false, nil
 	default:
 		return false, ErrUnknownProvider
 	}

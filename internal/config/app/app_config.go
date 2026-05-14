@@ -67,6 +67,9 @@ type Config struct {
 	SecretProvider              string                 `env:"SECRET_PROVIDER"`                                                     // SecretProvider is the secret provider/manager to use for retrieving secrets (e.g. bitwarden secrets manager)
 	MaxDeploymentLoopCount      uint                   `env:"MAX_DEPLOYMENT_LOOP_COUNT,notEmpty" envDefault:"2" validate:"min=0"`  // Maximum allowed deployment loops before a forced deployment is triggered
 	MaxConcurrentDeployments    uint                   `env:"MAX_CONCURRENT_DEPLOYMENTS,notEmpty" envDefault:"4" validate:"min=1"` // Maximum number of concurrent deployments allowed
+	OciTrustPolicyYAML          string                 `env:"OCI_TRUST_POLICY"`                                                    // OciTrustPolicyYAML contains the app-level OCI signature trust policy as YAML
+	OciTrustPolicyFile          string                 `env:"OCI_TRUST_POLICY_FILE,file"`                                          // OciTrustPolicyFile is the file containing OCI trust policy YAML
+	OciTrustPolicy              config.OciTrustPolicy  `yaml:"-"`                                                                  // OciTrustPolicy is the parsed app-level OCI signature trust policy
 }
 
 // GetConfig returns the app Config.
@@ -80,6 +83,7 @@ func GetConfig() (*Config, error) {
 		{EnvName: "GITHUB_APP_ID", EnvValue: &cfg.GitHubAppID, FileValue: &cfg.GitHubAppIDFile, AllowUnset: true},
 		{EnvName: "GITHUB_APP_PRIVATE_KEY", EnvValue: &cfg.GitHubAppPrivateKey, FileValue: &cfg.GitHubAppPrivateKeyFile, AllowUnset: true},
 		{EnvName: "GIT_AUTH_DOMAINS", EnvValue: &cfg.GitAuthDomainsYAML, FileValue: &cfg.GitAuthDomainsFile, AllowUnset: true},
+		{EnvName: "OCI_TRUST_POLICY", EnvValue: &cfg.OciTrustPolicyYAML, FileValue: &cfg.OciTrustPolicyFile, AllowUnset: true},
 		{EnvName: "SSH_PRIVATE_KEY", EnvValue: &cfg.SSHPrivateKey, FileValue: &cfg.SSHPrivateKeyFile, AllowUnset: true},
 		{EnvName: "SSH_PRIVATE_KEY_PASSPHRASE", EnvValue: &cfg.SSHPrivateKeyPassphrase, FileValue: &cfg.SSHPrivateKeyPassphraseFile, AllowUnset: true},
 		{EnvName: "WEBHOOK_SECRET", EnvValue: &cfg.WebhookSecret, FileValue: &cfg.WebhookSecretFile, AllowUnset: true},
@@ -103,6 +107,11 @@ func GetConfig() (*Config, error) {
 	err = cfg.validateGitAuthConfig()
 	if err != nil {
 		return nil, err
+	}
+
+	err = cfg.parseOciTrustPolicy()
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse OCI_TRUST_POLICY: %w", err)
 	}
 
 	for _, pollConfig := range cfg.PollConfig {
@@ -142,6 +151,24 @@ func GetConfig() (*Config, error) {
 	)
 
 	return &cfg, nil
+}
+
+func (cfg *Config) parseOciTrustPolicy() error {
+	if strings.TrimSpace(cfg.OciTrustPolicyYAML) == "" {
+		cfg.OciTrustPolicy = config.OciTrustPolicy{
+			Enabled: true,
+		}
+
+		return nil
+	}
+
+	if err := yaml.Unmarshal([]byte(cfg.OciTrustPolicyYAML), &cfg.OciTrustPolicy); err != nil {
+		return err
+	}
+
+	cfg.OciTrustPolicy = config.NormalizeOciTrustPolicy(cfg.OciTrustPolicy)
+
+	return nil
 }
 
 // parseGitAuthDomains parses domain-scoped Git credentials from GIT_AUTH_DOMAINS (or *_FILE content).

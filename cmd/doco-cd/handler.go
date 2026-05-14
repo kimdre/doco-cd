@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/reconciliation"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
+	"github.com/kimdre/doco-cd/internal/source/oci"
 	"github.com/kimdre/doco-cd/internal/stages"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
@@ -49,25 +51,39 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 	secretProvider *secretprovider.SecretProvider,
 	dockerCli command.Cli,
 	jobTrigger stages.JobTrigger,
-	cloneURL string, ref string, private bool,
+	sourceType config.SourceType, sourceRef string, ref string, private bool,
 	metadata notification.Metadata,
 	customTarget string, testName string,
 	pollConfig poll.Config,
 	payload webhook.ParsedPayload,
 ) error {
-	git.ConfigureAuthResolver(
-		appConfig.GitAuthDomains,
-		appConfig.SSHPrivateKey,
-		appConfig.SSHPrivateKeyPassphrase,
-		appConfig.GitAccessToken,
-		git.GitHubAppConfig{
-			ID:             appConfig.GitHubAppID,
-			PrivateKey:     appConfig.GitHubAppPrivateKey,
-			InstallationID: appConfig.GitHubAppInstallationID,
-		},
-	)
+	sourceType = config.NormalizeSourceType(sourceType)
+	if err := config.ValidateSourceType(sourceType); err != nil {
+		return handleError{
+			err:            err,
+			msg:            "invalid source type",
+			httpStatusCode: http.StatusBadRequest,
+		}
+	}
 
-	repoName := git.GetRepoName(cloneURL)
+	if sourceType == config.SourceTypeGit {
+		git.ConfigureAuthResolver(
+			appConfig.GitAuthDomains,
+			appConfig.SSHPrivateKey,
+			appConfig.SSHPrivateKeyPassphrase,
+			appConfig.GitAccessToken,
+			git.GitHubAppConfig{
+				ID:             appConfig.GitHubAppID,
+				PrivateKey:     appConfig.GitHubAppPrivateKey,
+				InstallationID: appConfig.GitHubAppInstallationID,
+			},
+		)
+	}
+
+	repoName := git.GetRepoName(sourceRef)
+	if sourceType == config.SourceTypeOCI {
+		repoName = oci.RepositoryNameFromArtifact(sourceRef)
+	}
 
 	jobLog = jobLog.With(
 		slog.String("job_id", metadata.JobID),
@@ -120,15 +136,52 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		}
 	}
 
-	if _, err := git.CloneOrUpdateRepository(jobLog,
-		cloneURL, ref, internalRepoPath, externalRepoPath,
-		private, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken,
-		appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.GitCloneSubmodules, appConfig.GitCloneDepth,
-	); err != nil {
-		return handleError{
-			err:            err,
-			msg:            "failed to clone repository",
-			httpStatusCode: http.StatusInternalServerError,
+	resolvedRevision := strings.TrimSpace(payload.Digest)
+
+	switch sourceType {
+	case config.SourceTypeGit:
+		if _, err := git.CloneOrUpdateRepository(jobLog,
+			sourceRef, ref, internalRepoPath, externalRepoPath,
+			private, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken,
+			appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.GitCloneSubmodules, appConfig.GitCloneDepth,
+		); err != nil {
+			return handleError{
+				err:            err,
+				msg:            "failed to clone repository",
+				httpStatusCode: http.StatusInternalServerError,
+			}
+		}
+	case config.SourceTypeOCI:
+		layout := pollConfig.Layout
+		if strings.TrimSpace(layout) == "" {
+			layout = config.OciArtifactLayoutV1
+		}
+
+		pullResult, err := oci.PullAndExtract(ctx, sourceRef, strings.TrimSpace(payload.Digest), layout, internalRepoPath)
+		if err != nil {
+			return handleError{
+				err:            err,
+				msg:            "failed to pull oci artifact",
+				httpStatusCode: http.StatusInternalServerError,
+			}
+		}
+
+		resolvedRevision = pullResult.Digest
+		payload.Source = webhook.PayloadSourceOCI
+		payload.Artifact = sourceRef
+		payload.Digest = pullResult.Digest
+
+		payload.CommitSHA = pullResult.Digest
+		if payload.FullName == "" {
+			payload.FullName = repoName
+		}
+
+		if payload.Name == "" {
+			payload.Name = path.Base(repoName)
+		}
+
+		if payload.WebURL == "" {
+			payload.WebURL = sourceRef
 		}
 	}
 
@@ -180,10 +233,13 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 	}
 
 	repoData := stages.RepositoryData{
-		CloneURL:     config.HttpUrl(cloneURL),
+		Source:       sourceType,
+		CloneURL:     config.HttpUrl(sourceRef),
 		Name:         repoName,
 		PathInternal: internalRepoPath,
 		PathExternal: externalRepoPath,
+		Artifact:     sourceRef,
+		Revision:     resolvedRevision,
 	}
 
 	if err := reconciliation.Deploy(ctx, jobLog, appConfig,

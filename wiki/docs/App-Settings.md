@@ -29,6 +29,17 @@ The application can be configured using the following environment variables:
 | `WEBHOOK_SECRET`                  | string  | Secret that is used by webhooks for authentication to the application                                                                                                                                                                                                                                                                                  | Webhook endpoint is disabled when not specified |
 | `WEBHOOK_SECRET_FILE`             | string  | Path to the file containing the Git access token (Mutually exclusive with `WEBHOOK_SECRET`).                                                                                                                                                                                                                                                           |                                                 |
 
+## OCI Configuration
+
+The application supports pulling deployment configurations from OCI registries. Configure OCI signature verification for enhanced security.
+
+| Key                               | Type    | Description                                                                                                                                                                                                                                                                                                                                            | Default                                         |
+|-----------------------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------|
+| `OCI_TRUST_POLICY`                | string  | YAML-formatted OCI signature trust policy for verifying artifact signatures. Supports public keys and keyless (OIDC) identities. See [OCI Signature Verification](Advanced/OCI-Trust-Policy.md) for details.                                                                                                                                            | Disabled when not specified                     |
+| `OCI_TRUST_POLICY_FILE`           | string  | Path to the file containing OCI trust policy YAML (Mutually exclusive with `OCI_TRUST_POLICY`).                                                                                                                                                                                                                                                       |                                                 |
+
+For complete OCI usage guide including polling, webhooks, and artifact packaging, see [OCI Usage](OCI-Usage.md).
+
 ## Notification Settings
 
 Doco-CD can be configured to send [Notifications](Advanced/Notifications.md) with [Apprise](https://github.com/caronc/apprise) to various services when a deployment is started, finished, failed, or triggered by [reconciliation](Deploy-Settings.md#reconciliation-settings).

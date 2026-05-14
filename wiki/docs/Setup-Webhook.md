@@ -34,6 +34,9 @@ I recommend that you use HTTPS so that your secret key is transmitted in encrypt
 
 To find more information about the webhook endpoint, see the [Webhook Listener Endpoint](Endpoints/Webhook-Listener.md).
 
+!!! note "OCI Webhooks"
+    For setting up webhooks with OCI registries and artifacts, see the [OCI Usage](OCI-Usage.md#webhooks-with-oci) guide.
+
 ## Setup in Git Providers
 
 === "GitHub"

@@ -16,6 +16,7 @@ const (
 	githubPayloadFile = "testdata/github_payload.json"
 	giteaPayloadFile  = "testdata/gitea_payload.json"
 	gitlabPayloadFile = "testdata/gitlab_payload.json"
+	ociPayloadFile    = "testdata/oci_payload.json"
 )
 
 func TestParse(t *testing.T) {
@@ -29,6 +30,7 @@ func TestParse(t *testing.T) {
 		{"Github Push Payload", githubPayloadFile, nil},
 		{"Gitea Push Payload", giteaPayloadFile, nil},
 		{"Gitlab Push Payload", gitlabPayloadFile, nil},
+		{"OCI Artifact Payload", ociPayloadFile, nil},
 		{"Invalid Signature", githubPayloadFile, ErrHMACVerificationFailed},
 		{"Missing Signature", githubPayloadFile, ErrMissingSecurityHeader},
 		{"Invalid Gitlab Token", gitlabPayloadFile, ErrGitlabTokenVerificationFailed},
@@ -60,6 +62,8 @@ func TestParse(t *testing.T) {
 					r.Header.Set(ScmProviderSecurityHeaders[Gitea], GenerateHMAC(payload, testSecret))
 				case "Gitlab Push Payload":
 					r.Header.Set(ScmProviderSecurityHeaders[Gitlab], testSecret)
+				case "OCI Artifact Payload":
+					r.Header.Set(ScmProviderSecurityHeaders[OCIRegistry], "sha256="+GenerateHMAC(payload, testSecret))
 				}
 			} else {
 				switch {
@@ -79,7 +83,17 @@ func TestParse(t *testing.T) {
 				}
 
 				if p.FullName != "kimdre/doco-cd" {
-					t.Errorf("expected repository name to be kimdre/doco-cd, got %s", p.FullName)
+					if tc.name == "OCI Artifact Payload" {
+						if p.Source != PayloadSourceOCI {
+							t.Errorf("expected source to be oci, got %s", p.Source)
+						}
+
+						if p.Artifact == "" || p.Digest == "" {
+							t.Errorf("expected OCI payload to include artifact and digest")
+						}
+					} else {
+						t.Errorf("expected repository name to be kimdre/doco-cd, got %s", p.FullName)
+					}
 				}
 			} else if !errors.Is(err, tc.expectedError) {
 				t.Errorf("expected error to be %v, got %v", tc.expectedError, err)
