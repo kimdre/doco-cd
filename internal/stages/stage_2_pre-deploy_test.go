@@ -103,3 +103,65 @@ func TestShouldSkipDeployment(t *testing.T) {
 		})
 	}
 }
+
+func TestShouldSkipOCIDeployment(t *testing.T) {
+	tests := []struct {
+		name          string
+		forceRecreate bool
+		deployed      string
+		resolved      string
+		want          bool
+	}{
+		{
+			name:          "skip when digest unchanged",
+			forceRecreate: false,
+			deployed:      "sha256:abc",
+			resolved:      "sha256:abc",
+			want:          true,
+		},
+		{
+			name:          "do not skip when digest changed",
+			forceRecreate: false,
+			deployed:      "sha256:abc",
+			resolved:      "sha256:def",
+			want:          false,
+		},
+		{
+			name:          "do not skip when deployed digest missing",
+			forceRecreate: false,
+			deployed:      "",
+			resolved:      "sha256:def",
+			want:          false,
+		},
+		{
+			name:          "do not skip when resolved digest missing",
+			forceRecreate: false,
+			deployed:      "sha256:def",
+			resolved:      "",
+			want:          false,
+		},
+		{
+			name:          "force recreate disables skip",
+			forceRecreate: true,
+			deployed:      "sha256:abc",
+			resolved:      "sha256:abc",
+			want:          false,
+		},
+		{
+			name:          "trims surrounding whitespace",
+			forceRecreate: false,
+			deployed:      "  sha256:abc  ",
+			resolved:      "sha256:abc",
+			want:          true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shouldSkipOCIDeployment(tt.forceRecreate, tt.deployed, tt.resolved)
+			if got != tt.want {
+				t.Errorf("shouldSkipOCIDeployment() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

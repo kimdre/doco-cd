@@ -588,7 +588,16 @@ func DeployStack(
 	}
 
 	// cache the deployment status after successful deployment
-	setDeployStatusToCache(gitInternal.GetRepoName(payload.CloneURL), deployConfig.Name,
+	repositoryKey := strings.TrimSpace(payload.CloneURL)
+	if repositoryKey == "" {
+		repositoryKey = strings.TrimSpace(payload.FullName)
+	}
+
+	if repositoryKey == "" {
+		repositoryKey = strings.TrimSpace(payload.Artifact)
+	}
+
+	setDeployStatusToCache(gitInternal.GetRepoName(repositoryKey), deployConfig.Name,
 		deployStatus{
 			CommitSHA:   latestCommit,
 			ComposeHash: projectHash,

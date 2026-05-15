@@ -33,6 +33,21 @@ func shouldSkipDeployment(composeChanged bool,
 		len(mismatchServices) == 0
 }
 
+func shouldSkipOCIDeployment(forceRecreate bool, deployedDigest, resolvedDigest string) bool {
+	if forceRecreate {
+		return false
+	}
+
+	deployedDigest = strings.TrimSpace(deployedDigest)
+	resolvedDigest = strings.TrimSpace(resolvedDigest)
+
+	if deployedDigest == "" || resolvedDigest == "" {
+		return false
+	}
+
+	return deployedDigest == resolvedDigest
+}
+
 func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Logger) error {
 	s.Stages.PreDeploy.StartedAt = time.Now()
 
@@ -74,12 +89,35 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		return fmt.Errorf("failed to hash deploy configuration: %w", err)
 	}
 
-	deployedState, err := docker.GetLatestDeployStatus(ctx, s.Docker.Cmd.Client(), string(s.Repository.CloneURL), s.DeployConfig.Name)
+	deployedState, err := docker.GetLatestDeployStatus(ctx, s.Docker.Cmd.Client(), s.Repository.Name, s.DeployConfig.Name)
 	if err != nil {
 		return fmt.Errorf("failed to get latest state from deployed services: %w", err)
 	}
 
 	if s.Repository.Source == config.SourceTypeOCI {
+		deployedDigest := deployedState.GetDeploymentCommitSHA()
+		resolvedDigest := s.Repository.Revision
+
+		if shouldSkipOCIDeployment(s.DeployConfig.ForceRecreate, deployedDigest, resolvedDigest) {
+			stageLog.Debug("OCI artifact digest unchanged, skipping deployment",
+				slog.String("deployed_digest", strings.TrimSpace(deployedDigest)),
+				slog.String("resolved_digest", strings.TrimSpace(resolvedDigest)),
+			)
+
+			return ErrSkipDeployment
+		}
+
+		if strings.TrimSpace(deployedDigest) == "" {
+			stageLog.Debug("no previous OCI deployment digest found, proceeding with deployment",
+				slog.String("resolved_digest", strings.TrimSpace(resolvedDigest)),
+			)
+		} else {
+			stageLog.Debug("OCI artifact digest changed, proceeding with deployment",
+				slog.String("deployed_digest", strings.TrimSpace(deployedDigest)),
+				slog.String("resolved_digest", strings.TrimSpace(resolvedDigest)),
+			)
+		}
+
 		return nil
 	}
 

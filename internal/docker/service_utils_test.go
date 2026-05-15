@@ -104,6 +104,34 @@ func Test_getLatestServiceState(t *testing.T) {
 			},
 		},
 		{
+			name: "single service with OCI artifact reference including tag",
+			serviceStatus: map[Service]ServiceStatus{
+				"svc1": {
+					Labels: Labels{
+						DocoCDLabels.Repository.Name:        "ghcr.io/kimdre/doco-cd_tests",
+						DocoCDLabels.Deployment.CommitSHA:   "sha256:deadbeef",
+						DocoCDLabels.Deployment.ComposeHash: "compose_hash",
+					},
+					Replicas: 1,
+				},
+			},
+			repoName: "ghcr.io/kimdre/doco-cd_tests:main",
+			want: LatestServiceStatus{
+				deploymentCommitSHA:   "sha256:deadbeef",
+				deploymentComposeHash: "compose_hash",
+				DeployedStatus: map[Service]ServiceStatus{
+					"svc1": {
+						Labels: Labels{
+							DocoCDLabels.Repository.Name:        "ghcr.io/kimdre/doco-cd_tests",
+							DocoCDLabels.Deployment.CommitSHA:   "sha256:deadbeef",
+							DocoCDLabels.Deployment.ComposeHash: "compose_hash",
+						},
+						Replicas: 1,
+					},
+				},
+			},
+		},
+		{
 			name: "cache hit, single service with no timestamp",
 			serviceStatus: map[Service]ServiceStatus{
 				"svc1": {
