@@ -175,7 +175,16 @@ Use public keys for verifying artifacts signed with private keys.
 
 ### Generating Key Pairs
 
-=== "ECDSA P-256 (Recommended)"
+=== "Ed25519 (Recommended)"
+    ```bash
+    # Generate private key
+    openssl genpkey -algorithm Ed25519 -out private.pem
+
+    # Extract public key
+    openssl pkey -in private.pem -pubout -out public.pem
+    ```
+
+=== "ECDSA P-256"
     ```bash
     # Generate private key
     openssl ecparam -name prime256v1 -genkey -noout -out private.pem
@@ -191,15 +200,6 @@ Use public keys for verifying artifacts signed with private keys.
     
     # Extract public key
     openssl rsa -in private.pem -pubout -out public.pem
-    ```
-
-=== "Ed25519"
-    ```bash
-    # Generate private key
-    openssl genpkey -algorithm Ed25519 -out private.pem
-    
-    # Extract public key
-    openssl pkey -in private.pem -pubout -out public.pem
     ```
 
 ### Configuring Public Keys
@@ -237,6 +237,9 @@ Use public keys for verifying artifacts signed with private keys.
     ```
 
 ### Signing Artifacts with Cosign
+
+[Cosign](https://github.com/sigstore/cosign) is a popular tool for signing OCI artifacts. 
+Use the private key to sign your artifact and the public key for verification.
 
 ```bash
 # Sign with private key
