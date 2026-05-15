@@ -91,6 +91,35 @@ compose_files:
 	})
 }
 
+func TestGetConfigs_NonGitRepo(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+
+	dc := `name: oci-stack
+working_dir: .
+compose_files:
+  - compose.yaml
+`
+
+	if err := createTestFile(t, filepath.Join(repoRoot, ".doco-cd.yaml"), dc); err != nil {
+		t.Fatal(err)
+	}
+
+	configs, err := GetConfigs(repoRoot, ".", "oci-stack", "", "", nil)
+	if err != nil {
+		t.Fatalf("expected no error for non-git repo, got %v", err)
+	}
+
+	if len(configs) != 1 {
+		t.Fatalf("expected 1 config, got %d", len(configs))
+	}
+
+	if configs[0].Name != "oci-stack" {
+		t.Fatalf("expected config name %q, got %q", "oci-stack", configs[0].Name)
+	}
+}
+
 func TestGetConfigs_DefaultValues(t *testing.T) {
 	t.Parallel()
 

@@ -289,34 +289,42 @@ func GetConfigs(repoRoot, configBaseDir, name, customTarget, reference string, g
 	}
 
 	// Get repo and change to reference in c.Reference if it is different to the current reference in the repoRoot,
-	// otherwise it will cause issues with the auto-discovery
+	// otherwise it will cause issues with the auto-discovery.
+	// For non-git sources (e.g. OCI), the directory is not a git repository, so we skip git operations.
 	baseRepo, err := git.PlainOpen(repoRoot)
+	isGitRepo := true
 	if err != nil {
-		return nil, fmt.Errorf("failed to open git repository at %s: %w", repoRoot, err)
-	}
-
-	// Compare the resolved reference with the current HEAD reference, if they are different then skip the auto-discovery for this deployment config
-	headRef, err := baseRepo.Head()
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", gitInternal.ErrGetHeadFailed, err)
-	}
-
-	// Checkout repo to different reference
-	w, err := baseRepo.Worktree()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get git worktree: %w", err)
-	}
-
-	// Defer checkout back to original HEAD reference after the deployment is done
-	defer func(branch plumbing.ReferenceName) {
-		err = w.Checkout(&git.CheckoutOptions{
-			Branch: branch,
-			Keep:   true,
-		})
-		if err != nil {
-			slog.Error("failed to checkout back to original HEAD reference after deployment", "error", err)
+		if !errors.Is(err, git.ErrRepositoryNotExists) {
+			return nil, fmt.Errorf("failed to open git repository at %s: %w", repoRoot, err)
 		}
-	}(headRef.Name())
+
+		isGitRepo = false
+	}
+
+	if isGitRepo {
+		// Compare the resolved reference with the current HEAD reference, if they are different then skip the auto-discovery for this deployment config
+		headRef, err := baseRepo.Head()
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", gitInternal.ErrGetHeadFailed, err)
+		}
+
+		// Checkout repo to different reference
+		w, err := baseRepo.Worktree()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get git worktree: %w", err)
+		}
+
+		// Defer checkout back to original HEAD reference after the deployment is done
+		defer func(branch plumbing.ReferenceName) {
+			err = w.Checkout(&git.CheckoutOptions{
+				Branch: branch,
+				Keep:   true,
+			})
+			if err != nil {
+				slog.Error("failed to checkout back to original HEAD reference after deployment", "error", err)
+			}
+		}(headRef.Name())
+	}
 
 	var configs []*Config
 	for _, configFile := range DeploymentConfigFileNames {
@@ -368,7 +376,7 @@ func GetConfigs(repoRoot, configBaseDir, name, customTarget, reference string, g
 							return nil, fmt.Errorf("failed to clone repository: %w", err)
 						}
 					}
-				} else {
+				} else if isGitRepo {
 					auth, err := gitInternal.GetAuthMethod(string(c.RepositoryUrl), opts.SSHPrivateKey, opts.SSHPrivateKeyPassphrase, opts.GitAccessToken)
 					if err != nil {
 						return nil, fmt.Errorf("failed to get auth method: %w", err)
