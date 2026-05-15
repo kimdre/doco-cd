@@ -28,11 +28,17 @@ type docoCdLabelNamesRepository struct {
 	URL  string
 }
 
+// docoCdLabelNamesService contains labels applied directly to services.
+type docoCdLabelNamesService struct {
+	ExternallyManaged string
+}
+
 // docoCdLabelNames contains the labels used by DocoCD to identify deployed containers and their metadata.
 type docoCdLabelNames struct {
 	Metadata   docoCDLabelNamesMetadata   // Metadata about the deployment manager
 	Deployment docoCdLabelNamesDeployment // Labels related to the deployment
 	Repository docoCdLabelNamesRepository // Labels related to the repository
+	Service    docoCdLabelNamesService    // Labels related to service-level behavior
 }
 
 // DocoCDLabels contains the label key names used by DocoCD to identify deployed containers and their metadata.
@@ -58,6 +64,9 @@ var DocoCDLabels = docoCdLabelNames{
 	Repository: docoCdLabelNamesRepository{
 		Name: "cd.doco.repository.name",
 		URL:  "cd.doco.repository.url",
+	},
+	Service: docoCdLabelNamesService{
+		ExternallyManaged: "cd.doco.service.externally_managed",
 	},
 }
 

@@ -199,6 +199,15 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		return
 	}
 
+	if j.shouldSuppressUpdateReconciliationForSpecIgnore(ctx, action, event, stackName, jobLog) {
+		jobLog.Debug("suppressing update reconciliation for externally managed or spec-ignored service",
+			slog.String("event", action),
+			slog.String("stack", stackName),
+		)
+
+		return
+	}
+
 	// Skip reconciliation if all matching configs have destroy enabled
 	// to prevent attempting to redeploy stacks that are being destroyed
 	allDestroyEnabled := true
@@ -305,6 +314,54 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 	}
 
 	j.deploy(ctx, eventLog, stackDCs, action, event, traceID)
+}
+
+func shouldSuppressUpdateEventForServiceLabels(action string, labels map[string]string) bool {
+	if normalizeReconciliationEventAction(action) != "update" {
+		return false
+	}
+
+	return docker.HasServiceSpecIgnoreByLabels(labels)
+}
+
+func eventServiceIdentifier(event events.Message) string {
+	if serviceID := strings.TrimSpace(event.Actor.ID); serviceID != "" {
+		return serviceID
+	}
+
+	for _, key := range []string{"name", "service", "com.docker.swarm.service.name"} {
+		if value := strings.TrimSpace(event.Actor.Attributes[key]); value != "" {
+			return value
+		}
+	}
+
+	return ""
+}
+
+func (j *job) shouldSuppressUpdateReconciliationForSpecIgnore(ctx context.Context, action string, event events.Message, stackName string, jobLog *slog.Logger) bool {
+	if !swarm.GetModeEnabled() || normalizeReconciliationEventAction(action) != "update" {
+		return false
+	}
+
+	serviceIDOrName := eventServiceIdentifier(event)
+	if serviceIDOrName == "" {
+		return false
+	}
+
+	inspectResult, err := j.info.dockerCli.Client().ServiceInspect(ctx, serviceIDOrName, client.ServiceInspectOptions{})
+	if err != nil {
+		jobLog.Debug("failed to inspect service for update suppression", logger.ErrAttr(err))
+		return false
+	}
+
+	service := inspectResult.Service
+	if expectedStack := strings.TrimSpace(stackName); expectedStack != "" {
+		if serviceStack := strings.TrimSpace(service.Spec.Labels[swarm.StackNamespaceLabel]); serviceStack != "" && serviceStack != expectedStack {
+			return false
+		}
+	}
+
+	return shouldSuppressUpdateEventForServiceLabels(action, service.Spec.TaskTemplate.ContainerSpec.Labels)
 }
 
 func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConfig.Config, action string, event events.Message, traceID string) {

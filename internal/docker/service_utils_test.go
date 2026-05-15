@@ -1014,6 +1014,62 @@ func TestCheckServiceMismatch(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "swarmMode=true, replicas mismatch ignored by externally managed label",
+			deployed: map[Service]ServiceStatus{
+				"worker": {Replicas: 3, SwarmMode: swarm.DeployModeReplicated},
+			},
+			swarmModeEnable: true,
+			services: types.Services{
+				"worker": {
+					Scale: new(1),
+					Deploy: &types.DeployConfig{
+						Mode: string(swarm.DeployModeReplicated),
+					},
+					Labels: map[string]string{
+						DocoCDLabels.Service.ExternallyManaged: "true",
+					},
+				},
+			},
+			want: nil,
+		},
+		{
+			name: "swarmMode=true, mode mismatch ignored by spec scope",
+			deployed: map[Service]ServiceStatus{
+				"jobber": {Replicas: 1, SwarmMode: swarm.DeployModeReplicatedJob},
+			},
+			swarmModeEnable: true,
+			services: types.Services{
+				"jobber": {
+					Deploy: &types.DeployConfig{Mode: string(swarm.DeployModeReplicated)},
+					Labels: map[string]string{
+						DocoCDLabels.Deployment.RecreateIgnore: "{spec: [mode]}",
+					},
+				},
+			},
+			want: nil,
+		},
+		{
+			name:            "swarmMode=true, not deployed is not ignored by externally managed label",
+			deployed:        map[Service]ServiceStatus{},
+			swarmModeEnable: true,
+			services: types.Services{
+				"worker": {
+					Deploy: &types.DeployConfig{Mode: string(swarm.DeployModeReplicated)},
+					Labels: map[string]string{
+						DocoCDLabels.Service.ExternallyManaged: "true",
+					},
+				},
+			},
+			want: []ServiceMismatch{
+				{
+					ServiceName: "worker",
+					Reasons: []ServiceMismatchReason{{
+						Reason: ServiceMismatchReasonNotDeployed,
+					}},
+				},
+			},
+		},
 	}
 	cmpFunc := func(a, b ServiceMismatch) int {
 		return strings.Compare(a.ServiceName, b.ServiceName)

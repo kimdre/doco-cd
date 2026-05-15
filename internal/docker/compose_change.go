@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/compose-spec/compose-go/v2/types"
@@ -21,6 +22,7 @@ const (
 	changeScopeBindMounts changeScope = "bindMounts"
 	changeScopeBuildFiles changeScope = "buildFiles"
 	changeScopeEnvFiles   changeScope = "envFiles"
+	changeScopeSpec       changeScope = "spec"
 )
 
 type (
@@ -64,6 +66,12 @@ func parseRecreateIgnore(input string) (ignoreCfg, error) {
 		switch scope {
 		case changeScopeConfigs, changeScopeSecrets, changeScopeBindMounts:
 			// ignore envFiles and buildFiles because always need recreate
+		case changeScopeSpec:
+			for _, field := range rule {
+				if !isSupportedServiceSpecField(field) {
+					return nil, fmt.Errorf("%w, unsupported spec field %q", ErrIgnoreCfgInvalid, field)
+				}
+			}
 		default:
 			return nil, fmt.Errorf("%w, %s is not supported", ErrIgnoreCfgInvalid, scope)
 		}
@@ -81,10 +89,10 @@ func getIgnoreRecreateCfgFromProject(project *types.Project) (projectIgnoreCfg, 
 	ret := make(map[string]serviceIgnoreCfg)
 
 	for name, s := range project.Services {
-		ignoreCfg, ignoreExist := s.Labels[DocoCDLabels.Deployment.RecreateIgnore]
+		rawIgnoreCfg, ignoreExist := s.Labels[DocoCDLabels.Deployment.RecreateIgnore]
 
-		ignoreCfg = strings.TrimSpace(ignoreCfg)
-		if ignoreExist && ignoreCfg == "" {
+		rawIgnoreCfg = strings.TrimSpace(rawIgnoreCfg)
+		if ignoreExist && rawIgnoreCfg == "" {
 			return nil, fmt.Errorf("service %s ignore is exist but empty, err: %w", name, ErrIgnoreCfgInvalid)
 		}
 
@@ -95,8 +103,38 @@ func getIgnoreRecreateCfgFromProject(project *types.Project) (projectIgnoreCfg, 
 			return nil, fmt.Errorf("service %s ignore signal is exist but empty, err: %w", name, ErrIgnoreCfgInvalid)
 		}
 
+		externallyManaged, externallyManagedExist := s.Labels[DocoCDLabels.Service.ExternallyManaged]
+
+		externallyManaged = strings.TrimSpace(externallyManaged)
+		if externallyManagedExist {
+			parsed, err := strconv.ParseBool(externallyManaged)
+			if err != nil {
+				return nil, fmt.Errorf("service %s externally_managed is invalid, err: %w", name, ErrIgnoreCfgInvalid)
+			}
+
+			if parsed {
+				if ignoreExist {
+					cfg, err := parseRecreateIgnore(rawIgnoreCfg)
+					if err != nil {
+						return nil, fmt.Errorf("%s's ignoreCfg is err: %w", name, err)
+					}
+
+					cfg[changeScopeSpec] = nil
+
+					ret[name] = serviceIgnoreCfg{ignoreMap: cfg, signal: sig}
+				} else {
+					ret[name] = serviceIgnoreCfg{
+						ignoreMap: ignoreCfg{changeScopeSpec: nil},
+						signal:    sig,
+					}
+				}
+
+				continue
+			}
+		}
+
 		if ignoreExist {
-			cfg, err := parseRecreateIgnore(ignoreCfg)
+			cfg, err := parseRecreateIgnore(rawIgnoreCfg)
 			if err != nil {
 				return nil, fmt.Errorf("%s's ignoreCfg is err: %w", name, err)
 			}

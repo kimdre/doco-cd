@@ -19,11 +19,12 @@ func TestParseRecreateIgnore(t *testing.T) {
 	}{
 		{
 			name:  "valid config",
-			input: `{configs: [app, nginx], secrets: [db], bindMounts: []}`,
+			input: `{configs: [app, nginx], secrets: [db], bindMounts: [], spec: [replicas, mode]}`,
 			want: ignoreCfg{
 				changeScopeConfigs:    {"app", "nginx"},
 				changeScopeSecrets:    {"db"},
 				changeScopeBindMounts: {},
+				changeScopeSpec:       {"replicas", "mode"},
 			},
 			wantErr: false,
 		},
@@ -115,6 +116,11 @@ bindMounts: []
 		{
 			name:    "unknown scope",
 			input:   `{unknownScope: []}`,
+			wantErr: true,
+		},
+		{
+			name:    "unsupported spec field",
+			input:   `{spec: [image]}`,
 			wantErr: true,
 		},
 	}
@@ -259,6 +265,41 @@ func TestGetIgnoreRecreateCfgFromProject(t *testing.T) {
 						Name: "svc2",
 						Labels: map[string]string{
 							DocoCDLabels.Deployment.RecreateIgnoreSignal: "SIGHUP",
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "externally managed true ignores all supported spec fields",
+			project: &types.Project{
+				Services: types.Services{
+					"svc": {
+						Name: "svc",
+						Labels: map[string]string{
+							DocoCDLabels.Service.ExternallyManaged: "true",
+						},
+					},
+				},
+			},
+			want: projectIgnoreCfg{
+				"svc": {
+					ignoreMap: ignoreCfg{
+						changeScopeSpec: nil,
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "externally managed invalid bool",
+			project: &types.Project{
+				Services: types.Services{
+					"svc": {
+						Name: "svc",
+						Labels: map[string]string{
+							DocoCDLabels.Service.ExternallyManaged: "definitely",
 						},
 					},
 				},
