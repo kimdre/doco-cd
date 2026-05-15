@@ -290,4 +290,3 @@ func TestGetConfig_OciTrustPolicyCanBeEnabled(t *testing.T) {
 		t.Fatal("expected OCI trust policy to be enabled when configured")
 	}
 }
-

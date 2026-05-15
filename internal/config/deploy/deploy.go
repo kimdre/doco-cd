@@ -293,6 +293,7 @@ func GetConfigs(repoRoot, configBaseDir, name, customTarget, reference string, g
 	// For non-git sources (e.g. OCI), the directory is not a git repository, so we skip git operations.
 	baseRepo, err := git.PlainOpen(repoRoot)
 	isGitRepo := true
+
 	if err != nil {
 		if !errors.Is(err, git.ErrRepositoryNotExists) {
 			return nil, fmt.Errorf("failed to open git repository at %s: %w", repoRoot, err)
