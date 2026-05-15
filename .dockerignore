@@ -8,7 +8,6 @@ test/
 test-cases/
 **/testdata
 Dockerfile
-*.compose.yaml
-docker-compose.yaml
+*compose*.yaml
 .dockerignore
 Makefile

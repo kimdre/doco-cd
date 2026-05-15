@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -102,7 +103,7 @@ func formatKnownHostLine(address string, key ssh.PublicKey) string {
 func knownHostsContainsEndpoint(content string, endpoint sshEndpoint) bool {
 	target := knownhosts.Normalize(endpoint.dialAddress())
 
-	for _, rawLine := range strings.Split(content, "\n") {
+	for rawLine := range strings.SplitSeq(content, "\n") {
 		line := strings.TrimSpace(rawLine)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -123,10 +124,8 @@ func knownHostsContainsEndpoint(content string, endpoint sshEndpoint) bool {
 			hostsFieldIndex = 1
 		}
 
-		for _, hostEntry := range strings.Split(fields[hostsFieldIndex], ",") {
-			if hostEntry == target {
-				return true
-			}
+		if slices.Contains(strings.Split(fields[hostsFieldIndex], ","), target) {
+			return true
 		}
 	}
 
@@ -140,7 +139,7 @@ func rewriteKnownHostsWithoutEndpoint(content string, endpoint sshEndpoint) (str
 
 	updatedLines := make([]string, 0)
 
-	for _, rawLine := range strings.Split(content, "\n") {
+	for rawLine := range strings.SplitSeq(content, "\n") {
 		line := strings.TrimSpace(rawLine)
 		if line == "" {
 			continue
