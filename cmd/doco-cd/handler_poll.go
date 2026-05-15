@@ -50,14 +50,22 @@ func StartPoll(ctx context.Context, h *handlerData, pollConfig poll.Config, wg *
 	return nil
 }
 
-// PollHandler is a function that handles polling for changes in a repository.
+// PollHandler handles polling for changes in a configured source.
 func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
+	sourceType := config.NormalizeSourceType(pollJob.Config.Source)
+	entity := logEntityForSourceType(sourceType)
+
 	repoName := git.GetRepoName(pollJob.Config.SourceUrl)
-	if config.NormalizeSourceType(pollJob.Config.Source) == config.SourceTypeOCI {
+	if sourceType == config.SourceTypeOCI {
 		repoName = oci.RepositoryNameFromArtifact(pollJob.Config.SourceUrl)
 	}
 
-	logger := h.log.With(slog.String("repository", repoName))
+	logValue := repoName
+	if sourceType == config.SourceTypeOCI {
+		logValue = pollJob.Config.SourceUrl
+	}
+
+	logger := h.log.With(slog.String(entity, logValue))
 	logger.Debug("Start poll handler")
 
 	repoLock := lock.GetRepoLock(repoName)
@@ -68,7 +76,7 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 			locked := repoLock.TryLock(jobID)
 
 			if !locked {
-				logger.Warn("another job is still in progress for this repository",
+				logger.Warn("another job is still in progress for this "+entity,
 					slog.String("locked_by_job", repoLock.Holder()),
 				)
 			} else {
@@ -135,6 +143,7 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 	startTime := time.Now()
 	sourceType := config.NormalizeSourceType(pollConfig.Source)
 	sourceRef := pollConfig.SourceUrl
+	entity := logEntityForSourceType(sourceType)
 
 	repoName := git.GetRepoName(sourceRef)
 	if sourceType == config.SourceTypeOCI {
@@ -147,7 +156,7 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 		jobLog = jobLog.With(slog.String("custom_target", pollConfig.CustomTarget))
 	}
 
-	jobLog.Info("polling repository",
+	jobLog.Info("polling "+entity,
 		slog.Group("trigger",
 			slog.String("event", string(stages.JobTriggerPoll)),
 			slog.String("source", string(sourceType)),

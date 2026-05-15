@@ -35,6 +35,14 @@ type handleError struct {
 	httpStatusCode int // http status code use to respond to http request
 }
 
+func logEntityForSourceType(sourceType config.SourceType) string {
+	if config.NormalizeSourceType(sourceType) == config.SourceTypeOCI {
+		return "artifact"
+	}
+
+	return "repository"
+}
+
 func (r handleError) Error() string {
 	ret := r.msg
 
@@ -85,9 +93,16 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		repoName = oci.RepositoryNameFromArtifact(sourceRef)
 	}
 
+	logField := logEntityForSourceType(sourceType)
+
+	logValue := repoName
+	if sourceType == config.SourceTypeOCI {
+		logValue = strings.TrimSpace(sourceRef)
+	}
+
 	jobLog = jobLog.With(
 		slog.String("job_id", metadata.JobID),
-		slog.String("repository", repoName),
+		slog.String(logField, logValue),
 	)
 
 	if customTarget != "" {

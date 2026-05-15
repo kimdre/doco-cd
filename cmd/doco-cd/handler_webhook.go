@@ -91,17 +91,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	startTime := time.Now()
 	repoName := repositoryNameFromWebhookPayload(payload)
 
-	jobLog = jobLog.With(slog.String("repository", repoName))
-
-	if customTarget != "" {
-		jobLog = jobLog.With(slog.String("custom_target", customTarget))
-	}
-
-	jobLog.Info("received new job",
-		slog.Group("trigger",
-			slog.String("commit", payload.CommitSHA), slog.String("ref", payload.Ref),
-			slog.String("event", string(stages.JobTriggerWebhook))))
-
 	if payload.Source != webhook.PayloadSourceOCI && payload.Ref == "" {
 		msg := "no reference provided in webhook payload, skipping event"
 		jobLog.Warn(msg)
@@ -117,6 +106,24 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		sourceType = config.SourceTypeOCI
 		sourceRef = payload.Artifact
 	}
+
+	entity := logEntityForSourceType(sourceType)
+
+	logValue := repoName
+	if sourceType == config.SourceTypeOCI {
+		logValue = sourceRef
+	}
+
+	jobLog = jobLog.With(slog.String(entity, logValue))
+
+	if customTarget != "" {
+		jobLog = jobLog.With(slog.String("custom_target", customTarget))
+	}
+
+	jobLog.Info("received new "+entity+" job",
+		slog.Group("trigger",
+			slog.String("commit", payload.CommitSHA), slog.String("ref", payload.Ref),
+			slog.String("event", string(stages.JobTriggerWebhook))))
 
 	git.ConfigureAuthResolver(
 		appConfig.GitAuthDomains,
@@ -259,6 +266,14 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		metadata.Revision = notification.GetRevision(payload.Ref, payload.CommitSHA)
 	}
 
+	lockEntity := "repository"
+	lockLogValue := metadata.Repository
+
+	if payload.Source == webhook.PayloadSourceOCI {
+		lockEntity = "artifact"
+		lockLogValue = payload.Artifact
+	}
+
 	// Prevent concurrent deployments for the same repository using a lock
 	repoLock := lock.GetRepoLock(metadata.Repository)
 
@@ -274,7 +289,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		case <-locked:
 			// Acquired immediately
 		case <-time.After(10 * time.Millisecond):
-			jobLog.Info("waiting for webhook lock", slog.String("repository", metadata.Repository))
+			jobLog.Info("waiting for webhook "+lockEntity+" lock", slog.String(lockEntity, lockLogValue))
 			<-locked
 		}
 

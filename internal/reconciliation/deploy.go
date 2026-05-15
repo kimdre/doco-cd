@@ -10,6 +10,7 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/moby/moby/api/types/container"
 
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 
@@ -104,20 +105,22 @@ func handleDeploy(ctx context.Context,
 
 	resultCh := make(chan error, len(deployConfigs))
 
-	for _, config := range deployConfigs {
+	for _, deployCfg := range deployConfigs {
 		deployLog := jobLog.
 			WithGroup("deploy").
-			With(
-				slog.String("stack", config.Name),
-				slog.String("reference", config.Reference))
+			With(slog.String("stack", deployCfg.Name))
+
+		if repoData.Source != config.SourceTypeOCI {
+			deployLog = deployLog.With(slog.String("reference", deployCfg.Reference))
+		}
 
 		// Used to make test deployments unique and prevent conflicts between tests when running in parallel.
 		// It is not used in production.
 		if testName != "" {
-			config.Name = test.ConvertTestName(testName)
+			deployCfg.Name = test.ConvertTestName(testName)
 		}
 
-		reconciliationHandler.startStackDeployment(repoData.Name, config.Name)
+		reconciliationHandler.startStackDeployment(repoData.Name, deployCfg.Name)
 
 		wg.Add(1)
 
@@ -130,7 +133,7 @@ func handleDeploy(ctx context.Context,
 				dc, jobID, jobTrigger, repoData, payload, metadata)
 
 			resultCh <- err
-		}(config)
+		}(deployCfg)
 	}
 
 	// Wait for all deployments to complete
