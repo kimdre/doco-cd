@@ -255,12 +255,6 @@ Keyless identities verify that:
 1. An OIDC provider (issuer) issued the signature
 2. The subject (identity) matches expectations
 
-Common OIDC providers:
-
-- **GitHub Actions**: `https://token.actions.githubusercontent.com`
-- **Chainguard**: `https://accounts.chainguard.dev`
-- **Google**: `https://accounts.google.com`
-
 ### GitHub Actions
 
 Verify artifacts signed by GitHub Actions workflows:
@@ -279,18 +273,6 @@ Subject patterns:
 - `repo:owner/repo:ref:refs/tags/v*` - All version tags
 - `repo:owner/repo:*` - Any ref in repository
 
-### Chainguard
-
-Verify artifacts signed by Chainguard identity:
-
-```yaml
-OCI_TRUST_POLICY: |
-  enabled: true
-  keyless_identities:
-    - issuer: https://accounts.chainguard.dev
-      subject: user@example.com
-```
-
 ### Multiple OIDC Providers
 
 ```yaml
@@ -300,10 +282,6 @@ OCI_TRUST_POLICY: |
     # GitHub Actions CI/CD
     - issuer: https://token.actions.githubusercontent.com
       subject: repo:myorg/config:ref:refs/heads/main
-    
-    # Chainguard for automated updates
-    - issuer: https://accounts.chainguard.dev
-      subject: ci@company.com
     
     # Google Service Account
     - issuer: https://accounts.google.com
@@ -346,7 +324,7 @@ jobs:
 
 ---
 
-## Complete Examples
+## Examples
 
 ### GitHub Actions Keyless Signing
 
