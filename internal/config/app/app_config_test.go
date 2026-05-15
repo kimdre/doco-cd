@@ -257,3 +257,37 @@ func TestGetConfig_ScopedGitHubAppRejectsTokenMix(t *testing.T) {
 		t.Fatal("expected an error when combining scoped git_access_token with scoped github app credentials")
 	}
 }
+
+func TestGetConfig_OciTrustPolicyDefaultDisabled(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("OCI_TRUST_POLICY", "")
+	t.Setenv("OCI_TRUST_POLICY_FILE", "")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	if cfg.OciTrustPolicy.Enabled {
+		t.Fatal("expected OCI trust policy to be disabled by default")
+	}
+}
+
+func TestGetConfig_OciTrustPolicyCanBeEnabled(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("OCI_TRUST_POLICY", "enabled: true")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	if !cfg.OciTrustPolicy.Enabled {
+		t.Fatal("expected OCI trust policy to be enabled when configured")
+	}
+}
+

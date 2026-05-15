@@ -8,7 +8,7 @@ type OciKeylessIdentity struct {
 }
 
 type OciTrustPolicy struct {
-	Enabled           bool                 `yaml:"enabled" json:"enabled" default:"true"`
+	Enabled           bool                 `yaml:"enabled" json:"enabled"`
 	KeylessIdentities []OciKeylessIdentity `yaml:"keyless_identities" json:"keyless_identities"`
 	PublicKeys        []string             `yaml:"public_keys" json:"public_keys"`
 }

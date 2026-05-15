@@ -156,7 +156,7 @@ func GetConfig() (*Config, error) {
 func (cfg *Config) parseOciTrustPolicy() error {
 	if strings.TrimSpace(cfg.OciTrustPolicyYAML) == "" {
 		cfg.OciTrustPolicy = config.OciTrustPolicy{
-			Enabled: true,
+			Enabled: false,
 		}
 
 		return nil

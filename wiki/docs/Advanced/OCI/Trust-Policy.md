@@ -17,6 +17,9 @@ OCI Signature Verification ensures that deployment artifacts are signed by trust
 - **Tampering** - Modified artifacts would have invalid signatures
 - **Compromised registries** - Artifacts from compromised registries without valid signatures are rejected
 
+!!! note "Signature verification is disabled by default" 
+    Verification only runs when explicitly enabled via [global configuration](#global-trust-policy) or [per-deployment override](#per-deployment-override).
+
 ## Supported Signature Methods
 
 Doco-cd supports two signature verification methods:
@@ -25,81 +28,6 @@ Doco-cd supports two signature verification methods:
 2. **Keyless Signatures** - OIDC-based verification (e.g., GitHub Actions, Chainguard)
 
 Both can be used together in a single trust policy.
-
----
-
-## Configuration Methods
-
-### Global Trust Policy
-
-| Key                     | Type   | Description                                                                                                                      |
-|-------------------------|--------|----------------------------------------------------------------------------------------------------------------------------------|
-| `OCI_TRUST_POLICY`      | string | YAML-formatted OCI signature trust policy for verifying artifact signatures. Supports public keys and keyless (OIDC) identities. |
-| `OCI_TRUST_POLICY_FILE` | string | Path to the file containing OCI trust policy YAML (Mutually exclusive with `OCI_TRUST_POLICY`).                                  |
-
-=== "Environment Variable Configuration"
-
-    Provide the trust policy directly as a YAML string:
-    
-    ```yaml title="docker-compose.yml"
-    services:
-      doco-cd:
-        image: ghcr.io/kimdre/doco-cd:latest
-        environment:
-          OCI_TRUST_POLICY: |
-            enabled: true
-            public_keys:
-              - |
-                -----BEGIN PUBLIC KEY-----
-                MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...
-                -----END PUBLIC KEY-----
-    ```
-
-=== "File-based Configuration"
-
-    For complex policies or sensitive data, use `OCI_TRUST_POLICY_FILE` with a file:
-    
-    ```yaml title="trust-policy.yaml"
-    enabled: true
-    public_keys:
-      - |
-        -----BEGIN PUBLIC KEY-----
-        MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...
-        -----END PUBLIC KEY-----
-    keyless_identities:
-      - issuer: https://token.actions.githubusercontent.com
-        subject: repo:myorg/config:*
-    ```
-
-    ```yaml title="docker-compose.yml"
-    services:
-    doco-cd:
-    image: ghcr.io/kimdre/doco-cd:latest
-    environment:
-    OCI_TRUST_POLICY_FILE: /etc/doco-cd/trust-policy.yaml
-    volumes:
-    - ./trust-policy.yaml:/etc/doco-cd/trust-policy.yaml:ro
-    ```
-
-### Per-Deployment Overrides
-
-Override the global trust policy for specific [deployments](../../Poll-Settings.md#inline-deploy-configs):
-
-```yaml
-deployments:
-  - name: production
-    compose_file: docker-compose.yml
-    oci_trust_policy:
-      verify: true
-      public_keys:
-        - |
-          -----BEGIN PUBLIC KEY-----
-          MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...
-          -----END PUBLIC KEY-----
-      keyless_identities:
-        - issuer: https://token.actions.githubusercontent.com
-          subject: repo:myorg/config:ref:refs/heads/main
-```
 
 ---
 
@@ -117,6 +45,106 @@ keyless_identities:              # Keyless verification using OIDC
     subject: repo:org/name:*     # Subject pattern
 ```
 
+### Available Options
+
+#### Global trust policy
+
+| Key                     | Type   | Description                                                                                                                                                                              |
+|-------------------------|--------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `OCI_TRUST_POLICY`      | string | YAML-formatted OCI signature trust policy for verifying artifact signatures. Supports public keys and keyless (OIDC) identities. Verification is disabled unless `enabled: true` is set. |
+| `OCI_TRUST_POLICY_FILE` | string | Path to the file containing OCI trust policy YAML (Mutually exclusive with `OCI_TRUST_POLICY`).                                                                                          |
+
+| Key                  | Type       | Default | Description                                                                         |
+|----------------------|------------|---------|-------------------------------------------------------------------------------------|
+| `enabled`            | boolean    | `false` | Enables OCI signature verification globally. When `false`, verification is skipped. |
+| `public_keys`        | \[\]string | `[]`    | List of trusted public keys (PEM format) used by Cosign key verification.           |
+| `keyless_identities` | \[\]object | `[]`    | List of trusted keyless identities used for OIDC-based verification.                |
+
+`keyless_identities` object fields:
+
+| Key       | Type   | Required | Description                                                                                           |
+|-----------|--------|----------|-------------------------------------------------------------------------------------------------------|
+| `issuer`  | string | yes      | OIDC issuer URL (for example `https://token.actions.githubusercontent.com`).                          |
+| `subject` | string | yes      | Expected certificate identity subject (supports patterns as interpreted by Cosign identity matching). |
+
+!!! example "Configuring Global Trust Policy"
+    === "Environment Variable Configuration"
+    
+        Provide the trust policy directly as a YAML string:
+        
+        ```yaml title="docker-compose.yml"
+        services:
+          doco-cd:
+            image: ghcr.io/kimdre/doco-cd:latest
+            environment:
+              OCI_TRUST_POLICY: |
+                enabled: true
+                public_keys:
+                  - |
+                    -----BEGIN PUBLIC KEY-----
+                    MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...
+                    -----END PUBLIC KEY-----
+        ```
+    
+    === "File-based Configuration"
+    
+        For complex policies or sensitive data, use `OCI_TRUST_POLICY_FILE` with a file:
+        
+        ```yaml title="trust-policy.yaml"
+        enabled: true
+        public_keys:
+          - |
+            -----BEGIN PUBLIC KEY-----
+            MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...
+            -----END PUBLIC KEY-----
+        keyless_identities:
+          - issuer: https://token.actions.githubusercontent.com
+            subject: repo:myorg/config:*
+        ```
+    
+        ```yaml title="docker-compose.yml"
+        services:
+          doco-cd:
+            image: ghcr.io/kimdre/doco-cd:latest
+            environment:
+              OCI_TRUST_POLICY_FILE: /etc/doco-cd/trust-policy.yaml
+            volumes:
+              - ./trust-policy.yaml:/etc/doco-cd/trust-policy.yaml:ro
+        ```
+
+#### Per-deployment override
+
+Override the global trust policy for specific [deployments](../../Poll-Settings.md#inline-deploy-configs):
+
+| Key                  | Type     | Default | Description                                                                                             |
+|----------------------|----------|---------|---------------------------------------------------------------------------------------------------------|
+| `verify`             | boolean  | unset   | Overrides global `enabled` for this deployment only. `true` enforces verification, `false` disables it. |
+| `public_keys`        | \[\]string | inherit | Replaces global `public_keys` when set and non-empty.                                                   |
+| `keyless_identities` | \[\]object | inherit | Replaces global `keyless_identities` when set and non-empty.                                            |
+
+!!!note "Behavior"
+
+    - If `verify` is unset, the deployment inherits the global `enabled` value. If `verify: true` is set, verification is enforced regardless of the global setting.
+    - If both `public_keys` and `keyless_identities` are empty while verification is enabled, verification fails because no trust rules are defined.
+    - Per-deployment `public_keys` and `keyless_identities` override global values only when the respective lists are non-empty.
+
+!!! example "Per-deployment Override Example"
+    ```yaml
+    deployments:
+      - name: production
+        compose_file: docker-compose.yml
+        oci:
+          verify: true
+          public_keys:
+            - |
+              -----BEGIN PUBLIC KEY-----
+              MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...
+              -----END PUBLIC KEY-----
+          keyless_identities:
+            - issuer: https://token.actions.githubusercontent.com
+              subject: repo:myorg/config:ref:refs/heads/main
+    ```
+
 ### Enabling/Disabling Verification
 
 === "Global enable/disable"
@@ -131,7 +159,7 @@ keyless_identities:              # Keyless verification using OIDC
     ```yaml
     deployments:
       - name: production
-        oci_trust_policy:
+        oci:
           verify: true   # or false to skip verification
     ```
 
@@ -358,13 +386,13 @@ POLL_CONFIG: |
       # Development: No verification required
       - name: development
         compose_file: docker-compose.yml
-        oci_trust_policy:
+        oci:
           verify: false
       
       # Staging: Single signer required
       - name: staging
         compose_file: docker-compose.yml
-        oci_trust_policy:
+        oci:
           verify: true
           public_keys:
             - |
@@ -375,7 +403,7 @@ POLL_CONFIG: |
       # Production: Multiple signers or GitHub Actions
       - name: production
         compose_file: docker-compose.yml
-        oci_trust_policy:
+        oci:
           verify: true
           public_keys:
             - |
