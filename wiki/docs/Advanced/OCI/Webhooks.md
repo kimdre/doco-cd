@@ -80,14 +80,12 @@ OCI webhook payloads are signed with HMAC-SHA256:
 
 **Header**: `X-Doco-OCI-Signature-256`
 
-**Format**: `sha256={hex_encoded_hmac}`
+**Format**: A hexadecimal string representing the HMAC-SHA256 signature of the raw request body, calculated using your `WEBHOOK_SECRET`.
 
 Example:
+```yaml
+X-Doco-OCI-Signature-256: abc123def456...
 ```
-X-Doco-OCI-Signature-256: sha256:abc123def456...
-```
-
-The signature is calculated using the raw request body and your `WEBHOOK_SECRET`:
 
 === "Shell"
 
@@ -116,6 +114,8 @@ The signature is calculated using the raw request body and your `WEBHOOK_SECRET`
 For more information, see the [Webhook Endpoint Setup](../../Setup-Webhook.md#webhook-endpoint).
 
 ## Sending OCI Webhooks
+
+The webhook endpoint accepts POST requests at `/v1/webhook` with the OCI payload schema, see [Webhook Listener](../../Endpoints/Webhook-Listener.md) for details.
 
 Some examples of how to send OCI webhooks from different environments:
 
