@@ -43,8 +43,8 @@ func NormalizeOciTrustPolicy(p OciTrustPolicy) OciTrustPolicy {
 	return out
 }
 
-func EffectiveOciTrustPolicy(appPolicy OciTrustPolicy, override OciTrustPolicyOverride) OciTrustPolicy {
-	p := NormalizeOciTrustPolicy(appPolicy)
+func EffectiveOciTrustPolicy(global OciTrustPolicy, override OciTrustPolicyOverride) OciTrustPolicy {
+	p := NormalizeOciTrustPolicy(global)
 
 	if override.Verify != nil {
 		p.Enabled = *override.Verify
