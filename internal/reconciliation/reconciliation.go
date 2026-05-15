@@ -46,7 +46,7 @@ func (j *job) run(ctx context.Context) {
 			repositoryLabelValue = j.info.payload.FullName
 		}
 
-		filterArgs.Add("label", docker.DocoCDLabels.Repository.Name+"="+repositoryLabelValue)
+		filterArgs.Add("label", docker.DocoCDLabels.Source.Name+"="+repositoryLabelValue)
 	}
 
 	for _, eventFilter := range dockerEventFiltersForActions(mapsKeys(j.deployConfigGroupByEvent), swarmMode) {

@@ -148,7 +148,7 @@ func TestReconciliationStopEventRestartSuppressionIntegration(t *testing.T) {
 		internaltest.WithWaitTimeout(90*time.Second),
 		internaltest.WithCustomLabel(map[string]string{
 			docker.DocoCDLabels.Metadata.Manager:     app.Name,
-			docker.DocoCDLabels.Repository.Name:      repositoryName,
+			docker.DocoCDLabels.Source.Name:          repositoryName,
 			docker.DocoCDLabels.Deployment.Name:      stackName,
 			docker.DocoCDLabels.Deployment.TargetRef: "main",
 		}),

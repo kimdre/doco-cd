@@ -134,7 +134,7 @@ func getLatestServiceStatus(cacheMap *sync.Map, statusMap map[Service]ServiceSta
 		// (latest commit SHA, compose hash). This keeps the two concerns separate.
 		labels := state.Labels
 
-		name, ok := labels[DocoCDLabels.Repository.Name]
+		name, ok := labels[DocoCDLabels.Source.Name]
 		if !ok {
 			// When a service matches and others don't,
 			// using 'break' will return a random result.

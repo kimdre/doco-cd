@@ -138,7 +138,7 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 			Name:       job.name,
 			Stack:      stack,
 			Mode:       string(job.mode),
-			Repository: job.labels[docker.DocoCDLabels.Repository.Name],
+			Repository: job.labels[docker.DocoCDLabels.Source.Name],
 			Valid:      true,
 		}
 
@@ -698,7 +698,7 @@ func (s *scheduler) sendRunNotification(job scheduledJob, cfg docker.JobSchedule
 	}
 
 	metadata := notification.Metadata{
-		Repository:        job.labels[docker.DocoCDLabels.Repository.Name],
+		Repository:        job.labels[docker.DocoCDLabels.Source.Name],
 		Stack:             job.labels[docker.DocoCDLabels.Deployment.Name],
 		Revision:          notification.GetRevision("", job.labels[docker.DocoCDLabels.Deployment.CommitSHA]),
 		JobID:             runID,

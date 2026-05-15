@@ -150,7 +150,9 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 		repoName = oci.RepositoryNameFromArtifact(sourceRef)
 	}
 
-	jobLog := logger.With(slog.String("job_id", metadata.JobID))
+	jobLog := logger.With(
+		slog.String("job_id", metadata.JobID),
+	)
 
 	if pollConfig.CustomTarget != "" {
 		jobLog = jobLog.With(slog.String("custom_target", pollConfig.CustomTarget))
@@ -159,12 +161,18 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 	jobLog.Info("polling "+entity,
 		slog.Group("trigger",
 			slog.String("event", string(stages.JobTriggerPoll)),
-			slog.String("source", string(sourceType)),
-			slog.Any("config", &pollConfig)))
+			slog.Attr{Key: "config", Value: log.BuildLogValue(&pollConfig, "Deployments.Internal")}))
+
+	// For OCI sources, use the tag from the artifact reference as the deployment reference
+	// (e.g., "latest" from "ghcr.io/org/repo:latest") rather than pollConfig.Reference.
+	pollReference := pollConfig.Reference
+	if sourceType == config.SourceTypeOCI {
+		pollReference = oci.TagFromArtifact(sourceRef)
+	}
 
 	deployErr := handle(ctx, jobLog,
 		appConfig, dataMountPoint, secretProvider, dockerCli,
-		stages.JobTriggerPoll, sourceType, sourceRef, pollConfig.Reference, false,
+		stages.JobTriggerPoll, sourceType, sourceRef, pollReference, false,
 		metadata, pollConfig.CustomTarget, "",
 		pollConfig, webhook.ParsedPayload{},
 	)

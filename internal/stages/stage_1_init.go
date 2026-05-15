@@ -168,7 +168,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		}
 
 		for _, labels := range serviceLabels {
-			name, ok := labels[docker.DocoCDLabels.Repository.Name]
+			name, ok := labels[docker.DocoCDLabels.Source.Name]
 
 			if !ok || name != git.GetFullName(s.Repository.SourceUrl) {
 				correctRepo = false

@@ -32,7 +32,7 @@ func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *s
 
 	filterArgs := make(client.Filters)
 	filterArgs.Add("label", docker.DocoCDLabels.Metadata.Manager+"="+app.Name)
-	filterArgs.Add("label", docker.DocoCDLabels.Repository.Name+"="+repositoryLabelValue)
+	filterArgs.Add("label", docker.DocoCDLabels.Source.Name+"="+repositoryLabelValue)
 
 	containerResult, err := j.info.dockerCli.Client().ContainerList(ctx, client.ContainerListOptions{All: true, Filters: filterArgs})
 	if err != nil {
@@ -178,7 +178,7 @@ func (j *job) findMissingContainersOnStartup(ctx context.Context, jobLog *slog.L
 
 	filterArgs := make(client.Filters)
 	filterArgs.Add("label", docker.DocoCDLabels.Metadata.Manager+"="+app.Name)
-	filterArgs.Add("label", docker.DocoCDLabels.Repository.Name+"="+repositoryLabelValue)
+	filterArgs.Add("label", docker.DocoCDLabels.Source.Name+"="+repositoryLabelValue)
 
 	containerResult, err := j.info.dockerCli.Client().ContainerList(ctx, client.ContainerListOptions{
 		All:     false, // running only
@@ -227,7 +227,7 @@ func (j *job) findMissingSwarmServicesOnStartup(ctx context.Context, jobLog *slo
 
 	for _, svc := range services {
 		// Filter by repository to avoid matching services from other repos on the same swarm.
-		if strings.TrimSpace(svc.Spec.Labels[docker.DocoCDLabels.Repository.Name]) != repositoryLabelValue {
+		if strings.TrimSpace(svc.Spec.Labels[docker.DocoCDLabels.Source.Name]) != repositoryLabelValue {
 			continue
 		}
 

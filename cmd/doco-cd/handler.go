@@ -101,7 +101,6 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 	}
 
 	jobLog = jobLog.With(
-		slog.String("job_id", metadata.JobID),
 		slog.String(logField, logValue),
 	)
 
@@ -211,7 +210,6 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 
 	switch jobTrigger {
 	case stages.JobTriggerWebhook:
-		// Get the deployment configs from the repository
 		deployConfigs, err = deploy.GetConfigs(internalRepoPath, appConfig.DeployConfigBaseDir, payload.Name, customTarget, payload.Ref, gitOpts)
 		if err != nil {
 			return handleError{
@@ -221,11 +219,9 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 			}
 		}
 	case stages.JobTriggerPoll:
-		// shortName is the last part of repoName, which is just the name of the repository
 		shortName := filepath.Base(repoName)
 
-		// Resolve deployment configs (prefer inline in poll config when present)
-		deployConfigs, err = deploy.ResolveConfigs(pollConfig.Deployments, pollConfig.CustomTarget, pollConfig.Reference, internalRepoPath, appConfig.DeployConfigBaseDir, shortName, gitOpts)
+		deployConfigs, err = deploy.ResolveConfigs(pollConfig.Deployments, pollConfig.CustomTarget, ref, internalRepoPath, appConfig.DeployConfigBaseDir, shortName, gitOpts)
 		if err != nil {
 			return handleError{
 				err:            err,
@@ -233,12 +229,19 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 				httpStatusCode: http.StatusInternalServerError,
 			}
 		}
-
 	default:
 		return handleError{
 			err:            fmt.Errorf("unsupported job trigger: %s", jobTrigger),
 			msg:            "unsupported job trigger",
 			httpStatusCode: http.StatusBadRequest,
+		}
+	}
+
+	// For OCI sources, the deploy config's reference must reflect the actual artifact tag that
+	// triggered this deployment (e.g. "latest"), overriding any reference baked into the config file.
+	if sourceType == config.SourceTypeOCI && ref != "" {
+		for _, cfg := range deployConfigs {
+			cfg.Reference = ref
 		}
 	}
 

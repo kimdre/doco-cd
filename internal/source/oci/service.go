@@ -30,13 +30,31 @@ type PullResult struct {
 	Digest string
 }
 
-func RepositoryNameFromArtifact(artifact string) string {
-	ref, err := name.ParseReference(strings.TrimSpace(artifact), name.WeakValidation)
+// ParseArtifact parses an OCI artifact reference and returns the repository name and tag.
+// For "ghcr.io/org/repo:latest" it returns ("ghcr.io/org/repo", "latest").
+// Tag defaults to "latest" when not specified (standard OCI behaviour).
+// On parse failure the trimmed artifact string is returned as the repository name with an empty tag.
+func ParseArtifact(artifact string) (repository, tag string) {
+	trimmed := strings.TrimSpace(artifact)
+
+	ref, err := name.ParseReference(trimmed, name.WeakValidation)
 	if err != nil {
-		return strings.TrimSpace(artifact)
+		return trimmed, ""
 	}
 
-	return ref.Context().Name()
+	return ref.Context().Name(), ref.Identifier()
+}
+
+// RepositoryNameFromArtifact returns the repository portion of an OCI artifact reference.
+func RepositoryNameFromArtifact(artifact string) string {
+	repo, _ := ParseArtifact(artifact)
+	return repo
+}
+
+// TagFromArtifact returns the tag (or digest identifier) of an OCI artifact reference.
+func TagFromArtifact(artifact string) string {
+	_, tag := ParseArtifact(artifact)
+	return tag
 }
 
 func PullAndExtract(ctx context.Context, artifactRef, expectedDigest, layout, destination string) (PullResult, error) {

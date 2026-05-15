@@ -74,27 +74,33 @@ func ProjectHash(p *types.Project) (string, error) {
 	pCopy := copyProject(p)
 
 	// Set all dynamic values to a constant value to avoid unnecessary changes in the hash when these values change but the actual configuration does not.
-	for name, cfg := range pCopy.Services {
-		for l := range cfg.Labels {
-			if strings.HasPrefix(l, "cd.doco.") || strings.HasPrefix(l, "com.docker.compose.") {
-				delete(cfg.Labels, l)
+	for name := range pCopy.Services {
+		svc := pCopy.Services[name]
+		if svc.Labels != nil {
+			for l := range svc.Labels {
+				if strings.HasPrefix(l, "cd.doco.") || strings.HasPrefix(l, "com.docker.compose.") {
+					delete(svc.Labels, l)
+				}
 			}
 		}
 
-		pCopy.Services[name] = cfg
+		pCopy.Services[name] = svc
 	}
 
-	for v, cfg := range pCopy.Volumes {
-		for l := range cfg.Labels {
-			if strings.HasPrefix(l, "cd.doco.") || strings.HasPrefix(l, "com.docker.compose.") {
-				delete(cfg.Labels, l)
+	for vol := range pCopy.Volumes {
+		volCfg := pCopy.Volumes[vol]
+		if volCfg.Labels != nil {
+			for l := range volCfg.Labels {
+				if strings.HasPrefix(l, "cd.doco.") || strings.HasPrefix(l, "com.docker.compose.") {
+					delete(volCfg.Labels, l)
+				}
 			}
 		}
 
-		pCopy.Volumes[v] = cfg
+		pCopy.Volumes[vol] = volCfg
 	}
 
-	b, err := json.Marshal(p)
+	b, err := json.Marshal(pCopy)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal project for hashing: %w", err)
 	}
