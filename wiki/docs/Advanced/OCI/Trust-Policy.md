@@ -7,6 +7,10 @@ tags:
 
 # OCI Signature Verification and Trust Policies
 
+!!! example "Experimental Feature"
+    OCI artifact support is currently experimental and may be unstable and subject to breaking changes.
+    Please [provide feedback and report any issues](../../Contributing/#have-an-issue-idea-or-question) you encounter.
+
 This page provides comprehensive documentation on configuring OCI artifact signature verification in doco-cd using trust policies.
 
 ## Overview

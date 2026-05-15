@@ -13,6 +13,15 @@ Concurrent tasks are grouped by repository and Git reference (e.g. branch or tag
 Deployments from the same repository but different references run sequentially, while those with the same repository and reference run in parallel. 
 See the [App Settings](App-Settings.md) documentation for more information on how to configure the number of concurrent deployments.
 
+## Deployment Sources
+
+Doco-CD supports deploying from the following sources:
+
+| Source                                         | Description                                                                                      |
+|------------------------------------------------|--------------------------------------------------------------------------------------------------|
+| Git Repository                                 | Deploy directly from a Git repository.                                                           |
+| [OCI Artifact](Advanced/OCI/Artifact-Usage.md) | Deploy from an OCI artifact that contains all necessary configurations and files for deployment. |
+
 ## Deployment Configuration File
 
 The deployment configuration file must be placed in the root/base directory of your repository and named one of the following:

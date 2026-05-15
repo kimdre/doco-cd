@@ -7,6 +7,10 @@ tags:
 
 # Webhooks with OCI
 
+!!! example "Experimental Feature"
+    OCI artifact support is currently experimental and may be unstable and subject to breaking changes.
+    Please [provide feedback and report any issues](../../Contributing/#have-an-issue-idea-or-question) you encounter.
+
 To trigger immediate deployments when artifacts are pushed/available to an OCI registry,
 you can send a webhook to doco-cd's [webhook endpoint](../../Endpoints/Webhook-Listener.md) at `/v1/webhook`.
 

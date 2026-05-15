@@ -27,6 +27,7 @@ You can think of it as a simple Portainer or ArgoCD alternative for Docker.
 - Supports various [external secret management providers](https://doco.cd/latest/External-Secrets/) and data encryption with [SOPS](https://doco.cd/latest/Advanced/Encryption/)
 - Can deploy applications via webhooks and/or polling.
 - Supports various [Git providers](https://doco.cd/latest/#supported-git-providers)
+- Supports [OCI artifacts](https://doco.cd/latest/Advanced/OCI/Artifact-Usage/) and Git repositories for deployment configurations.
 - Supports both Docker Compose projects and Swarm stacks in [Swarm mode](https://doco.cd/latest/Advanced/Swarm-Mode/).
 - Provides [notifications](https://doco.cd/latest/Advanced/Notifications/) and [Prometheus metrics](https://doco.cd/latest/Endpoints/Metrics/) for monitoring.
 - Supports [Job Scheduling / Cron Jobs](https://doco.cd/latest/Advanced/Job-Scheduling/) for running periodic tasks.
