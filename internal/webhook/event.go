@@ -23,8 +23,8 @@ var ScmProviderEventHeaders = map[ScmProvider]string{
 // IsBranchOrTagDeletionEvent checks if the incoming webhook event is a branch or tag deletion event for the given provider.
 func IsBranchOrTagDeletionEvent(r *http.Request, payload ParsedPayload, provider ScmProvider) (bool, error) {
 	event := r.Header.Get(ScmProviderEventHeaders[provider])
-	if event == "" {
-		return false, fmt.Errorf("missing event header for provider %v", provider)
+	if event == "" && provider != OCIRegistry {
+		return false, fmt.Errorf("missing event header for %v", provider)
 	}
 
 	switch provider {

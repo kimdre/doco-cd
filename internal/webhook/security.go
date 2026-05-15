@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 )
@@ -27,6 +28,26 @@ const (
 	Forgejo
 	OCIRegistry
 )
+
+// ScmProviderNames maps ScmProvider to their human-readable names.
+var ScmProviderNames = map[ScmProvider]string{
+	Unknown:     "Unknown",
+	Github:      "GitHub",
+	Gitlab:      "GitLab",
+	Gitea:       "Gitea",
+	Gogs:        "Gogs",
+	Forgejo:     "Forgejo",
+	OCIRegistry: "OCI Registry",
+}
+
+// String returns the human-readable name of the ScmProvider.
+func (p ScmProvider) String() string {
+	if name, ok := ScmProviderNames[p]; ok {
+		return name
+	}
+
+	return fmt.Sprintf("ScmProvider(%d)", int(p))
+}
 
 // ScmProviderSecurityHeaders maps ScmProvider to their respective security header names.
 var ScmProviderSecurityHeaders = map[ScmProvider]string{
