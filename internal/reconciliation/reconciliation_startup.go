@@ -25,7 +25,7 @@ func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *s
 		return
 	}
 
-	repositoryLabelValue := gitInternal.GetFullName(string(j.info.repoData.CloneURL))
+	repositoryLabelValue := gitInternal.GetFullName(j.info.repoData.SourceUrl)
 	if j.info.payload != nil && strings.TrimSpace(j.info.payload.FullName) != "" {
 		repositoryLabelValue = j.info.payload.FullName
 	}
@@ -171,7 +171,7 @@ func (j *job) redeployMissingServicesOnStartup(ctx context.Context, jobLog *slog
 // findMissingContainersOnStartup lists all running containers for this repository and returns
 // deploy configs whose stacks have no running containers at all.
 func (j *job) findMissingContainersOnStartup(ctx context.Context, jobLog *slog.Logger, candidates []*deployConfig.Config) []*deployConfig.Config {
-	repositoryLabelValue := gitInternal.GetFullName(string(j.info.repoData.CloneURL))
+	repositoryLabelValue := gitInternal.GetFullName(j.info.repoData.SourceUrl)
 	if j.info.payload != nil && strings.TrimSpace(j.info.payload.FullName) != "" {
 		repositoryLabelValue = j.info.payload.FullName
 	}
@@ -212,7 +212,7 @@ func (j *job) findMissingContainersOnStartup(ctx context.Context, jobLog *slog.L
 // findMissingSwarmServicesOnStartup lists all swarm services for this repository and returns
 // deploy configs whose stacks have no deployed services at all.
 func (j *job) findMissingSwarmServicesOnStartup(ctx context.Context, jobLog *slog.Logger, candidates []*deployConfig.Config) []*deployConfig.Config {
-	repositoryLabelValue := gitInternal.GetFullName(string(j.info.repoData.CloneURL))
+	repositoryLabelValue := gitInternal.GetFullName(j.info.repoData.SourceUrl)
 	if j.info.payload != nil && strings.TrimSpace(j.info.payload.FullName) != "" {
 		repositoryLabelValue = j.info.payload.FullName
 	}

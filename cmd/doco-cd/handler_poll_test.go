@@ -31,7 +31,7 @@ func TestRunPoll(t *testing.T) {
 	ctx := context.Background()
 
 	pollConfig := poll.Config{
-		CloneUrl:     "https://github.com/kimdre/doco-cd_tests.git",
+		SourceUrl:    "https://github.com/kimdre/doco-cd_tests.git",
 		Reference:    "main",
 		Interval:     10,
 		CustomTarget: "",
@@ -111,7 +111,7 @@ func TestRunPoll(t *testing.T) {
 	})
 
 	metadata := notification.Metadata{
-		Repository: git.GetRepoName(string(pollConfig.CloneUrl)),
+		Repository: git.GetRepoName(pollConfig.SourceUrl),
 		Stack:      stackName,
 		Revision:   notification.GetRevision(pollConfig.Reference, ""),
 	}

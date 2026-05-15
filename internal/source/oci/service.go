@@ -192,7 +192,7 @@ func readLayoutVersionFromConfig(configFile string) (string, error) {
 	}
 
 	type layoutHeader struct {
-		Layout string `yaml:"layout"`
+		Version string `yaml:"version"`
 	}
 
 	dec := yaml.NewDecoder(bytes.NewReader(b))
@@ -202,15 +202,15 @@ func readLayoutVersionFromConfig(configFile string) (string, error) {
 
 		err = dec.Decode(&header)
 		if errors.Is(err, io.EOF) {
-			return "", nil
+			return config.OciArtifactLayoutV1, nil
 		}
 
 		if err != nil {
 			return "", err
 		}
 
-		if strings.TrimSpace(header.Layout) != "" {
-			return strings.TrimSpace(header.Layout), nil
+		if strings.TrimSpace(header.Version) != "" {
+			return strings.TrimSpace(header.Version), nil
 		}
 	}
 }

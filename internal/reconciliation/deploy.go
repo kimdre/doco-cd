@@ -74,7 +74,7 @@ func deploy(ctx context.Context,
 	testName string,
 ) error {
 	if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
-		dockerCli, string(repoData.CloneURL),
+		dockerCli, repoData.SourceUrl,
 		deployConfigs,
 		metadata); err != nil {
 		return fmt.Errorf("failed to clean up obsolete auto-discovered containers: %w", err)

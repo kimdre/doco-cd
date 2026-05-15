@@ -17,10 +17,20 @@ func TestConfig_Validate(t *testing.T) {
 		expected error
 	}{
 		{
-			name: "Valid config",
+			name: "Valid git config",
 			config: Config{
 				Source:    config.SourceTypeGit,
-				CloneUrl:  "https://example.com/repo.git",
+				SourceUrl: "https://example.com/repo.git",
+				Reference: "main",
+				Interval:  10,
+			},
+			expected: nil,
+		},
+		{
+			name: "Valid git config - SSH scp-style URL",
+			config: Config{
+				Source:    config.SourceTypeGit,
+				SourceUrl: "git@github.com:owner/repo.git",
 				Reference: "main",
 				Interval:  10,
 			},
@@ -29,27 +39,26 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "Valid OCI config",
 			config: Config{
-				Source:   config.SourceTypeOCI,
-				Artifact: "ghcr.io/example/app-config:main",
-				Layout:   config.OciArtifactLayoutV1,
-				Interval: 10,
+				Source:    config.SourceTypeOCI,
+				SourceUrl: "ghcr.io/example/app-config:main",
+				Interval:  10,
 			},
 			expected: nil,
 		},
 		{
-			name: "Valid OCI config without layout (uses default)",
+			name: "Valid OCI config - tagged reference",
 			config: Config{
-				Source:   config.SourceTypeOCI,
-				Artifact: "ghcr.io/example/app-config:v1.0.0",
-				Interval: 10,
+				Source:    config.SourceTypeOCI,
+				SourceUrl: "ghcr.io/example/app-config:v1.0.0",
+				Interval:  10,
 			},
 			expected: nil,
 		},
 		{
-			name: "Invalid config - empty CloneUrl",
+			name: "Invalid config - empty SourceUrl for git",
 			config: Config{
 				Source:    config.SourceTypeGit,
-				CloneUrl:  "",
+				SourceUrl: "",
 				Reference: "main",
 				Interval:  10,
 			},
@@ -59,28 +68,28 @@ func TestConfig_Validate(t *testing.T) {
 			name: "Invalid config - empty Reference",
 			config: Config{
 				Source:    config.SourceTypeGit,
-				CloneUrl:  "https://example.com/repo.git",
+				SourceUrl: "https://example.com/repo.git",
 				Reference: "",
 				Interval:  10,
 			},
 			expected: deploy.ErrKeyNotFound,
 		},
 		{
-			name: "Invalid config - OCI missing artifact",
+			name: "Invalid config - empty SourceUrl for OCI",
 			config: Config{
-				Source:   config.SourceTypeOCI,
-				Artifact: "",
-				Interval: 10,
+				Source:    config.SourceTypeOCI,
+				SourceUrl: "",
+				Interval:  10,
 			},
 			expected: deploy.ErrKeyNotFound,
 		},
 		{
-			name: "Invalid config - OCI unsupported layout",
+			name: "Invalid config - invalid git URL scheme",
 			config: Config{
-				Source:   config.SourceTypeOCI,
-				Artifact: "ghcr.io/example/app-config:main",
-				Layout:   "doco.v2",
-				Interval: 10,
+				Source:    config.SourceTypeGit,
+				SourceUrl: "ftp://example.com/repo.git",
+				Reference: "main",
+				Interval:  10,
 			},
 			expected: ErrInvalidConfig,
 		},
@@ -88,7 +97,7 @@ func TestConfig_Validate(t *testing.T) {
 			name: "Invalid config - negative Interval",
 			config: Config{
 				Source:    config.SourceTypeGit,
-				CloneUrl:  "https://example.com/repo.git",
+				SourceUrl: "https://example.com/repo.git",
 				Reference: "main",
 				Interval:  -5,
 			},
@@ -98,17 +107,17 @@ func TestConfig_Validate(t *testing.T) {
 			name: "Invalid config - 5s Interval",
 			config: Config{
 				Source:    config.SourceTypeGit,
-				CloneUrl:  "https://example.com/repo.git",
+				SourceUrl: "https://example.com/repo.git",
 				Reference: "main",
 				Interval:  5,
 			},
 			expected: ErrIntervalTooLow,
 		},
 		{
-			name: "Invalid config - zero Interval (Disabled)",
+			name: "Valid config - zero Interval (disabled)",
 			config: Config{
 				Source:    config.SourceTypeGit,
-				CloneUrl:  "https://example.com/repo.git",
+				SourceUrl: "https://example.com/repo.git",
 				Reference: "main",
 				Interval:  0,
 			},
@@ -136,42 +145,39 @@ func TestConfig_String(t *testing.T) {
 		expected string
 	}{
 		{
-			name: "Valid config",
+			name: "Git config",
 			config: Config{
 				Source:    config.SourceTypeGit,
-				CloneUrl:  "https://example.com/repo.git",
+				SourceUrl: "https://example.com/repo.git",
 				Reference: "main",
 				Interval:  10,
 			},
-			expected: "Config{Source: git, CloneUrl: https://example.com/repo.git, Reference: main, Interval: 10}",
+			expected: "Config{Source: git, SourceUrl: https://example.com/repo.git, Reference: main, Interval: 10}",
 		},
 		{
 			name: "OCI config",
 			config: Config{
-				Source:   config.SourceTypeOCI,
-				Artifact: "ghcr.io/example/app-config:main",
-				Layout:   config.OciArtifactLayoutV1,
-				Interval: 10,
+				Source:    config.SourceTypeOCI,
+				SourceUrl: "ghcr.io/example/app-config:main",
+				Reference: "main",
+				Interval:  10,
 			},
-			expected: "Config{Source: oci, Artifact: ghcr.io/example/app-config:main, Layout: doco.v1, Reference: main, Interval: 10}",
+			expected: "Config{Source: oci, SourceUrl: ghcr.io/example/app-config:main, Reference: main, Interval: 10}",
 		},
 		{
 			name: "Basic config",
 			config: Config{
 				Source:    config.SourceTypeGit,
-				CloneUrl:  "https://example.com/repo.git",
+				SourceUrl: "https://example.com/repo.git",
 				Reference: "main",
 				Interval:  180,
 			},
-			expected: "Config{Source: git, CloneUrl: https://example.com/repo.git, Reference: main, Interval: 180}",
+			expected: "Config{Source: git, SourceUrl: https://example.com/repo.git, Reference: main, Interval: 180}",
 		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
-			// Validate first so OCI reference gets auto-derived before stringifying.
-			_ = tc.config.Validate()
 
 			result := tc.config.String()
 			if result != tc.expected {
@@ -198,9 +204,9 @@ func TestOCIConfig_ReferenceAutoderived(t *testing.T) {
 			t.Parallel()
 
 			c := Config{
-				Source:   config.SourceTypeOCI,
-				Artifact: tc.artifact,
-				Interval: 10,
+				Source:    config.SourceTypeOCI,
+				SourceUrl: tc.artifact,
+				Interval:  10,
 			}
 
 			if err := c.Validate(); err != nil {

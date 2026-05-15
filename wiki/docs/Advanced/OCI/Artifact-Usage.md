@@ -47,12 +47,11 @@ This includes, but is not limited to:
 
 ## `doco.v1` Artifact Layout
 
-The **doco.v1** layout is a strict, versioned specification for packaging deployment configurations as OCI artifacts. It ensures consistency and enables validation.
+The **doco.v1** layout (see `version` in [deploy config](../../Deploy-Settings.md#available-settings)) is a strict, versioned specification for packaging deployment configurations as OCI artifacts. It ensures consistency and enables validation.
 
 ### Artifact Structure
 
-A doco.v1 artifact must have a root-level deployment configuration file (`.doco-cd.y(a)ml`) in the root (`/`) of the artifact
-that includes the `#!yaml layout: doco.v1` field. 
+A doco.v1 artifact must have a root-level deployment configuration file (`.doco-cd.y(a)ml`) in the root (`/`) of the artifact.
 
 The rest of the artifact can contain any files needed for deployment, as with deployments from Git repository (e.g., compose files, app configuration, assets, scripts), see [Deploy Settings](../../Deploy-Settings.md).
 
@@ -61,7 +60,7 @@ The rest of the artifact can contain any files needed for deployment, as with de
     === "Single Deployment"
         ```
         artifact-root/
-        ├── .doco-cd.yaml        # Main deployment config with `layout: doco.v1`
+        ├── .doco-cd.yaml        # Main deployment config
         ├── docker-compose.yml    # Docker Compose configuration
         └── (other files as needed)
         ```
@@ -69,7 +68,7 @@ The rest of the artifact can contain any files needed for deployment, as with de
     === "Multiple Deployments"
         ```
         artifact-root/
-        ├── .doco-cd.yaml        # Main deployment config with `layout: doco.v1`
+        ├── .doco-cd.yaml        # Main deployment config
         ├── web/
         │   ├── .doco-cd.yaml    # Extra deployment config for web service
         │   └── docker-compose.yml
@@ -88,9 +87,7 @@ The rest of the artifact can contain any files needed for deployment, as with de
 
     The main [deployment configuration](../../Deploy-Settings.md) file.
     
-    **Layout version**: Each deployment configuration must include `#!yaml layout: doco.v1` to indicate it follows the doco.v1 artifact layout specification.
     ```yaml title=".doco-cd.yaml Example"
-    layout: doco.v1
     name: production
     compose_files:
       - docker-compose.yml
@@ -108,7 +105,6 @@ Here's a complete example of creating and pushing a `doco.v1` OCI artifact:
     
     # Create deployment configuration
     cat > artifact/.doco-cd.yaml << 'EOF'
-    layout: doco.v1
     name: web-app
     compose_files:
       - docker-compose.yml

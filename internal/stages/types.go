@@ -111,12 +111,11 @@ type Stages struct {
 // RepositoryData holds information about the triggering repository.
 type RepositoryData struct {
 	Source       types2.SourceType // Source backend used for this deployment (git or oci)
-	CloneURL     types2.HttpUrl    // Repository clone URL (e.g., "https://github.com/user/my-repo.git")
+	SourceUrl    string            // Repository or OCI artifact URL (e.g., "https://github.com/user/my-repo.git" or "ghcr.io/org/repo:tag")
 	Name         string            // Repository name (e.g., "user/my-repo")
 	PathInternal string            // Path to the repository inside the container
 	PathExternal string            // Path to the repository on the host machine
 	Git          *git.Repository   // Git repository instance
-	Artifact     string            // OCI artifact reference (when source=oci)
 	Revision     string            // Resolved immutable revision (commit SHA or digest)
 }
 

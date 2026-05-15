@@ -52,9 +52,9 @@ func StartPoll(ctx context.Context, h *handlerData, pollConfig poll.Config, wg *
 
 // PollHandler is a function that handles polling for changes in a repository.
 func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
-	repoName := git.GetRepoName(string(pollJob.Config.CloneUrl))
+	repoName := git.GetRepoName(pollJob.Config.SourceUrl)
 	if config.NormalizeSourceType(pollJob.Config.Source) == config.SourceTypeOCI {
-		repoName = oci.RepositoryNameFromArtifact(pollJob.Config.Artifact)
+		repoName = oci.RepositoryNameFromArtifact(pollJob.Config.SourceUrl)
 	}
 
 	logger := h.log.With(slog.String("repository", repoName))
@@ -134,11 +134,10 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 ) error {
 	startTime := time.Now()
 	sourceType := config.NormalizeSourceType(pollConfig.Source)
-	sourceRef := string(pollConfig.CloneUrl)
+	sourceRef := pollConfig.SourceUrl
 
 	repoName := git.GetRepoName(sourceRef)
 	if sourceType == config.SourceTypeOCI {
-		sourceRef = pollConfig.Artifact
 		repoName = oci.RepositoryNameFromArtifact(sourceRef)
 	}
 

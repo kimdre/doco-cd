@@ -44,7 +44,8 @@ var (
 type Config struct {
 	Name               string                                   `yaml:"name" json:"name" doco:"allowOverride"`                                                                                                                  // Name of the docker-compose deployment / stack
 	Source             config.SourceType                        `yaml:"source" json:"source" default:"git"`                                                                                                                     // Source selects the deployment source backend (git or oci)
-	RepositoryUrl      config.HttpUrl                           `yaml:"repository_url" json:"repository_url" default:"" validate:"httpUrl"`                                                                                     // RepositoryUrl is the http URL of the Git repository to deploy
+	Version            string                                   `yaml:"version" json:"version" default:"doco.v1" doco:"allowOverride"`                                                                                          // Version declares the deployment config schema/artifact version for OCI-backed deployments
+	RepositoryUrl      config.GitUrl                            `yaml:"repository_url" json:"repository_url" default:"" validate:"gitUrl"`                                                                                      // RepositoryUrl is the Git clone URL of the repository to deploy
 	WebhookEventFilter string                                   `yaml:"webhook_filter" json:"webhook_filter" default:"" doco:"allowOverride"`                                                                                   // WebhookEventFilter is a regular expression to whitelist deployment triggers based on the webhook event payload (e.g., branch like "^refs/heads/main$" or "main", tag like "^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$" or "v[0-9]+\.[0-9]+\.[0-9]+")
 	Reference          string                                   `yaml:"reference" json:"reference" default:""`                                                                                                                  // Reference is the Git reference to the deployment, e.g., refs/heads/main, main, refs/tags/v1.0.0 or v1.0.0
 	WorkingDirectory   string                                   `yaml:"working_dir" json:"working_dir" default:"." doco:"allowOverride"`                                                                                        // WorkingDirectory is the working directory for the deployment
@@ -101,6 +102,16 @@ func (c *Config) Validate() error {
 	c.Source = config.NormalizeSourceType(c.Source)
 	if err := config.ValidateSourceType(c.Source); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+	}
+
+	c.Version = strings.TrimSpace(c.Version)
+
+	if c.Version == "" {
+		c.Version = config.OciArtifactLayoutV1
+	}
+
+	if c.Source == config.SourceTypeOCI && c.Version != config.OciArtifactLayoutV1 {
+		return fmt.Errorf("%w: unsupported oci version %q", ErrInvalidConfig, c.Version)
 	}
 
 	if c.Name == "" && !c.AutoDiscovery.Enabled {

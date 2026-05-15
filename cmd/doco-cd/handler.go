@@ -152,12 +152,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 			}
 		}
 	case config.SourceTypeOCI:
-		layout := pollConfig.Layout
-		if strings.TrimSpace(layout) == "" {
-			layout = config.OciArtifactLayoutV1
-		}
-
-		pullResult, err := oci.PullAndExtract(ctx, sourceRef, strings.TrimSpace(payload.Digest), layout, internalRepoPath)
+		pullResult, err := oci.PullAndExtract(ctx, sourceRef, strings.TrimSpace(payload.Digest), config.OciArtifactLayoutV1, internalRepoPath)
 		if err != nil {
 			return handleError{
 				err:            err,
@@ -234,11 +229,10 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 
 	repoData := stages.RepositoryData{
 		Source:       sourceType,
-		CloneURL:     config.HttpUrl(sourceRef),
+		SourceUrl:    sourceRef,
 		Name:         repoName,
 		PathInternal: internalRepoPath,
 		PathExternal: externalRepoPath,
-		Artifact:     sourceRef,
 		Revision:     resolvedRevision,
 	}
 

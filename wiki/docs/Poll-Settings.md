@@ -19,9 +19,10 @@ They must be in the format of a YAML list/array (also called YAML Sequence) and 
 
 | Key           | Type                                          | Description                                                                                                                                                                                                                                | Default value                    |
 |---------------|-----------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------|
-| `url`         | string                                        | The HTTP/SSH clone URL of the repository to poll for changes (e.g. `https://github.com/kimdre/doco-cd.git` or `git@github.com:kimdre/doco-cd.git`)                                                                                         |                                  |
-| `reference`   | string                                        | The Git branch or tag to use for the deployment (e.g. `main` or `refs/heads/main`) or tag (e.g. `v1.0.0.` or `refs/tags/v1.0.0`)                                                                                                           | `refs/heads/main`                |
-| `interval`    | integer                                       | The interval in seconds at which the repository will be polled for changes (set to `0` to disable polling this Git repository)                                                                                                             | `180`                            |
+| `source`      | string                                        | Source backend for this poll job. Use `git` (default) for repositories or `oci` for OCI artifacts.                                                                                                                                         | `git`                            |
+| `url`         | string                                        | Source URL. For `source: git`, this is the Git clone URL (e.g. `https://github.com/kimdre/doco-cd.git` or `git@github.com:kimdre/doco-cd.git`). For `source: oci`, this is the full artifact reference (e.g. `ghcr.io/myorg/config:main`). |                                  |
+| `reference`   | string                                        | Source revision used by deployment configs. For Git this is the branch/tag/ref (e.g. `main` or `refs/heads/main`). For OCI, the tag from `url` is used automatically when present.                                                         | `refs/heads/main`                |
+| `interval`    | integer                                       | The interval in seconds at which the source will be polled for changes (set to `0` to disable this poll job)                                                                                                                               | `180`                            |
 | `target`      | string                                        | Similar to the *custom target* [webhook endpoint](Endpoints/Webhook-Listener.md#with-custom-target), used to target a specific deployment config, e.g., "test" -> .doco-cd.test.yaml                                                       | ` ` (Ignored when not specified) |
 | `run_once`    | boolean                                       | Stop the poll job after the first run. Useful if you only want to do the first initial deployment via the poll job but do all future deployments via webhooks                                                                              | `false`                          |
 | `deployments` | array of [Deploy Configs](Deploy-Settings.md) | In-line configuration for [deployment settings](Deploy-Settings.md) specific to this poll configuration. Overrides the `.doco-cd.yml` file in the target repository (`url`) if exists.<br>See the [example below](#inline-deploy-configs). | `[]`                             |
@@ -157,9 +158,17 @@ configs:
 
 1. Use with the `POLL_CONFIG_FILE` environment variable.
 
+### OCI Example
+
+```yaml title="poll-config.yaml"
+- source: oci
+  url: ghcr.io/example/deploy-config:production
+  interval: 300
+```
+
 ### Inline Deploy Configs
 
-Inline deployments reuse the same fields as `.doco-cd.yml` files (See [Deploy Settings](Deploy-Settings.md)), including support for external secrets and destroy workflows. The poll job `url` is always used as the deployment source.
+Inline deployments reuse the same fields as `.doco-cd.yml` files (See [Deploy Settings](Deploy-Settings.md)), including support for external secrets and destroy workflows. The poll job `url` is always used as the deployment source URL.
 
 If the poll config has an inline deployment config and the target repository also contains a `.doco-cd.yml` file, the file will be ignored in favor of the inline deployment config.
 

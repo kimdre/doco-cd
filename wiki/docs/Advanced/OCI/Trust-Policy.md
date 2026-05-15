@@ -364,7 +364,7 @@ services:
             subject: repo:kimdre/doco-cd:ref:refs/heads/main
       POLL_CONFIG: |
         - source: oci
-          artifact: ghcr.io/kimdre/doco-cd-config:main
+          url: ghcr.io/kimdre/doco-cd-config:main
           reference: main
           interval: 300
           deployments:
@@ -379,7 +379,7 @@ Different verification levels for different environments:
 ```yaml
 POLL_CONFIG: |
   - source: oci
-    artifact: ghcr.io/myorg/config:main
+    url: ghcr.io/myorg/config:main
     reference: main
     interval: 300
     deployments:

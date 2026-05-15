@@ -41,7 +41,7 @@ func (j *job) run(ctx context.Context) {
 	if !swarmMode {
 		filterArgs.Add("label", docker.DocoCDLabels.Metadata.Manager+"="+app.Name)
 
-		repositoryLabelValue := gitInternal.GetFullName(string(j.info.repoData.CloneURL))
+		repositoryLabelValue := gitInternal.GetFullName(j.info.repoData.SourceUrl)
 		if j.info.payload != nil && strings.TrimSpace(j.info.payload.FullName) != "" {
 			repositoryLabelValue = j.info.payload.FullName
 		}
@@ -316,7 +316,7 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConf
 	defer jobLog.Info("reconciliation completed")
 
 	if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
-		j.info.dockerCli, string(j.info.repoData.CloneURL),
+		j.info.dockerCli, j.info.repoData.SourceUrl,
 		j.info.deployConfigs, // all deploy configs
 		j.info.metadata); err != nil {
 		jobLog.Error("failed to clean up obsolete auto-discovered containers", logger.ErrAttr(err))

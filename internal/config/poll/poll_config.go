@@ -5,10 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/creasty/defaults"
-	"github.com/google/go-containerregistry/pkg/name"
 	"gopkg.in/validator.v2"
 
 	"github.com/kimdre/doco-cd/internal/config"
@@ -19,9 +17,7 @@ import (
 
 type Config struct {
 	Source       config.SourceType `yaml:"source" json:"source" default:"git"`                   // Source selects the poll source backend (git or oci)
-	CloneUrl     config.HttpUrl    `yaml:"url" json:"url" validate:"httpUrl"`                    // CloneUrl is the Git repository URL used when source=git
-	Artifact     string            `yaml:"artifact" json:"artifact" default:""`                  // Artifact is the OCI artifact reference used when source=oci
-	Layout       string            `yaml:"layout" json:"layout" default:"doco.v1"`               // Layout is the required OCI artifact layout version used when source=oci
+	SourceUrl    string            `yaml:"url" json:"url"`                                       // SourceUrl is the repository/artifact URL; validated as GitUrl or OciUrl depending on Source
 	Reference    string            `yaml:"reference" json:"reference" default:"refs/heads/main"` // Reference is the Git reference to the deployment, e.g., refs/heads/main, main, refs/tags/v1.0.0 or v1.0.0
 	Interval     int               `yaml:"interval" default:"180"`                               // Interval is the interval in seconds to poll for changes
 	CustomTarget string            `yaml:"target" json:"target" default:""`                      // CustomTarget is the name of an optional custom deployment config file, e.g. ".doco-cd.custom-name.yaml"
@@ -58,30 +54,31 @@ func (c *Config) Validate() error {
 
 	switch c.Source {
 	case config.SourceTypeGit:
-		if c.CloneUrl == "" {
+		if c.SourceUrl == "" {
 			return fmt.Errorf("%w: url", deploy.ErrKeyNotFound)
 		}
 
 		if c.Reference == "" {
 			return fmt.Errorf("%w: reference", deploy.ErrKeyNotFound)
 		}
+
+		if err := config.GitUrl(c.SourceUrl).Validate(); err != nil {
+			return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+		}
+
 	case config.SourceTypeOCI:
-		if strings.TrimSpace(c.Artifact) == "" {
-			return fmt.Errorf("%w: artifact", deploy.ErrKeyNotFound)
+		if c.SourceUrl == "" {
+			return fmt.Errorf("%w: url", deploy.ErrKeyNotFound)
 		}
 
-		c.Layout = strings.TrimSpace(c.Layout)
-		if c.Layout == "" {
-			c.Layout = config.OciArtifactLayoutV1
+		ociUrl := config.OciUrl(c.SourceUrl)
+		if err := ociUrl.Validate(); err != nil {
+			return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
 		}
 
-		if c.Layout != config.OciArtifactLayoutV1 {
-			return fmt.Errorf("%w: unsupported oci layout %q", ErrInvalidConfig, c.Layout)
-		}
-
-		// Always derive reference from the artifact tag so users don't need to specify it separately.
-		if ref, err := name.ParseReference(strings.TrimSpace(c.Artifact), name.WeakValidation); err == nil {
-			c.Reference = ref.Identifier()
+		// Derive reference from the artifact tag so users don't need to specify it separately.
+		if ref := ociUrl.Tag(); ref != "" {
+			c.Reference = ref
 		}
 	}
 
@@ -92,23 +89,19 @@ func (c *Config) Validate() error {
 	// If inline deployments are defined, validate them
 	if len(c.Deployments) > 0 {
 		for _, d := range c.Deployments {
-			// Ensure DeployConfig defaults are applied when defined inline or programmatically
 			if err := defaults.Set(d); err != nil {
 				return err
 			}
 
-			// If reference isn't set on the deployment, inherit from poll config
 			if d.Reference == "" {
 				d.Reference = c.Reference
 			}
 
-			// Validate the deployment configuration (ensures name is present and paths are sane)
 			if err := d.Validate(); err != nil {
 				return fmt.Errorf("%w: %v", deploy.ErrInvalidConfig, err)
 			}
 		}
 
-		// Ensure unique stack names across inline deployments
 		if err := deploy.ValidateUniqueProjectNames(c.Deployments); err != nil {
 			return err
 		}
@@ -124,11 +117,7 @@ func (c *Config) Validate() error {
 
 // String returns a string representation of the Config.
 func (c *Config) String() string {
-	if c.Source == config.SourceTypeOCI {
-		return fmt.Sprintf("Config{Source: %s, Artifact: %s, Layout: %s, Reference: %s, Interval: %d}", c.Source, c.Artifact, c.Layout, c.Reference, c.Interval)
-	}
-
-	return fmt.Sprintf("Config{Source: %s, CloneUrl: %s, Reference: %s, Interval: %d}", c.Source, c.CloneUrl, c.Reference, c.Interval)
+	return fmt.Sprintf("Config{Source: %s, SourceUrl: %s, Reference: %s, Interval: %d}", c.Source, c.SourceUrl, c.Reference, c.Interval)
 }
 
 func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
