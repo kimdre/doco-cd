@@ -298,37 +298,65 @@ OCI_TRUST_POLICY: |
 
 ### Signing with Cosign (GitHub Actions)
 
-```yaml
-# .github/workflows/build-and-sign.yml
+```yaml title=".github/workflows/build-and-sign.yml"
 name: Build and Sign
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write # needed for signing the images with GitHub OIDC Token
 
 on:
   push:
-    branches:
-      - main
-    tags:
-      - 'v*'
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
     steps:
       - uses: actions/checkout@v6
-      
-      - name: Build and push artifact
-        run: |
-          docker build -t ghcr.io/myorg/config:${{ github.ref_name }} .
-          docker push ghcr.io/myorg/config:${{ github.ref_name }}
-      
-      - name: Sign with Cosign
-        uses: sigstore/cosign-installer@v4
-      
-      - run: |
-          cosign sign --yes ghcr.io/myorg/config:${{ github.ref_name }}
+        with:
+          fetch-depth: 1
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.1.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.11.1
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: docker_meta
+        uses: docker/metadata-action@v5.7.0
+        with:
+          images: ghcr.io/my/app # (1)!
+          tags: type=sha,format=long
+
+      - name: Build and Push container images
+        uses: docker/build-push-action@v6.18.0
+        id: build-and-push
+        with:
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.docker_meta.outputs.tags }}
+
+      - name: Sign OIDC artifact
+        env:
+          DIGEST: ${{ steps.build-and-push.outputs.digest }}
+          TAGS: ${{ steps.docker_meta.outputs.tags }}
+        run:
+          images="";
+          for tag in ${TAGS}; do
+          images+="${tag}@${DIGEST} ";
+          done;
+          cosign sign --yes ${images}
 ```
+
+1. Change to your image name.
 
 ---
 
@@ -338,8 +366,7 @@ jobs:
 
 Production setup using GitHub Actions to sign artifacts:
 
-```yaml
-# .doco-cd Docker Compose
+```yaml title="Doco-CD docker-compose.yml"
 services:
   doco-cd:
     environment:
@@ -362,7 +389,7 @@ services:
 
 Different verification levels for different environments:
 
-```yaml
+```yaml title="Doco-CD docker-compose.yml"
 POLL_CONFIG: |
   - source: oci
     url: ghcr.io/myorg/config:main
