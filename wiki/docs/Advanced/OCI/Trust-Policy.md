@@ -58,11 +58,11 @@ keyless_identities:              # Keyless verification using OIDC
 | `OCI_TRUST_POLICY`      | string | YAML-formatted OCI signature trust policy for verifying artifact signatures. Supports public keys and keyless (OIDC) identities. Verification is disabled unless `enabled: true` is set. |
 | `OCI_TRUST_POLICY_FILE` | string | Path to the file containing OCI trust policy YAML (Mutually exclusive with `OCI_TRUST_POLICY`).                                                                                          |
 
-| Key                  | Type       | Default | Description                                                                         |
-|----------------------|------------|---------|-------------------------------------------------------------------------------------|
-| `enabled`            | boolean    | `false` | Enables OCI signature verification globally. When `false`, verification is skipped. |
-| `public_keys`        | \[\]string | `[]`    | List of trusted public keys (PEM format) used by Cosign key verification.           |
-| `keyless_identities` | \[\]object | `[]`    | List of trusted keyless identities used for OIDC-based verification.                |
+| Key                  | Type             | Default | Description                                                                         |
+|----------------------|------------------|---------|-------------------------------------------------------------------------------------|
+| `enabled`            | boolean          | `false` | Enables OCI signature verification globally. When `false`, verification is skipped. |
+| `public_keys`        | array of strings | `[]`    | List of trusted public keys (PEM format) used by Cosign key verification.           |
+| `keyless_identities` | array of object  | `[]`    | List of trusted keyless identities used for OIDC-based verification.                |
 
 `keyless_identities` object fields:
 
@@ -120,11 +120,11 @@ keyless_identities:              # Keyless verification using OIDC
 
 Override the global trust policy for specific [deployments](../../Poll-Settings.md#inline-deploy-configs):
 
-| Key                  | Type     | Default | Description                                                                                             |
-|----------------------|----------|---------|---------------------------------------------------------------------------------------------------------|
-| `verify`             | boolean  | unset   | Overrides global `enabled` for this deployment only. `true` enforces verification, `false` disables it. |
-| `public_keys`        | \[\]string | inherit | Replaces global `public_keys` when set and non-empty.                                                   |
-| `keyless_identities` | \[\]object | inherit | Replaces global `keyless_identities` when set and non-empty.                                            |
+| Key                  | Type             | Default | Description                                                                                             |
+|----------------------|------------------|---------|---------------------------------------------------------------------------------------------------------|
+| `verify`             | boolean          | unset   | Overrides global `enabled` for this deployment only. `true` enforces verification, `false` disables it. |
+| `public_keys`        | array of strings | inherit | Replaces global `public_keys` when set and non-empty.                                                   |
+| `keyless_identities` | array of objects | inherit | Replaces global `keyless_identities` when set and non-empty.                                            |
 
 !!!note "Behavior"
 
