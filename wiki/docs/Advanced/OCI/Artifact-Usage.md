@@ -98,7 +98,7 @@ The rest of the artifact can contain any files needed for deployment, as with de
       - production
     ```
 
-### Example: Creating an OCI Artifact
+## Example: Creating an OCI Artifact
 
 Here's a complete example of creating and pushing a `doco.v1` OCI artifact:
 
