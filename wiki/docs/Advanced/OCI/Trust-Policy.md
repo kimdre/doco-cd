@@ -25,7 +25,7 @@ OCI Signature Verification ensures that deployment artifacts are signed by trust
 Doco-cd supports two signature verification methods:
 
 1. **Public Key Signatures** - Traditional PKI with public/private key pairs
-2. **Keyless Signatures** - OIDC-based verification (e.g., GitHub Actions, Chainguard)
+2. **Keyless Signatures** - OIDC-based verification (e.g., GitHub Actions, Google Service Accounts)
 
 Both can be used together in a single trust policy.
 
@@ -246,7 +246,8 @@ cosign verify --key public.pem ghcr.io/myorg/config:latest
 
 ## Keyless Identities (OIDC)
 
-Use keyless verification for artifacts signed via OIDC providers like GitHub Actions or Chainguard.
+Use keyless verification for artifacts signed via OIDC providers like GitHub Actions or Google Service Accounts. 
+This eliminates the need for managing public keys and allows dynamic trust based on identity claims.
 
 ### OIDC Basics
 
@@ -254,12 +255,6 @@ Keyless identities verify that:
 
 1. An OIDC provider (issuer) issued the signature
 2. The subject (identity) matches expectations
-
-Common OIDC providers:
-
-- **GitHub Actions**: `https://token.actions.githubusercontent.com`
-- **Chainguard**: `https://accounts.chainguard.dev`
-- **Google**: `https://accounts.google.com`
 
 ### GitHub Actions
 
@@ -279,18 +274,6 @@ Subject patterns:
 - `repo:owner/repo:ref:refs/tags/v*` - All version tags
 - `repo:owner/repo:*` - Any ref in repository
 
-### Chainguard
-
-Verify artifacts signed by Chainguard identity:
-
-```yaml
-OCI_TRUST_POLICY: |
-  enabled: true
-  keyless_identities:
-    - issuer: https://accounts.chainguard.dev
-      subject: user@example.com
-```
-
 ### Multiple OIDC Providers
 
 ```yaml
@@ -300,10 +283,6 @@ OCI_TRUST_POLICY: |
     # GitHub Actions CI/CD
     - issuer: https://token.actions.githubusercontent.com
       subject: repo:myorg/config:ref:refs/heads/main
-    
-    # Chainguard for automated updates
-    - issuer: https://accounts.chainguard.dev
-      subject: ci@company.com
     
     # Google Service Account
     - issuer: https://accounts.google.com
@@ -346,7 +325,7 @@ jobs:
 
 ---
 
-## Complete Examples
+## Examples
 
 ### GitHub Actions Keyless Signing
 
