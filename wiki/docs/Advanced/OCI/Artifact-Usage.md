@@ -23,7 +23,7 @@ Doco-CD supports pulling deployment configurations from OCI registries (e.g., Do
 
 To use OCI artifacts with doco-cd, you need to:
 
-1. Package your deployment configuration according to the [`doco.v1` layout specification](#docov1-artifact-layout)
+1. Package your deployment configuration according to the [`doco.v1` layout specification](#docov1-artifact-layout), see the [example](#example-creating-an-oci-artifact) below for details.
 2. Push the artifact to an OCI registry
 3. Configure doco-cd with either [polling](Polling.md) or [webhooks](Webhooks.md) to pull the artifact and trigger deployments
 4. (Optional) Configure signature verification with [trust policies](Trust-Policy.md)
@@ -105,10 +105,9 @@ Here's a complete example of creating and pushing a `doco.v1` OCI artifact:
 1. Create the artifact directory
     ```sh
     mkdir -p artifact
-    cd artifact
     
     # Create deployment configuration
-    cat > .doco-cd.yaml << 'EOF'
+    cat > artifact/.doco-cd.yaml << 'EOF'
     layout: doco.v1
     name: web-app
     compose_files:
@@ -116,10 +115,8 @@ Here's a complete example of creating and pushing a `doco.v1` OCI artifact:
     EOF
     
     # Create docker-compose.yml
-    cat > docker-compose.yml << 'EOF'
+    cat > artifact/docker-compose.yml << 'EOF'
     services:
-      app:
-        image: myapp:latest
       nginx:
         image: nginx:latest
     EOF
