@@ -83,6 +83,7 @@ var docoCDJobLabelNames = struct {
 	JobSchedule      string // Schedule of the job in 5-field cron format or @every duration
 	JobSkipRunning   string // Skip a schedule trigger when a previous run is still in progress
 	JobExecutionMode string // Defines if a run restarts/reruns the job or starts an ephemeral one-off execution
+	JobEphemeral     string // Marks a runtime-created scheduler one-off target that should be ignored as drift
 	JobNotifyOn      string // Controls notification behavior: none, success, failure, all
 	JobSwarmReplicas string // Number of replicas for one-off replicated-job runs in swarm mode
 	JobLastRun       string // Timestamp of the last run in RFC3339 format
@@ -92,6 +93,7 @@ var docoCDJobLabelNames = struct {
 	JobSchedule:      "cd.doco.job.schedule",
 	JobSkipRunning:   "cd.doco.job.skip_running",
 	JobExecutionMode: "cd.doco.job.execution_mode",
+	JobEphemeral:     "cd.doco.job.ephemeral",
 	JobNotifyOn:      "cd.doco.job.notify_on",
 	JobSwarmReplicas: "cd.doco.job.swarm.replicas",
 	JobLastRun:       "cd.doco.job.last_run",

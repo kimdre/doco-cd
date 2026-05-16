@@ -218,6 +218,12 @@ func RunSwarmOneOffFromService(ctx context.Context, dockerCLI command.Cli, servi
 		return fmt.Errorf("service %s has no task container spec", serviceName)
 	}
 
+	if oneOffSpec.TaskTemplate.ContainerSpec.Labels == nil {
+		oneOffSpec.TaskTemplate.ContainerSpec.Labels = map[string]string{}
+	}
+
+	oneOffSpec.TaskTemplate.ContainerSpec.Labels[DocoCDJobLabels.JobEphemeral] = "true"
+
 	if oneOffSpec.Labels == nil {
 		oneOffSpec.Labels = map[string]string{}
 	}
