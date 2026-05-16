@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/sigstore/cosign/v3/pkg/cosign"
 	"github.com/sigstore/cosign/v3/pkg/signature"
+	"github.com/sigstore/sigstore-go/pkg/root"
 
 	"github.com/kimdre/doco-cd/internal/config"
 )
@@ -17,7 +19,13 @@ import (
 var (
 	ErrNoTrustRules       = errors.New("OCI trust policy has no trust rules")
 	ErrVerificationFailed = errors.New("OCI artifact signature verification failed")
+
+	loadTrustedRoot = sync.OnceValues(func() (root.TrustedMaterial, error) {
+		return cosign.TrustedRoot()
+	})
 )
+
+const cosignVerifyMaxWorkers = 1
 
 // toCosignIdentity converts a keyless identity from the trust policy to a Cosign identity.
 func toCosignIdentity(identity config.OciKeylessIdentity) cosign.Identity {
@@ -30,12 +38,19 @@ func toCosignIdentity(identity config.OciKeylessIdentity) cosign.Identity {
 
 // verifyCosignEntity attempts to verify the signatures of the given reference using the provided options.
 func verifyCosignEntity(ctx context.Context, ref name.Reference, opts *cosign.CheckOpts) error {
-	_, valid, err := cosign.VerifyImageSignatures(ctx, ref, opts)
+	classicOpts := *opts
+	classicOpts.MaxWorkers = cosignVerifyMaxWorkers
+
+	_, valid, err := cosign.VerifyImageSignatures(ctx, ref, &classicOpts)
 	if err == nil && valid {
 		return nil
 	}
 
-	bundleOpts := *opts
+	if _, ok := errors.AsType[*cosign.ErrNoSignaturesFound](err); !ok {
+		return err
+	}
+
+	bundleOpts := classicOpts
 	bundleOpts.NewBundleFormat = true
 
 	_, _, bundleErr := cosign.VerifyImageAttestations(ctx, ref, &bundleOpts)
@@ -77,7 +92,7 @@ func VerifyWithCosign(ctx context.Context, artifactRef, digest string, globalPol
 		return fmt.Errorf("%w: failed to parse verification reference: %v", ErrVerificationFailed, err)
 	}
 
-	trustedMaterial, err := cosign.TrustedRoot()
+	trustedMaterial, err := loadTrustedRoot()
 	if err != nil {
 		return fmt.Errorf("%w: failed to load Sigstore trusted root: %v", ErrVerificationFailed, err)
 	}
