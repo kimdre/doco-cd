@@ -2,7 +2,6 @@ package docker
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -18,6 +17,7 @@ import (
 
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	swarmInternal "github.com/kimdre/doco-cd/internal/docker/swarm"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/moby/moby/client"
 )
@@ -247,18 +247,35 @@ func RemoveLabeledVolumes(ctx context.Context, dockerClient client.APIClient, st
 	return nil
 }
 
-// MarshalAutoDiscoveryConfig serializes an AutoDiscoveryConfig to a JSON string for use as a container label.
+// MarshalAutoDiscoveryConfig serializes an AutoDiscoveryConfig to a single-line YAML flow-style string for use as a container label.
 func MarshalAutoDiscoveryConfig(cfg deployConfig.AutoDiscoveryConfig) string {
-	b, err := json.Marshal(cfg)
+	// First marshal to get standard YAML
+	b, err := yaml.Marshal(cfg)
 	if err != nil {
-		// Should never happen for a plain struct; fall back to an empty object.
 		return "{}"
 	}
 
-	return string(b)
+	// Parse it back into a node to apply flow style
+	var node yaml.Node
+	if err := yaml.Unmarshal(b, &node); err != nil {
+		return "{}"
+	}
+
+	// Set flow style (produces {key: value, key: value} format)
+	if node.Content != nil && len(node.Content) > 0 {
+		node.Content[0].Style = yaml.FlowStyle
+	}
+
+	// Marshal with flow style applied
+	result, err := yaml.Marshal(&node)
+	if err != nil {
+		return "{}"
+	}
+
+	return strings.TrimSpace(string(result))
 }
 
-// ParseAutoDiscoveryConfig deserializes an AutoDiscoveryConfig from a JSON container label value.
+// ParseAutoDiscoveryConfig deserializes an AutoDiscoveryConfig from a YAML container label value.
 // If the label is empty or invalid it returns a default config with Delete=true, RemoveVolumes=true, RemoveImages=true.
 func ParseAutoDiscoveryConfig(labelValue string) deployConfig.AutoDiscoveryConfig {
 	defaults := deployConfig.AutoDiscoveryConfig{
@@ -272,7 +289,7 @@ func ParseAutoDiscoveryConfig(labelValue string) deployConfig.AutoDiscoveryConfi
 	}
 
 	var cfg deployConfig.AutoDiscoveryConfig
-	if err := json.Unmarshal([]byte(labelValue), &cfg); err != nil {
+	if err := yaml.Unmarshal([]byte(labelValue), &cfg); err != nil {
 		return defaults
 	}
 
