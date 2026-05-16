@@ -217,6 +217,8 @@ func parsePollInterval(v any) (time.Duration, error) {
 	}
 
 	switch value := v.(type) {
+	case time.Duration:
+		return value, nil
 	case string:
 		return parsePollIntervalString(value)
 	case int:
