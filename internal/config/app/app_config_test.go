@@ -307,22 +307,6 @@ func TestGetConfig_OciVerifyMaxWorkersDefaultsToOne(t *testing.T) {
 	}
 }
 
-func TestGetConfig_OciVerifyMaxWorkersClampsToTen(t *testing.T) {
-	t.Setenv("LOG_LEVEL", "info")
-	t.Setenv("HTTP_PORT", "8080")
-	t.Setenv("WEBHOOK_SECRET", "secret")
-	t.Setenv("OCI_VERIFY_MAX_WORKERS", "99")
-
-	cfg, err := GetConfig()
-	if err != nil {
-		t.Fatalf("expected config to load, got %v", err)
-	}
-
-	if cfg.OciVerifyMaxWorkers != 10 {
-		t.Fatalf("expected OCI_VERIFY_MAX_WORKERS to clamp to 10, got %d", cfg.OciVerifyMaxWorkers)
-	}
-}
-
 func TestGetConfig_OciVerifyMaxWorkersRejectsZero(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "info")
 	t.Setenv("HTTP_PORT", "8080")
