@@ -15,9 +15,10 @@ import (
 
 	"github.com/moby/moby/api/types/volume"
 
+	"go.yaml.in/yaml/v3"
+
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	swarmInternal "github.com/kimdre/doco-cd/internal/docker/swarm"
-	"go.yaml.in/yaml/v3"
 
 	"github.com/moby/moby/client"
 )
@@ -262,7 +263,7 @@ func MarshalAutoDiscoveryConfig(cfg deployConfig.AutoDiscoveryConfig) string {
 	}
 
 	// Set flow style (produces {key: value, key: value} format)
-	if node.Content != nil && len(node.Content) > 0 {
+	if len(node.Content) > 0 {
 		node.Content[0].Style = yaml.FlowStyle
 	}
 
