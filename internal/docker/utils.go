@@ -277,11 +277,11 @@ func MarshalAutoDiscoveryConfig(cfg deployConfig.AutoDiscoveryConfig) string {
 }
 
 // ParseAutoDiscoveryConfig deserializes an AutoDiscoveryConfig from a YAML container label value.
-// If the label is empty or invalid it returns a default config with Delete=true, RemoveVolumes=true, RemoveImages=true.
+// If the label is empty or invalid it returns a default config with Delete=true, RemoveVolumes=false, RemoveImages=true.
 func ParseAutoDiscoveryConfig(labelValue string) deployConfig.AutoDiscoveryConfig {
 	defaults := deployConfig.AutoDiscoveryConfig{
 		Delete:        true,
-		RemoveVolumes: true,
+		RemoveVolumes: false,
 		RemoveImages:  true,
 	}
 
