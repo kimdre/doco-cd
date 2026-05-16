@@ -11,7 +11,6 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/sigstore/cosign/v3/pkg/cosign"
 	"github.com/sigstore/cosign/v3/pkg/signature"
-	"github.com/sigstore/sigstore-go/pkg/root"
 
 	"github.com/kimdre/doco-cd/internal/config"
 )
@@ -20,12 +19,25 @@ var (
 	ErrNoTrustRules       = errors.New("OCI trust policy has no trust rules")
 	ErrVerificationFailed = errors.New("OCI artifact signature verification failed")
 
-	loadTrustedRoot = sync.OnceValues(func() (root.TrustedMaterial, error) {
-		return cosign.TrustedRoot()
-	})
+	loadTrustedRoot = sync.OnceValues(cosign.TrustedRoot)
 )
 
-const cosignVerifyMaxWorkers = 1
+const (
+	defaultCosignVerifyMaxWorkers = 1
+	maxCosignVerifyMaxWorkers     = 10
+)
+
+func normalizeVerifyMaxWorkers(maxWorkers uint) int {
+	if maxWorkers < defaultCosignVerifyMaxWorkers {
+		return defaultCosignVerifyMaxWorkers
+	}
+
+	if maxWorkers > maxCosignVerifyMaxWorkers {
+		return maxCosignVerifyMaxWorkers
+	}
+
+	return int(maxWorkers)
+}
 
 // toCosignIdentity converts a keyless identity from the trust policy to a Cosign identity.
 func toCosignIdentity(identity config.OciKeylessIdentity) cosign.Identity {
@@ -37,9 +49,9 @@ func toCosignIdentity(identity config.OciKeylessIdentity) cosign.Identity {
 }
 
 // verifyCosignEntity attempts to verify the signatures of the given reference using the provided options.
-func verifyCosignEntity(ctx context.Context, ref name.Reference, opts *cosign.CheckOpts) error {
+func verifyCosignEntity(ctx context.Context, ref name.Reference, opts *cosign.CheckOpts, maxWorkers uint) error {
 	classicOpts := *opts
-	classicOpts.MaxWorkers = cosignVerifyMaxWorkers
+	classicOpts.MaxWorkers = normalizeVerifyMaxWorkers(maxWorkers)
 
 	_, valid, err := cosign.VerifyImageSignatures(ctx, ref, &classicOpts)
 	if err == nil && valid {
@@ -61,7 +73,7 @@ func verifyCosignEntity(ctx context.Context, ref name.Reference, opts *cosign.Ch
 	return fmt.Errorf("signature verify: %v; bundle verify: %v", err, bundleErr)
 }
 
-func VerifyWithCosign(ctx context.Context, artifactRef, digest string, globalPolicy config.OciTrustPolicy, override config.OciTrustPolicyOverride) error {
+func VerifyWithCosign(ctx context.Context, artifactRef, digest string, globalPolicy config.OciTrustPolicy, override config.OciTrustPolicyOverride, maxWorkers uint) error {
 	effectivePolicy := config.EffectiveOciTrustPolicy(globalPolicy, override)
 	if !effectivePolicy.Enabled {
 		return nil
@@ -110,7 +122,7 @@ func VerifyWithCosign(ctx context.Context, artifactRef, digest string, globalPol
 			SigVerifier:       verifier,
 			TrustedMaterial:   trustedMaterial,
 			ExperimentalOCI11: true,
-		})
+		}, maxWorkers)
 		if err == nil {
 			return nil
 		}
@@ -128,7 +140,7 @@ func VerifyWithCosign(ctx context.Context, artifactRef, digest string, globalPol
 			Identities:        []cosign.Identity{toCosignIdentity(identity)},
 			TrustedMaterial:   trustedMaterial,
 			ExperimentalOCI11: true,
-		})
+		}, maxWorkers)
 		if err == nil {
 			return nil
 		}

@@ -73,7 +73,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 			return fmt.Errorf("failed to access extracted OCI artifact directory: %w", err)
 		}
 
-		if err := oci.VerifyWithCosign(ctx, s.Repository.SourceUrl, s.Repository.Revision, s.AppConfig.OciTrustPolicy, s.DeployConfig.Oci); err != nil {
+		if err := oci.VerifyWithCosign(ctx, s.Repository.SourceUrl, s.Repository.Revision, s.AppConfig.OciTrustPolicy, s.DeployConfig.Oci, s.AppConfig.OciVerifyMaxWorkers); err != nil {
 			return fmt.Errorf("failed OCI signature verification: %w", err)
 		}
 

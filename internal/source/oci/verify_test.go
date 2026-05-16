@@ -11,7 +11,7 @@ import (
 func TestVerifyWithCosign_DisabledPolicySkipsVerification(t *testing.T) {
 	t.Parallel()
 
-	err := VerifyWithCosign(context.Background(), "ghcr.io/example/app:main", "sha256:deadbeef", config.OciTrustPolicy{}, config.OciTrustPolicyOverride{})
+	err := VerifyWithCosign(context.Background(), "ghcr.io/example/app:main", "sha256:deadbeef", config.OciTrustPolicy{}, config.OciTrustPolicyOverride{}, 1)
 	if err != nil {
 		t.Fatalf("expected nil error for disabled policy, got %v", err)
 	}
@@ -22,7 +22,7 @@ func TestVerifyWithCosign_EmptyDigestFails(t *testing.T) {
 
 	policy := config.OciTrustPolicy{Enabled: true}
 
-	err := VerifyWithCosign(context.Background(), "ghcr.io/example/app:main", "", policy, config.OciTrustPolicyOverride{})
+	err := VerifyWithCosign(context.Background(), "ghcr.io/example/app:main", "", policy, config.OciTrustPolicyOverride{}, 1)
 	if err == nil {
 		t.Fatal("expected an error, got nil")
 	}
@@ -37,7 +37,7 @@ func TestVerifyWithCosign_NoTrustRulesFails(t *testing.T) {
 
 	policy := config.OciTrustPolicy{Enabled: true}
 
-	err := VerifyWithCosign(context.Background(), "ghcr.io/example/app:main", "sha256:deadbeef", policy, config.OciTrustPolicyOverride{})
+	err := VerifyWithCosign(context.Background(), "ghcr.io/example/app:main", "sha256:deadbeef", policy, config.OciTrustPolicyOverride{}, 1)
 	if !errors.Is(err, ErrNoTrustRules) {
 		t.Fatalf("expected ErrNoTrustRules, got %v", err)
 	}
@@ -63,5 +63,28 @@ func TestToCosignIdentity_MapsSubjectRegexp(t *testing.T) {
 
 	if got.SubjectRegExp != "^https://github.com/myorg/myrepo/.+@refs/heads/main$" {
 		t.Fatalf("unexpected subject regexp: %q", got.SubjectRegExp)
+	}
+}
+
+func TestNormalizeVerifyMaxWorkers(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   uint
+		want int
+	}{
+		{name: "zero defaults to one", in: 0, want: 1},
+		{name: "one stays one", in: 1, want: 1},
+		{name: "middle unchanged", in: 4, want: 4},
+		{name: "above max clamps", in: 99, want: 10},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeVerifyMaxWorkers(tt.in); got != tt.want {
+				t.Fatalf("normalizeVerifyMaxWorkers(%d) = %d, want %d", tt.in, got, tt.want)
+			}
+		})
 	}
 }

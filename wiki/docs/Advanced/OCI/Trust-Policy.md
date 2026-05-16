@@ -22,7 +22,7 @@ OCI Signature Verification ensures that deployment artifacts are signed by trust
 - **Compromised registries** - Artifacts from compromised registries without valid signatures are rejected
 
 !!! note "Signature verification is disabled by default" 
-    Verification only runs when explicitly enabled via [global configuration](#global-trust-policy) or [per-deployment override](#per-deployment-override).
+    Verification only runs when explicitly enabled via [global configuration](#global-configuration) or [per-deployment override](#per-deployment-override).
 
 ## Supported Signature Methods
 
@@ -52,12 +52,29 @@ keyless_identities:              # Keyless verification using OIDC
 
 ### Available Options
 
-#### Global trust policy
+#### Global configuration
 
-| Key                     | Type   | Description                                                                                                                                                                              |
-|-------------------------|--------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `OCI_TRUST_POLICY`      | string | YAML-formatted OCI signature trust policy for verifying artifact signatures. Supports public keys and keyless (OIDC) identities. Verification is disabled unless `enabled: true` is set. |
-| `OCI_TRUST_POLICY_FILE` | string | Path to the file containing OCI trust policy YAML (Mutually exclusive with `OCI_TRUST_POLICY`).                                                                                          |
+| Key                      | Type   | Description                                                                                                                                                                              |
+|--------------------------|--------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `OCI_TRUST_POLICY`       | string | YAML-formatted OCI signature trust policy for verifying artifact signatures. Supports public keys and keyless (OIDC) identities. Verification is disabled unless `enabled: true` is set. |
+| `OCI_TRUST_POLICY_FILE`  | string | Path to the file containing OCI trust policy YAML (Mutually exclusive with `OCI_TRUST_POLICY`).                                                                                          |
+| `OCI_VERIFY_MAX_WORKERS` | number | Maximum number of workers used per OCI signature verification. Values below `1` are invalid. Values above `10` are clamped to `10`.                                                      |
+
+!!! note "Verification Parallelism and Memory Usage"
+    
+    `OCI_VERIFY_MAX_WORKERS` applies per OCI verification call.
+    Combined with `MAX_CONCURRENT_DEPLOYMENTS`, total verification parallelism can grow roughly with both settings.
+
+    A higher number of workers can speed up verification for artifacts with many signatures or complex policies, but also increases memory usage.
+    
+    For example:
+    
+    - `MAX_CONCURRENT_DEPLOYMENTS=4`
+    - `OCI_VERIFY_MAX_WORKERS=2`
+    
+    can allow up to roughly `8` concurrent verification workers in the worst case.
+
+##### Trust Policy Fields
 
 | Key                  | Type             | Default | Description                                                                         |
 |----------------------|------------------|---------|-------------------------------------------------------------------------------------|
@@ -65,13 +82,13 @@ keyless_identities:              # Keyless verification using OIDC
 | `public_keys`        | array of strings | `[]`    | List of trusted public keys (PEM format) used by Cosign key verification.           |
 | `keyless_identities` | array of object  | `[]`    | List of trusted keyless identities used for OIDC-based verification.                |
 
-`keyless_identities` object fields:
+##### `keyless_identities` object fields
 
-| Key              | Type   | Required | Description                                                                                                                     |
-|------------------|--------|----------|---------------------------------------------------------------------------------------------------------------------------------|
-| `issuer`         | string | yes      | OIDC issuer URL (for example `https://token.actions.githubusercontent.com`).                                                    |
-| `subject`        | string | no       | Exact certificate identity (SAN) match (for example `https://github.com/org/repo/.github/workflows/build.yml@refs/heads/main`). |
-| `subject_regexp` | string | no       | Regular expression for certificate identity (SAN) matching. Useful when workflow file paths or refs may vary.                   |
+| Key              | Type   | Description                                                                                                                                                                   |
+|------------------|--------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `issuer`         | string | OIDC issuer URL (for example `https://token.actions.githubusercontent.com`).                                                                                                  |
+| `subject`        | string | Exact certificate identity (SAN) match (for example `https://github.com/org/repo/.github/workflows/build.yml@refs/heads/main`). **Mutually exclusive with `subject_regexp`.** |
+| `subject_regexp` | string | Regular expression for certificate identity (SAN) matching. Useful when workflow file paths or refs may vary. **Mutually exclusive with `subject`.**                          |
 
 !!! note "Docker Compose escaping for `subject_regexp`"
     If you set `OCI_TRUST_POLICY` inside `docker-compose.yml`, Docker Compose treats`$` characters as [variable interpolation](https://docs.docker.com/reference/compose-file/interpolation/) 
@@ -90,8 +107,6 @@ keyless_identities:              # Keyless verification using OIDC
               - issuer: https://token.actions.githubusercontent.com
                 subject_regexp: ^https://github.com/myorg/myrepo/.+@refs/heads/main$$
     ```
-
-At least one of `subject` or `subject_regexp` should be provided for each keyless identity.
 
 !!! example "Configuring Global Trust Policy"
     === "Environment Variable Configuration"
