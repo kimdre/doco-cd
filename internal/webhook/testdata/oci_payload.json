@@ -1,0 +1,6 @@
+{
+  "source": "oci",
+  "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "artifact": "ghcr.io/example/platform-config:main"
+}
+

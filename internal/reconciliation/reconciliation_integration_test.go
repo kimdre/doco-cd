@@ -12,8 +12,6 @@ import (
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/moby/moby/client"
 
-	"github.com/kimdre/doco-cd/internal/config"
-
 	"github.com/kimdre/doco-cd/internal/config/app"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -150,7 +148,7 @@ func TestReconciliationStopEventRestartSuppressionIntegration(t *testing.T) {
 		internaltest.WithWaitTimeout(90*time.Second),
 		internaltest.WithCustomLabel(map[string]string{
 			docker.DocoCDLabels.Metadata.Manager:     app.Name,
-			docker.DocoCDLabels.Repository.Name:      repositoryName,
+			docker.DocoCDLabels.Source.Name:          repositoryName,
 			docker.DocoCDLabels.Deployment.Name:      stackName,
 			docker.DocoCDLabels.Deployment.TargetRef: "main",
 		}),
@@ -169,7 +167,7 @@ func TestReconciliationStopEventRestartSuppressionIntegration(t *testing.T) {
 		jobLog:        jobLog,
 		dockerCli:     stack.DockerCli,
 		metadata:      notification.Metadata{Repository: repositoryName, Stack: stackName, JobID: "test-job"},
-		repoData:      stages.RepositoryData{CloneURL: config.HttpUrl("https://github.com/kimdre/doco-cd_tests.git"), Name: repositoryName},
+		repoData:      stages.RepositoryData{SourceUrl: "https://github.com/kimdre/doco-cd_tests.git", Name: repositoryName},
 		payload:       &webhook.ParsedPayload{FullName: repositoryName},
 		deployConfigs: []*deployConfig.Config{dc},
 	}, getDeployConfigGroupByEvent([]*deployConfig.Config{dc}))

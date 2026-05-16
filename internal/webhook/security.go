@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 )
@@ -25,15 +26,37 @@ const (
 	Gitea
 	Gogs
 	Forgejo
+	OCIRegistry
 )
+
+// ScmProviderNames maps ScmProvider to their human-readable names.
+var ScmProviderNames = map[ScmProvider]string{
+	Unknown:     "Unknown",
+	Github:      "GitHub",
+	Gitlab:      "GitLab",
+	Gitea:       "Gitea",
+	Gogs:        "Gogs",
+	Forgejo:     "Forgejo",
+	OCIRegistry: "OCI Registry",
+}
+
+// String returns the human-readable name of the ScmProvider.
+func (p ScmProvider) String() string {
+	if name, ok := ScmProviderNames[p]; ok {
+		return name
+	}
+
+	return fmt.Sprintf("ScmProvider(%d)", int(p))
+}
 
 // ScmProviderSecurityHeaders maps ScmProvider to their respective security header names.
 var ScmProviderSecurityHeaders = map[ScmProvider]string{
-	Github:  "X-Hub-Signature-256",
-	Gitlab:  "X-Gitlab-Token", // #nosec G101
-	Gitea:   "X-Gitea-Signature",
-	Gogs:    "X-Gogs-Signature",
-	Forgejo: "X-Forgejo-Signature",
+	Github:      "X-Hub-Signature-256",
+	Gitlab:      "X-Gitlab-Token", // #nosec G101
+	Gitea:       "X-Gitea-Signature",
+	Gogs:        "X-Gogs-Signature",
+	Forgejo:     "X-Forgejo-Signature",
+	OCIRegistry: "X-Doco-OCI-Signature-256",
 }
 
 func GenerateHMAC(payload []byte, secretKey string) string {
@@ -81,6 +104,11 @@ func verifyProviderSecret(r *http.Request, payload []byte, secretKey string) (Sc
 		signature := r.Header.Get(ScmProviderSecurityHeaders[Forgejo])
 
 		return Forgejo, verifySignature(payload, signature, secretKey)
+
+	case r.Header.Get(ScmProviderSecurityHeaders[OCIRegistry]) != "":
+		signature := strings.TrimPrefix(r.Header.Get(ScmProviderSecurityHeaders[OCIRegistry]), "sha256=")
+
+		return OCIRegistry, verifySignature(payload, signature, secretKey)
 
 	default:
 		return Unknown, ErrMissingSecurityHeader

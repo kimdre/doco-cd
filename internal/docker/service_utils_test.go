@@ -52,7 +52,7 @@ func Test_getLatestServiceState(t *testing.T) {
 			serviceStatus: map[Service]ServiceStatus{
 				"svc1": {
 					Labels: Labels{
-						DocoCDLabels.Repository.Name:        "repo",
+						DocoCDLabels.Source.Name:            "repo",
 						DocoCDLabels.Deployment.CommitSHA:   "commit_sha",
 						DocoCDLabels.Deployment.ComposeHash: "compose_hash",
 					},
@@ -66,7 +66,7 @@ func Test_getLatestServiceState(t *testing.T) {
 				DeployedStatus: map[Service]ServiceStatus{
 					"svc1": {
 						Labels: Labels{
-							DocoCDLabels.Repository.Name:        "repo",
+							DocoCDLabels.Source.Name:            "repo",
 							DocoCDLabels.Deployment.CommitSHA:   "commit_sha",
 							DocoCDLabels.Deployment.ComposeHash: "compose_hash",
 						},
@@ -80,7 +80,7 @@ func Test_getLatestServiceState(t *testing.T) {
 			serviceStatus: map[Service]ServiceStatus{
 				"svc1": {
 					Labels: Labels{
-						DocoCDLabels.Repository.Name:        "owner/repo",
+						DocoCDLabels.Source.Name:            "owner/repo",
 						DocoCDLabels.Deployment.CommitSHA:   "commit_sha",
 						DocoCDLabels.Deployment.ComposeHash: "compose_hash",
 					},
@@ -94,8 +94,36 @@ func Test_getLatestServiceState(t *testing.T) {
 				DeployedStatus: map[Service]ServiceStatus{
 					"svc1": {
 						Labels: Labels{
-							DocoCDLabels.Repository.Name:        "owner/repo",
+							DocoCDLabels.Source.Name:            "owner/repo",
 							DocoCDLabels.Deployment.CommitSHA:   "commit_sha",
+							DocoCDLabels.Deployment.ComposeHash: "compose_hash",
+						},
+						Replicas: 1,
+					},
+				},
+			},
+		},
+		{
+			name: "single service with OCI artifact reference including tag",
+			serviceStatus: map[Service]ServiceStatus{
+				"svc1": {
+					Labels: Labels{
+						DocoCDLabels.Source.Name:            "ghcr.io/kimdre/doco-cd_tests",
+						DocoCDLabels.Deployment.CommitSHA:   "sha256:deadbeef",
+						DocoCDLabels.Deployment.ComposeHash: "compose_hash",
+					},
+					Replicas: 1,
+				},
+			},
+			repoName: "ghcr.io/kimdre/doco-cd_tests:main",
+			want: LatestServiceStatus{
+				deploymentCommitSHA:   "sha256:deadbeef",
+				deploymentComposeHash: "compose_hash",
+				DeployedStatus: map[Service]ServiceStatus{
+					"svc1": {
+						Labels: Labels{
+							DocoCDLabels.Source.Name:            "ghcr.io/kimdre/doco-cd_tests",
+							DocoCDLabels.Deployment.CommitSHA:   "sha256:deadbeef",
 							DocoCDLabels.Deployment.ComposeHash: "compose_hash",
 						},
 						Replicas: 1,
@@ -108,7 +136,7 @@ func Test_getLatestServiceState(t *testing.T) {
 			serviceStatus: map[Service]ServiceStatus{
 				"svc1": {
 					Labels: Labels{
-						DocoCDLabels.Repository.Name:        "owner/repo",
+						DocoCDLabels.Source.Name:            "owner/repo",
 						DocoCDLabels.Deployment.CommitSHA:   "commit_sha",
 						DocoCDLabels.Deployment.ComposeHash: "compose_hash",
 					},
@@ -124,7 +152,7 @@ func Test_getLatestServiceState(t *testing.T) {
 				DeployedStatus: map[Service]ServiceStatus{
 					"svc1": {
 						Labels: Labels{
-							DocoCDLabels.Repository.Name:        "owner/repo",
+							DocoCDLabels.Source.Name:            "owner/repo",
 							DocoCDLabels.Deployment.CommitSHA:   "commit_sha",
 							DocoCDLabels.Deployment.ComposeHash: "compose_hash",
 						},
@@ -138,7 +166,7 @@ func Test_getLatestServiceState(t *testing.T) {
 			serviceStatus: map[Service]ServiceStatus{
 				"svc1": {
 					Labels: Labels{
-						DocoCDLabels.Repository.Name:        "repo",
+						DocoCDLabels.Source.Name:            "repo",
 						DocoCDLabels.Deployment.Timestamp:   "2006-01-02T15:04:05Z07:00",
 						DocoCDLabels.Deployment.CommitSHA:   "commit_sha",
 						DocoCDLabels.Deployment.ComposeHash: "compose_hash",
@@ -153,7 +181,7 @@ func Test_getLatestServiceState(t *testing.T) {
 				DeployedStatus: map[Service]ServiceStatus{
 					"svc1": {
 						Labels: Labels{
-							DocoCDLabels.Repository.Name:        "repo",
+							DocoCDLabels.Source.Name:            "repo",
 							DocoCDLabels.Deployment.Timestamp:   "2006-01-02T15:04:05Z07:00",
 							DocoCDLabels.Deployment.CommitSHA:   "commit_sha",
 							DocoCDLabels.Deployment.ComposeHash: "compose_hash",
@@ -170,14 +198,14 @@ func Test_getLatestServiceState(t *testing.T) {
 			serviceStatus: map[Service]ServiceStatus{
 				"svc1": {
 					Labels: Labels{
-						DocoCDLabels.Repository.Name:      "repo-2",
+						DocoCDLabels.Source.Name:          "repo-2",
 						DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
 					},
 					Replicas: 1,
 				},
 				"svc2": {
 					Labels: Labels{
-						DocoCDLabels.Repository.Name:      "repo-2",
+						DocoCDLabels.Source.Name:          "repo-2",
 						DocoCDLabels.Deployment.Timestamp: "2016-01-02T15:04:05Z07:00",
 					},
 					Replicas: 1,
@@ -190,14 +218,14 @@ func Test_getLatestServiceState(t *testing.T) {
 				DeployedStatus: map[Service]ServiceStatus{
 					"svc1": {
 						Labels: Labels{
-							DocoCDLabels.Repository.Name:      "repo-2",
+							DocoCDLabels.Source.Name:          "repo-2",
 							DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
 						},
 						Replicas: 1,
 					},
 					"svc2": {
 						Labels: Labels{
-							DocoCDLabels.Repository.Name:      "repo-2",
+							DocoCDLabels.Source.Name:          "repo-2",
 							DocoCDLabels.Deployment.Timestamp: "2016-01-02T15:04:05Z07:00",
 						},
 						Replicas: 1,
@@ -212,7 +240,7 @@ func Test_getLatestServiceState(t *testing.T) {
 			serviceStatus: map[Service]ServiceStatus{
 				"svc1": {
 					Labels: Labels{
-						DocoCDLabels.Repository.Name:        "repo",
+						DocoCDLabels.Source.Name:            "repo",
 						DocoCDLabels.Deployment.Timestamp:   "2006-01-02T15:04:05Z07:00",
 						DocoCDLabels.Deployment.CommitSHA:   "commit_sha1",
 						DocoCDLabels.Deployment.ComposeHash: "compose_hash1",
@@ -221,7 +249,7 @@ func Test_getLatestServiceState(t *testing.T) {
 				},
 				"svc2": {
 					Labels: Labels{
-						DocoCDLabels.Repository.Name:        "repo-2",
+						DocoCDLabels.Source.Name:            "repo-2",
 						DocoCDLabels.Deployment.Timestamp:   "2016-01-02T15:04:05Z07:00",
 						DocoCDLabels.Deployment.CommitSHA:   "commit_sha2",
 						DocoCDLabels.Deployment.ComposeHash: "compose_hash2",
@@ -236,7 +264,7 @@ func Test_getLatestServiceState(t *testing.T) {
 				DeployedStatus: map[Service]ServiceStatus{
 					"svc1": {
 						Labels: Labels{
-							DocoCDLabels.Repository.Name:        "repo",
+							DocoCDLabels.Source.Name:            "repo",
 							DocoCDLabels.Deployment.Timestamp:   "2006-01-02T15:04:05Z07:00",
 							DocoCDLabels.Deployment.CommitSHA:   "commit_sha1",
 							DocoCDLabels.Deployment.ComposeHash: "compose_hash1",
@@ -245,7 +273,7 @@ func Test_getLatestServiceState(t *testing.T) {
 					},
 					"svc2": {
 						Labels: Labels{
-							DocoCDLabels.Repository.Name:        "repo-2",
+							DocoCDLabels.Source.Name:            "repo-2",
 							DocoCDLabels.Deployment.Timestamp:   "2016-01-02T15:04:05Z07:00",
 							DocoCDLabels.Deployment.CommitSHA:   "commit_sha2",
 							DocoCDLabels.Deployment.ComposeHash: "compose_hash2",
@@ -256,7 +284,7 @@ func Test_getLatestServiceState(t *testing.T) {
 			},
 		},
 		{
-			// Containers without a cd.doco.repository.name label contribute no metadata but
+			// Containers without a cd.doco.source.name label contribute no metadata but
 			// are still counted as deployed so CheckServiceMismatch does not flag them.
 			name: "two service with timestamp but repo mismatch",
 			serviceStatus: map[Service]ServiceStatus{
@@ -306,7 +334,7 @@ func Test_getLatestServiceState(t *testing.T) {
 			serviceStatus: map[Service]ServiceStatus{
 				"svc1": {
 					Labels: Labels{
-						DocoCDLabels.Repository.Name:        "",
+						DocoCDLabels.Source.Name:            "",
 						DocoCDLabels.Deployment.Timestamp:   "2006-01-02T15:04:05Z07:00",
 						DocoCDLabels.Deployment.CommitSHA:   "commit_sha1",
 						DocoCDLabels.Deployment.ComposeHash: "compose_hash1",
@@ -315,7 +343,7 @@ func Test_getLatestServiceState(t *testing.T) {
 				},
 				"svc2": {
 					Labels: Labels{
-						DocoCDLabels.Repository.Name:        "",
+						DocoCDLabels.Source.Name:            "",
 						DocoCDLabels.Deployment.Timestamp:   "2016-01-02T15:04:05Z07:00",
 						DocoCDLabels.Deployment.CommitSHA:   "commit_sha2",
 						DocoCDLabels.Deployment.ComposeHash: "compose_hash2",
@@ -330,7 +358,7 @@ func Test_getLatestServiceState(t *testing.T) {
 				DeployedStatus: map[Service]ServiceStatus{
 					"svc2": {
 						Labels: Labels{
-							DocoCDLabels.Repository.Name:        "",
+							DocoCDLabels.Source.Name:            "",
 							DocoCDLabels.Deployment.Timestamp:   "2016-01-02T15:04:05Z07:00",
 							DocoCDLabels.Deployment.CommitSHA:   "commit_sha2",
 							DocoCDLabels.Deployment.ComposeHash: "compose_hash2",
@@ -339,7 +367,7 @@ func Test_getLatestServiceState(t *testing.T) {
 					},
 					"svc1": {
 						Labels: Labels{
-							DocoCDLabels.Repository.Name:        "",
+							DocoCDLabels.Source.Name:            "",
 							DocoCDLabels.Deployment.Timestamp:   "2006-01-02T15:04:05Z07:00",
 							DocoCDLabels.Deployment.CommitSHA:   "commit_sha1",
 							DocoCDLabels.Deployment.ComposeHash: "compose_hash1",
@@ -358,7 +386,7 @@ func Test_getLatestServiceState(t *testing.T) {
 			serviceStatus: map[Service]ServiceStatus{
 				"labeled": {
 					Labels: Labels{
-						DocoCDLabels.Repository.Name:        "repo",
+						DocoCDLabels.Source.Name:            "repo",
 						DocoCDLabels.Deployment.Timestamp:   "2026-01-01T00:00:00Z",
 						DocoCDLabels.Deployment.CommitSHA:   "commit_sha",
 						DocoCDLabels.Deployment.ComposeHash: "compose_hash",
@@ -378,7 +406,7 @@ func Test_getLatestServiceState(t *testing.T) {
 				DeployedStatus: map[Service]ServiceStatus{
 					"labeled": {
 						Labels: Labels{
-							DocoCDLabels.Repository.Name:        "repo",
+							DocoCDLabels.Source.Name:            "repo",
 							DocoCDLabels.Deployment.Timestamp:   "2026-01-01T00:00:00Z",
 							DocoCDLabels.Deployment.CommitSHA:   "commit_sha",
 							DocoCDLabels.Deployment.ComposeHash: "compose_hash",
@@ -397,14 +425,14 @@ func Test_getLatestServiceState(t *testing.T) {
 			serviceStatus: map[Service]ServiceStatus{
 				"svc1": {
 					Labels: Labels{
-						DocoCDLabels.Repository.Name:      "repo",
+						DocoCDLabels.Source.Name:          "repo",
 						DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
 					},
 					Replicas: 1,
 				},
 				"svc2": {
 					Labels: Labels{
-						DocoCDLabels.Repository.Name:        "repo",
+						DocoCDLabels.Source.Name:            "repo",
 						DocoCDLabels.Deployment.Timestamp:   "2016-01-02T15:04:05Z07:00",
 						DocoCDLabels.Deployment.CommitSHA:   "commit_sha2",
 						DocoCDLabels.Deployment.ComposeHash: "compose_hash2",
@@ -419,14 +447,14 @@ func Test_getLatestServiceState(t *testing.T) {
 				DeployedStatus: map[Service]ServiceStatus{
 					"svc1": {
 						Labels: Labels{
-							DocoCDLabels.Repository.Name:      "repo",
+							DocoCDLabels.Source.Name:          "repo",
 							DocoCDLabels.Deployment.Timestamp: "2006-01-02T15:04:05Z07:00",
 						},
 						Replicas: 1,
 					},
 					"svc2": {
 						Labels: Labels{
-							DocoCDLabels.Repository.Name:        "repo",
+							DocoCDLabels.Source.Name:            "repo",
 							DocoCDLabels.Deployment.Timestamp:   "2016-01-02T15:04:05Z07:00",
 							DocoCDLabels.Deployment.CommitSHA:   "commit_sha2",
 							DocoCDLabels.Deployment.ComposeHash: "compose_hash2",
@@ -516,7 +544,7 @@ services:
 	stack := test.ComposeUp(ctx, t,
 		test.WithYAML(cfg),
 		test.WithCustomLabel(map[string]string{
-			DocoCDLabels.Repository.Name: repoName,
+			DocoCDLabels.Source.Name: repoName,
 		}),
 	)
 

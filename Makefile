@@ -74,7 +74,7 @@ compose-down:
 	@docker compose -f dev.compose.yaml down --volumes
 
 cleanup:
-	@CONTAINERS=$$(docker container ls --format "{{.ID}}" --filter "label=cd.doco.metadata.manager"); \
+	@CONTAINERS=$$(docker container ls -a --format "{{.ID}}" --filter "label=cd.doco.metadata.manager"); \
 	if [ -n "$$CONTAINERS" ]; then \
 		for PROJECT in $$(for ID in $$CONTAINERS; do docker container inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' $$ID; done | sort | uniq); do \
 			docker compose -p $$PROJECT down -v; \

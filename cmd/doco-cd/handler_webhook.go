@@ -12,6 +12,7 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/moby/moby/api/types/container"
 
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 
@@ -28,6 +29,22 @@ import (
 )
 
 var ErrInvalidHTTPMethod = errors.New("invalid http method")
+
+func repositoryNameFromWebhookPayload(payload webhook.ParsedPayload) string {
+	if payload.FullName != "" {
+		return payload.FullName
+	}
+
+	if payload.CloneURL != "" {
+		return git.GetRepoName(payload.CloneURL)
+	}
+
+	if payload.Artifact != "" {
+		return payload.Artifact
+	}
+
+	return "unknown"
+}
 
 type handlerData struct {
 	appConfig      *app.Config          // Application configuration
@@ -72,20 +89,9 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	testName string,
 ) {
 	startTime := time.Now()
-	repoName := git.GetRepoName(payload.CloneURL)
+	repoName := repositoryNameFromWebhookPayload(payload)
 
-	jobLog = jobLog.With(slog.String("repository", repoName))
-
-	if customTarget != "" {
-		jobLog = jobLog.With(slog.String("custom_target", customTarget))
-	}
-
-	jobLog.Info("received new job",
-		slog.Group("trigger",
-			slog.String("commit", payload.CommitSHA), slog.String("ref", payload.Ref),
-			slog.String("event", string(stages.JobTriggerWebhook))))
-
-	if payload.Ref == "" {
+	if payload.Source != webhook.PayloadSourceOCI && payload.Ref == "" {
 		msg := "no reference provided in webhook payload, skipping event"
 		jobLog.Warn(msg)
 		JSONError(w, msg, msg, metadata.JobID, http.StatusBadRequest)
@@ -93,7 +99,31 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		return
 	}
 
-	cloneUrl := payload.CloneURL
+	sourceType := config.SourceTypeGit
+
+	sourceRef := payload.CloneURL
+	if payload.Source == webhook.PayloadSourceOCI {
+		sourceType = config.SourceTypeOCI
+		sourceRef = payload.Artifact
+	}
+
+	entity := logEntityForSourceType(sourceType)
+
+	logValue := repoName
+	if sourceType == config.SourceTypeOCI {
+		logValue = sourceRef
+	}
+
+	jobLog = jobLog.With(slog.String(entity, logValue))
+
+	if customTarget != "" {
+		jobLog = jobLog.With(slog.String("custom_target", customTarget))
+	}
+
+	jobLog.Info("received new "+entity+" job",
+		slog.Group("trigger",
+			slog.String("commit", payload.CommitSHA), slog.String("ref", payload.Ref),
+			slog.String("event", string(stages.JobTriggerWebhook))))
 
 	git.ConfigureAuthResolver(
 		appConfig.GitAuthDomains,
@@ -109,7 +139,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	// Only attempt SSH clone when URL-specific credentials include an SSH private key.
 	resolvedSSH := git.ResolveAuthConfig(payload.SSHUrl, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken)
-	if payload.SSHUrl != "" && resolvedSSH.SSHPrivateKey != "" {
+	if sourceType == config.SourceTypeGit && payload.SSHUrl != "" && resolvedSSH.SSHPrivateKey != "" {
 		sshAuth, authErr := git.GetAuthMethod(payload.SSHUrl, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken)
 		if authErr != nil {
 			onError(w, jobLog.With(logger.ErrAttr(authErr)), "failed to resolve SSH auth method", authErr.Error(), http.StatusInternalServerError, metadata)
@@ -118,13 +148,13 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		}
 
 		if sshAuth != nil {
-			cloneUrl = payload.SSHUrl
+			sourceRef = payload.SSHUrl
 		}
 	}
 
 	deployErr := handle(ctx, jobLog,
 		appConfig, dataMountPoint, secretProvider, dockerCli,
-		stages.JobTriggerWebhook, cloneUrl, payload.Ref, payload.Private,
+		stages.JobTriggerWebhook, sourceType, sourceRef, payload.Ref, payload.Private,
 		metadata, customTarget, testName, poll.Config{}, payload,
 	)
 	if deployErr != nil {
@@ -207,8 +237,8 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 			statusCode = http.StatusInternalServerError
 		}
 
-		if payload.CloneURL != "" {
-			metadata.Repository = git.GetRepoName(payload.CloneURL)
+		if repositoryName := repositoryNameFromWebhookPayload(payload); repositoryName != "unknown" {
+			metadata.Repository = repositoryName
 			metadata.Revision = notification.GetRevision(payload.Ref, payload.CommitSHA)
 		}
 
@@ -232,8 +262,16 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if metadata.Repository == "" || metadata.Repository == "unknown" {
-		metadata.Repository = git.GetRepoName(payload.CloneURL)
+		metadata.Repository = repositoryNameFromWebhookPayload(payload)
 		metadata.Revision = notification.GetRevision(payload.Ref, payload.CommitSHA)
+	}
+
+	lockEntity := "repository"
+	lockLogValue := metadata.Repository
+
+	if payload.Source == webhook.PayloadSourceOCI {
+		lockEntity = "artifact"
+		lockLogValue = payload.Artifact
 	}
 
 	// Prevent concurrent deployments for the same repository using a lock
@@ -251,7 +289,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		case <-locked:
 			// Acquired immediately
 		case <-time.After(10 * time.Millisecond):
-			jobLog.Info("waiting for webhook lock", slog.String("repository", metadata.Repository))
+			jobLog.Info("waiting for webhook "+lockEntity+" lock", slog.String(lockEntity, lockLogValue))
 			<-locked
 		}
 

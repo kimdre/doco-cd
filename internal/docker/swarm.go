@@ -95,12 +95,13 @@ func addSwarmServiceLabels(stack *composetypes.Config, deployConfig *deploy.Conf
 		DocoCDLabels.Deployment.WorkingDir:          repoDir,
 		DocoCDLabels.Deployment.Trigger:             payload.CommitSHA,
 		DocoCDLabels.Deployment.CommitSHA:           latestCommit,
-		DocoCDLabels.Deployment.TargetRef:           deployConfig.Reference,
+		DocoCDLabels.Deployment.TargetRef:           ExtractOciArtifactTag(deployConfig.Reference),
 		DocoCDLabels.Deployment.ConfigHash:          deployConfig.Internal.Hash,
 		DocoCDLabels.Deployment.AutoDiscovery:       strconv.FormatBool(deployConfig.AutoDiscovery.Enabled),
 		DocoCDLabels.Deployment.AutoDiscoveryDelete: strconv.FormatBool(deployConfig.AutoDiscovery.Delete),
-		DocoCDLabels.Repository.Name:                payload.FullName,
-		DocoCDLabels.Repository.URL:                 payload.WebURL,
+		DocoCDLabels.Source.Type:                    SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
+		DocoCDLabels.Source.Name:                    payload.FullName,
+		DocoCDLabels.Source.URL:                     payload.WebURL,
 	}
 
 	// Service-level labels (ServiceSpec.Annotations.Labels) are required for Docker
@@ -108,7 +109,8 @@ func addSwarmServiceLabels(stack *composetypes.Config, deployConfig *deploy.Conf
 	serviceLevelLabels := map[string]string{
 		DocoCDLabels.Metadata.Manager: app.Name,
 		DocoCDLabels.Deployment.Name:  deployConfig.Name,
-		DocoCDLabels.Repository.Name:  payload.FullName,
+		DocoCDLabels.Source.Type:      SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
+		DocoCDLabels.Source.Name:      payload.FullName,
 	}
 
 	for i, s := range stack.Services {
@@ -140,9 +142,10 @@ func addSwarmVolumeLabels(stack *composetypes.Config, deployConfig *deploy.Confi
 		DocoCDLabels.Deployment.WorkingDir: repoDir,
 		DocoCDLabels.Deployment.Trigger:    payload.CommitSHA,
 		DocoCDLabels.Deployment.CommitSHA:  latestCommit,
-		DocoCDLabels.Deployment.TargetRef:  deployConfig.Reference,
-		DocoCDLabels.Repository.Name:       payload.FullName,
-		DocoCDLabels.Repository.URL:        payload.WebURL,
+		DocoCDLabels.Deployment.TargetRef:  ExtractOciArtifactTag(deployConfig.Reference),
+		DocoCDLabels.Source.Type:           SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
+		DocoCDLabels.Source.Name:           payload.FullName,
+		DocoCDLabels.Source.URL:            payload.WebURL,
 	}
 
 	for i, v := range stack.Volumes {
@@ -168,9 +171,10 @@ func addSwarmConfigLabels(stack *composetypes.Config, deployConfig *deploy.Confi
 		DocoCDLabels.Deployment.WorkingDir: repoDir,
 		DocoCDLabels.Deployment.Trigger:    payload.CommitSHA,
 		DocoCDLabels.Deployment.CommitSHA:  latestCommit,
-		DocoCDLabels.Deployment.TargetRef:  deployConfig.Reference,
-		DocoCDLabels.Repository.Name:       payload.FullName,
-		DocoCDLabels.Repository.URL:        payload.WebURL,
+		DocoCDLabels.Deployment.TargetRef:  ExtractOciArtifactTag(deployConfig.Reference),
+		DocoCDLabels.Source.Type:           SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
+		DocoCDLabels.Source.Name:           payload.FullName,
+		DocoCDLabels.Source.URL:            payload.WebURL,
 	}
 
 	for i, c := range stack.Configs {
@@ -195,9 +199,10 @@ func addSwarmSecretLabels(stack *composetypes.Config, deployConfig *deploy.Confi
 		DocoCDLabels.Deployment.WorkingDir: repoDir,
 		DocoCDLabels.Deployment.Trigger:    payload.CommitSHA,
 		DocoCDLabels.Deployment.CommitSHA:  latestCommit,
-		DocoCDLabels.Deployment.TargetRef:  deployConfig.Reference,
-		DocoCDLabels.Repository.Name:       payload.FullName,
-		DocoCDLabels.Repository.URL:        payload.WebURL,
+		DocoCDLabels.Deployment.TargetRef:  ExtractOciArtifactTag(deployConfig.Reference),
+		DocoCDLabels.Source.Type:           SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
+		DocoCDLabels.Source.Name:           payload.FullName,
+		DocoCDLabels.Source.URL:            payload.WebURL,
 	}
 
 	for i, s := range stack.Secrets {

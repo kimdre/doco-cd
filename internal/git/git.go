@@ -46,7 +46,6 @@ var (
 	ErrMissingAuthToken           = errors.New("missing access token")
 	ErrCheckoutFailed             = errors.New("failed to checkout repository")
 	ErrFetchFailed                = errors.New("failed to fetch repository")
-	ErrPullFailed                 = errors.New("failed to pull repository")
 	ErrRepositoryNotExists        = git.ErrRepositoryNotExists
 	ErrRepositoryAlreadyExists    = git.ErrRepositoryAlreadyExists
 	ErrInvalidReference           = git.ErrInvalidReference

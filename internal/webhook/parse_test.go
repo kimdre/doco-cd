@@ -16,6 +16,7 @@ const (
 	githubPayloadFile = "testdata/github_payload.json"
 	giteaPayloadFile  = "testdata/gitea_payload.json"
 	gitlabPayloadFile = "testdata/gitlab_payload.json"
+	ociPayloadFile    = "testdata/oci_payload.json"
 )
 
 func TestParse(t *testing.T) {
@@ -29,6 +30,7 @@ func TestParse(t *testing.T) {
 		{"Github Push Payload", githubPayloadFile, nil},
 		{"Gitea Push Payload", giteaPayloadFile, nil},
 		{"Gitlab Push Payload", gitlabPayloadFile, nil},
+		{"OCI Artifact Payload", ociPayloadFile, nil},
 		{"Invalid Signature", githubPayloadFile, ErrHMACVerificationFailed},
 		{"Missing Signature", githubPayloadFile, ErrMissingSecurityHeader},
 		{"Invalid Gitlab Token", gitlabPayloadFile, ErrGitlabTokenVerificationFailed},
@@ -60,6 +62,8 @@ func TestParse(t *testing.T) {
 					r.Header.Set(ScmProviderSecurityHeaders[Gitea], GenerateHMAC(payload, testSecret))
 				case "Gitlab Push Payload":
 					r.Header.Set(ScmProviderSecurityHeaders[Gitlab], testSecret)
+				case "OCI Artifact Payload":
+					r.Header.Set(ScmProviderSecurityHeaders[OCIRegistry], "sha256="+GenerateHMAC(payload, testSecret))
 				}
 			} else {
 				switch {
@@ -79,11 +83,55 @@ func TestParse(t *testing.T) {
 				}
 
 				if p.FullName != "kimdre/doco-cd" {
-					t.Errorf("expected repository name to be kimdre/doco-cd, got %s", p.FullName)
+					if tc.name == "OCI Artifact Payload" {
+						if p.Source != PayloadSourceOCI {
+							t.Errorf("expected source to be oci, got %s", p.Source)
+						}
+
+						if p.Artifact == "" || p.Digest == "" {
+							t.Errorf("expected OCI payload to include artifact and digest")
+						}
+					} else {
+						t.Errorf("expected repository name to be kimdre/doco-cd, got %s", p.FullName)
+					}
 				}
 			} else if !errors.Is(err, tc.expectedError) {
 				t.Errorf("expected error to be %v, got %v", tc.expectedError, err)
 			}
 		})
+	}
+}
+
+func TestParseOCIRequiresSourceField(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`{"digest":"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","artifact":"ghcr.io/example/platform-config:main"}`)
+	r := httptest.NewRequest(http.MethodPost, webhookPath, bytes.NewReader(payload))
+	r.Header.Set(ScmProviderSecurityHeaders[OCIRegistry], "sha256="+GenerateHMAC(payload, testSecret))
+
+	_, _, err := Parse(r, testSecret)
+	if !errors.Is(err, ErrParsingPayload) {
+		t.Fatalf("expected %v, got %v", ErrParsingPayload, err)
+	}
+}
+
+func TestParseOCIDerivesRepositoryAndRefFromArtifact(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`{"source":"oci","digest":"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","artifact":"ghcr.io/example/platform-config:main"}`)
+	r := httptest.NewRequest(http.MethodPost, webhookPath, bytes.NewReader(payload))
+	r.Header.Set(ScmProviderSecurityHeaders[OCIRegistry], "sha256="+GenerateHMAC(payload, testSecret))
+
+	_, p, err := Parse(r, testSecret)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if p.Ref != "main" {
+		t.Fatalf("expected ref main, got %q", p.Ref)
+	}
+
+	if p.FullName != "example/platform-config" {
+		t.Fatalf("expected full name example/platform-config, got %q", p.FullName)
 	}
 }

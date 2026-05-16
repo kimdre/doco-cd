@@ -16,8 +16,6 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
-	"github.com/kimdre/doco-cd/internal/config"
-
 	"github.com/kimdre/doco-cd/internal/config/app"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -150,7 +148,7 @@ func TestDeploy(t *testing.T) {
 		},
 		stages.JobTriggerWebhook,
 		stages.RepositoryData{
-			CloneURL:     config.HttpUrl(p.CloneURL),
+			SourceUrl:    p.CloneURL,
 			Name:         repoName,
 			PathInternal: repoPath,
 			PathExternal: repoPath,

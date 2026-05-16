@@ -126,12 +126,13 @@ func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config
 			DocoCDLabels.Deployment.WorkingDir:          workingDir,
 			DocoCDLabels.Deployment.Trigger:             payload.CommitSHA,
 			DocoCDLabels.Deployment.CommitSHA:           latestCommit,
-			DocoCDLabels.Deployment.TargetRef:           deployConfig.Reference,
+			DocoCDLabels.Deployment.TargetRef:           ExtractOciArtifactTag(deployConfig.Reference),
 			DocoCDLabels.Deployment.ConfigHash:          deployConfig.Internal.Hash,
 			DocoCDLabels.Deployment.AutoDiscovery:       strconv.FormatBool(deployConfig.AutoDiscovery.Enabled),
 			DocoCDLabels.Deployment.AutoDiscoveryDelete: strconv.FormatBool(deployConfig.AutoDiscovery.Delete),
-			DocoCDLabels.Repository.Name:                payload.FullName,
-			DocoCDLabels.Repository.URL:                 payload.WebURL,
+			DocoCDLabels.Source.Type:                    SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
+			DocoCDLabels.Source.Name:                    payload.FullName,
+			DocoCDLabels.Source.URL:                     payload.WebURL,
 			api.ProjectLabel:                            project.Name,
 			api.ServiceLabel:                            s.Name,
 			api.WorkingDirLabel:                         project.WorkingDir,
@@ -155,10 +156,11 @@ func addComposeVolumeLabels(project *types.Project, deployConfig *deploy.Config,
 			DocoCDLabels.Deployment.Timestamp:   timestamp,
 			DocoCDLabels.Deployment.ComposeHash: projectHash,
 			DocoCDLabels.Deployment.Trigger:     payload.CommitSHA,
-			DocoCDLabels.Deployment.TargetRef:   deployConfig.Reference,
+			DocoCDLabels.Deployment.TargetRef:   ExtractOciArtifactTag(deployConfig.Reference),
 			DocoCDLabels.Deployment.CommitSHA:   latestCommit,
-			DocoCDLabels.Repository.Name:        payload.FullName,
-			DocoCDLabels.Repository.URL:         payload.WebURL,
+			DocoCDLabels.Source.Type:            SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
+			DocoCDLabels.Source.Name:            payload.FullName,
+			DocoCDLabels.Source.URL:             payload.WebURL,
 			api.ProjectLabel:                    project.Name,
 			api.VolumeLabel:                     v.Name,
 			api.VersionLabel:                    composeVersion,
@@ -588,7 +590,16 @@ func DeployStack(
 	}
 
 	// cache the deployment status after successful deployment
-	setDeployStatusToCache(gitInternal.GetRepoName(payload.CloneURL), deployConfig.Name,
+	repositoryKey := strings.TrimSpace(payload.CloneURL)
+	if repositoryKey == "" {
+		repositoryKey = strings.TrimSpace(payload.FullName)
+	}
+
+	if repositoryKey == "" {
+		repositoryKey = strings.TrimSpace(payload.Artifact)
+	}
+
+	setDeployStatusToCache(gitInternal.GetRepoName(repositoryKey), deployConfig.Name,
 		deployStatus{
 			CommitSHA:   latestCommit,
 			ComposeHash: projectHash,

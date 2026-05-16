@@ -6,14 +6,17 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"os"
 	"path/filepath"
 	"regexp"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
+	"github.com/kimdre/doco-cd/internal/source/oci"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -44,8 +47,8 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 	}
 
 	if s.DeployConfig.RepositoryUrl != "" {
-		s.Repository.CloneURL = s.DeployConfig.RepositoryUrl
-		s.Repository.Name = git.GetRepoName(string(s.Repository.CloneURL))
+		s.Repository.SourceUrl = string(s.DeployConfig.RepositoryUrl)
+		s.Repository.Name = git.GetRepoName(s.Repository.SourceUrl)
 
 		// Load local (without remote: prefix) dotenv files before paths get updated to remote repository
 		// Remote dotenv files get read later
@@ -65,13 +68,35 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		return fmt.Errorf("failed to verify and sanitize external filesystem path: %w", err)
 	}
 
+	if s.Repository.Source == config.SourceTypeOCI {
+		if _, err := os.Stat(s.Repository.PathInternal); err != nil {
+			return fmt.Errorf("failed to access extracted OCI artifact directory: %w", err)
+		}
+
+		if err := oci.VerifyWithCosign(ctx, s.Repository.SourceUrl, s.Repository.Revision, s.AppConfig.OciTrustPolicy, s.DeployConfig.Oci, s.AppConfig.OciVerifyMaxWorkers); err != nil {
+			return fmt.Errorf("failed OCI signature verification: %w", err)
+		}
+
+		err = deploy.LoadLocalDotEnv(s.DeployConfig, filepath.Join(s.Repository.PathInternal, s.DeployConfig.WorkingDirectory))
+		if err != nil {
+			return fmt.Errorf("failed to parse env files from OCI artifact: %w", err)
+		}
+
+		s.Log = s.Log.With(
+			slog.String("stack", s.DeployConfig.Name),
+			slog.String("repository", s.Repository.Name),
+		)
+
+		return nil
+	}
+
 	stageLog = stageLog.With(
 		slog.String("stack", s.DeployConfig.Name),
 		slog.String("repository", s.Repository.Name),
 		slog.String("reference", s.DeployConfig.Reference),
 	)
 
-	auth, err := git.GetAuthMethod(string(s.Repository.CloneURL), s.AppConfig.SSHPrivateKey, s.AppConfig.SSHPrivateKeyPassphrase, s.AppConfig.GitAccessToken)
+	auth, err := git.GetAuthMethod(s.Repository.SourceUrl, s.AppConfig.SSHPrivateKey, s.AppConfig.SSHPrivateKeyPassphrase, s.AppConfig.GitAccessToken)
 	if err != nil {
 		return fmt.Errorf("failed to get auth method: %w", err)
 	}
@@ -82,7 +107,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		repo, err := git.OpenRepository(s.Repository.PathInternal)
 		switch {
 		case err == nil:
-			err = git.FetchRepository(repo, string(s.Repository.CloneURL), s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, auth, s.DeployConfig.ResolveGitDepth(s.AppConfig.GitCloneDepth))
+			err = git.FetchRepository(repo, s.Repository.SourceUrl, s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, auth, s.DeployConfig.ResolveGitDepth(s.AppConfig.GitCloneDepth))
 			if err != nil {
 				return fmt.Errorf("failed to fetch repository: %w", err)
 			}
@@ -101,19 +126,19 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 	if s.DeployConfig.RepositoryUrl != "" {
 		if skipCloneUpdate {
 			stageLog.Debug("skipping clone of remote repository, already at correct state",
-				slog.String("url", string(s.Repository.CloneURL)),
+				slog.String("url", s.Repository.SourceUrl),
 				slog.String("reference", s.DeployConfig.Reference))
 		} else {
 			stageLog.Debug("repository URL provided, cloning remote repository")
 
-			_, err = git.CloneRepository(s.Repository.PathInternal, string(s.Repository.CloneURL), s.DeployConfig.Reference,
+			_, err = git.CloneRepository(s.Repository.PathInternal, s.Repository.SourceUrl, s.DeployConfig.Reference,
 				s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, auth, s.AppConfig.GitCloneSubmodules, s.DeployConfig.ResolveGitDepth(s.AppConfig.GitCloneDepth))
 			if err != nil && !errors.Is(err, git.ErrRepositoryAlreadyExists) {
 				return fmt.Errorf("failed to clone repository: %w", err)
 			}
 
 			stageLog.Info("cloned remote repository",
-				slog.String("url", string(s.Repository.CloneURL)),
+				slog.String("url", s.Repository.SourceUrl),
 				slog.String("path", s.Repository.PathExternal))
 		}
 
@@ -143,9 +168,9 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		}
 
 		for _, labels := range serviceLabels {
-			name, ok := labels[docker.DocoCDLabels.Repository.Name]
+			name, ok := labels[docker.DocoCDLabels.Source.Name]
 
-			if !ok || name != git.GetFullName(string(s.Repository.CloneURL)) {
+			if !ok || name != git.GetFullName(s.Repository.SourceUrl) {
 				correctRepo = false
 				break
 			}
@@ -169,7 +194,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 	} else {
 		stageLog.Debug("checking out reference "+s.DeployConfig.Reference, slog.String("path", s.Repository.PathExternal))
 
-		s.Repository.Git, err = git.UpdateRepository(s.Repository.PathInternal, string(s.Repository.CloneURL), s.DeployConfig.Reference,
+		s.Repository.Git, err = git.UpdateRepository(s.Repository.PathInternal, s.Repository.SourceUrl, s.DeployConfig.Reference,
 			s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, auth, s.AppConfig.GitCloneSubmodules, s.DeployConfig.ResolveGitDepth(s.AppConfig.GitCloneDepth))
 		if err != nil {
 			return fmt.Errorf("failed to checkout repository: %w", err)
@@ -177,21 +202,42 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 	}
 
 	if s.JobTrigger == JobTriggerPoll {
-		s.Payload = &webhook.ParsedPayload{
-			Name:      git.GetRepoName(string(s.Repository.CloneURL)),
-			Ref:       s.DeployConfig.Reference,
-			CommitSHA: string(JobTriggerPoll),
-			FullName:  git.GetFullName(string(s.Repository.CloneURL)),
-			CloneURL:  string(s.Repository.CloneURL),
-			WebURL:    string(s.Repository.CloneURL),
+		if s.Repository.Source == config.SourceTypeOCI {
+			s.Payload = &webhook.ParsedPayload{
+				Source:    webhook.PayloadSourceOCI,
+				Name:      s.Repository.Name,
+				Ref:       s.DeployConfig.Reference,
+				CommitSHA: s.Repository.Revision,
+				FullName:  s.Repository.Name,
+				WebURL:    s.Repository.SourceUrl,
+				Artifact:  s.Repository.SourceUrl,
+				Digest:    s.Repository.Revision,
+			}
+		} else {
+			s.Payload = &webhook.ParsedPayload{
+				Source:    webhook.PayloadSourceGit,
+				Name:      git.GetRepoName(s.Repository.SourceUrl),
+				Ref:       s.DeployConfig.Reference,
+				CommitSHA: string(JobTriggerPoll),
+				FullName:  git.GetFullName(s.Repository.SourceUrl),
+				CloneURL:  s.Repository.SourceUrl,
+				WebURL:    s.Repository.SourceUrl,
+			}
 		}
 	}
 
-	s.Log = s.Log.With(
-		slog.String("stack", s.DeployConfig.Name),
-		slog.String("repository", s.Repository.Name),
-		slog.String("reference", s.DeployConfig.Reference),
-	)
+	if s.Repository.Source == config.SourceTypeOCI {
+		s.Log = s.Log.With(
+			slog.String("stack", s.DeployConfig.Name),
+			slog.String("repository", s.Repository.Name),
+		)
+	} else {
+		s.Log = s.Log.With(
+			slog.String("stack", s.DeployConfig.Name),
+			slog.String("repository", s.Repository.Name),
+			slog.String("reference", s.DeployConfig.Reference),
+		)
+	}
 
 	return nil
 }

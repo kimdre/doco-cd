@@ -25,14 +25,14 @@ func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *s
 		return
 	}
 
-	repositoryLabelValue := gitInternal.GetFullName(string(j.info.repoData.CloneURL))
+	repositoryLabelValue := gitInternal.GetFullName(j.info.repoData.SourceUrl)
 	if j.info.payload != nil && strings.TrimSpace(j.info.payload.FullName) != "" {
 		repositoryLabelValue = j.info.payload.FullName
 	}
 
 	filterArgs := make(client.Filters)
 	filterArgs.Add("label", docker.DocoCDLabels.Metadata.Manager+"="+app.Name)
-	filterArgs.Add("label", docker.DocoCDLabels.Repository.Name+"="+repositoryLabelValue)
+	filterArgs.Add("label", docker.DocoCDLabels.Source.Name+"="+repositoryLabelValue)
 
 	containerResult, err := j.info.dockerCli.Client().ContainerList(ctx, client.ContainerListOptions{All: true, Filters: filterArgs})
 	if err != nil {
@@ -171,14 +171,14 @@ func (j *job) redeployMissingServicesOnStartup(ctx context.Context, jobLog *slog
 // findMissingContainersOnStartup lists all running containers for this repository and returns
 // deploy configs whose stacks have no running containers at all.
 func (j *job) findMissingContainersOnStartup(ctx context.Context, jobLog *slog.Logger, candidates []*deployConfig.Config) []*deployConfig.Config {
-	repositoryLabelValue := gitInternal.GetFullName(string(j.info.repoData.CloneURL))
+	repositoryLabelValue := gitInternal.GetFullName(j.info.repoData.SourceUrl)
 	if j.info.payload != nil && strings.TrimSpace(j.info.payload.FullName) != "" {
 		repositoryLabelValue = j.info.payload.FullName
 	}
 
 	filterArgs := make(client.Filters)
 	filterArgs.Add("label", docker.DocoCDLabels.Metadata.Manager+"="+app.Name)
-	filterArgs.Add("label", docker.DocoCDLabels.Repository.Name+"="+repositoryLabelValue)
+	filterArgs.Add("label", docker.DocoCDLabels.Source.Name+"="+repositoryLabelValue)
 
 	containerResult, err := j.info.dockerCli.Client().ContainerList(ctx, client.ContainerListOptions{
 		All:     false, // running only
@@ -212,7 +212,7 @@ func (j *job) findMissingContainersOnStartup(ctx context.Context, jobLog *slog.L
 // findMissingSwarmServicesOnStartup lists all swarm services for this repository and returns
 // deploy configs whose stacks have no deployed services at all.
 func (j *job) findMissingSwarmServicesOnStartup(ctx context.Context, jobLog *slog.Logger, candidates []*deployConfig.Config) []*deployConfig.Config {
-	repositoryLabelValue := gitInternal.GetFullName(string(j.info.repoData.CloneURL))
+	repositoryLabelValue := gitInternal.GetFullName(j.info.repoData.SourceUrl)
 	if j.info.payload != nil && strings.TrimSpace(j.info.payload.FullName) != "" {
 		repositoryLabelValue = j.info.payload.FullName
 	}
@@ -227,7 +227,7 @@ func (j *job) findMissingSwarmServicesOnStartup(ctx context.Context, jobLog *slo
 
 	for _, svc := range services {
 		// Filter by repository to avoid matching services from other repos on the same swarm.
-		if strings.TrimSpace(svc.Spec.Labels[docker.DocoCDLabels.Repository.Name]) != repositoryLabelValue {
+		if strings.TrimSpace(svc.Spec.Labels[docker.DocoCDLabels.Source.Name]) != repositoryLabelValue {
 			continue
 		}
 

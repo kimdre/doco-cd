@@ -2,6 +2,17 @@ package webhook
 
 import (
 	"encoding/json"
+	"path"
+	"strings"
+
+	"github.com/google/go-containerregistry/pkg/name"
+)
+
+type PayloadSource string
+
+const (
+	PayloadSourceGit PayloadSource = "git"
+	PayloadSourceOCI PayloadSource = "oci"
 )
 
 // GithubPushPayload is a struct that represents the payload sent by GitHub or Gitea, as they have the same structure.
@@ -36,8 +47,16 @@ type GitlabPushPayload struct {
 	} `json:"project"`
 }
 
+// OCIArtifactPayload is a generic webhook payload for OCI artifact events.
+type OCIArtifactPayload struct {
+	Source   string `json:"source"`
+	Digest   string `json:"digest"`
+	Artifact string `json:"artifact"`
+}
+
 // ParsedPayload is a struct that contains the parsed payload data.
 type ParsedPayload struct {
+	Source    PayloadSource
 	Ref       string // Ref is the branch or tag that triggered the webhook
 	RefType   string // RefType is the type of ref (branch or tag) that triggered the webhook, only present in delete events
 	Before    string // Before is the SHA of the commit before the push, only present in GitLab payloads
@@ -49,6 +68,8 @@ type ParsedPayload struct {
 	SSHUrl    string // SSHUrl is the SSH URL to clone the repository
 	WebURL    string // WebURL is the URL to view the repository in a web browser
 	Private   bool   // Private indicates whether the repository is private or public
+	Artifact  string // Artifact is the OCI artifact reference that triggered the webhook
+	Digest    string // Digest is the OCI digest that triggered the webhook
 }
 
 // ParsePayload parses the payload and returns a ParsedPayload struct.
@@ -56,6 +77,7 @@ func parsePayload(payload []byte, provider ScmProvider) (ParsedPayload, error) {
 	var (
 		githubPayload GithubPushPayload
 		gitlabPayload GitlabPushPayload
+		ociPayload    OCIArtifactPayload
 	)
 
 	switch provider {
@@ -66,6 +88,7 @@ func parsePayload(payload []byte, provider ScmProvider) (ParsedPayload, error) {
 		}
 
 		parsedPayload := ParsedPayload{
+			Source:    PayloadSourceGit,
 			Ref:       githubPayload.Ref,
 			RefType:   githubPayload.RefType,
 			Before:    githubPayload.Before,
@@ -87,6 +110,7 @@ func parsePayload(payload []byte, provider ScmProvider) (ParsedPayload, error) {
 		}
 
 		parsedPayload := ParsedPayload{
+			Source:    PayloadSourceGit,
 			Ref:       gitlabPayload.Ref,
 			Before:    gitlabPayload.Before,
 			After:     gitlabPayload.After,
@@ -100,7 +124,44 @@ func parsePayload(payload []byte, provider ScmProvider) (ParsedPayload, error) {
 		}
 
 		return parsedPayload, nil
+	case OCIRegistry:
+		err := json.Unmarshal(payload, &ociPayload)
+		if err != nil {
+			return ParsedPayload{}, err
+		}
+
+		if strings.TrimSpace(ociPayload.Source) != string(PayloadSourceOCI) {
+			return ParsedPayload{}, ErrParsingPayload
+		}
+
+		repositoryName, ref := parseRepositoryAndReferenceFromArtifact(ociPayload.Artifact)
+
+		parsedPayload := ParsedPayload{
+			Source:    PayloadSourceOCI,
+			Ref:       ref,
+			CommitSHA: ociPayload.Digest,
+			Name:      path.Base(repositoryName),
+			FullName:  repositoryName,
+			Artifact:  ociPayload.Artifact,
+			Digest:    ociPayload.Digest,
+		}
+
+		return parsedPayload, nil
 	default:
 		return ParsedPayload{}, ErrParsingPayload
 	}
+}
+
+func parseRepositoryAndReferenceFromArtifact(artifact string) (string, string) {
+	trimmed := strings.TrimSpace(artifact)
+	if trimmed == "" {
+		return "", ""
+	}
+
+	ref, err := name.ParseReference(trimmed, name.WeakValidation)
+	if err != nil {
+		return trimmed, ""
+	}
+
+	return ref.Context().RepositoryStr(), ref.Identifier()
 }

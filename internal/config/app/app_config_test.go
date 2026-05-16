@@ -257,3 +257,63 @@ func TestGetConfig_ScopedGitHubAppRejectsTokenMix(t *testing.T) {
 		t.Fatal("expected an error when combining scoped git_access_token with scoped github app credentials")
 	}
 }
+
+func TestGetConfig_OciTrustPolicyDefaultDisabled(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("OCI_TRUST_POLICY", "")
+	t.Setenv("OCI_TRUST_POLICY_FILE", "")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	if cfg.OciTrustPolicy.Enabled {
+		t.Fatal("expected OCI trust policy to be disabled by default")
+	}
+}
+
+func TestGetConfig_OciTrustPolicyCanBeEnabled(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("OCI_TRUST_POLICY", "enabled: true")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	if !cfg.OciTrustPolicy.Enabled {
+		t.Fatal("expected OCI trust policy to be enabled when configured")
+	}
+}
+
+func TestGetConfig_OciVerifyMaxWorkersDefaultsToOne(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("OCI_VERIFY_MAX_WORKERS", "")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	if cfg.OciVerifyMaxWorkers != 1 {
+		t.Fatalf("expected OCI_VERIFY_MAX_WORKERS default to be 1, got %d", cfg.OciVerifyMaxWorkers)
+	}
+}
+
+func TestGetConfig_OciVerifyMaxWorkersRejectsZero(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("OCI_VERIFY_MAX_WORKERS", "0")
+
+	if _, err := GetConfig(); err == nil {
+		t.Fatal("expected OCI_VERIFY_MAX_WORKERS=0 to be rejected")
+	}
+}

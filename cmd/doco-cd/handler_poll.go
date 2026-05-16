@@ -9,6 +9,7 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/moby/moby/api/types/container"
 
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/git"
 	log "github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/prometheus"
+	"github.com/kimdre/doco-cd/internal/source/oci"
 	"github.com/kimdre/doco-cd/internal/utils/id"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
@@ -48,11 +50,22 @@ func StartPoll(ctx context.Context, h *handlerData, pollConfig poll.Config, wg *
 	return nil
 }
 
-// PollHandler is a function that handles polling for changes in a repository.
+// PollHandler handles polling for changes in a configured source.
 func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
-	repoName := git.GetRepoName(string(pollJob.Config.CloneUrl))
+	sourceType := config.NormalizeSourceType(pollJob.Config.Source)
+	entity := logEntityForSourceType(sourceType)
 
-	logger := h.log.With(slog.String("repository", repoName))
+	repoName := git.GetRepoName(pollJob.Config.SourceUrl)
+	if sourceType == config.SourceTypeOCI {
+		repoName = oci.RepositoryNameFromArtifact(pollJob.Config.SourceUrl)
+	}
+
+	logValue := repoName
+	if sourceType == config.SourceTypeOCI {
+		logValue = pollJob.Config.SourceUrl
+	}
+
+	logger := h.log.With(slog.String(entity, logValue))
 	logger.Debug("Start poll handler")
 
 	repoLock := lock.GetRepoLock(repoName)
@@ -63,7 +76,7 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 			locked := repoLock.TryLock(jobID)
 
 			if !locked {
-				logger.Warn("another job is still in progress for this repository",
+				logger.Warn("another job is still in progress for this "+entity,
 					slog.String("locked_by_job", repoLock.Holder()),
 				)
 			} else {
@@ -128,22 +141,38 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 	dockerCli command.Cli, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
 ) error {
 	startTime := time.Now()
-	cloneUrl := string(pollConfig.CloneUrl)
-	repoName := git.GetRepoName(cloneUrl)
-	jobLog := logger.With(slog.String("job_id", metadata.JobID))
+	sourceType := config.NormalizeSourceType(pollConfig.Source)
+	sourceRef := pollConfig.SourceUrl
+	entity := logEntityForSourceType(sourceType)
+
+	repoName := git.GetRepoName(sourceRef)
+	if sourceType == config.SourceTypeOCI {
+		repoName = oci.RepositoryNameFromArtifact(sourceRef)
+	}
+
+	jobLog := logger.With(
+		slog.String("job_id", metadata.JobID),
+	)
 
 	if pollConfig.CustomTarget != "" {
 		jobLog = jobLog.With(slog.String("custom_target", pollConfig.CustomTarget))
 	}
 
-	jobLog.Info("polling repository",
+	jobLog.Info("polling "+entity,
 		slog.Group("trigger",
 			slog.String("event", string(stages.JobTriggerPoll)),
-			slog.Any("config", &pollConfig)))
+			slog.Attr{Key: "config", Value: log.BuildLogValue(&pollConfig, "Deployments.Internal")}))
+
+	// For OCI sources, use the tag from the artifact reference as the deployment reference
+	// (e.g., "latest" from "ghcr.io/org/repo:latest") rather than pollConfig.Reference.
+	pollReference := pollConfig.Reference
+	if sourceType == config.SourceTypeOCI {
+		pollReference = oci.TagFromArtifact(sourceRef)
+	}
 
 	deployErr := handle(ctx, jobLog,
 		appConfig, dataMountPoint, secretProvider, dockerCli,
-		stages.JobTriggerPoll, cloneUrl, pollConfig.Reference, false,
+		stages.JobTriggerPoll, sourceType, sourceRef, pollReference, false,
 		metadata, pollConfig.CustomTarget, "",
 		pollConfig, webhook.ParsedPayload{},
 	)

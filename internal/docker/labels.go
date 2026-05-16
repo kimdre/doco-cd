@@ -1,5 +1,7 @@
 package docker
 
+import "strings"
+
 // docoCDLabelNamesMetadata contains the metadata labels used by DocoCD.
 type docoCDLabelNamesMetadata struct {
 	Manager string // Name of the deployment manager (e.g., DocoCD)
@@ -22,17 +24,18 @@ type docoCdLabelNamesDeployment struct {
 	RecreateIgnoreSignal string // Signal service when deployment file changes and ignore recreate
 }
 
-// docoCdLabelNamesRepository contains the labels used by DocoCD to identify the repository.
-type docoCdLabelNamesRepository struct {
-	Name string
-	URL  string
+// docoCdLabelNamesSource contains the labels used by DocoCD to identify the deployment source.
+type docoCdLabelNamesSource struct {
+	Type string // Source type (git or oci)
+	Name string // Repository or artifact name
+	URL  string // Repository or artifact URL
 }
 
 // docoCdLabelNames contains the labels used by DocoCD to identify deployed containers and their metadata.
 type docoCdLabelNames struct {
 	Metadata   docoCDLabelNamesMetadata   // Metadata about the deployment manager
 	Deployment docoCdLabelNamesDeployment // Labels related to the deployment
-	Repository docoCdLabelNamesRepository // Labels related to the repository
+	Source     docoCdLabelNamesSource     // Labels related to the deployment source
 }
 
 // DocoCDLabels contains the label key names used by DocoCD to identify deployed containers and their metadata.
@@ -55,9 +58,10 @@ var DocoCDLabels = docoCdLabelNames{
 		RecreateIgnore:       "cd.doco.deployment.recreate.ignore",
 		RecreateIgnoreSignal: "cd.doco.deployment.recreate.ignore.signal",
 	},
-	Repository: docoCdLabelNamesRepository{
-		Name: "cd.doco.repository.name",
-		URL:  "cd.doco.repository.url",
+	Source: docoCdLabelNamesSource{
+		Type: "cd.doco.source",
+		Name: "cd.doco.source.name",
+		URL:  "cd.doco.source.url",
 	},
 }
 
@@ -96,3 +100,76 @@ var docoCDJobLabelNames = struct {
 
 // DocoCDJobLabels exposes the scheduler/job labels for consumers outside this package.
 var DocoCDJobLabels = docoCDJobLabelNames
+
+// ExtractOciArtifactTag extracts the tag from OCI artifact references (e.g., "main" from "ghcr.io/kimdre/doco-cd_tests:main").
+// For Git references (e.g., "refs/heads/main", "feat/app/this", "v1.0.0-rc.1", "my/app"), it returns them as-is.
+// For OCI artifact references with explicit tags, it returns the tag portion after the colon.
+// For OCI artifact references with digests, it extracts the digest hash.
+// If the reference has no tag or digest, it returns the original reference as-is (treated as Git reference).
+func ExtractOciArtifactTag(reference string) string {
+	reference = strings.TrimSpace(reference)
+	if reference == "" {
+		return ""
+	}
+
+	// If it starts with "refs/" it's a git reference, keep it as-is
+	if strings.HasPrefix(reference, "refs/") {
+		return reference
+	}
+
+	// Look for @ (digest) or : (tag) separators
+	atIdx := strings.LastIndex(reference, "@")
+	colonIdx := strings.LastIndex(reference, ":")
+	lastSlash := strings.LastIndex(reference, "/")
+
+	// Only extract if there's an explicit tag (":") or digest ("@")
+	// Otherwise treat as a git reference and keep as-is
+	// (e.g., "my/app" could be Docker Hub without tag OR a git branch - keep as-is)
+
+	// Check for tag case: registry/repo:tag (has ":" somewhere)
+	if colonIdx >= 0 && colonIdx > lastSlash {
+		// Tag is after the last "/" - this is an OCI artifact tag
+		return reference[colonIdx+1:]
+	}
+
+	// Check for digest case: registry/repo@sha256:hash (has "@" somewhere)
+	if atIdx >= 0 {
+		// Extract digest portion (after @)
+		digestPart := reference[atIdx+1:]
+		// Digest format is algorithm:hash, we want just the hash
+		if _, after, ok := strings.Cut(digestPart, ":"); ok {
+			return after
+		}
+
+		return digestPart
+	}
+
+	// No explicit tag or digest - treat as git reference and keep as-is
+	// This includes: "main", "v1.0.0-rc.1", "feat/app", "feat/app/this", "my/app", etc.
+	return reference
+}
+
+// SourceTypeLabelValue resolves a stable label value ("git" or "oci") from a primary source,
+// with a fallback (e.g. deploy config source) when the primary is empty or unknown.
+func SourceTypeLabelValue(primary, fallback string) string {
+	normalize := func(v string) string {
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "oci":
+			return "oci"
+		case "git":
+			return "git"
+		default:
+			return ""
+		}
+	}
+
+	if p := normalize(primary); p != "" {
+		return p
+	}
+
+	if f := normalize(fallback); f != "" {
+		return f
+	}
+
+	return "git"
+}

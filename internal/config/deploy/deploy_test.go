@@ -91,6 +91,35 @@ compose_files:
 	})
 }
 
+func TestGetConfigs_NonGitRepo(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+
+	dc := `name: oci-stack
+working_dir: .
+compose_files:
+  - compose.yaml
+`
+
+	if err := createTestFile(t, filepath.Join(repoRoot, ".doco-cd.yaml"), dc); err != nil {
+		t.Fatal(err)
+	}
+
+	configs, err := GetConfigs(repoRoot, ".", "oci-stack", "", "", nil)
+	if err != nil {
+		t.Fatalf("expected no error for non-git repo, got %v", err)
+	}
+
+	if len(configs) != 1 {
+		t.Fatalf("expected 1 config, got %d", len(configs))
+	}
+
+	if configs[0].Name != "oci-stack" {
+		t.Fatalf("expected config name %q, got %q", "oci-stack", configs[0].Name)
+	}
+}
+
 func TestGetConfigs_DefaultValues(t *testing.T) {
 	t.Parallel()
 
@@ -148,14 +177,14 @@ func TestGetConfigs_DuplicateProjectName(t *testing.T) {
 	}
 }
 
-// TestGetConfigs_InvalidRepositoryURL checks if the function returns an error when the repository URL is an SSH URL
-// The init function panics if the validator for HttpUrl is not registered correctly.
+// TestGetConfigs_RepositoryURL checks if the repository URL field validates Git URLs correctly.
+// The init function panics if the validator for GitUrl is not registered correctly.
 func TestGetConfigs_RepositoryURL(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
 		name        string
-		repoUrl     config.HttpUrl
+		repoUrl     config.GitUrl
 		expectedErr error
 	}{
 		{
@@ -171,7 +200,7 @@ func TestGetConfigs_RepositoryURL(t *testing.T) {
 		{
 			name:        "Invalid HTTP URL",
 			repoUrl:     "github.com/kimdre/doco-cd",
-			expectedErr: fmt.Errorf("RepositoryUrl: %w", config.ErrInvalidHttpUrl),
+			expectedErr: fmt.Errorf("RepositoryUrl: %w", config.ErrInvalidGitUrl),
 		},
 		{
 			name:        "SSH URL",
@@ -203,6 +232,54 @@ func TestGetConfigs_RepositoryURL(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestConfig_Validate_OciVersionField(t *testing.T) {
+	t.Parallel()
+
+	t.Run("defaults version to doco.v1", func(t *testing.T) {
+		t.Parallel()
+
+		dc := Config{
+			Name:   "app",
+			Source: config.SourceTypeOCI,
+		}
+
+		if err := defaults.Set(&dc); err != nil {
+			t.Fatalf("defaults: %v", err)
+		}
+
+		if err := dc.Validate(); err != nil {
+			t.Fatalf("validate: %v", err)
+		}
+
+		if dc.Version != config.OciArtifactLayoutV1 {
+			t.Fatalf("expected version %q, got %q", config.OciArtifactLayoutV1, dc.Version)
+		}
+	})
+
+	t.Run("rejects unsupported OCI version", func(t *testing.T) {
+		t.Parallel()
+
+		dc := Config{
+			Name:    "app",
+			Source:  config.SourceTypeOCI,
+			Version: "doco.v2",
+		}
+
+		if err := defaults.Set(&dc); err != nil {
+			t.Fatalf("defaults: %v", err)
+		}
+
+		err := dc.Validate()
+		if err == nil {
+			t.Fatal("expected validation error, got nil")
+		}
+
+		if !strings.Contains(err.Error(), "unsupported oci version") {
+			t.Fatalf("expected unsupported oci version error, got %v", err)
+		}
+	})
 }
 
 func TestResolveConfigs_InlineOverride(t *testing.T) {
