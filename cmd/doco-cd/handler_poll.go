@@ -94,7 +94,7 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 				repoLock.Unlock()
 			}
 
-			pollJob.NextRun = time.Now().Unix() + int64(pollJob.Config.Interval)
+			pollJob.NextRun = time.Now().Add(pollJob.Config.Interval).Unix()
 		} else {
 			logger.Debug("skipping poll, waiting for next run")
 		}
@@ -111,7 +111,7 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 		case <-ctx.Done():
 			logger.Debug("ctx is done in poll handler")
 			return
-		case <-time.After(time.Duration(pollJob.Config.Interval) * time.Second):
+		case <-time.After(pollJob.Config.Interval):
 			continue
 		}
 	}
@@ -158,10 +158,15 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 		jobLog = jobLog.With(slog.String("custom_target", pollConfig.CustomTarget))
 	}
 
+	configVal := log.BuildLogValue(&pollConfig, "Deployments.Internal")
+	if pollConfig.Source == config.SourceTypeOCI {
+		configVal = log.BuildLogValue(&pollConfig, "Reference", "Deployments.Internal")
+	}
+
 	jobLog.Info("polling "+entity,
 		slog.Group("trigger",
 			slog.String("event", string(stages.JobTriggerPoll)),
-			slog.Attr{Key: "config", Value: log.BuildLogValue(&pollConfig, "Deployments.Internal")}))
+			slog.Attr{Key: "config", Value: configVal}))
 
 	// For OCI sources, use the tag from the artifact reference as the deployment reference
 	// (e.g., "latest" from "ghcr.io/org/repo:latest") rather than pollConfig.Reference.
@@ -177,7 +182,7 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 		pollConfig, webhook.ParsedPayload{},
 	)
 
-	nextRun := time.Now().Add(time.Duration(pollConfig.Interval) * time.Second).Format(time.RFC3339)
+	nextRun := time.Now().Add(pollConfig.Interval).Format(time.RFC3339)
 	elapsedTime := time.Since(startTime)
 
 	if deployErr != nil {

@@ -4,7 +4,10 @@ import (
 	"log/slog"
 	"reflect"
 	"strings"
+	"time"
 )
+
+var durationType = reflect.TypeFor[time.Duration]()
 
 // BuildLogValue returns a slog.Value for any value, excluding fields by name or dot-path.
 // Examples:
@@ -34,6 +37,10 @@ func BuildSliceLogValue(slice any, ignore ...string) slog.Value {
 func buildPlain(rv reflect.Value, prefix string, ignoreSet map[string]struct{}) any {
 	if !rv.IsValid() {
 		return nil
+	}
+
+	if rv.Type() == durationType {
+		return rv.Interface().(time.Duration).String()
 	}
 
 	// Unwrap interfaces/pointers
@@ -75,7 +82,12 @@ func buildPlain(rv reflect.Value, prefix string, ignoreSet map[string]struct{}) 
 				continue
 			}
 
-			out[key] = buildPlain(rv.Field(i), goPath, ignoreSet)
+			fieldValue := rv.Field(i)
+			if fieldValue.Kind() == reflect.String && fieldValue.Len() == 0 {
+				continue
+			}
+
+			out[key] = buildPlain(fieldValue, goPath, ignoreSet)
 		}
 
 		return out
@@ -97,13 +109,22 @@ func buildPlain(rv reflect.Value, prefix string, ignoreSet map[string]struct{}) 
 		for iter.Next() {
 			k := iter.Key()
 			if k.Kind() == reflect.String {
-				out[k.String()] = buildPlain(iter.Value(), prefix, ignoreSet)
+				value := iter.Value()
+				if value.Kind() == reflect.String && value.Len() == 0 {
+					continue
+				}
+
+				out[k.String()] = buildPlain(value, prefix, ignoreSet)
 			}
 		}
 
 		return out
 
 	default:
+		if rv.Kind() == reflect.String && rv.Len() == 0 {
+			return nil
+		}
+
 		if rv.CanInterface() {
 			return rv.Interface()
 		}

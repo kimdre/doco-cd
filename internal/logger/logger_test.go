@@ -6,7 +6,20 @@ import (
 	"errors"
 	"log/slog"
 	"testing"
+	"time"
 )
+
+type durationLogSample struct {
+	Interval time.Duration `json:"interval" yaml:"interval"`
+}
+
+type zeroValueLogSample struct {
+	EmptyString string            `json:"empty_string" yaml:"empty_string"`
+	ZeroInt     int               `json:"zero_int" yaml:"zero_int"`
+	FalseBool   bool              `json:"false_bool" yaml:"false_bool"`
+	EmptySlice  []string          `json:"empty_slice" yaml:"empty_slice"`
+	EmptyMap    map[string]string `json:"empty_map" yaml:"empty_map"`
+}
 
 func TestParseLevel(t *testing.T) {
 	t.Parallel()
@@ -78,6 +91,53 @@ func TestErrAttr(t *testing.T) {
 
 	if !attr.Equal(slog.Any("error", err)) {
 		t.Errorf("ErrAttr() value = %v, want %v", attr.Value, err)
+	}
+}
+
+func TestBuildLogValue_FormatsDuration(t *testing.T) {
+	t.Parallel()
+
+	value := BuildLogValue(durationLogSample{Interval: 10 * time.Second})
+	if got := value.Any().(map[string]any)["interval"]; got != "10s" {
+		t.Fatalf("expected interval to be formatted as 10s, got %v", got)
+	}
+}
+
+func TestBuildLogValue_SkipsEmptyStrings_ButKeepsOtherZeroValues(t *testing.T) {
+	t.Parallel()
+
+	value := BuildLogValue(zeroValueLogSample{
+		EmptyString: "",
+		ZeroInt:     0,
+		FalseBool:   false,
+		EmptySlice:  []string{},
+		EmptyMap:    map[string]string{},
+	})
+
+	entry := value.Any().(map[string]any)
+
+	if _, exists := entry["empty_string"]; exists {
+		t.Fatal("expected empty_string to be omitted")
+	}
+
+	if got := entry["zero_int"]; got != 0 {
+		t.Fatalf("expected zero_int to be preserved as 0, got %v", got)
+	}
+
+	if got := entry["false_bool"]; got != false {
+		t.Fatalf("expected false_bool to be preserved as false, got %v", got)
+	}
+
+	if got, ok := entry["empty_slice"]; !ok {
+		t.Fatal("expected empty_slice to be preserved")
+	} else if slice, ok := got.([]any); !ok || len(slice) != 0 {
+		t.Fatalf("expected empty_slice to be an empty slice, got %T %v", got, got)
+	}
+
+	if got, ok := entry["empty_map"]; !ok {
+		t.Fatal("expected empty_map to be preserved")
+	} else if m, ok := got.(map[string]any); !ok || len(m) != 0 {
+		t.Fatalf("expected empty_map to be an empty map, got %T %v", got, got)
 	}
 }
 
