@@ -8,7 +8,7 @@ tags:
 # OCI Artifact Usage
 
 !!! example "Experimental Feature"
-    OCI artifact support is currently experimental and may be unstable and subject to breaking changes.
+    OCI artifact support is currently experimental.
     Please [provide feedback and report any issues](../../Contributing/#have-an-issue-idea-or-question) you encounter.
 
 This page provides comprehensive documentation on using doco-cd with OCI (Open Container Initiative) artifacts, including webhook payloads, and artifact packaging conventions.

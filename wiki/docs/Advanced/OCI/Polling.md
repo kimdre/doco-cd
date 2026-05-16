@@ -8,7 +8,7 @@ tags:
 # Polling with OCI
 
 !!! example "Experimental Feature"
-    OCI artifact support is currently experimental and may be unstable and subject to breaking changes.
+    OCI artifact support is currently experimental.
     Please [provide feedback and report any issues](../../Contributing/#have-an-issue-idea-or-question) you encounter.
 
 Use [Polling](../../Core-Concepts.md#polling) to periodically check for new versions of OCI artifacts.
