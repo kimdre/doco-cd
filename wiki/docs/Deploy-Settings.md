@@ -260,6 +260,8 @@ The following fields are always inherited from the base/root deployment config:
 
 The following settings can be used to build docker images during a deployment (Like `docker compose build` or `docker compose up --build`).
 
+See also the [Compose Build Specification](https://docs.docker.com/reference/compose-file/build/) for more information on building docker images with compose.
+
 Specify all build-settings in a nested `build` object in the deployment configuration file (See example below).
 
 | Key                | Type           | Description                                                | Default value |
