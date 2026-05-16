@@ -18,9 +18,11 @@ import (
 
 // AutoDiscoveryConfig holds auto-discovery settings for a deployment.
 type AutoDiscoveryConfig struct {
-	Enabled   bool `yaml:"enabled" json:"enabled" default:"false"` // Enabled enables autodiscovery of services to deploy in the working directory
-	ScanDepth int  `yaml:"depth" json:"depth" default:"0"`         // ScanDepth is the maximum depth of subdirectories to scan for docker-compose files
-	Delete    bool `yaml:"delete" json:"delete" default:"true"`    // Delete removes obsolete auto-discovered deployments that are no longer present in the repository
+	Enabled       bool `yaml:"enabled" json:"enabled" default:"false"`              // Enabled enables autodiscovery of services to deploy in the working directory
+	ScanDepth     int  `yaml:"depth" json:"depth" default:"0"`                      // ScanDepth is the maximum depth of subdirectories to scan for docker-compose files
+	Delete        bool `yaml:"delete" json:"delete" default:"true"`                 // Delete removes obsolete auto-discovered deployments that are no longer present in the repository
+	RemoveVolumes bool `yaml:"remove_volumes" json:"remove_volumes" default:"true"` // RemoveVolumes removes the volumes of an auto-discovered deployment when it is deleted
+	RemoveImages  bool `yaml:"remove_images" json:"remove_images" default:"true"`   // RemoveImages removes the images of an auto-discovered deployment when it is deleted
 }
 
 func (c *AutoDiscoveryConfig) UnmarshalYAML(node *yaml.Node) error {

@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/moby/moby/api/types/volume"
 
+	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	swarmInternal "github.com/kimdre/doco-cd/internal/docker/swarm"
 
 	"github.com/moby/moby/client"
@@ -243,4 +245,36 @@ func RemoveLabeledVolumes(ctx context.Context, dockerClient client.APIClient, st
 	}
 
 	return nil
+}
+
+// MarshalAutoDiscoveryConfig serializes an AutoDiscoveryConfig to a JSON string for use as a container label.
+func MarshalAutoDiscoveryConfig(cfg deployConfig.AutoDiscoveryConfig) string {
+	b, err := json.Marshal(cfg)
+	if err != nil {
+		// Should never happen for a plain struct; fall back to an empty object.
+		return "{}"
+	}
+
+	return string(b)
+}
+
+// ParseAutoDiscoveryConfig deserializes an AutoDiscoveryConfig from a JSON container label value.
+// If the label is empty or invalid it returns a default config with Delete=true, RemoveVolumes=true, RemoveImages=true.
+func ParseAutoDiscoveryConfig(labelValue string) deployConfig.AutoDiscoveryConfig {
+	defaults := deployConfig.AutoDiscoveryConfig{
+		Delete:        true,
+		RemoveVolumes: true,
+		RemoveImages:  true,
+	}
+
+	if labelValue == "" {
+		return defaults
+	}
+
+	var cfg deployConfig.AutoDiscoveryConfig
+	if err := json.Unmarshal([]byte(labelValue), &cfg); err != nil {
+		return defaults
+	}
+
+	return cfg
 }
