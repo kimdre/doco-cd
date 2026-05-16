@@ -13,7 +13,7 @@ tags:
 
 This page provides comprehensive documentation on using doco-cd with OCI (Open Container Initiative) artifacts, including webhook payloads, and artifact packaging conventions.
 
-???+ question "What is an OCI artifact?" 
+??? question "What is an OCI artifact?" 
     In the context of doco-cd, an OCI artifact is a structured package of deployment configuration files (e.g., `.doco-cd.yaml`, compose files, assets) 
     that is stored in an OCI-compliant registry.  
     This allows you to manage your deployment configurations using the same tools and workflows as your container images.
