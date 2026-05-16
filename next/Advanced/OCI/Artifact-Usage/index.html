@@ -12,26 +12,26 @@
         <meta name="author" content="doco-cd contributors">
       
       
-        <link rel="canonical" href="https://doco.cd/next/External-Secrets/Infisical/">
+        <link rel="canonical" href="https://doco.cd/next/Advanced/OCI/Artifact-Usage/">
       
       
-        <link rel="prev" href="../1Password-Connect/">
+        <link rel="prev" href="../../Notifications/">
       
       
-        <link rel="next" href="../Openbao/">
+        <link rel="next" href="../Polling/">
       
       
         
       
       
-      <link rel="icon" href="../../images/doco-cd_containers.svg">
+      <link rel="icon" href="../../../images/doco-cd_containers.svg">
       <meta name="generator" content="zensical-0.0.41">
     
     
   
     
       
-        <title>Infisical - Doco-CD Documentation</title>
+        <title>OCI Artifact Usage - Doco-CD Documentation</title>
       
     
   
@@ -40,12 +40,12 @@
       
         
       
-      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.fba56155.min.css">
+      <link rel="stylesheet" href="../../../assets/stylesheets/modern/main.fba56155.min.css">
       
         
           
         
-        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.dfe2e883.min.css">
+        <link rel="stylesheet" href="../../../assets/stylesheets/modern/palette.dfe2e883.min.css">
       
       
 
@@ -64,11 +64,11 @@
       
     
     
-      <link rel="stylesheet" href="../../stylesheets/extra.css">
+      <link rel="stylesheet" href="../../../stylesheets/extra.css">
     
-      <link rel="stylesheet" href="../../stylesheets/navigation.css">
+      <link rel="stylesheet" href="../../../stylesheets/navigation.css">
     
-    <script>__md_scope=new URL("../..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    <script>__md_scope=new URL("../../..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
     
       
   
@@ -133,7 +133,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#infisical" class="md-skip">
+        <a href="#oci-artifact-usage" class="md-skip">
           Skip to content
         </a>
       
@@ -149,13 +149,13 @@
               
   <span data-next-version-message hidden>
     You're viewing the <strong>unreleased</strong> (next) version of this documentation. Content may be incomplete or subject to change.
-    <a href="../../../latest/External-Secrets/Infisical/">
+    <a href="../../../../latest/Advanced/OCI/Artifact-Usage/">
       <strong>Click here to go to the latest stable version.</strong>
     </a>
   </span>
   <span data-non-next-version-message>
     You're not viewing the latest version.
-    <a href="../../../latest/External-Secrets/Infisical/">
+    <a href="../../../../latest/Advanced/OCI/Artifact-Usage/">
       <strong>Click here to go to latest.</strong>
     </a>
   </span>
@@ -174,7 +174,7 @@
   </script>
 
             </div>
-            <script>var el=document.querySelector("[data-md-component=outdated]"),base=new URL("../.."),outdated=__md_get("__outdated",sessionStorage,base);!0===outdated&&el&&(el.hidden=!1)</script>
+            <script>var el=document.querySelector("[data-md-component=outdated]"),base=new URL("../../.."),outdated=__md_get("__outdated",sessionStorage,base);!0===outdated&&el&&(el.hidden=!1)</script>
           </aside>
         
       </div>
@@ -186,9 +186,9 @@
 
 <header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="../.." title="Doco-CD Documentation" class="md-header__button md-logo" aria-label="Doco-CD Documentation" data-md-component="logo">
+    <a href="../../.." title="Doco-CD Documentation" class="md-header__button md-logo" aria-label="Doco-CD Documentation" data-md-component="logo">
       
-  <img src="../../images/doco-cd_containers.svg" alt="Doco-CD Documentation">
+  <img src="../../../images/doco-cd_containers.svg" alt="Doco-CD Documentation">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
@@ -205,7 +205,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Infisical
+              OCI Artifact Usage
             
           </span>
         </div>
@@ -293,7 +293,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../.." class="md-tabs__link">
+      <a href="../../.." class="md-tabs__link">
         
   
   Home
@@ -324,7 +324,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../Getting-Started/" class="md-tabs__link">
+        <a href="../../../Getting-Started/" class="md-tabs__link">
           
   
   Getting Started
@@ -358,7 +358,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../App-Settings/" class="md-tabs__link">
+        <a href="../../../App-Settings/" class="md-tabs__link">
           
   
   Configuration
@@ -402,7 +402,7 @@
     
     
       <li class="md-tabs__item md-tabs__item--active">
-        <a href="../../Advanced/Swarm-Mode/" class="md-tabs__link">
+        <a href="../../Swarm-Mode/" class="md-tabs__link">
           
   
   Advanced
@@ -440,7 +440,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../Core-Concepts/" class="md-tabs__link">
+        <a href="../../../Core-Concepts/" class="md-tabs__link">
           
   
   Reference
@@ -511,9 +511,9 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../.." title="Doco-CD Documentation" class="md-nav__button md-logo" aria-label="Doco-CD Documentation" data-md-component="logo">
+    <a href="../../.." title="Doco-CD Documentation" class="md-nav__button md-logo" aria-label="Doco-CD Documentation" data-md-component="logo">
       
-  <img src="../../images/doco-cd_containers.svg" alt="Doco-CD Documentation">
+  <img src="../../../images/doco-cd_containers.svg" alt="Doco-CD Documentation">
 
     </a>
     Doco-CD Documentation
@@ -540,7 +540,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../.." class="md-nav__link">
+      <a href="../../.." class="md-nav__link">
         
   
   
@@ -624,7 +624,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Getting-Started/" class="md-nav__link">
+      <a href="../../../Getting-Started/" class="md-nav__link">
         
   
   
@@ -651,7 +651,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Setup-Access-Token/" class="md-nav__link">
+      <a href="../../../Setup-Access-Token/" class="md-nav__link">
         
   
   
@@ -678,7 +678,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Setup-SSH-Key/" class="md-nav__link">
+      <a href="../../../Setup-SSH-Key/" class="md-nav__link">
         
   
   
@@ -705,7 +705,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Setup-Webhook/" class="md-nav__link">
+      <a href="../../../Setup-Webhook/" class="md-nav__link">
         
   
   
@@ -799,7 +799,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../App-Settings/" class="md-nav__link">
+      <a href="../../../App-Settings/" class="md-nav__link">
         
   
   
@@ -826,7 +826,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Deploy-Settings/" class="md-nav__link">
+      <a href="../../../Deploy-Settings/" class="md-nav__link">
         
   
   
@@ -853,7 +853,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Docker-Settings/" class="md-nav__link">
+      <a href="../../../Docker-Settings/" class="md-nav__link">
         
   
   
@@ -880,7 +880,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Git-Settings/" class="md-nav__link">
+      <a href="../../../Git-Settings/" class="md-nav__link">
         
   
   
@@ -907,7 +907,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Poll-Settings/" class="md-nav__link">
+      <a href="../../../Poll-Settings/" class="md-nav__link">
         
   
   
@@ -1014,7 +1014,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Swarm-Mode/" class="md-nav__link">
+      <a href="../../Swarm-Mode/" class="md-nav__link">
         
   
   
@@ -1041,7 +1041,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Private-Container-Registries/" class="md-nav__link">
+      <a href="../../Private-Container-Registries/" class="md-nav__link">
         
   
   
@@ -1068,7 +1068,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Encryption/" class="md-nav__link">
+      <a href="../../Encryption/" class="md-nav__link">
         
   
   
@@ -1092,8 +1092,6 @@
                 
   
   
-    
-  
   
   
     
@@ -1126,15 +1124,15 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" >
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../" class="md-nav__link ">
+            <a href="../../../External-Secrets/" class="md-nav__link ">
               
   
   
@@ -1157,7 +1155,7 @@
             
           </div>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_4_4">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1176,7 +1174,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../AWS-Secrets-Manager/" class="md-nav__link">
+      <a href="../../../External-Secrets/AWS-Secrets-Manager/" class="md-nav__link">
         
   
   
@@ -1203,7 +1201,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../Bitwarden-Secrets-Manager/" class="md-nav__link">
+      <a href="../../../External-Secrets/Bitwarden-Secrets-Manager/" class="md-nav__link">
         
   
   
@@ -1230,7 +1228,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../Bitwarden-Vault-Vaultwarden/" class="md-nav__link">
+      <a href="../../../External-Secrets/Bitwarden-Vault-Vaultwarden/" class="md-nav__link">
         
   
   
@@ -1257,7 +1255,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../1Password/" class="md-nav__link">
+      <a href="../../../External-Secrets/1Password/" class="md-nav__link">
         
   
   
@@ -1284,7 +1282,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../1Password-Connect/" class="md-nav__link">
+      <a href="../../../External-Secrets/1Password-Connect/" class="md-nav__link">
         
   
   
@@ -1308,36 +1306,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Infisical
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="././" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../../External-Secrets/Infisical/" class="md-nav__link">
         
   
   
@@ -1352,66 +1324,6 @@
   
 
       </a>
-      
-        
-
-
-<nav class="md-nav md-nav--secondary" aria-label="On this page">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      On this page
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#environment-variables" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Environment Variables
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#deployment-configuration" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Deployment configuration
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Deployment configuration">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#example" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Example
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1424,7 +1336,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../Openbao/" class="md-nav__link">
+      <a href="../../../External-Secrets/Openbao/" class="md-nav__link">
         
   
   
@@ -1451,7 +1363,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../Webhook/" class="md-nav__link">
+      <a href="../../../External-Secrets/Webhook/" class="md-nav__link">
         
   
   
@@ -1486,7 +1398,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Notifications/" class="md-nav__link">
+      <a href="../../Notifications/" class="md-nav__link">
         
   
   
@@ -1510,8 +1422,10 @@
                 
   
   
+    
   
   
+  
     
     
       
@@ -1530,11 +1444,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_6" checked>
         
           
           <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="0">
@@ -1554,7 +1468,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_4_6">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1568,10 +1482,36 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../Advanced/OCI/Artifact-Usage/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Artifact Usage
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1586,6 +1526,110 @@
   
 
       </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Overview
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#getting-started" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Getting Started
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#supported-oci-registries" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Supported OCI Registries
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#docov1-artifact-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>doco.v1</code> Artifact Layout
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="doco.v1 Artifact Layout">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#artifact-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Artifact Structure
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#required-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Required Files
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-creating-an-oci-artifact" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Example: Creating an OCI Artifact
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1598,7 +1642,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/OCI/Polling/" class="md-nav__link">
+      <a href="../Polling/" class="md-nav__link">
         
   
   
@@ -1625,7 +1669,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/OCI/Trust-Policy/" class="md-nav__link">
+      <a href="../Trust-Policy/" class="md-nav__link">
         
   
   
@@ -1652,7 +1696,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/OCI/Webhooks/" class="md-nav__link">
+      <a href="../Webhooks/" class="md-nav__link">
         
   
   
@@ -1687,7 +1731,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Pre-Post-Deployment-Scripts/" class="md-nav__link">
+      <a href="../../Pre-Post-Deployment-Scripts/" class="md-nav__link">
         
   
   
@@ -1714,7 +1758,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Job-Scheduling/" class="md-nav__link">
+      <a href="../../Job-Scheduling/" class="md-nav__link">
         
   
   
@@ -1741,7 +1785,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Tips-and-Tricks/" class="md-nav__link">
+      <a href="../../Tips-and-Tricks/" class="md-nav__link">
         
   
   
@@ -1839,7 +1883,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Core-Concepts/" class="md-nav__link">
+      <a href="../../../Core-Concepts/" class="md-nav__link">
         
   
   
@@ -1924,7 +1968,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Endpoints/Healthcheck/" class="md-nav__link">
+      <a href="../../../Endpoints/Healthcheck/" class="md-nav__link">
         
   
   
@@ -1951,7 +1995,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Endpoints/Metrics/" class="md-nav__link">
+      <a href="../../../Endpoints/Metrics/" class="md-nav__link">
         
   
   
@@ -1978,7 +2022,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Endpoints/REST-API/" class="md-nav__link">
+      <a href="../../../Endpoints/REST-API/" class="md-nav__link">
         
   
   
@@ -2005,7 +2049,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Endpoints/Webhook-Listener/" class="md-nav__link">
+      <a href="../../../Endpoints/Webhook-Listener/" class="md-nav__link">
         
   
   
@@ -2040,7 +2084,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Known-Limitations/" class="md-nav__link">
+      <a href="../../../Known-Limitations/" class="md-nav__link">
         
   
   
@@ -2067,7 +2111,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Contributing/" class="md-nav__link">
+      <a href="../../../Contributing/" class="md-nav__link">
         
   
   
@@ -2094,7 +2138,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../wiki/" class="md-nav__link">
+      <a href="../../../wiki/" class="md-nav__link">
         
   
   
@@ -2121,7 +2165,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Security/" class="md-nav__link">
+      <a href="../../../Security/" class="md-nav__link">
         
   
   
@@ -2148,7 +2192,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../License/" class="md-nav__link">
+      <a href="../../../License/" class="md-nav__link">
         
   
   
@@ -2268,10 +2312,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#environment-variables" class="md-nav__link">
+  <a href="#overview" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Environment Variables
+        Overview
       </span>
     </span>
   </a>
@@ -2279,22 +2323,55 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#deployment-configuration" class="md-nav__link">
+  <a href="#getting-started" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Deployment configuration
+        Getting Started
       </span>
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Deployment configuration">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#supported-oci-registries" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Supported OCI Registries
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#docov1-artifact-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>doco.v1</code> Artifact Layout
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="doco.v1 Artifact Layout">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#example" class="md-nav__link">
+  <a href="#artifact-structure" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Example
+        Artifact Structure
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#required-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Required Files
       </span>
     </span>
   </a>
@@ -2303,6 +2380,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-creating-an-oci-artifact" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Example: Creating an OCI Artifact
+      </span>
+    </span>
+  </a>
   
 </li>
       
@@ -2331,7 +2419,7 @@
   
   
     <li class="md-path__item">
-      <a href="../.." class="md-path__link">
+      <a href="../../.." class="md-path__link">
         
   
   <span class="md-ellipsis">
@@ -2373,7 +2461,7 @@
     
     
       <li class="md-path__item">
-        <a href="../../Advanced/Swarm-Mode/" class="md-path__link">
+        <a href="../../Swarm-Mode/" class="md-path__link">
           
   
   <span class="md-ellipsis">
@@ -2393,18 +2481,6 @@
     
       
         
-          
-        
-      
-        
-      
-        
-      
-        
-      
-        
-      
-        
       
         
       
@@ -2417,11 +2493,11 @@
     
     
       <li class="md-path__item">
-        <a href="../" class="md-path__link">
+        <a href="././" class="md-path__link">
           
   
   <span class="md-ellipsis">
-    External Secrets
+    OCI Artifacts
   </span>
 
         </a>
@@ -2438,7 +2514,7 @@
                 
                   
   
-    <a href="https://github.com/kimdre/doco-cd/edit/main/wiki/docs/External-Secrets/Infisical.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/kimdre/doco-cd/edit/main/wiki/docs/Advanced/OCI/Artifact-Usage.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-pen" viewBox="0 0 24 24"><path d="M12.659 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v9.34"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10.378 12.622a1 1 0 0 1 3 3.003L8.36 20.637a2 2 0 0 1-.854.506l-2.867.837a.5.5 0 0 1-.62-.62l.836-2.869a2 2 0 0 1 .506-.853z"/></svg>
     </a>
@@ -2447,62 +2523,160 @@
     
       
     
-    <a href="https://github.com/kimdre/doco-cd/raw/main/wiki/docs/External-Secrets/Infisical.md" title="View source of this page" class="md-content__button md-icon">
+    <a href="https://github.com/kimdre/doco-cd/raw/main/wiki/docs/Advanced/OCI/Artifact-Usage.md" title="View source of this page" class="md-content__button md-icon">
       
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code-2" viewBox="0 0 24 24"><path d="M4 12.15V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2h-3.35"/><path d="M14 2v5a1 1 0 0 0 1 1h5M5 16l-3 3 3 3M9 22l3-3-3-3"/></svg>
     </a>
   
 
 
-<h1 id="infisical">Infisical<a class="headerlink" href="#infisical" title="Permanent link">&para;</a></h1>
-<h2 id="environment-variables">Environment Variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h2>
-<p>To use Infisical, you need to set the following environment variables:</p>
-<table>
-<thead>
-<tr>
-<th>Key</th>
-<th>Value</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>SECRET_PROVIDER</code></td>
-<td><code>infisical</code></td>
-</tr>
-<tr>
-<td><code>SECRET_PROVIDER_SITE_URL</code></td>
-<td>The URL of the Infisical site (e.g. <code>https://app.infisical.com</code>, <code>https://eu.infisical.com</code> or your self-hosted instance URL)</td>
-</tr>
-<tr>
-<td><code>SECRET_PROVIDER_CLIENT_ID</code></td>
-<td>The Client ID of a machine account, see the docs for <a href="https://infisical.com/docs/documentation/platform/identities/machine-identities">machine accounts</a></td>
-</tr>
-<tr>
-<td><code>SECRET_PROVIDER_CLIENT_SECRET</code></td>
-<td>The Client Secret of a machine account (<a href="https://infisical.com/docs/documentation/platform/identities/universal-auth">Universal Auth</a>)</td>
-</tr>
-<tr>
-<td><code>SECRET_PROVIDER_CLIENT_SECRET_FILE</code></td>
-<td>Path to the file containing the client secret inside the container</td>
-</tr>
-</tbody>
-</table>
-<h2 id="deployment-configuration">Deployment configuration<a class="headerlink" href="#deployment-configuration" title="Permanent link">&para;</a></h2>
-<p>Add a mapping/reference between the environment variable you want to set in the docker compose project/stack and the reference to the secret in Infisical.</p>
-<p>A valid secret reference should use the syntax:
-<code>projectId:env:[/some/path/]key</code></p>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p>Machine accounts can only access projects for which you have granted read permissions.</p>
+<h1 id="oci-artifact-usage">OCI Artifact Usage<a class="headerlink" href="#oci-artifact-usage" title="Permanent link">&para;</a></h1>
+<div class="admonition example">
+<p class="admonition-title">Experimental Feature</p>
+<p>OCI artifact support is currently experimental.
+Please <a data-preview="" href="../../../Contributing/#have-an-issue-idea-or-question">provide feedback and report any issues</a> you encounter.</p>
 </div>
-<h3 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h3>
-<p>For example in your <code>.doco-cd.yml</code>:</p>
-<div class="language-yaml highlight"><span class="filename">.doco-cd.yml</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myapp</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">external_secrets</span><span class="p">:</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">TEST_PASSWORD</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:DATABASE_URL</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">OTHER_PASSWORD</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:/Test/Sub/TEST_SECRET&quot;</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">USERNAME</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:Test/Sub/TEST_SECRET</span>
+<p>This page provides comprehensive documentation on using doco-cd with OCI (Open Container Initiative) artifacts, including webhook payloads, and artifact packaging conventions.</p>
+<details class="question">
+<summary>What is an OCI artifact?</summary>
+<p>In the context of doco-cd, an OCI artifact is a structured package of deployment configuration files (e.g., <code>.doco-cd.yaml</code>, compose files, assets) 
+that is stored in an OCI-compliant registry.<br />
+This allows you to manage your deployment configurations using the same tools and workflows as your container images.</p>
+<p><strong>See also</strong>:</p>
+<ul>
+<li><a href="https://edu.chainguard.dev/open-source/oci/what-are-oci-artifacts/">What are OCI Artifacts?</a></li>
+<li><a href="https://oras.land/docs/concepts/artifact/">Understanding OCI artifacts</a></li>
+</ul>
+</details>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>Doco-CD supports pulling deployment configurations from OCI registries (e.g., Docker Hub, GitHub Container Registry, private registries) in addition to Git repositories. This allows you to:</p>
+<ul>
+<li>Store deployment configuration as versioned OCI artifacts</li>
+<li>Use container registries as your source of truth for deployments</li>
+<li>Trigger deployments via OCI webhook events</li>
+<li>Validate artifact signatures before deployment</li>
+<li>Use the same registry infrastructure for both container images and configuration</li>
+</ul>
+<h2 id="getting-started">Getting Started<a class="headerlink" href="#getting-started" title="Permanent link">&para;</a></h2>
+<p>To use OCI artifacts with doco-cd, you need to:</p>
+<ol>
+<li>Package your deployment configuration according to the <a data-preview="" href="#docov1-artifact-layout"><code>doco.v1</code> layout specification</a>, see the <a data-preview="" href="#example-creating-an-oci-artifact">example</a> below for details.</li>
+<li>Push the artifact to an OCI registry</li>
+<li>Configure doco-cd with either <a data-preview="" href="../Polling/">polling</a> or <a data-preview="" href="../Webhooks/">webhooks</a> to pull the artifact and trigger deployments</li>
+<li>(Optional) Configure signature verification with <a data-preview="" href="../Trust-Policy/">trust policies</a></li>
+</ol>
+<h2 id="supported-oci-registries">Supported OCI Registries<a class="headerlink" href="#supported-oci-registries" title="Permanent link">&para;</a></h2>
+<p>Doco-cd can pull artifacts from any OCI-compliant registry that supports OCI Image Spec v1.0 or later. 
+This includes, but is not limited to:</p>
+<ul>
+<li><strong>Docker Hub</strong> (<code>docker.io</code>)</li>
+<li><strong>GitHub Container Registry</strong> (<code>ghcr.io</code>)</li>
+<li><strong>GitLab Container Registry</strong> (<code>registry.gitlab.com</code>)</li>
+<li><strong>Amazon ECR</strong> (<code>*.dkr.ecr.*.amazonaws.com</code>)</li>
+<li><strong>Google Artifact Registry</strong> (<code>*.pkg.dev</code>)</li>
+<li><strong>Azure Container Registry</strong> (<code>*.azurecr.io</code>)</li>
+<li><strong>Private/Self-hosted registries</strong> (supporting OCI Image Spec v1.0+)</li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">See <a data-preview="" href="../../Private-Container-Registries/">Private Container Registries</a> for authentication to private registries.</p>
+</div>
+<hr />
+<h2 id="docov1-artifact-layout"><code>doco.v1</code> Artifact Layout<a class="headerlink" href="#docov1-artifact-layout" title="Permanent link">&para;</a></h2>
+<p>The <strong>doco.v1</strong> layout (see <code>version</code> in <a data-preview="" href="../../../Deploy-Settings/#available-settings">deploy config</a>) is a strict, versioned specification for packaging deployment configurations as OCI artifacts. It ensures consistency and enables validation.</p>
+<h3 id="artifact-structure">Artifact Structure<a class="headerlink" href="#artifact-structure" title="Permanent link">&para;</a></h3>
+<p>A doco.v1 artifact must have a root-level deployment configuration file (<code>.doco-cd.y(a)ml</code>) in the root (<code>/</code>) of the artifact.</p>
+<p>The rest of the artifact can contain any files needed for deployment, as with deployments from Git repository (e.g., compose files, app configuration, assets, scripts), see <a data-preview="" href="../../../Deploy-Settings/">Deploy Settings</a>.</p>
+<div class="admonition example">
+<p class="admonition-title">Artifact Layout Examples</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="artifact-structure-single-deployment" name="__tabbed_1" type="radio" /><input id="artifact-structure-multiple-deployments" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="artifact-structure-single-deployment">Single Deployment</label><label for="artifact-structure-multiple-deployments">Multiple Deployments</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>artifact-root/
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── .doco-cd.yaml        # Main deployment config
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├── docker-compose.yml    # Docker Compose configuration
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>└── (other files as needed)
 </span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>artifact-root/
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>├── .doco-cd.yaml        # Main deployment config
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>├── web/
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>│   ├── .doco-cd.yaml    # Extra deployment config for web service
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>│   └── docker-compose.yml
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>│   └── config/
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>│       └── nginx.conf
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>└── app/
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    └── docker-compose.yml
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    └── app.env
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    └── migrations/
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>        └── 001-init.sql
+</span></code></pre></div>
+</div>
+</div>
+</div>
+</div>
+<h3 id="required-files">Required Files<a class="headerlink" href="#required-files" title="Permanent link">&para;</a></h3>
+<ul>
+<li>
+<p><code>.doco-cd.y(a)ml</code>: <strong>Required</strong></p>
+<p>The main <a data-preview="" href="../../../Deploy-Settings/">deployment configuration</a> file.</p>
+<div class="language-yaml highlight"><span class="filename">.doco-cd.yaml Example</span><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">production</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">compose_files</span><span class="p">:</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">docker-compose.yml</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="nt">profiles</span><span class="p">:</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">production</span>
+</span></code></pre></div>
+</li>
+</ul>
+<hr />
+<h2 id="example-creating-an-oci-artifact">Example: Creating an OCI Artifact<a class="headerlink" href="#example-creating-an-oci-artifact" title="Permanent link">&para;</a></h2>
+<p>Here's a complete example of creating and pushing a <code>doco.v1</code> OCI artifact:</p>
+<ol>
+<li>
+<p>Create the artifact directory
+    <div class="language-sh highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>artifact
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="c1"># Create deployment configuration</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>cat<span class="w"> </span>&gt;<span class="w"> </span>artifact/.doco-cd.yaml<span class="w"> </span><span class="s">&lt;&lt; &#39;EOF&#39;</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="s">name: web-app</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="s">compose_files:</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="s">  - docker-compose.yml</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="s">EOF</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="c1"># Create docker-compose.yml</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>cat<span class="w"> </span>&gt;<span class="w"> </span>artifact/docker-compose.yml<span class="w"> </span><span class="s">&lt;&lt; &#39;EOF&#39;</span>
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="s">services:</span>
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="s">  nginx:</span>
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="s">    image: nginx:latest</span>
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="s">EOF</span>
+</span></code></pre></div></p>
+</li>
+<li>
+<p>Create the OCI artifact</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="2:2"><input checked="checked" id="example-creating-an-oci-artifact-using-docker-cli" name="__tabbed_2" type="radio" /><input id="example-creating-an-oci-artifact-using-oci-tools" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="example-creating-an-oci-artifact-using-docker-cli">Using Docker CLI</label><label for="example-creating-an-oci-artifact-using-oci-tools">Using OCI tools</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Create a minimal Dockerfile inside the artifact directory</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>cat<span class="w"> </span>&gt;<span class="w"> </span>artifact/Dockerfile<span class="w"> </span><span class="s">&lt;&lt; &#39;EOF&#39;</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="s">FROM scratch</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="s">COPY . /</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="s">EOF</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="c1"># Build and push the artifact</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>docker<span class="w"> </span>build<span class="w"> </span>-t<span class="w"> </span>ghcr.io/myorg/myapp-config:main<span class="w"> </span>artifact/
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>docker<span class="w"> </span>push<span class="w"> </span>ghcr.io/myorg/myapp-config:main
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<p>We use <a href="https://github.com/containers/skopeo">skopeo</a> to copy the directory directly to an OCI registry without needing to create a Docker image:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Using skopeo or similar tools</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>skopeo<span class="w"> </span>copy<span class="w"> </span>dir://artifact<span class="w"> </span>oci:oras-artifact:latest
+</span></code></pre></div>
+</div>
+</div>
+</div>
+</li>
+</ol>
 
 
   <nav class="md-tags" >
@@ -2511,14 +2685,14 @@
       
       
       
-        <span class="md-tag">Advanced</span>
+        <span class="md-tag">OCI</span>
       
     
       
       
       
       
-        <span class="md-tag">Secrets</span>
+        <span class="md-tag">Advanced</span>
       
     
       
@@ -2570,7 +2744,7 @@
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../1Password-Connect/" class="md-footer__link md-footer__link--prev" aria-label="Previous: 1Password Connect">
+          <a href="../../Notifications/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Notifications">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -2580,20 +2754,20 @@
                 Previous
               </span>
               <div class="md-ellipsis">
-                1Password Connect
+                Notifications
               </div>
             </div>
           </a>
         
         
           
-          <a href="../Openbao/" class="md-footer__link md-footer__link--next" aria-label="Next: OpenBao">
+          <a href="../Polling/" class="md-footer__link md-footer__link--next" aria-label="Next: Polling">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                OpenBao
+                Polling
               </div>
             </div>
             <div class="md-footer__button md-icon">
@@ -2657,14 +2831,14 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["content.action.edit","content.action.view","content.code.select","content.code.copy","content.code.annotate","content.footnote.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.path","navigation.tabs","navigation.tabs.sticky","navigation.top","toc.follow","search.highlight","search.suggest","search.share"],"search":"../../assets/javascripts/workers/search.e2d2d235.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"alias":true,"default":"latest","provider":"mike"}}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"../../..","features":["content.action.edit","content.action.view","content.code.select","content.code.copy","content.code.annotate","content.footnote.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.path","navigation.tabs","navigation.tabs.sticky","navigation.top","toc.follow","search.highlight","search.suggest","search.share"],"search":"../../../assets/javascripts/workers/search.e2d2d235.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"alias":true,"default":"latest","provider":"mike"}}</script>
     
     
-      <script src="../../assets/javascripts/bundle.dbc0afdc.min.js"></script>
+      <script src="../../../assets/javascripts/bundle.dbc0afdc.min.js"></script>
       
         <script src="https://unpkg.com/tablesort@5.7.1/dist/tablesort.min.js"></script>
       
-        <script src="../../javascripts/tablesort.js"></script>
+        <script src="../../../javascripts/tablesort.js"></script>
       
     
   </body>

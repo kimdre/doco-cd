@@ -12,26 +12,26 @@
         <meta name="author" content="doco-cd contributors">
       
       
-        <link rel="canonical" href="https://doco.cd/next/External-Secrets/Infisical/">
+        <link rel="canonical" href="https://doco.cd/next/Advanced/OCI/Webhooks/">
       
       
-        <link rel="prev" href="../1Password-Connect/">
+        <link rel="prev" href="../Trust-Policy/">
       
       
-        <link rel="next" href="../Openbao/">
+        <link rel="next" href="../../Pre-Post-Deployment-Scripts/">
       
       
         
       
       
-      <link rel="icon" href="../../images/doco-cd_containers.svg">
+      <link rel="icon" href="../../../images/doco-cd_containers.svg">
       <meta name="generator" content="zensical-0.0.41">
     
     
   
     
       
-        <title>Infisical - Doco-CD Documentation</title>
+        <title>Webhooks with OCI - Doco-CD Documentation</title>
       
     
   
@@ -40,12 +40,12 @@
       
         
       
-      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.fba56155.min.css">
+      <link rel="stylesheet" href="../../../assets/stylesheets/modern/main.fba56155.min.css">
       
         
           
         
-        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.dfe2e883.min.css">
+        <link rel="stylesheet" href="../../../assets/stylesheets/modern/palette.dfe2e883.min.css">
       
       
 
@@ -64,11 +64,11 @@
       
     
     
-      <link rel="stylesheet" href="../../stylesheets/extra.css">
+      <link rel="stylesheet" href="../../../stylesheets/extra.css">
     
-      <link rel="stylesheet" href="../../stylesheets/navigation.css">
+      <link rel="stylesheet" href="../../../stylesheets/navigation.css">
     
-    <script>__md_scope=new URL("../..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    <script>__md_scope=new URL("../../..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
     
       
   
@@ -133,7 +133,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#infisical" class="md-skip">
+        <a href="#webhooks-with-oci" class="md-skip">
           Skip to content
         </a>
       
@@ -149,13 +149,13 @@
               
   <span data-next-version-message hidden>
     You're viewing the <strong>unreleased</strong> (next) version of this documentation. Content may be incomplete or subject to change.
-    <a href="../../../latest/External-Secrets/Infisical/">
+    <a href="../../../../latest/Advanced/OCI/Webhooks/">
       <strong>Click here to go to the latest stable version.</strong>
     </a>
   </span>
   <span data-non-next-version-message>
     You're not viewing the latest version.
-    <a href="../../../latest/External-Secrets/Infisical/">
+    <a href="../../../../latest/Advanced/OCI/Webhooks/">
       <strong>Click here to go to latest.</strong>
     </a>
   </span>
@@ -174,7 +174,7 @@
   </script>
 
             </div>
-            <script>var el=document.querySelector("[data-md-component=outdated]"),base=new URL("../.."),outdated=__md_get("__outdated",sessionStorage,base);!0===outdated&&el&&(el.hidden=!1)</script>
+            <script>var el=document.querySelector("[data-md-component=outdated]"),base=new URL("../../.."),outdated=__md_get("__outdated",sessionStorage,base);!0===outdated&&el&&(el.hidden=!1)</script>
           </aside>
         
       </div>
@@ -186,9 +186,9 @@
 
 <header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="../.." title="Doco-CD Documentation" class="md-header__button md-logo" aria-label="Doco-CD Documentation" data-md-component="logo">
+    <a href="../../.." title="Doco-CD Documentation" class="md-header__button md-logo" aria-label="Doco-CD Documentation" data-md-component="logo">
       
-  <img src="../../images/doco-cd_containers.svg" alt="Doco-CD Documentation">
+  <img src="../../../images/doco-cd_containers.svg" alt="Doco-CD Documentation">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
@@ -205,7 +205,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Infisical
+              Webhooks with OCI
             
           </span>
         </div>
@@ -293,7 +293,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../.." class="md-tabs__link">
+      <a href="../../.." class="md-tabs__link">
         
   
   Home
@@ -324,7 +324,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../Getting-Started/" class="md-tabs__link">
+        <a href="../../../Getting-Started/" class="md-tabs__link">
           
   
   Getting Started
@@ -358,7 +358,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../App-Settings/" class="md-tabs__link">
+        <a href="../../../App-Settings/" class="md-tabs__link">
           
   
   Configuration
@@ -402,7 +402,7 @@
     
     
       <li class="md-tabs__item md-tabs__item--active">
-        <a href="../../Advanced/Swarm-Mode/" class="md-tabs__link">
+        <a href="../../Swarm-Mode/" class="md-tabs__link">
           
   
   Advanced
@@ -440,7 +440,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../Core-Concepts/" class="md-tabs__link">
+        <a href="../../../Core-Concepts/" class="md-tabs__link">
           
   
   Reference
@@ -511,9 +511,9 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../.." title="Doco-CD Documentation" class="md-nav__button md-logo" aria-label="Doco-CD Documentation" data-md-component="logo">
+    <a href="../../.." title="Doco-CD Documentation" class="md-nav__button md-logo" aria-label="Doco-CD Documentation" data-md-component="logo">
       
-  <img src="../../images/doco-cd_containers.svg" alt="Doco-CD Documentation">
+  <img src="../../../images/doco-cd_containers.svg" alt="Doco-CD Documentation">
 
     </a>
     Doco-CD Documentation
@@ -540,7 +540,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../.." class="md-nav__link">
+      <a href="../../.." class="md-nav__link">
         
   
   
@@ -624,7 +624,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Getting-Started/" class="md-nav__link">
+      <a href="../../../Getting-Started/" class="md-nav__link">
         
   
   
@@ -651,7 +651,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Setup-Access-Token/" class="md-nav__link">
+      <a href="../../../Setup-Access-Token/" class="md-nav__link">
         
   
   
@@ -678,7 +678,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Setup-SSH-Key/" class="md-nav__link">
+      <a href="../../../Setup-SSH-Key/" class="md-nav__link">
         
   
   
@@ -705,7 +705,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Setup-Webhook/" class="md-nav__link">
+      <a href="../../../Setup-Webhook/" class="md-nav__link">
         
   
   
@@ -799,7 +799,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../App-Settings/" class="md-nav__link">
+      <a href="../../../App-Settings/" class="md-nav__link">
         
   
   
@@ -826,7 +826,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Deploy-Settings/" class="md-nav__link">
+      <a href="../../../Deploy-Settings/" class="md-nav__link">
         
   
   
@@ -853,7 +853,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Docker-Settings/" class="md-nav__link">
+      <a href="../../../Docker-Settings/" class="md-nav__link">
         
   
   
@@ -880,7 +880,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Git-Settings/" class="md-nav__link">
+      <a href="../../../Git-Settings/" class="md-nav__link">
         
   
   
@@ -907,7 +907,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Poll-Settings/" class="md-nav__link">
+      <a href="../../../Poll-Settings/" class="md-nav__link">
         
   
   
@@ -1014,7 +1014,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Swarm-Mode/" class="md-nav__link">
+      <a href="../../Swarm-Mode/" class="md-nav__link">
         
   
   
@@ -1041,7 +1041,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Private-Container-Registries/" class="md-nav__link">
+      <a href="../../Private-Container-Registries/" class="md-nav__link">
         
   
   
@@ -1068,7 +1068,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Encryption/" class="md-nav__link">
+      <a href="../../Encryption/" class="md-nav__link">
         
   
   
@@ -1092,8 +1092,6 @@
                 
   
   
-    
-  
   
   
     
@@ -1126,15 +1124,15 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" >
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../" class="md-nav__link ">
+            <a href="../../../External-Secrets/" class="md-nav__link ">
               
   
   
@@ -1157,7 +1155,7 @@
             
           </div>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_4_4">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1176,7 +1174,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../AWS-Secrets-Manager/" class="md-nav__link">
+      <a href="../../../External-Secrets/AWS-Secrets-Manager/" class="md-nav__link">
         
   
   
@@ -1203,7 +1201,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../Bitwarden-Secrets-Manager/" class="md-nav__link">
+      <a href="../../../External-Secrets/Bitwarden-Secrets-Manager/" class="md-nav__link">
         
   
   
@@ -1230,7 +1228,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../Bitwarden-Vault-Vaultwarden/" class="md-nav__link">
+      <a href="../../../External-Secrets/Bitwarden-Vault-Vaultwarden/" class="md-nav__link">
         
   
   
@@ -1257,7 +1255,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../1Password/" class="md-nav__link">
+      <a href="../../../External-Secrets/1Password/" class="md-nav__link">
         
   
   
@@ -1284,7 +1282,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../1Password-Connect/" class="md-nav__link">
+      <a href="../../../External-Secrets/1Password-Connect/" class="md-nav__link">
         
   
   
@@ -1292,6 +1290,263 @@
     
   
   1Password Connect
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../External-Secrets/Infisical/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Infisical
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../External-Secrets/Openbao/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  OpenBao
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../External-Secrets/Webhook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Webhook
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Notifications/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Notifications
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  OCI Artifacts
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  OCI Artifacts
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Artifact-Usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Artifact Usage
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Polling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Polling
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Trust-Policy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Trust Policy
 
     
   </span>
@@ -1327,7 +1582,7 @@
   <span class="md-ellipsis">
     
   
-  Infisical
+  Webhooks
 
     
   </span>
@@ -1344,7 +1599,7 @@
   <span class="md-ellipsis">
     
   
-  Infisical
+  Webhooks
 
     
   </span>
@@ -1370,33 +1625,33 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#environment-variables" class="md-nav__link">
+  <a href="#payload-schema" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Environment Variables
+        Payload Schema
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Payload Schema">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#field-definitions" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Field Definitions
       </span>
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#deployment-configuration" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Deployment configuration
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Deployment configuration">
-      <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#example" class="md-nav__link">
+  <a href="#examples" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Example
+        Examples
       </span>
     </span>
   </a>
@@ -1405,6 +1660,28 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#signature-verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Signature Verification
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sending-oci-webhooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Sending OCI Webhooks
+      </span>
+    </span>
+  </a>
   
 </li>
       
@@ -1417,60 +1694,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../Openbao/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  OpenBao
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../Webhook/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Webhook
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -1486,208 +1709,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Notifications/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Notifications
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    
-    
-      
-        
-      
-        
-      
-        
-      
-        
-      
-    
-    
-    
-      
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_6" >
-        
-          
-          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  OCI Artifacts
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4_6">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-  OCI Artifacts
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../Advanced/OCI/Artifact-Usage/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Artifact Usage
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../Advanced/OCI/Polling/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Polling
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../Advanced/OCI/Trust-Policy/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Trust Policy
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../Advanced/OCI/Webhooks/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Webhooks
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../Advanced/Pre-Post-Deployment-Scripts/" class="md-nav__link">
+      <a href="../../Pre-Post-Deployment-Scripts/" class="md-nav__link">
         
   
   
@@ -1714,7 +1736,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Job-Scheduling/" class="md-nav__link">
+      <a href="../../Job-Scheduling/" class="md-nav__link">
         
   
   
@@ -1741,7 +1763,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Tips-and-Tricks/" class="md-nav__link">
+      <a href="../../Tips-and-Tricks/" class="md-nav__link">
         
   
   
@@ -1839,7 +1861,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Core-Concepts/" class="md-nav__link">
+      <a href="../../../Core-Concepts/" class="md-nav__link">
         
   
   
@@ -1924,7 +1946,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Endpoints/Healthcheck/" class="md-nav__link">
+      <a href="../../../Endpoints/Healthcheck/" class="md-nav__link">
         
   
   
@@ -1951,7 +1973,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Endpoints/Metrics/" class="md-nav__link">
+      <a href="../../../Endpoints/Metrics/" class="md-nav__link">
         
   
   
@@ -1978,7 +2000,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Endpoints/REST-API/" class="md-nav__link">
+      <a href="../../../Endpoints/REST-API/" class="md-nav__link">
         
   
   
@@ -2005,7 +2027,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Endpoints/Webhook-Listener/" class="md-nav__link">
+      <a href="../../../Endpoints/Webhook-Listener/" class="md-nav__link">
         
   
   
@@ -2040,7 +2062,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Known-Limitations/" class="md-nav__link">
+      <a href="../../../Known-Limitations/" class="md-nav__link">
         
   
   
@@ -2067,7 +2089,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Contributing/" class="md-nav__link">
+      <a href="../../../Contributing/" class="md-nav__link">
         
   
   
@@ -2094,7 +2116,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../wiki/" class="md-nav__link">
+      <a href="../../../wiki/" class="md-nav__link">
         
   
   
@@ -2121,7 +2143,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Security/" class="md-nav__link">
+      <a href="../../../Security/" class="md-nav__link">
         
   
   
@@ -2148,7 +2170,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../License/" class="md-nav__link">
+      <a href="../../../License/" class="md-nav__link">
         
   
   
@@ -2268,33 +2290,33 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#environment-variables" class="md-nav__link">
+  <a href="#payload-schema" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Environment Variables
+        Payload Schema
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Payload Schema">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#field-definitions" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Field Definitions
       </span>
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#deployment-configuration" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Deployment configuration
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Deployment configuration">
-      <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#example" class="md-nav__link">
+  <a href="#examples" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Example
+        Examples
       </span>
     </span>
   </a>
@@ -2303,6 +2325,28 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#signature-verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Signature Verification
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sending-oci-webhooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Sending OCI Webhooks
+      </span>
+    </span>
+  </a>
   
 </li>
       
@@ -2331,7 +2375,7 @@
   
   
     <li class="md-path__item">
-      <a href="../.." class="md-path__link">
+      <a href="../../.." class="md-path__link">
         
   
   <span class="md-ellipsis">
@@ -2373,7 +2417,7 @@
     
     
       <li class="md-path__item">
-        <a href="../../Advanced/Swarm-Mode/" class="md-path__link">
+        <a href="../../Swarm-Mode/" class="md-path__link">
           
   
   <span class="md-ellipsis">
@@ -2393,18 +2437,6 @@
     
       
         
-          
-        
-      
-        
-      
-        
-      
-        
-      
-        
-      
-        
       
         
       
@@ -2417,11 +2449,11 @@
     
     
       <li class="md-path__item">
-        <a href="../" class="md-path__link">
+        <a href="../Artifact-Usage/" class="md-path__link">
           
   
   <span class="md-ellipsis">
-    External Secrets
+    OCI Artifacts
   </span>
 
         </a>
@@ -2438,7 +2470,7 @@
                 
                   
   
-    <a href="https://github.com/kimdre/doco-cd/edit/main/wiki/docs/External-Secrets/Infisical.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/kimdre/doco-cd/edit/main/wiki/docs/Advanced/OCI/Webhooks.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-pen" viewBox="0 0 24 24"><path d="M12.659 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v9.34"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10.378 12.622a1 1 0 0 1 3 3.003L8.36 20.637a2 2 0 0 1-.854.506l-2.867.837a.5.5 0 0 1-.62-.62l.836-2.869a2 2 0 0 1 .506-.853z"/></svg>
     </a>
@@ -2447,62 +2479,209 @@
     
       
     
-    <a href="https://github.com/kimdre/doco-cd/raw/main/wiki/docs/External-Secrets/Infisical.md" title="View source of this page" class="md-content__button md-icon">
+    <a href="https://github.com/kimdre/doco-cd/raw/main/wiki/docs/Advanced/OCI/Webhooks.md" title="View source of this page" class="md-content__button md-icon">
       
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code-2" viewBox="0 0 24 24"><path d="M4 12.15V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2h-3.35"/><path d="M14 2v5a1 1 0 0 0 1 1h5M5 16l-3 3 3 3M9 22l3-3-3-3"/></svg>
     </a>
   
 
 
-<h1 id="infisical">Infisical<a class="headerlink" href="#infisical" title="Permanent link">&para;</a></h1>
-<h2 id="environment-variables">Environment Variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h2>
-<p>To use Infisical, you need to set the following environment variables:</p>
+<h1 id="webhooks-with-oci">Webhooks with OCI<a class="headerlink" href="#webhooks-with-oci" title="Permanent link">&para;</a></h1>
+<div class="admonition example">
+<p class="admonition-title">Experimental Feature</p>
+<p>OCI artifact support is currently experimental.
+Please <a data-preview="" href="../../../Contributing/#have-an-issue-idea-or-question">provide feedback and report any issues</a> you encounter.</p>
+</div>
+<p>To trigger immediate deployments when artifacts are pushed/available to an OCI registry,
+you can send a webhook to doco-cd's <a data-preview="" href="../../../Endpoints/Webhook-Listener/">webhook endpoint</a> at <code>/v1/webhook</code>.</p>
+<h2 id="payload-schema">Payload Schema<a class="headerlink" href="#payload-schema" title="Permanent link">&para;</a></h2>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;oci&quot;</span><span class="p">,</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">&quot;digest&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">&quot;artifact&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">}</span>
+</span></code></pre></div>
+<h3 id="field-definitions">Field Definitions<a class="headerlink" href="#field-definitions" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
-<th>Key</th>
-<th>Value</th>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+<th>Example</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>SECRET_PROVIDER</code></td>
-<td><code>infisical</code></td>
+<td><code>source</code></td>
+<td>string</td>
+<td>Payload discriminator, must be <code>oci</code></td>
+<td><code>oci</code></td>
 </tr>
 <tr>
-<td><code>SECRET_PROVIDER_SITE_URL</code></td>
-<td>The URL of the Infisical site (e.g. <code>https://app.infisical.com</code>, <code>https://eu.infisical.com</code> or your self-hosted instance URL)</td>
+<td><code>digest</code></td>
+<td>string</td>
+<td>The OCI digest (image ID) in format <code>algorithm:hexdigest</code></td>
+<td><code>sha256:7d6c7f8e9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6</code></td>
 </tr>
 <tr>
-<td><code>SECRET_PROVIDER_CLIENT_ID</code></td>
-<td>The Client ID of a machine account, see the docs for <a href="https://infisical.com/docs/documentation/platform/identities/machine-identities">machine accounts</a></td>
-</tr>
-<tr>
-<td><code>SECRET_PROVIDER_CLIENT_SECRET</code></td>
-<td>The Client Secret of a machine account (<a href="https://infisical.com/docs/documentation/platform/identities/universal-auth">Universal Auth</a>)</td>
-</tr>
-<tr>
-<td><code>SECRET_PROVIDER_CLIENT_SECRET_FILE</code></td>
-<td>Path to the file containing the client secret inside the container</td>
+<td><code>artifact</code></td>
+<td>string</td>
+<td>Full artifact reference with registry host and tag/digest</td>
+<td><code>ghcr.io/my/app:main</code>, <code>docker.io/library/ubuntu:latest</code></td>
 </tr>
 </tbody>
 </table>
-<h2 id="deployment-configuration">Deployment configuration<a class="headerlink" href="#deployment-configuration" title="Permanent link">&para;</a></h2>
-<p>Add a mapping/reference between the environment variable you want to set in the docker compose project/stack and the reference to the secret in Infisical.</p>
-<p>A valid secret reference should use the syntax:
-<code>projectId:env:[/some/path/]key</code></p>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p>Machine accounts can only access projects for which you have granted read permissions.</p>
-</div>
-<h3 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h3>
-<p>For example in your <code>.doco-cd.yml</code>:</p>
-<div class="language-yaml highlight"><span class="filename">.doco-cd.yml</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myapp</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">external_secrets</span><span class="p">:</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">TEST_PASSWORD</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:DATABASE_URL</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">OTHER_PASSWORD</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:/Test/Sub/TEST_SECRET&quot;</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">USERNAME</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:Test/Sub/TEST_SECRET</span>
+<h3 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h3>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:4"><input checked="checked" id="examples-github-container-registry" name="__tabbed_1" type="radio" /><input id="examples-nested-namespacegroup-path-eg-gitlab" name="__tabbed_1" type="radio" /><input id="examples-docker-hub" name="__tabbed_1" type="radio" /><input id="examples-private-registry" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="examples-github-container-registry">GitHub Container Registry</label><label for="examples-nested-namespacegroup-path-eg-gitlab">Nested namespace/group path (e.g. GitLab)</label><label for="examples-docker-hub">Docker Hub</label><label for="examples-private-registry">Private Registry</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-json highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;oci&quot;</span><span class="p">,</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">&quot;digest&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sha256:7d6c7f8e9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6&quot;</span><span class="p">,</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">&quot;artifact&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ghcr.io/my/app:main&quot;</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="p">}</span>
 </span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="language-json highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;oci&quot;</span><span class="p">,</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">&quot;digest&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sha256:1f2e3d4c5b6a79808f7e6d5c4b3a2910ffeeddccbbaa99887766554433221100&quot;</span><span class="p">,</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="nt">&quot;artifact&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;registry.example.com/myorg/apps/app1/backend:latest&quot;</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="p">}</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="language-json highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">{</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;oci&quot;</span><span class="p">,</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="nt">&quot;digest&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sha256:abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567abc890def&quot;</span><span class="p">,</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="nt">&quot;artifact&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;docker.io/myusername/myapp-config:latest&quot;</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="p">}</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="language-json highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">{</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;oci&quot;</span><span class="p">,</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="nt">&quot;digest&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210&quot;</span><span class="p">,</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">&quot;artifact&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;registry.example.com:5000/internal/deployment-config:v1.0.0&quot;</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="p">}</span>
+</span></code></pre></div>
+</div>
+</div>
+</div>
+<h2 id="signature-verification">Signature Verification<a class="headerlink" href="#signature-verification" title="Permanent link">&para;</a></h2>
+<p>OCI webhook payloads are signed with HMAC-SHA256:</p>
+<p><strong>Header</strong>: <code>X-Doco-OCI-Signature-256</code></p>
+<p><strong>Format</strong>: A hexadecimal string representing the HMAC-SHA256 signature of the raw request body, calculated using your <code>WEBHOOK_SECRET</code>.</p>
+<p>Example:
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">X-Doco-OCI-Signature-256</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">abc123def456...</span>
+</span></code></pre></div></p>
+<div class="tabbed-set tabbed-alternate" data-tabs="2:2"><input checked="checked" id="signature-verification-shell" name="__tabbed_2" type="radio" /><input id="signature-verification-python" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="signature-verification-shell">Shell</label><label for="signature-verification-python">Python</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nv">SIGNATURE</span><span class="o">=</span><span class="k">$(</span><span class="nb">echo</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PAYLOAD</span><span class="s2">&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>openssl<span class="w"> </span>dgst<span class="w"> </span>-sha256<span class="w"> </span>-hmac<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$WEBHOOK_SECRET</span><span class="s2">&quot;</span><span class="w"> </span>-hex<span class="w"> </span><span class="p">|</span><span class="w"> </span>cut<span class="w"> </span>-d<span class="s1">&#39; &#39;</span><span class="w"> </span>-f2<span class="k">)</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">hmac</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">hashlib</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">payload</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">get_data</span><span class="p">()</span> <span class="c1"># (1)!</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="n">secret</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s1">&#39;WEBHOOK_SECRET&#39;</span><span class="p">)</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="n">expected_signature</span> <span class="o">=</span> <span class="n">hmac</span><span class="o">.</span><span class="n">new</span><span class="p">(</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="n">secret</span><span class="o">.</span><span class="n">encode</span><span class="p">(),</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    <span class="n">payload</span><span class="p">,</span>
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>    <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span>
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="p">)</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span>
+</span></code></pre></div>
+<ol>
+<li>Use the raw request body bytes for signature calculation to ensure it matches what doco-cd receives.</li>
+</ol>
+</div>
+</div>
+</div>
+<p>For more information, see the <a data-preview="" href="../../../Setup-Webhook/#webhook-endpoint">Webhook Endpoint Setup</a>.</p>
+<h2 id="sending-oci-webhooks">Sending OCI Webhooks<a class="headerlink" href="#sending-oci-webhooks" title="Permanent link">&para;</a></h2>
+<p>The webhook endpoint accepts POST requests at <code>/v1/webhook</code> with the OCI payload schema, see <a data-preview="" href="../../../Endpoints/Webhook-Listener/">Webhook Listener</a> for details.</p>
+<p>Some examples of how to send OCI webhooks from different environments:</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="3:3"><input checked="checked" id="sending-oci-webhooks-github-actions" name="__tabbed_3" type="radio" /><input id="sending-oci-webhooks-curl-command" name="__tabbed_3" type="radio" /><input id="sending-oci-webhooks-registry-with-native-webhook-support" name="__tabbed_3" type="radio" /><div class="tabbed-labels"><label for="sending-oci-webhooks-github-actions">GitHub Actions</label><label for="sending-oci-webhooks-curl-command">cURL Command</label><label for="sending-oci-webhooks-registry-with-native-webhook-support">Registry with Native Webhook Support</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Send OCI Webhook</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="nt">on</span><span class="p">:</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span><span class="nt">registry_package</span><span class="p">:</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">    </span><span class="nt">types</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">published</span><span class="p p-Indicator">]</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="nt">jobs</span><span class="p">:</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="w">  </span><span class="nt">notify</span><span class="p">:</span>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">    </span><span class="nt">runs-on</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ubuntu-latest</span>
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="w">    </span><span class="nt">steps</span><span class="p">:</span>
+</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Send webhook to doco-cd</span>
+</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="w">        </span><span class="nt">env</span><span class="p">:</span>
+</span><span id="__span-8-13"><a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="w">          </span><span class="nt">WEBHOOK_URL</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ secrets.DOCO_WEBHOOK_URL }}</span>
+</span><span id="__span-8-14"><a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="w">          </span><span class="nt">WEBHOOK_SECRET</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ secrets.DOCO_WEBHOOK_SECRET }}</span>
+</span><span id="__span-8-15"><a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="w">          </span><span class="nt">ARTIFACT_REF</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ github.event.registry_package.name }}</span>
+</span><span id="__span-8-16"><a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a><span class="w">          </span><span class="nt">ARTIFACT_TAG</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ github.event.registry_package.version }}</span>
+</span><span id="__span-8-17"><a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a><span class="w">          </span><span class="nt">ARTIFACT_DIGEST</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ github.event.registry_package.package_version.container_metadata.digest }}</span>
+</span><span id="__span-8-18"><a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a><span class="w">        </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+</span><span id="__span-8-19"><a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a><span class="w">          </span><span class="no">PAYLOAD=$(cat &lt;&lt;EOF</span>
+</span><span id="__span-8-20"><a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a><span class="w">          </span><span class="no">{</span>
+</span><span id="__span-8-21"><a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a><span class="w">            </span><span class="no">&quot;source&quot;: &quot;oci&quot;,</span>
+</span><span id="__span-8-22"><a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a><span class="w">            </span><span class="no">&quot;digest&quot;: &quot;${ARTIFACT_DIGEST}&quot;,</span>
+</span><span id="__span-8-23"><a id="__codelineno-8-23" name="__codelineno-8-23" href="#__codelineno-8-23"></a><span class="w">            </span><span class="no">&quot;artifact&quot;: &quot;ghcr.io/${ARTIFACT_REF}:${ARTIFACT_TAG}&quot;</span>
+</span><span id="__span-8-24"><a id="__codelineno-8-24" name="__codelineno-8-24" href="#__codelineno-8-24"></a><span class="w">          </span><span class="no">}</span>
+</span><span id="__span-8-25"><a id="__codelineno-8-25" name="__codelineno-8-25" href="#__codelineno-8-25"></a><span class="w">          </span><span class="no">EOF</span>
+</span><span id="__span-8-26"><a id="__codelineno-8-26" name="__codelineno-8-26" href="#__codelineno-8-26"></a><span class="w">          </span><span class="no">)</span>
+</span><span id="__span-8-27"><a id="__codelineno-8-27" name="__codelineno-8-27" href="#__codelineno-8-27"></a>
+</span><span id="__span-8-28"><a id="__codelineno-8-28" name="__codelineno-8-28" href="#__codelineno-8-28"></a><span class="w">          </span><span class="no">SIGNATURE=$(echo -n &quot;$PAYLOAD&quot; | openssl dgst -sha256 -hmac &quot;$WEBHOOK_SECRET&quot; -hex | cut -d&#39; &#39; -f2)</span>
+</span><span id="__span-8-29"><a id="__codelineno-8-29" name="__codelineno-8-29" href="#__codelineno-8-29"></a>
+</span><span id="__span-8-30"><a id="__codelineno-8-30" name="__codelineno-8-30" href="#__codelineno-8-30"></a><span class="w">          </span><span class="no">curl -X POST &quot;$WEBHOOK_URL&quot; \</span>
+</span><span id="__span-8-31"><a id="__codelineno-8-31" name="__codelineno-8-31" href="#__codelineno-8-31"></a><span class="w">            </span><span class="no">-H &quot;Content-Type: application/json&quot; \</span>
+</span><span id="__span-8-32"><a id="__codelineno-8-32" name="__codelineno-8-32" href="#__codelineno-8-32"></a><span class="w">            </span><span class="no">-H &quot;X-Doco-OCI-Signature-256: sha256=$SIGNATURE&quot; \</span>
+</span><span id="__span-8-33"><a id="__codelineno-8-33" name="__codelineno-8-33" href="#__codelineno-8-33"></a><span class="w">            </span><span class="no">-d &quot;$PAYLOAD&quot;</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="ch">#!/bin/bash</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="nv">WEBHOOK_URL</span><span class="o">=</span><span class="s2">&quot;https://doco.example.com/v1/webhook&quot;</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="nv">WEBHOOK_SECRET</span><span class="o">=</span><span class="s2">&quot;your-webhook-secret&quot;</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="nv">ARTIFACT</span><span class="o">=</span><span class="s2">&quot;ghcr.io/myorg/config:main&quot;</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="nv">DIGEST</span><span class="o">=</span><span class="s2">&quot;sha256:abc123...&quot;</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="c1"># Create JSON payload</span>
+</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="nv">PAYLOAD</span><span class="o">=</span><span class="k">$(</span>cat<span class="w"> </span><span class="s">&lt;&lt;EOF</span>
+</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="s">{</span>
+</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="s">  &quot;source&quot;: &quot;oci&quot;,</span>
+</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="s">  &quot;digest&quot;: &quot;$DIGEST&quot;,</span>
+</span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="s">  &quot;artifact&quot;: &quot;$ARTIFACT&quot;</span>
+</span><span id="__span-9-14"><a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a><span class="s">}</span>
+</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="s">EOF</span>
+</span><span id="__span-9-16"><a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="k">)</span>
+</span><span id="__span-9-17"><a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>
+</span><span id="__span-9-18"><a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a><span class="c1"># Calculate HMAC-SHA256 signature</span>
+</span><span id="__span-9-19"><a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a><span class="nv">SIGNATURE</span><span class="o">=</span><span class="k">$(</span><span class="nb">echo</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PAYLOAD</span><span class="s2">&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>openssl<span class="w"> </span>dgst<span class="w"> </span>-sha256<span class="w"> </span>-hmac<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$WEBHOOK_SECRET</span><span class="s2">&quot;</span><span class="w"> </span>-hex<span class="w"> </span><span class="p">|</span><span class="w"> </span>cut<span class="w"> </span>-d<span class="s1">&#39; &#39;</span><span class="w"> </span>-f2<span class="k">)</span>
+</span><span id="__span-9-20"><a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a>
+</span><span id="__span-9-21"><a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a><span class="c1"># Send webhook</span>
+</span><span id="__span-9-22"><a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$WEBHOOK_URL</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-9-23"><a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-9-24"><a id="__codelineno-9-24" name="__codelineno-9-24" href="#__codelineno-9-24"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;X-Doco-OCI-Signature-256: sha256=</span><span class="nv">$SIGNATURE</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-9-25"><a id="__codelineno-9-25" name="__codelineno-9-25" href="#__codelineno-9-25"></a><span class="w">  </span>-d<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PAYLOAD</span><span class="s2">&quot;</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<p>If using a registry that supports webhooks, configure:</p>
+<ul>
+<li><strong>Webhook URL</strong>: <code>https://your-doco-server/v1/webhook</code></li>
+<li><strong>Event</strong>: Image push / artifact push</li>
+<li><strong>Format</strong>: Configure to send OCI-compliant webhook matching the <a data-preview="" href="#payload-schema">Payload Schema</a></li>
+<li><strong>Secret</strong>: Configure to <a data-preview="" href="#signature-verification">sign the payloads</a> with the same <code>WEBHOOK_SECRET</code> used by doco-cd for verification</li>
+</ul>
+</div>
+</div>
+</div>
 
 
   <nav class="md-tags" >
@@ -2511,14 +2690,14 @@
       
       
       
-        <span class="md-tag">Advanced</span>
+        <span class="md-tag">OCI</span>
       
     
       
       
       
       
-        <span class="md-tag">Secrets</span>
+        <span class="md-tag">Advanced</span>
       
     
       
@@ -2570,7 +2749,7 @@
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../1Password-Connect/" class="md-footer__link md-footer__link--prev" aria-label="Previous: 1Password Connect">
+          <a href="../Trust-Policy/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Trust Policy">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -2580,20 +2759,20 @@
                 Previous
               </span>
               <div class="md-ellipsis">
-                1Password Connect
+                Trust Policy
               </div>
             </div>
           </a>
         
         
           
-          <a href="../Openbao/" class="md-footer__link md-footer__link--next" aria-label="Next: OpenBao">
+          <a href="../../Pre-Post-Deployment-Scripts/" class="md-footer__link md-footer__link--next" aria-label="Next: Pre- &#x2f; Post-Deployment Scripts">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                OpenBao
+                Pre- / Post-Deployment Scripts
               </div>
             </div>
             <div class="md-footer__button md-icon">
@@ -2657,14 +2836,14 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["content.action.edit","content.action.view","content.code.select","content.code.copy","content.code.annotate","content.footnote.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.path","navigation.tabs","navigation.tabs.sticky","navigation.top","toc.follow","search.highlight","search.suggest","search.share"],"search":"../../assets/javascripts/workers/search.e2d2d235.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"alias":true,"default":"latest","provider":"mike"}}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"../../..","features":["content.action.edit","content.action.view","content.code.select","content.code.copy","content.code.annotate","content.footnote.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.path","navigation.tabs","navigation.tabs.sticky","navigation.top","toc.follow","search.highlight","search.suggest","search.share"],"search":"../../../assets/javascripts/workers/search.e2d2d235.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"alias":true,"default":"latest","provider":"mike"}}</script>
     
     
-      <script src="../../assets/javascripts/bundle.dbc0afdc.min.js"></script>
+      <script src="../../../assets/javascripts/bundle.dbc0afdc.min.js"></script>
       
         <script src="https://unpkg.com/tablesort@5.7.1/dist/tablesort.min.js"></script>
       
-        <script src="../../javascripts/tablesort.js"></script>
+        <script src="../../../javascripts/tablesort.js"></script>
       
     
   </body>

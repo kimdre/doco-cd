@@ -70,6 +70,18 @@
         <loc>https://doco.cd/next/Advanced/Notifications/</loc>
       </url>
       <url>
+        <loc>https://doco.cd/next/Advanced/OCI/Artifact-Usage/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/Advanced/OCI/Polling/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/Advanced/OCI/Trust-Policy/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/Advanced/OCI/Webhooks/</loc>
+      </url>
+      <url>
         <loc>https://doco.cd/next/Advanced/Pre-Post-Deployment-Scripts/</loc>
       </url>
       <url>

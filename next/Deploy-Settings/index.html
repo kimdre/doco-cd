@@ -395,6 +395,8 @@
       
         
       
+        
+      
     
     
     
@@ -888,6 +890,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#deployment-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Deployment Sources
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#deployment-configuration-file" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1231,6 +1244,8 @@
   
     
     
+      
+        
       
         
       
@@ -1695,6 +1710,180 @@
   
 
       </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  OCI Artifacts
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  OCI Artifacts
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Advanced/OCI/Artifact-Usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Artifact Usage
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Advanced/OCI/Polling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Polling
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Advanced/OCI/Trust-Policy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Trust Policy
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Advanced/OCI/Webhooks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Webhooks
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -2288,6 +2477,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#deployment-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Deployment Sources
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#deployment-configuration-file" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2624,11 +2824,30 @@
 
 <h1 id="deployment-settings">Deployment Settings<a class="headerlink" href="#deployment-settings" title="Permanent link">&para;</a></h1>
 <p>Deployments in <code>Doco-CD</code> run as concurrent tasks. 
-Each deployment is defined by a deployment configuration file (e.g. <code>.doco-cd.yml</code>) that controls how it runs. 
-Enable <code>auto_discovery</code> to generate multiple deployments from a single config by scanning subdirectories for Docker Compose files. It can be configured either as a boolean shorthand (<code>true</code>/<code>false</code>) or as a nested object.</p>
+Each deployment is defined by a deployment configuration file (e.g. <code>.doco-cd.yml</code>) that controls how it runs. </p>
 <p>Concurrent tasks are grouped by repository and Git reference (e.g. branch or tag). 
 Deployments from the same repository but different references run sequentially, while those with the same repository and reference run in parallel. 
 See the <a data-preview="" href="../App-Settings/">App Settings</a> documentation for more information on how to configure the number of concurrent deployments.</p>
+<h2 id="deployment-sources">Deployment Sources<a class="headerlink" href="#deployment-sources" title="Permanent link">&para;</a></h2>
+<p>Doco-CD supports deploying from the following sources:</p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Git Repository</td>
+<td>Deploy directly from a Git repository.</td>
+</tr>
+<tr>
+<td><a data-preview="" href="../Advanced/OCI/Artifact-Usage/">OCI Artifact</a></td>
+<td>Deploy from an OCI artifact that contains all necessary configurations and files for deployment.</td>
+</tr>
+</tbody>
+</table>
 <h2 id="deployment-configuration-file">Deployment Configuration File<a class="headerlink" href="#deployment-configuration-file" title="Permanent link">&para;</a></h2>
 <p>The deployment configuration file must be placed in the root/base directory of your repository and named one of the following:</p>
 <ul>
@@ -2657,6 +2876,12 @@ See <a data-preview="" href="../Poll-Settings/">Poll Settings</a> and this <a da
 <td>string</td>
 <td>Name of the deployed stack / project / application.</td>
 <td></td>
+</tr>
+<tr>
+<td><code>version</code></td>
+<td>string</td>
+<td>Optional deployment config/artifact version for OCI-backed deployments. Currently only <code>doco.v1</code> is supported.</td>
+<td><code>doco.v1</code></td>
 </tr>
 <tr>
 <td><code>reference</code></td>

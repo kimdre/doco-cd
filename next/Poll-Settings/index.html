@@ -395,6 +395,8 @@
       
         
       
+        
+      
     
     
     
@@ -1059,6 +1061,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#oci-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        OCI Example
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#inline-deploy-configs" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1098,6 +1111,8 @@
   
     
     
+      
+        
       
         
       
@@ -1562,6 +1577,180 @@
   
 
       </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  OCI Artifacts
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  OCI Artifacts
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Advanced/OCI/Artifact-Usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Artifact Usage
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Advanced/OCI/Polling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Polling
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Advanced/OCI/Trust-Policy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Trust Policy
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Advanced/OCI/Webhooks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Webhooks
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -2245,6 +2434,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#oci-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        OCI Example
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#inline-deploy-configs" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2378,21 +2578,27 @@
 </thead>
 <tbody>
 <tr>
+<td><code>source</code></td>
+<td>string</td>
+<td>Source backend for this poll job. Use <code>git</code> (default) for repositories or <code>oci</code> for <a data-preview="" href="../Advanced/OCI/Artifact-Usage/">OCI artifacts</a>.</td>
+<td><code>git</code></td>
+</tr>
+<tr>
 <td><code>url</code></td>
 <td>string</td>
-<td>The HTTP/SSH clone URL of the repository to poll for changes (e.g. <code>https://github.com/kimdre/doco-cd.git</code> or <code>git@github.com:kimdre/doco-cd.git</code>)</td>
+<td>Source URL. For <code>source: git</code>, this is the Git clone URL (e.g. <code>https://github.com/kimdre/doco-cd.git</code> or <code>git@github.com:kimdre/doco-cd.git</code>). For <code>source: oci</code>, this is the full artifact reference (e.g. <code>ghcr.io/myorg/config:main</code>).</td>
 <td></td>
 </tr>
 <tr>
 <td><code>reference</code></td>
 <td>string</td>
-<td>The Git branch or tag to use for the deployment (e.g. <code>main</code> or <code>refs/heads/main</code>) or tag (e.g. <code>v1.0.0.</code> or <code>refs/tags/v1.0.0</code>)</td>
+<td>Source revision used by deployment configs. For Git this is the branch/tag/ref (e.g. <code>main</code> or <code>refs/heads/main</code>). For OCI, the tag from <code>url</code> is used automatically when present.</td>
 <td><code>refs/heads/main</code></td>
 </tr>
 <tr>
 <td><code>interval</code></td>
 <td>integer</td>
-<td>The interval in seconds at which the repository will be polled for changes (set to <code>0</code> to disable polling this Git repository)</td>
+<td>The interval in seconds at which the source will be polled for changes (set to <code>0</code> to disable this poll job)</td>
 <td><code>180</code></td>
 </tr>
 <tr>
@@ -2531,19 +2737,24 @@
 <ol>
 <li>Use with the <code>POLL_CONFIG_FILE</code> environment variable.</li>
 </ol>
-<h3 id="inline-deploy-configs">Inline Deploy Configs<a class="headerlink" href="#inline-deploy-configs" title="Permanent link">&para;</a></h3>
-<p>Inline deployments reuse the same fields as <code>.doco-cd.yml</code> files (See <a data-preview="" href="../Deploy-Settings/">Deploy Settings</a>), including support for external secrets and destroy workflows. The poll job <code>url</code> is always used as the deployment source.</p>
-<p>If the poll config has an inline deployment config and the target repository also contains a <code>.doco-cd.yml</code> file, the file will be ignored in favor of the inline deployment config.</p>
-<div class="language-yaml highlight"><span class="filename">Poll Config with inline deploy config</span><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://github.com/example/app.git</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">reference</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">refs/heads/main</span>
+<h3 id="oci-example">OCI Example<a class="headerlink" href="#oci-example" title="Permanent link">&para;</a></h3>
+<div class="language-yaml highlight"><span class="filename">poll-config.yaml</span><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">oci</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/example/deploy-config:production</span>
 </span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">300</span>
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span><span class="nt">deployments</span><span class="p">:</span>
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">example-app</span>
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">      </span><span class="nt">working_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">services/app</span>
-</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">      </span><span class="nt">compose_files</span><span class="p">:</span>
-</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">compose.yaml</span>
-</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">      </span><span class="nt">env_files</span><span class="p">:</span>
-</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.env.production</span>
+</span></code></pre></div>
+<h3 id="inline-deploy-configs">Inline Deploy Configs<a class="headerlink" href="#inline-deploy-configs" title="Permanent link">&para;</a></h3>
+<p>Inline deployments reuse the same fields as <code>.doco-cd.yml</code> files (See <a data-preview="" href="../Deploy-Settings/">Deploy Settings</a>), including support for external secrets and destroy workflows. The poll job <code>url</code> is always used as the deployment source URL.</p>
+<p>If the poll config has an inline deployment config and the target repository also contains a <code>.doco-cd.yml</code> file, the file will be ignored in favor of the inline deployment config.</p>
+<div class="language-yaml highlight"><span class="filename">Poll Config with inline deploy config</span><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://github.com/example/app.git</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">reference</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">refs/heads/main</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">300</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span><span class="nt">deployments</span><span class="p">:</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">example-app</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">      </span><span class="nt">working_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">services/app</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">      </span><span class="nt">compose_files</span><span class="p">:</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">compose.yaml</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">      </span><span class="nt">env_files</span><span class="p">:</span>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.env.production</span>
 </span></code></pre></div>
 
 
