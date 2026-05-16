@@ -158,10 +158,15 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 		jobLog = jobLog.With(slog.String("custom_target", pollConfig.CustomTarget))
 	}
 
+	configVal := log.BuildLogValue(&pollConfig, "Deployments.Internal")
+	if pollConfig.Source == config.SourceTypeOCI {
+		configVal = log.BuildLogValue(&pollConfig, "Reference", "Deployments.Internal")
+	}
+
 	jobLog.Info("polling "+entity,
 		slog.Group("trigger",
 			slog.String("event", string(stages.JobTriggerPoll)),
-			slog.Attr{Key: "config", Value: log.BuildLogValue(&pollConfig, "Deployments.Internal")}))
+			slog.Attr{Key: "config", Value: configVal}))
 
 	// For OCI sources, use the tag from the artifact reference as the deployment reference
 	// (e.g., "latest" from "ghcr.io/org/repo:latest") rather than pollConfig.Reference.

@@ -19,6 +19,7 @@ func TestConfig_Validate(t *testing.T) {
 		name     string
 		config   Config
 		expected error
+		wantRef  string
 	}{
 		{
 			name: "Valid git config",
@@ -29,6 +30,7 @@ func TestConfig_Validate(t *testing.T) {
 				Interval:  10 * time.Second,
 			},
 			expected: nil,
+			wantRef:  "main",
 		},
 		{
 			name: "Valid git config - SSH scp-style URL",
@@ -39,6 +41,7 @@ func TestConfig_Validate(t *testing.T) {
 				Interval:  10 * time.Second,
 			},
 			expected: nil,
+			wantRef:  "main",
 		},
 		{
 			name: "Valid OCI config",
@@ -48,6 +51,7 @@ func TestConfig_Validate(t *testing.T) {
 				Interval:  10 * time.Second,
 			},
 			expected: nil,
+			wantRef:  "main",
 		},
 		{
 			name: "Valid OCI config - tagged reference",
@@ -57,6 +61,7 @@ func TestConfig_Validate(t *testing.T) {
 				Interval:  10 * time.Second,
 			},
 			expected: nil,
+			wantRef:  "v1.0.0",
 		},
 		{
 			name: "Invalid config - empty SourceUrl for git",
@@ -69,14 +74,15 @@ func TestConfig_Validate(t *testing.T) {
 			expected: deploy.ErrKeyNotFound,
 		},
 		{
-			name: "Invalid config - empty Reference",
+			name: "Valid git config - empty Reference defaults to main",
 			config: Config{
 				Source:    config.SourceTypeGit,
 				SourceUrl: "https://example.com/repo.git",
 				Reference: "",
 				Interval:  10 * time.Second,
 			},
-			expected: deploy.ErrKeyNotFound,
+			expected: nil,
+			wantRef:  "refs/heads/main",
 		},
 		{
 			name: "Invalid config - empty SourceUrl for OCI",
@@ -96,6 +102,7 @@ func TestConfig_Validate(t *testing.T) {
 				Interval:  10 * time.Second,
 			},
 			expected: ErrInvalidConfig,
+			wantRef:  "main",
 		},
 		{
 			name: "Invalid config - negative Interval",
@@ -106,6 +113,7 @@ func TestConfig_Validate(t *testing.T) {
 				Interval:  -5 * time.Second,
 			},
 			expected: ErrIntervalTooLow,
+			wantRef:  "main",
 		},
 		{
 			name: "Invalid config - 5s Interval",
@@ -116,6 +124,7 @@ func TestConfig_Validate(t *testing.T) {
 				Interval:  5 * time.Second,
 			},
 			expected: ErrIntervalTooLow,
+			wantRef:  "main",
 		},
 		{
 			name: "Valid config - zero Interval (disabled)",
@@ -126,6 +135,7 @@ func TestConfig_Validate(t *testing.T) {
 				Interval:  0,
 			},
 			expected: nil,
+			wantRef:  "main",
 		},
 	}
 	for _, tc := range testCases {
@@ -135,6 +145,11 @@ func TestConfig_Validate(t *testing.T) {
 			err := tc.config.Validate()
 			if !errors.Is(err, tc.expected) {
 				t.Errorf("expected %v, got %v", tc.expected, err)
+				return
+			}
+
+			if tc.wantRef != "" && tc.config.Reference != tc.wantRef {
+				t.Errorf("expected reference %q, got %q", tc.wantRef, tc.config.Reference)
 			}
 		})
 	}
