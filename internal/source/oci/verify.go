@@ -19,6 +19,33 @@ var (
 	ErrVerificationFailed = errors.New("OCI artifact signature verification failed")
 )
 
+// toCosignIdentity converts a keyless identity from the trust policy to a Cosign identity.
+func toCosignIdentity(identity config.OciKeylessIdentity) cosign.Identity {
+	return cosign.Identity{
+		Issuer:        strings.TrimSpace(identity.Issuer),
+		Subject:       strings.TrimSpace(identity.Subject),
+		SubjectRegExp: strings.TrimSpace(identity.SubjectRegexp),
+	}
+}
+
+// verifyCosignEntity attempts to verify the signatures of the given reference using the provided options.
+func verifyCosignEntity(ctx context.Context, ref name.Reference, opts *cosign.CheckOpts) error {
+	_, valid, err := cosign.VerifyImageSignatures(ctx, ref, opts)
+	if err == nil && valid {
+		return nil
+	}
+
+	bundleOpts := *opts
+	bundleOpts.NewBundleFormat = true
+
+	_, _, bundleErr := cosign.VerifyImageAttestations(ctx, ref, &bundleOpts)
+	if bundleErr == nil {
+		return nil
+	}
+
+	return fmt.Errorf("signature verify: %v; bundle verify: %v", err, bundleErr)
+}
+
 func VerifyWithCosign(ctx context.Context, artifactRef, digest string, globalPolicy config.OciTrustPolicy, override config.OciTrustPolicyOverride) error {
 	effectivePolicy := config.EffectiveOciTrustPolicy(globalPolicy, override)
 	if !effectivePolicy.Enabled {
@@ -64,10 +91,10 @@ func VerifyWithCosign(ctx context.Context, artifactRef, digest string, globalPol
 			continue
 		}
 
-		_, _, err = cosign.VerifyImageSignatures(ctx, verifyRefRef, &cosign.CheckOpts{
+		err = verifyCosignEntity(ctx, verifyRefRef, &cosign.CheckOpts{
 			SigVerifier:       verifier,
 			TrustedMaterial:   trustedMaterial,
-			ExperimentalOCI11: false,
+			ExperimentalOCI11: true,
 		})
 		if err == nil {
 			return nil
@@ -77,16 +104,21 @@ func VerifyWithCosign(ctx context.Context, artifactRef, digest string, globalPol
 	}
 
 	for _, identity := range effectivePolicy.KeylessIdentities {
-		_, _, err = cosign.VerifyImageSignatures(ctx, verifyRefRef, &cosign.CheckOpts{
-			Identities:        []cosign.Identity{{Issuer: strings.TrimSpace(identity.Issuer), Subject: strings.TrimSpace(identity.Subject)}},
+		identityMatcher := strings.TrimSpace(identity.Subject)
+		if identityMatcher == "" {
+			identityMatcher = "subject_regexp=" + strings.TrimSpace(identity.SubjectRegexp)
+		}
+
+		err = verifyCosignEntity(ctx, verifyRefRef, &cosign.CheckOpts{
+			Identities:        []cosign.Identity{toCosignIdentity(identity)},
 			TrustedMaterial:   trustedMaterial,
-			ExperimentalOCI11: false,
+			ExperimentalOCI11: true,
 		})
 		if err == nil {
 			return nil
 		}
 
-		failures = append(failures, "keyless "+identity.Subject+"@"+identity.Issuer+": "+fmt.Sprintf("%v", err))
+		failures = append(failures, "keyless "+identityMatcher+"@"+identity.Issuer+": "+fmt.Sprintf("%v", err))
 	}
 
 	return fmt.Errorf("%w: %s", ErrVerificationFailed, strings.Join(failures, "; "))

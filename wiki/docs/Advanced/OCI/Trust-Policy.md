@@ -46,7 +46,8 @@ public_keys:                     # List of trusted public keys (PEM format)
     -----END PUBLIC KEY-----
 keyless_identities:              # Keyless verification using OIDC
   - issuer: https://issuer.url   # OIDC issuer URL
-    subject: repo:org/name:*     # Subject pattern
+    subject: https://github.com/org/repo/.github/workflows/build.yml@refs/heads/main   # Exact certificate SAN match (optional)
+    subject_regexp: ^https://github.com/org/repo/.+@refs/heads/main$                    # Regex SAN match (optional)
 ```
 
 ### Available Options
@@ -66,10 +67,31 @@ keyless_identities:              # Keyless verification using OIDC
 
 `keyless_identities` object fields:
 
-| Key       | Type   | Required | Description                                                                                           |
-|-----------|--------|----------|-------------------------------------------------------------------------------------------------------|
-| `issuer`  | string | yes      | OIDC issuer URL (for example `https://token.actions.githubusercontent.com`).                          |
-| `subject` | string | yes      | Expected certificate identity subject (supports patterns as interpreted by Cosign identity matching). |
+| Key              | Type   | Required | Description                                                                                                                     |
+|------------------|--------|----------|---------------------------------------------------------------------------------------------------------------------------------|
+| `issuer`         | string | yes      | OIDC issuer URL (for example `https://token.actions.githubusercontent.com`).                                                    |
+| `subject`        | string | no       | Exact certificate identity (SAN) match (for example `https://github.com/org/repo/.github/workflows/build.yml@refs/heads/main`). |
+| `subject_regexp` | string | no       | Regular expression for certificate identity (SAN) matching. Useful when workflow file paths or refs may vary.                   |
+
+!!! note "Docker Compose escaping for `subject_regexp`"
+    If you set `OCI_TRUST_POLICY` inside `docker-compose.yml`, Docker Compose treats`$` characters as [variable interpolation](https://docs.docker.com/reference/compose-file/interpolation/) 
+    and removes it before passing the value to doco-cd.
+    Use `$$` (double-dollar sign) in regex patterns so a literal `$` reaches doco-cd.
+
+    Example in `docker-compose.yml`:
+
+    ```yaml
+    services:
+      doco-cd:
+        environment:
+          OCI_TRUST_POLICY: |
+            enabled: true
+            keyless_identities:
+              - issuer: https://token.actions.githubusercontent.com
+                subject_regexp: ^https://github.com/myorg/myrepo/.+@refs/heads/main$$
+    ```
+
+At least one of `subject` or `subject_regexp` should be provided for each keyless identity.
 
 !!! example "Configuring Global Trust Policy"
     === "Environment Variable Configuration"
@@ -146,7 +168,7 @@ Override the global trust policy for specific [deployments](../../Poll-Settings.
               -----END PUBLIC KEY-----
           keyless_identities:
             - issuer: https://token.actions.githubusercontent.com
-              subject: repo:myorg/config:ref:refs/heads/main
+              subject: https://github.com/myorg/config:ref:refs/heads/main
     ```
 
 ### Enabling/Disabling Verification
@@ -272,14 +294,18 @@ OCI_TRUST_POLICY: |
   enabled: true
   keyless_identities:
     - issuer: https://token.actions.githubusercontent.com
-      subject: repo:myorg/config:*
+      subject_regexp: ^https://github.com/myorg/config/.+@refs/heads/main$
 ```
 
-Subject patterns:
+Subject examples:
 
-- `repo:owner/repo:ref:refs/heads/main` - Specific branch
-- `repo:owner/repo:ref:refs/tags/v*` - All version tags
-- `repo:owner/repo:*` - Any ref in repository
+- `https://github.com/owner/repo/.github/workflows/build.yml@refs/heads/main` - Exact workflow and branch
+- `https://github.com/owner/repo/.github/workflows/release.yml@refs/heads/main` - Exact workflow and tag
+
+Subject regexp examples:
+
+- `^https://github.com/owner/repo/.+@refs/heads/main$` - Any workflow file on `main`
+- `^https://github.com/owner/repo/.+@refs/tags/v.*$` - Any workflow file for version tags
 
 ### Multiple OIDC Providers
 
@@ -289,7 +315,7 @@ OCI_TRUST_POLICY: |
   keyless_identities:
     # GitHub Actions CI/CD
     - issuer: https://token.actions.githubusercontent.com
-      subject: repo:myorg/config:ref:refs/heads/main
+      subject_regexp: ^https://github.com/myorg/config/.+@refs/heads/main$
     
     # Google Service Account
     - issuer: https://accounts.google.com

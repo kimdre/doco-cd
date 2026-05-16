@@ -42,3 +42,26 @@ func TestVerifyWithCosign_NoTrustRulesFails(t *testing.T) {
 		t.Fatalf("expected ErrNoTrustRules, got %v", err)
 	}
 }
+
+func TestToCosignIdentity_MapsSubjectRegexp(t *testing.T) {
+	t.Parallel()
+
+	identity := config.OciKeylessIdentity{
+		Issuer:        " https://token.actions.githubusercontent.com ",
+		Subject:       " ",
+		SubjectRegexp: " ^https://github.com/myorg/myrepo/.+@refs/heads/main$ ",
+	}
+
+	got := toCosignIdentity(identity)
+	if got.Issuer != "https://token.actions.githubusercontent.com" {
+		t.Fatalf("unexpected issuer: %q", got.Issuer)
+	}
+
+	if got.Subject != "" {
+		t.Fatalf("expected empty subject, got %q", got.Subject)
+	}
+
+	if got.SubjectRegExp != "^https://github.com/myorg/myrepo/.+@refs/heads/main$" {
+		t.Fatalf("unexpected subject regexp: %q", got.SubjectRegExp)
+	}
+}

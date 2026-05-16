@@ -3,8 +3,9 @@ package config
 import "strings"
 
 type OciKeylessIdentity struct {
-	Issuer  string `yaml:"issuer" json:"issuer"`
-	Subject string `yaml:"subject" json:"subject"`
+	Issuer        string `yaml:"issuer" json:"issuer"`
+	Subject       string `yaml:"subject" json:"subject"`
+	SubjectRegexp string `yaml:"subject_regexp" json:"subject_regexp"`
 }
 
 type OciTrustPolicy struct {
@@ -28,6 +29,7 @@ func NormalizeOciTrustPolicy(p OciTrustPolicy) OciTrustPolicy {
 	for i, id := range out.KeylessIdentities {
 		out.KeylessIdentities[i].Issuer = strings.TrimSpace(id.Issuer)
 		out.KeylessIdentities[i].Subject = strings.TrimSpace(id.Subject)
+		out.KeylessIdentities[i].SubjectRegexp = strings.TrimSpace(id.SubjectRegexp)
 	}
 
 	keys := make([]string, 0, len(out.PublicKeys))

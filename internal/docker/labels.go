@@ -137,8 +137,8 @@ func ExtractOciArtifactTag(reference string) string {
 		// Extract digest portion (after @)
 		digestPart := reference[atIdx+1:]
 		// Digest format is algorithm:hash, we want just the hash
-		if idx := strings.Index(digestPart, ":"); idx >= 0 {
-			return digestPart[idx+1:]
+		if _, after, ok := strings.Cut(digestPart, ":"); ok {
+			return after
 		}
 
 		return digestPart
