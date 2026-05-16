@@ -19,7 +19,7 @@ type docoCdLabelNamesDeployment struct {
 	CommitSHA            string // SHA of the commit that is currently deployed
 	ConfigHash           string // SHA256 hash of the deploy-config used during deployment
 	AutoDiscovery        string // Whether the deployment was auto-discovered
-	AutoDiscoveryDelete  string // Whether auto-discovered deployment is allowed to be deleted
+	AutoDiscoveryConfig  string // JSON-serialized AutoDiscoveryConfig settings
 	RecreateIgnore       string // Whether the deployment file changes should ignore recreate
 	RecreateIgnoreSignal string // Signal service when deployment file changes and ignore recreate
 }
@@ -54,7 +54,7 @@ var DocoCDLabels = docoCdLabelNames{
 		Trigger:              "cd.doco.deployment.trigger",
 		ConfigHash:           "cd.doco.deployment.config.sha",
 		AutoDiscovery:        "cd.doco.deployment.auto_discovery",
-		AutoDiscoveryDelete:  "cd.doco.deployment.auto_discovery.delete",
+		AutoDiscoveryConfig:  "cd.doco.deployment.auto_discovery.config",
 		RecreateIgnore:       "cd.doco.deployment.recreate.ignore",
 		RecreateIgnoreSignal: "cd.doco.deployment.recreate.ignore.signal",
 	},
@@ -69,13 +69,15 @@ var DocoCDLabels = docoCdLabelNames{
 DeprecatedAutoDiscoverLabel and DeprecatedAutoDiscoverDeleteLabel are the old label names
 kept for backwards-compatible reads. New deployments only write the new labels.
 
-Deprecated: Use DocoCDLabels.Deployment.AutoDiscovery and DocoCDLabels.Deployment.AutoDiscoveryDelete instead.
+Deprecated: Use DocoCDLabels.Deployment.AutoDiscovery and DocoCDLabels.Deployment.AutoDiscoveryConfig instead.
 
 TODO: Remove in a future release.
 */
 const (
 	DeprecatedAutoDiscoverLabel       = "cd.doco.deployment.auto_discover"
 	DeprecatedAutoDiscoverDeleteLabel = "cd.doco.deployment.auto_discover.delete"
+	// DeprecatedAutoDiscoveryDeleteLabel is the pre-consolidation scalar label for the delete setting.
+	DeprecatedAutoDiscoveryDeleteLabel = "cd.doco.deployment.auto_discovery.delete" //nolint:staticcheck
 )
 
 var docoCDJobLabelNames = struct {

@@ -138,21 +138,29 @@ The docker compose deployment can be configured inside the [deployment configura
 
 ### Auto-Discovery
 
-If `auto_discovery` is enabled, doco-cd will try to find projects/stacks to deploy by searching for docker compose files (see the `compose_files` setting) in subdirectories in the working directory (`working_dir`). 
-Doco-cd will internally generate new deploy configs based on the directory name and inherits all other settings from the base deploy config inside the `.doco-cd.yml` file or the inline deployment config inside the poll config.
-When an app is no longer available in the `working_dir` (e.g. deleted or moved to another directory outside the working dir), doco-cd will automatically remove the deployed project/stack from the docker host.
+If `auto_discovery` is enabled, doco-cd will try to find projects/stacks to deploy by searching for docker compose files 
+(see the `compose_files` setting) in subdirectories in the working directory (`working_dir`). 
+
+Doco-cd will internally generate new deploy configs based on the directory name and inherits all other settings from the 
+base deploy config inside the `.doco-cd.yml` file or the inline deployment config inside the poll config.
+
+When an app is no longer available in the `working_dir` (e.g. deleted or moved to another directory outside the working dir), 
+doco-cd will automatically remove the deployed project/stack from the docker host.
 
 #### Auto-Discovery settings
 
-`auto_discovery` accepts either a boolean or a nested object in the deployment configuration file. Use `auto_discovery: true` to enable it with defaults, or use the object form below to customize `depth` and `delete`.
+`auto_discovery` accepts either a boolean or a nested object in the deployment configuration file. 
+Use `auto_discovery: true` to enable it with defaults, or use the object form below to customize the settings.
 
-| Key       | Type    | Description                                                                                          | Default value |
-|-----------|---------|------------------------------------------------------------------------------------------------------|---------------|
-| `enabled` | boolean | Enables auto-discovery of services to deploy in the working directory                                | `false`       |
-| `depth`   | number  | Maximum depth of subdirectories to scan for docker-compose files, set to `0` for no limit            | `0`           |
-| `delete`  | boolean | Auto-remove obsolete auto-discovered deployments that are no longer present in the working directory | `true`        |
+| Key              | Type    | Description                                                                                          | Default value |
+|------------------|---------|------------------------------------------------------------------------------------------------------|---------------|
+| `enabled`        | boolean | Enables auto-discovery of services to deploy in the working directory                                | `false`       |
+| `depth`          | number  | Maximum depth of subdirectories to scan for docker-compose files, set to `0` for no limit            | `0`           |
+| `delete`         | boolean | Auto-remove obsolete auto-discovered deployments that are no longer present in the working directory | `true`        |
+| `remove_volumes` | boolean | Remove volumes of auto-discovered deployments when they are deleted                                  | `false`       |
+| `remove_images`  | boolean | Remove images of auto-discovered deployments when they are deleted                                   | `true`        |
 
-!!! example
+??? example "Auto-discovery Setup Example"
     <div class="grid cards" markdown>
 
     - With a file structure like this
@@ -189,6 +197,28 @@ When an app is no longer available in the `working_dir` (e.g. deleted or moved t
     </div>
 
     Doco-cd would deploy 2 stacks to the docker host: `wordpress` and `nginx`
+
+#### Controlling resource cleanup on stack deletion
+
+When auto-discovered stacks are deleted (e.g., because the compose file was removed from the repository), 
+you can control whether volumes and images are removed using the `remove_volumes` and `remove_images` settings 
+in the `auto_discovery` configuration:
+
+```yaml title=".doco-cd.yml"
+working_dir: apps/
+auto_discovery:
+  enabled: true
+  delete: true
+  remove_volumes: false # (1)!
+  remove_images: true # (2)!
+```
+
+1. Keep volumes when stacks are auto-deleted
+2. Remove images when stacks are auto-deleted
+
+??? note "Default behavior"
+    By default, `remove_volumes` is set to `false`, meaning volumes are **preserved** when auto-discovered stacks are deleted.
+    This is a safer default to prevent accidental data loss (e.g., databases). Set `remove_volumes: true` if you want volumes to be removed when stacks are auto-deleted.
 
 #### Nested config overrides
 
