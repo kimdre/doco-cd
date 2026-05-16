@@ -1,7 +1,7 @@
 x-poll-config: &poll-config
   POLL_CONFIG: |
     - source: oci
-      url: ghcr.io/kimdre/doco-cd_tests:latest
+      url: ghcr.io/kimdre/doco-cd_tests:test
       interval: 10
     - source: git
       url: https://github.com/kimdre/doco-cd_tests.git
@@ -39,10 +39,10 @@ services:
       HTTP_PORT: 80
       LOG_LEVEL: debug
       OCI_TRUST_POLICY: |
-        enabled: false
+        enabled: true
         keyless_identities:
           - issuer: https://token.actions.githubusercontent.com
-            subject: repo:kimdre/doco-cd_tests:*
+            subject_regexp: ^https://github.com/kimdre/doco-cd_tests/.github/workflows/build.yml@.*$$
       # DOCKER_API_VERSION: 1.47
       <<: *poll-config
       #POLL_CONFIG_FILE: /poll.yml
@@ -82,12 +82,12 @@ services:
     environment:
       TZ: Europe/Berlin
       APPRISE_WORKER_COUNT: 1
-    #healthcheck:
-    #  test: [ "CMD-SHELL", "curl -fsS http://localhost:8000/status >/dev/null || exit 1" ]
-    #  interval: 30s
-    #  timeout: 5s
-    #  retries: 3
-    #  start_period: 20s
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS http://localhost:8000/status >/dev/null || exit 1" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   grafana:
     # Dashboard: https://github.com/kimdre/doco-cd/discussions/583
