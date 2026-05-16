@@ -5,6 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/creasty/defaults"
 	"gopkg.in/validator.v2"
@@ -19,10 +23,20 @@ type Config struct {
 	Source       config.SourceType `yaml:"source" json:"source" default:"git"`                   // Source selects the poll source backend (git or oci)
 	SourceUrl    string            `yaml:"url" json:"url"`                                       // SourceUrl is the repository/artifact URL; validated as GitUrl or OciUrl depending on Source
 	Reference    string            `yaml:"reference" json:"reference" default:"refs/heads/main"` // Reference is the Git reference to the deployment, e.g., refs/heads/main, main, refs/tags/v1.0.0 or v1.0.0
-	Interval     int               `yaml:"interval" default:"180"`                               // Interval is the interval in seconds to poll for changes
+	Interval     time.Duration     `yaml:"interval" default:"180s"`                              // Interval is the interval at which to poll for changes
 	CustomTarget string            `yaml:"target" json:"target" default:""`                      // CustomTarget is the name of an optional custom deployment config file, e.g. ".doco-cd.custom-name.yaml"
 	RunOnce      bool              `yaml:"run_once" default:"false"`                             // RunOnce when true, performs a single run and exits
 	Deployments  []*deploy.Config  `yaml:"deployments" json:"deployments" default:"[]"`          // Deployments allows defining deployment configs inline in the poll configuration
+}
+
+type rawConfig struct {
+	Source       config.SourceType `yaml:"source" json:"source" default:"git"`
+	SourceUrl    string            `yaml:"url" json:"url"`
+	Reference    string            `yaml:"reference" json:"reference" default:"refs/heads/main"`
+	Interval     any               `yaml:"interval" json:"interval" default:"180s"`
+	CustomTarget string            `yaml:"target" json:"target" default:""`
+	RunOnce      bool              `yaml:"run_once" json:"run_once" default:"false"`
+	Deployments  []*deploy.Config  `yaml:"deployments" json:"deployments" default:"[]"`
 }
 
 type Job struct {
@@ -31,7 +45,7 @@ type Job struct {
 	NextRun int64  // NextRun is the next time this instance should run
 }
 
-const MinPollInterval = 10 // Minimum allowed poll interval in seconds
+const MinPollInterval = 10 * time.Second // Minimum allowed poll interval
 
 var (
 	ErrInvalidConfig  = errors.New("invalid poll configuration")
@@ -83,7 +97,7 @@ func (c *Config) Validate() error {
 	}
 
 	if c.Interval < MinPollInterval && c.Interval != 0 {
-		return fmt.Errorf("%w: must be at least %d seconds", ErrIntervalTooLow, MinPollInterval)
+		return fmt.Errorf("%w: must be at least %s", ErrIntervalTooLow, MinPollInterval)
 	}
 
 	// If inline deployments are defined, validate them
@@ -117,7 +131,7 @@ func (c *Config) Validate() error {
 
 // String returns a string representation of the Config.
 func (c *Config) String() string {
-	return fmt.Sprintf("Config{Source: %s, SourceUrl: %s, Reference: %s, Interval: %d}", c.Source, c.SourceUrl, c.Reference, c.Interval)
+	return fmt.Sprintf("Config{Source: %s, SourceUrl: %s, Reference: %s, Interval: %s}", c.Source, c.SourceUrl, c.Reference, c.Interval)
 }
 
 func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
@@ -126,11 +140,32 @@ func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 		return err
 	}
 
-	type Plain Config
+	raw := rawConfig{
+		Source:       c.Source,
+		SourceUrl:    c.SourceUrl,
+		Reference:    c.Reference,
+		Interval:     c.Interval,
+		CustomTarget: c.CustomTarget,
+		RunOnce:      c.RunOnce,
+		Deployments:  c.Deployments,
+	}
 
-	if err := unmarshal((*Plain)(c)); err != nil {
+	if err := unmarshal(&raw); err != nil {
 		return err
 	}
+
+	parsedInterval, err := parsePollInterval(raw.Interval)
+	if err != nil {
+		return err
+	}
+
+	c.Source = raw.Source
+	c.SourceUrl = raw.SourceUrl
+	c.Reference = raw.Reference
+	c.Interval = parsedInterval
+	c.CustomTarget = raw.CustomTarget
+	c.RunOnce = raw.RunOnce
+	c.Deployments = raw.Deployments
 
 	return nil
 }
@@ -141,11 +176,111 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	type Plain Config
+	raw := rawConfig{
+		Source:       c.Source,
+		SourceUrl:    c.SourceUrl,
+		Reference:    c.Reference,
+		Interval:     c.Interval,
+		CustomTarget: c.CustomTarget,
+		RunOnce:      c.RunOnce,
+		Deployments:  c.Deployments,
+	}
 
-	if err := json.Unmarshal(data, (*Plain)(c)); err != nil {
+	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 
+	parsedInterval, err := parsePollInterval(raw.Interval)
+	if err != nil {
+		return err
+	}
+
+	c.Source = raw.Source
+	c.SourceUrl = raw.SourceUrl
+	c.Reference = raw.Reference
+	c.Interval = parsedInterval
+	c.CustomTarget = raw.CustomTarget
+	c.RunOnce = raw.RunOnce
+	c.Deployments = raw.Deployments
+
 	return nil
+}
+
+func parsePollInterval(v any) (time.Duration, error) {
+	if v == nil {
+		return 0, nil
+	}
+
+	switch value := v.(type) {
+	case string:
+		return parsePollIntervalString(value)
+	case int:
+		return secondsToDuration(int64(value))
+	case int64:
+		return secondsToDuration(value)
+	case uint:
+		if uint64(value) > math.MaxInt64 {
+			return 0, fmt.Errorf("invalid interval value %d: out of range", value)
+		}
+
+		return secondsToDuration(int64(value))
+	case uint64:
+		if value > math.MaxInt64 {
+			return 0, fmt.Errorf("invalid interval value %d: out of range", value)
+		}
+
+		return secondsToDuration(int64(value))
+	case float64:
+		if math.Trunc(value) != value {
+			return 0, fmt.Errorf("invalid interval value %v: must be a whole number of seconds", value)
+		}
+
+		if value > math.MaxInt64 || value < math.MinInt64 {
+			return 0, fmt.Errorf("invalid interval value %v: out of range", value)
+		}
+
+		return secondsToDuration(int64(value))
+	case json.Number:
+		seconds, err := value.Int64()
+		if err != nil {
+			return 0, fmt.Errorf("invalid interval value %q: %w", value.String(), err)
+		}
+
+		return secondsToDuration(seconds)
+	default:
+		return 0, fmt.Errorf("invalid interval type %T: expected number or string", v)
+	}
+}
+
+func secondsToDuration(seconds int64) (time.Duration, error) {
+	maxSeconds := math.MaxInt64 / int64(time.Second)
+	minSeconds := math.MinInt64 / int64(time.Second)
+
+	if seconds > maxSeconds || seconds < minSeconds {
+		return 0, fmt.Errorf("invalid interval value %d: out of range", seconds)
+	}
+
+	return time.Duration(seconds) * time.Second, nil
+}
+
+func parsePollIntervalString(raw string) (time.Duration, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return 0, errors.New("invalid interval value: must not be empty")
+	}
+
+	if seconds, err := strconv.ParseInt(value, 10, 64); err == nil {
+		return secondsToDuration(seconds)
+	}
+
+	duration, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("invalid interval value %q: must be seconds or a Go duration", raw)
+	}
+
+	if duration%time.Second != 0 {
+		return 0, fmt.Errorf("invalid interval duration %q: must resolve to full seconds", raw)
+	}
+
+	return duration, nil
 }

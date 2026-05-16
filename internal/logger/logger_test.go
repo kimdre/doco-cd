@@ -6,7 +6,12 @@ import (
 	"errors"
 	"log/slog"
 	"testing"
+	"time"
 )
+
+type durationLogSample struct {
+	Interval time.Duration `json:"interval" yaml:"interval"`
+}
 
 func TestParseLevel(t *testing.T) {
 	t.Parallel()
@@ -78,6 +83,15 @@ func TestErrAttr(t *testing.T) {
 
 	if !attr.Equal(slog.Any("error", err)) {
 		t.Errorf("ErrAttr() value = %v, want %v", attr.Value, err)
+	}
+}
+
+func TestBuildLogValue_FormatsDuration(t *testing.T) {
+	t.Parallel()
+
+	value := BuildLogValue(durationLogSample{Interval: 10 * time.Second})
+	if got := value.Any().(map[string]any)["interval"]; got != "10s" {
+		t.Fatalf("expected interval to be formatted as 10s, got %v", got)
 	}
 }
 

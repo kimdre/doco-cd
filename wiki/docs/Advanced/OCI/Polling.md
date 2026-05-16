@@ -29,14 +29,16 @@ Add an OCI [polling configuration](../../Poll-Settings.md) to `POLL_CONFIG`:
         - production
 ```
 
-## Parameters
+## Fields
 
-| Parameter     | Default | Description                                                                                                                                             |
-|---------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `source`      |         | (required) Must be `oci`.                                                                                                                               |
-| `url`         |         | (required) Full OCI artifact reference including the tag to pull (e.g., `ghcr.io/myorg/app:main`)                                                       |
-| `interval`    | `180`   | Poll interval in seconds (minimum: 10)                                                                                                                  |
-| `deployments` |         | (optional) Array of [inline deployment configurations](../../Poll-Settings.md#inline-deploy-configs). When provided, overrides configs in the artifact. |
+See also [Poll Settings](../../Poll-Settings.md) for general polling configuration fields.
+
+| Key           | Type                                                | Description                                                                                                                                             | Default |
+|---------------|-----------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
+| `source`      | string                                              | (required) Must be `oci`.                                                                                                                               |         |
+| `url`         | string                                              | (required) Full OCI artifact reference including the tag to pull (e.g., `ghcr.io/myorg/app:main`)                                                       |         |
+| `interval`    | integer or string                                   | Poll interval (min 10s). Supports integer seconds (`300`), numeric strings (`"300"`), and Go duration strings (`"5m"`, `"1m30s"`).                      | `180s`  |
+| `deployments` | array of [Deploy Configs](../../Deploy-Settings.md) | (optional) Array of [inline deployment configurations](../../Poll-Settings.md#inline-deploy-configs). When provided, overrides configs in the artifact. |         |
 
 ## Example: Full Polling Configuration
 
@@ -64,7 +66,7 @@ Add an OCI [polling configuration](../../Poll-Settings.md) to `POLL_CONFIG`:
 
     - source: oci
       url: ghcr.io/myorg/config:staging
-      interval: 180
+      interval: 3m
       deployments:
         - name: web-staging
           compose_files:

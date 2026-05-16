@@ -4,7 +4,10 @@ import (
 	"log/slog"
 	"reflect"
 	"strings"
+	"time"
 )
+
+var durationType = reflect.TypeFor[time.Duration]()
 
 // BuildLogValue returns a slog.Value for any value, excluding fields by name or dot-path.
 // Examples:
@@ -34,6 +37,10 @@ func BuildSliceLogValue(slice any, ignore ...string) slog.Value {
 func buildPlain(rv reflect.Value, prefix string, ignoreSet map[string]struct{}) any {
 	if !rv.IsValid() {
 		return nil
+	}
+
+	if rv.Type() == durationType {
+		return rv.Interface().(time.Duration).String()
 	}
 
 	// Unwrap interfaces/pointers

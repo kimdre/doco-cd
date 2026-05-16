@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
@@ -33,7 +34,7 @@ func TestRunPoll(t *testing.T) {
 	pollConfig := poll.Config{
 		SourceUrl:    "https://github.com/kimdre/doco-cd_tests.git",
 		Reference:    "main",
-		Interval:     10,
+		Interval:     10 * time.Second,
 		CustomTarget: "",
 	}
 

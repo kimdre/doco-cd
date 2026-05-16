@@ -94,7 +94,7 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 				repoLock.Unlock()
 			}
 
-			pollJob.NextRun = time.Now().Unix() + int64(pollJob.Config.Interval)
+			pollJob.NextRun = time.Now().Add(pollJob.Config.Interval).Unix()
 		} else {
 			logger.Debug("skipping poll, waiting for next run")
 		}
@@ -111,7 +111,7 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 		case <-ctx.Done():
 			logger.Debug("ctx is done in poll handler")
 			return
-		case <-time.After(time.Duration(pollJob.Config.Interval) * time.Second):
+		case <-time.After(pollJob.Config.Interval):
 			continue
 		}
 	}
@@ -177,7 +177,7 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 		pollConfig, webhook.ParsedPayload{},
 	)
 
-	nextRun := time.Now().Add(time.Duration(pollConfig.Interval) * time.Second).Format(time.RFC3339)
+	nextRun := time.Now().Add(pollConfig.Interval).Format(time.RFC3339)
 	elapsedTime := time.Since(startTime)
 
 	if deployErr != nil {
