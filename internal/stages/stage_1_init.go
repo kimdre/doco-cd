@@ -109,7 +109,19 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		case err == nil:
 			err = git.FetchRepository(repo, s.Repository.SourceUrl, s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, auth, s.DeployConfig.ResolveGitDepth(s.AppConfig.GitCloneDepth))
 			if err != nil {
-				return fmt.Errorf("failed to fetch repository: %w", err)
+				// If fetch failed with corruption indicators, attempt repair
+				if git.IsCorruptionError(err) {
+					stageLog.Warn("detected corruption during fetch, attempting repository repair",
+						slog.String("path", s.Repository.PathExternal))
+
+					if _, repairErr := git.RepairRepository(s.Repository.PathInternal, s.Repository.SourceUrl, s.DeployConfig.Reference,
+						s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, auth, s.AppConfig.GitCloneSubmodules,
+						s.DeployConfig.ResolveGitDepth(s.AppConfig.GitCloneDepth), stageLog); repairErr != nil {
+						return fmt.Errorf("failed to fetch repository and repair attempt failed: %w (repair error: %v)", err, repairErr)
+					}
+				} else {
+					return fmt.Errorf("failed to fetch repository: %w", err)
+				}
 			}
 		case errors.Is(err, git.ErrRepositoryNotExists): // Continue without fetching the repository, it will be cloned later
 		default:

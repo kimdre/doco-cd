@@ -29,7 +29,7 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 			return fmt.Errorf("failed to get latest commit: %w", err)
 		}
 
-		shortCommit, err = git.GetShortestUniqueCommitSHA(s.Repository.Git, latestCommit, git.DefaultShortSHALength)
+		shortCommit, err = git.GetShortestUniqueCommitHash(s.Repository.Git, latestCommit, git.DefaultShortSHALength)
 		if err != nil {
 			return fmt.Errorf("failed to get short commit SHA: %w", err)
 		}

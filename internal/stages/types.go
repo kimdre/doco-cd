@@ -235,7 +235,7 @@ func (s *StageManager) NotifyFailure(notifyErr error) {
 				latestCommit = ""
 			}
 
-			commitSha, commitErr = gitInternal.GetShortestUniqueCommitSHA(s.Repository.Git, latestCommit, gitInternal.DefaultShortSHALength)
+			commitSha, commitErr = gitInternal.GetShortestUniqueCommitHash(s.Repository.Git, latestCommit, gitInternal.DefaultShortSHALength)
 			if commitErr != nil {
 				commitSha = latestCommit
 			}
