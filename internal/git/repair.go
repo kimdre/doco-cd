@@ -27,7 +27,7 @@ func IsCorruptionError(err error) bool {
 	}
 
 	// patterns for common corruption-related error messages that may be wrapped by go-git
-	patters := []string{
+	patterns := []string{
 		"reference not found",
 		"object not found",
 		"invalid reference",
@@ -36,7 +36,7 @@ func IsCorruptionError(err error) bool {
 	// Check error message for corruption-related patterns
 	msg := err.Error()
 
-	return slices.ContainsFunc(patters, func(pattern string) bool {
+	return slices.ContainsFunc(patterns, func(pattern string) bool {
 		return strings.Contains(msg, pattern)
 	})
 }
