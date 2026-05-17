@@ -990,6 +990,46 @@ func TestCheckServiceMismatch(t *testing.T) {
 			},
 		},
 		{
+			name: "swarmMode=true, ignore unnecessary scheduler ephemeral by label",
+			deployed: map[Service]ServiceStatus{
+				"foo": {Replicas: 1, SwarmMode: swarm.DeployModeReplicated},
+				"foo-doco-job-1730000000000000000": {
+					Replicas:  1,
+					SwarmMode: swarm.DeployModeReplicatedJob,
+					Labels: Labels{
+						DocoCDJobLabels.JobEphemeral: "true",
+					},
+				},
+			},
+			swarmModeEnable: true,
+			services: types.Services{
+				"foo": {
+					Deploy: &types.DeployConfig{Mode: string(swarm.DeployModeReplicated), Replicas: new(1)},
+				},
+			},
+			want: nil,
+		},
+		{
+			name: "swarmMode=true, ignore unnecessary scheduler ephemeral by legacy name fallback",
+			deployed: map[Service]ServiceStatus{
+				"foo": {Replicas: 1, SwarmMode: swarm.DeployModeReplicated},
+				"foo-doco-job-1730000000000000000": {
+					Replicas:  1,
+					SwarmMode: swarm.DeployModeReplicatedJob,
+					Labels: Labels{
+						DocoCDJobLabels.JobExecutionMode: string(JobExecutionModeOneOff),
+					},
+				},
+			},
+			swarmModeEnable: true,
+			services: types.Services{
+				"foo": {
+					Deploy: &types.DeployConfig{Mode: string(swarm.DeployModeReplicated), Replicas: new(1)},
+				},
+			},
+			want: nil,
+		},
+		{
 			name: "swarmMode=true, no missing",
 			deployed: map[Service]ServiceStatus{
 				"replicated":     {Replicas: 2, SwarmMode: swarm.DeployModeReplicated},

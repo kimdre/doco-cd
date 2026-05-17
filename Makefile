@@ -47,6 +47,7 @@ build:
 
 lint fmt:
 	${GO_BIN}/golangci-lint run --fix ./...
+	@go fix ./...
 
 update:
 	git pull origin main

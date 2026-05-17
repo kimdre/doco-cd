@@ -61,6 +61,11 @@ func RunContainerOneOffFromExisting(ctx context.Context, apiClient client.APICli
 	}
 
 	config := inspectResult.Container.Config
+	if config.Labels == nil {
+		config.Labels = map[string]string{}
+	}
+
+	config.Labels[DocoCDJobLabels.JobEphemeral] = "true"
 
 	hostConfig := inspectResult.Container.HostConfig
 	if hostConfig != nil {

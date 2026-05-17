@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -250,6 +251,8 @@ const (
 	ServiceMismatchReasonUnnecessary = "service is unnecessary"
 	ServiceMismatchReasonSwarmMode   = "swarm mode mismatch"
 	ServiceMismatchReasonReplicas    = "replicas mismatch"
+	oneOffServiceNameSeparator       = "-doco-job-"
+	legacyOneShotExecutionMode       = "one_shot"
 )
 
 type ServiceMismatch struct {
@@ -350,6 +353,10 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 	}
 
 	for name := range deployedSet.Difference(wantSet) {
+		if isEphemeralOneOffService(name, deployed[Service(name)], wantSet) {
+			continue
+		}
+
 		mismatches = append(mismatches, ServiceMismatch{
 			ServiceName: name,
 			Reasons: []ServiceMismatchReason{
@@ -361,4 +368,41 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 	}
 
 	return mismatches
+}
+
+func isEphemeralOneOffService(name string, status ServiceStatus, declaredServices set.Set[string]) bool {
+	labels := status.Labels
+	if labels == nil {
+		labels = Labels{}
+	}
+
+	if raw, ok := labels[DocoCDJobLabels.JobEphemeral]; ok {
+		isEphemeral, err := strconv.ParseBool(strings.TrimSpace(raw))
+		if err == nil {
+			return isEphemeral
+		}
+	}
+
+	mode := strings.TrimSpace(labels[DocoCDJobLabels.JobExecutionMode])
+	if mode != string(JobExecutionModeOneOff) && mode != legacyOneShotExecutionMode {
+		return false
+	}
+
+	idx := strings.LastIndex(name, oneOffServiceNameSeparator)
+	if idx <= 0 || idx+len(oneOffServiceNameSeparator) >= len(name) {
+		return false
+	}
+
+	baseName := strings.TrimSpace(name[:idx])
+
+	suffix := strings.TrimSpace(name[idx+len(oneOffServiceNameSeparator):])
+	if baseName == "" || suffix == "" {
+		return false
+	}
+
+	if _, err := strconv.ParseInt(suffix, 10, 64); err != nil {
+		return false
+	}
+
+	return declaredServices.Contains(baseName)
 }
