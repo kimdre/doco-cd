@@ -275,9 +275,10 @@ func GetConfigFromYAML(f string, applyDefaults bool) ([]*Config, error) {
 	return configs, nil
 }
 
-// GetConfigs returns either the deployment configuration from the repository or the default configuration.
-// gitOpts is optional (may be nil) and is only required when AutoDiscovery with a remote RepositoryUrl is used.
-func GetConfigs(repoRoot, configBaseDir, name, customTarget, reference string, gitOpts *GitOptions) ([]*Config, error) {
+// GetConfigs returns deployment configurations discovered in the repository.
+// It fails when no matching deployment configuration file exists.
+// gitOpts is optional (can be nil) and is only required when AutoDiscovery with a remote RepositoryUrl is used.
+func GetConfigs(repoRoot, configBaseDir, customTarget, reference string, gitOpts *GitOptions) ([]*Config, error) {
 	configDir := filepath.Join(repoRoot, configBaseDir)
 
 	files, err := os.ReadDir(configDir)
@@ -436,7 +437,7 @@ func GetConfigs(repoRoot, configBaseDir, name, customTarget, reference string, g
 		return nil, fmt.Errorf("%w: .doco-cd.%s.y(a)ml", ErrConfigFileNotFound, customTarget)
 	}
 
-	return []*Config{New(name, reference)}, nil
+	return nil, fmt.Errorf("%w: .doco-cd.y(a)ml", ErrConfigFileNotFound)
 }
 
 // getConfigsFromFile returns the deployment configurations from the repository or nil if not found.
@@ -484,12 +485,13 @@ func ValidateUniqueProjectNames(configs []*Config) error {
 }
 
 // ResolveConfigs returns Deployment Config's for a poll run, preferring inline
-// deployments defined on the PollConfig when provided. Falls back to repository
-// configuration files or default values when no inline deployments are present.
+// deployments defined on the PollConfig when provided. Inline deployments bypass
+// repository config file discovery. When no inline deployments are present,
+// repository config files are required.
 // repoRoot is the absolute path to the repository root.
 // configBaseDir is the relative path from repo root where config files are located.
 // gitOpts is optional (may be nil) and is only required when AutoDiscovery with a remote RepositoryUrl is used.
-func ResolveConfigs(inlineDeployments []*Config, customTarget, reference, repoRoot, configBaseDir, name string, gitOpts *GitOptions) ([]*Config, error) {
+func ResolveConfigs(inlineDeployments []*Config, customTarget, reference, repoRoot, configBaseDir string, gitOpts *GitOptions) ([]*Config, error) {
 	// Prefer inline deployments when present
 	if len(inlineDeployments) > 0 {
 		// Apply reference to inline deployments if not already set
@@ -508,5 +510,5 @@ func ResolveConfigs(inlineDeployments []*Config, customTarget, reference, repoRo
 	}
 
 	// No inline deployments, use repository config discovery
-	return GetConfigs(repoRoot, configBaseDir, name, customTarget, reference, gitOpts)
+	return GetConfigs(repoRoot, configBaseDir, customTarget, reference, gitOpts)
 }

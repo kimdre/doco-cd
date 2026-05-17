@@ -210,7 +210,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 
 	switch jobTrigger {
 	case stages.JobTriggerWebhook:
-		deployConfigs, err = deploy.GetConfigs(internalRepoPath, appConfig.DeployConfigBaseDir, payload.Name, customTarget, payload.Ref, gitOpts)
+		deployConfigs, err = deploy.GetConfigs(internalRepoPath, appConfig.DeployConfigBaseDir, customTarget, payload.Ref, gitOpts)
 		if err != nil {
 			return handleError{
 				err:            err,
@@ -219,9 +219,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 			}
 		}
 	case stages.JobTriggerPoll:
-		shortName := filepath.Base(repoName)
-
-		deployConfigs, err = deploy.ResolveConfigs(pollConfig.Deployments, pollConfig.CustomTarget, ref, internalRepoPath, appConfig.DeployConfigBaseDir, shortName, gitOpts)
+		deployConfigs, err = deploy.ResolveConfigs(pollConfig.Deployments, pollConfig.CustomTarget, ref, internalRepoPath, appConfig.DeployConfigBaseDir, gitOpts)
 		if err != nil {
 			return handleError{
 				err:            err,

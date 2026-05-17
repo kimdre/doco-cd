@@ -29,6 +29,8 @@ The deployment configuration file must be placed in the root/base directory of y
 - `.doco-cd.yaml`
 - `.doco-cd.yml`
 
+When using a custom target (for example `nas`), the file name must match `.doco-cd.<target>.y(a)ml`.
+
 If you use polling, you can also specify inline deployment configurations in the poll configuration file.
 See [Poll Settings](Poll-Settings.md) and this [example](Poll-Settings.md#inline-deploy-configs) for more information.
 

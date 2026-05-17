@@ -62,7 +62,7 @@ compose_files:
 			t.Fatal(err)
 		}
 
-		configs, err := GetConfigs(dirName, ".", t.Name(), customTarget, reference, nil)
+		configs, err := GetConfigs(dirName, ".", customTarget, reference, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -106,7 +106,7 @@ compose_files:
 		t.Fatal(err)
 	}
 
-	configs, err := GetConfigs(repoRoot, ".", "oci-stack", "", "", nil)
+	configs, err := GetConfigs(repoRoot, ".", "", "", nil)
 	if err != nil {
 		t.Fatalf("expected no error for non-git repo, got %v", err)
 	}
@@ -120,40 +120,45 @@ compose_files:
 	}
 }
 
-func TestGetConfigs_DefaultValues(t *testing.T) {
+func TestGetConfigs_MissingDefaultConfigFile(t *testing.T) {
 	t.Parallel()
-
-	defaultConfig := New(t.Name(), DefaultReference)
 
 	dirName := t.TempDir()
 
 	createTestRepo(t, dirName)
 
-	configs, err := GetConfigs(dirName, ".", t.Name(), "", "", nil)
-	if err != nil {
-		t.Fatal(err)
+	_, err := GetConfigs(dirName, ".", "", "", nil)
+	if err == nil {
+		t.Fatal("expected error when no default deployment config file exists, got nil")
 	}
 
-	if len(configs) != 1 {
-		t.Fatalf("expected 1 config, got %d", len(configs))
+	if !errors.Is(err, ErrConfigFileNotFound) {
+		t.Fatalf("expected ErrConfigFileNotFound, got %v", err)
 	}
 
-	dc := configs[0]
+	if !strings.Contains(err.Error(), ".doco-cd.y(a)ml") {
+		t.Fatalf("expected missing default config hint in error, got %v", err)
+	}
+}
 
-	if dc.Name != t.Name() {
-		t.Errorf("expected name to be %v, got %s", t.Name(), dc.Name)
+func TestGetConfigs_MissingTargetConfigFile(t *testing.T) {
+	t.Parallel()
+
+	dirName := t.TempDir()
+
+	createTestRepo(t, dirName)
+
+	_, err := GetConfigs(dirName, ".", "nas", "", nil)
+	if err == nil {
+		t.Fatal("expected error when no target deployment config file exists, got nil")
 	}
 
-	if dc.Reference != defaultConfig.Reference {
-		t.Errorf("expected reference to be %s, got %s", defaultConfig.Reference, dc.Reference)
+	if !errors.Is(err, ErrConfigFileNotFound) {
+		t.Fatalf("expected ErrConfigFileNotFound, got %v", err)
 	}
 
-	if dc.WorkingDirectory != defaultConfig.WorkingDirectory {
-		t.Errorf("expected working directory to be %s, got %s", defaultConfig.WorkingDirectory, dc.WorkingDirectory)
-	}
-
-	if !reflect.DeepEqual(dc.ComposeFiles, defaultConfig.ComposeFiles) {
-		t.Errorf("expected compose files to be %v, got %v", defaultConfig.ComposeFiles, dc.ComposeFiles)
+	if !strings.Contains(err.Error(), ".doco-cd.nas.y(a)ml") {
+		t.Fatalf("expected missing target config hint in error, got %v", err)
 	}
 }
 
@@ -297,7 +302,7 @@ func TestResolveConfigs_InlineOverride(t *testing.T) {
 	customTarget := ""
 	reference := "refs/heads/main"
 
-	configs, err := ResolveConfigs(deployments, customTarget, reference, dirName, ".", "repo", nil)
+	configs, err := ResolveConfigs(deployments, customTarget, reference, dirName, ".", nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -373,7 +378,7 @@ func TestResolveConfigs_InlineAutoDiscover(t *testing.T) {
 	customTarget := ""
 	reference := "refs/heads/main"
 
-	configs, err := ResolveConfigs(deployments, customTarget, reference, repoRoot, ".", t.Name(), nil)
+	configs, err := ResolveConfigs(deployments, customTarget, reference, repoRoot, ".", nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -433,7 +438,7 @@ reference: %s
 	}
 
 	// Test with subdirectory as configBaseDir
-	configs, err := GetConfigs(repoRoot, configBaseDir, t.Name(), customTarget, reference, nil)
+	configs, err := GetConfigs(repoRoot, configBaseDir, customTarget, reference, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -476,7 +481,7 @@ reference: %s
 	}
 
 	// Test with root directory as configBaseDir
-	configs, err := GetConfigs(repoRoot, configBaseDir, t.Name(), customTarget, reference, nil)
+	configs, err := GetConfigs(repoRoot, configBaseDir, customTarget, reference, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -525,7 +530,7 @@ auto_discovery:
 	}
 
 	// Test with auto-discovery enabled
-	configs, err := GetConfigs(repoRoot, ".", t.Name(), "", "main", nil)
+	configs, err := GetConfigs(repoRoot, ".", "", "main", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -604,7 +609,7 @@ auto_discovery:
 	}
 
 	// Test with auto-discovery enabled on feature branch
-	configs, err := GetConfigs(repoRoot, ".", t.Name(), "", "refs/heads/feature-branch", nil)
+	configs, err := GetConfigs(repoRoot, ".", "", "refs/heads/feature-branch", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -667,7 +672,7 @@ repository_url: https://github.com/kimdre/doco-cd_tests.git
 			}
 
 			// Test with auto-discovery enabled and repository URL set (should ignore repository URL for discovery)
-			configs, err := GetConfigs(subDir, ".", t.Name(), "", "main", nil)
+			configs, err := GetConfigs(subDir, ".", "", "main", nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -724,7 +729,7 @@ reference: %s
 		t.Fatal(err)
 	}
 
-	configs, err := ResolveConfigs(nil, "", reference, repoRoot, configBaseDir, t.Name(), nil)
+	configs, err := ResolveConfigs(nil, "", reference, repoRoot, configBaseDir, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -735,6 +740,46 @@ reference: %s
 
 	if configs[0].Name != t.Name() {
 		t.Errorf("expected name to be %v, got %s", t.Name(), configs[0].Name)
+	}
+}
+
+func TestResolveConfigs_MissingRepositoryConfigFile(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+	createTestRepo(t, repoRoot)
+
+	_, err := ResolveConfigs(nil, "", "refs/heads/main", repoRoot, ".", nil)
+	if err == nil {
+		t.Fatal("expected error when repository deploy config file is missing, got nil")
+	}
+
+	if !errors.Is(err, ErrConfigFileNotFound) {
+		t.Fatalf("expected ErrConfigFileNotFound, got %v", err)
+	}
+
+	if !strings.Contains(err.Error(), ".doco-cd.y(a)ml") {
+		t.Fatalf("expected missing default config hint in error, got %v", err)
+	}
+}
+
+func TestResolveConfigs_MissingRepositoryTargetConfigFile(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+	createTestRepo(t, repoRoot)
+
+	_, err := ResolveConfigs(nil, "nas", "refs/heads/main", repoRoot, ".", nil)
+	if err == nil {
+		t.Fatal("expected error when repository target deploy config file is missing, got nil")
+	}
+
+	if !errors.Is(err, ErrConfigFileNotFound) {
+		t.Fatalf("expected ErrConfigFileNotFound, got %v", err)
+	}
+
+	if !strings.Contains(err.Error(), ".doco-cd.nas.y(a)ml") {
+		t.Fatalf("expected missing target config hint in error, got %v", err)
 	}
 }
 
@@ -1111,7 +1156,7 @@ auto_discovery:
 		t.Fatal(err)
 	}
 
-	configs, err := GetConfigs(repoRoot, ".", t.Name(), "", "main", nil)
+	configs, err := GetConfigs(repoRoot, ".", "", "main", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
