@@ -18,6 +18,7 @@ Available options to run scripts/commands during deployment or container lifecyc
 - [Init Containers](#init-containers)
 - [Sidecar Containers](#sidecar-containers)
 - [Compose Lifecycle Hooks](#compose-lifecycle-hooks)
+- [Scheduled Jobs / Cron Jobs](Job-Scheduling.md)
 
 --8<-- "wiki/includes/reconciliation-note.md"
 
