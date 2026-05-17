@@ -47,7 +47,7 @@ func (r handleError) Error() string {
 	ret := r.msg
 
 	if r.err != nil {
-		ret += fmt.Sprintf(", err: %v", r.err)
+		ret = fmt.Sprintf("%s: %v", r.msg, r.err)
 	}
 
 	return ret
@@ -105,7 +105,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 	)
 
 	if customTarget != "" {
-		jobLog = jobLog.With(slog.String("custom_target", customTarget))
+		jobLog = jobLog.With(slog.String("target", customTarget))
 	}
 
 	if strings.Contains(repoName, "..") {
@@ -210,7 +210,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 
 	switch jobTrigger {
 	case stages.JobTriggerWebhook:
-		deployConfigs, err = deploy.GetConfigs(internalRepoPath, appConfig.DeployConfigBaseDir, payload.Name, customTarget, payload.Ref, gitOpts)
+		deployConfigs, err = deploy.GetConfigs(internalRepoPath, appConfig.DeployConfigBaseDir, customTarget, payload.Ref, gitOpts)
 		if err != nil {
 			return handleError{
 				err:            err,
@@ -219,9 +219,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 			}
 		}
 	case stages.JobTriggerPoll:
-		shortName := filepath.Base(repoName)
-
-		deployConfigs, err = deploy.ResolveConfigs(pollConfig.Deployments, pollConfig.CustomTarget, ref, internalRepoPath, appConfig.DeployConfigBaseDir, shortName, gitOpts)
+		deployConfigs, err = deploy.ResolveConfigs(pollConfig.Deployments, pollConfig.CustomTarget, ref, internalRepoPath, appConfig.DeployConfigBaseDir, gitOpts)
 		if err != nil {
 			return handleError{
 				err:            err,

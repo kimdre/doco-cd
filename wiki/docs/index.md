@@ -18,13 +18,13 @@ You can think of it as a simple Portainer or ArgoCD alternative for Docker.
 - Easy to set up and use.
 - Runs with a minimal (distroless) image
 - Built in Go with tiny RAM and CPU requirements.
-- Supports various [external secret management providers](External-Secrets/index.md) and data encryption with [SOPS](Advanced/Encryption.md)
-- Can deploy applications via [webhooks](Getting-Started.md#webhooks) and/or [polling](Getting-Started.md#polling).
-- Supports various [Git providers](#supported-git-providers) 
-- Supports [OCI artifacts](Advanced/OCI/Artifact-Usage.md) and Git repositories for deployment configurations.
 - Supports both Docker Compose projects and Swarm stacks in [Swarm mode](Advanced/Swarm-Mode.md).
-- Provides [notifications](Advanced/Notifications.md) and [Prometheus metrics](Endpoints/Metrics.md) for monitoring.
+- Can deploy applications via [webhooks](Getting-Started.md#webhooks) and/or [polling](Getting-Started.md#polling).
+- Supports various [Git providers](#supported-git-providers)
+- Supports [OCI artifacts](Advanced/OCI/Artifact-Usage.md) and Git repositories for deployment configurations.
+- Supports various [external secret management providers](External-Secrets/index.md) and data encryption with [SOPS](Advanced/Encryption.md)
 - Supports [Job Scheduling / Cron Jobs](Advanced/Job-Scheduling.md) for running periodic tasks.
+- Provides [Notifications](Advanced/Notifications.md) and [Prometheus metrics](Endpoints/Metrics.md) for monitoring.
 
 ## Getting Started
 
@@ -32,8 +32,9 @@ Follow the [Getting Started Guide](Getting-Started.md) to get started with Doco-
 
 More resources:
 
-1. [Known Limitations](Known-Limitations.md) - Learn about the limitations of the application.
-2. [Tips and Tricks](Advanced/Tips-and-Tricks.md) - Some tips and tricks for using the application.
+1. [Core Concepts](Core-Concepts.md) - Learn about the core concepts of Doco-CD.
+2. [Known Limitations](Known-Limitations.md) - Learn about the limitations of the application.
+3. [Tips and Tricks](Advanced/Tips-and-Tricks.md) - Some tips and tricks for using the application.
 
 ## Supported Git Providers
 

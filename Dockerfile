@@ -71,7 +71,7 @@ VOLUME /data
 COPY --from=build /doco-cd /doco-cd
 
 # buildx plugin so compose v5 picks BuildKit instead of the legacy `/build` endpoint
-COPY --from=docker/buildx-bin:0.33.0@sha256:450be95fa632a3986797cd23b8b5d8d5fff47e9fd8e1fa483c9d44b07da2a559 \
+COPY --from=docker/buildx-bin:0.34.0@sha256:1023c4a1ac77cee49520b620e1fa29d78be4ee3660bffd1a23b8a35f4e9ca417 \
     /buildx /usr/libexec/docker/cli-plugins/docker-buildx
 
 ENV TZ=UTC \

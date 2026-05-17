@@ -238,7 +238,7 @@ compose_files:
 		t.Fatal(err)
 	}
 
-	deployConfigs, err := deploy.GetConfigs(tmpDir, c.DeployConfigBaseDir, stackName, customTarget, p.Ref, nil)
+	deployConfigs, err := deploy.GetConfigs(tmpDir, c.DeployConfigBaseDir, customTarget, p.Ref, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1495,7 +1495,7 @@ func TestProjectFilesHaveChanges(t *testing.T) {
 				t.Fatalf("Failed to checkout old commit: %v", err)
 			}
 
-			deployConfigs, err := deploy.GetConfigs(tmpDir, ".", t.Name(), "", "", nil)
+			deployConfigs, err := deploy.GetConfigs(tmpDir, ".", "", "", nil)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -129,7 +129,7 @@ func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config
 			DocoCDLabels.Deployment.TargetRef:           ExtractOciArtifactTag(deployConfig.Reference),
 			DocoCDLabels.Deployment.ConfigHash:          deployConfig.Internal.Hash,
 			DocoCDLabels.Deployment.AutoDiscovery:       strconv.FormatBool(deployConfig.AutoDiscovery.Enabled),
-			DocoCDLabels.Deployment.AutoDiscoveryDelete: strconv.FormatBool(deployConfig.AutoDiscovery.Delete),
+			DocoCDLabels.Deployment.AutoDiscoveryConfig: MarshalAutoDiscoveryConfig(deployConfig.AutoDiscovery),
 			DocoCDLabels.Source.Type:                    SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
 			DocoCDLabels.Source.Name:                    payload.FullName,
 			DocoCDLabels.Source.URL:                     payload.WebURL,

@@ -97,22 +97,25 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 			stackLog.Debug("checking auto-discovered stack for obsolescence")
 
 			if _, found := autoDiscoveredNames[stackName]; !found {
-				autoDiscoverDelete := labels[docker.DocoCDLabels.Deployment.AutoDiscoveryDelete]
-				if autoDiscoverDelete == "" {
-					// Fall back to deprecated label
-					autoDiscoverDelete = labels[docker.DeprecatedAutoDiscoverDeleteLabel] //nolint:staticcheck // fallback for pre-rename containers
+				// Parse the auto-discovery config from the new JSON label.
+				// Fall back to the old scalar labels for containers deployed before this change.
+				autoDiscoverCfg := docker.ParseAutoDiscoveryConfig(labels[docker.DocoCDLabels.Deployment.AutoDiscoveryConfig])
+
+				// If the new label was absent, try the legacy scalar delete label.
+				if labels[docker.DocoCDLabels.Deployment.AutoDiscoveryConfig] == "" {
+					legacyDelete := labels[docker.DeprecatedAutoDiscoveryDeleteLabel] //nolint:staticcheck // fallback for pre-consolidation containers
+					if legacyDelete == "" {
+						legacyDelete = labels[docker.DeprecatedAutoDiscoverDeleteLabel] //nolint:staticcheck // fallback for pre-rename containers
+					}
+
+					if legacyDelete != "" {
+						if parsed, err := strconv.ParseBool(legacyDelete); err == nil {
+							autoDiscoverCfg.Delete = parsed
+						}
+					}
 				}
 
-				if autoDiscoverDelete == "" {
-					autoDiscoverDelete = "true" // Default to true if label is missing
-				}
-
-				deleteEnabled, err := strconv.ParseBool(autoDiscoverDelete)
-				if err != nil {
-					return err
-				}
-
-				if !deleteEnabled {
+				if !autoDiscoverCfg.Delete {
 					stackLog.Debug("skipping removal of obsolete auto-discovered stack as per configuration")
 
 					processedStacks = append(processedStacks, stackName)
@@ -124,8 +127,8 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 
 				removeConfig := &deployConfig.Config{Name: stackName}
 				removeConfig.Destroy.Enabled = true
-				removeConfig.Destroy.RemoveVolumes = true
-				removeConfig.Destroy.RemoveImages = true
+				removeConfig.Destroy.RemoveVolumes = autoDiscoverCfg.RemoveVolumes
+				removeConfig.Destroy.RemoveImages = autoDiscoverCfg.RemoveImages
 				removeConfig.Destroy.RemoveRepoDir = false // Do not remove repo dir for auto-discovered stacks
 
 				err = docker.DestroyStack(jobLog, &ctx, &dockerCli, removeConfig)

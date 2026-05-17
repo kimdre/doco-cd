@@ -99,7 +99,7 @@ func TestDeploy(t *testing.T) {
 
 	stackName := test.ConvertTestName(t.Name())
 
-	dcs, err := deployConfig.GetConfigs(repoPath, c.DeployConfigBaseDir, stackName, "", p.Ref, nil)
+	dcs, err := deployConfig.GetConfigs(repoPath, c.DeployConfigBaseDir, "", p.Ref, nil)
 
 	// commit have 5 apps
 	// https://github.com/kimdre/doco-cd_tests/blob/7be81e788a40724cee7542eec00a2af0c4340eba/.doco-cd.yml

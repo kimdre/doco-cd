@@ -15,6 +15,9 @@ import (
 
 	"github.com/moby/moby/api/types/volume"
 
+	"go.yaml.in/yaml/v3"
+
+	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	swarmInternal "github.com/kimdre/doco-cd/internal/docker/swarm"
 
 	"github.com/moby/moby/client"
@@ -243,4 +246,53 @@ func RemoveLabeledVolumes(ctx context.Context, dockerClient client.APIClient, st
 	}
 
 	return nil
+}
+
+// MarshalAutoDiscoveryConfig serializes an AutoDiscoveryConfig to a single-line YAML flow-style string for use as a container label.
+func MarshalAutoDiscoveryConfig(cfg deployConfig.AutoDiscoveryConfig) string {
+	// First marshal to get standard YAML
+	b, err := yaml.Marshal(cfg)
+	if err != nil {
+		return "{}"
+	}
+
+	// Parse it back into a node to apply flow style
+	var node yaml.Node
+	if err := yaml.Unmarshal(b, &node); err != nil {
+		return "{}"
+	}
+
+	// Set flow style (produces {key: value, key: value} format)
+	if len(node.Content) > 0 {
+		node.Content[0].Style = yaml.FlowStyle
+	}
+
+	// Marshal with flow style applied
+	result, err := yaml.Marshal(&node)
+	if err != nil {
+		return "{}"
+	}
+
+	return strings.TrimSpace(string(result))
+}
+
+// ParseAutoDiscoveryConfig deserializes an AutoDiscoveryConfig from a YAML container label value.
+// If the label is empty or invalid it returns a default config with Delete=true, RemoveVolumes=false, RemoveImages=true.
+func ParseAutoDiscoveryConfig(labelValue string) deployConfig.AutoDiscoveryConfig {
+	defaults := deployConfig.AutoDiscoveryConfig{
+		Delete:        true,
+		RemoveVolumes: false,
+		RemoveImages:  true,
+	}
+
+	if labelValue == "" {
+		return defaults
+	}
+
+	var cfg deployConfig.AutoDiscoveryConfig
+	if err := yaml.Unmarshal([]byte(labelValue), &cfg); err != nil {
+		return defaults
+	}
+
+	return cfg
 }
