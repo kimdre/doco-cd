@@ -156,7 +156,7 @@ func TestHandleEvent(t *testing.T) {
 			swarmMode:            false,
 		},
 		{
-			name: "Missing Compose Configuration",
+			name: "Missing Deployment Configuration",
 			payload: webhook.ParsedPayload{
 				Ref:       git.MainBranch,
 				CommitSHA: "efefb4111f3c363692a2526f9be9b24560e6511f",
@@ -166,7 +166,7 @@ func TestHandleEvent(t *testing.T) {
 				Private:   false,
 			},
 			expectedStatusCode:   http.StatusInternalServerError,
-			expectedResponseBody: `{"error":"deployment failed","content":"failed to deploy stack %[3]s: failed to load compose config: failed to load compose project: no configuration file provided: not found","job_id":"%[1]s"}`,
+			expectedResponseBody: `{"error":"failed to get deploy configuration","content":"configuration file not found in repository: .doco-cd.y(a)ml","job_id":"%[1]s"}`,
 			customTarget:         "",
 			swarmMode:            false,
 		},

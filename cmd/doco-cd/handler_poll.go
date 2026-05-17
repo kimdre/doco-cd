@@ -155,7 +155,7 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 	)
 
 	if pollConfig.CustomTarget != "" {
-		jobLog = jobLog.With(slog.String("custom_target", pollConfig.CustomTarget))
+		jobLog = jobLog.With(slog.String("target", pollConfig.CustomTarget))
 	}
 
 	configVal := log.BuildLogValue(&pollConfig, "Deployments.Internal")
