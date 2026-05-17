@@ -47,7 +47,7 @@ func (r handleError) Error() string {
 	ret := r.msg
 
 	if r.err != nil {
-		ret += fmt.Sprintf(", err: %v", r.err)
+		ret = fmt.Sprintf("%s: %v", r.msg, r.err)
 	}
 
 	return ret
