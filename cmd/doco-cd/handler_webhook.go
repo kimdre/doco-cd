@@ -117,7 +117,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	jobLog = jobLog.With(slog.String(entity, logValue))
 
 	if customTarget != "" {
-		jobLog = jobLog.With(slog.String("custom_target", customTarget))
+		jobLog = jobLog.With(slog.String("target", customTarget))
 	}
 
 	jobLog.Info("received new "+entity+" job",

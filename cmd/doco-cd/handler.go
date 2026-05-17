@@ -105,7 +105,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 	)
 
 	if customTarget != "" {
-		jobLog = jobLog.With(slog.String("custom_target", customTarget))
+		jobLog = jobLog.With(slog.String("target", customTarget))
 	}
 
 	if strings.Contains(repoName, "..") {
