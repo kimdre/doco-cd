@@ -326,6 +326,40 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 	// Pass auth and cloneSubmodules so CheckoutRepository can ensure submodules are updated when needed.
 	err = CheckoutRepository(repo, ref, auth, cloneSubmodules)
 	if err != nil {
+		// Check if this looks like repository corruption (ref not found despite successful fetch)
+		if IsCorruptionError(err) {
+			fetchedExists, fetchedCheckErr := fetchedReferenceExistsAfterFetch(repo, ref)
+			if fetchedCheckErr != nil {
+				slog.Warn("failed to validate requested reference in fetched refs before repair",
+					slog.String("path", path),
+					slog.String("ref", ref),
+					slog.String("error", fetchedCheckErr.Error()))
+			}
+
+			if fetchedCheckErr == nil && !fetchedExists {
+				slog.Warn("requested reference does not exist in fetched refs, skipping local repair",
+					slog.String("path", path),
+					slog.String("ref", ref))
+
+				return nil, fmt.Errorf("%w: %w", ErrCheckoutFailed, err)
+			}
+
+			slog.Warn("detected possible repository corruption during checkout",
+				slog.String("path", path),
+				slog.String("error", err.Error()))
+
+			// Release the lock before calling RepairRepository because repair may re-clone.
+			unlock()
+
+			repairedRepo, repairErr := RepairRepository(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth, slog.Default())
+			if repairErr == nil {
+				return repairedRepo, nil
+			}
+
+			slog.Error("failed to repair corrupted repository",
+				slog.String("path", path),
+				slog.String("repair_error", repairErr.Error()))
+		}
 		// Attempt to deepen if the ref is unreachable in a shallow clone
 		if depth > 0 && isRefUnreachableError(err) {
 			repo, deepenErr := deepenAndCheckout(repo, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
@@ -340,6 +374,39 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 	}
 
 	return repo, nil
+}
+
+func fetchedReferenceExistsAfterFetch(repo *git.Repository, ref string) (bool, error) {
+	if plumbing.IsHash(ref) {
+		return true, nil
+	}
+
+	candidates := make([]plumbing.ReferenceName, 0, 3)
+
+	switch {
+	case strings.HasPrefix(ref, BranchPrefix):
+		branch := strings.TrimPrefix(ref, BranchPrefix)
+		candidates = append(candidates, plumbing.NewRemoteReferenceName(RemoteName, branch))
+	case strings.HasPrefix(ref, TagPrefix):
+		candidates = append(candidates, plumbing.ReferenceName(ref))
+	case strings.HasPrefix(ref, "refs/"):
+		candidates = append(candidates, plumbing.ReferenceName(ref))
+	default:
+		candidates = append(candidates,
+			plumbing.NewRemoteReferenceName(RemoteName, ref),
+			plumbing.NewTagReferenceName(ref),
+		)
+	}
+
+	for _, candidate := range candidates {
+		if _, err := repo.Reference(candidate, true); err == nil {
+			return true, nil
+		} else if !errors.Is(err, plumbing.ErrReferenceNotFound) {
+			return false, err
+		}
+	}
+
+	return false, nil
 }
 
 // CheckoutRepository checks out the specified reference in the repository, keeping untracked files intact.
@@ -795,9 +862,9 @@ func shouldResetDecryptedFile(repo *git.Repository, repoRoot, file string) bool 
 	return !strings.EqualFold(string(decryptedContent), string(workingContent))
 }
 
-// GetShortestUniqueCommitSHA returns the shortest unique prefix of a commit SHA in the repository.
+// GetShortestUniqueCommitHash returns the shortest unique prefix of a commit SHA in the repository.
 // Similar to the git command `git rev-parse --short=<length> <commitSHA>`.
-func GetShortestUniqueCommitSHA(repo *git.Repository, commitSHA string, minLength int) (string, error) {
+func GetShortestUniqueCommitHash(repo *git.Repository, commitSHA string, minLength int) (string, error) {
 	if repo == nil {
 		return "", errors.New("repository not found")
 	}
