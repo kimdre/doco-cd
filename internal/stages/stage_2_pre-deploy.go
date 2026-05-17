@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"maps"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -21,16 +22,51 @@ import (
 )
 
 func shouldSkipDeployment(composeChanged bool,
+	autoDiscoveryLabelChanged bool,
 	changedServices []docker.Change,
 	ignoredInfo docker.IgnoredInfo,
 	imagesChanged bool,
 	mismatchServices []docker.ServiceMismatch,
 ) bool {
 	return !composeChanged &&
+		!autoDiscoveryLabelChanged &&
 		len(changedServices) == 0 &&
 		!ignoredInfo.IsNeedSignal() &&
 		!imagesChanged &&
 		len(mismatchServices) == 0
+}
+
+func autoDiscoveryConfigLabelDriftServices(deployedStatus map[docker.Service]docker.ServiceStatus, expected string) ([]string, string) {
+	expected = strings.TrimSpace(expected)
+
+	if len(deployedStatus) == 0 {
+		return nil, ""
+	}
+
+	affected := make([]string, 0, len(deployedStatus))
+
+	var firstObserved string
+
+	for serviceName, status := range deployedStatus {
+		actual, ok := status.Labels[docker.DocoCDLabels.Deployment.AutoDiscoveryConfig]
+
+		actual = strings.TrimSpace(actual)
+		if !ok || actual != expected {
+			affected = append(affected, string(serviceName))
+
+			if firstObserved == "" {
+				firstObserved = actual
+			}
+		}
+	}
+
+	if len(affected) == 0 {
+		return nil, expected
+	}
+
+	slices.Sort(affected)
+
+	return affected, firstObserved
 }
 
 func shouldSkipOCIDeployment(forceRecreate bool, deployedDigest, resolvedDigest string) bool {
@@ -94,11 +130,26 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		return fmt.Errorf("failed to get latest state from deployed services: %w", err)
 	}
 
+	expectedAutoDiscoveryLabel := docker.MarshalAutoDiscoveryConfig(s.DeployConfig.AutoDiscovery)
+	autoDiscoveryDriftServices, deployedAutoDiscoveryLabel := autoDiscoveryConfigLabelDriftServices(
+		deployedState.DeployedStatus,
+		expectedAutoDiscoveryLabel,
+	)
+
+	autoDiscoveryConfigChanged := len(autoDiscoveryDriftServices) > 0
+	if autoDiscoveryConfigChanged {
+		stageLog.Debug("auto-discovery config label changed, proceeding with deployment",
+			slog.Any("affected_services", autoDiscoveryDriftServices),
+			slog.String("deployed_auto_discovery_config", deployedAutoDiscoveryLabel),
+			slog.String("expected_auto_discovery_config", expectedAutoDiscoveryLabel),
+		)
+	}
+
 	if s.Repository.Source == config.SourceTypeOCI {
 		deployedDigest := deployedState.GetDeploymentCommitSHA()
 		resolvedDigest := s.Repository.Revision
 
-		if shouldSkipOCIDeployment(s.DeployConfig.ForceRecreate, deployedDigest, resolvedDigest) {
+		if shouldSkipOCIDeployment(s.DeployConfig.ForceRecreate, deployedDigest, resolvedDigest) && !autoDiscoveryConfigChanged {
 			stageLog.Debug("OCI artifact digest unchanged, skipping deployment",
 				slog.String("deployed_digest", strings.TrimSpace(deployedDigest)),
 				slog.String("resolved_digest", strings.TrimSpace(resolvedDigest)),
@@ -116,6 +167,13 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 				slog.String("deployed_digest", strings.TrimSpace(deployedDigest)),
 				slog.String("resolved_digest", strings.TrimSpace(resolvedDigest)),
 			)
+		}
+
+		if autoDiscoveryConfigChanged {
+			s.DeployState.changedServices = []docker.Change{{
+				Type:     "auto_discovery_config_label",
+				Services: autoDiscoveryDriftServices,
+			}}
 		}
 
 		return nil
@@ -201,13 +259,20 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			return fmt.Errorf("failed to check for changed project files: %s", err)
 		}
 
+		if autoDiscoveryConfigChanged {
+			changedServices = append(changedServices, docker.Change{
+				Type:     "auto_discovery_config_label",
+				Services: autoDiscoveryDriftServices,
+			})
+		}
+
 		mismatchServices := docker.CheckServiceMismatch(swarm.GetModeEnabled(), deployedState.DeployedStatus, s.Docker.Project.Services)
 
 		if s.DeployConfig.ForceRecreate {
 			stageLog.Debug("force recreate enabled, proceeding with deployment",
 				slog.String("directory", s.DeployConfig.WorkingDirectory),
 			)
-		} else if shouldSkipDeployment(composeChanged, changedServices, ignoredInfo, imagesChanged, mismatchServices) {
+		} else if shouldSkipDeployment(composeChanged, autoDiscoveryConfigChanged, changedServices, ignoredInfo, imagesChanged, mismatchServices) {
 			stageLog.Debug("no changes detected, skipping deployment",
 				slog.String("directory", s.DeployConfig.WorkingDirectory),
 			)
@@ -223,6 +288,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			slog.Bool("force_recreate", s.DeployConfig.ForceRecreate),
 			slog.Group("has_changes",
 				slog.Bool("compose_config", composeChanged),
+				slog.Bool("auto_discovery_label", autoDiscoveryConfigChanged),
 				slog.Any("files", changedServices),
 				slog.Any("ignored_info", ignoredInfo),
 				slog.Bool("images", imagesChanged),
