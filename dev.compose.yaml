@@ -2,12 +2,12 @@ x-poll-config: &poll-config
   POLL_CONFIG: |
     - source: oci
       url: ghcr.io/kimdre/doco-cd_tests:test
-      interval: 0
+      interval: 10s
     - source: git
       url: https://github.com/kimdre/doco-cd_tests.git
       #url: git@github.com:kimdre/doco-cd_tests.git
-      reference: autodiscover
-      interval: 10
+      reference: main
+      interval: 0
       #target: "bitwarden-sm"
 
 services:
@@ -37,7 +37,7 @@ services:
     environment:
       TZ: Europe/Berlin
       HTTP_PORT: 80
-      LOG_LEVEL: debug
+      LOG_LEVEL: info
       OCI_VERIFY_MAX_WORKERS: 1
       OCI_TRUST_POLICY: |
         enabled: true
