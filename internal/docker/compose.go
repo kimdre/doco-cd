@@ -117,30 +117,38 @@ func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config
 			dependencies = append(dependencies, dep)
 		}
 
-		s.CustomLabels = map[string]string{
-			DocoCDLabels.Metadata.Manager:               app.Name,
-			DocoCDLabels.Metadata.Version:               appVersion,
-			DocoCDLabels.Deployment.Name:                deployConfig.Name,
-			DocoCDLabels.Deployment.Timestamp:           timestamp,
-			DocoCDLabels.Deployment.ComposeHash:         projectHash,
-			DocoCDLabels.Deployment.WorkingDir:          workingDir,
-			DocoCDLabels.Deployment.Trigger:             payload.CommitSHA,
-			DocoCDLabels.Deployment.CommitSHA:           latestCommit,
-			DocoCDLabels.Deployment.TargetRef:           ExtractOciArtifactTag(deployConfig.Reference),
-			DocoCDLabels.Deployment.ConfigHash:          deployConfig.Internal.Hash,
-			DocoCDLabels.Deployment.AutoDiscovery:       strconv.FormatBool(deployConfig.AutoDiscovery.Enabled),
-			DocoCDLabels.Deployment.AutoDiscoveryConfig: MarshalAutoDiscoveryConfig(deployConfig.AutoDiscovery),
-			DocoCDLabels.Source.Type:                    SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
-			DocoCDLabels.Source.Name:                    payload.FullName,
-			DocoCDLabels.Source.URL:                     payload.WebURL,
-			api.ProjectLabel:                            project.Name,
-			api.ServiceLabel:                            s.Name,
-			api.WorkingDirLabel:                         project.WorkingDir,
-			api.ConfigFilesLabel:                        strings.Join(project.ComposeFiles, ","),
-			api.VersionLabel:                            composeVersion,
-			api.OneoffLabel:                             "False", // default, will be overridden by docker compose
-			api.DependenciesLabel:                       strings.Join(dependencies, ","),
+		// Preserve existing labels from compose file and merge with deployment labels
+		s.CustomLabels = make(map[string]string)
+		if s.Labels != nil {
+			for k, v := range s.Labels {
+				s.CustomLabels[k] = v
+			}
 		}
+
+		// Add deployment labels (these override if keys already exist)
+		s.CustomLabels[DocoCDLabels.Metadata.Manager] = app.Name
+		s.CustomLabels[DocoCDLabels.Metadata.Version] = appVersion
+		s.CustomLabels[DocoCDLabels.Deployment.Name] = deployConfig.Name
+		s.CustomLabels[DocoCDLabels.Deployment.Timestamp] = timestamp
+		s.CustomLabels[DocoCDLabels.Deployment.ComposeHash] = projectHash
+		s.CustomLabels[DocoCDLabels.Deployment.WorkingDir] = workingDir
+		s.CustomLabels[DocoCDLabels.Deployment.Trigger] = payload.CommitSHA
+		s.CustomLabels[DocoCDLabels.Deployment.CommitSHA] = latestCommit
+		s.CustomLabels[DocoCDLabels.Deployment.TargetRef] = ExtractOciArtifactTag(deployConfig.Reference)
+		s.CustomLabels[DocoCDLabels.Deployment.ConfigHash] = deployConfig.Internal.Hash
+		s.CustomLabels[DocoCDLabels.Deployment.AutoDiscovery] = strconv.FormatBool(deployConfig.AutoDiscovery.Enabled)
+		s.CustomLabels[DocoCDLabels.Deployment.AutoDiscoveryConfig] = MarshalAutoDiscoveryConfig(deployConfig.AutoDiscovery)
+		s.CustomLabels[DocoCDLabels.Source.Type] = SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source))
+		s.CustomLabels[DocoCDLabels.Source.Name] = payload.FullName
+		s.CustomLabels[DocoCDLabels.Source.URL] = payload.WebURL
+		s.CustomLabels[api.ProjectLabel] = project.Name
+		s.CustomLabels[api.ServiceLabel] = s.Name
+		s.CustomLabels[api.WorkingDirLabel] = project.WorkingDir
+		s.CustomLabels[api.ConfigFilesLabel] = strings.Join(project.ComposeFiles, ",")
+		s.CustomLabels[api.VersionLabel] = composeVersion
+		s.CustomLabels[api.OneoffLabel] = "False" // default, will be overridden by docker compose
+		s.CustomLabels[api.DependenciesLabel] = strings.Join(dependencies, ",")
+
 		project.Services[i] = s
 	}
 }
