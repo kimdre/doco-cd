@@ -382,7 +382,26 @@ compose_files:
 			t.Fatalf("expected latest deployed commit SHA to be '%s', got '%s'", latestCommit, stats.GetDeploymentCommitSHA())
 		}
 
-		projectHash, err := ProjectHash(project)
+		externalWorkingDir, err := filepath.Abs(filepath.Join(repoPath, deployConf.WorkingDirectory))
+		if err != nil {
+			t.Fatalf("failed to resolve working directory: %v", err)
+		}
+
+		expectedProject, err := LoadCompose(
+			ctx,
+			repoPath,
+			externalWorkingDir,
+			deployConf.Name,
+			deployConf.ComposeFiles,
+			deployConf.EnvFiles,
+			deployConf.Profiles,
+			deployConf.Internal.Environment,
+		)
+		if err != nil {
+			t.Fatalf("failed to load expected project: %v", err)
+		}
+
+		projectHash, err := ProjectHash(expectedProject)
 		if err != nil {
 			t.Fatalf("ProjectHash err: %v", err)
 		}
@@ -2371,4 +2390,97 @@ func TestDecryptProjectFiles(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetScheduledJobServicesToWait(t *testing.T) {
+	t.Parallel()
+
+	project := &types.Project{
+		Services: types.Services{
+			"job-default": {
+				Name: "job-default",
+				Labels: types.Labels{
+					DocoCDJobLabels.JobEnabled: "true",
+				},
+			},
+			"job-override-false": {
+				Name: "job-override-false",
+				Labels: types.Labels{
+					DocoCDJobLabels.JobEnabled:     "true",
+					DocoCDJobLabels.JobWaitRunning: "false",
+				},
+			},
+			"job-override-true": {
+				Name: "job-override-true",
+				Labels: types.Labels{
+					DocoCDJobLabels.JobEnabled:     "true",
+					DocoCDJobLabels.JobWaitRunning: "true",
+				},
+			},
+			"job-disabled": {
+				Name: "job-disabled",
+				Labels: types.Labels{
+					DocoCDJobLabels.JobEnabled: "false",
+				},
+			},
+			"invalid-enabled": {
+				Name: "invalid-enabled",
+				Labels: types.Labels{
+					DocoCDJobLabels.JobEnabled: "not-bool",
+				},
+			},
+			"regular": {
+				Name: "regular",
+			},
+		},
+	}
+
+	t.Run("default true with opt-out", func(t *testing.T) {
+		got, err := getScheduledJobServicesToWait(project, true)
+		if err != nil {
+			t.Fatalf("getScheduledJobServicesToWait() error = %v", err)
+		}
+
+		if !got.Contains("job-default") || !got.Contains("job-override-true") {
+			t.Fatalf("expected default and explicit-true jobs to be included: %v", got.ToSlice())
+		}
+
+		if got.Contains("job-override-false") || got.Contains("job-disabled") || got.Contains("invalid-enabled") || got.Contains("regular") {
+			t.Fatalf("unexpected services in set: %v", got.ToSlice())
+		}
+	})
+
+	t.Run("default false with opt-in", func(t *testing.T) {
+		got, err := getScheduledJobServicesToWait(project, false)
+		if err != nil {
+			t.Fatalf("getScheduledJobServicesToWait() error = %v", err)
+		}
+
+		if !got.Contains("job-override-true") {
+			t.Fatalf("expected explicit-true job to be included: %v", got.ToSlice())
+		}
+
+		if got.Contains("job-default") || got.Contains("job-override-false") || got.Contains("job-disabled") || got.Contains("invalid-enabled") || got.Contains("regular") {
+			t.Fatalf("unexpected services in set: %v", got.ToSlice())
+		}
+	})
+
+	t.Run("invalid wait_running_jobs label returns error", func(t *testing.T) {
+		invalidProject := &types.Project{
+			Services: types.Services{
+				"job": {
+					Name: "job",
+					Labels: types.Labels{
+						DocoCDJobLabels.JobEnabled:     "true",
+						DocoCDJobLabels.JobWaitRunning: "invalid",
+					},
+				},
+			},
+		}
+
+		_, err := getScheduledJobServicesToWait(invalidProject, true)
+		if err == nil {
+			t.Fatalf("expected error for invalid wait_running_jobs label")
+		}
+	})
 }

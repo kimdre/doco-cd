@@ -39,6 +39,7 @@ import (
 	"github.com/docker/cli/cli/flags"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
+	swarmTypes "github.com/moby/moby/api/types/swarm"
 
 	"github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/webhook"
@@ -473,6 +474,12 @@ func DeployStack(
 		return fmt.Errorf("invalid scheduled job restart policy: %w", err)
 	}
 
+	if deployConfig.WaitRunningJobs {
+		if err = waitForRunningJobs(*ctx, dockerCli, deployConfig, project, stackLog); err != nil {
+			return err
+		}
+	}
+
 	done := make(chan struct{})
 	defer close(done)
 
@@ -610,6 +617,153 @@ func DeployStack(
 	prometheus.DeploymentDuration.WithLabelValues(deployConfig.Name).Observe(time.Since(startTime).Seconds())
 
 	return nil
+}
+
+// waitForRunningJobs checks if there are any running scheduled jobs that are configured to be waited for before deployment,
+// and waits until they are finished or the timeout is reached.
+func waitForRunningJobs(ctx context.Context, dockerCli command.Cli, deployConfig *deploy.Config, project *types.Project, log *slog.Logger) error {
+	jobServices, err := getScheduledJobServicesToWait(project, deployConfig.WaitRunningJobs)
+	if err != nil {
+		return err
+	}
+
+	if len(jobServices) == 0 {
+		return nil
+	}
+
+	timeout := time.Duration(deployConfig.Timeout) * time.Second
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+
+	deadline := time.Now().Add(timeout)
+
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	lastWaitLogAt := time.Time{}
+
+	for {
+		running, err := getRunningScheduledJobServices(ctx, dockerCli, deployConfig.Name, jobServices)
+		if err != nil {
+			return fmt.Errorf("failed to inspect running scheduled jobs: %w", err)
+		}
+
+		if len(running) == 0 {
+			return nil
+		}
+
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out after %s waiting for running scheduled jobs to finish: %s", timeout, strings.Join(running, ", "))
+		}
+
+		now := time.Now()
+		if lastWaitLogAt.IsZero() || now.Sub(lastWaitLogAt) >= 5*time.Second {
+			log.Info("waiting for running scheduled jobs to finish before deployment",
+				slog.Any("jobs", running),
+			)
+			lastWaitLogAt = now
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+func getScheduledJobServicesToWait(project *types.Project, defaultWait bool) (set.Set[string], error) {
+	ret := set.New[string]()
+
+	if project == nil {
+		return ret, nil
+	}
+
+	for _, svc := range project.Services {
+		enabledRaw, ok := svc.Labels[DocoCDJobLabels.JobEnabled]
+		if !ok {
+			continue
+		}
+
+		enabled, err := strconv.ParseBool(strings.TrimSpace(enabledRaw))
+		if err != nil || !enabled {
+			continue
+		}
+
+		waitForService := defaultWait
+
+		if waitRaw, waitLabelSet := svc.Labels[DocoCDJobLabels.JobWaitRunning]; waitLabelSet {
+			waitForService, err = strconv.ParseBool(strings.TrimSpace(waitRaw))
+			if err != nil {
+				return nil, fmt.Errorf("invalid %s label value %q on service %s", DocoCDJobLabels.JobWaitRunning, waitRaw, svc.Name)
+			}
+		}
+
+		if !waitForService {
+			continue
+		}
+
+		ret.Add(svc.Name)
+	}
+
+	return ret, nil
+}
+
+func getRunningScheduledJobServices(ctx context.Context, dockerCli command.Cli, stackName string, configuredJobServices set.Set[string]) ([]string, error) {
+	runningSet := set.New[string]()
+
+	if swarm.GetModeEnabled() {
+		services, err := swarm.GetStackServices(ctx, dockerCli.Client(), stackName)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, svc := range services {
+			if svc.Spec.TaskTemplate.ContainerSpec == nil {
+				continue
+			}
+
+			serviceName := strings.TrimSpace(svc.Spec.TaskTemplate.ContainerSpec.Labels[api.ServiceLabel])
+			if serviceName == "" || !configuredJobServices.Contains(serviceName) {
+				continue
+			}
+
+			tasks, taskErr := dockerCli.Client().TaskList(ctx, client.TaskListOptions{
+				Filters: make(client.Filters).Add("service", svc.ID),
+			})
+			if taskErr != nil {
+				return nil, taskErr
+			}
+
+			for _, task := range tasks.Items {
+				if task.DesiredState == swarmTypes.TaskStateRunning && task.Status.State == swarmTypes.TaskStateRunning {
+					runningSet.Add(serviceName)
+					break
+				}
+			}
+		}
+	} else {
+		containers, err := GetLabeledContainers(ctx, dockerCli.Client(), api.ProjectLabel, stackName, true)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, cont := range containers {
+			serviceName := strings.TrimSpace(cont.Labels[api.ServiceLabel])
+			if serviceName == "" || !configuredJobServices.Contains(serviceName) {
+				continue
+			}
+
+			if cont.State == "running" {
+				runningSet.Add(serviceName)
+			}
+		}
+	}
+
+	running := runningSet.ToSlice()
+	slices.Sort(running)
+
+	return running, nil
 }
 
 // DestroyStack destroys the stack using the provided deployment configuration.

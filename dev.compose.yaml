@@ -2,12 +2,12 @@ x-poll-config: &poll-config
   POLL_CONFIG: |
     - source: oci
       url: ghcr.io/kimdre/doco-cd_tests:test
-      interval: 10s
+      interval: 0
     - source: git
       url: https://github.com/kimdre/doco-cd_tests.git
       #url: git@github.com:kimdre/doco-cd_tests.git
-      reference: main
-      interval: 0
+      reference: schedule
+      interval: 10
       #target: "bitwarden-sm"
 
 services:
