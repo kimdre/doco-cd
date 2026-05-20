@@ -203,7 +203,7 @@ Use `auto_discovery: true` to enable it with defaults, or use the object form be
 #### Controlling resource cleanup on stack deletion
 
 When auto-discovered stacks are deleted (e.g., because the compose file was removed from the repository), 
-you can control whether volumes and images are removed using the `remove_volumes` and `remove_images` settings 
+you can control whether volumes and images are removed using the `remove_volumes` and `remove_images` settings
 in the `auto_discovery` configuration:
 
 ```yaml title=".doco-cd.yml"
