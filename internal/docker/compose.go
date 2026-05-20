@@ -640,6 +640,7 @@ func waitForRunningJobs(ctx context.Context, dockerCli command.Cli, deployConfig
 
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
+
 	lastWaitLogAt := time.Time{}
 
 	for {
@@ -661,6 +662,7 @@ func waitForRunningJobs(ctx context.Context, dockerCli command.Cli, deployConfig
 			log.Info("waiting for running scheduled jobs to finish before deployment",
 				slog.Any("jobs", running),
 			)
+
 			lastWaitLogAt = now
 		}
 
