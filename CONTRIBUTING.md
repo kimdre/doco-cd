@@ -17,12 +17,15 @@ The following tools need to be installed:
 - [Git](https://git-scm.com/)
 - Golang (see the [`go.mod`](https://github.com/kimdre/doco-cd/blob/main/go.mod#L3) file for the currently used version.
 - [Make](https://www.gnu.org/software/make/)
+- [buf](https://buf.build/docs/installation/) (required when editing `.proto` files; see [Working with gRPC definitions](#working-with-grpc-definitions))
+- `protoc-gen-go` and `protoc-gen-go-grpc` on `$PATH` (`go install google.golang.org/protobuf/cmd/protoc-gen-go@latest` and `go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest`)
 
 ### Additional steps
 
-Follow the installation instructions for the following dependencies:
+Follow the installation instructions for the following dependencies (required only when building or testing CGO-dependent secret-provider plugins):
 
-- [Bitwarden Go SDK](https://github.com/bitwarden/sdk-go/tree/main?tab=readme-ov-file#installation) (optional, only required if you're building with Bitwarden support. Not required when building with the `nobitwarden` build tag)
+- [Bitwarden Go SDK](https://github.com/bitwarden/sdk-go/tree/main?tab=readme-ov-file#installation) for `cmd/secretproviders/bitwardensecretsmanager`
+- A C toolchain (`musl-gcc` on Linux, `clang` on macOS) for `cmd/secretproviders/1password` and `cmd/secretproviders/bitwardensecretsmanager`
 
 ### Getting started
 
@@ -75,19 +78,79 @@ Run the following command to build and run the doco-cd dev container:
 docker compose -f dev.compose.yaml up --build
 ```
 
-#### Building without Bitwarden support
+#### Building container images
 
-If you want to build the project without Bitwarden Secrets Manager support (e.g., for armv7 architecture where Bitwarden SDK is not compatible), use the `nobitwarden` build tag:
-
-```bash
-CGO_ENABLED=0 go build -tags nobitwarden -o doco-cd ./cmd/doco-cd
-```
-
-Or using Docker with the `DISABLE_BITWARDEN=true` build argument:
+The core `doco-cd` image cross-compiles via [`tonistiigi/xx`](https://github.com/tonistiigi/xx) with `CGO_ENABLED=0`:
 
 ```bash
-docker build --build-arg DISABLE_BITWARDEN=true -t doco-cd:nobitwarden .
+make docker-build
 ```
+
+Each plugin has its own `Dockerfile` under `cmd/secretproviders/<name>/`. Build them all (matrix over `SECRET_PROVIDER_PLUGINS`) with:
+
+```bash
+make docker-build-plugins
+```
+
+Override `DOCKER_PLATFORMS` (default: `linux/$(go env GOARCH)`) to cross-build:
+
+```bash
+make docker-build-plugins DOCKER_PLATFORMS=linux/amd64,linux/arm64
+```
+
+### Secret-provider plugins
+
+Secret providers run as out-of-process gRPC plugins. The `doco-cd` core is plugin-agnostic: it only dials the gRPC endpoint defined by [`proto/secretprovider/v1/secretprovider.proto`](proto/secretprovider/v1/secretprovider.proto) and never names a specific backend.
+
+#### Layout
+
+```
+proto/secretprovider/v1/secretprovider.proto    # gRPC contract
+api/secretprovider/v1/                          # generated Go stubs (do not edit)
+internal/secretprovider/grpc/                   # client used by doco-cd core
+cmd/secretproviders/internal/server/            # shared gRPC server harness
+cmd/secretproviders/<name>/                     # one directory per plugin
+  ├── Dockerfile                                # cross-built via tonistiigi/xx
+  ├── main.go                                   # wires the provider to the harness
+  └── internal/<name>/                          # provider implementation
+```
+
+#### Working with gRPC definitions
+
+[`buf`](https://buf.build) manages the protobuf definitions.
+
+| Target                | Action                                                                  |
+|-----------------------|-------------------------------------------------------------------------|
+| `make buf-lint`       | Lint `.proto` files against the STANDARD rule set.                      |
+| `make buf-format`     | Format `.proto` files in place.                                         |
+| `make buf-generate`   | Regenerate Go stubs in `api/secretprovider/v1/`. Commit the diff.       |
+| `make buf-breaking`   | Compare current `.proto` against `main` for breaking changes.           |
+| `make buf`            | Convenience target running `buf-lint` + `buf-generate`.                 |
+
+The generator config lives in [`buf.yaml`](buf.yaml) and [`buf.gen.yaml`](buf.gen.yaml).
+
+After editing `.proto` files: `make buf-generate` and commit the regenerated `api/secretprovider/v1/*.pb.go` together with the proto change.
+
+#### Adding a new plugin
+
+1. **Scaffold** `cmd/secretproviders/<name>/`:
+   - `internal/<name>/`: provider implementation. Must satisfy the `server.Provider` interface (`Name`, `GetSecret`, `GetSecrets`, `ResolveSecretReferences`, `Close`).
+   - `main.go`: load config, build the provider, call `server.Serve(ctx, server.Options{Endpoint: server.EndpointFromEnv()}, provider)`.
+   - `Dockerfile`: copy from an existing plugin and adjust the build target and binary name.
+
+2. **Register the plugin in `Makefile`:**
+   - Append the directory name to `SECRET_PROVIDER_PLUGINS`.
+   - Add it to `SECRET_PROVIDER_PLUGINS_PURE_GO` only if the build does not need CGO.
+
+3. **Register the plugin in CI:**
+   - `.github/workflows/build-plugins.yaml` and `.github/workflows/build-dev-plugins.yaml`: add to the `plugin` matrix.
+   - `.github/workflows/test.yaml`: add to the `test` job's matrix (pure-Go) or to the `test-plugins-cgo` job (CGO).
+
+4. **Document the plugin** under `wiki/docs/External-Secrets/<Name>.md` and link it from `wiki/docs/External-Secrets/index.md`.
+
+5. **Run** `make test`, `make build`, and `make docker-build-plugin-<name>` locally before opening the PR.
+
+The core's `SECRET_PROVIDER` accepts only `grpc` and `webhook`. **Do not** add backend-specific names to `internal/secretprovider/secretprovider.go`.
 
 ### Documentation (Wiki)
 
