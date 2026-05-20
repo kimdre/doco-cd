@@ -1,49 +1,65 @@
 GO_BIN?=$(shell pwd)/.bin
 BINARY_DIR=bin
 BINARY_NAME=doco-cd
-.PHONY: test test-verbose test-coverage test-run build fmt lint update update-all download tools compose-up compose-down wiki-tools wiki-build wiki-serve wiki-version-publish
+.PHONY: test test-verbose test-coverage test-run build fmt lint update update-all download tools compose-up compose-down wiki-tools wiki-build wiki-serve wiki-version-publish buf buf-lint buf-generate buf-breaking buf-format docker-build docker-build-plugins $(addprefix docker-build-plugin-,$(SECRET_PROVIDER_PLUGINS))
 
 ifneq (,$(wildcard ./.env))
     include .env
     export
 endif
 
-BUILD_FLAGS:=
-ifeq ($(shell uname), Linux)
-    BUILD_FLAGS:=-linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'
-    COMPILER=CGO_ENABLED=1 CC=musl-gcc
-else ifeq ($(shell uname), Darwin)
-		BUILD_FLAGS:=""
-		COMPILER=CGO_ENABLED=1 CC=clang CXX=clang++
+BUILD_FLAGS:=-ldflags="-X main.Version=dev"
+
+# Secret-provider plugins. Update this list when adding a new plugin.
+SECRET_PROVIDER_PLUGINS:=1password awssecretmanager bitwardensecretsmanager infisical openbao
+# Plugins that build without CGO (subset of SECRET_PROVIDER_PLUGINS).
+SECRET_PROVIDER_PLUGINS_PURE_GO:=awssecretmanager infisical openbao
+SECRET_PROVIDER_PLUGINS_PURE_GO_PATHS:=$(addprefix ./cmd/secretproviders/,$(SECRET_PROVIDER_PLUGINS_PURE_GO))
+SECRET_PROVIDER_PLUGINS_CGO:=$(filter-out $(SECRET_PROVIDER_PLUGINS_PURE_GO),$(SECRET_PROVIDER_PLUGINS))
+SECRET_PROVIDER_PLUGINS_CGO_PATHS:=$(addprefix ./cmd/secretproviders/,$(SECRET_PROVIDER_PLUGINS_CGO))
+
+# CGO toolchain for plugins that need it (Bitwarden SDK, 1Password SDK).
+# Bitwarden SDK build flags https://github.com/bitwarden/sdk-go/blob/main/INSTRUCTIONS.md
+CGO_LDFLAGS_LINUX:=-linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'
+ifeq ($(shell uname),Linux)
+    CGO_LDFLAGS:=$(CGO_LDFLAGS_LINUX)
+    CGO_COMPILER:=CGO_ENABLED=1 CC=musl-gcc
+else ifeq ($(shell uname),Darwin)
+    CGO_LDFLAGS:=
+    CGO_COMPILER:=CGO_ENABLED=1 CC=clang CXX=clang++
 endif
 
-BUILD_FLAGS:=-ldflags="-X main.Version=dev $(BUILD_FLAGS)"
+CGO_BUILD_FLAGS:=-ldflags="-X main.Version=dev $(CGO_LDFLAGS)"
+
+TEST_ENV:=WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1"
 
 test:
-	@echo "Running tests..."
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" ${COMPILER} go test ${BUILD_FLAGS} -cover ./... -timeout 10m
-
-test-nobitwarden:
-	@echo "Running tests without bitwarden integration..."
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" ${COMPILER} go test -ldflags="-X main.Version=dev" -tags nobitwarden -cover ./... -timeout 10m
+	@echo "Running tests (core, pure-Go plugins)..."
+	@$(TEST_ENV) CGO_ENABLED=0 go test ${BUILD_FLAGS} -cover ./cmd/doco-cd/... ./internal/... $(SECRET_PROVIDER_PLUGINS_PURE_GO_PATHS:%=%/...) -timeout 10m
+	@echo "Running tests (CGO plugins)..."
+	@$(TEST_ENV) $(CGO_COMPILER) go test $(CGO_BUILD_FLAGS) -cover $(SECRET_PROVIDER_PLUGINS_CGO_PATHS:%=%/...) -timeout 10m
 
 test-verbose:
 	@echo "Running tests..."
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" ${COMPILER} go test ${BUILD_FLAGS} -v -cover ./... -timeout 10m
+	@$(TEST_ENV) CGO_ENABLED=0 go test ${BUILD_FLAGS} -v -cover ./cmd/doco-cd/... ./internal/... $(SECRET_PROVIDER_PLUGINS_PURE_GO_PATHS:%=%/...) -timeout 10m
+	@$(TEST_ENV) $(CGO_COMPILER) go test $(CGO_BUILD_FLAGS) -v -cover $(SECRET_PROVIDER_PLUGINS_CGO_PATHS:%=%/...) -timeout 10m
 
 test-coverage:
 	@echo "Running tests with coverage..."
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" ${COMPILER} go test ${BUILD_FLAGS} -v -coverprofile cover.out ./...
+	@$(TEST_ENV) CGO_ENABLED=0 go test ${BUILD_FLAGS} -v -coverprofile cover.out ./cmd/doco-cd/... ./internal/... $(SECRET_PROVIDER_PLUGINS_PURE_GO_PATHS:%=%/...)
+	@$(TEST_ENV) $(CGO_COMPILER) go test $(CGO_BUILD_FLAGS) -v -coverprofile cover-cgo.out $(SECRET_PROVIDER_PLUGINS_CGO_PATHS:%=%/...)
 	@go tool cover -html cover.out -o cover.html
 
 # Run specified tests from arguments
 test-run:
 	@echo "Running tests: $(filter-out $@,$(MAKECMDGOALS))"
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" ${COMPILER} go test ${BUILD_FLAGS} -cover ./... -timeout 10m -run $(filter-out $@,$(MAKECMDGOALS))
+	@$(TEST_ENV) CGO_ENABLED=0 go test ${BUILD_FLAGS} -cover ./cmd/doco-cd/... ./internal/... $(SECRET_PROVIDER_PLUGINS_PURE_GO_PATHS:%=%/...) -timeout 10m -run $(filter-out $@,$(MAKECMDGOALS))
+	@$(TEST_ENV) $(CGO_COMPILER) go test $(CGO_BUILD_FLAGS) -cover $(SECRET_PROVIDER_PLUGINS_CGO_PATHS:%=%/...) -timeout 10m -run $(filter-out $@,$(MAKECMDGOALS))
 
 build:
 	mkdir -p $(BINARY_DIR)
-	${COMPILER} go build ${BUILD_FLAGS} -o $(BINARY_DIR) ./...
+	CGO_ENABLED=0 go build ${BUILD_FLAGS} -o $(BINARY_DIR) ./cmd/doco-cd $(SECRET_PROVIDER_PLUGINS_PURE_GO_PATHS)
+	$(CGO_COMPILER) go build $(CGO_BUILD_FLAGS) -o $(BINARY_DIR) $(SECRET_PROVIDER_PLUGINS_CGO_PATHS)
 
 lint fmt:
 	${GO_BIN}/golangci-lint run --fix ./...
@@ -94,6 +110,48 @@ webhook:
   		-H "X-GitHub-Event: push" \
   		--data @cmd/doco-cd/testdata/github_payload.json \
   		http://localhost/v1/webhook
+
+BUF?=buf
+BUF_BREAKING_AGAINST?=.git#branch=main
+
+buf: buf-lint buf-generate
+
+buf-lint:
+	@echo "Linting protobuf definitions..."
+	@$(BUF) lint
+
+buf-format:
+	@echo "Formatting protobuf definitions..."
+	@$(BUF) format -w
+
+buf-generate:
+	@echo "Generating protobuf code..."
+	@$(BUF) generate
+
+buf-breaking:
+	@echo "Checking for breaking protobuf changes against $(BUF_BREAKING_AGAINST)..."
+	@$(BUF) breaking --against '$(BUF_BREAKING_AGAINST)'
+
+IMAGE_REPO?=ghcr.io/kimdre/doco-cd
+APP_VERSION?=dev
+DOCKER_BUILD?=docker buildx build
+DOCKER_PLATFORMS?=linux/$(shell go env GOARCH)
+
+docker-build:
+	$(DOCKER_BUILD) \
+		--platform $(DOCKER_PLATFORMS) \
+		--build-arg APP_VERSION=$(APP_VERSION) \
+		-t $(IMAGE_REPO):$(APP_VERSION) \
+		-f Dockerfile .
+
+docker-build-plugins: $(addprefix docker-build-plugin-,$(SECRET_PROVIDER_PLUGINS))
+
+docker-build-plugin-%:
+	$(DOCKER_BUILD) \
+		--platform $(DOCKER_PLATFORMS) \
+		--build-arg APP_VERSION=$(APP_VERSION) \
+		-t $(IMAGE_REPO)-secretprovider-$*:$(APP_VERSION) \
+		-f cmd/secretproviders/$*/Dockerfile .
 
 wiki-tools:
 	python3 -m venv .venv-wiki

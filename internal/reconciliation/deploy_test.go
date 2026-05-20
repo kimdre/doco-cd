@@ -2,7 +2,6 @@ package reconciliation
 
 import (
 	"context"
-	"errors"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -24,7 +23,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
-	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
 	"github.com/kimdre/doco-cd/internal/stages"
 	"github.com/kimdre/doco-cd/internal/test"
 	"github.com/kimdre/doco-cd/internal/utils/id"
@@ -58,10 +56,6 @@ func TestDeploy(t *testing.T) {
 
 	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, "v0.0.0-test")
 	if err != nil {
-		if errors.Is(err, bitwardensecretsmanager.ErrNotSupported) {
-			t.Skip(err.Error())
-		}
-
 		t.Fatalf("failed to initialize secret provider: %s", err.Error())
 
 		return

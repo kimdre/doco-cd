@@ -3,7 +3,6 @@ package docker
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"log/slog"
@@ -24,8 +23,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/test"
 	"github.com/kimdre/doco-cd/internal/utils/id"
-
-	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
 
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 
@@ -147,10 +144,6 @@ func TestDeployCompose(t *testing.T) {
 
 	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, "v0.0.0-test")
 	if err != nil {
-		if errors.Is(err, bitwardensecretsmanager.ErrNotSupported) {
-			t.Skip(err.Error())
-		}
-
 		t.Fatalf("failed to initialize secret provider: %s", err.Error())
 
 		return
@@ -1767,7 +1760,7 @@ func TestInjectSecretsToProject(t *testing.T) {
 	}{
 		{
 			name:           "Bitwarden Secrets Manager with correct UUID",
-			secretProvider: bitwardensecretsmanager.Name,
+			secretProvider: "bitwarden_sm",
 			externalSecrets: map[string]string{
 				varName: "138e3697-ed58-431c-b866-b3550066343a",
 			},
@@ -1784,7 +1777,7 @@ func TestInjectSecretsToProject(t *testing.T) {
 		},
 		{
 			name:           "Bitwarden Secrets Manager with incorrect UUID",
-			secretProvider: bitwardensecretsmanager.Name,
+			secretProvider: "bitwarden_sm",
 			externalSecrets: map[string]string{
 				varName: "138e3697-ed58-431c-b866-b35500663dddd",
 			},
@@ -1834,10 +1827,6 @@ func TestInjectSecretsToProject(t *testing.T) {
 					t.Logf("expected initialization error: %s", err.Error())
 
 					return
-				}
-
-				if errors.Is(err, bitwardensecretsmanager.ErrNotSupported) {
-					t.Skip(err.Error())
 				}
 
 				t.Fatalf("failed to initialize secret provider: %s", err.Error())

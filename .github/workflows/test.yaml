@@ -70,29 +70,77 @@ jobs:
         with:
           go-version-file: 'go.mod'
           cache: true
-      - name: Install packages
-        run: |
-          sudo apt install -y musl-tools
       - run: go mod download
       - run: if [ "${{ matrix.mode }}" = "swarm" ]; then docker swarm init; fi
-      - run: go test -ldflags="$BW_SDK_BUILD_FLAGS" -v -coverprofile=coverage-${{ matrix.mode }}.out -covermode=atomic -timeout 20m ./...
+      - name: Test core + pure-Go plugins
+        run: |
+          go test -v \
+            -coverprofile=coverage-core-${{ matrix.mode }}.out \
+            -covermode=atomic \
+            -timeout 20m \
+            ./cmd/doco-cd/... \
+            ./internal/... \
+            ./cmd/secretproviders/awssecretmanager/... \
+            ./cmd/secretproviders/infisical/... \
+            ./cmd/secretproviders/openbao/...
         timeout-minutes: 20
         env:
+          CGO_ENABLED: 0
           WEBHOOK_SECRET: test_Secret1
           API_SECRET: api_Secret1
           GIT_ACCESS_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
           HTTP_PROXY: http://localhost:3128
           SOPS_AGE_KEY: ${{ vars.SOPS_AGE_KEY }} # used to encrypt/decrypt files in internal/encryption/testdata
-          # Required for Bitwarden Go SDK, see CONTRIBUTING.md
-          CGO_ENABLED: 1
-          CC: musl-gcc
-          BW_SDK_BUILD_FLAGS: "-linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'"
-      - name: Upload coverage reports to Codecov
+      - name: Upload core coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage-${{ matrix.mode }}.out
+          files: coverage-core-${{ matrix.mode }}.out
           flags: unittests
+
+  test-plugins-cgo:
+    name: Test CGO plugins (${{ matrix.plugin }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin:
+          - 1password
+          - bitwardensecretsmanager
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - name: Install packages
+        run: sudo apt install -y musl-tools
+      - run: go mod download
+      - name: Test ${{ matrix.plugin }} plugin
+        run: |
+          go test -ldflags="$BW_SDK_BUILD_FLAGS" \
+            -v \
+            -coverprofile=coverage-${{ matrix.plugin }}.out \
+            -covermode=atomic \
+            -timeout 20m \
+            ./cmd/secretproviders/${{ matrix.plugin }}/...
+        timeout-minutes: 20
+        env:
+          WEBHOOK_SECRET: test_Secret1
+          API_SECRET: api_Secret1
+          # Required for Bitwarden Go SDK and 1Password SDK, see CONTRIBUTING.md
+          CGO_ENABLED: 1
+          CC: musl-gcc
+          BW_SDK_BUILD_FLAGS: "-linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'"
+      - name: Upload plugin coverage to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-${{ matrix.plugin }}.out
+          flags: plugins,${{ matrix.plugin }}
 
   docs-validation:
     name: Validate wiki build

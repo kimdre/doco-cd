@@ -25,10 +25,60 @@ This allows you to keep your secrets out of your Git repository and manage them 
 !!! tip
     Additional external secret providers may be supported in the future. If you have a specific provider in mind, please [open a feature request](https://github.com/kimdre/doco-cd/issues/new?template=feature-request.yml) or [submit a pull request](https://github.com/kimdre/doco-cd/compare) if you are able to implement the provider yourself.
 
+## Plugin Architecture
+
+External secret providers (except [Webhook](Webhook.md)) run as **standalone gRPC plugin containers** sitting next to the `doco-cd` container.
+Each provider has its own image (`ghcr.io/kimdre/doco-cd-secretprovider-<name>`) and listens on a Unix socket that `doco-cd` connects to.
+
+This means:
+
+- The `doco-cd` core no longer bundles upstream SDKs (smaller image, no CGO).
+- Plugins can be upgraded, restricted, or removed independently.
+- Each plugin only needs its own provider credentials; `doco-cd` only needs to know where to reach it.
+
+The connection happens over a shared Unix socket mounted into both containers (`/var/run/doco-cd/secret-provider.sock` by default).
+
+### Common configuration
+
+| Key                                | Used in container | Value                                                                                                                |
+|------------------------------------|-------------------|----------------------------------------------------------------------------------------------------------------------|
+| `SECRET_PROVIDER`                  | `doco-cd`         | `grpc` (use any external plugin) or `webhook` (built-in HTTP provider, see [Webhook](Webhook.md)).                    |
+| `SECRET_PROVIDER_GRPC_ENDPOINT`    | `doco-cd`, plugin | Endpoint URL the plugin listens on / the core dials. Default: `unix:///var/run/doco-cd/secret-provider.sock`. `tcp://host:port` also supported. |
+| `SECRET_PROVIDER_GRPC_DIAL_TIMEOUT`| `doco-cd`         | Connection timeout when reaching the plugin. Default: `10s`.                                                         |
+
+`doco-cd` is plugin-agnostic: it only knows how to dial the gRPC endpoint. Which backend serves the requests is determined entirely by the image you run as the plugin container.
+
+### Example compose layout
+
+```yaml title="docker-compose.yml"
+services:
+  doco-cd:
+    image: ghcr.io/kimdre/doco-cd:latest
+    environment:
+      SECRET_PROVIDER: grpc
+      SECRET_PROVIDER_GRPC_ENDPOINT: unix:///var/run/doco-cd/secret-provider.sock
+    volumes:
+      - secret-provider-sock:/var/run/doco-cd
+    depends_on:
+      - secret-provider
+
+  secret-provider:
+    image: ghcr.io/kimdre/doco-cd-secretprovider-openbao:latest
+    environment:
+      SECRET_PROVIDER_GRPC_ENDPOINT: unix:///var/run/doco-cd/secret-provider.sock
+      SECRET_PROVIDER_SITE_URL: https://bao.example.com
+      SECRET_PROVIDER_ACCESS_TOKEN: ${SECRET_PROVIDER_ACCESS_TOKEN}
+    volumes:
+      - secret-provider-sock:/var/run/doco-cd
+
+volumes:
+  secret-provider-sock:
+```
+
 ## Setting up an External Secret Provider
 
-To use an external secret provider, configure the environment variables for your provider and then set `external_secrets` in your `.doco-cd.yml`.
-See the provider-specific pages for details.
+Run the matching plugin image next to `doco-cd`, share the socket volume, and point `doco-cd` at the same endpoint. Then set `external_secrets` in your `.doco-cd.yml`.
+See the provider-specific pages for the env vars each plugin accepts.
 
 ## Using External Secrets in Deployments
 

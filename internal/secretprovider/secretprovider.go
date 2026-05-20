@@ -5,11 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	onepassword "github.com/kimdre/doco-cd/internal/secretprovider/1password"
-	"github.com/kimdre/doco-cd/internal/secretprovider/awssecretsmanager"
-	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
-	"github.com/kimdre/doco-cd/internal/secretprovider/infisical"
-	"github.com/kimdre/doco-cd/internal/secretprovider/openbao"
+	"github.com/kimdre/doco-cd/internal/secretprovider/grpc"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 	"github.com/kimdre/doco-cd/internal/secretprovider/webhook"
 )
@@ -50,71 +46,38 @@ var ErrUnknownProvider = errors.New("unknown secret provider")
 // Initialize initializes the secret provider based on the provided configuration.
 // The returned provider is wrapped with retry logic to handle transient
 // rate-limit errors (HTTP 429) from upstream APIs.
-func Initialize(ctx context.Context, provider, version string) (SecretProvider, error) {
-	if provider == "" {
-		return nil, nil
-	}
-
-	var (
-		p   SecretProvider
-		err error
-	)
-
+func Initialize(ctx context.Context, provider, _ string) (SecretProvider, error) {
 	switch provider {
-	case awssecretsmanager.Name:
-		cfg, cfgErr := awssecretsmanager.GetConfig()
-		if cfgErr != nil {
-			return nil, cfgErr
+	case "":
+		return nil, nil
+
+	case grpc.Name:
+		cfg, err := grpc.GetConfig()
+		if err != nil {
+			return nil, err
 		}
 
-		p, err = awssecretsmanager.NewProvider(ctx, cfg.Region, cfg.AccessKeyID, cfg.SecretAccessKey)
-	case bitwardensecretsmanager.Name:
-		cfg, cfgErr := bitwardensecretsmanager.GetConfig()
-		if cfgErr != nil {
-			return nil, cfgErr
+		prov, err := grpc.NewValueProvider(ctx, cfg)
+		if err != nil {
+			return nil, err
 		}
 
-		p, err = bitwardensecretsmanager.NewProvider(cfg.ApiUrl, cfg.IdentityUrl, cfg.AccessToken)
-	case onepassword.Name:
-		cfg, cfgErr := onepassword.GetConfig()
-		if cfgErr != nil {
-			return nil, cfgErr
-		}
+		return NewRetryingSecretProvider(AdaptSecretValueProvider(grpc.Name, prov)), nil
 
-		p, err = onepassword.NewProvider(ctx, cfg, version)
-	case infisical.Name:
-		cfg, cfgErr := infisical.GetConfig()
-		if cfgErr != nil {
-			return nil, cfgErr
-		}
-
-		p, err = infisical.NewProvider(ctx, cfg.SiteUrl, cfg.ClientID, cfg.ClientSecret)
-	case openbao.Name:
-		cfg, cfgErr := openbao.GetConfig()
-		if cfgErr != nil {
-			return nil, cfgErr
-		}
-
-		p, err = openbao.NewProvider(ctx, cfg.SiteUrl, cfg.AccessToken)
 	case webhook.Name:
-		cfg, cfgErr := webhook.GetConfig()
-		if cfgErr != nil {
-			return nil, cfgErr
+		cfg, err := webhook.GetConfig()
+		if err != nil {
+			return nil, err
 		}
 
-		prov, provErr := webhook.NewValueProvider(ctx, cfg)
-		if provErr != nil {
-			return nil, provErr
+		prov, err := webhook.NewValueProvider(ctx, cfg)
+		if err != nil {
+			return nil, err
 		}
 
-		p = AdaptSecretValueProvider(webhook.Name, prov)
+		return NewRetryingSecretProvider(AdaptSecretValueProvider(webhook.Name, prov)), nil
+
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnknownProvider, provider)
 	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return NewRetryingSecretProvider(p), nil
 }
