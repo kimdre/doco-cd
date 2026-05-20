@@ -243,7 +243,7 @@ func TestGetJobDeploymentIdentity(t *testing.T) {
 	}
 }
 
-func TestShouldTriggerRunOnDeploy(t *testing.T) {
+func TestShouldTriggerIntervalDeployRun(t *testing.T) {
 	t.Parallel()
 
 	startedAt := time.Date(2026, time.May, 12, 10, 0, 0, 0, time.UTC)
@@ -252,7 +252,7 @@ func TestShouldTriggerRunOnDeploy(t *testing.T) {
 
 	tests := []struct {
 		name                 string
-		cfg                  docker.JobScheduleConfig
+		schedule             string
 		deploymentID         string
 		deploymentAt         time.Time
 		schedulerStartedAt   time.Time
@@ -261,8 +261,16 @@ func TestShouldTriggerRunOnDeploy(t *testing.T) {
 		want                 bool
 	}{
 		{
-			name:               "disabled label",
-			cfg:                docker.JobScheduleConfig{RunOnDeploy: false},
+			name:               "non-interval schedule",
+			schedule:           "*/5 * * * *",
+			deploymentID:       "dep-1",
+			deploymentAt:       deployedAt,
+			schedulerStartedAt: startedAt,
+			want:               false,
+		},
+		{
+			name:               "predefined schedule",
+			schedule:           "@hourly",
 			deploymentID:       "dep-1",
 			deploymentAt:       deployedAt,
 			schedulerStartedAt: startedAt,
@@ -270,7 +278,7 @@ func TestShouldTriggerRunOnDeploy(t *testing.T) {
 		},
 		{
 			name:               "deployment before scheduler start",
-			cfg:                docker.JobScheduleConfig{RunOnDeploy: true},
+			schedule:           "@every 5m",
 			deploymentID:       "dep-1",
 			deploymentAt:       startedAt,
 			schedulerStartedAt: startedAt,
@@ -278,7 +286,7 @@ func TestShouldTriggerRunOnDeploy(t *testing.T) {
 		},
 		{
 			name:               "deployment timestamp in same second as sub-second scheduler start",
-			cfg:                docker.JobScheduleConfig{RunOnDeploy: true},
+			schedule:           "@every 5m",
 			deploymentID:       "dep-1",
 			deploymentAt:       startedAt,
 			schedulerStartedAt: startedAtSubSecond,
@@ -286,7 +294,7 @@ func TestShouldTriggerRunOnDeploy(t *testing.T) {
 		},
 		{
 			name:               "deployment older than scheduler start second",
-			cfg:                docker.JobScheduleConfig{RunOnDeploy: true},
+			schedule:           "@every 5m",
 			deploymentID:       "dep-1",
 			deploymentAt:       startedAt.Add(-time.Second),
 			schedulerStartedAt: startedAtSubSecond,
@@ -294,7 +302,7 @@ func TestShouldTriggerRunOnDeploy(t *testing.T) {
 		},
 		{
 			name:               "initial discovery after deploy",
-			cfg:                docker.JobScheduleConfig{RunOnDeploy: true},
+			schedule:           "@every 5m",
 			deploymentID:       "dep-2",
 			deploymentAt:       deployedAt,
 			schedulerStartedAt: startedAt,
@@ -302,7 +310,7 @@ func TestShouldTriggerRunOnDeploy(t *testing.T) {
 		},
 		{
 			name:                 "already processed deployment",
-			cfg:                  docker.JobScheduleConfig{RunOnDeploy: true},
+			schedule:             "@every 5m",
 			deploymentID:         "dep-2",
 			deploymentAt:         deployedAt,
 			schedulerStartedAt:   startedAt,
@@ -312,7 +320,7 @@ func TestShouldTriggerRunOnDeploy(t *testing.T) {
 		},
 		{
 			name:                 "new deployment after previous",
-			cfg:                  docker.JobScheduleConfig{RunOnDeploy: true},
+			schedule:             "@every 5m",
 			deploymentID:         "dep-3",
 			deploymentAt:         deployedAt.Add(time.Minute),
 			schedulerStartedAt:   startedAt,
@@ -326,8 +334,8 @@ func TestShouldTriggerRunOnDeploy(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := shouldTriggerRunOnDeploy(
-				tt.cfg,
+			got := shouldTriggerIntervalDeployRun(
+				tt.schedule,
 				tt.deploymentID,
 				tt.deploymentAt,
 				tt.schedulerStartedAt,
@@ -336,7 +344,48 @@ func TestShouldTriggerRunOnDeploy(t *testing.T) {
 			)
 
 			if got != tt.want {
-				t.Fatalf("shouldTriggerRunOnDeploy()=%v want=%v", got, tt.want)
+				t.Fatalf("shouldTriggerIntervalDeployRun()=%v want=%v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestShouldStopContainerForOneOffDeployRun(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		job  scheduledJob
+		cfg  docker.JobScheduleConfig
+		want bool
+	}{
+		{
+			name: "container one_off",
+			job:  scheduledJob{mode: scheduledJobModeContainer},
+			cfg:  docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff},
+			want: true,
+		},
+		{
+			name: "container restart",
+			job:  scheduledJob{mode: scheduledJobModeContainer},
+			cfg:  docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeRestart},
+			want: false,
+		},
+		{
+			name: "swarm one_off",
+			job:  scheduledJob{mode: scheduledjobModeSwarm},
+			cfg:  docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := shouldStopContainerForOneOffDeployRun(tt.job, tt.cfg)
+			if got != tt.want {
+				t.Fatalf("shouldStopContainerForOneOffDeployRun()=%v want=%v", got, tt.want)
 			}
 		})
 	}

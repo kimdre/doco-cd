@@ -84,7 +84,6 @@ type JobInfo struct {
 	Stack          string                  `json:"stack,omitempty"`
 	Mode           string                  `json:"mode"`
 	Schedule       string                  `json:"schedule,omitempty"`
-	RunOnDeploy    bool                    `json:"run_on_deploy"`
 	ExecutionMode  docker.JobExecutionMode `json:"execution_mode,omitempty"`
 	SkipRunning    bool                    `json:"skip_running"`
 	NotifyOn       docker.JobNotifyOn      `json:"notify_on,omitempty"`
@@ -165,7 +164,6 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 		}
 
 		info.Schedule = cfg.Schedule
-		info.RunOnDeploy = cfg.RunOnDeploy
 		info.ExecutionMode = cfg.ExecutionMode
 		info.SkipRunning = cfg.SkipRunning
 		info.NotifyOn = cfg.NotifyOn
@@ -402,7 +400,7 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 			)
 		}
 
-		runOnDeployNow := shouldTriggerRunOnDeploy(cfg, deploymentID, deploymentAt, s.startedAt, ok, prevState.deployment)
+		runOnDeployNow := shouldTriggerIntervalDeployRun(cfg.Schedule, deploymentID, deploymentAt, s.startedAt, ok, prevState.deployment)
 
 		if state.deployment != deploymentID {
 			state.deployment = deploymentID
@@ -410,6 +408,16 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 		}
 
 		if runOnDeployNow {
+			if shouldStopContainerForOneOffDeployRun(job, state.cfg) {
+				if err := s.stopContainerIfRunning(context.WithoutCancel(ctx), job.id); err != nil {
+					s.log.Warn("failed to stop base container before one_off deploy run",
+						slog.String("job", job.name),
+						slog.String("container_id", job.id),
+						logger.ErrAttr(err),
+					)
+				}
+			}
+
 			state.lastRun = now
 			s.states[job.key] = state
 
@@ -761,7 +769,6 @@ func (s *scheduler) setRunInProgress(key string, inProgress bool) {
 func getScheduleFingerprint(cfg docker.JobScheduleConfig) string {
 	return strings.Join([]string{
 		cfg.Schedule,
-		strconv.FormatBool(cfg.RunOnDeploy),
 		string(cfg.ExecutionMode),
 		strconv.FormatBool(cfg.SkipRunning),
 		string(cfg.NotifyOn),
@@ -787,15 +794,15 @@ func getJobDeploymentIdentity(labels map[string]string) (string, time.Time) {
 	return deploymentID, *deploymentAt
 }
 
-func shouldTriggerRunOnDeploy(
-	cfg docker.JobScheduleConfig,
+func shouldTriggerIntervalDeployRun(
+	schedule string,
 	deploymentID string,
 	deploymentAt time.Time,
 	schedulerStartedAt time.Time,
 	stateExists bool,
 	previousDeploymentID string,
 ) bool {
-	if !cfg.RunOnDeploy || deploymentID == "" || deploymentAt.IsZero() {
+	if !docker.IsJobScheduleInterval(schedule) || deploymentID == "" || deploymentAt.IsZero() {
 		return false
 	}
 
@@ -814,6 +821,30 @@ func shouldTriggerRunOnDeploy(
 	}
 
 	return true
+}
+
+func shouldStopContainerForOneOffDeployRun(job scheduledJob, cfg docker.JobScheduleConfig) bool {
+	return job.mode == scheduledJobModeContainer && cfg.ExecutionMode == docker.JobExecutionModeOneOff
+}
+
+func (s *scheduler) stopContainerIfRunning(ctx context.Context, containerID string) error {
+	inspectResult, err := s.dockerCli.Client().ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
+	if err != nil {
+		return fmt.Errorf("inspect container %s: %w", containerID, err)
+	}
+
+	if inspectResult.Container.State == nil || !inspectResult.Container.State.Running {
+		return nil
+	}
+
+	timeout := 1
+
+	_, err = s.dockerCli.Client().ContainerStop(ctx, containerID, client.ContainerStopOptions{Timeout: &timeout})
+	if err != nil {
+		return fmt.Errorf("stop container %s: %w", containerID, err)
+	}
+
+	return nil
 }
 
 func getScheduledRunMetricLabels(job scheduledJob, cfg docker.JobScheduleConfig, stackName string) []string {

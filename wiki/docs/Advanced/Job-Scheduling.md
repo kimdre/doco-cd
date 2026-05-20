@@ -147,17 +147,17 @@ Use the following service labels to configure scheduled jobs:
 |---------------------------------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
 | `cd.doco.job.enabled`           | boolean | Enable scheduling for this service/container                                                                                                                                | `false`   |
 | `cd.doco.job.schedule`          | string  | [Schedule format](#schedule-formats) to use                                                                                                                                 |           |
-| `cd.doco.job.run_on_deploy`     | boolean | Run the job once immediately when a new deployment is detected by the scheduler                                                                                             | `false`   |
-| `cd.doco.job.wait_running_jobs` | boolean | Override deploy-config-wide [`wait_running_jobs`](../Deploy-Settings.md#wait-for-running-scheduled-jobs-before-deployment) behavior for this job service during deployments |           |
+| `cd.doco.job.wait_running_jobs` | boolean | Override deploy-config-wide [`wait_running_jobs`](../Deploy-Settings.md#wait-for-running-scheduled-jobs-before-deployment) behavior for this job service during deployments | (inherit) |
 | `cd.doco.job.execution_mode`    | string  | [`restart`](#restart) (default behavior) or [`one_off`](#one_off) (ephemeral execution)                                                                                     | `restart` |
 | `cd.doco.job.skip_running`      | boolean | Do not run the job if a previous scheduled run is still active/running                                                                                                      | `false`   |
 | `cd.doco.job.notify_on`         | string  | [Notification](Notifications.md) behavior for scheduled runs: `none`, `success`, `failure`, `all`                                                                           | `all`     |
 | `cd.doco.job.swarm.replicas`    | integer | Number of completions/concurrency for swarm one-off jobs in `replicated` [deploy mode](#swarm-deploymode)                                                                   | `1`       |
 
-??? abstract "`run_on_deploy` behavior"
+??? abstract "Deployment-triggered run for interval schedules"
 
-    - The immediate run is deployment-driven: it only triggers when doco-cd detects a new deployment identity for the job (changes to the job's configuration, image, or other relevant factors that indicate a new deployment for the compose service).
-    - Doco-CD/Scheduler restarts do not retrigger `run_on_deploy` when the scheduled job configuration has not changed).
+    - Jobs configured with an interval schedule (`@every <duration>`) run once immediately when doco-cd detects a new deployment identity for that job.
+    - This immediate run does not apply to cron expressions (`* * * * *`) or predefined schedules (for example `@hourly`).
+    - Doco-CD/Scheduler restarts do not retrigger the immediate run when the scheduled job configuration has not changed.
 
 ### Swarm `deploy.mode`
 
