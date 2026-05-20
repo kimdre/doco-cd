@@ -799,7 +799,13 @@ func shouldTriggerRunOnDeploy(
 		return false
 	}
 
-	if !deploymentAt.After(schedulerStartedAt) {
+	// Deployment timestamps are stored with second precision, while scheduler startup keeps nanoseconds.
+	// When startup has sub-second precision, treat timestamps from the same second as potentially new.
+	if schedulerStartedAt.Nanosecond() == 0 {
+		if !deploymentAt.After(schedulerStartedAt) {
+			return false
+		}
+	} else if deploymentAt.Before(schedulerStartedAt.Truncate(time.Second)) {
 		return false
 	}
 

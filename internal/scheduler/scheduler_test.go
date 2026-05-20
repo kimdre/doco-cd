@@ -247,6 +247,7 @@ func TestShouldTriggerRunOnDeploy(t *testing.T) {
 	t.Parallel()
 
 	startedAt := time.Date(2026, time.May, 12, 10, 0, 0, 0, time.UTC)
+	startedAtSubSecond := startedAt.Add(500 * time.Millisecond)
 	deployedAt := time.Date(2026, time.May, 12, 10, 5, 0, 0, time.UTC)
 
 	tests := []struct {
@@ -254,6 +255,7 @@ func TestShouldTriggerRunOnDeploy(t *testing.T) {
 		cfg                  docker.JobScheduleConfig
 		deploymentID         string
 		deploymentAt         time.Time
+		schedulerStartedAt   time.Time
 		stateExists          bool
 		previousDeploymentID string
 		want                 bool
@@ -263,6 +265,7 @@ func TestShouldTriggerRunOnDeploy(t *testing.T) {
 			cfg:          docker.JobScheduleConfig{RunOnDeploy: false},
 			deploymentID: "dep-1",
 			deploymentAt: deployedAt,
+			schedulerStartedAt: startedAt,
 			want:         false,
 		},
 		{
@@ -270,6 +273,23 @@ func TestShouldTriggerRunOnDeploy(t *testing.T) {
 			cfg:          docker.JobScheduleConfig{RunOnDeploy: true},
 			deploymentID: "dep-1",
 			deploymentAt: startedAt,
+			schedulerStartedAt: startedAt,
+			want:         false,
+		},
+		{
+			name:         "deployment timestamp in same second as sub-second scheduler start",
+			cfg:          docker.JobScheduleConfig{RunOnDeploy: true},
+			deploymentID: "dep-1",
+			deploymentAt: startedAt,
+			schedulerStartedAt: startedAtSubSecond,
+			want:         true,
+		},
+		{
+			name:         "deployment older than scheduler start second",
+			cfg:          docker.JobScheduleConfig{RunOnDeploy: true},
+			deploymentID: "dep-1",
+			deploymentAt: startedAt.Add(-time.Second),
+			schedulerStartedAt: startedAtSubSecond,
 			want:         false,
 		},
 		{
@@ -277,6 +297,7 @@ func TestShouldTriggerRunOnDeploy(t *testing.T) {
 			cfg:          docker.JobScheduleConfig{RunOnDeploy: true},
 			deploymentID: "dep-2",
 			deploymentAt: deployedAt,
+			schedulerStartedAt: startedAt,
 			want:         true,
 		},
 		{
@@ -284,6 +305,7 @@ func TestShouldTriggerRunOnDeploy(t *testing.T) {
 			cfg:                  docker.JobScheduleConfig{RunOnDeploy: true},
 			deploymentID:         "dep-2",
 			deploymentAt:         deployedAt,
+			schedulerStartedAt:   startedAt,
 			stateExists:          true,
 			previousDeploymentID: "dep-2",
 			want:                 false,
@@ -293,6 +315,7 @@ func TestShouldTriggerRunOnDeploy(t *testing.T) {
 			cfg:                  docker.JobScheduleConfig{RunOnDeploy: true},
 			deploymentID:         "dep-3",
 			deploymentAt:         deployedAt.Add(time.Minute),
+			schedulerStartedAt:   startedAt,
 			stateExists:          true,
 			previousDeploymentID: "dep-2",
 			want:                 true,
@@ -307,7 +330,7 @@ func TestShouldTriggerRunOnDeploy(t *testing.T) {
 				tt.cfg,
 				tt.deploymentID,
 				tt.deploymentAt,
-				startedAt,
+				tt.schedulerStartedAt,
 				tt.stateExists,
 				tt.previousDeploymentID,
 			)
