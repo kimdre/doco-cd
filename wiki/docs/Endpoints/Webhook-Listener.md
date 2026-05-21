@@ -33,8 +33,8 @@ a deployment configuration file with the same pattern in its name `.doco-cd.<cus
 | `/v1/webhook/paperless-ngx` | `.doco-cd.paperless-ngx.yaml` |
 | `/v1/webhook/my.server.com` | `.doco-cd.my.server.com.yaml` |
 
-!!! note
-    [Nested config overrides](../Deploy-Settings.md#nested-config-overrides) always use the standard naming convention (`.doco-cd.yaml` / `.doco-cd.yml`), not the custom target name.
+!!! note "Naming convention for nested config overrides"
+    [Nested config overrides](../Deploy-Settings.md#nested-config-overrides) always use the standard [naming convention](../Deploy-Settings.md#deployment-configuration-file) (`.doco-cd.y(a)ml`), not the custom target name.
 
 ## Query Parameters
 
