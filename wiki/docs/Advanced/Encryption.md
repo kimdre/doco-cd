@@ -10,6 +10,56 @@ tags:
 
 Doco-CD supports the encryption of sensitive data in your doco-cd app config and deployment files with [SOPS](https://getsops.io/).
 
+## How doco-cd detects and decrypts encrypted files
+
+When a deployment is triggered, doco-cd scans for SOPS-encrypted files in the following order:
+
+### 1. Compose and env files (before project load)
+
+The following files are checked and decrypted **before** the compose project is parsed:
+
+| File type    | What it is                                                                                                                                                                              | Configured via (`.doco-cd.yaml`) |
+|--------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------|
+| Compose files | The Docker Compose files that define your stack (e.g. `compose.yaml`, `docker-compose.yml`). Encrypting these lets you hide service definitions, image names, ports, labels, etc.    | `compose_files` (default: `compose.yaml` / `docker-compose.yml`) |
+| Env files    | Dotenv files used for **variable interpolation**. They supply values for `${VAR}` placeholders inside the compose file, so encrypting them keeps those substitution values secret. | `env_files` (default: `.env`)    |
+
+These files must be decrypted first because compose-go needs to read valid YAML and substitute variables before the project can be loaded. If they were still encrypted at parse time, compose-go would see SOPS ciphertext instead of valid content.
+
+!!! note
+    The `env_files` setting in `.doco-cd.yaml` is **not** the same as the `env_file:` directive inside a compose service definition. The former is decrypted here (before parsing); the latter is a file mounted into the container and is decrypted in step 2 below.
+
+### 2. Files referenced inside the compose project (after project load)
+
+Once the compose project is loaded, doco-cd inspects every file reference within it and attempts to decrypt each one. The following are checked:
+
+| Compose field              | Scope                                                                                                                |
+|----------------------------|----------------------------------------------------------------------------------------------------------------------|
+| `configs` (file-based)     | Individual file                                                                                                       |
+| `secrets` (file-based)     | Individual file                                                                                                       |
+| `volumes` (bind mounts)    | Individual file, **or recursively all files in the directory** if the source is a directory (see note below)         |
+| `env_file`                 | Individual file                                                                                                       |
+| `build.dockerfile`         | Individual file                                                                                                       |
+| `build.secrets`            | Individual file                                                                                                       |
+
+!!! info "Recursive directory decryption for bind mounts"
+    When a bind-mounted **directory** is detected, doco-cd walks the entire directory tree and attempts to decrypt every file it finds.
+    The following directories are always skipped during this walk:
+    `.git`, `.github`, `.vscode`, `.idea`, `node_modules`.
+    Additionally, any files or directories matched by a `.gitignore` file at the repository root are also skipped.
+
+### How a file is identified as SOPS-encrypted
+
+Detection is **content-based**, not filename-based. A file is considered SOPS-encrypted if its raw content contains **both** of the following strings:
+
+- `sops`
+- `ENC[`
+
+This means you can name your encrypted files however you like. Doco-cd checks every applicable file regardless of its name or extension and skips any that don't carry these markers. No special naming convention (like `.enc.yaml`) is required.
+
+### How the file format is determined
+
+Once a file is identified as encrypted, the format used for decryption is determined **by file extension**:
+
 ## Supported file formats
 
 SOPS supports files in the following formats:
@@ -21,6 +71,8 @@ SOPS supports files in the following formats:
 | Dotenv      | `.env`                                              | `example.env`                              |
 | INI         | `.ini`                                              | `example.ini`                              |
 | Binary/Text | _any other or none_</br>**Fallback/Default format** | `example.txt`</br>`example` (no extension) |
+
+Getting the extension wrong won't prevent detection, but it will cause decryption to fail, so make sure encrypted files have the correct extension for their format.
 
 ## Usage with SOPS and age
 
