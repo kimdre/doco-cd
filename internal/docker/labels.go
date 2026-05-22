@@ -96,3 +96,12 @@ var docoCDJobLabelNames = struct {
 
 // DocoCDJobLabels exposes the scheduler/job labels for consumers outside this package.
 var DocoCDJobLabels = docoCDJobLabelNames
+
+var docoCDVolumeLabelNames = struct {
+	Recreate string // Allow recreating a named volume if compose reports a volume config mismatch
+}{
+	Recreate: "cd.doco.volume.recreate",
+}
+
+// DocoCDVolumeLabels exposes volume-related labels for consumers outside this package.
+var DocoCDVolumeLabels = docoCDVolumeLabelNames

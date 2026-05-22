@@ -499,6 +499,32 @@ services:
       - NET_BIND_SERVICE
 ```
 
+### Allow recreation of specific named volumes
+
+When Docker Compose detects a named volume definition change, deployment can fail with:
+
+```text
+Volume "<name>" exists but doesn't match configuration in compose file. Recreate (data will be lost)?
+```
+
+To opt in to automatic recreation for volumes that are safe to recreate (for example tmpfs-backed volumes),
+set the top-level volume label `cd.doco.volume.recreate: "true"`.
+
+Only volumes with this label are eligible. Unlabeled volumes are never removed automatically.
+
+```yaml title="docker-compose.yml" hl_lines="9-10"
+volumes:
+  socket:
+    name: beszel-agent_socket
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=1k,uid=65530,gid=0,mode=0700,noexec
+    labels:
+      cd.doco.volume.recreate: "true"
+```
+
 ## Multiple service deployments
 
 Multiple service deployments can be configured in a single deployment config file by specifying multiple YAML documents (separated by `#!yaml ---`).

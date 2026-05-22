@@ -11,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -52,6 +53,7 @@ var (
 	ErrNoContainerToStart = errors.New("no container to start")
 	ErrIsInUse            = errors.New("is in use")
 	ComposeVersion        string // Version of the docker compose module, will be set at runtime
+	volumeMismatchRegex   = regexp.MustCompile(`Volume "([^"]+)" exists but doesn't match configuration in compose file`)
 )
 
 func init() {
@@ -165,6 +167,58 @@ func addComposeVolumeLabels(project *types.Project, deployConfig *deploy.Config,
 		}
 		project.Volumes[i] = v
 	}
+}
+
+// getRecreatableVolumeNames returns the set of volume names that are marked as recreatable in the compose file.
+func getRecreatableVolumeNames(project *types.Project) (set.Set[string], error) {
+	recreatableVolumes := set.New[string]()
+
+	for key, cfg := range project.Volumes {
+		raw, exists := cfg.Labels[DocoCDVolumeLabels.Recreate]
+		if !exists {
+			continue
+		}
+
+		enabled, err := strconv.ParseBool(strings.TrimSpace(raw))
+		if err != nil {
+			return nil, fmt.Errorf("invalid volume label %s value %q for volume %s", DocoCDVolumeLabels.Recreate, raw, key)
+		}
+
+		if !enabled {
+			continue
+		}
+
+		if cfg.Name != "" {
+			recreatableVolumes.Add(cfg.Name)
+		}
+
+		recreatableVolumes.Add(key)
+	}
+
+	return recreatableVolumes, nil
+}
+
+func getMismatchVolumeNamesFromCreateError(err error) []string {
+	if err == nil {
+		return nil
+	}
+
+	matches := volumeMismatchRegex.FindAllStringSubmatch(err.Error(), -1)
+	if len(matches) == 0 {
+		return nil
+	}
+
+	ret := set.New[string]()
+
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+
+		ret.Add(match[1])
+	}
+
+	return ret.ToSlice()
 }
 
 // LoadCompose parses and loads Compose files as specified by the Docker Compose specification.
@@ -384,7 +438,44 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 
 	err = service.Create(ctx, project, createOpts)
 	if err != nil {
-		return err
+		mismatchVolumes := getMismatchVolumeNamesFromCreateError(err)
+		if len(mismatchVolumes) == 0 {
+			return err
+		}
+
+		recreatableVolumes, parseErr := getRecreatableVolumeNames(project)
+		if parseErr != nil {
+			return parseErr
+		}
+
+		volumesToRecreate := set.New[string]()
+
+		for _, volumeName := range mismatchVolumes {
+			if recreatableVolumes.Contains(volumeName) {
+				volumesToRecreate.Add(volumeName)
+			}
+		}
+
+		if volumesToRecreate.Len() == 0 {
+			return err
+		}
+
+		for _, volumeName := range volumesToRecreate.ToSlice() {
+			_, removeErr := dockerCli.Client().VolumeRemove(ctx, volumeName, client.VolumeRemoveOptions{Force: true})
+			if removeErr != nil {
+				removeErrLower := strings.ToLower(removeErr.Error())
+				if strings.Contains(removeErrLower, "no such volume") {
+					continue
+				}
+
+				return fmt.Errorf("failed to remove mismatched recreatable volume %s: %w", volumeName, removeErr)
+			}
+		}
+
+		err = service.Create(ctx, project, createOpts)
+		if err != nil {
+			return err
+		}
 	}
 
 	if len(startServices) > 0 {
