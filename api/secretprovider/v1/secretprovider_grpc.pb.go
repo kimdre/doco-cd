@@ -19,7 +19,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SecretProvider_Name_FullMethodName                    = "/secretprovider.v1.SecretProvider/Name"
+	SecretProvider_Info_FullMethodName                    = "/secretprovider.v1.SecretProvider/Info"
 	SecretProvider_GetSecret_FullMethodName               = "/secretprovider.v1.SecretProvider/GetSecret"
 	SecretProvider_GetSecrets_FullMethodName              = "/secretprovider.v1.SecretProvider/GetSecrets"
 	SecretProvider_ResolveSecretReferences_FullMethodName = "/secretprovider.v1.SecretProvider/ResolveSecretReferences"
@@ -32,8 +32,8 @@ const (
 // SecretProvider is the plugin interface for retrieving secret values from
 // an external backend.
 type SecretProviderClient interface {
-	// Name returns the provider's identifier.
-	Name(ctx context.Context, in *NameRequest, opts ...grpc.CallOption) (*NameResponse, error)
+	// Info returns the provider's identifier and version.
+	Info(ctx context.Context, in *InfoRequest, opts ...grpc.CallOption) (*InfoResponse, error)
 	// GetSecret retrieves a single secret value by reference.
 	GetSecret(ctx context.Context, in *GetSecretRequest, opts ...grpc.CallOption) (*GetSecretResponse, error)
 	// GetSecrets retrieves multiple secret values in a single call.
@@ -52,10 +52,10 @@ func NewSecretProviderClient(cc grpc.ClientConnInterface) SecretProviderClient {
 	return &secretProviderClient{cc}
 }
 
-func (c *secretProviderClient) Name(ctx context.Context, in *NameRequest, opts ...grpc.CallOption) (*NameResponse, error) {
+func (c *secretProviderClient) Info(ctx context.Context, in *InfoRequest, opts ...grpc.CallOption) (*InfoResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(NameResponse)
-	err := c.cc.Invoke(ctx, SecretProvider_Name_FullMethodName, in, out, cOpts...)
+	out := new(InfoResponse)
+	err := c.cc.Invoke(ctx, SecretProvider_Info_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -99,8 +99,8 @@ func (c *secretProviderClient) ResolveSecretReferences(ctx context.Context, in *
 // SecretProvider is the plugin interface for retrieving secret values from
 // an external backend.
 type SecretProviderServer interface {
-	// Name returns the provider's identifier.
-	Name(context.Context, *NameRequest) (*NameResponse, error)
+	// Info returns the provider's identifier and version.
+	Info(context.Context, *InfoRequest) (*InfoResponse, error)
 	// GetSecret retrieves a single secret value by reference.
 	GetSecret(context.Context, *GetSecretRequest) (*GetSecretResponse, error)
 	// GetSecrets retrieves multiple secret values in a single call.
@@ -119,8 +119,8 @@ type SecretProviderServer interface {
 // pointer dereference when methods are called.
 type UnimplementedSecretProviderServer struct{}
 
-func (UnimplementedSecretProviderServer) Name(context.Context, *NameRequest) (*NameResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method Name not implemented")
+func (UnimplementedSecretProviderServer) Info(context.Context, *InfoRequest) (*InfoResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Info not implemented")
 }
 func (UnimplementedSecretProviderServer) GetSecret(context.Context, *GetSecretRequest) (*GetSecretResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSecret not implemented")
@@ -152,20 +152,20 @@ func RegisterSecretProviderServer(s grpc.ServiceRegistrar, srv SecretProviderSer
 	s.RegisterService(&SecretProvider_ServiceDesc, srv)
 }
 
-func _SecretProvider_Name_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(NameRequest)
+func _SecretProvider_Info_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InfoRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SecretProviderServer).Name(ctx, in)
+		return srv.(SecretProviderServer).Info(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SecretProvider_Name_FullMethodName,
+		FullMethod: SecretProvider_Info_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SecretProviderServer).Name(ctx, req.(*NameRequest))
+		return srv.(SecretProviderServer).Info(ctx, req.(*InfoRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -232,8 +232,8 @@ var SecretProvider_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*SecretProviderServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "Name",
-			Handler:    _SecretProvider_Name_Handler,
+			MethodName: "Info",
+			Handler:    _SecretProvider_Info_Handler,
 		},
 		{
 			MethodName: "GetSecret",

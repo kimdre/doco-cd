@@ -21,26 +21,26 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type NameRequest struct {
+type InfoRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *NameRequest) Reset() {
-	*x = NameRequest{}
+func (x *InfoRequest) Reset() {
+	*x = InfoRequest{}
 	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *NameRequest) String() string {
+func (x *InfoRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*NameRequest) ProtoMessage() {}
+func (*InfoRequest) ProtoMessage() {}
 
-func (x *NameRequest) ProtoReflect() protoreflect.Message {
+func (x *InfoRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -52,32 +52,33 @@ func (x *NameRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use NameRequest.ProtoReflect.Descriptor instead.
-func (*NameRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use InfoRequest.ProtoReflect.Descriptor instead.
+func (*InfoRequest) Descriptor() ([]byte, []int) {
 	return file_secretprovider_v1_secretprovider_proto_rawDescGZIP(), []int{0}
 }
 
-type NameResponse struct {
+type InfoResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Version       string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *NameResponse) Reset() {
-	*x = NameResponse{}
+func (x *InfoResponse) Reset() {
+	*x = InfoResponse{}
 	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *NameResponse) String() string {
+func (x *InfoResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*NameResponse) ProtoMessage() {}
+func (*InfoResponse) ProtoMessage() {}
 
-func (x *NameResponse) ProtoReflect() protoreflect.Message {
+func (x *InfoResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -89,14 +90,21 @@ func (x *NameResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use NameResponse.ProtoReflect.Descriptor instead.
-func (*NameResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use InfoResponse.ProtoReflect.Descriptor instead.
+func (*InfoResponse) Descriptor() ([]byte, []int) {
 	return file_secretprovider_v1_secretprovider_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *NameResponse) GetName() string {
+func (x *InfoResponse) GetName() string {
 	if x != nil {
 		return x.Name
+	}
+	return ""
+}
+
+func (x *InfoResponse) GetVersion() string {
+	if x != nil {
+		return x.Version
 	}
 	return ""
 }
@@ -370,9 +378,10 @@ var File_secretprovider_v1_secretprovider_proto protoreflect.FileDescriptor
 const file_secretprovider_v1_secretprovider_proto_rawDesc = "" +
 	"\n" +
 	"&secretprovider/v1/secretprovider.proto\x12\x11secretprovider.v1\"\r\n" +
-	"\vNameRequest\"\"\n" +
-	"\fNameResponse\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\"\n" +
+	"\vInfoRequest\"<\n" +
+	"\fInfoResponse\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
+	"\aversion\x18\x02 \x01(\tR\aversion\"\"\n" +
 	"\x10GetSecretRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\")\n" +
 	"\x11GetSecretResponse\x12\x14\n" +
@@ -395,7 +404,7 @@ const file_secretprovider_v1_secretprovider_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x012\x8f\x03\n" +
 	"\x0eSecretProvider\x12G\n" +
-	"\x04Name\x12\x1e.secretprovider.v1.NameRequest\x1a\x1f.secretprovider.v1.NameResponse\x12V\n" +
+	"\x04Info\x12\x1e.secretprovider.v1.InfoRequest\x1a\x1f.secretprovider.v1.InfoResponse\x12V\n" +
 	"\tGetSecret\x12#.secretprovider.v1.GetSecretRequest\x1a$.secretprovider.v1.GetSecretResponse\x12Y\n" +
 	"\n" +
 	"GetSecrets\x12$.secretprovider.v1.GetSecretsRequest\x1a%.secretprovider.v1.GetSecretsResponse\x12\x80\x01\n" +
@@ -415,8 +424,8 @@ func file_secretprovider_v1_secretprovider_proto_rawDescGZIP() []byte {
 
 var file_secretprovider_v1_secretprovider_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_secretprovider_v1_secretprovider_proto_goTypes = []any{
-	(*NameRequest)(nil),                     // 0: secretprovider.v1.NameRequest
-	(*NameResponse)(nil),                    // 1: secretprovider.v1.NameResponse
+	(*InfoRequest)(nil),                     // 0: secretprovider.v1.InfoRequest
+	(*InfoResponse)(nil),                    // 1: secretprovider.v1.InfoResponse
 	(*GetSecretRequest)(nil),                // 2: secretprovider.v1.GetSecretRequest
 	(*GetSecretResponse)(nil),               // 3: secretprovider.v1.GetSecretResponse
 	(*GetSecretsRequest)(nil),               // 4: secretprovider.v1.GetSecretsRequest
@@ -431,11 +440,11 @@ var file_secretprovider_v1_secretprovider_proto_depIdxs = []int32{
 	8,  // 0: secretprovider.v1.GetSecretsResponse.secrets:type_name -> secretprovider.v1.GetSecretsResponse.SecretsEntry
 	9,  // 1: secretprovider.v1.ResolveSecretReferencesRequest.secrets:type_name -> secretprovider.v1.ResolveSecretReferencesRequest.SecretsEntry
 	10, // 2: secretprovider.v1.ResolveSecretReferencesResponse.secrets:type_name -> secretprovider.v1.ResolveSecretReferencesResponse.SecretsEntry
-	0,  // 3: secretprovider.v1.SecretProvider.Name:input_type -> secretprovider.v1.NameRequest
+	0,  // 3: secretprovider.v1.SecretProvider.Info:input_type -> secretprovider.v1.InfoRequest
 	2,  // 4: secretprovider.v1.SecretProvider.GetSecret:input_type -> secretprovider.v1.GetSecretRequest
 	4,  // 5: secretprovider.v1.SecretProvider.GetSecrets:input_type -> secretprovider.v1.GetSecretsRequest
 	6,  // 6: secretprovider.v1.SecretProvider.ResolveSecretReferences:input_type -> secretprovider.v1.ResolveSecretReferencesRequest
-	1,  // 7: secretprovider.v1.SecretProvider.Name:output_type -> secretprovider.v1.NameResponse
+	1,  // 7: secretprovider.v1.SecretProvider.Info:output_type -> secretprovider.v1.InfoResponse
 	3,  // 8: secretprovider.v1.SecretProvider.GetSecret:output_type -> secretprovider.v1.GetSecretResponse
 	5,  // 9: secretprovider.v1.SecretProvider.GetSecrets:output_type -> secretprovider.v1.GetSecretsResponse
 	7,  // 10: secretprovider.v1.SecretProvider.ResolveSecretReferences:output_type -> secretprovider.v1.ResolveSecretReferencesResponse

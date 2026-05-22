@@ -1,6 +1,6 @@
 version: v2
 modules:
-  - path: proto
+  - path: api
 lint:
   use:
     - STANDARD

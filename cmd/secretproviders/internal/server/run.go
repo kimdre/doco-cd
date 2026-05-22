@@ -19,11 +19,11 @@ type GetProviderFunc func(ctx context.Context, logger *slog.Logger) (Provider, e
 // Plugin mains should be a thin wrapper:
 //
 //	func main() {
-//	    if err := server.Run(getProvider); err != nil {
+//	    if err := server.Run(Version, getProvider); err != nil {
 //	        os.Exit(1)
 //	    }
 //	}
-func Run(getProvider GetProviderFunc) error {
+func Run(version string, getProvider GetProviderFunc) error {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
@@ -37,9 +37,13 @@ func Run(getProvider GetProviderFunc) error {
 		return err
 	}
 
-	logger.Info("starting secret provider plugin", "provider", provider.Name(), "endpoint", endpoint)
+	logger.Info("starting secret provider plugin",
+		"provider", provider.Name(),
+		"version", version,
+		"endpoint", endpoint,
+	)
 
-	if err := Serve(ctx, Options{Endpoint: endpoint}, provider); err != nil {
+	if err := Serve(ctx, Options{Endpoint: endpoint, Version: version}, provider); err != nil {
 		logger.Error("plugin exited with error", "err", err)
 		return err
 	}

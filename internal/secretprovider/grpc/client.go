@@ -50,7 +50,7 @@ func NewValueProvider(ctx context.Context, cfg *Config) (*ValueProvider, error) 
 	defer cancel()
 
 	client := secretproviderv1.NewSecretProviderClient(conn)
-	if _, err := client.Name(probeCtx, &secretproviderv1.NameRequest{}); err != nil {
+	if _, err := client.Info(probeCtx, &secretproviderv1.InfoRequest{}); err != nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("failed to reach secret provider plugin %q: %w", cfg.Endpoint, err)
 	}

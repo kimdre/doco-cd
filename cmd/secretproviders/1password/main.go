@@ -14,7 +14,7 @@ import (
 var Version = "dev"
 
 func main() {
-	if err := server.Run(getProvider); err != nil {
+	if err := server.Run(Version, getProvider); err != nil {
 		os.Exit(1)
 	}
 }

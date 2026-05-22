@@ -10,8 +10,11 @@ import (
 	"github.com/kimdre/doco-cd/cmd/secretproviders/openbao/internal/openbao"
 )
 
+// Version is overridden at build time via -ldflags.
+var Version = "dev"
+
 func main() {
-	if err := server.Run(getProvider); err != nil {
+	if err := server.Run(Version, getProvider); err != nil {
 		os.Exit(1)
 	}
 }

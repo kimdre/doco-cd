@@ -32,6 +32,8 @@ type Provider interface {
 type Options struct {
 	// Endpoint is the address to listen on (unix:///path or tcp://host:port).
 	Endpoint string
+	// Version is the plugin binary version, reported via the Info RPC.
+	Version string
 	// GracePeriod is the maximum duration GracefulStop is allowed to take
 	// before the server is forcibly stopped.
 	GracePeriod time.Duration
@@ -61,13 +63,13 @@ func Serve(ctx context.Context, opts Options, p Provider) error {
 	defer cleanup()
 
 	srv := grpc.NewServer()
-	secretproviderv1.RegisterSecretProviderServer(srv, newGRPCServer(p))
+	secretproviderv1.RegisterSecretProviderServer(srv, newGRPCServer(p, opts.Version))
 
 	var wg sync.WaitGroup
 
-	wg.Add(1)
-
-	go shutdown(ctx, &wg, srv, opts.GracePeriod)
+	wg.Go(func() {
+		shutdown(ctx, srv, opts.GracePeriod)
+	})
 
 	if err := srv.Serve(lis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 		return fmt.Errorf("gRPC server failed: %w", err)
@@ -122,6 +124,8 @@ func listener(ctx context.Context, endpoint string) (net.Listener, func(), error
 		return nil, nil, err
 	}
 
+	// grpc.Server.Serve closes the listener on shutdown; cleanup only handles
+	// side effects like the unix-socket file.
 	cleanup := func() {
 		if network == "unix" {
 			_ = os.Remove(addr)
@@ -131,9 +135,7 @@ func listener(ctx context.Context, endpoint string) (net.Listener, func(), error
 	return l, cleanup, nil
 }
 
-func shutdown(ctx context.Context, wg *sync.WaitGroup, srv *grpc.Server, grace time.Duration) {
-	defer wg.Done()
-
+func shutdown(ctx context.Context, srv *grpc.Server, grace time.Duration) {
 	<-ctx.Done()
 
 	done := make(chan struct{})
@@ -153,15 +155,19 @@ func shutdown(ctx context.Context, wg *sync.WaitGroup, srv *grpc.Server, grace t
 type grpcServer struct {
 	secretproviderv1.UnimplementedSecretProviderServer
 
-	p Provider
+	p       Provider
+	version string
 }
 
-func newGRPCServer(p Provider) *grpcServer {
-	return &grpcServer{p: p}
+func newGRPCServer(p Provider, version string) *grpcServer {
+	return &grpcServer{p: p, version: version}
 }
 
-func (s *grpcServer) Name(_ context.Context, _ *secretproviderv1.NameRequest) (*secretproviderv1.NameResponse, error) {
-	return &secretproviderv1.NameResponse{Name: s.p.Name()}, nil
+func (s *grpcServer) Info(_ context.Context, _ *secretproviderv1.InfoRequest) (*secretproviderv1.InfoResponse, error) {
+	return &secretproviderv1.InfoResponse{
+		Name:    s.p.Name(),
+		Version: s.version,
+	}, nil
 }
 
 func (s *grpcServer) GetSecret(ctx context.Context, req *secretproviderv1.GetSecretRequest) (*secretproviderv1.GetSecretResponse, error) {

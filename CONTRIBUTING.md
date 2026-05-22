@@ -100,13 +100,14 @@ make docker-build-plugins DOCKER_PLATFORMS=linux/amd64,linux/arm64
 
 ### Secret-provider plugins
 
-Secret providers run as out-of-process gRPC plugins. The `doco-cd` core is plugin-agnostic: it only dials the gRPC endpoint defined by [`proto/secretprovider/v1/secretprovider.proto`](proto/secretprovider/v1/secretprovider.proto) and never names a specific backend.
+Secret providers run as out-of-process gRPC plugins. The `doco-cd` core is plugin-agnostic: it only dials the gRPC endpoint defined by [`api/secretprovider/v1/secretprovider.proto`](api/secretprovider/v1/secretprovider.proto) and never names a specific backend.
 
 #### Layout
 
 ```
-proto/secretprovider/v1/secretprovider.proto    # gRPC contract
-api/secretprovider/v1/                          # generated Go stubs (do not edit)
+api/secretprovider/v1/                          # proto contract + generated Go stubs
+  ├── secretprovider.proto                      # gRPC contract (edit this)
+  └── *.pb.go                                   # generated stubs (do not edit)
 internal/secretprovider/grpc/                   # client used by doco-cd core
 cmd/secretproviders/internal/server/            # shared gRPC server harness
 cmd/secretproviders/<name>/                     # one directory per plugin
