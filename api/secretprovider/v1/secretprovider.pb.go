@@ -109,94 +109,6 @@ func (x *InfoResponse) GetVersion() string {
 	return ""
 }
 
-type GetSecretRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GetSecretRequest) Reset() {
-	*x = GetSecretRequest{}
-	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GetSecretRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetSecretRequest) ProtoMessage() {}
-
-func (x *GetSecretRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetSecretRequest.ProtoReflect.Descriptor instead.
-func (*GetSecretRequest) Descriptor() ([]byte, []int) {
-	return file_secretprovider_v1_secretprovider_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *GetSecretRequest) GetId() string {
-	if x != nil {
-		return x.Id
-	}
-	return ""
-}
-
-type GetSecretResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Value         string                 `protobuf:"bytes,1,opt,name=value,proto3" json:"value,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GetSecretResponse) Reset() {
-	*x = GetSecretResponse{}
-	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GetSecretResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetSecretResponse) ProtoMessage() {}
-
-func (x *GetSecretResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetSecretResponse.ProtoReflect.Descriptor instead.
-func (*GetSecretResponse) Descriptor() ([]byte, []int) {
-	return file_secretprovider_v1_secretprovider_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *GetSecretResponse) GetValue() string {
-	if x != nil {
-		return x.Value
-	}
-	return ""
-}
-
 type GetSecretsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Ids           []string               `protobuf:"bytes,1,rep,name=ids,proto3" json:"ids,omitempty"`
@@ -206,7 +118,7 @@ type GetSecretsRequest struct {
 
 func (x *GetSecretsRequest) Reset() {
 	*x = GetSecretsRequest{}
-	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[4]
+	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -218,7 +130,7 @@ func (x *GetSecretsRequest) String() string {
 func (*GetSecretsRequest) ProtoMessage() {}
 
 func (x *GetSecretsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[4]
+	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -231,7 +143,7 @@ func (x *GetSecretsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSecretsRequest.ProtoReflect.Descriptor instead.
 func (*GetSecretsRequest) Descriptor() ([]byte, []int) {
-	return file_secretprovider_v1_secretprovider_proto_rawDescGZIP(), []int{4}
+	return file_secretprovider_v1_secretprovider_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *GetSecretsRequest) GetIds() []string {
@@ -250,7 +162,7 @@ type GetSecretsResponse struct {
 
 func (x *GetSecretsResponse) Reset() {
 	*x = GetSecretsResponse{}
-	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[5]
+	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -262,7 +174,7 @@ func (x *GetSecretsResponse) String() string {
 func (*GetSecretsResponse) ProtoMessage() {}
 
 func (x *GetSecretsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[5]
+	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -275,7 +187,7 @@ func (x *GetSecretsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSecretsResponse.ProtoReflect.Descriptor instead.
 func (*GetSecretsResponse) Descriptor() ([]byte, []int) {
-	return file_secretprovider_v1_secretprovider_proto_rawDescGZIP(), []int{5}
+	return file_secretprovider_v1_secretprovider_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *GetSecretsResponse) GetSecrets() map[string]string {
@@ -294,7 +206,7 @@ type ResolveSecretReferencesRequest struct {
 
 func (x *ResolveSecretReferencesRequest) Reset() {
 	*x = ResolveSecretReferencesRequest{}
-	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[6]
+	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -306,7 +218,7 @@ func (x *ResolveSecretReferencesRequest) String() string {
 func (*ResolveSecretReferencesRequest) ProtoMessage() {}
 
 func (x *ResolveSecretReferencesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[6]
+	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -319,7 +231,7 @@ func (x *ResolveSecretReferencesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveSecretReferencesRequest.ProtoReflect.Descriptor instead.
 func (*ResolveSecretReferencesRequest) Descriptor() ([]byte, []int) {
-	return file_secretprovider_v1_secretprovider_proto_rawDescGZIP(), []int{6}
+	return file_secretprovider_v1_secretprovider_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ResolveSecretReferencesRequest) GetSecrets() map[string]string {
@@ -338,7 +250,7 @@ type ResolveSecretReferencesResponse struct {
 
 func (x *ResolveSecretReferencesResponse) Reset() {
 	*x = ResolveSecretReferencesResponse{}
-	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[7]
+	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -350,7 +262,7 @@ func (x *ResolveSecretReferencesResponse) String() string {
 func (*ResolveSecretReferencesResponse) ProtoMessage() {}
 
 func (x *ResolveSecretReferencesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[7]
+	mi := &file_secretprovider_v1_secretprovider_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -363,7 +275,7 @@ func (x *ResolveSecretReferencesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveSecretReferencesResponse.ProtoReflect.Descriptor instead.
 func (*ResolveSecretReferencesResponse) Descriptor() ([]byte, []int) {
-	return file_secretprovider_v1_secretprovider_proto_rawDescGZIP(), []int{7}
+	return file_secretprovider_v1_secretprovider_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ResolveSecretReferencesResponse) GetSecrets() map[string]string {
@@ -381,11 +293,7 @@ const file_secretprovider_v1_secretprovider_proto_rawDesc = "" +
 	"\vInfoRequest\"<\n" +
 	"\fInfoResponse\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
-	"\aversion\x18\x02 \x01(\tR\aversion\"\"\n" +
-	"\x10GetSecretRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\")\n" +
-	"\x11GetSecretResponse\x12\x14\n" +
-	"\x05value\x18\x01 \x01(\tR\x05value\"%\n" +
+	"\aversion\x18\x02 \x01(\tR\aversion\"%\n" +
 	"\x11GetSecretsRequest\x12\x10\n" +
 	"\x03ids\x18\x01 \x03(\tR\x03ids\"\x9e\x01\n" +
 	"\x12GetSecretsResponse\x12L\n" +
@@ -402,10 +310,9 @@ const file_secretprovider_v1_secretprovider_proto_rawDesc = "" +
 	"\asecrets\x18\x01 \x03(\v2?.secretprovider.v1.ResolveSecretReferencesResponse.SecretsEntryR\asecrets\x1a:\n" +
 	"\fSecretsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x012\x8f\x03\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x012\xb7\x02\n" +
 	"\x0eSecretProvider\x12G\n" +
-	"\x04Info\x12\x1e.secretprovider.v1.InfoRequest\x1a\x1f.secretprovider.v1.InfoResponse\x12V\n" +
-	"\tGetSecret\x12#.secretprovider.v1.GetSecretRequest\x1a$.secretprovider.v1.GetSecretResponse\x12Y\n" +
+	"\x04Info\x12\x1e.secretprovider.v1.InfoRequest\x1a\x1f.secretprovider.v1.InfoResponse\x12Y\n" +
 	"\n" +
 	"GetSecrets\x12$.secretprovider.v1.GetSecretsRequest\x1a%.secretprovider.v1.GetSecretsResponse\x12\x80\x01\n" +
 	"\x17ResolveSecretReferences\x121.secretprovider.v1.ResolveSecretReferencesRequest\x1a2.secretprovider.v1.ResolveSecretReferencesResponseBBZ@github.com/kimdre/doco-cd/api/secretprovider/v1;secretproviderv1b\x06proto3"
@@ -422,37 +329,33 @@ func file_secretprovider_v1_secretprovider_proto_rawDescGZIP() []byte {
 	return file_secretprovider_v1_secretprovider_proto_rawDescData
 }
 
-var file_secretprovider_v1_secretprovider_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_secretprovider_v1_secretprovider_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_secretprovider_v1_secretprovider_proto_goTypes = []any{
 	(*InfoRequest)(nil),                     // 0: secretprovider.v1.InfoRequest
 	(*InfoResponse)(nil),                    // 1: secretprovider.v1.InfoResponse
-	(*GetSecretRequest)(nil),                // 2: secretprovider.v1.GetSecretRequest
-	(*GetSecretResponse)(nil),               // 3: secretprovider.v1.GetSecretResponse
-	(*GetSecretsRequest)(nil),               // 4: secretprovider.v1.GetSecretsRequest
-	(*GetSecretsResponse)(nil),              // 5: secretprovider.v1.GetSecretsResponse
-	(*ResolveSecretReferencesRequest)(nil),  // 6: secretprovider.v1.ResolveSecretReferencesRequest
-	(*ResolveSecretReferencesResponse)(nil), // 7: secretprovider.v1.ResolveSecretReferencesResponse
-	nil,                                     // 8: secretprovider.v1.GetSecretsResponse.SecretsEntry
-	nil,                                     // 9: secretprovider.v1.ResolveSecretReferencesRequest.SecretsEntry
-	nil,                                     // 10: secretprovider.v1.ResolveSecretReferencesResponse.SecretsEntry
+	(*GetSecretsRequest)(nil),               // 2: secretprovider.v1.GetSecretsRequest
+	(*GetSecretsResponse)(nil),              // 3: secretprovider.v1.GetSecretsResponse
+	(*ResolveSecretReferencesRequest)(nil),  // 4: secretprovider.v1.ResolveSecretReferencesRequest
+	(*ResolveSecretReferencesResponse)(nil), // 5: secretprovider.v1.ResolveSecretReferencesResponse
+	nil,                                     // 6: secretprovider.v1.GetSecretsResponse.SecretsEntry
+	nil,                                     // 7: secretprovider.v1.ResolveSecretReferencesRequest.SecretsEntry
+	nil,                                     // 8: secretprovider.v1.ResolveSecretReferencesResponse.SecretsEntry
 }
 var file_secretprovider_v1_secretprovider_proto_depIdxs = []int32{
-	8,  // 0: secretprovider.v1.GetSecretsResponse.secrets:type_name -> secretprovider.v1.GetSecretsResponse.SecretsEntry
-	9,  // 1: secretprovider.v1.ResolveSecretReferencesRequest.secrets:type_name -> secretprovider.v1.ResolveSecretReferencesRequest.SecretsEntry
-	10, // 2: secretprovider.v1.ResolveSecretReferencesResponse.secrets:type_name -> secretprovider.v1.ResolveSecretReferencesResponse.SecretsEntry
-	0,  // 3: secretprovider.v1.SecretProvider.Info:input_type -> secretprovider.v1.InfoRequest
-	2,  // 4: secretprovider.v1.SecretProvider.GetSecret:input_type -> secretprovider.v1.GetSecretRequest
-	4,  // 5: secretprovider.v1.SecretProvider.GetSecrets:input_type -> secretprovider.v1.GetSecretsRequest
-	6,  // 6: secretprovider.v1.SecretProvider.ResolveSecretReferences:input_type -> secretprovider.v1.ResolveSecretReferencesRequest
-	1,  // 7: secretprovider.v1.SecretProvider.Info:output_type -> secretprovider.v1.InfoResponse
-	3,  // 8: secretprovider.v1.SecretProvider.GetSecret:output_type -> secretprovider.v1.GetSecretResponse
-	5,  // 9: secretprovider.v1.SecretProvider.GetSecrets:output_type -> secretprovider.v1.GetSecretsResponse
-	7,  // 10: secretprovider.v1.SecretProvider.ResolveSecretReferences:output_type -> secretprovider.v1.ResolveSecretReferencesResponse
-	7,  // [7:11] is the sub-list for method output_type
-	3,  // [3:7] is the sub-list for method input_type
-	3,  // [3:3] is the sub-list for extension type_name
-	3,  // [3:3] is the sub-list for extension extendee
-	0,  // [0:3] is the sub-list for field type_name
+	6, // 0: secretprovider.v1.GetSecretsResponse.secrets:type_name -> secretprovider.v1.GetSecretsResponse.SecretsEntry
+	7, // 1: secretprovider.v1.ResolveSecretReferencesRequest.secrets:type_name -> secretprovider.v1.ResolveSecretReferencesRequest.SecretsEntry
+	8, // 2: secretprovider.v1.ResolveSecretReferencesResponse.secrets:type_name -> secretprovider.v1.ResolveSecretReferencesResponse.SecretsEntry
+	0, // 3: secretprovider.v1.SecretProvider.Info:input_type -> secretprovider.v1.InfoRequest
+	2, // 4: secretprovider.v1.SecretProvider.GetSecrets:input_type -> secretprovider.v1.GetSecretsRequest
+	4, // 5: secretprovider.v1.SecretProvider.ResolveSecretReferences:input_type -> secretprovider.v1.ResolveSecretReferencesRequest
+	1, // 6: secretprovider.v1.SecretProvider.Info:output_type -> secretprovider.v1.InfoResponse
+	3, // 7: secretprovider.v1.SecretProvider.GetSecrets:output_type -> secretprovider.v1.GetSecretsResponse
+	5, // 8: secretprovider.v1.SecretProvider.ResolveSecretReferences:output_type -> secretprovider.v1.ResolveSecretReferencesResponse
+	6, // [6:9] is the sub-list for method output_type
+	3, // [3:6] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_secretprovider_v1_secretprovider_proto_init() }
@@ -466,7 +369,7 @@ func file_secretprovider_v1_secretprovider_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_secretprovider_v1_secretprovider_proto_rawDesc), len(file_secretprovider_v1_secretprovider_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

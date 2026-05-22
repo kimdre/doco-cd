@@ -72,12 +72,17 @@ func (p *ValueProvider) Close() error {
 
 // GetSecret retrieves a secret value from the plugin.
 func (p *ValueProvider) GetSecret(ctx context.Context, id string) (string, error) {
-	resp, err := p.client.GetSecret(ctx, &secretproviderv1.GetSecretRequest{Id: id})
+	secrets, err := p.GetSecrets(ctx, []string{id})
 	if err != nil {
 		return "", err
 	}
 
-	return resp.GetValue(), nil
+	value, ok := secrets[id]
+	if !ok {
+		return "", fmt.Errorf("secret %q not returned by plugin", id)
+	}
+
+	return value, nil
 }
 
 // GetSecrets retrieves multiple secret values from the plugin.

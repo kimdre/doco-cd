@@ -22,7 +22,6 @@ import (
 // adapts it to the gRPC SecretProviderServer surface.
 type Provider interface {
 	Name() string
-	GetSecret(ctx context.Context, id string) (string, error)
 	GetSecrets(ctx context.Context, ids []string) (map[string]string, error)
 	ResolveSecretReferences(ctx context.Context, secrets map[string]string) (secrettypes.ResolvedSecrets, error)
 	Close()
@@ -168,15 +167,6 @@ func (s *grpcServer) Info(_ context.Context, _ *secretproviderv1.InfoRequest) (*
 		Name:    s.p.Name(),
 		Version: s.version,
 	}, nil
-}
-
-func (s *grpcServer) GetSecret(ctx context.Context, req *secretproviderv1.GetSecretRequest) (*secretproviderv1.GetSecretResponse, error) {
-	value, err := s.p.GetSecret(ctx, req.GetId())
-	if err != nil {
-		return nil, err
-	}
-
-	return &secretproviderv1.GetSecretResponse{Value: value}, nil
 }
 
 func (s *grpcServer) GetSecrets(ctx context.Context, req *secretproviderv1.GetSecretsRequest) (*secretproviderv1.GetSecretsResponse, error) {
