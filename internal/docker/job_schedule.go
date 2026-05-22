@@ -62,11 +62,6 @@ func ParseJobScheduleExpression(spec string) (cron.Schedule, error) {
 	return schedule, nil
 }
 
-// IsJobScheduleInterval reports whether the schedule uses @every interval format.
-func IsJobScheduleInterval(spec string) bool {
-	return strings.HasPrefix(strings.TrimSpace(spec), "@every ")
-}
-
 func ParseJobScheduleLabels(labels map[string]string, log ...*slog.Logger) (JobScheduleConfig, bool, error) {
 	var logger *slog.Logger
 	if len(log) > 0 && log[0] != nil {

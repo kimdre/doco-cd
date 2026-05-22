@@ -118,29 +118,3 @@ func TestParseJobScheduleLabels_Defaults(t *testing.T) {
 		t.Fatalf("expected default swarm replicas=1, got %d", cfg.SwarmReplicas)
 	}
 }
-
-func TestIsJobScheduleInterval(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		schedule string
-		want     bool
-	}{
-		{name: "interval", schedule: "@every 15m", want: true},
-		{name: "interval with spaces", schedule: "  @every 1h", want: true},
-		{name: "cron", schedule: "*/10 * * * *", want: false},
-		{name: "predefined", schedule: "@hourly", want: false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			got := IsJobScheduleInterval(tt.schedule)
-			if got != tt.want {
-				t.Fatalf("IsJobScheduleInterval()=%v want=%v", got, tt.want)
-			}
-		})
-	}
-}
