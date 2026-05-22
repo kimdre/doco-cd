@@ -153,12 +153,6 @@ Use the following service labels to configure scheduled jobs:
 | `cd.doco.job.notify_on`         | string  | [Notification](Notifications.md) behavior for scheduled runs: `none`, `success`, `failure`, `all`                                                                           | `all`     |
 | `cd.doco.job.swarm.replicas`    | integer | Number of completions/concurrency for swarm one-off jobs in `replicated` [deploy mode](#swarm-deploymode)                                                                   | `1`       |
 
-??? abstract "Deployment-triggered run for interval schedules"
-
-    - Jobs configured with an interval schedule (`@every <duration>`) run once immediately when doco-cd detects a new deployment identity for that job.
-    - This immediate run does not apply to cron expressions (`* * * * *`) or predefined schedules (for example `@hourly`).
-    - Doco-CD/Scheduler restarts do not retrigger the immediate run when the scheduled job configuration has not changed.
-
 ### Swarm `deploy.mode`
 
 When using Docker Swarm, you can configure the deploy mode for scheduled jobs using the `deploy.mode` field in your docker compose file.
