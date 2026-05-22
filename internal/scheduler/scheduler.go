@@ -366,7 +366,7 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 
 		fingerprint := getScheduleFingerprint(cfg)
 
-		deploymentID, deploymentAt := getJobDeploymentIdentity(job.labels)
+		deploymentID, _ := getJobDeploymentIdentity(job.labels)
 
 		prevState, ok := s.states[job.key]
 		state := prevState
@@ -400,28 +400,9 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 			)
 		}
 
-		runOnDeployNow := shouldTriggerIntervalDeployRun(cfg.Schedule, deploymentID, deploymentAt, s.startedAt, ok, prevState.deployment)
-
 		if state.deployment != deploymentID {
 			state.deployment = deploymentID
 			s.states[job.key] = state
-		}
-
-		if runOnDeployNow {
-			if shouldStopContainerForOneOffDeployRun(job, state.cfg) {
-				if err := s.stopContainerIfRunning(context.WithoutCancel(ctx), job.id); err != nil {
-					s.log.Warn("failed to stop base container before one_off deploy run",
-						slog.String("job", job.name),
-						slog.String("container_id", job.id),
-						logger.ErrAttr(err),
-					)
-				}
-			}
-
-			state.lastRun = now
-			s.states[job.key] = state
-
-			s.triggerRun(context.WithoutCancel(ctx), job, state.cfg, now)
 		}
 
 		if !now.Before(state.nextRun) {
@@ -776,6 +757,7 @@ func getScheduleFingerprint(cfg docker.JobScheduleConfig) string {
 	}, "|")
 }
 
+// getJobDeploymentIdentity returns a string identifying the deployment of the job and its timestamp.
 func getJobDeploymentIdentity(labels map[string]string) (string, time.Time) {
 	deploymentID := strings.TrimSpace(labels[docker.DocoCDLabels.Deployment.Timestamp])
 	if deploymentID == "" {
@@ -794,34 +776,6 @@ func getJobDeploymentIdentity(labels map[string]string) (string, time.Time) {
 	return deploymentID, *deploymentAt
 }
 
-func shouldTriggerIntervalDeployRun(
-	schedule string,
-	deploymentID string,
-	deploymentAt time.Time,
-	schedulerStartedAt time.Time,
-	stateExists bool,
-	previousDeploymentID string,
-) bool {
-	if !docker.IsJobScheduleInterval(schedule) || deploymentID == "" || deploymentAt.IsZero() {
-		return false
-	}
-
-	// Deployment timestamps are stored with second precision, while scheduler startup keeps nanoseconds.
-	// When startup has sub-second precision, treat timestamps from the same second as potentially new.
-	if schedulerStartedAt.Nanosecond() == 0 {
-		if !deploymentAt.After(schedulerStartedAt) {
-			return false
-		}
-	} else if deploymentAt.Before(schedulerStartedAt.Truncate(time.Second)) {
-		return false
-	}
-
-	if stateExists && previousDeploymentID == deploymentID {
-		return false
-	}
-
-	return true
-}
 
 func shouldStopContainerForOneOffDeployRun(job scheduledJob, cfg docker.JobScheduleConfig) bool {
 	return job.mode == scheduledJobModeContainer && cfg.ExecutionMode == docker.JobExecutionModeOneOff
