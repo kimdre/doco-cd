@@ -776,29 +776,8 @@ func getJobDeploymentIdentity(labels map[string]string) (string, time.Time) {
 	return deploymentID, *deploymentAt
 }
 
-
 func shouldStopContainerForOneOffDeployRun(job scheduledJob, cfg docker.JobScheduleConfig) bool {
 	return job.mode == scheduledJobModeContainer && cfg.ExecutionMode == docker.JobExecutionModeOneOff
-}
-
-func (s *scheduler) stopContainerIfRunning(ctx context.Context, containerID string) error {
-	inspectResult, err := s.dockerCli.Client().ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
-	if err != nil {
-		return fmt.Errorf("inspect container %s: %w", containerID, err)
-	}
-
-	if inspectResult.Container.State == nil || !inspectResult.Container.State.Running {
-		return nil
-	}
-
-	timeout := 1
-
-	_, err = s.dockerCli.Client().ContainerStop(ctx, containerID, client.ContainerStopOptions{Timeout: &timeout})
-	if err != nil {
-		return fmt.Errorf("stop container %s: %w", containerID, err)
-	}
-
-	return nil
 }
 
 func getScheduledRunMetricLabels(job scheduledJob, cfg docker.JobScheduleConfig, stackName string) []string {

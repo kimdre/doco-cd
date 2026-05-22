@@ -243,7 +243,6 @@ func TestGetJobDeploymentIdentity(t *testing.T) {
 	}
 }
 
-
 func TestShouldStopContainerForOneOffDeployRun(t *testing.T) {
 	t.Parallel()
 
