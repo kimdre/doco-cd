@@ -1341,13 +1341,14 @@ func getStartServicesForDeploy(project *types.Project) ([]string, error) {
 
 	for serviceName, svc := range project.Services {
 		labels := getServiceSchedulerLabels(svc)
+		_, hasScheduleLabel := labels[docoCDJobLabelNames.JobEnabled]
 
 		_, enabled, err := ParseJobScheduleLabels(labels)
 		if err != nil {
 			return nil, fmt.Errorf("service %s: %w", serviceName, err)
 		}
 
-		if enabled {
+		if enabled || hasScheduleLabel {
 			continue
 		}
 
