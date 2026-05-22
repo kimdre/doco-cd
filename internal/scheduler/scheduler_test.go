@@ -222,3 +222,64 @@ func TestParseJobScheduleExpression_NextRunUsesLocalTimezone_Berlin(t *testing.T
 		t.Fatalf("schedule.Next() = %s, want %s", got.Format(time.RFC3339), want.Format(time.RFC3339))
 	}
 }
+
+func TestGetJobDeploymentIdentity(t *testing.T) {
+	t.Parallel()
+
+	timestamp := "2026-05-12T12:30:00Z"
+	id, at := getJobDeploymentIdentity(map[string]string{
+		docker.DocoCDLabels.Deployment.Timestamp:   timestamp,
+		docker.DocoCDLabels.Deployment.ComposeHash: "compose-sha",
+		docker.DocoCDLabels.Deployment.CommitSHA:   "commit-sha",
+	})
+
+	if id != timestamp {
+		t.Fatalf("getJobDeploymentIdentity() id=%q want=%q", id, timestamp)
+	}
+
+	wantAt := time.Date(2026, time.May, 12, 12, 30, 0, 0, time.UTC)
+	if !at.Equal(wantAt) {
+		t.Fatalf("getJobDeploymentIdentity() at=%s want=%s", at.Format(time.RFC3339), wantAt.Format(time.RFC3339))
+	}
+}
+
+func TestShouldStopContainerForOneOffDeployRun(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		job  scheduledJob
+		cfg  docker.JobScheduleConfig
+		want bool
+	}{
+		{
+			name: "container one_off",
+			job:  scheduledJob{mode: scheduledJobModeContainer},
+			cfg:  docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff},
+			want: true,
+		},
+		{
+			name: "container restart",
+			job:  scheduledJob{mode: scheduledJobModeContainer},
+			cfg:  docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeRestart},
+			want: false,
+		},
+		{
+			name: "swarm one_off",
+			job:  scheduledJob{mode: scheduledjobModeSwarm},
+			cfg:  docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := shouldStopContainerForOneOffDeployRun(tt.job, tt.cfg)
+			if got != tt.want {
+				t.Fatalf("shouldStopContainerForOneOffDeployRun()=%v want=%v", got, tt.want)
+			}
+		})
+	}
+}

@@ -143,14 +143,15 @@ be created for each scheduled run and removed after completion.
 
 Use the following service labels to configure scheduled jobs:
 
-| Label                        | Type    | Description                                                                                               | Default   |
-|------------------------------|---------|-----------------------------------------------------------------------------------------------------------|-----------|
-| `cd.doco.job.enabled`        | boolean | Enable scheduling for this service/container                                                              | `false`   |
-| `cd.doco.job.schedule`       | string  | [Schedule format](#schedule-formats) to use                                                               |           |
-| `cd.doco.job.execution_mode` | string  | [`restart`](#restart) (default behavior) or [`one_off`](#one_off) (ephemeral execution)                   | `restart` |
-| `cd.doco.job.skip_running`   | boolean | Do not run the job if a previous scheduled run is still active/running                                    | `false`   |
-| `cd.doco.job.notify_on`      | string  | [Notification](Notifications.md) behavior for scheduled runs: `none`, `success`, `failure`, `all`         | `all`     |
-| `cd.doco.job.swarm.replicas` | integer | Number of completions/concurrency for swarm one-off jobs in `replicated` [deploy mode](#swarm-deploymode) | `1`       |
+| Label                           | Type    | Description                                                                                                                                                                 | Default   |
+|---------------------------------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| `cd.doco.job.enabled`           | boolean | Enable scheduling for this service/container                                                                                                                                | `false`   |
+| `cd.doco.job.schedule`          | string  | [Schedule format](#schedule-formats) to use                                                                                                                                 |           |
+| `cd.doco.job.wait_running_jobs` | boolean | Override deploy-config-wide [`wait_running_jobs`](../Deploy-Settings.md#wait-for-running-scheduled-jobs-before-deployment) behavior for this job service during deployments | (inherit) |
+| `cd.doco.job.execution_mode`    | string  | [`restart`](#restart) (default behavior) or [`one_off`](#one_off) (ephemeral execution)                                                                                     | `restart` |
+| `cd.doco.job.skip_running`      | boolean | Do not run the job if a previous scheduled run is still active/running                                                                                                      | `false`   |
+| `cd.doco.job.notify_on`         | string  | [Notification](Notifications.md) behavior for scheduled runs: `none`, `success`, `failure`, `all`                                                                           | `all`     |
+| `cd.doco.job.swarm.replicas`    | integer | Number of completions/concurrency for swarm one-off jobs in `replicated` [deploy mode](#swarm-deploymode)                                                                   | `1`       |
 
 ### Swarm `deploy.mode`
 

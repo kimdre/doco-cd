@@ -194,6 +194,20 @@ func cloneDeployConfigsWithForcedRecreate(dcs []*deployConfig.Config) []*deployC
 	return reconcileDCs
 }
 
+func shouldIgnoreRestartReconciliationForScheduledJob(action string, labels map[string]string) bool {
+	action = normalizeReconciliationEventAction(action)
+	if action != "stop" {
+		return false
+	}
+
+	_, enabled, err := docker.ParseJobScheduleLabels(labels)
+	if err != nil || !enabled {
+		return false
+	}
+
+	return true
+}
+
 func normalizeReconciliationEventAction(action string) string {
 	action = strings.ToLower(strings.TrimSpace(action))
 	action = strings.Join(strings.Fields(action), " ")
