@@ -1,5 +1,3 @@
-//go:build !nobitwarden
-
 package bitwardensecretsmanager
 
 import (
