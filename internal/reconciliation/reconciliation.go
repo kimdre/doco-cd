@@ -239,6 +239,16 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		return
 	}
 
+	if shouldIgnoreRestartReconciliationForScheduledJob(action, event.Actor.Attributes) {
+		jobLog.Debug("skipping reconciliation for scheduled restart-mode job completion",
+			slog.String("event", action),
+			slog.String("stack", stackName),
+			slog.String("container_name", event.Actor.Attributes["name"]),
+		)
+
+		return
+	}
+
 	stackID := j.info.metadata.Repository + "/" + stackName
 	stackLock := lock.GetRepoLock(stackID)
 

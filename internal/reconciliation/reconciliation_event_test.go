@@ -219,6 +219,72 @@ func TestIsRestartReconciliationAction(t *testing.T) {
 	}
 }
 
+func TestShouldIgnoreRestartReconciliationForScheduledJob(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		action string
+		labels map[string]string
+		want   bool
+	}{
+		{
+			name:   "stop event for scheduled restart-mode job",
+			action: "stop",
+			labels: map[string]string{
+				docker.DocoCDJobLabels.JobEnabled:  "true",
+				docker.DocoCDJobLabels.JobSchedule: "@every 5m",
+			},
+			want: true,
+		},
+		{
+			name:   "stop event for one-off job",
+			action: "stop",
+			labels: map[string]string{
+				docker.DocoCDJobLabels.JobEnabled:       "true",
+				docker.DocoCDJobLabels.JobSchedule:      "@every 5m",
+				docker.DocoCDJobLabels.JobExecutionMode: string(docker.JobExecutionModeOneOff),
+			},
+			want: true,
+		},
+		{
+			name:   "non-stop event for scheduled restart-mode job",
+			action: "unhealthy",
+			labels: map[string]string{
+				docker.DocoCDJobLabels.JobEnabled:  "true",
+				docker.DocoCDJobLabels.JobSchedule: "@every 5m",
+			},
+			want: false,
+		},
+		{
+			name:   "invalid job labels",
+			action: "stop",
+			labels: map[string]string{
+				docker.DocoCDJobLabels.JobEnabled:  "true",
+				docker.DocoCDJobLabels.JobSchedule: "not-a-schedule",
+			},
+			want: false,
+		},
+		{
+			name:   "non-job container",
+			action: "stop",
+			labels: map[string]string{},
+			want:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := shouldIgnoreRestartReconciliationForScheduledJob(tt.action, tt.labels)
+			if got != tt.want {
+				t.Fatalf("shouldIgnoreRestartReconciliationForScheduledJob() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIsRestartFollowupAction(t *testing.T) {
 	t.Parallel()
 

@@ -83,6 +83,7 @@ const (
 var docoCDJobLabelNames = struct {
 	JobEnabled       string // Enable scheduling for a service/container
 	JobSchedule      string // Schedule of the job in 5-field cron format or @every duration
+	JobWaitRunning   string // Override if deployment waits for this running job based on wait_running_jobs
 	JobSkipRunning   string // Skip a schedule trigger when a previous run is still in progress
 	JobExecutionMode string // Defines if a run restarts/reruns the job or starts an ephemeral one-off execution
 	JobEphemeral     string // Marks a runtime-created scheduler one-off target that should be ignored as drift
@@ -93,6 +94,7 @@ var docoCDJobLabelNames = struct {
 }{
 	JobEnabled:       "cd.doco.job.enabled",
 	JobSchedule:      "cd.doco.job.schedule",
+	JobWaitRunning:   "cd.doco.job.wait_running_jobs",
 	JobSkipRunning:   "cd.doco.job.skip_running",
 	JobExecutionMode: "cd.doco.job.execution_mode",
 	JobEphemeral:     "cd.doco.job.ephemeral",
