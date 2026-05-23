@@ -228,6 +228,7 @@ auto_discovery:
 For each auto-discovered compose directory, doco-cd also checks for a local [deployment config file](#deployment-configuration-file) in that directory.
 
 If a nested config file exists, doco-cd merges it on top of the discovered deployment config.
+When using [custom webhook targets](Endpoints/Webhook-Listener.md#with-custom-target), nested config files always use the standard [naming convention](#deployment-configuration-file) (`.doco-cd.y(a)ml`), not the custom target name.
 
 !!! warning "Nested `.doco-cd.yml` files must contain exactly one YAML document."
     If a nested file contains multiple documents (`#!yaml ---`), auto-discovery fails for that run with an error.

@@ -10,6 +10,19 @@ tags:
 
 Doco-CD supports the encryption of sensitive data in your doco-cd app config and deployment files with [SOPS](https://getsops.io/).
 
+## How doco-cd detects and decrypts encrypted files
+
+When a deployment is triggered, doco-cd checks the following files for SOPS encryption and decrypts them in place if needed:
+
+- Compose files and env files used for variable interpolation (configured via `compose_files` and `env_files` in the [deployment configuration `.doco-cd.y(a)ml`](../Deploy-Settings.md))
+- All file references inside the compose project: `configs`, `secrets`, `env_file`, bind-mounted volumes, and build files (`dockerfile`, `build.secrets`)
+
+For bind-mounted directories, all files inside are scanned recursively. Files and directories matched by `.gitignore` are skipped. The following directories are always excluded: `.git`, `.github`, `.vscode`, `.idea`, and `node_modules`.
+
+Detection is content-based: a file is treated as SOPS-encrypted if its content contains both `sops` and `ENC[`. No special file naming convention is required.
+
+The format used for decryption is determined by file extension:
+
 ## Supported file formats
 
 SOPS supports files in the following formats:
@@ -21,6 +34,8 @@ SOPS supports files in the following formats:
 | Dotenv      | `.env`                                              | `example.env`                              |
 | INI         | `.ini`                                              | `example.ini`                              |
 | Binary/Text | _any other or none_</br>**Fallback/Default format** | `example.txt`</br>`example` (no extension) |
+
+Getting the extension wrong won't prevent detection, but it will cause decryption to fail, so make sure encrypted files have the correct extension for their format.
 
 ## Usage with SOPS and age
 
