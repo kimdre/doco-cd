@@ -111,26 +111,25 @@ webhook:
   		--data @cmd/doco-cd/testdata/github_payload.json \
   		http://localhost/v1/webhook
 
-BUF?=buf
 BUF_BREAKING_AGAINST?=.git#branch=main
 
 buf: buf-lint buf-generate
 
 buf-lint:
 	@echo "Linting protobuf definitions..."
-	@$(BUF) lint
+	@go tool buf lint
 
 buf-format:
 	@echo "Formatting protobuf definitions..."
-	@$(BUF) format -w
+	@go tool buf format -w
 
 buf-generate:
 	@echo "Generating protobuf code..."
-	@$(BUF) generate
+	@go tool buf generate
 
 buf-breaking:
 	@echo "Checking for breaking protobuf changes against $(BUF_BREAKING_AGAINST)..."
-	@$(BUF) breaking --against '$(BUF_BREAKING_AGAINST)'
+	@go tool buf breaking --against '$(BUF_BREAKING_AGAINST)'
 
 IMAGE_REPO?=ghcr.io/kimdre/doco-cd
 APP_VERSION?=dev

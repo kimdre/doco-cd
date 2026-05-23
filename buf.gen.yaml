@@ -1,10 +1,10 @@
 version: v2
 plugins:
-  - local: protoc-gen-go
+  - local: ["go", "tool", "google.golang.org/protobuf/cmd/protoc-gen-go"]
     out: api
     opt:
       - paths=source_relative
-  - local: protoc-gen-go-grpc
+  - local: ["go", "tool", "google.golang.org/grpc/cmd/protoc-gen-go-grpc"]
     out: api
     opt:
       - paths=source_relative
