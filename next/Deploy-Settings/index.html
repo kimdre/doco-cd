@@ -3219,7 +3219,8 @@ This is a safer default to prevent accidental data loss (e.g., databases). Set <
 </details>
 <h4 id="nested-config-overrides">Nested config overrides<a class="headerlink" href="#nested-config-overrides" title="Permanent link">&para;</a></h4>
 <p>For each auto-discovered compose directory, doco-cd also checks for a local <a data-preview="" href="#deployment-configuration-file">deployment config file</a> in that directory.</p>
-<p>If a nested config file exists, doco-cd merges it on top of the discovered deployment config.</p>
+<p>If a nested config file exists, doco-cd merges it on top of the discovered deployment config.
+When using <a data-preview="" href="../Endpoints/Webhook-Listener/#with-custom-target">custom webhook targets</a>, nested config files always use the standard <a data-preview="" href="#deployment-configuration-file">naming convention</a> (<code>.doco-cd.y(a)ml</code>), not the custom target name.</p>
 <div class="admonition warning">
 <p class="admonition-title">Nested <code>.doco-cd.yml</code> files must contain exactly one YAML document.</p>
 <p>If a nested file contains multiple documents (<code class="language-yaml highlight"><span class="nn">---</span></code>), auto-discovery fails for that run with an error.</p>

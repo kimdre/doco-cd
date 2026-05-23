@@ -1127,6 +1127,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#how-doco-cd-detects-and-decrypts-encrypted-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        How doco-cd detects and decrypts encrypted files
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#supported-file-formats" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2299,6 +2310,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#how-doco-cd-detects-and-decrypts-encrypted-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        How doco-cd detects and decrypts encrypted files
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#supported-file-formats" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2476,6 +2498,15 @@
 
 <h1 id="encryption-with-sops">Encryption with SOPS<a class="headerlink" href="#encryption-with-sops" title="Permanent link">&para;</a></h1>
 <p>Doco-CD supports the encryption of sensitive data in your doco-cd app config and deployment files with <a href="https://getsops.io/">SOPS</a>.</p>
+<h2 id="how-doco-cd-detects-and-decrypts-encrypted-files">How doco-cd detects and decrypts encrypted files<a class="headerlink" href="#how-doco-cd-detects-and-decrypts-encrypted-files" title="Permanent link">&para;</a></h2>
+<p>When a deployment is triggered, doco-cd checks the following files for SOPS encryption and decrypts them in place if needed:</p>
+<ul>
+<li>Compose files and env files used for variable interpolation (configured via <code>compose_files</code> and <code>env_files</code> in the <a data-preview="" href="../../Deploy-Settings/">deployment configuration <code>.doco-cd.y(a)ml</code></a>)</li>
+<li>All file references inside the compose project: <code>configs</code>, <code>secrets</code>, <code>env_file</code>, bind-mounted volumes, and build files (<code>dockerfile</code>, <code>build.secrets</code>)</li>
+</ul>
+<p>For bind-mounted directories, all files inside are scanned recursively. Files and directories matched by <code>.gitignore</code> are skipped. The following directories are always excluded: <code>.git</code>, <code>.github</code>, <code>.vscode</code>, <code>.idea</code>, and <code>node_modules</code>.</p>
+<p>Detection is content-based: a file is treated as SOPS-encrypted if its content contains both <code>sops</code> and <code>ENC[</code>. No special file naming convention is required.</p>
+<p>The format used for decryption is determined by file extension:</p>
 <h2 id="supported-file-formats">Supported file formats<a class="headerlink" href="#supported-file-formats" title="Permanent link">&para;</a></h2>
 <p>SOPS supports files in the following formats:</p>
 <table>
@@ -2514,6 +2545,7 @@
 </tr>
 </tbody>
 </table>
+<p>Getting the extension wrong won't prevent detection, but it will cause decryption to fail, so make sure encrypted files have the correct extension for their format.</p>
 <h2 id="usage-with-sops-and-age">Usage with SOPS and age<a class="headerlink" href="#usage-with-sops-and-age" title="Permanent link">&para;</a></h2>
 <div class="admonition tip">
 <p class="admonition-title">I recommend to use <a href="https://getsops.io/docs/#encrypting-using-age">SOPS with age</a> for encrypting your deployment files.</p>
