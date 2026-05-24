@@ -31,12 +31,6 @@
         <loc>https://doco.cd/next/Poll-Settings/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/next/Advanced/Swarm-Mode/</loc>
-      </url>
-      <url>
-        <loc>https://doco.cd/next/Advanced/Private-Container-Registries/</loc>
-      </url>
-      <url>
         <loc>https://doco.cd/next/Advanced/Encryption/</loc>
       </url>
       <url>
@@ -67,6 +61,9 @@
         <loc>https://doco.cd/next/External-Secrets/Webhook/</loc>
       </url>
       <url>
+        <loc>https://doco.cd/next/Advanced/Job-Scheduling/</loc>
+      </url>
+      <url>
         <loc>https://doco.cd/next/Advanced/Notifications/</loc>
       </url>
       <url>
@@ -85,7 +82,10 @@
         <loc>https://doco.cd/next/Advanced/Pre-Post-Deployment-Scripts/</loc>
       </url>
       <url>
-        <loc>https://doco.cd/next/Advanced/Job-Scheduling/</loc>
+        <loc>https://doco.cd/next/Advanced/Private-Container-Registries/</loc>
+      </url>
+      <url>
+        <loc>https://doco.cd/next/Advanced/Swarm-Mode/</loc>
       </url>
       <url>
         <loc>https://doco.cd/next/Advanced/Tips-and-Tricks/</loc>
