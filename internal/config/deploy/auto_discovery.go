@@ -9,10 +9,15 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
+	"strconv"
 	"strings"
+	"sync"
 
+	"github.com/go-git/go-git/v5"
 	"go.yaml.in/yaml/v3"
 
+	"github.com/kimdre/doco-cd/internal/filesystem"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
 
@@ -23,6 +28,13 @@ type AutoDiscoveryConfig struct {
 	Delete        bool `yaml:"delete" json:"delete" default:"true"`                  // Delete removes obsolete auto-discovered deployments that are no longer present in the repository
 	RemoveVolumes bool `yaml:"remove_volumes" json:"remove_volumes" default:"false"` // RemoveVolumes removes the volumes of an auto-discovered deployment when it is deleted
 	RemoveImages  bool `yaml:"remove_images" json:"remove_images" default:"true"`    // RemoveImages removes the images of an auto-discovered deployment when it is deleted
+}
+
+var autoDiscoveryCache = struct {
+	mu      sync.RWMutex
+	entries map[string][]*Config
+}{
+	entries: map[string][]*Config{},
 }
 
 func (c *AutoDiscoveryConfig) UnmarshalYAML(node *yaml.Node) error {
@@ -103,6 +115,22 @@ func expandInlineAutoDiscoverConfigs(repoRoot string, deployments []*Config) ([]
 // repoRoot is the absolute path to the repository root.
 // baseConfig.WorkingDirectory is treated as repo-root-relative.
 func autoDiscoverDeployments(repoRoot string, baseConfig *Config) ([]*Config, error) {
+	repositoryLabel := filepath.Base(filepath.Clean(repoRoot))
+
+	cacheKey, cacheable := autoDiscoveryCacheKey(repoRoot, baseConfig)
+	if cacheable {
+		autoDiscoveryCache.mu.RLock()
+		cached, ok := autoDiscoveryCache.entries[cacheKey]
+		autoDiscoveryCache.mu.RUnlock()
+
+		if ok {
+			recordAutoDiscoveryCacheLookup(repositoryLabel, "hit")
+			return cloneConfigSlice(cached), nil
+		}
+
+		recordAutoDiscoveryCacheLookup(repositoryLabel, "miss")
+	}
+
 	var configs []*Config
 
 	searchPath := filepath.Join(repoRoot, baseConfig.WorkingDirectory)
@@ -128,62 +156,73 @@ func autoDiscoverDeployments(repoRoot string, baseConfig *Config) ([]*Config, er
 			return filepath.SkipDir
 		}
 
+		if d.IsDir() {
+			if filesystem.IsIgnoredDir(d.Name()) && p != searchPath {
+				return filepath.SkipDir
+			}
+		}
+
 		if !d.IsDir() {
 			return nil
 		}
 
-		// Check if the directory contains any docker-compose files
-		for _, composeFile := range baseConfig.ComposeFiles {
-			composeFilePath := filepath.Join(p, composeFile)
-			if _, err = os.Stat(composeFilePath); err == nil {
-				c := &Config{}
-				deepCopy(baseConfig, c)
-
-				stackDirName := filepath.Base(p)    // Get the stack name from the directory name where the compose file is located
-				repoName := filepath.Base(repoRoot) // Get the repository name from the repo root path
-
-				if baseConfig.Name != "" && stackDirName == repoName {
-					c.Name = baseConfig.Name
-				} else {
-					c.Name = stackDirName
-				}
-
-				c.WorkingDirectory, err = filepath.Rel(repoRoot, p)
-				if err != nil {
-					return err
-				}
-
-				// Check for a nested .doco-cd config file alongside the compose file and
-				// merge any overridable fields from it on top of the base config copy.
-				for _, cfgName := range DefaultDeploymentConfigFileNames {
-					localCfgPath := filepath.Join(p, cfgName)
-					if _, statErr := os.Stat(localCfgPath); statErr != nil {
-						continue
-					}
-
-					localConfigs, parseErr := GetConfigFromYAML(localCfgPath, false)
-					if parseErr != nil {
-						return fmt.Errorf("failed to parse nested .doco-cd config at %s: %w", localCfgPath, parseErr)
-					}
-
-					if len(localConfigs) > 1 {
-						return fmt.Errorf("%w: %s contains %d documents", ErrMultipleYAMLDocuments, localCfgPath, len(localConfigs))
-					}
-
-					mergeConfig(c, localConfigs[0])
-
-					break // use first found config file name (.yaml preferred over .yml)
-				}
-
-				if err = c.Validate(); err != nil {
-					return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
-				}
-
-				configs = append(configs, c)
-
-				break
-			}
+		// Read directory entries once and build a filename set for O(1) compose-file membership checks,
+		// avoiding one os.Stat syscall per candidate compose filename.
+		dirEntries, err := os.ReadDir(p)
+		if err != nil {
+			return err
 		}
+
+		if !dirContainsAnyComposeFile(dirEntries, baseConfig.ComposeFiles) {
+			return nil
+		}
+
+		c := &Config{}
+		deepCopy(baseConfig, c)
+
+		stackDirName := filepath.Base(p)    // Get the stack name from the directory name where the compose file is located
+		repoName := filepath.Base(repoRoot) // Get the repository name from the repo root path
+
+		if baseConfig.Name != "" && stackDirName == repoName {
+			c.Name = baseConfig.Name
+		} else {
+			c.Name = stackDirName
+		}
+
+		c.WorkingDirectory, err = filepath.Rel(repoRoot, p)
+		if err != nil {
+			return err
+		}
+
+		// Check for a nested .doco-cd config file alongside the compose file and
+		// merge any overridable fields from it on top of the base config copy.
+		// Reuse the already-read dirEntries instead of issuing additional Stat calls.
+		for _, cfgName := range DefaultDeploymentConfigFileNames {
+			if !dirHasFile(dirEntries, cfgName) {
+				continue
+			}
+
+			localCfgPath := filepath.Join(p, cfgName)
+
+			localConfigs, parseErr := GetConfigFromYAML(localCfgPath, false)
+			if parseErr != nil {
+				return fmt.Errorf("failed to parse nested .doco-cd config at %s: %w", localCfgPath, parseErr)
+			}
+
+			if len(localConfigs) > 1 {
+				return fmt.Errorf("%w: %s contains %d documents", ErrMultipleYAMLDocuments, localCfgPath, len(localConfigs))
+			}
+
+			mergeConfig(c, localConfigs[0])
+
+			break // use first found config file name (.yaml preferred over .yml)
+		}
+
+		if err = c.Validate(); err != nil {
+			return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+		}
+
+		configs = append(configs, c)
 
 		return nil
 	})
@@ -191,7 +230,98 @@ func autoDiscoverDeployments(repoRoot string, baseConfig *Config) ([]*Config, er
 		return nil, err
 	}
 
+	if cacheable {
+		autoDiscoveryCache.mu.Lock()
+		autoDiscoveryCache.entries[cacheKey] = cloneConfigSlice(configs)
+		autoDiscoveryCache.mu.Unlock()
+	}
+
 	return configs, nil
+}
+
+func autoDiscoveryCacheKey(repoRoot string, baseConfig *Config) (string, bool) {
+	repo, err := git.PlainOpen(repoRoot)
+	if err != nil {
+		return "", false
+	}
+
+	head, err := repo.Head()
+	if err != nil {
+		return "", false
+	}
+
+	composeFiles := append([]string(nil), baseConfig.ComposeFiles...)
+	sort.Strings(composeFiles)
+
+	return strings.Join([]string{
+		repoRoot,
+		head.Hash().String(),
+		baseConfig.WorkingDirectory,
+		strings.Join(composeFiles, "\x00"),
+		strconv.Itoa(baseConfig.AutoDiscovery.ScanDepth),
+		strconv.FormatBool(baseConfig.AutoDiscovery.Delete),
+		strconv.FormatBool(baseConfig.AutoDiscovery.RemoveVolumes),
+		strconv.FormatBool(baseConfig.AutoDiscovery.RemoveImages),
+		baseConfig.Name,
+	}, "|"), true
+}
+
+func cloneConfigSlice(configs []*Config) []*Config {
+	if configs == nil {
+		return nil
+	}
+
+	cloned := make([]*Config, 0, len(configs))
+
+	for _, cfg := range configs {
+		if cfg == nil {
+			cloned = append(cloned, nil)
+			continue
+		}
+
+		copyCfg := &Config{}
+		deepCopy(cfg, copyCfg)
+		cloned = append(cloned, copyCfg)
+	}
+
+	return cloned
+}
+
+// dirContainsAnyComposeFile returns true when at least one of the given compose
+// filenames is present as a regular file in the pre-read directory entries.
+// Using the already-read entries avoids one os.Stat syscall per candidate name.
+func dirContainsAnyComposeFile(entries []os.DirEntry, composeFiles []string) bool {
+	if len(entries) == 0 || len(composeFiles) == 0 {
+		return false
+	}
+
+	fileNames := make(map[string]struct{}, len(entries))
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			fileNames[entry.Name()] = struct{}{}
+		}
+	}
+
+	for _, composeFile := range composeFiles {
+		if _, ok := fileNames[composeFile]; ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+// dirHasFile returns true when the given filename exists as a non-directory
+// entry in the pre-read slice.
+func dirHasFile(entries []os.DirEntry, name string) bool {
+	for _, entry := range entries {
+		if !entry.IsDir() && entry.Name() == name {
+			return true
+		}
+	}
+
+	return false
 }
 
 // mergeConfig merges Config fields from override into base, but only for fields
@@ -281,6 +411,11 @@ func deepCopy(src, dst *Config) {
 		maps.Copy(dst.BuildOpts.Args, src.BuildOpts.Args)
 	}
 
+	if src.Environment != nil {
+		dst.Environment = make(map[string]string)
+		maps.Copy(dst.Environment, src.Environment)
+	}
+
 	if src.Profiles != nil {
 		dst.Profiles = make([]string, len(src.Profiles))
 		copy(dst.Profiles, src.Profiles)
@@ -289,5 +424,10 @@ func deepCopy(src, dst *Config) {
 	if src.ExternalSecrets != nil {
 		dst.ExternalSecrets = make(map[string]secrettypes.ExternalSecretRef)
 		maps.Copy(dst.ExternalSecrets, src.ExternalSecrets)
+	}
+
+	if src.Internal.Environment != nil {
+		dst.Internal.Environment = make(map[string]string)
+		maps.Copy(dst.Internal.Environment, src.Internal.Environment)
 	}
 }

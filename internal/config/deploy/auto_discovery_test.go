@@ -7,6 +7,10 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
+
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
@@ -505,4 +509,164 @@ func TestAutoDiscoverDeployments_NoNestedConfig_BackwardsCompatible(t *testing.T
 	if configs[0].Name != "myservice" {
 		t.Errorf("expected name 'myservice', got %q", configs[0].Name)
 	}
+}
+
+func TestAutoDiscoverDeployments_SkipHeavyDirectories(t *testing.T) {
+	t.Parallel()
+
+	resetAutoDiscoveryCache()
+
+	repoRoot := t.TempDir()
+
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".git", "objects"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(repoRoot, "node_modules", "pkg"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(repoRoot, "service1"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := createTestFile(t, filepath.Join(repoRoot, ".git", "compose.yaml"), "services:\n  gitservice:\n    image: busybox"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := createTestFile(t, filepath.Join(repoRoot, "node_modules", "pkg", "compose.yaml"), "services:\n  dep:\n    image: busybox"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := createTestFile(t, filepath.Join(repoRoot, "service1", "compose.yaml"), "services:\n  app:\n    image: nginx"); err != nil {
+		t.Fatal(err)
+	}
+
+	baseConfig := &Config{
+		WorkingDirectory: ".",
+		ComposeFiles:     []string{"compose.yaml"},
+		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
+	}
+
+	configs, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(configs) != 1 {
+		t.Fatalf("expected 1 discovered config, got %d", len(configs))
+	}
+
+	if configs[0].Name != "service1" {
+		t.Fatalf("expected discovered stack 'service1', got %q", configs[0].Name)
+	}
+}
+
+func TestAutoDiscoverDeployments_CacheKeyedByHeadAndSettings(t *testing.T) {
+	t.Parallel()
+
+	resetAutoDiscoveryCache()
+
+	repoRoot := t.TempDir()
+
+	repo, err := git.PlainInit(repoRoot, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	serviceDir := filepath.Join(repoRoot, "service1")
+	if err := os.MkdirAll(serviceDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := createTestFile(t, filepath.Join(serviceDir, "compose.yaml"), "services:\n  app:\n    image: nginx"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := commitAll(t, repo, "initial"); err != nil {
+		t.Fatal(err)
+	}
+
+	baseConfig := &Config{
+		WorkingDirectory: ".",
+		ComposeFiles:     []string{"compose.yaml"},
+		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
+	}
+
+	first, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(first) != 1 {
+		t.Fatalf("expected 1 discovered config on first scan, got %d", len(first))
+	}
+
+	if err := os.Remove(filepath.Join(serviceDir, "compose.yaml")); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(second) != 1 {
+		t.Fatalf("expected cached result with 1 config when HEAD is unchanged, got %d", len(second))
+	}
+
+	if err := createTestFile(t, filepath.Join(serviceDir, "compose.yaml"), "services:\n  app:\n    image: nginx:alpine"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(repoRoot, "service2"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := createTestFile(t, filepath.Join(repoRoot, "service2", "compose.yaml"), "services:\n  app2:\n    image: busybox"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := commitAll(t, repo, "add service2"); err != nil {
+		t.Fatal(err)
+	}
+
+	third, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(third) != 2 {
+		t.Fatalf("expected cache invalidation after HEAD change, got %d configs", len(third))
+	}
+}
+
+func resetAutoDiscoveryCache() {
+	autoDiscoveryCache.mu.Lock()
+	defer autoDiscoveryCache.mu.Unlock()
+
+	autoDiscoveryCache.entries = map[string][]*Config{}
+}
+
+func commitAll(t *testing.T, repo *git.Repository, message string) error {
+	t.Helper()
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		return err
+	}
+
+	if err := wt.AddGlob("."); err != nil {
+		return err
+	}
+
+	_, err = wt.Commit(message, &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  "test",
+			Email: "test@example.com",
+			When:  time.Now(),
+		},
+	})
+
+	return err
 }
