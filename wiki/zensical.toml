@@ -35,8 +35,6 @@ nav = [
     { "Poll Settings" = "Poll-Settings.md" },
   ] },
   { Advanced = [
-    { "Swarm Mode" = "Advanced/Swarm-Mode.md" },
-    { "Private Container Registries" = "Advanced/Private-Container-Registries.md" },
     { Encryption = "Advanced/Encryption.md" },
     { "External Secrets" = [
       "External-Secrets/index.md",
@@ -48,6 +46,7 @@ nav = [
       { Infisical = "External-Secrets/Infisical.md" },
       { OpenBao = "External-Secrets/Openbao.md" },
       { Webhook = "External-Secrets/Webhook.md" }] },
+    { "Job Scheduling / Cron Jobs" = "Advanced/Job-Scheduling.md" },
     { Notifications = "Advanced/Notifications.md" },
     { "OCI Artifacts" = [
       { "Artifact Usage" = "Advanced/OCI/Artifact-Usage.md" },
@@ -56,7 +55,8 @@ nav = [
       { "Webhooks" = "Advanced/OCI/Webhooks.md" },
     ] },
     { "Pre- / Post-Deployment Scripts" = "Advanced/Pre-Post-Deployment-Scripts.md" },
-    { "Job Scheduling / Cron Jobs" = "Advanced/Job-Scheduling.md" },
+    { "Private Container Registries" = "Advanced/Private-Container-Registries.md" },
+    { "Swarm Mode" = "Advanced/Swarm-Mode.md" },
     { "Tips & Tricks" = "Advanced/Tips-and-Tricks.md" },
   ] },
   { Reference = [
