@@ -138,12 +138,12 @@ func TestAssessStartedServiceStates_IgnoresExitedJobContainer(t *testing.T) {
 		},
 	}
 
-	allReady, waiting, err := assessStartedServiceStates(containers, set.New[string]("api"))
+	ready, waiting, err := assessStartedServiceStates(containers, set.New[string]("api"))
 	if err != nil {
 		t.Fatalf("assessStartedServiceStates() returned unexpected error: %v", err)
 	}
 
-	if !allReady {
+	if !ready {
 		t.Fatalf("expected all target services to be ready, waiting: %v", waiting)
 	}
 }

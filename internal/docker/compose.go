@@ -1496,12 +1496,12 @@ func waitForStartedServices(ctx context.Context, dockerCli command.Cli, projectN
 			return fmt.Errorf("failed to inspect project containers: %w", err)
 		}
 
-		allReady, waiting, stateErr := assessStartedServiceStates(containers, nonJobServices)
+		ready, waiting, stateErr := assessStartedServiceStates(containers, nonJobServices)
 		if stateErr != nil {
 			return stateErr
 		}
 
-		if allReady {
+		if ready {
 			return nil
 		}
 
