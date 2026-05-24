@@ -17,6 +17,9 @@ The Git Access Token is used to authenticate with your Git provider (GitHub, Git
     See [Git Authentication](Git-Settings.md#authentication) for more information on how doco-cd handles Git authentication
     and how to set up global and per-domain credentials.
 
+!!! info "Using GitHub Apps"
+    If you use GitHub, you can also authenticate using a [GitHub App](Git-Settings.md#github-apps).
+
 ## Git Providers
 
 === "GitHub"

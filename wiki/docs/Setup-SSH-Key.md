@@ -8,6 +8,9 @@ tags:
 
 This page shows how to set up SSH keys for your deployments.
 
+!!! info "Using GitHub Apps"
+    If you use GitHub, you can also authenticate using a [GitHub App](Git-Settings.md#github-apps).
+
 !!! quote "About SSH Keys"
     SSH keys are used to authenticate with your Git provider (GitHub, GitLab, Bitbucket, etc.) and to clone or fetch your repositories via SSH.
     You need to set up SSH keys if you use SSH URLs for your Git repositories (e.g. `git@github.com:kimdre/doco-cd.git`).
