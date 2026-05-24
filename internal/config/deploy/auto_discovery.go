@@ -196,7 +196,7 @@ func autoDiscoverDeployments(repoRoot string, baseConfig *Config) ([]*Config, er
 
 		// Check for a nested .doco-cd config file alongside the compose file and
 		// merge any overridable fields from it on top of the base config copy.
-		// Re-use the already-read dirEntries instead of issuing additional Stat calls.
+		// Reuse the already-read dirEntries instead of issuing additional Stat calls.
 		for _, cfgName := range DefaultDeploymentConfigFileNames {
 			if !dirHasFile(dirEntries, cfgName) {
 				continue
