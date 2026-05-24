@@ -385,6 +385,11 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		return err
 	}
 
+	jobServices, err := getJobServices(project)
+	if err != nil {
+		return err
+	}
+
 	err = service.Create(ctx, project, createOpts)
 	if err != nil {
 		return err
@@ -392,10 +397,9 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 
 	if len(startServices) > 0 {
 		startOpts := api.StartOptions{
-			Project:     project,
-			Wait:        true,
-			WaitTimeout: time.Duration(deployConfig.Timeout) * time.Second,
-			Services:    startServices,
+			Project:  project,
+			Wait:     false,
+			Services: startServices,
 		}
 
 		err = service.Start(ctx, project.Name, startOpts)
@@ -403,6 +407,12 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 			if !errors.Is(err, ErrNoContainerToStart) {
 				return err
 			}
+		}
+
+		err = waitForStartedServices(ctx, dockerCli, project.Name, startServices, jobServices,
+			time.Duration(deployConfig.Timeout)*time.Second)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -1360,6 +1370,151 @@ func getStartServicesForDeploy(project *types.Project) ([]string, error) {
 	}
 
 	return startServices, nil
+}
+
+func getJobServices(project *types.Project) (set.Set[string], error) {
+	jobServices := set.New[string]()
+
+	if project == nil {
+		return jobServices, nil
+	}
+
+	for serviceName, svc := range project.Services {
+		labels := getServiceSchedulerLabels(svc)
+
+		_, enabled, err := ParseJobScheduleLabels(labels)
+		if err != nil {
+			return nil, fmt.Errorf("service %s: %w", serviceName, err)
+		}
+
+		if !enabled {
+			continue
+		}
+
+		if svc.Name != "" {
+			jobServices.Add(svc.Name)
+		} else {
+			jobServices.Add(serviceName)
+		}
+	}
+
+	return jobServices, nil
+}
+
+func getNonJobServices(startServices []string, jobServices set.Set[string]) set.Set[string] {
+	nonJobServices := set.New[string]()
+
+	for _, serviceName := range startServices {
+		if jobServices.Contains(serviceName) {
+			continue
+		}
+
+		nonJobServices.Add(serviceName)
+	}
+
+	return nonJobServices
+}
+
+type serviceStartStatus struct {
+	running   bool
+	unhealthy bool
+	terminal  string
+}
+
+func assessStartedServiceStates(containers []api.ContainerSummary, targetServices set.Set[string]) (bool, []string, error) {
+	statusByService := make(map[string]serviceStartStatus, targetServices.Len())
+	for svc := range targetServices {
+		statusByService[svc] = serviceStartStatus{}
+	}
+
+	for _, cont := range containers {
+		serviceName := strings.TrimSpace(cont.Labels[api.ServiceLabel])
+		if serviceName == "" || !targetServices.Contains(serviceName) {
+			continue
+		}
+
+		status := statusByService[serviceName]
+
+		state := strings.ToLower(strings.TrimSpace(string(cont.State)))
+		health := strings.ToLower(strings.TrimSpace(string(cont.Health)))
+
+		switch state {
+		case "running":
+			switch health {
+			case "", "healthy":
+				status.running = true
+			case "unhealthy":
+				status.unhealthy = true
+			}
+		case "exited", "dead":
+			status.terminal = state
+		}
+
+		statusByService[serviceName] = status
+	}
+
+	waiting := make([]string, 0, len(statusByService))
+	for serviceName, status := range statusByService {
+		if status.unhealthy {
+			return false, nil, fmt.Errorf("service %s is unhealthy", serviceName)
+		}
+
+		if status.terminal != "" && !status.running {
+			return false, nil, fmt.Errorf("service %s has a %s container", serviceName, status.terminal)
+		}
+
+		if !status.running {
+			waiting = append(waiting, serviceName)
+		}
+	}
+
+	slices.Sort(waiting)
+
+	return len(waiting) == 0, waiting, nil
+}
+
+func waitForStartedServices(ctx context.Context, dockerCli command.Cli, projectName string,
+	startServices []string, jobServices set.Set[string], timeout time.Duration,
+) error {
+	nonJobServices := getNonJobServices(startServices, jobServices)
+	if nonJobServices.Len() == 0 {
+		return nil
+	}
+
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+
+	deadline := time.Now().Add(timeout)
+
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	for {
+		containers, err := GetProjectContainers(ctx, dockerCli, projectName)
+		if err != nil {
+			return fmt.Errorf("failed to inspect project containers: %w", err)
+		}
+
+		allReady, waiting, stateErr := assessStartedServiceStates(containers, nonJobServices)
+		if stateErr != nil {
+			return stateErr
+		}
+
+		if allReady {
+			return nil
+		}
+
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out after %s waiting for services to start: %s", timeout, strings.Join(waiting, ", "))
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 func getServiceSchedulerLabels(svc types.ServiceConfig) map[string]string {
