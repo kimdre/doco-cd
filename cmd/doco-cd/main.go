@@ -244,6 +244,9 @@ func run() error {
 
 	var wg sync.WaitGroup
 	defer wg.Wait()
+	// cancel the root context to signal all goroutines to stop,
+	// avoid wg.wait hang infinitely.
+	defer rootCancel()
 
 	graceful.SafeGo(&wg, log.Logger,
 		func() {
@@ -283,9 +286,6 @@ func run() error {
 	reconciliation.InitializeDeployerLimiter(c.MaxConcurrentDeployments)
 
 	if len(c.PollConfig) > 0 {
-		// cancel poll jobs
-		defer rootCancel()
-
 		log.Info(
 			"poll configuration found, scheduling polling jobs",
 			slog.Any("poll_config", logger.BuildSliceLogValue(c.PollConfig, "Deployments.Internal")),
