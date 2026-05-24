@@ -1,11 +1,20 @@
 package prometheus
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"github.com/prometheus/client_golang/prometheus"
+
+	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
+)
 
 func init() {
+	deployConfig.SetAutoDiscoveryCacheObserver(func(repository, result string) {
+		AutoDiscoveryCacheTotal.WithLabelValues(repository, result).Inc()
+	})
+
 	prometheus.MustRegister(
 		AppInfo,
 		PollTotal, PollErrors, PollDuration,
+		AutoDiscoveryCacheTotal,
 		WebhookRequestsTotal, WebhookErrorsTotal, WebhookDuration,
 		DeploymentsTotal, DeploymentErrorsTotal, DeploymentDuration,
 		DeploymentsActive, DeploymentsQueued,
@@ -41,6 +50,11 @@ var (
 		Help:      "Duration of polling operations in seconds",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"repository"})
+	AutoDiscoveryCacheTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: MetricsNamespace,
+		Name:      "auto_discovery_cache_total",
+		Help:      "Auto-discovery cache lookups by result",
+	}, []string{"repository", "result"})
 	WebhookRequestsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: MetricsNamespace,
 		Name:      "webhook_requests_total",

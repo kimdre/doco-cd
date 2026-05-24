@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/getsops/sops/v3/cmd/sops/formats"
@@ -16,16 +15,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/filesystem"
 )
-
-// IgnoreDirs is a list of directories that will be ignored when checking for SOPS-encrypted files.
-// These directories typically contain configuration or metadata files that are not relevant for encryption.
-var IgnoreDirs = []string{
-	".git",
-	".github",
-	".vscode",
-	".idea",
-	"node_modules",
-}
 
 var ErrSopsKeyNotSet = errors.New("SOPS secret key is not set")
 
@@ -102,7 +91,7 @@ func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
 		dirName := filepath.Base(filepath.Dir(path))
 
 		// Check if dirName is part of the paths to ignore
-		if slices.Contains(IgnoreDirs, dirName) {
+		if filesystem.IsIgnoredDir(dirName) {
 			return filepath.SkipDir
 		}
 
