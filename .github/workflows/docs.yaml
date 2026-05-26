@@ -54,6 +54,7 @@ jobs:
         run: |
           files=$(grep -Rl "0\.80\.0" ./wiki/docs)
           for file in $files; do
+            echo "Replacing version in $file with $VERSION"
             sed -i "s/0\.80\.0/$VERSION/g" "$file"
           done
 
