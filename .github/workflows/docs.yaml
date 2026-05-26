@@ -55,7 +55,6 @@ jobs:
           files=$(grep -Rl "0\.80\.0" ./wiki/docs)
           for file in $files; do
             sed -i "s/0\.80\.0/$VERSION/g" "$file"
-            git add "$file"
           done
 
       - name: Publish dev docs
