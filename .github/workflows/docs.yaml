@@ -54,8 +54,8 @@ jobs:
         run: |
           files=$(grep -Rl "0\.80\.0" ./wiki/docs)
           for file in $files; do
-            echo "Replacing version in $file with $VERSION"
-            sed -i "s/0\.80\.0/$VERSION/g" "$file"
+            echo "Replacing version in $file with ${VERSION#v}"
+            sed -i "s/0\.80\.0/${VERSION#v}/g" "$file"
           done
 
       - name: Publish dev docs
@@ -75,7 +75,7 @@ jobs:
       - name: Create symlinks to latest Sitemap.xml
         run: |
           git fetch origin "$DOCS_BRANCH"
-          git checkout $DOCS_BRANCH
+          git checkout -f $DOCS_BRANCH
           
           # Add a symlink to the latest sitemap.xml in the root of the gh-pages branch, pointing to the latest version's sitemap.xml
           ln -fs latest/sitemap.xml sitemap.xml
