@@ -47,6 +47,17 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "docs-deploy@doco.cd"
 
+      - name: Replace semvers in docs with current version
+        if: ${{ github.event_name == 'release' && !github.event.release.prerelease || (github.event_name == 'workflow_dispatch' && github.event.inputs.version) }}
+        env:
+          VERSION: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.version }}
+        run: |
+          files=$(grep -Rl "0\.80\.0" ./wiki/docs)
+          for file in $files; do
+            sed -i "s/0\.80\.0/$VERSION/g" "$file"
+            git add "$file"
+          done
+
       - name: Publish dev docs
         run: mike deploy --branch $DOCS_BRANCH --config-file ./wiki/zensical.toml --push next
 
