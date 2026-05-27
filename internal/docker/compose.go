@@ -1390,7 +1390,7 @@ func getServiceCompletedDependencies(project *types.Project) set.Set[string] {
 
 	for _, svc := range project.Services {
 		for depName, dep := range svc.DependsOn {
-			if strings.EqualFold(strings.TrimSpace(dep.Condition), types.ServiceConditionCompletedSuccessfully) {
+			if strings.TrimSpace(dep.Condition) == types.ServiceConditionCompletedSuccessfully {
 				completed.Add(depName)
 			}
 		}
