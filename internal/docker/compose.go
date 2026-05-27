@@ -55,8 +55,6 @@ var (
 	ComposeVersion        string // Version of the docker compose module, will be set at runtime
 )
 
-const dependsOnConditionServiceCompletedSuccessfully = "service_completed_successfully"
-
 func init() {
 	version, err := module.GetVersion("github.com/docker/compose/v5")
 	if err != nil {
@@ -1392,7 +1390,7 @@ func getServiceCompletedDependencies(project *types.Project) set.Set[string] {
 
 	for _, svc := range project.Services {
 		for depName, dep := range svc.DependsOn {
-			if strings.EqualFold(strings.TrimSpace(dep.Condition), dependsOnConditionServiceCompletedSuccessfully) {
+			if strings.TrimSpace(dep.Condition) == types.ServiceConditionCompletedSuccessfully {
 				completed.Add(depName)
 			}
 		}
