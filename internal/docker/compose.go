@@ -55,6 +55,8 @@ var (
 	ComposeVersion        string // Version of the docker compose module, will be set at runtime
 )
 
+const dependsOnConditionServiceCompletedSuccessfully = "service_completed_successfully"
+
 func init() {
 	version, err := module.GetVersion("github.com/docker/compose/v5")
 	if err != nil {
@@ -1348,8 +1350,14 @@ func DecryptProjectFiles(repoPath string, p *types.Project) ([]string, error) {
 
 func getStartServicesForDeploy(project *types.Project) ([]string, error) {
 	startServices := make([]string, 0, len(project.Services))
+	completedDependencyServices := getServiceCompletedDependencies(project)
 
 	for serviceName, svc := range project.Services {
+		if completedDependencyServices.Contains(serviceName) ||
+			(svc.Name != "" && completedDependencyServices.Contains(svc.Name)) {
+			continue
+		}
+
 		labels := getServiceSchedulerLabels(svc)
 		_, hasScheduleLabel := labels[docoCDJobLabelNames.JobEnabled]
 
@@ -1370,6 +1378,27 @@ func getStartServicesForDeploy(project *types.Project) ([]string, error) {
 	}
 
 	return startServices, nil
+}
+
+// getServiceCompletedDependencies returns services referenced via depends_on with
+// condition=service_completed_successfully. These are init-style one-shot services
+// that should be started as dependencies but not treated as long-running start targets.
+func getServiceCompletedDependencies(project *types.Project) set.Set[string] {
+	completed := set.New[string]()
+
+	if project == nil {
+		return completed
+	}
+
+	for _, svc := range project.Services {
+		for depName, dep := range svc.DependsOn {
+			if strings.EqualFold(strings.TrimSpace(dep.Condition), dependsOnConditionServiceCompletedSuccessfully) {
+				completed.Add(depName)
+			}
+		}
+	}
+
+	return completed
 }
 
 func getJobServices(project *types.Project) (set.Set[string], error) {

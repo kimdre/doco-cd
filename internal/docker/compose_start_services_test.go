@@ -82,6 +82,47 @@ func TestGetStartServicesForDeploy_InvalidLabels(t *testing.T) {
 	}
 }
 
+func TestGetStartServicesForDeploy_ExcludesCompletedDependencyServices(t *testing.T) {
+	t.Parallel()
+
+	project := &types.Project{
+		Services: types.Services{
+			"init": {
+				Name: "init",
+			},
+			"db": {
+				Name: "db",
+			},
+			"api": {
+				Name: "api",
+				DependsOn: types.DependsOnConfig{
+					"init": {
+						Condition: "service_completed_successfully",
+					},
+					"db": {
+						Condition: "service_started",
+					},
+				},
+			},
+		},
+	}
+
+	services, err := getStartServicesForDeploy(project)
+	if err != nil {
+		t.Fatalf("getStartServicesForDeploy() failed: %v", err)
+	}
+
+	startSet := set.New[string](services...)
+
+	if startSet.Contains("init") {
+		t.Fatalf("did not expect completed dependency service in start targets: %v", services)
+	}
+
+	if !startSet.Contains("api") || !startSet.Contains("db") {
+		t.Fatalf("expected dependent and normal services to be started: %v", services)
+	}
+}
+
 func TestGetJobServices(t *testing.T) {
 	t.Parallel()
 
