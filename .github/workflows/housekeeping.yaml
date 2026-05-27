@@ -15,11 +15,11 @@ jobs:
       group: cleanup-images
     steps:
       - name: Delete untagged images
-        uses: dataaxiom/ghcr-cleanup-action@374e2028c8fb93b7219f3771cd405fab95d3dec4 # v1
+        uses: dataaxiom/ghcr-cleanup-action@f092b48ba3b604b2a83690dc4b2bbb3392e1045f # v1
         with:
           keep-n-untagged: 10
       - name: Delete old release candidate images
-        uses: dataaxiom/ghcr-cleanup-action@374e2028c8fb93b7219f3771cd405fab95d3dec4 # v1
+        uses: dataaxiom/ghcr-cleanup-action@f092b48ba3b604b2a83690dc4b2bbb3392e1045f # v1
         with:
           delete-tags: '*-rc*'
           keep-n-tagged: 3
