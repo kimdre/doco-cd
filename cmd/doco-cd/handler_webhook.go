@@ -52,6 +52,7 @@ type handlerData struct {
 	dataMountPoint container.MountPoint // Mount point for the data directory
 	dockerCli      command.Cli          // Docker CLI client
 	log            *logger.Logger       // Logger for logging messages
+	runPoll        pollRunner
 	secretProvider *secretprovider.SecretProvider
 	testName       string // Overwrites the deployConfig.Name to make test deployments unique and prevent conflicts between tests when running in parallel. Not used in production.
 }

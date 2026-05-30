@@ -37,8 +37,9 @@ func (l *RepoLock) Holder() string {
 
 var repoLocks sync.Map // Map to hold locks for each repository
 
-// scheduledDeployLock enforces strict mutual exclusion between scheduled runs and deployments.
-var scheduledDeployLock sync.Mutex
+// stackLocks holds one mutex per stack name, used to enforce mutual exclusion
+// between a deployment and a scheduled job run for the same stack.
+var stackLocks sync.Map
 
 // GetRepoLock retrieves or creates a RepoLock for the given repoName.
 func GetRepoLock(repoName string) *RepoLock {
@@ -46,13 +47,30 @@ func GetRepoLock(repoName string) *RepoLock {
 	return lockIface.(*RepoLock)
 }
 
-// LockScheduledDeploy acquires the global scheduler/deployment lock.
-// While held, scheduled runs and deployments are mutually exclusive.
-func LockScheduledDeploy() {
-	scheduledDeployLock.Lock()
+// getStackMutex returns the mutex for the given stack name, creating it if needed.
+func getStackMutex(stackName string) *sync.Mutex {
+	mu, _ := stackLocks.LoadOrStore(stackName, &sync.Mutex{})
+	return mu.(*sync.Mutex)
 }
 
-// UnlockScheduledDeploy releases the scheduler/deployment lock.
-func UnlockScheduledDeploy() {
-	scheduledDeployLock.Unlock()
+// LockStack acquires the per-stack scheduler/deployment lock for stackName.
+// While held, scheduled runs and deployments for this specific stack are mutually
+// exclusive. Different stacks do not block each other.
+// If stackName is empty the call is a no-op.
+func LockStack(stackName string) {
+	if stackName == "" {
+		return
+	}
+
+	getStackMutex(stackName).Lock()
+}
+
+// UnlockStack releases the per-stack scheduler/deployment lock for stackName.
+// If stackName is empty the call is a no-op.
+func UnlockStack(stackName string) {
+	if stackName == "" {
+		return
+	}
+
+	getStackMutex(stackName).Unlock()
 }
