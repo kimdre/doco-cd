@@ -2,14 +2,24 @@ package healthcheck
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
-	"time"
 )
 
 func TestCheck(t *testing.T) {
 	t.Parallel()
 
-	// Start a local HTTP server for testing
+	ok := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(ok.Close)
+
+	notOk := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(notOk.Close)
+
 	testCases := []struct {
 		name    string
 		url     string
@@ -17,7 +27,7 @@ func TestCheck(t *testing.T) {
 	}{
 		{
 			name:    "Valid URL",
-			url:     "https://httpbin.org/status/200",
+			url:     ok.URL,
 			wantErr: false,
 		},
 		{
@@ -27,33 +37,16 @@ func TestCheck(t *testing.T) {
 		},
 		{
 			name:    "Non-200 Status",
-			url:     "https://httpbin.org/status/500",
+			url:     notOk.URL,
 			wantErr: true,
 		},
 	}
-
-	const (
-		maxRetries = 3
-		retryDelay = 500 * time.Millisecond
-	)
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			var err error
-			for attempt := 1; attempt <= maxRetries; attempt++ {
-				err = Check(context.Background(), tc.url)
-				if (err != nil) == tc.wantErr {
-					break // Success or expected error
-				}
-
-				if attempt < maxRetries {
-					t.Logf("Retrying (%d/%d) after error: %v", attempt, maxRetries, err)
-					time.Sleep(retryDelay)
-				}
-			}
-
+			err := Check(context.Background(), tc.url)
 			if (err != nil) != tc.wantErr {
 				t.Errorf("Check(%q) error = %v, wantErr %v", tc.url, err, tc.wantErr)
 			}
