@@ -236,9 +236,9 @@ func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jo
 
 	runLog.Info("triggering scheduled run via API")
 
-	lock.LockScheduledDeploy()
+	lock.LockStack(getJobStackName(job))
 
-	defer lock.UnlockScheduledDeploy()
+	defer lock.UnlockStack(getJobStackName(job))
 
 	err = s.executeScheduledRun(ctx, job, cfg)
 	setRuntimeLastRun(job.key, schedulerNow())
@@ -640,9 +640,9 @@ func (s *scheduler) triggerRun(ctx context.Context, job scheduledJob, cfg docker
 		)
 
 		runLog.Debug("waiting for scheduler/deploy lock")
-		lock.LockScheduledDeploy()
+		lock.LockStack(stackName)
 
-		defer lock.UnlockScheduledDeploy()
+		defer lock.UnlockStack(stackName)
 
 		runLog.Debug("acquired scheduler/deploy lock")
 

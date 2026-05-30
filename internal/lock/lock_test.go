@@ -179,33 +179,35 @@ func TestRepoLock_IndependentRepos(t *testing.T) {
 	lb.Unlock()
 }
 
-func TestScheduledDeployLock_MutualExclusion(t *testing.T) {
-	t.Parallel()
+func TestLockStack_MutualExclusion_SameStack(t *testing.T) {
+	// No resetStackLocks here: goroutines may outlive the test cleanup window,
+	// and unique t.Name() keys already guarantee isolation between tests.
+	stackName := t.Name()
 
 	ready := make(chan struct{})
 	release := make(chan struct{})
-	done := make(chan struct{})
+	unlocked := make(chan struct{})
+	acquired := make(chan struct{})
 
 	go func() {
-		LockScheduledDeploy()
+		LockStack(stackName)
 		close(ready)
 		<-release
-		UnlockScheduledDeploy()
-		close(done)
+		UnlockStack(stackName)
+		close(unlocked)
 	}()
 
 	<-ready
 
-	acquired := make(chan struct{})
-
 	go func() {
-		LockScheduledDeploy()
+		LockStack(stackName)
 		close(acquired)
-		UnlockScheduledDeploy()
+		UnlockStack(stackName)
 	}()
 
 	select {
 	case <-acquired:
+		close(release)
 		t.Fatalf("expected second lock acquisition to block while first holder is active")
 	case <-time.After(50 * time.Millisecond):
 	}
@@ -218,20 +220,47 @@ func TestScheduledDeployLock_MutualExclusion(t *testing.T) {
 		t.Fatalf("timed out waiting for blocked lock acquisition")
 	}
 
-	<-done
+	<-unlocked
 }
 
-func TestScheduledDeployLock_ReacquireAfterUnlock(t *testing.T) {
+func TestLockStack_DifferentStacksDontBlock(t *testing.T) {
 	t.Parallel()
 
-	LockScheduledDeploy()
-	UnlockScheduledDeploy()
+	stackA := t.Name() + "-A"
+	stackB := t.Name() + "-B"
+
+	LockStack(stackA)
+	defer UnlockStack(stackA)
+
+	acquired := make(chan struct{})
+
+	go func() {
+		LockStack(stackB)
+		close(acquired)
+		UnlockStack(stackB)
+	}()
+
+	select {
+	case <-acquired:
+		// correct: stack B did not block on stack A's lock
+	case <-time.After(200 * time.Millisecond):
+		t.Fatalf("LockStack for a different stack should not block")
+	}
+}
+
+func TestLockStack_ReacquireAfterUnlock(t *testing.T) {
+	t.Parallel()
+
+	stackName := t.Name()
+
+	LockStack(stackName)
+	UnlockStack(stackName)
 
 	done := make(chan struct{})
 
 	go func() {
-		LockScheduledDeploy()
-		UnlockScheduledDeploy()
+		LockStack(stackName)
+		UnlockStack(stackName)
 		close(done)
 	}()
 
@@ -240,4 +269,12 @@ func TestScheduledDeployLock_ReacquireAfterUnlock(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatalf("expected lock reacquisition to succeed after unlock")
 	}
+}
+
+func TestLockStack_EmptyNameIsNoOp(t *testing.T) {
+	t.Parallel()
+
+	// Neither call should panic or block.
+	LockStack("")
+	UnlockStack("")
 }

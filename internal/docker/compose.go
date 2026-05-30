@@ -457,9 +457,9 @@ func DeployStack(
 		With(slog.String("stack", deployConfig.Name))
 
 	stackLog.Debug("waiting for scheduler/deploy lock")
-	lock.LockScheduledDeploy()
+	lock.LockStack(deployConfig.Name)
 
-	defer lock.UnlockScheduledDeploy()
+	defer lock.UnlockStack(deployConfig.Name)
 
 	stackLog.Debug("acquired scheduler/deploy lock")
 
