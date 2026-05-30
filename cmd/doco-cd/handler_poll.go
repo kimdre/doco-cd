@@ -12,8 +12,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
-
-	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/stages"
@@ -25,6 +23,10 @@ import (
 	"github.com/kimdre/doco-cd/internal/utils/id"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
+
+type pollRunner func(ctx context.Context, pollConfig poll.Config, appConfig *app.Config, dataMountPoint container.MountPoint,
+	dockerCli command.Cli, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
+) error
 
 // StartPoll initializes PollJob with the provided configuration and starts the PollHandler goroutine.
 func StartPoll(ctx context.Context, h *handlerData, pollConfig poll.Config, wg *sync.WaitGroup) error {
@@ -68,31 +70,25 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 	logger := h.log.With(slog.String(entity, logValue))
 	logger.Debug("Start poll handler")
 
-	repoLock := lock.GetRepoLock(repoName)
+	runner := h.runPoll
+	if runner == nil {
+		runner = RunPoll
+	}
 
 	for {
 		if pollJob.LastRun == 0 || time.Now().Unix() >= pollJob.NextRun {
 			jobID := id.GenID()
-			locked := repoLock.TryLock(jobID)
 
-			if !locked {
-				logger.Warn("another job is still in progress for this "+entity,
-					slog.String("locked_by_job", repoLock.Holder()),
-				)
-			} else {
-				metadata := notification.Metadata{
-					Repository: repoName,
-					Stack:      "",
-					Revision:   notification.GetRevision(pollJob.Config.Reference, ""),
-					JobID:      jobID,
-				}
-
-				logger.Debug("start poll job")
-
-				_ = RunPoll(ctx, pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, logger, metadata, h.secretProvider)
-
-				repoLock.Unlock()
+			metadata := notification.Metadata{
+				Repository: repoName,
+				Stack:      "",
+				Revision:   notification.GetRevision(pollJob.Config.Reference, ""),
+				JobID:      jobID,
 			}
+
+			logger.Debug("start poll job")
+
+			_ = runner(ctx, pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, logger, metadata, h.secretProvider)
 
 			pollJob.NextRun = time.Now().Add(pollJob.Config.Interval).Unix()
 		} else {
