@@ -90,7 +90,7 @@ type JobInfo struct {
 	SkipRunning    bool                    `json:"skip_running"`
 	NotifyOn       docker.JobNotifyOn      `json:"notify_on,omitempty"`
 	Replicas       uint64                  `json:"replicas,omitempty"`
-	RunStatus      string                  `json:"run_status,omitempty"`
+	Status         string                  `json:"status,omitempty"`
 	LastRunAt      *time.Time              `json:"last_run_at,omitempty"`
 	NextRunAt      *time.Time              `json:"next_run_at,omitempty"`
 	LabelNextRunAt *time.Time              `json:"label_next_run_at,omitempty"`
@@ -148,7 +148,7 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 			Valid:      true,
 		}
 
-		info.RunStatus = formatRunStatus(job.containerState, job.containerStatus)
+		info.Status = formatRunStatus(job.containerState, job.containerStatus)
 
 		info.LastRunAt = parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobLastRun])
 		info.LabelNextRunAt = parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobNextRun])
