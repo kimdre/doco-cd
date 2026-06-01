@@ -49,12 +49,13 @@ const (
 )
 
 type scheduledJob struct {
-	key            string
-	name           string
-	id             string
-	mode           scheduledJobMode
-	labels         map[string]string
-	containerState string // Docker container state (container mode only), e.g. "running", "exited"
+	key             string
+	name            string
+	id              string
+	mode            scheduledJobMode
+	labels          map[string]string
+	containerState  string // Docker container state (container mode only), e.g. "running", "exited"
+	containerStatus string // Docker container status string (container mode only), e.g. "Exited (0) 2 hours ago"
 }
 
 type scheduledJobState struct {
@@ -147,8 +148,7 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 			Valid:      true,
 		}
 
-		// Expose Docker state directly (e.g. "running", "exited").
-		info.RunStatus = strings.TrimSpace(job.containerState)
+		info.RunStatus = formatRunStatus(job.containerState, job.containerStatus)
 
 		info.LastRunAt = parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobLastRun])
 		info.LabelNextRunAt = parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobNextRun])
@@ -601,12 +601,13 @@ func (s *scheduler) discoverJobs(ctx context.Context) ([]scheduledJob, error) {
 		}
 
 		jobByKey[key] = scheduledJob{
-			key:            key,
-			name:           name,
-			id:             c.ID,
-			mode:           scheduledJobModeContainer,
-			labels:         c.Labels,
-			containerState: string(c.State),
+			key:             key,
+			name:            name,
+			id:              c.ID,
+			mode:            scheduledJobModeContainer,
+			labels:          c.Labels,
+			containerState:  string(c.State),
+			containerStatus: c.Status,
 		}
 	}
 
@@ -889,6 +890,32 @@ func firstContainerName(names []string) string {
 	}
 
 	return names[0]
+}
+
+func formatRunStatus(state, status string) string {
+	state = strings.TrimSpace(state)
+	if state != string(container.StateExited) {
+		return state
+	}
+
+	status = strings.TrimSpace(status)
+
+	start := strings.Index(status, "(")
+	if start < 0 {
+		return state
+	}
+
+	end := strings.Index(status[start:], ")")
+	if end <= 0 {
+		return state
+	}
+
+	code := strings.TrimSpace(status[start+1 : start+end])
+	if code == "" {
+		return state
+	}
+
+	return state + " (" + code + ")"
 }
 
 func parseRFC3339Time(raw string) *time.Time {
