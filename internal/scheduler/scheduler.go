@@ -45,7 +45,7 @@ type scheduledJobMode string
 
 const (
 	scheduledJobModeContainer scheduledJobMode = "container"
-	scheduledjobModeSwarm     scheduledJobMode = "swarm"
+	scheduledJobModeSwarm     scheduledJobMode = "swarm"
 )
 
 type scheduledJob struct {
@@ -538,7 +538,7 @@ func (s *scheduler) discoverJobs(ctx context.Context) ([]scheduledJob, error) {
 				key:    "swarm:" + svc.ID,
 				name:   svc.Spec.Name,
 				id:     svc.Spec.Name,
-				mode:   scheduledjobModeSwarm,
+				mode:   scheduledJobModeSwarm,
 				labels: labels,
 			})
 		}
@@ -672,7 +672,7 @@ func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, c
 		default:
 			return docker.RestartContainer(ctx, s.dockerCli.Client(), job.id)
 		}
-	case scheduledjobModeSwarm:
+	case scheduledJobModeSwarm:
 		switch cfg.ExecutionMode {
 		case docker.JobExecutionModeOneOff:
 			return docker.RunSwarmOneOffFromService(ctx, s.dockerCli, job.id, docker.SwarmOneOffFromServiceOptions{
@@ -710,7 +710,7 @@ func (s *scheduler) sendRunNotification(job scheduledJob, cfg docker.JobSchedule
 	}
 
 	actorKind := "container"
-	if job.mode == scheduledjobModeSwarm {
+	if job.mode == scheduledJobModeSwarm {
 		actorKind = "service"
 	}
 
