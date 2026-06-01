@@ -266,7 +266,7 @@ func TestShouldStopContainerForOneOffDeployRun(t *testing.T) {
 		},
 		{
 			name: "swarm one_off",
-			job:  scheduledJob{mode: scheduledjobModeSwarm},
+			job:  scheduledJob{mode: scheduledJobModeSwarm},
 			cfg:  docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff},
 			want: false,
 		},

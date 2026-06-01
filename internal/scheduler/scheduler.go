@@ -45,15 +45,17 @@ type scheduledJobMode string
 
 const (
 	scheduledJobModeContainer scheduledJobMode = "container"
-	scheduledjobModeSwarm     scheduledJobMode = "swarm"
+	scheduledJobModeSwarm     scheduledJobMode = "swarm"
 )
 
 type scheduledJob struct {
-	key    string
-	name   string
-	id     string
-	mode   scheduledJobMode
-	labels map[string]string
+	key             string
+	name            string
+	id              string
+	mode            scheduledJobMode
+	labels          map[string]string
+	containerState  string // Docker container state (container mode only), e.g. "running", "exited"
+	containerStatus string // Docker container status string (container mode only), e.g. "Exited (0) 2 hours ago"
 }
 
 type scheduledJobState struct {
@@ -88,6 +90,7 @@ type JobInfo struct {
 	SkipRunning    bool                    `json:"skip_running"`
 	NotifyOn       docker.JobNotifyOn      `json:"notify_on,omitempty"`
 	Replicas       uint64                  `json:"replicas,omitempty"`
+	Status         string                  `json:"status,omitempty"`
 	LastRunAt      *time.Time              `json:"last_run_at,omitempty"`
 	NextRunAt      *time.Time              `json:"next_run_at,omitempty"`
 	LabelNextRunAt *time.Time              `json:"label_next_run_at,omitempty"`
@@ -144,6 +147,8 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 			Repository: job.labels[docker.DocoCDLabels.Source.Name],
 			Valid:      true,
 		}
+
+		info.Status = formatRunStatus(job.containerState, job.containerStatus)
 
 		info.LastRunAt = parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobLastRun])
 		info.LabelNextRunAt = parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobNextRun])
@@ -226,24 +231,44 @@ func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jo
 	}
 
 	runID := id.GenID()
+	stack := getJobStackName(job)
+	metricLabels := getScheduledRunMetricLabels(job, cfg, stack)
+
 	runLog := s.log.With(
 		slog.String("job_id", runID),
 		slog.String("job", job.name),
-		slog.String("stack", getJobStackName(job)),
+		slog.String("stack", stack),
 		slog.String("mode", string(job.mode)),
 		slog.String("execution_mode", string(cfg.ExecutionMode)),
 	)
 
 	runLog.Info("triggering scheduled run via API")
 
-	lock.LockStack(getJobStackName(job))
+	runStart := time.Now()
+	runFailed := false
 
-	defer lock.UnlockStack(getJobStackName(job))
+	prometheus.ScheduledRunsActive.WithLabelValues(metricLabels...).Inc()
+	defer prometheus.ScheduledRunsActive.WithLabelValues(metricLabels...).Dec()
+	defer func() {
+		prometheus.ScheduledRunDuration.WithLabelValues(metricLabels...).Observe(time.Since(runStart).Seconds())
+	}()
+	defer prometheus.ScheduledRunsTotal.WithLabelValues(metricLabels...).Inc()
+	defer func() {
+		if runFailed {
+			prometheus.ScheduledRunErrorsTotal.WithLabelValues(metricLabels...).Inc()
+		}
+	}()
+
+	lock.LockStack(stack)
+
+	defer lock.UnlockStack(stack)
 
 	err = s.executeScheduledRun(ctx, job, cfg)
 	setRuntimeLastRun(job.key, schedulerNow())
 
 	if err != nil {
+		runFailed = true
+
 		runLog.Error("scheduled run failed", logger.ErrAttr(err))
 		s.sendRunNotification(job, cfg, runID, false, "Scheduled job failed", fmt.Sprintf("scheduled job '%s' failed to run: %v", job.name, err))
 
@@ -538,7 +563,7 @@ func (s *scheduler) discoverJobs(ctx context.Context) ([]scheduledJob, error) {
 				key:    "swarm:" + svc.ID,
 				name:   svc.Spec.Name,
 				id:     svc.Spec.Name,
-				mode:   scheduledjobModeSwarm,
+				mode:   scheduledJobModeSwarm,
 				labels: labels,
 			})
 		}
@@ -576,11 +601,13 @@ func (s *scheduler) discoverJobs(ctx context.Context) ([]scheduledJob, error) {
 		}
 
 		jobByKey[key] = scheduledJob{
-			key:    key,
-			name:   name,
-			id:     c.ID,
-			mode:   scheduledJobModeContainer,
-			labels: c.Labels,
+			key:             key,
+			name:            name,
+			id:              c.ID,
+			mode:            scheduledJobModeContainer,
+			labels:          c.Labels,
+			containerState:  string(c.State),
+			containerStatus: c.Status,
 		}
 	}
 
@@ -672,7 +699,7 @@ func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, c
 		default:
 			return docker.RestartContainer(ctx, s.dockerCli.Client(), job.id)
 		}
-	case scheduledjobModeSwarm:
+	case scheduledJobModeSwarm:
 		switch cfg.ExecutionMode {
 		case docker.JobExecutionModeOneOff:
 			return docker.RunSwarmOneOffFromService(ctx, s.dockerCli, job.id, docker.SwarmOneOffFromServiceOptions{
@@ -710,7 +737,7 @@ func (s *scheduler) sendRunNotification(job scheduledJob, cfg docker.JobSchedule
 	}
 
 	actorKind := "container"
-	if job.mode == scheduledjobModeSwarm {
+	if job.mode == scheduledJobModeSwarm {
 		actorKind = "service"
 	}
 
@@ -863,6 +890,32 @@ func firstContainerName(names []string) string {
 	}
 
 	return names[0]
+}
+
+func formatRunStatus(state, status string) string {
+	state = strings.TrimSpace(state)
+	if state != string(container.StateExited) {
+		return state
+	}
+
+	status = strings.TrimSpace(status)
+
+	start := strings.Index(status, "(")
+	if start < 0 {
+		return state
+	}
+
+	end := strings.Index(status[start:], ")")
+	if end <= 0 {
+		return state
+	}
+
+	code := strings.TrimSpace(status[start+1 : start+end])
+	if code == "" {
+		return state
+	}
+
+	return state + " (" + code + ")"
 }
 
 func parseRFC3339Time(raw string) *time.Time {

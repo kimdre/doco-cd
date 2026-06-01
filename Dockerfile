@@ -68,11 +68,11 @@ WORKDIR /
 # /data volume required to deploy from cloned Git repos
 VOLUME /data
 
-COPY --from=build /doco-cd /doco-cd
-
 # buildx plugin so compose v5 picks BuildKit instead of the legacy `/build` endpoint
 COPY --from=docker/buildx-bin:0.34.1@sha256:ba49f75261dd3ac85491d370a9c38306454a84c5554be4e67de601cd59847cb6 \
     /buildx /usr/libexec/docker/cli-plugins/docker-buildx
+
+COPY --from=build /doco-cd /doco-cd
 
 ENV TZ=UTC \
     HTTP_PORT=80 \
