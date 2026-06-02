@@ -62,7 +62,7 @@ Deploy 1Password Connect alongside doco-cd:
 
 - Follow the [1Password Connect Server documentation](https://developer.1password.com/docs/connect/get-started/?deploy=docker) to get your Connect server credentials and set up the `op-connect-api` and `op-connect-sync` containers.
 - For the server configuration options, refer to the [1Password Connect Server Configuration](https://developer.1password.com/docs/connect/server-configuration/) docs.
-- Place `1password-credentials.json` next to your compose file (as shown below), or adjust the bind mount path to your preferred secure location (For a token file example, see the [Using a token file](#configuring-doco-cd-to-authenticate-with-connect-server-using-a-token-file) section below).
+- Place `1password-credentials.json` next to your compose file (as shown below), or adjust the bind mount path to your preferred secure location (For a token file example, see the [Using a token file](#configuring-the-1password-plugin-to-authenticate-with-connect-server) section below).
 
 ```yaml title="docker-compose.yml" hl_lines="2-16 19-26 28-39"
 services:
