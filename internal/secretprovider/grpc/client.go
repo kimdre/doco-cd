@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"time"
 
 	"google.golang.org/grpc"
@@ -20,6 +21,8 @@ const (
 	Name = "grpc"
 
 	defaultDialTimeout = 10 * time.Second
+	socketWaitTimeout  = 5 * time.Second
+	socketPollInterval = 100 * time.Millisecond
 )
 
 var ErrInvalidEndpoint = errors.New("invalid gRPC secret provider endpoint")
@@ -36,6 +39,12 @@ func NewValueProvider(ctx context.Context, cfg *Config) (*ValueProvider, error) 
 	target, err := dialTarget(cfg.Endpoint)
 	if err != nil {
 		return nil, err
+	}
+
+	if path := unixSocketPath(cfg.Endpoint); path != "" {
+		if err := waitForSocket(ctx, path, socketWaitTimeout); err != nil {
+			return nil, fmt.Errorf("secret provider plugin %q socket not ready: %w", cfg.Endpoint, err)
+		}
 	}
 
 	conn, err := grpc.NewClient(
@@ -104,6 +113,42 @@ func (p *ValueProvider) ResolveSecretReferences(ctx context.Context, secrets map
 	}
 
 	return resp.GetSecrets(), nil
+}
+
+// unixSocketPath returns the filesystem path for a unix:// endpoint, or empty
+// string if endpoint is not a unix socket.
+func unixSocketPath(endpoint string) string {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Scheme != "unix" {
+		return ""
+	}
+
+	return u.Path
+}
+
+// waitForSocket polls path until it exists or timeout elapses.
+func waitForSocket(ctx context.Context, path string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+
+	waitCtx, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+
+	ticker := time.NewTicker(socketPollInterval)
+	defer ticker.Stop()
+
+	for {
+		if _, err := os.Stat(path); err == nil {
+			return nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("stat %q: %w", path, err)
+		}
+
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("socket %q not found after %s: %w", path, timeout, waitCtx.Err())
+		case <-ticker.C:
+		}
+	}
 }
 
 // dialTarget converts an endpoint URI into a target accepted by grpc.Dial.
