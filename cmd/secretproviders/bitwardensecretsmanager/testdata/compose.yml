@@ -4,6 +4,7 @@ services:
       SECRET_PROVIDER: grpc
       SECRET_PROVIDER_GRPC_ENDPOINT: unix:///var/run/doco-cd/secret-provider.sock
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
       - secret-provider-sock:/var/run/doco-cd
     depends_on:
       - secret-provider
@@ -19,7 +20,6 @@ services:
       SECRET_PROVIDER_ACCESS_TOKEN: ${SECRET_PROVIDER_ACCESS_TOKEN}
       SECRET_PROVIDER_GRPC_ENDPOINT: unix:///var/run/doco-cd/secret-provider.sock
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - secret-provider-sock:/var/run/doco-cd
 
 volumes:
