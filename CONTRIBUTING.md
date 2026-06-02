@@ -135,17 +135,20 @@ After editing `.proto` files: `make buf-generate` and commit the regenerated `ap
 #### Adding a new plugin
 
 1. **Scaffold** `cmd/secretproviders/<name>/`:
-   - `internal/<name>/`: provider implementation. Must satisfy the `server.Provider` interface (`Name`, `GetSecret`, `GetSecrets`, `ResolveSecretReferences`, `Close`).
-   - `main.go`: load config, build the provider, call `server.Serve(ctx, server.Options{Endpoint: server.EndpointFromEnv()}, provider)`.
-   - `Dockerfile`: copy from an existing plugin and adjust the build target and binary name.
+
+    - `internal/<name>/`: provider implementation. Must satisfy the `server.Provider` interface (`Name`, `GetSecret`, `GetSecrets`, `ResolveSecretReferences`, `Close`).
+    - `main.go`: load config, build the provider, call `server.Serve(ctx, server.Options{Endpoint: server.EndpointFromEnv()}, provider)`.
+    - `Dockerfile`: copy from an existing plugin and adjust the build target and binary name.
 
 2. **Register the plugin in `Makefile`:**
-   - Append the directory name to `SECRET_PROVIDER_PLUGINS`.
-   - Add it to `SECRET_PROVIDER_PLUGINS_PURE_GO` only if the build does not need CGO.
+
+    - Append the directory name to `SECRET_PROVIDER_PLUGINS`.
+    - Add it to `SECRET_PROVIDER_PLUGINS_PURE_GO` only if the build does not need CGO.
 
 3. **Register the plugin in CI:**
-   - `.github/workflows/build-plugins.yaml` and `.github/workflows/build-dev-plugins.yaml`: add to the `plugin` matrix.
-   - `.github/workflows/test.yaml`: add to the `test` job's matrix (pure-Go) or to the `test-plugins-cgo` job (CGO).
+
+    - `.github/workflows/build-plugins.yaml` and `.github/workflows/build-dev-plugins.yaml`: add to the `plugin` matrix.
+    - `.github/workflows/test.yaml`: add to the `test` job's matrix (pure-Go) or to the `test-plugins-cgo` job (CGO).
 
 4. **Document the plugin** under `wiki/docs/External-Secrets/<Name>.md` and link it from `wiki/docs/External-Secrets/index.md`.
 
