@@ -27,19 +27,21 @@ jobs:
         id: discover
         shell: bash
         run: |
-          plugins=$(python3 - <<'PY'
-          import json
-          import os
+          mapfile -t plugins < <(
+            find cmd/secretproviders -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
+              | grep -v '^internal$' \
+              | sort
+          )
 
-          base = "cmd/secretproviders"
-          plugins = sorted(
-              d for d in os.listdir(base)
-              if os.path.isdir(os.path.join(base, d)) and d != "internal"
-          )
-          print(json.dumps(plugins))
-          PY
-          )
-          echo "plugins=${plugins}" >> "$GITHUB_OUTPUT"
+          json='['
+          sep=''
+          for plugin in "${plugins[@]}"; do
+            json+="${sep}\"${plugin}\""
+            sep=','
+          done
+          json+=']'
+
+          echo "plugins=${json}" >> "$GITHUB_OUTPUT"
 
   build:
     needs: discover-plugins
