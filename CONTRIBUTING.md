@@ -138,18 +138,18 @@ After editing `.proto` files: `make buf-generate` and commit the regenerated `ap
 
     - `internal/<name>/`: provider implementation. Must satisfy the `server.Provider` interface (`Name`, `GetSecret`, `GetSecrets`, `ResolveSecretReferences`, `Close`).
     - `main.go`: load config, build the provider, call `server.Serve(ctx, server.Options{Endpoint: server.EndpointFromEnv()}, provider)`.
-    - `Dockerfile`: copy from an existing plugin and adjust the build target and binary name.
+    - `Dockerfile`: copy from an existing plugin or create a symlink to `cmd/secretproviders/generic.Dockerfile` if it does not require additional dependencies.
+    - `.cgo_required` (optional): empty marker file to indicate CGO requirement (see next step).
 
 2. **Mark CGO requirement (only if needed):**
 
-    - Plugin directories under `cmd/secretproviders/` are auto-discovered by `Makefile` (excluding `cmd/secretproviders/internal`).
     - If the plugin requires CGO, create an empty marker file at `cmd/secretproviders/<name>/.cgo_required`.
     - If no marker file exists, the plugin is treated as pure Go (`CGO_ENABLED=0`).
 
-3. **Register the plugin in CI:**
+3. **Plugin discovery:**
 
-    - `.github/workflows/build-plugins.yaml` and `.github/workflows/build-dev-plugins.yaml`: add to the `plugin` matrix.
-    - `.github/workflows/test.yaml`: add to the `test` job's matrix (pure-Go) or to the `test-plugins-cgo` job (CGO).
+    - Plugin directories under `cmd/secretproviders/` are auto-discovered by Makefile and CI.
+    - Plugin image workflows discover directories under `cmd/secretproviders/` (excluding `internal`) and pass `PLUGIN_NAME` as a build arg from the directory name.
 
 4. **Document the plugin** under `wiki/docs/External-Secrets/<Name>.md` and link it from `wiki/docs/External-Secrets/index.md`.
 
