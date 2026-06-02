@@ -42,7 +42,7 @@ require golang.org/x/sync v0.20.0
 require (
 	github.com/1Password/connect-sdk-go v1.5.3
 	github.com/avast/retry-go/v5 v5.0.0
-	github.com/bitwarden/sdk-go/v2 v2.0.0
+	github.com/bitwarden/sdk-go/v2 v2.1.0
 	github.com/docker/compose/v5 v5.1.4
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/go-containerregistry v0.21.6
