@@ -12,7 +12,7 @@ BUILD_FLAGS:=-ldflags="-X main.Version=dev"
 
 # Secret-provider plugins. Automatically generated from cmd/secretproviders directories.
 # Remove non-plugin directories and trailing slashes from plugin directory names
-SECRET_PROVIDER_PLUGINS:=$(filter-out internal template,$(notdir $(patsubst %/,%,$(wildcard cmd/secretproviders/*/))))
+SECRET_PROVIDER_PLUGINS:=$(filter-out internal .template,$(notdir $(patsubst %/,%,$(wildcard cmd/secretproviders/*/))))
 # Determine CGO requirements: plugins with .cgo_required marker file need CGO, others are pure Go.
 # For each .cgo_required file, extract the parent directory name
 _CGO_FILES:=$(wildcard cmd/secretproviders/*/.cgo_required)

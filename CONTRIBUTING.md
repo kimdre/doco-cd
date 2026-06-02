@@ -110,7 +110,7 @@ api/secretprovider/v1/                          # proto contract + generated Go 
   └── *.pb.go                                   # generated stubs (do not edit)
 internal/secretprovider/grpc/                   # client used by doco-cd core
 cmd/secretproviders/internal/server/            # shared gRPC server harness
-cmd/secretproviders/template/                   # scaffold for new plugins
+cmd/secretproviders/.template/                  # scaffold for new plugins
   ├── Dockerfile -> ../generic.Dockerfile       # symlink to shared plugin Dockerfile
   ├── main.go.tmpl                              # entrypoint boilerplate
   └── internal/provider/*.go.tmpl               # provider/config boilerplate
@@ -141,7 +141,7 @@ After editing `.proto` files: `make buf-generate` and commit the regenerated `ap
 1. **Scaffold** `cmd/secretproviders/<name>/` from the template:
 
     ```bash
-    cp -R cmd/secretproviders/template cmd/secretproviders/<name>
+    cp -R cmd/secretproviders/.template cmd/secretproviders/<name>
     ```
 
     Then rename template files and placeholders:
@@ -168,7 +168,7 @@ After editing `.proto` files: `make buf-generate` and commit the regenerated `ap
 5. **Plugin discovery:**
 
     - Plugin directories under `cmd/secretproviders/` are auto-discovered by Makefile and CI.
-    - Plugin image workflows discover directories under `cmd/secretproviders/` (excluding `internal` and `template`) and pass `PLUGIN_NAME` as a build arg from the directory name.
+    - Plugin image workflows discover directories under `cmd/secretproviders/` (excluding `internal` and `.template`) and pass `PLUGIN_NAME` as a build arg from the directory name.
 
 6. **Document the plugin** under `wiki/docs/External-Secrets/<Name>.md` and link it from `wiki/docs/External-Secrets/index.md`.
 
