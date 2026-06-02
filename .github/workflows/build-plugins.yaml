@@ -27,7 +27,8 @@ jobs:
           json='['
           sep=''
           for plugin in "${plugins[@]}"; do
-            json+="${sep}\"${plugin}\""
+            dockerfile=$(realpath --relative-to="$PWD" "cmd/secretproviders/${plugin}/Dockerfile")
+            json+="${sep}{\"plugin\":\"${plugin}\",\"dockerfile\":\"${dockerfile}\"}"
             sep=','
           done
           json+=']'
@@ -39,14 +40,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        plugin: ${{ fromJson(needs.discover-plugins.outputs.plugins) }}
+        include: ${{ fromJson(needs.discover-plugins.outputs.plugins) }}
     uses: docker/github-builder/.github/workflows/build.yml@c2782c55efa56a01b9c30021db8f5ec3993228a3 # v1
     permissions:
       contents: read # to fetch the repository content
       id-token: write # for signing attestation(s) with GitHub OIDC Token
       packages: write # required to push to GHCR
     with:
-      file: cmd/secretproviders/${{ matrix.plugin }}/Dockerfile
+      file: ${{ matrix.dockerfile }}
       build-args: |
         APP_VERSION=${{ github.ref_name }}
         PLUGIN_NAME=${{ matrix.plugin }}

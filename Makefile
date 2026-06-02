@@ -149,12 +149,13 @@ docker-build:
 docker-build-plugins: $(addprefix docker-build-plugin-,$(SECRET_PROVIDER_PLUGINS))
 
 docker-build-plugin-%:
+	@DOCKERFILE_PATH=$$(realpath --relative-to=. cmd/secretproviders/$*/Dockerfile); \
 	$(DOCKER_BUILD) \
 		--platform $(DOCKER_PLATFORMS) \
 		--build-arg APP_VERSION=$(APP_VERSION) \
 		--build-arg PLUGIN_NAME=$* \
 		-t $(IMAGE_REPO)-secretprovider-$*:$(APP_VERSION) \
-		-f cmd/secretproviders/$*/Dockerfile .
+		-f $$DOCKERFILE_PATH .
 
 wiki-tools:
 	python3 -m venv .venv-wiki

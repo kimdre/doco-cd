@@ -82,11 +82,18 @@ jobs:
           calculatedSha=$(git rev-parse --short ${{ github.sha }})
           echo "short_sha=$calculatedSha" >> $GITHUB_OUTPUT
 
+      - name: Resolve plugin Dockerfile
+        id: dockerfile
+        shell: bash
+        run: |
+          dockerfile=$(realpath --relative-to="$GITHUB_WORKSPACE" "cmd/secretproviders/${{ matrix.plugin }}/Dockerfile")
+          echo "path=${dockerfile}" >> "$GITHUB_OUTPUT"
+
       - name: Build and export to local Docker
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7
         with:
           context: .
-          file: cmd/secretproviders/${{ matrix.plugin }}/Dockerfile
+          file: ${{ steps.dockerfile.outputs.path }}
           platforms: linux/amd64
           build-args: |
             APP_VERSION=dev-build.${{ steps.vars.outputs.short_sha }}
