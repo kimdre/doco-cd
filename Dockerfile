@@ -7,18 +7,19 @@ ARG TARGETPLATFORM
 ARG APP_VERSION=dev
 
 ENV CGO_ENABLED=0 \
-    GOCACHE=/root/.cache/go-build
+    GOCACHE=/root/.cache/go-build \
+    GOMODCACHE=/go/pkg/mod
 
 WORKDIR /src
 
 COPY go.mod go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod/ \
+RUN --mount=type=cache,target=$GOMODCACHE \
     go mod download -x
 
 COPY . .
 
-RUN --mount=type=cache,target=/go/pkg/mod/ \
-    --mount=type=cache,target=/root/.cache/go-build \
+RUN --mount=type=cache,target=$GOMODCACHE \
+    --mount=type=cache,target=$GOCACHE \
     xx-go build \
         -trimpath \
         -ldflags="-s -w -X github.com/kimdre/doco-cd/internal/config/app.Version=${APP_VERSION}" \
