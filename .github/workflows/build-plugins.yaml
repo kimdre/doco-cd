@@ -6,16 +6,37 @@ on:
       - 'v*'
 
 jobs:
+  discover-plugins:
+    runs-on: ubuntu-latest
+    outputs:
+      plugins: ${{ steps.discover.outputs.plugins }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Discover secret-provider plugins
+        id: discover
+        shell: bash
+        run: |
+          plugins=$(python3 - <<'PY'
+          import json
+          import os
+
+          base = "cmd/secretproviders"
+          plugins = sorted(
+              d for d in os.listdir(base)
+              if os.path.isdir(os.path.join(base, d)) and d != "internal"
+          )
+          print(json.dumps(plugins))
+          PY
+          )
+          echo "plugins=${plugins}" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: discover-plugins
     strategy:
       fail-fast: false
       matrix:
-        plugin:
-          - 1password
-          - awssecretmanager
-          - bitwardensecretsmanager
-          - infisical
-          - openbao
+        plugin: ${{ fromJson(needs.discover-plugins.outputs.plugins) }}
     uses: docker/github-builder/.github/workflows/build.yml@c2782c55efa56a01b9c30021db8f5ec3993228a3 # v1
     permissions:
       contents: read # to fetch the repository content
