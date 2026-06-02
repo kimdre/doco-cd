@@ -36,7 +36,6 @@ jobs:
 
   build:
     needs: discover-plugins
-    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
