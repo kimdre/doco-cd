@@ -8,13 +8,6 @@ ARG TARGETPLATFORM
 ARG APP_VERSION=dev
 ARG PLUGIN_NAME
 
-# 1Password SDK requires CGO.
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends clang lld && \
-    rm -rf /var/lib/apt/lists/*
-
-RUN xx-apt-get install -y --no-install-recommends libc6-dev gcc
-
 ENV GOCACHE=/root/.cache/go-build \
     GOMODCACHE=/go/pkg/mod
 
@@ -30,7 +23,6 @@ RUN --mount=type=cache,target=$GOMODCACHE \
     --mount=type=cache,target=$GOCACHE \
     CGO_ENABLED=$( [ -f ./cmd/secretproviders/${PLUGIN_NAME}/.cgo_required ] && echo 1 || echo 0 ) && \
     export CGO_ENABLED && \
-    xx-go --wrap && \
     xx-go build \
         -trimpath \
         -ldflags="-s -w -X main.Version=${APP_VERSION}" \

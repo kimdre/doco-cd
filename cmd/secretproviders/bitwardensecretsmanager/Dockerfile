@@ -6,42 +6,43 @@ COPY --from=xx / /
 
 ARG TARGETPLATFORM
 ARG APP_VERSION=dev
+ARG PLUGIN_NAME
 
 # Bitwarden SDK requires CGO + musl. xx-apk/xx-apt install the right target toolchain.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends clang lld musl-tools && \
     rm -rf /var/lib/apt/lists/*
 
-RUN xx-apt-get install -y --no-install-recommends \
-        libc6-dev \
-        gcc
+RUN xx-apt-get install -y --no-install-recommends libc6-dev gcc
 
-ENV CGO_ENABLED=1 \
-    GOCACHE=/root/.cache/go-build
+ENV GOCACHE=/root/.cache/go-build \
+    GOMODCACHE=/go/pkg/mod
 
 WORKDIR /src
 
 COPY go.mod go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod/ \
+RUN --mount=type=cache,target=$GOMODCACHE \
     go mod download -x
 
 COPY . .
 
 # Bitwarden SDK linker flags https://github.com/bitwarden/sdk-go/blob/main/INSTRUCTIONS.md
-RUN --mount=type=cache,target=/go/pkg/mod/ \
-    --mount=type=cache,target=/root/.cache/go-build \
+RUN --mount=type=cache,target=$GOMODCACHE \
+    --mount=type=cache,target=$GOCACHE \
+    CGO_ENABLED=$( [ -f ./cmd/secretproviders/${PLUGIN_NAME}/.cgo_required ] && echo 1 || echo 0 ) && \
+    export CGO_ENABLED && \
     xx-go --wrap && \
     xx-go build \
         -trimpath \
         -ldflags="-s -w -X main.Version=${APP_VERSION} -linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'" \
-        -o /out/doco-cd-secretprovider-bitwarden \
-        ./cmd/secretproviders/bitwardensecretsmanager && \
-    xx-verify /out/doco-cd-secretprovider-bitwarden
+        -o /out/doco-cd-secretprovider \
+        ./cmd/secretproviders/${PLUGIN_NAME} && \
+    xx-verify /out/doco-cd-secretprovider
 
 FROM gcr.io/distroless/base-debian13@sha256:f2df8702d4dcc45ce76df6cbc14ad1975fcf88a04bd0e8947b6194264f9ab75e AS release
 
-COPY --from=build /out/doco-cd-secretprovider-bitwarden /doco-cd-secretprovider-bitwarden
+COPY --from=build /out/doco-cd-secretprovider /doco-cd-secretprovider
 
 ENV SECRET_PROVIDER_GRPC_ENDPOINT=unix:///var/run/doco-cd/secret-provider.sock
 
-ENTRYPOINT ["/doco-cd-secretprovider-bitwarden"]
+ENTRYPOINT ["/doco-cd-secretprovider"]

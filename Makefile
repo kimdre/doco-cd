@@ -152,6 +152,7 @@ docker-build-plugin-%:
 	$(DOCKER_BUILD) \
 		--platform $(DOCKER_PLATFORMS) \
 		--build-arg APP_VERSION=$(APP_VERSION) \
+		--build-arg PLUGIN_NAME=$* \
 		-t $(IMAGE_REPO)-secretprovider-$*:$(APP_VERSION) \
 		-f cmd/secretproviders/$*/Dockerfile .
 

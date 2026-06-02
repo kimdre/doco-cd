@@ -90,6 +90,7 @@ jobs:
           platforms: linux/amd64
           build-args: |
             APP_VERSION=dev-build.${{ steps.vars.outputs.short_sha }}
+            PLUGIN_NAME=${{ matrix.plugin }}
           push: false
           load: true
           tags: ${{ steps.meta.outputs.tags }}

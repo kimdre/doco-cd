@@ -50,6 +50,7 @@ jobs:
       file: cmd/secretproviders/${{ matrix.plugin }}/Dockerfile
       build-args: |
         APP_VERSION=${{ github.ref_name }}
+        PLUGIN_NAME=${{ matrix.plugin }}
       platforms: linux/amd64,linux/arm64
       runner: |
         default=ubuntu-24.04
