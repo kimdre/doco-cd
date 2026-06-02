@@ -168,7 +168,7 @@ After editing `.proto` files: `make buf-generate` and commit the regenerated `ap
 5. **Plugin discovery:**
 
     - Plugin directories under `cmd/secretproviders/` are auto-discovered by Makefile and CI.
-    - Plugin image workflows discover directories under `cmd/secretproviders/` (excluding `internal`) and pass `PLUGIN_NAME` as a build arg from the directory name.
+    - Plugin image workflows discover directories under `cmd/secretproviders/` (excluding `internal` and `template`) and pass `PLUGIN_NAME` as a build arg from the directory name.
 
 6. **Document the plugin** under `wiki/docs/External-Secrets/<Name>.md` and link it from `wiki/docs/External-Secrets/index.md`.
 

@@ -20,7 +20,7 @@ jobs:
         run: |
           mapfile -t plugins < <(
             find cmd/secretproviders -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
-              | grep -v '^internal$' \
+              | grep -Ev '^(internal|template)$' \
               | sort
           )
 
