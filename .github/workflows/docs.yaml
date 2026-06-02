@@ -38,6 +38,7 @@ jobs:
         with:
           python-version: "3.x"
           cache: 'pip'
+          cache-dependency-path: 'wiki/requirements.txt'
 
       - name: Install docs requirements
         run: pip install -r ./wiki/requirements.txt

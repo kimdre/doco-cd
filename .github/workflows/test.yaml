@@ -10,19 +10,9 @@ on:
       - main
     tags-ignore:
       - '*'
-    paths-ignore:
-      - '**/*.md'
-      - 'wiki/**'
-      - 'LICENSE'
-      - 'renovate.json'
   pull_request:
     branches:
       - '**'
-    paths-ignore:
-      - '**/*.md'
-      - 'wiki/**'
-      - 'LICENSE'
-      - 'renovate.json'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
@@ -103,3 +93,24 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage-${{ matrix.mode }}.out
           flags: unittests
+
+  docs-validation:
+    name: Validate wiki build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.x'
+          cache: 'pip'
+          cache-dependency-path: 'wiki/requirements.txt'
+
+      - name: Install wiki build dependencies
+        run: pip install -r ./wiki/requirements.txt
+
+      - name: Run strict wiki build
+        run: zensical build --config-file wiki/zensical.toml --strict
