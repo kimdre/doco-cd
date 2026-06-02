@@ -110,8 +110,12 @@ api/secretprovider/v1/                          # proto contract + generated Go 
   └── *.pb.go                                   # generated stubs (do not edit)
 internal/secretprovider/grpc/                   # client used by doco-cd core
 cmd/secretproviders/internal/server/            # shared gRPC server harness
+cmd/secretproviders/template/                   # scaffold for new plugins
+  ├── Dockerfile -> ../generic.Dockerfile       # symlink to shared plugin Dockerfile
+  ├── main.go.tmpl                              # entrypoint boilerplate
+  └── internal/provider/*.go.tmpl               # provider/config boilerplate
 cmd/secretproviders/<name>/                     # one directory per plugin
-  ├── Dockerfile                                # cross-built via tonistiigi/xx
+  ├── Dockerfile                                # cross-built via tonistiigi/xx, usually a symlink to `../generic.Dockerfile`
   ├── main.go                                   # wires the provider to the harness
   └── internal/<name>/                          # provider implementation
 ```
@@ -134,26 +138,41 @@ After editing `.proto` files: `make buf-generate` and commit the regenerated `ap
 
 #### Adding a new plugin
 
-1. **Scaffold** `cmd/secretproviders/<name>/`:
+1. **Scaffold** `cmd/secretproviders/<name>/` from the template:
 
-    - `internal/<name>/`: provider implementation. Must satisfy the `server.Provider` interface (`Name`, `GetSecret`, `GetSecrets`, `ResolveSecretReferences`, `Close`).
-    - `main.go`: load config, build the provider, call `server.Serve(ctx, server.Options{Endpoint: server.EndpointFromEnv()}, provider)`.
-    - `Dockerfile`: copy from an existing plugin or create a symlink to `cmd/secretproviders/generic.Dockerfile` if it does not require additional dependencies.
-    - `.cgo_required` (optional): empty marker file to indicate CGO requirement (see next step).
+    ```bash
+    cp -R cmd/secretproviders/template cmd/secretproviders/<name>
+    ```
 
-2. **Mark CGO requirement (only if needed):**
+    Then rename template files and placeholders:
+
+    - `main.go.tmpl` -> `main.go`
+    - `internal/provider/config.go.tmpl` and `internal/provider/provider.go.tmpl` -> your provider package files
+    - Replace `__PROVIDER_NAME__` and `__PROVIDER_DISPLAY_NAME__`
+
+2. **Implement provider logic:**
+
+    - Move/adapt files under `internal/provider/` to `internal/<name>/`
+    - Provider implementation must satisfy `server.Provider` (`Name`, `GetSecrets`, `ResolveSecretReferences`, `Close`)
+    - `main.go` should load config, build the provider, and call `server.Run(Version, getProvider)`
+
+3. **Dockerfile convention:**
+
+    - Keep `cmd/secretproviders/<name>/Dockerfile` as a symlink to `../generic.Dockerfile` unless plugin-specific image dependencies require a custom Dockerfile.
+
+4. **Mark CGO requirement (only if needed):**
 
     - If the plugin requires CGO, create an empty marker file at `cmd/secretproviders/<name>/.cgo_required`.
     - If no marker file exists, the plugin is treated as pure Go (`CGO_ENABLED=0`).
 
-3. **Plugin discovery:**
+5. **Plugin discovery:**
 
     - Plugin directories under `cmd/secretproviders/` are auto-discovered by Makefile and CI.
     - Plugin image workflows discover directories under `cmd/secretproviders/` (excluding `internal`) and pass `PLUGIN_NAME` as a build arg from the directory name.
 
-4. **Document the plugin** under `wiki/docs/External-Secrets/<Name>.md` and link it from `wiki/docs/External-Secrets/index.md`.
+6. **Document the plugin** under `wiki/docs/External-Secrets/<Name>.md` and link it from `wiki/docs/External-Secrets/index.md`.
 
-5. **Run** `make test`, `make build`, and `make docker-build-plugin-<name>` locally before opening the PR.
+7. **Run** `make test`, `make build`, and `make docker-build-plugin-<name>` locally before opening the PR.
 
 The core's `SECRET_PROVIDER` accepts only `grpc` and `webhook`. **Do not** add backend-specific names to `internal/secretprovider/secretprovider.go`.
 

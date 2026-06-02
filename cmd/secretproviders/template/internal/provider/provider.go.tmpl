@@ -1,0 +1,46 @@
+package provider
+
+import (
+	"context"
+
+	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
+)
+
+type Provider struct {
+	cfg Config
+}
+
+func NewProvider(_ context.Context, cfg Config) (*Provider, error) {
+	return &Provider{cfg: cfg}, nil
+}
+
+func (p *Provider) Name() string {
+	return "__PROVIDER_DISPLAY_NAME__"
+}
+
+func (p *Provider) GetSecrets(_ context.Context, ids []string) (map[string]string, error) {
+	secrets := make(map[string]string, len(ids))
+
+	for _, id := range ids {
+		// TODO: Fetch secret value from your provider API using p.cfg.
+		secrets[id] = ""
+	}
+
+	return secrets, nil
+}
+
+func (p *Provider) ResolveSecretReferences(_ context.Context, secrets map[string]string) (secrettypes.ResolvedSecrets, error) {
+	resolved := make(secrettypes.ResolvedSecrets, len(secrets))
+
+	for key, value := range secrets {
+		// TODO: Parse and resolve provider-specific reference formats.
+		resolved[key] = value
+	}
+
+	return resolved, nil
+}
+
+func (p *Provider) Close() {
+	// Close clients/resources if needed.
+}
+
