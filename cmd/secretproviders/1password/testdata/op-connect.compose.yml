@@ -30,7 +30,7 @@ services:
     ports:
       - "8081:8080"
     volumes:
-      - ./internal/secretprovider/1password/testdata/1password-credentials.json:/home/opuser/.op/1password-credentials.json
+      - ./cmd/secretproviders/1password/testdata/1password-credentials.json:/home/opuser/.op/1password-credentials.json
       - op_data:/home/opuser/.op/data
       - op_tools:/opt/tools:ro
     depends_on:
@@ -45,9 +45,25 @@ services:
 
   app: # doco-cd
     environment:
-      SECRET_PROVIDER: 1password
+      SECRET_PROVIDER: grpc
+    volumes:
+      - secret-provider-sock:/var/run/doco-cd
+    depends_on:
+      - secret-provider
+      - op-connect-api
+
+  secret-provider:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - TARGETPLATFORM=linux/amd64
+        - PLUGIN_NAME=1password
+    environment:
       SECRET_PROVIDER_CONNECT_HOST: http://op-connect-api:8080
       SECRET_PROVIDER_CONNECT_TOKEN: ${SECRET_PROVIDER_CONNECT_TOKEN}
+    volumes:
+      - secret-provider-sock:/var/run/doco-cd
     depends_on:
       op-connect-api:
         condition: service_healthy
@@ -55,3 +71,4 @@ services:
 volumes:
   op_data:
   op_tools:
+  secret-provider-sock:
