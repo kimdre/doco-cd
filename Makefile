@@ -10,12 +10,15 @@ endif
 
 BUILD_FLAGS:=-ldflags="-X main.Version=dev"
 
-# Secret-provider plugins. Update this list when adding a new plugin.
-SECRET_PROVIDER_PLUGINS:=1password awssecretmanager bitwardensecretsmanager infisical openbao
-# Plugins that build without CGO (subset of SECRET_PROVIDER_PLUGINS).
-SECRET_PROVIDER_PLUGINS_PURE_GO:=awssecretmanager infisical openbao
+# Secret-provider plugins. Automatically generated from cmd/secretproviders directories.
+# Remove internal directory and trailing slashes from plugin directory names
+SECRET_PROVIDER_PLUGINS:=$(filter-out internal,$(notdir $(patsubst %/,%,$(wildcard cmd/secretproviders/*/))))
+# Determine CGO requirements: plugins with .cgo_required marker file need CGO, others are pure Go.
+# For each .cgo_required file, extract the parent directory name
+_CGO_FILES:=$(wildcard cmd/secretproviders/*/.cgo_required)
+SECRET_PROVIDER_PLUGINS_CGO:=$(foreach file,$(_CGO_FILES),$(notdir $(patsubst %/.cgo_required,%,$(file))))
+SECRET_PROVIDER_PLUGINS_PURE_GO:=$(filter-out $(SECRET_PROVIDER_PLUGINS_CGO),$(SECRET_PROVIDER_PLUGINS))
 SECRET_PROVIDER_PLUGINS_PURE_GO_PATHS:=$(addprefix ./cmd/secretproviders/,$(SECRET_PROVIDER_PLUGINS_PURE_GO))
-SECRET_PROVIDER_PLUGINS_CGO:=$(filter-out $(SECRET_PROVIDER_PLUGINS_PURE_GO),$(SECRET_PROVIDER_PLUGINS))
 SECRET_PROVIDER_PLUGINS_CGO_PATHS:=$(addprefix ./cmd/secretproviders/,$(SECRET_PROVIDER_PLUGINS_CGO))
 
 # CGO toolchain for plugins that need it (Bitwarden SDK, 1Password SDK).
@@ -159,3 +162,4 @@ wiki-tools:
 
 wiki-serve:
 	.venv-wiki/bin/zensical serve --config-file wiki/zensical.toml
+

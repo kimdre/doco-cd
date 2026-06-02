@@ -140,10 +140,11 @@ After editing `.proto` files: `make buf-generate` and commit the regenerated `ap
     - `main.go`: load config, build the provider, call `server.Serve(ctx, server.Options{Endpoint: server.EndpointFromEnv()}, provider)`.
     - `Dockerfile`: copy from an existing plugin and adjust the build target and binary name.
 
-2. **Register the plugin in `Makefile`:**
+2. **Mark CGO requirement (only if needed):**
 
-    - Append the directory name to `SECRET_PROVIDER_PLUGINS`.
-    - Add it to `SECRET_PROVIDER_PLUGINS_PURE_GO` only if the build does not need CGO.
+    - Plugin directories under `cmd/secretproviders/` are auto-discovered by `Makefile` (excluding `cmd/secretproviders/internal`).
+    - If the plugin requires CGO, create an empty marker file at `cmd/secretproviders/<name>/.cgo_required`.
+    - If no marker file exists, the plugin is treated as pure Go (`CGO_ENABLED=0`).
 
 3. **Register the plugin in CI:**
 
