@@ -11,13 +11,15 @@ services:
   secret-provider:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: cmd/secretproviders/bitwardensecretsmanager/Dockerfile
+      no_cache: true
       args:
         - PLUGIN_NAME=bitwardensecretsmanager
     environment:
       SECRET_PROVIDER_ACCESS_TOKEN: ${SECRET_PROVIDER_ACCESS_TOKEN}
       SECRET_PROVIDER_GRPC_ENDPOINT: unix:///var/run/doco-cd/secret-provider.sock
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
       - secret-provider-sock:/var/run/doco-cd
 
 volumes:
