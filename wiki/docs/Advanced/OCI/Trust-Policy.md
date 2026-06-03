@@ -159,15 +159,18 @@ Override the global trust policy for specific [deployments](../../Poll-Settings.
 
 | Key                  | Type             | Default | Description                                                                                             |
 |----------------------|------------------|---------|---------------------------------------------------------------------------------------------------------|
-| `verify`             | boolean          | unset   | Overrides global `enabled` for this deployment only. `true` enforces verification, `false` disables it. |
+| `verify`             | boolean          | unset   | Can enforce verification (`true`) per deployment. It cannot disable verification when global `enabled: true` is set. |
 | `public_keys`        | array of strings | inherit | Replaces global `public_keys` when set and non-empty.                                                   |
 | `keyless_identities` | array of objects | inherit | Replaces global `keyless_identities` when set and non-empty.                                            |
 
 !!!note "Behavior"
 
-    - If `verify` is unset, the deployment inherits the global `enabled` value. If `verify: true` is set, verification is enforced regardless of the global setting.
+    - If `verify` is unset, the deployment inherits the global `enabled` value.
+    - If `verify: true` is set, verification is enforced regardless of the global setting.
+    - If global `enabled: true` is set, `verify: false` is ignored (no downgrade allowed).
     - If both `public_keys` and `keyless_identities` are empty while verification is enabled, verification fails because no trust rules are defined.
     - Per-deployment `public_keys` and `keyless_identities` override global values only when the respective lists are non-empty.
+    - For OCI sources, trust-policy overrides are only accepted from trusted inline poll deployments (`POLL_CONFIG.deployments`). Artifact-contained `.doco-cd.yml` cannot define the policy used to verify itself.
 
 !!! example "Per-deployment Override Example"
     ```yaml
@@ -201,7 +204,7 @@ Override the global trust policy for specific [deployments](../../Poll-Settings.
     deployments:
       - name: production
         oci:
-          verify: true   # or false to skip verification
+          verify: true   # `verify: false` is ignored when global enabled=true
     ```
 
 ---
@@ -437,11 +440,9 @@ POLL_CONFIG: |
     reference: main
     interval: 300
     deployments:
-      # Development: No verification required
+      # Development: Inherits global policy
       - name: development
         compose_file: docker-compose.yml
-        oci:
-          verify: false
       
       # Staging: Single signer required
       - name: staging
@@ -486,7 +487,7 @@ POLL_CONFIG: |
 1. Verify artifact was actually signed: `cosign verify --key public.pem artifact:tag`
 2. Check that you're using the correct public key in valid PEM format
 3. Ensure artifact hasn't been modified since signing
-4. Try disabling verification temporarily: `verify: false`
+4. In non-production, temporarily set global `enabled: false` only while debugging policy issues
 
 ### Verification Failed: "No Matching Identity"
 
@@ -518,7 +519,7 @@ POLL_CONFIG: |
 
 1. Check `enabled: true` in policy
 2. Verify public keys or keyless identities are configured
-3. Check deployment-level overrides aren't disabling verification
+3. Check global policy and deployment-level trust rules (`public_keys` / `keyless_identities`) for mismatches
 4. Review logs for detailed verification status
 
 ### No Signatures Found on Artifact
@@ -551,7 +552,7 @@ POLL_CONFIG: |
 3. **Separate keys by role** - Use different keys for different teams/environments
 4. **Rotate keys regularly** - Plan for key rotation and maintain key history
 5. **Document your policy** - Maintain clear documentation of your trust setup
-6. **Test before enforcing** - Test verification with `verify: false` first
+6. **Test rollout safely** - Validate in staging first, then enforce with global `enabled: true`
 7. **Monitor verification failures** - Alert on signature verification failures
 8. **Use version tags for releases** - Sign releases with specific version tags
 

@@ -67,9 +67,10 @@ type Config struct {
 	Reconciliation     ReconciliationConfig                     `yaml:"reconciliation" json:"reconciliation" doco:"allowOverride"`                                                                                              // Reconciliation is the configuration for the reconciliation feature
 	Oci                config.OciTrustPolicyOverride            `yaml:"oci" json:"oci" doco:"allowOverride"`                                                                                                                    // Oci allows per-target overrides for OCI signature verification policy
 	Internal           struct {
-		File        string            `yaml:"-"` // File is the path to the deployment configuration file
-		Environment map[string]string // Environment stores environment variables for variable interpolation in the compose project
-		Hash        string            `yaml:"-"` // Hash is a hash of the Config struct
+		File                          string            `yaml:"-"` // File is the path to the deployment configuration file
+		Environment                   map[string]string // Environment stores environment variables for variable interpolation in the compose project
+		Hash                          string            `yaml:"-"`          // Hash is a hash of the Config struct
+		OciTrustPolicyOverrideTrusted bool              `yaml:"-" json:"-"` // true only for trusted config sources (e.g. POLL_CONFIG inline deployments)
 	} // Internal holds internal configuration values that are not set by the user
 }
 
@@ -505,6 +506,10 @@ func ResolveConfigs(inlineDeployments []*Config, customTarget, reference, repoRo
 		configs, err := expandInlineAutoDiscoverConfigs(repoRoot, inlineDeployments)
 		if err != nil {
 			return nil, err
+		}
+
+		for _, cfg := range configs {
+			cfg.Internal.OciTrustPolicyOverrideTrusted = true
 		}
 
 		return configs, nil

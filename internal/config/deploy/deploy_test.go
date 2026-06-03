@@ -330,6 +330,10 @@ func TestResolveConfigs_InlineOverride(t *testing.T) {
 	if len(cfg.ComposeFiles) == 0 {
 		t.Errorf("expected default compose files to be set")
 	}
+
+	if !cfg.Internal.OciTrustPolicyOverrideTrusted {
+		t.Errorf("expected inline deployment OCI trust policy override to be trusted")
+	}
 }
 
 func TestResolveConfigs_InlineMissingName(t *testing.T) {
@@ -740,6 +744,10 @@ reference: %s
 
 	if configs[0].Name != t.Name() {
 		t.Errorf("expected name to be %v, got %s", t.Name(), configs[0].Name)
+	}
+
+	if configs[0].Internal.OciTrustPolicyOverrideTrusted {
+		t.Errorf("expected repository config OCI trust policy override to be untrusted")
 	}
 }
 
