@@ -3297,7 +3297,7 @@ Use <code>$$</code> (double-dollar sign) in regex patterns so a literal <code>$<
 <td><code>verify</code></td>
 <td>boolean</td>
 <td>unset</td>
-<td>Overrides global <code>enabled</code> for this deployment only. <code>true</code> enforces verification, <code>false</code> disables it.</td>
+<td>Can enforce verification (<code>true</code>) per deployment. It cannot disable verification when global <code>enabled: true</code> is set.</td>
 </tr>
 <tr>
 <td><code>public_keys</code></td>
@@ -3316,9 +3316,12 @@ Use <code>$$</code> (double-dollar sign) in regex patterns so a literal <code>$<
 <div class="admonition note">
 <p class="admonition-title">Behavior</p>
 <ul>
-<li>If <code>verify</code> is unset, the deployment inherits the global <code>enabled</code> value. If <code>verify: true</code> is set, verification is enforced regardless of the global setting.</li>
+<li>If <code>verify</code> is unset, the deployment inherits the global <code>enabled</code> value.</li>
+<li>If <code>verify: true</code> is set, verification is enforced regardless of the global setting.</li>
+<li>If global <code>enabled: true</code> is set, <code>verify: false</code> is ignored (no downgrade allowed).</li>
 <li>If both <code>public_keys</code> and <code>keyless_identities</code> are empty while verification is enabled, verification fails because no trust rules are defined.</li>
 <li>Per-deployment <code>public_keys</code> and <code>keyless_identities</code> override global values only when the respective lists are non-empty.</li>
+<li>For OCI sources, trust-policy overrides are only accepted from trusted inline poll deployments (<code>POLL_CONFIG.deployments</code>). Artifact-contained <code>.doco-cd.yml</code> cannot define the policy used to verify itself.</li>
 </ul>
 </div>
 <div class="admonition example">
@@ -3350,7 +3353,7 @@ Use <code>$$</code> (double-dollar sign) in regex patterns so a literal <code>$<
 <div class="language-yaml highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nt">deployments</span><span class="p">:</span>
 </span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">production</span>
 </span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="nt">oci</span><span class="p">:</span>
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">      </span><span class="nt">verify</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">   </span><span class="c1"># or false to skip verification</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">      </span><span class="nt">verify</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">   </span><span class="c1"># `verify: false` is ignored when global enabled=true</span>
 </span></code></pre></div>
 </div>
 </div>
@@ -3558,40 +3561,38 @@ This eliminates the need for managing public keys and allows dynamic trust based
 </span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="w">    </span><span class="no">reference: main</span>
 </span><span id="__span-18-5"><a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="w">    </span><span class="no">interval: 300</span>
 </span><span id="__span-18-6"><a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="w">    </span><span class="no">deployments:</span>
-</span><span id="__span-18-7"><a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="w">      </span><span class="no"># Development: No verification required</span>
+</span><span id="__span-18-7"><a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="w">      </span><span class="no"># Development: Inherits global policy</span>
 </span><span id="__span-18-8"><a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="w">      </span><span class="no">- name: development</span>
 </span><span id="__span-18-9"><a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a><span class="w">        </span><span class="no">compose_file: docker-compose.yml</span>
-</span><span id="__span-18-10"><a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a><span class="w">        </span><span class="no">oci:</span>
-</span><span id="__span-18-11"><a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a><span class="w">          </span><span class="no">verify: false</span>
-</span><span id="__span-18-12"><a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a>
-</span><span id="__span-18-13"><a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a><span class="w">      </span><span class="no"># Staging: Single signer required</span>
-</span><span id="__span-18-14"><a id="__codelineno-18-14" name="__codelineno-18-14" href="#__codelineno-18-14"></a><span class="w">      </span><span class="no">- name: staging</span>
-</span><span id="__span-18-15"><a id="__codelineno-18-15" name="__codelineno-18-15" href="#__codelineno-18-15"></a><span class="w">        </span><span class="no">compose_file: docker-compose.yml</span>
-</span><span id="__span-18-16"><a id="__codelineno-18-16" name="__codelineno-18-16" href="#__codelineno-18-16"></a><span class="w">        </span><span class="no">oci:</span>
-</span><span id="__span-18-17"><a id="__codelineno-18-17" name="__codelineno-18-17" href="#__codelineno-18-17"></a><span class="w">          </span><span class="no">verify: true</span>
-</span><span id="__span-18-18"><a id="__codelineno-18-18" name="__codelineno-18-18" href="#__codelineno-18-18"></a><span class="w">          </span><span class="no">public_keys:</span>
-</span><span id="__span-18-19"><a id="__codelineno-18-19" name="__codelineno-18-19" href="#__codelineno-18-19"></a><span class="w">            </span><span class="no">- |</span>
-</span><span id="__span-18-20"><a id="__codelineno-18-20" name="__codelineno-18-20" href="#__codelineno-18-20"></a><span class="w">              </span><span class="no">-----BEGIN PUBLIC KEY-----</span>
-</span><span id="__span-18-21"><a id="__codelineno-18-21" name="__codelineno-18-21" href="#__codelineno-18-21"></a><span class="w">              </span><span class="no">MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE... (Staging Lead)</span>
-</span><span id="__span-18-22"><a id="__codelineno-18-22" name="__codelineno-18-22" href="#__codelineno-18-22"></a><span class="w">              </span><span class="no">-----END PUBLIC KEY-----</span>
-</span><span id="__span-18-23"><a id="__codelineno-18-23" name="__codelineno-18-23" href="#__codelineno-18-23"></a>
-</span><span id="__span-18-24"><a id="__codelineno-18-24" name="__codelineno-18-24" href="#__codelineno-18-24"></a><span class="w">      </span><span class="no"># Production: Multiple signers or GitHub Actions</span>
-</span><span id="__span-18-25"><a id="__codelineno-18-25" name="__codelineno-18-25" href="#__codelineno-18-25"></a><span class="w">      </span><span class="no">- name: production</span>
-</span><span id="__span-18-26"><a id="__codelineno-18-26" name="__codelineno-18-26" href="#__codelineno-18-26"></a><span class="w">        </span><span class="no">compose_file: docker-compose.yml</span>
-</span><span id="__span-18-27"><a id="__codelineno-18-27" name="__codelineno-18-27" href="#__codelineno-18-27"></a><span class="w">        </span><span class="no">oci:</span>
-</span><span id="__span-18-28"><a id="__codelineno-18-28" name="__codelineno-18-28" href="#__codelineno-18-28"></a><span class="w">          </span><span class="no">verify: true</span>
-</span><span id="__span-18-29"><a id="__codelineno-18-29" name="__codelineno-18-29" href="#__codelineno-18-29"></a><span class="w">          </span><span class="no">public_keys:</span>
-</span><span id="__span-18-30"><a id="__codelineno-18-30" name="__codelineno-18-30" href="#__codelineno-18-30"></a><span class="w">            </span><span class="no">- |</span>
-</span><span id="__span-18-31"><a id="__codelineno-18-31" name="__codelineno-18-31" href="#__codelineno-18-31"></a><span class="w">              </span><span class="no">-----BEGIN PUBLIC KEY-----</span>
-</span><span id="__span-18-32"><a id="__codelineno-18-32" name="__codelineno-18-32" href="#__codelineno-18-32"></a><span class="w">              </span><span class="no">MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE... (Head of DevOps)</span>
-</span><span id="__span-18-33"><a id="__codelineno-18-33" name="__codelineno-18-33" href="#__codelineno-18-33"></a><span class="w">              </span><span class="no">-----END PUBLIC KEY-----</span>
-</span><span id="__span-18-34"><a id="__codelineno-18-34" name="__codelineno-18-34" href="#__codelineno-18-34"></a><span class="w">            </span><span class="no">- |</span>
-</span><span id="__span-18-35"><a id="__codelineno-18-35" name="__codelineno-18-35" href="#__codelineno-18-35"></a><span class="w">              </span><span class="no">-----BEGIN PUBLIC KEY-----</span>
-</span><span id="__span-18-36"><a id="__codelineno-18-36" name="__codelineno-18-36" href="#__codelineno-18-36"></a><span class="w">              </span><span class="no">MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE... (Compliance Officer)</span>
-</span><span id="__span-18-37"><a id="__codelineno-18-37" name="__codelineno-18-37" href="#__codelineno-18-37"></a><span class="w">              </span><span class="no">-----END PUBLIC KEY-----</span>
-</span><span id="__span-18-38"><a id="__codelineno-18-38" name="__codelineno-18-38" href="#__codelineno-18-38"></a><span class="w">          </span><span class="no">keyless_identities:</span>
-</span><span id="__span-18-39"><a id="__codelineno-18-39" name="__codelineno-18-39" href="#__codelineno-18-39"></a><span class="w">            </span><span class="no">- issuer: https://token.actions.githubusercontent.com</span>
-</span><span id="__span-18-40"><a id="__codelineno-18-40" name="__codelineno-18-40" href="#__codelineno-18-40"></a><span class="w">              </span><span class="no">subject: repo:myorg/config:ref:refs/tags/v*</span>
+</span><span id="__span-18-10"><a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a>
+</span><span id="__span-18-11"><a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a><span class="w">      </span><span class="no"># Staging: Single signer required</span>
+</span><span id="__span-18-12"><a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a><span class="w">      </span><span class="no">- name: staging</span>
+</span><span id="__span-18-13"><a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a><span class="w">        </span><span class="no">compose_file: docker-compose.yml</span>
+</span><span id="__span-18-14"><a id="__codelineno-18-14" name="__codelineno-18-14" href="#__codelineno-18-14"></a><span class="w">        </span><span class="no">oci:</span>
+</span><span id="__span-18-15"><a id="__codelineno-18-15" name="__codelineno-18-15" href="#__codelineno-18-15"></a><span class="w">          </span><span class="no">verify: true</span>
+</span><span id="__span-18-16"><a id="__codelineno-18-16" name="__codelineno-18-16" href="#__codelineno-18-16"></a><span class="w">          </span><span class="no">public_keys:</span>
+</span><span id="__span-18-17"><a id="__codelineno-18-17" name="__codelineno-18-17" href="#__codelineno-18-17"></a><span class="w">            </span><span class="no">- |</span>
+</span><span id="__span-18-18"><a id="__codelineno-18-18" name="__codelineno-18-18" href="#__codelineno-18-18"></a><span class="w">              </span><span class="no">-----BEGIN PUBLIC KEY-----</span>
+</span><span id="__span-18-19"><a id="__codelineno-18-19" name="__codelineno-18-19" href="#__codelineno-18-19"></a><span class="w">              </span><span class="no">MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE... (Staging Lead)</span>
+</span><span id="__span-18-20"><a id="__codelineno-18-20" name="__codelineno-18-20" href="#__codelineno-18-20"></a><span class="w">              </span><span class="no">-----END PUBLIC KEY-----</span>
+</span><span id="__span-18-21"><a id="__codelineno-18-21" name="__codelineno-18-21" href="#__codelineno-18-21"></a>
+</span><span id="__span-18-22"><a id="__codelineno-18-22" name="__codelineno-18-22" href="#__codelineno-18-22"></a><span class="w">      </span><span class="no"># Production: Multiple signers or GitHub Actions</span>
+</span><span id="__span-18-23"><a id="__codelineno-18-23" name="__codelineno-18-23" href="#__codelineno-18-23"></a><span class="w">      </span><span class="no">- name: production</span>
+</span><span id="__span-18-24"><a id="__codelineno-18-24" name="__codelineno-18-24" href="#__codelineno-18-24"></a><span class="w">        </span><span class="no">compose_file: docker-compose.yml</span>
+</span><span id="__span-18-25"><a id="__codelineno-18-25" name="__codelineno-18-25" href="#__codelineno-18-25"></a><span class="w">        </span><span class="no">oci:</span>
+</span><span id="__span-18-26"><a id="__codelineno-18-26" name="__codelineno-18-26" href="#__codelineno-18-26"></a><span class="w">          </span><span class="no">verify: true</span>
+</span><span id="__span-18-27"><a id="__codelineno-18-27" name="__codelineno-18-27" href="#__codelineno-18-27"></a><span class="w">          </span><span class="no">public_keys:</span>
+</span><span id="__span-18-28"><a id="__codelineno-18-28" name="__codelineno-18-28" href="#__codelineno-18-28"></a><span class="w">            </span><span class="no">- |</span>
+</span><span id="__span-18-29"><a id="__codelineno-18-29" name="__codelineno-18-29" href="#__codelineno-18-29"></a><span class="w">              </span><span class="no">-----BEGIN PUBLIC KEY-----</span>
+</span><span id="__span-18-30"><a id="__codelineno-18-30" name="__codelineno-18-30" href="#__codelineno-18-30"></a><span class="w">              </span><span class="no">MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE... (Head of DevOps)</span>
+</span><span id="__span-18-31"><a id="__codelineno-18-31" name="__codelineno-18-31" href="#__codelineno-18-31"></a><span class="w">              </span><span class="no">-----END PUBLIC KEY-----</span>
+</span><span id="__span-18-32"><a id="__codelineno-18-32" name="__codelineno-18-32" href="#__codelineno-18-32"></a><span class="w">            </span><span class="no">- |</span>
+</span><span id="__span-18-33"><a id="__codelineno-18-33" name="__codelineno-18-33" href="#__codelineno-18-33"></a><span class="w">              </span><span class="no">-----BEGIN PUBLIC KEY-----</span>
+</span><span id="__span-18-34"><a id="__codelineno-18-34" name="__codelineno-18-34" href="#__codelineno-18-34"></a><span class="w">              </span><span class="no">MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE... (Compliance Officer)</span>
+</span><span id="__span-18-35"><a id="__codelineno-18-35" name="__codelineno-18-35" href="#__codelineno-18-35"></a><span class="w">              </span><span class="no">-----END PUBLIC KEY-----</span>
+</span><span id="__span-18-36"><a id="__codelineno-18-36" name="__codelineno-18-36" href="#__codelineno-18-36"></a><span class="w">          </span><span class="no">keyless_identities:</span>
+</span><span id="__span-18-37"><a id="__codelineno-18-37" name="__codelineno-18-37" href="#__codelineno-18-37"></a><span class="w">            </span><span class="no">- issuer: https://token.actions.githubusercontent.com</span>
+</span><span id="__span-18-38"><a id="__codelineno-18-38" name="__codelineno-18-38" href="#__codelineno-18-38"></a><span class="w">              </span><span class="no">subject: repo:myorg/config:ref:refs/tags/v*</span>
 </span></code></pre></div>
 <hr />
 <h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
@@ -3602,7 +3603,7 @@ This eliminates the need for managing public keys and allows dynamic trust based
 <li>Verify artifact was actually signed: <code>cosign verify --key public.pem artifact:tag</code></li>
 <li>Check that you're using the correct public key in valid PEM format</li>
 <li>Ensure artifact hasn't been modified since signing</li>
-<li>Try disabling verification temporarily: <code>verify: false</code></li>
+<li>In non-production, temporarily set global <code>enabled: false</code> only while debugging policy issues</li>
 </ol>
 <h3 id="verification-failed-no-matching-identity">Verification Failed: "No Matching Identity"<a class="headerlink" href="#verification-failed-no-matching-identity" title="Permanent link">&para;</a></h3>
 <p><strong>Cause</strong>: OIDC subject doesn't match expected pattern</p>
@@ -3628,7 +3629,7 @@ This eliminates the need for managing public keys and allows dynamic trust based
 <ol>
 <li>Check <code>enabled: true</code> in policy</li>
 <li>Verify public keys or keyless identities are configured</li>
-<li>Check deployment-level overrides aren't disabling verification</li>
+<li>Check global policy and deployment-level trust rules (<code>public_keys</code> / <code>keyless_identities</code>) for mismatches</li>
 <li>Review logs for detailed verification status</li>
 </ol>
 <h3 id="no-signatures-found-on-artifact">No Signatures Found on Artifact<a class="headerlink" href="#no-signatures-found-on-artifact" title="Permanent link">&para;</a></h3>
@@ -3656,7 +3657,7 @@ This eliminates the need for managing public keys and allows dynamic trust based
 <li><strong>Separate keys by role</strong> - Use different keys for different teams/environments</li>
 <li><strong>Rotate keys regularly</strong> - Plan for key rotation and maintain key history</li>
 <li><strong>Document your policy</strong> - Maintain clear documentation of your trust setup</li>
-<li><strong>Test before enforcing</strong> - Test verification with <code>verify: false</code> first</li>
+<li><strong>Test rollout safely</strong> - Validate in staging first, then enforce with global <code>enabled: true</code></li>
 <li><strong>Monitor verification failures</strong> - Alert on signature verification failures</li>
 <li><strong>Use version tags for releases</strong> - Sign releases with specific version tags</li>
 </ol>
