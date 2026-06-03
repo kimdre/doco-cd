@@ -29,3 +29,29 @@ func TestNormalizeOciTrustPolicy_TrimsSubjectRegexp(t *testing.T) {
 		t.Fatalf("unexpected subject_regexp: %q", id.SubjectRegexp)
 	}
 }
+
+func TestEffectiveOciTrustPolicy_GlobalEnabledCannotBeDisabled(t *testing.T) {
+	t.Parallel()
+
+	effective := EffectiveOciTrustPolicy(
+		OciTrustPolicy{Enabled: true},
+		OciTrustPolicyOverride{Verify: new(false)},
+	)
+
+	if !effective.Enabled {
+		t.Fatal("expected global enabled verification to remain enabled")
+	}
+}
+
+func TestEffectiveOciTrustPolicy_OverrideCanEnableWhenGlobalDisabled(t *testing.T) {
+	t.Parallel()
+
+	effective := EffectiveOciTrustPolicy(
+		OciTrustPolicy{Enabled: false},
+		OciTrustPolicyOverride{Verify: new(true)},
+	)
+
+	if !effective.Enabled {
+		t.Fatal("expected override verify=true to enable verification when global is disabled")
+	}
+}
