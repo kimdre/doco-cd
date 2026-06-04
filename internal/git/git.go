@@ -634,6 +634,11 @@ func updateSubmodules(repo *git.Repository, auth transport.AuthMethod, depth int
 		return fmt.Errorf("failed to get worktree: %w", err)
 	}
 
+	parentRemoteURL, err := getPrimaryRemoteURL(repo)
+	if err != nil {
+		return fmt.Errorf("failed to get parent repository remote URL: %w", err)
+	}
+
 	submodules, err := worktree.Submodules()
 	if err != nil {
 		return fmt.Errorf("failed to list submodules: %w", err)
@@ -667,6 +672,19 @@ func updateSubmodules(repo *git.Repository, auth transport.AuthMethod, depth int
 			return fmt.Errorf("failed to reset tracked files in submodule: %w", err)
 		}
 
+		resolvedSubmoduleURL := submodule.Config().URL
+		if isRelativeSubmoduleURL(resolvedSubmoduleURL) {
+			resolvedSubmoduleURL, err = resolveSubmoduleURL(parentRemoteURL, resolvedSubmoduleURL)
+			if err != nil {
+				return fmt.Errorf("failed to resolve relative URL for submodule %s: %w", submodule.Config().Path, err)
+			}
+
+			err = updateRemoteURL(submoduleRepo, resolvedSubmoduleURL)
+			if err != nil {
+				return fmt.Errorf("failed to set resolved remote URL for submodule %s: %w", submodule.Config().Path, err)
+			}
+		}
+
 		opts := &git.SubmoduleUpdateOptions{
 			Init:              true,
 			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
@@ -674,10 +692,10 @@ func updateSubmodules(repo *git.Repository, auth transport.AuthMethod, depth int
 			Depth:             depth,
 		}
 
-		if subCfg := submodule.Config(); subCfg != nil && subCfg.URL != "" {
-			resolvedAuth, err := GetAuthMethod(subCfg.URL, "", "", "")
+		if resolvedSubmoduleURL != "" {
+			resolvedAuth, err := GetAuthMethod(resolvedSubmoduleURL, "", "", "")
 			if err != nil {
-				return fmt.Errorf("failed to resolve auth method for submodule %s: %w", subCfg.Path, err)
+				return fmt.Errorf("failed to resolve auth method for submodule %s: %w", submodule.Config().Path, err)
 			}
 
 			if resolvedAuth != nil {
@@ -728,6 +746,71 @@ func updateSubmodules(repo *git.Repository, auth transport.AuthMethod, depth int
 	}
 
 	return nil
+}
+
+func getPrimaryRemoteURL(repo *git.Repository) (string, error) {
+	remote, err := repo.Remote(RemoteName)
+	if err != nil {
+		return "", fmt.Errorf("failed to get remote %s: %w", RemoteName, err)
+	}
+
+	remoteConfig := remote.Config()
+	if remoteConfig == nil || len(remoteConfig.URLs) == 0 || strings.TrimSpace(remoteConfig.URLs[0]) == "" {
+		return "", fmt.Errorf("remote %s has no URL configured", RemoteName)
+	}
+
+	return remoteConfig.URLs[0], nil
+}
+
+func isRelativeSubmoduleURL(url string) bool {
+	trimmed := strings.TrimSpace(url)
+	if trimmed == "" {
+		return false
+	}
+
+	if IsSSH(trimmed) || strings.Contains(trimmed, "://") || strings.HasPrefix(trimmed, "file://") {
+		return false
+	}
+
+	if strings.HasPrefix(trimmed, "/") {
+		return true
+	}
+
+	return strings.HasPrefix(trimmed, "./") || strings.HasPrefix(trimmed, "../")
+}
+
+func resolveSubmoduleURL(parentRemoteURL, submoduleURL string) (string, error) {
+	parent := strings.TrimSpace(parentRemoteURL)
+	relative := strings.TrimSpace(submoduleURL)
+
+	if parent == "" {
+		return "", errors.New("parent remote URL is empty")
+	}
+
+	if relative == "" {
+		return "", errors.New("submodule URL is empty")
+	}
+
+	if !isRelativeSubmoduleURL(relative) {
+		return relative, nil
+	}
+
+	if IsSSH(parent) {
+		parent = ConvertSSHUrl(parent)
+	}
+
+	endpoint, err := transport.NewEndpoint(parent)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse parent remote URL %q: %w", parentRemoteURL, err)
+	}
+
+	if strings.HasPrefix(relative, "/") {
+		endpoint.Path = path.Clean(relative)
+	} else {
+		endpoint.Path = path.Clean(path.Join(endpoint.Path, relative))
+	}
+
+	return endpoint.String(), nil
 }
 
 // GetLatestCommit retrieves the last commit hash for a given reference in a repository.
