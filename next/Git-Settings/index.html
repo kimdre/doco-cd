@@ -2599,6 +2599,11 @@
 </tr>
 </tbody>
 </table>
+<div class="admonition info">
+<p class="admonition-title">Submodule URL format</p>
+<p>Relative submodule URLs (for example <code>../other-repo.git</code>) are resolved against the parent repository remote URL.</p>
+<p>If you use an older doco-cd version and see an error like <code>exec: "git": executable file not found in $PATH</code> during submodule updates, use absolute submodule URLs (<code>https://...</code> or <code>git@...</code>) as a workaround or update to a newer version.</p>
+</div>
 <h2 id="authentication">Authentication<a class="headerlink" href="#authentication" title="Permanent link">&para;</a></h2>
 <p>The following settings configure how Doco-CD authenticates with Git providers when cloning/pulling repositories.</p>
 <p>You can use either </p>
