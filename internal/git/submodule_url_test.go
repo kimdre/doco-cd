@@ -80,6 +80,7 @@ func TestIsRelativeSubmoduleURL(t *testing.T) {
 		{name: "relative current", value: "./repo.git", expected: true},
 		{name: "host absolute path", value: "/org/repo.git", expected: true},
 		{name: "https absolute", value: "https://github.com/org/repo.git", expected: false},
+		{name: "https absolute without protocol schema", value: "github.com/org/repo.git", expected: false},
 		{name: "ssh absolute", value: "git@github.com:org/repo.git", expected: false},
 	}
 
