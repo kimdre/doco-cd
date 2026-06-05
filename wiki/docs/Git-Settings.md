@@ -15,6 +15,11 @@ Settings to configure Git authentication and clone behavior.
 | `GIT_CLONE_SUBMODULES`            | boolean | Whether Git submodules are cloned too.                                                                                                                                                                                                                                                                                                             | `true`                                           |
 | `SKIP_TLS_VERIFICATION`           | boolean | Skip TLS verification when cloning repositories.                                                                                                                                                                                                                                                                                                   | `false`                                          |
 
+!!! info "Submodule URL format"
+    Relative submodule URLs (for example `../other-repo.git`) are resolved against the parent repository remote URL.
+
+    If you use an older doco-cd version and see an error like `exec: "git": executable file not found in $PATH` during submodule updates, use absolute submodule URLs (`https://...` or `git@...`) as a workaround or update to a newer version.
+
 ## Authentication
 
 The following settings configure how Doco-CD authenticates with Git providers when cloning/pulling repositories.
