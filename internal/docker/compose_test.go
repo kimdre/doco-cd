@@ -2679,7 +2679,7 @@ func TestIsRecreatableVolumeType(t *testing.T) {
 	}
 }
 
-func TestRecreateVolumesWithChangedConfig_SkipsNonNFSOrCIFSVolumes(t *testing.T) {
+func TestRecreateVolumesWithChangedConfig_SkipsUnsupportedVolumeTypes(t *testing.T) {
 	t.Parallel()
 
 	var deleteCalled bool
@@ -2742,7 +2742,7 @@ func TestRecreateVolumesWithChangedConfig_SkipsNonNFSOrCIFSVolumes(t *testing.T)
 	}
 
 	if deleteCalled {
-		t.Fatal("expected VolumeRemove to never be called for non-NFS/CIFS volumes")
+		t.Fatal("expected VolumeRemove to never be called for unsupported volume types")
 	}
 }
 
@@ -2922,5 +2922,163 @@ func TestRecreateVolumesWithChangedConfig_StopsRunningContainersBeforeRemove(t *
 
 	if stopIdx == -1 || deleteIdx == -1 || stopIdx > deleteIdx {
 		t.Fatalf("expected stop request before delete request, got sequence=%v", requestSeen)
+	}
+}
+
+func TestRecreateVolumesWithChangedConfig_DoesNotStopContainerOnSourcePathOnlyMatch(t *testing.T) {
+	t.Parallel()
+
+	var (
+		stopCalled   bool
+		deleteCalled bool
+	)
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/containers/json") && r.Method == http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"Id":     "container-1",
+					"Names":  []string{"/stack-a-app-1"},
+					"State":  "running",
+					"Labels": map[string]string{api.ProjectLabel: "stack-a"},
+					// Source can contain host paths for bind mounts; this must not be used for named-volume matching.
+					"Mounts": []map[string]any{{"Name": "", "Source": "shared-volume"}},
+				},
+			})
+		case strings.Contains(r.URL.Path, "/containers/container-1/stop") && r.Method == http.MethodPost:
+			stopCalled = true
+
+			w.WriteHeader(http.StatusNoContent)
+		case strings.HasSuffix(r.URL.Path, "/volumes") && r.Method == http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(volume.ListResponse{
+				Volumes: []volume.Volume{{
+					Name:   "shared-volume",
+					Driver: "local",
+					Labels: map[string]string{api.ProjectLabel: "stack-a"},
+					Options: map[string]string{
+						"type": "nfs",
+						"o":    "addr=10.0.0.1,vers=4",
+					},
+				}},
+			})
+		case strings.Contains(r.URL.Path, "/volumes/shared-volume") && r.Method == http.MethodDelete:
+			deleteCalled = true
+
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	cli, err := client.New(
+		client.WithHost(server.URL),
+		client.WithHTTPClient(server.Client()),
+		client.WithAPIVersion("1.52"),
+	)
+	if err != nil {
+		t.Fatalf("failed to create docker api client: %v", err)
+	}
+
+	project := &types.Project{
+		Volumes: types.Volumes{
+			"shared-volume": {
+				Name:   "shared-volume",
+				Driver: "local",
+				DriverOpts: types.Options{
+					"type": "nfs",
+					"o":    "addr=10.0.0.2,vers=4",
+				},
+			},
+		},
+	}
+
+	if err := RecreateVolumesWithChangedConfig(context.Background(), cli, "stack-a", project); err != nil {
+		t.Fatalf("RecreateVolumesWithChangedConfig() unexpected error: %v", err)
+	}
+
+	if stopCalled {
+		t.Fatal("expected container stop to be skipped when mount name does not match volume name")
+	}
+
+	if !deleteCalled {
+		t.Fatal("expected volume removal for changed recreatable volume")
+	}
+}
+
+func TestRecreateVolumesWithChangedConfig_ReturnsErrorWhenStoppingContainerFails(t *testing.T) {
+	t.Parallel()
+
+	var deleteCalled bool
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/containers/json") && r.Method == http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"Id":     "container-1",
+					"Names":  []string{"/stack-a-app-1"},
+					"State":  "running",
+					"Labels": map[string]string{api.ProjectLabel: "stack-a"},
+					"Mounts": []map[string]any{{"Name": "shared-volume", "Source": "shared-volume"}},
+				},
+			})
+		case strings.Contains(r.URL.Path, "/containers/container-1/stop") && r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"message":"stop failed"}`))
+		case strings.HasSuffix(r.URL.Path, "/volumes") && r.Method == http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(volume.ListResponse{
+				Volumes: []volume.Volume{{
+					Name:    "shared-volume",
+					Driver:  "local",
+					Labels:  map[string]string{api.ProjectLabel: "stack-a"},
+					Options: map[string]string{"type": "nfs", "o": "addr=10.0.0.1"},
+				}},
+			})
+		case strings.Contains(r.URL.Path, "/volumes/shared-volume") && r.Method == http.MethodDelete:
+			deleteCalled = true
+
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	cli, err := client.New(
+		client.WithHost(server.URL),
+		client.WithHTTPClient(server.Client()),
+		client.WithAPIVersion("1.52"),
+	)
+	if err != nil {
+		t.Fatalf("failed to create docker api client: %v", err)
+	}
+
+	project := &types.Project{
+		Volumes: types.Volumes{
+			"shared-volume": {
+				Name:       "shared-volume",
+				Driver:     "local",
+				DriverOpts: types.Options{"type": "nfs", "o": "addr=10.0.0.2"},
+			},
+		},
+	}
+
+	err = RecreateVolumesWithChangedConfig(context.Background(), cli, "stack-a", project)
+	if err == nil {
+		t.Fatal("expected error when stopping container fails")
+	}
+
+	if !strings.Contains(err.Error(), "failed to stop container") {
+		t.Fatalf("expected stop-container error, got: %v", err)
+	}
+
+	if deleteCalled {
+		t.Fatal("expected volume delete to be skipped when container stop fails")
 	}
 }

@@ -1654,7 +1654,7 @@ func getRunningContainersUsingVolume(ctx context.Context, apiClient client.APICl
 		}
 
 		for _, mount := range cont.Mounts {
-			if mount.Name == volumeName || mount.Source == volumeName {
+			if mount.Name == volumeName {
 				using = append(using, cont)
 				break
 			}
