@@ -13,7 +13,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 )
 
-func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logger) error {
+func (s *StageManager) RunPostDeployStage(ctx context.Context, stageLog *slog.Logger) error {
 	s.Stages.PostDeploy.StartedAt = time.Now()
 
 	defer func() {
@@ -35,16 +35,20 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 		}
 	}
 
+	revision := notification.GetRevision(s.DeployConfig.Reference, shortCommit)
+
 	metadata := s.Metadata
 	metadata.Repository = s.Repository.Name
 	metadata.Stack = s.DeployConfig.Name
-	metadata.Revision = notification.GetRevision(s.DeployConfig.Reference, shortCommit)
+	metadata.Revision = revision
 	metadata.JobID = s.JobID
 
 	err = notification.Send(notification.Success, "Deployment completed", "Successfully deployed stack "+s.DeployConfig.Name, metadata)
 	if err != nil {
 		stageLog.Error("failed to send notification", logger.ErrAttr(err))
 	}
+
+	s.fireHooks(ctx, s.DeployConfig.Hooks.OnSuccess, "success", revision, "")
 
 	return nil
 }

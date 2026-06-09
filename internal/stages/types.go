@@ -1,8 +1,10 @@
 package stages
 
 import (
+	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -16,6 +18,8 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/hook"
+	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
@@ -220,33 +224,32 @@ func (s *StageManager) GetStageMetaData(stageName StageName) (*MetaData, error) 
 	}
 }
 
-// NotifyFailure sends a failure notification using the provided NotifyFailureFunc.
-func (s *StageManager) NotifyFailure(notifyErr error) {
+// NotifyFailure sends a failure notification using the provided NotifyFailureFunc
+// and fires any configured on-failure hooks.
+func (s *StageManager) NotifyFailure(ctx context.Context, notifyErr error) {
 	var (
 		latestCommit string
 		commitErr    error
 		commitSha    string
 	)
 
+	if s.Repository.Git != nil {
+		latestCommit, commitErr = gitInternal.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
+		if commitErr != nil {
+			latestCommit = ""
+		}
+
+		commitSha, commitErr = gitInternal.GetShortestUniqueCommitHash(s.Repository.Git, latestCommit, gitInternal.DefaultShortSHALength)
+		if commitErr != nil {
+			commitSha = latestCommit
+		}
+	} else {
+		commitSha = strings.TrimSpace(s.Repository.Revision)
+	}
+
+	revision := notification.GetRevision(s.DeployConfig.Reference, commitSha)
+
 	if s.NotifyFailureFunc != nil {
-		if s.Repository.Git != nil {
-			latestCommit, commitErr = gitInternal.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
-			if commitErr != nil {
-				latestCommit = ""
-			}
-
-			commitSha, commitErr = gitInternal.GetShortestUniqueCommitHash(s.Repository.Git, latestCommit, gitInternal.DefaultShortSHALength)
-			if commitErr != nil {
-				commitSha = latestCommit
-			}
-		}
-
-		if s.Repository.Git == nil {
-			commitSha = strings.TrimSpace(s.Repository.Revision)
-		}
-
-		revision := notification.GetRevision(s.DeployConfig.Reference, commitSha)
-
 		metadata := s.Metadata
 		metadata.Repository = s.Repository.Name
 		metadata.Stack = s.DeployConfig.Name
@@ -254,5 +257,77 @@ func (s *StageManager) NotifyFailure(notifyErr error) {
 		metadata.JobID = s.JobID
 
 		s.NotifyFailureFunc(s.Log, notifyErr, metadata)
+	}
+
+	s.fireHooks(ctx, s.DeployConfig.Hooks.OnFailure, "failure", revision, notifyErr.Error())
+}
+
+// changedServiceImages returns the resolved image references of the services that
+// changed in this deployment, deduplicated and sorted. It returns nil when the
+// compose project is unavailable (e.g. a failure before the project was loaded).
+func (s *StageManager) changedServiceImages() []string {
+	if s.Docker == nil || s.Docker.Project == nil {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+
+	var images []string
+
+	for _, change := range s.DeployState.changedServices {
+		for _, name := range change.Services {
+			svc, ok := s.Docker.Project.Services[name]
+			if !ok || svc.Image == "" {
+				continue
+			}
+
+			if _, dup := seen[svc.Image]; dup {
+				continue
+			}
+
+			seen[svc.Image] = struct{}{}
+			images = append(images, svc.Image)
+		}
+	}
+
+	slices.Sort(images)
+
+	return images
+}
+
+// fireHooks delivers the configured webhook hooks for a lifecycle event.
+// Hook failures are logged but never abort the deployment.
+func (s *StageManager) fireHooks(ctx context.Context, webhooks []hook.Webhook, event, revision, errMsg string) {
+	if len(webhooks) == 0 {
+		return
+	}
+
+	payload := hook.Payload{
+		Event:      event,
+		Repository: s.Repository.Name,
+		Stack:      s.DeployConfig.Name,
+		Revision:   revision,
+		JobID:      s.JobID,
+		Images:     s.changedServiceImages(),
+		Error:      errMsg,
+	}
+
+	s.Log.Info("sending deployment hooks",
+		slog.String("event", event),
+		slog.Int("count", len(webhooks)))
+
+	for _, w := range webhooks {
+		if err := hook.Send(ctx, w, payload); err != nil {
+			s.Log.Error("failed to send deployment hook",
+				slog.String("event", event),
+				slog.String("url", w.URL),
+				logger.ErrAttr(err))
+
+			continue
+		}
+
+		s.Log.Info("sent deployment hook",
+			slog.String("event", event),
+			slog.String("url", w.URL))
 	}
 }

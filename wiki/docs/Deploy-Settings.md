@@ -63,6 +63,7 @@ The docker compose deployment can be configured inside the [deployment configura
 | `destroy`           | boolean \| object | (⚠️ Destructive) Configure stack/project destruction behavior. Use `destroy: true` as shorthand to enable destruction with default options, or use `destroy.enabled: true` inside the object form to customize removal behavior. See [Destroy settings](#destroy-settings).                                                                                                                                                                                                          | see [Destroy settings](#destroy-settings)                                                                              |
 | `auto_discovery`    | boolean \| object | Enables [autodiscovery](#auto-discovery) of services to deploy in the working directory by scanning for subdirectories with Docker Compose files (see the `compose_files` setting). Use `auto_discovery: true` as shorthand to enable it with default options, or use the object form to customize settings such as `depth` and `delete`. See [Auto-Discovery Settings](#auto-discovery-settings).                                                                                   | see [Auto-Discovery Settings](#auto-discovery-settings)                                                                |
 | `reconciliation`    | boolean \| object | Enables event-driven reconciliation for deployments. Use `reconciliation: true` as shorthand to enable reconciliation with default options, or use the object form to customize settings. See [reconciliation settings](#reconciliation-settings).                                                                                                                                                                                                                                   | see [Reconciliation Settings](#reconciliation-settings)                                                                |
+| `hooks`             | object            | HTTP webhook hooks fired after a deployment succeeds or fails. See [Hook Settings](#hook-settings).                                                                                                                                                                                                                                                                                                                                                                                  | `null` (No hooks)                                                                                                      |
 
 
 !!! example
@@ -437,6 +438,60 @@ The following events are supported as reconciliation triggers in Docker (Standal
         - destroy
         - unhealthy
     ```
+
+### Hook Settings
+
+Hooks send an HTTP request to one or more endpoints when a deployment finishes, so you can trigger external systems (CI pipelines, alerting, dashboards) on the outcome.
+
+!!! info "Hooks vs. Notifications"
+    Hooks are raw HTTP calls configured per deployment in the deployment config. For ready-made messages to chat/email services, use [Notifications](Advanced/Notifications.md) instead.
+
+`hooks` is a nested object with two independent lists. Each list contains one or more hook entries:
+
+| Key          | Type                  | Description                                                  | Default value |
+|--------------|-----------------------|--------------------------------------------------------------|---------------|
+| `on_success` | array of hook entries | Hooks called after the deployment completes successfully.    | `[]`          |
+| `on_failure` | array of hook entries | Hooks called when the deployment fails.                      | `[]`          |
+
+Each hook entry accepts:
+
+| Key       | Type           | Description                                                        | Default value |
+|-----------|----------------|--------------------------------------------------------------------|---------------|
+| `url`     | string         | Target endpoint. Must be a valid `http`/`https` URL.               |               |
+| `method`  | string         | HTTP method to use.                                                | `POST`        |
+| `headers` | map of strings | Additional request headers (e.g. an authorization token).         | `null`        |
+
+The request body is JSON (`Content-Type: application/json`) with the following fields:
+
+| Field        | Description                                            |
+|--------------|--------------------------------------------------------|
+| `event`      | `success` or `failure`.                                |
+| `repository` | Source repository / OCI artifact name.                 |
+| `stack`      | Deployment / stack name.                               |
+| `revision`   | Deployed reference and commit (e.g. `main (abc1234)`). |
+| `job_id`     | Unique job identifier.                                 |
+| `images`     | Resolved image references (`name:tag`) of the changed services. Omitted when no service images are available. |
+| `error`      | Failure reason (present on `failure` events only).     |
+
+!!! note "Hooks are best-effort"
+    A hook request has a 10 second timeout. A non-2xx response or an unreachable endpoint is logged but does **not** fail the deployment.
+
+!!! example
+
+    ```yaml title=".doco-cd.yml"
+    name: some-project
+    hooks:
+      on_success:
+        - url: https://ci.example.com/notify # (1)!
+          headers:
+            Authorization: Bearer xxx
+      on_failure:
+        - url: https://alerts.example.com/webhook # (2)!
+          method: PUT
+    ```
+
+    1. Called with an `event: success` payload after a successful deployment.
+    2. Called with an `event: failure` payload (including the `error` field) when the deployment fails.
 
 ### Webhook Filter
 

@@ -21,6 +21,7 @@ import (
 	"gopkg.in/validator.v2"
 
 	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/hook"
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
@@ -66,6 +67,7 @@ type Config struct {
 	AutoDiscovery      AutoDiscoveryConfig                      `yaml:"auto_discovery" json:"auto_discovery"`                                                                                                                   // AutoDiscovery configures autodiscovery of services to deploy in the working directory
 	Reconciliation     ReconciliationConfig                     `yaml:"reconciliation" json:"reconciliation" doco:"allowOverride"`                                                                                              // Reconciliation is the configuration for the reconciliation feature
 	Oci                config.OciTrustPolicyOverride            `yaml:"oci" json:"oci" doco:"allowOverride"`                                                                                                                    // Oci allows per-target overrides for OCI signature verification policy
+	Hooks              hook.Config                              `yaml:"hooks" json:"hooks" doco:"allowOverride"`                                                                                                                // Hooks configures HTTP webhook hooks fired on deployment success/failure
 	Internal           struct {
 		File                          string            `yaml:"-"` // File is the path to the deployment configuration file
 		Environment                   map[string]string // Environment stores environment variables for variable interpolation in the compose project
@@ -182,6 +184,10 @@ func (c *Config) Validate() error {
 
 	if err := c.normalizeReconciliationEvents(); err != nil {
 		return err
+	}
+
+	if err := c.Hooks.Validate(); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
 	}
 
 	return nil
