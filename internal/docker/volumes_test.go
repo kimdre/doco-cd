@@ -171,12 +171,10 @@ func TestIsRecreatableVolumeType(t *testing.T) {
 		want bool
 	}{
 		{name: "nil", cfg: nil, want: false},
-		{name: "driver nfs", cfg: &types.VolumeConfig{Driver: "nfs"}, want: true},
-		{name: "driver cifs", cfg: &types.VolumeConfig{Driver: "cifs"}, want: true},
+		{name: "empty driver without type", cfg: &types.VolumeConfig{}, want: false},
 		{name: "driver local", cfg: &types.VolumeConfig{Driver: "local"}, want: false},
-		{name: "driver tmpfs", cfg: &types.VolumeConfig{Driver: "tmpfs"}, want: true},
-		{name: "driver btrfs", cfg: &types.VolumeConfig{Driver: "btrfs"}, want: false},
-		{name: "driver zfs", cfg: &types.VolumeConfig{Driver: "zfs"}, want: false},
+		{name: "empty driver with unsupported type", cfg: &types.VolumeConfig{DriverOpts: types.Options{"type": "zfs"}}, want: false},
+		{name: "local with unsupported type", cfg: &types.VolumeConfig{Driver: "local", DriverOpts: types.Options{"type": "zfs"}}, want: false},
 		{
 			name: "local with type nfs",
 			cfg:  &types.VolumeConfig{Driver: "local", DriverOpts: types.Options{"type": "nfs"}},
@@ -190,6 +188,11 @@ func TestIsRecreatableVolumeType(t *testing.T) {
 		{
 			name: "local with type tmpfs",
 			cfg:  &types.VolumeConfig{Driver: "local", DriverOpts: types.Options{"type": "tmpfs"}},
+			want: true,
+		},
+		{
+			name: "local with trimmed upper-case type tmpfs",
+			cfg:  &types.VolumeConfig{Driver: "local", DriverOpts: types.Options{"type": " TMPFS "}},
 			want: true,
 		},
 	}
