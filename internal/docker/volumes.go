@@ -77,9 +77,6 @@ func isRecreatableVolumeType(cfg *types.VolumeConfig) bool {
 	}
 
 	driver := strings.ToLower(strings.TrimSpace(cfg.Driver))
-	if driver == "nfs" || driver == "cifs" || driver == "tmpfs" {
-		return true
-	}
 
 	if driver != "" && driver != "local" {
 		return false
