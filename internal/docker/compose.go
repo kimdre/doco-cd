@@ -526,11 +526,6 @@ func DeployStack(
 	if swarm.GetModeEnabled() {
 		stackLog.Info("deploying swarm stack")
 
-		if err = removeMismatchedRecreatableVolumes(*ctx, dockerCli.Client(), deployConfig.Name, project); err != nil {
-			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
-			return fmt.Errorf("failed to remove mismatched recreatable volumes: %w", err)
-		}
-
 		cfg, opts, err := LoadSwarmStack(dockerCli, project, deployConfig, externalWorkingDir)
 		if err != nil {
 			return fmt.Errorf("failed to load swarm stack: %w", err)
@@ -540,6 +535,11 @@ func DeployStack(
 		addSwarmVolumeLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
 		addSwarmConfigLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
 		addSwarmSecretLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
+
+		if err = removeMismatchedRecreatableVolumes(*ctx, dockerCli.Client(), deployConfig.Name, project); err != nil {
+			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
+			return fmt.Errorf("failed to remove mismatched recreatable volumes: %w", err)
+		}
 
 		err = DeploySwarmStack(*ctx, dockerCli, cfg, opts)
 		if err != nil {
