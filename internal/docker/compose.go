@@ -29,7 +29,6 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing/format/diff"
 
-	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
@@ -391,6 +390,12 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		return err
 	}
 
+	// Remove mismatched recreatable volumes (tmpfs, NFS, CIFS mounts) before create.
+	// Docker Compose then recreates them with the desired configuration during service.Create.
+	if err = removeMismatchedRecreatableVolumes(ctx, dockerCli.Client(), deployConfig.Name, project); err != nil {
+		return fmt.Errorf("failed to remove mismatched recreatable volumes: %w", err)
+	}
+
 	err = service.Create(ctx, project, createOpts)
 	if err != nil {
 		return err
@@ -521,6 +526,11 @@ func DeployStack(
 	if swarm.GetModeEnabled() {
 		stackLog.Info("deploying swarm stack")
 
+		if err = removeMismatchedRecreatableVolumes(*ctx, dockerCli.Client(), deployConfig.Name, project); err != nil {
+			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
+			return fmt.Errorf("failed to remove mismatched recreatable volumes: %w", err)
+		}
+
 		cfg, opts, err := LoadSwarmStack(dockerCli, project, deployConfig, externalWorkingDir)
 		if err != nil {
 			return fmt.Errorf("failed to load swarm stack: %w", err)
@@ -598,13 +608,6 @@ func DeployStack(
 			),
 			slog.Any("need_signal", needSignal),
 		)
-
-		// Recreate volumes with changed driver or driver options (tmpfs, NFS, CIFS mounts)
-		// This must be done before deployCompose to avoid "Volume exists but doesn't match" errors
-		if err = RecreateVolumesWithChangedConfig(*ctx, dockerCli.Client(), deployConfig.Name, project); err != nil {
-			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
-			return fmt.Errorf("failed to recreate volumes with changed config: %w", err)
-		}
 
 		err = deployCompose(*ctx, dockerCli, project, deployConfig, recreateMode,
 			forcedServices.ToSlice(), needSignal)
@@ -1563,192 +1566,4 @@ func getServiceSchedulerLabels(svc types.ServiceConfig) map[string]string {
 	maps.Copy(labels, svc.CustomLabels)
 
 	return labels
-}
-
-// volumeConfigMatch checks if two volume configurations match
-// Returns true if the volumes have the same driver and driver options.
-func volumeConfigMatch(existing, desired *types.VolumeConfig) bool {
-	if existing == nil || desired == nil {
-		return existing == desired
-	}
-
-	// Check if driver matches (empty string defaults to "local")
-	existingDriver := existing.Driver
-	if existingDriver == "" {
-		existingDriver = "local"
-	}
-
-	desiredDriver := desired.Driver
-	if desiredDriver == "" {
-		desiredDriver = "local"
-	}
-
-	if existingDriver != desiredDriver {
-		return false
-	}
-
-	// Check if driver options match
-	existingOpts := existing.DriverOpts
-	if existingOpts == nil {
-		existingOpts = make(types.Options)
-	}
-
-	desiredOpts := desired.DriverOpts
-	if desiredOpts == nil {
-		desiredOpts = make(types.Options)
-	}
-
-	// Compare each option as a string representation
-	// This handles the case where options might have different types but same values
-	for k, v := range desiredOpts {
-		existingVal, exists := existingOpts[k]
-		if !exists {
-			return false
-		}
-		// Convert to string for comparison to handle type differences
-		if existingVal != v {
-			return false
-		}
-	}
-
-	// Check if any existing options are not in desired
-	for k := range existingOpts {
-		if _, exists := desiredOpts[k]; !exists {
-			return false
-		}
-	}
-
-	return true
-}
-
-func isRecreatableVolumeType(cfg *types.VolumeConfig) bool {
-	if cfg == nil {
-		return false
-	}
-
-	driver := strings.ToLower(strings.TrimSpace(cfg.Driver))
-	if driver == "nfs" || driver == "cifs" || driver == "tmpfs" {
-		return true
-	}
-
-	if driver != "" && driver != "local" {
-		return false
-	}
-
-	volType := strings.ToLower(strings.TrimSpace(cfg.DriverOpts["type"]))
-
-	return volType == "nfs" || volType == "cifs" || volType == "tmpfs"
-}
-
-func getRunningContainersUsingVolume(ctx context.Context, apiClient client.APIClient, stackName, volumeName string) ([]container.Summary, error) {
-	containers, err := GetLabeledContainers(ctx, apiClient, api.ProjectLabel, stackName, true)
-	if err != nil {
-		return nil, err
-	}
-
-	using := make([]container.Summary, 0)
-
-	for _, cont := range containers {
-		if !strings.EqualFold(string(cont.State), "running") {
-			continue
-		}
-
-		for _, mount := range cont.Mounts {
-			if mount.Name == volumeName {
-				using = append(using, cont)
-				break
-			}
-		}
-	}
-
-	return using, nil
-}
-
-// RecreateVolumesWithChangedConfig removes volumes that have mismatched configuration.
-// This is intentionally limited to NFS/CIFS/tmpfs-backed volumes.
-// Removing them allows Docker Compose to recreate them with the new configuration.
-func RecreateVolumesWithChangedConfig(ctx context.Context, apiClient client.APIClient, stackName string, project *types.Project) error {
-	if len(project.Volumes) == 0 {
-		return nil
-	}
-
-	// Get existing volumes for this project
-	existingVolumes, err := GetLabeledVolumes(ctx, apiClient, api.ProjectLabel, stackName)
-	if err != nil {
-		// If no volumes found, nothing to recreate
-		if strings.Contains(err.Error(), "no volumes") {
-			return nil
-		}
-
-		return fmt.Errorf("failed to get existing volumes: %w", err)
-	}
-
-	if len(existingVolumes) == 0 {
-		return nil
-	}
-
-	// Build a map of volume names to their desired config.
-	// Use the project map key to avoid missing entries where v.Name is empty.
-	desiredVolumes := make(map[string]types.VolumeConfig)
-	maps.Copy(desiredVolumes, project.Volumes)
-
-	// Check for mismatched volumes and remove them
-	for _, existing := range existingVolumes {
-		desired, exists := desiredVolumes[existing.Name]
-		if !exists {
-			continue // Volume not in new config, will be handled by RemoveOrphans
-		}
-
-		if !isRecreatableVolumeType(&desired) {
-			continue
-		}
-
-		// If the existing volume config doesn't match the desired one, remove it
-		if !volumeConfigMatch(&types.VolumeConfig{
-			Driver:     existing.Driver,
-			DriverOpts: existing.Options,
-		}, &desired) {
-			runningContainers, err := getRunningContainersUsingVolume(ctx, apiClient, stackName, existing.Name)
-			if err != nil {
-				return fmt.Errorf("failed to get containers using volume %s: %w", existing.Name, err)
-			}
-
-			for _, cont := range runningContainers {
-				slog.Debug("stopping container using volume before recreate",
-					slog.String("volume", existing.Name),
-					slog.String("container_id", cont.ID),
-					slog.Any("container_names", cont.Names),
-				)
-
-				_, err = apiClient.ContainerStop(ctx, cont.ID, client.ContainerStopOptions{})
-				if err != nil {
-					return fmt.Errorf("failed to stop container %s using volume %s: %w", cont.ID, existing.Name, err)
-				}
-			}
-
-			slog.Debug("removing volume with mismatched config", slog.String("volume", existing.Name),
-				slog.String("existing_driver", existing.Driver),
-				slog.Any("existing_opts", existing.Options),
-				slog.String("desired_driver", desired.Driver),
-				slog.Any("desired_opts", desired.DriverOpts),
-			)
-
-			retries := 3
-			for range retries {
-				_, err = apiClient.VolumeRemove(ctx, existing.Name, client.VolumeRemoveOptions{Force: true})
-				if err != nil {
-					if strings.Contains(err.Error(), ErrIsInUse.Error()) {
-						time.Sleep(1 * time.Second)
-						continue
-					}
-
-					return fmt.Errorf("failed to remove volume %s: %w", existing.Name, err)
-				}
-
-				break
-			}
-		}
-	}
-
-	return nil
 }
