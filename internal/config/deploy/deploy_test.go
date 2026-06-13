@@ -552,6 +552,31 @@ auto_discovery:
 	}
 }
 
+func TestGetConfigs_WithAutoDiscovery_NoComposeFiles(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+	createTestRepo(t, repoRoot)
+
+	configFile := filepath.Join(repoRoot, ".doco-cd.yaml")
+
+	err := createTestFile(t, configFile, `auto_discovery:
+  enabled: true
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	configs, err := GetConfigs(repoRoot, ".", "", "main", nil)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if len(configs) != 0 {
+		t.Fatalf("expected 0 configs, got %d", len(configs))
+	}
+}
+
 func TestGetConfigs_WithAutoDiscovery_OnDifferentBranch(t *testing.T) {
 	t.Parallel()
 

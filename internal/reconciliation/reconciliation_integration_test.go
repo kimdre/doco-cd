@@ -198,6 +198,56 @@ func TestReconciliationStopEventRestartSuppressionIntegration(t *testing.T) {
 	assertBootMarkerCountStable(ctx, t, stack, logSince, 3, 6*time.Second)
 }
 
+func TestCleanupObsoleteAutoDiscoveredContainers_EmptyDiscoveredConfigs_RemovesStack(t *testing.T) {
+	requireDockerIntegrationTestGate(t)
+
+	ctx := t.Context()
+	stackName := internaltest.ConvertTestName(t.Name())
+	repoURL := "https://github.com/kimdre/doco-cd_tests.git"
+
+	stack := internaltest.ComposeUp(ctx, t,
+		internaltest.WithName(stackName),
+		internaltest.WithYAML(runningServiceComposeYAML()),
+		internaltest.WithWaitTimeout(90*time.Second),
+		internaltest.WithCustomLabel(map[string]string{
+			docker.DocoCDLabels.Metadata.Manager:         app.Name,
+			docker.DocoCDLabels.Source.URL:               repoURL,
+			docker.DocoCDLabels.Deployment.Name:          stackName,
+			docker.DocoCDLabels.Deployment.AutoDiscovery: "true",
+			docker.DocoCDLabels.Deployment.AutoDiscoveryConfig: docker.MarshalAutoDiscoveryConfig(deployConfig.AutoDiscoveryConfig{
+				Delete:        true,
+				RemoveVolumes: true,
+				RemoveImages:  true,
+			}),
+		}),
+	)
+
+	preContainers, err := docker.GetLabeledContainers(ctx, stack.Client, api.ProjectLabel, stackName, false)
+	if err != nil {
+		t.Fatalf("failed to list stack containers before cleanup: %v", err)
+	}
+
+	if len(preContainers) == 0 {
+		t.Fatalf("expected running containers for stack %q before cleanup", stackName)
+	}
+
+	jobLog := logger.New(slog.LevelError).Logger
+
+	err = cleanupObsoleteAutoDiscoveredContainers(
+		ctx,
+		jobLog,
+		stack.DockerCli,
+		repoURL,
+		[]*deployConfig.Config{},
+		notification.Metadata{Repository: "kimdre/doco-cd_tests", Stack: stackName, JobID: "cleanup-empty-discovered-configs"},
+	)
+	if err != nil {
+		t.Fatalf("cleanupObsoleteAutoDiscoveredContainers returned error: %v", err)
+	}
+
+	waitForStackContainersRemoved(ctx, t, stack.Client, stackName, 30*time.Second)
+}
+
 func requireDockerIntegrationTestGate(t *testing.T) {
 	t.Helper()
 
@@ -224,6 +274,29 @@ func requireDockerIntegrationTestGate(t *testing.T) {
 
 	if dockerSwarm.GetModeEnabled() {
 		t.Skip("reconciliation Docker event integration tests require non-Swarm mode")
+	}
+}
+
+func waitForStackContainersRemoved(ctx context.Context, t *testing.T, cli client.APIClient, stackName string, timeout time.Duration) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+
+	for {
+		containers, err := docker.GetLabeledContainers(ctx, cli, api.ProjectLabel, stackName, false)
+		if err != nil {
+			t.Fatalf("failed to list containers for stack %q: %v", stackName, err)
+		}
+
+		if len(containers) == 0 {
+			return
+		}
+
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for stack %q containers to be removed, still found %d", stackName, len(containers))
+		}
+
+		time.Sleep(250 * time.Millisecond)
 	}
 }
 
