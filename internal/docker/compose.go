@@ -390,6 +390,12 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		return err
 	}
 
+	// Remove mismatched recreatable volumes (tmpfs, NFS, CIFS mounts) before create.
+	// Docker Compose then recreates them with the desired configuration during service.Create.
+	if err = removeMismatchedRecreatableVolumes(ctx, dockerCli.Client(), deployConfig.Name, project); err != nil {
+		return fmt.Errorf("failed to remove mismatched recreatable volumes: %w", err)
+	}
+
 	err = service.Create(ctx, project, createOpts)
 	if err != nil {
 		return err
@@ -529,6 +535,11 @@ func DeployStack(
 		addSwarmVolumeLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
 		addSwarmConfigLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
 		addSwarmSecretLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
+
+		if err = removeMismatchedRecreatableVolumes(*ctx, dockerCli.Client(), deployConfig.Name, project); err != nil {
+			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
+			return fmt.Errorf("failed to remove mismatched recreatable volumes: %w", err)
+		}
 
 		err = DeploySwarmStack(*ctx, dockerCli, cfg, opts)
 		if err != nil {

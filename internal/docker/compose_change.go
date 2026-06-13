@@ -21,6 +21,7 @@ const (
 	changeScopeBindMounts changeScope = "bindMounts"
 	changeScopeBuildFiles changeScope = "buildFiles"
 	changeScopeEnvFiles   changeScope = "envFiles"
+	changeScopeVolumes    changeScope = "volumes"
 )
 
 type (
@@ -62,7 +63,7 @@ func parseRecreateIgnore(input string) (ignoreCfg, error) {
 
 	for scope, rule := range ret {
 		switch scope {
-		case changeScopeConfigs, changeScopeSecrets, changeScopeBindMounts:
+		case changeScopeConfigs, changeScopeSecrets, changeScopeBindMounts, changeScopeVolumes:
 			// ignore envFiles and buildFiles because always need recreate
 		default:
 			return nil, fmt.Errorf("%w, %s is not supported", ErrIgnoreCfgInvalid, scope)
