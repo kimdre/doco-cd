@@ -352,8 +352,10 @@ func GetConfigs(repoRoot, configBaseDir, customTarget, reference string, gitOpts
 			return nil, err
 		}
 
-		// Build a new slice to avoid modifying the slice we're iterating over
-		var expandedConfigs []*Config
+		// Build a new slice to avoid modifying the slice we're iterating over.
+		// Keep it non-nil so auto-discovery with no compose files returns an
+		// explicit empty config list instead of falling through as "not found".
+		expandedConfigs := make([]*Config, 0, len(configs))
 
 		// Ensure gitOpts is not nil for AutoDiscovery operations
 		opts := gitOpts
@@ -420,19 +422,21 @@ func GetConfigs(repoRoot, configBaseDir, customTarget, reference string, gitOpts
 			}
 		}
 
-		if expandedConfigs != nil {
-			if err = validator.Validate(expandedConfigs); err != nil {
-				return nil, err
-			}
-
-			// Check if the stack/project names are not unique
-			err = ValidateUniqueProjectNames(expandedConfigs)
-			if err != nil {
-				return nil, err
-			}
-
+		if len(expandedConfigs) == 0 {
 			return expandedConfigs, nil
 		}
+
+		if err = validator.Validate(expandedConfigs); err != nil {
+			return nil, err
+		}
+
+		// Check if the stack/project names are not unique
+		err = ValidateUniqueProjectNames(expandedConfigs)
+		if err != nil {
+			return nil, err
+		}
+
+		return expandedConfigs, nil
 	}
 
 	if customTarget != "" {
