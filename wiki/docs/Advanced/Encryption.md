@@ -53,7 +53,7 @@ For this, you need to
     sops encrypt --age <age_public_key> test.yaml > test.enc.yaml
     ```
 4. Set one of the following environment variables below for doco-cd to use the age key with SOPS:
-  
+
     | Key                 | Type   | Description                                                                                            |
     |---------------------|--------|--------------------------------------------------------------------------------------------------------|
     | `SOPS_AGE_KEY`      | string | The age **secret** key (See the [SOPS docs](https://getsops.io/docs/#encrypting-using-age))            |
@@ -62,8 +62,8 @@ For this, you need to
     I recommend using the `SOPS_AGE_KEY_FILE` environment variable and mount the age secret key as a Docker secret.
     See the [example below](#doco-cd-configuration) for how to do this.
 
-    !!! info 
-        More different options like using SOPS with PGP/GPG can be found in the [SOPS documentation](https://getsops.io/docs/).
+    !!! info
+        For all available SOPS environment variables and configuration options, see the [SOPS documentation](https://getsops.io/docs/).
 
 5. When triggering a deployment, doco-cd will automatically detect the SOPS-encrypted files and decrypt them using the provided age key.  
    It is important that you give your files the correct file extension, so that the correct file format is used during the decryption process.
