@@ -330,6 +330,10 @@ func TestResolveConfigs_InlineOverride(t *testing.T) {
 	if len(cfg.ComposeFiles) == 0 {
 		t.Errorf("expected default compose files to be set")
 	}
+
+	if !cfg.Internal.OciTrustPolicyOverrideTrusted {
+		t.Errorf("expected inline deployment OCI trust policy override to be trusted")
+	}
 }
 
 func TestResolveConfigs_InlineMissingName(t *testing.T) {
@@ -548,6 +552,31 @@ auto_discovery:
 	}
 }
 
+func TestGetConfigs_WithAutoDiscovery_NoComposeFiles(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+	createTestRepo(t, repoRoot)
+
+	configFile := filepath.Join(repoRoot, ".doco-cd.yaml")
+
+	err := createTestFile(t, configFile, `auto_discovery:
+  enabled: true
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	configs, err := GetConfigs(repoRoot, ".", "", "main", nil)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if len(configs) != 0 {
+		t.Fatalf("expected 0 configs, got %d", len(configs))
+	}
+}
+
 func TestGetConfigs_WithAutoDiscovery_OnDifferentBranch(t *testing.T) {
 	t.Parallel()
 
@@ -740,6 +769,10 @@ reference: %s
 
 	if configs[0].Name != t.Name() {
 		t.Errorf("expected name to be %v, got %s", t.Name(), configs[0].Name)
+	}
+
+	if configs[0].Internal.OciTrustPolicyOverrideTrusted {
+		t.Errorf("expected repository config OCI trust policy override to be untrusted")
 	}
 }
 

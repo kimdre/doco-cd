@@ -67,9 +67,10 @@ type Config struct {
 	Reconciliation     ReconciliationConfig                     `yaml:"reconciliation" json:"reconciliation" doco:"allowOverride"`                                                                                              // Reconciliation is the configuration for the reconciliation feature
 	Oci                config.OciTrustPolicyOverride            `yaml:"oci" json:"oci" doco:"allowOverride"`                                                                                                                    // Oci allows per-target overrides for OCI signature verification policy
 	Internal           struct {
-		File        string            `yaml:"-"` // File is the path to the deployment configuration file
-		Environment map[string]string // Environment stores environment variables for variable interpolation in the compose project
-		Hash        string            `yaml:"-"` // Hash is a hash of the Config struct
+		File                          string            `yaml:"-"` // File is the path to the deployment configuration file
+		Environment                   map[string]string // Environment stores environment variables for variable interpolation in the compose project
+		Hash                          string            `yaml:"-"`          // Hash is a hash of the Config struct
+		OciTrustPolicyOverrideTrusted bool              `yaml:"-" json:"-"` // true only for trusted config sources (e.g. POLL_CONFIG inline deployments)
 	} // Internal holds internal configuration values that are not set by the user
 }
 
@@ -351,8 +352,10 @@ func GetConfigs(repoRoot, configBaseDir, customTarget, reference string, gitOpts
 			return nil, err
 		}
 
-		// Build a new slice to avoid modifying the slice we're iterating over
-		var expandedConfigs []*Config
+		// Build a new slice to avoid modifying the slice we're iterating over.
+		// Keep it non-nil so auto-discovery with no compose files returns an
+		// explicit empty config list instead of falling through as "not found".
+		expandedConfigs := make([]*Config, 0, len(configs))
 
 		// Ensure gitOpts is not nil for AutoDiscovery operations
 		opts := gitOpts
@@ -419,19 +422,21 @@ func GetConfigs(repoRoot, configBaseDir, customTarget, reference string, gitOpts
 			}
 		}
 
-		if expandedConfigs != nil {
-			if err = validator.Validate(expandedConfigs); err != nil {
-				return nil, err
-			}
-
-			// Check if the stack/project names are not unique
-			err = ValidateUniqueProjectNames(expandedConfigs)
-			if err != nil {
-				return nil, err
-			}
-
+		if len(expandedConfigs) == 0 {
 			return expandedConfigs, nil
 		}
+
+		if err = validator.Validate(expandedConfigs); err != nil {
+			return nil, err
+		}
+
+		// Check if the stack/project names are not unique
+		err = ValidateUniqueProjectNames(expandedConfigs)
+		if err != nil {
+			return nil, err
+		}
+
+		return expandedConfigs, nil
 	}
 
 	if customTarget != "" {
@@ -505,6 +510,10 @@ func ResolveConfigs(inlineDeployments []*Config, customTarget, reference, repoRo
 		configs, err := expandInlineAutoDiscoverConfigs(repoRoot, inlineDeployments)
 		if err != nil {
 			return nil, err
+		}
+
+		for _, cfg := range configs {
+			cfg.Internal.OciTrustPolicyOverrideTrusted = true
 		}
 
 		return configs, nil

@@ -49,7 +49,8 @@ func EffectiveOciTrustPolicy(global OciTrustPolicy, override OciTrustPolicyOverr
 	p := NormalizeOciTrustPolicy(global)
 
 	if override.Verify != nil {
-		p.Enabled = *override.Verify
+		// A global enabled trust policy cannot be downgraded by per-deployment config.
+		p.Enabled = p.Enabled || *override.Verify
 	}
 
 	if len(override.KeylessIdentities) > 0 {

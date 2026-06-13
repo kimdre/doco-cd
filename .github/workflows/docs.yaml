@@ -29,7 +29,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
 
@@ -38,6 +38,7 @@ jobs:
         with:
           python-version: "3.x"
           cache: 'pip'
+          cache-dependency-path: 'wiki/requirements.txt'
 
       - name: Install docs requirements
         run: pip install -r ./wiki/requirements.txt
