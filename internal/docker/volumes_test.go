@@ -207,7 +207,7 @@ func TestIsRecreatableVolumeType(t *testing.T) {
 	}
 }
 
-func TestRemoveMismatchedRecreatableVolumes_SkipsUnsupportedVolumeTypes(t *testing.T) {
+func TestRemoveMismatchedRecreatableVolumes_RemovesWhenExistingTypeIsRecreatable(t *testing.T) {
 	t.Parallel()
 
 	var deleteCalled bool
@@ -231,6 +231,9 @@ func TestRemoveMismatchedRecreatableVolumes_SkipsUnsupportedVolumeTypes(t *testi
 					},
 				},
 			})
+		case strings.HasSuffix(r.URL.Path, "/containers/json") && r.Method == http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
 		case strings.Contains(r.URL.Path, "/volumes/") && r.Method == http.MethodDelete:
 			deleteCalled = true
 
@@ -269,8 +272,71 @@ func TestRemoveMismatchedRecreatableVolumes_SkipsUnsupportedVolumeTypes(t *testi
 		t.Fatalf("removeMismatchedRecreatableVolumes() unexpected error: %v", err)
 	}
 
+	if !deleteCalled {
+		t.Fatal("expected VolumeRemove when existing recreatable type changes to unsupported type")
+	}
+}
+
+func TestRemoveMismatchedRecreatableVolumes_SkipsUnsupportedVolumeTypes(t *testing.T) {
+	t.Parallel()
+
+	var deleteCalled bool
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/volumes") && r.Method == http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(volume.ListResponse{
+				Volumes: []volume.Volume{
+					{
+						Name:   "non-recreatable-volume",
+						Driver: "local",
+						Labels: map[string]string{api.ProjectLabel: "stack-a"},
+						Options: map[string]string{
+							"type": "zfs",
+							"size": "64m",
+						},
+					},
+				},
+			})
+		case strings.Contains(r.URL.Path, "/volumes/") && r.Method == http.MethodDelete:
+			deleteCalled = true
+
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	cli, err := client.New(
+		client.WithHost(server.URL),
+		client.WithHTTPClient(server.Client()),
+		client.WithAPIVersion("1.52"),
+	)
+	if err != nil {
+		t.Fatalf("failed to create docker api client: %v", err)
+	}
+
+	project := &types.Project{
+		Volumes: types.Volumes{
+			"non-recreatable-volume": {
+				Name:   "non-recreatable-volume",
+				Driver: "local",
+				DriverOpts: types.Options{
+					"type": "zfs",
+					"size": "128m",
+				},
+			},
+		},
+	}
+
+	if err := removeMismatchedRecreatableVolumes(context.Background(), cli, "stack-a", project); err != nil {
+		t.Fatalf("removeMismatchedRecreatableVolumes() unexpected error: %v", err)
+	}
+
 	if deleteCalled {
-		t.Fatal("expected VolumeRemove to never be called for unsupported volume types")
+		t.Fatal("expected VolumeRemove to never be called when both existing and desired types are unsupported")
 	}
 }
 
