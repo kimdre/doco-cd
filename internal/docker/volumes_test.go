@@ -150,6 +150,39 @@ func TestVolumeConfigMatch(t *testing.T) {
 			desired:  &types.VolumeConfig{Driver: "local"},
 			want:     true,
 		},
+		{
+			name: "matching user labels with managed labels ignored",
+			existing: &types.VolumeConfig{
+				Driver: "local",
+				Labels: types.Labels{
+					"owner":                        "team-a",
+					"com.docker.compose.project":   "stack-a",
+					"com.docker.compose.volume":    "tmp",
+					"cd.doco.deployment.timestamp": "2026-01-01T00:00:00Z",
+					"com.docker.stack.namespace":   "stack-a",
+				},
+			},
+			desired: &types.VolumeConfig{
+				Driver: "local",
+				Labels: types.Labels{
+					"owner":                        "team-a",
+					"cd.doco.deployment.timestamp": "2026-01-02T00:00:00Z",
+				},
+			},
+			want: true,
+		},
+		{
+			name: "different user labels",
+			existing: &types.VolumeConfig{
+				Driver: "local",
+				Labels: types.Labels{"owner": "team-a"},
+			},
+			desired: &types.VolumeConfig{
+				Driver: "local",
+				Labels: types.Labels{"owner": "team-b"},
+			},
+			want: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -401,6 +434,78 @@ func TestRemoveMismatchedRecreatableVolumes_RemovesMismatchedTmpfsVolumes(t *tes
 
 	if !deleteCalled {
 		t.Fatal("expected VolumeRemove to be called for changed tmpfs volume")
+	}
+}
+
+func TestRemoveMismatchedRecreatableVolumes_RemovesWhenUserLabelsChange(t *testing.T) {
+	t.Parallel()
+
+	var deleteCalled bool
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/volumes") && r.Method == http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(volume.ListResponse{
+				Volumes: []volume.Volume{{
+					Name:   "tmpfs-volume",
+					Driver: "local",
+					Labels: map[string]string{
+						api.ProjectLabel:               "stack-a",
+						"owner":                        "team-a",
+						"cd.doco.deployment.timestamp": "old",
+					},
+					Options: map[string]string{
+						"type": "tmpfs",
+						"size": "64m",
+					},
+				}},
+			})
+		case strings.HasSuffix(r.URL.Path, "/containers/json") && r.Method == http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		case strings.Contains(r.URL.Path, "/volumes/tmpfs-volume") && r.Method == http.MethodDelete:
+			deleteCalled = true
+
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	cli, err := client.New(
+		client.WithHost(server.URL),
+		client.WithHTTPClient(server.Client()),
+		client.WithAPIVersion("1.52"),
+	)
+	if err != nil {
+		t.Fatalf("failed to create docker api client: %v", err)
+	}
+
+	project := &types.Project{
+		Volumes: types.Volumes{
+			"tmpfs-volume": {
+				Name:   "tmpfs-volume",
+				Driver: "local",
+				Labels: types.Labels{
+					"owner":                        "team-b",
+					"cd.doco.deployment.timestamp": "new",
+				},
+				DriverOpts: types.Options{
+					"type": "tmpfs",
+					"size": "64m",
+				},
+			},
+		},
+	}
+
+	if err := removeMismatchedRecreatableVolumes(context.Background(), cli, "stack-a", project); err != nil {
+		t.Fatalf("removeMismatchedRecreatableVolumes() unexpected error: %v", err)
+	}
+
+	if !deleteCalled {
+		t.Fatal("expected VolumeRemove when user-defined labels change")
 	}
 }
 
