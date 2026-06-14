@@ -181,10 +181,7 @@ func removeMismatchedRecreatableVolumes(ctx context.Context, apiClient client.AP
 			continue // Volume not in new config, will be handled by RemoveOrphans
 		}
 
-		existingIsRecreatable := isRecreatableVolumeType(&existingCfg)
-		desiredIsRecreatable := isRecreatableVolumeType(&desired)
-
-		if !existingIsRecreatable && !desiredIsRecreatable {
+		if !isRecreatableVolumeType(&desired) {
 			continue
 		}
 
