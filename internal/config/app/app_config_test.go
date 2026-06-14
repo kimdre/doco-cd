@@ -317,3 +317,46 @@ func TestGetConfig_OciVerifyMaxWorkersRejectsZero(t *testing.T) {
 		t.Fatal("expected OCI_VERIFY_MAX_WORKERS=0 to be rejected")
 	}
 }
+
+func TestGetConfig_DataMountPathDefaultsToData(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("DATA_MOUNT_PATH", "")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	if cfg.DataMountPath != "/data" {
+		t.Fatalf("expected DATA_MOUNT_PATH default to be %q, got %q", "/data", cfg.DataMountPath)
+	}
+}
+
+func TestGetConfig_DataMountPathOverrideIsNormalized(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("DATA_MOUNT_PATH", " /opt/stacks/ ")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	if cfg.DataMountPath != "/opt/stacks" {
+		t.Fatalf("expected DATA_MOUNT_PATH to normalize to %q, got %q", "/opt/stacks", cfg.DataMountPath)
+	}
+}
+
+func TestGetConfig_DataMountPathRejectsRelativePath(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("DATA_MOUNT_PATH", "opt/stacks")
+
+	if _, err := GetConfig(); err == nil {
+		t.Fatal("expected relative DATA_MOUNT_PATH to be rejected")
+	}
+}

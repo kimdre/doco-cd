@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/kimdre/doco-cd/internal/config"
@@ -53,6 +54,7 @@ type Config struct {
 	SkipTLSVerification         bool                   `env:"SKIP_TLS_VERIFICATION,notEmpty" envDefault:"false"`                      // SkipTLSVerification skips the TLS verification when cloning repositories.
 	DockerQuietDeploy           bool                   `env:"DOCKER_QUIET_DEPLOY,notEmpty" envDefault:"true"`                         // DockerQuietDeploy suppresses the status output of dockerCli in deployments (e.g. pull, create, start)
 	DockerSwarmFeatures         bool                   `env:"DOCKER_SWARM_FEATURES,notEmpty" envDefault:"true"`                       // DockerSwarmFeatures enables the usage Docker Swarm features in the application if it has detected that it is running in a Docker Swarm environment
+	DataMountPath               string                 `env:"DATA_MOUNT_PATH" envDefault:"/data"`                                     // DataMountPath is the expected mount path inside the container for the writable deployment data volume.
 	DeployConfigBaseDir         string                 `env:"DEPLOY_CONFIG_BASE_DIR" envDefault:"/"`                                  // DeployConfigBaseDir is the base directory (relative to the repository root) where deployment configuration files will be searched for.
 	PassEnv                     bool                   `env:"PASS_ENV"`                                                               // PassEnv controls whether environment variables from the doco-cd container should be passed to the deployment environment for docker compose variable interpolation. Use with caution, as this may expose sensitive information to the deployment environment.
 	PollConfigYAML              string                 `env:"POLL_CONFIG"`                                                            // PollConfigYAML is the unparsed string containing the PollConfig in YAML format
@@ -143,6 +145,16 @@ func GetConfig() (*Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to validate HTTP_PROXY: %w", err)
 		}
+	}
+
+	dataMountPath := strings.TrimSpace(cfg.DataMountPath)
+	if dataMountPath == "" {
+		dataMountPath = "/data"
+	}
+
+	cfg.DataMountPath = path.Clean(dataMountPath)
+	if !strings.HasPrefix(cfg.DataMountPath, "/") {
+		return nil, fmt.Errorf("DATA_MOUNT_PATH must be an absolute Unix path: %q", cfg.DataMountPath)
 	}
 
 	notification.SetAppriseConfig(

@@ -36,13 +36,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/prometheus"
 )
 
-const (
-	apiPath     = "/v1/api"
-	webhookPath = "/v1/webhook"
-	healthPath  = "/v1/health"
-	dataPath    = "/data"
-)
-
 // GetProxyUrlRedacted takes a proxy URL string and redacts the password if it exists.
 func GetProxyUrlRedacted(proxyUrl string) string {
 	// Hide password in the proxy URL if it exists (between the second ':' and the @)
@@ -217,9 +210,9 @@ func run() error {
 	log.Debug("retrieved doco-cd container id", slog.String("container_id", appContainerID))
 
 	// Check if the doco-cd container has a data mount point and get the host path
-	dataMountPoint, err := docker.GetMountPointByDestination(dockerClient, appContainerID, dataPath)
+	dataMountPoint, err := docker.GetMountPointByDestination(dockerClient, appContainerID, c.DataMountPath)
 	if err != nil {
-		log.Critical(fmt.Sprintf("failed to retrieve %s mount point for container %s", dataPath, appContainerID), logger.ErrAttr(err))
+		log.Critical(fmt.Sprintf("failed to retrieve %s mount point for container %s", c.DataMountPath, appContainerID), logger.ErrAttr(err))
 		return err
 	}
 
@@ -232,7 +225,7 @@ func run() error {
 
 	// Check if data mount point is writable
 	if err := docker.CheckMountPointWriteable(dataMountPoint); err != nil {
-		log.Critical(fmt.Sprintf("failed to check if %s mount point is writable", dataPath), logger.ErrAttr(err))
+		log.Critical(fmt.Sprintf("failed to check if %s mount point is writable", c.DataMountPath), logger.ErrAttr(err))
 		return err
 	}
 
