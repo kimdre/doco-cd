@@ -23,6 +23,12 @@ import (
 	"github.com/kimdre/doco-cd/internal/utils/id"
 )
 
+const (
+	apiPath     = "/v1/api"
+	webhookPath = "/v1/webhook"
+	healthPath  = "/v1/health"
+)
+
 // registerApiEndpoints registers the API endpoints based on the application configuration and
 // returns a list of all enabled endpoints.
 func registerApiEndpoints(c *app.Config, h *handlerData, log *logger.Logger, mux *http.ServeMux) []string {

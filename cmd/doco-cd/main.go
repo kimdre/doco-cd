@@ -36,13 +36,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/prometheus"
 )
 
-const (
-	apiPath     = "/v1/api"
-	webhookPath = "/v1/webhook"
-	healthPath  = "/v1/health"
-	dataPath    = "/data"
-)
-
 // GetProxyUrlRedacted takes a proxy URL string and redacts the password if it exists.
 func GetProxyUrlRedacted(proxyUrl string) string {
 	// Hide password in the proxy URL if it exists (between the second ':' and the @)
