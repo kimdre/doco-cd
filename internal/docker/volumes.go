@@ -68,7 +68,38 @@ func volumeConfigMatch(existing, desired *types.VolumeConfig) bool {
 		}
 	}
 
+	// Check user-defined labels and ignore runtime-managed labels added by compose/swarm/doco-cd.
+	existingLabels := userVolumeLabels(existing.Labels)
+	desiredLabels := userVolumeLabels(desired.Labels)
+
+	if len(existingLabels) != len(desiredLabels) {
+		return false
+	}
+
+	for k, v := range desiredLabels {
+		existingVal, exists := existingLabels[k]
+		if !exists || existingVal != v {
+			return false
+		}
+	}
+
 	return true
+}
+
+func userVolumeLabels(labels map[string]string) map[string]string {
+	filtered := make(map[string]string)
+
+	for k, v := range labels {
+		if strings.HasPrefix(k, "com.docker.compose.") ||
+			strings.HasPrefix(k, "com.docker.stack.") ||
+			strings.HasPrefix(k, "cd.doco.") {
+			continue
+		}
+
+		filtered[k] = v
+	}
+
+	return filtered
 }
 
 func isRecreatableVolumeType(cfg *types.VolumeConfig) bool {
@@ -163,6 +194,7 @@ func removeMismatchedRecreatableVolumes(ctx context.Context, apiClient client.AP
 			existingVolumesByName[vol.Name] = types.VolumeConfig{
 				Driver:     vol.Driver,
 				DriverOpts: vol.Options,
+				Labels:     vol.Labels,
 			}
 		}
 	}
