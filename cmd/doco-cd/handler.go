@@ -166,7 +166,9 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 			}
 		}
 	case config.SourceTypeOCI:
-		pullResult, err := oci.PullAndExtract(ctx, sourceRef, strings.TrimSpace(payload.Digest), config.OciArtifactLayoutV1, internalRepoPath)
+		pullResult, err := oci.PullAndExtract(ctx,
+			sourceRef, strings.TrimSpace(payload.Digest), config.OciArtifactLayoutV1,
+			internalRepoPath, customTarget)
 		if err != nil {
 			return handleError{
 				err:            err,
