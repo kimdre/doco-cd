@@ -57,7 +57,7 @@ func TagFromArtifact(artifact string) string {
 	return tag
 }
 
-func PullAndExtract(ctx context.Context, artifactRef, expectedDigest, layout, destination string) (PullResult, error) {
+func PullAndExtract(ctx context.Context, artifactRef, expectedDigest, layout, destination, customTarget string) (PullResult, error) {
 	if strings.TrimSpace(layout) != config.OciArtifactLayoutV1 {
 		return PullResult{}, fmt.Errorf("%w: %s", ErrUnsupportedLayout, layout)
 	}
@@ -116,7 +116,7 @@ func PullAndExtract(ctx context.Context, artifactRef, expectedDigest, layout, de
 		}
 	}
 
-	if err := validateDocoLayoutV1(destination); err != nil {
+	if err := validateDocoLayoutV1(destination, customTarget); err != nil {
 		return PullResult{}, err
 	}
 
@@ -174,9 +174,13 @@ func extractTarStream(destination string, reader io.Reader) error {
 	}
 }
 
-func validateDocoLayoutV1(destination string) error {
-	configFile, err := findArtifactConfigFile(destination)
+func validateDocoLayoutV1(destination, customTarget string) error {
+	configFile, err := findArtifactConfigFile(destination, customTarget)
 	if err != nil {
+		if customTarget != "" {
+			return fmt.Errorf("%w: expected .doco-cd.%s.y(a)ml or .doco-cd.y(a)ml at artifact root", ErrInvalidArtifactLayout, customTarget)
+		}
+
 		return fmt.Errorf("%w: expected .doco-cd.yml or .doco-cd.yaml at artifact root", ErrInvalidArtifactLayout)
 	}
 
@@ -192,8 +196,19 @@ func validateDocoLayoutV1(destination string) error {
 	return nil
 }
 
-func findArtifactConfigFile(destination string) (string, error) {
-	for _, cfg := range []string{".doco-cd.yml", ".doco-cd.yaml"} {
+func findArtifactConfigFile(destination, customTarget string) (string, error) {
+	var candidates []string
+
+	if customTarget != "" {
+		candidates = []string{
+			fmt.Sprintf(".doco-cd.%s.yaml", customTarget),
+			fmt.Sprintf(".doco-cd.%s.yml", customTarget),
+		}
+	} else {
+		candidates = []string{".doco-cd.yaml", ".doco-cd.yml"}
+	}
+
+	for _, cfg := range candidates {
 		cfgPath := filepath.Join(destination, cfg)
 		if _, err := os.Stat(cfgPath); err == nil {
 			return cfgPath, nil
