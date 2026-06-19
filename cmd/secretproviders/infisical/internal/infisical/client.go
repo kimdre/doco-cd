@@ -32,7 +32,7 @@ func (p *Provider) Name() string {
 func NewProvider(ctx context.Context, siteUrl, clientId, clientSecret string) (*Provider, error) {
 	client := infisical.NewInfisicalClient(ctx, infisical.Config{
 		SiteUrl:          siteUrl,
-		AutoTokenRefresh: new(true),
+		AutoTokenRefresh: true,
 	})
 
 	provider := &Provider{Client: client}
