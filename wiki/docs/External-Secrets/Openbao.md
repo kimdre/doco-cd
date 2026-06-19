@@ -7,16 +7,50 @@ tags:
 
 # OpenBao
 
+OpenBao runs as a [gRPC plugin container](index.md#plugin-architecture) (`ghcr.io/kimdre/doco-cd-secretprovider-openbao`) sitting next to `doco-cd`.
+
 ## Environment Variables
 
-To use OpenBao, you need to set the following environment variables:
+### `doco-cd` container
+
+| Key                             | Value                                                                            |
+|---------------------------------|----------------------------------------------------------------------------------|
+| `SECRET_PROVIDER`               | `grpc`                                                                           |
+| `SECRET_PROVIDER_GRPC_ENDPOINT` | Endpoint of the plugin. Default: `unix:///var/run/doco-cd/secret-provider.sock`. |
+
+### Plugin container (`doco-cd-secretprovider-openbao`)
 
 | Key                                 | Value                                                           |
 |-------------------------------------|-----------------------------------------------------------------|
-| `SECRET_PROVIDER`                   | `openbao`                                                       |
+| `SECRET_PROVIDER_GRPC_ENDPOINT`     | Endpoint the plugin listens on (must match the value on `doco-cd`). |
 | `SECRET_PROVIDER_SITE_URL`          | The URL of the OpenBao instance                                 |
 | `SECRET_PROVIDER_ACCESS_TOKEN`      | Access token for authenticating with the secret provider        |
 | `SECRET_PROVIDER_ACCESS_TOKEN_FILE` | Path to a file containing the access token inside the container |
+
+### Example compose layout
+
+```yaml title="docker-compose.yml"
+services:
+  doco-cd:
+    image: ghcr.io/kimdre/doco-cd:latest
+    environment:
+      SECRET_PROVIDER: grpc
+    volumes:
+      - secret-provider-sock:/var/run/doco-cd
+    depends_on:
+      - secret-provider
+
+  secret-provider:
+    image: ghcr.io/kimdre/doco-cd-secretprovider-openbao:latest
+    environment:
+      SECRET_PROVIDER_SITE_URL: https://bao.example.com
+      SECRET_PROVIDER_ACCESS_TOKEN: ${OPENBAO_TOKEN}
+    volumes:
+      - secret-provider-sock:/var/run/doco-cd
+
+volumes:
+  secret-provider-sock:
+```
 
 ## Deployment configuration
 

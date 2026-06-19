@@ -1,0 +1,75 @@
+name: Build Plugin Images
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  discover-plugins:
+    runs-on: ubuntu-latest
+    outputs:
+      plugins: ${{ steps.discover.outputs.plugins }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Discover secret-provider plugins
+        id: discover
+        shell: bash
+        run: |
+          mapfile -t plugins < <(
+            find cmd/secretproviders -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
+              | grep -Ev '^(internal|\.template)$' \
+              | sort
+          )
+
+          json='['
+          sep=''
+          for plugin in "${plugins[@]}"; do
+            dockerfile=$(realpath --relative-to="$PWD" "cmd/secretproviders/${plugin}/Dockerfile")
+            json+="${sep}{\"plugin\":\"${plugin}\",\"dockerfile\":\"${dockerfile}\"}"
+            sep=','
+          done
+          json+=']'
+
+          echo "plugins=${json}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: discover-plugins
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.discover-plugins.outputs.plugins) }}
+    uses: docker/github-builder/.github/workflows/build.yml@c2782c55efa56a01b9c30021db8f5ec3993228a3 # v1
+    permissions:
+      contents: read # to fetch the repository content
+      id-token: write # for signing attestation(s) with GitHub OIDC Token
+      packages: write # required to push to GHCR
+    with:
+      file: ${{ matrix.dockerfile }}
+      build-args: |
+        APP_VERSION=${{ github.ref_name }}
+        PLUGIN_NAME=${{ matrix.plugin }}
+      platforms: linux/amd64,linux/arm64
+      runner: |
+        default=ubuntu-24.04
+        linux/arm=ubuntu-24.04-arm
+        linux/arm64=ubuntu-24.04-arm
+      cache: true
+      cache-mode: max
+      output: image
+      push: true
+      sbom: true
+      set-meta-annotations: true
+      set-meta-labels: true
+      meta-images: ghcr.io/${{ github.repository }}-secretprovider-${{ matrix.plugin }}
+      meta-tags: |
+        type=semver,pattern={{version}}
+        type=semver,pattern={{major}}.{{minor}}
+        type=semver,pattern={{major}}
+    secrets:
+      registry-auths: |
+        - registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}

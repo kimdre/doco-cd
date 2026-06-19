@@ -7,21 +7,54 @@ tags:
 
 # 1Password
 
+1Password runs as a [gRPC plugin container](index.md#plugin-architecture) (`ghcr.io/kimdre/doco-cd-secretprovider-1password`) sitting next to `doco-cd`.
+
 !!! info
-    The start time and memory usage of the doco-cd container, as well as the runtime of a job, can increase significantly when using this secret provider.
+    The start time and memory usage of the plugin container, as well as the runtime of a job, can increase significantly when using this secret provider.
 
 !!! tip "Using 1Password Connect Server"
     For improved performance and to avoid API rate limits in high-volume deployments, consider using [1Password Connect Server](1Password-Connect.md) instead of service account authentication.
 
 ## Environment Variables
 
-To use 1Password, configure these variables for the `doco-cd` container
+### `doco-cd` container
+
+| Key                             | Value                                                                            |
+|---------------------------------|----------------------------------------------------------------------------------|
+| `SECRET_PROVIDER`               | `grpc`                                                                           |
+| `SECRET_PROVIDER_GRPC_ENDPOINT` | Endpoint of the plugin. Default: `unix:///var/run/doco-cd/secret-provider.sock`. |
+
+### Plugin container (`doco-cd-secretprovider-1password`)
 
 | Key                                  | Value                                                                                                                                                                                                                              |
 |--------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `SECRET_PROVIDER`                    | `1password`                                                                                                                                                                                                                        |
+| `SECRET_PROVIDER_GRPC_ENDPOINT`      | Endpoint the plugin listens on (must match the value on `doco-cd`).                                                                                                                                                                |
 | `SECRET_PROVIDER_ACCESS_TOKEN`       | Access token of a service account, see [the docs](https://developer.1password.com/docs/service-accounts/security/) and [here](https://developer.1password.com/docs/sdks/setup-tutorial/#part-1-set-up-a-1password-service-account) |
 | `SECRET_PROVIDER_ACCESS_TOKEN_FILE`  | Path to the file containing the service account token inside the container                                                                                                                                                         |
+
+### Example compose layout
+
+```yaml title="docker-compose.yml"
+services:
+  doco-cd:
+    image: ghcr.io/kimdre/doco-cd:latest
+    environment:
+      SECRET_PROVIDER: grpc
+    volumes:
+      - secret-provider-sock:/var/run/doco-cd
+    depends_on:
+      - secret-provider
+
+  secret-provider:
+    image: ghcr.io/kimdre/doco-cd-secretprovider-1password:latest
+    environment:
+      SECRET_PROVIDER_ACCESS_TOKEN: ${OP_SERVICE_ACCOUNT_TOKEN}
+    volumes:
+      - secret-provider-sock:/var/run/doco-cd
+
+volumes:
+  secret-provider-sock:
+```
 
 !!! tip "API Rate Limit"
     If you hit the API rate limit, you can also enable client-side caching for resolved secrets. See the [Client-Side Caching](#client-side-caching) section below for more details.
@@ -53,7 +86,7 @@ external_secrets:
 
 ## Client-Side Caching
 
-Optional client-side caching[^1] reduces 1Password API calls when using service account authentication. Enable and configure caching with the following environment variables:
+Optional client-side caching[^1] reduces 1Password API calls when using service account authentication. Set these on the plugin container:
 
 | Key                              | Type      | Value                                                                                                                            | Default |
 |----------------------------------|-----------|----------------------------------------------------------------------------------------------------------------------------------|:--------|

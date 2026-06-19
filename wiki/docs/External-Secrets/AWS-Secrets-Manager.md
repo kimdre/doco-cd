@@ -7,20 +7,55 @@ tags:
 
 # AWS Secrets Manager
 
+AWS Secrets Manager runs as a [gRPC plugin container](index.md#plugin-architecture) (`ghcr.io/kimdre/doco-cd-secretprovider-awssecretmanager`) sitting next to `doco-cd`.
+
 ## Environment Variables
 
-To use AWS Secrets Manager, you need to set the following environment variables:
+### `doco-cd` container
+
+| Key                             | Value                                                                                  |
+|---------------------------------|----------------------------------------------------------------------------------------|
+| `SECRET_PROVIDER`               | `grpc`                                                                                 |
+| `SECRET_PROVIDER_GRPC_ENDPOINT` | Endpoint of the plugin. Default: `unix:///var/run/doco-cd/secret-provider.sock`.       |
+
+### Plugin container (`doco-cd-secretprovider-awssecretmanager`)
 
 !!! tip
     Create an access token via IAM, see https://repost.aws/knowledge-center/create-access-key
 
 | Key                                      | Value                                                                    |
 |------------------------------------------|--------------------------------------------------------------------------|
-| `SECRET_PROVIDER`                        | `aws_sm`                                                                 |
+| `SECRET_PROVIDER_GRPC_ENDPOINT`          | Endpoint the plugin listens on (must match the value on `doco-cd`).      |
 | `SECRET_PROVIDER_REGION`                 | AWS Region to use, e.g. `eu-west-1`                                      |
 | `SECRET_PROVIDER_ACCESS_KEY_ID`          | Access key ID of an IAM user with access to AWS Secrets Manager          |
 | `SECRET_PROVIDER_SECRET_ACCESS_KEY`      | Secret access key of an IAM user with access to AWS Secrets Manager      |
 | `SECRET_PROVIDER_SECRET_ACCESS_KEY_FILE` | Path to the file containing the secret access token inside the container |
+
+### Example compose layout
+
+```yaml title="docker-compose.yml"
+services:
+  doco-cd:
+    image: ghcr.io/kimdre/doco-cd:latest
+    environment:
+      SECRET_PROVIDER: grpc
+    volumes:
+      - secret-provider-sock:/var/run/doco-cd
+    depends_on:
+      - secret-provider
+
+  secret-provider:
+    image: ghcr.io/kimdre/doco-cd-secretprovider-awssecretmanager:latest
+    environment:
+      SECRET_PROVIDER_REGION: eu-west-1
+      SECRET_PROVIDER_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      SECRET_PROVIDER_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+    volumes:
+      - secret-provider-sock:/var/run/doco-cd
+
+volumes:
+  secret-provider-sock:
+```
 
 ## Deployment configuration
 

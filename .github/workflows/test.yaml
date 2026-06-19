@@ -71,8 +71,7 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
       - name: Install packages
-        run: |
-          sudo apt install -y musl-tools
+        run: sudo apt install -y musl-tools
       - run: go mod download
       - run: if [ "${{ matrix.mode }}" = "swarm" ]; then docker swarm init; fi
       - run: go test -ldflags="$BW_SDK_BUILD_FLAGS" -v -coverprofile=coverage-${{ matrix.mode }}.out -covermode=atomic -timeout 20m ./...
@@ -83,34 +82,13 @@ jobs:
           GIT_ACCESS_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
           HTTP_PROXY: http://localhost:3128
           SOPS_AGE_KEY: ${{ vars.SOPS_AGE_KEY }} # used to encrypt/decrypt files in internal/encryption/testdata
-          # Required for Bitwarden Go SDK, see CONTRIBUTING.md
+          # Required for Bitwarden Go SDK and 1Password SDK, see CONTRIBUTING.md
           CGO_ENABLED: 1
           CC: musl-gcc
           BW_SDK_BUILD_FLAGS: "-linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'"
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6.0.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage-${{ matrix.mode }}.out
           flags: unittests
-
-  docs-validation:
-    name: Validate wiki build
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-
-      - name: Setup Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
-        with:
-          python-version: '3.x'
-          cache: 'pip'
-          cache-dependency-path: 'wiki/requirements.txt'
-
-      - name: Install wiki build dependencies
-        run: pip install -r ./wiki/requirements.txt
-
-      - name: Run strict wiki build
-        run: zensical build --config-file wiki/zensical.toml --strict
