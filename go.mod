@@ -20,7 +20,7 @@ require (
 	github.com/containerd/errdefs v1.0.0
 	github.com/creasty/defaults v1.8.0
 	github.com/distribution/reference v0.6.0
-	github.com/docker/cli v29.5.3+incompatible
+	github.com/docker/cli v29.6.0+incompatible
 	github.com/getsops/sops/v3 v3.13.1
 	github.com/go-git/go-billy/v5 v5.9.0
 	github.com/go-git/go-git/v5 v5.19.1
