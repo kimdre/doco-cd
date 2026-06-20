@@ -66,7 +66,7 @@ FROM gcr.io/distroless/base-debian13@sha256:57c1e4c72feb5925c4763ae4f6bd2013ad38
 WORKDIR /
 
 # buildx plugin so compose v5 picks BuildKit instead of the legacy `/build` endpoint
-COPY --from=docker/buildx-bin:0.34.1@sha256:ba49f75261dd3ac85491d370a9c38306454a84c5554be4e67de601cd59847cb6 \
+COPY --from=docker/buildx-bin:0.35.0@sha256:917570d8d0ae91ae49251f84f848a6801eedd114554c56a4fdf7ec88cac48eeb \
     /buildx /usr/libexec/docker/cli-plugins/docker-buildx
 
 COPY --from=build /doco-cd /doco-cd
