@@ -28,7 +28,7 @@ require (
 	github.com/infisical/go-sdk v0.8.0
 	github.com/joho/godotenv v1.5.1
 	github.com/moby/moby/api v1.55.0
-	github.com/moby/moby/client v0.4.1
+	github.com/moby/moby/client v0.5.0
 	github.com/openbao/openbao/api/v2 v2.6.0
 	github.com/prometheus/client_golang v1.23.2
 	go.yaml.in/yaml/v3 v3.0.4
