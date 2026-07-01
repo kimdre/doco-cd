@@ -80,7 +80,7 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 				return nil
 			}
 
-			s.NotifyFailure(err)
+			s.NotifyFailure(ctx, err)
 
 			return err
 		}

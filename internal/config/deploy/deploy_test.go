@@ -19,6 +19,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 
 	"github.com/kimdre/doco-cd/internal/filesystem"
+	"github.com/kimdre/doco-cd/internal/hook"
 )
 
 func createTestFile(t *testing.T, fileName string, content string) error {
@@ -283,6 +284,72 @@ func TestConfig_Validate_OciVersionField(t *testing.T) {
 
 		if !strings.Contains(err.Error(), "unsupported oci version") {
 			t.Fatalf("expected unsupported oci version error, got %v", err)
+		}
+	})
+}
+
+func TestConfig_Hooks(t *testing.T) {
+	t.Parallel()
+
+	t.Run("parses success and failure hooks from yaml", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		file := filepath.Join(dir, ".doco-cd.yaml")
+		content := `name: app
+reference: main
+hooks:
+  on_success:
+    - url: https://example.com/ok
+      headers:
+        X-Token: secret
+  on_failure:
+    - url: http://example.com/fail
+      method: PUT
+`
+
+		if err := createTestFile(t, file, content); err != nil {
+			t.Fatalf("write file: %v", err)
+		}
+
+		configs, err := GetConfigFromYAML(file, true)
+		if err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+
+		dc := configs[0]
+		if err := dc.Validate(); err != nil {
+			t.Fatalf("validate: %v", err)
+		}
+
+		if len(dc.Hooks.OnSuccess) != 1 || dc.Hooks.OnSuccess[0].URL != "https://example.com/ok" {
+			t.Fatalf("unexpected on_success hooks: %+v", dc.Hooks.OnSuccess)
+		}
+
+		if dc.Hooks.OnSuccess[0].Headers["X-Token"] != "secret" {
+			t.Fatalf("expected header X-Token=secret, got %+v", dc.Hooks.OnSuccess[0].Headers)
+		}
+
+		if len(dc.Hooks.OnFailure) != 1 || dc.Hooks.OnFailure[0].Method != "PUT" {
+			t.Fatalf("unexpected on_failure hooks: %+v", dc.Hooks.OnFailure)
+		}
+	})
+
+	t.Run("rejects invalid hook url", func(t *testing.T) {
+		t.Parallel()
+
+		dc := Config{
+			Name:  "app",
+			Hooks: hook.Config{OnSuccess: []hook.Webhook{{URL: "ftp://example.com"}}},
+		}
+
+		if err := defaults.Set(&dc); err != nil {
+			t.Fatalf("defaults: %v", err)
+		}
+
+		err := dc.Validate()
+		if err == nil || !errors.Is(err, ErrInvalidConfig) {
+			t.Fatalf("expected ErrInvalidConfig, got %v", err)
 		}
 	})
 }
