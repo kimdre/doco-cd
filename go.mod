@@ -37,7 +37,7 @@ require (
 	gotest.tools/v3 v3.5.2
 )
 
-require golang.org/x/sync v0.21.0
+require golang.org/x/sync v0.22.0
 
 require (
 	github.com/1Password/connect-sdk-go v1.5.3
@@ -267,7 +267,6 @@ require (
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/procfs v0.20.1 // indirect
-	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/ryanuber/go-glob v1.0.0 // indirect
