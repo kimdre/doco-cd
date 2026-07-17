@@ -57,22 +57,28 @@ func TagFromArtifact(artifact string) string {
 	return tag
 }
 
+func ResolveDigest(ctx context.Context, artifactRef, expectedDigest string) (string, error) {
+	_, desc, err := resolveDescriptor(ctx, artifactRef)
+	if err != nil {
+		return "", err
+	}
+
+	digest := desc.Digest.String()
+	if strings.TrimSpace(expectedDigest) != "" && strings.TrimSpace(expectedDigest) != digest {
+		return "", fmt.Errorf("%w: expected %s got %s", ErrDigestMismatch, expectedDigest, digest)
+	}
+
+	return digest, nil
+}
+
 func PullAndExtract(ctx context.Context, artifactRef, expectedDigest, layout, destination, customTarget string) (PullResult, error) {
 	if strings.TrimSpace(layout) != config.OciArtifactLayoutV1 {
 		return PullResult{}, fmt.Errorf("%w: %s", ErrUnsupportedLayout, layout)
 	}
 
-	ref, err := name.ParseReference(strings.TrimSpace(artifactRef), name.WeakValidation)
+	_, desc, err := resolveDescriptor(ctx, artifactRef)
 	if err != nil {
-		return PullResult{}, fmt.Errorf("failed to parse OCI artifact reference: %w", err)
-	}
-
-	desc, err := remote.Get(ref,
-		remote.WithContext(ctx),
-		remote.WithAuthFromKeychain(authn.DefaultKeychain),
-	)
-	if err != nil {
-		return PullResult{}, fmt.Errorf("failed to resolve OCI artifact: %w", err)
+		return PullResult{}, err
 	}
 
 	digest := desc.Digest.String()
@@ -134,6 +140,23 @@ func PullAndExtract(ctx context.Context, artifactRef, expectedDigest, layout, de
 	}
 
 	return PullResult{Digest: digest}, nil
+}
+
+func resolveDescriptor(ctx context.Context, artifactRef string) (name.Reference, *remote.Descriptor, error) {
+	ref, err := name.ParseReference(strings.TrimSpace(artifactRef), name.WeakValidation)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse OCI artifact reference: %w", err)
+	}
+
+	desc, err := remote.Get(ref,
+		remote.WithContext(ctx),
+		remote.WithAuthFromKeychain(authn.DefaultKeychain),
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to resolve OCI artifact: %w", err)
+	}
+
+	return ref, desc, nil
 }
 
 // syncDirectoryContents replaces the contents of dst with those from src

@@ -22,6 +22,8 @@ import (
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
+var ErrOCIArtifactNotVerified = errors.New("OCI artifact is not verified")
+
 func Deploy(ctx context.Context,
 	jobLog *slog.Logger,
 	appConfig *app.Config,
@@ -74,6 +76,10 @@ func deploy(ctx context.Context,
 	payload *webhook.ParsedPayload,
 	testName string,
 ) error {
+	if repoData.Source == config.SourceTypeOCI && !repoData.OCITrusted {
+		return fmt.Errorf("%w: refusing to run reconciliation cleanup before trust-policy verification", ErrOCIArtifactNotVerified)
+	}
+
 	if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
 		dockerCli, repoData.SourceUrl,
 		deployConfigs,
