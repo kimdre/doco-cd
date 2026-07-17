@@ -123,7 +123,11 @@ func pollError(jobLog *slog.Logger, metadata notification.Metadata, err error) {
 	}
 
 	go func() {
-		defer recoverPanic(jobLog, "poll error notification")
+		defer func() {
+			if r := recover(); r != nil {
+				logRecoveredPanic(jobLog, "poll error notification", r)
+			}
+		}()
 
 		sendLog := jobLog.With()
 

@@ -11,18 +11,17 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 )
 
-// recoverPanic recovers from a panic in a goroutine, logging it with a stack
-// trace. It prevents a panic in fire-and-forget (async) work from crashing the
-// entire process, since net/http's implicit recovery only covers the request
-// goroutine, not goroutines spawned from a handler.
-func recoverPanic(log *slog.Logger, context string) {
-	if r := recover(); r != nil {
-		log.Error("recovered from panic in background task",
-			slog.String("context", context),
-			slog.Any("panic", r),
-			slog.String("stack", string(debug.Stack())),
-		)
-	}
+// logRecoveredPanic logs a recovered panic value with a stack trace. It is
+// meant to be called from a deferred closure that performs the recover(), so a
+// panic in fire-and-forget (async) work cannot crash the entire process, since
+// net/http's implicit recovery only covers the request goroutine, not
+// goroutines spawned from a handler.
+func logRecoveredPanic(log *slog.Logger, context string, r any) {
+	log.Error("recovered from panic in background task",
+		slog.String("context", context),
+		slog.Any("panic", r),
+		slog.String("stack", string(debug.Stack())),
+	)
 }
 
 // getAppContainerID retrieves the application container ID from the cgroup mounts.
