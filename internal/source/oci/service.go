@@ -94,13 +94,15 @@ func PullAndExtract(ctx context.Context, artifactRef, expectedDigest, layout, de
 		return PullResult{}, fmt.Errorf("%w: no layers in artifact", ErrInvalidArtifactLayout)
 	}
 
-	if err := os.RemoveAll(destination); err != nil {
-		return PullResult{}, fmt.Errorf("failed to reset artifact destination: %w", err)
+	// Extract into a sibling temp directory so that validation can run before
+	// touching the live destination. Using the same parent ensures src and dst
+	// are on the same filesystem, which allows cheap os.Rename moves.
+	tmpDir, err := os.MkdirTemp(filepath.Dir(destination), ".oci-extract-*")
+	if err != nil {
+		return PullResult{}, fmt.Errorf("failed to create temp extraction directory: %w", err)
 	}
 
-	if err := os.MkdirAll(destination, filesystem.PermDir); err != nil {
-		return PullResult{}, fmt.Errorf("failed to create artifact destination: %w", err)
-	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	for _, layer := range layers {
 		r, err := layer.Uncompressed()
@@ -108,7 +110,7 @@ func PullAndExtract(ctx context.Context, artifactRef, expectedDigest, layout, de
 			return PullResult{}, fmt.Errorf("failed to read artifact layer stream: %w", err)
 		}
 
-		err = extractTarStream(destination, r)
+		err = extractTarStream(tmpDir, r)
 		_ = r.Close()
 
 		if err != nil {
@@ -116,11 +118,56 @@ func PullAndExtract(ctx context.Context, artifactRef, expectedDigest, layout, de
 		}
 	}
 
-	if err := validateDocoLayoutV1(destination, customTarget); err != nil {
+	if err := validateDocoLayoutV1(tmpDir, customTarget); err != nil {
 		return PullResult{}, err
 	}
 
+	// Sync contents into the existing destination directory without removing
+	// the directory itself. Preserving the directory inode ensures that Docker
+	// bind mounts referencing destination remain valid across syncs.
+	if err := syncDirectoryContents(tmpDir, destination); err != nil {
+		return PullResult{}, fmt.Errorf("failed to sync artifact to destination: %w", err)
+	}
+
 	return PullResult{Digest: digest}, nil
+}
+
+// syncDirectoryContents replaces the contents of dst with those from src
+// without removing dst itself. This keeps the dst inode stable so that Docker
+// bind mounts that reference dst are not orphaned.
+func syncDirectoryContents(src, dst string) error {
+	if err := os.MkdirAll(dst, filesystem.PermDir); err != nil {
+		return fmt.Errorf("failed to create destination directory: %w", err)
+	}
+
+	// Remove all existing entries in dst.
+	existing, err := os.ReadDir(dst)
+	if err != nil {
+		return fmt.Errorf("failed to read destination directory: %w", err)
+	}
+
+	for _, entry := range existing {
+		if err := os.RemoveAll(filepath.Join(dst, entry.Name())); err != nil {
+			return fmt.Errorf("failed to remove %q from destination: %w", entry.Name(), err)
+		}
+	}
+
+	// Move each entry from src into dst.
+	incoming, err := os.ReadDir(src)
+	if err != nil {
+		return fmt.Errorf("failed to read source directory: %w", err)
+	}
+
+	for _, entry := range incoming {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		if err := os.Rename(srcPath, dstPath); err != nil {
+			return fmt.Errorf("failed to move %q to destination: %w", entry.Name(), err)
+		}
+	}
+
+	return nil
 }
 
 func extractTarStream(destination string, reader io.Reader) error {
