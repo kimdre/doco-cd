@@ -2,6 +2,7 @@ package reconciliation
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -204,8 +205,7 @@ func (d *DeployerLimiter) wakeNext(ent *repoEntry) {
 		}
 	}
 	// wake in reverse order to remove without reindex issues
-	for i := len(toWake) - 1; i >= 0; i-- {
-		iidx := toWake[i]
+	for _, iidx := range slices.Backward(toWake) {
 		w := ent.waiters[iidx]
 		// remove
 		ent.waiters = append(ent.waiters[:iidx], ent.waiters[iidx+1:]...)
