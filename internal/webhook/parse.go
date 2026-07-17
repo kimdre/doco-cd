@@ -28,8 +28,12 @@ func Parse(r *http.Request, secretKey string) (ScmProvider, ParsedPayload, error
 	}
 
 	payload, err := io.ReadAll(r.Body)
-	if err != nil || len(payload) == 0 {
-		return Unknown, ParsedPayload{}, err
+	if err != nil {
+		return Unknown, ParsedPayload{}, fmt.Errorf("%w: %w", ErrParsingPayload, err)
+	}
+
+	if len(payload) == 0 {
+		return Unknown, ParsedPayload{}, fmt.Errorf("%w: request body is empty", ErrParsingPayload)
 	}
 
 	provider, err := verifyProviderSecret(r, payload, secretKey)
