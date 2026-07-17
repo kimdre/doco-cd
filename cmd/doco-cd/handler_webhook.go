@@ -76,6 +76,8 @@ func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any
 	}
 
 	go func() {
+		defer recoverPanic(log, "webhook error notification")
+
 		err := notification.Send(notification.Failure, "Deployment Failed", errMsg, metadata)
 		if err != nil {
 			log.Error("failed to send notification", logger.ErrAttr(err))
@@ -279,6 +281,8 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	repoLock := lock.GetRepoLock(metadata.Repository)
 
 	handleFn := func(w http.ResponseWriter) {
+		defer recoverPanic(jobLog, "webhook deployment")
+
 		locked := make(chan struct{})
 
 		go func() {
