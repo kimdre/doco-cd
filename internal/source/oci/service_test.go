@@ -247,6 +247,7 @@ func writeTar(t *testing.T, entries []tar.Header, contents map[string][]byte) io
 	var buf bytes.Buffer
 
 	tw := tar.NewWriter(&buf)
+
 	for i := range entries {
 		h := entries[i]
 		if err := tw.WriteHeader(&h); err != nil {
