@@ -20,7 +20,6 @@ configs:
       }
         
       api_addr = "http://0.0.0.0:8200"
-      plugin_directory = "/openbao/plugins"
 
 services:
   db:
@@ -65,7 +64,8 @@ services:
       interval: 2s
       retries: 30
       start_period: 5s
-      test: 'wget --spider  http://127.0.0.1:8200/v1/sys/seal-status || exit 1'
+      # Treat both unsealed (0) and sealed (2) as healthy; tests initialize/unseal afterward.
+      test: ['CMD-SHELL', 'vault status >/dev/null 2>&1; code=$$?; [ $$code -eq 0 ] || [ $$code -eq 2 ]']
       timeout: 5s
     volumes:
       - bao_init:/init
