@@ -4,6 +4,8 @@ package bitwardensecretsmanager
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/bitwarden/sdk-go/v2"
@@ -13,8 +15,24 @@ import (
 
 const (
 	Name          = "bitwarden_sm"
-	stateFilePath = "/tmp/bitwarden-sm-state.json"
+	stateFileName = "bitwarden-sm-state.json"
 )
+
+// stateFilePath returns the path to the Bitwarden state file, stored in a
+// private (0700) per-user directory instead of a world-readable temp directory.
+func stateFilePath() (string, error) {
+	baseDir, err := os.UserConfigDir()
+	if err != nil || baseDir == "" {
+		baseDir = os.TempDir()
+	}
+
+	dir := filepath.Join(baseDir, "doco-cd")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("failed to create state directory %s: %w", dir, err)
+	}
+
+	return filepath.Join(dir, stateFileName), nil
+}
 
 type Provider struct {
 	Client sdk.BitwardenClientInterface
@@ -34,7 +52,7 @@ func NewProvider(apiUrl, identityURL, accessToken string) (*Provider, error) {
 
 	provider := &Provider{Client: client}
 
-	stateFile, err := filepath.Abs(stateFilePath)
+	stateFile, err := stateFilePath()
 	if err != nil {
 		return nil, err
 	}

@@ -182,8 +182,9 @@ func getDeployStatus(ctx context.Context, client client.APIClient, deployName st
 		ns := convert.NewNamespace(deployName)
 
 		for _, service := range services {
-			status := ServiceStatus{
-				Labels: service.Spec.TaskTemplate.ContainerSpec.Labels,
+			status := ServiceStatus{}
+			if service.Spec.TaskTemplate.ContainerSpec != nil {
+				status.Labels = service.Spec.TaskTemplate.ContainerSpec.Labels
 			}
 
 			mode := service.Spec.Mode

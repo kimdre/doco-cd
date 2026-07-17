@@ -3,6 +3,7 @@ package webhook
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -89,7 +90,8 @@ func verifyProviderSecret(r *http.Request, payload []byte, secretKey string) (Sc
 		return Gitea, verifySignature(payload, signature, secretKey)
 
 	case r.Header.Get(ScmProviderSecurityHeaders[Gitlab]) != "":
-		if secretKey != r.Header.Get(ScmProviderSecurityHeaders[Gitlab]) {
+		token := r.Header.Get(ScmProviderSecurityHeaders[Gitlab])
+		if subtle.ConstantTimeCompare([]byte(secretKey), []byte(token)) != 1 {
 			return Gitlab, ErrGitlabTokenVerificationFailed
 		}
 

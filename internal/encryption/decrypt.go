@@ -54,9 +54,28 @@ func DecryptContent(content []byte, format string) ([]byte, error) {
 
 // DecryptFilesInDirectory walks through the specified directory and decrypts all SOPS-encrypted files.
 func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
+	return decryptFilesInDirectory(repoPath, dirPath, make(map[string]struct{}))
+}
+
+// decryptFilesInDirectory is the recursive implementation of DecryptFilesInDirectory.
+// The visited set tracks already-processed real paths to prevent infinite recursion
+// caused by symlink loops (e.g. a symlink pointing to an ancestor directory).
+func decryptFilesInDirectory(repoPath, dirPath string, visited map[string]struct{}) ([]string, error) {
 	if !filesystem.InBasePath(repoPath, dirPath) {
 		return nil, fmt.Errorf("%w: %s is outside the repository root %s", filesystem.ErrPathTraversal, dirPath, repoPath)
 	}
+
+	// Resolve the real path so symlink loops are detected regardless of the path used to reach them.
+	realPath, err := filepath.EvalSymlinks(dirPath)
+	if err != nil {
+		realPath = filepath.Clean(dirPath)
+	}
+
+	if _, ok := visited[realPath]; ok {
+		return nil, nil
+	}
+
+	visited[realPath] = struct{}{}
 
 	var decryptedFiles []string
 
@@ -69,7 +88,7 @@ func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
 		}
 	}
 
-	err := filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return fmt.Errorf("failed to walk directory %s: %w", path, err)
 		}
@@ -108,7 +127,7 @@ func DecryptFilesInDirectory(repoPath, dirPath string) ([]string, error) {
 			}
 
 			// Recursively walk the symlink target
-			_, err = DecryptFilesInDirectory(repoPath, absTarget)
+			_, err = decryptFilesInDirectory(repoPath, absTarget, visited)
 			if errors.Is(err, filesystem.ErrPathTraversal) {
 				return nil
 			}

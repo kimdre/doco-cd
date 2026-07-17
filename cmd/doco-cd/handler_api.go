@@ -169,6 +169,12 @@ func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.
 
 	if !wait {
 		go func(ctx context.Context) {
+			defer func() {
+				if r := recover(); r != nil {
+					logRecoveredPanic(jobLog, "scheduled job run", r)
+				}
+			}()
+
 			_ = triggerFn(ctx)
 		}(context.WithoutCancel(r.Context()))
 
@@ -873,6 +879,11 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 
 			go func(ctx context.Context) {
 				defer wg.Done()
+				defer func() {
+					if r := recover(); r != nil {
+						logRecoveredPanic(jobLog, "poll run", r)
+					}
+				}()
 
 				h.PollHandler(ctx, pollJob)
 			}(r.Context())
