@@ -97,6 +97,10 @@ func PullAndExtract(ctx context.Context, artifactRef, expectedDigest, layout, de
 	// Extract into a sibling temp directory so that validation can run before
 	// touching the live destination. Using the same parent ensures src and dst
 	// are on the same filesystem, which allows cheap os.Rename moves.
+	if err := os.MkdirAll(filepath.Dir(destination), filesystem.PermDir); err != nil {
+		return PullResult{}, fmt.Errorf("failed to create extraction parent directory: %w", err)
+	}
+
 	tmpDir, err := os.MkdirTemp(filepath.Dir(destination), ".oci-extract-*")
 	if err != nil {
 		return PullResult{}, fmt.Errorf("failed to create temp extraction directory: %w", err)
