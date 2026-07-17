@@ -5,13 +5,15 @@ import (
 	"path/filepath"
 	"syscall"
 	"testing"
+
+	"github.com/kimdre/doco-cd/internal/filesystem"
 )
 
 func TestValidateDocoLayoutV1_AcceptsVersionInConfig(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".doco-cd.yaml"), []byte("version: doco.v1\nname: app\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".doco-cd.yaml"), []byte("version: doco.v1\nname: app\n"), filesystem.PermOwner); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
@@ -24,7 +26,7 @@ func TestValidateDocoLayoutV1_AcceptsMissingVersion_DefaultsToV1(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".doco-cd.yaml"), []byte("name: app\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".doco-cd.yaml"), []byte("name: app\n"), filesystem.PermOwner); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
@@ -37,7 +39,7 @@ func TestValidateDocoLayoutV1_RejectsUnsupportedVersion(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".doco-cd.yaml"), []byte("version: doco.v2\nname: app\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".doco-cd.yaml"), []byte("version: doco.v2\nname: app\n"), filesystem.PermOwner); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
@@ -51,7 +53,7 @@ func TestValidateDocoLayoutV1_AcceptsCustomTargetConfig(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".doco-cd.production.yaml"), []byte("version: doco.v1\nname: app\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".doco-cd.production.yaml"), []byte("version: doco.v1\nname: app\n"), filesystem.PermOwner); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
@@ -65,7 +67,7 @@ func TestValidateDocoLayoutV1_CustomTargetDoesNotFallBackToDefault(t *testing.T)
 
 	dir := t.TempDir()
 	// Only the default config exists — custom target must NOT fall back to it.
-	if err := os.WriteFile(filepath.Join(dir, ".doco-cd.yaml"), []byte("version: doco.v1\nname: app\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".doco-cd.yaml"), []byte("version: doco.v1\nname: app\n"), filesystem.PermOwner); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
@@ -90,7 +92,7 @@ func TestFindArtifactConfigFile_NoCustomTarget(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".doco-cd.yml"), []byte("name: app\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".doco-cd.yml"), []byte("name: app\n"), filesystem.PermOwner); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
@@ -109,7 +111,7 @@ func TestFindArtifactConfigFile_CustomTargetDoesNotFallBackToDefault(t *testing.
 
 	dir := t.TempDir()
 	// Only the default config exists — should not be returned when a custom target is set.
-	if err := os.WriteFile(filepath.Join(dir, ".doco-cd.yaml"), []byte("name: app\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".doco-cd.yaml"), []byte("name: app\n"), filesystem.PermOwner); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
@@ -125,7 +127,7 @@ func TestFindArtifactConfigFile_CustomTargetReturnsTargetConfig(t *testing.T) {
 	dir := t.TempDir()
 
 	for _, name := range []string{".doco-cd.yaml", ".doco-cd.production.yaml"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("name: app\n"), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("name: app\n"), filesystem.PermOwner); err != nil {
 			t.Fatalf("write %s: %v", name, err)
 		}
 	}
@@ -146,7 +148,7 @@ func TestSyncDirectoryContents_PreservesDestinationInode(t *testing.T) {
 	base := t.TempDir()
 	dst := filepath.Join(base, "destination")
 
-	if err := os.MkdirAll(dst, 0o755); err != nil {
+	if err := os.MkdirAll(dst, filesystem.PermOwner); err != nil {
 		t.Fatalf("create dst: %v", err)
 	}
 
@@ -155,11 +157,11 @@ func TestSyncDirectoryContents_PreservesDestinationInode(t *testing.T) {
 
 	// Populate a source directory.
 	src := filepath.Join(base, "source")
-	if err := os.MkdirAll(src, 0o755); err != nil {
+	if err := os.MkdirAll(src, filesystem.PermDir); err != nil {
 		t.Fatalf("create src: %v", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(src, "file.txt"), []byte("hello"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(src, "file.txt"), []byte("hello"), filesystem.PermOwner); err != nil {
 		t.Fatalf("write src file: %v", err)
 	}
 
@@ -185,22 +187,22 @@ func TestSyncDirectoryContents_RemovesStaleEntries(t *testing.T) {
 	base := t.TempDir()
 	dst := filepath.Join(base, "destination")
 
-	if err := os.MkdirAll(dst, 0o755); err != nil {
+	if err := os.MkdirAll(dst, filesystem.PermDir); err != nil {
 		t.Fatalf("create dst: %v", err)
 	}
 
 	// Write a stale file that must be removed during sync.
 	stale := filepath.Join(dst, "stale.txt")
-	if err := os.WriteFile(stale, []byte("old"), 0o644); err != nil {
+	if err := os.WriteFile(stale, []byte("old"), filesystem.PermOwner); err != nil {
 		t.Fatalf("write stale file: %v", err)
 	}
 
 	src := filepath.Join(base, "source")
-	if err := os.MkdirAll(src, 0o755); err != nil {
+	if err := os.MkdirAll(src, filesystem.PermDir); err != nil {
 		t.Fatalf("create src: %v", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(src, "new.txt"), []byte("new"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(src, "new.txt"), []byte("new"), filesystem.PermOwner); err != nil {
 		t.Fatalf("write src file: %v", err)
 	}
 
