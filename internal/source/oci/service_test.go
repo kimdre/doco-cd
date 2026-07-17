@@ -148,7 +148,7 @@ func TestSyncDirectoryContents_PreservesDestinationInode(t *testing.T) {
 	base := t.TempDir()
 	dst := filepath.Join(base, "destination")
 
-	if err := os.MkdirAll(dst, filesystem.PermOwner); err != nil {
+	if err := os.MkdirAll(dst, filesystem.PermDir); err != nil {
 		t.Fatalf("create dst: %v", err)
 	}
 
@@ -161,7 +161,7 @@ func TestSyncDirectoryContents_PreservesDestinationInode(t *testing.T) {
 		t.Fatalf("create src: %v", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(src, "file.txt"), []byte("hello"), filesystem.PermOwner); err != nil {
+	if err := os.WriteFile(filepath.Join(src, "file.txt"), []byte("hello"), filesystem.PermPublic); err != nil {
 		t.Fatalf("write src file: %v", err)
 	}
 
@@ -193,7 +193,7 @@ func TestSyncDirectoryContents_RemovesStaleEntries(t *testing.T) {
 
 	// Write a stale file that must be removed during sync.
 	stale := filepath.Join(dst, "stale.txt")
-	if err := os.WriteFile(stale, []byte("old"), filesystem.PermOwner); err != nil {
+	if err := os.WriteFile(stale, []byte("old"), filesystem.PermPublic); err != nil {
 		t.Fatalf("write stale file: %v", err)
 	}
 
@@ -202,7 +202,7 @@ func TestSyncDirectoryContents_RemovesStaleEntries(t *testing.T) {
 		t.Fatalf("create src: %v", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(src, "new.txt"), []byte("new"), filesystem.PermOwner); err != nil {
+	if err := os.WriteFile(filepath.Join(src, "new.txt"), []byte("new"), filesystem.PermPublic); err != nil {
 		t.Fatalf("write src file: %v", err)
 	}
 
