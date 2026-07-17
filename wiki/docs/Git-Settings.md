@@ -139,3 +139,47 @@ Doco-CD will auto-detect the installation by repository _owner/name_ and mint sh
 | `GITHUB_APP_PRIVATE_KEY`        | string | GitHub App private key in PEM format. Requires `GITHUB_APP_ID`.                                                                                                              |                   |
 | `GITHUB_APP_PRIVATE_KEY_FILE`   | string | Path to the file containing `GITHUB_APP_PRIVATE_KEY` (mutually exclusive with `GITHUB_APP_PRIVATE_KEY`).                                                                     |                   |
 | `GITHUB_APP_INSTALLATION_ID`    | number | Optional installation ID override for global GitHub App auth. If unset, doco-cd resolves installation by _owner/repository_ automatically.                                   | `0` (auto-detect) |
+
+## Commit Status Reporting
+
+Doco-CD can post a commit status back to the source Git provider after each deployment, making the result visible directly on the commit or pull request in the Git web UI.
+
+This closes the GitOps feedback loop: instead of only seeing success or failure in container logs or Apprise notifications, the commit itself is marked with the deployment outcome.
+
+Three states are reported:
+
+- **pending** — set once after the repository is cloned and the deployment begins.
+- **success** — set when all deployment stages complete successfully.
+- **failure** — set when any stage fails after initialisation.
+
+| Key                 | Type    | Description                                                                                                                                                                                                                                                                                                         | Default |
+|---------------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
+| `GIT_COMMIT_STATUS` | boolean | Enable commit status reporting. When `true`, doco-cd posts a status to the source provider for every deployment. Requires [`GIT_ACCESS_TOKEN`](#authentication) (or [domain-scoped token](#domain-scoped-authentication) via `GIT_AUTH_DOMAINS`).                                                                   | `false` |
+| `GIT_SCM_PROVIDER`  | string  | Override automatic SCM provider detection. Accepted values: `auto`, `github`, `gitlab`, `gitea`, `forgejo`. Set to `auto` to detect the provider from the repository URL. Required when your self-hosted instance hostname does not reveal the product (e.g. `git.mycompany.com` running GitLab must set `gitlab`). | `auto`  |
+
+### Provider Auto-Detection
+
+When `GIT_SCM_PROVIDER` is not set, doco-cd detects the provider from the repository URL:
+
+| Hostname pattern | Detected provider | API used                 |
+|------------------|-------------------|--------------------------|
+| `github.com`     | GitHub            | `https://api.github.com` |
+| `gitlab.com`     | GitLab            | `https://{host}/api/v4`  |
+| Anything else    | Gitea / Forgejo   | `https://{host}/api/v1`  |
+
+!!! warning "Self-hosted instances"
+    Set `GIT_SCM_PROVIDER` explicitly when running a self-hosted SCM/Git provider instance.
+
+    - **GitHub Enterprise Server**: set `GIT_SCM_PROVIDER=github` — doco-cd uses the `/api/v3` endpoint for any non-`github.com` host.  
+    - **Self-hosted GitLab**: set `GIT_SCM_PROVIDER=gitlab` — doco-cd uses the `/api/v4` endpoint.
+
+### Example
+
+```yaml title="docker-compose.yml"
+services:
+  app:
+    environment:
+      GIT_ACCESS_TOKEN: xxx         # token must have repo status write scope
+      GIT_COMMIT_STATUS: "true"
+      # GIT_SCM_PROVIDER: gitlab   # uncomment for self-hosted GitLab at a custom domain
+```

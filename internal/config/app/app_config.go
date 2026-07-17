@@ -6,6 +6,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/kimdre/doco-cd/internal/commitstatus"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/git"
@@ -35,6 +36,8 @@ type Config struct {
 	WebhookSecret               string                 `env:"WEBHOOK_SECRET"`                                                         // WebhookSecret is the secret token used to authenticate the webhook
 	WebhookSecretFile           string                 `env:"WEBHOOK_SECRET_FILE,file"`                                               // WebhookSecretFile is the file containing the WebhookSecret
 	GitAccessToken              string                 `env:"GIT_ACCESS_TOKEN"`                                                       // GitAccessToken is the access token used to authenticate with the Git server (e.g. GitHub) for private repositories
+	GitCommitStatus             bool                   `env:"GIT_COMMIT_STATUS,notEmpty" envDefault:"false"`                          // GitCommitStatus controls whether doco-cd reports deployment outcomes as commit statuses to the source Git provider (requires GIT_ACCESS_TOKEN)
+	GitScmProvider              string                 `env:"GIT_SCM_PROVIDER,notEmpty" envDefault:"auto"`                            // GitScmProvider overrides automatic SCM provider detection for commit statuses. Valid values: auto, github, gitlab, gitea (forgejo is accepted as an alias for gitea). Useful for self-hosted instances whose hostname does not reveal the product (e.g. git.mycompany.com running GitLab).
 	GitAccessTokenFile          string                 `env:"GIT_ACCESS_TOKEN_FILE,file"`                                             // GitAccessTokenFile is the file containing the GitAccessToken
 	GitHubAppID                 string                 `env:"GITHUB_APP_ID"`                                                          // GitHubAppID is the GitHub App identifier used to mint installation access tokens
 	GitHubAppIDFile             string                 `env:"GITHUB_APP_ID_FILE,file"`                                                // GitHubAppIDFile is the file containing the GitHub App identifier
@@ -115,6 +118,10 @@ func GetConfig() (*Config, error) {
 	err = cfg.parseOciTrustPolicy()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse OCI_TRUST_POLICY: %w", err)
+	}
+
+	if _, err = commitstatus.ParseProvider(cfg.GitScmProvider); err != nil {
+		return nil, fmt.Errorf("invalid GIT_SCM_PROVIDER: %w", err)
 	}
 
 	for _, pollConfig := range cfg.PollConfig {

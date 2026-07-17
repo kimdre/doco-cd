@@ -5,6 +5,8 @@ import (
 	"errors"
 	"log/slog"
 	"time"
+
+	"github.com/kimdre/doco-cd/internal/commitstatus"
 )
 
 type StageFunc func(ctx context.Context, stageLog *slog.Logger) error
@@ -60,6 +62,8 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 		stageOrder = s.GetDestroyStageOrder()
 	}
 
+	pendingPosted := false
+
 	for _, stageName := range stageOrder.Order {
 		stageLog := s.Log.With(slog.String("stage", string(stageName)))
 
@@ -77,16 +81,37 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 				slog.String("duration", metadata.FinishedAt.Sub(metadata.StartedAt).Truncate(time.Millisecond).String()))
 			// If the error is ErrSkipDeployment, we don't treat it as a failure
 			if errors.Is(err, ErrSkipDeployment) {
+				if pendingPosted {
+					s.PostCommitStatus(ctx, commitstatus.StateSuccess, "Deployment skipped: already up to date")
+				}
+
 				return nil
 			}
 
 			s.NotifyFailure(err)
+
+			if pendingPosted {
+				s.PostCommitStatus(ctx, commitstatus.StateFailure, "Deployment failed")
+			}
 
 			return err
 		}
 
 		stageLog.Debug(string("completed stage: "+stageName),
 			slog.String("duration", metadata.FinishedAt.Sub(metadata.StartedAt).Truncate(time.Millisecond).String()))
+
+		// After the init stage the repository is cloned and the commit SHA is
+		// resolvable.  Post "pending" once so providers show the deployment as
+		// in-progress for the remainder of the stage pipeline.
+		if stageName == StageInit && !s.DeployConfig.Destroy.Enabled && !pendingPosted {
+			s.PostCommitStatus(ctx, commitstatus.StatePending, "Deployment in progress")
+
+			pendingPosted = true
+		}
+	}
+
+	if !s.DeployConfig.Destroy.Enabled {
+		s.PostCommitStatus(ctx, commitstatus.StateSuccess, "Deployment completed")
 	}
 
 	return nil
