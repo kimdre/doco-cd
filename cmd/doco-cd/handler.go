@@ -151,6 +151,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 	}
 
 	resolvedRevision := strings.TrimSpace(payload.Digest)
+	ociTrusted := sourceType != config.SourceTypeOCI
 
 	switch sourceType {
 	case config.SourceTypeGit:
@@ -166,8 +167,25 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 			}
 		}
 	case config.SourceTypeOCI:
+		resolvedDigest, err := oci.ResolveDigest(ctx, sourceRef, strings.TrimSpace(payload.Digest))
+		if err != nil {
+			return handleError{
+				err:            err,
+				msg:            "failed to resolve oci artifact digest",
+				httpStatusCode: http.StatusInternalServerError,
+			}
+		}
+
+		if err := oci.VerifyWithCosign(ctx, sourceRef, resolvedDigest, appConfig.OciTrustPolicy, config.OciTrustPolicyOverride{}, appConfig.OciVerifyMaxWorkers); err != nil {
+			return handleError{
+				err:            err,
+				msg:            "failed OCI signature verification",
+				httpStatusCode: http.StatusInternalServerError,
+			}
+		}
+
 		pullResult, err := oci.PullAndExtract(ctx,
-			sourceRef, strings.TrimSpace(payload.Digest), config.OciArtifactLayoutV1,
+			sourceRef, resolvedDigest, config.OciArtifactLayoutV1,
 			internalRepoPath, customTarget)
 		if err != nil {
 			return handleError{
@@ -178,6 +196,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		}
 
 		resolvedRevision = pullResult.Digest
+		ociTrusted = true
 		payload.Source = webhook.PayloadSourceOCI
 		payload.Artifact = sourceRef
 		payload.Digest = pullResult.Digest
@@ -252,6 +271,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		PathInternal: internalRepoPath,
 		PathExternal: externalRepoPath,
 		Revision:     resolvedRevision,
+		OCITrusted:   ociTrusted,
 	}
 
 	if err := reconciliation.Deploy(ctx, jobLog, appConfig,

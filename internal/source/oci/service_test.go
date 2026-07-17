@@ -1,6 +1,10 @@
 package oci
 
 import (
+	"archive/tar"
+	"bytes"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -234,4 +238,100 @@ func dirInode(t *testing.T, path string) uint64 {
 	}
 
 	return sys.Ino
+}
+
+// writeTar builds an in-memory tar stream from the provided entries.
+func writeTar(t *testing.T, entries []tar.Header, contents map[string][]byte) io.Reader {
+	t.Helper()
+
+	var buf bytes.Buffer
+
+	tw := tar.NewWriter(&buf)
+
+	for i := range entries {
+		h := entries[i]
+		if err := tw.WriteHeader(&h); err != nil {
+			t.Fatalf("write tar header: %v", err)
+		}
+
+		if body := contents[h.Name]; len(body) > 0 {
+			if _, err := tw.Write(body); err != nil {
+				t.Fatalf("write tar body: %v", err)
+			}
+		}
+	}
+
+	if err := tw.Close(); err != nil {
+		t.Fatalf("close tar writer: %v", err)
+	}
+
+	return &buf
+}
+
+func TestExtractTarStream_RejectsOversizedArtifact(t *testing.T) {
+	t.Parallel()
+
+	dst := t.TempDir()
+
+	reader := writeTar(t,
+		[]tar.Header{{Name: "big.bin", Typeflag: tar.TypeReg, Mode: 0o644, Size: 2048}},
+		map[string][]byte{"big.bin": bytes.Repeat([]byte("a"), 2048)},
+	)
+
+	budget := &extractionBudget{remainingBytes: 1024, remainingEntries: maxExtractedEntries}
+
+	err := extractTarStream(dst, reader, budget)
+	if !errors.Is(err, ErrArtifactTooLarge) {
+		t.Fatalf("expected ErrArtifactTooLarge, got %v", err)
+	}
+}
+
+func TestExtractTarStream_RejectsTooManyEntries(t *testing.T) {
+	t.Parallel()
+
+	dst := t.TempDir()
+
+	reader := writeTar(t,
+		[]tar.Header{
+			{Name: "a.txt", Typeflag: tar.TypeReg, Mode: 0o644, Size: 1},
+			{Name: "b.txt", Typeflag: tar.TypeReg, Mode: 0o644, Size: 1},
+		},
+		map[string][]byte{"a.txt": []byte("x"), "b.txt": []byte("y")},
+	)
+
+	budget := &extractionBudget{remainingBytes: maxExtractedBytes, remainingEntries: 1}
+
+	err := extractTarStream(dst, reader, budget)
+	if !errors.Is(err, ErrTooManyArtifactFiles) {
+		t.Fatalf("expected ErrTooManyArtifactFiles, got %v", err)
+	}
+}
+
+func TestExtractTarStream_AllowsWithinBudget(t *testing.T) {
+	t.Parallel()
+
+	dst := t.TempDir()
+
+	reader := writeTar(t,
+		[]tar.Header{
+			{Name: "dir", Typeflag: tar.TypeDir, Mode: 0o755},
+			{Name: "dir/file.txt", Typeflag: tar.TypeReg, Mode: 0o644, Size: 5},
+		},
+		map[string][]byte{"dir/file.txt": []byte("hello")},
+	)
+
+	budget := &extractionBudget{remainingBytes: maxExtractedBytes, remainingEntries: maxExtractedEntries}
+
+	if err := extractTarStream(dst, reader, budget); err != nil {
+		t.Fatalf("expected extraction to succeed, got %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(dst, "dir", "file.txt"))
+	if err != nil {
+		t.Fatalf("read extracted file: %v", err)
+	}
+
+	if string(got) != "hello" {
+		t.Fatalf("unexpected file content: %q", string(got))
+	}
 }

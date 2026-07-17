@@ -117,6 +117,7 @@ type RepositoryData struct {
 	PathExternal string            // Path to the repository on the host machine
 	Git          *git.Repository   // Git repository instance
 	Revision     string            // Resolved immutable revision (commit SHA or digest)
+	OCITrusted   bool              // True when the OCI artifact passed trust-policy verification before reconciliation/cleanup
 }
 
 // Docker holds the Docker CLI and client instances along with the data mount point.
