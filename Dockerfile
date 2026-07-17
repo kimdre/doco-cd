@@ -80,3 +80,5 @@ ENTRYPOINT ["/doco-cd"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD ["/doco-cd", "healthcheck"]
+
+EXPOSE 80 9120
