@@ -2786,7 +2786,7 @@ Adding a short sleep ensures that the init container has time to exit properly b
 <div class="admonition info">
 <p class="admonition-title">Requires Docker Compose <a href="https://github.com/docker/compose/releases/tag/v2.30.0">2.30.0</a> or later</p>
 </div>
-<p>Docker Compose lifecycle hooks allow you to run commands/scripts at specific points in the container lifecycle, such as after starting (<a href="https://docs.docker.com/reference/compose-file/services/#post_start"><code>post_start</code></a>) or before stopping <a href="https://docs.docker.com/reference/compose-file/services/#pre_stop"><code>pre_stop</code></a> a container.</p>
+<p>Docker Compose lifecycle hooks allow you to run commands/scripts at specific points in the container lifecycle, such as before or after starting (<a href="https://docs.docker.com/reference/compose-file/services/#pre_start"><code>pre_start</code></a> and <a href="https://docs.docker.com/reference/compose-file/services/#post_start"><code>post_start</code></a>) or before stopping <a href="https://docs.docker.com/reference/compose-file/services/#pre_stop"><code>pre_stop</code></a> a container.</p>
 <h3 id="example_2">Example<a class="headerlink" href="#example_2" title="Permanent link">&para;</a></h3>
 <h4 id="post-start-hook">Post Start Hook<a class="headerlink" href="#post-start-hook" title="Permanent link">&para;</a></h4>
 <p>This example demonstrates how to use the <code>post_start</code> hook to set up the correct volume permissions that the application needs.</p>
