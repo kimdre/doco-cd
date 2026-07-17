@@ -153,7 +153,7 @@ services:
 
 !!! info "Requires Docker Compose [2.30.0](https://github.com/docker/compose/releases/tag/v2.30.0) or later"
 
-Docker Compose lifecycle hooks allow you to run commands/scripts at specific points in the container lifecycle, such as after starting ([`post_start`](https://docs.docker.com/reference/compose-file/services/#post_start)) or before stopping [`pre_stop`](https://docs.docker.com/reference/compose-file/services/#pre_stop) a container.
+Docker Compose lifecycle hooks allow you to run commands/scripts at specific points in the container lifecycle, such as before or after starting ([`pre_start`](https://docs.docker.com/reference/compose-file/services/#pre_start) and [`post_start`](https://docs.docker.com/reference/compose-file/services/#post_start)) or before stopping [`pre_stop`](https://docs.docker.com/reference/compose-file/services/#pre_stop) a container.
 
 ### Example
 
