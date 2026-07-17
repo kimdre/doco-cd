@@ -47,8 +47,7 @@ func LoadComposefile(dockerCli command.Cli, opts options.Deploy, environment map
 
 	config, err := loader.Load(configDetails, optsFunc)
 	if err != nil {
-		var fpe *loader.ForbiddenPropertiesError
-		if errors.As(err, &fpe) {
+		if fpe, ok := errors.AsType[*loader.ForbiddenPropertiesError](err); ok {
 			// this error is intentionally formatted multi-line
 			return nil, fmt.Errorf("compose file contains unsupported options:\n\n%s", propertyWarnings(fpe.Properties))
 		}
