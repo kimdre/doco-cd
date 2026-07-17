@@ -47,10 +47,10 @@ Contributions are welcome! Please see the [contributing guidelines](https://doco
 
 ## Star History
 
-<a href="https://www.star-history.com/#kimdre/doco-cd&Date">
+<a href="https://www.star-history.com/?type=date&repos=kimdre%2Fdoco-cd">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=kimdre/doco-cd&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=kimdre/doco-cd&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=kimdre/doco-cd&type=Date" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=kimdre/doco-cd&type=date&theme=dark&legend=top-left&sealed_token=tNlwXpp5OvV8tZRDDkSVbewGRrThSI26hP-M_DjnYAzCYc1LyyLWcXMHzn9iEnHc77Vcp2kwmoVkehQ9K1gi9IJZw6dyMoGCs9RlkCQzN7FHnCpGZgnwqpRB-gnv8AWAnxWbwrHPiIYUKmZekEA1OSxRnf1wblKVH2wbC61XORPy_9psxbAGEMVgyM6_" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=kimdre/doco-cd&type=date&legend=top-left&sealed_token=tNlwXpp5OvV8tZRDDkSVbewGRrThSI26hP-M_DjnYAzCYc1LyyLWcXMHzn9iEnHc77Vcp2kwmoVkehQ9K1gi9IJZw6dyMoGCs9RlkCQzN7FHnCpGZgnwqpRB-gnv8AWAnxWbwrHPiIYUKmZekEA1OSxRnf1wblKVH2wbC61XORPy_9psxbAGEMVgyM6_" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=kimdre/doco-cd&type=date&legend=top-left&sealed_token=tNlwXpp5OvV8tZRDDkSVbewGRrThSI26hP-M_DjnYAzCYc1LyyLWcXMHzn9iEnHc77Vcp2kwmoVkehQ9K1gi9IJZw6dyMoGCs9RlkCQzN7FHnCpGZgnwqpRB-gnv8AWAnxWbwrHPiIYUKmZekEA1OSxRnf1wblKVH2wbC61XORPy_9psxbAGEMVgyM6_" />
  </picture>
 </a>
