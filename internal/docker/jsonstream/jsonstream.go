@@ -25,7 +25,6 @@ type (
 var (
 	ErrImagePullAccessDenied = errors.New("image pull access denied")
 	noSuchImageRegex         = regexp.MustCompile(`No such image:\s*([^\s",]+)`)
-	noSuchImageCount         = 0
 )
 
 // ErrorReader reads JSON messages from the given reader and returns an error
@@ -41,6 +40,8 @@ func ErrorReader(ctx context.Context, in io.Reader) error {
 	defer stopFunc()
 
 	dec := json.NewDecoder(in)
+
+	noSuchImageCount := 0
 
 	for {
 		var jm JSONMessage
