@@ -44,7 +44,8 @@ The default deployment config can manage your normal deployments and the updater
 name: doco-cd-updater
 reference: main
 working_dir: ./doco-cd
-compose_file: compose.updater.yaml
+compose_files: 
+  - compose.updater.yaml
 force_recreate: true
 
 ---
@@ -59,7 +60,8 @@ The updater target should only deploy the main doco-cd instance:
 name: doco-cd
 reference: main
 working_dir: ./doco-cd
-compose_file: compose.main.yaml
+compose_files:
+  - compose.main.yaml
 ```
 
 ## Main instance
