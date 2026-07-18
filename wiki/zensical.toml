@@ -56,6 +56,7 @@ nav = [
     ] },
     { "Pre- / Post-Deployment Scripts" = "Advanced/Pre-Post-Deployment-Scripts.md" },
     { "Private Container Registries" = "Advanced/Private-Container-Registries.md" },
+    { "Self-Updating" = "Advanced/Self-Updating.md" },
     { "Swarm Mode" = "Advanced/Swarm-Mode.md" },
     { "Tips & Tricks" = "Advanced/Tips-and-Tricks.md" },
   ] },
