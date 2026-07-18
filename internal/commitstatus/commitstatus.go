@@ -502,6 +502,7 @@ func parseAzureDevOpsProjectAndRepo(repoURL, repoFullName, host string) (string,
 	}
 
 	fullNameSegments := splitPathSegments(repoFullName)
+
 	projectPath, repository = azureDevOpsProjectAndRepoFromSegments(fullNameSegments)
 	if projectPath != "" && repository != "" {
 		return projectPath, repository, nil
@@ -555,6 +556,7 @@ func azureDevOpsProjectAndRepoFromSegments(segments []string) (string, string) {
 
 func splitPathSegments(value string) []string {
 	value = strings.TrimSpace(value)
+
 	value = strings.Trim(value, "/")
 	if value == "" {
 		return nil

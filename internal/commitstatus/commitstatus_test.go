@@ -352,6 +352,7 @@ func TestPost_AzureDevOpsAPI(t *testing.T) {
 	t.Parallel()
 
 	var received map[string]any
+
 	expectedAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(":token"))
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -474,6 +475,7 @@ func TestGet_AzureDevOpsAPI(t *testing.T) {
 	t.Parallel()
 
 	expectedAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(":token"))
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, r.Method, http.MethodGet)
 		assert.Equal(t, r.URL.Path, "/org/project/_apis/git/repositories/repo/commits/deadbeef/statuses")
