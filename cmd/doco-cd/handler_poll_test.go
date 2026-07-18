@@ -120,6 +120,7 @@ func TestRunPoll(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	appConfig.GitCommitStatus = false
 
 	secretProvider, err := secretprovider.Initialize(ctx, appConfig.SecretProvider, "v0.0.0-test")

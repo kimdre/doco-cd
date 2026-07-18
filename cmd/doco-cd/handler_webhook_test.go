@@ -114,6 +114,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	appConfig.GitCommitStatus = false
 
 	log := logger.New(logger.LevelCritical)
@@ -316,6 +317,7 @@ func TestWebhookHandler_WaitQueryParam(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	appConfig.GitCommitStatus = false
 
 	log := logger.New(logger.LevelCritical)

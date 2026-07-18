@@ -114,6 +114,7 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 	pendingPosted := false
 
 	var finishedAt time.Time
+
 	previousSuccessDescription := ""
 
 	for _, stageName := range stageOrder.Order {
