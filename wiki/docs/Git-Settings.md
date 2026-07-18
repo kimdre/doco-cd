@@ -161,12 +161,12 @@ Three states are reported:
 
 The token used for commit status reporting needs permission to **write commit statuses** through the provider API. The same requirements apply whether you use the global `GIT_ACCESS_TOKEN` or a domain-scoped token from `GIT_AUTH_DOMAINS`.
 
-| Provider | Token type | Required permission |
-|----------|------------|---------------------|
-| GitHub | Classic PAT / OAuth token | `repo:status` is the minimum recommended scope. `repo` also works, but grants broader repository access than necessary. |
-| GitHub | Fine-grained PAT / GitHub App | Repository permission **Commit statuses: Read and write** |
-| GitLab | Personal, project, or group access token | `api` scope |
-| Gitea / Forgejo | API access token | Must be allowed to write repository API endpoints. On Forgejo scoped tokens, use `write:repository`. Some Gitea versions expose different token controls, so ensure the token can create commit statuses for the target repository. |
+| Provider        | Token type                               | Required permission                                                                                                                                                                                                                 |
+|-----------------|------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| GitHub          | Classic PAT / OAuth token                | `repo:status` is the minimum recommended scope. `repo` also works, but grants broader repository access than necessary.                                                                                                             |
+| GitHub          | Fine-grained PAT / GitHub App            | Repository permission **Commit statuses: Read and write**                                                                                                                                                                           |
+| GitLab          | Personal, project, or group access token | `api` scope                                                                                                                                                                                                                         |
+| Gitea / Forgejo | API access token                         | Must be allowed to write repository API endpoints. On Forgejo scoped tokens, use `write:repository`. Some Gitea versions expose different token controls, so ensure the token can create commit statuses for the target repository. |
 
 !!! info "Why GitLab needs `api` instead of `write_repository`"
     Doco-CD posts commit statuses through the GitLab REST API. The `write_repository` scope covers Git-over-HTTP push access, but does not grant general REST API write access.
