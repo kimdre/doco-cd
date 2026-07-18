@@ -242,7 +242,7 @@ func postGitHub(ctx context.Context, baseURL, host, repoFullName, commitSHA, tok
 		TargetURL:   status.TargetURL,
 	}
 
-	return doPost(ctx, apiURL, token, body)
+	return doPost(ctx, apiURL, bearerAuthToken(token), body)
 }
 
 func getGitHub(ctx context.Context, baseURL, host, repoFullName, commitSHA, token, contextName string) (Status, bool, error) {
@@ -254,7 +254,7 @@ func getGitHub(ctx context.Context, baseURL, host, repoFullName, commitSHA, toke
 		apiURL = fmt.Sprintf("%s/api/v3/repos/%s/statuses/%s", baseURL, repoFullName, commitSHA)
 	}
 
-	return getGitHubStyle(ctx, apiURL, token, contextName)
+	return getGitHubStyle(ctx, apiURL, bearerAuthToken(token), contextName)
 }
 
 // postGitHubCompatible posts a commit status using the GitHub-compatible API.
@@ -276,12 +276,12 @@ func postGitHubCompatible(ctx context.Context, baseURL, _ /* host */, repoFullNa
 		TargetURL:   status.TargetURL,
 	}
 
-	return doPost(ctx, apiURL, token, body)
+	return doPost(ctx, apiURL, giteaAuthToken(token), body)
 }
 
 func getGitHubCompatible(ctx context.Context, baseURL, repoFullName, commitSHA, token, contextName string) (Status, bool, error) {
 	apiURL := fmt.Sprintf("%s/api/v1/repos/%s/statuses/%s", baseURL, repoFullName, commitSHA)
-	return getGitHubStyle(ctx, apiURL, token, contextName)
+	return getGitHubStyle(ctx, apiURL, giteaAuthToken(token), contextName)
 }
 
 func getGitHubStyle(ctx context.Context, apiURL, token, contextName string) (Status, bool, error) {
@@ -343,7 +343,7 @@ func postGitLab(ctx context.Context, baseURL, repoFullName, commitSHA, token str
 		TargetURL:   status.TargetURL,
 	}
 
-	return doPost(ctx, apiURL, token, body)
+	return doPost(ctx, apiURL, bearerAuthToken(token), body)
 }
 
 func getGitLab(ctx context.Context, baseURL, repoFullName, commitSHA, token, contextName string) (Status, bool, error) {
@@ -358,7 +358,7 @@ func getGitLab(ctx context.Context, baseURL, repoFullName, commitSHA, token, con
 	}
 
 	var statuses []gitlabStatus
-	if err := doGet(ctx, apiURL, token, &statuses); err != nil {
+	if err := doGet(ctx, apiURL, bearerAuthToken(token), &statuses); err != nil {
 		return Status{}, false, err
 	}
 
@@ -391,7 +391,15 @@ func gitLabStateToCommitStatus(state string) State {
 	}
 }
 
-func doPost(ctx context.Context, apiURL, token string, body any) error {
+func bearerAuthToken(token string) string {
+	return "Bearer " + token
+}
+
+func giteaAuthToken(token string) string {
+	return "token " + token
+}
+
+func doPost(ctx context.Context, apiURL, authHeaderValue string, body any) error {
 	jsonData, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("failed to marshal request: %w", err)
@@ -403,7 +411,7 @@ func doPost(ctx context.Context, apiURL, token string, body any) error {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", authHeaderValue)
 
 	client := &http.Client{Timeout: 15 * time.Second}
 
@@ -424,13 +432,13 @@ func doPost(ctx context.Context, apiURL, token string, body any) error {
 	return nil
 }
 
-func doGet(ctx context.Context, apiURL, token string, dst any) error {
+func doGet(ctx context.Context, apiURL, authHeaderValue string, dst any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil) // #nosec G107
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", authHeaderValue)
 
 	client := &http.Client{Timeout: 15 * time.Second}
 
