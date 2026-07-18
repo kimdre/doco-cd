@@ -152,10 +152,10 @@ Three states are reported:
 - **success** — set when all deployment stages complete successfully.
 - **failure** — set when any stage fails after initialisation.
 
-| Key                 | Type    | Description                                                                                                                                                                                                                                                                                                         | Default |
-|---------------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
-| `GIT_COMMIT_STATUS` | boolean | Enable commit status reporting. When `true`, doco-cd posts a status to the source provider for every deployment. Requires [`GIT_ACCESS_TOKEN`](#authentication) (or [domain-scoped token](#domain-scoped-authentication) via `GIT_AUTH_DOMAINS`).                                                                   | `false` |
-| `GIT_SCM_PROVIDER`  | string  | Override automatic SCM provider detection. Accepted values: `auto`, `github`, `gitlab`, `gitea`, `forgejo`. Set to `auto` to detect the provider from the repository URL. Required when your self-hosted instance hostname does not reveal the product (e.g. `git.mycompany.com` running GitLab must set `gitlab`). | `auto`  |
+| Key                 | Type    | Description                                                                                                                                                                                                                                                                                                                        | Default |
+|---------------------|---------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
+| `GIT_COMMIT_STATUS` | boolean | Enable commit status reporting. When `true`, doco-cd posts a status to the source provider for every deployment. Requires [`GIT_ACCESS_TOKEN`](#authentication) (or [domain-scoped token](#domain-scoped-authentication) via `GIT_AUTH_DOMAINS`).                                                                                  | `false` |
+| `GIT_SCM_PROVIDER`  | string  | Override automatic SCM provider detection. Accepted values: `auto`, `github`, `gitlab`, `gitea`, `forgejo`, `azuredevops`. Set to `auto` to detect the provider from the repository URL. Required when your self-hosted instance hostname does not reveal the product (e.g. `git.mycompany.com` running GitLab must set `gitlab`). | `auto`  |
 
 ### Required Token Permissions
 
@@ -167,6 +167,7 @@ The token used for commit status reporting needs permission to **write commit st
 | GitHub          | Fine-grained PAT / GitHub App            | Repository permission **Commit statuses: Read and write**                                                                                                                                                                           |
 | GitLab          | Personal, project, or group access token | `api` scope                                                                                                                                                                                                                         |
 | Gitea / Forgejo | API access token                         | Must be allowed to write repository API endpoints. On Forgejo scoped tokens, use `write:repository`. Some Gitea versions expose different token controls, so ensure the token can create commit statuses for the target repository. |
+| Azure DevOps    | Personal Access Token (PAT)              | Token must allow Git status writes on the target repo (for example **Code (Read & write)** in the PAT scopes).                                                                                                                      |
 
 !!! info "Why GitLab needs `api` instead of `write_repository`"
     Doco-CD posts commit statuses through the GitLab REST API. The `write_repository` scope covers Git-over-HTTP push access, but does not grant general REST API write access.
@@ -175,18 +176,19 @@ The token used for commit status reporting needs permission to **write commit st
 
 When `GIT_SCM_PROVIDER` is not set, doco-cd detects the provider from the repository URL:
 
-| Hostname pattern | Detected provider | API used                 |
-|------------------|-------------------|--------------------------|
-| `github.com`     | GitHub            | `https://api.github.com` |
-| `gitlab.com`     | GitLab            | `https://{host}/api/v4`  |
-| Anything else    | Gitea / Forgejo   | `https://{host}/api/v1`  |
+| Hostname pattern                                           | Detected provider |
+|------------------------------------------------------------|-------------------|
+| `github.com`                                               | GitHub            |
+| `gitlab.com`                                               | GitLab            |
+| `dev.azure.com`, `ssh.dev.azure.com`, `*.visualstudio.com` | Azure DevOps      |
+| Anything else                                              | Gitea / Forgejo   |
 
 !!! warning "Self-hosted instances"
-    Set `GIT_SCM_PROVIDER` explicitly when running a self-hosted SCM/Git provider instance.
+    Set `GIT_SCM_PROVIDER` explicitly when running a self-hosted SCM/Git provider instance and the auto-detection cannot determine the correct provider.
 
-    - **GitHub Enterprise Server**: set `GIT_SCM_PROVIDER=github` — doco-cd uses the `/api/v3` endpoint for any non-`github.com` host.  
-    - **Self-hosted GitLab**: set `GIT_SCM_PROVIDER=gitlab` — doco-cd uses the `/api/v4` endpoint.
-
+    - **GitHub Enterprise Server**: set `GIT_SCM_PROVIDER=github`
+    - **Self-hosted GitLab**: set `GIT_SCM_PROVIDER=gitlab`
+    - **Self-hosted Gitea / Forgejo**: set `GIT_SCM_PROVIDER=gitea` or `GIT_SCM_PROVIDER=forgejo`
 ### Example
 
 ```yaml title="docker-compose.yml"

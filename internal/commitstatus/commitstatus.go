@@ -3,12 +3,14 @@ package commitstatus
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"time"
 )
@@ -40,6 +42,8 @@ const (
 	ProviderGitLab Provider = "gitlab"
 	// ProviderGitea targets the Gitea/Forgejo API v1.
 	ProviderGitea Provider = "gitea"
+	// ProviderAzureDevOps targets the Azure DevOps Git statuses API.
+	ProviderAzureDevOps Provider = "azuredevops"
 )
 
 // ParseProvider converts a string (e.g. from an env var) to a Provider.
@@ -54,8 +58,10 @@ func ParseProvider(s string) (Provider, error) {
 		return ProviderGitLab, nil
 	case ProviderGitea, "forgejo":
 		return ProviderGitea, nil
+	case ProviderAzureDevOps:
+		return ProviderAzureDevOps, nil
 	default:
-		return ProviderAuto, fmt.Errorf("unknown SCM provider %q: must be one of auto, github, gitlab, gitea, forgejo", s)
+		return ProviderAuto, fmt.Errorf("unknown SCM provider %q: must be one of auto, github, gitlab, gitea, forgejo, azuredevops", s)
 	}
 }
 
@@ -98,6 +104,8 @@ func Post(ctx context.Context, provider Provider, repoURL, repoFullName, commitS
 		return postGitLab(ctx, baseURL, repoFullName, commitSHA, token, status)
 	case ProviderGitHub:
 		return postGitHub(ctx, baseURL, host, repoFullName, commitSHA, token, status)
+	case ProviderAzureDevOps:
+		return postAzureDevOps(ctx, baseURL, host, repoURL, repoFullName, commitSHA, token, status)
 	default: // ProviderGitea
 		return postGitHubCompatible(ctx, baseURL, host, repoFullName, commitSHA, token, status)
 	}
@@ -132,6 +140,8 @@ func Get(ctx context.Context, provider Provider, repoURL, repoFullName, commitSH
 		return getGitLab(ctx, baseURL, repoFullName, commitSHA, token, contextName)
 	case ProviderGitHub:
 		return getGitHub(ctx, baseURL, host, repoFullName, commitSHA, token, contextName)
+	case ProviderAzureDevOps:
+		return getAzureDevOps(ctx, baseURL, host, repoURL, repoFullName, commitSHA, token, contextName)
 	default:
 		return getGitHubCompatible(ctx, baseURL, repoFullName, commitSHA, token, contextName)
 	}
@@ -152,6 +162,10 @@ func resolveProvider(provider Provider, host string) Provider {
 		return ProviderGitHub
 	}
 
+	if isAzureDevOps(host) {
+		return ProviderAzureDevOps
+	}
+
 	return ProviderGitea
 }
 
@@ -166,6 +180,13 @@ func isGitHub(host string) bool {
 // The host argument may include a port (e.g. "gitlab.com:443").
 func isGitLab(host string) bool {
 	return strings.ToLower(bareHost(host)) == "gitlab.com"
+}
+
+// isAzureDevOps returns true for Azure DevOps SaaS hosts.
+func isAzureDevOps(host string) bool {
+	h := strings.ToLower(bareHost(host))
+
+	return h == "dev.azure.com" || h == "ssh.dev.azure.com" || strings.HasSuffix(h, ".visualstudio.com")
 }
 
 // bareHost strips the port suffix from a host string (e.g. "example.com:8080" → "example.com").
@@ -378,6 +399,182 @@ func getGitLab(ctx context.Context, baseURL, repoFullName, commitSHA, token, con
 	return Status{}, false, nil
 }
 
+func postAzureDevOps(ctx context.Context, baseURL, host, repoURL, repoFullName, commitSHA, token string, status Status) error {
+	apiURL, err := azureDevOpsStatusesURL(baseURL, host, repoURL, repoFullName, commitSHA)
+	if err != nil {
+		return err
+	}
+
+	type azureContext struct {
+		Name  string `json:"name"`
+		Genre string `json:"genre"`
+	}
+
+	type azureRequest struct {
+		State       string       `json:"state"`
+		Description string       `json:"description"`
+		Context     azureContext `json:"context"`
+		TargetURL   string       `json:"targetUrl,omitempty"`
+	}
+
+	body := azureRequest{
+		State:       commitStatusToAzureState(status.State),
+		Description: status.Description,
+		Context: azureContext{
+			Name:  status.Context,
+			Genre: "doco-cd",
+		},
+		TargetURL: status.TargetURL,
+	}
+
+	return doPost(ctx, apiURL, azureDevOpsAuthToken(token), body)
+}
+
+func getAzureDevOps(ctx context.Context, baseURL, host, repoURL, repoFullName, commitSHA, token, contextName string) (Status, bool, error) {
+	apiURL, err := azureDevOpsStatusesURL(baseURL, host, repoURL, repoFullName, commitSHA)
+	if err != nil {
+		return Status{}, false, err
+	}
+
+	type azureContext struct {
+		Name  string `json:"name"`
+		Genre string `json:"genre"`
+	}
+
+	type azureStatus struct {
+		State       string       `json:"state"`
+		Description string       `json:"description"`
+		TargetURL   string       `json:"targetUrl"`
+		Context     azureContext `json:"context"`
+	}
+
+	type azureListResponse struct {
+		Value []azureStatus `json:"value"`
+	}
+
+	var response azureListResponse
+	if err := doGet(ctx, apiURL, azureDevOpsAuthToken(token), &response); err != nil {
+		return Status{}, false, err
+	}
+
+	for _, status := range response.Value {
+		if status.Context.Name != contextName {
+			continue
+		}
+
+		return Status{
+			State:       azureStateToCommitStatus(status.State),
+			Description: status.Description,
+			Context:     status.Context.Name,
+			TargetURL:   status.TargetURL,
+		}, true, nil
+	}
+
+	return Status{}, false, nil
+}
+
+func azureDevOpsStatusesURL(baseURL, host, repoURL, repoFullName, commitSHA string) (string, error) {
+	projectPath, repository, err := parseAzureDevOpsProjectAndRepo(repoURL, repoFullName, host)
+	if err != nil {
+		return "", err
+	}
+
+	apiBase := strings.TrimSuffix(baseURL, "/")
+	if bareHost(host) == "ssh.dev.azure.com" {
+		apiBase = "https://dev.azure.com"
+	}
+
+	return fmt.Sprintf(
+		"%s/%s/_apis/git/repositories/%s/commits/%s/statuses?api-version=7.1",
+		apiBase,
+		projectPath,
+		url.PathEscape(repository),
+		commitSHA,
+	), nil
+}
+
+func parseAzureDevOpsProjectAndRepo(repoURL, repoFullName, host string) (string, string, error) {
+	segments := parseAzureDevOpsPathSegments(repoURL)
+
+	projectPath, repository := azureDevOpsProjectAndRepoFromSegments(segments)
+	if projectPath != "" && repository != "" {
+		return projectPath, repository, nil
+	}
+
+	fullNameSegments := splitPathSegments(repoFullName)
+	projectPath, repository = azureDevOpsProjectAndRepoFromSegments(fullNameSegments)
+	if projectPath != "" && repository != "" {
+		return projectPath, repository, nil
+	}
+
+	return "", "", fmt.Errorf("failed to parse Azure DevOps repository from %q (host=%q, full_name=%q)", repoURL, host, repoFullName)
+}
+
+func parseAzureDevOpsPathSegments(rawURL string) []string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return nil
+	}
+
+	if strings.Contains(rawURL, "@") && strings.Contains(rawURL, ":") && !strings.Contains(rawURL, "://") {
+		parts := strings.SplitN(rawURL, ":", 2)
+		if len(parts) != 2 {
+			return nil
+		}
+
+		return splitPathSegments(parts[1])
+	}
+
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return nil
+	}
+
+	return splitPathSegments(parsed.Path)
+}
+
+func azureDevOpsProjectAndRepoFromSegments(segments []string) (string, string) {
+	if len(segments) == 0 {
+		return "", ""
+	}
+
+	if segments[0] == "v3" && len(segments) >= 4 {
+		return path.Join(segments[1], segments[2]), strings.TrimSuffix(segments[3], ".git")
+	}
+
+	for i, segment := range segments {
+		if segment != "_git" || i == 0 || i+1 >= len(segments) {
+			continue
+		}
+
+		return path.Join(segments[:i]...), strings.TrimSuffix(segments[i+1], ".git")
+	}
+
+	return "", ""
+}
+
+func splitPathSegments(value string) []string {
+	value = strings.TrimSpace(value)
+	value = strings.Trim(value, "/")
+	if value == "" {
+		return nil
+	}
+
+	rawSegments := strings.Split(value, "/")
+	segments := make([]string, 0, len(rawSegments))
+
+	for _, segment := range rawSegments {
+		segment = strings.TrimSpace(segment)
+		if segment == "" {
+			continue
+		}
+
+		segments = append(segments, segment)
+	}
+
+	return segments
+}
+
 func gitLabStateToCommitStatus(state string) State {
 	switch strings.ToLower(strings.TrimSpace(state)) {
 	case "running", "pending":
@@ -397,6 +594,38 @@ func bearerAuthToken(token string) string {
 
 func giteaAuthToken(token string) string {
 	return "token " + token
+}
+
+func azureDevOpsAuthToken(token string) string {
+	pat := ":" + strings.TrimSpace(token)
+
+	return "Basic " + base64.StdEncoding.EncodeToString([]byte(pat))
+}
+
+func commitStatusToAzureState(state State) string {
+	switch state {
+	case StatePending:
+		return "pending"
+	case StateSuccess:
+		return "succeeded"
+	case StateFailure:
+		return "failed"
+	default:
+		return "error"
+	}
+}
+
+func azureStateToCommitStatus(state string) State {
+	switch strings.ToLower(strings.TrimSpace(state)) {
+	case "pending", "inprogress":
+		return StatePending
+	case "succeeded", "success":
+		return StateSuccess
+	case "failed", "failure":
+		return StateFailure
+	default:
+		return StateError
+	}
 }
 
 func doPost(ctx context.Context, apiURL, authHeaderValue string, body any) error {

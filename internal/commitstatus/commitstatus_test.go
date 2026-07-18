@@ -2,6 +2,7 @@ package commitstatus_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -31,6 +32,7 @@ func TestParseProvider(t *testing.T) {
 		{input: "gitea", want: commitstatus.ProviderGitea},
 		{input: "forgejo", want: commitstatus.ProviderGitea}, // alias for gitea
 		{input: "FORGEJO", want: commitstatus.ProviderGitea},
+		{input: "azuredevops", want: commitstatus.ProviderAzureDevOps},
 		{input: "unknown", wantErr: true},
 	}
 
@@ -64,6 +66,10 @@ func TestResolveProvider_AutoDetect(t *testing.T) {
 		{"gitlab.mycompany.com", commitstatus.ProviderGitea}, // subdomain → unknown → gitea
 		{"git.mycompany.com", commitstatus.ProviderGitea},    // unknown → gitea
 		{"gitea.example.com", commitstatus.ProviderGitea},
+		{"dev.azure.com", commitstatus.ProviderAzureDevOps},
+		{"dev.azure.com:443", commitstatus.ProviderAzureDevOps},
+		{"ssh.dev.azure.com", commitstatus.ProviderAzureDevOps},
+		{"my-org.visualstudio.com", commitstatus.ProviderAzureDevOps},
 	}
 
 	for _, tc := range tests {
@@ -78,17 +84,25 @@ func TestResolveProvider_ExplicitOverride(t *testing.T) {
 	t.Parallel()
 
 	// An explicit provider must win over URL heuristics.
-	assert.Equal(t,
+	assert.Equal(
+		t,
 		commitstatus.ResolveProvider(commitstatus.ProviderGitLab, "github.com"),
 		commitstatus.ProviderGitLab,
 	)
-	assert.Equal(t,
+	assert.Equal(
+		t,
 		commitstatus.ResolveProvider(commitstatus.ProviderGitHub, "git.mycompany.com"),
 		commitstatus.ProviderGitHub,
 	)
-	assert.Equal(t,
+	assert.Equal(
+		t,
 		commitstatus.ResolveProvider(commitstatus.ProviderGitea, "gitlab.com"),
 		commitstatus.ProviderGitea,
+	)
+	assert.Equal(
+		t,
+		commitstatus.ResolveProvider(commitstatus.ProviderAzureDevOps, "github.com"),
+		commitstatus.ProviderAzureDevOps,
 	)
 }
 
@@ -334,6 +348,49 @@ func TestPost_GitLabStateSuccess(t *testing.T) {
 	assert.Equal(t, received["state"], "success")
 }
 
+func TestPost_AzureDevOpsAPI(t *testing.T) {
+	t.Parallel()
+
+	var received map[string]any
+	expectedAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(":token"))
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, r.Method, http.MethodPost)
+		assert.Equal(t, r.URL.Path, "/org/project/_apis/git/repositories/repo/commits/deadbeef/statuses")
+		assert.Equal(t, r.URL.Query().Get("api-version"), "7.1")
+		assert.Equal(t, r.Header.Get("Authorization"), expectedAuth)
+
+		_ = json.NewDecoder(r.Body).Decode(&received)
+
+		w.WriteHeader(http.StatusCreated)
+	}))
+
+	defer srv.Close()
+
+	err := commitstatus.Post(
+		context.Background(),
+		commitstatus.ProviderAzureDevOps,
+		srv.URL+"/org/project/_git/repo",
+		"org/project/_git/repo",
+		"deadbeef",
+		"token",
+		commitstatus.Status{
+			State:       commitstatus.StateSuccess,
+			Description: "Successful in 47s",
+			Context:     "doco-cd/deploy",
+			TargetURL:   "https://example.com/logs/1",
+		},
+	)
+	assert.NilError(t, err)
+	assert.Equal(t, received["state"], "succeeded")
+	assert.Equal(t, received["description"], "Successful in 47s")
+	contextData, ok := received["context"].(map[string]any)
+	assert.Assert(t, ok)
+	assert.Equal(t, contextData["name"], "doco-cd/deploy")
+	assert.Equal(t, contextData["genre"], "doco-cd")
+	assert.Equal(t, received["targetUrl"], "https://example.com/logs/1")
+}
+
 func TestPost_DefaultContext(t *testing.T) {
 	t.Parallel()
 
@@ -411,6 +468,46 @@ func TestGet_GitLabAPI(t *testing.T) {
 	assert.Assert(t, found)
 	assert.Equal(t, status.State, commitstatus.StateSuccess)
 	assert.Equal(t, status.Description, "Successful in 47s")
+}
+
+func TestGet_AzureDevOpsAPI(t *testing.T) {
+	t.Parallel()
+
+	expectedAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(":token"))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, r.Method, http.MethodGet)
+		assert.Equal(t, r.URL.Path, "/org/project/_apis/git/repositories/repo/commits/deadbeef/statuses")
+		assert.Equal(t, r.URL.Query().Get("api-version"), "7.1")
+		assert.Equal(t, r.Header.Get("Authorization"), expectedAuth)
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"value": []map[string]any{
+				{
+					"state":       "succeeded",
+					"description": "Successful in 47s",
+					"targetUrl":   "https://example.com/logs/1",
+					"context": map[string]string{
+						"name":  commitstatus.DefaultContext,
+						"genre": "doco-cd",
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	status, found, err := commitstatus.Get(context.Background(),
+		commitstatus.ProviderAzureDevOps,
+		srv.URL+"/org/project/_git/repo",
+		"org/project/_git/repo",
+		"deadbeef",
+		"token",
+		commitstatus.DefaultContext)
+	assert.NilError(t, err)
+	assert.Assert(t, found)
+	assert.Equal(t, status.State, commitstatus.StateSuccess)
+	assert.Equal(t, status.Description, "Successful in 47s")
+	assert.Equal(t, status.TargetURL, "https://example.com/logs/1")
 }
 
 func TestPost_APIError(t *testing.T) {
