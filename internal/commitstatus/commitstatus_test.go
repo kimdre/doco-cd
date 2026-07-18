@@ -362,7 +362,7 @@ func TestGet_GiteaAPI(t *testing.T) {
 		assert.Equal(t, r.Method, http.MethodGet)
 		assert.Assert(t, strings.Contains(r.URL.Path, "/api/v1/repos/"), "unexpected path: %s", r.URL.Path)
 		assert.Assert(t, strings.HasSuffix(r.URL.Path, "/statuses/deadbeef"), "unexpected path: %s", r.URL.Path)
-		assert.Equal(t, r.Header.Get("Authorization"), "token")
+		assert.Equal(t, r.Header.Get("Authorization"), "token token")
 
 		_ = json.NewEncoder(w).Encode([]map[string]string{
 			{
