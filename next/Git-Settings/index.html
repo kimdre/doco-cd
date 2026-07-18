@@ -963,9 +963,10 @@
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
+    <nav class="md-nav" aria-label="Authentication">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#domain-scoped-authentication" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1053,8 +1054,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#github-apps" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1062,6 +1063,61 @@
       </span>
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#commit-status-reporting" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Commit Status Reporting
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Commit Status Reporting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required-token-permissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Required Token Permissions
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#provider-auto-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Provider Auto-Detection
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Example
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2368,9 +2424,10 @@
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
+    <nav class="md-nav" aria-label="Authentication">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#domain-scoped-authentication" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2458,8 +2515,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#github-apps" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2467,6 +2524,61 @@
       </span>
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#commit-status-reporting" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Commit Status Reporting
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Commit Status Reporting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required-token-permissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Required Token Permissions
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#provider-auto-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Provider Auto-Detection
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Example
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2678,11 +2790,11 @@
 </tr>
 </tbody>
 </table>
-<h2 id="domain-scoped-authentication">Domain-scoped Authentication<a class="headerlink" href="#domain-scoped-authentication" title="Permanent link">&para;</a></h2>
+<h3 id="domain-scoped-authentication">Domain-scoped Authentication<a class="headerlink" href="#domain-scoped-authentication" title="Permanent link">&para;</a></h3>
 <p>Use domain-scoped config when you fetch from multiple Git providers/domains and need separate credentials.</p>
-<h3 id="syntax-and-format">Syntax and Format<a class="headerlink" href="#syntax-and-format" title="Permanent link">&para;</a></h3>
+<h4 id="syntax-and-format">Syntax and Format<a class="headerlink" href="#syntax-and-format" title="Permanent link">&para;</a></h4>
 <p>The domain-scoped authentication configuration is a YAML list where each entry defines credentials for one or more domains.</p>
-<h4 id="entry-structure">Entry Structure<a class="headerlink" href="#entry-structure" title="Permanent link">&para;</a></h4>
+<h5 id="entry-structure">Entry Structure<a class="headerlink" href="#entry-structure" title="Permanent link">&para;</a></h5>
 <p>Each entry in the list has the following structure:</p>
 <div class="language-yaml highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">domains</span><span class="p">:</span><span class="w">                          </span><span class="c1"># (Required) List of domain names or patterns</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">domain1.com</span>
@@ -2695,7 +2807,7 @@
 </span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="no">-----END OPENSSH PRIVATE KEY-----</span>
 </span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span><span class="nt">ssh_private_key_passphrase</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xxx</span><span class="w">   </span><span class="c1"># (Optional) Passphrase for encrypted SSH key</span>
 </span></code></pre></div>
-<h4 id="available-options">Available Options<a class="headerlink" href="#available-options" title="Permanent link">&para;</a></h4>
+<h5 id="available-options">Available Options<a class="headerlink" href="#available-options" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
 <tr>
@@ -2750,14 +2862,14 @@
 </tr>
 </tbody>
 </table>
-<h4 id="authentication-method-selection">Authentication Method Selection<a class="headerlink" href="#authentication-method-selection" title="Permanent link">&para;</a></h4>
+<h5 id="authentication-method-selection">Authentication Method Selection<a class="headerlink" href="#authentication-method-selection" title="Permanent link">&para;</a></h5>
 <ul>
 <li><strong>Use <code>git_access_token</code></strong> for HTTP(S) based Git access</li>
 <li><strong>Use <code>ssh_private_key</code></strong> (and optionally <code>ssh_private_key_passphrase</code>) for SSH-based Git access</li>
 <li><strong>Use <code>github_app_id</code> + <code>github_app_private_key</code></strong> for GitHub App based HTTP(S) access</li>
 <li>Do not mix methods in the same entry</li>
 </ul>
-<h3 id="matching-behavior">Matching Behavior<a class="headerlink" href="#matching-behavior" title="Permanent link">&para;</a></h3>
+<h4 id="matching-behavior">Matching Behavior<a class="headerlink" href="#matching-behavior" title="Permanent link">&para;</a></h4>
 <ul>
 <li>Exact domain match wins over wildcard entries.</li>
 <li>If multiple wildcard patterns match, the longest suffix wins (most specific).</li>
@@ -2765,7 +2877,7 @@
 <li>If no domain entry matches, doco-cd falls back to global <code>GIT_ACCESS_TOKEN</code> / <code>SSH_PRIVATE_KEY</code> values if set.</li>
 <li>Submodule remotes are resolved independently, so each submodule can use credentials for its own domain.</li>
 </ul>
-<h3 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h3>
+<h4 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h4>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="examples-using-git_auth_domains" name="__tabbed_1" type="radio" /><input id="examples-using-git_auth_domains_file" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="examples-using-git_auth_domains">Using <code>GIT_AUTH_DOMAINS</code></label><label for="examples-using-git_auth_domains_file">Using <code>GIT_AUTH_DOMAINS_FILE</code></label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
@@ -2830,7 +2942,7 @@
 </div>
 </div>
 </div>
-<h2 id="github-apps">GitHub Apps<a class="headerlink" href="#github-apps" title="Permanent link">&para;</a></h2>
+<h3 id="github-apps">GitHub Apps<a class="headerlink" href="#github-apps" title="Permanent link">&para;</a></h3>
 <p><a href="https://docs.github.com/en/apps">GitHub Apps</a> are supported natively and can be configured globally (see below) or <a data-preview="" href="#domain-scoped-authentication">per domain</a>. 
 Doco-CD will auto-detect the installation by repository <em>owner/name</em> and mint short-lived installation access tokens.</p>
 <table>
@@ -2875,6 +2987,126 @@ Doco-CD will auto-detect the installation by repository <em>owner/name</em> and 
 </tr>
 </tbody>
 </table>
+<h2 id="commit-status-reporting">Commit Status Reporting<a class="headerlink" href="#commit-status-reporting" title="Permanent link">&para;</a></h2>
+<p>Doco-CD can post a commit status back to the source Git provider after each deployment, making the result visible directly on the commit or pull request in the Git web UI.</p>
+<p>This closes the GitOps feedback loop: instead of only seeing success or failure in container logs or Apprise notifications, the commit itself is marked with the deployment outcome.</p>
+<p>Three states are reported:</p>
+<ul>
+<li><strong>pending</strong> — set once after the repository is cloned and the deployment begins.</li>
+<li><strong>success</strong> — set when all deployment stages complete successfully.</li>
+<li><strong>failure</strong> — set when any stage fails after initialisation.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GIT_COMMIT_STATUS</code></td>
+<td>boolean</td>
+<td>Enable commit status reporting. When <code>true</code>, doco-cd posts a status to the source provider for every deployment. Requires <a data-preview="" href="#authentication"><code>GIT_ACCESS_TOKEN</code></a> (or <a data-preview="" href="#domain-scoped-authentication">domain-scoped token</a> via <code>GIT_AUTH_DOMAINS</code>).</td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td><code>GIT_SCM_PROVIDER</code></td>
+<td>string</td>
+<td>Override automatic SCM provider detection. Accepted values: <code>auto</code>, <code>github</code>, <code>gitlab</code>, <code>gitea</code>, <code>forgejo</code>, <code>azuredevops</code>. Set to <code>auto</code> to detect the provider from the repository URL. Required when your self-hosted instance hostname does not reveal the product (e.g. <code>git.mycompany.com</code> running GitLab must set <code>gitlab</code>).</td>
+<td><code>auto</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="required-token-permissions">Required Token Permissions<a class="headerlink" href="#required-token-permissions" title="Permanent link">&para;</a></h3>
+<p>The token used for commit status reporting needs permission to <strong>write commit statuses</strong> through the provider API. The same requirements apply whether you use the global <a data-preview="" href="#authentication"><code>GIT_ACCESS_TOKEN</code></a> or a <a data-preview="" href="#domain-scoped-authentication">domain-scoped token</a> from <code>GIT_AUTH_DOMAINS</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Token type</th>
+<th>Required permission</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GitHub</td>
+<td>Classic PAT / OAuth token</td>
+<td><code>repo:status</code> is the minimum recommended scope. <code>repo</code> also works, but grants broader repository access than necessary.</td>
+</tr>
+<tr>
+<td>GitHub</td>
+<td>Fine-grained PAT / GitHub App</td>
+<td>Repository permission <strong>Commit statuses: Read and write</strong></td>
+</tr>
+<tr>
+<td>GitLab</td>
+<td>Personal, project, or group access token</td>
+<td><code>api</code> scope</td>
+</tr>
+<tr>
+<td>Gitea / Forgejo</td>
+<td>API access token</td>
+<td>Must be allowed to write repository API endpoints. On Forgejo scoped tokens, use <code>write:repository</code>. Some Gitea versions expose different token controls, so ensure the token can create commit statuses for the target repository.</td>
+</tr>
+<tr>
+<td>Azure DevOps</td>
+<td>Personal Access Token (PAT)</td>
+<td>Token must allow Git status writes on the target repo (for example <strong>Code (Read &amp; write)</strong> in the PAT scopes).</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition info">
+<p class="admonition-title">Why GitLab needs <code>api</code> instead of <code>write_repository</code></p>
+<p>Doco-CD posts commit statuses through the GitLab REST API. The <code>write_repository</code> scope covers Git-over-HTTP push access, but does not grant general REST API write access.</p>
+</div>
+<h3 id="provider-auto-detection">Provider Auto-Detection<a class="headerlink" href="#provider-auto-detection" title="Permanent link">&para;</a></h3>
+<p>When <code>GIT_SCM_PROVIDER</code> is not set, doco-cd detects the provider from the repository URL:</p>
+<table>
+<thead>
+<tr>
+<th>Hostname pattern</th>
+<th>Detected provider</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>github.com</code></td>
+<td>GitHub</td>
+</tr>
+<tr>
+<td><code>gitlab.com</code></td>
+<td>GitLab</td>
+</tr>
+<tr>
+<td><code>dev.azure.com</code>, <code>ssh.dev.azure.com</code>, <code>*.visualstudio.com</code></td>
+<td>Azure DevOps</td>
+</tr>
+<tr>
+<td>Anything else</td>
+<td>Gitea / Forgejo</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition warning">
+<p class="admonition-title">Self-hosted instances</p>
+<p>Set <code>GIT_SCM_PROVIDER</code> explicitly when running a self-hosted SCM/Git provider instance and the auto-detection cannot determine the correct provider.</p>
+<ul>
+<li><strong>GitHub Enterprise Server</strong>: set <code>GIT_SCM_PROVIDER=github</code></li>
+<li><strong>Self-hosted GitLab</strong>: set <code>GIT_SCM_PROVIDER=gitlab</code></li>
+<li><strong>Self-hosted Gitea / Forgejo</strong>: set <code>GIT_SCM_PROVIDER=gitea</code> or <code>GIT_SCM_PROVIDER=forgejo</code></li>
+</ul>
+</div>
+<h3 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h3>
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">      </span><span class="nt">GIT_ACCESS_TOKEN</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xxx</span><span class="w">         </span><span class="c1"># token must be allowed to write commit statuses</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">      </span><span class="nt">GIT_COMMIT_STATUS</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">      </span><span class="c1"># GIT_SCM_PROVIDER: gitlab   # uncomment for self-hosted GitLab at a custom domain</span>
+</span></code></pre></div>
 
 
   <nav class="md-tags" >
