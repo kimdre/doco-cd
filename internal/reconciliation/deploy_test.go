@@ -71,6 +71,7 @@ func TestDeploy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	c.GitCommitStatus = false
 
 	log := logger.New(logger.LevelCritical).Logger
 

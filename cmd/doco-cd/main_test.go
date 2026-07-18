@@ -206,6 +206,7 @@ func TestHandleEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get app config: %s", err.Error())
 	}
+	appConfig.GitCommitStatus = false
 
 	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy)
 	if err != nil {
