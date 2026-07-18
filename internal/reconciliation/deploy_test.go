@@ -72,6 +72,8 @@ func TestDeploy(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	c.GitCommitStatus = false
+
 	log := logger.New(logger.LevelCritical).Logger
 
 	dockerCli, err := docker.CreateDockerCli(c.DockerQuietDeploy)

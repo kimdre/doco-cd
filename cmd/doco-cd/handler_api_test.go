@@ -35,6 +35,8 @@ func TestHandlerData_HealthCheckHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	appConfig.GitCommitStatus = false
+
 	log := logger.New(logger.LevelCritical)
 
 	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy)

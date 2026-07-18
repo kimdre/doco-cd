@@ -121,6 +121,8 @@ func TestRunPoll(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	appConfig.GitCommitStatus = false
+
 	secretProvider, err := secretprovider.Initialize(ctx, appConfig.SecretProvider, "v0.0.0-test")
 	if err != nil {
 		if errors.Is(err, bitwardensecretsmanager.ErrNotSupported) {

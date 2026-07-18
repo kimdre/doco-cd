@@ -115,6 +115,8 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	appConfig.GitCommitStatus = false
+
 	log := logger.New(logger.LevelCritical)
 
 	dockerCli, err := docker.CreateDockerCli(appConfig.DockerQuietDeploy)
@@ -315,6 +317,8 @@ func TestWebhookHandler_WaitQueryParam(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	appConfig.GitCommitStatus = false
 
 	log := logger.New(logger.LevelCritical)
 
