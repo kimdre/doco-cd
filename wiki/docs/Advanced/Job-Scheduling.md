@@ -11,6 +11,12 @@ tags:
 The built-in job scheduler allows you to run containers/services defined in your docker compose files as scheduled jobs based on cron-like schedules or predefined intervals.
 This is useful for running periodic tasks such as backups, maintenance scripts, or any recurring workloads without needing an external scheduler.
 
+!!! warning "Multiple doco-cd instances on the same Docker host"
+    The scheduler discovers runnable jobs from Docker labels and is not scoped by deployment target or by a specific `.doco-cd.*.yaml` file.
+    If you run multiple doco-cd instances against the same Docker socket, each instance can discover and trigger the same scheduled jobs.
+
+    To avoid duplicate runs, enable the scheduler only on the instance that should own scheduled jobs and set [`SCHEDULER_ENABLED`](../App-Settings.md#:~:text=when%20not%20specified-,SCHEDULER_ENABLED,-boolean) to `false` on secondary or self-updater instances.
+
 ## Schedule formats
 
 - [Cron expressions](https://pkg.go.dev/github.com/robfig/cron#hdr-CRON_Expression_Format) **without** seconds (`minute hour day-of-month month day-of-week`)
@@ -152,6 +158,12 @@ Use the following service labels to configure scheduled jobs:
 | `cd.doco.job.skip_running`      | boolean | Do not run the job if a previous scheduled run is still active/running                                                                                                      | `false`   |
 | `cd.doco.job.notify_on`         | string  | [Notification](Notifications.md) behavior for scheduled runs: `none`, `success`, `failure`, `all`                                                                           | `all`     |
 | `cd.doco.job.swarm.replicas`    | integer | Number of completions/concurrency for swarm one-off jobs in `replicated` [deploy mode](#swarm-deploymode)                                                                   | `1`       |
+
+!!! note "Using scheduled jobs with multiple doco-cd instances"
+    `cd.doco.job.skip_running` only prevents overlapping runs within the same doco-cd process.
+    It does not coordinate scheduled runs across multiple doco-cd instances that share the same Docker host.
+
+    For multi-instance setups, prefer a single scheduler owner by disabling the scheduler on the other instances with [`SCHEDULER_ENABLED`](../App-Settings.md#:~:text=when%20not%20specified-,SCHEDULER_ENABLED,-boolean).
 
 ### Swarm `deploy.mode`
 
