@@ -287,27 +287,22 @@ func (s *StageManager) resolveCommitSHA() string {
 	return strings.TrimSpace(s.Repository.Revision)
 }
 
-// PostCommitStatus posts a commit status to the source Git provider.
-// It is a no-op when GIT_COMMIT_STATUS is disabled, when the source is OCI,
-// or when no access token / commit SHA is available.
-// Errors are logged as warnings so they never block a deployment.
-func (s *StageManager) PostCommitStatus(ctx context.Context, state commitstatus.State, description string) {
+func (s *StageManager) resolveCommitStatusRequest() (commitstatus.Provider, string, string, string, string, bool) {
 	if !s.AppConfig.GitCommitStatus {
-		return
+		return commitstatus.ProviderAuto, "", "", "", "", false
 	}
 
 	if s.Repository.Source == types2.SourceTypeOCI {
-		return
+		return commitstatus.ProviderAuto, "", "", "", "", false
 	}
 
 	commitSHA := s.resolveCommitSHA()
 	if commitSHA == "" {
 		s.Log.Debug("skipping commit status: no commit SHA available")
 
-		return
+		return commitstatus.ProviderAuto, "", "", "", "", false
 	}
 
-	// Resolve the access token for this repository (domain-scoped or global).
 	resolved := gitInternal.ResolveAuthConfig(s.Repository.SourceUrl, "", "", "")
 
 	token := resolved.GitAccessToken
@@ -318,11 +313,9 @@ func (s *StageManager) PostCommitStatus(ctx context.Context, state commitstatus.
 	if token == "" {
 		s.Log.Debug("skipping commit status: no access token configured")
 
-		return
+		return commitstatus.ProviderAuto, "", "", "", "", false
 	}
 
-	// Use the web URL when available (cleaner host detection), otherwise fall
-	// back to the clone URL stored in SourceUrl.
 	repoURL := ""
 	repoFullName := ""
 
@@ -339,9 +332,35 @@ func (s *StageManager) PostCommitStatus(ctx context.Context, state commitstatus.
 		repoFullName = gitInternal.GetFullName(repoURL)
 	}
 
-	// ParseProvider normalises "auto" → ProviderAuto (""); the value is already
-	// validated at startup by GetConfig(), so the error is ignored here.
 	provider, _ := commitstatus.ParseProvider(s.AppConfig.GitScmProvider)
+
+	return provider, repoURL, repoFullName, commitSHA, token, true
+}
+
+func (s *StageManager) GetCurrentCommitStatus(ctx context.Context) (commitstatus.Status, bool) {
+	provider, repoURL, repoFullName, commitSHA, token, ok := s.resolveCommitStatusRequest()
+	if !ok {
+		return commitstatus.Status{}, false
+	}
+
+	status, found, err := commitstatus.Get(ctx, provider, repoURL, repoFullName, commitSHA, token, commitstatus.DefaultContext)
+	if err != nil {
+		s.Log.Warn("failed to get commit status", slog.String("error", err.Error()))
+		return commitstatus.Status{}, false
+	}
+
+	return status, found
+}
+
+// PostCommitStatus posts a commit status to the source Git provider.
+// It is a no-op when GIT_COMMIT_STATUS is disabled, when the source is OCI,
+// or when no access token / commit SHA is available.
+// Errors are logged as warnings so they never block a deployment.
+func (s *StageManager) PostCommitStatus(ctx context.Context, state commitstatus.State, description string) {
+	provider, repoURL, repoFullName, commitSHA, token, ok := s.resolveCommitStatusRequest()
+	if !ok {
+		return
+	}
 
 	err := commitstatus.Post(ctx, provider, repoURL, repoFullName, commitSHA, token, commitstatus.Status{
 		State:       state,

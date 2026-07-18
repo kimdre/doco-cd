@@ -3,13 +3,62 @@ package stages
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/kimdre/doco-cd/internal/commitstatus"
 )
 
 type StageFunc func(ctx context.Context, stageLog *slog.Logger) error
+
+const maxCommitStatusDescriptionLength = 140
+
+func successfulCommitStatusDescription(startedAt, finishedAt time.Time) string {
+	if startedAt.IsZero() || finishedAt.IsZero() || finishedAt.Before(startedAt) {
+		return "Successful"
+	}
+
+	duration := finishedAt.Sub(startedAt)
+	if duration < time.Second {
+		return "Successful in <1s"
+	}
+
+	return fmt.Sprintf("Successful in %s", duration.Round(time.Second))
+}
+
+func failureCommitStatusDescription(err error) string {
+	if err == nil {
+		return "Failed"
+	}
+
+	description := strings.Join(strings.Fields(err.Error()), " ")
+	if len([]rune(description)) <= maxCommitStatusDescriptionLength {
+		return description
+	}
+
+	truncated := []rune(description)
+
+	return string(truncated[:maxCommitStatusDescriptionLength-3]) + "..."
+}
+
+func shouldPostPendingCommitStatus(stageName StageName, destroyEnabled, pendingPosted bool) bool {
+	return !destroyEnabled && !pendingPosted && stageName == StageInit
+}
+
+func shouldPostFailureCommitStatus(destroyEnabled bool) bool {
+	return !destroyEnabled
+}
+
+func failureCommitStatusState(stageName StageName) commitstatus.State {
+	switch stageName {
+	case StageInit, StagePreDeploy:
+		return commitstatus.StateError
+	default:
+		return commitstatus.StateFailure
+	}
+}
 
 // StageOrder holds the ordered list of stage names and their corresponding functions.
 type StageOrder struct {
@@ -64,6 +113,9 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 
 	pendingPosted := false
 
+	var finishedAt time.Time
+	previousSuccessDescription := ""
+
 	for _, stageName := range stageOrder.Order {
 		stageLog := s.Log.With(slog.String("stage", string(stageName)))
 
@@ -82,7 +134,12 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 			// If the error is ErrSkipDeployment, we don't treat it as a failure
 			if errors.Is(err, ErrSkipDeployment) {
 				if pendingPosted {
-					s.PostCommitStatus(ctx, commitstatus.StateSuccess, "Deployment completed")
+					description := previousSuccessDescription
+					if description == "" {
+						description = successfulCommitStatusDescription(s.Stages.Init.StartedAt, metadata.FinishedAt)
+					}
+
+					s.PostCommitStatus(ctx, commitstatus.StateSuccess, description)
 				}
 
 				return nil
@@ -90,8 +147,8 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 
 			s.NotifyFailure(err)
 
-			if pendingPosted {
-				s.PostCommitStatus(ctx, commitstatus.StateFailure, "Deployment failed")
+			if shouldPostFailureCommitStatus(s.DeployConfig.Destroy.Enabled) {
+				s.PostCommitStatus(ctx, failureCommitStatusState(stageName), failureCommitStatusDescription(err))
 			}
 
 			return err
@@ -99,19 +156,22 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 
 		stageLog.Debug(string("completed stage: "+stageName),
 			slog.String("duration", metadata.FinishedAt.Sub(metadata.StartedAt).Truncate(time.Millisecond).String()))
+		finishedAt = metadata.FinishedAt
 
-		// After the init stage the repository is cloned and the commit SHA is
-		// resolvable.  Post "pending" once so providers show the deployment as
-		// in-progress for the remainder of the stage pipeline.
-		if stageName == StageInit && !s.DeployConfig.Destroy.Enabled && !pendingPosted {
-			s.PostCommitStatus(ctx, commitstatus.StatePending, "Deployment in progress")
+		// Post "pending" once the repository/commit has been resolved.
+		if shouldPostPendingCommitStatus(stageName, s.DeployConfig.Destroy.Enabled, pendingPosted) {
+			if currentStatus, found := s.GetCurrentCommitStatus(ctx); found && currentStatus.State == commitstatus.StateSuccess {
+				previousSuccessDescription = currentStatus.Description
+			}
+
+			s.PostCommitStatus(ctx, commitstatus.StatePending, "In Progress")
 
 			pendingPosted = true
 		}
 	}
 
 	if !s.DeployConfig.Destroy.Enabled {
-		s.PostCommitStatus(ctx, commitstatus.StateSuccess, "Deployment completed")
+		s.PostCommitStatus(ctx, commitstatus.StateSuccess, successfulCommitStatusDescription(s.Stages.Init.StartedAt, finishedAt))
 	}
 
 	return nil

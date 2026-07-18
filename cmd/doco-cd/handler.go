@@ -14,6 +14,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config"
 
+	"github.com/kimdre/doco-cd/internal/commitstatus"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/config/poll"
@@ -35,6 +36,8 @@ type handleError struct {
 	httpStatusCode int // http status code use to respond to http request
 }
 
+const maxCommitStatusDescriptionLength = 140
+
 func logEntityForSourceType(sourceType config.SourceType) string {
 	if config.NormalizeSourceType(sourceType) == config.SourceTypeOCI {
 		return "artifact"
@@ -51,6 +54,74 @@ func (r handleError) Error() string {
 	}
 
 	return ret
+}
+
+func earlyFailureCommitStatusDescription(err error) string {
+	if err == nil {
+		return "Failed"
+	}
+
+	description := strings.Join(strings.Fields(err.Error()), " ")
+	if len([]rune(description)) <= maxCommitStatusDescriptionLength {
+		return description
+	}
+
+	truncated := []rune(description)
+
+	return string(truncated[:maxCommitStatusDescriptionLength-3]) + "..."
+}
+
+func postEarlyCommitStatus(ctx context.Context, jobLog *slog.Logger, appConfig *app.Config,
+	sourceType config.SourceType, sourceRef, commitSHA string, payload webhook.ParsedPayload, description string,
+) {
+	if !appConfig.GitCommitStatus || config.NormalizeSourceType(sourceType) != config.SourceTypeGit {
+		return
+	}
+
+	commitSHA = strings.TrimSpace(commitSHA)
+	if commitSHA == "" {
+		commitSHA = strings.TrimSpace(payload.CommitSHA)
+	}
+
+	if commitSHA == "" {
+		jobLog.Debug("skipping commit status: no commit SHA available")
+
+		return
+	}
+
+	resolved := git.ResolveAuthConfig(sourceRef, "", "", "")
+
+	token := resolved.GitAccessToken
+	if token == "" {
+		token = appConfig.GitAccessToken
+	}
+
+	if token == "" {
+		jobLog.Debug("skipping commit status: no access token configured")
+
+		return
+	}
+
+	repoURL := strings.TrimSpace(payload.WebURL)
+	if repoURL == "" {
+		repoURL = sourceRef
+	}
+
+	repoFullName := strings.TrimSpace(payload.FullName)
+	if repoFullName == "" {
+		repoFullName = git.GetFullName(repoURL)
+	}
+
+	provider, _ := commitstatus.ParseProvider(appConfig.GitScmProvider)
+
+	err := commitstatus.Post(ctx, provider, repoURL, repoFullName, commitSHA, token, commitstatus.Status{
+		State:       commitstatus.StateError,
+		Description: description,
+		Context:     commitstatus.DefaultContext,
+	})
+	if err != nil {
+		jobLog.Warn("failed to post commit status", slog.String("error", err.Error()))
+	}
 }
 
 func handle(ctx context.Context, jobLog *slog.Logger,
@@ -155,16 +226,24 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 
 	switch sourceType {
 	case config.SourceTypeGit:
-		if _, err := git.CloneOrUpdateRepository(jobLog,
+		repo, err := git.CloneOrUpdateRepository(jobLog,
 			sourceRef, ref, internalRepoPath, externalRepoPath,
 			private, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken,
 			appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.GitCloneSubmodules, appConfig.GitCloneDepth,
-		); err != nil {
+		)
+		if err != nil {
+			postEarlyCommitStatus(ctx, jobLog, appConfig, sourceType, sourceRef, resolvedRevision, payload, earlyFailureCommitStatusDescription(err))
+
 			return handleError{
 				err:            err,
 				msg:            "failed to clone repository",
 				httpStatusCode: http.StatusInternalServerError,
 			}
+		}
+
+		latestCommit, err := git.GetLatestCommit(repo, ref)
+		if err == nil {
+			resolvedRevision = strings.TrimSpace(latestCommit)
 		}
 	case config.SourceTypeOCI:
 		resolvedDigest, err := oci.ResolveDigest(ctx, sourceRef, strings.TrimSpace(payload.Digest))
@@ -233,6 +312,8 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 	case stages.JobTriggerWebhook:
 		deployConfigs, err = deploy.GetConfigs(internalRepoPath, appConfig.DeployConfigBaseDir, customTarget, payload.Ref, gitOpts)
 		if err != nil {
+			postEarlyCommitStatus(ctx, jobLog, appConfig, sourceType, sourceRef, resolvedRevision, payload, earlyFailureCommitStatusDescription(err))
+
 			return handleError{
 				err:            err,
 				msg:            "failed to get deploy configuration",
@@ -242,6 +323,8 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 	case stages.JobTriggerPoll:
 		deployConfigs, err = deploy.ResolveConfigs(pollConfig.Deployments, pollConfig.CustomTarget, ref, internalRepoPath, appConfig.DeployConfigBaseDir, gitOpts)
 		if err != nil {
+			postEarlyCommitStatus(ctx, jobLog, appConfig, sourceType, sourceRef, resolvedRevision, payload, earlyFailureCommitStatusDescription(err))
+
 			return handleError{
 				err:            err,
 				msg:            "failed to get deploy configuration",

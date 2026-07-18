@@ -103,6 +103,40 @@ func Post(ctx context.Context, provider Provider, repoURL, repoFullName, commitS
 	}
 }
 
+// Get returns the latest commit status for the requested context.
+// When provider is ProviderAuto ("") the provider is detected from repoURL.
+// Returns found=false when token, commitSHA, or matching status is missing.
+func Get(ctx context.Context, provider Provider, repoURL, repoFullName, commitSHA, token, contextName string) (Status, bool, error) {
+	token = strings.TrimSpace(token)
+	commitSHA = strings.TrimSpace(commitSHA)
+	contextName = strings.TrimSpace(contextName)
+
+	if token == "" || commitSHA == "" {
+		return Status{}, false, nil
+	}
+
+	if contextName == "" {
+		contextName = DefaultContext
+	}
+
+	host, scheme, err := parseHostAndScheme(repoURL)
+	if err != nil {
+		return Status{}, false, fmt.Errorf("failed to parse repository URL: %w", err)
+	}
+
+	baseURL := scheme + "://" + host
+	resolved := resolveProvider(provider, host)
+
+	switch resolved {
+	case ProviderGitLab:
+		return getGitLab(ctx, baseURL, repoFullName, commitSHA, token, contextName)
+	case ProviderGitHub:
+		return getGitHub(ctx, baseURL, host, repoFullName, commitSHA, token, contextName)
+	default:
+		return getGitHubCompatible(ctx, baseURL, repoFullName, commitSHA, token, contextName)
+	}
+}
+
 // resolveProvider returns the effective provider to use, falling back to
 // URL-based detection when provider is ProviderAuto.
 func resolveProvider(provider Provider, host string) Provider {
@@ -211,6 +245,18 @@ func postGitHub(ctx context.Context, baseURL, host, repoFullName, commitSHA, tok
 	return doPost(ctx, apiURL, token, body)
 }
 
+func getGitHub(ctx context.Context, baseURL, host, repoFullName, commitSHA, token, contextName string) (Status, bool, error) {
+	var apiURL string
+
+	if bareHost(host) == "github.com" {
+		apiURL = fmt.Sprintf("https://api.github.com/repos/%s/statuses/%s", repoFullName, commitSHA)
+	} else {
+		apiURL = fmt.Sprintf("%s/api/v3/repos/%s/statuses/%s", baseURL, repoFullName, commitSHA)
+	}
+
+	return getGitHubStyle(ctx, apiURL, token, contextName)
+}
+
 // postGitHubCompatible posts a commit status using the GitHub-compatible API.
 // This covers Gitea, Forgejo, and Gogs which share the same /api/v1 endpoint shape.
 func postGitHubCompatible(ctx context.Context, baseURL, _ /* host */, repoFullName, commitSHA, token string, status Status) error {
@@ -231,6 +277,40 @@ func postGitHubCompatible(ctx context.Context, baseURL, _ /* host */, repoFullNa
 	}
 
 	return doPost(ctx, apiURL, token, body)
+}
+
+func getGitHubCompatible(ctx context.Context, baseURL, repoFullName, commitSHA, token, contextName string) (Status, bool, error) {
+	apiURL := fmt.Sprintf("%s/api/v1/repos/%s/statuses/%s", baseURL, repoFullName, commitSHA)
+	return getGitHubStyle(ctx, apiURL, token, contextName)
+}
+
+func getGitHubStyle(ctx context.Context, apiURL, token, contextName string) (Status, bool, error) {
+	type githubStatus struct {
+		State       string `json:"state"`
+		Description string `json:"description"`
+		Context     string `json:"context"`
+		TargetURL   string `json:"target_url"`
+	}
+
+	var statuses []githubStatus
+	if err := doGet(ctx, apiURL, token, &statuses); err != nil {
+		return Status{}, false, err
+	}
+
+	for _, status := range statuses {
+		if status.Context != contextName {
+			continue
+		}
+
+		return Status{
+			State:       State(status.State),
+			Description: status.Description,
+			Context:     status.Context,
+			TargetURL:   status.TargetURL,
+		}, true, nil
+	}
+
+	return Status{}, false, nil
 }
 
 // postGitLab posts a commit status using the GitLab API.
@@ -266,6 +346,51 @@ func postGitLab(ctx context.Context, baseURL, repoFullName, commitSHA, token str
 	return doPost(ctx, apiURL, token, body)
 }
 
+func getGitLab(ctx context.Context, baseURL, repoFullName, commitSHA, token, contextName string) (Status, bool, error) {
+	encodedPath := strings.ReplaceAll(repoFullName, "/", "%2F")
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%s/repository/commits/%s/statuses", baseURL, encodedPath, commitSHA)
+
+	type gitlabStatus struct {
+		Status      string `json:"status"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		TargetURL   string `json:"target_url"`
+	}
+
+	var statuses []gitlabStatus
+	if err := doGet(ctx, apiURL, token, &statuses); err != nil {
+		return Status{}, false, err
+	}
+
+	for _, status := range statuses {
+		if status.Name != contextName {
+			continue
+		}
+
+		return Status{
+			State:       gitLabStateToCommitStatus(status.Status),
+			Description: status.Description,
+			Context:     status.Name,
+			TargetURL:   status.TargetURL,
+		}, true, nil
+	}
+
+	return Status{}, false, nil
+}
+
+func gitLabStateToCommitStatus(state string) State {
+	switch strings.ToLower(strings.TrimSpace(state)) {
+	case "running", "pending":
+		return StatePending
+	case "success":
+		return StateSuccess
+	case "failed", "failure":
+		return StateFailure
+	default:
+		return StateError
+	}
+}
+
 func doPost(ctx context.Context, apiURL, token string, body any) error {
 	jsonData, err := json.Marshal(body)
 	if err != nil {
@@ -294,6 +419,37 @@ func doPost(ctx context.Context, apiURL, token string, body any) error {
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("commit status API returned %s for %s", resp.Status, apiURL)
+	}
+
+	return nil
+}
+
+func doGet(ctx context.Context, apiURL, token string, dst any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil) // #nosec G107
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	client := &http.Client{Timeout: 15 * time.Second}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to get commit status: %w", err)
+	}
+
+	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("commit status API returned %s for %s", resp.Status, apiURL)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(dst); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
 	}
 
 	return nil

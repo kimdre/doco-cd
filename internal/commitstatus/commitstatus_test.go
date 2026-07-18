@@ -355,6 +355,63 @@ func TestPost_DefaultContext(t *testing.T) {
 	assert.Equal(t, received["context"], commitstatus.DefaultContext)
 }
 
+func TestGet_GiteaAPI(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, r.Method, http.MethodGet)
+		assert.Assert(t, strings.Contains(r.URL.Path, "/api/v1/repos/"), "unexpected path: %s", r.URL.Path)
+		assert.Assert(t, strings.HasSuffix(r.URL.Path, "/statuses/deadbeef"), "unexpected path: %s", r.URL.Path)
+
+		_ = json.NewEncoder(w).Encode([]map[string]string{
+			{
+				"state":       "success",
+				"description": "Successful in 47s",
+				"context":     commitstatus.DefaultContext,
+				"target_url":  "https://example.com/logs/1",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	status, found, err := commitstatus.Get(context.Background(),
+		commitstatus.ProviderGitea,
+		srv.URL+"/owner/repo", "owner/repo", "deadbeef", "token", commitstatus.DefaultContext)
+	assert.NilError(t, err)
+	assert.Assert(t, found)
+	assert.Equal(t, status.State, commitstatus.StateSuccess)
+	assert.Equal(t, status.Description, "Successful in 47s")
+	assert.Equal(t, status.TargetURL, "https://example.com/logs/1")
+}
+
+func TestGet_GitLabAPI(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, r.Method, http.MethodGet)
+		assert.Assert(t, strings.Contains(r.URL.Path, "/api/v4/projects/"), "unexpected path: %s", r.URL.Path)
+		assert.Assert(t, strings.HasSuffix(r.URL.Path, "/repository/commits/deadbeef/statuses"), "unexpected path: %s", r.URL.Path)
+
+		_ = json.NewEncoder(w).Encode([]map[string]string{
+			{
+				"status":      "success",
+				"name":        commitstatus.DefaultContext,
+				"description": "Successful in 47s",
+				"target_url":  "https://example.com/logs/1",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	status, found, err := commitstatus.Get(context.Background(),
+		commitstatus.ProviderGitLab,
+		srv.URL+"/owner/repo", "owner/repo", "deadbeef", "token", commitstatus.DefaultContext)
+	assert.NilError(t, err)
+	assert.Assert(t, found)
+	assert.Equal(t, status.State, commitstatus.StateSuccess)
+	assert.Equal(t, status.Description, "Successful in 47s")
+}
+
 func TestPost_APIError(t *testing.T) {
 	t.Parallel()
 
