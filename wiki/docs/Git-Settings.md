@@ -157,6 +157,20 @@ Three states are reported:
 | `GIT_COMMIT_STATUS` | boolean | Enable commit status reporting. When `true`, doco-cd posts a status to the source provider for every deployment. Requires [`GIT_ACCESS_TOKEN`](#authentication) (or [domain-scoped token](#domain-scoped-authentication) via `GIT_AUTH_DOMAINS`).                                                                   | `false` |
 | `GIT_SCM_PROVIDER`  | string  | Override automatic SCM provider detection. Accepted values: `auto`, `github`, `gitlab`, `gitea`, `forgejo`. Set to `auto` to detect the provider from the repository URL. Required when your self-hosted instance hostname does not reveal the product (e.g. `git.mycompany.com` running GitLab must set `gitlab`). | `auto`  |
 
+### Required Token Permissions
+
+The token used for commit status reporting needs permission to **write commit statuses** through the provider API. The same requirements apply whether you use the global `GIT_ACCESS_TOKEN` or a domain-scoped token from `GIT_AUTH_DOMAINS`.
+
+| Provider | Token type | Required permission |
+|----------|------------|---------------------|
+| GitHub | Classic PAT / OAuth token | `repo:status` is the minimum recommended scope. `repo` also works, but grants broader repository access than necessary. |
+| GitHub | Fine-grained PAT / GitHub App | Repository permission **Commit statuses: Read and write** |
+| GitLab | Personal, project, or group access token | `api` scope |
+| Gitea / Forgejo | API access token | Must be allowed to write repository API endpoints. On Forgejo scoped tokens, use `write:repository`. Some Gitea versions expose different token controls, so ensure the token can create commit statuses for the target repository. |
+
+!!! info "Why GitLab needs `api` instead of `write_repository`"
+    Doco-CD posts commit statuses through the GitLab REST API. The `write_repository` scope covers Git-over-HTTP push access, but does not grant general REST API write access.
+
 ### Provider Auto-Detection
 
 When `GIT_SCM_PROVIDER` is not set, doco-cd detects the provider from the repository URL:
@@ -179,7 +193,7 @@ When `GIT_SCM_PROVIDER` is not set, doco-cd detects the provider from the reposi
 services:
   app:
     environment:
-      GIT_ACCESS_TOKEN: xxx         # token must have repo status write scope
+      GIT_ACCESS_TOKEN: xxx         # token must be allowed to write commit statuses
       GIT_COMMIT_STATUS: "true"
       # GIT_SCM_PROVIDER: gitlab   # uncomment for self-hosted GitLab at a custom domain
 ```
