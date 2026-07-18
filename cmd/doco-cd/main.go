@@ -294,9 +294,13 @@ func run() error {
 		}
 	}
 
-	graceful.SafeGo(&wg, log.Logger, func() {
-		scheduler.Start(ctx, h.dockerCli, log.Logger, &wg)
-	})
+	if c.SchedulerEnabled {
+		graceful.SafeGo(&wg, log.Logger, func() {
+			scheduler.Start(ctx, h.dockerCli, log.Logger, &wg)
+		})
+	} else {
+		log.Info("scheduler disabled by configuration")
+	}
 
 	registryApiServer(c, &h, log)
 	prometheus.RegisterServer(c.MetricsPort, log)

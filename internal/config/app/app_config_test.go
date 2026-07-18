@@ -219,6 +219,22 @@ func TestGetConfig_GlobalGitHubAppValidation(t *testing.T) {
 	}
 }
 
+func TestGetConfig_SchedulerEnabled(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("SCHEDULER_ENABLED", "false")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected scheduler config to be accepted, got %v", err)
+	}
+
+	if cfg.SchedulerEnabled {
+		t.Fatal("expected SchedulerEnabled to be false")
+	}
+}
+
 func TestGetConfig_GlobalGitHubAppRejectsTokenMix(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "info")
 	t.Setenv("HTTP_PORT", "8080")

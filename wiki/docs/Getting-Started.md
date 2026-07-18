@@ -117,6 +117,10 @@ See the [External Secrets](External-Secrets/index.md) wiki page for more informa
 
 If you want to pull images from a private registry, see [Private Container Registries](Advanced/Private-Container-Registries.md) in the wiki.
 
+### Self-updating doco-cd
+
+If you want doco-cd to update itself, see [Self-Updating](Advanced/Self-Updating.md) for a recommended two-instance setup.
+
 ### Job Scheduling / Cron Jobs
 
 Doco-CD supports job scheduling and cron jobs for running periodic tasks. See the [Job Scheduling](Advanced/Job-Scheduling.md) wiki page for more information on how to configure and use this feature.
