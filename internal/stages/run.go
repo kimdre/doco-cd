@@ -82,7 +82,7 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 			// If the error is ErrSkipDeployment, we don't treat it as a failure
 			if errors.Is(err, ErrSkipDeployment) {
 				if pendingPosted {
-					s.PostCommitStatus(ctx, commitstatus.StateSuccess, "Deployment skipped: already up to date")
+					s.PostCommitStatus(ctx, commitstatus.StateSuccess, "Deployment completed")
 				}
 
 				return nil
