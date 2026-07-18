@@ -397,6 +397,8 @@
       
         
       
+        
+      
     
     
     
@@ -944,6 +946,8 @@
   
     
     
+      
+        
       
         
       
@@ -1784,6 +1788,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../Self-Updating/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Self-Updating
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../Swarm-Mode/" class="md-nav__link">
         
   
@@ -2510,6 +2541,8 @@
       
         
       
+        
+      
     
     
     
@@ -2555,6 +2588,12 @@
 <h1 id="job-scheduling">Job Scheduling<a class="headerlink" href="#job-scheduling" title="Permanent link">&para;</a></h1>
 <p>The built-in job scheduler allows you to run containers/services defined in your docker compose files as scheduled jobs based on cron-like schedules or predefined intervals.
 This is useful for running periodic tasks such as backups, maintenance scripts, or any recurring workloads without needing an external scheduler.</p>
+<div class="admonition warning">
+<p class="admonition-title">Multiple doco-cd instances on the same Docker host</p>
+<p>The scheduler discovers runnable jobs from Docker labels and is not scoped by deployment target or by a specific <code>.doco-cd.*.yaml</code> file.
+If you run multiple doco-cd instances against the same Docker socket, each instance can discover and trigger the same scheduled jobs.</p>
+<p>To avoid duplicate runs, enable the scheduler only on the instance that should own scheduled jobs and set <a data-preview="" href="../../App-Settings/#:~:text=when%20not%20specified-,SCHEDULER_ENABLED,-boolean"><code>SCHEDULER_ENABLED</code></a> to <code>false</code> on secondary or self-updater instances.</p>
+</div>
 <h2 id="schedule-formats">Schedule formats<a class="headerlink" href="#schedule-formats" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="https://pkg.go.dev/github.com/robfig/cron#hdr-CRON_Expression_Format">Cron expressions</a> <strong>without</strong> seconds (<code>minute hour day-of-month month day-of-week</code>)</li>
@@ -2753,6 +2792,12 @@ Use <code>one_off</code> instead. The old value is still accepted for backward c
 </tr>
 </tbody>
 </table>
+<div class="admonition note">
+<p class="admonition-title">Using scheduled jobs with multiple doco-cd instances</p>
+<p><code>cd.doco.job.skip_running</code> only prevents overlapping runs within the same doco-cd process.
+It does not coordinate scheduled runs across multiple doco-cd instances that share the same Docker host.</p>
+<p>For multi-instance setups, prefer a single scheduler owner by disabling the scheduler on the other instances with <a data-preview="" href="../../App-Settings/#:~:text=when%20not%20specified-,SCHEDULER_ENABLED,-boolean"><code>SCHEDULER_ENABLED</code></a>.</p>
+</div>
 <h3 id="swarm-deploymode">Swarm <code>deploy.mode</code><a class="headerlink" href="#swarm-deploymode" title="Permanent link">&para;</a></h3>
 <p>When using Docker Swarm, you can configure the deploy mode for scheduled jobs using the <code>deploy.mode</code> field in your docker compose file.</p>
 <p>The following mapping applies to scheduled runs in <code>one_off</code> mode:</p>

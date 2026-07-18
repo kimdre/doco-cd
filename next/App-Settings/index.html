@@ -397,6 +397,8 @@
       
         
       
+        
+      
     
     
     
@@ -1168,6 +1170,8 @@
       
         
       
+        
+      
     
     
     
@@ -1809,6 +1813,33 @@
     
   
   Private Container Registries
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Advanced/Self-Updating/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Self-Updating
 
     
   </span>
@@ -2729,6 +2760,12 @@
 <td>string</td>
 <td>Path to the file inside the container containing the poll configurations in YAML format (see <a data-preview="" href="../Poll-Settings/">Poll Settings</a>)</td>
 <td>gnored when not specified</td>
+</tr>
+<tr>
+<td><code>SCHEDULER_ENABLED</code></td>
+<td>boolean</td>
+<td>Controls whether this doco-cd instance starts the built-in <a data-preview="" href="../Advanced/Job-Scheduling/">job scheduler</a>. Disable it on secondary/<a data-preview="" href="../Advanced/Self-Updating/">self-updater</a> instances that should not trigger scheduled jobs.</td>
+<td><code>true</code></td>
 </tr>
 <tr>
 <td><code>TZ</code></td>
