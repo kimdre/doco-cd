@@ -50,7 +50,7 @@ var DocoCDLabels = docoCdLabelNames{
 		Timestamp:            "cd.doco.deployment.timestamp",
 		ComposeHash:          "cd.doco.deployment.compose.sha",
 		WorkingDir:           "cd.doco.deployment.working_dir",
-		ConfigTarget:         "cd.doco.deployment.config_target",
+		ConfigTarget:         "cd.doco.deployment.config.target",
 		TargetRef:            "cd.doco.deployment.target.ref",
 		CommitSHA:            "cd.doco.deployment.target.sha",
 		Trigger:              "cd.doco.deployment.trigger",
