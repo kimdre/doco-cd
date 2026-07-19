@@ -1,0 +1,19 @@
+@media screen and (min-width: 76.25em) {
+  .md-sidebar--primary {
+    display: block;
+    visibility: visible;
+    transform: translateX(0);
+  }
+
+  .md-sidebar--primary .md-nav[data-md-level="2"] {
+    margin-left: 0.7rem;
+    padding-left: 0.8rem;
+    border-left: 0.05rem solid var(--md-default-fg-color--lightest);
+  }
+
+  .md-sidebar--primary .md-nav__item--nested > .md-nav__container > .md-nav__link,
+  .md-sidebar--primary .md-nav__item--nested > .md-nav__link {
+    font-weight: 600;
+  }
+}
+
