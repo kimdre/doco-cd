@@ -14,6 +14,7 @@ type docoCdLabelNamesDeployment struct {
 	Timestamp            string // Timestamp of deployment in RFC3339 format
 	ComposeHash          string // SHA256 hash of the generated compose project contents
 	WorkingDir           string // Working Directory where the deployment gets executed
+	ConfigTarget         string // Deployment config target suffix (e.g., "nas" for .doco-cd.nas.yml)
 	TargetRef            string // Target reference (branch/tag) of the deployment
 	Trigger              string // Poll or SHA of the commit that triggered the deployment
 	CommitSHA            string // SHA of the commit that is currently deployed
@@ -49,6 +50,7 @@ var DocoCDLabels = docoCdLabelNames{
 		Timestamp:            "cd.doco.deployment.timestamp",
 		ComposeHash:          "cd.doco.deployment.compose.sha",
 		WorkingDir:           "cd.doco.deployment.working_dir",
+		ConfigTarget:         "cd.doco.deployment.config.target",
 		TargetRef:            "cd.doco.deployment.target.ref",
 		CommitSHA:            "cd.doco.deployment.target.sha",
 		Trigger:              "cd.doco.deployment.trigger",
