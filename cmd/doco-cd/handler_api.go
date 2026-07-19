@@ -863,6 +863,11 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 
 		var wg sync.WaitGroup
 
+		pollCtx := r.Context()
+		if !wait {
+			pollCtx = context.WithoutCancel(pollCtx)
+		}
+
 		for _, p := range pollConfigs {
 			p.RunOnce = true
 			p.Interval = 0
@@ -886,7 +891,7 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 				}()
 
 				h.PollHandler(ctx, pollJob)
-			}(r.Context())
+			}(pollCtx)
 		}
 
 		if wait {
