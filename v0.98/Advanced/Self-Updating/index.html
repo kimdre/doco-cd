@@ -2587,6 +2587,12 @@
 </span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="nt">compose_files</span><span class="p">:</span>
 </span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">compose.main.yaml</span>
 </span></code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title">Container name conflict during handover</p>
+<p>When the updater deploys the main instance, Docker may return an error like:
+<code>Error response from daemon: Conflict. The container name "/doco-cd" is already in use by container "&lt;container-id&gt;".</code>
+In this case, run the updater deployment with <code class="language-yaml highlight"><span class="nt">force_recreate</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span></code> for that stack, or remove the old <code>doco-cd</code> container manually once so the updater-managed deployment can recreate it.</p>
+</div>
 <h2 id="main-instance">Main instance<a class="headerlink" href="#main-instance" title="Permanent link">&para;</a></h2>
 <p>The main instance is your regular doco-cd deployment. It can receive webhooks, expose the API, and run scheduled jobs.</p>
 <div class="language-yaml highlight"><span class="filename">doco-cd/compose.main.yaml</span><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">services</span><span class="p">:</span>
