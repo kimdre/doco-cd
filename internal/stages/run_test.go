@@ -63,24 +63,24 @@ func TestShouldPostPendingCommitStatus(t *testing.T) {
 		want           bool
 	}{
 		{
-			name:      "posts after init",
-			stageName: StageInit,
+			name:      "posts after pre deploy",
+			stageName: StagePreDeploy,
 			want:      true,
 		},
 		{
-			name:      "does not post after pre deploy",
-			stageName: StagePreDeploy,
+			name:      "does not post after init",
+			stageName: StageInit,
 			want:      false,
 		},
 		{
 			name:           "does not post for destroy",
-			stageName:      StageInit,
+			stageName:      StagePreDeploy,
 			destroyEnabled: true,
 			want:           false,
 		},
 		{
 			name:          "does not repost pending",
-			stageName:     StageInit,
+			stageName:     StagePreDeploy,
 			pendingPosted: true,
 			want:          false,
 		},

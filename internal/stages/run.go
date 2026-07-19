@@ -44,7 +44,7 @@ func failureCommitStatusDescription(err error) string {
 }
 
 func shouldPostPendingCommitStatus(stageName StageName, destroyEnabled, pendingPosted bool) bool {
-	return !destroyEnabled && !pendingPosted && stageName == StageInit
+	return !destroyEnabled && !pendingPosted && stageName == StagePreDeploy
 }
 
 func shouldPostFailureCommitStatus(destroyEnabled bool) bool {
@@ -132,10 +132,6 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 				slog.String("duration", metadata.FinishedAt.Sub(metadata.StartedAt).Truncate(time.Millisecond).String()))
 			// If the error is ErrSkipDeployment, we don't treat it as a failure
 			if errors.Is(err, ErrSkipDeployment) {
-				if !s.DeployConfig.Destroy.Enabled {
-					s.PostCommitStatus(ctx, commitstatus.StateSuccess, "Skipped")
-				}
-
 				return nil
 			}
 
