@@ -115,8 +115,6 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 
 	var finishedAt time.Time
 
-	previousSuccessDescription := ""
-
 	for _, stageName := range stageOrder.Order {
 		stageLog := s.Log.With(slog.String("stage", string(stageName)))
 
@@ -134,13 +132,8 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 				slog.String("duration", metadata.FinishedAt.Sub(metadata.StartedAt).Truncate(time.Millisecond).String()))
 			// If the error is ErrSkipDeployment, we don't treat it as a failure
 			if errors.Is(err, ErrSkipDeployment) {
-				if pendingPosted {
-					description := previousSuccessDescription
-					if description == "" {
-						description = successfulCommitStatusDescription(s.Stages.Init.StartedAt, metadata.FinishedAt)
-					}
-
-					s.PostCommitStatus(ctx, commitstatus.StateSuccess, description)
+				if !s.DeployConfig.Destroy.Enabled {
+					s.PostCommitStatus(ctx, commitstatus.StateSuccess, "Skipped")
 				}
 
 				return nil
@@ -161,10 +154,6 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 
 		// Post "pending" once the repository/commit has been resolved.
 		if shouldPostPendingCommitStatus(stageName, s.DeployConfig.Destroy.Enabled, pendingPosted) {
-			if currentStatus, found := s.GetCurrentCommitStatus(ctx); found && currentStatus.State == commitstatus.StateSuccess {
-				previousSuccessDescription = currentStatus.Description
-			}
-
 			s.PostCommitStatus(ctx, commitstatus.StatePending, "In Progress")
 
 			pendingPosted = true
