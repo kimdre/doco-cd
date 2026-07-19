@@ -7,6 +7,7 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/docker/cli/cli/command"
 
@@ -27,8 +28,11 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 	cloneUrl string, deployConfigs []*deployConfig.Config, metadata notification.Metadata,
 ) error {
 	autoDiscoveredNames := make(map[string]bool)
+	runConfigTargets := make(map[string]struct{})
 
 	for _, cfg := range deployConfigs {
+		runConfigTargets[strings.TrimSpace(cfg.Internal.ConfigTarget)] = struct{}{}
+
 		if cfg.AutoDiscovery.Enabled {
 			autoDiscoveredNames[cfg.Name] = cfg.AutoDiscovery.Delete
 		}
@@ -94,6 +98,16 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 		)
 
 		if match {
+			stackConfigTarget := strings.TrimSpace(labels[docker.DocoCDLabels.Deployment.ConfigTarget])
+			if !isCleanupTargetMatch(runConfigTargets, stackConfigTarget) {
+				stackLog.Debug("skipping auto-discovered stack as it belongs to a different deployment config target",
+					slog.String("stack_config_target", stackConfigTarget),
+					slog.Any("run_config_targets", sortedTargetKeys(runConfigTargets)),
+				)
+
+				continue
+			}
+
 			stackLog.Debug("checking auto-discovered stack for obsolescence")
 
 			if _, found := autoDiscoveredNames[stackName]; !found {
@@ -150,4 +164,40 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 	}
 
 	return nil
+}
+
+// isCleanupTargetMatch checks if the stack's config target matches any of the run config targets.
+func isCleanupTargetMatch(runConfigTargets map[string]struct{}, stackConfigTarget string) bool {
+	// Backward compatibility: if no run target context is available, keep legacy behavior.
+	if len(runConfigTargets) == 0 {
+		return true
+	}
+
+	stackConfigTarget = strings.TrimSpace(stackConfigTarget)
+
+	// Backward compatibility for pre-label deployments: only include unlabeled stacks
+	// for default-target runs, never for custom targets.
+	if stackConfigTarget == "" {
+		_, defaultTargetRun := runConfigTargets[""]
+		return defaultTargetRun
+	}
+
+	_, ok := runConfigTargets[stackConfigTarget]
+
+	return ok
+}
+
+func sortedTargetKeys(m map[string]struct{}) []string {
+	if len(m) == 0 {
+		return nil
+	}
+
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+
+	slices.Sort(keys)
+
+	return keys
 }

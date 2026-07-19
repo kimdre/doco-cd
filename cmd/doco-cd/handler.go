@@ -355,6 +355,10 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		}
 	}
 
+	for _, cfg := range deployConfigs {
+		cfg.Internal.ConfigTarget = strings.TrimSpace(customTarget)
+	}
+
 	repoData := stages.RepositoryData{
 		Source:       sourceType,
 		SourceUrl:    sourceRef,

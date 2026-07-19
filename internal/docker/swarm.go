@@ -93,6 +93,7 @@ func addSwarmServiceLabels(stack *composetypes.Config, deployConfig *deploy.Conf
 		DocoCDLabels.Deployment.Timestamp:           timestamp,
 		DocoCDLabels.Deployment.ComposeHash:         projectHash,
 		DocoCDLabels.Deployment.WorkingDir:          repoDir,
+		DocoCDLabels.Deployment.ConfigTarget:        deployConfig.Internal.ConfigTarget,
 		DocoCDLabels.Deployment.Trigger:             payload.CommitSHA,
 		DocoCDLabels.Deployment.CommitSHA:           latestCommit,
 		DocoCDLabels.Deployment.TargetRef:           ExtractOciArtifactTag(deployConfig.Reference),
@@ -107,10 +108,11 @@ func addSwarmServiceLabels(stack *composetypes.Config, deployConfig *deploy.Conf
 	// Service-level labels (ServiceSpec.Annotations.Labels) are required for Docker
 	// service events to be filterable by label. These are set via Deploy.Labels.
 	serviceLevelLabels := map[string]string{
-		DocoCDLabels.Metadata.Manager: app.Name,
-		DocoCDLabels.Deployment.Name:  deployConfig.Name,
-		DocoCDLabels.Source.Type:      SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
-		DocoCDLabels.Source.Name:      payload.FullName,
+		DocoCDLabels.Metadata.Manager:        app.Name,
+		DocoCDLabels.Deployment.Name:         deployConfig.Name,
+		DocoCDLabels.Deployment.ConfigTarget: deployConfig.Internal.ConfigTarget,
+		DocoCDLabels.Source.Type:             SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
+		DocoCDLabels.Source.Name:             payload.FullName,
 	}
 
 	for i, s := range stack.Services {
@@ -135,17 +137,18 @@ func addSwarmVolumeLabels(stack *composetypes.Config, deployConfig *deploy.Confi
 	repoDir, appVersion, timestamp, latestCommit string,
 ) {
 	customLabels := map[string]string{
-		DocoCDLabels.Metadata.Manager:      app.Name,
-		DocoCDLabels.Metadata.Version:      appVersion,
-		DocoCDLabels.Deployment.Name:       deployConfig.Name,
-		DocoCDLabels.Deployment.Timestamp:  timestamp,
-		DocoCDLabels.Deployment.WorkingDir: repoDir,
-		DocoCDLabels.Deployment.Trigger:    payload.CommitSHA,
-		DocoCDLabels.Deployment.CommitSHA:  latestCommit,
-		DocoCDLabels.Deployment.TargetRef:  ExtractOciArtifactTag(deployConfig.Reference),
-		DocoCDLabels.Source.Type:           SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
-		DocoCDLabels.Source.Name:           payload.FullName,
-		DocoCDLabels.Source.URL:            payload.WebURL,
+		DocoCDLabels.Metadata.Manager:        app.Name,
+		DocoCDLabels.Metadata.Version:        appVersion,
+		DocoCDLabels.Deployment.Name:         deployConfig.Name,
+		DocoCDLabels.Deployment.Timestamp:    timestamp,
+		DocoCDLabels.Deployment.WorkingDir:   repoDir,
+		DocoCDLabels.Deployment.ConfigTarget: deployConfig.Internal.ConfigTarget,
+		DocoCDLabels.Deployment.Trigger:      payload.CommitSHA,
+		DocoCDLabels.Deployment.CommitSHA:    latestCommit,
+		DocoCDLabels.Deployment.TargetRef:    ExtractOciArtifactTag(deployConfig.Reference),
+		DocoCDLabels.Source.Type:             SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
+		DocoCDLabels.Source.Name:             payload.FullName,
+		DocoCDLabels.Source.URL:              payload.WebURL,
 	}
 
 	for i, v := range stack.Volumes {

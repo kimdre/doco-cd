@@ -68,6 +68,7 @@ type Config struct {
 	Oci                config.OciTrustPolicyOverride            `yaml:"oci" json:"oci" doco:"allowOverride"`                                                                                                                    // Oci allows per-target overrides for OCI signature verification policy
 	Internal           struct {
 		File                          string            `yaml:"-"` // File is the path to the deployment configuration file
+		ConfigTarget                  string            `yaml:"-"` // ConfigTarget is the target suffix from the deployment config filename (e.g., "nas" for .doco-cd.nas.yml)
 		Environment                   map[string]string // Environment stores environment variables for variable interpolation in the compose project
 		Hash                          string            `yaml:"-"`          // Hash is a hash of the Config struct
 		OciTrustPolicyOverrideTrusted bool              `yaml:"-" json:"-"` // true only for trusted config sources (e.g. POLL_CONFIG inline deployments)
