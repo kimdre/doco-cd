@@ -112,7 +112,7 @@ func TestGet_GitLabAPI(t *testing.T) {
 		_ = json.NewEncoder(w).Encode([]map[string]string{
 			{
 				"status":      "success",
-				"name":        commitstatus.BaseContext,
+				"name":        commitstatus.DeployContext,
 				"description": "Successful in 47s",
 				"target_url":  "https://example.com/logs/1",
 			},
@@ -122,7 +122,7 @@ func TestGet_GitLabAPI(t *testing.T) {
 
 	status, found, err := commitstatus.Get(context.Background(),
 		commitstatus.ProviderGitLab,
-		srv.URL+"/owner/repo", "owner/repo", "deadbeef", "token", commitstatus.BaseContext)
+		srv.URL+"/owner/repo", "owner/repo", "deadbeef", "token", commitstatus.DeployContext)
 	assert.NilError(t, err)
 	assert.Assert(t, found)
 	assert.Equal(t, status.State, commitstatus.StateSuccess)

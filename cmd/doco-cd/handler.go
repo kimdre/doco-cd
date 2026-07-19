@@ -116,7 +116,7 @@ func postEarlyCommitStatus(ctx context.Context, jobLog *slog.Logger, appConfig *
 
 	contextName = strings.TrimSpace(contextName)
 	if contextName == "" {
-		contextName = commitstatus.BaseContext
+		contextName = commitstatus.DeployContext
 	}
 
 	jobLog.Debug("posting commit status",
@@ -245,7 +245,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 			appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.GitCloneSubmodules, appConfig.GitCloneDepth,
 		)
 		if err != nil {
-			postEarlyCommitStatus(ctx, jobLog, appConfig, sourceType, sourceRef, resolvedRevision, payload, commitstatus.BaseContext, earlyFailureCommitStatusDescription(err))
+			postEarlyCommitStatus(ctx, jobLog, appConfig, sourceType, sourceRef, resolvedRevision, payload, commitstatus.DeployContext, earlyFailureCommitStatusDescription(err))
 
 			return handleError{
 				err:            err,
@@ -325,7 +325,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 	case stages.JobTriggerWebhook:
 		deployConfigs, err = deploy.GetConfigs(internalRepoPath, appConfig.DeployConfigBaseDir, customTarget, payload.Ref, gitOpts)
 		if err != nil {
-			postEarlyCommitStatus(ctx, jobLog, appConfig, sourceType, sourceRef, resolvedRevision, payload, commitstatus.BaseContext, earlyFailureCommitStatusDescription(err))
+			postEarlyCommitStatus(ctx, jobLog, appConfig, sourceType, sourceRef, resolvedRevision, payload, commitstatus.DeployContext, earlyFailureCommitStatusDescription(err))
 
 			return handleError{
 				err:            err,
@@ -336,7 +336,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 	case stages.JobTriggerPoll:
 		deployConfigs, err = deploy.ResolveConfigs(pollConfig.Deployments, pollConfig.CustomTarget, ref, internalRepoPath, appConfig.DeployConfigBaseDir, gitOpts)
 		if err != nil {
-			postEarlyCommitStatus(ctx, jobLog, appConfig, sourceType, sourceRef, resolvedRevision, payload, commitstatus.BaseContext, earlyFailureCommitStatusDescription(err))
+			postEarlyCommitStatus(ctx, jobLog, appConfig, sourceType, sourceRef, resolvedRevision, payload, commitstatus.DeployContext, earlyFailureCommitStatusDescription(err))
 
 			return handleError{
 				err:            err,
