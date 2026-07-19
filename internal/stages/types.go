@@ -388,6 +388,7 @@ func (s *StageManager) PostCommitStatus(ctx context.Context, state commitstatus.
 		slog.String("commit_sha", commitSHA),
 		slog.String("context", contextName),
 		slog.String("state", string(state)),
+		slog.String("description", description),
 	)
 
 	err := commitstatus.Post(ctx, provider, repoURL, repoFullName, commitSHA, token, commitstatus.Status{
