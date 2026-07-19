@@ -160,13 +160,13 @@ func TestPost_DefaultContext(t *testing.T) {
 		srv.URL+"/owner/repo", "owner/repo", "abc123", "token",
 		commitstatus.Status{State: commitstatus.StateSuccess})
 	assert.NilError(t, err)
-	assert.Equal(t, received["context"], commitstatus.DeployContext)
+	assert.Equal(t, received["context"], commitstatus.BaseContext)
 }
 
 func TestContextForStack(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, commitstatus.ContextForStack(""), commitstatus.DeployContext)
+	assert.Equal(t, commitstatus.ContextForStack(""), commitstatus.BaseContext)
 	assert.Equal(t, commitstatus.ContextForStack("web"), "doco-cd/web")
 }
 

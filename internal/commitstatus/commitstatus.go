@@ -22,7 +22,7 @@ const (
 func ContextForStack(stack string) string {
 	stack = strings.TrimSpace(stack)
 	if stack == "" {
-		return DeployContext
+		return BaseContext
 	}
 
 	return BaseContext + "/" + stack
@@ -70,8 +70,8 @@ func ParseProvider(s string) (Provider, error) {
 type Status struct {
 	State       State
 	Description string
-	// Context is the label shown in the Git UI (e.g. "doco-cd/deploy").
-	// Defaults to DeployContext when empty.
+	// Context is the label shown in the Git UI (e.g. "doco-cd/demo").
+	// Defaults to BaseContext when empty.
 	Context   string
 	TargetURL string // optional link to deployment logs
 }
@@ -88,7 +88,7 @@ func Post(ctx context.Context, provider Provider, repoURL, repoFullName, commitS
 	}
 
 	if status.Context == "" {
-		status.Context = DeployContext
+		status.Context = BaseContext
 	}
 
 	host, scheme, err := parseHostAndScheme(repoURL)
@@ -125,7 +125,7 @@ func Get(ctx context.Context, provider Provider, repoURL, repoFullName, commitSH
 	}
 
 	if contextName == "" {
-		contextName = DeployContext
+		contextName = BaseContext
 	}
 
 	host, scheme, err := parseHostAndScheme(repoURL)
