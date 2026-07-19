@@ -15,8 +15,24 @@ const (
 	StateFailure State = "failure"
 	StateError   State = "error"
 
-	DefaultContext = "doco-cd/deploy"
+	BaseContext   = "doco-cd"
+	DeployContext = BaseContext + "/deploy"
 )
+
+func ContextForStack(target, stack string) string {
+	target = strings.TrimSpace(target)
+	stack = strings.TrimSpace(stack)
+
+	if stack == "" {
+		return BaseContext
+	}
+
+	if target != "" {
+		return BaseContext + "/" + target + "/" + stack
+	}
+
+	return BaseContext + "/" + stack
+}
 
 // Provider identifies which SCM API to use when posting a commit status.
 // The zero value ("") means auto-detect from the repository URL.
@@ -60,8 +76,8 @@ func ParseProvider(s string) (Provider, error) {
 type Status struct {
 	State       State
 	Description string
-	// Context is the label shown in the Git UI (e.g. "doco-cd/deploy").
-	// Defaults to DefaultContext when empty.
+	// Context is the label shown in the Git UI (e.g. "doco-cd/demo").
+	// Defaults to BaseContext when empty.
 	Context   string
 	TargetURL string // optional link to deployment logs
 }
@@ -78,7 +94,7 @@ func Post(ctx context.Context, provider Provider, repoURL, repoFullName, commitS
 	}
 
 	if status.Context == "" {
-		status.Context = DefaultContext
+		status.Context = BaseContext
 	}
 
 	host, scheme, err := parseHostAndScheme(repoURL)
@@ -115,7 +131,7 @@ func Get(ctx context.Context, provider Provider, repoURL, repoFullName, commitSH
 	}
 
 	if contextName == "" {
-		contextName = DefaultContext
+		contextName = BaseContext
 	}
 
 	host, scheme, err := parseHostAndScheme(repoURL)

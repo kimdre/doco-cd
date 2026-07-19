@@ -72,7 +72,7 @@ func earlyFailureCommitStatusDescription(err error) string {
 }
 
 func postEarlyCommitStatus(ctx context.Context, jobLog *slog.Logger, appConfig *app.Config,
-	sourceType config.SourceType, sourceRef, commitSHA string, payload webhook.ParsedPayload, description string,
+	sourceType config.SourceType, sourceRef, commitSHA string, payload webhook.ParsedPayload, contextName, description string,
 ) {
 	if !appConfig.GitCommitStatus || config.NormalizeSourceType(sourceType) != config.SourceTypeGit {
 		return
@@ -114,18 +114,24 @@ func postEarlyCommitStatus(ctx context.Context, jobLog *slog.Logger, appConfig *
 
 	provider, _ := commitstatus.ParseProvider(appConfig.GitScmProvider)
 
+	contextName = strings.TrimSpace(contextName)
+	if contextName == "" {
+		contextName = commitstatus.DeployContext
+	}
+
 	jobLog.Debug("posting commit status",
 		slog.String("provider", string(provider)),
 		slog.String("repository", repoFullName),
 		slog.String("commit_sha", commitSHA),
-		slog.String("context", commitstatus.DefaultContext),
+		slog.String("context", contextName),
 		slog.String("state", string(commitstatus.StateError)),
+		slog.String("description", description),
 	)
 
 	err := commitstatus.Post(ctx, provider, repoURL, repoFullName, commitSHA, token, commitstatus.Status{
 		State:       commitstatus.StateError,
 		Description: description,
-		Context:     commitstatus.DefaultContext,
+		Context:     contextName,
 	})
 	if err != nil {
 		jobLog.Warn("failed to post commit status", slog.String("error", err.Error()))
@@ -240,7 +246,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 			appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.GitCloneSubmodules, appConfig.GitCloneDepth,
 		)
 		if err != nil {
-			postEarlyCommitStatus(ctx, jobLog, appConfig, sourceType, sourceRef, resolvedRevision, payload, earlyFailureCommitStatusDescription(err))
+			postEarlyCommitStatus(ctx, jobLog, appConfig, sourceType, sourceRef, resolvedRevision, payload, commitstatus.DeployContext, earlyFailureCommitStatusDescription(err))
 
 			return handleError{
 				err:            err,
@@ -320,7 +326,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 	case stages.JobTriggerWebhook:
 		deployConfigs, err = deploy.GetConfigs(internalRepoPath, appConfig.DeployConfigBaseDir, customTarget, payload.Ref, gitOpts)
 		if err != nil {
-			postEarlyCommitStatus(ctx, jobLog, appConfig, sourceType, sourceRef, resolvedRevision, payload, earlyFailureCommitStatusDescription(err))
+			postEarlyCommitStatus(ctx, jobLog, appConfig, sourceType, sourceRef, resolvedRevision, payload, commitstatus.DeployContext, earlyFailureCommitStatusDescription(err))
 
 			return handleError{
 				err:            err,
@@ -331,7 +337,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 	case stages.JobTriggerPoll:
 		deployConfigs, err = deploy.ResolveConfigs(pollConfig.Deployments, pollConfig.CustomTarget, ref, internalRepoPath, appConfig.DeployConfigBaseDir, gitOpts)
 		if err != nil {
-			postEarlyCommitStatus(ctx, jobLog, appConfig, sourceType, sourceRef, resolvedRevision, payload, earlyFailureCommitStatusDescription(err))
+			postEarlyCommitStatus(ctx, jobLog, appConfig, sourceType, sourceRef, resolvedRevision, payload, commitstatus.DeployContext, earlyFailureCommitStatusDescription(err))
 
 			return handleError{
 				err:            err,

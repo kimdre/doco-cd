@@ -72,7 +72,7 @@ func TestGet_AzureDevOpsAPI(t *testing.T) {
 					"description": "Successful in 47s",
 					"targetUrl":   "https://example.com/logs/1",
 					"context": map[string]string{
-						"name":  commitstatus.DefaultContext,
+						"name":  commitstatus.DeployContext,
 						"genre": "doco-cd",
 					},
 				},
@@ -87,7 +87,7 @@ func TestGet_AzureDevOpsAPI(t *testing.T) {
 		"org/project/_git/repo",
 		"deadbeef",
 		"token",
-		commitstatus.DefaultContext)
+		commitstatus.DeployContext)
 	assert.NilError(t, err)
 	assert.Assert(t, found)
 	assert.Equal(t, status.State, commitstatus.StateSuccess)

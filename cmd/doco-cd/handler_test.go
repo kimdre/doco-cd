@@ -69,7 +69,7 @@ func TestPostEarlyCommitStatus(t *testing.T) {
 		GitScmProvider:  "gitea",
 	}, config.SourceTypeGit, srv.URL+"/owner/repo", "deadbeef", webhook.ParsedPayload{
 		FullName: "owner/repo",
-	}, "bad config")
+	}, "doco-cd/deploy", "bad config")
 
 	if got, want := received["state"], "error"; got != want {
 		t.Fatalf("state = %q, want %q", got, want)
@@ -77,6 +77,10 @@ func TestPostEarlyCommitStatus(t *testing.T) {
 
 	if got, want := received["description"], "bad config"; got != want {
 		t.Fatalf("description = %q, want %q", got, want)
+	}
+
+	if got, want := received["context"], "doco-cd/deploy"; got != want {
+		t.Fatalf("context = %q, want %q", got, want)
 	}
 }
 
