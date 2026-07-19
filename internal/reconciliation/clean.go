@@ -98,6 +98,14 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 		)
 
 		if match {
+			if _, found := autoDiscoveredNames[stackName]; found {
+				stackLog.Debug("auto-discovered stack is present in current config, skipping obsolete cleanup")
+
+				processedStacks = append(processedStacks, stackName)
+
+				continue
+			}
+
 			stackConfigTarget := strings.TrimSpace(labels[docker.DocoCDLabels.Deployment.ConfigTarget])
 			if !isCleanupTargetMatch(runConfigTargets, stackConfigTarget) {
 				stackLog.Debug("skipping auto-discovered stack as it belongs to a different deployment config target",
@@ -110,54 +118,52 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 
 			stackLog.Debug("checking auto-discovered stack for obsolescence")
 
-			if _, found := autoDiscoveredNames[stackName]; !found {
-				// Parse the auto-discovery config from the new JSON label.
-				// Fall back to the old scalar labels for containers deployed before this change.
-				autoDiscoverCfg := docker.ParseAutoDiscoveryConfig(labels[docker.DocoCDLabels.Deployment.AutoDiscoveryConfig])
+			// Parse the auto-discovery config from the new JSON label.
+			// Fall back to the old scalar labels for containers deployed before this change.
+			autoDiscoverCfg := docker.ParseAutoDiscoveryConfig(labels[docker.DocoCDLabels.Deployment.AutoDiscoveryConfig])
 
-				// If the new label was absent, try the legacy scalar delete label.
-				if labels[docker.DocoCDLabels.Deployment.AutoDiscoveryConfig] == "" {
-					legacyDelete := labels[docker.DeprecatedAutoDiscoveryDeleteLabel] //nolint:staticcheck // fallback for pre-consolidation containers
-					if legacyDelete == "" {
-						legacyDelete = labels[docker.DeprecatedAutoDiscoverDeleteLabel] //nolint:staticcheck // fallback for pre-rename containers
-					}
+			// If the new label was absent, try the legacy scalar delete label.
+			if labels[docker.DocoCDLabels.Deployment.AutoDiscoveryConfig] == "" {
+				legacyDelete := labels[docker.DeprecatedAutoDiscoveryDeleteLabel] //nolint:staticcheck // fallback for pre-consolidation containers
+				if legacyDelete == "" {
+					legacyDelete = labels[docker.DeprecatedAutoDiscoverDeleteLabel] //nolint:staticcheck // fallback for pre-rename containers
+				}
 
-					if legacyDelete != "" {
-						if parsed, err := strconv.ParseBool(legacyDelete); err == nil {
-							autoDiscoverCfg.Delete = parsed
-						}
+				if legacyDelete != "" {
+					if parsed, err := strconv.ParseBool(legacyDelete); err == nil {
+						autoDiscoverCfg.Delete = parsed
 					}
 				}
-
-				if !autoDiscoverCfg.Delete {
-					stackLog.Debug("skipping removal of obsolete auto-discovered stack as per configuration")
-
-					processedStacks = append(processedStacks, stackName)
-
-					continue
-				}
-
-				stackLog.Info("removing obsolete auto-discovered stack")
-
-				removeConfig := &deployConfig.Config{Name: stackName}
-				removeConfig.Destroy.Enabled = true
-				removeConfig.Destroy.RemoveVolumes = autoDiscoverCfg.RemoveVolumes
-				removeConfig.Destroy.RemoveImages = autoDiscoverCfg.RemoveImages
-				removeConfig.Destroy.RemoveRepoDir = false // Do not remove repo dir for auto-discovered stacks
-
-				err = docker.DestroyStack(jobLog, &ctx, &dockerCli, removeConfig)
-				if err != nil {
-					return fmt.Errorf("failed to remove obsolete auto-discovered stack '%s': %w", stackName, err)
-				}
-
-				err = notification.Send(notification.Success, "Stack destroyed", "successfully destroyed stack "+removeConfig.Name, metadata)
-				if err != nil {
-					stackLog.Error("failed to send notification", logger.ErrAttr(err))
-				}
-
-				stackLog.Info("removed obsolete auto-discovered stack", slog.String("stack", stackName))
-				processedStacks = append(processedStacks, stackName)
 			}
+
+			if !autoDiscoverCfg.Delete {
+				stackLog.Debug("skipping removal of obsolete auto-discovered stack as per configuration")
+
+				processedStacks = append(processedStacks, stackName)
+
+				continue
+			}
+
+			stackLog.Info("removing obsolete auto-discovered stack")
+
+			removeConfig := &deployConfig.Config{Name: stackName}
+			removeConfig.Destroy.Enabled = true
+			removeConfig.Destroy.RemoveVolumes = autoDiscoverCfg.RemoveVolumes
+			removeConfig.Destroy.RemoveImages = autoDiscoverCfg.RemoveImages
+			removeConfig.Destroy.RemoveRepoDir = false // Do not remove repo dir for auto-discovered stacks
+
+			err = docker.DestroyStack(jobLog, &ctx, &dockerCli, removeConfig)
+			if err != nil {
+				return fmt.Errorf("failed to remove obsolete auto-discovered stack '%s': %w", stackName, err)
+			}
+
+			err = notification.Send(notification.Success, "Stack destroyed", "successfully destroyed stack "+removeConfig.Name, metadata)
+			if err != nil {
+				stackLog.Error("failed to send notification", logger.ErrAttr(err))
+			}
+
+			stackLog.Info("removed obsolete auto-discovered stack", slog.String("stack", stackName))
+			processedStacks = append(processedStacks, stackName)
 		} else {
 			stackLog.Debug("skipping auto-discovered stack as it belongs to a different repository")
 		}
