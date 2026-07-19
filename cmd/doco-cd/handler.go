@@ -114,6 +114,14 @@ func postEarlyCommitStatus(ctx context.Context, jobLog *slog.Logger, appConfig *
 
 	provider, _ := commitstatus.ParseProvider(appConfig.GitScmProvider)
 
+	jobLog.Debug("posting commit status",
+		slog.String("provider", string(provider)),
+		slog.String("repository", repoFullName),
+		slog.String("commit_sha", commitSHA),
+		slog.String("context", commitstatus.DefaultContext),
+		slog.String("state", string(commitstatus.StateError)),
+	)
+
 	err := commitstatus.Post(ctx, provider, repoURL, repoFullName, commitSHA, token, commitstatus.Status{
 		State:       commitstatus.StateError,
 		Description: description,

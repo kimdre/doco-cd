@@ -343,10 +343,26 @@ func (s *StageManager) GetCurrentCommitStatus(ctx context.Context) (commitstatus
 		return commitstatus.Status{}, false
 	}
 
+	s.Log.Debug("getting commit status",
+		slog.String("provider", string(provider)),
+		slog.String("repository", repoFullName),
+		slog.String("commit_sha", commitSHA),
+		slog.String("context", commitstatus.DefaultContext),
+	)
+
 	status, found, err := commitstatus.Get(ctx, provider, repoURL, repoFullName, commitSHA, token, commitstatus.DefaultContext)
 	if err != nil {
 		s.Log.Warn("failed to get commit status", slog.String("error", err.Error()))
 		return commitstatus.Status{}, false
+	}
+
+	if !found {
+		s.Log.Debug("no commit status found",
+			slog.String("provider", string(provider)),
+			slog.String("repository", repoFullName),
+			slog.String("commit_sha", commitSHA),
+			slog.String("context", commitstatus.DefaultContext),
+		)
 	}
 
 	return status, found
@@ -361,6 +377,14 @@ func (s *StageManager) PostCommitStatus(ctx context.Context, state commitstatus.
 	if !ok {
 		return
 	}
+
+	s.Log.Debug("posting commit status",
+		slog.String("provider", string(provider)),
+		slog.String("repository", repoFullName),
+		slog.String("commit_sha", commitSHA),
+		slog.String("context", commitstatus.DefaultContext),
+		slog.String("state", string(state)),
+	)
 
 	err := commitstatus.Post(ctx, provider, repoURL, repoFullName, commitSHA, token, commitstatus.Status{
 		State:       state,
