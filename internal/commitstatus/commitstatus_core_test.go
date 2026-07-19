@@ -160,7 +160,14 @@ func TestPost_DefaultContext(t *testing.T) {
 		srv.URL+"/owner/repo", "owner/repo", "abc123", "token",
 		commitstatus.Status{State: commitstatus.StateSuccess})
 	assert.NilError(t, err)
-	assert.Equal(t, received["context"], commitstatus.DefaultContext)
+	assert.Equal(t, received["context"], commitstatus.BaseContext)
+}
+
+func TestContextForStack(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, commitstatus.ContextForStack(""), commitstatus.BaseContext)
+	assert.Equal(t, commitstatus.ContextForStack("web"), commitstatus.BaseContext+"/web")
 }
 
 func TestPost_APIError(t *testing.T) {
@@ -176,5 +183,8 @@ func TestPost_APIError(t *testing.T) {
 		srv.URL+"/owner/repo", "owner/repo", "abc123", "badtoken",
 		commitstatus.Status{State: commitstatus.StateSuccess})
 	assert.Assert(t, err != nil, "expected error for non-2xx response")
-	assert.Assert(t, strings.Contains(err.Error(), "401"), "error should mention status code, got: %s", err.Error())
+
+	if err != nil {
+		assert.Assert(t, strings.Contains(err.Error(), "401"), "error should mention status code, got: %s", err.Error())
+	}
 }

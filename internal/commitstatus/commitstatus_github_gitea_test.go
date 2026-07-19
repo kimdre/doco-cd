@@ -110,7 +110,7 @@ func TestGet_GiteaAPI(t *testing.T) {
 			{
 				"state":       "success",
 				"description": "Successful in 47s",
-				"context":     commitstatus.DefaultContext,
+				"context":     commitstatus.BaseContext,
 				"target_url":  "https://example.com/logs/1",
 			},
 		})
@@ -119,7 +119,7 @@ func TestGet_GiteaAPI(t *testing.T) {
 
 	status, found, err := commitstatus.Get(context.Background(),
 		commitstatus.ProviderGitea,
-		srv.URL+"/owner/repo", "owner/repo", "deadbeef", "token", commitstatus.DefaultContext)
+		srv.URL+"/owner/repo", "owner/repo", "deadbeef", "token", commitstatus.BaseContext)
 	assert.NilError(t, err)
 	assert.Assert(t, found)
 	assert.Equal(t, status.State, commitstatus.StateSuccess)
