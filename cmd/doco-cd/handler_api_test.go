@@ -2,25 +2,31 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/api/types/container"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/poll"
 
 	"github.com/kimdre/doco-cd/internal/test"
 
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/logger"
+	"github.com/kimdre/doco-cd/internal/notification"
 	restAPI "github.com/kimdre/doco-cd/internal/restapi"
+	"github.com/kimdre/doco-cd/internal/secretprovider"
 )
 
 // Make http call to HealthCheckHandler.
@@ -204,8 +210,8 @@ func TestHandlerData_TriggerPollHandler(t *testing.T) {
 			name:             "Without wait",
 			payload:          strings.NewReader(`[{"url": "https://github.com/kimdre/doco-cd_tests.git", "reference": "main"}]`),
 			wait:             false,
-			expectedStatus:   http.StatusOK,
-			expectedResponse: `{"content":"poll jobs complete","job_id":"[a-f0-9-]{36}"}`,
+			expectedStatus:   http.StatusAccepted,
+			expectedResponse: `{"content":"poll jobs started","job_id":"[a-f0-9-]{36}"}`,
 		},
 		{
 			name:             "With deploy config",
@@ -274,6 +280,8 @@ func TestHandlerData_TriggerPollHandler(t *testing.T) {
 			reqUrl := endpoint
 			if tc.wait {
 				reqUrl += "?wait=true"
+			} else {
+				reqUrl += "?wait=false"
 			}
 
 			req, err := http.NewRequest("POST", reqUrl, tc.payload)
@@ -311,6 +319,66 @@ func TestHandlerData_TriggerPollHandler(t *testing.T) {
 				t.Errorf("handler returned unexpected body: got %v want %v", rr.Body.String(), tc.expectedResponse)
 			}
 		})
+	}
+}
+
+func TestHandlerData_TriggerPollHandlerWithoutWait_DetachesRequestContext(t *testing.T) {
+	appConfig, err := app.GetConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctxCancelled := make(chan bool, 1)
+
+	h := handlerData{
+		appConfig: appConfig,
+		log:       logger.New(logger.LevelCritical),
+		runPoll: func(ctx context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+			_ command.Cli, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+		) error {
+			time.Sleep(50 * time.Millisecond)
+
+			select {
+			case <-ctx.Done():
+				ctxCancelled <- true
+			default:
+				ctxCancelled <- false
+			}
+
+			return nil
+		},
+	}
+
+	endpoint := path.Join(apiPath, "/poll/run")
+
+	rr := httptest.NewRecorder()
+	mux := http.NewServeMux()
+	mux.HandleFunc(endpoint, h.TriggerPollHandler)
+
+	req, err := http.NewRequest("POST", endpoint+"?wait=false", strings.NewReader(`[{"url":"https://github.com/kimdre/doco-cd_tests.git","reference":"main"}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req.Header.Set(restAPI.KeyHeader, appConfig.ApiSecret)
+	mux.ServeHTTP(rr, req)
+
+	if status := rr.Code; status != http.StatusAccepted {
+		t.Fatalf("handler returned wrong status code: got %v want %v", status, http.StatusAccepted)
+	}
+
+	regex := regexp.MustCompile(`{"content":"poll jobs started","job_id":"[a-f0-9-]{36}"}`)
+	if !regex.MatchString(rr.Body.String()) {
+		t.Fatalf("handler returned unexpected body: got %v", rr.Body.String())
+	}
+
+	select {
+	case cancelled := <-ctxCancelled:
+		if cancelled {
+			t.Fatal("poll run context was cancelled after async API response")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for poll run")
 	}
 }
 
