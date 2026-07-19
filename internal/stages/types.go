@@ -355,6 +355,7 @@ func (s *StageManager) GetCurrentCommitStatus(ctx context.Context) (commitstatus
 		s.Log.Warn("failed to get commit status", slog.String("error", err.Error()))
 		return commitstatus.Status{}, false
 	}
+
 	if !found {
 		s.Log.Debug("no commit status found",
 			slog.String("provider", string(provider)),
