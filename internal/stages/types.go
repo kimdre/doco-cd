@@ -288,7 +288,7 @@ func (s *StageManager) resolveCommitSHA() string {
 }
 
 func (s *StageManager) resolveCommitStatusContext() string {
-	return commitstatus.ContextForStack(s.DeployConfig.Name)
+	return commitstatus.ContextForStack(s.DeployConfig.Internal.ConfigTarget, s.DeployConfig.Name)
 }
 
 func (s *StageManager) resolveCommitStatusRequest() (commitstatus.Provider, string, string, string, string, string, bool) {

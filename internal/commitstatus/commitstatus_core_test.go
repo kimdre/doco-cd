@@ -166,8 +166,9 @@ func TestPost_DefaultContext(t *testing.T) {
 func TestContextForStack(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, commitstatus.ContextForStack(""), commitstatus.BaseContext)
-	assert.Equal(t, commitstatus.ContextForStack("web"), "doco-cd/web")
+	assert.Equal(t, commitstatus.ContextForStack("", ""), commitstatus.BaseContext)
+	assert.Equal(t, commitstatus.ContextForStack("", "web"), "doco-cd/web")
+	assert.Equal(t, commitstatus.ContextForStack("nas", "web"), "doco-cd/nas/web")
 }
 
 func TestPost_APIError(t *testing.T) {

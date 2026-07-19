@@ -19,10 +19,16 @@ const (
 	DeployContext = BaseContext + "/deploy"
 )
 
-func ContextForStack(stack string) string {
+func ContextForStack(target, stack string) string {
+	target = strings.TrimSpace(target)
 	stack = strings.TrimSpace(stack)
+
 	if stack == "" {
 		return BaseContext
+	}
+
+	if target != "" {
+		return BaseContext + "/" + target + "/" + stack
 	}
 
 	return BaseContext + "/" + stack
