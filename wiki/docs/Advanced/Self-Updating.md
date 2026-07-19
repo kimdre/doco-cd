@@ -64,6 +64,11 @@ compose_files:
   - compose.main.yaml
 ```
 
+!!! warning "Container name conflict during handover"
+    When the updater deploys the main instance, Docker may return an error like:
+    `Error response from daemon: Conflict. The container name "/doco-cd" is already in use by container "<container-id>".`
+    In this case, run the updater deployment with `#!yaml force_recreate: true` for that stack, or remove the old `doco-cd` container manually once so the updater-managed deployment can recreate it.
+
 ## Main instance
 
 The main instance is your regular doco-cd deployment. It can receive webhooks, expose the API, and run scheduled jobs.
