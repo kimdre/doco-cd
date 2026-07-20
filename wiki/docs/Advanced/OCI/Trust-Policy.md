@@ -39,6 +39,7 @@ Both can be used together in a single trust policy.
 
 ```yaml
 enabled: true                    # Enable/disable verification
+ignore_tlog: false               # Skip Rekor transparency log verification (default: false)
 public_keys:                     # List of trusted public keys (PEM format)
   - |
     -----BEGIN PUBLIC KEY-----
@@ -76,11 +77,12 @@ keyless_identities:              # Keyless verification using OIDC
 
 ##### Trust Policy Fields
 
-| Key                  | Type             | Default | Description                                                                         |
-|----------------------|------------------|---------|-------------------------------------------------------------------------------------|
-| `enabled`            | boolean          | `false` | Enables OCI signature verification globally. When `false`, verification is skipped. |
-| `public_keys`        | array of strings | `[]`    | List of trusted public keys (PEM format) used by Cosign key verification.           |
-| `keyless_identities` | array of object  | `[]`    | List of trusted keyless identities used for OIDC-based verification.                |
+| Key                  | Type             | Default | Description                                                                                                                                     |
+|----------------------|------------------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------|
+| `enabled`            | boolean          | `false` | Enables OCI signature verification globally. When `false`, verification is skipped.                                                             |
+| `public_keys`        | array of strings | `[]`    | List of trusted public keys (PEM format) used by Cosign key verification.                                                                       |
+| `keyless_identities` | array of object  | `[]`    | List of trusted keyless identities used for OIDC-based verification.                                                                            |
+| `ignore_tlog`        | boolean          | `false` | When `true`, skip Rekor transparency log verification. Only use in air-gapped or private environments where signatures are not logged to Rekor. |
 
 ##### `keyless_identities` object fields
 
@@ -157,11 +159,12 @@ keyless_identities:              # Keyless verification using OIDC
 
 Override the global trust policy for specific [deployments](../../Poll-Settings.md#inline-deploy-configs):
 
-| Key                  | Type             | Default | Description                                                                                             |
-|----------------------|------------------|---------|---------------------------------------------------------------------------------------------------------|
+| Key                  | Type             | Default | Description                                                                                                          |
+|----------------------|------------------|---------|----------------------------------------------------------------------------------------------------------------------|
 | `verify`             | boolean          | unset   | Can enforce verification (`true`) per deployment. It cannot disable verification when global `enabled: true` is set. |
-| `public_keys`        | array of strings | inherit | Replaces global `public_keys` when set and non-empty.                                                   |
-| `keyless_identities` | array of objects | inherit | Replaces global `keyless_identities` when set and non-empty.                                            |
+| `public_keys`        | array of strings | inherit | Replaces global `public_keys` when set and non-empty.                                                                |
+| `keyless_identities` | array of objects | inherit | Replaces global `keyless_identities` when set and non-empty.                                                         |
+| `ignore_tlog`        | boolean          | inherit | When `true`, skip Rekor transparency log verification. Overrides the global `ignore_tlog` setting when set.          |
 
 !!!note "Behavior"
 
@@ -205,6 +208,42 @@ Override the global trust policy for specific [deployments](../../Poll-Settings.
       - name: production
         oci:
           verify: true   # `verify: false` is ignored when global enabled=true
+    ```
+
+### Ignoring Rekor Transparency Logs
+
+By default, Doco-CD verifies that signatures are logged in the Rekor transparency log when verifying Cosign signatures. This is the security best practice and is enabled by default.
+
+However, in air-gapped, private, or Rekor-independent environments, signatures may not be uploaded to Rekor. In these cases, you can skip transparency log verification while still verifying the signature with the configured public key or keyless identity.
+
+!!! warning "Use with Caution"
+    Only skip transparency log verification when operating in a controlled environment where artifacts cannot be tampered with. In public environments, skipping transparency log verification reduces security guarantees.
+
+=== "Global Configuration"
+
+    ```yaml
+    OCI_TRUST_POLICY: |
+      enabled: true
+      ignore_tlog: true
+      public_keys:
+        - |
+          -----BEGIN PUBLIC KEY-----
+          MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...
+          -----END PUBLIC KEY-----
+    ```
+
+=== "Per-deployment Override"
+
+    ```yaml
+    deployments:
+      - name: air-gapped-environment
+        oci:
+          ignore_tlog: true
+          public_keys:
+            - |
+              -----BEGIN PUBLIC KEY-----
+              MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...
+              -----END PUBLIC KEY-----
     ```
 
 ---

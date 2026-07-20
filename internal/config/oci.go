@@ -12,12 +12,14 @@ type OciTrustPolicy struct {
 	Enabled           bool                 `yaml:"enabled" json:"enabled"`
 	KeylessIdentities []OciKeylessIdentity `yaml:"keyless_identities" json:"keyless_identities"`
 	PublicKeys        []string             `yaml:"public_keys" json:"public_keys"`
+	IgnoreTlog        bool                 `yaml:"ignore_tlog" json:"ignore_tlog"`
 }
 
 type OciTrustPolicyOverride struct {
 	Verify            *bool                `yaml:"verify" json:"verify"`
 	KeylessIdentities []OciKeylessIdentity `yaml:"keyless_identities" json:"keyless_identities"`
 	PublicKeys        []string             `yaml:"public_keys" json:"public_keys"`
+	IgnoreTlog        *bool                `yaml:"ignore_tlog" json:"ignore_tlog"`
 }
 
 func NormalizeOciTrustPolicy(p OciTrustPolicy) OciTrustPolicy {
@@ -59,6 +61,10 @@ func EffectiveOciTrustPolicy(global OciTrustPolicy, override OciTrustPolicyOverr
 
 	if len(override.PublicKeys) > 0 {
 		p.PublicKeys = override.PublicKeys
+	}
+
+	if override.IgnoreTlog != nil {
+		p.IgnoreTlog = *override.IgnoreTlog
 	}
 
 	return NormalizeOciTrustPolicy(p)

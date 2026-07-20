@@ -55,3 +55,31 @@ func TestEffectiveOciTrustPolicy_OverrideCanEnableWhenGlobalDisabled(t *testing.
 		t.Fatal("expected override verify=true to enable verification when global is disabled")
 	}
 }
+
+func TestEffectiveOciTrustPolicy_IgnoreTlogOverride(t *testing.T) {
+	t.Parallel()
+
+	// Test: Override can set IgnoreTlog
+	effective := EffectiveOciTrustPolicy(
+		OciTrustPolicy{Enabled: true, IgnoreTlog: false},
+		OciTrustPolicyOverride{IgnoreTlog: new(true)},
+	)
+
+	if !effective.IgnoreTlog {
+		t.Fatal("expected override IgnoreTlog=true to override global IgnoreTlog=false")
+	}
+}
+
+func TestEffectiveOciTrustPolicy_IgnoreTlogGlobalDefault(t *testing.T) {
+	t.Parallel()
+
+	// Test: Global IgnoreTlog is used when no override
+	effective := EffectiveOciTrustPolicy(
+		OciTrustPolicy{Enabled: true, IgnoreTlog: true},
+		OciTrustPolicyOverride{},
+	)
+
+	if !effective.IgnoreTlog {
+		t.Fatal("expected global IgnoreTlog=true to be used when override is not set")
+	}
+}
