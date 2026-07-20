@@ -122,6 +122,7 @@ func VerifyWithCosign(ctx context.Context, artifactRef, digest string, globalPol
 			SigVerifier:       verifier,
 			TrustedMaterial:   trustedMaterial,
 			ExperimentalOCI11: true,
+			IgnoreTlog:        effectivePolicy.IgnoreTlog,
 		}, maxWorkers)
 		if err == nil {
 			return nil
@@ -140,6 +141,7 @@ func VerifyWithCosign(ctx context.Context, artifactRef, digest string, globalPol
 			Identities:        []cosign.Identity{toCosignIdentity(identity)},
 			TrustedMaterial:   trustedMaterial,
 			ExperimentalOCI11: true,
+			IgnoreTlog:        effectivePolicy.IgnoreTlog,
 		}, maxWorkers)
 		if err == nil {
 			return nil
