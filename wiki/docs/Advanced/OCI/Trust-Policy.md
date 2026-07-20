@@ -77,11 +77,11 @@ keyless_identities:              # Keyless verification using OIDC
 
 ##### Trust Policy Fields
 
-| Key                  | Type             | Default | Description                                                                         |
-|----------------------|------------------|---------|-------------------------------------------------------------------------------------|
-| `enabled`            | boolean          | `false` | Enables OCI signature verification globally. When `false`, verification is skipped. |
-| `public_keys`        | array of strings | `[]`    | List of trusted public keys (PEM format) used by Cosign key verification.           |
-| `keyless_identities` | array of object  | `[]`    | List of trusted keyless identities used for OIDC-based verification.                |
+| Key                  | Type             | Default | Description                                                                                                                                     |
+|----------------------|------------------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------|
+| `enabled`            | boolean          | `false` | Enables OCI signature verification globally. When `false`, verification is skipped.                                                             |
+| `public_keys`        | array of strings | `[]`    | List of trusted public keys (PEM format) used by Cosign key verification.                                                                       |
+| `keyless_identities` | array of object  | `[]`    | List of trusted keyless identities used for OIDC-based verification.                                                                            |
 | `ignore_tlog`        | boolean          | `false` | When `true`, skip Rekor transparency log verification. Only use in air-gapped or private environments where signatures are not logged to Rekor. |
 
 ##### `keyless_identities` object fields
@@ -159,12 +159,12 @@ keyless_identities:              # Keyless verification using OIDC
 
 Override the global trust policy for specific [deployments](../../Poll-Settings.md#inline-deploy-configs):
 
-| Key                  | Type             | Default | Description                                                                                             |
-|----------------------|------------------|---------|---------------------------------------------------------------------------------------------------------|
+| Key                  | Type             | Default | Description                                                                                                          |
+|----------------------|------------------|---------|----------------------------------------------------------------------------------------------------------------------|
 | `verify`             | boolean          | unset   | Can enforce verification (`true`) per deployment. It cannot disable verification when global `enabled: true` is set. |
-| `public_keys`        | array of strings | inherit | Replaces global `public_keys` when set and non-empty.                                                   |
-| `keyless_identities` | array of objects | inherit | Replaces global `keyless_identities` when set and non-empty.                                            |
-| `ignore_tlog`        | boolean          | inherit | When `true`, skip Rekor transparency log verification. Overrides the global `ignore_tlog` setting when set. |
+| `public_keys`        | array of strings | inherit | Replaces global `public_keys` when set and non-empty.                                                                |
+| `keyless_identities` | array of objects | inherit | Replaces global `keyless_identities` when set and non-empty.                                                         |
+| `ignore_tlog`        | boolean          | inherit | When `true`, skip Rekor transparency log verification. Overrides the global `ignore_tlog` setting when set.          |
 
 !!!note "Behavior"
 
