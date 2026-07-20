@@ -24,7 +24,7 @@ func TestValidateApiKey(t *testing.T) {
 		{"Valid API Key", appConfig.ApiSecret, appConfig.ApiSecret, true},
 		{"Invalid API Key", appConfig.ApiSecret, "invalid_key", false},
 		{"Missing API Key", appConfig.ApiSecret, "", false},
-		{"Unset API Key", "", "", true}, // If no API key is set in config, all requests should pass
+		{"Unset API Key", "", "", false},
 	}
 
 	for _, tc := range testCases {
