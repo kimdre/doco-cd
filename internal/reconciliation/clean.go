@@ -19,13 +19,12 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 
 	"github.com/kimdre/doco-cd/internal/docker"
-	dockerSwarm "github.com/kimdre/doco-cd/internal/docker/swarm"
 )
 
 // cleanupObsoleteAutoDiscoveredContainers removes obsolete auto-discovered containers that are no longer defined in
 // the current deployment configurations but still exist on the Docker host.
 func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.Logger,
-	dockerCli command.Cli,
+	dockerCli command.Cli, swarmMode bool,
 	cloneUrl string, deployConfigs []*deployConfig.Config, metadata notification.Metadata,
 ) error {
 	autoDiscoveredNames := make(map[string]bool)
@@ -42,11 +41,6 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 	jobLog = jobLog.With(slog.String("repo_clone_url", cloneUrl))
 
 	var processedStacks []string
-
-	swarmMode, err := dockerSwarm.ResolveModeEnabled(ctx, dockerCli.Client())
-	if err != nil {
-		return fmt.Errorf("failed to check if docker host is running in swarm mode: %w", err)
-	}
 
 	// Query both new and deprecated labels. We keep reading the deprecated label to
 	// handle containers deployed before the label rename.

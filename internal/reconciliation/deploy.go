@@ -101,8 +101,24 @@ func deploy(ctx context.Context,
 			return err
 		}
 
+		// For the default context use the globally cached swarm mode; for a custom
+		// context probe the remote daemon directly.
+		var cleanupSwarmMode bool
+		if contextName == "" {
+			cleanupSwarmMode = dockerSwarm.GetModeEnabled()
+		} else {
+			cleanupSwarmMode, err = dockerSwarm.ResolveModeEnabled(ctx, cleanupCli.Client())
+			if err != nil {
+				if closeFn != nil {
+					closeFn()
+				}
+
+				return fmt.Errorf("failed to check swarm mode for context %q: %w", contextName, err)
+			}
+		}
+
 		if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
-			cleanupCli, repoData.SourceUrl,
+			cleanupCli, cleanupSwarmMode, repoData.SourceUrl,
 			groupedConfigs,
 			metadata); err != nil {
 			if closeFn != nil {
@@ -223,9 +239,17 @@ func handleOneDeploy(ctx context.Context, deployLog *slog.Logger,
 		defer closeFn()
 	}
 
-	swarmMode, err := dockerSwarm.ResolveModeEnabled(ctx, deploymentDockerCli.Client())
-	if err != nil {
-		return fmt.Errorf("failed to check if docker host is running in swarm mode: %w", err)
+	// For the default context use the globally cached swarm mode state (set at
+	// startup via RefreshModeEnabled). For a custom context we must probe the
+	// remote daemon directly because it may be a different host entirely.
+	var swarmMode bool
+	if strings.TrimSpace(dc.Context) == "" {
+		swarmMode = dockerSwarm.GetModeEnabled()
+	} else {
+		swarmMode, err = dockerSwarm.ResolveModeEnabled(ctx, deploymentDockerCli.Client())
+		if err != nil {
+			return fmt.Errorf("failed to check if docker host is running in swarm mode: %w", err)
+		}
 	}
 
 	stageMgr := stages.NewStageManager(

@@ -326,7 +326,7 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConf
 	defer jobLog.Info("reconciliation completed")
 
 	if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
-		j.info.dockerCli, j.info.repoData.SourceUrl,
+		j.info.dockerCli, swarm.GetModeEnabled(), j.info.repoData.SourceUrl,
 		j.info.deployConfigs, // all deploy configs
 		j.info.metadata); err != nil {
 		jobLog.Error("failed to clean up obsolete auto-discovered containers", logger.ErrAttr(err))
