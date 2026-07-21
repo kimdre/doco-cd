@@ -114,5 +114,5 @@ func responseErrorDetails(resp *http.Response) string {
 		return fmt.Sprintf(": %s (truncated)", bodyText)
 	}
 
-	return fmt.Sprintf(": %s", bodyText)
+	return ": " + bodyText
 }
