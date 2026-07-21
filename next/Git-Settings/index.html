@@ -969,6 +969,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#required-token-permissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Required Token Permissions
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#domain-scoped-authentication" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1086,7 +1097,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#required-token-permissions" class="md-nav__link">
+  <a href="#required-token-permissions_1" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
         Required Token Permissions
@@ -2459,6 +2470,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#required-token-permissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Required Token Permissions
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#domain-scoped-authentication" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2576,7 +2598,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#required-token-permissions" class="md-nav__link">
+  <a href="#required-token-permissions_1" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
         Required Token Permissions
@@ -2751,7 +2773,7 @@
 <p>The following settings configure how Doco-CD authenticates with Git providers when cloning/pulling repositories.</p>
 <p>You can use either </p>
 <ul>
-<li>HTTP(S) authentication with access tokens</li>
+<li>HTTP(S) authentication with access tokens, see <a data-preview="" href="#required-token-permissions">Required Token Permissions</a> below.</li>
 <li>SSH authentication with private keys.  </li>
 <li>For multiple domains/providers, see the <a data-preview="" href="#domain-scoped-authentication">Domain-scoped authentication</a> section below.</li>
 </ul>
@@ -2774,7 +2796,7 @@
 <tr>
 <td><code>GIT_ACCESS_TOKEN</code></td>
 <td>string</td>
-<td>Access token for cloning repositories (required for private repositories) via <strong>HTTP</strong>, see <a data-preview="" href="../Setup-Access-Token/">Access Token Setup</a>. See also <a data-preview="" href="#domain-scoped-authentication">Domain-scoped authentication</a>.</td>
+<td>Access token for cloning repositories (required for private repositories) via <strong>HTTP</strong>, see <a data-preview="" href="../Setup-Access-Token/">Access Token Setup</a> and <a data-preview="" href="#required-token-permissions">Required Token Permissions</a>. See also <a data-preview="" href="#domain-scoped-authentication">Domain-scoped authentication</a>.</td>
 <td>Optional for public repositories but recommended</td>
 </tr>
 <tr>
@@ -2821,6 +2843,91 @@
 </tr>
 </tbody>
 </table>
+<h3 id="required-token-permissions">Required Token Permissions<a class="headerlink" href="#required-token-permissions" title="Permanent link">&para;</a></h3>
+<p>The token used for HTTP(S) clone/fetch access needs permission to <strong>read repository contents</strong>. The same requirements apply whether you use the global <code>GIT_ACCESS_TOKEN</code> or a domain-scoped token from <code>GIT_AUTH_DOMAINS</code>.</p>
+<p>See below provider-specific setup steps:</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:4"><input checked="checked" id="required-token-permissions-github" name="__tabbed_1" type="radio" /><input id="required-token-permissions-gitea-forgejo-gogs" name="__tabbed_1" type="radio" /><input id="required-token-permissions-gitlab" name="__tabbed_1" type="radio" /><input id="required-token-permissions-azure-devops" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="required-token-permissions-github">GitHub</label><label for="required-token-permissions-gitea-forgejo-gogs">Gitea, Forgejo, Gogs</label><label for="required-token-permissions-gitlab">Gitlab</label><label for="required-token-permissions-azure-devops">Azure DevOps</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<p>You can either use a Personal Access Token (PAT) or a GitHub App.</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="2:3"><input checked="checked" id="required-token-permissions-personal-access-token-classic" name="__tabbed_2" type="radio" /><input id="required-token-permissions-fine-grained-tokens" name="__tabbed_2" type="radio" /><input id="required-token-permissions-github-apps" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="required-token-permissions-personal-access-token-classic">Personal Access Token (Classic)</label><label for="required-token-permissions-fine-grained-tokens">Fine-grained tokens</label><label for="required-token-permissions-github-apps">GitHub Apps</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<p>See the GitHub docs for <a href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-personal-access-token-classic">Personal Access Token (Classic)</a>.</p>
+<ul>
+<li>The minimum required scope is <code>repo</code></li>
+</ul>
+</div>
+<div class="tabbed-block">
+<p>See the GitHub docs for <a href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token">Fine-grained tokens</a>.</p>
+<ul>
+<li>Repository access<ul>
+<li>Set to <code>Public Repositories (read-only)</code> for only public repositories.</li>
+<li>Set to <code>All Repositories</code> for all repositories.</li>
+</ul>
+</li>
+<li>The minimum required permissions are:<ul>
+<li><code>Contents</code> -&gt; <code>Read-only</code></li>
+<li><code>Metadata</code> -&gt; <code>Read-only</code></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="tabbed-block">
+<p>GitHub Apps are <a data-preview="" href="../Git-Settings/#github-apps">supported natively</a> in Doco-CD.</p>
+<p>See the GitHub docs for registering a <a href="https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app">GitHub Apps</a>.</p>
+<ul>
+<li>The minimum required permissions are:<ul>
+<li><code>Repository contents</code> -&gt; <code>Read-only</code></li>
+<li><code>Repository metadata</code> -&gt; <code>Read-only</code></li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+</div>
+</div>
+<div class="tabbed-block">
+<ol>
+<li>Go to your user settings.</li>
+<li>Click on <code>Applications</code>.</li>
+<li>Under <code>Generate New Token</code>:<ol>
+<li>Fill in the <code>Token Name</code> field.</li>
+<li>Set <code>Repository and Organization Access</code> to <code>All</code></li>
+<li>Open <code>Select Permissions</code> and set <code>repository</code> to <code>Read</code></li>
+<li>Click on <code>Generate Token</code> and save the token that is shown on the top of the page.</li>
+</ol>
+</li>
+</ol>
+</div>
+<div class="tabbed-block">
+<p>You can either use a personal access token, a group access token or a project access token for Gitlab.</p>
+<div class="admonition tip">
+<p class="admonition-title">Which token to use?</p>
+<p>Recommended are personal or group access tokens, as they can be used for multiple projects/repositories.</p>
+</div>
+<div class="admonition question">
+<p class="admonition-title">How to create an access token?</p>
+<p>See the Gitlab docs for</p>
+<ul>
+<li><a href="https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html">Personal access tokens</a>.</li>
+<li><a href="https://docs.gitlab.com/ee/user/group/settings/group_access_tokens.html">Group access tokens</a>.</li>
+<li><a href="https://docs.gitlab.com/ee/user/project/settings/project_access_tokens.html">Project access tokens</a>.</li>
+</ul>
+</div>
+<p><strong>Token Permissions</strong></p>
+<ul>
+<li>The role <code>Reporter</code> is sufficient (if asked).</li>
+<li>The minimum required scope is <code>read_repository</code>.</li>
+</ul>
+</div>
+<div class="tabbed-block">
+<ul>
+<li>Follow the <a href="https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate?view=azure-devops&amp;tabs=Windows">official Microsoft documentation</a> to create a Personal Access Token (PAT).</li>
+</ul>
+</div>
+</div>
+</div>
 <h3 id="domain-scoped-authentication">Domain-scoped Authentication<a class="headerlink" href="#domain-scoped-authentication" title="Permanent link">&para;</a></h3>
 <p>Use domain-scoped config when you fetch from multiple Git providers/domains and need separate credentials.</p>
 <h4 id="syntax-and-format">Syntax and Format<a class="headerlink" href="#syntax-and-format" title="Permanent link">&para;</a></h4>
@@ -2909,7 +3016,7 @@
 <li>Submodule remotes are resolved independently, so each submodule can use credentials for its own domain.</li>
 </ul>
 <h4 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h4>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="examples-using-git_auth_domains" name="__tabbed_1" type="radio" /><input id="examples-using-git_auth_domains_file" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="examples-using-git_auth_domains">Using <code>GIT_AUTH_DOMAINS</code></label><label for="examples-using-git_auth_domains_file">Using <code>GIT_AUTH_DOMAINS_FILE</code></label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="3:2"><input checked="checked" id="examples-using-git_auth_domains" name="__tabbed_3" type="radio" /><input id="examples-using-git_auth_domains_file" name="__tabbed_3" type="radio" /><div class="tabbed-labels"><label for="examples-using-git_auth_domains">Using <code>GIT_AUTH_DOMAINS</code></label><label for="examples-using-git_auth_domains_file">Using <code>GIT_AUTH_DOMAINS_FILE</code></label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">services</span><span class="p">:</span>
@@ -3051,8 +3158,9 @@ Doco-CD will auto-detect the installation by repository <em>owner/name</em> and 
 </tr>
 </tbody>
 </table>
-<h3 id="required-token-permissions">Required Token Permissions<a class="headerlink" href="#required-token-permissions" title="Permanent link">&para;</a></h3>
+<h3 id="required-token-permissions_1">Required Token Permissions<a class="headerlink" href="#required-token-permissions_1" title="Permanent link">&para;</a></h3>
 <p>The token used for commit status reporting needs permission to <strong>write commit statuses</strong> through the provider API. The same requirements apply whether you use the global <a data-preview="" href="#authentication"><code>GIT_ACCESS_TOKEN</code></a> or a <a data-preview="" href="#domain-scoped-authentication">domain-scoped token</a> from <code>GIT_AUTH_DOMAINS</code>.</p>
+<p>If an access token is also used to clone Git repositories over HTTP(S) (see <a data-preview="" href="#authentication">Authentication</a>), add the permission below <strong>in addition to</strong> the existing clone permissions required by your provider (see <a data-preview="" href="#required-token-permissions">Required Token Permissions</a> above).</p>
 <table>
 <thead>
 <tr>
