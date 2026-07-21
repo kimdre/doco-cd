@@ -189,6 +189,10 @@ func handleDeploy(ctx context.Context,
 			deployLog = deployLog.With(slog.String("reference", deployCfg.Reference))
 		}
 
+		if ctx := strings.TrimSpace(deployCfg.Context); ctx != "" {
+			deployLog = deployLog.With(slog.String("context", ctx))
+		}
+
 		// Used to make test deployments unique and prevent conflicts between tests when running in parallel.
 		// It is not used in production.
 		if testName != "" {

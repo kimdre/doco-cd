@@ -435,6 +435,10 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 			slog.String("stack", stackName),
 		)
 
+	if contextName != "" {
+		eventLog = eventLog.With(slog.String("context", contextName))
+	}
+
 	contextCLI := j.cliForContext(contextName)
 	contextSwarmMode := j.swarmModeForContext(contextName)
 
