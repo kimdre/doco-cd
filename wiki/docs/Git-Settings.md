@@ -26,14 +26,14 @@ The following settings configure how Doco-CD authenticates with Git providers wh
 
 You can use either 
 
-- HTTP(S) authentication with access tokens
+- HTTP(S) authentication with access tokens, see [Required Token Permissions](#required-token-permissions) below.
 - SSH authentication with private keys.  
 - For multiple domains/providers, see the [Domain-scoped authentication](#domain-scoped-authentication) section below.
 
 | Key                               | Type   | Description                                                                                                                                                                                                                                                                             | Default                                          |
 |-----------------------------------|--------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------|
 | `AUTH_TYPE`                       | string | AuthType is the type of authentication to use when cloning repositories via **http**.                                                                                                                                                                                                   | `oauth2`                                         |
-| `GIT_ACCESS_TOKEN`                | string | Access token for cloning repositories (required for private repositories) via **HTTP**, see [Access Token Setup](Setup-Access-Token.md). See also [Domain-scoped authentication](#domain-scoped-authentication).                                                                        | Optional for public repositories but recommended |
+| `GIT_ACCESS_TOKEN`                | string | Access token for cloning repositories (required for private repositories) via **HTTP**, see [Access Token Setup](Setup-Access-Token.md) and [Required Token Permissions](#required-token-permissions). See also [Domain-scoped authentication](#domain-scoped-authentication).          | Optional for public repositories but recommended |
 | `GIT_ACCESS_TOKEN_FILE`           | string | Path to the file containing the Git Access Token (mutually exclusive with `GIT_ACCESS_TOKEN`).                                                                                                                                                                                          |                                                  |
 | `GIT_AUTH_DOMAINS`                | list   | YAML list of domain-scoped Git credentials (HTTP token, SSH key, and GitHub App credentials). Supports exact domains and wildcard subdomains like `*.example.com` (see [Domain-scoped authentication](#domain-scoped-authentication)). Mutually exclusive with `GIT_AUTH_DOMAINS_FILE`. |                                                  |
 | `GIT_AUTH_DOMAINS_FILE`           | string | Path to a file containing the YAML configuration for `GIT_AUTH_DOMAINS` (mutually exclusive with `GIT_AUTH_DOMAINS`).                                                                                                                                                                   |                                                  |
@@ -41,6 +41,14 @@ You can use either
 | `SSH_PRIVATE_KEY_FILE`            | string | Path to the file containing the SSH private key.                                                                                                                                                                                                                                        |                                                  |
 | `SSH_PRIVATE_KEY_PASSPHRASE`      | string | Passphrase for the SSH private key (if the key was generated with a passphrase).                                                                                                                                                                                                        |                                                  |
 | `SSH_PRIVATE_KEY_PASSPHRASE_FILE` | string | Path to the file containing the SSH private key passphrase.                                                                                                                                                                                                                             |                                                  |
+
+### Required Token Permissions
+
+The token used for HTTP(S) clone/fetch access needs permission to **read repository contents**. The same requirements apply whether you use the global `GIT_ACCESS_TOKEN` or a domain-scoped token from `GIT_AUTH_DOMAINS`.
+
+See below provider-specific setup steps:
+
+--8<-- "wiki/includes/git-access-token-permissions.md"
 
 ### Domain-scoped Authentication
 
@@ -160,6 +168,8 @@ Three states are reported:
 ### Required Token Permissions
 
 The token used for commit status reporting needs permission to **write commit statuses** through the provider API. The same requirements apply whether you use the global [`GIT_ACCESS_TOKEN`](#authentication) or a [domain-scoped token](#domain-scoped-authentication) from `GIT_AUTH_DOMAINS`.
+
+If an access token is also used to clone Git repositories over HTTP(S) (see [Authentication](#authentication)), add the permission below **in addition to** the existing clone permissions required by your provider (see [Required Token Permissions](#required-token-permissions) above).
 
 | Provider        | Token type                               | Required permission                                                                                                                                                                                                                 |
 |-----------------|------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
