@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+const maxErrorResponseBodyBytes = 4 * 1024
+
 func bearerAuthToken(token string) string {
 	return "Bearer " + token
 }
@@ -53,7 +55,7 @@ func doPost(ctx context.Context, apiURL, authHeaderValue string, body any) error
 	}()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("commit status API returned %s for %s", resp.Status, apiURL)
+		return fmt.Errorf("commit status API returned %s for %s%s", resp.Status, apiURL, responseErrorDetails(resp))
 	}
 
 	return nil
@@ -80,7 +82,7 @@ func doGet(ctx context.Context, apiURL, authHeaderValue string, dst any) error {
 	}()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("commit status API returned %s for %s", resp.Status, apiURL)
+		return fmt.Errorf("commit status API returned %s for %s%s", resp.Status, apiURL, responseErrorDetails(resp))
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(dst); err != nil {
@@ -88,4 +90,29 @@ func doGet(ctx context.Context, apiURL, authHeaderValue string, dst any) error {
 	}
 
 	return nil
+}
+
+func responseErrorDetails(resp *http.Response) string {
+	if resp.Body == nil {
+		return ""
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorResponseBodyBytes+1))
+	if err != nil {
+		return fmt.Sprintf(" (failed to read response body: %v)", err)
+	}
+
+	bodyText := strings.Join(strings.Fields(strings.TrimSpace(string(body))), " ")
+	if bodyText == "" {
+		return ""
+	}
+
+	if len(body) > maxErrorResponseBodyBytes {
+		bodyText = strings.TrimSpace(string(body[:maxErrorResponseBodyBytes]))
+		bodyText = strings.Join(strings.Fields(bodyText), " ")
+
+		return fmt.Sprintf(": %s (truncated)", bodyText)
+	}
+
+	return fmt.Sprintf(": %s", bodyText)
 }
