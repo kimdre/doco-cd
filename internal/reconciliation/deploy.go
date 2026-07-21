@@ -152,6 +152,23 @@ func handleDeploy(ctx context.Context,
 	testName string,
 	metadata notification.Metadata,
 ) error {
+	dockerQuiet := false
+	if appConfig != nil {
+		dockerQuiet = appConfig.DockerQuietDeploy
+	}
+
+	// Build one Docker CLI per distinct context up front and share it across all
+	// deployments targeting that context, instead of creating a client per deployment.
+	contextCLIs := buildDeployContextCLIs(ctx, dockerCli, dockerQuiet, deployConfigs)
+
+	defer func() {
+		for contextName, entry := range contextCLIs {
+			if contextName != "" && entry.closeFn != nil {
+				entry.closeFn()
+			}
+		}
+	}()
+
 	// We'll run each deployment concurrently but grouped by repo+reference and limited by the global deployerLimiter.
 	var wg sync.WaitGroup
 
@@ -180,8 +197,19 @@ func handleDeploy(ctx context.Context,
 			defer wg.Done()
 			defer reconciliationHandler.finishStackDeployment(repoData.Name, dc.Name)
 
+			entry, ok := contextCLIs[strings.TrimSpace(dc.Context)]
+			if !ok || entry.err != nil {
+				if ok && entry.err != nil {
+					resultCh <- entry.err
+				} else {
+					resultCh <- fmt.Errorf("no docker client available for context %q", strings.TrimSpace(dc.Context))
+				}
+
+				return
+			}
+
 			err := handleOneDeploy(ctx, deployLog,
-				appConfig, dataMountPoint, dockerCli, secretProvider,
+				appConfig, dataMountPoint, entry.cli, entry.swarmMode, secretProvider,
 				dc, jobID, jobTrigger, repoData, payload, metadata)
 
 			resultCh <- err
@@ -204,9 +232,59 @@ func handleDeploy(ctx context.Context,
 	return errors.Join(errs...)
 }
 
+// deployContextCLI holds a resolved Docker CLI (and its metadata) for a single Docker context,
+// shared across all deployments in a handleDeploy batch that target that context.
+type deployContextCLI struct {
+	cli       command.Cli
+	closeFn   func() // nil for the default context (which reuses the base CLI)
+	swarmMode bool
+	err       error // set when the context CLI could not be created/probed
+}
+
+// buildDeployContextCLIs creates one Docker CLI per distinct context referenced in deployConfigs.
+// The default context (empty string) reuses baseCli; custom contexts get a dedicated client whose
+// closeFn must be called by the caller. Errors are captured per context so only the affected
+// deployments fail rather than the whole batch.
+func buildDeployContextCLIs(ctx context.Context, baseCli command.Cli, quiet bool, deployConfigs []*deployConfig.Config) map[string]deployContextCLI {
+	contextCLIs := make(map[string]deployContextCLI)
+
+	for _, dc := range deployConfigs {
+		contextName := strings.TrimSpace(dc.Context)
+		if _, exists := contextCLIs[contextName]; exists {
+			continue
+		}
+
+		if contextName == "" {
+			contextCLIs[contextName] = deployContextCLI{cli: baseCli, swarmMode: dockerSwarm.GetModeEnabled()}
+			continue
+		}
+
+		cli, closeFn, err := dockerCliForContext(baseCli, quiet, contextName)
+		if err != nil {
+			contextCLIs[contextName] = deployContextCLI{err: err}
+			continue
+		}
+
+		swarmMode, err := dockerSwarm.ResolveModeEnabled(ctx, cli.Client())
+		if err != nil {
+			if closeFn != nil {
+				closeFn()
+			}
+
+			contextCLIs[contextName] = deployContextCLI{err: fmt.Errorf("failed to check if docker host is running in swarm mode: %w", err)}
+
+			continue
+		}
+
+		contextCLIs[contextName] = deployContextCLI{cli: cli, closeFn: closeFn, swarmMode: swarmMode}
+	}
+
+	return contextCLIs
+}
+
 func handleOneDeploy(ctx context.Context, deployLog *slog.Logger,
 	appConfig *app.Config, dataMountPoint container.MountPoint,
-	dockerCli command.Cli,
+	deploymentDockerCli command.Cli, swarmMode bool,
 	secretProvider *secretprovider.SecretProvider,
 	dc *deployConfig.Config,
 	jobID string,
@@ -223,33 +301,6 @@ func handleOneDeploy(ctx context.Context, deployLog *slog.Logger,
 			return lErr
 		}
 		defer unlock()
-	}
-
-	dockerQuiet := false
-	if appConfig != nil {
-		dockerQuiet = appConfig.DockerQuietDeploy
-	}
-
-	deploymentDockerCli, closeFn, err := dockerCliForContext(dockerCli, dockerQuiet, dc.Context)
-	if err != nil {
-		return err
-	}
-
-	if closeFn != nil {
-		defer closeFn()
-	}
-
-	// For the default context use the globally cached swarm mode state (set at
-	// startup via RefreshModeEnabled). For a custom context we must probe the
-	// remote daemon directly because it may be a different host entirely.
-	var swarmMode bool
-	if strings.TrimSpace(dc.Context) == "" {
-		swarmMode = dockerSwarm.GetModeEnabled()
-	} else {
-		swarmMode, err = dockerSwarm.ResolveModeEnabled(ctx, deploymentDockerCli.Client())
-		if err != nil {
-			return fmt.Errorf("failed to check if docker host is running in swarm mode: %w", err)
-		}
 	}
 
 	stageMgr := stages.NewStageManager(
@@ -270,7 +321,7 @@ func handleOneDeploy(ctx context.Context, deployLog *slog.Logger,
 		metadata,
 	)
 
-	err = stageMgr.RunStages(ctx)
+	err := stageMgr.RunStages(ctx)
 	if err != nil {
 		return err
 	}
