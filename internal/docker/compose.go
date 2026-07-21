@@ -69,6 +69,10 @@ func init() {
 }
 
 func CreateDockerCli(quiet bool) (command.Cli, error) {
+	return CreateDockerCliWithContext(quiet, "")
+}
+
+func CreateDockerCliWithContext(quiet bool, dockerContext string) (command.Cli, error) {
 	var (
 		outputStream io.Writer
 		errorStream  io.Writer
@@ -91,7 +95,12 @@ func CreateDockerCli(quiet bool) (command.Cli, error) {
 		return nil, fmt.Errorf("failed to create docker cli: %w", err)
 	}
 
-	opts := &flags.ClientOptions{Context: "default", LogLevel: "error"}
+	contextName := strings.TrimSpace(dockerContext)
+	if contextName == "" {
+		contextName = "default"
+	}
+
+	opts := &flags.ClientOptions{Context: contextName, LogLevel: "error"}
 
 	err = dockerCli.Initialize(opts)
 	if err != nil {
@@ -458,6 +467,7 @@ func DeployStack(
 	jobLog *slog.Logger, externalRepoPath string, ctx *context.Context,
 	dockerCli command.Cli, payload *webhook.ParsedPayload, deployConfig *deploy.Config,
 	detectedChanges []Change, needSignal []SignalService, latestCommit, appVersion string,
+	swarmMode bool,
 ) error {
 	startTime := time.Now()
 
@@ -488,12 +498,12 @@ func DeployStack(
 		return fmt.Errorf("failed to load compose config: %w", err)
 	}
 
-	if err = validateScheduledJobPolicies(project, swarm.GetModeEnabled()); err != nil {
+	if err = validateScheduledJobPolicies(project, swarmMode); err != nil {
 		return fmt.Errorf("invalid scheduled job restart policy: %w", err)
 	}
 
 	if deployConfig.WaitRunningJobs {
-		if err = waitForRunningJobs(*ctx, dockerCli, deployConfig, project, stackLog); err != nil {
+		if err = waitForRunningJobs(*ctx, dockerCli, deployConfig, project, stackLog, swarmMode); err != nil {
 			return err
 		}
 	}
@@ -525,7 +535,7 @@ func DeployStack(
 	}
 
 	// When SwarmModeEnabled is true, we deploy the stack using Docker Swarm.
-	if swarm.GetModeEnabled() {
+	if swarmMode {
 		stackLog.Info("deploying swarm stack")
 
 		cfg, opts, err := LoadSwarmStack(dockerCli, project, deployConfig, externalWorkingDir)
@@ -644,7 +654,14 @@ func DeployStack(
 
 // waitForRunningJobs checks if there are any running scheduled jobs that are configured to be waited for before deployment,
 // and waits until they are finished or the timeout is reached.
-func waitForRunningJobs(ctx context.Context, dockerCli command.Cli, deployConfig *deploy.Config, project *types.Project, log *slog.Logger) error {
+func waitForRunningJobs(
+	ctx context.Context,
+	dockerCli command.Cli,
+	deployConfig *deploy.Config,
+	project *types.Project,
+	log *slog.Logger,
+	swarmMode bool,
+) error {
 	jobServices, err := getScheduledJobServicesToWait(project, deployConfig.WaitRunningJobs)
 	if err != nil {
 		return err
@@ -667,7 +684,7 @@ func waitForRunningJobs(ctx context.Context, dockerCli command.Cli, deployConfig
 	lastWaitLogAt := time.Time{}
 
 	for {
-		running, err := getRunningScheduledJobServices(ctx, dockerCli, deployConfig.Name, jobServices)
+		running, err := getRunningScheduledJobServices(ctx, dockerCli, deployConfig.Name, jobServices, swarmMode)
 		if err != nil {
 			return fmt.Errorf("failed to inspect running scheduled jobs: %w", err)
 		}
@@ -734,10 +751,16 @@ func getScheduledJobServicesToWait(project *types.Project, defaultWait bool) (se
 	return ret, nil
 }
 
-func getRunningScheduledJobServices(ctx context.Context, dockerCli command.Cli, stackName string, configuredJobServices set.Set[string]) ([]string, error) {
+func getRunningScheduledJobServices(
+	ctx context.Context,
+	dockerCli command.Cli,
+	stackName string,
+	configuredJobServices set.Set[string],
+	swarmMode bool,
+) ([]string, error) {
 	runningSet := set.New[string]()
 
-	if swarm.GetModeEnabled() {
+	if swarmMode {
 		services, err := swarm.GetStackServices(ctx, dockerCli.Client(), stackName)
 		if err != nil {
 			return nil, err
@@ -794,14 +817,14 @@ func getRunningScheduledJobServices(ctx context.Context, dockerCli command.Cli, 
 // DestroyStack destroys the stack using the provided deployment configuration.
 func DestroyStack(
 	jobLog *slog.Logger, ctx *context.Context,
-	dockerCli *command.Cli, deployConfig *deploy.Config,
+	dockerCli *command.Cli, deployConfig *deploy.Config, swarmMode bool,
 ) error {
 	stackLog := jobLog.
 		With(slog.String("stack", deployConfig.Name))
 
 	stackLog.Info("destroying stack")
 
-	if swarm.GetModeEnabled() {
+	if swarmMode {
 		err := RemoveSwarmStack(*ctx, *dockerCli, deployConfig.Name)
 		if err != nil {
 			errMsg := "failed to destroy swarm stack"

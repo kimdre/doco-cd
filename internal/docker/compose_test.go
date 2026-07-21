@@ -293,7 +293,7 @@ compose_files:
 			}),
 		).Do(func() error {
 			return DeployStack(jobLog, repoPath, &ctx, dockerCli, &p, deployConf,
-				nil, nil, latestCommit, "dev")
+				nil, nil, latestCommit, "dev", swarm.GetModeEnabled())
 		})
 		if err != nil {
 			t.Fatalf("failed to deploy stack: %v", err)
@@ -355,7 +355,7 @@ compose_files:
 
 		t.Log("Destroying deployment")
 
-		err = DestroyStack(jobLog, &ctx, &dockerCli, deployConf)
+		err = DestroyStack(jobLog, &ctx, &dockerCli, deployConf, swarm.GetModeEnabled())
 		if err != nil {
 			t.Fatal(err)
 		}

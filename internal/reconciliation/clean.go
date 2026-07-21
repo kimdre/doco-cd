@@ -19,6 +19,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 
 	"github.com/kimdre/doco-cd/internal/docker"
+	dockerSwarm "github.com/kimdre/doco-cd/internal/docker/swarm"
 )
 
 // cleanupObsoleteAutoDiscoveredContainers removes obsolete auto-discovered containers that are no longer defined in
@@ -41,6 +42,11 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 	jobLog = jobLog.With(slog.String("repo_clone_url", cloneUrl))
 
 	var processedStacks []string
+
+	swarmMode, err := dockerSwarm.ResolveModeEnabled(ctx, dockerCli.Client())
+	if err != nil {
+		return fmt.Errorf("failed to check if docker host is running in swarm mode: %w", err)
+	}
 
 	// Query both new and deprecated labels. We keep reading the deprecated label to
 	// handle containers deployed before the label rename.
@@ -152,7 +158,7 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 			removeConfig.Destroy.RemoveImages = autoDiscoverCfg.RemoveImages
 			removeConfig.Destroy.RemoveRepoDir = false // Do not remove repo dir for auto-discovered stacks
 
-			err = docker.DestroyStack(jobLog, &ctx, &dockerCli, removeConfig)
+			err = docker.DestroyStack(jobLog, &ctx, &dockerCli, removeConfig, swarmMode)
 			if err != nil {
 				return fmt.Errorf("failed to remove obsolete auto-discovered stack '%s': %w", stackName, err)
 			}

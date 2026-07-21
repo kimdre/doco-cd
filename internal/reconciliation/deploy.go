@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 
 	"github.com/docker/cli/cli/command"
@@ -13,6 +14,8 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
+	"github.com/kimdre/doco-cd/internal/docker"
+	dockerSwarm "github.com/kimdre/doco-cd/internal/docker/swarm"
 
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -80,11 +83,38 @@ func deploy(ctx context.Context,
 		return fmt.Errorf("%w: refusing to run reconciliation cleanup before trust-policy verification", ErrOCIArtifactNotVerified)
 	}
 
-	if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
-		dockerCli, repoData.SourceUrl,
-		deployConfigs,
-		metadata); err != nil {
-		return fmt.Errorf("failed to clean up obsolete auto-discovered containers: %w", err)
+	configsByContext := map[string][]*deployConfig.Config{}
+
+	for _, dc := range deployConfigs {
+		contextName := strings.TrimSpace(dc.Context)
+		configsByContext[contextName] = append(configsByContext[contextName], dc)
+	}
+
+	dockerQuiet := false
+	if appConfig != nil {
+		dockerQuiet = appConfig.DockerQuietDeploy
+	}
+
+	for contextName, groupedConfigs := range configsByContext {
+		cleanupCli, closeFn, err := dockerCliForContext(dockerCli, dockerQuiet, contextName)
+		if err != nil {
+			return err
+		}
+
+		if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
+			cleanupCli, repoData.SourceUrl,
+			groupedConfigs,
+			metadata); err != nil {
+			if closeFn != nil {
+				closeFn()
+			}
+
+			return fmt.Errorf("failed to clean up obsolete auto-discovered containers: %w", err)
+		}
+
+		if closeFn != nil {
+			closeFn()
+		}
 	}
 
 	return handleDeploy(ctx, jobLog, appConfig,
@@ -179,6 +209,25 @@ func handleOneDeploy(ctx context.Context, deployLog *slog.Logger,
 		defer unlock()
 	}
 
+	dockerQuiet := false
+	if appConfig != nil {
+		dockerQuiet = appConfig.DockerQuietDeploy
+	}
+
+	deploymentDockerCli, closeFn, err := dockerCliForContext(dockerCli, dockerQuiet, dc.Context)
+	if err != nil {
+		return err
+	}
+
+	if closeFn != nil {
+		defer closeFn()
+	}
+
+	swarmMode, err := dockerSwarm.ResolveModeEnabled(ctx, deploymentDockerCli.Client())
+	if err != nil {
+		return fmt.Errorf("failed to check if docker host is running in swarm mode: %w", err)
+	}
+
 	stageMgr := stages.NewStageManager(
 		jobID,
 		jobTrigger,
@@ -186,8 +235,9 @@ func handleOneDeploy(ctx context.Context, deployLog *slog.Logger,
 		failNotifyFunc,
 		&repoData,
 		&stages.Docker{
-			Cmd:            dockerCli,
+			Cmd:            deploymentDockerCli,
 			DataMountPoint: dataMountPoint,
+			SwarmMode:      swarmMode,
 		},
 		payLad,
 		appConfig,
@@ -196,12 +246,30 @@ func handleOneDeploy(ctx context.Context, deployLog *slog.Logger,
 		metadata,
 	)
 
-	err := stageMgr.RunStages(ctx)
+	err = stageMgr.RunStages(ctx)
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func dockerCliForContext(baseCli command.Cli, quiet bool, contextName string) (command.Cli, func(), error) {
+	contextName = strings.TrimSpace(contextName)
+	if contextName == "" {
+		return baseCli, nil, nil
+	}
+
+	contextCli, err := docker.CreateDockerCliWithContext(quiet, contextName)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create docker client for context %q: %w", contextName, err)
+	}
+
+	closeFn := func() {
+		_ = contextCli.Client().Close()
+	}
+
+	return contextCli, closeFn, nil
 }
 
 func failNotifyFunc(deployLog *slog.Logger, err error, metadata notification.Metadata) {

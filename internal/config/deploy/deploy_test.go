@@ -40,16 +40,18 @@ func TestGetConfigs(t *testing.T) {
 
 		fileName := ".doco-cd.yaml"
 		reference := "refs/heads/test"
+		contextName := "prod"
 		workingDirectory := "/test"
 		composeFiles := []string{"test.compose.yaml"}
 		customTarget := ""
 
 		dc := fmt.Sprintf(`name: %s
 reference: %s
+context: %s
 working_dir: %s
 compose_files:
   - %s
-`, t.Name(), reference, workingDirectory, composeFiles[0])
+`, t.Name(), reference, contextName, workingDirectory, composeFiles[0])
 
 		dirName := t.TempDir()
 
@@ -79,6 +81,10 @@ compose_files:
 
 		if c.Reference != reference {
 			t.Errorf("expected reference to be %v, got %s", reference, c.Reference)
+		}
+
+		if c.Context != contextName {
+			t.Errorf("expected context to be %v, got %s", contextName, c.Context)
 		}
 
 		if c.WorkingDirectory != filepath.Join(".", workingDirectory) {
@@ -117,6 +123,27 @@ compose_files:
 
 	if configs[0].Name != "oci-stack" {
 		t.Fatalf("expected config name %q, got %q", "oci-stack", configs[0].Name)
+	}
+}
+
+func TestConfig_Validate_ContextTrim(t *testing.T) {
+	t.Parallel()
+
+	dc := Config{
+		Name:    "test",
+		Context: "  remote-prod  ",
+	}
+
+	if err := defaults.Set(&dc); err != nil {
+		t.Fatalf("defaults: %v", err)
+	}
+
+	if err := dc.Validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+
+	if dc.Context != "remote-prod" {
+		t.Fatalf("expected trimmed context %q, got %q", "remote-prod", dc.Context)
 	}
 }
 
