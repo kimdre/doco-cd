@@ -10,7 +10,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/docker"
-	"github.com/kimdre/doco-cd/internal/docker/swarm"
 )
 
 func (s *StageManager) RunDestroyStage(ctx context.Context, stageLog *slog.Logger) error {
@@ -25,7 +24,7 @@ func (s *StageManager) RunDestroyStage(ctx context.Context, stageLog *slog.Logge
 	// Check if doco-cd manages the stack
 	managed := false
 
-	serviceLabels, err := docker.GetServiceLabels(ctx, s.Docker.Cmd.Client(), s.DeployConfig.Name)
+	serviceLabels, err := docker.GetServiceLabels(ctx, s.Docker.Cmd.Client(), s.Docker.SwarmMode, s.DeployConfig.Name)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve service labels: %w", err)
 	}
@@ -48,13 +47,13 @@ func (s *StageManager) RunDestroyStage(ctx context.Context, stageLog *slog.Logge
 		return fmt.Errorf("%w: %s: aborting destruction", ErrNotManagedByDocoCD, s.DeployConfig.Name)
 	}
 
-	err = docker.DestroyStack(stageLog, &ctx, &s.Docker.Cmd, s.DeployConfig)
+	err = docker.DestroyStack(stageLog, &ctx, &s.Docker.Cmd, s.DeployConfig, s.Docker.SwarmMode)
 	if err != nil {
 		return fmt.Errorf("failed to destroy stack: %w", err)
 	}
 
-	if swarm.GetModeEnabled() && s.DeployConfig.Destroy.RemoveVolumes {
-		err = docker.RemoveLabeledVolumes(ctx, s.Docker.Cmd.Client(), s.DeployConfig.Name)
+	if s.Docker.SwarmMode && s.DeployConfig.Destroy.RemoveVolumes {
+		err = docker.RemoveLabeledVolumes(ctx, s.Docker.Cmd.Client(), s.Docker.SwarmMode, s.DeployConfig.Name)
 		if err != nil {
 			return fmt.Errorf("failed to remove volumes: %w", err)
 		}

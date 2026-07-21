@@ -293,7 +293,7 @@ compose_files:
 			}),
 		).Do(func() error {
 			return DeployStack(jobLog, repoPath, &ctx, dockerCli, &p, deployConf,
-				nil, nil, latestCommit, "dev")
+				nil, nil, latestCommit, "dev", swarm.GetModeEnabled())
 		})
 		if err != nil {
 			t.Fatalf("failed to deploy stack: %v", err)
@@ -301,7 +301,7 @@ compose_files:
 
 		t.Log("Verifying deployment")
 
-		serviceLabels, err := GetLabeledServices(ctx, dockerClient, DocoCDLabels.Deployment.Name, deployConf.Name)
+		serviceLabels, err := GetLabeledServices(ctx, dockerClient, swarm.GetModeEnabled(), DocoCDLabels.Deployment.Name, deployConf.Name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -355,14 +355,14 @@ compose_files:
 
 		t.Log("Destroying deployment")
 
-		err = DestroyStack(jobLog, &ctx, &dockerCli, deployConf)
+		err = DestroyStack(jobLog, &ctx, &dockerCli, deployConf, swarm.GetModeEnabled())
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		t.Log("Verifying destruction")
 
-		serviceLabels, err = GetLabeledServices(ctx, dockerClient, DocoCDLabels.Deployment.Name, deployConf.Name)
+		serviceLabels, err = GetLabeledServices(ctx, dockerClient, swarm.GetModeEnabled(), DocoCDLabels.Deployment.Name, deployConf.Name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -371,7 +371,7 @@ compose_files:
 			t.Fatalf("expected no labeled containers after destruction, got %d", len(serviceLabels))
 		}
 
-		stats, err := GetLatestDeployStatus(ctx, dockerClient, p.CloneURL, stackName)
+		stats, err := GetLatestDeployStatus(ctx, dockerClient, swarm.GetModeEnabled(), p.CloneURL, stackName)
 		if err != nil {
 			t.Fatalf("GetLatestDeployStatus err: %v", err)
 		}

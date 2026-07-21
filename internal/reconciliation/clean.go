@@ -24,7 +24,7 @@ import (
 // cleanupObsoleteAutoDiscoveredContainers removes obsolete auto-discovered containers that are no longer defined in
 // the current deployment configurations but still exist on the Docker host.
 func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.Logger,
-	dockerCli command.Cli,
+	dockerCli command.Cli, swarmMode bool,
 	cloneUrl string, deployConfigs []*deployConfig.Config, metadata notification.Metadata,
 ) error {
 	autoDiscoveredNames := make(map[string]bool)
@@ -44,12 +44,12 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 
 	// Query both new and deprecated labels. We keep reading the deprecated label to
 	// handle containers deployed before the label rename.
-	newServiceLabels, err := docker.GetLabeledServices(ctx, dockerCli.Client(), docker.DocoCDLabels.Deployment.AutoDiscovery, "true")
+	newServiceLabels, err := docker.GetLabeledServices(ctx, dockerCli.Client(), swarmMode, docker.DocoCDLabels.Deployment.AutoDiscovery, "true")
 	if err != nil {
 		return fmt.Errorf("failed to retrieve containers for auto-discovery cleanup: %w", err)
 	}
 
-	deprecatedServiceLabels, err := docker.GetLabeledServices(ctx, dockerCli.Client(), docker.DeprecatedAutoDiscoverLabel, "true") //nolint:staticcheck // fallback for pre-rename containers
+	deprecatedServiceLabels, err := docker.GetLabeledServices(ctx, dockerCli.Client(), swarmMode, docker.DeprecatedAutoDiscoverLabel, "true") //nolint:staticcheck // fallback for pre-rename containers
 	if err != nil {
 		return fmt.Errorf("failed to retrieve containers for auto-discovery cleanup: %w", err)
 	}
@@ -152,7 +152,7 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 			removeConfig.Destroy.RemoveImages = autoDiscoverCfg.RemoveImages
 			removeConfig.Destroy.RemoveRepoDir = false // Do not remove repo dir for auto-discovered stacks
 
-			err = docker.DestroyStack(jobLog, &ctx, &dockerCli, removeConfig)
+			err = docker.DestroyStack(jobLog, &ctx, &dockerCli, removeConfig, swarmMode)
 			if err != nil {
 				return fmt.Errorf("failed to remove obsolete auto-discovered stack '%s': %w", stackName, err)
 			}

@@ -548,7 +548,7 @@ services:
 		}),
 	)
 
-	latest, err := GetLatestDeployStatus(ctx, stack.Client, repoName, stackName)
+	latest, err := GetLatestDeployStatus(ctx, stack.Client, swarm.GetModeEnabled(), repoName, stackName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -681,7 +681,7 @@ services:
 
 	dockerClient := dockerCli.Client()
 
-	latest, err := GetLatestDeployStatus(ctx, dockerClient, repoName, stackName)
+	latest, err := GetLatestDeployStatus(ctx, dockerClient, swarm.GetModeEnabled(), repoName, stackName)
 	if err != nil {
 		t.Fatal(err)
 	}

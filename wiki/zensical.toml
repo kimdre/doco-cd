@@ -35,6 +35,7 @@ nav = [
     { "Poll Settings" = "Poll-Settings.md" },
   ] },
   { Advanced = [
+    { "Docker Contexts" = "Advanced/Docker-Contexts.md" },
     { Encryption = "Advanced/Encryption.md" },
     { "External Secrets" = [
       "External-Secrets/index.md",

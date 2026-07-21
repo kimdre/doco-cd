@@ -127,6 +127,7 @@ type Docker struct {
 	Cmd            command.Cli
 	DataMountPoint container.MountPoint
 	Project        *types.Project
+	SwarmMode      bool
 }
 
 // DeploymentState holds the dynamic state information during the deployment process.

@@ -31,6 +31,13 @@ func init() {
 	})
 }
 
+// contextCLIEntry holds a Docker CLI and its resolved metadata for one Docker context.
+type contextCLIEntry struct {
+	cli       command.Cli
+	closeFn   func() // nil for the default context (which is always j.info.dockerCli)
+	swarmMode bool
+}
+
 type jobInfo struct {
 	appConfig      *app.Config
 	dataMountPoint container.MountPoint
@@ -50,9 +57,13 @@ type jobInfo struct {
 type job struct {
 	info                     jobInfo
 	deployConfigGroupByEvent map[string][]*deployConfig.Config // key is the docker event action name (for example "die" or "unhealthy").
+	restartStateMu           sync.Mutex                        // guards unhealthyRestartHistory and restartSuppressUntil against concurrent access from parallel per-context startup recovery goroutines.
 	unhealthyRestartHistory  map[string][]time.Time            // key is the docker container ID, value is the list of timestamps of recent unhealthy restart events for that container.
 	restartSuppressUntil     map[string]time.Time              // key is the docker container ID that was restarted, value is the timestamp until which follow-up events from that restart should be suppressed.
 	closeChan                chan struct{}
+	// contextCLIs maps context name (empty string = default) to its Docker CLI and metadata.
+	// Populated at the start of run() and closed when the job exits.
+	contextCLIs map[string]contextCLIEntry
 }
 
 func newJob(info jobInfo, deployConfigGroupByEvent map[string][]*deployConfig.Config) *job {

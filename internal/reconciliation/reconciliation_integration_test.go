@@ -237,6 +237,7 @@ func TestCleanupObsoleteAutoDiscoveredContainers_EmptyDiscoveredConfigs_RemovesS
 		ctx,
 		jobLog,
 		stack.DockerCli,
+		dockerSwarm.GetModeEnabled(),
 		repoURL,
 		[]*deployConfig.Config{},
 		notification.Metadata{Repository: "kimdre/doco-cd_tests", Stack: stackName, JobID: "cleanup-empty-discovered-configs"},

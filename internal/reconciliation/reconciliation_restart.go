@@ -8,13 +8,13 @@ import (
 	"time"
 
 	"github.com/containerd/errdefs"
+	"github.com/docker/cli/cli/command"
 	"github.com/moby/moby/api/types/events"
 	"github.com/moby/moby/client"
 
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 
 	"github.com/kimdre/doco-cd/internal/docker"
-	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 )
@@ -26,13 +26,13 @@ type restartAttemptResult struct {
 // restartContainer restarts a single container identified by the Docker event,
 // using the restart timeout configured in the deploy config (default 10 s).
 // Used for restart-oriented events where the container is still present.
-func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event events.Message, dc *deployConfig.Config) restartAttemptResult {
+func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event events.Message, dc *deployConfig.Config, cli command.Cli, swarmMode bool) restartAttemptResult {
 	containerID := event.Actor.ID
 	containerName := event.Actor.Attributes["name"]
 	restartOpts := restartOptionsFromDeployConfig(dc)
 	action := normalizeReconciliationEventAction(string(event.Action))
 
-	actorKind := restartNotificationActorKind()
+	actorKind := restartNotificationActorKind(swarmMode)
 	actorKindTitle := restartNotificationActorKindTitle(actorKind)
 
 	restartTimeout := 10
@@ -47,7 +47,7 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 		restartLog = restartLog.With(slog.String("restart_signal", restartOpts.Signal))
 	}
 
-	if suppressed := j.shouldSuppressUnhealthyRestart(restartLog, event, dc); suppressed {
+	if suppressed := j.shouldSuppressUnhealthyRestart(restartLog, event, dc, swarmMode); suppressed {
 		return restartAttemptResult{}
 	}
 
@@ -57,8 +57,10 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 
 	metadata := restartNotificationMetadata(j.info.metadata, action, actorKind, containerID, containerName, reconciliationTraceIDFromEvent(event))
 
-	if _, err := j.info.dockerCli.Client().ContainerRestart(ctx, containerID, restartOpts); err != nil {
+	if _, err := cli.Client().ContainerRestart(ctx, containerID, restartOpts); err != nil {
+		j.restartStateMu.Lock()
 		delete(j.restartSuppressUntil, containerID)
+		j.restartStateMu.Unlock()
 
 		if shouldFallbackToDeployOnRestartError(err) {
 			restartLog.Warn("container restart failed because the target is no longer restartable, falling back to redeploy", logger.ErrAttr(err))
@@ -121,8 +123,8 @@ func restartNotificationMetadata(base notification.Metadata, action, actorKind, 
 	return metadata
 }
 
-func restartNotificationActorKind() string {
-	if swarm.GetModeEnabled() {
+func restartNotificationActorKind(swarmMode bool) string {
+	if swarmMode {
 		return "service"
 	}
 
@@ -147,6 +149,9 @@ func (j *job) shouldSuppressRestartFollowupEvent(action string, event events.Mes
 		return false, 0
 	}
 
+	j.restartStateMu.Lock()
+	defer j.restartStateMu.Unlock()
+
 	until, ok := j.restartSuppressUntil[containerID]
 	if !ok {
 		return false, 0
@@ -167,7 +172,10 @@ func (j *job) markRestartFollowupSuppression(containerID string, timeoutSeconds 
 	}
 
 	suppressionWindow := restartFollowupSuppressionWindow(timeoutSeconds)
+
+	j.restartStateMu.Lock()
 	j.restartSuppressUntil[containerID] = time.Now().Add(suppressionWindow)
+	j.restartStateMu.Unlock()
 }
 
 func restartFollowupSuppressionWindow(timeoutSeconds int) time.Duration {
@@ -189,7 +197,7 @@ func isRestartFollowupAction(action string) bool {
 	}
 }
 
-func (j *job) shouldSuppressUnhealthyRestart(jobLog *slog.Logger, event events.Message, dc *deployConfig.Config) bool {
+func (j *job) shouldSuppressUnhealthyRestart(jobLog *slog.Logger, event events.Message, dc *deployConfig.Config, swarmMode bool) bool {
 	action := normalizeReconciliationEventAction(string(event.Action))
 	if action != "unhealthy" {
 		return false
@@ -209,9 +217,12 @@ func (j *job) shouldSuppressUnhealthyRestart(jobLog *slog.Logger, event events.M
 
 	now := time.Now()
 	window := time.Duration(windowSeconds) * time.Second
+
+	j.restartStateMu.Lock()
 	history := j.unhealthyRestartHistory[containerID]
 	suppressed, updatedHistory := evaluateUnhealthyRestartLimit(history, now, limit, window)
 	j.unhealthyRestartHistory[containerID] = updatedHistory
+	j.restartStateMu.Unlock()
 
 	if !suppressed {
 		return false
@@ -223,7 +234,7 @@ func (j *job) shouldSuppressUnhealthyRestart(jobLog *slog.Logger, event events.M
 		slog.Int("restart_window_seconds", windowSeconds),
 	)
 
-	actorKind := restartNotificationActorKind()
+	actorKind := restartNotificationActorKind(swarmMode)
 	metadata := restartNotificationMetadata(j.info.metadata, action, actorKind, containerID, event.Actor.Attributes["name"], reconciliationTraceIDFromEvent(event))
 
 	if notifyErr := notification.Send(

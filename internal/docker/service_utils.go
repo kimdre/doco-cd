@@ -103,8 +103,8 @@ func buildRepositoryLabelCandidates(repository string) map[string]struct{} {
 }
 
 // GetLatestDeployStatus retrieves the deployed status for a given repository and deploy name.
-func GetLatestDeployStatus(ctx context.Context, client client.APIClient, cloneURL string, deployName string) (LatestServiceStatus, error) {
-	serviceLabels, err := getDeployStatus(ctx, client, deployName)
+func GetLatestDeployStatus(ctx context.Context, client client.APIClient, swarmMode bool, cloneURL string, deployName string) (LatestServiceStatus, error) {
+	serviceLabels, err := getDeployStatus(ctx, client, swarmMode, deployName)
 	if err != nil {
 		return LatestServiceStatus{}, fmt.Errorf("failed to retrieve service labels: %w", err)
 	}
@@ -170,10 +170,10 @@ func getLatestServiceStatus(cacheMap *sync.Map, statusMap map[Service]ServiceSta
 	return ret
 }
 
-func getDeployStatus(ctx context.Context, client client.APIClient, deployName string) (map[Service]ServiceStatus, error) {
+func getDeployStatus(ctx context.Context, client client.APIClient, swarmMode bool, deployName string) (map[Service]ServiceStatus, error) {
 	result := make(map[Service]ServiceStatus)
 
-	if swarmInternal.GetModeEnabled() {
+	if swarmMode {
 		services, err := swarmInternal.GetStackServices(ctx, client, deployName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get services for stack %s: %w", deployName, err)

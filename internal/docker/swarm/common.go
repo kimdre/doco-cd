@@ -51,6 +51,16 @@ func RefreshModeEnabled(ctx context.Context, dockerClient client.APIClient) erro
 	return nil
 }
 
+// ResolveModeEnabled returns whether swarm mode should be treated as enabled for
+// the provided docker client, honoring the global disable flag.
+func ResolveModeEnabled(ctx context.Context, dockerClient client.APIClient) (bool, error) {
+	if disableSwarmFeature.Load() {
+		return false, nil
+	}
+
+	return checkDaemonIsSwarmManager(ctx, dockerClient)
+}
+
 func getStackFilter(namespace string) client.Filters {
 	return make(client.Filters).Add("label", convert.LabelNamespace+"="+namespace)
 }
