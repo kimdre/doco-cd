@@ -301,7 +301,7 @@ compose_files:
 
 		t.Log("Verifying deployment")
 
-		serviceLabels, err := GetLabeledServices(ctx, dockerClient, DocoCDLabels.Deployment.Name, deployConf.Name)
+		serviceLabels, err := GetLabeledServices(ctx, dockerClient, swarm.GetModeEnabled(), DocoCDLabels.Deployment.Name, deployConf.Name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -362,7 +362,7 @@ compose_files:
 
 		t.Log("Verifying destruction")
 
-		serviceLabels, err = GetLabeledServices(ctx, dockerClient, DocoCDLabels.Deployment.Name, deployConf.Name)
+		serviceLabels, err = GetLabeledServices(ctx, dockerClient, swarm.GetModeEnabled(), DocoCDLabels.Deployment.Name, deployConf.Name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -371,7 +371,7 @@ compose_files:
 			t.Fatalf("expected no labeled containers after destruction, got %d", len(serviceLabels))
 		}
 
-		stats, err := GetLatestDeployStatus(ctx, dockerClient, p.CloneURL, stackName)
+		stats, err := GetLatestDeployStatus(ctx, dockerClient, swarm.GetModeEnabled(), p.CloneURL, stackName)
 		if err != nil {
 			t.Fatalf("GetLatestDeployStatus err: %v", err)
 		}

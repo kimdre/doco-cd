@@ -124,7 +124,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		return fmt.Errorf("failed to hash deploy configuration: %w", err)
 	}
 
-	deployedState, err := docker.GetLatestDeployStatus(ctx, s.Docker.Cmd.Client(), s.Repository.Name, s.DeployConfig.Name)
+	deployedState, err := docker.GetLatestDeployStatus(ctx, s.Docker.Cmd.Client(), s.Docker.SwarmMode, s.Repository.Name, s.DeployConfig.Name)
 	if err != nil {
 		return fmt.Errorf("failed to get latest state from deployed services: %w", err)
 	}
@@ -221,7 +221,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		} else if s.DeployConfig.ForceImagePull {
 			stageLog.Debug("force image pull enabled, checking deployed image digests against registry")
 
-			imagesChanged, err = docker.HaveDeployedServiceImageDigestsChanged(ctx, s.Docker.Cmd, s.Docker.Project, stageLog)
+			imagesChanged, err = docker.HaveDeployedServiceImageDigestsChanged(ctx, s.Docker.Cmd, s.Docker.SwarmMode, s.Docker.Project, stageLog)
 			if err != nil {
 				return fmt.Errorf("failed to compare deployed service image digests: %w", err)
 			}

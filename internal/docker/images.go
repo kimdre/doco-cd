@@ -361,10 +361,10 @@ func digestFromRepoDigests(repoDigests []string) string {
 
 // getDeployedServiceImageDigests collects deployed service digests keyed by
 // service name for the given project in both Swarm and non-Swarm modes.
-func getDeployedServiceImageDigests(ctx context.Context, dockerCli command.Cli, projectName string, logger *slog.Logger) (map[string]string, error) {
+func getDeployedServiceImageDigests(ctx context.Context, dockerCli command.Cli, swarmMode bool, projectName string, logger *slog.Logger) (map[string]string, error) {
 	deployed := make(map[string]string)
 
-	if swarmInternal.GetModeEnabled() {
+	if swarmMode {
 		services, err := swarmInternal.GetStackServices(ctx, dockerCli.Client(), projectName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list swarm services for %s: %w", projectName, err)
@@ -508,7 +508,7 @@ var (
 //  2. registry digest of configured service image reference (DistributionInspect)
 //
 // Returns true as soon as one service differs.
-func HaveDeployedServiceImageDigestsChanged(ctx context.Context, dockerCli command.Cli, project *types.Project, logger *slog.Logger) (bool, error) {
+func HaveDeployedServiceImageDigestsChanged(ctx context.Context, dockerCli command.Cli, swarmMode bool, project *types.Project, logger *slog.Logger) (bool, error) {
 	// service name -> configured image ref
 	configuredRefs := make(map[string]string)
 	uniqueRefs := set.New[string]()
@@ -537,7 +537,7 @@ func HaveDeployedServiceImageDigestsChanged(ctx context.Context, dockerCli comma
 		registryDigests[ref] = digest
 	}
 
-	deployedDigests, err := deployedServiceDigestLookup(ctx, dockerCli, project.Name, logger)
+	deployedDigests, err := deployedServiceDigestLookup(ctx, dockerCli, swarmMode, project.Name, logger)
 	if err != nil {
 		return false, err
 	}

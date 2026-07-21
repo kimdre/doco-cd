@@ -256,7 +256,7 @@ func TestHaveDeployedServiceImageDigestsChanged(t *testing.T) {
 				registryCalls = append(registryCalls, ref)
 				return tc.registryDigest, nil
 			}
-			deployedServiceDigestLookup = func(context.Context, command.Cli, string, *slog.Logger) (map[string]string, error) {
+			deployedServiceDigestLookup = func(context.Context, command.Cli, bool, string, *slog.Logger) (map[string]string, error) {
 				if tc.deployedLookupErr != nil {
 					return nil, tc.deployedLookupErr
 				}
@@ -264,7 +264,7 @@ func TestHaveDeployedServiceImageDigestsChanged(t *testing.T) {
 				return tc.deployedDigests, nil
 			}
 
-			changed, err := HaveDeployedServiceImageDigestsChanged(ctx, nil, tc.project, logger)
+			changed, err := HaveDeployedServiceImageDigestsChanged(ctx, nil, false, tc.project, logger)
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("expected error %v, got %v", tc.wantErr, err)
 			}

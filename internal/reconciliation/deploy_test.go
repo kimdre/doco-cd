@@ -20,6 +20,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/app"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
+	dockerSwarm "github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
@@ -337,7 +338,7 @@ func destroyTestStack(ctx context.Context, cli client.APIClient, stackName strin
 		}
 	}
 
-	if err := docker.RemoveLabeledVolumes(ctx, cli, stackName); err != nil {
+	if err := docker.RemoveLabeledVolumes(ctx, cli, dockerSwarm.GetModeEnabled(), stackName); err != nil {
 		return err
 	}
 

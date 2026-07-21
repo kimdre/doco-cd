@@ -98,7 +98,13 @@ func deploy(ctx context.Context,
 	for contextName, groupedConfigs := range configsByContext {
 		cleanupCli, closeFn, err := dockerCliForContext(dockerCli, dockerQuiet, contextName)
 		if err != nil {
-			return err
+			// Isolate per-context failures: an unreachable context must not block
+			// cleanup/deploy for other (healthy) contexts. handleDeploy below fails
+			// only the affected deployments.
+			jobLog.Error("failed to create docker client for context, skipping cleanup for it",
+				slog.String("context", contextName), logger.ErrAttr(err))
+
+			continue
 		}
 
 		// For the default context use the globally cached swarm mode; for a custom
@@ -109,11 +115,14 @@ func deploy(ctx context.Context,
 		} else {
 			cleanupSwarmMode, err = dockerSwarm.ResolveModeEnabled(ctx, cleanupCli.Client())
 			if err != nil {
+				jobLog.Error("failed to check swarm mode for context, skipping cleanup for it",
+					slog.String("context", contextName), logger.ErrAttr(err))
+
 				if closeFn != nil {
 					closeFn()
 				}
 
-				return fmt.Errorf("failed to check swarm mode for context %q: %w", contextName, err)
+				continue
 			}
 		}
 
@@ -121,11 +130,8 @@ func deploy(ctx context.Context,
 			cleanupCli, cleanupSwarmMode, repoData.SourceUrl,
 			groupedConfigs,
 			metadata); err != nil {
-			if closeFn != nil {
-				closeFn()
-			}
-
-			return fmt.Errorf("failed to clean up obsolete auto-discovered containers: %w", err)
+			jobLog.Error("failed to clean up obsolete auto-discovered containers for context",
+				slog.String("context", contextName), logger.ErrAttr(err))
 		}
 
 		if closeFn != nil {

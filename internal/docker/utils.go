@@ -66,8 +66,8 @@ func (l Labels) getDeploymentComposeHash() (string, bool) {
 }
 
 // GetServiceLabels retrieves the Labels for each Service in a given stack.
-func GetServiceLabels(ctx context.Context, cli client.APIClient, stackName string) (map[Service]Labels, error) {
-	if swarmInternal.GetModeEnabled() {
+func GetServiceLabels(ctx context.Context, cli client.APIClient, swarmMode bool, stackName string) (map[Service]Labels, error) {
+	if swarmMode {
 		services, err := swarmInternal.GetStackServices(ctx, cli, stackName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get services for stack %s: %w", stackName, err)
@@ -108,8 +108,8 @@ func GetLabeledContainers(ctx context.Context, cli client.APIClient, key, value 
 }
 
 // GetLabeledServices retrieves all services with a specific label key and value, along with their labels.
-func GetLabeledServices(ctx context.Context, cli client.APIClient, key, value string) (map[Service]map[string]string, error) {
-	if swarmInternal.GetModeEnabled() {
+func GetLabeledServices(ctx context.Context, cli client.APIClient, swarmMode bool, key, value string) (map[Service]map[string]string, error) {
+	if swarmMode {
 		services, err := swarmInternal.GetServicesByLabel(ctx, cli, key, value)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get services with label %s=%s: %w", key, value, err)
@@ -216,9 +216,9 @@ func CheckMountPointWriteable(mountPoint container.MountPoint) error {
 	return nil
 }
 
-func RemoveLabeledVolumes(ctx context.Context, dockerClient client.APIClient, stackName string) error {
+func RemoveLabeledVolumes(ctx context.Context, dockerClient client.APIClient, swarmMode bool, stackName string) error {
 	filterLabel := api.ProjectLabel
-	if swarmInternal.GetModeEnabled() {
+	if swarmMode {
 		filterLabel = swarmInternal.StackNamespaceLabel
 	}
 

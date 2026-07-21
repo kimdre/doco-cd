@@ -24,7 +24,7 @@ func (s *StageManager) RunDestroyStage(ctx context.Context, stageLog *slog.Logge
 	// Check if doco-cd manages the stack
 	managed := false
 
-	serviceLabels, err := docker.GetServiceLabels(ctx, s.Docker.Cmd.Client(), s.DeployConfig.Name)
+	serviceLabels, err := docker.GetServiceLabels(ctx, s.Docker.Cmd.Client(), s.Docker.SwarmMode, s.DeployConfig.Name)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve service labels: %w", err)
 	}
@@ -53,7 +53,7 @@ func (s *StageManager) RunDestroyStage(ctx context.Context, stageLog *slog.Logge
 	}
 
 	if s.Docker.SwarmMode && s.DeployConfig.Destroy.RemoveVolumes {
-		err = docker.RemoveLabeledVolumes(ctx, s.Docker.Cmd.Client(), s.DeployConfig.Name)
+		err = docker.RemoveLabeledVolumes(ctx, s.Docker.Cmd.Client(), s.Docker.SwarmMode, s.DeployConfig.Name)
 		if err != nil {
 			return fmt.Errorf("failed to remove volumes: %w", err)
 		}

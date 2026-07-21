@@ -44,12 +44,12 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 
 	// Query both new and deprecated labels. We keep reading the deprecated label to
 	// handle containers deployed before the label rename.
-	newServiceLabels, err := docker.GetLabeledServices(ctx, dockerCli.Client(), docker.DocoCDLabels.Deployment.AutoDiscovery, "true")
+	newServiceLabels, err := docker.GetLabeledServices(ctx, dockerCli.Client(), swarmMode, docker.DocoCDLabels.Deployment.AutoDiscovery, "true")
 	if err != nil {
 		return fmt.Errorf("failed to retrieve containers for auto-discovery cleanup: %w", err)
 	}
 
-	deprecatedServiceLabels, err := docker.GetLabeledServices(ctx, dockerCli.Client(), docker.DeprecatedAutoDiscoverLabel, "true") //nolint:staticcheck // fallback for pre-rename containers
+	deprecatedServiceLabels, err := docker.GetLabeledServices(ctx, dockerCli.Client(), swarmMode, docker.DeprecatedAutoDiscoverLabel, "true") //nolint:staticcheck // fallback for pre-rename containers
 	if err != nil {
 		return fmt.Errorf("failed to retrieve containers for auto-discovery cleanup: %w", err)
 	}
