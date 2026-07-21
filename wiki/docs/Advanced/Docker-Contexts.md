@@ -61,6 +61,10 @@ compose_files:
 
 If `context` is omitted (or empty), doco-cd uses the default Docker context.
 
+!!! warning "Do not set `DOCKER_HOST` when using `context`"
+    If the `DOCKER_HOST` environment variable is set in the doco-cd container, Docker's endpoint resolution takes it over any Docker context, so the `context` option is silently ignored (or errors on conflict).
+    Leave `DOCKER_HOST` unset and rely on the mounted socket and Docker contexts instead.
+
 ## 5. Use different contexts per deployment
 
 ```yaml title=".doco-cd.yml" hl_lines="3 9"
