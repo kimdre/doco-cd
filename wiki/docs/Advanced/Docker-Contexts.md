@@ -8,7 +8,10 @@ tags:
 # Docker Contexts
 
 Use the `context` [deployment config](../Deploy-Settings.md#available-settings) option to target a specific [Docker context](https://docs.docker.com/engine/manage-resources/contexts/) instead of the default one.
-This lets one doco-cd instance deploy to multiple Docker hosts/clusters.
+This lets one doco-cd instance manage and deploy to multiple Docker hosts/clusters.
+
+!!! info "Default Docker context"
+    Default Docker context means the local Docker host (usually via the mounted socket `/var/run/docker.sock`).
 
 ## 1. Create Docker contexts
 
