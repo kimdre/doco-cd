@@ -2508,7 +2508,11 @@
 
 <h1 id="docker-contexts">Docker Contexts<a class="headerlink" href="#docker-contexts" title="Permanent link">&para;</a></h1>
 <p>Use the <code>context</code> <a data-preview="" href="../../Deploy-Settings/#available-settings">deployment config</a> option to target a specific <a href="https://docs.docker.com/engine/manage-resources/contexts/">Docker context</a> instead of the default one.
-This lets one doco-cd instance deploy to multiple Docker hosts/clusters.</p>
+This lets one doco-cd instance manage and deploy to multiple Docker hosts/clusters.</p>
+<div class="admonition info">
+<p class="admonition-title">Default Docker context</p>
+<p>Default Docker context means the local Docker host (usually via the mounted socket <code>/var/run/docker.sock</code>).</p>
+</div>
 <h2 id="1-create-docker-contexts">1. Create Docker contexts<a class="headerlink" href="#1-create-docker-contexts" title="Permanent link">&para;</a></h2>
 <p>Create contexts on the host that runs doco-cd.</p>
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Example: remote Docker host over TCP</span>

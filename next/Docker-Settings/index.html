@@ -871,6 +871,23 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Docker Settings
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="././" class="md-nav__link md-nav__link--active">
         
   
@@ -886,6 +903,48 @@
   
 
       </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#common-environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Common Environment Variables
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#docker-contexts" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Docker Contexts
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -2228,6 +2287,11 @@
                       
                     
                     
+                      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+                      <div class="md-sidebar-button__wrapper">
+                        <label class="md-sidebar-button" for="__toc"></label>
+                      </div>
+                    
                   
                   <div class="md-sidebar__inner">
                     
@@ -2239,6 +2303,36 @@
   
     
   
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#common-environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Common Environment Variables
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#docker-contexts" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Docker Contexts
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
   
 </nav>
                   </div>
@@ -2337,10 +2431,12 @@
 <h1 id="docker-settings">Docker Settings<a class="headerlink" href="#docker-settings" title="Permanent link">&para;</a></h1>
 <p>Settings to configure the Docker client used by Doco-CD to interact with the Docker daemon.
 All of these settings are optional and can be set using <a data-preview="" href="../App-Settings/#specifying-the-settings">environment variables</a> when running the Doco-CD container.</p>
+<h2 id="common-environment-variables">Common Environment Variables<a class="headerlink" href="#common-environment-variables" title="Permanent link">&para;</a></h2>
 <div class="admonition tip">
 <p class="admonition-title">Docker CLI environment variables are supported</p>
 <p>Doco-CD supports most of the standard Docker CLI environment variables to configure the Docker client.
-See the <a href="https://docs.docker.com/engine/reference/commandline/cli/#environment-variables">Docker CLI documentation</a> for more information on available Docker CLI environment variables.</p>
+See the <a href="https://docs.docker.com/engine/reference/commandline/cli/#environment-variables">Docker CLI documentation</a> for more information on available Docker CLI environment variables.<br />
+The list below contains the most commonly used environment variables that are relevant for Doco-CD.</p>
 </div>
 <table>
 <thead>
@@ -2367,7 +2463,7 @@ See the <a href="https://docs.docker.com/engine/reference/commandline/cli/#envir
 <tr>
 <td><code>DOCKER_HOST</code></td>
 <td>string</td>
-<td>The url that doco-cd will use to connect to the Docker Daemon (e.g. <code>tcp://192.168.0.10:2375</code>)</td>
+<td>The url that doco-cd will use to connect to the Docker Daemon (e.g. <code>tcp://192.168.0.10:2375</code>). Do not set this when using <a data-preview="" href="../Advanced/Docker-Contexts/">Docker contexts</a> in deployment configs.</td>
 <td></td>
 </tr>
 <tr>
@@ -2390,6 +2486,8 @@ See the <a href="https://docs.docker.com/engine/reference/commandline/cli/#envir
 </tr>
 </tbody>
 </table>
+<h2 id="docker-contexts">Docker Contexts<a class="headerlink" href="#docker-contexts" title="Permanent link">&para;</a></h2>
+<p>See <a data-preview="" href="../Advanced/Docker-Contexts/">Docker Contexts</a> for information on how to use Docker contexts with Doco-CD.</p>
 
 
   <nav class="md-tags" >
