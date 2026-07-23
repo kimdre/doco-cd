@@ -435,3 +435,40 @@ func TestIsEphemeralScheduledContainer(t *testing.T) {
 		})
 	}
 }
+
+func TestContainerJobKey_EphemeralMatchesSource(t *testing.T) {
+	t.Parallel()
+
+	sourceLabels := map[string]string{
+		api.ProjectLabel: "my-stack",
+		api.ServiceLabel: "nas-backup",
+	}
+
+	// The ephemeral one_off clone copies the source labels and adds the ephemeral
+	// marker, so it must resolve to the same key to be attributed to the source job.
+	ephemeralLabels := map[string]string{
+		api.ProjectLabel:                    "my-stack",
+		api.ServiceLabel:                    "nas-backup",
+		docker.DocoCDJobLabels.JobEphemeral: "true",
+	}
+
+	sourceKey := containerJobKey("source-id", sourceLabels)
+	ephemeralKey := containerJobKey("ephemeral-id", ephemeralLabels)
+
+	if sourceKey != ephemeralKey {
+		t.Fatalf("containerJobKey() ephemeral=%q source=%q, want equal", ephemeralKey, sourceKey)
+	}
+
+	if want := "container:my-stack/nas-backup"; sourceKey != want {
+		t.Fatalf("containerJobKey()=%q want=%q", sourceKey, want)
+	}
+}
+
+func TestContainerJobKey_FallsBackToContainerID(t *testing.T) {
+	t.Parallel()
+
+	got := containerJobKey("abc123", map[string]string{api.ProjectLabel: "only-project"})
+	if want := "container:abc123"; got != want {
+		t.Fatalf("containerJobKey()=%q want=%q", got, want)
+	}
+}

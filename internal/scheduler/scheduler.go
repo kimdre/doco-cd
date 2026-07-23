@@ -58,6 +58,7 @@ type scheduledJob struct {
 	labels          map[string]string
 	containerState  string // Docker container state (container mode only), e.g. "running", "exited"
 	containerStatus string // Docker container status string (container mode only), e.g. "Exited (0) 2 hours ago"
+	running         bool   // An execution is currently active (e.g. a running one_off ephemeral container)
 }
 
 type scheduledJobState struct {
@@ -155,6 +156,11 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 		info.LastRunAt = parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobLastRun])
 		info.LabelNextRunAt = parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobNextRun])
 
+		// A run is active if either an execution is currently observed (e.g. a
+		// running one_off ephemeral container) or the in-process scheduler is
+		// mid-run for this job.
+		running := job.running || runningStates[job.key]
+
 		cfg, enabled, parseErr := docker.ParseJobScheduleLabels(job.labels, s.log)
 		if parseErr != nil {
 			info.Valid = false
@@ -167,7 +173,7 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 
 		info.Enabled = enabled
 		if !enabled {
-			info.Status = statusForScheduledJob(job, cfg, runStatuses[job.key], runningStates[job.key])
+			info.Status = statusForScheduledJob(job, cfg, runStatuses[job.key], running)
 			result = append(result, info)
 
 			continue
@@ -183,7 +189,7 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 		if scheduleErr != nil {
 			info.Valid = false
 			info.ScheduleError = scheduleErr.Error()
-			info.Status = statusForScheduledJob(job, cfg, runStatuses[job.key], runningStates[job.key])
+			info.Status = statusForScheduledJob(job, cfg, runStatuses[job.key], running)
 			result = append(result, info)
 
 			continue
@@ -202,7 +208,7 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 		}
 
 		info.NextRunAt = &nextRun
-		info.Status = statusForScheduledJob(job, cfg, runStatuses[job.key], runningStates[job.key])
+		info.Status = statusForScheduledJob(job, cfg, runStatuses[job.key], running)
 
 		result = append(result, info)
 	}
@@ -595,23 +601,26 @@ func (s *scheduler) discoverJobs(ctx context.Context) ([]scheduledJob, error) {
 	}
 
 	jobByKey := make(map[string]scheduledJob)
+	runningEphemeralByKey := make(map[string]bool)
 
 	for _, c := range containers.Items {
+		key := containerJobKey(c.ID, c.Labels)
+
+		// One_off runs execute in an ephemeral clone of the source container that
+		// carries the same compose project/service labels. It must not be treated
+		// as the job itself, but while it is running it signals that the job is
+		// currently executing.
 		if isEphemeralScheduledContainer(c.Labels) {
+			if c.State == container.StateRunning {
+				runningEphemeralByKey[key] = true
+			}
+
 			continue
 		}
 
 		name := strings.TrimPrefix(firstContainerName(c.Names), "/")
 		if name == "" {
 			name = c.ID[:12]
-		}
-
-		service := c.Labels[api.ServiceLabel]
-		project := c.Labels[api.ProjectLabel]
-
-		key := "container:" + c.ID
-		if project != "" && service != "" {
-			key = "container:" + project + "/" + service
 		}
 
 		existing, exists := jobByKey[key]
@@ -631,7 +640,8 @@ func (s *scheduler) discoverJobs(ctx context.Context) ([]scheduledJob, error) {
 	}
 
 	result := make([]scheduledJob, 0, len(jobByKey))
-	for _, job := range jobByKey {
+	for key, job := range jobByKey {
+		job.running = runningEphemeralByKey[key]
 		result = append(result, job)
 	}
 
@@ -931,6 +941,21 @@ func isEphemeralScheduledContainer(labels map[string]string) bool {
 	}
 
 	return isEphemeral
+}
+
+// containerJobKey derives the stable scheduler key for a container from its
+// compose project/service labels, falling back to the container ID. An ephemeral
+// one_off clone shares the source's project/service labels, so it resolves to the
+// same key as its source job.
+func containerJobKey(containerID string, labels map[string]string) string {
+	service := labels[api.ServiceLabel]
+	project := labels[api.ProjectLabel]
+
+	if project != "" && service != "" {
+		return "container:" + project + "/" + service
+	}
+
+	return "container:" + containerID
 }
 
 func formatRunStatus(state, status string) string {
