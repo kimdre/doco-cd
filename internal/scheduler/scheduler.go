@@ -599,6 +599,10 @@ func (s *scheduler) discoverJobs(ctx context.Context) ([]scheduledJob, error) {
 	jobByKey := make(map[string]scheduledJob)
 
 	for _, c := range containers.Items {
+		if isEphemeralScheduledContainer(c.Labels) {
+			continue
+		}
+
 		name := strings.TrimPrefix(firstContainerName(c.Names), "/")
 		if name == "" {
 			name = c.ID[:12]
@@ -911,6 +915,24 @@ func firstContainerName(names []string) string {
 	}
 
 	return names[0]
+}
+
+func isEphemeralScheduledContainer(labels map[string]string) bool {
+	if labels == nil {
+		return false
+	}
+
+	raw, ok := labels[docker.DocoCDJobLabels.JobEphemeral]
+	if !ok {
+		return false
+	}
+
+	isEphemeral, err := strconv.ParseBool(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+
+	return isEphemeral
 }
 
 func formatRunStatus(state, status string) string {

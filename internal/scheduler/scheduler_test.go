@@ -378,8 +378,57 @@ func TestUpdateRuntimeRunStatus(t *testing.T) {
 	}
 
 	updateRuntimeRunStatus(job, cfg, errors.New("one-off container abc exited with status 143"))
-
 	if got := getRuntimeRunStatusesSnapshot()[job.key]; got != "exited (143)" {
 		t.Fatalf("updateRuntimeRunStatus() error status=%q want=%q", got, "exited (143)")
+	}
+}
+
+func TestIsEphemeralScheduledContainer(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		labels map[string]string
+		want   bool
+	}{
+		{
+			name: "missing label",
+			labels: map[string]string{
+				docker.DocoCDJobLabels.JobEnabled: "true",
+			},
+			want: false,
+		},
+		{
+			name: "ephemeral true",
+			labels: map[string]string{
+				docker.DocoCDJobLabels.JobEphemeral: "true",
+			},
+			want: true,
+		},
+		{
+			name: "ephemeral false",
+			labels: map[string]string{
+				docker.DocoCDJobLabels.JobEphemeral: "false",
+			},
+			want: false,
+		},
+		{
+			name: "invalid boolean",
+			labels: map[string]string{
+				docker.DocoCDJobLabels.JobEphemeral: "not-bool",
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := isEphemeralScheduledContainer(tt.labels)
+			if got != tt.want {
+				t.Fatalf("isEphemeralScheduledContainer()=%v want=%v", got, tt.want)
+			}
+		})
 	}
 }
