@@ -248,6 +248,10 @@ const scheduledJobEnabledLabel = "cd.doco.job.enabled"
 // restart-mode scheduled job. The service is deployed at 0 replicas so it does
 // not run on deployment; the scheduler scales it up to this count when the job
 // runs on its schedule.
+//
+// This must stay in sync with docker.DocoCDJobLabels.JobRestartReplicas. It is
+// duplicated here because the docker package imports this package, so the label
+// definitions cannot be imported from there without creating an import cycle.
 const scheduledJobRestartReplicasLabel = "cd.doco.job.swarm.restart_replicas"
 
 // applyScheduledJobDeployReplicas ensures scheduled job services do not run as a

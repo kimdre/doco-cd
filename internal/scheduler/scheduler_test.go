@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -377,7 +378,9 @@ func TestUpdateRuntimeRunStatus(t *testing.T) {
 		t.Fatalf("updateRuntimeRunStatus() success status=%q want=%q", got, "exited (0)")
 	}
 
-	updateRuntimeRunStatus(job, cfg, errors.New("one-off container abc exited with status 143"))
+	wrapped := fmt.Errorf("scheduled run: %w", &docker.ContainerExitError{ContainerID: "abc", ExitCode: 143})
+	updateRuntimeRunStatus(job, cfg, wrapped)
+
 	if got := getRuntimeRunStatusesSnapshot()[job.key]; got != "exited (143)" {
 		t.Fatalf("updateRuntimeRunStatus() error status=%q want=%q", got, "exited (143)")
 	}

@@ -18,6 +18,17 @@ const (
 	containerRunActionRestart containerRunAction = "restart"
 )
 
+// ContainerExitError reports that a container finished with a non-zero exit code.
+// Callers can use errors.As to recover the exit code without parsing error strings.
+type ContainerExitError struct {
+	ContainerID string
+	ExitCode    int
+}
+
+func (e *ContainerExitError) Error() string {
+	return fmt.Sprintf("one-off container %s exited with status %d", e.ContainerID, e.ExitCode)
+}
+
 func RestartContainer(ctx context.Context, apiClient client.APIClient, containerID string) error {
 	inspectResult, err := apiClient.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
 	if err != nil {
@@ -113,7 +124,7 @@ func RunContainerOneOffFromExisting(ctx context.Context, apiClient client.APICli
 		}
 
 		if waitStatus.StatusCode != 0 {
-			return fmt.Errorf("one-off container %s exited with status %d", createResult.ID, waitStatus.StatusCode)
+			return &ContainerExitError{ContainerID: createResult.ID, ExitCode: int(waitStatus.StatusCode)}
 		}
 	}
 

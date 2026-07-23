@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -42,7 +41,6 @@ var (
 	runtimeStates        = map[string]scheduledJobState{}
 	runtimeRunStatuses   = map[string]string{}
 	runtimeRunningStates = map[string]bool{}
-	exitCodeMatcher      = regexp.MustCompile(`exited with status (\d+)`)
 )
 
 type scheduledJobMode string
@@ -961,6 +959,12 @@ func formatRunStatus(state, status string) string {
 	return state + " (" + code + ")"
 }
 
+// formatExitStatus renders an exited container status with its exit code,
+// matching the format produced by formatRunStatus (e.g. "exited (0)").
+func formatExitStatus(code int) string {
+	return fmt.Sprintf("%s (%d)", container.StateExited, code)
+}
+
 func statusForScheduledJob(job scheduledJob, cfg docker.JobScheduleConfig, runtimeStatus string, running bool) string {
 	if running {
 		return string(container.StateRunning)
@@ -1007,20 +1011,14 @@ func setRuntimeStatesSnapshot(states map[string]scheduledJobState) {
 	runtimeStatesMu.Lock()
 	defer runtimeStatesMu.Unlock()
 
-	next := make(map[string]scheduledJobState, len(states))
-	maps.Copy(next, states)
-
-	runtimeStates = next
+	runtimeStates = copyMapLocked(states)
 }
 
 func getRuntimeStatesSnapshot() map[string]scheduledJobState {
 	runtimeStatesMu.RLock()
 	defer runtimeStatesMu.RUnlock()
 
-	ret := make(map[string]scheduledJobState, len(runtimeStates))
-	maps.Copy(ret, runtimeStates)
-
-	return ret
+	return copyMapLocked(runtimeStates)
 }
 
 func setRuntimeLastRun(key string, lastRun time.Time) {
@@ -1040,10 +1038,7 @@ func getRuntimeRunStatusesSnapshot() map[string]string {
 	runtimeStatesMu.RLock()
 	defer runtimeStatesMu.RUnlock()
 
-	ret := make(map[string]string, len(runtimeRunStatuses))
-	maps.Copy(ret, runtimeRunStatuses)
-
-	return ret
+	return copyMapLocked(runtimeRunStatuses)
 }
 
 func setRuntimeRunStatus(key, status string) {
@@ -1062,10 +1057,7 @@ func getRuntimeRunningStatesSnapshot() map[string]bool {
 	runtimeStatesMu.RLock()
 	defer runtimeStatesMu.RUnlock()
 
-	ret := make(map[string]bool, len(runtimeRunningStates))
-	maps.Copy(ret, runtimeRunningStates)
-
-	return ret
+	return copyMapLocked(runtimeRunningStates)
 }
 
 func setRuntimeRunInProgress(key string, inProgress bool) {
@@ -1091,19 +1083,20 @@ func updateRuntimeRunStatus(job scheduledJob, cfg docker.JobScheduleConfig, runE
 	}
 
 	if runErr == nil {
-		setRuntimeRunStatus(job.key, "exited (0)")
+		setRuntimeRunStatus(job.key, formatExitStatus(0))
 		return
 	}
 
-	matches := exitCodeMatcher.FindStringSubmatch(runErr.Error())
-	if len(matches) != 2 {
-		return
+	var exitErr *docker.ContainerExitError
+	if errors.As(runErr, &exitErr) {
+		setRuntimeRunStatus(job.key, formatExitStatus(exitErr.ExitCode))
 	}
+}
 
-	code, err := strconv.Atoi(matches[1])
-	if err != nil {
-		return
-	}
+// copyMapLocked returns a shallow copy of m. Callers must hold runtimeStatesMu.
+func copyMapLocked[K comparable, V any](m map[K]V) map[K]V {
+	ret := make(map[K]V, len(m))
+	maps.Copy(ret, m)
 
-	setRuntimeRunStatus(job.key, fmt.Sprintf("exited (%d)", code))
+	return ret
 }
