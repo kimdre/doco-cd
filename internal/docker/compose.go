@@ -350,19 +350,19 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	}
 
 	if deployConfig.ForceImagePull {
-		setDeploymentPhase(setPhase, "pulling images")
-
 		for i, s := range project.Services {
 			s.PullPolicy = types.PullPolicyAlways
 			project.Services[i] = s
 		}
+	}
 
-		err = service.Pull(ctx, project, api.PullOptions{
-			Quiet: true,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to pull images: %w", err)
-		}
+	setDeploymentPhase(setPhase, "pulling images")
+
+	err = service.Pull(ctx, project, api.PullOptions{
+		Quiet: true,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to pull images: %w", err)
 	}
 
 	if recreateMode == "" {
