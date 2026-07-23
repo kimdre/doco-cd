@@ -283,3 +283,103 @@ func TestShouldStopContainerForOneOffDeployRun(t *testing.T) {
 		})
 	}
 }
+
+func TestStatusForScheduledJob(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		job           scheduledJob
+		cfg           docker.JobScheduleConfig
+		runtimeStatus string
+		running       bool
+		want          string
+	}{
+		{
+			name: "container one_off created without runtime status stays created",
+			job: scheduledJob{
+				mode:           scheduledJobModeContainer,
+				containerState: "created",
+			},
+			cfg:  docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff},
+			want: "created",
+		},
+		{
+			name: "container one_off created with runtime status uses exit code",
+			job: scheduledJob{
+				mode:           scheduledJobModeContainer,
+				containerState: "created",
+			},
+			cfg:           docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff},
+			runtimeStatus: "exited (143)",
+			want:          "exited (143)",
+		},
+		{
+			name: "container restart keeps docker state",
+			job: scheduledJob{
+				mode:            scheduledJobModeContainer,
+				containerState:  "exited",
+				containerStatus: "Exited (0) 2 seconds ago",
+			},
+			cfg:  docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeRestart},
+			want: "exited (0)",
+		},
+		{
+			name: "swarm one_off not rewritten",
+			job: scheduledJob{
+				mode: scheduledJobModeSwarm,
+			},
+			cfg:           docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff},
+			runtimeStatus: "exited (0)",
+			want:          "",
+		},
+		{
+			name: "running state has priority",
+			job: scheduledJob{
+				mode:           scheduledJobModeContainer,
+				containerState: "created",
+			},
+			cfg:           docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff},
+			runtimeStatus: "exited (0)",
+			running:       true,
+			want:          "running",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := statusForScheduledJob(tt.job, tt.cfg, tt.runtimeStatus, tt.running)
+			if got != tt.want {
+				t.Fatalf("statusForScheduledJob()=%q want=%q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestUpdateRuntimeRunStatus(t *testing.T) {
+	t.Parallel()
+
+	runtimeStatesMu.Lock()
+	runtimeRunStatuses = map[string]string{}
+	runtimeStatesMu.Unlock()
+
+	job := scheduledJob{
+		key:  "container:project/service",
+		mode: scheduledJobModeContainer,
+	}
+	cfg := docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff}
+
+	updateRuntimeRunStatus(job, cfg, nil)
+
+	if got := getRuntimeRunStatusesSnapshot()[job.key]; got != "exited (0)" {
+		t.Fatalf("updateRuntimeRunStatus() success status=%q want=%q", got, "exited (0)")
+	}
+
+	updateRuntimeRunStatus(job, cfg, errors.New("one-off container abc exited with status 143"))
+
+	if got := getRuntimeRunStatusesSnapshot()[job.key]; got != "exited (143)" {
+		t.Fatalf("updateRuntimeRunStatus() error status=%q want=%q", got, "exited (143)")
+	}
+}

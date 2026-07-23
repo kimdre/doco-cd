@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,8 +38,11 @@ var (
 	ErrScheduledJobDisabled  = errors.New("scheduled job is disabled")
 	ErrScheduledJobAmbiguous = errors.New("multiple scheduled jobs matched, narrow your selection")
 
-	runtimeStatesMu sync.RWMutex
-	runtimeStates   = map[string]scheduledJobState{}
+	runtimeStatesMu      sync.RWMutex
+	runtimeStates        = map[string]scheduledJobState{}
+	runtimeRunStatuses   = map[string]string{}
+	runtimeRunningStates = map[string]bool{}
+	exitCodeMatcher      = regexp.MustCompile(`exited with status (\d+)`)
 )
 
 type scheduledJobMode string
@@ -133,6 +137,8 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 	stackName = strings.TrimSpace(stackName)
 	result := make([]JobInfo, 0, len(jobs))
 	states := getRuntimeStatesSnapshot()
+	runStatuses := getRuntimeRunStatusesSnapshot()
+	runningStates := getRuntimeRunningStatesSnapshot()
 
 	for _, job := range jobs {
 		stack := getJobStackName(job)
@@ -148,8 +154,6 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 			Valid:      true,
 		}
 
-		info.Status = formatRunStatus(job.containerState, job.containerStatus)
-
 		info.LastRunAt = parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobLastRun])
 		info.LabelNextRunAt = parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobNextRun])
 
@@ -157,6 +161,7 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 		if parseErr != nil {
 			info.Valid = false
 			info.ScheduleError = parseErr.Error()
+			info.Status = formatRunStatus(job.containerState, job.containerStatus)
 			result = append(result, info)
 
 			continue
@@ -164,7 +169,9 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 
 		info.Enabled = enabled
 		if !enabled {
+			info.Status = statusForScheduledJob(job, cfg, runStatuses[job.key], runningStates[job.key])
 			result = append(result, info)
+
 			continue
 		}
 
@@ -178,21 +185,26 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 		if scheduleErr != nil {
 			info.Valid = false
 			info.ScheduleError = scheduleErr.Error()
+			info.Status = statusForScheduledJob(job, cfg, runStatuses[job.key], runningStates[job.key])
 			result = append(result, info)
 
 			continue
 		}
 
 		nextRun := schedule.Next(now)
-		if state, ok := states[job.key]; ok && !state.nextRun.IsZero() {
+
+		if state, ok := states[job.key]; ok {
 			if !state.lastRun.IsZero() {
 				info.LastRunAt = new(state.lastRun)
 			}
 
-			nextRun = state.nextRun
+			if !state.nextRun.IsZero() {
+				nextRun = state.nextRun
+			}
 		}
 
 		info.NextRunAt = &nextRun
+		info.Status = statusForScheduledJob(job, cfg, runStatuses[job.key], runningStates[job.key])
 
 		result = append(result, info)
 	}
@@ -218,6 +230,7 @@ func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jo
 	s := &scheduler{
 		dockerCli: dockerCli,
 		log:       log.With(slog.String("component", "scheduler")),
+		running:   map[string]bool{},
 	}
 
 	jobs, err := s.discoverJobs(ctx)
@@ -263,7 +276,11 @@ func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jo
 
 	defer lock.UnlockStack(stack)
 
+	setRuntimeRunInProgress(job.key, true)
+	defer setRuntimeRunInProgress(job.key, false)
+
 	err = s.executeScheduledRun(ctx, job, cfg)
+	updateRuntimeRunStatus(job, cfg, err)
 	setRuntimeLastRun(job.key, schedulerNow())
 
 	if err != nil {
@@ -676,6 +693,8 @@ func (s *scheduler) triggerRun(ctx context.Context, job scheduledJob, cfg docker
 		runLog.Debug("triggering scheduled run")
 
 		err := s.executeScheduledRun(ctx, job, cfg)
+		updateRuntimeRunStatus(job, cfg, err)
+
 		if err != nil {
 			runFailed = true
 
@@ -765,6 +784,8 @@ func (s *scheduler) isRunInProgress(key string) bool {
 func (s *scheduler) setRunInProgress(key string, inProgress bool) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
+
+	setRuntimeRunInProgress(key, inProgress)
 
 	if inProgress {
 		s.running[key] = true
@@ -918,6 +939,29 @@ func formatRunStatus(state, status string) string {
 	return state + " (" + code + ")"
 }
 
+func statusForScheduledJob(job scheduledJob, cfg docker.JobScheduleConfig, runtimeStatus string, running bool) string {
+	if running {
+		return string(container.StateRunning)
+	}
+
+	status := formatRunStatus(job.containerState, job.containerStatus)
+
+	if job.mode != scheduledJobModeContainer || cfg.ExecutionMode != docker.JobExecutionModeOneOff {
+		return status
+	}
+
+	if strings.TrimSpace(job.containerState) != string(container.StateCreated) {
+		return status
+	}
+
+	runtimeStatus = strings.TrimSpace(runtimeStatus)
+	if runtimeStatus == "" {
+		return status
+	}
+
+	return runtimeStatus
+}
+
 func parseRFC3339Time(raw string) *time.Time {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -968,4 +1012,76 @@ func setRuntimeLastRun(key string, lastRun time.Time) {
 	state := runtimeStates[key]
 	state.lastRun = lastRun
 	runtimeStates[key] = state
+}
+
+func getRuntimeRunStatusesSnapshot() map[string]string {
+	runtimeStatesMu.RLock()
+	defer runtimeStatesMu.RUnlock()
+
+	ret := make(map[string]string, len(runtimeRunStatuses))
+	maps.Copy(ret, runtimeRunStatuses)
+
+	return ret
+}
+
+func setRuntimeRunStatus(key, status string) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return
+	}
+
+	runtimeStatesMu.Lock()
+	defer runtimeStatesMu.Unlock()
+
+	runtimeRunStatuses[key] = strings.TrimSpace(status)
+}
+
+func getRuntimeRunningStatesSnapshot() map[string]bool {
+	runtimeStatesMu.RLock()
+	defer runtimeStatesMu.RUnlock()
+
+	ret := make(map[string]bool, len(runtimeRunningStates))
+	maps.Copy(ret, runtimeRunningStates)
+
+	return ret
+}
+
+func setRuntimeRunInProgress(key string, inProgress bool) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return
+	}
+
+	runtimeStatesMu.Lock()
+	defer runtimeStatesMu.Unlock()
+
+	if inProgress {
+		runtimeRunningStates[key] = true
+		return
+	}
+
+	delete(runtimeRunningStates, key)
+}
+
+func updateRuntimeRunStatus(job scheduledJob, cfg docker.JobScheduleConfig, runErr error) {
+	if job.mode != scheduledJobModeContainer || cfg.ExecutionMode != docker.JobExecutionModeOneOff {
+		return
+	}
+
+	if runErr == nil {
+		setRuntimeRunStatus(job.key, "exited (0)")
+		return
+	}
+
+	matches := exitCodeMatcher.FindStringSubmatch(runErr.Error())
+	if len(matches) != 2 {
+		return
+	}
+
+	code, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return
+	}
+
+	setRuntimeRunStatus(job.key, fmt.Sprintf("exited (%d)", code))
 }
