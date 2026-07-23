@@ -426,13 +426,22 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	if len(startServices) > 0 {
 		setDeploymentPhase(setPhase, "starting services")
 
+		// Docker Compose's Start ignores StartOptions.Services and starts every
+		// service in the passed project (including containers in the "created" or
+		// "exited" state). Scheduled job services must not run at deploy time, so
+		// narrow the project to non-job services before starting.
+		startProject, err := projectForStart(project, jobServices)
+		if err != nil {
+			return err
+		}
+
 		startOpts := api.StartOptions{
-			Project:  project,
+			Project:  startProject,
 			Wait:     false,
 			Services: startServices,
 		}
 
-		err = service.Start(ctx, project.Name, startOpts)
+		err = service.Start(ctx, startProject.Name, startOpts)
 		if err != nil {
 			if !errors.Is(err, ErrNoContainerToStart) {
 				return err
@@ -1557,6 +1566,43 @@ func getNonJobServices(startServices []string, jobServices set.Set[string]) set.
 	}
 
 	return nonJobServices
+}
+
+// projectForStart returns a copy of the project containing only the services
+// that should be started at deploy time, i.e. all services except scheduled job
+// services. Docker Compose's Start starts every service present in the project
+// (ignoring StartOptions.Services), so job services must be removed from the
+// project to keep them from running on deployment.
+func projectForStart(project *types.Project, jobServices set.Set[string]) (*types.Project, error) {
+	nonJobServiceNames := make([]string, 0, len(project.Services))
+
+	for serviceName, svc := range project.Services {
+		if jobServices.Contains(serviceName) || (svc.Name != "" && jobServices.Contains(svc.Name)) {
+			continue
+		}
+
+		nonJobServiceNames = append(nonJobServiceNames, serviceName)
+	}
+
+	// WithSelectedServices treats an empty selection as "all services", which
+	// would re-include job services. Return an explicit empty-service project
+	// instead so nothing is started.
+	if len(nonJobServiceNames) == 0 {
+		emptyProject := *project
+		emptyProject.Services = types.Services{}
+
+		return &emptyProject, nil
+	}
+
+	// IgnoreDependencies keeps the selection to exactly the non-job services and
+	// strips any depends_on edges pointing at excluded (job) services, so a job
+	// service is never pulled back in as a dependency.
+	startProject, err := project.WithSelectedServices(nonJobServiceNames, types.IgnoreDependencies)
+	if err != nil {
+		return nil, fmt.Errorf("failed to select services to start: %w", err)
+	}
+
+	return startProject, nil
 }
 
 type serviceStartStatus struct {

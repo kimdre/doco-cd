@@ -37,8 +37,10 @@ var (
 	ErrScheduledJobDisabled  = errors.New("scheduled job is disabled")
 	ErrScheduledJobAmbiguous = errors.New("multiple scheduled jobs matched, narrow your selection")
 
-	runtimeStatesMu sync.RWMutex
-	runtimeStates   = map[string]scheduledJobState{}
+	runtimeStatesMu      sync.RWMutex
+	runtimeStates        = map[string]scheduledJobState{}
+	runtimeRunStatuses   = map[string]string{}
+	runtimeRunningStates = map[string]bool{}
 )
 
 type scheduledJobMode string
@@ -56,6 +58,7 @@ type scheduledJob struct {
 	labels          map[string]string
 	containerState  string // Docker container state (container mode only), e.g. "running", "exited"
 	containerStatus string // Docker container status string (container mode only), e.g. "Exited (0) 2 hours ago"
+	running         bool   // An execution is currently active (e.g. a running one_off ephemeral container)
 }
 
 type scheduledJobState struct {
@@ -133,6 +136,8 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 	stackName = strings.TrimSpace(stackName)
 	result := make([]JobInfo, 0, len(jobs))
 	states := getRuntimeStatesSnapshot()
+	runStatuses := getRuntimeRunStatusesSnapshot()
+	runningStates := getRuntimeRunningStatesSnapshot()
 
 	for _, job := range jobs {
 		stack := getJobStackName(job)
@@ -148,15 +153,19 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 			Valid:      true,
 		}
 
-		info.Status = formatRunStatus(job.containerState, job.containerStatus)
-
 		info.LastRunAt = parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobLastRun])
 		info.LabelNextRunAt = parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobNextRun])
+
+		// A run is active if either an execution is currently observed (e.g. a
+		// running one_off ephemeral container) or the in-process scheduler is
+		// mid-run for this job.
+		running := job.running || runningStates[job.key]
 
 		cfg, enabled, parseErr := docker.ParseJobScheduleLabels(job.labels, s.log)
 		if parseErr != nil {
 			info.Valid = false
 			info.ScheduleError = parseErr.Error()
+			info.Status = formatRunStatus(job.containerState, job.containerStatus)
 			result = append(result, info)
 
 			continue
@@ -164,7 +173,9 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 
 		info.Enabled = enabled
 		if !enabled {
+			info.Status = statusForScheduledJob(job, cfg, runStatuses[job.key], running)
 			result = append(result, info)
+
 			continue
 		}
 
@@ -178,21 +189,26 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 		if scheduleErr != nil {
 			info.Valid = false
 			info.ScheduleError = scheduleErr.Error()
+			info.Status = statusForScheduledJob(job, cfg, runStatuses[job.key], running)
 			result = append(result, info)
 
 			continue
 		}
 
 		nextRun := schedule.Next(now)
-		if state, ok := states[job.key]; ok && !state.nextRun.IsZero() {
+
+		if state, ok := states[job.key]; ok {
 			if !state.lastRun.IsZero() {
 				info.LastRunAt = new(state.lastRun)
 			}
 
-			nextRun = state.nextRun
+			if !state.nextRun.IsZero() {
+				nextRun = state.nextRun
+			}
 		}
 
 		info.NextRunAt = &nextRun
+		info.Status = statusForScheduledJob(job, cfg, runStatuses[job.key], running)
 
 		result = append(result, info)
 	}
@@ -218,6 +234,7 @@ func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jo
 	s := &scheduler{
 		dockerCli: dockerCli,
 		log:       log.With(slog.String("component", "scheduler")),
+		running:   map[string]bool{},
 	}
 
 	jobs, err := s.discoverJobs(ctx)
@@ -263,7 +280,11 @@ func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jo
 
 	defer lock.UnlockStack(stack)
 
+	setRuntimeRunInProgress(job.key, true)
+	defer setRuntimeRunInProgress(job.key, false)
+
 	err = s.executeScheduledRun(ctx, job, cfg)
+	updateRuntimeRunStatus(job, cfg, err)
 	setRuntimeLastRun(job.key, schedulerNow())
 
 	if err != nil {
@@ -580,19 +601,26 @@ func (s *scheduler) discoverJobs(ctx context.Context) ([]scheduledJob, error) {
 	}
 
 	jobByKey := make(map[string]scheduledJob)
+	runningEphemeralByKey := make(map[string]bool)
 
 	for _, c := range containers.Items {
+		key := containerJobKey(c.ID, c.Labels)
+
+		// One_off runs execute in an ephemeral clone of the source container that
+		// carries the same compose project/service labels. It must not be treated
+		// as the job itself, but while it is running it signals that the job is
+		// currently executing.
+		if isEphemeralScheduledContainer(c.Labels) {
+			if c.State == container.StateRunning {
+				runningEphemeralByKey[key] = true
+			}
+
+			continue
+		}
+
 		name := strings.TrimPrefix(firstContainerName(c.Names), "/")
 		if name == "" {
 			name = c.ID[:12]
-		}
-
-		service := c.Labels[api.ServiceLabel]
-		project := c.Labels[api.ProjectLabel]
-
-		key := "container:" + c.ID
-		if project != "" && service != "" {
-			key = "container:" + project + "/" + service
 		}
 
 		existing, exists := jobByKey[key]
@@ -612,7 +640,8 @@ func (s *scheduler) discoverJobs(ctx context.Context) ([]scheduledJob, error) {
 	}
 
 	result := make([]scheduledJob, 0, len(jobByKey))
-	for _, job := range jobByKey {
+	for key, job := range jobByKey {
+		job.running = runningEphemeralByKey[key]
 		result = append(result, job)
 	}
 
@@ -676,6 +705,8 @@ func (s *scheduler) triggerRun(ctx context.Context, job scheduledJob, cfg docker
 		runLog.Debug("triggering scheduled run")
 
 		err := s.executeScheduledRun(ctx, job, cfg)
+		updateRuntimeRunStatus(job, cfg, err)
+
 		if err != nil {
 			runFailed = true
 
@@ -713,7 +744,7 @@ func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, c
 			}
 
 			if errors.Is(err, docker.ErrNotAJobService) {
-				return docker.RestartService(ctx, s.dockerCli.Client(), job.id)
+				return docker.RestartScheduledSwarmService(ctx, s.dockerCli, job.id)
 			}
 
 			return err
@@ -765,6 +796,8 @@ func (s *scheduler) isRunInProgress(key string) bool {
 func (s *scheduler) setRunInProgress(key string, inProgress bool) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
+
+	setRuntimeRunInProgress(key, inProgress)
 
 	if inProgress {
 		s.running[key] = true
@@ -892,6 +925,39 @@ func firstContainerName(names []string) string {
 	return names[0]
 }
 
+func isEphemeralScheduledContainer(labels map[string]string) bool {
+	if labels == nil {
+		return false
+	}
+
+	raw, ok := labels[docker.DocoCDJobLabels.JobEphemeral]
+	if !ok {
+		return false
+	}
+
+	isEphemeral, err := strconv.ParseBool(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+
+	return isEphemeral
+}
+
+// containerJobKey derives the stable scheduler key for a container from its
+// compose project/service labels, falling back to the container ID. An ephemeral
+// one_off clone shares the source's project/service labels, so it resolves to the
+// same key as its source job.
+func containerJobKey(containerID string, labels map[string]string) string {
+	service := labels[api.ServiceLabel]
+	project := labels[api.ProjectLabel]
+
+	if project != "" && service != "" {
+		return "container:" + project + "/" + service
+	}
+
+	return "container:" + containerID
+}
+
 func formatRunStatus(state, status string) string {
 	state = strings.TrimSpace(state)
 	if state != string(container.StateExited) {
@@ -918,6 +984,35 @@ func formatRunStatus(state, status string) string {
 	return state + " (" + code + ")"
 }
 
+// formatExitStatus renders an exited container status with its exit code,
+// matching the format produced by formatRunStatus (e.g. "exited (0)").
+func formatExitStatus(code int) string {
+	return fmt.Sprintf("%s (%d)", container.StateExited, code)
+}
+
+func statusForScheduledJob(job scheduledJob, cfg docker.JobScheduleConfig, runtimeStatus string, running bool) string {
+	if running {
+		return string(container.StateRunning)
+	}
+
+	status := formatRunStatus(job.containerState, job.containerStatus)
+
+	if job.mode != scheduledJobModeContainer || cfg.ExecutionMode != docker.JobExecutionModeOneOff {
+		return status
+	}
+
+	if strings.TrimSpace(job.containerState) != string(container.StateCreated) {
+		return status
+	}
+
+	runtimeStatus = strings.TrimSpace(runtimeStatus)
+	if runtimeStatus == "" {
+		return status
+	}
+
+	return runtimeStatus
+}
+
 func parseRFC3339Time(raw string) *time.Time {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -941,20 +1036,14 @@ func setRuntimeStatesSnapshot(states map[string]scheduledJobState) {
 	runtimeStatesMu.Lock()
 	defer runtimeStatesMu.Unlock()
 
-	next := make(map[string]scheduledJobState, len(states))
-	maps.Copy(next, states)
-
-	runtimeStates = next
+	runtimeStates = copyMapLocked(states)
 }
 
 func getRuntimeStatesSnapshot() map[string]scheduledJobState {
 	runtimeStatesMu.RLock()
 	defer runtimeStatesMu.RUnlock()
 
-	ret := make(map[string]scheduledJobState, len(runtimeStates))
-	maps.Copy(ret, runtimeStates)
-
-	return ret
+	return copyMapLocked(runtimeStates)
 }
 
 func setRuntimeLastRun(key string, lastRun time.Time) {
@@ -968,4 +1057,71 @@ func setRuntimeLastRun(key string, lastRun time.Time) {
 	state := runtimeStates[key]
 	state.lastRun = lastRun
 	runtimeStates[key] = state
+}
+
+func getRuntimeRunStatusesSnapshot() map[string]string {
+	runtimeStatesMu.RLock()
+	defer runtimeStatesMu.RUnlock()
+
+	return copyMapLocked(runtimeRunStatuses)
+}
+
+func setRuntimeRunStatus(key, status string) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return
+	}
+
+	runtimeStatesMu.Lock()
+	defer runtimeStatesMu.Unlock()
+
+	runtimeRunStatuses[key] = strings.TrimSpace(status)
+}
+
+func getRuntimeRunningStatesSnapshot() map[string]bool {
+	runtimeStatesMu.RLock()
+	defer runtimeStatesMu.RUnlock()
+
+	return copyMapLocked(runtimeRunningStates)
+}
+
+func setRuntimeRunInProgress(key string, inProgress bool) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return
+	}
+
+	runtimeStatesMu.Lock()
+	defer runtimeStatesMu.Unlock()
+
+	if inProgress {
+		runtimeRunningStates[key] = true
+		return
+	}
+
+	delete(runtimeRunningStates, key)
+}
+
+func updateRuntimeRunStatus(job scheduledJob, cfg docker.JobScheduleConfig, runErr error) {
+	if job.mode != scheduledJobModeContainer || cfg.ExecutionMode != docker.JobExecutionModeOneOff {
+		return
+	}
+
+	if runErr == nil {
+		setRuntimeRunStatus(job.key, formatExitStatus(0))
+		return
+	}
+
+	var exitErr *docker.ContainerExitError
+	if errors.As(runErr, &exitErr) {
+		setRuntimeRunStatus(job.key, formatExitStatus(exitErr.ExitCode))
+	}
+}
+
+// copyMapLocked returns a shallow copy of m. Callers must hold runtimeStatesMu.
+func copyMapLocked[K comparable, V any](m map[K]V) map[K]V {
+	ret := make(map[K]V, len(m))
+	maps.Copy(ret, m)
+
+	return ret
 }

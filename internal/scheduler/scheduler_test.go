@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -281,5 +282,193 @@ func TestShouldStopContainerForOneOffDeployRun(t *testing.T) {
 				t.Fatalf("shouldStopContainerForOneOffDeployRun()=%v want=%v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestStatusForScheduledJob(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		job           scheduledJob
+		cfg           docker.JobScheduleConfig
+		runtimeStatus string
+		running       bool
+		want          string
+	}{
+		{
+			name: "container one_off created without runtime status stays created",
+			job: scheduledJob{
+				mode:           scheduledJobModeContainer,
+				containerState: "created",
+			},
+			cfg:  docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff},
+			want: "created",
+		},
+		{
+			name: "container one_off created with runtime status uses exit code",
+			job: scheduledJob{
+				mode:           scheduledJobModeContainer,
+				containerState: "created",
+			},
+			cfg:           docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff},
+			runtimeStatus: "exited (143)",
+			want:          "exited (143)",
+		},
+		{
+			name: "container restart keeps docker state",
+			job: scheduledJob{
+				mode:            scheduledJobModeContainer,
+				containerState:  "exited",
+				containerStatus: "Exited (0) 2 seconds ago",
+			},
+			cfg:  docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeRestart},
+			want: "exited (0)",
+		},
+		{
+			name: "swarm one_off not rewritten",
+			job: scheduledJob{
+				mode: scheduledJobModeSwarm,
+			},
+			cfg:           docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff},
+			runtimeStatus: "exited (0)",
+			want:          "",
+		},
+		{
+			name: "running state has priority",
+			job: scheduledJob{
+				mode:           scheduledJobModeContainer,
+				containerState: "created",
+			},
+			cfg:           docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff},
+			runtimeStatus: "exited (0)",
+			running:       true,
+			want:          "running",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := statusForScheduledJob(tt.job, tt.cfg, tt.runtimeStatus, tt.running)
+			if got != tt.want {
+				t.Fatalf("statusForScheduledJob()=%q want=%q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestUpdateRuntimeRunStatus(t *testing.T) {
+	t.Parallel()
+
+	runtimeStatesMu.Lock()
+	runtimeRunStatuses = map[string]string{}
+	runtimeStatesMu.Unlock()
+
+	job := scheduledJob{
+		key:  "container:project/service",
+		mode: scheduledJobModeContainer,
+	}
+	cfg := docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff}
+
+	updateRuntimeRunStatus(job, cfg, nil)
+
+	if got := getRuntimeRunStatusesSnapshot()[job.key]; got != "exited (0)" {
+		t.Fatalf("updateRuntimeRunStatus() success status=%q want=%q", got, "exited (0)")
+	}
+
+	wrapped := fmt.Errorf("scheduled run: %w", &docker.ContainerExitError{ContainerID: "abc", ExitCode: 143})
+	updateRuntimeRunStatus(job, cfg, wrapped)
+
+	if got := getRuntimeRunStatusesSnapshot()[job.key]; got != "exited (143)" {
+		t.Fatalf("updateRuntimeRunStatus() error status=%q want=%q", got, "exited (143)")
+	}
+}
+
+func TestIsEphemeralScheduledContainer(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		labels map[string]string
+		want   bool
+	}{
+		{
+			name: "missing label",
+			labels: map[string]string{
+				docker.DocoCDJobLabels.JobEnabled: "true",
+			},
+			want: false,
+		},
+		{
+			name: "ephemeral true",
+			labels: map[string]string{
+				docker.DocoCDJobLabels.JobEphemeral: "true",
+			},
+			want: true,
+		},
+		{
+			name: "ephemeral false",
+			labels: map[string]string{
+				docker.DocoCDJobLabels.JobEphemeral: "false",
+			},
+			want: false,
+		},
+		{
+			name: "invalid boolean",
+			labels: map[string]string{
+				docker.DocoCDJobLabels.JobEphemeral: "not-bool",
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := isEphemeralScheduledContainer(tt.labels)
+			if got != tt.want {
+				t.Fatalf("isEphemeralScheduledContainer()=%v want=%v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestContainerJobKey_EphemeralMatchesSource(t *testing.T) {
+	t.Parallel()
+
+	sourceLabels := map[string]string{
+		api.ProjectLabel: "my-stack",
+		api.ServiceLabel: "nas-backup",
+	}
+
+	// The ephemeral one_off clone copies the source labels and adds the ephemeral
+	// marker, so it must resolve to the same key to be attributed to the source job.
+	ephemeralLabels := map[string]string{
+		api.ProjectLabel:                    "my-stack",
+		api.ServiceLabel:                    "nas-backup",
+		docker.DocoCDJobLabels.JobEphemeral: "true",
+	}
+
+	sourceKey := containerJobKey("source-id", sourceLabels)
+	ephemeralKey := containerJobKey("ephemeral-id", ephemeralLabels)
+
+	if sourceKey != ephemeralKey {
+		t.Fatalf("containerJobKey() ephemeral=%q source=%q, want equal", ephemeralKey, sourceKey)
+	}
+
+	if want := "container:my-stack/nas-backup"; sourceKey != want {
+		t.Fatalf("containerJobKey()=%q want=%q", sourceKey, want)
+	}
+}
+
+func TestContainerJobKey_FallsBackToContainerID(t *testing.T) {
+	t.Parallel()
+
+	got := containerJobKey("abc123", map[string]string{api.ProjectLabel: "only-project"})
+	if want := "container:abc123"; got != want {
+		t.Fatalf("containerJobKey()=%q want=%q", got, want)
 	}
 }

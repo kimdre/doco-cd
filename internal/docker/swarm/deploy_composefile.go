@@ -82,6 +82,11 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Dep
 		return err
 	}
 
+	// Scheduled job services must not run as a side effect of the deployment.
+	// Pin replicated scheduled services to 0 replicas (recording the intended
+	// count) so only the scheduler runs them on their schedule.
+	applyScheduledJobDeployReplicas(services)
+
 	serviceIDs, err := deployServices(ctx, dockerCli, services, namespace, opts.SendRegistryAuth, opts.ResolveImage)
 	if err != nil {
 		return err
@@ -238,6 +243,51 @@ type deployedService struct {
 }
 
 const scheduledJobEnabledLabel = "cd.doco.job.enabled"
+
+// scheduledJobRestartReplicasLabel stores the intended replica count for a
+// restart-mode scheduled job. The service is deployed at 0 replicas so it does
+// not run on deployment; the scheduler scales it up to this count when the job
+// runs on its schedule.
+//
+// This must stay in sync with docker.DocoCDJobLabels.JobRestartReplicas. It is
+// duplicated here because the docker package imports this package, so the label
+// definitions cannot be imported from there without creating an import cycle.
+const scheduledJobRestartReplicasLabel = "cd.doco.job.swarm.restart_replicas"
+
+// applyScheduledJobDeployReplicas ensures scheduled job services do not run as a
+// side effect of a deployment. Classic replicated scheduled services are pinned
+// to 0 replicas and their intended replica count is recorded in a label so the
+// scheduler can scale them up when the job runs on its schedule.
+//
+// Global-mode scheduled services cannot be scaled to 0 (a global service always
+// runs one task per node) and are left unchanged.
+func applyScheduledJobDeployReplicas(services map[string]swarmTypes.ServiceSpec) {
+	for name, spec := range services {
+		if !isScheduledServiceSpec(spec) {
+			continue
+		}
+
+		if spec.Mode.Replicated == nil || spec.TaskTemplate.ContainerSpec == nil {
+			continue
+		}
+
+		replicas := uint64(1)
+		if spec.Mode.Replicated.Replicas != nil {
+			replicas = *spec.Mode.Replicated.Replicas
+		}
+
+		if spec.TaskTemplate.ContainerSpec.Labels == nil {
+			spec.TaskTemplate.ContainerSpec.Labels = map[string]string{}
+		}
+
+		spec.TaskTemplate.ContainerSpec.Labels[scheduledJobRestartReplicasLabel] = strconv.FormatUint(replicas, 10)
+
+		zero := uint64(0)
+		spec.Mode.Replicated.Replicas = &zero
+
+		services[name] = spec
+	}
+}
 
 func deployServices(ctx context.Context, dockerCLI command.Cli, services map[string]swarmTypes.ServiceSpec, namespace convert.Namespace, sendAuth bool, resolveImage string) ([]deployedService, error) {
 	apiClient := dockerCLI.Client()

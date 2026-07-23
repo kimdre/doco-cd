@@ -91,10 +91,22 @@ This is useful for running periodic tasks such as backups, maintenance scripts, 
 
 The execution mode determines how scheduled jobs are run and managed by doco-cd and can be configured using the `cd.doco.job.execution_mode` label on the service.
 
+!!! info "Scheduled jobs never run on deployment"
+    Scheduled jobs only run when their [schedule](#schedule-formats) fires, never as a side effect of a (re)deployment.
+    On deployment the job's service/container is prepared but left idle:
+
+    - Docker (Standalone): the container is created but not started.
+    - Docker Swarm: the service is deployed with `0` replicas (see the limitation for `global` restart-mode jobs below).
+
 ### `restart`
 
 By default, scheduled jobs will be executed in `restart` mode, which means the service will be created on deployment 
 and then re-/started at the scheduled time without being removed after completion.
+
+!!! warning "Docker Swarm `global` + `restart` limitation"
+    In Docker Swarm, restart-mode scheduled jobs are deployed with `0` replicas so they do not run on deployment.
+    `global` services cannot be scaled to `0` (a global service always runs one task per node), so a `global` service
+    combined with `restart` mode **will** run on deployment. Use [`one_off`](#one_off) mode for global scheduled jobs instead.
 
 ### `one_off`
 

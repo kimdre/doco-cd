@@ -161,6 +161,132 @@ func TestGetJobServices(t *testing.T) {
 	}
 }
 
+func TestProjectForStart_ExcludesJobServices(t *testing.T) {
+	t.Parallel()
+
+	project := &types.Project{
+		Name: "stack",
+		Services: types.Services{
+			"api": {
+				Name: "api",
+			},
+			"init": {
+				Name: "init",
+			},
+			"web": {
+				Name: "web",
+				DependsOn: types.DependsOnConfig{
+					"init": {Condition: "service_completed_successfully"},
+				},
+			},
+			"job": {
+				Name: "job",
+				Labels: map[string]string{
+					docoCDJobLabelNames.JobEnabled:  "true",
+					docoCDJobLabelNames.JobSchedule: "*/5 * * * *",
+				},
+			},
+		},
+	}
+
+	jobServices, err := getJobServices(project)
+	if err != nil {
+		t.Fatalf("getJobServices() failed: %v", err)
+	}
+
+	startProject, err := projectForStart(project, jobServices)
+	if err != nil {
+		t.Fatalf("projectForStart() failed: %v", err)
+	}
+
+	if _, ok := startProject.Services["job"]; ok {
+		t.Fatalf("scheduled job service must be excluded from the start project")
+	}
+
+	for _, name := range []string{"api", "init", "web"} {
+		if _, ok := startProject.Services[name]; !ok {
+			t.Fatalf("expected non-job service %q to be retained in the start project", name)
+		}
+	}
+
+	// The original project must be left untouched.
+	if _, ok := project.Services["job"]; !ok {
+		t.Fatalf("original project must not be mutated")
+	}
+}
+
+func TestProjectForStart_DependencyOnJobServiceStripped(t *testing.T) {
+	t.Parallel()
+
+	project := &types.Project{
+		Name: "stack",
+		Services: types.Services{
+			"api": {
+				Name: "api",
+				DependsOn: types.DependsOnConfig{
+					"job": {Condition: "service_started"},
+				},
+			},
+			"job": {
+				Name: "job",
+				Labels: map[string]string{
+					docoCDJobLabelNames.JobEnabled:  "true",
+					docoCDJobLabelNames.JobSchedule: "*/5 * * * *",
+				},
+			},
+		},
+	}
+
+	jobServices, err := getJobServices(project)
+	if err != nil {
+		t.Fatalf("getJobServices() failed: %v", err)
+	}
+
+	startProject, err := projectForStart(project, jobServices)
+	if err != nil {
+		t.Fatalf("projectForStart() failed: %v", err)
+	}
+
+	if _, ok := startProject.Services["job"]; ok {
+		t.Fatalf("job service must not be pulled in as a dependency")
+	}
+
+	if _, ok := startProject.Services["api"].DependsOn["job"]; ok {
+		t.Fatalf("depends_on edge to job service must be stripped")
+	}
+}
+
+func TestProjectForStart_OnlyJobServices(t *testing.T) {
+	t.Parallel()
+
+	project := &types.Project{
+		Name: "stack",
+		Services: types.Services{
+			"job": {
+				Name: "job",
+				Labels: map[string]string{
+					docoCDJobLabelNames.JobEnabled:  "true",
+					docoCDJobLabelNames.JobSchedule: "*/5 * * * *",
+				},
+			},
+		},
+	}
+
+	jobServices, err := getJobServices(project)
+	if err != nil {
+		t.Fatalf("getJobServices() failed: %v", err)
+	}
+
+	startProject, err := projectForStart(project, jobServices)
+	if err != nil {
+		t.Fatalf("projectForStart() failed: %v", err)
+	}
+
+	if len(startProject.Services) != 0 {
+		t.Fatalf("expected no services to start when only job services exist, got: %v", startProject.ServiceNames())
+	}
+}
+
 func TestAssessStartedServiceStates_IgnoresExitedJobContainer(t *testing.T) {
 	t.Parallel()
 
