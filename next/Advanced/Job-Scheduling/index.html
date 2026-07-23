@@ -2703,9 +2703,24 @@ If you run multiple doco-cd instances against the same Docker socket, each insta
 </div>
 <h2 id="execution-modes">Execution modes<a class="headerlink" href="#execution-modes" title="Permanent link">&para;</a></h2>
 <p>The execution mode determines how scheduled jobs are run and managed by doco-cd and can be configured using the <code>cd.doco.job.execution_mode</code> label on the service.</p>
+<div class="admonition info">
+<p class="admonition-title">Scheduled jobs never run on deployment</p>
+<p>Scheduled jobs only run when their <a data-preview="" href="#schedule-formats">schedule</a> fires, never as a side effect of a (re)deployment.
+On deployment the job's service/container is prepared but left idle:</p>
+<ul>
+<li>Docker (Standalone): the container is created but not started.</li>
+<li>Docker Swarm: the service is deployed with <code>0</code> replicas (see the limitation for <code>global</code> restart-mode jobs below).</li>
+</ul>
+</div>
 <h3 id="restart"><code>restart</code><a class="headerlink" href="#restart" title="Permanent link">&para;</a></h3>
 <p>By default, scheduled jobs will be executed in <code>restart</code> mode, which means the service will be created on deployment 
 and then re-/started at the scheduled time without being removed after completion.</p>
+<div class="admonition warning">
+<p class="admonition-title">Docker Swarm <code>global</code> + <code>restart</code> limitation</p>
+<p>In Docker Swarm, restart-mode scheduled jobs are deployed with <code>0</code> replicas so they do not run on deployment.
+<code>global</code> services cannot be scaled to <code>0</code> (a global service always runs one task per node), so a <code>global</code> service
+combined with <code>restart</code> mode <strong>will</strong> run on deployment. Use <a data-preview="" href="#one_off"><code>one_off</code></a> mode for global scheduled jobs instead.</p>
+</div>
 <h3 id="one_off"><code>one_off</code><a class="headerlink" href="#one_off" title="Permanent link">&para;</a></h3>
 <p>Alternatively, you can configure scheduled jobs to run in <code>one_off</code> mode, which means a new ephemeral container will 
 be created for each scheduled run and removed after completion.</p>
