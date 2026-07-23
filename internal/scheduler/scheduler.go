@@ -713,7 +713,7 @@ func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, c
 			}
 
 			if errors.Is(err, docker.ErrNotAJobService) {
-				return docker.RestartService(ctx, s.dockerCli.Client(), job.id)
+				return docker.RestartScheduledSwarmService(ctx, s.dockerCli, job.id)
 			}
 
 			return err
