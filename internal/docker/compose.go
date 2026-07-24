@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -87,9 +88,13 @@ func CreateDockerCliWithContext(quiet bool, dockerContext string) (command.Cli, 
 		errorStream = os.Stderr
 	}
 
+	// Capture all writes to cli.Err() in a buffer so that the error printed by
+	// DockerEndpoint() (see below) is retrievable regardless of quiet mode.
+	var initErrBuf bytes.Buffer
+
 	dockerCli, err := command.NewDockerCli(
 		command.WithOutputStream(outputStream),
-		command.WithErrorStream(errorStream),
+		command.WithErrorStream(io.MultiWriter(errorStream, &initErrBuf)),
 		command.WithAPIClientOptions(client.FromEnv),
 	)
 	if err != nil {
@@ -106,6 +111,21 @@ func CreateDockerCliWithContext(quiet bool, dockerContext string) (command.Cli, 
 	err = dockerCli.Initialize(opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize docker cli: %w", err)
+	}
+
+	// Discard any non-fatal warnings written by Initialize() (e.g. "WARNING: Error
+	// loading config file: permission denied") so they don't trip the check below.
+	initErrBuf.Reset()
+
+	/* DockerEndpoint() safely triggers the internal lazy initialization (sync.Once).
+	Unlike Client(), it does NOT call os.Exit(1) on failure — instead it prints the
+	error to cli.Err() (captured above in initErrBuf) and returns whatever partial
+	endpoint was resolved. Check the buffer first so we surface the real Docker error. */
+	_ = dockerCli.DockerEndpoint()
+
+	if initErrBuf.Len() > 0 {
+		return nil, fmt.Errorf("failed to initialize Docker CLI for context %q: %s",
+			contextName, strings.TrimSpace(initErrBuf.String()))
 	}
 
 	return dockerCli, nil

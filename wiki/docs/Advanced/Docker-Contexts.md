@@ -48,6 +48,22 @@ services:
 !!! tip "SSH host verification"
     Docker's SSH transport respects `~/.ssh/known_hosts`. Pre-populate it (or use `StrictHostKeyChecking=accept-new` via `SSH_OPTIONS`) to avoid interactive prompts on first connection.
 
+### SSH key requirements
+
+The SSH key used must:
+
+- Be **passphrase-free** — Docker's SSH transport runs `ssh` non-interactively inside the container; a passphrase prompt will cause the connection to fail with `Permission denied`
+- Have the corresponding **public key in `~/.ssh/authorized_keys`** on the remote host for the connecting user
+- Be a supported key type (Ed25519 recommended: `ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_doco-cd -N ""`)
+
+To verify the key works from inside the container before using it with doco-cd:
+
+```sh
+docker exec doco-cd ssh -l <user> -o ConnectTimeout=30 -T -- <host> docker system dial-stdio
+```
+
+If this command hangs or returns output (even garbled binary), the SSH connection and key are working correctly.
+
 ## 1. Create Docker contexts
 
 Create contexts on the host that runs doco-cd.
@@ -70,9 +86,9 @@ docker --context staging-remote info
 
 ## 3. Mount Docker context config into doco-cd
 
-Docker context config must be available in the doco-cd container.
+Docker context metadata and the SSH directory must be available in the doco-cd container.
 
-```yaml title="docker-compose.yml" hl_lines="7"
+```yaml title="docker-compose.yml" hl_lines="7-8"
 services:
   doco-cd:
     image: ghcr.io/kimdre/doco-cd:latest
@@ -80,9 +96,22 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ~/.docker:/root/.docker:ro # (1)!
+      - ~/.ssh:/root/.ssh:ro       # (2)!
 ```
 
-1. Docker contexts + credentials
+1. Docker context metadata and credentials — required for all non-default contexts
+2. SSH keys and `known_hosts` — required for SSH contexts only
+
+!!! warning "File permissions"
+    The mounted `~/.docker` and `~/.ssh` directories (and all files within them) must be **readable by the user running inside the container** (root by default).
+    If you see `permission denied` errors referencing context metadata or SSH keys, fix permissions on the host:
+
+    ```sh
+    chmod -R a+r ~/.docker/contexts/
+    find ~/.docker/contexts/ -type d -exec chmod a+rx {} \;
+    chmod 600 ~/.ssh/id_*
+    chmod 644 ~/.ssh/known_hosts ~/.ssh/authorized_keys 2>/dev/null || true
+    ```
 
 If you need private registry access, ensure the mounted Docker config includes required auth data (see [Private Container Registries](Private-Container-Registries.md)).
 
@@ -120,3 +149,68 @@ working_dir: deploy
 ```
 
 Each deployment uses its own Docker context for deploy, destroy, and cleanup operations.
+
+## Remote host limitations
+
+When deploying to a remote Docker context, the **remote daemon** executes the compose stack. This has important implications for bind mounts, configs, and secrets.
+
+### Bind mounts
+
+Bind mount source paths must exist on the **remote host**, not the doco-cd host:
+
+```yaml
+volumes:
+  - /data/myapp:/app/data  # ← this path must exist on the remote host
+```
+
+Named volumes work fine — they are created on the remote host automatically:
+
+```yaml
+volumes:
+  mydata:  # ← created on the remote host
+
+services:
+  app:
+    volumes:
+      - mydata:/app/data
+```
+
+### Configs and secrets with `file:` sources
+
+Docker Compose resolves `file:` references to absolute paths on the doco-cd host, then sends those paths to the remote daemon. The remote daemon tries to bind-mount them locally — and fails because the files don't exist there.
+
+```yaml
+# ✗ Will fail on remote contexts — remote daemon can't access this path
+configs:
+  app.conf:
+    file: app.conf
+
+secrets:
+  api_key:
+    file: api_key.txt
+```
+
+**Alternatives that work with remote contexts:**
+
+=== "Inline content"
+
+    ```yaml
+    configs:
+      app.conf:
+        content: |
+          key=value
+          other=setting
+    ```
+
+=== "Environment variable (secrets)"
+
+    ```yaml
+    secrets:
+      api_key:
+        environment: API_KEY  # read from env var on the remote host
+    ```
+
+=== "Docker Swarm"
+
+    Swarm secrets and configs are uploaded to the cluster and distributed automatically — they work correctly with remote contexts.
+    See [Swarm Mode](Swarm-Mode.md) for details.

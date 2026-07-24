@@ -175,7 +175,18 @@ func (r *reconciliation) addJob(ctx context.Context, info jobInfo) {
 	newJob := newJob(info, cfg)
 
 	r.repoJobs[info.repoData.Name] = newJob
-	go newJob.run(context.WithoutCancel(ctx))
+
+	jobLog := info.jobLog
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				jobLog.Error("reconciliation job panicked", slog.Any("recover", r))
+			}
+		}()
+
+		newJob.run(context.WithoutCancel(ctx))
+	}()
 }
 
 func getDeployConfigGroupByEvent(dcs []*deployConfig.Config) map[string][]*deployConfig.Config {

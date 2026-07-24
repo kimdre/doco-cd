@@ -61,8 +61,22 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
         CGO_ENABLED=1 CC=musl-gcc go build -ldflags="-s -w -X github.com/kimdre/doco-cd/internal/config/app.Version=${APP_VERSION} ${BW_SDK_BUILD_FLAGS}" -o / ./...; \
     fi
 
-FROM debian:bookworm-slim AS ssh-client
-RUN apt-get update && apt-get install -y --no-install-recommends openssh-client && rm -rf /var/lib/apt/lists/*
+FROM debian:trixie-slim AS ssh-client
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends openssh-client && \
+    rm -rf /var/lib/apt/lists/* && \
+    # Collect the ssh binary and ALL its shared library dependencies into /ssh-root/, \
+    # preserving the real (resolved) directory structure for the release-stage COPY.
+    # realpath resolves /lib -> /usr/lib symlinks so libraries land under /usr/lib/
+    # in the distroless image (which uses the merged-usr layout: /lib -> usr/lib).
+    mkdir -p /ssh-root/usr/bin && \
+    cp /usr/bin/ssh /ssh-root/usr/bin/ssh && \
+    ldd /usr/bin/ssh | awk '$3 ~ /^\// { print $3 }' | \
+        while IFS= read -r lib; do \
+          dir=$(realpath "$(dirname "$lib")"); \
+          mkdir -p "/ssh-root$dir"; \
+          cp -L "$lib" "/ssh-root$dir/$(basename "$lib")"; \
+        done
 
 FROM gcr.io/distroless/base-debian13@sha256:f4a335ca209e1d2ee873102c17c389ad0142e3d5b21aee2817e9cc9c01d87d20 AS release
 
@@ -74,8 +88,9 @@ COPY --from=docker/buildx-bin:0.35.0@sha256:917570d8d0ae91ae49251f84f848a6801eed
 
 COPY --from=build /doco-cd /doco-cd
 
-# SSH client required for Docker contexts using the ssh:// transport
-COPY --from=ssh-client /usr/bin/ssh /usr/bin/ssh
+# SSH client required for Docker contexts using the ssh:// transport.
+# The entire /ssh-root tree (binary + all shared library dependencies) is copied in.
+COPY --from=ssh-client /ssh-root/ /
 
 ENV TZ=UTC \
     HTTP_PORT=80 \
