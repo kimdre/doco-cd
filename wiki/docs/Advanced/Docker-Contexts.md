@@ -13,6 +13,40 @@ This lets one doco-cd instance manage and deploy to multiple Docker hosts/cluste
 !!! info "Default Docker context"
     Default Docker context means the local Docker host (usually via the mounted socket `/var/run/docker.sock`).
 
+## Supported transports
+
+doco-cd includes an SSH client, so both TCP and SSH Docker contexts work out of the box:
+
+| Transport | Example endpoint                 | Notes                                 |
+|-----------|----------------------------------|---------------------------------------|
+| TCP       | `tcp://host:2376`                | Plaintext; use TLS for production     |
+| TCP+TLS   | `tcp://host:2376` with TLS certs | Secure TCP                            |
+| SSH       | `ssh://user@host`                | Uses the `ssh` binary; mount SSH keys |
+
+### SSH context example
+
+```sh
+docker context create prod-remote --docker host=ssh://deploy@prod-host
+```
+
+Mount your SSH keys into the doco-cd container so the bundled `ssh` binary can authenticate:
+
+```yaml title="docker-compose.yml" hl_lines="7-8"
+services:
+  doco-cd:
+    image: ghcr.io/kimdre/doco-cd:latest
+    container_name: doco-cd
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ~/.docker:/root/.docker:ro
+      - ~/.ssh:/root/.ssh:ro # (1)!
+```
+
+1. Mount your SSH keys and `known_hosts` for context connections
+
+!!! tip "SSH host verification"
+    Docker's SSH transport respects `~/.ssh/known_hosts`. Pre-populate it (or use `StrictHostKeyChecking=accept-new` via `SSH_OPTIONS`) to avoid interactive prompts on first connection.
+
 ## 1. Create Docker contexts
 
 Create contexts on the host that runs doco-cd.
