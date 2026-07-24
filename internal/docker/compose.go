@@ -359,7 +359,8 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	setDeploymentPhase(setPhase, "pulling images")
 
 	err = service.Pull(ctx, project, api.PullOptions{
-		Quiet: true,
+		Quiet:           true,
+		IgnoreBuildable: true,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to pull images: %w", err)
