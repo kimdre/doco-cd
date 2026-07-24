@@ -61,24 +61,30 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
         CGO_ENABLED=1 CC=musl-gcc go build -ldflags="-s -w -X github.com/kimdre/doco-cd/internal/config/app.Version=${APP_VERSION} ${BW_SDK_BUILD_FLAGS}" -o / ./...; \
     fi
 
+FROM gcr.io/distroless/base-debian13@sha256:f4a335ca209e1d2ee873102c17c389ad0142e3d5b21aee2817e9cc9c01d87d20 AS distroless-base
+
 FROM debian:trixie-slim AS ssh-client
+
+# Copy the distroless base filesystem so we can skip libraries already present there.
+COPY --from=distroless-base / /distroless-root/
 RUN apt-get update && \
     apt-get install -y --no-install-recommends openssh-client && \
     rm -rf /var/lib/apt/lists/* && \
-    # Collect the ssh binary and ALL its shared library dependencies into /ssh-root/, \
-    # preserving the real (resolved) directory structure for the release-stage COPY.
-    # realpath resolves /lib -> /usr/lib symlinks so libraries land under /usr/lib/
-    # in the distroless image (which uses the merged-usr layout: /lib -> usr/lib).
+    # Collect the ssh binary and only the shared library dependencies that are NOT
+    # already present in the distroless base image, to avoid duplicating layers.
+    # realpath on dirname resolves /lib -> /usr/lib so paths match distroless layout.
     mkdir -p /ssh-root/usr/bin && \
     cp /usr/bin/ssh /ssh-root/usr/bin/ssh && \
     ldd /usr/bin/ssh | awk '$3 ~ /^\// { print $3 }' | \
         while IFS= read -r lib; do \
           dir=$(realpath "$(dirname "$lib")"); \
+          name=$(basename "$lib"); \
+          [ -f "/distroless-root$dir/$name" ] && continue; \
           mkdir -p "/ssh-root$dir"; \
-          cp -L "$lib" "/ssh-root$dir/$(basename "$lib")"; \
+          cp -L "$lib" "/ssh-root$dir/$name"; \
         done
 
-FROM gcr.io/distroless/base-debian13@sha256:f4a335ca209e1d2ee873102c17c389ad0142e3d5b21aee2817e9cc9c01d87d20 AS release
+FROM distroless-base AS release
 
 WORKDIR /
 
