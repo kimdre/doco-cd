@@ -236,3 +236,7 @@ When DST changes occur in the configured [timezone](#timezone), scheduled jobs w
 
 - If a scheduled time is skipped due to DST (e.g., clocks move forward), the job will not run at that time.
 - If a scheduled time occurs twice due to DST (e.g., clocks move backward), the job will run at both occurrences of that time.
+
+## Manual execution via Job API
+
+Configured jobs can also be triggered manually outside their scheduled intervals by using the [Run Job API endpoint](../Endpoints/REST-API.md#scheduled-jobs).
