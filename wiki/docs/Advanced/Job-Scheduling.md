@@ -228,7 +228,7 @@ The following mapping applies to scheduled runs in `one_off` mode:
 ## Timezone
 
 Scheduled jobs are triggered based on the timezone of the doco-cd instance, which is determined by the `TZ` environment variable or defaults to UTC if not set.
-You can find a list of all possible timezone values on [wikipedia](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones).
+You can find a list of all possible timezone values on [timeie](https://timeie.com/) and [wikipedia](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones).
 
 ## Daylight saving time (DST)
 
