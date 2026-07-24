@@ -1,8 +1,9 @@
 ---
 tags:
+  - Setup
   - Advanced
+  - Deployment
   - Docker
-  - Contexts
 ---
 
 # Docker Contexts
