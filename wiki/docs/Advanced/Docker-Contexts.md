@@ -109,9 +109,11 @@ services:
     ```sh
     chmod -R a+r ~/.docker/contexts/
     find ~/.docker/contexts/ -type d -exec chmod a+rx {} \;
-    chmod 600 ~/.ssh/id_*
-    chmod 644 ~/.ssh/known_hosts ~/.ssh/authorized_keys 2>/dev/null || true
+    chmod 600 ~/.ssh/id_* # (1)!
+    chmod 644 ~/.ssh/known_hosts ~/.ssh/authorized_keys
     ```
+
+    1. Adjust the `chmod` command accordingly, depending on your SSH key filenames.
 
 If you need private registry access, ensure the mounted Docker config includes required auth data (see [Private Container Registries](Private-Container-Registries.md)).
 
