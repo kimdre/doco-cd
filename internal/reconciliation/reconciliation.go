@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -289,7 +290,14 @@ func (j *job) forwardEvents(ctx context.Context, jobLog *slog.Logger, eventCh <-
 			}
 
 			if err != nil && !errors.Is(err, context.Canceled) {
+				if isFatalConnectionError(err) {
+					jobLog.Error("docker event listener stopped: unrecoverable connection error", slog.String("context", contextName), logger.ErrAttr(err))
+
+					return false, newestEventTime // do not retry
+				}
+
 				jobLog.Error("docker event listener failed", slog.String("context", contextName), logger.ErrAttr(err))
+
 				return true, newestEventTime // reconnect after error
 			}
 		case event, ok := <-eventCh:
@@ -548,4 +556,25 @@ func reconciliationTraceIDFromEvent(event events.Message) string {
 	}
 
 	return strings.TrimSpace(event.Actor.Attributes[reconciliationTraceIDAttr])
+}
+
+// isFatalConnectionError reports whether err represents a permanent, non-retryable
+// connection failure (e.g. a required transport binary like "ssh" is missing from PATH).
+// These errors will not resolve on their own, so the event listener should stop instead
+// of retrying indefinitely.
+func isFatalConnectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := err.Error()
+
+	fatalSubstrings := []string{
+		"executable file not found in $PATH",
+		"no such file or directory",
+	}
+
+	return slices.ContainsFunc(fatalSubstrings, func(s string) bool {
+		return strings.Contains(msg, s)
+	})
 }
