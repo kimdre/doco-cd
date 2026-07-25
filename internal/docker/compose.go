@@ -202,6 +202,33 @@ func addComposeVolumeLabels(project *types.Project, deployConfig *deploy.Config,
 	}
 }
 
+// hasIPv6NetworkWithoutExplicitSubnet reports whether a project enables IPv6 on
+// at least one network but omits an explicit IPAM subnet. In that case docker
+// compose diverged-recreate can fail while parsing daemon-reported IPv6 gateway
+// values that include CIDR suffixes (e.g. "...::1/64").
+func hasIPv6NetworkWithoutExplicitSubnet(project *types.Project) bool {
+	for _, network := range project.Networks {
+		if network.EnableIPv6 == nil || !*network.EnableIPv6 {
+			continue
+		}
+
+		hasSubnet := false
+
+		for _, ipam := range network.Ipam.Config {
+			if strings.TrimSpace(ipam.Subnet) != "" {
+				hasSubnet = true
+				break
+			}
+		}
+
+		if !hasSubnet {
+			return true
+		}
+	}
+
+	return false
+}
+
 // LoadCompose parses and loads Compose files as specified by the Docker Compose specification.
 func LoadCompose(ctx context.Context, repoPath, workingDir, projectName string, composeFiles,
 	envFiles, profiles []string, environment map[string]string,
@@ -718,6 +745,12 @@ func DeployStack(
 		case len(needSignal) > 0:
 			stackLog.Debug("changed project files detected, sending signal to service",
 				slog.Any("need_signal", needSignal))
+		}
+
+		if recreateMode == api.RecreateDiverged && hasIPv6NetworkWithoutExplicitSubnet(project) {
+			recreateMode = api.RecreateForce
+
+			stackLog.Warn("network has enable_ipv6 without explicit ipam subnet; forcing recreate to avoid diverged compare parser failure")
 		}
 
 		stackLog.Info("deploying stack",
