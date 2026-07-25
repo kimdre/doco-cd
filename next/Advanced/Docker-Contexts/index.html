@@ -1081,6 +1081,45 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#supported-transports" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Supported transports
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Supported transports">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ssh-context-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        SSH context example
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ssh-key-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        SSH key requirements
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#1-create-docker-contexts" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1132,6 +1171,45 @@
       </span>
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#remote-host-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Remote host limitations
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Remote host limitations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#bind-mounts" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Bind mounts
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configs-and-secrets-with-file-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Configs and secrets with <code>file:</code> sources
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2344,6 +2422,45 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#supported-transports" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Supported transports
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Supported transports">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ssh-context-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        SSH context example
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ssh-key-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        SSH key requirements
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#1-create-docker-contexts" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2395,6 +2512,45 @@
       </span>
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#remote-host-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Remote host limitations
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Remote host limitations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#bind-mounts" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Bind mounts
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configs-and-secrets-with-file-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Configs and secrets with <code>file:</code> sources
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2513,40 +2669,128 @@ This lets one doco-cd instance manage and deploy to multiple Docker hosts/cluste
 <p class="admonition-title">Default Docker context</p>
 <p>Default Docker context means the local Docker host (usually via the mounted socket <code>/var/run/docker.sock</code>).</p>
 </div>
-<h2 id="1-create-docker-contexts">1. Create Docker contexts<a class="headerlink" href="#1-create-docker-contexts" title="Permanent link">&para;</a></h2>
-<p>Create contexts on the host that runs doco-cd.</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Example: remote Docker host over TCP</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>docker<span class="w"> </span>context<span class="w"> </span>create<span class="w"> </span>prod-remote<span class="w"> </span>--docker<span class="w"> </span><span class="nv">host</span><span class="o">=</span>tcp://prod-host:2376
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># Example: second environment</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>docker<span class="w"> </span>context<span class="w"> </span>create<span class="w"> </span>staging-remote<span class="w"> </span>--docker<span class="w"> </span><span class="nv">host</span><span class="o">=</span>tcp://staging-host:2376
+<h2 id="supported-transports">Supported transports<a class="headerlink" href="#supported-transports" title="Permanent link">&para;</a></h2>
+<p>doco-cd includes an SSH client, so both TCP and SSH Docker contexts work out of the box:</p>
+<table>
+<thead>
+<tr>
+<th>Transport</th>
+<th>Example endpoint</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TCP</td>
+<td><code>tcp://host:2376</code></td>
+<td>Plaintext; use TLS for production</td>
+</tr>
+<tr>
+<td>TCP+TLS</td>
+<td><code>tcp://host:2376</code> with TLS certs</td>
+<td>Secure TCP</td>
+</tr>
+<tr>
+<td>SSH</td>
+<td><code>ssh://user@host</code></td>
+<td>Uses the <code>ssh</code> binary; mount SSH keys</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ssh-context-example">SSH context example<a class="headerlink" href="#ssh-context-example" title="Permanent link">&para;</a></h3>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>docker<span class="w"> </span>context<span class="w"> </span>create<span class="w"> </span>prod-remote<span class="w"> </span>--docker<span class="w"> </span><span class="nv">host</span><span class="o">=</span>ssh://deploy@prod-host
 </span></code></pre></div>
-<h2 id="2-verify-contexts">2. Verify contexts<a class="headerlink" href="#2-verify-contexts" title="Permanent link">&para;</a></h2>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>docker<span class="w"> </span>context<span class="w"> </span>ls
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>docker<span class="w"> </span>--context<span class="w"> </span>prod-remote<span class="w"> </span>info
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>docker<span class="w"> </span>--context<span class="w"> </span>staging-remote<span class="w"> </span>info
-</span></code></pre></div>
-<h2 id="3-mount-docker-context-config-into-doco-cd">3. Mount Docker context config into doco-cd<a class="headerlink" href="#3-mount-docker-context-config-into-doco-cd" title="Permanent link">&para;</a></h2>
-<p>Docker context config must be available in the doco-cd container.</p>
-<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">services</span><span class="p">:</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">doco-cd</span><span class="p">:</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/kimdre/doco-cd:latest</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">doco-cd</span>
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/run/docker.sock:/var/run/docker.sock</span>
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">~/.docker:/root/.docker:ro</span><span class="w"> </span><span class="c1"># (1)!</span>
+<p>Mount your SSH keys into the doco-cd container so the bundled <code>ssh</code> binary can authenticate:</p>
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">doco-cd</span><span class="p">:</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/kimdre/doco-cd:latest</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">doco-cd</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/run/docker.sock:/var/run/docker.sock</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">~/.docker:/root/.docker:ro</span>
+</span></span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">~/.ssh:/root/.ssh:ro</span><span class="w"> </span><span class="c1"># (1)!</span>
 </span></span></code></pre></div>
 <ol>
-<li>Docker contexts + credentials</li>
+<li>Mount your SSH keys and <code>known_hosts</code> for context connections</li>
 </ol>
+<div class="admonition tip">
+<p class="admonition-title">SSH host verification</p>
+<p>Docker's SSH transport respects <code>~/.ssh/known_hosts</code>. Pre-populate it (or use <code>StrictHostKeyChecking=accept-new</code> via <code>SSH_OPTIONS</code>) to avoid interactive prompts on first connection.</p>
+</div>
+<h3 id="ssh-key-requirements">SSH key requirements<a class="headerlink" href="#ssh-key-requirements" title="Permanent link">&para;</a></h3>
+<p>The SSH key used must:</p>
+<ul>
+<li>Be <strong>passphrase-free</strong> — Docker's SSH transport runs <code>ssh</code> non-interactively inside the container; a passphrase prompt will cause the connection to fail with <code>Permission denied</code></li>
+<li>Have the corresponding <strong>public key in <code>~/.ssh/authorized_keys</code></strong> on the remote host for the connecting user</li>
+<li>Be a supported key type (Ed25519 recommended: <code>ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_doco-cd -N ""</code>)</li>
+</ul>
+<div class="admonition tip">
+<p class="admonition-title">Verify SSH key</p>
+<p>To verify the key works from inside the container before using it with doco-cd:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>doco-cd<span class="w"> </span>ssh<span class="w"> </span>-l<span class="w"> </span>&lt;user&gt;<span class="w"> </span>-o<span class="w"> </span><span class="nv">ConnectTimeout</span><span class="o">=</span><span class="m">30</span><span class="w"> </span>-T<span class="w"> </span>--<span class="w"> </span>&lt;host&gt;<span class="w"> </span>docker<span class="w"> </span>system<span class="w"> </span>dial-stdio
+</span></code></pre></div>
+<p>If this command hangs or returns output (even garbled binary), the SSH connection and key are working correctly.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Multiple SSH keys</p>
+<p>Docker does not try all available keys, so you must specify the correct one for each host.<br />
+If multiple keys are present, or host key prompts block non-interactive SSH, add an <a href="https://man.openbsd.org/ssh_config">SSH config</a> entry for the host in the container-mounted <code>~/.ssh/config</code>.</p>
+<div class="language-text highlight"><span class="filename">~/.ssh/config</span><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>Host docker-host
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    IdentityFile /root/.ssh/doco-cd-control
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    IdentitiesOnly yes
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    StrictHostKeyChecking no
+</span></code></pre></div>
+<p>Use <code>Host docker-host</code> to match the hostname used by your Docker context endpoint (for example <code>ssh://user@docker-host</code>).</p>
+</div>
+<h2 id="1-create-docker-contexts">1. Create Docker contexts<a class="headerlink" href="#1-create-docker-contexts" title="Permanent link">&para;</a></h2>
+<p>Create contexts on the host that runs doco-cd.</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Example: remote Docker host over TCP</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>docker<span class="w"> </span>context<span class="w"> </span>create<span class="w"> </span>prod-remote<span class="w"> </span>--docker<span class="w"> </span><span class="nv">host</span><span class="o">=</span>tcp://prod-host:2376
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># Example: second environment</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>docker<span class="w"> </span>context<span class="w"> </span>create<span class="w"> </span>staging-remote<span class="w"> </span>--docker<span class="w"> </span><span class="nv">host</span><span class="o">=</span>tcp://staging-host:2376
+</span></code></pre></div>
+<h2 id="2-verify-contexts">2. Verify contexts<a class="headerlink" href="#2-verify-contexts" title="Permanent link">&para;</a></h2>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>docker<span class="w"> </span>context<span class="w"> </span>ls
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>docker<span class="w"> </span>--context<span class="w"> </span>prod-remote<span class="w"> </span>info
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>docker<span class="w"> </span>--context<span class="w"> </span>staging-remote<span class="w"> </span>info
+</span></code></pre></div>
+<h2 id="3-mount-docker-context-config-into-doco-cd">3. Mount Docker context config into doco-cd<a class="headerlink" href="#3-mount-docker-context-config-into-doco-cd" title="Permanent link">&para;</a></h2>
+<p>Docker context metadata and the SSH directory must be available in the doco-cd container.</p>
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">doco-cd</span><span class="p">:</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/kimdre/doco-cd:latest</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">doco-cd</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/run/docker.sock:/var/run/docker.sock</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">~/.docker:/root/.docker:ro</span><span class="w"> </span><span class="c1"># (1)!</span>
+</span></span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="hll"><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">~/.ssh:/root/.ssh:ro</span><span class="w">       </span><span class="c1"># (2)!</span>
+</span></span></code></pre></div>
+<ol>
+<li>Docker context metadata and credentials — required for all non-default contexts</li>
+<li>SSH keys and <code>known_hosts</code> — required for SSH contexts only</li>
+</ol>
+<div class="admonition warning">
+<p class="admonition-title">File permissions</p>
+<p>The mounted <code>~/.docker</code> and <code>~/.ssh</code> directories (and all files within them) must be <strong>readable by the user running inside the container</strong> (root by default).
+If you see <code>permission denied</code> errors referencing context metadata or SSH keys, fix permissions on the host:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>chmod<span class="w"> </span>-R<span class="w"> </span>a+r<span class="w"> </span>~/.docker/contexts/
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>find<span class="w"> </span>~/.docker/contexts/<span class="w"> </span>-type<span class="w"> </span>d<span class="w"> </span>-exec<span class="w"> </span>chmod<span class="w"> </span>a+rx<span class="w"> </span><span class="o">{}</span><span class="w"> </span><span class="se">\;</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>chmod<span class="w"> </span><span class="m">600</span><span class="w"> </span>~/.ssh/id_*<span class="w"> </span><span class="c1"># (1)!</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>chmod<span class="w"> </span><span class="m">644</span><span class="w"> </span>~/.ssh/known_hosts<span class="w"> </span>~/.ssh/authorized_keys
+</span></code></pre></div>
+<ol>
+<li>Adjust the <code>chmod</code> command accordingly, depending on your SSH key filenames.</li>
+</ol>
+</div>
 <p>If you need private registry access, ensure the mounted Docker config includes required auth data (see <a data-preview="" href="../Private-Container-Registries/">Private Container Registries</a>).</p>
 <h2 id="4-reference-context-in-deployment-config">4. Reference context in deployment config<a class="headerlink" href="#4-reference-context-in-deployment-config" title="Permanent link">&para;</a></h2>
-<div class="language-yaml highlight"><span class="filename">.doco-cd.yml</span><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myapp-prod</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="hll"><span class="nt">context</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prod-remote</span>
-</span></span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">reference</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">main</span>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="nt">working_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">deploy</span>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="nt">compose_files</span><span class="p">:</span>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">compose.yml</span>
+<div class="language-yaml highlight"><span class="filename">.doco-cd.yml</span><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myapp-prod</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="hll"><span class="nt">context</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prod-remote</span>
+</span></span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="nt">reference</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">main</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="nt">working_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">deploy</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="nt">compose_files</span><span class="p">:</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">compose.yml</span>
 </span></code></pre></div>
 <p>If <code>context</code> is omitted (or empty), doco-cd uses the default Docker context.</p>
 <div class="admonition warning">
@@ -2555,22 +2799,79 @@ This lets one doco-cd instance manage and deploy to multiple Docker hosts/cluste
 Leave <code>DOCKER_HOST</code> unset and rely on the mounted socket and Docker contexts instead.</p>
 </div>
 <h2 id="5-use-different-contexts-per-deployment">5. Use different contexts per deployment<a class="headerlink" href="#5-use-different-contexts-per-deployment" title="Permanent link">&para;</a></h2>
-<div class="language-yaml highlight"><span class="filename">.doco-cd.yml</span><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nn">---</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myapp-staging</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="hll"><span class="nt">context</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">staging-remote</span>
-</span></span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="nt">reference</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">develop</span>
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="nt">working_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">deploy</span>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="nn">---</span>
-</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myapp-prod</span>
-</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="hll"><span class="nt">context</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prod-remote</span>
-</span></span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="nt">reference</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">main</span>
-</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="nt">working_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">deploy</span>
+<div class="language-yaml highlight"><span class="filename">.doco-cd.yml</span><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nn">---</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myapp-staging</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="hll"><span class="nt">context</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">staging-remote</span>
+</span></span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="nt">reference</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">develop</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="nt">working_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">deploy</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="nn">---</span>
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myapp-prod</span>
+</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="hll"><span class="nt">context</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prod-remote</span>
+</span></span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="nt">reference</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">main</span>
+</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="nt">working_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">deploy</span>
 </span></code></pre></div>
 <p>Each deployment uses its own Docker context for deploy, destroy, and cleanup operations.</p>
+<h2 id="remote-host-limitations">Remote host limitations<a class="headerlink" href="#remote-host-limitations" title="Permanent link">&para;</a></h2>
+<p>When deploying to a remote Docker context, the <strong>remote daemon</strong> executes the compose stack. This has important implications for bind mounts, configs, and secrets.</p>
+<h3 id="bind-mounts">Bind mounts<a class="headerlink" href="#bind-mounts" title="Permanent link">&para;</a></h3>
+<p>Bind mount source paths must exist on the <strong>remote host</strong>, not the doco-cd host:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nt">volumes</span><span class="p">:</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/data/myapp:/app/data</span><span class="w">  </span><span class="c1"># ← this path must exist on the remote host</span>
+</span></code></pre></div>
+<p>Named volumes work fine — they are created on the remote host automatically:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nt">volumes</span><span class="p">:</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="nt">mydata</span><span class="p">:</span><span class="w">  </span><span class="c1"># ← created on the remote host</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mydata:/app/data</span>
+</span></code></pre></div>
+<h3 id="configs-and-secrets-with-file-sources">Configs and secrets with <code>file:</code> sources<a class="headerlink" href="#configs-and-secrets-with-file-sources" title="Permanent link">&para;</a></h3>
+<p>Docker Compose resolves <code>file:</code> references to absolute paths on the doco-cd host, then sends those paths to the remote daemon. The remote daemon tries to bind-mount them locally — and fails because the files don't exist there.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># ✗ Will fail on remote contexts — remote daemon can&#39;t access this path</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="nt">configs</span><span class="p">:</span>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">  </span><span class="nt">app.conf</span><span class="p">:</span>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">    </span><span class="nt">file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">app.conf</span>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>
+</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="nt">secrets</span><span class="p">:</span>
+</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="w">  </span><span class="nt">api_key</span><span class="p">:</span>
+</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="w">    </span><span class="nt">file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">api_key.txt</span>
+</span></code></pre></div>
+<p><strong>Alternatives that work with remote contexts:</strong></p>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:3"><input checked="checked" id="configs-and-secrets-with-file-sources-inline-content" name="__tabbed_1" type="radio" /><input id="configs-and-secrets-with-file-sources-environment-variable-secrets" name="__tabbed_1" type="radio" /><input id="configs-and-secrets-with-file-sources-docker-swarm" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="configs-and-secrets-with-file-sources-inline-content">Inline content</label><label for="configs-and-secrets-with-file-sources-environment-variable-secrets">Environment variable (secrets)</label><label for="configs-and-secrets-with-file-sources-docker-swarm">Docker Swarm</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nt">configs</span><span class="p">:</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span><span class="nt">app.conf</span><span class="p">:</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="nt">content</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">      </span><span class="no">key=value</span>
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">      </span><span class="no">other=setting</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nt">secrets</span><span class="p">:</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">  </span><span class="nt">api_key</span><span class="p">:</span>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">API_KEY</span><span class="w">  </span><span class="c1"># read from env var on the remote host</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<p>Swarm secrets and configs are uploaded to the cluster and distributed automatically — they work correctly with remote contexts.
+See <a data-preview="" href="../Swarm-Mode/">Swarm Mode</a> for details.</p>
+</div>
+</div>
+</div>
 
 
   <nav class="md-tags" >
+    
+      
+      
+      
+      
+        <span class="md-tag">Setup</span>
+      
     
       
       
@@ -2583,14 +2884,14 @@ Leave <code>DOCKER_HOST</code> unset and rely on the mounted socket and Docker c
       
       
       
-        <span class="md-tag">Docker</span>
+        <span class="md-tag">Deployment</span>
       
     
       
       
       
       
-        <span class="md-tag">Contexts</span>
+        <span class="md-tag">Docker</span>
       
     
   </nav>
