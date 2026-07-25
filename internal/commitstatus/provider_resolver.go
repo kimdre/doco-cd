@@ -89,9 +89,19 @@ func parseHostAndScheme(rawURL string) (string, string, error) {
 	}
 
 	scheme := parsed.Scheme
+	host := parsed.Host
+
 	if scheme == "" || scheme == "ssh" || scheme == "git" {
 		scheme = "https"
+
+		// SSH/git clone URLs can include transport ports (for example :2222) that
+		// are unrelated to the HTTPS API endpoint. Strip the port when switching
+		// to HTTPS so commit status calls target the provider's web/API endpoint.
+		host = parsed.Hostname()
+		if strings.Contains(host, ":") {
+			host = "[" + host + "]"
+		}
 	}
 
-	return parsed.Host, scheme, nil
+	return host, scheme, nil
 }

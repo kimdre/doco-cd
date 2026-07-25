@@ -98,11 +98,13 @@ func TestParseHostAndScheme(t *testing.T) {
 		wantErr    bool
 	}{
 		{name: "https github", url: "https://github.com/owner/repo.git", wantHost: "github.com", wantScheme: "https"},
+		{name: "https custom port preserved", url: "https://gitea.example.com:8443/owner/repo.git", wantHost: "gitea.example.com:8443", wantScheme: "https"},
 		{name: "https gitlab", url: "https://gitlab.com/owner/repo.git", wantHost: "gitlab.com", wantScheme: "https"},
 		{name: "https gitea", url: "https://gitea.example.com/owner/repo.git", wantHost: "gitea.example.com", wantScheme: "https"},
 		{name: "ssh scp github", url: "git@github.com:owner/repo.git", wantHost: "github.com", wantScheme: "https"},
 		{name: "ssh scp gitlab", url: "git@gitlab.com:owner/repo.git", wantHost: "gitlab.com", wantScheme: "https"},
 		{name: "ssh url scheme", url: "ssh://git@github.com/owner/repo.git", wantHost: "github.com", wantScheme: "https"},
+		{name: "ssh custom port stripped", url: "ssh://git@gitea.example.com:2222/owner/repo.git", wantHost: "gitea.example.com", wantScheme: "https"},
 		{name: "empty url", url: "", wantErr: true},
 	}
 
