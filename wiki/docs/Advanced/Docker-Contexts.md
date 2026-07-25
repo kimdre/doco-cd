@@ -68,7 +68,7 @@ The SSH key used must:
 !!! tip "Multiple SSH keys"
 
     Docker does not try all available keys, so you must specify the correct one for each host.  
-    If multiple keys are present, or host key prompts block non-interactive SSH, add an SSH config entry for the host in the container-mounted `~/.ssh/config`.
+    If multiple keys are present, or host key prompts block non-interactive SSH, add an [SSH config](https://man.openbsd.org/ssh_config) entry for the host in the container-mounted `~/.ssh/config`.
 
     ```sshconfig title="~/.ssh/config"
     Host docker-host
