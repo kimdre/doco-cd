@@ -56,13 +56,28 @@ The SSH key used must:
 - Have the corresponding **public key in `~/.ssh/authorized_keys`** on the remote host for the connecting user
 - Be a supported key type (Ed25519 recommended: `ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_doco-cd -N ""`)
 
-To verify the key works from inside the container before using it with doco-cd:
+!!! tip "Verify SSH key"
+    To verify the key works from inside the container before using it with doco-cd:
+    
+    ```sh
+    docker exec doco-cd ssh -l <user> -o ConnectTimeout=30 -T -- <host> docker system dial-stdio
+    ```
+    
+    If this command hangs or returns output (even garbled binary), the SSH connection and key are working correctly.
 
-```sh
-docker exec doco-cd ssh -l <user> -o ConnectTimeout=30 -T -- <host> docker system dial-stdio
-```
+!!! tip "Multiple SSH keys"
 
-If this command hangs or returns output (even garbled binary), the SSH connection and key are working correctly.
+    Docker does not try all available keys, so you must specify the correct one for each host.  
+    If multiple keys are present, or host key prompts block non-interactive SSH, add an SSH config entry for the host in the container-mounted `~/.ssh/config`.
+
+    ```sshconfig title="~/.ssh/config"
+    Host docker-host
+        IdentityFile /root/.ssh/doco-cd-control
+        IdentitiesOnly yes
+        StrictHostKeyChecking no
+    ```
+    
+    Use `Host docker-host` to match the hostname used by your Docker context endpoint (for example `ssh://user@docker-host`).
 
 ## 1. Create Docker contexts
 
