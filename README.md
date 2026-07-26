@@ -47,10 +47,10 @@ Contributions are welcome! Please see the [contributing guidelines](https://doco
 
 ## Star History
 
-<a href="https://www.star-history.com/?type=date&repos=kimdre%2Fdoco-cd">
+<a href="https://www.star-history.com/?repos=kimdre%2Fdoco-cd&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=kimdre/doco-cd&type=date&theme=dark&legend=top-left&sealed_token=tNlwXpp5OvV8tZRDDkSVbewGRrThSI26hP-M_DjnYAzCYc1LyyLWcXMHzn9iEnHc77Vcp2kwmoVkehQ9K1gi9IJZw6dyMoGCs9RlkCQzN7FHnCpGZgnwqpRB-gnv8AWAnxWbwrHPiIYUKmZekEA1OSxRnf1wblKVH2wbC61XORPy_9psxbAGEMVgyM6_" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=kimdre/doco-cd&type=date&legend=top-left&sealed_token=tNlwXpp5OvV8tZRDDkSVbewGRrThSI26hP-M_DjnYAzCYc1LyyLWcXMHzn9iEnHc77Vcp2kwmoVkehQ9K1gi9IJZw6dyMoGCs9RlkCQzN7FHnCpGZgnwqpRB-gnv8AWAnxWbwrHPiIYUKmZekEA1OSxRnf1wblKVH2wbC61XORPy_9psxbAGEMVgyM6_" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=kimdre/doco-cd&type=date&legend=top-left&sealed_token=tNlwXpp5OvV8tZRDDkSVbewGRrThSI26hP-M_DjnYAzCYc1LyyLWcXMHzn9iEnHc77Vcp2kwmoVkehQ9K1gi9IJZw6dyMoGCs9RlkCQzN7FHnCpGZgnwqpRB-gnv8AWAnxWbwrHPiIYUKmZekEA1OSxRnf1wblKVH2wbC61XORPy_9psxbAGEMVgyM6_" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=kimdre/doco-cd&type=date&theme=dark&legend=top-left&sealed_token=saZ0hV4u45f86P2hpUFWpOZm-TTGM2b4M-z2Ji3FRAzBKzsZ5l1JmPPstp4FYVSkLI4mqT3OqCnGxuiJEhZ1KDWZs7P39Slsvd_dIJfC1tCRRsi5HafLag" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=kimdre/doco-cd&type=date&legend=top-left&sealed_token=saZ0hV4u45f86P2hpUFWpOZm-TTGM2b4M-z2Ji3FRAzBKzsZ5l1JmPPstp4FYVSkLI4mqT3OqCnGxuiJEhZ1KDWZs7P39Slsvd_dIJfC1tCRRsi5HafLag" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=kimdre/doco-cd&type=date&legend=top-left&sealed_token=saZ0hV4u45f86P2hpUFWpOZm-TTGM2b4M-z2Ji3FRAzBKzsZ5l1JmPPstp4FYVSkLI4mqT3OqCnGxuiJEhZ1KDWZs7P39Slsvd_dIJfC1tCRRsi5HafLag" />
  </picture>
 </a>

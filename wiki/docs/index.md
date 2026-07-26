@@ -92,8 +92,8 @@ Contributions are welcome! Please see the [Contributing Guidelines](Contributing
 
 <a href="https://www.star-history.com/?repos=kimdre%2Fdoco-cd&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=kimdre/doco-cd&type=date&theme=dark&legend=top-left&sealed_token=VP78v1fOtUjHxWUU7Yp9WOwGXiYjq-mKMWoOWgWj20ISkn3HTvCCzzAo0ntmDgPsNu90LTOFwUJO7RjgSK3k4dIB9My4IX1Cs9zXptidX0T3inGFb_aM90wE4bp5M_-6mEXevetbbC5CuU90VAa9RPmbJAuGmSBoUk5fe12geJGFjV0UHDCjUWZB611d" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=kimdre/doco-cd&type=date&legend=top-left&sealed_token=VP78v1fOtUjHxWUU7Yp9WOwGXiYjq-mKMWoOWgWj20ISkn3HTvCCzzAo0ntmDgPsNu90LTOFwUJO7RjgSK3k4dIB9My4IX1Cs9zXptidX0T3inGFb_aM90wE4bp5M_-6mEXevetbbC5CuU90VAa9RPmbJAuGmSBoUk5fe12geJGFjV0UHDCjUWZB611d" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=kimdre/doco-cd&type=date&legend=top-left&sealed_token=VP78v1fOtUjHxWUU7Yp9WOwGXiYjq-mKMWoOWgWj20ISkn3HTvCCzzAo0ntmDgPsNu90LTOFwUJO7RjgSK3k4dIB9My4IX1Cs9zXptidX0T3inGFb_aM90wE4bp5M_-6mEXevetbbC5CuU90VAa9RPmbJAuGmSBoUk5fe12geJGFjV0UHDCjUWZB611d" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=kimdre/doco-cd&type=date&theme=dark&legend=top-left&sealed_token=saZ0hV4u45f86P2hpUFWpOZm-TTGM2b4M-z2Ji3FRAzBKzsZ5l1JmPPstp4FYVSkLI4mqT3OqCnGxuiJEhZ1KDWZs7P39Slsvd_dIJfC1tCRRsi5HafLag" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=kimdre/doco-cd&type=date&legend=top-left&sealed_token=saZ0hV4u45f86P2hpUFWpOZm-TTGM2b4M-z2Ji3FRAzBKzsZ5l1JmPPstp4FYVSkLI4mqT3OqCnGxuiJEhZ1KDWZs7P39Slsvd_dIJfC1tCRRsi5HafLag" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=kimdre/doco-cd&type=date&legend=top-left&sealed_token=saZ0hV4u45f86P2hpUFWpOZm-TTGM2b4M-z2Ji3FRAzBKzsZ5l1JmPPstp4FYVSkLI4mqT3OqCnGxuiJEhZ1KDWZs7P39Slsvd_dIJfC1tCRRsi5HafLag" />
  </picture>
 </a>
