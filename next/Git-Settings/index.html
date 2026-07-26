@@ -1121,6 +1121,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#self-hosted-instances-and-api-url" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Self-Hosted Instances and API URL
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#example" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2651,6 +2662,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#self-hosted-instances-and-api-url" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Self-Hosted Instances and API URL
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#example" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -3187,6 +3209,12 @@ Doco-CD will auto-detect the installation by repository <em>owner/name</em> and 
 <td>Override automatic SCM provider detection. Accepted values: <code>auto</code>, <code>github</code>, <code>gitlab</code>, <code>gitea</code>, <code>forgejo</code>, <code>azuredevops</code>. Set to <code>auto</code> to detect the provider from the repository URL. Required when your self-hosted instance hostname does not reveal the product (e.g. <code>git.mycompany.com</code> running GitLab must set <code>gitlab</code>).</td>
 <td><code>auto</code></td>
 </tr>
+<tr>
+<td><code>GIT_SCM_API_URL</code></td>
+<td>string</td>
+<td>Optional override for the SCM API base URL used by commit status requests (must be <code>http://</code> or <code>https://</code>). Use this for self-hosted instances when the API endpoint cannot be inferred from the clone URL (for example when SSH and HTTPS use different hosts/ports: <code>https://gitea.example.com:8443</code>).</td>
+<td></td>
+</tr>
 </tbody>
 </table>
 <h3 id="required-token-permissions_1">Required Token Permissions<a class="headerlink" href="#required-token-permissions_1" title="Permanent link">&para;</a></h3>
@@ -3269,13 +3297,25 @@ Doco-CD will auto-detect the installation by repository <em>owner/name</em> and 
 <li><strong>Self-hosted Gitea / Forgejo</strong>: set <code>GIT_SCM_PROVIDER=gitea</code> or <code>GIT_SCM_PROVIDER=forgejo</code></li>
 </ul>
 </div>
+<h3 id="self-hosted-instances-and-api-url">Self-Hosted Instances and API URL<a class="headerlink" href="#self-hosted-instances-and-api-url" title="Permanent link">&para;</a></h3>
+<p>Doco-CD derives the SCM API base URL from the clone URL by converting its scheme to <code>https://</code>. This works correctly for most setups, but two scenarios require an explicit override via <code>GIT_SCM_API_URL</code>:</p>
+<p><strong>SSH clone URL with a non-standard SSH port</strong></p>
+<p>When the clone URL is an SSH URL with a custom port (e.g. <code>ssh://git@gitea.example.com:2222/org/repo.git</code>), doco-cd strips the port before building the API URL — so the API call targets <code>https://gitea.example.com/...</code> correctly. If for any reason this stripping doesn't produce the right host or port (e.g. the HTTPS endpoint is on a non-standard port), set the API base URL explicitly:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">GIT_SCM_API_URL</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://gitea.example.com:8443&quot;</span>
+</span></code></pre></div>
+<p><strong>SSH and HTTPS served from different hostnames or ports</strong></p>
+<p>Some self-hosted setups route SSH clones through a dedicated hostname or port (e.g. <code>git.internal:2222</code>) while the HTTPS API is on a different address (e.g. <code>https://git.example.com</code>). In that case the auto-derived URL will be wrong regardless of port stripping:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">GIT_SCM_API_URL</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://git.example.com&quot;</span>
+</span></code></pre></div>
+<p><code>GIT_SCM_API_URL</code> must be an <code>http://</code> or <code>https://</code> URL pointing to the root of the SCM instance (no path, no trailing slash). Provider-specific API paths (e.g. <code>/api/v1</code>, <code>/api/v4</code>) are appended automatically.</p>
 <h3 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h3>
-<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">services</span><span class="p">:</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">      </span><span class="nt">GIT_ACCESS_TOKEN</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xxx</span><span class="w">         </span><span class="c1"># token must be allowed to write commit statuses</span>
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">      </span><span class="nt">GIT_COMMIT_STATUS</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">      </span><span class="c1"># GIT_SCM_PROVIDER: gitlab   # uncomment for self-hosted GitLab at a custom domain</span>
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">      </span><span class="nt">GIT_ACCESS_TOKEN</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xxx</span><span class="w">         </span><span class="c1"># token must be allowed to write commit statuses</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">      </span><span class="nt">GIT_COMMIT_STATUS</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">      </span><span class="c1"># GIT_SCM_PROVIDER: gitlab   # uncomment for self-hosted GitLab at a custom domain</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">      </span><span class="c1"># GIT_SCM_API_URL: https://git.example.com  # optional explicit API base URL override</span>
 </span></code></pre></div>
 
 
