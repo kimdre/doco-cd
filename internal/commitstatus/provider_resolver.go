@@ -105,3 +105,28 @@ func parseHostAndScheme(rawURL string) (string, string, error) {
 
 	return host, scheme, nil
 }
+
+func parseAPIBaseURL(rawURL string) (string, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return "", errors.New("empty URL")
+	}
+
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid URL %q: %w", rawURL, err)
+	}
+
+	if parsed.Host == "" {
+		return "", fmt.Errorf("no host in URL %q", rawURL)
+	}
+
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", fmt.Errorf("URL %q must use http or https", rawURL)
+	}
+
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+
+	return strings.TrimRight(parsed.String(), "/"), nil
+}

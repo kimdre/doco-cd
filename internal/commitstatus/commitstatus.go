@@ -84,8 +84,9 @@ type Status struct {
 
 // Post posts a commit status to the appropriate Git provider.
 // When provider is ProviderAuto ("") the provider is detected from repoURL.
+// When apiBaseURL is non-empty, it overrides the inferred SCM API base URL.
 // Returns nil (silently no-op) when token or commitSHA is empty.
-func Post(ctx context.Context, provider Provider, repoURL, repoFullName, commitSHA, token string, status Status) error {
+func Post(ctx context.Context, provider Provider, apiBaseURL, repoURL, repoFullName, commitSHA, token string, status Status) error {
 	token = strings.TrimSpace(token)
 	commitSHA = strings.TrimSpace(commitSHA)
 
@@ -103,6 +104,12 @@ func Post(ctx context.Context, provider Provider, repoURL, repoFullName, commitS
 	}
 
 	baseURL := scheme + "://" + host
+	if strings.TrimSpace(apiBaseURL) != "" {
+		baseURL, err = parseAPIBaseURL(apiBaseURL)
+		if err != nil {
+			return fmt.Errorf("failed to parse scm API base URL: %w", err)
+		}
+	}
 
 	resolved := resolveProvider(provider, host)
 
@@ -120,8 +127,9 @@ func Post(ctx context.Context, provider Provider, repoURL, repoFullName, commitS
 
 // Get returns the latest commit status for the requested context.
 // When provider is ProviderAuto ("") the provider is detected from repoURL.
+// When apiBaseURL is non-empty, it overrides the inferred SCM API base URL.
 // Returns found=false when token, commitSHA, or matching status is missing.
-func Get(ctx context.Context, provider Provider, repoURL, repoFullName, commitSHA, token, contextName string) (Status, bool, error) {
+func Get(ctx context.Context, provider Provider, apiBaseURL, repoURL, repoFullName, commitSHA, token, contextName string) (Status, bool, error) {
 	token = strings.TrimSpace(token)
 	commitSHA = strings.TrimSpace(commitSHA)
 	contextName = strings.TrimSpace(contextName)
@@ -140,6 +148,13 @@ func Get(ctx context.Context, provider Provider, repoURL, repoFullName, commitSH
 	}
 
 	baseURL := scheme + "://" + host
+	if strings.TrimSpace(apiBaseURL) != "" {
+		baseURL, err = parseAPIBaseURL(apiBaseURL)
+		if err != nil {
+			return Status{}, false, fmt.Errorf("failed to parse scm API base URL: %w", err)
+		}
+	}
+
 	resolved := resolveProvider(provider, host)
 
 	switch resolved {

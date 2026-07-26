@@ -292,20 +292,20 @@ func (s *StageManager) resolveCommitStatusContext() string {
 	return commitstatus.ContextForStack(s.DeployConfig.Internal.ConfigTarget, s.DeployConfig.Name)
 }
 
-func (s *StageManager) resolveCommitStatusRequest() (commitstatus.Provider, string, string, string, string, string, bool) {
+func (s *StageManager) resolveCommitStatusRequest() (commitstatus.Provider, string, string, string, string, string, string, bool) {
 	if !s.AppConfig.GitCommitStatus {
-		return commitstatus.ProviderAuto, "", "", "", "", "", false
+		return commitstatus.ProviderAuto, "", "", "", "", "", "", false
 	}
 
 	if s.Repository.Source == types2.SourceTypeOCI {
-		return commitstatus.ProviderAuto, "", "", "", "", "", false
+		return commitstatus.ProviderAuto, "", "", "", "", "", "", false
 	}
 
 	commitSHA := s.resolveCommitSHA()
 	if commitSHA == "" {
 		s.Log.Debug("skipping commit status: no commit SHA available")
 
-		return commitstatus.ProviderAuto, "", "", "", "", "", false
+		return commitstatus.ProviderAuto, "", "", "", "", "", "", false
 	}
 
 	resolved := gitInternal.ResolveAuthConfig(s.Repository.SourceUrl, "", "", "")
@@ -318,7 +318,7 @@ func (s *StageManager) resolveCommitStatusRequest() (commitstatus.Provider, stri
 	if token == "" {
 		s.Log.Debug("skipping commit status: no access token configured")
 
-		return commitstatus.ProviderAuto, "", "", "", "", "", false
+		return commitstatus.ProviderAuto, "", "", "", "", "", "", false
 	}
 
 	repoURL := ""
@@ -339,11 +339,11 @@ func (s *StageManager) resolveCommitStatusRequest() (commitstatus.Provider, stri
 
 	provider, _ := commitstatus.ParseProvider(s.AppConfig.GitScmProvider)
 
-	return provider, repoURL, repoFullName, commitSHA, token, s.resolveCommitStatusContext(), true
+	return provider, string(s.AppConfig.GitScmApiUrl), repoURL, repoFullName, commitSHA, token, s.resolveCommitStatusContext(), true
 }
 
 func (s *StageManager) GetCurrentCommitStatus(ctx context.Context) (commitstatus.Status, bool) {
-	provider, repoURL, repoFullName, commitSHA, token, contextName, ok := s.resolveCommitStatusRequest()
+	provider, apiBaseURL, repoURL, repoFullName, commitSHA, token, contextName, ok := s.resolveCommitStatusRequest()
 	if !ok {
 		return commitstatus.Status{}, false
 	}
@@ -355,7 +355,7 @@ func (s *StageManager) GetCurrentCommitStatus(ctx context.Context) (commitstatus
 		slog.String("context", contextName),
 	)
 
-	status, found, err := commitstatus.Get(ctx, provider, repoURL, repoFullName, commitSHA, token, contextName)
+	status, found, err := commitstatus.Get(ctx, provider, apiBaseURL, repoURL, repoFullName, commitSHA, token, contextName)
 	if err != nil {
 		s.Log.Warn("failed to get commit status", slog.String("error", err.Error()))
 		return commitstatus.Status{}, false
@@ -378,7 +378,7 @@ func (s *StageManager) GetCurrentCommitStatus(ctx context.Context) (commitstatus
 // or when no access token / commit SHA is available.
 // Errors are logged as warnings so they never block a deployment.
 func (s *StageManager) PostCommitStatus(ctx context.Context, state commitstatus.State, description string) {
-	provider, repoURL, repoFullName, commitSHA, token, contextName, ok := s.resolveCommitStatusRequest()
+	provider, apiBaseURL, repoURL, repoFullName, commitSHA, token, contextName, ok := s.resolveCommitStatusRequest()
 	if !ok {
 		return
 	}
@@ -392,7 +392,7 @@ func (s *StageManager) PostCommitStatus(ctx context.Context, state commitstatus.
 		slog.String("description", description),
 	)
 
-	err := commitstatus.Post(ctx, provider, repoURL, repoFullName, commitSHA, token, commitstatus.Status{
+	err := commitstatus.Post(ctx, provider, apiBaseURL, repoURL, repoFullName, commitSHA, token, commitstatus.Status{
 		State:       state,
 		Description: description,
 		Context:     contextName,

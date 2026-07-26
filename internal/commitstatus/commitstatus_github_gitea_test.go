@@ -92,7 +92,7 @@ func TestPost_ExplicitProvider_GiteaOnGitLabHost(t *testing.T) {
 
 	err := commitstatus.Post(context.Background(),
 		commitstatus.ProviderGitea,
-		srv.URL+"/owner/repo", "owner/repo", "abc123", "token",
+		"", srv.URL+"/owner/repo", "owner/repo", "abc123", "token",
 		commitstatus.Status{State: commitstatus.StateSuccess})
 	assert.NilError(t, err)
 }
@@ -119,7 +119,7 @@ func TestGet_GiteaAPI(t *testing.T) {
 
 	status, found, err := commitstatus.Get(context.Background(),
 		commitstatus.ProviderGitea,
-		srv.URL+"/owner/repo", "owner/repo", "deadbeef", "token", commitstatus.DeployContext)
+		"", srv.URL+"/owner/repo", "owner/repo", "deadbeef", "token", commitstatus.DeployContext)
 	assert.NilError(t, err)
 	assert.Assert(t, found)
 	assert.Equal(t, status.State, commitstatus.StateSuccess)

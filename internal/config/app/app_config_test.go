@@ -376,3 +376,30 @@ func TestGetConfig_DataMountPathRejectsRelativePath(t *testing.T) {
 		t.Fatal("expected relative DATA_MOUNT_PATH to be rejected")
 	}
 }
+
+func TestGetConfig_GitScmApiUrlValidation(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("GIT_SCM_API_URL", "https://git.example.com")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	if string(cfg.GitScmApiUrl) != "https://git.example.com" {
+		t.Fatalf("expected GIT_SCM_API_URL to be set, got %q", cfg.GitScmApiUrl)
+	}
+}
+
+func TestGetConfig_GitScmApiUrlRejectsNonHTTP(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("GIT_SCM_API_URL", "ssh://git.example.com:2222")
+
+	if _, err := GetConfig(); err == nil {
+		t.Fatal("expected non-http GIT_SCM_API_URL to be rejected")
+	}
+}

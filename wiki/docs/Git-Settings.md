@@ -164,6 +164,7 @@ Three states are reported:
 |---------------------|---------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
 | `GIT_COMMIT_STATUS` | boolean | Enable commit status reporting. When `true`, doco-cd posts a status to the source provider for every deployment. Requires [`GIT_ACCESS_TOKEN`](#authentication) (or [domain-scoped token](#domain-scoped-authentication) via `GIT_AUTH_DOMAINS`).                                                                                  | `false` |
 | `GIT_SCM_PROVIDER`  | string  | Override automatic SCM provider detection. Accepted values: `auto`, `github`, `gitlab`, `gitea`, `forgejo`, `azuredevops`. Set to `auto` to detect the provider from the repository URL. Required when your self-hosted instance hostname does not reveal the product (e.g. `git.mycompany.com` running GitLab must set `gitlab`). | `auto`  |
+| `GIT_SCM_API_URL`   | string  | Optional override for the SCM API base URL used by commit status requests (must be `http://` or `https://`). Use this for self-hosted instances when the API endpoint cannot be inferred from the clone URL (for example when SSH and HTTPS use different hosts/ports: `https://gitea.example.com:8443`).                                                           |         |
 
 ### Required Token Permissions
 
@@ -199,6 +200,29 @@ When `GIT_SCM_PROVIDER` is not set, doco-cd detects the provider from the reposi
     - **GitHub Enterprise Server**: set `GIT_SCM_PROVIDER=github`
     - **Self-hosted GitLab**: set `GIT_SCM_PROVIDER=gitlab`
     - **Self-hosted Gitea / Forgejo**: set `GIT_SCM_PROVIDER=gitea` or `GIT_SCM_PROVIDER=forgejo`
+
+### Self-Hosted Instances and API URL
+
+Doco-CD derives the SCM API base URL from the clone URL by converting its scheme to `https://`. This works correctly for most setups, but two scenarios require an explicit override via `GIT_SCM_API_URL`:
+
+**SSH clone URL with a non-standard SSH port**
+
+When the clone URL is an SSH URL with a custom port (e.g. `ssh://git@gitea.example.com:2222/org/repo.git`), doco-cd strips the port before building the API URL — so the API call targets `https://gitea.example.com/...` correctly. If for any reason this stripping doesn't produce the right host or port (e.g. the HTTPS endpoint is on a non-standard port), set the API base URL explicitly:
+
+```yaml
+GIT_SCM_API_URL: "https://gitea.example.com:8443"
+```
+
+**SSH and HTTPS served from different hostnames or ports**
+
+Some self-hosted setups route SSH clones through a dedicated hostname or port (e.g. `git.internal:2222`) while the HTTPS API is on a different address (e.g. `https://git.example.com`). In that case the auto-derived URL will be wrong regardless of port stripping:
+
+```yaml
+GIT_SCM_API_URL: "https://git.example.com"
+```
+
+`GIT_SCM_API_URL` must be an `http://` or `https://` URL pointing to the root of the SCM instance (no path, no trailing slash). Provider-specific API paths (e.g. `/api/v1`, `/api/v4`) are appended automatically.
+
 ### Example
 
 ```yaml title="docker-compose.yml"
@@ -208,4 +232,5 @@ services:
       GIT_ACCESS_TOKEN: xxx         # token must be allowed to write commit statuses
       GIT_COMMIT_STATUS: "true"
       # GIT_SCM_PROVIDER: gitlab   # uncomment for self-hosted GitLab at a custom domain
+      # GIT_SCM_API_URL: https://git.example.com  # optional explicit API base URL override
 ```
