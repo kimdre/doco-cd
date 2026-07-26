@@ -71,6 +71,8 @@ type Config struct {
 	AppriseNotifyUrls           string                 `env:"APPRISE_NOTIFY_URLS"`                                                    // AppriseNotifyUrls is a comma-separated list of URLs to notify via the Apprise notification service
 	AppriseNotifyUrlsFile       string                 `env:"APPRISE_NOTIFY_URLS_FILE,file"`                                          // AppriseNotifyUrlsFile is the file containing the AppriseNotifyUrls
 	AppriseNotifyLevel          string                 `env:"APPRISE_NOTIFY_LEVEL,notEmpty" envDefault:"success"`                     // AppriseNotifyLevel is the level of notifications to send via the Apprise notification service
+	AppriseNotifyTemplate       string                 `env:"APPRISE_NOTIFY_TEMPLATE"`                                                // AppriseNotifyTemplate is an optional Go text/template rendering the notification body. Empty uses the built-in format.
+	AppriseNotifyTemplateFile   string                 `env:"APPRISE_NOTIFY_TEMPLATE_FILE,file"`                                      // AppriseNotifyTemplateFile is the file containing the AppriseNotifyTemplate
 	SecretProvider              string                 `env:"SECRET_PROVIDER"`                                                        // SecretProvider is the secret provider/manager to use for retrieving secrets (e.g. bitwarden secrets manager)
 	MaxDeploymentLoopCount      uint                   `env:"MAX_DEPLOYMENT_LOOP_COUNT,notEmpty" envDefault:"2" validate:"min=0"`     // Maximum allowed deployment loops before a forced deployment is triggered
 	MaxConcurrentDeployments    uint                   `env:"MAX_CONCURRENT_DEPLOYMENTS,notEmpty" envDefault:"4" validate:"min=1"`    // Maximum number of concurrent deployments allowed
@@ -87,6 +89,7 @@ func GetConfig() (*Config, error) {
 	mappings := []config.EnvVarFileMapping{
 		{EnvName: "API_SECRET", EnvValue: &cfg.ApiSecret, FileValue: &cfg.ApiSecretFile, AllowUnset: true},
 		{EnvName: "APPRISE_NOTIFY_URLS", EnvValue: &cfg.AppriseNotifyUrls, FileValue: &cfg.AppriseNotifyUrlsFile, AllowUnset: true},
+		{EnvName: "APPRISE_NOTIFY_TEMPLATE", EnvValue: &cfg.AppriseNotifyTemplate, FileValue: &cfg.AppriseNotifyTemplateFile, AllowUnset: true},
 		{EnvName: "GIT_ACCESS_TOKEN", EnvValue: &cfg.GitAccessToken, FileValue: &cfg.GitAccessTokenFile, AllowUnset: true},
 		{EnvName: "GITHUB_APP_ID", EnvValue: &cfg.GitHubAppID, FileValue: &cfg.GitHubAppIDFile, AllowUnset: true},
 		{EnvName: "GITHUB_APP_PRIVATE_KEY", EnvValue: &cfg.GitHubAppPrivateKey, FileValue: &cfg.GitHubAppPrivateKeyFile, AllowUnset: true},
@@ -166,11 +169,15 @@ func GetConfig() (*Config, error) {
 		return nil, fmt.Errorf("DATA_MOUNT_PATH must be an absolute Unix path: %q", cfg.DataMountPath)
 	}
 
-	notification.SetAppriseConfig(
+	err = notification.SetAppriseConfig(
 		string(cfg.AppriseApiURL),
 		cfg.AppriseNotifyUrls,
 		cfg.AppriseNotifyLevel,
+		cfg.AppriseNotifyTemplate,
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to configure notifications: %w", err)
+	}
 
 	return &cfg, nil
 }

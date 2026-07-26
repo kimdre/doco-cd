@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"text/template"
 )
 
 type level int
@@ -40,10 +41,14 @@ var (
 	appriseApiURL      = ""
 	appriseNotifyUrls  = ""
 	appriseNotifyLevel = Info
+	appriseTemplate    *template.Template // optional user template rendering the notification body; nil = built-in format
 )
 
 // ErrNotifyFailed is returned when the Apprise request fails due to invalid notify URLs or unreachable service.
 var ErrNotifyFailed = errors.New("request to apprise failed")
+
+// ErrInvalidTemplate is returned when the configured notification body template fails to parse or execute.
+var ErrInvalidTemplate = errors.New("invalid notification template")
 
 // appriseRequest represents the structure of a request to the Apprise notification service.
 type appriseRequest struct {
@@ -63,6 +68,46 @@ type Metadata struct {
 	AffectedActorKind   string
 	AffectedActorID     string
 	AffectedActorName   string
+}
+
+// TemplateData is the data exposed to a user-configured notification body template.
+// Metadata is embedded, so its fields (Repository, Stack, Revision, JobID, ...) are
+// referenced directly, e.g. {{.Stack}} or {{.Repository}}.
+type TemplateData struct {
+	Level            string // notification level: info, success, warning or failure
+	Emoji            string // level emoji (ℹ️/✅/⚠️/❌)
+	Title            string // notification title, e.g. "Deployment completed"
+	Message          string // core notification message
+	IsReconciliation bool   // true when triggered by a reconciliation event
+	Metadata                // embedded metadata fields
+}
+
+// parseTemplate parses and validates a notification body template. An empty
+// string disables templating (nil result). The template is executed against a
+// fully populated sample so field-reference mistakes fail fast at config time.
+func parseTemplate(tmpl string) (*template.Template, error) {
+	if strings.TrimSpace(tmpl) == "" {
+		return nil, nil
+	}
+
+	t, err := template.New("notification").Option("missingkey=error").Parse(tmpl)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidTemplate, err)
+	}
+
+	sample := TemplateData{
+		Level: logLevels[Success], Emoji: levelEmojis[Success],
+		Title: "Deployment completed", Message: "sample",
+		Metadata: Metadata{
+			Repository: "github.com/acme/app", Stack: "app",
+			Revision: "refs/heads/main (abc123)", JobID: "sample",
+		},
+	}
+	if err := t.Execute(io.Discard, sample); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidTemplate, err)
+	}
+
+	return t, nil
 }
 
 // parseLevel converts a string representation of a log level to the level type.
@@ -122,25 +167,35 @@ func send(apiUrl, notifyUrls, title, message, level string) error {
 }
 
 // SetAppriseConfig sets the configuration for the Apprise notification service.
-func SetAppriseConfig(apiURL, notifyUrls, notifyLevel string) {
+// bodyTemplate is an optional Go text/template rendering the notification body;
+// an empty string keeps the built-in format. An invalid template is rejected.
+func SetAppriseConfig(apiURL, notifyUrls, notifyLevel, bodyTemplate string) error {
+	t, err := parseTemplate(bodyTemplate)
+	if err != nil {
+		return err
+	}
+
 	appriseConfigMu.Lock()
 	defer appriseConfigMu.Unlock()
 
 	appriseApiURL = apiURL
 	appriseNotifyUrls = notifyUrls
 	appriseNotifyLevel = parseLevel(notifyLevel)
+	appriseTemplate = t
+
+	return nil
 }
 
-func getAppriseConfig() (string, string, level) {
+func getAppriseConfig() (string, string, level, *template.Template) {
 	appriseConfigMu.RLock()
 	defer appriseConfigMu.RUnlock()
 
-	return appriseApiURL, appriseNotifyUrls, appriseNotifyLevel
+	return appriseApiURL, appriseNotifyUrls, appriseNotifyLevel, appriseTemplate
 }
 
 // Send sends a notification using the Apprise service based on the provided configuration and parameters.
 func Send(level level, title, message string, metadata Metadata) error {
-	apiURL, notifyURLs, notifyLevel := getAppriseConfig()
+	apiURL, notifyURLs, notifyLevel, bodyTemplate := getAppriseConfig()
 
 	if apiURL == "" || notifyURLs == "" {
 		return nil
@@ -150,9 +205,13 @@ func Send(level level, title, message string, metadata Metadata) error {
 		return nil // Do not send notification if the level is lower than the configured level
 	}
 
-	title = formatTitle(level, title, metadata)
+	if bodyTemplate != nil {
+		message = renderTemplate(bodyTemplate, level, title, message, metadata)
+	} else {
+		message = formatMessage(message, metadata)
+	}
 
-	message = formatMessage(message, metadata)
+	title = formatTitle(level, title, metadata)
 
 	err := send(apiURL, notifyURLs, title, message, logLevels[level])
 	if err != nil {
@@ -271,6 +330,27 @@ func formatMessage(message string, m Metadata) string {
 	}
 
 	return sb.String()
+}
+
+// renderTemplate renders the notification body using the configured template.
+// On execution failure it falls back to the built-in format so an alert is never
+// dropped because of a template mistake (config-time validation catches most).
+func renderTemplate(t *template.Template, level level, title, message string, m Metadata) string {
+	data := TemplateData{
+		Level:            logLevels[level],
+		Emoji:            levelEmojis[level],
+		Title:            strings.TrimSpace(title),
+		Message:          strings.TrimRight(message, "\n"),
+		IsReconciliation: strings.TrimSpace(m.ReconciliationEvent) != "",
+		Metadata:         m,
+	}
+
+	var sb strings.Builder
+	if err := t.Execute(&sb, data); err != nil {
+		return formatMessage(message, m)
+	}
+
+	return strings.TrimRight(sb.String(), "\n")
 }
 
 func GetRevision(reference, commitSHA string) string {

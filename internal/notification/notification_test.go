@@ -58,7 +58,9 @@ func TestSend(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Cannot run tests in parallel because SetAppriseConfig modifies global variables
-			SetAppriseConfig("http://"+endpoint+"/notify", fmt.Sprintf(tc.appriseURL, endpoint), "info")
+			if err := SetAppriseConfig("http://"+endpoint+"/notify", fmt.Sprintf(tc.appriseURL, endpoint), "info", ""); err != nil {
+				t.Fatalf("failed to set apprise config: %v", err)
+			}
 
 			err := Send(Info, "Test Notification", "This is a test message", metadata)
 			if tc.expectedErr == nil {
@@ -224,6 +226,85 @@ func TestFormatMessage(t *testing.T) {
 
 		if message != expected {
 			t.Errorf("expected %q, got %q", expected, message)
+		}
+	})
+}
+
+func TestParseTemplate(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty template disables templating", func(t *testing.T) {
+		t.Parallel()
+
+		tmpl, err := parseTemplate("   ")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if tmpl != nil {
+			t.Errorf("expected nil template, got %v", tmpl)
+		}
+	})
+
+	t.Run("valid template parses", func(t *testing.T) {
+		t.Parallel()
+
+		if _, err := parseTemplate("{{.Emoji}} {{.Title}} on {{.Stack}}"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("syntax error is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		if _, err := parseTemplate("{{.Stack"); !errors.Is(err, ErrInvalidTemplate) {
+			t.Fatalf("expected ErrInvalidTemplate, got: %v", err)
+		}
+	})
+
+	t.Run("unknown field is rejected at config time", func(t *testing.T) {
+		t.Parallel()
+
+		if _, err := parseTemplate("{{.Nonexistent}}"); !errors.Is(err, ErrInvalidTemplate) {
+			t.Fatalf("expected ErrInvalidTemplate, got: %v", err)
+		}
+	})
+}
+
+func TestRenderTemplate(t *testing.T) {
+	t.Parallel()
+
+	t.Run("renders metadata fields and trims trailing newlines", func(t *testing.T) {
+		t.Parallel()
+
+		tmpl, err := parseTemplate("{{.Emoji}} {{.Title}} — {{.Stack}} @ {{.Revision}}\n")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		got := renderTemplate(tmpl, Success, "Deployment completed", "ignored body", Metadata{
+			Stack:    "app",
+			Revision: "main (abc123)",
+			JobID:    "job-1",
+		})
+		expected := "✅ Deployment completed — app @ main (abc123)"
+
+		if got != expected {
+			t.Errorf("expected %q, got %q", expected, got)
+		}
+	})
+
+	t.Run("exposes reconciliation flag", func(t *testing.T) {
+		t.Parallel()
+
+		tmpl, err := parseTemplate("{{if .IsReconciliation}}reconcile {{.ReconciliationEvent}}{{else}}deploy{{end}}")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		got := renderTemplate(tmpl, Warning, "Service restarted", "", Metadata{ReconciliationEvent: "unhealthy"})
+		if got != "reconcile unhealthy" {
+			t.Errorf("expected %q, got %q", "reconcile unhealthy", got)
 		}
 	})
 }
