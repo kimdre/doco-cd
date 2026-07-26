@@ -33,7 +33,7 @@ func TestPost_AzureDevOpsAPI(t *testing.T) {
 
 	err := commitstatus.Post(context.Background(),
 		commitstatus.ProviderAzureDevOps,
-		srv.URL+"/org/project/_git/repo",
+		"", srv.URL+"/org/project/_git/repo",
 		"org/project/_git/repo",
 		"deadbeef",
 		"token",
@@ -83,7 +83,7 @@ func TestGet_AzureDevOpsAPI(t *testing.T) {
 
 	status, found, err := commitstatus.Get(context.Background(),
 		commitstatus.ProviderAzureDevOps,
-		srv.URL+"/org/project/_git/repo",
+		"", srv.URL+"/org/project/_git/repo",
 		"org/project/_git/repo",
 		"deadbeef",
 		"token",

@@ -98,11 +98,13 @@ func TestParseHostAndScheme(t *testing.T) {
 		wantErr    bool
 	}{
 		{name: "https github", url: "https://github.com/owner/repo.git", wantHost: "github.com", wantScheme: "https"},
+		{name: "https custom port preserved", url: "https://gitea.example.com:8443/owner/repo.git", wantHost: "gitea.example.com:8443", wantScheme: "https"},
 		{name: "https gitlab", url: "https://gitlab.com/owner/repo.git", wantHost: "gitlab.com", wantScheme: "https"},
 		{name: "https gitea", url: "https://gitea.example.com/owner/repo.git", wantHost: "gitea.example.com", wantScheme: "https"},
 		{name: "ssh scp github", url: "git@github.com:owner/repo.git", wantHost: "github.com", wantScheme: "https"},
 		{name: "ssh scp gitlab", url: "git@gitlab.com:owner/repo.git", wantHost: "gitlab.com", wantScheme: "https"},
 		{name: "ssh url scheme", url: "ssh://git@github.com/owner/repo.git", wantHost: "github.com", wantScheme: "https"},
+		{name: "ssh custom port stripped", url: "ssh://git@gitea.example.com:2222/owner/repo.git", wantHost: "gitea.example.com", wantScheme: "https"},
 		{name: "empty url", url: "", wantErr: true},
 	}
 
@@ -128,7 +130,7 @@ func TestPost_NoopWhenMissingToken(t *testing.T) {
 
 	err := commitstatus.Post(context.Background(),
 		commitstatus.ProviderAuto,
-		"https://github.com/owner/repo", "owner/repo", "abc123", "",
+		"", "https://github.com/owner/repo", "owner/repo", "abc123", "",
 		commitstatus.Status{State: commitstatus.StateSuccess})
 	assert.NilError(t, err)
 }
@@ -138,7 +140,7 @@ func TestPost_NoopWhenMissingSHA(t *testing.T) {
 
 	err := commitstatus.Post(context.Background(),
 		commitstatus.ProviderAuto,
-		"https://github.com/owner/repo", "owner/repo", "", "token",
+		"", "https://github.com/owner/repo", "owner/repo", "", "token",
 		commitstatus.Status{State: commitstatus.StateSuccess})
 	assert.NilError(t, err)
 }
@@ -157,7 +159,7 @@ func TestPost_DefaultContext(t *testing.T) {
 
 	err := commitstatus.Post(context.Background(),
 		commitstatus.ProviderAuto,
-		srv.URL+"/owner/repo", "owner/repo", "abc123", "token",
+		"", srv.URL+"/owner/repo", "owner/repo", "abc123", "token",
 		commitstatus.Status{State: commitstatus.StateSuccess})
 	assert.NilError(t, err)
 	assert.Equal(t, received["context"], commitstatus.BaseContext)
@@ -181,11 +183,48 @@ func TestPost_APIError(t *testing.T) {
 
 	err := commitstatus.Post(context.Background(),
 		commitstatus.ProviderAuto,
-		srv.URL+"/owner/repo", "owner/repo", "abc123", "badtoken",
+		"", srv.URL+"/owner/repo", "owner/repo", "abc123", "badtoken",
 		commitstatus.Status{State: commitstatus.StateSuccess})
 	assert.Assert(t, err != nil, "expected error for non-2xx response")
 
 	if err != nil {
 		assert.Assert(t, strings.Contains(err.Error(), "401"), "error should mention status code, got: %s", err.Error())
 	}
+}
+
+func TestPost_UsesConfiguredAPIBaseURL(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, r.Method, http.MethodPost)
+		assert.Equal(t, r.URL.Path, "/api/v1/repos/owner/repo/statuses/abc123")
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	err := commitstatus.Post(context.Background(),
+		commitstatus.ProviderGitea,
+		srv.URL,
+		"ssh://git@gitea.example.com:2222/owner/repo.git",
+		"owner/repo", "abc123", "token",
+		commitstatus.Status{State: commitstatus.StateSuccess})
+	assert.NilError(t, err)
+}
+
+func TestPost_InvalidConfiguredAPIBaseURL(t *testing.T) {
+	t.Parallel()
+
+	err := commitstatus.Post(context.Background(),
+		commitstatus.ProviderGitea,
+		"ssh://gitea.example.com:2222",
+		"https://gitea.example.com/owner/repo.git",
+		"owner/repo", "abc123", "token",
+		commitstatus.Status{State: commitstatus.StateSuccess})
+	assert.Assert(t, err != nil, "expected invalid scm api url to fail")
+
+	if err == nil {
+		t.Fatal("expected error for invalid scm api url")
+	}
+
+	assert.Assert(t, strings.Contains(err.Error(), "failed to parse scm API base URL"))
 }
