@@ -6,73 +6,79 @@ tags:
 
 # Getting Started
 
-???+ note "Use this [docker-compose.yml](https://github.com/kimdre/doco-cd/blob/main/docker-compose.yml) as your starting point"
-    ```go title="docker-compose.yml"
-    --8<-- "docker-compose.yml"
-    ```
+This guide walks you through the shortest path from "I have a repository" to "doco-cd is deploying it".
+
+If you are new to [GitOps](Core-Concepts.md#how-doco-cd-works), the idea is simple: you describe how an app should run in your Git repository, and doco-cd watches that Git repository for changes and deploys them automatically.
+
+## Before you start
+
+You need:
+
+- A machine with [Docker](Core-Concepts.md#how-doco-cd-works) installed
+- A Git repository for your applications
+- Either:
+    - a [Git access token](Setup-Access-Token.md) for HTTPS access, or
+    - an [SSH key](Setup-SSH-Key.md) if you use `git@...` repository URLs
+
+If you are new to Docker, the important part is that doco-cd runs as a container and needs access to the Docker daemon through `/var/run/docker.sock`. That is what lets it start, update, and stop your app containers.
+
+## 1. Start with the sample Compose file
+
+Use this [docker-compose.yml](https://github.com/kimdre/doco-cd/blob/main/docker-compose.yml) as your starting point:
+
+```yaml title="docker-compose.yml"
+--8<-- "docker-compose.yml"
+```
+
+For a first setup, you usually only need to change:
+
+- `GIT_ACCESS_TOKEN`
+- `WEBHOOK_SECRET` if you use webhooks
+- the optional [poll configuration](Poll-Settings.md) if you prefer polling
 
 !!! tip
-    To use a specific version, replace the `latest` tag with the desired release version without the leading `v` (e.g. `0.80.0`):
-    `ghcr.io/kimdre/doco-cd:0.80.0`
+    To use a specific version instead of `latest`, replace the tag with a release number without the leading `v`, for example `ghcr.io/kimdre/doco-cd:0.80.0`.
 
-    You can find the available tags/versions on the [GitHub Container Registry](https://github.com/kimdre/doco-cd/pkgs/container/doco-cd).
+## 2. Set up Git access
 
-Find out about the [Core Concepts](Core-Concepts.md) of Doco-CD to understand how the application works and how to configure it.
+Doco-cd needs to clone or fetch the repositories it deploys.
 
-You can find all available app settings on the [App Settings](App-Settings.md) wiki page.
+Use a [Git access token](Setup-Access-Token.md) if your repositories are reached over HTTPS. See that page for examples.
 
-If you run the application with Docker Swarm, see the [Swarm Mode](Advanced/Swarm-Mode.md) wiki page for more information.
-
-##  Create a Git Access Token
-
-The Git access token is used to authenticate with your Git provider (GitHub, GitLab, Gitea, etc.) and to clone or fetch your repositories via HTTP.
-
-!!! note
-    If you use an SSH URL for your Git repositories, the Git access token is not required.
-    Instead, you need to generate an SSH key pair, see [Setup SSH Key](Setup-SSH-Key.md) for more information.
+If you use SSH URLs such as `git@github.com:owner/repo.git`, use [SSH keys](Setup-SSH-Key.md) instead.
 
 !!! tip
-    You can use doco-cd without a Git Access Token if the repositories you want to use for your deployments are publicly accessible. 
-    However, it is still recommended to use one in that case to for example avoid rate limits. 
+    Public repositories do not strictly need a token, but using one is still recommended to avoid rate limits.
 
-Set `GIT_ACCESS_TOKEN` for a global fallback token, or use `GIT_AUTH_DOMAINS` / `GIT_AUTH_DOMAINS_FILE` for per-domain credentials. See [Setup Access Token](Setup-Access-Token.md) for examples.
+## 3. Choose how deployments are triggered
 
-## Deployment triggers
-
-Doco-CD can be triggered to check for changes to deploy via webhooks or by polling the Git repositories at regular intervals. You can use either method or both methods together.
+Doco-cd can watch repositories in two ways:
 
 ### Webhooks
 
-Webhooks are event-based triggers that notify doco-cd when there are changes in the repositories. This is the recommended way to trigger deployments as it is more efficient and faster than polling but requires doco-cd to be reachable from the internet (or local network if you self-host your Git provider) and some setup on your Git provider.
-
-If you want to use webhooks, you need to set the `WEBHOOK_SECRET` environment variable to a secure secret and publish the webhook port. See [Setup Webhook](Setup-Webhook.md) for more information.
+Webhooks send a signal when something changes. This is the fastest option, but your doco-cd instance must be reachable from your Git provider. See [Setup Webhook](Setup-Webhook.md).
 
 ### Polling
 
-Polling is a time-based trigger that checks the repositories for changes at regular intervals. This method does not require doco-cd to be reachable from the internet but is less efficient and slower than webhooks.
+Polling checks for changes on a schedule. This is easier to start with if your instance is only on a private network or your firewall is not ready yet. See [Poll Settings](Poll-Settings.md).
 
-If you want to use polling, you need to set a poll configuration for each repository you want to use for deployments. See [Poll Settings](Poll-Settings.md) for more information.
+If you are unsure, start with polling first and switch to webhooks later. See [Poll Settings](Poll-Settings.md) and [Setup Webhook](Setup-Webhook.md).
 
-## Run doco-cd
+## 4. Run doco-cd
 
-After you have created the `docker-compose.yml` file, you can run doco-cd with the following command:
+After you have saved the Compose file, start the container:
 
 ```sh
 docker compose up -d
 ```
 
-You can check the logs of the application with the following command:
+To watch the logs:
 
 ```sh
 docker compose logs -f
 ```
 
-To be able to reach the application from external Git providers like GitHub or Gitlab, you need to expose the http endpoint of the application to the internet.
-You can use a reverse proxy like [NGINX](https://www.nginx.com/), [Traefik](https://traefik.io) or [Caddy](https://caddyserver.com) for this purpose.
-
-### Notes for Podman users
-
-If you are using Podman instead of Docker, you may need to adjust the `docker-compose.yml` file to use the Podman socket instead of the Docker socket:
+If you use Podman instead of Docker, replace the Docker socket mount with the Podman socket:
 
 ```diff title="docker-compose.yml"
 services:
@@ -84,55 +90,19 @@ services:
     ...
 ```
 
-## Deploy your first application
+## 5. Tell doco-cd what to deploy
 
-To deploy your first application, you need to configure the deployment settings in your Git repository. These settings are defined in a `.doco-cd.yml` file in the root of your repository and specify how the deployment should be performed.
-See [Deploy Settings](Deploy-Settings.md) for more information on how to configure the deployment of your applications.
-
-### Example
-
-A simple example of a `.doco-cd.yml` file that deploys a Docker Compose application:
+In the application repository, add a `.doco-cd.yml` file in the repository root. This file tells doco-cd which Compose file to deploy and where it lives. See [Deploy Settings](Deploy-Settings.md) for the full list of options.
 
 ```yaml title=".doco-cd.yml"
 name: my-app
 working_dir: my-app/
-compose_files: 
+compose_files:
   - docker-compose.yml
 ```
 
-## More information
+## Next steps
 
-### Using encrypted secrets
-
-Doco-CD supports the encryption of sensitive data in your Git repository files with [SOPS](https://getsops.io/).
-
-See the [Encryption](Advanced/Encryption.md) wiki page for more information on how to use SOPS with Doco-CD.
-
-### Fetch secrets from external secret providers
-
-Doco-CD supports fetching secrets from various external secret management providers like OpenBao, AWS Secrets Manager, Bitwarden, and many more.
-See the [External Secrets](External-Secrets/index.md) wiki page for more information on how to use external secret management providers with Doco-CD.
-
-### Pulling images from a private registry
-
-If you want to pull images from a private registry, see [Private Container Registries](Advanced/Private-Container-Registries.md) in the wiki.
-
-### Self-updating doco-cd
-
-If you want doco-cd to update itself, see [Self-Updating](Advanced/Self-Updating.md) for a recommended two-instance setup.
-
-### Job Scheduling / Cron Jobs
-
-Doco-CD supports job scheduling and cron jobs for running periodic tasks. See the [Job Scheduling](Advanced/Job-Scheduling.md) wiki page for more information on how to configure and use this feature.
-
-### Sending Notifications
-
-Doco-CD supports sending notifications about deployment events to various services. See the [Notifications](Advanced/Notifications.md) wiki page for more information on how to set up notifications.
-
-### Rest API
-
-Doco-CD provides a REST API that allows you to interact with the application programmatically. See the [Rest API](Endpoints/REST-API.md) wiki page.
-
-### Prometheus Metrics
-
-Doco-CD exposes Prometheus metrics that can be used to monitor the application. See the [Prometheus Metrics](Endpoints/Metrics.md) wiki page.
+- Read [Core Concepts](Core-Concepts.md) if you want a better mental model of how doco-cd works.
+- Check [App Settings](App-Settings.md#general-settings) for all available environment variables.
+- See [Swarm Mode](Advanced/Swarm-Mode.md) if you deploy Docker Swarm stacks instead of Compose apps.
