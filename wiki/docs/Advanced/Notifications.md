@@ -90,6 +90,8 @@ The following fields are available:
 | `.AffectedActorID`    | Affected container/service ID                                            |
 | `.AffectedActorName`  | Affected container/service name                                          |
 
+`{{ .DefaultBody }}` renders the built-in body (message + metadata), so you can extend the default format instead of replacing it, e.g. `{{ .DefaultBody }}\nhost: my-vm`.
+
 !!! example "One-line body"
 
     ```yaml

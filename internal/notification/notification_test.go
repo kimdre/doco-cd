@@ -125,13 +125,19 @@ func TestGetRevision(t *testing.T) {
 	}
 }
 
-func TestFormatMessage(t *testing.T) {
+// defaultBody renders the built-in notification body for a message + metadata,
+// exercising the default template path (TemplateData.DefaultBody).
+func defaultBody(message string, m Metadata) string {
+	return TemplateData{Message: message, Metadata: m}.DefaultBody()
+}
+
+func TestDefaultBody(t *testing.T) {
 	t.Parallel()
 
 	t.Run("single-line message adds newline after first colon", func(t *testing.T) {
 		t.Parallel()
 
-		message := formatMessage("Deployment failed: timeout reached", Metadata{})
+		message := defaultBody("Deployment failed: timeout reached", Metadata{})
 		expected := "Deployment failed: timeout reached"
 
 		if message != expected {
@@ -142,7 +148,7 @@ func TestFormatMessage(t *testing.T) {
 	t.Run("multi-line version message keeps inline versions", func(t *testing.T) {
 		t.Parallel()
 
-		message := formatMessage("Current Version: v0.80.0\nLatest Version: v0.80.1", Metadata{})
+		message := defaultBody("Current Version: v0.80.0\nLatest Version: v0.80.1", Metadata{})
 		expected := "Current Version: v0.80.0\nLatest Version: v0.80.1"
 
 		if message != expected {
@@ -153,7 +159,7 @@ func TestFormatMessage(t *testing.T) {
 	t.Run("reconciliation metadata includes event and affected actor", func(t *testing.T) {
 		t.Parallel()
 
-		message := formatMessage("Deployment triggered", Metadata{
+		message := defaultBody("Deployment triggered", Metadata{
 			Repository:          "acme/api",
 			Stack:               "prod",
 			JobID:               "job-1",
@@ -173,7 +179,7 @@ func TestFormatMessage(t *testing.T) {
 	t.Run("reconciliation-only metadata is nested under reconciliation", func(t *testing.T) {
 		t.Parallel()
 
-		message := formatMessage("Restart suppressed", Metadata{
+		message := defaultBody("Restart suppressed", Metadata{
 			ReconciliationEvent: "unhealthy",
 			AffectedActorKind:   "container",
 			AffectedActorID:     "abc123",
@@ -189,7 +195,7 @@ func TestFormatMessage(t *testing.T) {
 	t.Run("metadata values remain unquoted", func(t *testing.T) {
 		t.Parallel()
 
-		message := formatMessage("Deploy done", Metadata{
+		message := defaultBody("Deploy done", Metadata{
 			Repository: "acme/o'hara",
 		})
 		expected := "Deploy done\n\nrepository: acme/o'hara"
@@ -202,7 +208,7 @@ func TestFormatMessage(t *testing.T) {
 	t.Run("non-reconciliation message keeps job id", func(t *testing.T) {
 		t.Parallel()
 
-		message := formatMessage("Deploy done", Metadata{
+		message := defaultBody("Deploy done", Metadata{
 			Repository: "acme/repo",
 			JobID:      "job-99",
 		})
@@ -216,7 +222,7 @@ func TestFormatMessage(t *testing.T) {
 	t.Run("unknown actor kind does not emit actor id or name keys", func(t *testing.T) {
 		t.Parallel()
 
-		message := formatMessage("Reconciled", Metadata{
+		message := defaultBody("Reconciled", Metadata{
 			ReconciliationEvent: "update",
 			AffectedActorKind:   "task",
 			AffectedActorID:     "zzz111",
@@ -230,13 +236,13 @@ func TestFormatMessage(t *testing.T) {
 	})
 }
 
-func TestParseTemplate(t *testing.T) {
+func TestValidateTemplate(t *testing.T) {
 	t.Parallel()
 
-	t.Run("empty template disables templating", func(t *testing.T) {
+	t.Run("empty template returns nil (use default)", func(t *testing.T) {
 		t.Parallel()
 
-		tmpl, err := parseTemplate("   ")
+		tmpl, err := validateTemplate("   ")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -249,7 +255,7 @@ func TestParseTemplate(t *testing.T) {
 	t.Run("valid template parses", func(t *testing.T) {
 		t.Parallel()
 
-		if _, err := parseTemplate("{{.Emoji}} {{.Title}} on {{.Stack}}"); err != nil {
+		if _, err := validateTemplate("{{.Emoji}} {{.Title}} on {{.Stack}}"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -257,7 +263,7 @@ func TestParseTemplate(t *testing.T) {
 	t.Run("syntax error is rejected", func(t *testing.T) {
 		t.Parallel()
 
-		if _, err := parseTemplate("{{.Stack"); !errors.Is(err, ErrInvalidTemplate) {
+		if _, err := validateTemplate("{{.Stack"); !errors.Is(err, ErrInvalidTemplate) {
 			t.Fatalf("expected ErrInvalidTemplate, got: %v", err)
 		}
 	})
@@ -265,7 +271,7 @@ func TestParseTemplate(t *testing.T) {
 	t.Run("unknown field is rejected at config time", func(t *testing.T) {
 		t.Parallel()
 
-		if _, err := parseTemplate("{{.Nonexistent}}"); !errors.Is(err, ErrInvalidTemplate) {
+		if _, err := validateTemplate("{{.Nonexistent}}"); !errors.Is(err, ErrInvalidTemplate) {
 			t.Fatalf("expected ErrInvalidTemplate, got: %v", err)
 		}
 	})
@@ -277,7 +283,7 @@ func TestRenderTemplate(t *testing.T) {
 	t.Run("renders metadata fields and trims trailing newlines", func(t *testing.T) {
 		t.Parallel()
 
-		tmpl, err := parseTemplate("{{.Emoji}} {{.Title}} — {{.Stack}} @ {{.Revision}}\n")
+		tmpl, err := validateTemplate("{{.Emoji}} {{.Title}} — {{.Stack}} @ {{.Revision}}\n")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -297,7 +303,7 @@ func TestRenderTemplate(t *testing.T) {
 	t.Run("exposes reconciliation flag", func(t *testing.T) {
 		t.Parallel()
 
-		tmpl, err := parseTemplate("{{if .IsReconciliation}}reconcile {{.ReconciliationEvent}}{{else}}deploy{{end}}")
+		tmpl, err := validateTemplate("{{if .IsReconciliation}}reconcile {{.ReconciliationEvent}}{{else}}deploy{{end}}")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -305,6 +311,20 @@ func TestRenderTemplate(t *testing.T) {
 		got := renderTemplate(tmpl, Warning, "Service restarted", "", Metadata{ReconciliationEvent: "unhealthy"})
 		if got != "reconcile unhealthy" {
 			t.Errorf("expected %q, got %q", "reconcile unhealthy", got)
+		}
+	})
+
+	t.Run("nil template falls back to the built-in body", func(t *testing.T) {
+		t.Parallel()
+
+		got := renderTemplate(nil, Success, "Deployment completed", "Deploy done", Metadata{
+			Repository: "acme/repo",
+			JobID:      "job-99",
+		})
+		expected := "Deploy done\n\njob_id: job-99\nrepository: acme/repo"
+
+		if got != expected {
+			t.Errorf("expected %q, got %q", expected, got)
 		}
 	})
 }

@@ -41,8 +41,14 @@ var (
 	appriseApiURL      = ""
 	appriseNotifyUrls  = ""
 	appriseNotifyLevel = Info
-	appriseTemplate    *template.Template // optional user template rendering the notification body; nil = built-in format
+	appriseTemplate    *template.Template // template rendering the notification body; defaults to defaultTemplate
 )
+
+// defaultTemplate reproduces the built-in notification body (message followed by
+// sorted metadata). It is used whenever no APPRISE_NOTIFY_TEMPLATE is configured.
+// The heavy lifting lives in TemplateData.DefaultBody, which is also exposed to
+// user templates so they can extend the built-in format instead of replacing it.
+var defaultTemplate = template.Must(template.New("notification").Parse("{{ .DefaultBody }}"))
 
 // ErrNotifyFailed is returned when the Apprise request fails due to invalid notify URLs or unreachable service.
 var ErrNotifyFailed = errors.New("request to apprise failed")
@@ -82,10 +88,11 @@ type TemplateData struct {
 	Metadata                // embedded metadata fields
 }
 
-// parseTemplate parses and validates a notification body template. An empty
-// string disables templating (nil result). The template is executed against a
-// fully populated sample so field-reference mistakes fail fast at config time.
-func parseTemplate(tmpl string) (*template.Template, error) {
+// validateTemplate parses and validates a notification body template. An empty
+// string returns a nil template, signalling the caller to use defaultTemplate.
+// The template is executed against a fully populated sample so field-reference
+// mistakes fail fast at config time.
+func validateTemplate(tmpl string) (*template.Template, error) {
 	if strings.TrimSpace(tmpl) == "" {
 		return nil, nil
 	}
@@ -168,11 +175,16 @@ func send(apiUrl, notifyUrls, title, message, level string) error {
 
 // SetAppriseConfig sets the configuration for the Apprise notification service.
 // bodyTemplate is an optional Go text/template rendering the notification body;
-// an empty string keeps the built-in format. An invalid template is rejected.
+// an empty string keeps the built-in format (defaultTemplate). An invalid
+// template is rejected.
 func SetAppriseConfig(apiURL, notifyUrls, notifyLevel, bodyTemplate string) error {
-	t, err := parseTemplate(bodyTemplate)
+	t, err := validateTemplate(bodyTemplate)
 	if err != nil {
 		return err
+	}
+
+	if t == nil {
+		t = defaultTemplate
 	}
 
 	appriseConfigMu.Lock()
@@ -205,11 +217,7 @@ func Send(level level, title, message string, metadata Metadata) error {
 		return nil // Do not send notification if the level is lower than the configured level
 	}
 
-	if bodyTemplate != nil {
-		message = renderTemplate(bodyTemplate, level, title, message, metadata)
-	} else {
-		message = formatMessage(message, metadata)
-	}
+	message = renderTemplate(bodyTemplate, level, title, message, metadata)
 
 	title = formatTitle(level, title, metadata)
 
@@ -231,11 +239,14 @@ func formatTitle(level level, title string, metadata Metadata) string {
 	return levelEmojis[level] + " " + formattedTitle
 }
 
-// formatMessage renders notifications as plain message text followed by structured metadata.
-func formatMessage(message string, m Metadata) string {
+// DefaultBody renders the built-in notification body: the message text followed
+// by structured metadata. It backs defaultTemplate and is exposed to user
+// templates as {{ .DefaultBody }}.
+func (d TemplateData) DefaultBody() string {
 	var sb strings.Builder
 
-	trimmedMessage := strings.TrimRight(message, "\n")
+	m := d.Metadata
+	trimmedMessage := strings.TrimRight(d.Message, "\n")
 	isReconciliation := strings.TrimSpace(m.ReconciliationEvent) != ""
 
 	sb.WriteString(trimmedMessage)
@@ -332,10 +343,15 @@ func formatMessage(message string, m Metadata) string {
 	return sb.String()
 }
 
-// renderTemplate renders the notification body using the configured template.
-// On execution failure it falls back to the built-in format so an alert is never
-// dropped because of a template mistake (config-time validation catches most).
+// renderTemplate renders the notification body using the configured template
+// (defaultTemplate when t is nil). On execution failure it falls back to the
+// built-in body so an alert is never dropped because of a template mistake
+// (config-time validation catches most).
 func renderTemplate(t *template.Template, level level, title, message string, m Metadata) string {
+	if t == nil {
+		t = defaultTemplate
+	}
+
 	data := TemplateData{
 		Level:            logLevels[level],
 		Emoji:            levelEmojis[level],
@@ -347,7 +363,7 @@ func renderTemplate(t *template.Template, level level, title, message string, m 
 
 	var sb strings.Builder
 	if err := t.Execute(&sb, data); err != nil {
-		return formatMessage(message, m)
+		return data.DefaultBody()
 	}
 
 	return strings.TrimRight(sb.String(), "\n")
