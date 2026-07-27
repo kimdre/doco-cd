@@ -137,6 +137,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		appConfig.SSHPrivateKey,
 		appConfig.SSHPrivateKeyPassphrase,
 		appConfig.GitAccessToken,
+		appConfig.GitHttpAuthUser,
 		git.GitHubAppConfig{
 			ID:             appConfig.GitHubAppID,
 			PrivateKey:     appConfig.GitHubAppPrivateKey,

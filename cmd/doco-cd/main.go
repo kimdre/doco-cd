@@ -114,6 +114,7 @@ func run() error {
 		c.SSHPrivateKey,
 		c.SSHPrivateKeyPassphrase,
 		c.GitAccessToken,
+		c.GitHttpAuthUser,
 		git.GitHubAppConfig{
 			ID:             c.GitHubAppID,
 			PrivateKey:     c.GitHubAppPrivateKey,

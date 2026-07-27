@@ -17,3 +17,9 @@
     ...
     -----END OPENSSH PRIVATE KEY-----
   ssh_private_key_passphrase: ""
+
+- domains:
+    - gitlab.example.com
+  # GitLab deploy token: http_auth_user must be the deploy token's username.
+  http_auth_user: gitlab+deploy-token-1234567
+  git_access_token: "gldt-xxxxxxxxxxxxxxxxxxxx"
