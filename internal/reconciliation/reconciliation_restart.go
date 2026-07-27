@@ -55,7 +55,7 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 
 	restartLog.Info("restarting " + actorKind)
 
-	metadata := restartNotificationMetadata(j.info.metadata, action, actorKind, containerID, containerName, reconciliationTraceIDFromEvent(event))
+	metadata := restartNotificationMetadata(j.info.metadata, dc, action, actorKind, containerID, containerName, reconciliationTraceIDFromEvent(event))
 
 	if _, err := cli.Client().ContainerRestart(ctx, containerID, restartOpts); err != nil {
 		j.restartStateMu.Lock()
@@ -112,8 +112,12 @@ func shouldFallbackToDeployOnRestartError(err error) bool {
 	return strings.Contains(errText, "marked for removal") && strings.Contains(errText, "cannot be started")
 }
 
-func restartNotificationMetadata(base notification.Metadata, action, actorKind, actorID, actorName, traceID string) notification.Metadata {
+func restartNotificationMetadata(base notification.Metadata, dc *deployConfig.Config, action, actorKind, actorID, actorName, traceID string) notification.Metadata {
 	metadata := base
+	if dc != nil {
+		metadata.Context = dc.Context
+	}
+
 	metadata.ReconciliationEvent = action
 	metadata.TraceID = strings.TrimSpace(traceID)
 	metadata.AffectedActorKind = actorKind
@@ -235,7 +239,7 @@ func (j *job) shouldSuppressUnhealthyRestart(jobLog *slog.Logger, event events.M
 	)
 
 	actorKind := restartNotificationActorKind(swarmMode)
-	metadata := restartNotificationMetadata(j.info.metadata, action, actorKind, containerID, event.Actor.Attributes["name"], reconciliationTraceIDFromEvent(event))
+	metadata := restartNotificationMetadata(j.info.metadata, dc, action, actorKind, containerID, event.Actor.Attributes["name"], reconciliationTraceIDFromEvent(event))
 
 	if notifyErr := notification.Send(
 		notification.Warning,

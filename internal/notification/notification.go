@@ -45,7 +45,7 @@ var (
 )
 
 // defaultTemplate reproduces the built-in notification body (message followed by
-// sorted metadata). It is used whenever no APPRISE_NOTIFY_TEMPLATE is configured.
+// sorted metadata). It is used whenever no APPRISE_NOTIFY_BODY_TEMPLATE is configured.
 // The heavy lifting lives in TemplateData.DefaultBody, which is also exposed to
 // user templates so they can extend the built-in format instead of replacing it.
 var defaultTemplate = template.Must(template.New("notification").Parse("{{ .DefaultBody }}"))
@@ -67,6 +67,7 @@ type appriseRequest struct {
 type Metadata struct {
 	Repository          string
 	Stack               string
+	Context             string // Docker context the stack is deployed to (empty = default context)
 	Revision            string
 	JobID               string
 	TraceID             string
@@ -106,7 +107,7 @@ func validateTemplate(tmpl string) (*template.Template, error) {
 		Level: logLevels[Success], Emoji: levelEmojis[Success],
 		Title: "Deployment completed", Message: "sample",
 		Metadata: Metadata{
-			Repository: "github.com/acme/app", Stack: "app",
+			Repository: "github.com/acme/app", Stack: "app", Context: "default",
 			Revision: "refs/heads/main (abc123)", JobID: "sample",
 		},
 	}

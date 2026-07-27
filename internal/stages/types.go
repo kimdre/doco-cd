@@ -254,6 +254,7 @@ func (s *StageManager) NotifyFailure(notifyErr error) {
 		metadata := s.Metadata
 		metadata.Repository = s.Repository.Name
 		metadata.Stack = s.DeployConfig.Name
+		metadata.Context = s.DeployConfig.Context
 		metadata.Revision = revision
 		metadata.JobID = s.JobID
 

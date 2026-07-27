@@ -19,6 +19,7 @@ func (s *StageManager) RunPostDestroyStage(_ context.Context, stageLog *slog.Log
 	metadata := s.Metadata
 	metadata.Repository = s.Repository.Name
 	metadata.Stack = s.DeployConfig.Name
+	metadata.Context = s.DeployConfig.Context
 	metadata.JobID = s.JobID
 
 	err := notification.Send(notification.Success, "Stack destroyed", "successfully destroyed stack "+s.DeployConfig.Name, metadata)
