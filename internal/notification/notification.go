@@ -206,8 +206,25 @@ func getAppriseConfig() (string, string, level, *template.Template) {
 	return appriseApiURL, appriseNotifyUrls, appriseNotifyLevel, appriseTemplate
 }
 
+// SendOption customizes how a notification is rendered/sent.
+type SendOption func(*sendOptions)
+
+type sendOptions struct {
+	skipBodyTemplate bool
+}
+
+// WithoutBodyTemplate renders the notification with the built-in body format,
+// ignoring any configured APPRISE_NOTIFY_BODY_TEMPLATE. Use it for app-level
+// notifications (e.g. the "new version available" ping) that are not tied to a
+// deployment and therefore carry no stack/context/revision the template expects.
+func WithoutBodyTemplate() SendOption {
+	return func(o *sendOptions) {
+		o.skipBodyTemplate = true
+	}
+}
+
 // Send sends a notification using the Apprise service based on the provided configuration and parameters.
-func Send(level level, title, message string, metadata Metadata) error {
+func Send(level level, title, message string, metadata Metadata, opts ...SendOption) error {
 	apiURL, notifyURLs, notifyLevel, bodyTemplate := getAppriseConfig()
 
 	if apiURL == "" || notifyURLs == "" {
@@ -216,6 +233,15 @@ func Send(level level, title, message string, metadata Metadata) error {
 
 	if level < notifyLevel {
 		return nil // Do not send notification if the level is lower than the configured level
+	}
+
+	var o sendOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+
+	if o.skipBodyTemplate {
+		bodyTemplate = nil // renderTemplate falls back to the built-in default body
 	}
 
 	message = renderTemplate(bodyTemplate, level, title, message, metadata)

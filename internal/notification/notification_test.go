@@ -329,6 +329,18 @@ func TestRenderTemplate(t *testing.T) {
 	})
 }
 
+func TestWithoutBodyTemplate(t *testing.T) {
+	t.Parallel()
+
+	var o sendOptions
+
+	WithoutBodyTemplate()(&o)
+
+	if !o.skipBodyTemplate {
+		t.Fatal("expected WithoutBodyTemplate to set skipBodyTemplate; Send then renders the built-in body regardless of APPRISE_NOTIFY_BODY_TEMPLATE")
+	}
+}
+
 func TestFormatTitle(t *testing.T) {
 	t.Parallel()
 

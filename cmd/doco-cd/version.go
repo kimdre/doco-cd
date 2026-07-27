@@ -91,10 +91,14 @@ func notificationForNewAppVersion(log *slog.Logger) {
 				slog.String("latest", latestVersion),
 			)
 
+			// App-level ping, not a deployment: it carries no stack/context/revision,
+			// so skip any custom body template and use the built-in body (just the
+			// message). Otherwise a deploy-shaped template renders empty fields.
 			err = notification.Send(notification.Info,
 				"New version of doco-cd is available",
 				fmt.Sprintf("Current Version: %s\nLatest Version: %s\n\nhttps://github.com/kimdre/doco-cd/releases", app.Version, latestVersion),
-				notification.Metadata{})
+				notification.Metadata{},
+				notification.WithoutBodyTemplate())
 			if err != nil {
 				return
 			}
