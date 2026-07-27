@@ -1494,6 +1494,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#custom-notification-body" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Custom notification body
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#reconciliation-notifications" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2375,6 +2386,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#custom-notification-body" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Custom notification body
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#reconciliation-notifications" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2550,6 +2572,18 @@ You can find a list of all supported services and platforms in the <a href="http
 <td>The minimum level of notifications to send. Possible values: <code>info</code>, <code>success</code>, <code>warning</code>, <code>failure</code></td>
 <td><code>success</code></td>
 </tr>
+<tr>
+<td><code>APPRISE_NOTIFY_BODY_TEMPLATE</code></td>
+<td>string</td>
+<td>Optional <a href="https://pkg.go.dev/text/template">Go <code>text/template</code></a> rendering the notification body (see <a data-preview="" href="#custom-notification-body">Custom notification body</a>). Empty uses the built-in format.</td>
+<td></td>
+</tr>
+<tr>
+<td><code>APPRISE_NOTIFY_BODY_TEMPLATE_FILE</code></td>
+<td>string</td>
+<td>Path to a file inside the container containing the template (see <code>APPRISE_NOTIFY_BODY_TEMPLATE</code>). Mutually exclusive with <code>APPRISE_NOTIFY_BODY_TEMPLATE</code>.</td>
+<td></td>
+</tr>
 </tbody>
 </table>
 <h2 id="example-docker-composeyml">Example <code>docker-compose.yml</code><a class="headerlink" href="#example-docker-composeyml" title="Permanent link">&para;</a></h2>
@@ -2614,6 +2648,88 @@ You can find a list of all supported services and platforms in the <a href="http
 </tr>
 </tbody>
 </table>
+<h2 id="custom-notification-body">Custom notification body<a class="headerlink" href="#custom-notification-body" title="Permanent link">&para;</a></h2>
+<p>By default the notification body is the message followed by the <a data-preview="" href="#metadata-fields">metadata fields</a> as <code>key: value</code> lines. Set <code>APPRISE_NOTIFY_BODY_TEMPLATE</code> (or <code>APPRISE_NOTIFY_BODY_TEMPLATE_FILE</code>) to a <a href="https://pkg.go.dev/text/template">Go <code>text/template</code></a> to render the body yourself — useful to drop noisy fields, add a host label, or produce a one-liner when several stacks report into one channel.</p>
+<p>The template is validated at startup: a syntax error or a reference to an unknown field stops doco-cd from starting. The title (emoji + optional <code>[R]</code> marker + title text) is not affected by the template.</p>
+<p>The following fields are available:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.Level</code></td>
+<td><code>info</code>, <code>success</code>, <code>warning</code> or <code>failure</code></td>
+</tr>
+<tr>
+<td><code>.Emoji</code></td>
+<td>Level emoji (<code>ℹ️</code>/<code>✅</code>/<code>⚠️</code>/<code>❌</code>)</td>
+</tr>
+<tr>
+<td><code>.Title</code></td>
+<td>Title text, e.g. <code>Deployment completed</code></td>
+</tr>
+<tr>
+<td><code>.Message</code></td>
+<td>Core message</td>
+</tr>
+<tr>
+<td><code>.IsReconciliation</code></td>
+<td><code>true</code> when triggered by a <a data-preview="" href="#reconciliation-notifications">reconciliation</a> event</td>
+</tr>
+<tr>
+<td><code>.Repository</code></td>
+<td>Repository name</td>
+</tr>
+<tr>
+<td><code>.Stack</code></td>
+<td>Project/Stack name</td>
+</tr>
+<tr>
+<td><code>.Context</code></td>
+<td>Docker context the stack is deployed to (empty for the default context)</td>
+</tr>
+<tr>
+<td><code>.Revision</code></td>
+<td>Branch/tag and commit SHA</td>
+</tr>
+<tr>
+<td><code>.JobID</code></td>
+<td>Deployment job ID (empty for reconciliation events)</td>
+</tr>
+<tr>
+<td><code>.ReconciliationEvent</code></td>
+<td>Reconciliation event that triggered the action</td>
+</tr>
+<tr>
+<td><code>.TraceID</code></td>
+<td>Reconciliation trace ID</td>
+</tr>
+<tr>
+<td><code>.AffectedActorKind</code></td>
+<td><code>container</code> or <code>service</code></td>
+</tr>
+<tr>
+<td><code>.AffectedActorID</code></td>
+<td>Affected container/service ID</td>
+</tr>
+<tr>
+<td><code>.AffectedActorName</code></td>
+<td>Affected container/service name</td>
+</tr>
+</tbody>
+</table>
+<p><code>{{ .DefaultBody }}</code> renders the built-in body (message + metadata), so you can extend the default format instead of replacing it, e.g. <code>{{ .DefaultBody }}\nhost: my-vm</code>.</p>
+<div class="admonition example">
+<p class="admonition-title">One-line body</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">environment</span><span class="p">:</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">APPRISE_NOTIFY_BODY_TEMPLATE</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{{.Emoji}}</span><span class="nv"> </span><span class="s">{{.Stack}}</span><span class="nv"> </span><span class="s">—</span><span class="nv"> </span><span class="s">{{.Message}}</span><span class="nv"> </span><span class="s">({{.Revision}})&quot;</span>
+</span></code></pre></div>
+<p>renders e.g. <code>✅ app — Successfully deployed stack app (main (abc123))</code>.</p>
+</div>
 <h2 id="reconciliation-notifications">Reconciliation notifications<a class="headerlink" href="#reconciliation-notifications" title="Permanent link">&para;</a></h2>
 <p>If a notification was triggered by reconciliation, the title gets a short <code>[R]</code> marker.</p>
 <div class="admonition example">
