@@ -38,6 +38,7 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 	metadata := s.Metadata
 	metadata.Repository = s.Repository.Name
 	metadata.Stack = s.DeployConfig.Name
+	metadata.Context = s.DeployConfig.Context
 	metadata.Revision = notification.GetRevision(s.DeployConfig.Reference, shortCommit)
 	metadata.JobID = s.JobID
 
