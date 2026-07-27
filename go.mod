@@ -31,7 +31,7 @@ require (
 	github.com/moby/moby/client v0.5.0
 	github.com/openbao/openbao/api/v2 v2.6.0
 	github.com/prometheus/client_golang v1.24.1
-	go.yaml.in/yaml/v3 v3.0.4
+	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/crypto v0.54.0
 	gopkg.in/validator.v2 v2.0.1
 	gotest.tools/v3 v3.5.2
