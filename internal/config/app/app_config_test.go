@@ -25,7 +25,7 @@ func TestGetConfig(t *testing.T) {
 				"LOG_LEVEL":             "info",
 				"HTTP_PORT":             "8080",
 				"WEBHOOK_SECRET":        "secret",
-				"AUTH_TYPE":             "oauth2",
+				"GIT_ACCESS_TOKEN_USER": "oauth2",
 				"GIT_ACCESS_TOKEN":      "token",
 				"SKIP_TLS_VERIFICATION": "false",
 			},
@@ -47,7 +47,7 @@ func TestGetConfig(t *testing.T) {
 			envVars: map[string]string{
 				"LOG_LEVEL":             "info",
 				"HTTP_PORT":             "8080",
-				"AUTH_TYPE":             "oauth2",
+				"GIT_ACCESS_TOKEN_USER": "oauth2",
 				"SKIP_TLS_VERIFICATION": "false",
 			},
 			dockerSecrets: map[string]string{
@@ -61,7 +61,7 @@ func TestGetConfig(t *testing.T) {
 			envVars: map[string]string{
 				"LOG_LEVEL":             "info",
 				"HTTP_PORT":             "8080",
-				"AUTH_TYPE":             "oauth2",
+				"GIT_ACCESS_TOKEN_USER": "oauth2",
 				"SKIP_TLS_VERIFICATION": "false",
 				"WEBHOOK_SECRET":        "webh00k_secret",
 			},

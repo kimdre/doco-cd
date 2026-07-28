@@ -165,6 +165,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 			appConfig.SSHPrivateKey,
 			appConfig.SSHPrivateKeyPassphrase,
 			appConfig.GitAccessToken,
+			appConfig.GitAccessTokenUser,
 			git.GitHubAppConfig{
 				ID:             appConfig.GitHubAppID,
 				PrivateKey:     appConfig.GitHubAppPrivateKey,

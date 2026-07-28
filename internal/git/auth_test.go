@@ -2,6 +2,8 @@ package git
 
 import (
 	"testing"
+
+	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 )
 
 func TestResolveScopedCredentials_ExactBeatsWildcard(t *testing.T) {
@@ -14,9 +16,9 @@ func TestResolveScopedCredentials_ExactBeatsWildcard(t *testing.T) {
 			Domains:        []string{"api.github.com"},
 			GitAccessToken: "exact-token",
 		},
-	}, "", "", "", GitHubAppConfig{})
+	}, "", "", "", "", GitHubAppConfig{})
 	t.Cleanup(func() {
-		ConfigureAuthResolver(nil, "", "", "", GitHubAppConfig{})
+		ConfigureAuthResolver(nil, "", "", "", "", GitHubAppConfig{})
 	})
 
 	_, _, token := ResolveScopedCredentials("https://api.github.com/org/repo.git", "", "", "")
@@ -35,9 +37,9 @@ func TestResolveScopedCredentials_LongestWildcardSuffixWins(t *testing.T) {
 			Domains:        []string{"*.foo.example.com"},
 			GitAccessToken: "specific-token",
 		},
-	}, "", "", "", GitHubAppConfig{})
+	}, "", "", "", "", GitHubAppConfig{})
 	t.Cleanup(func() {
-		ConfigureAuthResolver(nil, "", "", "", GitHubAppConfig{})
+		ConfigureAuthResolver(nil, "", "", "", "", GitHubAppConfig{})
 	})
 
 	_, _, token := ResolveScopedCredentials("https://git.foo.example.com/org/repo.git", "", "", "")
@@ -52,9 +54,9 @@ func TestResolveScopedCredentials_WildcardDoesNotMatchApex(t *testing.T) {
 			Domains:        []string{"*.example.com"},
 			GitAccessToken: "wildcard-token",
 		},
-	}, "", "", "", GitHubAppConfig{})
+	}, "", "", "", "", GitHubAppConfig{})
 	t.Cleanup(func() {
-		ConfigureAuthResolver(nil, "", "", "", GitHubAppConfig{})
+		ConfigureAuthResolver(nil, "", "", "", "", GitHubAppConfig{})
 	})
 
 	_, _, token := ResolveScopedCredentials("https://example.com/org/repo.git", "", "", "")
@@ -64,9 +66,9 @@ func TestResolveScopedCredentials_WildcardDoesNotMatchApex(t *testing.T) {
 }
 
 func TestResolveScopedCredentials_GlobalFallback(t *testing.T) {
-	ConfigureAuthResolver(nil, "", "", "global-token", GitHubAppConfig{})
+	ConfigureAuthResolver(nil, "", "", "global-token", "", GitHubAppConfig{})
 	t.Cleanup(func() {
-		ConfigureAuthResolver(nil, "", "", "", GitHubAppConfig{})
+		ConfigureAuthResolver(nil, "", "", "", "", GitHubAppConfig{})
 	})
 
 	_, _, token := ResolveScopedCredentials("https://gitlab.com/group/repo.git", "", "", "")
@@ -81,9 +83,9 @@ func TestGetAuthMethod_UsesScopedHTTPToken(t *testing.T) {
 			Domains:        []string{"gitlab.com"},
 			GitAccessToken: "scoped-token",
 		},
-	}, "", "", "", GitHubAppConfig{})
+	}, "", "", "", "", GitHubAppConfig{})
 	t.Cleanup(func() {
-		ConfigureAuthResolver(nil, "", "", "", GitHubAppConfig{})
+		ConfigureAuthResolver(nil, "", "", "", "", GitHubAppConfig{})
 	})
 
 	auth, err := GetAuthMethod("https://gitlab.com/group/repo.git", "", "", "")
@@ -100,8 +102,56 @@ func TestGetAuthMethod_UsesScopedHTTPToken(t *testing.T) {
 	}
 }
 
+func TestGetAuthMethod_ScopedTokenUserSetsHTTPUsername(t *testing.T) {
+	ConfigureAuthResolver([]ScopedAuthConfig{
+		{
+			Domains:            []string{"gitlab.com"},
+			GitAccessTokenUser: "gitlab+deploy-token-123",
+			GitAccessToken:     "scoped-token",
+		},
+	}, "", "", "", "oauth2", GitHubAppConfig{})
+	t.Cleanup(func() {
+		ConfigureAuthResolver(nil, "", "", "", "", GitHubAppConfig{})
+	})
+
+	auth, err := GetAuthMethod("https://gitlab.com/group/repo.git", "", "", "")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	basicAuth, ok := auth.(*githttp.BasicAuth)
+	if !ok {
+		t.Fatalf("expected *githttp.BasicAuth, got %T", auth)
+	}
+
+	if basicAuth.Username != "gitlab+deploy-token-123" {
+		t.Fatalf("expected scoped git_access_token_user as username, got '%s'", basicAuth.Username)
+	}
+}
+
+func TestGetAuthMethod_GlobalHTTPAuthUserFallback(t *testing.T) {
+	ConfigureAuthResolver(nil, "", "", "global-token", "global-user", GitHubAppConfig{})
+	t.Cleanup(func() {
+		ConfigureAuthResolver(nil, "", "", "", "", GitHubAppConfig{})
+	})
+
+	auth, err := GetAuthMethod("https://gitlab.com/group/repo.git", "", "", "")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	basicAuth, ok := auth.(*githttp.BasicAuth)
+	if !ok {
+		t.Fatalf("expected *githttp.BasicAuth, got %T", auth)
+	}
+
+	if basicAuth.Username != "global-user" {
+		t.Fatalf("expected global auth type as username, got '%s'", basicAuth.Username)
+	}
+}
+
 func TestGetAuthMethod_UsesGlobalGitHubAppToken(t *testing.T) {
-	ConfigureAuthResolver(nil, "", "", "", GitHubAppConfig{
+	ConfigureAuthResolver(nil, "", "", "", "", GitHubAppConfig{
 		ID:         "12345",
 		PrivateKey: "test-private-key",
 	})
@@ -112,7 +162,7 @@ func TestGetAuthMethod_UsesGlobalGitHubAppToken(t *testing.T) {
 
 	t.Cleanup(func() {
 		oldProvider()
-		ConfigureAuthResolver(nil, "", "", "", GitHubAppConfig{})
+		ConfigureAuthResolver(nil, "", "", "", "", GitHubAppConfig{})
 	})
 
 	auth, err := GetAuthMethod("https://github.com/org/repo.git", "", "", "")
@@ -136,7 +186,7 @@ func TestGetAuthMethod_UsesScopedGitHubAppToken(t *testing.T) {
 			GitHubAppID:         "99999",
 			GitHubAppPrivateKey: "scoped-private-key",
 		},
-	}, "", "", "", GitHubAppConfig{})
+	}, "", "", "", "", GitHubAppConfig{})
 
 	oldProvider := swapGitHubAppTokenProviderForTest(func(_ string, cfg GitHubAppConfig) (string, error) {
 		if cfg.ID != "99999" {
@@ -148,7 +198,7 @@ func TestGetAuthMethod_UsesScopedGitHubAppToken(t *testing.T) {
 
 	t.Cleanup(func() {
 		oldProvider()
-		ConfigureAuthResolver(nil, "", "", "", GitHubAppConfig{})
+		ConfigureAuthResolver(nil, "", "", "", "", GitHubAppConfig{})
 	})
 
 	auth, err := GetAuthMethod("https://github.com/org/repo.git", "", "", "")

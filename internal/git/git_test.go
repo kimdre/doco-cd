@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 
@@ -29,16 +30,27 @@ const (
 
 func TestHttpTokenAuth(t *testing.T) {
 	testCases := []struct {
-		name        string
-		token       string
-		expectNil   bool
-		expectedErr error
+		name         string
+		username     string
+		token        string
+		expectNil    bool
+		expectedUser string
+		expectedErr  error
 	}{
 		{
-			name:        "Valid token",
-			token:       "ghp_test123456",
-			expectNil:   false,
-			expectedErr: nil,
+			name:         "Valid token defaults username",
+			token:        "ghp_test123456",
+			expectNil:    false,
+			expectedUser: git.DefaultHTTPAuthUser,
+			expectedErr:  nil,
+		},
+		{
+			name:         "Custom username (e.g. GitLab deploy token)",
+			username:     "gitlab+deploy-token-123",
+			token:        "gldt_test123456",
+			expectNil:    false,
+			expectedUser: "gitlab+deploy-token-123",
+			expectedErr:  nil,
 		},
 		{
 			name:        "Empty token",
@@ -52,7 +64,7 @@ func TestHttpTokenAuth(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			auth := git.HttpTokenAuth(tc.token)
+			auth := git.HttpTokenAuth(tc.username, tc.token)
 
 			if tc.expectNil && auth != nil {
 				t.Fatal("Expected nil auth for empty token")
@@ -62,8 +74,21 @@ func TestHttpTokenAuth(t *testing.T) {
 				t.Fatal("Expected non-nil auth for valid token")
 			}
 
-			if auth != nil && auth.Name() != "http-basic-auth" {
+			if auth == nil {
+				return
+			}
+
+			if auth.Name() != "http-basic-auth" {
 				t.Fatalf("Expected auth name 'http-basic-auth', got '%s'", auth.Name())
+			}
+
+			basicAuth, ok := auth.(*githttp.BasicAuth)
+			if !ok {
+				t.Fatalf("Expected *githttp.BasicAuth, got %T", auth)
+			}
+
+			if basicAuth.Username != tc.expectedUser {
+				t.Fatalf("Expected username '%s', got '%s'", tc.expectedUser, basicAuth.Username)
 			}
 		})
 	}
