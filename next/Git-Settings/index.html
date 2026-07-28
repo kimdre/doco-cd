@@ -2841,16 +2841,16 @@
 </thead>
 <tbody>
 <tr>
-<td><code>AUTH_TYPE</code></td>
-<td>string</td>
-<td>AuthType is the type of authentication to use when cloning repositories via <strong>http</strong>.</td>
-<td><code>oauth2</code></td>
-</tr>
-<tr>
 <td><code>GIT_ACCESS_TOKEN</code></td>
 <td>string</td>
 <td>Access token for cloning repositories (required for private repositories) via <strong>HTTP</strong>, see <a data-preview="" href="../Setup-Access-Token/">Access Token Setup</a> and <a data-preview="" href="#required-token-permissions">Required Token Permissions</a>. See also <a data-preview="" href="#domain-scoped-authentication">Domain-scoped authentication</a>.</td>
 <td>Optional for public repositories but recommended</td>
+</tr>
+<tr>
+<td><code>GIT_ACCESS_TOKEN_USER</code></td>
+<td>string</td>
+<td>Username paired with <code>GIT_ACCESS_TOKEN</code> for <strong>HTTP(S)</strong> clone/fetch. Most providers accept any non-empty value, but some require a specific username for their token (e.g. a GitLab <strong>deploy token</strong> uses <code>gitlab+deploy-token-1234567</code>). Set it when your provider needs one.</td>
+<td><code>oauth2</code></td>
 </tr>
 <tr>
 <td><code>GIT_ACCESS_TOKEN_FILE</code></td>
@@ -2992,11 +2992,12 @@
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">domain2.com</span>
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&#39;*.example.com&#39;</span>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">git_access_token</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xxx</span><span class="w">             </span><span class="c1"># (Optional) HTTP token for git access</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="nt">ssh_private_key</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span><span class="w">                </span><span class="c1"># (Optional) SSH private key content</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="no">-----BEGIN OPENSSH PRIVATE KEY-----</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="no">...</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="no">-----END OPENSSH PRIVATE KEY-----</span>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span><span class="nt">ssh_private_key_passphrase</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xxx</span><span class="w">   </span><span class="c1"># (Optional) Passphrase for encrypted SSH key</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="nt">git_access_token_user</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">oauth2</span><span class="w">     </span><span class="c1"># (Optional) Username for git_access_token (e.g. gitlab+deploy-token-1234567)</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">ssh_private_key</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span><span class="w">                </span><span class="c1"># (Optional) SSH private key content</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="no">-----BEGIN OPENSSH PRIVATE KEY-----</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="no">...</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="no">-----END OPENSSH PRIVATE KEY-----</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">  </span><span class="nt">ssh_private_key_passphrase</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xxx</span><span class="w">   </span><span class="c1"># (Optional) Passphrase for encrypted SSH key</span>
 </span></code></pre></div>
 <h5 id="available-options">Available Options<a class="headerlink" href="#available-options" title="Permanent link">&para;</a></h5>
 <table>
@@ -3020,6 +3021,12 @@
 <td>string</td>
 <td>No</td>
 <td>HTTP(S) access token for authenticating with the Git provider. Cannot be used with <code>ssh_private_key</code>.</td>
+</tr>
+<tr>
+<td><code>git_access_token_user</code></td>
+<td>string</td>
+<td>No</td>
+<td>Username paired with <code>git_access_token</code>. Defaults to <code>oauth2</code>. Set it when your provider needs a specific username for the token (e.g. a GitLab deploy token uses <code>gitlab+deploy-token-1234567</code>).</td>
 </tr>
 <tr>
 <td><code>ssh_private_key</code></td>
@@ -3095,6 +3102,12 @@
 </span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="w">            </span><span class="no">...</span>
 </span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="w">            </span><span class="no">-----END OPENSSH PRIVATE KEY-----</span>
 </span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a><span class="w">          </span><span class="no">ssh_private_key_passphrase: &quot;&quot;</span>
+</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>
+</span><span id="__span-1-25"><a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a><span class="w">        </span><span class="no">- domains:</span>
+</span><span id="__span-1-26"><a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a><span class="w">            </span><span class="no">- gitlab.example.com</span>
+</span><span id="__span-1-27"><a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a><span class="w">          </span><span class="no"># GitLab deploy token: git_access_token_user must be the deploy token&#39;s username.</span>
+</span><span id="__span-1-28"><a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a><span class="w">          </span><span class="no">git_access_token: &quot;gldt-xxxxxxxxxxxxxxxxxxxx&quot;</span>
+</span><span id="__span-1-29"><a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a><span class="w">          </span><span class="no">git_access_token_user: gitlab+deploy-token-1234567</span>
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
@@ -3118,6 +3131,12 @@
 </span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="w">    </span><span class="no">...</span>
 </span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="w">    </span><span class="no">-----END OPENSSH PRIVATE KEY-----</span>
 </span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="w">  </span><span class="nt">ssh_private_key_passphrase</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&quot;</span>
+</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>
+</span><span id="__span-2-21"><a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">domains</span><span class="p">:</span>
+</span><span id="__span-2-22"><a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gitlab.example.com</span>
+</span><span id="__span-2-23"><a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a><span class="w">  </span><span class="c1"># GitLab deploy token: git_access_token_user must be the deploy token&#39;s username.</span>
+</span><span id="__span-2-24"><a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a><span class="w">  </span><span class="nt">git_access_token</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;gldt-xxxxxxxxxxxxxxxxxxxx&quot;</span>
+</span><span id="__span-2-25"><a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a><span class="w">  </span><span class="nt">git_access_token_user</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gitlab+deploy-token-1234567</span>
 </span></code></pre></div>
 <div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">services</span><span class="p">:</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>
