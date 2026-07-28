@@ -5,7 +5,6 @@
 <img src="https://raw.githubusercontent.com/kimdre/doco-cd/main/wiki/docs/images/doco-cd_logo.svg" alt="Doco CD Logo" height="48px" />
 
 [![GitHub Release](https://img.shields.io/github/v/release/kimdre/doco-cd?display_name=tag&label=Release&color=47c72a&labelColor=404951)](https://github.com/kimdre/doco-cd/releases)
-[![Go Report Card](https://goreportcard.com/badge/github.com/kimdre/doco-cd)](https://goreportcard.com/report/github.com/kimdre/doco-cd)
 [![CodeQL](https://github.com/kimdre/doco-cd/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/kimdre/doco-cd/actions/workflows/github-code-scanning/codeql)
 [![Tests](https://github.com/kimdre/doco-cd/actions/workflows/test.yaml/badge.svg)](https://github.com/kimdre/doco-cd/actions/workflows/test.yaml)
 [![Build Image](https://github.com/kimdre/doco-cd/actions/workflows/build.yaml/badge.svg)](https://github.com/kimdre/doco-cd/actions/workflows/build.yaml)
