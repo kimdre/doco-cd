@@ -5,14 +5,34 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/avast/retry-go/v5"
 )
 
-const maxErrorResponseBodyBytes = 4 * 1024
+const (
+	maxErrorResponseBodyBytes = 4 * 1024
+	postRetryMaxAttempts      = 4
+	postRetryInitialBackoff   = 250 * time.Millisecond
+)
+
+type commitStatusPostRetryError struct {
+	err       error
+	retryable bool
+}
+
+func (e *commitStatusPostRetryError) Error() string {
+	return e.err.Error()
+}
+
+func (e *commitStatusPostRetryError) Unwrap() error {
+	return e.err
+}
 
 func bearerAuthToken(token string) string {
 	return "Bearer " + token
@@ -34,31 +54,59 @@ func doPost(ctx context.Context, apiURL, authHeaderValue string, body any) error
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewBuffer(jsonData)) // #nosec G107
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", authHeaderValue)
-
 	client := &http.Client{Timeout: 15 * time.Second}
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to post commit status: %w", err)
-	}
+	return retry.New(
+		retry.Attempts(postRetryMaxAttempts),
+		retry.Delay(postRetryInitialBackoff),
+		retry.DelayType(retry.BackOffDelay),
+		retry.Context(ctx),
+		retry.LastErrorOnly(true),
+		retry.RetryIf(func(err error) bool {
+			var postErr *commitStatusPostRetryError
+			if !errors.As(err, &postErr) {
+				return false
+			}
 
-	defer func() {
-		_, _ = io.Copy(io.Discard, resp.Body)
-		_ = resp.Body.Close()
-	}()
+			return postErr.retryable
+		}),
+	).Do(func() error {
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(jsonData)) // #nosec G107
+		if reqErr != nil {
+			return fmt.Errorf("failed to create request: %w", reqErr)
+		}
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("commit status API returned %s for %s%s", resp.Status, apiURL, responseErrorDetails(resp))
-	}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", authHeaderValue)
 
-	return nil
+		resp, postErr := client.Do(req)
+		if postErr != nil {
+			return &commitStatusPostRetryError{
+				err:       fmt.Errorf("failed to post commit status: %w", postErr),
+				retryable: true,
+			}
+		}
+
+		defer func() {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			_ = resp.Body.Close()
+		}()
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return &commitStatusPostRetryError{
+				err:       fmt.Errorf("commit status API returned %s for %s%s", resp.Status, apiURL, responseErrorDetails(resp)),
+				retryable: isRetryablePostStatusCode(resp.StatusCode),
+			}
+		}
+
+		return nil
+	})
+}
+
+func isRetryablePostStatusCode(statusCode int) bool {
+	return statusCode == http.StatusRequestTimeout ||
+		statusCode == http.StatusTooManyRequests ||
+		statusCode >= http.StatusInternalServerError
 }
 
 func doGet(ctx context.Context, apiURL, authHeaderValue string, dst any) error {

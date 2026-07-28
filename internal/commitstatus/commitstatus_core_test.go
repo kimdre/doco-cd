@@ -211,6 +211,50 @@ func TestPost_UsesConfiguredAPIBaseURL(t *testing.T) {
 	assert.NilError(t, err)
 }
 
+func TestPost_RetriesTransientAPIErrors(t *testing.T) {
+	t.Parallel()
+
+	attempts := 0
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts++
+		if attempts < 3 {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	err := commitstatus.Post(context.Background(),
+		commitstatus.ProviderGitea,
+		"", srv.URL+"/owner/repo", "owner/repo", "abc123", "token",
+		commitstatus.Status{State: commitstatus.StateSuccess})
+	assert.NilError(t, err)
+	assert.Equal(t, attempts, 3)
+}
+
+func TestPost_DoesNotRetryPermanentAPIErrors(t *testing.T) {
+	t.Parallel()
+
+	attempts := 0
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts++
+
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	err := commitstatus.Post(context.Background(),
+		commitstatus.ProviderGitea,
+		"", srv.URL+"/owner/repo", "owner/repo", "abc123", "token",
+		commitstatus.Status{State: commitstatus.StateSuccess})
+	assert.Assert(t, err != nil, "expected post to fail for 401")
+	assert.Equal(t, attempts, 1)
+}
+
 func TestPost_InvalidConfiguredAPIBaseURL(t *testing.T) {
 	t.Parallel()
 
