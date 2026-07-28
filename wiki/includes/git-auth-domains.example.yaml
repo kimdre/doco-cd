@@ -21,5 +21,5 @@
 - domains:
     - gitlab.example.com
   # GitLab deploy token: git_access_token_user must be the deploy token's username.
-  git_access_token_user: gitlab+deploy-token-1234567
   git_access_token: "gldt-xxxxxxxxxxxxxxxxxxxx"
+  git_access_token_user: gitlab+deploy-token-1234567

@@ -18,8 +18,8 @@ import (
 // Patterns support exact hosts (e.g. github.com) and wildcard subdomains (e.g. *.example.com).
 type ScopedAuthConfig struct {
 	Domains                 []string `yaml:"domains"`
-	GitAccessTokenUser      string   `yaml:"git_access_token_user"` // GitAccessTokenUser is the username paired with git_access_token (e.g. a GitLab deploy token username). Empty defaults to DefaultHTTPAuthUser.
 	GitAccessToken          string   `yaml:"git_access_token"`
+	GitAccessTokenUser      string   `yaml:"git_access_token_user"` // GitAccessTokenUser is the username paired with GitAccessToken (e.g. a GitLab deploy token username). Empty defaults to DefaultHTTPAuthUser.
 	SSHPrivateKey           string   `yaml:"ssh_private_key"`
 	SSHPrivateKeyPassphrase string   `yaml:"ssh_private_key_passphrase"`
 	GitHubAppID             string   `yaml:"github_app_id"`
