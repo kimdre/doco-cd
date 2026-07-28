@@ -25,6 +25,7 @@ import (
 	restAPI "github.com/kimdre/doco-cd/internal/restapi"
 	"github.com/kimdre/doco-cd/internal/scheduler"
 	"github.com/kimdre/doco-cd/internal/source/oci"
+	"github.com/kimdre/doco-cd/internal/source/oci"
 )
 
 const (
