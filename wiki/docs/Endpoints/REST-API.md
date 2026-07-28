@@ -43,6 +43,30 @@ If the application is not healthy, the endpoint returns a `503` status code and 
 }
 ```
 
+### Deployment Runs
+
+The API tracks deployment-related runs (for example webhook-triggered deployments and API-triggered poll runs) in memory.
+Use these endpoints to inspect the current status and recent history by `job_id`.
+
+| Endpoint              | Method | Description                           | Query Parameters                                                                                                                                                        |
+|-----------------------|--------|---------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `/v1/api/runs`        | GET    | List recent tracked deployment runs   | - `limit` (integer, default: `50`, max: `200`)<br/>- `status` (string, optional): `accepted`, `running`, `succeeded`, `failed`, `skipped`<br/>- `trigger` (string, optional): `webhook`, `poll`, `scheduled_job` |
+| `/v1/api/run/{jobID}` | GET    | Get details for a specific run/job ID |                                                                                                                                                                         |
+
+#### Example Requests
+
+```sh
+curl --request GET \
+  --url 'https://cd.example.com/v1/api/runs?status=running&limit=20' \
+  --header 'x-api-key: your-api-key'
+```
+
+```sh
+curl --request GET \
+  --url 'https://cd.example.com/v1/api/run/550e8400-e29b-41d4-a716-446655440000' \
+  --header 'x-api-key: your-api-key'
+```
+
 ### Polling
 
 | Endpoint           | Method | Description                                                    | Query Parameters                                                                        |

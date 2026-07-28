@@ -45,4 +45,6 @@ Use the `wait=true` query parameter to make the application wait for the deploym
 This may increase response time, and some Git/SCM providers might time out the request if the deployment takes too long.
 Even if the request times out, the deployment will still continue.
 
+In async mode, the response contains a `job_id` that can be queried through the [Deployment Runs API](REST-API.md#deployment-runs) (requires REST API auth).
+
 **Example:** `/v1/webhook?wait=true`

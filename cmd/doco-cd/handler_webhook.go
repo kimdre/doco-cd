@@ -53,6 +53,7 @@ type handlerData struct {
 	dataMountPoint container.MountPoint // Mount point for the data directory
 	dockerCli      command.Cli          // Docker CLI client
 	log            *logger.Logger       // Logger for logging messages
+	runTracker     *deploymentRunTracker
 	runPoll        pollRunner
 	secretProvider *secretprovider.SecretProvider
 	testName       string // Overwrites the deployConfig.Name to make test deployments unique and prevent conflicts between tests when running in parallel. Not used in production.
@@ -94,15 +95,24 @@ func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any
 func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *app.Config,
 	dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget string, metadata notification.Metadata,
 	dockerCli command.Cli, secretProvider *secretprovider.SecretProvider,
-	testName string,
+	testName string, runTracker *deploymentRunTracker,
 ) {
 	startTime := time.Now()
+
 	repoName := repositoryNameFromWebhookPayload(payload)
+	if runTracker != nil {
+		runTracker.SetMetadata(metadata.JobID, repoName, customTarget, notification.GetRevision(payload.Ref, payload.CommitSHA))
+		runTracker.MarkRunning(metadata.JobID)
+	}
 
 	if payload.Source != webhook.PayloadSourceOCI && payload.Ref == "" {
 		msg := "no reference provided in webhook payload, skipping event"
 		jobLog.Warn(msg)
 		JSONError(w, msg, msg, metadata.JobID, http.StatusBadRequest)
+
+		if runTracker != nil {
+			runTracker.MarkSkipped(metadata.JobID, msg)
+		}
 
 		return
 	}
@@ -153,6 +163,10 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		if authErr != nil {
 			onError(w, jobLog.With(logger.ErrAttr(authErr)), "failed to resolve SSH auth method", authErr.Error(), http.StatusInternalServerError, metadata)
 
+			if runTracker != nil {
+				runTracker.MarkFailed(metadata.JobID, "failed to resolve SSH auth method: "+authErr.Error())
+			}
+
 			return
 		}
 
@@ -171,8 +185,16 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		// For async mode, w is noopResponseWriter and JSONError is a no-op
 		if hr, ok := deployErr.(handleError); ok {
 			onError(w, jobLog.With(logger.ErrAttr(hr.err)), hr.msg, hr.err.Error(), hr.httpStatusCode, metadata)
+
+			if runTracker != nil {
+				runTracker.MarkFailed(metadata.JobID, hr.Error())
+			}
 		} else {
 			onError(w, jobLog.With(logger.ErrAttr(deployErr)), "deployment failed", deployErr.Error(), http.StatusInternalServerError, metadata)
+
+			if runTracker != nil {
+				runTracker.MarkFailed(metadata.JobID, deployErr.Error())
+			}
 		}
 
 		return
@@ -182,6 +204,10 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	elapsedTime := time.Since(startTime)
 	jobLog.Info(msg, slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()))
 	JSONResponse(w, msg, metadata.JobID, http.StatusCreated)
+
+	if runTracker != nil {
+		runTracker.MarkSucceeded(metadata.JobID, msg)
+	}
 
 	prometheus.WebhookRequestsTotal.WithLabelValues(repoName).Inc()
 	prometheus.WebhookDuration.WithLabelValues(repoName).Observe(elapsedTime.Seconds())
@@ -213,6 +239,14 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		Repository: "unknown", // Will be updated later if we can parse the payload
 		Stack:      "",
 		Revision:   "",
+	}
+	if h.runTracker != nil {
+		h.runTracker.TrackAccepted(jobID, deploymentRunTriggerWebhook)
+		h.runTracker.SetMetadata(jobID, metadata.Repository, customTarget, metadata.Revision)
+
+		if wait {
+			h.runTracker.MarkRunning(jobID)
+		}
 	}
 
 	// Limit the request body size
@@ -248,10 +282,18 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 		if repositoryName := repositoryNameFromWebhookPayload(payload); repositoryName != "unknown" {
 			metadata.Repository = repositoryName
+
 			metadata.Revision = notification.GetRevision(payload.Ref, payload.CommitSHA)
+			if h.runTracker != nil {
+				h.runTracker.SetMetadata(jobID, metadata.Repository, customTarget, metadata.Revision)
+			}
 		}
 
 		onError(w, jobLog.With(slog.String("ip", r.RemoteAddr), logger.ErrAttr(err)), errMsg, err.Error(), statusCode, metadata)
+
+		if h.runTracker != nil {
+			h.runTracker.MarkFailed(jobID, errMsg+": "+err.Error())
+		}
 
 		return
 	}
@@ -261,11 +303,20 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		jobLog.Info(errMsg)
 		JSONResponse(w, errMsg, jobID, http.StatusAccepted)
 
+		if h.runTracker != nil {
+			h.runTracker.SetMetadata(jobID, repositoryNameFromWebhookPayload(payload), customTarget, notification.GetRevision(payload.Ref, payload.CommitSHA))
+			h.runTracker.MarkSkipped(jobID, errMsg)
+		}
+
 		return
 	} else if eErr != nil {
 		errMsg := "failed to check if event is branch or tag deletion"
 		jobLog.Error(errMsg, logger.ErrAttr(eErr))
 		JSONError(w, errMsg, eErr.Error(), jobID, http.StatusInternalServerError)
+
+		if h.runTracker != nil {
+			h.runTracker.MarkFailed(jobID, errMsg+": "+eErr.Error())
+		}
 
 		return
 	}
@@ -273,6 +324,10 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	if metadata.Repository == "" || metadata.Repository == "unknown" {
 		metadata.Repository = repositoryNameFromWebhookPayload(payload)
 		metadata.Revision = notification.GetRevision(payload.Ref, payload.CommitSHA)
+	}
+
+	if h.runTracker != nil {
+		h.runTracker.SetMetadata(jobID, metadata.Repository, customTarget, metadata.Revision)
 	}
 
 	lockEntity := "repository"
@@ -290,6 +345,10 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if r := recover(); r != nil {
 				logRecoveredPanic(jobLog, "webhook deployment", r)
+
+				if h.runTracker != nil {
+					h.runTracker.MarkFailed(jobID, "webhook deployment panicked")
+				}
 			}
 		}()
 
@@ -310,7 +369,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 		defer repoLock.Unlock()
 
-		HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, metadata, h.dockerCli, h.secretProvider, h.testName)
+		HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, metadata, h.dockerCli, h.secretProvider, h.testName, h.runTracker)
 	}
 
 	if wait {

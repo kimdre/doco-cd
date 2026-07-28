@@ -273,6 +273,7 @@ func run() error {
 		dataMountPoint: dataMountPoint,
 		dockerCli:      dockerCli,
 		log:            log,
+		runTracker:     newDeploymentRunTracker(500),
 		secretProvider: &secretProvider,
 	}
 
