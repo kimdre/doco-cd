@@ -18,7 +18,7 @@ import (
 // Patterns support exact hosts (e.g. github.com) and wildcard subdomains (e.g. *.example.com).
 type ScopedAuthConfig struct {
 	Domains                 []string `yaml:"domains"`
-	HTTPAuthUser            string   `yaml:"http_auth_user"` // HTTPAuthUser is the HTTP Basic Auth username for token auth (e.g. GitLab deploy token username). Empty defaults to DefaultHTTPAuthUser.
+	GitAccessTokenUser      string   `yaml:"git_access_token_user"` // GitAccessTokenUser is the username paired with git_access_token (e.g. a GitLab deploy token username). Empty defaults to DefaultHTTPAuthUser.
 	GitAccessToken          string   `yaml:"git_access_token"`
 	SSHPrivateKey           string   `yaml:"ssh_private_key"`
 	SSHPrivateKeyPassphrase string   `yaml:"ssh_private_key_passphrase"`
@@ -194,7 +194,7 @@ func pickCredentials(entry ScopedAuthConfig, resolver authResolver, base Resolve
 	resolvedPrivateKey := strings.TrimSpace(entry.SSHPrivateKey)
 	resolvedPassphrase := entry.SSHPrivateKeyPassphrase
 	resolvedToken := strings.TrimSpace(entry.GitAccessToken)
-	resolvedHTTPAuthUser := strings.TrimSpace(entry.HTTPAuthUser)
+	resolvedHTTPAuthUser := strings.TrimSpace(entry.GitAccessTokenUser)
 	resolvedGitHubApp := GitHubAppConfig{
 		ID:             strings.TrimSpace(entry.GitHubAppID),
 		PrivateKey:     strings.TrimSpace(entry.GitHubAppPrivateKey),
@@ -350,7 +350,7 @@ func SSHAuth(privateKey, keyPassphrase string) (transport.AuthMethod, error) {
 // DefaultHTTPAuthUser is the Basic Auth username used when none is configured.
 // Most providers accept any non-empty username for token auth, but GitLab
 // deploy tokens require their specific username (e.g. gitlab+deploy-token-123),
-// which callers supply via GIT_HTTP_AUTH_USER / GIT_AUTH_DOMAINS http_auth_user.
+// which callers supply via GIT_ACCESS_TOKEN_USER / GIT_AUTH_DOMAINS git_access_token_user.
 const DefaultHTTPAuthUser = "oauth2"
 
 // HttpTokenAuth returns an AuthMethod for HTTP Basic Auth using a token.

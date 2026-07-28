@@ -20,6 +20,6 @@
 
 - domains:
     - gitlab.example.com
-  # GitLab deploy token: http_auth_user must be the deploy token's username.
-  http_auth_user: gitlab+deploy-token-1234567
+  # GitLab deploy token: git_access_token_user must be the deploy token's username.
+  git_access_token_user: gitlab+deploy-token-1234567
   git_access_token: "gldt-xxxxxxxxxxxxxxxxxxxx"

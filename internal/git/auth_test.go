@@ -102,12 +102,12 @@ func TestGetAuthMethod_UsesScopedHTTPToken(t *testing.T) {
 	}
 }
 
-func TestGetAuthMethod_ScopedHTTPAuthUserSetsHTTPUsername(t *testing.T) {
+func TestGetAuthMethod_ScopedTokenUserSetsHTTPUsername(t *testing.T) {
 	ConfigureAuthResolver([]ScopedAuthConfig{
 		{
-			Domains:        []string{"gitlab.com"},
-			HTTPAuthUser:   "gitlab+deploy-token-123",
-			GitAccessToken: "scoped-token",
+			Domains:            []string{"gitlab.com"},
+			GitAccessTokenUser: "gitlab+deploy-token-123",
+			GitAccessToken:     "scoped-token",
 		},
 	}, "", "", "", "oauth2", GitHubAppConfig{})
 	t.Cleanup(func() {
@@ -125,7 +125,7 @@ func TestGetAuthMethod_ScopedHTTPAuthUserSetsHTTPUsername(t *testing.T) {
 	}
 
 	if basicAuth.Username != "gitlab+deploy-token-123" {
-		t.Fatalf("expected scoped http_auth_user as username, got '%s'", basicAuth.Username)
+		t.Fatalf("expected scoped git_access_token_user as username, got '%s'", basicAuth.Username)
 	}
 }
 

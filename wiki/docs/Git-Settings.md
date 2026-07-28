@@ -32,7 +32,7 @@ You can use either
 
 | Key                               | Type   | Description                                                                                                                                                                                                                                                                             | Default                                          |
 |-----------------------------------|--------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------|
-| `GIT_HTTP_AUTH_USER`              | string | HTTP Basic Auth **username** paired with `GIT_ACCESS_TOKEN` when cloning via **HTTP(S)**. Most providers accept any non-empty value, but GitLab **deploy tokens** require their specific username (e.g. `gitlab+deploy-token-1234567`). Setting this avoids embedding credentials in the repository URL.                                                                                                                                                                                                   | `oauth2`                                         |
+| `GIT_ACCESS_TOKEN_USER`           | string | Username paired with `GIT_ACCESS_TOKEN` for **HTTP(S)** clone/fetch. Most providers accept any non-empty value, but some require a specific username for their token (e.g. a GitLab **deploy token** uses `gitlab+deploy-token-1234567`). Set it when your provider needs one.                                                                                                                                                                                                   | `oauth2`                                         |
 | `GIT_ACCESS_TOKEN`                | string | Access token for cloning repositories (required for private repositories) via **HTTP**, see [Access Token Setup](Setup-Access-Token.md) and [Required Token Permissions](#required-token-permissions). See also [Domain-scoped authentication](#domain-scoped-authentication).          | Optional for public repositories but recommended |
 | `GIT_ACCESS_TOKEN_FILE`           | string | Path to the file containing the Git Access Token (mutually exclusive with `GIT_ACCESS_TOKEN`).                                                                                                                                                                                          |                                                  |
 | `GIT_AUTH_DOMAINS`                | list   | YAML list of domain-scoped Git credentials (HTTP token, SSH key, and GitHub App credentials). Supports exact domains and wildcard subdomains like `*.example.com` (see [Domain-scoped authentication](#domain-scoped-authentication)). Mutually exclusive with `GIT_AUTH_DOMAINS_FILE`. |                                                  |
@@ -68,7 +68,7 @@ Each entry in the list has the following structure:
     - domain2.com
     - '*.example.com'
   git_access_token: xxx             # (Optional) HTTP token for git access
-  http_auth_user: oauth2            # (Optional) HTTP Basic Auth username for the token (e.g. gitlab+deploy-token-1234567)
+  git_access_token_user: oauth2     # (Optional) Username for git_access_token (e.g. gitlab+deploy-token-1234567)
   ssh_private_key: |                # (Optional) SSH private key content
     -----BEGIN OPENSSH PRIVATE KEY-----
     ...
@@ -82,7 +82,7 @@ Each entry in the list has the following structure:
 |------------------------------|--------|----------|----------------------------------------------------------------------------------------------------------------------|
 | `domains`                    | list   | Yes      | List of domain names to apply these credentials to. Supports exact domains and wildcard patterns.                    |
 | `git_access_token`           | string | No       | HTTP(S) access token for authenticating with the Git provider. Cannot be used with `ssh_private_key`.                |
-| `http_auth_user`             | string | No       | HTTP Basic Auth username paired with `git_access_token`. Defaults to `oauth2`. Set to the deploy-token username for GitLab deploy tokens (e.g. `gitlab+deploy-token-1234567`). |
+| `git_access_token_user`      | string | No       | Username paired with `git_access_token`. Defaults to `oauth2`. Set it when your provider needs a specific username for the token (e.g. a GitLab deploy token uses `gitlab+deploy-token-1234567`). |
 | `ssh_private_key`            | string | No       | SSH private key content (multi-line). Cannot be used with `git_access_token`.                                        |
 | `ssh_private_key_passphrase` | string | No       | Passphrase for the SSH private key if it was generated with encryption. Only used with `ssh_private_key`.            |
 | `github_app_id`              | string | No       | GitHub App ID. Requires `github_app_private_key`. Cannot be used with `git_access_token` or `ssh_private_key`.       |
