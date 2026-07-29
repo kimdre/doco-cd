@@ -53,10 +53,10 @@ jobs:
         env:
           VERSION: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.version }}
         run: |
-          files=$(grep -Rl "0\.80\.0" ./wiki/docs)
+          files=$(grep -Rl "0\.103\.0" ./wiki/docs)
           for file in $files; do
             echo "Replacing version in $file with ${VERSION#v}"
-            sed -i "s/0\.80\.0/${VERSION#v}/g" "$file"
+            sed -i "s/0\.103\.0/${VERSION#v}/g" "$file"
           done
 
       - name: Publish dev docs
