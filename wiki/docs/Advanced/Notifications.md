@@ -82,6 +82,7 @@ The following fields are available:
 | `.IsReconciliation`   | `true` when triggered by a [reconciliation](#reconciliation-notifications) event |
 | `.Repository`         | Repository name                                                          |
 | `.Stack`              | Project/Stack name                                                       |
+| `.Target`             | Custom webhook/poll target (empty for the default target)                |
 | `.Context`            | Docker context the stack is deployed to (empty for the default context)  |
 | `.Revision`           | Branch/tag and commit SHA                                                |
 | `.JobID`              | Deployment job ID (empty for reconciliation events)                      |
@@ -97,10 +98,10 @@ The following fields are available:
 
     ```yaml
     environment:
-      APPRISE_NOTIFY_BODY_TEMPLATE: "{{.Emoji}} {{.Stack}} — {{.Message}} ({{.Revision}})"
+      APPRISE_NOTIFY_BODY_TEMPLATE: "{{.Emoji}} {{if .Target}}{{.Target}}/{{end}}{{.Stack}} — {{.Message}} ({{.Revision}})"
     ```
 
-    renders e.g. `✅ app — Successfully deployed stack app (main (abc123))`.
+    renders e.g. `✅ prod-vm/app — Successfully deployed stack app (main (abc123))` for target `prod-vm`, or `✅ app — Successfully deployed stack app (main (abc123))` without a custom target.
 
 ## Reconciliation notifications
 

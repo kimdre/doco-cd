@@ -146,6 +146,10 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 
 			stackLog.Info("removing obsolete auto-discovered stack")
 
+			notifyMetadata := metadata
+			notifyMetadata.Target = stackConfigTarget
+			notifyMetadata.Stack = stackName
+
 			removeConfig := &deployConfig.Config{Name: stackName}
 			removeConfig.Destroy.Enabled = true
 			removeConfig.Destroy.RemoveVolumes = autoDiscoverCfg.RemoveVolumes
@@ -157,7 +161,7 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 				return fmt.Errorf("failed to remove obsolete auto-discovered stack '%s': %w", stackName, err)
 			}
 
-			err = notification.Send(notification.Success, "Stack destroyed", "successfully destroyed stack "+removeConfig.Name, metadata)
+			err = notification.Send(notification.Success, "Stack destroyed", "successfully destroyed stack "+removeConfig.Name, notifyMetadata)
 			if err != nil {
 				stackLog.Error("failed to send notification", logger.ErrAttr(err))
 			}

@@ -255,7 +255,7 @@ func TestValidateTemplate(t *testing.T) {
 	t.Run("valid template parses", func(t *testing.T) {
 		t.Parallel()
 
-		if _, err := validateTemplate("{{.Emoji}} {{.Title}} on {{.Stack}}"); err != nil {
+		if _, err := validateTemplate("{{.Emoji}} {{.Title}} on {{.Target}}/{{.Stack}}"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -283,17 +283,18 @@ func TestRenderTemplate(t *testing.T) {
 	t.Run("renders metadata fields and trims trailing newlines", func(t *testing.T) {
 		t.Parallel()
 
-		tmpl, err := validateTemplate("{{.Emoji}} {{.Title}} — {{.Stack}} @ {{.Revision}}\n")
+		tmpl, err := validateTemplate("{{.Emoji}} {{.Title}} — {{.Target}}/{{.Stack}} @ {{.Revision}}\n")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
 		got := renderTemplate(tmpl, Success, "Deployment completed", "ignored body", Metadata{
+			Target:   "prod-vm",
 			Stack:    "app",
 			Revision: "main (abc123)",
 			JobID:    "job-1",
 		})
-		expected := "✅ Deployment completed — app @ main (abc123)"
+		expected := "✅ Deployment completed — prod-vm/app @ main (abc123)"
 
 		if got != expected {
 			t.Errorf("expected %q, got %q", expected, got)

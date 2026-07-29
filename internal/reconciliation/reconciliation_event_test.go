@@ -458,11 +458,14 @@ func TestRestartOptionsFromDeployConfig(t *testing.T) {
 func TestRestartNotificationMetadata(t *testing.T) {
 	t.Parallel()
 
+	dc := &deployConfig.Config{Context: "remote-vm"}
+	dc.Internal.ConfigTarget = "prod-vm"
+
 	metadata := restartNotificationMetadata(notification.Metadata{
 		Repository: "owner/repo",
 		Stack:      "stack-a",
 		JobID:      "job-1",
-	}, &deployConfig.Config{Context: "remote-vm"}, "unhealthy", "container", "1234567890abcdef", "stack-a-web-1", "trace-1")
+	}, dc, "unhealthy", "container", "1234567890abcdef", "stack-a-web-1", "trace-1")
 
 	if metadata.Repository != "owner/repo" || metadata.Stack != "stack-a" || metadata.JobID != "job-1" {
 		t.Fatalf("expected base metadata to be preserved, got %#v", metadata)
@@ -470,6 +473,10 @@ func TestRestartNotificationMetadata(t *testing.T) {
 
 	if metadata.Context != "remote-vm" {
 		t.Fatalf("expected context remote-vm from deploy config, got %q", metadata.Context)
+	}
+
+	if metadata.Target != "prod-vm" {
+		t.Fatalf("expected target prod-vm from deploy config, got %q", metadata.Target)
 	}
 
 	if metadata.ReconciliationEvent != "unhealthy" {

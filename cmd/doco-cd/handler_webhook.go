@@ -212,6 +212,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		JobID:      jobID,
 		Repository: "unknown", // Will be updated later if we can parse the payload
 		Stack:      "",
+		Target:     strings.TrimSpace(customTarget),
 		Revision:   "",
 	}
 

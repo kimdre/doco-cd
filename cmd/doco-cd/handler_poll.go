@@ -83,6 +83,7 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 			metadata := notification.Metadata{
 				Repository: repoName,
 				Stack:      "",
+				Target:     pollJob.Config.CustomTarget,
 				Revision:   notification.GetRevision(pollJob.Config.Reference, ""),
 				JobID:      jobID,
 			}
