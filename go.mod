@@ -26,6 +26,7 @@ require (
 	github.com/docker/cli v29.6.2+incompatible
 	github.com/docker/compose/v5 v5.3.1
 	github.com/getsops/sops/v3 v3.13.3
+	github.com/go-co-op/gocron/v2 v2.22.0
 	github.com/go-git/go-billy/v5 v5.9.1
 	github.com/go-git/go-git/v5 v5.19.1
 	github.com/go-playground/validator/v10 v10.30.3
@@ -42,7 +43,6 @@ require (
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/common v0.70.1
-	github.com/robfig/cron/v3 v3.0.1
 	github.com/sigstore/cosign/v3 v3.1.2
 	github.com/veqryn/slog-dedup v0.6.0
 	go.yaml.in/yaml/v4 v4.0.0-rc.6
@@ -266,6 +266,7 @@ require (
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
+	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/ryanuber/go-glob v1.0.0 // indirect
