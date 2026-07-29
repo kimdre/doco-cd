@@ -83,7 +83,7 @@ func TestRegisterValidationFuncRejectsDuplicateTag(t *testing.T) {
 
 func TestValidateSupportsNonzeroAlias(t *testing.T) {
 	type cfg struct {
-		Name string `validate:"nonzero"`
+		Name string `validate:"required"`
 	}
 
 	if err := Validate(cfg{Name: "doco"}); err != nil {

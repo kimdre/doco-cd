@@ -9,7 +9,7 @@ import (
 type Config struct {
 	Region              string `env:"SECRET_PROVIDER_REGION,notEmpty"`
 	AccessKeyID         string `env:"SECRET_PROVIDER_ACCESS_KEY_ID,notEmpty"`
-	SecretAccessKey     string `env:"SECRET_PROVIDER_SECRET_ACCESS_KEY" validate:"nonzero"`
+	SecretAccessKey     string `env:"SECRET_PROVIDER_SECRET_ACCESS_KEY" validate:"required"`
 	SecretAccessKeyFile string `env:"SECRET_PROVIDER_SECRET_ACCESS_KEY_FILE,file"`
 }
 

@@ -38,10 +38,6 @@ var (
 	customFuncsMu sync.RWMutex
 )
 
-func init() {
-	engine.RegisterAlias("nonzero", "required")
-}
-
 // RegisterValidationFunc registers a custom validation tag for use in struct field tags.
 func RegisterValidationFunc(tag string, fn Func) error {
 	tag = strings.TrimSpace(tag)
