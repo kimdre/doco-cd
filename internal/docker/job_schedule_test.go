@@ -11,6 +11,7 @@ func TestParseJobScheduleExpression(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "valid 5-field", spec: "*/5 * * * *", wantErr: false},
+		{name: "valid predefined yearly schedule", spec: "@yearly", wantErr: false},
 		{name: "valid predefined schedule", spec: "@daily", wantErr: false},
 		{name: "valid interval schedule", spec: "@every 1h30m", wantErr: false},
 		{name: "invalid seconds field", spec: "*/5 * * * * *", wantErr: true},
