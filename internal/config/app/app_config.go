@@ -11,17 +11,17 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/notification"
+	"github.com/kimdre/doco-cd/internal/validation"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"go.yaml.in/yaml/v3"
-	"gopkg.in/validator.v2"
 )
 
 const Name = "doco-cd" // Name of the application
 
 var (
 	Version            = "dev" // Version of the application, to be set during build time
-	ErrInvalidLogLevel = validator.TextErr{Err: errors.New("invalid log level, must be one of debug, info, warn, error")}
+	ErrInvalidLogLevel = validation.TextError{Err: errors.New("invalid log level, must be one of debug, info, warn, error")}
 )
 
 // Config is used to configure this application
@@ -140,7 +140,7 @@ func GetConfig() (*Config, error) {
 		return nil, ErrInvalidLogLevel
 	}
 
-	if err = validator.Validate(cfg); err != nil {
+	if err = validation.Validate(cfg); err != nil {
 		return nil, err
 	}
 

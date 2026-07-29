@@ -18,7 +18,6 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"go.yaml.in/yaml/v3"
-	"gopkg.in/validator.v2"
 
 	"github.com/kimdre/doco-cd/internal/config"
 
@@ -27,6 +26,7 @@ import (
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 
 	"github.com/kimdre/doco-cd/internal/logger"
+	"github.com/kimdre/doco-cd/internal/validation"
 )
 
 var (
@@ -430,7 +430,7 @@ func GetConfigs(repoRoot, configBaseDir, customTarget, reference string, gitOpts
 			return expandedConfigs, nil
 		}
 
-		if err = validator.Validate(expandedConfigs); err != nil {
+		if err = validation.Validate(expandedConfigs); err != nil {
 			return nil, err
 		}
 

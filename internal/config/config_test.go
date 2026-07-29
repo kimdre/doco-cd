@@ -343,7 +343,7 @@ func TestLoadFileBasedEnvVars(t *testing.T) {
 
 func TestParseConfigFromEnv(t *testing.T) {
 	type sampleConfig struct {
-		Name string `env:"SAMPLE_NAME,notEmpty" validate:"nonzero"`
+		Name string `env:"SAMPLE_NAME,notEmpty" validate:"required"`
 	}
 
 	t.Setenv("SAMPLE_NAME", "doco")
