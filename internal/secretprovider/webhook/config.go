@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	prococo "github.com/prometheus/common/config"
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 

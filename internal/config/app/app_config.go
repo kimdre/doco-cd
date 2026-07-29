@@ -14,7 +14,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/validation"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 )
 
 const Name = "doco-cd" // Name of the application

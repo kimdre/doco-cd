@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 )
 
 // DestroyConfig holds options for destroying a deployment.
