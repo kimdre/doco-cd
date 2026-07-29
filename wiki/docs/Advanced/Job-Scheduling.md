@@ -19,9 +19,9 @@ This is useful for running periodic tasks such as backups, maintenance scripts, 
 
 ## Schedule formats
 
-- Cron expressions **without** seconds (`minute hour day-of-month month day-of-week`)
-- Predefined schedules like `@hourly`, `@daily`, `@weekly`, `@monthly`, `@yearly`
-- Intervals like `@every <duration>` (for example `@every 30m`)
+- [Cron expressions](https://pkg.go.dev/github.com/robfig/cron#hdr-CRON_Expression_Format) **without** seconds (`minute hour day-of-month month day-of-week`)
+- [Predefined schedules](https://pkg.go.dev/github.com/robfig/cron#hdr-Predefined_schedules) like `@hourly`, `@daily`, `@weekly`, `@monthly`, `@yearly`
+- [Intervals](https://pkg.go.dev/github.com/robfig/cron#hdr-Intervals) like `@every <duration>` (for example `@every 30m`)
 
 !!! tip 
     Use an online cron expression generator like [crontab.guru](https://crontab.guru/) to create and validate cron expressions.
