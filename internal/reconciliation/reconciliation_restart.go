@@ -116,6 +116,7 @@ func restartNotificationMetadata(base notification.Metadata, dc *deployConfig.Co
 	metadata := base
 	if dc != nil {
 		metadata.Context = dc.Context
+		metadata.Target = dc.Internal.ConfigTarget
 	}
 
 	metadata.ReconciliationEvent = action

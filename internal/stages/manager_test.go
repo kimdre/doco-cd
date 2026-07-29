@@ -1,6 +1,7 @@
 package stages
 
 import (
+	"errors"
 	"io"
 	"log/slog"
 	"slices"
@@ -81,6 +82,29 @@ func TestStageManagerGetStageMetaData(t *testing.T) {
 
 	if _, err := sm.GetStageMetaData(StageName("unknown")); err == nil {
 		t.Fatal("GetStageMetaData(unknown) = nil, want error")
+	}
+}
+
+func TestStageManagerNotifyFailureIncludesTarget(t *testing.T) {
+	t.Parallel()
+
+	sm := newTestStageManager()
+	sm.Repository.Revision = "abc123"
+	sm.DeployConfig.Name = "app"
+	sm.DeployConfig.Context = "remote-vm"
+	sm.DeployConfig.Reference = "main"
+	sm.DeployConfig.Internal.ConfigTarget = "prod-vm"
+
+	var got notification.Metadata
+
+	sm.NotifyFailureFunc = func(_ *slog.Logger, _ error, metadata notification.Metadata) {
+		got = metadata
+	}
+
+	sm.NotifyFailure(errors.New("boom"))
+
+	if got.Target != "prod-vm" {
+		t.Fatalf("expected target prod-vm, got %q", got.Target)
 	}
 }
 
