@@ -14,12 +14,12 @@ import (
 	"strings"
 
 	"github.com/compose-spec/compose-go/v2/cli"
-	"github.com/creasty/defaults"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"go.yaml.in/yaml/v4"
 
 	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/defaults"
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 

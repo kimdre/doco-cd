@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/creasty/defaults"
+	"github.com/kimdre/doco-cd/internal/defaults"
 )
 
 const StoreVersionV1 = "v1"

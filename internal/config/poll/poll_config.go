@@ -10,9 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/creasty/defaults"
-
 	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/defaults"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 
 	"github.com/kimdre/doco-cd/internal/config/deploy"
