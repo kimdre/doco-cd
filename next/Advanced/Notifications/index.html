@@ -2689,6 +2689,10 @@ You can find a list of all supported services and platforms in the <a href="http
 <td>Project/Stack name</td>
 </tr>
 <tr>
+<td><code>.Target</code></td>
+<td>Custom webhook/poll target (empty for the default target)</td>
+</tr>
+<tr>
 <td><code>.Context</code></td>
 <td>Docker context the stack is deployed to (empty for the default context)</td>
 </tr>
@@ -2726,9 +2730,9 @@ You can find a list of all supported services and platforms in the <a href="http
 <div class="admonition example">
 <p class="admonition-title">One-line body</p>
 <div class="language-yaml highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">APPRISE_NOTIFY_BODY_TEMPLATE</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{{.Emoji}}</span><span class="nv"> </span><span class="s">{{.Stack}}</span><span class="nv"> </span><span class="s">—</span><span class="nv"> </span><span class="s">{{.Message}}</span><span class="nv"> </span><span class="s">({{.Revision}})&quot;</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">APPRISE_NOTIFY_BODY_TEMPLATE</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{{.Emoji}}</span><span class="nv"> </span><span class="s">{{if</span><span class="nv"> </span><span class="s">.Target}}{{.Target}}/{{end}}{{.Stack}}</span><span class="nv"> </span><span class="s">—</span><span class="nv"> </span><span class="s">{{.Message}}</span><span class="nv"> </span><span class="s">({{.Revision}})&quot;</span>
 </span></code></pre></div>
-<p>renders e.g. <code>✅ app — Successfully deployed stack app (main (abc123))</code>.</p>
+<p>renders e.g. <code>✅ prod-vm/app — Successfully deployed stack app (main (abc123))</code> for target <code>prod-vm</code>, or <code>✅ app — Successfully deployed stack app (main (abc123))</code> without a custom target.</p>
 </div>
 <h2 id="reconciliation-notifications">Reconciliation notifications<a class="headerlink" href="#reconciliation-notifications" title="Permanent link">&para;</a></h2>
 <p>If a notification was triggered by reconciliation, the title gets a short <code>[R]</code> marker.</p>
