@@ -156,6 +156,7 @@ func TestSet_Len(t *testing.T) {
 	}
 
 	s.Remove("apple")
+
 	if got := s.Len(); got != 1 {
 		t.Fatalf("Len() after removal = %d, want 1", got)
 	}
