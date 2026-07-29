@@ -12,8 +12,8 @@ tags:
     ```
 
 !!! tip
-    To use a specific version, replace the `latest` tag with the desired release version without the leading `v` (e.g. `0.80.0`):
-    `ghcr.io/kimdre/doco-cd:0.80.0`
+    To use a specific version, replace the `latest` tag with the desired release version without the leading `v` (e.g. `0.103.0`):
+    `ghcr.io/kimdre/doco-cd:0.103.0`
 
     You can find the available tags/versions on the [GitHub Container Registry](https://github.com/kimdre/doco-cd/pkgs/container/doco-cd).
 
