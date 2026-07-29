@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestTextError(t *testing.T) {
@@ -194,5 +195,92 @@ func TestValidateSkipsNilPointersForCustomValidation(t *testing.T) {
 
 	if err := Validate(cfg{}); err != nil {
 		t.Fatalf("Validate(nil pointer) error = %v", err)
+	}
+}
+
+// Standard tags must also apply to structs held in slice and map fields, which
+// the underlying engine does not descend into on its own.
+func TestValidateAppliesStandardTagsInsideCollections(t *testing.T) {
+	type child struct {
+		Code string `validate:"required"`
+	}
+
+	type sliceHolder struct {
+		Items []child
+	}
+
+	type mapHolder struct {
+		Lookup map[string]child
+	}
+
+	if err := Validate(sliceHolder{Items: []child{{Code: "ok"}}}); err != nil {
+		t.Fatalf("Validate(valid slice) error = %v", err)
+	}
+
+	if err := Validate(sliceHolder{Items: []child{{Code: ""}}}); err == nil {
+		t.Fatal("expected validation error for empty field in slice element")
+	}
+
+	if err := Validate(mapHolder{Lookup: map[string]child{"a": {Code: "ok"}}}); err != nil {
+		t.Fatalf("Validate(valid map) error = %v", err)
+	}
+
+	if err := Validate(mapHolder{Lookup: map[string]child{"a": {Code: ""}}}); err == nil {
+		t.Fatal("expected validation error for empty field in map value")
+	}
+}
+
+// A custom validator that registers another tag must not deadlock, since the
+// registry lock must not be held while user callbacks run.
+func TestValidateDoesNotDeadlockOnReentrantRegistration(t *testing.T) {
+	if err := RegisterValidationFunc("validationtestreentrant", func(_ any, _ string) error {
+		_ = RegisterValidationFunc("validationtestreentrantinner", func(_ any, _ string) error {
+			return nil
+		})
+
+		return nil
+	}); err != nil {
+		t.Fatalf("RegisterValidationFunc() error = %v", err)
+	}
+
+	type cfg struct {
+		Code string `validate:"validationtestreentrant=x"`
+	}
+
+	done := make(chan error, 1)
+
+	go func() {
+		done <- Validate(cfg{Code: "x"})
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Validate() error = %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Validate() deadlocked on reentrant registration")
+	}
+}
+
+// A rejected tag must surface as an error and must not be retained as registered.
+func TestRegisterValidationFuncDoesNotRetainFailedRegistration(t *testing.T) {
+	fn := func(_ any, _ string) error {
+		return nil
+	}
+
+	// "dive" is reserved by the underlying engine, so registration must fail.
+	first := RegisterValidationFunc("dive", fn)
+	if first == nil {
+		t.Fatal("expected error when registering a reserved tag")
+	}
+
+	second := RegisterValidationFunc("dive", fn)
+	if second == nil {
+		t.Fatal("expected repeated registration to fail again")
+	}
+
+	if strings.Contains(second.Error(), "already registered") {
+		t.Fatalf("failed registration was retained, got %v", second)
 	}
 }

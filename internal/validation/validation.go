@@ -60,11 +60,40 @@ func RegisterValidationFunc(tag string, fn Func) error {
 		return fmt.Errorf("validation %q already registered", tag)
 	}
 
+	// Register with the engine first so a failure does not leave behind an entry
+	// that makes the tag look registered and blocks any later attempt.
+	if err := registerEngineTag(tag); err != nil {
+		return err
+	}
+
 	customFuncs[tag] = fn
+
+	return nil
+}
+
+// registerEngineTag registers tag as a no-op engine rule, since the actual check
+// runs in this package. The engine panics on restricted tags, so that is
+// converted into an error to keep registration failures recoverable.
+func registerEngineTag(tag string) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("failed to register validation %q: %v", tag, r)
+		}
+	}()
 
 	return engine.RegisterValidation(tag, func(_ playgroundvalidator.FieldLevel) bool {
 		return true
 	})
+}
+
+// lookupValidationFunc returns the validator registered for tag, if any.
+func lookupValidationFunc(tag string) (Func, bool) {
+	customFuncsMu.RLock()
+	defer customFuncsMu.RUnlock()
+
+	fn, ok := customFuncs[tag]
+
+	return fn, ok
 }
 
 // Validate applies validator rules and this package's custom tag handlers.
@@ -132,7 +161,9 @@ func validateCustomTags(value reflect.Value, path string) error {
 			return err
 		}
 
-		if err := walkNestedCustomTags(fieldValue, fieldPath); err != nil {
+		// Struct and pointer fields are already covered by the engine, so only
+		// collection elements need standard tags applied while walking.
+		if err := walkNestedCustomTags(fieldValue, fieldPath, false); err != nil {
 			return err
 		}
 	}
@@ -141,7 +172,8 @@ func validateCustomTags(value reflect.Value, path string) error {
 }
 
 // walkNestedCustomTags descends into nested structs and collections for custom tag validation.
-func walkNestedCustomTags(value reflect.Value, path string) error {
+// standardTags requests engine validation for structs the engine does not reach on its own.
+func walkNestedCustomTags(value reflect.Value, path string, standardTags bool) error {
 	value = dereference(value)
 	if !value.IsValid() {
 		return nil
@@ -149,18 +181,26 @@ func walkNestedCustomTags(value reflect.Value, path string) error {
 
 	switch value.Kind() {
 	case reflect.Struct:
+		if standardTags {
+			if err := engine.Struct(value.Interface()); err != nil {
+				return err
+			}
+		}
+
 		return validateCustomTags(value, path)
 	case reflect.Slice, reflect.Array:
 		for i := range value.Len() {
 			itemPath := fmt.Sprintf("%s[%d]", path, i)
-			if err := walkNestedCustomTags(value.Index(i), itemPath); err != nil {
+			// The engine does not descend into collection elements, so structs
+			// found here still need their standard tags validated.
+			if err := walkNestedCustomTags(value.Index(i), itemPath, true); err != nil {
 				return err
 			}
 		}
 	case reflect.Map:
 		iter := value.MapRange()
 		for iter.Next() {
-			if err := walkNestedCustomTags(iter.Value(), path); err != nil {
+			if err := walkNestedCustomTags(iter.Value(), path, true); err != nil {
 				return err
 			}
 		}
@@ -177,13 +217,12 @@ func validateFieldTag(tag string, value reflect.Value, path string) error {
 		return nil
 	}
 
-	customFuncsMu.RLock()
-	defer customFuncsMu.RUnlock()
-
 	for part := range strings.SplitSeq(tag, ",") {
 		name, param, _ := strings.Cut(strings.TrimSpace(part), "=")
 
-		fn, ok := customFuncs[name]
+		// The lock is not held while calling fn, otherwise a validator that
+		// registers another tag would deadlock and wedge all later validation.
+		fn, ok := lookupValidationFunc(name)
 		if !ok {
 			continue
 		}
