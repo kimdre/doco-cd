@@ -3,6 +3,7 @@ package validation
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -91,6 +92,53 @@ func TestValidateSupportsNonzeroAlias(t *testing.T) {
 
 	if err := Validate(cfg{}); err == nil {
 		t.Fatal("expected validation error for empty required field")
+	}
+}
+
+func TestValidateValueHandlesSliceBranch(t *testing.T) {
+	type child struct {
+		Code string `validate:"required"`
+	}
+
+	err := validateValue(reflect.ValueOf([]child{{Code: ""}}))
+	if err == nil {
+		t.Fatal("expected validation error for slice element")
+	}
+}
+
+func TestValidateValueHandlesArrayBranch(t *testing.T) {
+	type child struct {
+		Code string `validate:"required"`
+	}
+
+	err := validateValue(reflect.ValueOf([1]child{{Code: ""}}))
+	if err == nil {
+		t.Fatal("expected validation error for array element")
+	}
+}
+
+func TestValidateValueHandlesMapBranch(t *testing.T) {
+	type child struct {
+		Code string `validate:"required"`
+	}
+
+	err := validateValue(reflect.ValueOf(map[string]child{"a": {Code: ""}}))
+	if err == nil {
+		t.Fatal("expected validation error for map value")
+	}
+}
+
+func TestValidateValueHandlesDefaultBranch(t *testing.T) {
+	if err := validateValue(reflect.ValueOf(42)); err != nil {
+		t.Fatalf("expected nil for default branch, got %v", err)
+	}
+}
+
+func TestValidateValueHandlesInvalidDereferencedValue(t *testing.T) {
+	var n *int
+
+	if err := validateValue(reflect.ValueOf(n)); err != nil {
+		t.Fatalf("expected nil for nil pointer after dereference, got %v", err)
 	}
 }
 
