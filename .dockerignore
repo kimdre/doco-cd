@@ -3,7 +3,8 @@ bin
 .idea/
 .vscode/
 .git/
-docs/
+wiki/
+.venv-wiki
 test/
 test-cases/
 **/testdata
