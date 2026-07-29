@@ -5,8 +5,9 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"time"
 
-	"github.com/robfig/cron/v3"
+	"github.com/go-co-op/gocron/v2"
 )
 
 type JobExecutionMode string
@@ -48,14 +49,14 @@ func (c JobScheduleConfig) ShouldNotifyFailure() bool {
 	return c.NotifyOn == JobNotifyAll || c.NotifyOn == JobNotifyFailure
 }
 
-func NewJobScheduleParser() cron.Parser {
+func NewJobScheduleParser() gocron.Cron {
 	// 5-field cron format with descriptors and @every durations. Seconds are intentionally unsupported.
-	return cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
+	return gocron.NewDefaultCron(false)
 }
 
-func ParseJobScheduleExpression(spec string) (cron.Schedule, error) {
-	schedule, err := NewJobScheduleParser().Parse(strings.TrimSpace(spec))
-	if err != nil {
+func ParseJobScheduleExpression(spec string) (gocron.Cron, error) {
+	schedule := NewJobScheduleParser()
+	if err := schedule.IsValid(strings.TrimSpace(spec), time.Local, time.Now()); err != nil {
 		return nil, fmt.Errorf("invalid job schedule %q: %w", spec, err)
 	}
 

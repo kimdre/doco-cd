@@ -13,9 +13,9 @@ import (
 
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
+	"github.com/go-co-op/gocron/v2"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
-	"github.com/robfig/cron/v3"
 
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -63,7 +63,7 @@ type scheduledJob struct {
 
 type scheduledJobState struct {
 	fingerprint string
-	schedule    cron.Schedule
+	schedule    gocron.Cron
 	lastRun     time.Time
 	nextRun     time.Time
 	deployment  string
@@ -844,7 +844,7 @@ func getScheduledRunMetricLabels(job scheduledJob, cfg docker.JobScheduleConfig,
 	return []string{stackName, job.name, string(job.mode), string(cfg.ExecutionMode)}
 }
 
-func nextScheduledRun(schedule cron.Schedule, scheduledAt, now time.Time) time.Time {
+func nextScheduledRun(schedule gocron.Cron, scheduledAt, now time.Time) time.Time {
 	nextRun := schedule.Next(scheduledAt)
 	for !now.Before(nextRun) {
 		nextRun = schedule.Next(nextRun)

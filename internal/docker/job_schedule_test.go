@@ -11,7 +11,9 @@ func TestParseJobScheduleExpression(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "valid 5-field", spec: "*/5 * * * *", wantErr: false},
-		{name: "valid every duration", spec: "@every 1h30m", wantErr: false},
+		{name: "valid predefined yearly schedule", spec: "@yearly", wantErr: false},
+		{name: "valid predefined schedule", spec: "@daily", wantErr: false},
+		{name: "valid interval schedule", spec: "@every 1h30m", wantErr: false},
 		{name: "invalid seconds field", spec: "*/5 * * * * *", wantErr: true},
 		{name: "invalid expression", spec: "every minute", wantErr: true},
 	}
@@ -23,6 +25,34 @@ func TestParseJobScheduleExpression(t *testing.T) {
 			_, err := ParseJobScheduleExpression(tt.spec)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("ParseJobScheduleExpression() err=%v wantErr=%v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestParseJobScheduleExpression_AllowedSpecialCharacters(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		spec string
+	}{
+		{name: "minutes wildcard", spec: "* * * * *"},
+		{name: "minutes step", spec: "*/5 * * * *"},
+		{name: "minutes list", spec: "0,15,30,45 * * * *"},
+		{name: "minutes range", spec: "10-20 * * * *"},
+		{name: "day of month question mark", spec: "0 3 ? * MON-FRI"},
+		{name: "month names", spec: "0 0 1 JAN,APR-DEC *"},
+		{name: "day of week names", spec: "0 12 * * SUN,TUE-THU"},
+		{name: "day of week question mark", spec: "0 12 1 * ?"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if _, err := ParseJobScheduleExpression(tt.spec); err != nil {
+				t.Fatalf("ParseJobScheduleExpression(%q) failed: %v", tt.spec, err)
 			}
 		})
 	}
