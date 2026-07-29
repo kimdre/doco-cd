@@ -81,6 +81,8 @@ func newDeploymentRunTracker(maxPerType map[deploymentRunTrigger]int) *deploymen
 func (t *deploymentRunTracker) TrackAccepted(jobID string, trigger deploymentRunTrigger) {
 	now := time.Now().UTC()
 
+	t.cleanup(now)
+
 	t.upsert(deploymentRun{
 		JobID:     jobID,
 		Trigger:   trigger,
@@ -184,6 +186,8 @@ func (t *deploymentRunTracker) List(limit int, trigger string, status string) []
 		limit = 50
 	}
 
+	t.cleanup(time.Now().UTC())
+
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
@@ -282,6 +286,26 @@ func normalizeDeploymentRunTrigger(value string) (string, error) {
 	}
 
 	return value, nil
+}
+
+func (t *deploymentRunTracker) cleanup(now time.Time) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	cutoffTime := now.Add(-t.ttl)
+
+	for trigger, jobIDs := range t.orderByTrigger {
+		newOrder := make([]string, 0, len(jobIDs))
+		for _, jobID := range jobIDs {
+			run, ok := t.runs[jobID]
+			if ok && run.CreatedAt.After(cutoffTime) {
+				newOrder = append(newOrder, jobID)
+			} else if ok {
+				delete(t.runs, jobID)
+			}
+		}
+		t.orderByTrigger[trigger] = newOrder
+	}
 }
 
 func (t *deploymentRunTracker) upsert(run deploymentRun) {
