@@ -192,6 +192,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 
 	if customTarget != "" {
 		jobLog = jobLog.With(slog.String("target", customTarget))
+		metadata.Target = strings.TrimSpace(customTarget)
 	}
 
 	if strings.Contains(repoName, "..") {

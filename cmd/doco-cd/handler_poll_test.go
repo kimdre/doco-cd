@@ -30,7 +30,7 @@ import (
 
 func TestPollHandlerAllowsConcurrentRunsForSameRepository(t *testing.T) {
 	log := logger.New(logger.LevelCritical)
-	started := make(chan string, 2)
+	started := make(chan notification.Metadata, 2)
 	release := make(chan struct{})
 
 	h := handlerData{
@@ -38,7 +38,7 @@ func TestPollHandlerAllowsConcurrentRunsForSameRepository(t *testing.T) {
 		runPoll: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
 			_ command.Cli, _ *slog.Logger, metadata notification.Metadata, _ *secretprovider.SecretProvider,
 		) error {
-			started <- metadata.JobID
+			started <- metadata
 
 			<-release
 
@@ -47,10 +47,11 @@ func TestPollHandlerAllowsConcurrentRunsForSameRepository(t *testing.T) {
 	}
 
 	jobConfig := poll.Config{
-		SourceUrl: "https://github.com/kimdre/doco-cd_tests.git",
-		Reference: "main",
-		Interval:  poll.MinPollInterval,
-		RunOnce:   true,
+		SourceUrl:    "https://github.com/kimdre/doco-cd_tests.git",
+		Reference:    "main",
+		Interval:     poll.MinPollInterval,
+		CustomTarget: "prod-vm",
+		RunOnce:      true,
 	}
 
 	ctx := t.Context()
@@ -72,7 +73,16 @@ func TestPollHandlerAllowsConcurrentRunsForSameRepository(t *testing.T) {
 
 	for range 2 {
 		select {
-		case <-started:
+		case metadata := <-started:
+			if metadata.JobID == "" {
+				close(release)
+				t.Fatal("expected poll metadata to include a job id")
+			}
+
+			if metadata.Target != "prod-vm" {
+				close(release)
+				t.Fatalf("expected poll metadata target prod-vm, got %q", metadata.Target)
+			}
 		case <-time.After(500 * time.Millisecond):
 			close(release)
 			t.Fatal("expected both poll handlers to start their runs without serializing on the repository")

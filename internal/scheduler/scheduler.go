@@ -776,6 +776,7 @@ func (s *scheduler) sendRunNotification(job scheduledJob, cfg docker.JobSchedule
 	metadata := notification.Metadata{
 		Repository:        job.labels[docker.DocoCDLabels.Source.Name],
 		Stack:             job.labels[docker.DocoCDLabels.Deployment.Name],
+		Target:            job.labels[docker.DocoCDLabels.Deployment.ConfigTarget],
 		Revision:          notification.GetRevision("", job.labels[docker.DocoCDLabels.Deployment.CommitSHA]),
 		JobID:             runID,
 		AffectedActorKind: actorKind,

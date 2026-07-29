@@ -68,6 +68,7 @@ type Metadata struct {
 	Repository          string
 	Stack               string
 	Context             string // Docker context the stack is deployed to (empty = default context)
+	Target              string // Custom webhook/poll target suffix (e.g., "prod-vm" for .doco-cd.prod-vm.yml)
 	Revision            string
 	JobID               string
 	TraceID             string
