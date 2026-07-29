@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
+
 	"github.com/kimdre/doco-cd/internal/common/validation"
 )
 

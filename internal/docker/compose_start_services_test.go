@@ -6,7 +6,7 @@ import (
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/compose/v5/pkg/api"
 
-	"github.com/kimdre/doco-cd/internal/utils/set"
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 )
 
 func TestGetStartServicesForDeploy(t *testing.T) {

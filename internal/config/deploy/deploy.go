@@ -16,9 +16,10 @@ import (
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"go.yaml.in/yaml/v4"
+
 	"github.com/kimdre/doco-cd/internal/common/defaults"
 	"github.com/kimdre/doco-cd/internal/common/validation"
-	"go.yaml.in/yaml/v4"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"

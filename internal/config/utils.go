@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/caarlos0/env/v11"
+
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/encryption"
 )

@@ -1,6 +1,8 @@
 package filesystem
 
-import "github.com/kimdre/doco-cd/internal/utils/set"
+import (
+	"github.com/kimdre/doco-cd/internal/common/types/set"
+)
 
 // IgnoreDirs contains directory names that should be skipped during repository walks
 // for internal maintenance tasks (for example decrypt scans and auto-discovery scans).

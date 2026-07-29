@@ -18,18 +18,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-git/go-git/v5/plumbing/format/diff"
+
+	"github.com/kimdre/doco-cd/internal/common/module"
+	"github.com/kimdre/doco-cd/internal/common/types/set"
+	"github.com/kimdre/doco-cd/internal/common/types/slice"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/lock"
-	"github.com/kimdre/doco-cd/internal/utils/module"
-
-	"github.com/kimdre/doco-cd/internal/docker/swarm"
-	"github.com/kimdre/doco-cd/internal/utils/set"
-	"github.com/kimdre/doco-cd/internal/utils/slice"
-
-	"github.com/go-git/go-git/v5/plumbing/format/diff"
 
 	"github.com/moby/moby/client"
 

@@ -1,6 +1,8 @@
 package slice
 
-import "github.com/kimdre/doco-cd/internal/utils/set"
+import (
+	"github.com/kimdre/doco-cd/internal/common/types/set"
+)
 
 // Unique returns a slice of unique elements from the input slice.
 func Unique[T comparable](elements []T) []T {
