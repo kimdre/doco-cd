@@ -50,7 +50,13 @@ If you would like to support the development of Doco CD, please consider becomin
 
 Doco-CD is proudly backed by the [JetBrains Open Source Support Program](https://www.jetbrains.com/community/opensource/).
 
-[![JetBrains logo.](https://resources.jetbrains.com/storage/products/company/brand/logos/jetbrains.svg)](https://jb.gg/OpenSource)
+<a href="https://jb.gg/OpenSource">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://www.jetbrains.com/company/brand/img/logo_jb_dos_3.svg" />
+   <source media="(prefers-color-scheme: light)" srcset="https://resources.jetbrains.com/storage/products/company/brand/logos/jetbrains.svg" />
+   <img alt="JetBrains logo" src="https://resources.jetbrains.com/storage/products/company/brand/logos/jetbrains.svg" />
+ </picture>
+</a>
 
 ## Star History
 
