@@ -56,10 +56,18 @@ func TestDeploymentRunTrackerListAndTrim(t *testing.T) {
 	tracker.TrackAccepted("job-2", deploymentRunTriggerPoll)
 	time.Sleep(time.Millisecond)
 	tracker.TrackAccepted("job-3", deploymentRunTriggerPoll)
+	time.Sleep(time.Millisecond)
+	// Adding a second webhook job should evict job-1 (webhook limit is 1)
+	tracker.TrackAccepted("job-4", deploymentRunTriggerWebhook)
 
-	// job-1 evicted because webhook limit is 1
+	// job-1 evicted because webhook limit is 1 and we added a second webhook job
 	if _, ok := tracker.Get("job-1"); ok {
 		t.Fatal("expected job-1 (webhook) to be evicted")
+	}
+
+	// job-4 should exist (latest webhook)
+	if _, ok := tracker.Get("job-4"); !ok {
+		t.Fatal("expected job-4 (webhook) to exist")
 	}
 
 	// both job-2 and job-3 should be present (poll limit is 2)
