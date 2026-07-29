@@ -74,6 +74,10 @@ ghcr.io/kimdre/doco-cd:0.103.0
 - Ask questions on [GitHub Discussions](https://github.com/kimdre/doco-cd/discussions)
 - Report bugs or suggest features by [opening an issue](https://github.com/kimdre/doco-cd/issues/new/choose)
 
+## Contributing
+
+Contributions are welcome! Please see the [Contributing Guidelines](Contributing.md) for more information.
+
 ## In the Media
 
 Doco-CD has been featured by industry media and technical publications:
@@ -84,9 +88,13 @@ Doco-CD has been featured by industry media and technical publications:
 | 2026-04-22 | heise+      | [(German) Watchtower and alternatives: how to keep Docker containers automatically up to date](https://heise.de/-11243856) |
 | 2025-11-14 | selfh.st    | [Weekly: 2025-11-14](https://selfh.st/weekly/2025-11-14/)                                                                  |
 
-## Contributing
+## Sponsorship
 
-Contributions are welcome! Please see the [Contributing Guidelines](Contributing.md) for more information.
+If you would like to support the development of Doco CD, please consider becoming a sponsor on [GitHub Sponsors](https://github.com/sponsors/kimdre).
+
+Doco-CD is proudly backed by the [JetBrains Open Source Support Program](https://www.jetbrains.com/community/opensource/).
+
+[![JetBrains logo.](https://resources.jetbrains.com/storage/products/company/brand/logos/jetbrains.svg)](https://jb.gg/OpenSource)
 
 ## Star History
 
