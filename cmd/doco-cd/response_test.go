@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/kimdre/doco-cd/internal/utils/id"
+	"github.com/kimdre/doco-cd/internal/common/id"
 )
 
 func TestJSONResponse(t *testing.T) {

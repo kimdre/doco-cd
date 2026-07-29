@@ -21,8 +21,9 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/common/types/set"
+
 	swarmInternal "github.com/kimdre/doco-cd/internal/docker/swarm"
-	"github.com/kimdre/doco-cd/internal/utils/set"
 )
 
 var ErrNoSuchImage = errors.New("no such image") // Image does not exist

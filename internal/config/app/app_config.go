@@ -6,15 +6,15 @@ import (
 	"path"
 	"strings"
 
+	"github.com/go-git/go-git/v5/plumbing/transport"
+	"go.yaml.in/yaml/v4"
+
 	"github.com/kimdre/doco-cd/internal/commitstatus"
+	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/notification"
-	"github.com/kimdre/doco-cd/internal/validation"
-
-	"github.com/go-git/go-git/v5/plumbing/transport"
-	"go.yaml.in/yaml/v4"
 )
 
 const Name = "doco-cd" // Name of the application

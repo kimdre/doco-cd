@@ -18,14 +18,14 @@ import (
 
 	"github.com/avast/retry-go/v5"
 
+	"github.com/kimdre/doco-cd/internal/common/id"
+
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
-	"github.com/kimdre/doco-cd/internal/test"
-	"github.com/kimdre/doco-cd/internal/utils/id"
-
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
+	"github.com/kimdre/doco-cd/internal/test"
 
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 

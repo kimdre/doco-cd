@@ -10,14 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/creasty/defaults"
-
+	"github.com/kimdre/doco-cd/internal/common/defaults"
+	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/logger"
-	"github.com/kimdre/doco-cd/internal/validation"
 )
 
 type Config struct {

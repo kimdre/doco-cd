@@ -9,6 +9,9 @@ import (
 	"github.com/moby/moby/api/types/events"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/common/id"
+	"github.com/kimdre/doco-cd/internal/common/types/set"
+
 	"github.com/kimdre/doco-cd/internal/config/app"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 
@@ -16,8 +19,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
-	"github.com/kimdre/doco-cd/internal/utils/id"
-	"github.com/kimdre/doco-cd/internal/utils/set"
 )
 
 func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *slog.Logger, contextName string, cli command.Cli, swarmMode bool) {

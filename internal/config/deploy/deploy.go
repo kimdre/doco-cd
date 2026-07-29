@@ -14,19 +14,19 @@ import (
 	"strings"
 
 	"github.com/compose-spec/compose-go/v2/cli"
-	"github.com/creasty/defaults"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"go.yaml.in/yaml/v4"
 
-	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/common/defaults"
+	"github.com/kimdre/doco-cd/internal/common/validation"
 
+	"github.com/kimdre/doco-cd/internal/config"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 
 	"github.com/kimdre/doco-cd/internal/logger"
-	"github.com/kimdre/doco-cd/internal/validation"
 )
 
 var (

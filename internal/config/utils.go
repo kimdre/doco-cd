@@ -7,8 +7,8 @@ import (
 
 	"github.com/caarlos0/env/v11"
 
+	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/encryption"
-	"github.com/kimdre/doco-cd/internal/validation"
 )
 
 // EnvVarFileMapping holds the mappings for file-based environment variables.

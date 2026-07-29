@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/common/id"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 
@@ -20,7 +21,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 	restAPI "github.com/kimdre/doco-cd/internal/restapi"
 	"github.com/kimdre/doco-cd/internal/scheduler"
-	"github.com/kimdre/doco-cd/internal/utils/id"
 )
 
 const (

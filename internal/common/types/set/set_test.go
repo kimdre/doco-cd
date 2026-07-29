@@ -105,3 +105,63 @@ func TestSet_Difference(t *testing.T) {
 		})
 	}
 }
+
+func TestSet_Union(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		sets []Set[string]
+		want Set[string]
+	}{
+		{
+			name: "merges unique elements",
+			sets: []Set[string]{
+				New("apple", "banana"),
+				New("banana", "cherry"),
+			},
+			want: New("apple", "banana", "cherry"),
+		},
+		{
+			name: "handles no sets",
+			sets: nil,
+			want: New[string](),
+		},
+		{
+			name: "handles empty sets",
+			sets: []Set[string]{
+				New[string](),
+				New[string](),
+			},
+			want: New[string](),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Union(tt.sets...)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Union() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSet_Len(t *testing.T) {
+	t.Parallel()
+
+	s := New("apple", "banana")
+	if got := s.Len(); got != 2 {
+		t.Fatalf("Len() = %d, want 2", got)
+	}
+
+	s.Remove("apple")
+
+	if got := s.Len(); got != 1 {
+		t.Fatalf("Len() after removal = %d, want 1", got)
+	}
+
+	if got := New[string]().Len(); got != 0 {
+		t.Fatalf("Len() on empty set = %d, want 0", got)
+	}
+}

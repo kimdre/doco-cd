@@ -10,15 +10,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/creasty/defaults"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
+	"github.com/kimdre/doco-cd/internal/common/defaults"
+	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config"
-
 	"github.com/kimdre/doco-cd/internal/filesystem"
-	"github.com/kimdre/doco-cd/internal/validation"
 )
 
 func createTestFile(t *testing.T, fileName string, content string) error {

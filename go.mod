@@ -21,7 +21,6 @@ require (
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/compose-spec/compose-go/v2 v2.13.0
 	github.com/containerd/errdefs v1.0.0
-	github.com/creasty/defaults v1.8.0
 	github.com/distribution/reference v0.6.0
 	github.com/docker/cli v29.6.2+incompatible
 	github.com/docker/compose/v5 v5.3.1

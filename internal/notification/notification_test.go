@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/kimdre/doco-cd/internal/common/id"
 	"github.com/kimdre/doco-cd/internal/test"
-	"github.com/kimdre/doco-cd/internal/utils/id"
 )
 
 func TestSend(t *testing.T) {

@@ -1,3 +1,5 @@
+// Package validation provides struct-tag validation helpers and custom
+// validator registration for internal config types.
 package validation
 
 import (

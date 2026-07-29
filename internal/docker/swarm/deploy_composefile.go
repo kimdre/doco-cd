@@ -10,7 +10,7 @@ import (
 	"github.com/containerd/errdefs"
 	"github.com/docker/cli/cli/command"
 
-	"github.com/kimdre/doco-cd/internal/utils/set"
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 
 	"github.com/kimdre/doco-cd/internal/docker/options"
 
