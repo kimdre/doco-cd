@@ -8,7 +8,11 @@ import (
 func TestDeploymentRunTrackerLifecycle(t *testing.T) {
 	t.Parallel()
 
-	tracker := newDeploymentRunTracker(10)
+	tracker := newDeploymentRunTracker(map[deploymentRunTrigger]int{
+		deploymentRunTriggerWebhook:      10,
+		deploymentRunTriggerPoll:         10,
+		deploymentRunTriggerScheduledJob: 10,
+	})
 	jobID := "job-1"
 
 	tracker.TrackAccepted(jobID, deploymentRunTriggerWebhook)
@@ -41,7 +45,11 @@ func TestDeploymentRunTrackerLifecycle(t *testing.T) {
 func TestDeploymentRunTrackerListAndTrim(t *testing.T) {
 	t.Parallel()
 
-	tracker := newDeploymentRunTracker(2)
+	tracker := newDeploymentRunTracker(map[deploymentRunTrigger]int{
+		deploymentRunTriggerWebhook:      1,
+		deploymentRunTriggerPoll:         2,
+		deploymentRunTriggerScheduledJob: 10,
+	})
 
 	tracker.TrackAccepted("job-1", deploymentRunTriggerWebhook)
 	time.Sleep(time.Millisecond)
@@ -49,13 +57,15 @@ func TestDeploymentRunTrackerListAndTrim(t *testing.T) {
 	time.Sleep(time.Millisecond)
 	tracker.TrackAccepted("job-3", deploymentRunTriggerPoll)
 
+	// job-1 evicted because webhook limit is 1
 	if _, ok := tracker.Get("job-1"); ok {
-		t.Fatal("expected oldest entry to be evicted")
+		t.Fatal("expected job-1 (webhook) to be evicted")
 	}
 
+	// both job-2 and job-3 should be present (poll limit is 2)
 	runs := tracker.List(10, string(deploymentRunTriggerPoll), "")
 	if len(runs) != 2 {
-		t.Fatalf("expected 2 runs, got %d", len(runs))
+		t.Fatalf("expected 2 poll runs, got %d", len(runs))
 	}
 
 	if runs[0].JobID != "job-3" || runs[1].JobID != "job-2" {

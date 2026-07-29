@@ -511,7 +511,11 @@ func TestHandlerData_DeploymentRunHandlers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tracker := newDeploymentRunTracker(10)
+	tracker := newDeploymentRunTracker(map[deploymentRunTrigger]int{
+		deploymentRunTriggerWebhook:      10,
+		deploymentRunTriggerPoll:         10,
+		deploymentRunTriggerScheduledJob: 10,
+	})
 	tracker.TrackAccepted("job-1", deploymentRunTriggerWebhook)
 	tracker.SetMetadata("job-1", "owner/repo", "prod", "refs/heads/main")
 	tracker.MarkSucceeded("job-1", "ok")

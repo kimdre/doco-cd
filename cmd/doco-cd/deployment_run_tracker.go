@@ -47,21 +47,34 @@ type deploymentRun struct {
 }
 
 type deploymentRunTracker struct {
-	mu         sync.RWMutex
-	runs       map[string]deploymentRun
-	order      []string
-	maxEntries int
+	mu                sync.RWMutex
+	runs              map[string]deploymentRun
+	orderByTrigger    map[deploymentRunTrigger][]string
+	maxEntriesPerType map[deploymentRunTrigger]int
 }
 
-func newDeploymentRunTracker(maxEntries int) *deploymentRunTracker {
-	if maxEntries < 1 {
-		maxEntries = 500
+func newDeploymentRunTracker(maxPerType map[deploymentRunTrigger]int) *deploymentRunTracker {
+	if maxPerType == nil {
+		maxPerType = make(map[deploymentRunTrigger]int)
+	}
+
+	// Set defaults for missing types
+	if maxPerType[deploymentRunTriggerWebhook] < 1 {
+		maxPerType[deploymentRunTriggerWebhook] = 50
+	}
+
+	if maxPerType[deploymentRunTriggerPoll] < 1 {
+		maxPerType[deploymentRunTriggerPoll] = 50
+	}
+
+	if maxPerType[deploymentRunTriggerScheduledJob] < 1 {
+		maxPerType[deploymentRunTriggerScheduledJob] = 50
 	}
 
 	return &deploymentRunTracker{
-		runs:       make(map[string]deploymentRun),
-		order:      make([]string, 0, maxEntries),
-		maxEntries: maxEntries,
+		runs:              make(map[string]deploymentRun),
+		orderByTrigger:    make(map[deploymentRunTrigger][]string),
+		maxEntriesPerType: maxPerType,
 	}
 }
 
@@ -174,23 +187,58 @@ func (t *deploymentRunTracker) List(limit int, trigger string, status string) []
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
-	runs := make([]deploymentRun, 0, min(limit, len(t.order)))
-	for i := len(t.order) - 1; i >= 0; i-- {
-		if len(runs) >= limit {
-			break
+	runs := make([]deploymentRun, 0, min(limit, len(t.runs)))
+
+	// If trigger filter is specified, use that type's order; otherwise collect all in reverse order
+	if trigger != "" {
+		triggerType := deploymentRunTrigger(trigger)
+
+		order := t.orderByTrigger[triggerType]
+		for i := len(order) - 1; i >= 0; i-- {
+			if len(runs) >= limit {
+				break
+			}
+
+			r := t.runs[order[i]]
+
+			if status != "" && string(r.Status) != status {
+				continue
+			}
+
+			runs = append(runs, r)
+		}
+	} else {
+		// Collect all runs across all trigger types, newest first
+		allJobs := make([]string, 0, len(t.runs))
+		for _, jobIDs := range t.orderByTrigger {
+			allJobs = append(allJobs, jobIDs...)
 		}
 
-		r := t.runs[t.order[i]]
+		// Sort by creation time (newest first) to get consistent ordering
+		slices.SortFunc(allJobs, func(a, b string) int {
+			runA, okA := t.runs[a]
 
-		if trigger != "" && string(r.Trigger) != trigger {
-			continue
+			runB, okB := t.runs[b]
+			if !okA || !okB {
+				return 0
+			}
+
+			return runB.CreatedAt.Compare(runA.CreatedAt)
+		})
+
+		for _, jobID := range allJobs {
+			if len(runs) >= limit {
+				break
+			}
+
+			r := t.runs[jobID]
+
+			if status != "" && string(r.Status) != status {
+				continue
+			}
+
+			runs = append(runs, r)
 		}
-
-		if status != "" && string(r.Status) != status {
-			continue
-		}
-
-		runs = append(runs, r)
 	}
 
 	return runs
@@ -251,14 +299,21 @@ func (t *deploymentRunTracker) upsert(run deploymentRun) {
 	}
 
 	t.runs[run.JobID] = run
-	t.order = append(t.order, run.JobID)
+	order := t.orderByTrigger[run.Trigger]
+	t.orderByTrigger[run.Trigger] = append(order, run.JobID)
 
-	if len(t.order) <= t.maxEntries {
+	maxForType := t.maxEntriesPerType[run.Trigger]
+	if maxForType < 1 {
+		maxForType = 50
+	}
+
+	if len(t.orderByTrigger[run.Trigger]) <= maxForType {
 		return
 	}
 
-	oldestJobID := t.order[0]
-	t.order = t.order[1:]
+	// Evict oldest entry of this trigger type
+	oldestJobID := t.orderByTrigger[run.Trigger][0]
+	t.orderByTrigger[run.Trigger] = t.orderByTrigger[run.Trigger][1:]
 	delete(t.runs, oldestJobID)
 }
 
