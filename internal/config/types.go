@@ -7,8 +7,7 @@ import (
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
-
-	"github.com/kimdre/doco-cd/internal/validation"
+	"github.com/kimdre/doco-cd/internal/common/validation"
 )
 
 // UrlValidator is the common interface that both GitUrl and OciUrl implement.

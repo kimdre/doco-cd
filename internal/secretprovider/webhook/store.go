@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/kimdre/doco-cd/internal/defaults"
+	"github.com/kimdre/doco-cd/internal/common/defaults"
 )
 
 const StoreVersionV1 = "v1"
