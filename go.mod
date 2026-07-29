@@ -33,7 +33,6 @@ require (
 	github.com/prometheus/client_golang v1.24.1
 	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/crypto v0.54.0
-	gopkg.in/validator.v2 v2.0.1
 	gotest.tools/v3 v3.5.2
 )
 
@@ -44,6 +43,7 @@ require (
 	github.com/avast/retry-go/v5 v5.0.0
 	github.com/bitwarden/sdk-go/v2 v2.1.0
 	github.com/docker/compose/v5 v5.3.1
+	github.com/go-playground/validator/v10 v10.30.3
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/go-containerregistry v0.21.7
 	github.com/jmespath/go-jmespath v0.4.1-0.20220621161143-b0104c826a24
@@ -151,6 +151,7 @@ require (
 	github.com/fsnotify/fsevents v0.2.0 // indirect
 	github.com/fvbommel/sortorder v1.1.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
+	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
 	github.com/getsops/gopgagent v0.0.0-20241224165529-7044f28e491e // indirect
 	github.com/go-chi/chi/v5 v5.3.0 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
@@ -179,6 +180,8 @@ require (
 	github.com/go-openapi/swag/typeutils v0.27.0 // indirect
 	github.com/go-openapi/swag/yamlutils v0.26.1 // indirect
 	github.com/go-openapi/validate v0.26.0 // indirect
+	github.com/go-playground/locales v0.14.1 // indirect
+	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-resty/resty/v2 v2.13.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
@@ -226,6 +229,7 @@ require (
 	github.com/klauspost/compress v1.19.1 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
+	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/letsencrypt/boulder v0.20260309.0 // indirect
 	github.com/lib/pq v1.12.3 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect

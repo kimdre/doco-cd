@@ -7,7 +7,8 @@ import (
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
-	"gopkg.in/validator.v2"
+
+	"github.com/kimdre/doco-cd/internal/validation"
 )
 
 // UrlValidator is the common interface that both GitUrl and OciUrl implement.
@@ -26,15 +27,15 @@ type OciUrl string
 
 // init registers custom validator functions for HttpUrl, GitUrl and OciUrl.
 func init() {
-	if err := validator.SetValidationFunc("httpUrl", validateHttpUrl); err != nil {
+	if err := validation.RegisterValidationFunc("httpUrl", validateHttpUrl); err != nil {
 		panic("error registering httpUrl validator: " + err.Error())
 	}
 
-	if err := validator.SetValidationFunc("gitUrl", validateGitUrl); err != nil {
+	if err := validation.RegisterValidationFunc("gitUrl", validateGitUrl); err != nil {
 		panic("error registering gitUrl validator: " + err.Error())
 	}
 
-	if err := validator.SetValidationFunc("ociUrl", validateOciUrl); err != nil {
+	if err := validation.RegisterValidationFunc("ociUrl", validateOciUrl); err != nil {
 		panic("error registering ociUrl validator: " + err.Error())
 	}
 }
