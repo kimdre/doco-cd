@@ -63,10 +63,10 @@ You can find the Docker image in the [GitHub Container Registry](https://github.
 docker pull ghcr.io/kimdre/doco-cd:latest
 ```
 
-To use a specific version, replace `latest` with the desired release version without the leading `v` (e.g. `0.80.0`):
+To use a specific version, replace `latest` with the desired release version without the leading `v` (e.g. `0.103.0`):
 
 ```sh
-ghcr.io/kimdre/doco-cd:0.80.0
+ghcr.io/kimdre/doco-cd:0.103.0
 ```
 
 ## Community
