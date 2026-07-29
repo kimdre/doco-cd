@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/compose-spec/compose-go/v2/types"
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/kimdre/doco-cd/internal/utils/set"
 	"github.com/kimdre/doco-cd/internal/utils/slice"

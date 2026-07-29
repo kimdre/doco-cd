@@ -15,7 +15,7 @@ import (
 
 	"github.com/moby/moby/api/types/volume"
 
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	swarmInternal "github.com/kimdre/doco-cd/internal/docker/swarm"
