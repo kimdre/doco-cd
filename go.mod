@@ -10,49 +10,45 @@ tool (
 )
 
 require (
+	github.com/1Password/connect-sdk-go v1.5.3
 	github.com/1password/onepassword-sdk-go v0.4.0
+	github.com/avast/retry-go/v5 v5.0.0
 	github.com/aws/aws-sdk-go-v2 v1.43.1
 	github.com/aws/aws-sdk-go-v2/config v1.32.32
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.31
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.44.1
+	github.com/bitwarden/sdk-go/v2 v2.1.0
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/compose-spec/compose-go/v2 v2.13.0
 	github.com/containerd/errdefs v1.0.0
 	github.com/creasty/defaults v1.8.0
 	github.com/distribution/reference v0.6.0
 	github.com/docker/cli v29.6.2+incompatible
+	github.com/docker/compose/v5 v5.3.1
 	github.com/getsops/sops/v3 v3.13.3
 	github.com/go-git/go-billy/v5 v5.9.1
 	github.com/go-git/go-git/v5 v5.19.1
+	github.com/go-playground/validator/v10 v10.30.3
+	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/google/go-containerregistry v0.21.7
 	github.com/google/uuid v1.6.0
 	github.com/infisical/go-sdk v0.8.0
+	github.com/jmespath/go-jmespath v0.4.1-0.20220621161143-b0104c826a24
 	github.com/joho/godotenv v1.5.1
 	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.5.1
 	github.com/openbao/openbao/api/v2 v2.6.0
-	github.com/prometheus/client_golang v1.24.1
-	go.yaml.in/yaml/v3 v3.0.5
-	golang.org/x/crypto v0.54.0
-	gotest.tools/v3 v3.5.2
-)
-
-require golang.org/x/sync v0.22.0
-
-require (
-	github.com/1Password/connect-sdk-go v1.5.3
-	github.com/avast/retry-go/v5 v5.0.0
-	github.com/bitwarden/sdk-go/v2 v2.1.0
-	github.com/docker/compose/v5 v5.3.1
-	github.com/go-playground/validator/v10 v10.30.3
-	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/google/go-containerregistry v0.21.7
-	github.com/jmespath/go-jmespath v0.4.1-0.20220621161143-b0104c826a24
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
+	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/common v0.70.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sigstore/cosign/v3 v3.1.2
 	github.com/veqryn/slog-dedup v0.6.0
+	go.yaml.in/yaml/v3 v3.0.5
+	golang.org/x/crypto v0.54.0
+	golang.org/x/sync v0.22.0
+	gotest.tools/v3 v3.5.2
 )
 
 require (
