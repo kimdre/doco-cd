@@ -83,9 +83,20 @@ type RefSet struct {
 	RemoteHash plumbing.Hash
 }
 
-// GetReferenceSet retrieves a RefSet of local and remote references for a given reference name.
-// It also resolves the remote reference to a commit hash (when available) and fills RemoteHash.
+// GetReferenceSet resolves ref to the local and remote plumbing.ReferenceName
+// to use during checkout, along with the resolved remote commit hash.
+//
+// Resolution order (first match wins):
+//  1. Commit SHA — returned directly; no reference store lookup is performed.
+//  2. For refs/-prefixed names: the exact name, then its remote-tracking counterpart.
+//  3. For short names: refs/heads/<ref>, refs/remotes/origin/<ref>, refs/tags/<ref>,
+//     and — only when the name passes plumbing.ReferenceName.IsSafe — the bare name
+//     (covering uppercase pseudo-refs such as HEAD or ORIG_HEAD).
+//
+// Any storage error other than plumbing.ErrReferenceNotFound is treated as a
+// transient failure and returned immediately.
 func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
+	// Commit SHAs are used directly — there is no reference name to resolve.
 	if plumbing.IsHash(ref) {
 		return RefSet{LocalRef: plumbing.ReferenceName(ref)}, nil
 	}
@@ -130,8 +141,8 @@ func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 	}
 
 	for _, c := range candidates {
-		if _, err := repo.Reference(c.local, true); err == nil {
-			// try to resolve remote hash if remote ref exists
+		_, err := repo.Reference(c.local, true)
+		if err == nil {
 			remoteHash := plumbing.ZeroHash
 
 			if c.remote != "" {
@@ -141,28 +152,11 @@ func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 			}
 
 			return RefSet{LocalRef: c.local, RemoteRef: c.remote, RemoteHash: remoteHash}, nil
-		} else if !errors.Is(err, plumbing.ErrReferenceNotFound) {
-			lastErr = err
-		}
-	}
-
-	// If no local candidate found, but a remote exists, return the remote reference and resolved hash
-	for _, c := range candidates {
-		if c.remote == "" {
-			continue
 		}
 
-		if rRef, err := repo.Reference(c.remote, true); err == nil {
-			remoteHash := rRef.Hash()
-			// keep LocalRef equal to remote for now; CheckoutRepository will map remote/* -> refs/heads/*
-			return RefSet{LocalRef: c.remote, RemoteRef: c.remote, RemoteHash: remoteHash}, nil
-		} else if !errors.Is(err, plumbing.ErrReferenceNotFound) {
-			lastErr = err
+		if !errors.Is(err, plumbing.ErrReferenceNotFound) {
+			return RefSet{}, fmt.Errorf("failed to get reference %s: %w", ref, err)
 		}
-	}
-
-	if lastErr != nil {
-		return RefSet{}, fmt.Errorf("failed to get reference %s: %w", ref, lastErr)
 	}
 
 	return RefSet{}, fmt.Errorf("%w: %s", ErrInvalidReference, ref)
