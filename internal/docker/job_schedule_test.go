@@ -275,27 +275,39 @@ func TestParseJobScheduleLabels_StopServices(t *testing.T) {
 			t.Fatalf("unexpected stop_services: %+v", cfg.StopServices)
 		}
 	})
+}
 
-	t.Run("self-reference is rejected", func(t *testing.T) {
-		t.Parallel()
+func TestValidateStopServicesSelfReference(t *testing.T) {
+	t.Parallel()
 
-		// Same project + same service name → should fail.
-		_, _, err := ParseJobScheduleLabels(baseLabels(map[string]string{
-			docoCDJobLabelNames.JobStopServices: "backup",
-		}))
-		if err == nil {
-			t.Fatal("expected error for self-reference, got nil")
-		}
-	})
+	tests := []struct {
+		name    string
+		raw     string
+		wantErr bool
+	}{
+		{name: "same-project bare self-reference is rejected", raw: "backup", wantErr: true},
+		{name: "explicit self-reference via project prefix is rejected", raw: "myproject/backup", wantErr: true},
+		{name: "different service in same project is allowed", raw: "db", wantErr: false},
+		{name: "different project with same service name is allowed", raw: "other-project/backup", wantErr: false},
+	}
 
-	t.Run("explicit self-reference via project prefix is rejected", func(t *testing.T) {
-		t.Parallel()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-		_, _, err := ParseJobScheduleLabels(baseLabels(map[string]string{
-			docoCDJobLabelNames.JobStopServices: "myproject/backup",
-		}))
-		if err == nil {
-			t.Fatal("expected error for explicit self-reference, got nil")
-		}
-	})
+			refs, err := parseStopServiceRefs(tt.raw)
+			if err != nil {
+				t.Fatalf("unexpected parse error: %v", err)
+			}
+
+			err = ValidateStopServicesSelfReference("myproject", "backup", refs)
+			if tt.wantErr && err == nil {
+				t.Fatal("expected self-reference error, got nil")
+			}
+
+			if !tt.wantErr && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
 }

@@ -472,3 +472,170 @@ func TestContainerJobKey_FallsBackToContainerID(t *testing.T) {
 		t.Fatalf("containerJobKey()=%q want=%q", got, want)
 	}
 }
+
+func TestJobOwnIdentity(t *testing.T) {
+	t.Parallel()
+
+	t.Run("compose job uses compose project/service labels", func(t *testing.T) {
+		t.Parallel()
+
+		job := scheduledJob{
+			mode: scheduledJobModeContainer,
+			name: "irrelevant-container-name",
+			labels: map[string]string{
+				api.ProjectLabel: "myproject",
+				api.ServiceLabel: "backup",
+			},
+		}
+
+		project, service := jobOwnIdentity(job)
+		if project != "myproject" || service != "backup" {
+			t.Fatalf("jobOwnIdentity() = (%q, %q), want (\"myproject\", \"backup\")", project, service)
+		}
+	})
+
+	t.Run("swarm job derives service from full service name", func(t *testing.T) {
+		t.Parallel()
+
+		job := scheduledJob{
+			mode: scheduledJobModeSwarm,
+			name: "mystack_backup",
+			labels: map[string]string{
+				swarm.StackNamespaceLabel: "mystack",
+			},
+		}
+
+		project, service := jobOwnIdentity(job)
+		if project != "mystack" || service != "backup" {
+			t.Fatalf("jobOwnIdentity() = (%q, %q), want (\"mystack\", \"backup\")", project, service)
+		}
+	})
+}
+
+func TestValidateStopServicesSelfReference_SwarmIdentity(t *testing.T) {
+	t.Parallel()
+
+	// Regression test: swarm task labels never carry com.docker.compose.project
+	// or com.docker.compose.service, so self-reference detection must use the
+	// resolved stack name and the service name derived from the full swarm
+	// service name (see jobOwnIdentity), not raw compose labels.
+	job := scheduledJob{
+		mode: scheduledJobModeSwarm,
+		name: "mystack_backup",
+		labels: map[string]string{
+			swarm.StackNamespaceLabel:              "mystack",
+			docker.DocoCDJobLabels.JobEnabled:      "true",
+			docker.DocoCDJobLabels.JobSchedule:     "0 2 * * *",
+			docker.DocoCDJobLabels.JobStopServices: "backup",
+		},
+	}
+
+	cfg, enabled, err := parseJobConfig(job)
+	if err == nil {
+		t.Fatalf("expected self-reference error for swarm job, got nil (enabled=%v cfg=%+v)", enabled, cfg)
+	}
+}
+
+func TestResolveStopServiceStacks(t *testing.T) {
+	t.Parallel()
+
+	refs := []docker.StopServiceRef{
+		{Service: "db"},
+		{Project: "other-project", Service: "cache"},
+		{Project: "other-project", Service: "search"},
+	}
+
+	got := resolveStopServiceStacks(refs, "own-project")
+
+	want := []string{"own-project", "other-project", "other-project"}
+	if len(got) != len(want) {
+		t.Fatalf("resolveStopServiceStacks() = %v, want %v", got, want)
+	}
+
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("resolveStopServiceStacks()[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestLockStacks_DeduplicatesAndLocksSortedOrder(t *testing.T) {
+	t.Parallel()
+
+	// Repeated/empty entries must not cause a self-deadlock (locking the same
+	// stack twice) and must not be double-unlocked.
+	unlock := lockStacks("zeta", "alpha", "alpha", "", "zeta")
+	unlock()
+
+	// If dedup/unlock bookkeeping were broken, acquiring the same stacks again
+	// would deadlock (this call would hang forever), so a normal test timeout
+	// failure would catch it.
+	unlock2 := lockStacks("alpha", "zeta")
+	unlock2()
+}
+
+func TestStopHold_RefCounting(t *testing.T) {
+	t.Parallel()
+
+	s := &scheduler{stopHolds: map[stopHoldKey]*stopHoldState{}}
+
+	// First holder must actually perform the stop.
+	if isFirst := s.acquireStopHold(scheduledJobModeContainer, "proj", "db"); !isFirst {
+		t.Fatal("expected first acquireStopHold() to report isFirst=true")
+	}
+
+	// A second concurrent holder of the same target must not stop it again.
+	if isFirst := s.acquireStopHold(scheduledJobModeContainer, "proj", "db"); isFirst {
+		t.Fatal("expected second acquireStopHold() to report isFirst=false")
+	}
+
+	// Releasing while another holder remains must not trigger a restart.
+	if isLast, _ := s.releaseStopHold(scheduledJobModeContainer, "proj", "db"); isLast {
+		t.Fatal("expected first releaseStopHold() to report isLast=false while a holder remains")
+	}
+
+	// The last holder releasing must trigger the actual restart.
+	if isLast, _ := s.releaseStopHold(scheduledJobModeContainer, "proj", "db"); !isLast {
+		t.Fatal("expected final releaseStopHold() to report isLast=true")
+	}
+
+	// The hold must be fully removed once released by the last holder.
+	if _, ok := s.stopHolds[stopHoldKey{mode: scheduledJobModeContainer, project: "proj", service: "db"}]; ok {
+		t.Fatal("expected stop hold to be removed after last release")
+	}
+}
+
+func TestStopHold_SwarmReplicasSurviveUntilLastRelease(t *testing.T) {
+	t.Parallel()
+
+	s := &scheduler{stopHolds: map[stopHoldKey]*stopHoldState{}}
+
+	// Two concurrent jobs both stop the same shared swarm service.
+	if isFirst := s.acquireStopHold(scheduledJobModeSwarm, "stack", "shared"); !isFirst {
+		t.Fatal("expected first acquireStopHold() to report isFirst=true")
+	}
+
+	// Only the first holder actually observes/records the original replica count.
+	s.setStopHoldReplicas(scheduledJobModeSwarm, "stack", "shared", 3)
+
+	if isFirst := s.acquireStopHold(scheduledJobModeSwarm, "stack", "shared"); isFirst {
+		t.Fatal("expected second acquireStopHold() to report isFirst=false")
+	}
+
+	// The second job finishes first and releases its hold: since the first
+	// job is still holding it, this must NOT restore the service yet.
+	if isLast, _ := s.releaseStopHold(scheduledJobModeSwarm, "stack", "shared"); isLast {
+		t.Fatal("expected release while a holder remains to report isLast=false")
+	}
+
+	// The first job finishes and releases its hold: now it must restore, and
+	// the originally recorded replica count must still be intact.
+	isLast, replicas := s.releaseStopHold(scheduledJobModeSwarm, "stack", "shared")
+	if !isLast {
+		t.Fatal("expected final release to report isLast=true")
+	}
+
+	if replicas != 3 {
+		t.Fatalf("replicas = %d, want 3", replicas)
+	}
+}

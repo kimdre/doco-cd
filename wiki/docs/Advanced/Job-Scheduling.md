@@ -217,6 +217,14 @@ Behavior:
     Only explicitly listed services are stopped/started.
     If dependent services should also be paused, include them explicitly in `cd.doco.job.stop_services`.
 
+!!! note "A job cannot stop itself"
+    If `cd.doco.job.stop_services` resolves to the job's own project/service, the label is rejected and the job is treated as invalid.
+
+!!! info "Concurrency and shared targets"
+    While services are held stopped, doco-cd locks the job's own stack **and** every stack referenced by `cd.doco.job.stop_services`, so a concurrent deployment or another scheduled run cannot race with the reconciliation of those stacks.
+
+    If two scheduled jobs happen to list the same target service (e.g. two backup jobs sharing a cache), the target is only actually restarted once every job that stopped it has finished — it will not be brought back up prematurely while another job still needs it stopped.
+
 ## Examples
 
 === "Prune swarm nodes"

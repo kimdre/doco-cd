@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/compose/v5/pkg/api"
 	"github.com/go-co-op/gocron/v2"
 )
 
@@ -177,25 +176,36 @@ func ParseJobScheduleLabels(labels map[string]string, log ...*slog.Logger) (JobS
 			return cfg, false, fmt.Errorf("invalid %s label value %q: %w", docoCDJobLabelNames.JobStopServices, stopRaw, parseErr)
 		}
 
-		// Validate that the job does not list itself.
-		jobProject := strings.TrimSpace(labels[api.ProjectLabel])
-		jobService := strings.TrimSpace(labels[api.ServiceLabel])
-
-		for _, ref := range refs {
-			resolvedProject := ref.Project
-			if resolvedProject == "" {
-				resolvedProject = jobProject
-			}
-
-			if resolvedProject == jobProject && ref.Service == jobService {
-				return cfg, false, fmt.Errorf("%s: a job cannot stop itself (%s/%s)", docoCDJobLabelNames.JobStopServices, resolvedProject, ref.Service)
-			}
-		}
-
 		cfg.StopServices = refs
 	}
 
 	return cfg, true, nil
+}
+
+// ValidateStopServicesSelfReference returns an error if refs contains an entry
+// that resolves to the job's own project/stack and service name, which would
+// cause the scheduler to stop the job's own service right before running it.
+//
+// This cannot be checked inside ParseJobScheduleLabels because it only has
+// access to the raw label map: standalone/compose containers always carry
+// com.docker.compose.project/com.docker.compose.service labels, but Swarm
+// services deployed by doco-cd do not carry those labels on the task spec, so
+// the job's own project/service identity must be resolved by the caller
+// (which knows how to derive it for both compose and Swarm jobs) and passed
+// in explicitly.
+func ValidateStopServicesSelfReference(project, service string, refs []StopServiceRef) error {
+	for _, ref := range refs {
+		resolvedProject := ref.Project
+		if resolvedProject == "" {
+			resolvedProject = project
+		}
+
+		if resolvedProject == project && ref.Service == service {
+			return fmt.Errorf("%s: a job cannot stop itself (%s/%s)", docoCDJobLabelNames.JobStopServices, resolvedProject, ref.Service)
+		}
+	}
+
+	return nil
 }
 
 // parseStopServiceRefs parses a comma-separated list of "project/service" or "service"

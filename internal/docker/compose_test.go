@@ -2059,7 +2059,7 @@ func TestStopAndStartProjectServices(t *testing.T) {
 	assertServiceState("db", "exited")
 	assertServiceState("app", "running")
 
-	if err = StartProjectServices(ctx, dockerCli, stackName, []string{"db"}, timeout); err != nil {
+	if err = StartProjectServices(ctx, dockerCli, stackName, []string{"db"}); err != nil {
 		t.Fatalf("failed to start project service: %v", err)
 	}
 
@@ -2148,7 +2148,7 @@ func TestStopAndStartProjectServices_SchedulerSequence_WithDependsOn(t *testing.
 	t.Log("Restarting db service to simulate scheduler post-run hook")
 
 	// 3) Scheduler post-run hook: restart selected services.
-	if err = StartProjectServices(ctx, dockerCli, stackName, []string{"db"}, timeout); err != nil {
+	if err = StartProjectServices(ctx, dockerCli, stackName, []string{"db"}); err != nil {
 		t.Fatalf("failed to start project service: %v", err)
 	}
 

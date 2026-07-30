@@ -1345,6 +1345,10 @@ func StopProject(ctx context.Context, dockerCli command.Cli, projectName string,
 // Containers are stopped directly via the Docker API (instead of compose Stop
 // with a services filter) to ensure only explicitly targeted services are
 // affected, without implicit dependency traversal.
+//
+// This is best-effort: if stopping one container fails, the remaining
+// containers are still attempted, and all failures are aggregated into the
+// returned error.
 func StopProjectServices(ctx context.Context, dockerCli command.Cli, projectName string, services []string, timeout time.Duration) error {
 	if len(services) == 0 {
 		return nil
@@ -1367,6 +1371,8 @@ func StopProjectServices(ctx context.Context, dockerCli command.Cli, projectName
 		stopOpts.Timeout = &timeoutSecs
 	}
 
+	var errs []string
+
 	for _, c := range containers {
 		svcName := c.Labels[api.ServiceLabel]
 		if _, ok := serviceSet[svcName]; !ok {
@@ -1378,8 +1384,12 @@ func StopProjectServices(ctx context.Context, dockerCli command.Cli, projectName
 		}
 
 		if _, err := dockerCli.Client().ContainerStop(ctx, c.ID, stopOpts); err != nil {
-			return fmt.Errorf("failed to stop container %s (service %q): %w", c.ID[:12], svcName, err)
+			errs = append(errs, fmt.Sprintf("container %s (service %q): %v", c.ID[:12], svcName, err))
 		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to stop %d container(s): %s", len(errs), strings.Join(errs, "; "))
 	}
 
 	return nil
@@ -1392,7 +1402,11 @@ func StopProjectServices(ctx context.Context, dockerCli command.Cli, projectName
 // Note: the compose Start API ignores StartOptions.Services, so containers are
 // looked up directly by the com.docker.compose.project and com.docker.compose.service
 // labels and started individually.
-func StartProjectServices(ctx context.Context, dockerCli command.Cli, projectName string, services []string, timeout time.Duration) error {
+//
+// This is best-effort: if starting one container fails, the remaining
+// containers are still attempted, and all failures are aggregated into the
+// returned error.
+func StartProjectServices(ctx context.Context, dockerCli command.Cli, projectName string, services []string) error {
 	if len(services) == 0 {
 		return nil
 	}
@@ -1407,6 +1421,8 @@ func StartProjectServices(ctx context.Context, dockerCli command.Cli, projectNam
 		return fmt.Errorf("failed to list containers for project %q: %w", projectName, err)
 	}
 
+	var errs []string
+
 	for _, c := range containers {
 		svcName := c.Labels[api.ServiceLabel]
 		if _, ok := serviceSet[svcName]; !ok {
@@ -1414,11 +1430,13 @@ func StartProjectServices(ctx context.Context, dockerCli command.Cli, projectNam
 		}
 
 		if _, err := dockerCli.Client().ContainerStart(ctx, c.ID, client.ContainerStartOptions{}); err != nil {
-			return fmt.Errorf("failed to start container %s (service %q): %w", c.ID[:12], svcName, err)
+			errs = append(errs, fmt.Sprintf("container %s (service %q): %v", c.ID[:12], svcName, err))
 		}
 	}
 
-	_ = timeout // reserved for future health-check polling
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to start %d container(s): %s", len(errs), strings.Join(errs, "; "))
+	}
 
 	return nil
 }
