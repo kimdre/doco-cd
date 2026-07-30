@@ -9,13 +9,22 @@ import (
 
 func validateScheduledJobPolicies(project *types.Project, swarmMode bool) error {
 	for serviceName, svc := range project.Services {
-		_, enabled, err := ParseJobScheduleLabels(svc.Labels)
+		cfg, enabled, err := ParseJobScheduleLabels(svc.Labels)
 		if err != nil {
 			return fmt.Errorf("service %s: %w", serviceName, err)
 		}
 
 		if !enabled {
 			continue
+		}
+
+		// Catch self-referencing stop_services at deploy time. The scheduler
+		// repeats this check at run time, but only there can it resolve a job's
+		// own identity from runtime labels; here the project and service names
+		// are known directly, so the user gets an immediate, actionable error
+		// instead of the job silently being dropped by the scheduler later.
+		if err := ValidateStopServicesSelfReference(project.Name, serviceName, cfg.StopServices); err != nil {
+			return fmt.Errorf("service %s: %w", serviceName, err)
 		}
 
 		if swarmMode {

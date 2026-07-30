@@ -950,16 +950,33 @@ func (s *scheduler) stopServicesForJob(ctx context.Context, mode scheduledJobMod
 				continue
 			}
 
-			replicas, err := docker.StopSwarmService(ctx, s.dockerCli, fullName)
-			if err != nil {
-				errs = append(errs, fmt.Sprintf("swarm service %q: %v", fullName, err))
-				continue
-			}
+			replicas, err := docker.StopSwarmService(ctx, s.dockerCli, fullName, stopServicesTimeout)
 
-			if replicas == 0 {
+			switch {
+			case errors.Is(err, docker.ErrGlobalSwarmServiceNotScalable):
 				s.log.Warn("skipping global-mode swarm service in stop_services (cannot scale to 0)",
 					slog.String("service", fullName),
 				)
+
+				continue
+
+			case errors.Is(err, docker.ErrSwarmServiceAlreadyStopped):
+				s.log.Info("swarm service in stop_services is already scaled to 0, nothing to stop",
+					slog.String("service", fullName),
+				)
+
+				continue
+
+			case err != nil:
+				// The scale-down may have been applied even though the call failed
+				// (e.g. waiting for tasks to terminate timed out). Whenever a
+				// replica count was reported, record it so the service is still
+				// restored afterwards instead of being stranded at 0 replicas.
+				if replicas > 0 {
+					s.setStopHoldReplicas(mode, stack, ref.Service, replicas)
+				}
+
+				errs = append(errs, fmt.Sprintf("swarm service %q: %v", fullName, err))
 
 				continue
 			}

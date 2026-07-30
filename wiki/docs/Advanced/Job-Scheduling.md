@@ -161,16 +161,16 @@ be created for each scheduled run and removed after completion.
 
 Use the following service labels to configure scheduled jobs:
 
-| Label                           | Type    | Description                                                                                                                                                                 | Default   |
-|---------------------------------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
-| `cd.doco.job.enabled`           | boolean | Enable scheduling for this service/container                                                                                                                                | `false`   |
-| `cd.doco.job.schedule`          | string  | [Schedule format](#schedule-formats) to use                                                                                                                                 |           |
-| `cd.doco.job.wait_running_jobs` | boolean | Override deploy-config-wide [`wait_running_jobs`](../Deploy-Settings.md#wait-for-running-scheduled-jobs-before-deployment) behavior for this job service during deployments | (inherit) |
-| `cd.doco.job.execution_mode`    | string  | [`restart`](#restart) (default behavior) or [`one_off`](#one_off) (ephemeral execution)                                                                                     | `restart` |
-| `cd.doco.job.skip_running`      | boolean | Do not run the job if a previous scheduled run is still active/running                                                                                                      | `false`   |
-| `cd.doco.job.notify_on`         | string  | [Notification](Notifications.md) behavior for scheduled runs: `none`, `success`, `failure`, `all`                                                                           | `all`     |
-| `cd.doco.job.swarm.replicas`    | integer | Number of completions/concurrency for swarm one-off jobs in `replicated` [deploy mode](#swarm-deploymode)                                                                   | `1`       |
-| `cd.doco.job.stop_services`     | string  | Comma-separated services to [temporarily stop during a job run](#temporarily-stop-services-during-a-job-run) (supports `service` and `project/service`)                     |           |
+| Label                           | Type    | Description                                                                                                                                                                                 | Default   |
+|---------------------------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| `cd.doco.job.enabled`           | boolean | Enable scheduling for this service/container                                                                                                                                                | `false`   |
+| `cd.doco.job.schedule`          | string  | [Schedule format](#schedule-formats) to use                                                                                                                                                 |           |
+| `cd.doco.job.wait_running_jobs` | boolean | Override deploy-config-wide [`wait_running_jobs`](../Deploy-Settings.md#wait-for-running-scheduled-jobs-before-deployment) behavior for this job service during deployments                 | (inherit) |
+| `cd.doco.job.execution_mode`    | string  | [`restart`](#restart) (default behavior) or [`one_off`](#one_off) (ephemeral execution)                                                                                                     | `restart` |
+| `cd.doco.job.skip_running`      | boolean | Do not run the job if a previous scheduled run is still active/running                                                                                                                      | `false`   |
+| `cd.doco.job.notify_on`         | string  | [Notification](Notifications.md) behavior for scheduled runs: `none`, `success`, `failure`, `all`                                                                                           | `all`     |
+| `cd.doco.job.swarm.replicas`    | integer | Number of completions/concurrency for swarm one-off jobs in `replicated` [deploy mode](#swarm-deploymode)                                                                                   | `1`       |
+| `cd.doco.job.stop_services`     | string  | Comma-separated services to [temporarily stop during a job run](#temporarily-stop-services-during-a-job-run) (supports `service` and `project/service`, requires `execution_mode: one_off`) |           |
 
 !!! note "Using scheduled jobs with multiple doco-cd instances"
     `cd.doco.job.skip_running` only prevents overlapping runs within the same doco-cd process.
@@ -205,22 +205,28 @@ services:
 
 Behavior:
 
-- Before the job starts, listed services are stopped.
+- Before the job starts, listed services are stopped, and doco-cd waits until their containers/tasks have actually terminated.
 - After the job finishes (success or failure), listed services are started again.
 - `service` targets the same project/stack as the job.
 - `project/service` targets another compose project (standalone) or stack (swarm).
 
+!!! warning "Requires `execution_mode: one_off`"
+    `cd.doco.job.stop_services` is only valid together with `#!yaml cd.doco.job.execution_mode: "one_off"`, and the deployment is rejected otherwise.
+
+    ??? question "Why?"
+        Stopped services are restored as soon as the job finishes, so doco-cd must be able to detect job completion. It only does so in `one_off` mode, where it waits for the one-off container/task to exit. In `restart` mode (the default) the run returns as soon as the restart has been issued, which would bring the stopped services back up while the job is still running.
+
 !!! warning "Use service names, not container names"
     Values must reference the **compose service name** (the key under `services:`), **not** `container_name`.
 
-!!! note "`depends_on` is not traversed automatically"
+!!! info "`depends_on` is not traversed automatically"
     Only explicitly listed services are stopped/started.
     If dependent services should also be paused, include them explicitly in `cd.doco.job.stop_services`.
 
-!!! note "A job cannot stop itself"
-    If `cd.doco.job.stop_services` resolves to the job's own project/service, the label is rejected and the job is treated as invalid.
+!!! info "Swarm: global-mode services are skipped"
+    Services deployed with `#!yaml deploy.mode: global` (or `global-job`) cannot be scaled to 0 replicas, so they are skipped with a warning instead of being stopped.
 
-!!! info "Concurrency and shared targets"
+??? note "Concurrency and shared targets"
     While services are held stopped, doco-cd locks the job's own stack **and** every stack referenced by `cd.doco.job.stop_services`, so a concurrent deployment or another scheduled run cannot race with the reconciliation of those stacks.
 
     If two scheduled jobs happen to list the same target service (e.g. two backup jobs sharing a cache), the target is only actually restarted once every job that stopped it has finished — it will not be brought back up prematurely while another job still needs it stopped.

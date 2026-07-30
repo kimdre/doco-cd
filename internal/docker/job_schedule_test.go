@@ -236,10 +236,11 @@ func TestParseJobScheduleLabels_StopServices(t *testing.T) {
 
 	baseLabels := func(extra map[string]string) map[string]string {
 		m := map[string]string{
-			docoCDJobLabelNames.JobEnabled:  "true",
-			docoCDJobLabelNames.JobSchedule: "0 2 * * *",
-			api.ProjectLabel:                "myproject",
-			api.ServiceLabel:                "backup",
+			docoCDJobLabelNames.JobEnabled:       "true",
+			docoCDJobLabelNames.JobSchedule:      "0 2 * * *",
+			docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneOff),
+			api.ProjectLabel:                     "myproject",
+			api.ServiceLabel:                     "backup",
 		}
 		maps.Copy(m, extra)
 
@@ -273,6 +274,51 @@ func TestParseJobScheduleLabels_StopServices(t *testing.T) {
 
 		if len(cfg.StopServices) != 1 || cfg.StopServices[0].Project != "other-project" {
 			t.Fatalf("unexpected stop_services: %+v", cfg.StopServices)
+		}
+	})
+
+	// stop_services restores the stopped services as soon as the job execution
+	// call returns, which is only correct when doco-cd waits for the job to
+	// finish. Only one_off does; restart mode returns immediately.
+	t.Run("restart execution mode is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		_, _, err := ParseJobScheduleLabels(baseLabels(map[string]string{
+			docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeRestart),
+			docoCDJobLabelNames.JobStopServices:  "db",
+		}))
+		if err == nil {
+			t.Fatal("expected error for stop_services with execution_mode=restart, got nil")
+		}
+	})
+
+	t.Run("default (restart) execution mode is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		labels := baseLabels(map[string]string{
+			docoCDJobLabelNames.JobStopServices: "db",
+		})
+		delete(labels, docoCDJobLabelNames.JobExecutionMode)
+
+		_, _, err := ParseJobScheduleLabels(labels)
+		if err == nil {
+			t.Fatal("expected error for stop_services with default execution_mode, got nil")
+		}
+	})
+
+	t.Run("empty stop_services is allowed with any execution mode", func(t *testing.T) {
+		t.Parallel()
+
+		cfg, _, err := ParseJobScheduleLabels(baseLabels(map[string]string{
+			docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeRestart),
+			docoCDJobLabelNames.JobStopServices:  "  ,  ",
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if len(cfg.StopServices) != 0 {
+			t.Fatalf("expected no stop_services, got %+v", cfg.StopServices)
 		}
 	})
 }

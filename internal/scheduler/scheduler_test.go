@@ -3,6 +3,7 @@ package scheduler
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -523,16 +524,21 @@ func TestValidateStopServicesSelfReference_SwarmIdentity(t *testing.T) {
 		mode: scheduledJobModeSwarm,
 		name: "mystack_backup",
 		labels: map[string]string{
-			swarm.StackNamespaceLabel:              "mystack",
-			docker.DocoCDJobLabels.JobEnabled:      "true",
-			docker.DocoCDJobLabels.JobSchedule:     "0 2 * * *",
-			docker.DocoCDJobLabels.JobStopServices: "backup",
+			swarm.StackNamespaceLabel:               "mystack",
+			docker.DocoCDJobLabels.JobEnabled:       "true",
+			docker.DocoCDJobLabels.JobSchedule:      "0 2 * * *",
+			docker.DocoCDJobLabels.JobExecutionMode: "one_off",
+			docker.DocoCDJobLabels.JobStopServices:  "backup",
 		},
 	}
 
 	cfg, enabled, err := parseJobConfig(job)
 	if err == nil {
 		t.Fatalf("expected self-reference error for swarm job, got nil (enabled=%v cfg=%+v)", enabled, cfg)
+	}
+
+	if !strings.Contains(err.Error(), "cannot stop itself") {
+		t.Fatalf("expected self-reference error, got: %v", err)
 	}
 }
 
