@@ -276,6 +276,37 @@ func TestUpdateRepository_BranchMissingOnRemote_SkipsRepair(t *testing.T) {
 	}
 }
 
+// GetReferenceSet must classify names that cannot be stored as a reference
+// (escaping, empty, or containing a backslash) as ErrInvalidReference rather
+// than surfacing the go-git storage-layer validation error, which callers would
+// otherwise treat as a transient failure and retry or trigger a repair for.
+func TestGetReferenceSet_UnsafeNames(t *testing.T) {
+	repo, err := gogit.PlainInit(t.TempDir(), false)
+	if err != nil {
+		t.Fatalf("init repo: %v", err)
+	}
+
+	unsafeRefs := []string{
+		"",
+		"..",
+		"../../config",
+		"refs/heads/..",
+		"refs/heads/../../config",
+		"refs/",
+		"a\\b",
+		"config",
+	}
+
+	for _, ref := range unsafeRefs {
+		t.Run(ref, func(t *testing.T) {
+			_, err := GetReferenceSet(repo, ref)
+			if !errors.Is(err, ErrInvalidReference) {
+				t.Fatalf("expected ErrInvalidReference for %q, got: %v", ref, err)
+			}
+		})
+	}
+}
+
 func TestRemoteRefExists(t *testing.T) {
 	tmpDir := t.TempDir()
 
