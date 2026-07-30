@@ -179,6 +179,8 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	}
 
 	if deployedCommit := deployedState.GetDeploymentCommitSHA(); deployedCommit != "" {
+		s.DeployState.DeployedCommit = deployedCommit
+
 		latestCommit, err := git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
 		if err != nil {
 			return fmt.Errorf("failed to get latest commit: %w", err)

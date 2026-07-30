@@ -915,6 +915,88 @@ func GetChangedFilesBetweenCommits(repo *git.Repository, commitHash1, commitHash
 	return changedFiles, nil
 }
 
+// CommitInfo is a single commit exposed to notification templates.
+type CommitInfo struct {
+	Hash      string
+	ShortHash string
+	Subject   string
+	Author    string
+}
+
+// String renders "shortHash subject", the default when a template prints a commit directly.
+func (c CommitInfo) String() string {
+	return c.ShortHash + " " + c.Subject
+}
+
+// commitBoundary returns the hashes at which GetCommitsBetween should stop walking:
+// oldHash plus the merge-base of old and new. On a normal fast-forward the merge-base
+// is oldHash itself; after a rebase/force-push it is the point where the histories
+// diverged, so only the genuinely new commits are returned instead of the whole branch.
+func commitBoundary(repo *git.Repository, oldHash, newHash plumbing.Hash) map[plumbing.Hash]struct{} {
+	boundary := map[plumbing.Hash]struct{}{oldHash: {}}
+
+	newCommit, err := repo.CommitObject(newHash)
+	if err != nil {
+		return boundary
+	}
+
+	oldCommit, err := repo.CommitObject(oldHash)
+	if err != nil {
+		return boundary
+	}
+
+	bases, err := newCommit.MergeBase(oldCommit)
+	if err != nil {
+		return boundary
+	}
+
+	for _, b := range bases {
+		boundary[b.Hash] = struct{}{}
+	}
+
+	return boundary
+}
+
+// GetCommitsBetween returns commits reachable from newHash but not from oldHash,
+// newest first, capped at maxCommits.
+func GetCommitsBetween(repo *git.Repository, oldHash, newHash plumbing.Hash, maxCommits int) ([]CommitInfo, error) {
+	iter, err := repo.Log(&git.LogOptions{From: newHash, Order: git.LogOrderCommitterTime})
+	if err != nil {
+		return nil, fmt.Errorf("failed to read commit log from %s: %w", newHash, err)
+	}
+	defer iter.Close()
+
+	boundary := commitBoundary(repo, oldHash, newHash)
+	commits := make([]CommitInfo, 0, maxCommits)
+
+	stop := errors.New("stop")
+
+	err = iter.ForEach(func(c *object.Commit) error {
+		if _, atBoundary := boundary[c.Hash]; atBoundary || len(commits) >= maxCommits {
+			return stop
+		}
+
+		subject := c.Message
+		if i := strings.IndexByte(subject, '\n'); i >= 0 {
+			subject = subject[:i]
+		}
+
+		commits = append(commits, CommitInfo{
+			Hash:      c.Hash.String(),
+			ShortHash: c.Hash.String()[:DefaultShortSHALength],
+			Subject:   strings.TrimSpace(subject),
+			Author:    c.Author.Name,
+		})
+
+		return nil
+	})
+	if err != nil && !errors.Is(err, stop) {
+		return nil, fmt.Errorf("failed to walk commit log: %w", err)
+	}
+
+	return commits, nil
+}
+
 // shouldResetDecryptedFile determines whether a file should be reset based on its decrypted content.
 func shouldResetDecryptedFile(repo *git.Repository, repoRoot, file string) bool {
 	headRef, err := repo.Head()
