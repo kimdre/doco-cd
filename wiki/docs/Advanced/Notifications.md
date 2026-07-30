@@ -110,6 +110,7 @@ The following fields are available:
 
 | Field         | Description                          |
 |---------------|--------------------------------------|
+| `.Hash`       | Full commit SHA                       |
 | `.ShortHash`  | Shortened commit SHA                  |
 | `.Subject`    | First line of the commit message     |
 | `.Author`     | Commit author name                    |

@@ -18,7 +18,7 @@ func commitN(t *testing.T, wt *gogit.Worktree, n int) []plumbing.Hash {
 	hashes := make([]plumbing.Hash, 0, n)
 	when := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		sig := &object.Signature{Name: "Jane Doe", Email: "jane@example.com", When: when.Add(time.Duration(i) * time.Minute)}
 
 		h, err := wt.Commit("commit "+string(rune('a'+i)), &gogit.CommitOptions{
