@@ -205,7 +205,7 @@ func TestValidateScheduledJobPolicies(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:      "rejects stop_services with restart execution mode",
+			name:      "allows stop_services with restart execution mode (container/standalone)",
 			swarmMode: false,
 			project: &types.Project{
 				Name: "myproject",
@@ -221,7 +221,7 @@ func TestValidateScheduledJobPolicies(t *testing.T) {
 					},
 				},
 			},
-			wantErr: true,
+			wantErr: false,
 		},
 	}
 

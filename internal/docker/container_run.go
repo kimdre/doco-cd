@@ -26,7 +26,7 @@ type ContainerExitError struct {
 }
 
 func (e *ContainerExitError) Error() string {
-	return fmt.Sprintf("one-off container %s exited with status %d", e.ContainerID, e.ExitCode)
+	return fmt.Sprintf("container %s exited with status %d", e.ContainerID, e.ExitCode)
 }
 
 func RestartContainer(ctx context.Context, apiClient client.APIClient, containerID string) error {

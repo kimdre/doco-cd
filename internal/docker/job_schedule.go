@@ -176,20 +176,6 @@ func ParseJobScheduleLabels(labels map[string]string, log ...*slog.Logger) (JobS
 			return cfg, false, fmt.Errorf("invalid %s label value %q: %w", docoCDJobLabelNames.JobStopServices, stopRaw, parseErr)
 		}
 
-		// Stopped services are restored as soon as the job execution call
-		// returns, so the stop window is only meaningful when doco-cd can
-		// observe job completion. Only one_off waits for the job to finish
-		// (ContainerWait / WaitOnServices); restart mode returns as soon as
-		// the restart has been issued, which would restore the stopped
-		// services while the job is still running.
-		if len(refs) > 0 && cfg.ExecutionMode != JobExecutionModeOneOff {
-			return cfg, false, fmt.Errorf(
-				"%s requires %s=%q (got %q): doco-cd cannot detect job completion in %q mode, so stopped services would be restarted before the job finishes",
-				docoCDJobLabelNames.JobStopServices, docoCDJobLabelNames.JobExecutionMode,
-				JobExecutionModeOneOff, cfg.ExecutionMode, cfg.ExecutionMode,
-			)
-		}
-
 		cfg.StopServices = refs
 	}
 

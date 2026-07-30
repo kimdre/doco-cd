@@ -795,6 +795,13 @@ func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, c
 		case docker.JobExecutionModeOneOff:
 			return docker.RunContainerOneOffFromExisting(ctx, s.dockerCli.Client(), job.id)
 		default:
+			if len(cfg.StopServices) > 0 {
+				// stop_services requires knowing when the job has finished.
+				// Use the blocking variant so services are not restarted while
+				// the job container is still running.
+				return docker.RestartContainerAndWait(ctx, s.dockerCli.Client(), job.id)
+			}
+
 			return docker.RestartContainer(ctx, s.dockerCli.Client(), job.id)
 		}
 	case scheduledJobModeSwarm:
@@ -1382,6 +1389,17 @@ func parseJobConfig(job scheduledJob, log ...*slog.Logger) (docker.JobScheduleCo
 	cfg, enabled, err := docker.ParseJobScheduleLabels(job.labels, log...)
 	if err != nil || !enabled || len(cfg.StopServices) == 0 {
 		return cfg, enabled, err
+	}
+
+	// In Swarm mode, stop_services requires one_off because there is no
+	// reliable completion signal for restart-mode services (ScaleService /
+	// ServiceUpdate only record intent and return immediately).
+	if job.mode == scheduledJobModeSwarm && cfg.ExecutionMode != docker.JobExecutionModeOneOff {
+		return cfg, false, fmt.Errorf(
+			"%s requires %s=%q in Swarm mode (got %q): doco-cd cannot detect job completion for Swarm services in %q mode",
+			docker.DocoCDJobLabels.JobStopServices, docker.DocoCDJobLabels.JobExecutionMode,
+			docker.JobExecutionModeOneOff, cfg.ExecutionMode, cfg.ExecutionMode,
+		)
 	}
 
 	project, service := jobOwnIdentity(job)
