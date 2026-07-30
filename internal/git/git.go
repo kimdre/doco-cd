@@ -115,11 +115,19 @@ func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 			candidate{plumbing.NewBranchReferenceName(ref), remoteRef},
 			candidate{remoteRef, remoteRef},
 			candidate{plumbing.NewTagReferenceName(ref), plumbing.NewTagReferenceName(ref)},
-			candidate{plumbing.ReferenceName(ref), plumbing.ReferenceName(ref)},
 		)
+		// Only add the bare name as a candidate when it is safe for storage.
+		// go-git v5.19.2+ validates reference names at the storage layer and rejects
+		// unsafe names (those not under refs/ and not an uppercase pseudo-ref) with a
+		// distinct error instead of plumbing.ErrReferenceNotFound. Skipping the lookup
+		// for unsafe names avoids misclassifying that error as a transient failure.
+		// Valid cases are uppercase pseudo-refs such as HEAD or ORIG_HEAD.
+		if plumbing.ReferenceName(ref).IsSafe() {
+			candidates = append(candidates,
+				candidate{plumbing.ReferenceName(ref), plumbing.ReferenceName(ref)},
+			)
+		}
 	}
-
-	var lastErr error
 
 	for _, c := range candidates {
 		if _, err := repo.Reference(c.local, true); err == nil {
