@@ -2604,6 +2604,7 @@ a deployment configuration file with the same pattern in its name <code>.doco-cd
 Use the <code>wait=true</code> query parameter to make the application wait for the deployment to finish before responding.
 This may increase response time, and some Git/SCM providers might time out the request if the deployment takes too long.
 Even if the request times out, the deployment will still continue.</p>
+<p>In async mode, the response contains a <code>job_id</code> that can be queried through the <a data-preview="" href="../REST-API/#deployment-runs">Deployment Runs API</a> (requires REST API auth).</p>
 <p><strong>Example:</strong> <code>/v1/webhook?wait=true</code></p>
 
 
