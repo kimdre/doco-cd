@@ -35,6 +35,10 @@ import (
 var (
 	ErrNotAJobService                = errors.New("service is not a job-mode service")
 	ErrJobServiceRestartNotSupported = errors.New("restart not supported for job services")
+
+	// ErrGlobalSwarmServiceNotScalable indicates a global/global-job service was
+	// targeted by an operation that scales replicas, which Swarm does not allow.
+	ErrGlobalSwarmServiceNotScalable = errors.New("global-mode swarm service cannot be scaled")
 )
 
 // LoadSwarmStack loads a Docker Swarm stack using the provided project and deploy configuration.
@@ -528,6 +532,148 @@ func RerunJobService(ctx context.Context, cli dockerClient.APIClient, serviceNam
 	})
 	if err != nil {
 		return fmt.Errorf("update (rerun) job service %s: %w", serviceName, err)
+	}
+
+	return nil
+}
+
+// ErrSwarmServiceAlreadyStopped indicates a replicated service was already
+// scaled to 0 replicas, so there is nothing to stop or restore.
+var ErrSwarmServiceAlreadyStopped = errors.New("swarm service is already scaled to 0 replicas")
+
+// StopSwarmService temporarily stops a swarm service by scaling it to 0 replicas
+// and waiting until its tasks have actually terminated.
+// It returns the original replica count so the caller can restore it later via
+// StartSwarmService.
+//
+// Waiting matters for the primary use case of this feature (consistent cold
+// backups): ServiceUpdate only records the intent to scale down, so without
+// waiting the scheduled job would start while the target's containers are
+// still shutting down and flushing to disk.
+//
+// Global-mode services cannot be scaled to 0; the function returns
+// (0, ErrGlobalSwarmServiceNotScalable) so the caller can skip them gracefully.
+// A replicated service that is already at 0 replicas returns
+// (0, ErrSwarmServiceAlreadyStopped).
+//
+// The serviceName must be the full swarm-scoped name (e.g. "mystack_myservice").
+// In the cd.doco.job.stop_services label, cross-stack services are expressed as
+// "stack/service" and resolved to "stack_service" before calling this function.
+func StopSwarmService(ctx context.Context, dockerCLI command.Cli, serviceName string, timeout time.Duration) (originalReplicas uint64, err error) {
+	result, err := dockerCLI.Client().ServiceInspect(ctx, serviceName, dockerClient.ServiceInspectOptions{
+		InsertDefaults: true,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("inspect service %s: %w", serviceName, err)
+	}
+
+	svc := result.Service
+
+	// Global and global-job services cannot be scaled to 0.
+	if svc.Spec.Mode.Global != nil || svc.Spec.Mode.GlobalJob != nil {
+		return 0, ErrGlobalSwarmServiceNotScalable
+	}
+
+	// Determine the current (intended) replica count.
+	var replicas uint64
+
+	switch {
+	case svc.Spec.Mode.Replicated != nil && svc.Spec.Mode.Replicated.Replicas != nil:
+		replicas = *svc.Spec.Mode.Replicated.Replicas
+	case svc.Spec.Mode.ReplicatedJob != nil && svc.Spec.Mode.ReplicatedJob.TotalCompletions != nil:
+		replicas = *svc.Spec.Mode.ReplicatedJob.TotalCompletions
+	default:
+		replicas = 1
+	}
+
+	if replicas == 0 {
+		return 0, ErrSwarmServiceAlreadyStopped
+	}
+
+	// Scale to 0.
+	if err := swarmInternal.ScaleService(ctx, dockerCLI, serviceName, 0, false, false); err != nil {
+		return 0, fmt.Errorf("scale service %s to 0: %w", serviceName, err)
+	}
+
+	if err := waitForSwarmServiceTasksStopped(ctx, dockerCLI, svc.ID, serviceName, timeout); err != nil {
+		return replicas, err
+	}
+
+	return replicas, nil
+}
+
+// waitForSwarmServiceTasksStopped blocks until the given service has no tasks
+// left in a live state, or until timeout elapses.
+//
+// swarm.ScaleService(wait=true) is not sufficient here: it delegates to the
+// Docker CLI progress writer, which short-circuits for a service scaled to 0
+// and therefore returns before the tasks have actually shut down.
+func waitForSwarmServiceTasksStopped(ctx context.Context, dockerCLI command.Cli, serviceID, serviceName string, timeout time.Duration) error {
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		tasks, err := dockerCLI.Client().TaskList(waitCtx, dockerClient.TaskListOptions{
+			Filters: make(dockerClient.Filters).Add("service", serviceID),
+		})
+		if err != nil {
+			if waitCtx.Err() != nil && ctx.Err() == nil {
+				return fmt.Errorf("timed out after %s waiting for task(s) of service %s to stop", timeout, serviceName)
+			}
+
+			return fmt.Errorf("list tasks of service %s: %w", serviceName, err)
+		}
+
+		live := 0
+
+		for _, task := range tasks.Items {
+			// A task still occupies resources (and may still be writing to
+			// volumes) until it reaches a terminal state.
+			switch task.Status.State {
+			case swarmTypes.TaskStateShutdown, swarmTypes.TaskStateComplete,
+				swarmTypes.TaskStateFailed, swarmTypes.TaskStateRejected,
+				swarmTypes.TaskStateOrphaned, swarmTypes.TaskStateRemove:
+				continue
+			default:
+				live++
+			}
+		}
+
+		if live == 0 {
+			return nil
+		}
+
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("timed out after %s waiting for %d task(s) of service %s to stop", timeout, live, serviceName)
+		case <-ticker.C:
+		}
+	}
+}
+
+// StartSwarmService restores a previously stopped swarm service to the given
+// replica count. It is the counterpart to StopSwarmService and is typically
+// called in a deferred function to guarantee the service is restarted even when
+// the scheduled job fails.
+//
+// A replicas value of 0 means StopSwarmService never actually stopped the
+// service (global-mode, or already scaled to 0), so there is nothing to restore.
+//
+// The serviceName must be the full swarm-scoped name (e.g. "mystack_myservice").
+func StartSwarmService(ctx context.Context, dockerCLI command.Cli, serviceName string, replicas uint64) error {
+	if replicas == 0 {
+		return nil
+	}
+
+	if err := swarmInternal.ScaleService(ctx, dockerCLI, serviceName, replicas, false, false); err != nil {
+		return fmt.Errorf("scale service %s back to %d: %w", serviceName, replicas, err)
 	}
 
 	return nil

@@ -392,6 +392,16 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		return
 	}
 
+	if reconciliationHandler.isServiceSchedulerStopHeld(event.Actor.Attributes) {
+		jobLog.Debug("suppressing reconciliation event for service intentionally held stopped by job scheduler",
+			slog.String("event", action),
+			slog.String("stack", stackName),
+			slog.String("container_name", event.Actor.Attributes["name"]),
+		)
+
+		return
+	}
+
 	if suppress, remaining := j.shouldSuppressRestartFollowupEvent(action, event); suppress {
 		jobLog.Debug("suppressing follow-up event from self-initiated container restart",
 			slog.String("event", action),
