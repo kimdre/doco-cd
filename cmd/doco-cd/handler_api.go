@@ -8,19 +8,23 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/kimdre/doco-cd/internal/common/id"
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
+	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 	restAPI "github.com/kimdre/doco-cd/internal/restapi"
 	"github.com/kimdre/doco-cd/internal/scheduler"
+	"github.com/kimdre/doco-cd/internal/source/oci"
 )
 
 const (
@@ -49,6 +53,8 @@ func registerApiEndpoints(c *app.Config, h *handlerData, log *logger.Logger, mux
 		enabledEndpoints = append(enabledEndpoints, apiPath)
 
 		endpoints := []endpoint{
+			{apiPath + "/runs", h.GetDeploymentRunsHandler},
+			{apiPath + "/run/{jobID}", h.GetDeploymentRunHandler},
 			{apiPath + "/jobs", h.GetScheduledJobsHandler},
 			{apiPath + "/job/{jobName}/run", h.TriggerScheduledJobHandler},
 			{apiPath + "/projects", h.GetProjectsApiHandler},
@@ -119,6 +125,91 @@ func (h *handlerData) GetScheduledJobsHandler(w http.ResponseWriter, r *http.Req
 	JSONResponse(w, jobs, jobID, http.StatusOK)
 }
 
+// GetDeploymentRunsHandler returns recent deployment runs tracked by doco-cd.
+func (h *handlerData) GetDeploymentRunsHandler(w http.ResponseWriter, r *http.Request) {
+	jobID := id.GenID()
+	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
+
+	if !requireMethod(w, jobLog, r, http.MethodGet) {
+		return
+	}
+
+	if !restAPI.ValidateApiKey(r, h.appConfig.ApiSecret) {
+		jobLog.Error(restAPI.ErrInvalidApiKey.Error())
+		JSONError(w, restAPI.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
+
+		return
+	}
+
+	limit := 50
+
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 {
+			JSONError(w, "invalid parameter: limit", "'limit' parameter must be a positive integer", jobID, http.StatusBadRequest)
+			return
+		}
+
+		limit = min(n, 200)
+	}
+
+	status, err := normalizeDeploymentRunStatus(r.URL.Query().Get("status"))
+	if err != nil {
+		JSONError(w, err.Error(), "valid status values: accepted, running, succeeded, failed, skipped", jobID, http.StatusBadRequest)
+		return
+	}
+
+	trigger, err := normalizeDeploymentRunTrigger(r.URL.Query().Get("trigger"))
+	if err != nil {
+		JSONError(w, err.Error(), "valid trigger values: webhook, poll, scheduled_job", jobID, http.StatusBadRequest)
+		return
+	}
+
+	if h.runTracker == nil {
+		JSONResponse(w, []deploymentRun{}, jobID, http.StatusOK)
+		return
+	}
+
+	runs := h.runTracker.List(limit, trigger, status)
+	JSONResponse(w, runs, jobID, http.StatusOK)
+}
+
+// GetDeploymentRunHandler returns details for one deployment run identified by jobID.
+func (h *handlerData) GetDeploymentRunHandler(w http.ResponseWriter, r *http.Request) {
+	jobID := id.GenID()
+	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
+
+	if !requireMethod(w, jobLog, r, http.MethodGet) {
+		return
+	}
+
+	if !restAPI.ValidateApiKey(r, h.appConfig.ApiSecret) {
+		jobLog.Error(restAPI.ErrInvalidApiKey.Error())
+		JSONError(w, restAPI.ErrInvalidApiKey.Error(), "", jobID, http.StatusUnauthorized)
+
+		return
+	}
+
+	requestedJobID := strings.TrimSpace(r.PathValue("jobID"))
+	if requestedJobID == "" {
+		JSONError(w, "missing job id", "", jobID, http.StatusBadRequest)
+		return
+	}
+
+	if h.runTracker == nil {
+		JSONError(w, "run not found: "+requestedJobID, "", jobID, http.StatusNotFound)
+		return
+	}
+
+	run, ok := h.runTracker.Get(requestedJobID)
+	if !ok {
+		JSONError(w, "run not found: "+requestedJobID, "", jobID, http.StatusNotFound)
+		return
+	}
+
+	JSONResponse(w, run, jobID, http.StatusOK)
+}
+
 // TriggerScheduledJobHandler handles API requests to run one configured scheduled job immediately.
 func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.Request) {
 	jobID := id.GenID()
@@ -147,7 +238,16 @@ func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.
 	}
 
 	stackName := getQueryParam(r, w, jobLog, jobID, "stack", "string", "").(string)
+
 	wait := getQueryParam(r, w, jobLog, jobID, "wait", "bool", true).(bool)
+	if h.runTracker != nil {
+		h.runTracker.TrackAccepted(jobID, deploymentRunTriggerScheduledJob)
+		h.runTracker.SetMetadata(jobID, "scheduled:"+jobName, stackName, "")
+
+		if wait {
+			h.runTracker.MarkRunning(jobID)
+		}
+	}
 
 	triggerFn := func(ctx context.Context) error {
 		runID, err := scheduler.TriggerNow(ctx, h.dockerCli, h.log.Logger, jobName, stackName)
@@ -172,10 +272,25 @@ func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.
 			defer func() {
 				if r := recover(); r != nil {
 					logRecoveredPanic(jobLog, "scheduled job run", r)
+
+					if h.runTracker != nil {
+						h.runTracker.MarkFailed(jobID, "scheduled job run panicked")
+					}
 				}
 			}()
 
-			_ = triggerFn(ctx)
+			if h.runTracker != nil {
+				h.runTracker.MarkRunning(jobID)
+			}
+
+			err := triggerFn(ctx)
+			if h.runTracker != nil {
+				if err != nil {
+					h.runTracker.MarkFailed(jobID, err.Error())
+				} else {
+					h.runTracker.MarkSucceeded(jobID, "scheduled job run completed")
+				}
+			}
 		}(context.WithoutCancel(r.Context()))
 
 		JSONResponse(w, "scheduled job run accepted", jobID, http.StatusAccepted)
@@ -185,6 +300,10 @@ func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.
 
 	err := triggerFn(r.Context())
 	if err != nil {
+		if h.runTracker != nil {
+			h.runTracker.MarkFailed(jobID, err.Error())
+		}
+
 		switch {
 		case errors.Is(err, scheduler.ErrScheduledJobNotFound):
 			JSONError(w, err.Error(), "", jobID, http.StatusNotFound)
@@ -198,6 +317,10 @@ func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.
 	}
 
 	JSONResponse(w, "scheduled job run completed", jobID, http.StatusOK)
+
+	if h.runTracker != nil {
+		h.runTracker.MarkSucceeded(jobID, "scheduled job run completed")
+	}
 }
 
 // HealthCheckHandler handles health check requests.
@@ -828,15 +951,28 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	wait := getQueryParam(r, w, jobLog, jobID, "wait", "bool", true).(bool)
+	if h.runTracker != nil {
+		h.runTracker.TrackAccepted(jobID, deploymentRunTriggerPoll)
+
+		if wait {
+			h.runTracker.MarkRunning(jobID)
+		}
+	}
 
 	decoder := json.NewDecoder(r.Body)
-	defer r.Body.Close()
+	defer func() {
+		_ = r.Body.Close()
+	}()
 
 	var pollConfigs []poll.Config
 	if err := decoder.Decode(&pollConfigs); err != nil {
 		errMsg := "failed to decode json in body"
 		h.log.Error(errMsg, logger.ErrAttr(err))
 		JSONError(w, errMsg, err.Error(), jobID, http.StatusBadRequest)
+
+		if h.runTracker != nil {
+			h.runTracker.MarkFailed(jobID, errMsg+": "+err.Error())
+		}
 
 		return
 	}
@@ -852,6 +988,10 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 			h.log.Error(errMsg, logger.ErrAttr(err))
 			JSONError(w, errMsg, err.Error(), jobID, http.StatusBadRequest)
 
+			if h.runTracker != nil {
+				h.runTracker.MarkFailed(jobID, errMsg+": "+err.Error())
+			}
+
 			return
 		}
 
@@ -863,45 +1003,87 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 
 		var wg sync.WaitGroup
 
+		errs := make(chan error, len(pollConfigs))
+
 		pollCtx := r.Context()
 		if !wait {
 			pollCtx = context.WithoutCancel(pollCtx)
 		}
 
-		for _, p := range pollConfigs {
-			p.RunOnce = true
-			p.Interval = 0
+		runner := h.runPoll
+		if runner == nil {
+			runner = RunPoll
+		}
 
-			pollJob := &poll.Job{
-				Config:  p,
-				LastRun: 0,
-				NextRun: 0,
+		if h.runTracker != nil {
+			repository := "multiple"
+			if len(pollConfigs) == 1 {
+				repository = pollRepositoryName(pollConfigs[0])
 			}
 
-			h.log.Debug("Starting poll handler", "config", p)
+			h.runTracker.SetMetadata(jobID, repository, "", "")
+		}
 
+		for _, p := range pollConfigs {
 			wg.Add(1)
 
-			go func(ctx context.Context) {
+			go func(ctx context.Context, pollConfig poll.Config) {
 				defer wg.Done()
 				defer func() {
-					if r := recover(); r != nil {
-						logRecoveredPanic(jobLog, "poll run", r)
+					if recovered := recover(); recovered != nil {
+						logRecoveredPanic(jobLog, "poll run", recovered)
+
+						errs <- errors.New("poll run panicked")
 					}
 				}()
 
-				h.PollHandler(ctx, pollJob)
-			}(pollCtx)
+				repository := pollRepositoryName(pollConfig)
+				metadata := notification.Metadata{
+					Repository: repository,
+					Stack:      "",
+					Revision:   notification.GetRevision(pollConfig.Reference, ""),
+					JobID:      jobID,
+				}
+
+				errs <- runner(ctx, pollConfig, h.appConfig, h.dataMountPoint, h.dockerCli, h.log.Logger, metadata, h.secretProvider)
+			}(pollCtx, p)
+		}
+
+		completeTracking := func() {
+			wg.Wait()
+			close(errs)
+
+			var failedRuns int
+
+			for runErr := range errs {
+				if runErr != nil {
+					failedRuns++
+				}
+			}
+
+			if h.runTracker != nil {
+				if failedRuns > 0 {
+					h.runTracker.MarkFailed(jobID, fmt.Sprintf("%d/%d poll jobs failed", failedRuns, len(pollConfigs)))
+				} else {
+					h.runTracker.MarkSucceeded(jobID, "poll jobs complete")
+				}
+			}
 		}
 
 		if wait {
-			wg.Wait()
+			completeTracking()
 			JSONResponse(w, "poll jobs complete", jobID, http.StatusOK)
 
 			return
 		}
 
+		if h.runTracker != nil {
+			h.runTracker.MarkRunning(jobID)
+		}
+
 		JSONResponse(w, "poll jobs started", jobID, http.StatusAccepted)
+
+		go completeTracking()
 
 		return
 	}
@@ -909,4 +1091,17 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 	err = errors.New("no poll configuration provided in request body")
 	jobLog.Error(err.Error())
 	JSONError(w, err.Error(), "", jobID, http.StatusBadRequest)
+
+	if h.runTracker != nil {
+		h.runTracker.MarkFailed(jobID, err.Error())
+	}
+}
+
+func pollRepositoryName(cfg poll.Config) string {
+	sourceType := config.NormalizeSourceType(cfg.Source)
+	if sourceType == config.SourceTypeOCI {
+		return oci.RepositoryNameFromArtifact(cfg.SourceUrl)
+	}
+
+	return git.GetRepoName(cfg.SourceUrl)
 }

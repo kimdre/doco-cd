@@ -335,6 +335,11 @@ func TestHandleEvent(t *testing.T) {
 					dockerCli,
 					&secretProvider,
 					stackName,
+					newDeploymentRunTracker(map[deploymentRunTrigger]int{
+						deploymentRunTriggerWebhook:      10,
+						deploymentRunTriggerPoll:         10,
+						deploymentRunTriggerScheduledJob: 10,
+					}),
 				)
 
 				expectedReturnMessage := fmt.Sprintf(tc.expectedResponseBody, jobID, filepath.Join(tmpDir, git.GetRepoName(tc.payload.CloneURL)), stackName) + "\n"

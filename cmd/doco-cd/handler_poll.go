@@ -90,7 +90,21 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 
 			logger.Debug("start poll job")
 
-			_ = runner(ctx, pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, logger, metadata, h.secretProvider)
+			if h.runTracker != nil {
+				h.runTracker.TrackAccepted(jobID, deploymentRunTriggerPoll)
+				h.runTracker.SetMetadata(jobID, repoName, "", notification.GetRevision(pollJob.Config.Reference, ""))
+				h.runTracker.MarkRunning(jobID)
+			}
+
+			err := runner(ctx, pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, logger, metadata, h.secretProvider)
+
+			if h.runTracker != nil {
+				if err != nil {
+					h.runTracker.MarkFailed(jobID, err.Error())
+				} else {
+					h.runTracker.MarkSucceeded(jobID, "poll completed successfully")
+				}
+			}
 
 			pollJob.NextRun = time.Now().Add(pollJob.Config.Interval).Unix()
 		} else {

@@ -273,6 +273,11 @@ func run() error {
 		dataMountPoint: dataMountPoint,
 		dockerCli:      dockerCli,
 		log:            log,
+		runTracker: newDeploymentRunTracker(map[deploymentRunTrigger]int{
+			deploymentRunTriggerPoll:         50,
+			deploymentRunTriggerWebhook:      50,
+			deploymentRunTriggerScheduledJob: 50,
+		}),
 		secretProvider: &secretProvider,
 	}
 
