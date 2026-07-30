@@ -147,6 +147,82 @@ func TestValidateScheduledJobPolicies(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name:      "rejects stop_services referencing the job itself",
+			swarmMode: false,
+			project: &types.Project{
+				Name: "myproject",
+				Services: types.Services{
+					"backup": {
+						Name: "backup",
+						Labels: map[string]string{
+							docoCDJobLabelNames.JobEnabled:       "true",
+							docoCDJobLabelNames.JobSchedule:      "0 2 * * *",
+							docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneOff),
+							docoCDJobLabelNames.JobStopServices:  "db,backup",
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name:      "rejects stop_services referencing the job itself via project prefix",
+			swarmMode: false,
+			project: &types.Project{
+				Name: "myproject",
+				Services: types.Services{
+					"backup": {
+						Name: "backup",
+						Labels: map[string]string{
+							docoCDJobLabelNames.JobEnabled:       "true",
+							docoCDJobLabelNames.JobSchedule:      "0 2 * * *",
+							docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneOff),
+							docoCDJobLabelNames.JobStopServices:  "myproject/backup",
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name:      "allows stop_services referencing other services",
+			swarmMode: false,
+			project: &types.Project{
+				Name: "myproject",
+				Services: types.Services{
+					"backup": {
+						Name: "backup",
+						Labels: map[string]string{
+							docoCDJobLabelNames.JobEnabled:       "true",
+							docoCDJobLabelNames.JobSchedule:      "0 2 * * *",
+							docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneOff),
+							docoCDJobLabelNames.JobStopServices:  "db,other-project/cache",
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:      "allows stop_services with restart execution mode (container/standalone)",
+			swarmMode: false,
+			project: &types.Project{
+				Name: "myproject",
+				Services: types.Services{
+					"backup": {
+						Name:    "backup",
+						Restart: "no",
+						Labels: map[string]string{
+							docoCDJobLabelNames.JobEnabled:      "true",
+							docoCDJobLabelNames.JobSchedule:     "0 2 * * *",
+							docoCDJobLabelNames.JobStopServices: "db",
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {

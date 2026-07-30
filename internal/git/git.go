@@ -83,9 +83,21 @@ type RefSet struct {
 	RemoteHash plumbing.Hash
 }
 
-// GetReferenceSet retrieves a RefSet of local and remote references for a given reference name.
-// It also resolves the remote reference to a commit hash (when available) and fills RemoteHash.
+// GetReferenceSet resolves ref to the local and remote plumbing.ReferenceName
+// to use during checkout, along with the resolved remote commit hash.
+//
+// Resolution order (first match wins):
+//  1. Commit SHA — returned directly; no reference store lookup is performed.
+//  2. For refs/-prefixed names: the exact name, then its remote-tracking counterpart.
+//  3. For short names: refs/heads/<ref>, refs/remotes/origin/<ref>, refs/tags/<ref>,
+//     then the bare name (which only resolves for uppercase pseudo-refs like HEAD).
+//
+// Candidates whose name cannot be stored safely (see plumbing.ReferenceName.IsSafe)
+// are skipped rather than queried, so a malformed ref yields ErrInvalidReference
+// instead of a storage-layer error. Any other storage error is treated as a
+// transient failure and returned immediately.
 func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
+	// Commit SHAs are used directly — there is no reference name to resolve.
 	if plumbing.IsHash(ref) {
 		return RefSet{LocalRef: plumbing.ReferenceName(ref)}, nil
 	}
@@ -115,46 +127,41 @@ func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 			candidate{plumbing.NewBranchReferenceName(ref), remoteRef},
 			candidate{remoteRef, remoteRef},
 			candidate{plumbing.NewTagReferenceName(ref), plumbing.NewTagReferenceName(ref)},
+			// The bare name only ever resolves for uppercase pseudo-refs such as
+			// HEAD or ORIG_HEAD; the IsSafe filter below discards it otherwise.
 			candidate{plumbing.ReferenceName(ref), plumbing.ReferenceName(ref)},
 		)
 	}
 
-	var lastErr error
-
 	for _, c := range candidates {
-		if _, err := repo.Reference(c.local, true); err == nil {
-			// try to resolve remote hash if remote ref exists
+		// go-git v5.19.2+ validates reference names at the storage layer and rejects
+		// unsafe ones (not under refs/, escaping it, or not an uppercase pseudo-ref)
+		// with an error distinct from plumbing.ErrReferenceNotFound. Such a name can
+		// never exist, so skip the lookup instead of misreporting it as transient.
+		if !c.local.IsSafe() {
+			continue
+		}
+
+		localRef, err := repo.Reference(c.local, true)
+		if err == nil {
 			remoteHash := plumbing.ZeroHash
 
-			if c.remote != "" {
+			switch {
+			case c.remote == c.local:
+				// Already resolved above; avoid a redundant store lookup.
+				remoteHash = localRef.Hash()
+			case c.remote.IsSafe():
 				if rRef, rErr := repo.Reference(c.remote, true); rErr == nil {
 					remoteHash = rRef.Hash()
 				}
 			}
 
 			return RefSet{LocalRef: c.local, RemoteRef: c.remote, RemoteHash: remoteHash}, nil
-		} else if !errors.Is(err, plumbing.ErrReferenceNotFound) {
-			lastErr = err
-		}
-	}
-
-	// If no local candidate found, but a remote exists, return the remote reference and resolved hash
-	for _, c := range candidates {
-		if c.remote == "" {
-			continue
 		}
 
-		if rRef, err := repo.Reference(c.remote, true); err == nil {
-			remoteHash := rRef.Hash()
-			// keep LocalRef equal to remote for now; CheckoutRepository will map remote/* -> refs/heads/*
-			return RefSet{LocalRef: c.remote, RemoteRef: c.remote, RemoteHash: remoteHash}, nil
-		} else if !errors.Is(err, plumbing.ErrReferenceNotFound) {
-			lastErr = err
+		if !errors.Is(err, plumbing.ErrReferenceNotFound) {
+			return RefSet{}, fmt.Errorf("failed to get reference %s: %w", ref, err)
 		}
-	}
-
-	if lastErr != nil {
-		return RefSet{}, fmt.Errorf("failed to get reference %s: %w", ref, lastErr)
 	}
 
 	return RefSet{}, fmt.Errorf("%w: %s", ErrInvalidReference, ref)
