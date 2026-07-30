@@ -1,6 +1,11 @@
 package docker
 
-import "testing"
+import (
+	"maps"
+	"testing"
+
+	"github.com/docker/compose/v5/pkg/api"
+)
 
 func TestParseJobScheduleExpression(t *testing.T) {
 	t.Parallel()
@@ -147,4 +152,150 @@ func TestParseJobScheduleLabels_Defaults(t *testing.T) {
 	if cfg.SwarmReplicas != 1 {
 		t.Fatalf("expected default swarm replicas=1, got %d", cfg.SwarmReplicas)
 	}
+}
+
+func TestParseStopServiceRefs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		raw     string
+		want    []StopServiceRef
+		wantErr bool
+	}{
+		{
+			name: "single same-project service",
+			raw:  "db",
+			want: []StopServiceRef{{Service: "db"}},
+		},
+		{
+			name: "multiple same-project services",
+			raw:  "db,cache",
+			want: []StopServiceRef{{Service: "db"}, {Service: "cache"}},
+		},
+		{
+			name: "cross-project service",
+			raw:  "other-project/db",
+			want: []StopServiceRef{{Project: "other-project", Service: "db"}},
+		},
+		{
+			name: "mixed same- and cross-project",
+			raw:  "db,other-project/cache",
+			want: []StopServiceRef{{Service: "db"}, {Project: "other-project", Service: "cache"}},
+		},
+		{
+			name: "whitespace around entries is trimmed",
+			raw:  " db , other/cache ",
+			want: []StopServiceRef{{Service: "db"}, {Project: "other", Service: "cache"}},
+		},
+		{
+			name: "empty entries are skipped",
+			raw:  "db,,cache",
+			want: []StopServiceRef{{Service: "db"}, {Service: "cache"}},
+		},
+		{
+			name:    "missing project name is rejected",
+			raw:     "/db",
+			wantErr: true,
+		},
+		{
+			name:    "missing service name is rejected",
+			raw:     "project/",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := parseStopServiceRefs(tt.raw)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("parseStopServiceRefs(%q) err=%v wantErr=%v", tt.raw, err, tt.wantErr)
+			}
+
+			if tt.wantErr {
+				return
+			}
+
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %d refs, want %d: %+v", len(got), len(tt.want), got)
+			}
+
+			for i, ref := range got {
+				if ref != tt.want[i] {
+					t.Errorf("ref[%d]: got %+v, want %+v", i, ref, tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestParseJobScheduleLabels_StopServices(t *testing.T) {
+	t.Parallel()
+
+	baseLabels := func(extra map[string]string) map[string]string {
+		m := map[string]string{
+			docoCDJobLabelNames.JobEnabled:  "true",
+			docoCDJobLabelNames.JobSchedule: "0 2 * * *",
+			api.ProjectLabel:                "myproject",
+			api.ServiceLabel:                "backup",
+		}
+		maps.Copy(m, extra)
+
+		return m
+	}
+
+	t.Run("valid same-project services", func(t *testing.T) {
+		t.Parallel()
+
+		cfg, _, err := ParseJobScheduleLabels(baseLabels(map[string]string{
+			docoCDJobLabelNames.JobStopServices: "db,cache",
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if len(cfg.StopServices) != 2 {
+			t.Fatalf("expected 2 stop_services, got %d", len(cfg.StopServices))
+		}
+	})
+
+	t.Run("valid cross-project service", func(t *testing.T) {
+		t.Parallel()
+
+		cfg, _, err := ParseJobScheduleLabels(baseLabels(map[string]string{
+			docoCDJobLabelNames.JobStopServices: "other-project/db",
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if len(cfg.StopServices) != 1 || cfg.StopServices[0].Project != "other-project" {
+			t.Fatalf("unexpected stop_services: %+v", cfg.StopServices)
+		}
+	})
+
+	t.Run("self-reference is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		// Same project + same service name → should fail.
+		_, _, err := ParseJobScheduleLabels(baseLabels(map[string]string{
+			docoCDJobLabelNames.JobStopServices: "backup",
+		}))
+		if err == nil {
+			t.Fatal("expected error for self-reference, got nil")
+		}
+	})
+
+	t.Run("explicit self-reference via project prefix is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		_, _, err := ParseJobScheduleLabels(baseLabels(map[string]string{
+			docoCDJobLabelNames.JobStopServices: "myproject/backup",
+		}))
+		if err == nil {
+			t.Fatal("expected error for explicit self-reference, got nil")
+		}
+	})
 }

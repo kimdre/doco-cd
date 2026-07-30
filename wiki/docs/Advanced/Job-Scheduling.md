@@ -170,6 +170,7 @@ Use the following service labels to configure scheduled jobs:
 | `cd.doco.job.skip_running`      | boolean | Do not run the job if a previous scheduled run is still active/running                                                                                                      | `false`   |
 | `cd.doco.job.notify_on`         | string  | [Notification](Notifications.md) behavior for scheduled runs: `none`, `success`, `failure`, `all`                                                                           | `all`     |
 | `cd.doco.job.swarm.replicas`    | integer | Number of completions/concurrency for swarm one-off jobs in `replicated` [deploy mode](#swarm-deploymode)                                                                   | `1`       |
+| `cd.doco.job.stop_services`     | string  | Comma-separated services to [temporarily stop during a job run](#temporarily-stop-services-during-a-job-run) (supports `service` and `project/service`)                     |           |
 
 !!! note "Using scheduled jobs with multiple doco-cd instances"
     `cd.doco.job.skip_running` only prevents overlapping runs within the same doco-cd process.
@@ -185,6 +186,36 @@ The following mapping applies to scheduled runs in `one_off` mode:
 
 - If the service uses `#!yaml deploy.mode: global`, the job run is created as `global-job`
 - If the service uses `#!yaml deploy.mode: replicated` or does not specify a deploy mode, the job run is created as `replicated-job` with the number of completions/concurrency determined by the `cd.doco.job.swarm.replicas` label.
+
+### Temporarily stop services during a job run
+
+Use `cd.doco.job.stop_services` when a scheduled job needs a quiet window (for example, cold backups):
+
+```yaml title="docker-compose.yml"
+services:
+  backup:
+    image: ghcr.io/my-org/backup:1.2.3
+    command: ["/backup.sh"]
+    labels:
+      cd.doco.job.enabled: "true"
+      cd.doco.job.schedule: "0 2 * * *"
+      cd.doco.job.execution_mode: "one_off"
+      cd.doco.job.stop_services: "app,other-project/other-app"
+```
+
+Behavior:
+
+- Before the job starts, listed services are stopped.
+- After the job finishes (success or failure), listed services are started again.
+- `service` targets the same project/stack as the job.
+- `project/service` targets another compose project (standalone) or stack (swarm).
+
+!!! warning "Use service names, not container names"
+    Values must reference the **compose service name** (the key under `services:`), **not** `container_name`.
+
+!!! note "`depends_on` is not traversed automatically"
+    Only explicitly listed services are stopped/started.
+    If dependent services should also be paused, include them explicitly in `cd.doco.job.stop_services`.
 
 ## Examples
 

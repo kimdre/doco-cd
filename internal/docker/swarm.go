@@ -532,3 +532,67 @@ func RerunJobService(ctx context.Context, cli dockerClient.APIClient, serviceNam
 
 	return nil
 }
+
+// StopSwarmService temporarily stops a swarm service by scaling it to 0 replicas.
+// It returns the original replica count so the caller can restore it later via
+// StartSwarmService.
+//
+// Global-mode services cannot be scaled to 0; the function logs a warning via the
+// provided logger and returns (0, nil) to allow the caller to skip them gracefully.
+//
+// The serviceName must be the full swarm-scoped name (e.g. "mystack_myservice").
+// In the cd.doco.job.stop_services label, cross-stack services are expressed as
+// "stack/service" and resolved to "stack_service" before calling this function.
+func StopSwarmService(ctx context.Context, dockerCLI command.Cli, serviceName string) (originalReplicas uint64, err error) {
+	result, err := dockerCLI.Client().ServiceInspect(ctx, serviceName, dockerClient.ServiceInspectOptions{
+		InsertDefaults: true,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("inspect service %s: %w", serviceName, err)
+	}
+
+	svc := result.Service
+
+	// Global and global-job services cannot be scaled to 0.
+	if svc.Spec.Mode.Global != nil || svc.Spec.Mode.GlobalJob != nil {
+		return 0, nil
+	}
+
+	// Determine the current (intended) replica count.
+	var replicas uint64
+
+	switch {
+	case svc.Spec.Mode.Replicated != nil && svc.Spec.Mode.Replicated.Replicas != nil:
+		replicas = *svc.Spec.Mode.Replicated.Replicas
+	case svc.Spec.Mode.ReplicatedJob != nil && svc.Spec.Mode.ReplicatedJob.TotalCompletions != nil:
+		replicas = *svc.Spec.Mode.ReplicatedJob.TotalCompletions
+	default:
+		replicas = 1
+	}
+
+	// Scale to 0.
+	if err := swarmInternal.ScaleService(ctx, dockerCLI, serviceName, 0, false, false); err != nil {
+		return 0, fmt.Errorf("scale service %s to 0: %w", serviceName, err)
+	}
+
+	return replicas, nil
+}
+
+// StartSwarmService restores a previously stopped swarm service to the given
+// replica count. It is the counterpart to StopSwarmService and is typically
+// called in a deferred function to guarantee the service is restarted even when
+// the scheduled job fails.
+//
+// The serviceName must be the full swarm-scoped name (e.g. "mystack_myservice").
+func StartSwarmService(ctx context.Context, dockerCLI command.Cli, serviceName string, replicas uint64) error {
+	if replicas == 0 {
+		// Service was global-mode or already at 0 — nothing to restore.
+		return nil
+	}
+
+	if err := swarmInternal.ScaleService(ctx, dockerCLI, serviceName, replicas, false, false); err != nil {
+		return fmt.Errorf("scale service %s back to %d: %w", serviceName, replicas, err)
+	}
+
+	return nil
+}

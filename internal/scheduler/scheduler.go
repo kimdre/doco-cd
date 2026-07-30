@@ -81,6 +81,12 @@ type scheduler struct {
 
 	runningMu sync.Mutex
 	running   map[string]bool
+
+	// swarmStoppedServices tracks the original replica counts of swarm services
+	// that were scaled to 0 by stopServicesForJob, so startServicesForJob can
+	// restore them. Keyed by full swarm service name (e.g. "mystack_myservice").
+	swarmStoppedServicesMu sync.Mutex
+	swarmStoppedServices   map[string]uint64
 }
 
 // JobInfo describes one scheduler-managed target and its runtime scheduling status.
@@ -94,6 +100,7 @@ type JobInfo struct {
 	SkipRunning    bool                    `json:"skip_running"`
 	NotifyOn       docker.JobNotifyOn      `json:"notify_on,omitempty"`
 	Replicas       uint64                  `json:"replicas,omitempty"`
+	StopServices   []string                `json:"stop_services,omitempty"`
 	Status         string                  `json:"status,omitempty"`
 	LastRunAt      *time.Time              `json:"last_run_at,omitempty"`
 	NextRunAt      *time.Time              `json:"next_run_at,omitempty"`
@@ -109,12 +116,13 @@ func Start(ctx context.Context, dockerCli command.Cli, log *slog.Logger, wg *syn
 	}
 
 	s := &scheduler{
-		dockerCli: dockerCli,
-		log:       log.With(slog.String("component", "scheduler")),
-		wg:        wg,
-		startedAt: schedulerNow(),
-		states:    map[string]scheduledJobState{},
-		running:   map[string]bool{},
+		dockerCli:            dockerCli,
+		log:                  log.With(slog.String("component", "scheduler")),
+		wg:                   wg,
+		startedAt:            schedulerNow(),
+		states:               map[string]scheduledJobState{},
+		running:              map[string]bool{},
+		swarmStoppedServices: map[string]uint64{},
 	}
 
 	s.run(ctx)
@@ -185,6 +193,7 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 		info.SkipRunning = cfg.SkipRunning
 		info.NotifyOn = cfg.NotifyOn
 		info.Replicas = cfg.SwarmReplicas
+		info.StopServices = formatStopServiceRefs(cfg.StopServices)
 
 		schedule, scheduleErr := docker.ParseJobScheduleExpression(cfg.Schedule)
 		if scheduleErr != nil {
@@ -233,9 +242,10 @@ func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jo
 	}
 
 	s := &scheduler{
-		dockerCli: dockerCli,
-		log:       log.With(slog.String("component", "scheduler")),
-		running:   map[string]bool{},
+		dockerCli:            dockerCli,
+		log:                  log.With(slog.String("component", "scheduler")),
+		running:              map[string]bool{},
+		swarmStoppedServices: map[string]uint64{},
 	}
 
 	jobs, err := s.discoverJobs(ctx)
@@ -723,6 +733,27 @@ func (s *scheduler) triggerRun(ctx context.Context, job scheduledJob, cfg docker
 }
 
 func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, cfg docker.JobScheduleConfig) error {
+	// Stop any declared services before executing the job, then restart them
+	// afterwards regardless of whether the job succeeds or fails.
+	if len(cfg.StopServices) > 0 {
+		stackName := getJobStackName(job)
+
+		if err := s.stopServicesForJob(ctx, job.mode, stackName, cfg.StopServices); err != nil {
+			return fmt.Errorf("stopping services before job: %w", err)
+		}
+
+		restoreCtx := context.WithoutCancel(ctx)
+
+		defer func() {
+			if err := s.startServicesForJob(restoreCtx, job.mode, stackName, cfg.StopServices); err != nil {
+				s.log.Error("failed to restart services after scheduled job",
+					slog.String("job", job.name),
+					logger.ErrAttr(err),
+				)
+			}
+		}()
+	}
+
 	switch job.mode {
 	case scheduledJobModeContainer:
 		switch cfg.ExecutionMode {
@@ -753,6 +784,159 @@ func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, c
 	default:
 		return fmt.Errorf("unsupported scheduled job mode %q", job.mode)
 	}
+}
+
+const stopServicesTimeout = 30 * time.Second
+
+// stopServicesForJob stops the services listed in StopServices before a job runs.
+// For compose mode, services are grouped by project and stopped via the compose API.
+// For swarm mode, services are scaled to 0 (global-mode services are skipped with a warning).
+// savedSwarmReplicas is populated in swarm mode so startServicesForJob can restore them.
+func (s *scheduler) stopServicesForJob(ctx context.Context, mode scheduledJobMode, jobStack string, refs []docker.StopServiceRef) error {
+	switch mode {
+	case scheduledJobModeContainer:
+		byProject := groupStopRefsByProject(refs, jobStack)
+		for project, services := range byProject {
+			s.log.Info("stopping services before scheduled job",
+				slog.String("project", project),
+				slog.Any("services", services),
+			)
+
+			if err := docker.StopProjectServices(ctx, s.dockerCli, project, services, stopServicesTimeout); err != nil {
+				return fmt.Errorf("project %q services %v: %w", project, services, err)
+			}
+		}
+
+	case scheduledJobModeSwarm:
+		for _, ref := range refs {
+			stack := ref.Project
+			if stack == "" {
+				stack = jobStack
+			}
+
+			fullName := stack + "_" + ref.Service
+
+			replicas, err := docker.StopSwarmService(ctx, s.dockerCli, fullName)
+			if err != nil {
+				return fmt.Errorf("swarm service %q: %w", fullName, err)
+			}
+
+			if replicas == 0 {
+				s.log.Warn("skipping global-mode swarm service in stop_services (cannot scale to 0)",
+					slog.String("service", fullName),
+				)
+
+				continue
+			}
+
+			s.log.Info("stopped swarm service before scheduled job",
+				slog.String("service", fullName),
+				slog.Uint64("original_replicas", replicas),
+			)
+
+			// Store replica count on the scheduler so the deferred start can retrieve it.
+			s.swarmStoppedServicesMu.Lock()
+			s.swarmStoppedServices[fullName] = replicas
+			s.swarmStoppedServicesMu.Unlock()
+		}
+	}
+
+	return nil
+}
+
+// startServicesForJob restarts services that were stopped by stopServicesForJob.
+// It is always called in a deferred block (using context.WithoutCancel) so services
+// are restarted even if the job itself fails.
+func (s *scheduler) startServicesForJob(ctx context.Context, mode scheduledJobMode, jobStack string, refs []docker.StopServiceRef) error {
+	var errs []string
+
+	switch mode {
+	case scheduledJobModeContainer:
+		byProject := groupStopRefsByProject(refs, jobStack)
+		for project, services := range byProject {
+			s.log.Info("restarting services after scheduled job",
+				slog.String("project", project),
+				slog.Any("services", services),
+			)
+
+			if err := docker.StartProjectServices(ctx, s.dockerCli, project, services, stopServicesTimeout); err != nil {
+				errs = append(errs, fmt.Sprintf("project %q services %v: %v", project, services, err))
+			}
+		}
+
+	case scheduledJobModeSwarm:
+		for _, ref := range refs {
+			stack := ref.Project
+			if stack == "" {
+				stack = jobStack
+			}
+
+			fullName := stack + "_" + ref.Service
+
+			s.swarmStoppedServicesMu.Lock()
+
+			replicas, ok := s.swarmStoppedServices[fullName]
+			if ok {
+				delete(s.swarmStoppedServices, fullName)
+			}
+			s.swarmStoppedServicesMu.Unlock()
+
+			if !ok {
+				// Was a global-mode service (skipped during stop) — nothing to restore.
+				continue
+			}
+
+			s.log.Info("restarting swarm service after scheduled job",
+				slog.String("service", fullName),
+				slog.Uint64("replicas", replicas),
+			)
+
+			if err := docker.StartSwarmService(ctx, s.dockerCli, fullName, replicas); err != nil {
+				errs = append(errs, fmt.Sprintf("swarm service %q: %v", fullName, err))
+			}
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to restart %d service(s): %s", len(errs), strings.Join(errs, "; "))
+	}
+
+	return nil
+}
+
+// groupStopRefsByProject groups StopServiceRef slices by their resolved project name.
+func groupStopRefsByProject(refs []docker.StopServiceRef, defaultProject string) map[string][]string {
+	byProject := make(map[string][]string)
+
+	for _, ref := range refs {
+		project := ref.Project
+		if project == "" {
+			project = defaultProject
+		}
+
+		byProject[project] = append(byProject[project], ref.Service)
+	}
+
+	return byProject
+}
+
+// formatStopServiceRefs serialises StopServiceRef values into the canonical
+// "project/service" or "service" strings used in labels and JobInfo.
+func formatStopServiceRefs(refs []docker.StopServiceRef) []string {
+	if len(refs) == 0 {
+		return nil
+	}
+
+	out := make([]string, 0, len(refs))
+	for _, r := range refs {
+		if r.Project != "" {
+			out = append(out, r.Project+"/"+r.Service)
+		} else {
+			out = append(out, r.Service)
+		}
+	}
+
+	return out
 }
 
 func (s *scheduler) sendRunNotification(job scheduledJob, cfg docker.JobScheduleConfig, runID string, success bool, title, msg string) {
@@ -816,6 +1000,7 @@ func getScheduleFingerprint(cfg docker.JobScheduleConfig) string {
 		strconv.FormatBool(cfg.SkipRunning),
 		string(cfg.NotifyOn),
 		strconv.FormatUint(cfg.SwarmReplicas, 10),
+		strings.Join(formatStopServiceRefs(cfg.StopServices), ","),
 	}, "|")
 }
 

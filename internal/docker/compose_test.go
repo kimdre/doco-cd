@@ -1990,6 +1990,172 @@ func TestStartProject(t *testing.T) {
 	}
 }
 
+func TestStopAndStartProjectServices(t *testing.T) {
+	ctx := context.Background()
+
+	const composeYAML = `services:
+  app:
+    image: nginx:latest
+  db:
+    image: nginx:latest
+`
+
+	stack := test.ComposeUp(ctx, t, test.WithYAML(composeYAML))
+
+	c, err := app.GetConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stackName := stack.Name
+	timeout := 30 * time.Second
+
+	assertServiceState := func(serviceName, wantState string) {
+		t.Helper()
+
+		err = retry.New(
+			retry.Attempts(20),
+			retry.Delay(500*time.Millisecond),
+			retry.DelayType(retry.FixedDelay),
+		).Do(func() error {
+			containers, getErr := GetProjectContainers(ctx, dockerCli, stackName)
+			if getErr != nil {
+				return getErr
+			}
+
+			foundServices := make([]string, 0, len(containers))
+
+			for _, cont := range containers {
+				currService := cont.Labels[api.ServiceLabel]
+
+				foundServices = append(foundServices, fmt.Sprintf("%s:%s", currService, cont.State))
+				if currService != serviceName {
+					continue
+				}
+
+				if string(cont.State) == wantState {
+					return nil
+				}
+
+				return fmt.Errorf("service %q state=%q want=%q", serviceName, cont.State, wantState)
+			}
+
+			return fmt.Errorf("service %q container not found (have: %v)", serviceName, foundServices)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err = StopProjectServices(ctx, dockerCli, stackName, []string{"db"}, timeout); err != nil {
+		t.Fatalf("failed to stop project service: %v", err)
+	}
+
+	assertServiceState("db", "exited")
+	assertServiceState("app", "running")
+
+	if err = StartProjectServices(ctx, dockerCli, stackName, []string{"db"}, timeout); err != nil {
+		t.Fatalf("failed to start project service: %v", err)
+	}
+
+	assertServiceState("db", "running")
+	assertServiceState("app", "running")
+}
+
+func TestStopAndStartProjectServices_SchedulerSequence_WithDependsOn(t *testing.T) {
+	ctx := context.Background()
+
+	const composeYAML = `services:
+  db:
+    image: nginx:latest
+  app:
+    image: nginx:latest
+    depends_on:
+      db:
+        condition: service_started
+`
+
+	stack := test.ComposeUp(ctx, t, test.WithYAML(composeYAML))
+
+	c, err := app.GetConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dockerCli, err := CreateDockerCli(c.DockerQuietDeploy)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stackName := stack.Name
+	timeout := 30 * time.Second
+
+	assertServiceState := func(serviceName, wantState string) {
+		t.Helper()
+
+		err = retry.New(
+			retry.Attempts(20),
+			retry.Delay(500*time.Millisecond),
+			retry.DelayType(retry.FixedDelay),
+		).Do(func() error {
+			containers, getErr := GetProjectContainers(ctx, dockerCli, stackName)
+			if getErr != nil {
+				return getErr
+			}
+
+			foundServices := make([]string, 0, len(containers))
+
+			for _, cont := range containers {
+				currService := cont.Labels[api.ServiceLabel]
+
+				foundServices = append(foundServices, fmt.Sprintf("%s:%s", currService, cont.State))
+				if currService != serviceName {
+					continue
+				}
+
+				if string(cont.State) == wantState {
+					return nil
+				}
+
+				return fmt.Errorf("service %q state=%q want=%q", serviceName, cont.State, wantState)
+			}
+
+			return fmt.Errorf("service %q container not found (have: %v)", serviceName, foundServices)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Log("Stopping db service to simulate scheduler pre-run hook")
+
+	// 1) Scheduler pre-run hook: stop selected services (db).
+	if err = StopProjectServices(ctx, dockerCli, stackName, []string{"db"}, timeout); err != nil {
+		t.Fatalf("failed to stop project service: %v", err)
+	}
+
+	t.Log("Check service states")
+
+	// 2) During job run: db remains stopped, dependent app remains untouched.
+	assertServiceState("db", "exited")
+	assertServiceState("app", "running")
+
+	t.Log("Restarting db service to simulate scheduler post-run hook")
+
+	// 3) Scheduler post-run hook: restart selected services.
+	if err = StartProjectServices(ctx, dockerCli, stackName, []string{"db"}, timeout); err != nil {
+		t.Fatalf("failed to start project service: %v", err)
+	}
+
+	assertServiceState("db", "running")
+	assertServiceState("app", "running")
+}
+
 func TestRemoveProject(t *testing.T) {
 	ctx := context.Background()
 

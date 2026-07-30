@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/compose/v5/pkg/api"
 	"github.com/go-co-op/gocron/v2"
 )
 
@@ -39,6 +40,24 @@ type JobScheduleConfig struct {
 	ExecutionMode JobExecutionMode
 	NotifyOn      JobNotifyOn
 	SwarmReplicas uint64
+	StopServices  []StopServiceRef
+}
+
+// StopServiceRef identifies a compose service (or swarm service) to be temporarily
+// stopped before a scheduled job runs and restarted after it completes.
+//
+// In standalone (compose) mode:
+//   - Service is the compose service name as declared in the compose file (the map
+//     key under `services:`). It is always the service name, never the container_name.
+//   - Project identifies the compose project. When empty, the job's own project is used.
+//
+// In swarm mode:
+//   - Service is the short service name as declared in the compose file.
+//   - Project is the stack name. When empty, the job's own stack is used.
+//   - The full swarm service name is resolved as "<project>_<service>".
+type StopServiceRef struct {
+	Project string // empty = same project/stack as the job
+	Service string
 }
 
 func (c JobScheduleConfig) ShouldNotifySuccess() bool {
@@ -152,5 +171,65 @@ func ParseJobScheduleLabels(labels map[string]string, log ...*slog.Logger) (JobS
 		cfg.SwarmReplicas = replicas
 	}
 
+	if stopRaw, ok := labels[docoCDJobLabelNames.JobStopServices]; ok {
+		refs, parseErr := parseStopServiceRefs(stopRaw)
+		if parseErr != nil {
+			return cfg, false, fmt.Errorf("invalid %s label value %q: %w", docoCDJobLabelNames.JobStopServices, stopRaw, parseErr)
+		}
+
+		// Validate that the job does not list itself.
+		jobProject := strings.TrimSpace(labels[api.ProjectLabel])
+		jobService := strings.TrimSpace(labels[api.ServiceLabel])
+
+		for _, ref := range refs {
+			resolvedProject := ref.Project
+			if resolvedProject == "" {
+				resolvedProject = jobProject
+			}
+
+			if resolvedProject == jobProject && ref.Service == jobService {
+				return cfg, false, fmt.Errorf("%s: a job cannot stop itself (%s/%s)", docoCDJobLabelNames.JobStopServices, resolvedProject, ref.Service)
+			}
+		}
+
+		cfg.StopServices = refs
+	}
+
 	return cfg, true, nil
+}
+
+// parseStopServiceRefs parses a comma-separated list of "project/service" or "service"
+// entries into StopServiceRef values. Empty entries are silently skipped.
+func parseStopServiceRefs(raw string) ([]StopServiceRef, error) {
+	var refs []StopServiceRef
+
+	for entry := range strings.SplitSeq(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+
+		project, service, hasDelimiter := strings.Cut(entry, "/")
+		project = strings.TrimSpace(project)
+		service = strings.TrimSpace(service)
+
+		if service == "" {
+			if hasDelimiter {
+				return nil, fmt.Errorf("entry %q has an empty service name", entry)
+			}
+
+			// No "/" found: the whole entry is the service name, same project.
+			refs = append(refs, StopServiceRef{Service: project})
+
+			continue
+		}
+
+		if project == "" {
+			return nil, fmt.Errorf("entry %q has an empty project name", entry)
+		}
+
+		refs = append(refs, StopServiceRef{Project: project, Service: service})
+	}
+
+	return refs, nil
 }

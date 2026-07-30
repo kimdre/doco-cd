@@ -94,6 +94,7 @@ var docoCDJobLabelNames = struct {
 	JobRestartReplicas string // Intended replica count for swarm restart-mode jobs deployed at 0 replicas
 	JobLastRun         string // Timestamp of the last run in RFC3339 format
 	JobNextRun         string // Timestamp of the next scheduled run in RFC3339 format
+	JobStopServices    string // Comma-separated list of services to stop before the job runs and restart after
 }{
 	JobEnabled:         "cd.doco.job.enabled",
 	JobSchedule:        "cd.doco.job.schedule",
@@ -106,6 +107,7 @@ var docoCDJobLabelNames = struct {
 	JobRestartReplicas: "cd.doco.job.swarm.restart_replicas",
 	JobLastRun:         "cd.doco.job.last_run",
 	JobNextRun:         "cd.doco.job.next_run",
+	JobStopServices:    "cd.doco.job.stop_services",
 }
 
 // DocoCDJobLabels exposes the scheduler/job labels for consumers outside this package.

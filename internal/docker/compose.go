@@ -1338,6 +1338,91 @@ func StopProject(ctx context.Context, dockerCli command.Cli, projectName string,
 	})
 }
 
+// StopProjectServices stops specific named services within a compose project.
+// Services are identified by their service name as declared in the compose file
+// (the map key under `services:`), not by container_name.
+//
+// Containers are stopped directly via the Docker API (instead of compose Stop
+// with a services filter) to ensure only explicitly targeted services are
+// affected, without implicit dependency traversal.
+func StopProjectServices(ctx context.Context, dockerCli command.Cli, projectName string, services []string, timeout time.Duration) error {
+	if len(services) == 0 {
+		return nil
+	}
+
+	serviceSet := make(map[string]struct{}, len(services))
+	for _, s := range services {
+		serviceSet[s] = struct{}{}
+	}
+
+	containers, err := GetLabeledContainers(ctx, dockerCli.Client(), api.ProjectLabel, projectName, true)
+	if err != nil {
+		return fmt.Errorf("failed to list containers for project %q: %w", projectName, err)
+	}
+
+	timeoutSecs := int(timeout.Seconds())
+
+	stopOpts := client.ContainerStopOptions{}
+	if timeoutSecs > 0 {
+		stopOpts.Timeout = &timeoutSecs
+	}
+
+	for _, c := range containers {
+		svcName := c.Labels[api.ServiceLabel]
+		if _, ok := serviceSet[svcName]; !ok {
+			continue
+		}
+
+		if string(c.State) != "running" {
+			continue
+		}
+
+		if _, err := dockerCli.Client().ContainerStop(ctx, c.ID, stopOpts); err != nil {
+			return fmt.Errorf("failed to stop container %s (service %q): %w", c.ID[:12], svcName, err)
+		}
+	}
+
+	return nil
+}
+
+// StartProjectServices starts specific named services within a compose project.
+// Services are identified by their service name as declared in the compose file
+// (the map key under `services:`), not by container_name.
+//
+// Note: the compose Start API ignores StartOptions.Services, so containers are
+// looked up directly by the com.docker.compose.project and com.docker.compose.service
+// labels and started individually.
+func StartProjectServices(ctx context.Context, dockerCli command.Cli, projectName string, services []string, timeout time.Duration) error {
+	if len(services) == 0 {
+		return nil
+	}
+
+	serviceSet := make(map[string]struct{}, len(services))
+	for _, s := range services {
+		serviceSet[s] = struct{}{}
+	}
+
+	containers, err := GetLabeledContainers(ctx, dockerCli.Client(), api.ProjectLabel, projectName, true)
+	if err != nil {
+		return fmt.Errorf("failed to list containers for project %q: %w", projectName, err)
+	}
+
+	for _, c := range containers {
+		svcName := c.Labels[api.ServiceLabel]
+		if _, ok := serviceSet[svcName]; !ok {
+			continue
+		}
+
+		if _, err := dockerCli.Client().ContainerStart(ctx, c.ID, client.ContainerStartOptions{}); err != nil {
+			return fmt.Errorf("failed to start container %s (service %q): %w", c.ID[:12], svcName, err)
+		}
+	}
+
+	_ = timeout // reserved for future health-check polling
+
+	return nil
+}
+
 // StartProject starts all services in the specified project.
 func StartProject(ctx context.Context, dockerCli command.Cli, projectName string, timeout time.Duration) error {
 	service, err := compose.NewComposeService(dockerCli)
