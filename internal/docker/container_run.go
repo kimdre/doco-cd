@@ -107,7 +107,13 @@ func RunContainerOneOffFromExisting(ctx context.Context, apiClient client.APICli
 	// (auto-removed) container: if ContainerStart is called first the container
 	// may finish and be removed before ContainerWait registers, causing a
 	// "No such container" error.
-	waitResult := apiClient.ContainerWait(ctx, createResult.ID, client.ContainerWaitOptions{Condition: containerTypes.WaitConditionNotRunning})
+	//
+	// Use WaitConditionNextExit ("next-exit"), NOT WaitConditionNotRunning
+	// ("not-running"). A newly-created container is already "not running" (it
+	// is in the "created" state), so WaitConditionNotRunning would be satisfied
+	// immediately and ContainerWait would return before the container even
+	// starts, causing the caller to think the job has completed.
+	waitResult := apiClient.ContainerWait(ctx, createResult.ID, client.ContainerWaitOptions{Condition: containerTypes.WaitConditionNextExit})
 
 	if _, err = apiClient.ContainerStart(ctx, createResult.ID, client.ContainerStartOptions{}); err != nil {
 		return fmt.Errorf("start one-off container %s: %w", createResult.ID, err)

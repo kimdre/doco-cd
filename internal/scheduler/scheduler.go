@@ -27,6 +27,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/prometheus"
+	"github.com/kimdre/doco-cd/internal/reconciliation"
 )
 
 const (
@@ -923,6 +924,12 @@ func (s *scheduler) stopServicesForJob(ctx context.Context, mode scheduledJobMod
 				continue
 			}
 
+			// Mark each service as scheduler-held so that the reconciliation
+			// event listener does not restart it while the job is running.
+			for _, svc := range toStop {
+				reconciliation.MarkSchedulerStopHeld(project, svc)
+			}
+
 			s.log.Info("stopping services before scheduled job",
 				slog.String("project", project),
 				slog.Any("services", toStop),
@@ -1027,6 +1034,12 @@ func (s *scheduler) startServicesForJob(ctx context.Context, mode scheduledJobMo
 
 			if len(toStart) == 0 {
 				continue
+			}
+
+			// Unmark the scheduler hold before starting — if our start fails,
+			// reconciliation can step in and recover the service.
+			for _, svc := range toStart {
+				reconciliation.UnmarkSchedulerStopHeld(project, svc)
 			}
 
 			s.log.Info("restarting services after scheduled job",
