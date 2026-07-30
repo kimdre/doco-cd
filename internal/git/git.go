@@ -90,10 +90,11 @@ type RefSet struct {
 //  1. Commit SHA — returned directly; no reference store lookup is performed.
 //  2. For refs/-prefixed names: the exact name, then its remote-tracking counterpart.
 //  3. For short names: refs/heads/<ref>, refs/remotes/origin/<ref>, refs/tags/<ref>,
-//     and — only when the name passes plumbing.ReferenceName.IsSafe — the bare name
-//     (covering uppercase pseudo-refs such as HEAD or ORIG_HEAD).
+//     then the bare name (which only resolves for uppercase pseudo-refs like HEAD).
 //
-// Any storage error other than plumbing.ErrReferenceNotFound is treated as a
+// Candidates whose name cannot be stored safely (see plumbing.ReferenceName.IsSafe)
+// are skipped rather than queried, so a malformed ref yields ErrInvalidReference
+// instead of a storage-layer error. Any other storage error is treated as a
 // transient failure and returned immediately.
 func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 	// Commit SHAs are used directly — there is no reference name to resolve.
@@ -126,26 +127,30 @@ func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 			candidate{plumbing.NewBranchReferenceName(ref), remoteRef},
 			candidate{remoteRef, remoteRef},
 			candidate{plumbing.NewTagReferenceName(ref), plumbing.NewTagReferenceName(ref)},
+			// The bare name only ever resolves for uppercase pseudo-refs such as
+			// HEAD or ORIG_HEAD; the IsSafe filter below discards it otherwise.
+			candidate{plumbing.ReferenceName(ref), plumbing.ReferenceName(ref)},
 		)
-		// Only add the bare name as a candidate when it is safe for storage.
-		// go-git v5.19.2+ validates reference names at the storage layer and rejects
-		// unsafe names (those not under refs/ and not an uppercase pseudo-ref) with a
-		// distinct error instead of plumbing.ErrReferenceNotFound. Skipping the lookup
-		// for unsafe names avoids misclassifying that error as a transient failure.
-		// Valid cases are uppercase pseudo-refs such as HEAD or ORIG_HEAD.
-		if plumbing.ReferenceName(ref).IsSafe() {
-			candidates = append(candidates,
-				candidate{plumbing.ReferenceName(ref), plumbing.ReferenceName(ref)},
-			)
-		}
 	}
 
 	for _, c := range candidates {
-		_, err := repo.Reference(c.local, true)
+		// go-git v5.19.2+ validates reference names at the storage layer and rejects
+		// unsafe ones (not under refs/, escaping it, or not an uppercase pseudo-ref)
+		// with an error distinct from plumbing.ErrReferenceNotFound. Such a name can
+		// never exist, so skip the lookup instead of misreporting it as transient.
+		if !c.local.IsSafe() {
+			continue
+		}
+
+		localRef, err := repo.Reference(c.local, true)
 		if err == nil {
 			remoteHash := plumbing.ZeroHash
 
-			if c.remote != "" {
+			switch {
+			case c.remote == c.local:
+				// Already resolved above; avoid a redundant store lookup.
+				remoteHash = localRef.Hash()
+			case c.remote.IsSafe():
 				if rRef, rErr := repo.Reference(c.remote, true); rErr == nil {
 					remoteHash = rRef.Hash()
 				}
