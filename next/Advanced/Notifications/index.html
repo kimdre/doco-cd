@@ -1502,6 +1502,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Custom notification body">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#commit-changelog" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Commit changelog
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2394,6 +2411,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Custom notification body">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#commit-changelog" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Commit changelog
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2724,6 +2758,10 @@ You can find a list of all supported services and platforms in the <a href="http
 <td><code>.AffectedActorName</code></td>
 <td>Affected container/service name</td>
 </tr>
+<tr>
+<td><code>.Commits</code></td>
+<td>Commits deployed since the last deploy (see <a data-preview="" href="#commit-changelog">Commit changelog</a>)</td>
+</tr>
 </tbody>
 </table>
 <p><code>{{ .DefaultBody }}</code> renders the built-in body (message + metadata), so you can extend the default format instead of replacing it, e.g. <code>{{ .DefaultBody }}\nhost: my-vm</code>.</p>
@@ -2734,6 +2772,46 @@ You can find a list of all supported services and platforms in the <a href="http
 </span></code></pre></div>
 <p>renders e.g. <code>✅ prod-vm/app — Successfully deployed stack app (main (abc123))</code> for target <code>prod-vm</code>, or <code>✅ app — Successfully deployed stack app (main (abc123))</code> without a custom target.</p>
 </div>
+<h3 id="commit-changelog">Commit changelog<a class="headerlink" href="#commit-changelog" title="Permanent link">&para;</a></h3>
+<p><code>.Commits</code> is the list of commits that got deployed since the previously deployed commit, newest first. It is only populated on successful deploy notifications of Git sources; on the first deploy, on failures and for OCI sources it stays empty (a <code>range</code> over it just renders nothing). Each entry has:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.Hash</code></td>
+<td>Full commit SHA</td>
+</tr>
+<tr>
+<td><code>.ShortHash</code></td>
+<td>Shortened commit SHA</td>
+</tr>
+<tr>
+<td><code>.Subject</code></td>
+<td>First line of the commit message</td>
+</tr>
+<tr>
+<td><code>.Author</code></td>
+<td>Commit author name</td>
+</tr>
+</tbody>
+</table>
+<p>Printing an entry directly (<code>{{ . }}</code>) gives <code>shortHash subject</code>.</p>
+<div class="admonition example">
+<p class="admonition-title">Body with changelog</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">environment</span><span class="p">:</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">APPRISE_NOTIFY_BODY_TEMPLATE</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="no">{{ .DefaultBody }}</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="no">{{ range .Commits }}- {{ .ShortHash }} {{ .Subject }} ({{ .Author }})</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">    </span><span class="no">{{ end }}</span>
+</span></code></pre></div>
+</div>
+<p>Up to 50 commits are listed. After a rebase or force-push the list starts from the point where the histories diverged.</p>
+<p>The changelog is best-effort: with a small <code>GIT_CLONE_DEPTH</code> the previously deployed commit may sit beyond the shallow boundary, in which case the list is truncated or omitted. It never blocks the notification.</p>
 <h2 id="reconciliation-notifications">Reconciliation notifications<a class="headerlink" href="#reconciliation-notifications" title="Permanent link">&para;</a></h2>
 <p>If a notification was triggered by reconciliation, the title gets a short <code>[R]</code> marker.</p>
 <div class="admonition example">
