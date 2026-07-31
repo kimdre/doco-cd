@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	types2 "github.com/kimdre/doco-cd/internal/config"
 
 	"github.com/kimdre/doco-cd/internal/commitstatus"
+	"github.com/kimdre/doco-cd/internal/common/types/slice"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -135,6 +137,23 @@ type DeploymentState struct {
 	changedServices []docker.Change
 	ignoredInfo     docker.IgnoredInfo
 	DeployedCommit  string // previously-deployed commit SHA, carried to post-deploy for the changelog
+}
+
+// changedServiceNames flattens the detected changes into a unique list of service names.
+func (d *DeploymentState) changedServiceNames() []string {
+	if d == nil {
+		return nil
+	}
+
+	var names []string
+	for _, change := range d.changedServices {
+		names = append(names, change.Services...)
+	}
+
+	names = slice.Unique(names)
+	slices.Sort(names)
+
+	return names
 }
 
 // StageManager is the main structure that holds the logger and stage data.
@@ -259,6 +278,11 @@ func (s *StageManager) NotifyFailure(notifyErr error) {
 		metadata.Target = s.DeployConfig.Internal.ConfigTarget
 		metadata.Revision = revision
 		metadata.JobID = s.JobID
+		metadata.ChangedServices = s.DeployState.changedServiceNames()
+
+		if !s.Stages.Init.StartedAt.IsZero() {
+			metadata.Duration = time.Since(s.Stages.Init.StartedAt).Truncate(time.Millisecond)
+		}
 
 		s.NotifyFailureFunc(s.Log, notifyErr, metadata)
 	}

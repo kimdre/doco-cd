@@ -49,6 +49,8 @@ func (s *StageManager) RunPostDeployStage(_ context.Context, stageLog *slog.Logg
 	metadata.Target = s.DeployConfig.Internal.ConfigTarget
 	metadata.Revision = notification.GetRevision(s.DeployConfig.Reference, shortCommit)
 	metadata.JobID = s.JobID
+	metadata.Duration = time.Since(s.Stages.Init.StartedAt).Truncate(time.Millisecond)
+	metadata.ChangedServices = s.DeployState.changedServiceNames()
 
 	if s.DeployState.DeployedCommit != "" && latestCommit != "" {
 		metadata.Commits, err = git.GetCommitsBetween(
