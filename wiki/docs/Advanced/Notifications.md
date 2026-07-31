@@ -91,6 +91,7 @@ The following fields are available:
 | `.AffectedActorKind`  | `container` or `service`                                                 |
 | `.AffectedActorID`    | Affected container/service ID                                            |
 | `.AffectedActorName`  | Affected container/service name                                          |
+| `.Commits`            | Commits deployed since the last deploy (see [Commit changelog](#commit-changelog)) |
 
 `{{ .DefaultBody }}` renders the built-in body (message + metadata), so you can extend the default format instead of replacing it, e.g. `{{ .DefaultBody }}\nhost: my-vm`.
 
@@ -102,6 +103,33 @@ The following fields are available:
     ```
 
     renders e.g. `✅ prod-vm/app — Successfully deployed stack app (main (abc123))` for target `prod-vm`, or `✅ app — Successfully deployed stack app (main (abc123))` without a custom target.
+
+### Commit changelog
+
+`.Commits` is the list of commits that got deployed since the previously deployed commit, newest first. It is only populated on successful deploy notifications of Git sources; on the first deploy, on failures and for OCI sources it stays empty (a `range` over it just renders nothing). Each entry has:
+
+| Field         | Description                          |
+|---------------|--------------------------------------|
+| `.Hash`       | Full commit SHA                       |
+| `.ShortHash`  | Shortened commit SHA                  |
+| `.Subject`    | First line of the commit message     |
+| `.Author`     | Commit author name                    |
+
+Printing an entry directly (`{{ . }}`) gives `shortHash subject`.
+
+!!! example "Body with changelog"
+
+    ```yaml
+    environment:
+      APPRISE_NOTIFY_BODY_TEMPLATE: |
+        {{ .DefaultBody }}
+        {{ range .Commits }}- {{ .ShortHash }} {{ .Subject }} ({{ .Author }})
+        {{ end }}
+    ```
+
+Up to 50 commits are listed. After a rebase or force-push the list starts from the point where the histories diverged.
+
+The changelog is best-effort: with a small `GIT_CLONE_DEPTH` the previously deployed commit may sit beyond the shallow boundary, in which case the list is truncated or omitted. It never blocks the notification.
 
 ## Reconciliation notifications
 

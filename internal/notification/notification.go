@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"text/template"
+
+	"github.com/kimdre/doco-cd/internal/git"
 )
 
 type level int
@@ -76,6 +78,7 @@ type Metadata struct {
 	AffectedActorKind   string
 	AffectedActorID     string
 	AffectedActorName   string
+	Commits             []git.CommitInfo // commits deployed since the last deploy; empty on first deploy/failure/OCI
 }
 
 // TemplateData is the data exposed to a user-configured notification body template.
@@ -110,6 +113,9 @@ func validateTemplate(tmpl string) (*template.Template, error) {
 		Metadata: Metadata{
 			Repository: "github.com/acme/app", Stack: "app", Context: "default",
 			Revision: "refs/heads/main (abc123)", JobID: "sample",
+			Commits: []git.CommitInfo{
+				{Hash: "abc123", ShortHash: "abc123", Subject: "sample commit", Author: "Jane Doe"},
+			},
 		},
 	}
 	if err := t.Execute(io.Discard, sample); err != nil {

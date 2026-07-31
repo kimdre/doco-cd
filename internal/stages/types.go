@@ -134,6 +134,7 @@ type Docker struct {
 type DeploymentState struct {
 	changedServices []docker.Change
 	ignoredInfo     docker.IgnoredInfo
+	DeployedCommit  string // previously-deployed commit SHA, carried to post-deploy for the changelog
 }
 
 // StageManager is the main structure that holds the logger and stage data.
