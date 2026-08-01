@@ -157,6 +157,27 @@ func TestDefaultBody(t *testing.T) {
 		}
 	})
 
+	t.Run("duration is a metadata line when set, omitted when zero", func(t *testing.T) {
+		t.Parallel()
+
+		message := defaultBody("Deployment completed", Metadata{
+			Repository: "acme/api",
+			Duration:   12483 * time.Millisecond,
+		})
+		expected := "Deployment completed\n\nduration: 12.483s\nrepository: acme/api"
+
+		if message != expected {
+			t.Errorf("expected %q, got %q", expected, message)
+		}
+
+		message = defaultBody("Deployment completed", Metadata{Repository: "acme/api"})
+		expected = "Deployment completed\n\nrepository: acme/api"
+
+		if message != expected {
+			t.Errorf("expected %q, got %q", expected, message)
+		}
+	})
+
 	t.Run("reconciliation metadata includes event and affected actor", func(t *testing.T) {
 		t.Parallel()
 

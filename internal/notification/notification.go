@@ -309,6 +309,10 @@ func (d TemplateData) DefaultBody() string {
 		fields["job_id"] = m.JobID
 	}
 
+	if m.Duration > 0 {
+		fields["duration"] = m.Duration.String()
+	}
+
 	if m.ReconciliationEvent != "" {
 		reconciliationFields["event"] = m.ReconciliationEvent
 	}
