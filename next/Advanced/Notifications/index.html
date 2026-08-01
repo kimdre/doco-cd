@@ -2762,6 +2762,14 @@ You can find a list of all supported services and platforms in the <a href="http
 <td><code>.Commits</code></td>
 <td>Commits deployed since the last deploy (see <a data-preview="" href="#commit-changelog">Commit changelog</a>)</td>
 </tr>
+<tr>
+<td><code>.Duration</code></td>
+<td>Time the deployment (or destroy) took, from job start to the notification, e.g. <code>12.483s</code>. Zero where no deployment ran (reconciliation restarts, scheduled jobs) — hide it with <code>{{if .Duration}}...{{end}}</code></td>
+</tr>
+<tr>
+<td><code>.ChangedServices</code></td>
+<td>Sorted names of the services force-recreated by this deploy (changed mounted/referenced files or a changed auto-discovery label). Empty when the whole stack is (re)deployed for other reasons, e.g. a compose config change, an image update, state drift or <code>force_recreate</code></td>
+</tr>
 </tbody>
 </table>
 <p><code>{{ .DefaultBody }}</code> renders the built-in body (message + metadata), so you can extend the default format instead of replacing it, e.g. <code>{{ .DefaultBody }}\nhost: my-vm</code>.</p>
