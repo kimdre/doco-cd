@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/kimdre/doco-cd/internal/common/id"
 	"github.com/kimdre/doco-cd/internal/test"
@@ -323,6 +324,26 @@ func TestRenderTemplate(t *testing.T) {
 			JobID:      "job-99",
 		})
 		expected := "Deploy done\n\njob_id: job-99\nrepository: acme/repo"
+
+		if got != expected {
+			t.Errorf("expected %q, got %q", expected, got)
+		}
+	})
+
+	t.Run("renders duration and changed services", func(t *testing.T) {
+		t.Parallel()
+
+		tmpl, err := validateTemplate("{{.Stack}} in {{.Duration}}{{range .ChangedServices}} {{.}}{{end}}")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		got := renderTemplate(tmpl, Success, "Deployment completed", "", Metadata{
+			Stack:           "app",
+			Duration:        1500 * time.Millisecond,
+			ChangedServices: []string{"web", "worker"},
+		})
+		expected := "app in 1.5s web worker"
 
 		if got != expected {
 			t.Errorf("expected %q, got %q", expected, got)
