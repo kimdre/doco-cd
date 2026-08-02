@@ -63,6 +63,8 @@ type job struct {
 	unhealthyRestartHistory  map[string][]time.Time            // key is the docker container ID, value is the list of timestamps of recent unhealthy restart events for that container.
 	restartSuppressUntil     map[string]time.Time              // key is the docker container ID that was restarted, value is the timestamp until which follow-up events from that restart should be suppressed.
 	closeChan                chan struct{}
+	readyChan                chan struct{}
+	readyOnce                sync.Once
 	// contextCLIs maps context name (empty string = default) to its Docker CLI and metadata.
 	// Populated at the start of run() and closed when the job exits.
 	contextCLIs map[string]contextCLIEntry
@@ -75,6 +77,7 @@ func newJob(info jobInfo, deployConfigGroupByEvent map[string][]*deployConfig.Co
 		unhealthyRestartHistory:  make(map[string][]time.Time),
 		restartSuppressUntil:     make(map[string]time.Time),
 		closeChan:                make(chan struct{}),
+		readyChan:                make(chan struct{}),
 	}
 }
 
@@ -84,6 +87,16 @@ func (j *job) close() {
 	}
 
 	close(j.closeChan)
+}
+
+func (j *job) signalReady() {
+	if j == nil {
+		return
+	}
+
+	j.readyOnce.Do(func() {
+		close(j.readyChan)
+	})
 }
 
 // schedulerHoldEntry tracks how many concurrent scheduled jobs are holding a
