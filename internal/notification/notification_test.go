@@ -1,14 +1,15 @@
 package notification
 
 import (
-	"context"
+	"encoding/json"
 	"errors"
-	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/kimdre/doco-cd/internal/common/id"
-	"github.com/kimdre/doco-cd/internal/test"
 )
 
 func TestSend(t *testing.T) {
@@ -21,7 +22,7 @@ func TestSend(t *testing.T) {
 	}{
 		{
 			name:       "Valid Service URL",
-			appriseURL: "apprise://%s",
+			appriseURL: "apprise://example.test",
 			// nil means success is expected
 			expectedErr: nil,
 		},
@@ -32,7 +33,6 @@ func TestSend(t *testing.T) {
 		},
 	}
 
-	ctx := context.Background()
 	metadata := Metadata{
 		Repository: "test",
 		Stack:      "test-stack",
@@ -40,26 +40,29 @@ func TestSend(t *testing.T) {
 		JobID:      id.GenID(),
 	}
 
-	appriseComposeYAML := `services:
-  apprise:
-    image: caronc/apprise:latest
-    ports:
-      - "8000"
-    environment:
-      APPRISE_WORKER_COUNT: "1"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/status >/dev/null || exit 1"]
-      interval: 2s
-      timeout: 5s
-      retries: 10
-`
-	stack := test.ComposeUp(ctx, t, test.WithYAML(appriseComposeYAML))
-	endpoint := stack.Endpoint(ctx, t, "apprise", "8000")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST request, got %s", r.Method)
+		}
+
+		var payload appriseRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("failed to decode apprise request: %v", err)
+		}
+
+		if !strings.HasPrefix(payload.NotifyUrls, "apprise://") {
+			w.WriteHeader(http.StatusFailedDependency)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Cannot run tests in parallel because SetAppriseConfig modifies global variables
-			if err := SetAppriseConfig("http://"+endpoint+"/notify", fmt.Sprintf(tc.appriseURL, endpoint), "info", ""); err != nil {
+			if err := SetAppriseConfig(server.URL, tc.appriseURL, "info", ""); err != nil {
 				t.Fatalf("failed to set apprise config: %v", err)
 			}
 
