@@ -88,11 +88,11 @@ Doco-CD has been featured by industry media and technical publications:
 | 2026-04-22 | heise+      | [(German) Watchtower and alternatives: how to keep Docker containers automatically up to date](https://heise.de/-11243856) |
 | 2025-11-14 | selfh.st    | [Weekly: 2025-11-14](https://selfh.st/weekly/2025-11-14/)                                                                  |
 
-## Sponsorship
+## Support the Project
 
 If you would like to support the development of Doco CD, please consider becoming a sponsor on [GitHub Sponsors](https://github.com/sponsors/kimdre).
 
-Doco-CD is proudly backed by the [JetBrains Open Source Support Program](https://www.jetbrains.com/community/opensource/).
+Doco-CD is proudly supported by
 
 <a href="https://jb.gg/OpenSource">
  <picture>
@@ -101,6 +101,8 @@ Doco-CD is proudly backed by the [JetBrains Open Source Support Program](https:/
    <img alt="JetBrains logo" src="https://resources.jetbrains.com/storage/products/company/brand/logos/jetbrains.svg" />
  </picture>
 </a>
+
+[![sponsors badge](https://readme-contribs.as93.net/sponsors/kimdre?shape=circle&fontSize=14)](https://github.com/sponsors/kimdre)
 
 ## Star History
 

@@ -44,11 +44,11 @@ You can find the documentation at [doco.cd](https://doco.cd/latest/).
 
 Contributions are welcome! Please see the [contributing guidelines](https://doco.cd/latest/Contributing/) for more information.
 
-## Sponsorship
+## Support the Project
 
 If you would like to support the development of Doco CD, please consider becoming a sponsor on [GitHub Sponsors](https://github.com/sponsors/kimdre).
 
-Doco-CD is proudly backed by the [JetBrains Open Source Support Program](https://www.jetbrains.com/community/opensource/).
+Doco-CD is proudly supported by
 
 <a href="https://jb.gg/OpenSource">
  <picture>
@@ -57,6 +57,8 @@ Doco-CD is proudly backed by the [JetBrains Open Source Support Program](https:/
    <img alt="JetBrains logo" src="https://resources.jetbrains.com/storage/products/company/brand/logos/jetbrains.svg" />
  </picture>
 </a>
+
+[![sponsors badge](https://readme-contribs.as93.net/sponsors/kimdre?shape=circle&fontSize=14)](https://github.com/sponsors/kimdre)
 
 ## Star History
 
