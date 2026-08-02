@@ -1980,7 +1980,39 @@ func TestStartProject(t *testing.T) {
 		t.Fatalf("failed to stop project: %v", err)
 	}
 
-	time.Sleep(3 * time.Second)
+	assertProjectState := func(wantState string) {
+		t.Helper()
+
+		err = retry.New(
+			retry.Attempts(20),
+			retry.Delay(250*time.Millisecond),
+			retry.DelayType(retry.FixedDelay),
+		).Do(func() error {
+			containers, getErr := GetProjectContainers(ctx, dockerCli, stackName)
+			if getErr != nil {
+				return getErr
+			}
+
+			if len(containers) == 0 {
+				return fmt.Errorf("no containers found for project %q", stackName)
+			}
+
+			states := make([]string, 0, len(containers))
+			for _, cont := range containers {
+				states = append(states, fmt.Sprintf("%s:%s", cont.Labels[api.ServiceLabel], cont.State))
+				if string(cont.State) != wantState {
+					return fmt.Errorf("project %q not yet in state %q, have %v", stackName, wantState, states)
+				}
+			}
+
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	assertProjectState("exited")
 
 	t.Log("Starting project")
 
@@ -1988,6 +2020,8 @@ func TestStartProject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to start project: %v", err)
 	}
+
+	assertProjectState("running")
 }
 
 func TestStopAndStartProjectServices(t *testing.T) {
