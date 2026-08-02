@@ -23,7 +23,12 @@ import (
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
-const dockerIntegrationEnvVar = "DOCO_CD_RUN_DOCKER_INTEGRATION_TESTS"
+const (
+	dockerIntegrationEnvVar                = "DOCO_CD_RUN_DOCKER_INTEGRATION_TESTS"
+	reconciliationIntegrationWaitTimeout   = 45 * time.Second
+	reconciliationIntegrationPollInterval  = 100 * time.Millisecond
+	reconciliationListenerReadyWaitTimeout = 5 * time.Second
+)
 
 func TestReconciliationDockerEventActions(t *testing.T) {
 	requireDockerIntegrationTestGate(t)
@@ -125,7 +130,7 @@ func TestReconciliationDockerEventActions(t *testing.T) {
 			stack := internaltest.ComposeUp(ctx, t,
 				internaltest.WithName(stackName),
 				internaltest.WithYAML(tt.composeYAML),
-				internaltest.WithWaitTimeout(90*time.Second),
+				internaltest.WithWaitTimeout(reconciliationIntegrationWaitTimeout),
 			)
 
 			waitForExpectedDockerEvent(ctx, t, stack.Client, stack.Name, tt.wantAction, func() {
@@ -145,7 +150,7 @@ func TestReconciliationStopEventRestartSuppressionIntegration(t *testing.T) {
 	stack := internaltest.ComposeUp(ctx, t,
 		internaltest.WithName(stackName),
 		internaltest.WithYAML(restartMarkerComposeYAML()),
-		internaltest.WithWaitTimeout(90*time.Second),
+		internaltest.WithWaitTimeout(reconciliationIntegrationWaitTimeout),
 		internaltest.WithCustomLabel(map[string]string{
 			docker.DocoCDLabels.Metadata.Manager:     app.Name,
 			docker.DocoCDLabels.Source.Name:          repositoryName,
@@ -181,8 +186,7 @@ func TestReconciliationStopEventRestartSuppressionIntegration(t *testing.T) {
 
 	go reconcileJob.run(runCtx)
 
-	// Give the reconciliation listener a brief moment to subscribe before triggering the restart.
-	time.Sleep(1 * time.Second)
+	waitForLocalReconciliationJobReady(ctx, t, reconcileJob, reconciliationListenerReadyWaitTimeout)
 
 	containerID := stack.ServiceContainerID(ctx, t, "app")
 	restartTimeout := 1
@@ -208,7 +212,7 @@ func TestCleanupObsoleteAutoDiscoveredContainers_EmptyDiscoveredConfigs_RemovesS
 	stack := internaltest.ComposeUp(ctx, t,
 		internaltest.WithName(stackName),
 		internaltest.WithYAML(runningServiceComposeYAML()),
-		internaltest.WithWaitTimeout(90*time.Second),
+		internaltest.WithWaitTimeout(reconciliationIntegrationWaitTimeout),
 		internaltest.WithCustomLabel(map[string]string{
 			docker.DocoCDLabels.Metadata.Manager:         app.Name,
 			docker.DocoCDLabels.Source.URL:               repoURL,
@@ -297,7 +301,21 @@ func waitForStackContainersRemoved(ctx context.Context, t *testing.T, cli client
 			t.Fatalf("timed out waiting for stack %q containers to be removed, still found %d", stackName, len(containers))
 		}
 
-		time.Sleep(250 * time.Millisecond)
+		time.Sleep(reconciliationIntegrationPollInterval)
+	}
+}
+
+func waitForLocalReconciliationJobReady(ctx context.Context, t *testing.T, reconcileJob *job, timeout time.Duration) {
+	t.Helper()
+
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	select {
+	case <-reconcileJob.readyChan:
+		return
+	case <-waitCtx.Done():
+		t.Fatalf("timed out waiting for reconciliation listener readiness: %v", waitCtx.Err())
 	}
 }
 
@@ -369,7 +387,7 @@ func waitForBootMarkerCount(ctx context.Context, t *testing.T, stack *internalte
 			return
 		}
 
-		time.Sleep(250 * time.Millisecond)
+		time.Sleep(reconciliationIntegrationPollInterval)
 	}
 }
 
@@ -388,7 +406,7 @@ func assertBootMarkerCountStable(ctx context.Context, t *testing.T, stack *inter
 			return
 		}
 
-		time.Sleep(250 * time.Millisecond)
+		time.Sleep(reconciliationIntegrationPollInterval)
 	}
 }
 
@@ -433,8 +451,8 @@ func unhealthyOnDemandComposeYAML() string {
 func restartMarkerComposeYAML() string {
 	return `services:
   app:
-	image: alpine:3.20
-	restart: "no"
-	command: ["sh", "-c", "echo BOOT_MARKER; trap : TERM INT; while true; do sleep 1; done"]
+    image: alpine:3.20
+    restart: "no"
+    command: ["sh", "-c", "echo BOOT_MARKER; trap : TERM INT; while true; do sleep 1; done"]
 `
 }
