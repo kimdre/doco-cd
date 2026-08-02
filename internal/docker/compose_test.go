@@ -36,6 +36,7 @@ import (
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
+	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/filesystem"
@@ -126,6 +127,50 @@ func TestLoadCompose(t *testing.T) {
 	if len(project.Services) != 1 {
 		t.Fatalf("expected 1 service, got %d", len(project.Services))
 	}
+}
+
+// waitForSingleRunningProjectContainerID waits until exactly one running container
+// carrying the doco-cd deployment label for deployName exists, and returns its ID.
+//
+// This is deliberately more specific than GetContainerID, which matches by name
+// substring across *all* containers on the host, including stopped ones. During a
+// force_recreate deployment there is a brief window where the previous container is
+// still present (stopping/being removed) while the new one has already started; if
+// both match the substring, GetContainerID can non-deterministically return the
+// stale container's ID, causing intermittent failures when reading its (now-gone)
+// bind-mounted content. Filtering to running containers scoped by the deployment
+// label avoids that race.
+func waitForSingleRunningProjectContainerID(ctx context.Context, t *testing.T, cli client.APIClient, deployName string, timeout time.Duration) (string, error) {
+	t.Helper()
+
+	var containerID string
+
+	const pollInterval = 250 * time.Millisecond
+
+	attemptCount := max(timeout/pollInterval, 1)
+
+	attempts := uint(attemptCount) + 1 //nolint:gosec // attemptCount is clamped to be >= 1 and derived from a small test timeout
+
+	err := retry.New(
+		retry.Attempts(attempts),
+		retry.Delay(pollInterval),
+		retry.DelayType(retry.FixedDelay),
+	).Do(func() error {
+		containers, err := GetLabeledContainers(ctx, cli, DocoCDLabels.Deployment.Name, deployName, false)
+		if err != nil {
+			return err
+		}
+
+		if len(containers) != 1 {
+			return fmt.Errorf("expected exactly 1 running container for deployment %q, got %d", deployName, len(containers))
+		}
+
+		containerID = containers[0].ID
+
+		return nil
+	})
+
+	return containerID, err
 }
 
 func TestDeployCompose(t *testing.T) {
@@ -310,13 +355,15 @@ compose_files:
 			t.Fatal("expected at least one labeled container, got none")
 		}
 
-		containerID, err := GetContainerID(dockerCli.Client(), deployConf.Name)
+		// Use the compose project label (scoped to this stack) and only running
+		// containers to find the container ID. GetContainerID matches by name
+		// substring across *all* containers on the host (including stopped
+		// ones), which can race with force_recreate: a stale, exiting/removed
+		// container from the previous recreation cycle can still match and get
+		// picked, causing flaky reads of its (now-gone) mount content.
+		containerID, err := waitForSingleRunningProjectContainerID(ctx, t, dockerClient, deployConf.Name, 10*time.Second)
 		if err != nil {
 			t.Fatal(err)
-		}
-
-		if containerID == "" {
-			t.Fatal("expected container ID, got empty string")
 		}
 
 		t.Log("Finished deployment with no errors")
