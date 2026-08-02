@@ -38,6 +38,7 @@ import (
 const (
 	githubPayloadFile          = "testdata/github_payload.json"
 	githubPayloadFileSwarmMode = "testdata/github_payload_swarm_mode.json"
+	webhookTestPollInterval    = 100 * time.Millisecond
 	composeContent             = `services:
   nginx:
     image: nginx:latest
@@ -221,34 +222,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 			t.Fatal("Test container not found in stack")
 		}
 
-		deadline := time.Now().Add(15 * time.Second)
-
-		for {
-			testContainer, err := dockerCli.Client().ContainerInspect(ctx, testContainerID, client.ContainerInspectOptions{})
-			if err != nil {
-				if time.Now().After(deadline) {
-					t.Fatalf("Failed to inspect container: %v", err)
-				}
-
-				time.Sleep(500 * time.Millisecond)
-
-				continue
-			}
-
-			portKey, _ := network.ParsePort("80/tcp")
-
-			networkPort := testContainer.Container.NetworkSettings.Ports[portKey]
-			if len(networkPort) > 0 {
-				testContainerPort = networkPort[0].HostPort
-				break
-			}
-
-			if time.Now().After(deadline) {
-				t.Fatal("Test container port not published")
-			}
-
-			time.Sleep(500 * time.Millisecond)
-		}
+		testContainerPort = waitForPublishedContainerPort(ctx, t, dockerCli.Client(), testContainerID, 15*time.Second)
 	}
 
 	testURL := "http://127.0.0.1:" + testContainerPort
@@ -256,30 +230,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 	httpClient := &http.Client{Timeout: 3 * time.Second}
 
-	resp := &http.Response{}
-	for i := range 10 {
-		resp, err = httpClient.Get(testURL) // #nosec G107
-		if err != nil {
-			t.Logf("Failed to make GET request to test container (attempt %d): %v", i+1, err)
-			time.Sleep(3 * time.Second) // Wait before retrying
-
-			continue
-		}
-
-		if resp.StatusCode == http.StatusOK {
-			t.Logf("Successfully connected to test container on attempt %d", i+1)
-			break
-		}
-
-		t.Logf("Test container returned status code %d on attempt %d", resp.StatusCode, i+1)
-
-		err = resp.Body.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		time.Sleep(3 * time.Second) // Wait before retrying
-	}
+	resp := waitForHTTPStatusOK(ctx, t, httpClient, testURL, 15*time.Second)
 
 	t.Cleanup(
 		func() {
@@ -307,6 +258,78 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 	if bodyString != string(fileContent) {
 		t.Fatalf("Test container returned unexpected body: got '%v' but want '%v'", bodyString, string(fileContent))
+	}
+}
+
+func waitForPublishedContainerPort(ctx context.Context, t *testing.T, cli client.APIClient, containerID string, timeout time.Duration) string {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+
+	portKey, err := network.ParsePort("80/tcp")
+	if err != nil {
+		t.Fatalf("failed to parse container port: %v", err)
+	}
+
+	for {
+		testContainer, err := cli.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
+		if err == nil {
+			networkPort := testContainer.Container.NetworkSettings.Ports[portKey]
+			if len(networkPort) > 0 {
+				return networkPort[0].HostPort
+			}
+		}
+
+		if time.Now().After(deadline) {
+			if err != nil {
+				t.Fatalf("failed to inspect container: %v", err)
+			}
+
+			t.Fatal("test container port not published")
+		}
+
+		time.Sleep(webhookTestPollInterval)
+	}
+}
+
+func waitForHTTPStatusOK(ctx context.Context, t *testing.T, httpClient *http.Client, url string, timeout time.Duration) *http.Response {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	attempt := 0
+
+	for {
+		attempt++
+
+		resp, err := httpClient.Get(url) // #nosec G107
+		if err == nil {
+			if resp.StatusCode == http.StatusOK {
+				t.Logf("Successfully connected to test container on attempt %d", attempt)
+				return resp
+			}
+
+			t.Logf("Test container returned status code %d on attempt %d", resp.StatusCode, attempt)
+
+			if closeErr := resp.Body.Close(); closeErr != nil {
+				t.Fatal(closeErr)
+			}
+		} else {
+			t.Logf("Failed to make GET request to test container (attempt %d): %v", attempt, err)
+		}
+
+		if time.Now().After(deadline) {
+			if err != nil {
+				t.Fatalf("timed out waiting for test container HTTP readiness: %v", err)
+			}
+
+			t.Fatalf("timed out waiting for test container HTTP readiness: last status %d", resp.StatusCode)
+		}
+
+		select {
+		case <-ctx.Done():
+			t.Fatalf("context cancelled waiting for test container HTTP readiness: %v", ctx.Err())
+		case <-time.After(webhookTestPollInterval):
+		}
 	}
 }
 
