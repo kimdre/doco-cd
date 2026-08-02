@@ -137,192 +137,176 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 	return "http://localhost:" + mappedPort, initData.RootToken
 }
 
-func TestProvider_GetSecret_OpenBao(t *testing.T) {
+func TestProvider_OpenBao(t *testing.T) {
 	siteUrl, accessToken := setupOpenBaoContainers(t)
-
-	testCases := []struct {
-		name      string
-		secretRef string
-		expectErr bool
-	}{
-		{
-			name:      "Valid KV secret reference in default namespace",
-			secretRef: "kv:rootSecret:creds:password", // #nosec G101
-			expectErr: false,
-		},
-		{
-			name:      "Valid KV secret reference in root namespace with slash",
-			secretRef: "kv:/:rootSecret:creds:password", // #nosec G101
-			expectErr: false,
-		},
-		{
-			name:      "Valid KV secret reference in root namespace",
-			secretRef: "kv:root:rootSecret:creds:password", // #nosec G101
-			expectErr: false,
-		},
-		{
-			name:      "Valid KV secret reference in test namespace",
-			secretRef: "kv:test:testSecret:creds:password", // #nosec G101
-			expectErr: false,
-		},
-		{
-			name:      "Invalid secret reference missing parts",
-			secretRef: "kv:rootSecret:creds", // #nosec G101
-			expectErr: true,
-		},
-		{
-			name:      "Non-existent secret",
-			secretRef: "kv:rootSecret:invalid:password",
-			expectErr: true,
-		},
-		{
-			name:      "Non-existent namespace",
-			secretRef: "kv:invalid:rootSecret:creds:password", // #nosec G101
-			expectErr: true,
-		},
-		{
-			name:      "Valid PKI cert reference",
-			secretRef: "pki:pki:test.example.com", // #nosec G101
-			expectErr: false,
-		},
-		{
-			name:      "Invalid reference format",
-			secretRef: "pki:pki",
-			expectErr: true,
-		},
-		{
-			name:      "Non-existent PKI cert",
-			secretRef: "pki:pki:nonexistent.example.com", // #nosec G101
-			expectErr: true,
-		},
-		{
-			name:      "Invalid engine type",
-			secretRef: "invalid:creds:password", // #nosec G101
-			expectErr: true,
-		},
-	}
 
 	provider, err := NewProvider(t.Context(), siteUrl, accessToken)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			secret, err := provider.GetSecret(t.Context(), tc.secretRef)
-			if tc.expectErr && err == nil {
-				t.Errorf("Expected error but got none")
-			}
-
-			if !tc.expectErr && err != nil {
-				t.Errorf("Did not expect error but got: %v", err)
-			}
-
-			if !tc.expectErr && secret == "" {
-				t.Errorf("Expected a secret value but got empty string")
-			}
-		})
-	}
-}
-
-func TestProvider_ResolveSecretReferences_OpenBao(t *testing.T) {
-	siteUrl, accessToken := setupOpenBaoContainers(t)
-
-	testCases := []struct {
-		name             string
-		secretsToResolve map[string]string
-		expectedResolved secrettypes.ResolvedSecrets
-	}{
-		{
-			name: "Single secret from default namespace",
-			secretsToResolve: map[string]string{
-				"ROOT_PASSWORD": "kv:rootSecret:creds:password", // #nosec G101
+	t.Run("GetSecret", func(t *testing.T) {
+		testCases := []struct {
+			name      string
+			secretRef string
+			expectErr bool
+		}{
+			{
+				name:      "Valid KV secret reference in default namespace",
+				secretRef: "kv:rootSecret:creds:password", // #nosec G101
+				expectErr: false,
 			},
-			expectedResolved: secrettypes.ResolvedSecrets{
-				"ROOT_PASSWORD": rootCredentials.password,
+			{
+				name:      "Valid KV secret reference in root namespace with slash",
+				secretRef: "kv:/:rootSecret:creds:password", // #nosec G101
+				expectErr: false,
 			},
-		},
-		{
-			name: "Multiple secrets from root namespace",
-			secretsToResolve: map[string]string{
-				"ROOT_PASSWORD": "kv:root:rootSecret:creds:password", // #nosec G101
-				"ROOT_USERNAME": "kv:root:rootSecret:creds:username", // #nosec G101
+			{
+				name:      "Valid KV secret reference in root namespace",
+				secretRef: "kv:root:rootSecret:creds:password", // #nosec G101
+				expectErr: false,
 			},
-			expectedResolved: secrettypes.ResolvedSecrets{
-				"ROOT_PASSWORD": rootCredentials.password,
-				"ROOT_USERNAME": rootCredentials.username,
+			{
+				name:      "Valid KV secret reference in test namespace",
+				secretRef: "kv:test:testSecret:creds:password", // #nosec G101
+				expectErr: false,
 			},
-		},
-		{
-			name: "Multiple secrets from test namespace",
-			secretsToResolve: map[string]string{
-				"TEST_PASSWORD": "kv:test:testSecret:creds:password", // #nosec G101
-				"TEST_USERNAME": "kv:test:testSecret:creds:username", // #nosec G101
+			{
+				name:      "Invalid secret reference missing parts",
+				secretRef: "kv:rootSecret:creds", // #nosec G101
+				expectErr: true,
 			},
-			expectedResolved: secrettypes.ResolvedSecrets{
-				"TEST_PASSWORD": testCredentials.password,
-				"TEST_USERNAME": testCredentials.username,
+			{
+				name:      "Non-existent secret",
+				secretRef: "kv:rootSecret:invalid:password",
+				expectErr: true,
 			},
-		},
-		{
-			name: "Multiple secrets from root and test namespace",
-			secretsToResolve: map[string]string{
-				"ROOT_PASSWORD": "kv:root:rootSecret:creds:password", // #nosec G101
-				"TEST_PASSWORD": "kv:test:testSecret:creds:password", // #nosec G101
+			{
+				name:      "Non-existent namespace",
+				secretRef: "kv:invalid:rootSecret:creds:password", // #nosec G101
+				expectErr: true,
 			},
-			expectedResolved: secrettypes.ResolvedSecrets{
-				"ROOT_PASSWORD": rootCredentials.password,
-				"TEST_PASSWORD": testCredentials.password,
+			{
+				name:      "Valid PKI cert reference",
+				secretRef: "pki:pki:test.example.com", // #nosec G101
+				expectErr: false,
 			},
-		},
-	}
+			{
+				name:      "Invalid reference format",
+				secretRef: "pki:pki",
+				expectErr: true,
+			},
+			{
+				name:      "Non-existent PKI cert",
+				secretRef: "pki:pki:nonexistent.example.com", // #nosec G101
+				expectErr: true,
+			},
+			{
+				name:      "Invalid engine type",
+				secretRef: "invalid:creds:password", // #nosec G101
+				expectErr: true,
+			},
+		}
 
-	provider, err := NewProvider(t.Context(), siteUrl, accessToken)
-	if err != nil {
-		t.Fatalf("Failed to create provider: %v", err)
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			resolved, err := provider.ResolveSecretReferences(t.Context(), tc.secretsToResolve)
-			if err != nil {
-				t.Fatalf("Failed to resolve secrets: %v", err)
-			}
-
-			for key, expectedValue := range tc.expectedResolved {
-				if resolved[key] != expectedValue {
-					t.Errorf("For key %s, expected value %s but got %s", key, expectedValue, resolved[key])
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				secret, err := provider.GetSecret(t.Context(), tc.secretRef)
+				if tc.expectErr && err == nil {
+					t.Errorf("Expected error but got none")
 				}
-			}
-		})
-	}
-}
 
-func TestProvider_ResolveCertificate_OpenBao(t *testing.T) {
-	siteUrl, accessToken := setupOpenBaoContainers(t)
+				if !tc.expectErr && err != nil {
+					t.Errorf("Did not expect error but got: %v", err)
+				}
 
-	provider, err := NewProvider(t.Context(), siteUrl, accessToken)
-	if err != nil {
-		t.Fatalf("Failed to create provider: %v", err)
-	}
+				if !tc.expectErr && secret == "" {
+					t.Errorf("Expected a secret value but got empty string")
+				}
+			})
+		}
+	})
 
-	certRef := "pki:pki:test.example.com"
+	t.Run("ResolveSecretReferences", func(t *testing.T) {
+		testCases := []struct {
+			name             string
+			secretsToResolve map[string]string
+			expectedResolved secrettypes.ResolvedSecrets
+		}{
+			{
+				name: "Single secret from default namespace",
+				secretsToResolve: map[string]string{
+					"ROOT_PASSWORD": "kv:rootSecret:creds:password", // #nosec G101
+				},
+				expectedResolved: secrettypes.ResolvedSecrets{
+					"ROOT_PASSWORD": rootCredentials.password,
+				},
+			},
+			{
+				name: "Multiple secrets from root namespace",
+				secretsToResolve: map[string]string{
+					"ROOT_PASSWORD": "kv:root:rootSecret:creds:password", // #nosec G101
+					"ROOT_USERNAME": "kv:root:rootSecret:creds:username", // #nosec G101
+				},
+				expectedResolved: secrettypes.ResolvedSecrets{
+					"ROOT_PASSWORD": rootCredentials.password,
+					"ROOT_USERNAME": rootCredentials.username,
+				},
+			},
+			{
+				name: "Multiple secrets from test namespace",
+				secretsToResolve: map[string]string{
+					"TEST_PASSWORD": "kv:test:testSecret:creds:password", // #nosec G101
+					"TEST_USERNAME": "kv:test:testSecret:creds:username", // #nosec G101
+				},
+				expectedResolved: secrettypes.ResolvedSecrets{
+					"TEST_PASSWORD": testCredentials.password,
+					"TEST_USERNAME": testCredentials.username,
+				},
+			},
+			{
+				name: "Multiple secrets from root and test namespace",
+				secretsToResolve: map[string]string{
+					"ROOT_PASSWORD": "kv:root:rootSecret:creds:password", // #nosec G101
+					"TEST_PASSWORD": "kv:test:testSecret:creds:password", // #nosec G101
+				},
+				expectedResolved: secrettypes.ResolvedSecrets{
+					"ROOT_PASSWORD": rootCredentials.password,
+					"TEST_PASSWORD": testCredentials.password,
+				},
+			},
+		}
 
-	cert, err := provider.GetSecret(t.Context(), certRef)
-	if err != nil {
-		t.Fatalf("Failed to get certificate: %v", err)
-	}
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				resolved, err := provider.ResolveSecretReferences(t.Context(), tc.secretsToResolve)
+				if err != nil {
+					t.Fatalf("Failed to resolve secrets: %v", err)
+				}
 
-	if cert == "" {
-		t.Errorf("Expected a certificate value but got empty string")
-	}
+				for key, expectedValue := range tc.expectedResolved {
+					if resolved[key] != expectedValue {
+						t.Errorf("For key %s, expected value %s but got %s", key, expectedValue, resolved[key])
+					}
+				}
+			})
+		}
+	})
 
-	// Check if the value looks like a PEM encoded certificate
-	if !bytes.Contains([]byte(cert), []byte("-----BEGIN CERTIFICATE-----")) {
-		t.Errorf("Expected PEM encoded certificate but got: %s", cert)
-	}
+	t.Run("ResolveCertificate", func(t *testing.T) {
+		certRef := "pki:pki:test.example.com"
+
+		cert, err := provider.GetSecret(t.Context(), certRef)
+		if err != nil {
+			t.Fatalf("Failed to get certificate: %v", err)
+		}
+
+		if cert == "" {
+			t.Errorf("Expected a certificate value but got empty string")
+		}
+
+		// Check if the value looks like a PEM encoded certificate
+		if !bytes.Contains([]byte(cert), []byte("-----BEGIN CERTIFICATE-----")) {
+			t.Errorf("Expected PEM encoded certificate but got: %s", cert)
+		}
+	})
 }
