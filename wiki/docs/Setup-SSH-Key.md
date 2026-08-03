@@ -7,13 +7,14 @@ tags:
 # Setup SSH Key
 
 This page shows how to set up SSH keys for your deployments.
+Use this if your repository URL starts with `git@` or `ssh://`.
 
 !!! info "Using GitHub Apps"
     If you use GitHub, you can also authenticate using a [GitHub App](Git-Settings.md#github-apps).
 
 !!! quote "About SSH Keys"
     SSH keys are used to authenticate with your Git provider (GitHub, GitLab, Bitbucket, etc.) and to clone or fetch your repositories via SSH.
-    You need to set up SSH keys if you use SSH URLs for your Git repositories (e.g. `git@github.com:kimdre/doco-cd.git`).
+    You need to set up SSH keys if you use SSH URLs for your Git repositories (for example `git@github.com:kimdre/doco-cd.git`).
 
 ## Generate SSH Key Pair
 
@@ -28,9 +29,8 @@ You will be prompted to enter a file path to save the key pair and a passphrase 
 If you leave the file path empty, the keys will be saved in the default location (`~/.ssh/id_ed25519` and `~/.ssh/id_ed25519.pub`).
 
 ## Add Public Key to Git Provider
-After generating the SSH key pair, add the public key (`id_ed25519.pub` or the file path you specified) 
-to your Git provider.
-You can either add the public key as a Deploy Key for a specific repository/organization or as an SSH key for your user account.
+After generating the SSH key pair, add the public key (`id_ed25519.pub` or the file path you specified) to your Git provider.
+You can add it as a deploy key for one repository or as an SSH key for your user account, depending on what your provider supports.
 
 ### Test SSH Connection
 You can test the SSH connection to your Git provider using the following command([GitHub Docs](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection)):

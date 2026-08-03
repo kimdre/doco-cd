@@ -6,23 +6,23 @@ tags:
 # Core Concepts
 
 This page explains the key terms and concepts used throughout the Doco-CD documentation.
-Familiarity with [Git](https://git-scm.com/), [Docker](https://docs.docker.com/), and basic [GitOps](https://about.gitlab.com/topics/gitops/) principles is assumed.
+You only need basic familiarity with [Git](https://git-scm.com/) and [Docker](https://docs.docker.com/).
 
 ## How Doco-CD Works
 
-Doco-CD follows a **GitOps** model: your Git repository is the single source of truth for both application code and deployment configuration.
-When a change is pushed to Git, Doco-CD detects it (via a webhook or poll), clones the repository, and applies the desired state to your Docker environment.
+Doco-CD follows a **[GitOps](https://about.gitlab.com/topics/gitops/)** model: your Git repository is the single source of truth for both application code and deployment configuration.
+When you push a change to Git, Doco-CD detects it through a webhook or poll, clones the repository, and applies the desired state to your Docker environment.
 
 ---
 
 ## Deployment Targets
 
 ### Project
-A named collection of services defined in one or more `docker-compose.yml` files, deployed together in a standalone Docker environment.
+A named collection of services defined in one or more `docker-compose.yml` files and deployed together in a standalone Docker environment.
 Each project has a unique name used to identify it both within Doco-CD and in the Docker environment.
 
 ### Stack
-The equivalent of a project when [Docker Swarm mode](Advanced/Swarm-Mode.md) is enabled.
+The Swarm-mode equivalent of a project when [Docker Swarm mode](Advanced/Swarm-Mode.md) is enabled.
 Stacks are deployed and managed by Docker Swarm and support multi-node distribution and high availability.
 Doco-CD automatically detects whether the Docker daemon is running in Swarm mode and deploys accordingly.
 

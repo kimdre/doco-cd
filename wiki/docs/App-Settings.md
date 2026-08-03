@@ -25,11 +25,11 @@ The application can be configured using the following environment variables:
 | `METRICS_PORT`               | number  | Port on which the application will expose [Prometheus metrics](Endpoints/Metrics.md)                                                                                                                                                                  | `9120`                                          |
 | `PASS_ENV`                   | boolean | Controls whether environment variables from the doco-cd container should be passed to the deployment environment for docker compose variable interpolation. Use with caution, as this may expose sensitive information to the deployment environment. | `false`                                         |
 | `POLL_CONFIG`                | list    | A list/array of poll configurations provided in YAML format (see [Poll Settings](Poll-Settings.md))                                                                                                                                                   | Ignored when not specified                      |
-| `POLL_CONFIG_FILE`           | string  | Path to the file inside the container containing the poll configurations in YAML format (see [Poll Settings](Poll-Settings.md))                                                                                                                       | gnored when not specified                       |
+| `POLL_CONFIG_FILE`           | string  | Path to the file inside the container containing the poll configurations in YAML format (see [Poll Settings](Poll-Settings.md))                                                                                                                       | Ignored when not specified                      |
 | `SCHEDULER_ENABLED`          | boolean | Controls whether this doco-cd instance starts the built-in [job scheduler](Advanced/Job-Scheduling.md). Disable it on secondary/[self-updater](Advanced/Self-Updating.md) instances that should not trigger scheduled jobs.                           | `true`                                          |
 | `TZ`                         | string  | The [timezone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) used in the container.                                                                                                                                                   | `UTC`                                           |
 | `WEBHOOK_SECRET`             | string  | Secret that is used by webhooks for authentication to the application                                                                                                                                                                                 | Webhook endpoint is disabled when not specified |
-| `WEBHOOK_SECRET_FILE`        | string  | Path to the file containing the Git access token (Mutually exclusive with `WEBHOOK_SECRET`).                                                                                                                                                          |                                                 |
+| `WEBHOOK_SECRET_FILE`        | string  | Path to the file containing the webhook secret (mutually exclusive with `WEBHOOK_SECRET`).                                                                                                                                                           |                                                 |
 
 ## Notification Settings
 
@@ -61,12 +61,12 @@ services:
       - .env
 ```
 
-The settings in the `.env` file should be in the format `KEY=VALUE` or `KEY: VALUE` and separated by a newline.
+The settings in the `.env` file must be in the format `#!ini KEY=VALUE` or `#!yaml KEY: VALUE`, one setting per line.
 
 Example `.env` file:
-```yaml title=".env"
-GIT_ACCESS_TOKEN: xxx
-WEBHOOK_SECRET: xxx
+```ini title=".env"
+GIT_ACCESS_TOKEN=xxx
+WEBHOOK_SECRET=xxx
 ```
 
 ### With `environment`
