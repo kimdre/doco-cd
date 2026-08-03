@@ -168,18 +168,18 @@ Use `auto_discovery: true` to enable it with defaults, or use the object form be
     <div class="grid cards" markdown>
 
     - With a file structure like this
-      ``` title="File structure"
+      ```tree title="File structure"
       .doco-cd.yml
       apps/
-      ├── wordpress/
-      │   ├── docker-compose.yml
-      │   └── .env
-      ├── nginx/
-      │   ├── docker-compose.yaml
-      │   └── configs/
-      │       └── nginx.conf
-      └── misc/
-          └── image.png
+        wordpress/
+          docker-compose.yml
+          .env
+        nginx/
+          docker-compose.yaml
+          configs/
+            nginx.conf
+        misc/
+          image.png
       ```
     
     - And a `.doco-cd.yml` with the following content:
@@ -254,18 +254,18 @@ The following fields are always inherited from the base/root deployment config:
 
 !!! example
 
-    ``` title="File structure"
+    ```tree title="File structure"
     .doco-cd.yml
     apps/
-    ├── wordpress/
-    │   ├── .doco-cd.yml
-    │   ├── docker-compose.yml
-    │   └── .env
-    ├── nginx/
-    │   ├── .doco-cd.yml
-    │   └── docker-compose.yaml
-    └── misc/
-        └── image.png
+      wordpress/
+        .doco-cd.yml
+        docker-compose.yml
+        .env
+      nginx/
+        .doco-cd.yml
+        docker-compose.yaml
+      misc/
+        image.png
     ```
 
     ```yaml title=".doco-cd.yml (root)"

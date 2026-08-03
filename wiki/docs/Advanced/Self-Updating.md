@@ -27,13 +27,12 @@ The setup can look like this:
 
 ## Example layout
 
-```text
-.
-├── .doco-cd.yaml
-├── .doco-cd.updater.yaml
-└── doco-cd/
-    ├── compose.main.yaml
-    └── compose.updater.yaml
+```tree
+.doco-cd.yaml
+.doco-cd.updater.yaml
+doco-cd/
+  compose.main.yaml
+  compose.updater.yaml
 ```
 
 ## Deployment configs
