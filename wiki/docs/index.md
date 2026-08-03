@@ -84,6 +84,7 @@ Doco-CD has been featured by industry media and technical publications:
 
 | Date       | Publication | Article                                                                                                                    |
 |------------|-------------|----------------------------------------------------------------------------------------------------------------------------|
+| 2026-07-30 | c't Netherlands | [(Dutch) Docker-containers updaten: drie opties voor automatisch updaten](https://www.ct.nl/workshops/docker-containers-updaten-drie-opties-voor-automatisch-updaten/)     |
 | 2026-05-01 | c't Magazin | [(German) c't 10/2026](https://www.heise.de/select/ct/2026/10/2609115553794560316)                                         |
 | 2026-04-22 | heise+      | [(German) Watchtower and alternatives: how to keep Docker containers automatically up to date](https://heise.de/-11243856) |
 | 2025-11-14 | selfh.st    | [Weekly: 2025-11-14](https://selfh.st/weekly/2025-11-14/)                                                                  |
