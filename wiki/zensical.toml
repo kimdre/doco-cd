@@ -207,3 +207,5 @@ configurations = [
     "*"
   ] }
 ]
+
+[project.plugins.markdown-exec]
