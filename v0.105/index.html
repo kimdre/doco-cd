@@ -2587,7 +2587,6 @@ that automatically deploys and updates Docker Compose projects and Swarm stacks 
 <li><a data-preview="" href="Advanced/Self-Updating/">Self-Updating</a> - Run two Doco-CD instances that manage each other for self-updating.</li>
 </ol>
 <h2 id="supported-git-providers">Supported Git Providers<a class="headerlink" href="#supported-git-providers" title="Permanent link">&para;</a></h2>
-<p>See more info here: <a data-preview="" href="Setup-Access-Token/#git-providers">Setup Webhook</a></p>
 <ul>
 <li>GitHub</li>
 <li>GitLab</li>
@@ -2596,6 +2595,7 @@ that automatically deploys and updates Docker Compose projects and Swarm stacks 
 <li>Gogs</li>
 <li>Azure DevOps* (<a data-preview="" href="Setup-Webhook/#setup-in-git-providers-azure-devops"><em>Service Hooks</em> not supported</a>)</li>
 </ul>
+<p>More info at <a data-preview="" href="Setup-Access-Token/#git-providers">Setup Access Token</a> and <a data-preview="" href="Setup-Webhook/">Setup Webhook</a></p>
 <h2 id="releases-and-changelog">Releases and Changelog<a class="headerlink" href="#releases-and-changelog" title="Permanent link">&para;</a></h2>
 <p><a href="https://github.com/kimdre/doco-cd/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/kimdre/doco-cd?include_prereleases&amp;sort=semver&amp;display_name=release&amp;style=flat-square&amp;label=Latest%20Version&amp;color=%234CBB17" /></a>
 <img alt="GitHub Release Date" src="https://img.shields.io/github/release-date/kimdre/doco-cd?style=flat-square&amp;label=Release%20Date&amp;color=%234CBB17" /></p>
@@ -2604,8 +2604,8 @@ that automatically deploys and updates Docker Compose projects and Swarm stacks 
 <p>You can find the Docker image in the <a href="https://github.com/kimdre/doco-cd/pkgs/container/doco-cd">GitHub Container Registry</a>.</p>
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>docker<span class="w"> </span>pull<span class="w"> </span>ghcr.io/kimdre/doco-cd:latest
 </span></code></pre></div>
-<p>To use a specific version, replace <code>latest</code> with the desired release version without the leading <code>v</code> (e.g. <code>0.105.0</code>):</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>ghcr.io/kimdre/doco-cd:0.105.0
+<p>To use a specific version, replace <code>latest</code> with the desired release version without the leading <code>v</code> (e.g. <code>0.105.1</code>):</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>ghcr.io/kimdre/doco-cd:0.105.1
 </span></code></pre></div>
 <h2 id="community">Community<a class="headerlink" href="#community" title="Permanent link">&para;</a></h2>
 <ul>
@@ -2625,6 +2625,11 @@ that automatically deploys and updates Docker Compose projects and Swarm stacks 
 </tr>
 </thead>
 <tbody>
+<tr>
+<td>2026-07-30</td>
+<td>c't Netherlands</td>
+<td><a href="https://www.ct.nl/workshops/docker-containers-updaten-drie-opties-voor-automatisch-updaten/">(Dutch) Docker-containers updaten: drie opties voor automatisch updaten</a></td>
+</tr>
 <tr>
 <td>2026-05-01</td>
 <td>c't Magazin</td>

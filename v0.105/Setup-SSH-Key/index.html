@@ -2483,7 +2483,8 @@
 
 
 <h1 id="setup-ssh-key">Setup SSH Key<a class="headerlink" href="#setup-ssh-key" title="Permanent link">&para;</a></h1>
-<p>This page shows how to set up SSH keys for your deployments.</p>
+<p>This page shows how to set up SSH keys for your deployments.
+Use this if your repository URL starts with <code>git@</code> or <code>ssh://</code>.</p>
 <div class="admonition info">
 <p class="admonition-title">Using GitHub Apps</p>
 <p>If you use GitHub, you can also authenticate using a <a data-preview="" href="../Git-Settings/#github-apps">GitHub App</a>.</p>
@@ -2491,7 +2492,7 @@
 <div class="admonition quote">
 <p class="admonition-title">About SSH Keys</p>
 <p>SSH keys are used to authenticate with your Git provider (GitHub, GitLab, Bitbucket, etc.) and to clone or fetch your repositories via SSH.
-You need to set up SSH keys if you use SSH URLs for your Git repositories (e.g. <code>git@github.com:kimdre/doco-cd.git</code>).</p>
+You need to set up SSH keys if you use SSH URLs for your Git repositories (for example <code>git@github.com:kimdre/doco-cd.git</code>).</p>
 </div>
 <h2 id="generate-ssh-key-pair">Generate SSH Key Pair<a class="headerlink" href="#generate-ssh-key-pair" title="Permanent link">&para;</a></h2>
 <p>You can generate a new SSH key pair using the <code>ssh-keygen</code> command. Run the following command in your terminal:</p>
@@ -2501,9 +2502,8 @@ You need to set up SSH keys if you use SSH URLs for your Git repositories (e.g. 
 You will be prompted to enter a file path to save the key pair and a passphrase (optional). 
 If you leave the file path empty, the keys will be saved in the default location (<code>~/.ssh/id_ed25519</code> and <code>~/.ssh/id_ed25519.pub</code>).</p>
 <h2 id="add-public-key-to-git-provider">Add Public Key to Git Provider<a class="headerlink" href="#add-public-key-to-git-provider" title="Permanent link">&para;</a></h2>
-<p>After generating the SSH key pair, add the public key (<code>id_ed25519.pub</code> or the file path you specified) 
-to your Git provider.
-You can either add the public key as a Deploy Key for a specific repository/organization or as an SSH key for your user account.</p>
+<p>After generating the SSH key pair, add the public key (<code>id_ed25519.pub</code> or the file path you specified) to your Git provider.
+You can add it as a deploy key for one repository or as an SSH key for your user account, depending on what your provider supports.</p>
 <h3 id="test-ssh-connection">Test SSH Connection<a class="headerlink" href="#test-ssh-connection" title="Permanent link">&para;</a></h3>
 <p>You can test the SSH connection to your Git provider using the following command(<a href="https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection">GitHub Docs</a>):
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>ssh<span class="w"> </span>-T<span class="w"> </span>git@&lt;your-git-provider&gt;
