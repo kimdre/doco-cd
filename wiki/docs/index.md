@@ -90,7 +90,7 @@ Doco-CD has been featured by industry media and technical publications:
 
 ## Support the Project
 
-If you would like to support the development of Doco CD, please consider becoming a sponsor on [GitHub Sponsors](https://github.com/sponsors/kimdre).
+If you would like to support the development of Doco-CD, please consider becoming a sponsor on [GitHub Sponsors](https://github.com/sponsors/kimdre).
 
 Doco-CD is proudly supported by
 

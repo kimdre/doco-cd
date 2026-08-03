@@ -2,7 +2,7 @@
 
 ## GitOps for Docker Compose
 
-<img src="https://raw.githubusercontent.com/kimdre/doco-cd/main/wiki/docs/images/doco-cd_logo.svg" alt="Doco CD Logo" height="48px" />
+<img src="https://raw.githubusercontent.com/kimdre/doco-cd/main/wiki/docs/images/doco-cd_logo.svg" alt="Doco-CD Logo" height="48px" />
 
 [![GitHub Release](https://img.shields.io/github/v/release/kimdre/doco-cd?display_name=tag&label=Release&color=47c72a&labelColor=404951)](https://github.com/kimdre/doco-cd/releases)
 [![CodeQL](https://github.com/kimdre/doco-cd/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/kimdre/doco-cd/actions/workflows/github-code-scanning/codeql)
@@ -11,7 +11,7 @@
 [![Image Vulnerability Scan](https://github.com/kimdre/doco-cd/actions/workflows/image-vulnerability-scanning.yml/badge.svg?event=schedule)](https://github.com/kimdre/doco-cd/actions/workflows/image-vulnerability-scanning.yml)
 
 
-Doco CD is a lightweight, declarative GitOps continuous delivery tool that automatically deploys and updates Docker Compose projects/services and Swarm stacks using polling and webhooks.
+Doco-CD is a lightweight, declarative GitOps continuous delivery tool that automatically deploys and updates Docker Compose projects/services and Swarm stacks using polling and webhooks.
 
 You can think of it as a simple Portainer or ArgoCD alternative for Docker.
 
@@ -46,7 +46,7 @@ Contributions are welcome! Please see the [contributing guidelines](https://doco
 
 ## Support the Project
 
-If you would like to support the development of Doco CD, please consider becoming a sponsor on [GitHub Sponsors](https://github.com/sponsors/kimdre).
+If you would like to support the development of Doco-CD, please consider becoming a sponsor on [GitHub Sponsors](https://github.com/sponsors/kimdre).
 
 Doco-CD is proudly supported by
 
