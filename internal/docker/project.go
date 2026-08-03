@@ -99,6 +99,13 @@ func shouldIgnoreLabelInProjectHash(label string) bool {
 func ProjectHash(p *types.Project) (string, error) {
 	pCopy := copyProject(p)
 
+	// Parked services never create containers, so they must not affect restart-time hash checks.
+	for name, svc := range pCopy.Services {
+		if svc.GetScale() == 0 {
+			delete(pCopy.Services, name)
+		}
+	}
+
 	// Only behavior-configuring labels should impact redeploy decisions.
 	for name := range pCopy.Services {
 		svc := pCopy.Services[name]
