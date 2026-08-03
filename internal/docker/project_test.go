@@ -169,3 +169,44 @@ func TestProjectHash_IgnoresComposeGeneratedLabels(t *testing.T) {
 		t.Fatalf("expected compose-generated label to be ignored, got %q and %q", baseHash, withComposeRuntimeLabelHash)
 	}
 }
+
+func TestProjectHash_IgnoresScaleZeroServices(t *testing.T) {
+	t.Parallel()
+
+	base := &types.Project{
+		Services: types.Services{
+			"api": {
+				Name:  "api",
+				Image: "nginx:latest",
+			},
+		},
+	}
+
+	withParkedService := &types.Project{
+		Services: types.Services{
+			"api": {
+				Name:  "api",
+				Image: "nginx:latest",
+			},
+			"extra-tool": {
+				Name:  "extra-tool",
+				Image: "busybox:latest",
+				Scale: new(0),
+			},
+		},
+	}
+
+	baseHash, err := ProjectHash(base)
+	if err != nil {
+		t.Fatalf("ProjectHash(base) error: %v", err)
+	}
+
+	withParkedServiceHash, err := ProjectHash(withParkedService)
+	if err != nil {
+		t.Fatalf("ProjectHash(withParkedService) error: %v", err)
+	}
+
+	if baseHash != withParkedServiceHash {
+		t.Fatalf("expected parked services to be ignored, got %q and %q", baseHash, withParkedServiceHash)
+	}
+}
