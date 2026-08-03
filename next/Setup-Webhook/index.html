@@ -2464,11 +2464,13 @@
 <p>This page shows how to set up a webhook for your deployments.</p>
 <div class="admonition question">
 <p class="admonition-title">About Webhooks</p>
-<p>Webhooks are event-based triggers that notify doco-cd when there are changes in the repositories to deploy. This is the recommended way to trigger deployments as it is more efficient and faster than polling but requires doco-cd to be reachable from the internet (or local network if you self-host your Git provider) and some setup on your Git provider.</p>
+<p>Webhooks are event-based triggers that notify doco-cd when a repository changes.
+ They are the recommended trigger method because they are faster than polling, but doco-cd must be reachable from your Git provider and you need to configure a webhook on the provider side.</p>
 </div>
 <h2 id="webhook-endpoint">Webhook Endpoint<a class="headerlink" href="#webhook-endpoint" title="Permanent link">&para;</a></h2>
-<p>To enable the webhook endpoint, you need to set the <code>WEBHOOK_SECRET</code> <a data-preview="" href="../App-Settings/#general-settings">environment variable</a> to a secure secret value and publish the webhook port  (default is <code>80</code>, see the <code>HTTP_PORT</code> <a data-preview="" href="../App-Settings/#general-settings">environment variable</a>) in the doco-cd <code>docker-compose.yml</code> file.</p>
-<p>You can use tools like <a href="https://linux.die.net/man/1/pwgen">pwgen</a> or <a href="https://www.openssl.org/">openssl</a> to generate a random secret for the <code>WEBHOOK_SECRET</code>.</p>
+<p>To enable the webhook endpoint, set the <code>WEBHOOK_SECRET</code> <a data-preview="" href="../App-Settings/#general-settings">environment variable</a> to a secure secret value and publish the webhook port in the doco-cd <code>docker-compose.yml</code> file.
+The default port is <code>80</code>; see the <code>HTTP_PORT</code> <a data-preview="" href="../App-Settings/#general-settings">environment variable</a>.</p>
+<p>You can use tools like <a href="https://linux.die.net/man/1/pwgen">pwgen</a> or <a href="https://www.openssl.org/">openssl</a> to generate a random secret for <code>WEBHOOK_SECRET</code>.</p>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="webhook-endpoint-pwgen" name="__tabbed_1" type="radio" /><input id="webhook-endpoint-openssl" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="webhook-endpoint-pwgen">pwgen</label><label for="webhook-endpoint-openssl">openssl</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
@@ -2481,9 +2483,12 @@
 </div>
 </div>
 </div>
-<p>Doco-CD then listens on the URL path <code>/v1/webhook</code> for incoming webhooks (http requests).
-The full url would look like this for example: <code>https://your-server.com/v1/webhook</code>
-I recommend that you use HTTPS so that your secret key is transmitted in encrypted form.</p>
+<p>Doco-CD listens on the URL path <code>/v1/webhook</code> for incoming webhook requests.</p>
+<p>For example: <code>https://your-server.com/v1/webhook</code></p>
+<div class="admonition tip">
+<p class="admonition-title">Use HTTPS</p>
+<p>Use HTTPS so the secret stays encrypted in transit.</p>
+</div>
 <p>To find more information about the webhook endpoint, see the <a data-preview="" href="../Endpoints/Webhook-Listener/">Webhook Listener Endpoint</a>.</p>
 <div class="admonition note">
 <p class="admonition-title">OCI Webhooks</p>

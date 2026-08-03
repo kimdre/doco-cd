@@ -2746,17 +2746,17 @@
 
 <h1 id="core-concepts">Core Concepts<a class="headerlink" href="#core-concepts" title="Permanent link">&para;</a></h1>
 <p>This page explains the key terms and concepts used throughout the Doco-CD documentation.
-Familiarity with <a href="https://git-scm.com/">Git</a>, <a href="https://docs.docker.com/">Docker</a>, and basic <a href="https://about.gitlab.com/topics/gitops/">GitOps</a> principles is assumed.</p>
+You only need basic familiarity with <a href="https://git-scm.com/">Git</a> and <a href="https://docs.docker.com/">Docker</a>.</p>
 <h2 id="how-doco-cd-works">How Doco-CD Works<a class="headerlink" href="#how-doco-cd-works" title="Permanent link">&para;</a></h2>
-<p>Doco-CD follows a <strong>GitOps</strong> model: your Git repository is the single source of truth for both application code and deployment configuration.
-When a change is pushed to Git, Doco-CD detects it (via a webhook or poll), clones the repository, and applies the desired state to your Docker environment.</p>
+<p>Doco-CD follows a <strong><a href="https://about.gitlab.com/topics/gitops/">GitOps</a></strong> model: your Git repository is the single source of truth for both application code and deployment configuration.
+When you push a change to Git, Doco-CD detects it through a webhook or poll, clones the repository, and applies the desired state to your Docker environment.</p>
 <hr />
 <h2 id="deployment-targets">Deployment Targets<a class="headerlink" href="#deployment-targets" title="Permanent link">&para;</a></h2>
 <h3 id="project">Project<a class="headerlink" href="#project" title="Permanent link">&para;</a></h3>
-<p>A named collection of services defined in one or more <code>docker-compose.yml</code> files, deployed together in a standalone Docker environment.
+<p>A named collection of services defined in one or more <code>docker-compose.yml</code> files and deployed together in a standalone Docker environment.
 Each project has a unique name used to identify it both within Doco-CD and in the Docker environment.</p>
 <h3 id="stack">Stack<a class="headerlink" href="#stack" title="Permanent link">&para;</a></h3>
-<p>The equivalent of a project when <a data-preview="" href="../Advanced/Swarm-Mode/">Docker Swarm mode</a> is enabled.
+<p>The Swarm-mode equivalent of a project when <a data-preview="" href="../Advanced/Swarm-Mode/">Docker Swarm mode</a> is enabled.
 Stacks are deployed and managed by Docker Swarm and support multi-node distribution and high availability.
 Doco-CD automatically detects whether the Docker daemon is running in Swarm mode and deploys accordingly.</p>
 <hr />

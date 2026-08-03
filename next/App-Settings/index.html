@@ -2790,7 +2790,7 @@
 <td><code>POLL_CONFIG_FILE</code></td>
 <td>string</td>
 <td>Path to the file inside the container containing the poll configurations in YAML format (see <a data-preview="" href="../Poll-Settings/">Poll Settings</a>)</td>
-<td>gnored when not specified</td>
+<td>Ignored when not specified</td>
 </tr>
 <tr>
 <td><code>SCHEDULER_ENABLED</code></td>
@@ -2813,7 +2813,7 @@
 <tr>
 <td><code>WEBHOOK_SECRET_FILE</code></td>
 <td>string</td>
-<td>Path to the file containing the Git access token (Mutually exclusive with <code>WEBHOOK_SECRET</code>).</td>
+<td>Path to the file containing the webhook secret (mutually exclusive with <code>WEBHOOK_SECRET</code>).</td>
 <td></td>
 </tr>
 </tbody>
@@ -2836,10 +2836,10 @@ or in a separate <code>.env</code> file with the <code>env_file</code> option.</
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">env_file</span><span class="p">:</span>
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.env</span>
 </span></code></pre></div></p>
-<p>The settings in the <code>.env</code> file should be in the format <code>KEY=VALUE</code> or <code>KEY: VALUE</code> and separated by a newline.</p>
+<p>The settings in the <code>.env</code> file must be in the format <code class="language-ini highlight"><span class="na">KEY</span><span class="o">=</span><span class="s">VALUE</span></code> or <code class="language-yaml highlight"><span class="nt">KEY</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">VALUE</span></code>, one setting per line.</p>
 <p>Example <code>.env</code> file:
-<div class="language-yaml highlight"><span class="filename">.env</span><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">GIT_ACCESS_TOKEN</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xxx</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">WEBHOOK_SECRET</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xxx</span>
+<div class="language-ini highlight"><span class="filename">.env</span><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="na">GIT_ACCESS_TOKEN</span><span class="o">=</span><span class="s">xxx</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="na">WEBHOOK_SECRET</span><span class="o">=</span><span class="s">xxx</span>
 </span></code></pre></div></p>
 <h3 id="with-environment">With <code>environment</code><a class="headerlink" href="#with-environment" title="Permanent link">&para;</a></h3>
 <p>Example with <code>environment</code> option:
