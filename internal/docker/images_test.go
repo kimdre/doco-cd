@@ -177,6 +177,21 @@ func TestHaveDeployedServiceImageDigestsChanged(t *testing.T) {
 			wantRegistryCalls: 0,
 		},
 		{
+			name: "skips parked services",
+			project: &types.Project{
+				Name: "test",
+				Services: types.Services{
+					"web":        {Name: "web", Image: "nginx:latest"},
+					"extra-tool": {Name: "extra-tool", Image: "busybox:latest", Scale: new(0)},
+				},
+			},
+			registryDigest:       "sha256:same",
+			deployedDigests:      map[string]string{"web": "sha256:same"},
+			wantChanged:          false,
+			wantRegistryCalls:    1,
+			wantRegistryCallRefs: []string{"nginx:latest"},
+		},
+		{
 			name: "returns true when deployed digest missing",
 			project: &types.Project{
 				Name: "test",

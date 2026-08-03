@@ -515,7 +515,7 @@ func HaveDeployedServiceImageDigestsChanged(ctx context.Context, dockerCli comma
 	uniqueRefs := set.New[string]()
 
 	for _, svc := range project.Services {
-		if svc.Image == "" {
+		if svc.Image == "" || svc.GetScale() == 0 {
 			continue
 		}
 
