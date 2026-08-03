@@ -515,6 +515,7 @@ func HaveDeployedServiceImageDigestsChanged(ctx context.Context, dockerCli comma
 	uniqueRefs := set.New[string]()
 
 	for _, svc := range project.Services {
+		// Scale-0 (parked) services never produce a container, so they have no deployed digest to compare.
 		if svc.Image == "" || svc.GetScale() == 0 {
 			continue
 		}
