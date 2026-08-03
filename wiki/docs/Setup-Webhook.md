@@ -10,13 +10,15 @@ This page shows how to set up a webhook for your deployments.
 
 !!! question "About Webhooks"
 
-     Webhooks are event-based triggers that notify doco-cd when there are changes in the repositories to deploy. This is the recommended way to trigger deployments as it is more efficient and faster than polling but requires doco-cd to be reachable from the internet (or local network if you self-host your Git provider) and some setup on your Git provider.
+     Webhooks are event-based triggers that notify doco-cd when a repository changes.
+     They are the recommended trigger method because they are faster than polling, but doco-cd must be reachable from your Git provider and you need to configure a webhook on the provider side.
 
 ## Webhook Endpoint
 
-To enable the webhook endpoint, you need to set the `WEBHOOK_SECRET` [environment variable](App-Settings.md#general-settings) to a secure secret value and publish the webhook port  (default is `80`, see the `HTTP_PORT` [environment variable](App-Settings.md#general-settings)) in the doco-cd `docker-compose.yml` file.
+To enable the webhook endpoint, set the `WEBHOOK_SECRET` [environment variable](App-Settings.md#general-settings) to a secure secret value and publish the webhook port in the doco-cd `docker-compose.yml` file.
+The default port is `80`; see the `HTTP_PORT` [environment variable](App-Settings.md#general-settings).
 
-You can use tools like [pwgen](https://linux.die.net/man/1/pwgen) or [openssl](https://www.openssl.org/) to generate a random secret for the `WEBHOOK_SECRET`.
+You can use tools like [pwgen](https://linux.die.net/man/1/pwgen) or [openssl](https://www.openssl.org/) to generate a random secret for `WEBHOOK_SECRET`.
 
 === "pwgen"
     ```sh title="Generate a random password with pwgen"
@@ -28,9 +30,12 @@ You can use tools like [pwgen](https://linux.die.net/man/1/pwgen) or [openssl](h
     openssl rand -base64 40
     ```
 
-Doco-CD then listens on the URL path `/v1/webhook` for incoming webhooks (http requests).
-The full url would look like this for example: `https://your-server.com/v1/webhook`
-I recommend that you use HTTPS so that your secret key is transmitted in encrypted form.
+Doco-CD listens on the URL path `/v1/webhook` for incoming webhook requests.
+
+For example: `https://your-server.com/v1/webhook`
+
+!!! tip "Use HTTPS"
+    Use HTTPS so the secret stays encrypted in transit.
 
 To find more information about the webhook endpoint, see the [Webhook Listener Endpoint](Endpoints/Webhook-Listener.md).
 

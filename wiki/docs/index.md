@@ -39,14 +39,14 @@ More resources:
 
 ## Supported Git Providers
 
-See more info here: [Setup Webhook](Setup-Access-Token.md#git-providers)
-
 - GitHub
 - GitLab
 - Gitea
 - Forgejo
 - Gogs
 - Azure DevOps* ([_Service Hooks_ not supported](Setup-Webhook.md#setup-in-git-providers-azure-devops))
+
+More info at [Setup Access Token](Setup-Access-Token.md#git-providers) and [Setup Webhook](Setup-Webhook.md)
 
 ## Releases and Changelog
 

@@ -6,6 +6,12 @@ tags:
 
 # Getting Started
 
+If you are new to Doco-CD, follow the pages in this order:
+
+1. Set up Git authentication with either a token or an SSH key.
+2. Choose how Doco-CD should detect changes: webhooks, polling, or both.
+3. Deploy a repository using the sample `docker-compose.yml` file below.
+
 ???+ note "Use this [docker-compose.yml](https://github.com/kimdre/doco-cd/blob/main/docker-compose.yml) as your starting point"
     ```go title="docker-compose.yml"
     --8<-- "docker-compose.yml"
@@ -23,9 +29,10 @@ You can find all available app settings on the [App Settings](App-Settings.md) w
 
 If you run the application with Docker Swarm, see the [Swarm Mode](Advanced/Swarm-Mode.md) wiki page for more information.
 
-##  Create a Git Access Token
+## Create a Git Access Token
 
-The Git access token is used to authenticate with your Git provider (GitHub, GitLab, Gitea, etc.) and to clone or fetch your repositories via HTTP.
+Use a Git access token if your repository URL starts with `http://` or `https://`.
+It lets doco-cd authenticate with your Git provider (GitHub, GitLab, Gitea, etc.) and clone or fetch repositories over HTTP.
 
 !!! note
     If you use an SSH URL for your Git repositories, the Git access token is not required.
@@ -43,13 +50,15 @@ Doco-CD can be triggered to check for changes to deploy via webhooks or by polli
 
 ### Webhooks
 
-Webhooks are event-based triggers that notify doco-cd when there are changes in the repositories. This is the recommended way to trigger deployments as it is more efficient and faster than polling but requires doco-cd to be reachable from the internet (or local network if you self-host your Git provider) and some setup on your Git provider.
+Webhooks are event-based triggers that notify doco-cd when there are changes in a repository.
+They are the recommended trigger method because they are fast and efficient, but doco-cd must be reachable from your Git provider (for external services like GitHub this means from the internet) and you need to configure a webhook on the provider side.
 
 If you want to use webhooks, you need to set the `WEBHOOK_SECRET` environment variable to a secure secret and publish the webhook port. See [Setup Webhook](Setup-Webhook.md) for more information.
 
 ### Polling
 
-Polling is a time-based trigger that checks the repositories for changes at regular intervals. This method does not require doco-cd to be reachable from the internet but is less efficient and slower than webhooks.
+Polling is a time-based trigger that checks repositories for changes at regular intervals.
+It does not require doco-cd to be reachable from the Git provider, which makes it useful for private networks, but it is slower than webhooks.
 
 If you want to use polling, you need to set a poll configuration for each repository you want to use for deployments. See [Poll Settings](Poll-Settings.md) for more information.
 

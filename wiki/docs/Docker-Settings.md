@@ -5,8 +5,8 @@ tags:
 
 # Docker Settings
 
-Settings to configure the Docker client used by Doco-CD to interact with the Docker daemon.
-All of these settings are optional and can be set using [environment variables](App-Settings.md#specifying-the-settings) when running the Doco-CD container.
+These settings control how Doco-CD connects to the Docker daemon.
+Most users can leave them at the defaults, and you can set them with [environment variables](App-Settings.md#specifying-the-settings) when running the Doco-CD container.
 
 ## Common Environment Variables
 

@@ -6,9 +6,10 @@ tags:
 
 # Setup Git Access Token
 
-This page shows how to set up a Git Access Token for your deployments.
+This page shows how to set up a Git access token for your deployments.
 
-The Git Access Token is used to authenticate with your Git provider (GitHub, GitLab, Bitbucket, etc.) and to clone or fetch your repositories via HTTP.
+Use this if your repository URL starts with `http://` or `https://`.
+The token is used to authenticate with your Git provider (GitHub, GitLab, Bitbucket, etc.) and to clone or fetch your repositories via HTTP.
 
 !!! tip "Usage without Git Access Token"
     You can use doco-cd without a Git Access Token if the repositories you want to use for your deployments are publicly accessible. However, it is still recommended to use one in that case to for example avoid rate limits.
