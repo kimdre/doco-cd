@@ -30,6 +30,8 @@ The application can be configured using the following environment variables:
 | `TZ`                         | string  | The [timezone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) used in the container.                                                                                                                                                   | `UTC`                                           |
 | `WEBHOOK_SECRET`             | string  | Secret that is used by webhooks for authentication to the application                                                                                                                                                                                 | Webhook endpoint is disabled when not specified |
 | `WEBHOOK_SECRET_FILE`        | string  | Path to the file containing the webhook secret (mutually exclusive with `WEBHOOK_SECRET`).                                                                                                                                                           |                                                 |
+| `SOURCE_URL_REWRITES` | map of strings | YAML map of git source URL rewrite rules, applied to both webhook and poll deployments. See [Source URL Rewrites](#source-url-rewrites). | Ignored when not specified |
+| `SOURCE_URL_REWRITES_FILE` | string | Path to a file containing `SOURCE_URL_REWRITES` YAML (mutually exclusive with `SOURCE_URL_REWRITES`). | |
 
 ## Notification Settings
 
@@ -156,3 +158,48 @@ docker service ps doco-cd_app
 ## Pulling images from a private registry
 
 If you want to pull images from a private registry, see [Private Container Registries](Advanced/Private-Container-Registries.md) in the wiki.
+
+## Source URL Rewrites
+
+`SOURCE_URL_REWRITES` (and `SOURCE_URL_REWRITES_FILE`) let you rewrite git source URLs before doco-cd clones them. Rules apply to both webhook- and poll-triggered deployments.
+
+This is useful when your Git provider advertises a public URL (in webhook payloads or poll configs) but doco-cd should clone through an internal network path instead — for example when your Forgejo instance is behind a reverse proxy with a public domain, but is reachable directly over a Docker network.
+
+Two match strategies are supported:
+
+- **URL/URI prefix** — e.g. `https://forgejo.example.com/` or `git@forgejo.example.com:`.
+  The matched prefix in the source URL is replaced with the configured target, and the repository path is appended as-is.
+    - HTTPS URLs should end with `/` to avoid partial host matches.
+    - SCP-style SSH URLs (e.g. `git@host:`) **must** end with `:` — it is the mandatory separator between host and repository path in SCP syntax (`user@host:path/repo.git`).
+    - SCP syntax cannot express a port number. Use `ssh://` syntax when targeting a non-standard port (e.g. `"ssh://git@forgejo.internal:2222/"`).
+- **Host/domain** — e.g. `forgejo.example.com`. Only the host (and optional port) is replaced; scheme, credentials, and path are preserved.
+
+Rules are matched in order of specificity (longest key first).
+
+!!! example
+
+    ```yaml title="Some possible examples"
+    SOURCE_URL_REWRITES:
+      # HTTPS → internal HTTP (key ends with / to avoid partial-host matches)
+      "https://forgejo.example.com/": "http://forgejo:3000/"
+      # Host-only match (replaces host+port, keeps scheme/path)
+      "forgejo.example.com": "forgejo:3000"
+      # SCP-style SSH → SCP-style SSH (the trailing : is required — it is the SCP host/path separator)
+      # OR: SCP-style SSH → ssh:// with non-standard port (SCP syntax cannot carry a port number)
+      # Pick one of these two, not both (YAML map keys must be unique):
+      # "git@forgejo.example.com:": "git@forgejo.internal:"
+      # "git@forgejo.example.com:": "ssh://git@forgejo.internal:2222/"
+    ```
+
+    In your doco-cd `docker-compose.yml`, you can set this as follows:
+
+    ```yaml title="docker-compose.yml"
+    services:
+      app:
+        environment:
+          SOURCE_URL_REWRITES: |
+            # HTTP variant:
+            "forgejo.example.com": "forgejo:3000"
+            # SSH variant with explicit port:
+            "git@forgejo.example.com:": "ssh://git@forgejo:2222/"
+    ```

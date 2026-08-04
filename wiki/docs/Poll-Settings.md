@@ -13,6 +13,8 @@ tags:
 
 Poll configurations can be set using the `POLL_CONFIG` environment variable or by providing a file with the `POLL_CONFIG_FILE` environment variable.
 
+For Git sources, poll jobs also honor global source URL rewrites from [`SOURCE_URL_REWRITES`](App-Settings.md#source-url-rewrites). This is useful when polling should clone through an internal host/port instead of the public URL.
+
 They must be in the format of a YAML list/array (also called YAML Sequence) and can contain the following settings:
 
 !!! note "Settings without a default value are required."

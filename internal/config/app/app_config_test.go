@@ -403,3 +403,79 @@ func TestGetConfig_GitScmApiUrlRejectsNonHTTP(t *testing.T) {
 		t.Fatal("expected non-http GIT_SCM_API_URL to be rejected")
 	}
 }
+
+func TestGetConfig_SourceURLRewrites(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("SOURCE_URL_REWRITES", "HTTPS://Forgejo.Example.Com/: http://forgejo:3000/")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	overrideURL, ok := cfg.SourceURLRewrites["https://forgejo.example.com/"]
+	if !ok {
+		t.Fatalf("expected normalized override key %q to exist", "https://forgejo.example.com/")
+	}
+
+	if overrideURL != "http://forgejo:3000/" {
+		t.Fatalf("expected override URL to be %q, got %q", "http://forgejo:3000/", overrideURL)
+	}
+}
+
+func TestGetConfig_SourceURLRewritesFromFile(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("SOURCE_URL_REWRITES", "")
+
+	overridesFile := path.Join(t.TempDir(), "webhook-repository-overrides.yaml")
+	overridesYAML := "forgejo.example.com: forgejo:3000\n"
+
+	if err := os.WriteFile(overridesFile, []byte(overridesYAML), filesystem.PermOwner); err != nil {
+		t.Fatalf("failed to write overrides file: %v", err)
+	}
+
+	t.Setenv("SOURCE_URL_REWRITES_FILE", overridesFile)
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	overrideURL, ok := cfg.SourceURLRewrites["forgejo.example.com"]
+	if !ok || overrideURL != "forgejo:3000" {
+		t.Fatalf("expected file-based rewrite to be loaded, got %+v", cfg.SourceURLRewrites)
+	}
+}
+
+func TestGetConfig_SourceURLRewritesRejectsEmptyTarget(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("SOURCE_URL_REWRITES", "forgejo.example.com: ''")
+
+	if _, err := GetConfig(); err == nil {
+		t.Fatal("expected empty source URL rewrite target to be rejected")
+	}
+}
+
+func TestGetConfig_SourceURLRewritesRejectsEnvAndFileTogether(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("SOURCE_URL_REWRITES", "forgejo.example.com: forgejo:3000")
+
+	overridesFile := path.Join(t.TempDir(), "webhook-repository-overrides.yaml")
+	if err := os.WriteFile(overridesFile, []byte("https://forgejo.example.com/: http://forgejo:3000/\n"), filesystem.PermOwner); err != nil {
+		t.Fatalf("failed to write overrides file: %v", err)
+	}
+
+	t.Setenv("SOURCE_URL_REWRITES_FILE", overridesFile)
+
+	if _, err := GetConfig(); err == nil {
+		t.Fatal("expected config error when both SOURCE_URL_REWRITES and _FILE are set")
+	}
+}

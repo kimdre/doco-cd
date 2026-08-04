@@ -35,6 +35,9 @@ type Config struct {
 	ApiSecretFile                 string                 `env:"API_SECRET_FILE,file"`                                                   // ApiSecretFile is the file containing the ApiSecret
 	WebhookSecret                 string                 `env:"WEBHOOK_SECRET"`                                                         // WebhookSecret is the secret token used to authenticate the webhook
 	WebhookSecretFile             string                 `env:"WEBHOOK_SECRET_FILE,file"`                                               // WebhookSecretFile is the file containing the WebhookSecret
+	SourceURLRewritesYAML         string                 `env:"SOURCE_URL_REWRITES"`                                                    // SourceURLRewritesYAML maps URL/domain/URI match rules to rewrite targets for git source URLs.
+	SourceURLRewritesFile         string                 `env:"SOURCE_URL_REWRITES_FILE,file"`                                          // SourceURLRewritesFile is the file containing SourceURLRewritesYAML.
+	SourceURLRewrites             map[string]string      `yaml:"-"`                                                                     // SourceURLRewrites holds normalized source URL rewrite rules used by webhook and poll git sources.
 	GitAccessToken                string                 `env:"GIT_ACCESS_TOKEN"`                                                       // GitAccessToken is the access token used to authenticate with the Git server (e.g. GitHub) for private repositories
 	GitAccessTokenUser            string                 `env:"GIT_ACCESS_TOKEN_USER,notEmpty" envDefault:"oauth2"`                     // GitAccessTokenUser is the username paired with GitAccessToken for HTTP(S) clone/fetch. Needed by providers whose tokens have a fixed username (e.g. GitLab deploy tokens). Defaults to oauth2.
 	GitCommitStatus               bool                   `env:"GIT_COMMIT_STATUS,notEmpty" envDefault:"false"`                          // GitCommitStatus controls whether doco-cd reports deployment outcomes as commit statuses to the source Git provider (requires GIT_ACCESS_TOKEN)
@@ -98,6 +101,7 @@ func GetConfig() (*Config, error) {
 		{EnvName: "SSH_PRIVATE_KEY", EnvValue: &cfg.SSHPrivateKey, FileValue: &cfg.SSHPrivateKeyFile, AllowUnset: true},
 		{EnvName: "SSH_PRIVATE_KEY_PASSPHRASE", EnvValue: &cfg.SSHPrivateKeyPassphrase, FileValue: &cfg.SSHPrivateKeyPassphraseFile, AllowUnset: true},
 		{EnvName: "WEBHOOK_SECRET", EnvValue: &cfg.WebhookSecret, FileValue: &cfg.WebhookSecretFile, AllowUnset: true},
+		{EnvName: "SOURCE_URL_REWRITES", EnvValue: &cfg.SourceURLRewritesYAML, FileValue: &cfg.SourceURLRewritesFile, AllowUnset: true},
 	}
 
 	err := config.ParseConfigFromEnv(&cfg, &mappings)
@@ -113,6 +117,11 @@ func GetConfig() (*Config, error) {
 	err = cfg.parseGitAuthDomains()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse GIT_AUTH_DOMAINS: %w", err)
+	}
+
+	err = cfg.parseSourceURLRewrites()
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse SOURCE_URL_REWRITES: %w", err)
 	}
 
 	err = cfg.validateGitAuthConfig()
@@ -210,6 +219,36 @@ func (cfg *Config) parseGitAuthDomains() error {
 
 	if err := yaml.Unmarshal([]byte(cfg.GitAuthDomainsYAML), &cfg.GitAuthDomains); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (cfg *Config) parseSourceURLRewrites() error {
+	cfg.SourceURLRewrites = map[string]string{}
+
+	if strings.TrimSpace(cfg.SourceURLRewritesYAML) == "" {
+		return nil
+	}
+
+	raw := map[string]string{}
+	if err := yaml.Unmarshal([]byte(cfg.SourceURLRewritesYAML), &raw); err != nil {
+		return err
+	}
+
+	for key, value := range raw {
+		normalizedKey := strings.ToLower(strings.TrimSpace(key))
+		normalizedURL := strings.TrimSpace(value)
+
+		if normalizedKey == "" {
+			return errors.New("rewrite key in SOURCE_URL_REWRITES must not be empty")
+		}
+
+		if normalizedURL == "" {
+			return fmt.Errorf("rewrite key %q in SOURCE_URL_REWRITES must have a non-empty target", key)
+		}
+
+		cfg.SourceURLRewrites[normalizedKey] = normalizedURL
 	}
 
 	return nil
