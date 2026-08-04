@@ -10,6 +10,15 @@ import (
 	"github.com/opencontainers/go-digest"
 )
 
+// isParkedService reports whether a service is configured to run 0 replicas
+// ("scale: 0" / "deploy.replicas: 0"). Parked services never produce a
+// container (or, in Swarm mode, never produce running tasks for
+// replicated/replicated-job services), so their absence from the deployed
+// state is expected and must not be treated as drift.
+func isParkedService(svc types.ServiceConfig) bool {
+	return svc.GetScale() == 0
+}
+
 // deepCopy recursively copies src into dst using reflection.
 func deepCopy(dst, src reflect.Value) {
 	switch src.Kind() {
@@ -101,7 +110,7 @@ func ProjectHash(p *types.Project) (string, error) {
 
 	// Parked services never create containers, so they must not affect restart-time hash checks.
 	for name, svc := range pCopy.Services {
-		if svc.GetScale() == 0 {
+		if isParkedService(svc) {
 			delete(pCopy.Services, name)
 		}
 	}

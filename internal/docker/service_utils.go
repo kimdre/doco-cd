@@ -279,12 +279,15 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 		return restart == "" || strings.HasPrefix(restart, "on-failure") || restart == "no"
 	}
 
-	isScaledToZero := func(svcMode swarmInternal.DeployMode, svc types.ServiceConfig) bool {
+	// isParkedForMode reports whether a service is parked (scale 0) in a deploy
+	// mode where scale is meaningful. Global/global-job services have no scale
+	// concept, so they are never considered parked here.
+	isParkedForMode := func(svcMode swarmInternal.DeployMode, svc types.ServiceConfig) bool {
 		if svcMode != swarmInternal.DeployModeReplicated && svcMode != swarmInternal.DeployModeReplicatedJob {
 			return false
 		}
 
-		return svc.GetScale() == 0
+		return isParkedService(svc)
 	}
 
 	// getSvcMode returns the swarm deploy mode for a service, defaulting to "replicated" if not specified.
@@ -308,7 +311,7 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 			svcMode := getSvcMode(svc)
 
 			if !ok {
-				if !isScaledToZero(svcMode, svc) {
+				if !isParkedForMode(svcMode, svc) {
 					reasons = append(reasons, ServiceMismatchReason{
 						Reason: ServiceMismatchReasonNotDeployed,
 					})
@@ -336,7 +339,7 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 			}
 		} else if !allowStoppedForRestartPolicy(svc) {
 			if !ok {
-				if !isScaledToZero(swarmInternal.DeployModeReplicated, svc) {
+				if !isParkedForMode(swarmInternal.DeployModeReplicated, svc) {
 					reasons = append(reasons, ServiceMismatchReason{
 						Reason: ServiceMismatchReasonNotDeployed,
 					})
