@@ -2625,6 +2625,7 @@
 </div>
 <h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
 <p>Poll configurations can be set using the <code>POLL_CONFIG</code> environment variable or by providing a file with the <code>POLL_CONFIG_FILE</code> environment variable.</p>
+<p>For Git sources, poll jobs also honor global source URL rewrites from <a data-preview="" href="../App-Settings/#source-url-rewrites"><code>SOURCE_URL_REWRITES</code></a>. This is useful when polling should clone through an internal host/port instead of the public URL.</p>
 <p>They must be in the format of a YAML list/array (also called YAML Sequence) and can contain the following settings:</p>
 <div class="admonition note">
 <p class="admonition-title">Settings without a default value are required.</p>

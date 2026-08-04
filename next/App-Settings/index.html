@@ -1021,6 +1021,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#source-url-rewrites" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Source URL Rewrites
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2598,6 +2609,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#source-url-rewrites" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Source URL Rewrites
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2816,6 +2838,18 @@
 <td>Path to the file containing the webhook secret (mutually exclusive with <code>WEBHOOK_SECRET</code>).</td>
 <td></td>
 </tr>
+<tr>
+<td><code>SOURCE_URL_REWRITES</code></td>
+<td>map of strings</td>
+<td>YAML map of git source URL rewrite rules, applied to both webhook and poll deployments. See <a data-preview="" href="#source-url-rewrites">Source URL Rewrites</a>.</td>
+<td>Ignored when not specified</td>
+</tr>
+<tr>
+<td><code>SOURCE_URL_REWRITES_FILE</code></td>
+<td>string</td>
+<td>Path to a file containing <code>SOURCE_URL_REWRITES</code> YAML (mutually exclusive with <code>SOURCE_URL_REWRITES</code>).</td>
+<td></td>
+</tr>
 </tbody>
 </table>
 <h2 id="notification-settings">Notification Settings<a class="headerlink" href="#notification-settings" title="Permanent link">&para;</a></h2>
@@ -2908,6 +2942,45 @@ You can still use <a href="https://docs.docker.com/compose/how-tos/use-secrets/"
 </span></code></pre></div>
 <h2 id="pulling-images-from-a-private-registry">Pulling images from a private registry<a class="headerlink" href="#pulling-images-from-a-private-registry" title="Permanent link">&para;</a></h2>
 <p>If you want to pull images from a private registry, see <a data-preview="" href="../Advanced/Private-Container-Registries/">Private Container Registries</a> in the wiki.</p>
+<h2 id="source-url-rewrites">Source URL Rewrites<a class="headerlink" href="#source-url-rewrites" title="Permanent link">&para;</a></h2>
+<p><code>SOURCE_URL_REWRITES</code> (and <code>SOURCE_URL_REWRITES_FILE</code>) let you rewrite git source URLs before doco-cd clones them. Rules apply to both webhook- and poll-triggered deployments.</p>
+<p>This is useful when your Git provider advertises a public URL (in webhook payloads or poll configs) but doco-cd should clone through an internal network path instead — for example when your Forgejo instance is behind a reverse proxy with a public domain, but is reachable directly over a Docker network.</p>
+<p>Two match strategies are supported:</p>
+<ul>
+<li><strong>URL/URI prefix</strong> — e.g. <code>https://forgejo.example.com/</code> or <code>git@forgejo.example.com:</code>.
+  The matched prefix in the source URL is replaced with the configured target, and the repository path is appended as-is.<ul>
+<li>HTTPS URLs should end with <code>/</code> to avoid partial host matches.</li>
+<li>SCP-style SSH URLs (e.g. <code>git@host:</code>) <strong>must</strong> end with <code>:</code> — it is the mandatory separator between host and repository path in SCP syntax (<code>user@host:path/repo.git</code>).</li>
+<li>SCP syntax cannot express a port number. Use <code>ssh://</code> syntax when targeting a non-standard port (e.g. <code>"ssh://git@forgejo.internal:2222/"</code>).</li>
+</ul>
+</li>
+<li><strong>Host/domain</strong> — e.g. <code>forgejo.example.com</code>. Only the host (and optional port) is replaced; scheme, credentials, and path are preserved.</li>
+</ul>
+<p>Rules are matched in order of specificity (longest key first).</p>
+<div class="admonition example">
+<p class="admonition-title">Example</p>
+<div class="language-yaml highlight"><span class="filename">Some possible examples</span><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">SOURCE_URL_REWRITES</span><span class="p">:</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="c1"># HTTPS → internal HTTP (key ends with / to avoid partial-host matches)</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span><span class="s">&quot;https://forgejo.example.com/&quot;</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="s">&quot;http://forgejo:3000/&quot;</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span><span class="c1"># Host-only match (replaces host+port, keeps scheme/path)</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">  </span><span class="s">&quot;forgejo.example.com&quot;</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="s">&quot;forgejo:3000&quot;</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">  </span><span class="c1"># SCP-style SSH → SCP-style SSH (the trailing : is required — it is the SCP host/path separator)</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">  </span><span class="c1"># OR: SCP-style SSH → ssh:// with non-standard port (SCP syntax cannot carry a port number)</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="w">  </span><span class="c1"># Pick one of these two, not both (YAML map keys must be unique):</span>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">  </span><span class="c1"># &quot;git@forgejo.example.com:&quot;: &quot;git@forgejo.internal:&quot;</span>
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="w">  </span><span class="c1"># &quot;git@forgejo.example.com:&quot;: &quot;ssh://git@forgejo.internal:2222/&quot;</span>
+</span></code></pre></div>
+<p>In your doco-cd <code>docker-compose.yml</code>, you can set this as follows:</p>
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">      </span><span class="nt">SOURCE_URL_REWRITES</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">        </span><span class="no"># HTTP variant:</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">        </span><span class="no">&quot;forgejo.example.com&quot;: &quot;forgejo:3000&quot;</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">        </span><span class="no"># SSH variant with explicit port:</span>
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="w">        </span><span class="no">&quot;git@forgejo.example.com:&quot;: &quot;ssh://git@forgejo:2222/&quot;</span>
+</span></code></pre></div>
+</div>
 
 
   <nav class="md-tags" >
