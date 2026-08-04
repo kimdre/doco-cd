@@ -10,6 +10,15 @@ import (
 	"github.com/opencontainers/go-digest"
 )
 
+// isScaledToZero reports whether a service is configured to run 0 replicas
+// ("scale: 0" / "deploy.replicas: 0"). Services scaled to zero never produce
+// a container (or, in Swarm mode, never produce running tasks for
+// replicated/replicated-job services), so their absence from the deployed
+// state is expected and must not be treated as drift.
+func isScaledToZero(svc types.ServiceConfig) bool {
+	return svc.GetScale() == 0
+}
+
 // deepCopy recursively copies src into dst using reflection.
 func deepCopy(dst, src reflect.Value) {
 	switch src.Kind() {
@@ -99,9 +108,9 @@ func shouldIgnoreLabelInProjectHash(label string) bool {
 func ProjectHash(p *types.Project) (string, error) {
 	pCopy := copyProject(p)
 
-	// Parked services never create containers, so they must not affect restart-time hash checks.
+	// Services scaled to zero never create containers, so they must not affect restart-time hash checks.
 	for name, svc := range pCopy.Services {
-		if svc.GetScale() == 0 {
+		if isScaledToZero(svc) {
 			delete(pCopy.Services, name)
 		}
 	}

@@ -279,6 +279,18 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 		return restart == "" || strings.HasPrefix(restart, "on-failure") || restart == "no"
 	}
 
+	// isScaledToZeroForMode reports whether a service is scaled to zero in a
+	// deploy mode where scale is meaningful. Global/global-job services have
+	// no scale concept, so they are never considered scaled to zero here.
+	isScaledToZeroForMode := func(svcMode swarmInternal.DeployMode, svc types.ServiceConfig) bool {
+		if svcMode != swarmInternal.DeployModeReplicated && svcMode != swarmInternal.DeployModeReplicatedJob {
+			return false
+		}
+
+		return isScaledToZero(svc)
+	}
+
+	// getSvcMode returns the swarm deploy mode for a service, defaulting to "replicated" if not specified.
 	getSvcMode := func(svc types.ServiceConfig) swarmInternal.DeployMode {
 		if !swarmModeEnabled {
 			return ""
@@ -293,15 +305,18 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 	for svcName, svc := range services {
 		status, ok := deployed[Service(svcName)]
 
-		reasons := []ServiceMismatchReason{}
+		var reasons []ServiceMismatchReason
 
 		if swarmModeEnabled {
+			svcMode := getSvcMode(svc)
+
 			if !ok {
-				reasons = append(reasons, ServiceMismatchReason{
-					Reason: ServiceMismatchReasonNotDeployed,
-				})
+				if !isScaledToZeroForMode(svcMode, svc) {
+					reasons = append(reasons, ServiceMismatchReason{
+						Reason: ServiceMismatchReasonNotDeployed,
+					})
+				}
 			} else {
-				svcMode := getSvcMode(svc)
 				if status.SwarmMode != svcMode {
 					reasons = append(reasons, ServiceMismatchReason{
 						Reason: ServiceMismatchReasonSwarmMode,
@@ -324,9 +339,11 @@ func CheckServiceMismatch(swarmModeEnabled bool, deployed map[Service]ServiceSta
 			}
 		} else if !allowStoppedForRestartPolicy(svc) {
 			if !ok {
-				reasons = append(reasons, ServiceMismatchReason{
-					Reason: ServiceMismatchReasonNotDeployed,
-				})
+				if !isScaledToZeroForMode(swarmInternal.DeployModeReplicated, svc) {
+					reasons = append(reasons, ServiceMismatchReason{
+						Reason: ServiceMismatchReasonNotDeployed,
+					})
+				}
 			} else if uint64(svc.GetScale()) != status.Replicas { //nolint:gosec
 				reasons = append(reasons, ServiceMismatchReason{
 					Reason: ServiceMismatchReasonReplicas,

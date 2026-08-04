@@ -177,7 +177,7 @@ func TestHaveDeployedServiceImageDigestsChanged(t *testing.T) {
 			wantRegistryCalls: 0,
 		},
 		{
-			name: "skips parked services",
+			name: "skips scaled to zero services",
 			project: &types.Project{
 				Name: "test",
 				Services: types.Services{
