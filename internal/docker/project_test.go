@@ -182,7 +182,7 @@ func TestProjectHash_IgnoresScaleZeroServices(t *testing.T) {
 		},
 	}
 
-	withParkedService := &types.Project{
+	withScaledToZeroService := &types.Project{
 		Services: types.Services{
 			"api": {
 				Name:  "api",
@@ -201,12 +201,12 @@ func TestProjectHash_IgnoresScaleZeroServices(t *testing.T) {
 		t.Fatalf("ProjectHash(base) error: %v", err)
 	}
 
-	withParkedServiceHash, err := ProjectHash(withParkedService)
+	withScaledToZeroServiceHash, err := ProjectHash(withScaledToZeroService)
 	if err != nil {
-		t.Fatalf("ProjectHash(withParkedService) error: %v", err)
+		t.Fatalf("ProjectHash(withScaledToZeroService) error: %v", err)
 	}
 
-	if baseHash != withParkedServiceHash {
-		t.Fatalf("expected parked services to be ignored, got %q and %q", baseHash, withParkedServiceHash)
+	if baseHash != withScaledToZeroServiceHash {
+		t.Fatalf("expected scaled to zero services to be ignored, got %q and %q", baseHash, withScaledToZeroServiceHash)
 	}
 }
