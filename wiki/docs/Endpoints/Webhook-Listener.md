@@ -11,6 +11,9 @@ The webhook payload is expected to be in JSON format and must contain the payloa
 
 The application listens for incoming webhooks on the `/v1/webhook` endpoint with the port specified by the `HTTP_PORT` environment variable, see [App Settings](../App-Settings.md#general-settings).
 
+!!! info "Source URL Rewrites"
+    Webhook deployments support rewriting git clone URLs to internal addresses via [`SOURCE_URL_REWRITES`](../App-Settings.md#source-url-rewrites). This is useful when the Git provider advertises a public URL in webhooks but doco-cd should clone via an internal network path.
+
 ## Allow/deny trigger events
 
 By default, all incoming webhooks are accepted and trigger deployments if they match a deployment configuration.

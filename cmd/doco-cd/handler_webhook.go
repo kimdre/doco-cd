@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -31,6 +33,180 @@ import (
 
 var ErrInvalidHTTPMethod = errors.New("invalid http method")
 
+// normalizeSourceURLRewriteKey normalizes the source URL rewrite key
+// by trimming whitespace and converting it to lowercase.
+func normalizeSourceURLRewriteKey(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+// resolveWebhookGitCloneURL checks if there is a configured clone URL override for the given webhook payload and
+// returns the resolved clone URL along with a boolean indicating whether an override was applied.
+func resolveWebhookGitCloneURL(payload webhook.ParsedPayload, appConfig *app.Config) (string, bool) {
+	defaultURL := strings.TrimSpace(payload.CloneURL)
+	if appConfig == nil || len(appConfig.SourceURLRewrites) == 0 {
+		return defaultURL, false
+	}
+
+	return rewriteSourceURL(defaultURL, appConfig.SourceURLRewrites)
+}
+
+// rewriteSourceURL applies the configured source URL rewrites to the given source URL and
+// returns the rewritten URL along with a boolean indicating whether a rewrite was applied.
+func rewriteSourceURL(sourceURL string, rewrites map[string]string) (string, bool) {
+	sourceURL = strings.TrimSpace(sourceURL)
+	if sourceURL == "" || len(rewrites) == 0 {
+		return sourceURL, false
+	}
+
+	keys := make([]string, 0, len(rewrites))
+	for key := range rewrites {
+		normalizedKey := normalizeSourceURLRewriteKey(key)
+		if normalizedKey == "" {
+			continue
+		}
+
+		keys = append(keys, normalizedKey)
+	}
+
+	sort.Slice(keys, func(i, j int) bool {
+		return len(keys[i]) > len(keys[j])
+	})
+
+	for _, key := range keys {
+		target := strings.TrimSpace(rewrites[key])
+		if target == "" {
+			continue
+		}
+
+		if strings.HasPrefix(sourceURL, key) {
+			return target + sourceURL[len(key):], true
+		}
+
+		if rewrittenURL, ok := rewriteGitURLHost(sourceURL, key, target); ok {
+			return rewrittenURL, true
+		}
+	}
+
+	return sourceURL, false
+}
+
+// rewriteGitURLHost rewrites the host in the given Git URL if it matches the specified matchHost,
+// replacing it with the target host.
+func rewriteGitURLHost(sourceURL, matchHost, target string) (string, bool) {
+	if rewrittenURL, ok := rewriteHostInStandardURL(sourceURL, matchHost, target); ok {
+		return rewrittenURL, true
+	}
+
+	return rewriteHostInSCPURL(sourceURL, matchHost, target)
+}
+
+// rewriteHostInStandardURL rewrites the host in a standard URL (e.g., "https://example.com/repo.git")
+// if it matches the specified matchHost,.
+func rewriteHostInStandardURL(sourceURL, matchHost, target string) (string, bool) {
+	u, err := url.Parse(sourceURL)
+	if err != nil || u.Host == "" {
+		return "", false
+	}
+
+	if !hostsMatch(u.Hostname(), u.Host, matchHost) {
+		return "", false
+	}
+
+	if replacementURL, repErr := url.Parse(target); repErr == nil && replacementURL.Host != "" {
+		if replacementURL.Scheme != "" {
+			u.Scheme = replacementURL.Scheme
+		}
+
+		if replacementURL.User != nil {
+			u.User = replacementURL.User
+		}
+
+		u.Host = replacementURL.Host
+
+		return u.String(), true
+	}
+
+	u.Host = target
+
+	return u.String(), true
+}
+
+// rewriteHostInSCPURL rewrites the host in an SCP-style Git URL (e.g., "git@github.com:user/repo.git")
+// if it matches the specified matchHost, replacing it with the target host.
+func rewriteHostInSCPURL(sourceURL, matchHost, target string) (string, bool) {
+	if strings.Contains(sourceURL, "://") {
+		return "", false
+	}
+
+	at := strings.Index(sourceURL, "@")
+
+	colon := strings.Index(sourceURL, ":")
+	if at <= 0 || colon <= at+1 {
+		return "", false
+	}
+
+	user := sourceURL[:at]
+	host := sourceURL[at+1 : colon]
+
+	repoPath := sourceURL[colon+1:]
+	if repoPath == "" || !hostsMatch(host, host, matchHost) {
+		return "", false
+	}
+
+	targetHost := target
+	targetUser := user
+
+	if replacementURL, err := url.Parse(target); err == nil && replacementURL.Host != "" {
+		targetHost = replacementURL.Host
+		if replacementURL.User != nil {
+			targetUser = replacementURL.User.Username()
+		}
+	} else if strings.Contains(target, "@") {
+		parts := strings.SplitN(target, "@", 2)
+		if strings.TrimSpace(parts[0]) != "" {
+			targetUser = strings.TrimSpace(parts[0])
+		}
+
+		targetHost = strings.TrimSpace(parts[1])
+	}
+
+	if targetHost == "" {
+		return "", false
+	}
+
+	return fmt.Sprintf("%s@%s:%s", targetUser, targetHost, repoPath), true
+}
+
+// hostsMatch checks if the given hostname or host with port matches the specified rule,
+// considering normalization and potential port differences.
+func hostsMatch(hostname, hostWithPort, rule string) bool {
+	rule = normalizeSourceURLRewriteKey(rule)
+	if rule == "" || strings.ContainsAny(rule, "/@") {
+		return false
+	}
+
+	normalizedHostname := normalizeSourceURLRewriteKey(hostname)
+	normalizedHostWithPort := normalizeSourceURLRewriteKey(hostWithPort)
+
+	if strings.Contains(rule, ":") {
+		return normalizedHostWithPort == rule
+	}
+
+	return normalizedHostname == rule
+}
+
+// shouldUsePayloadSSHURL determines whether to use the SSH URL from the webhook payload for cloning,
+// based on whether a clone URL override was applied and the presence of an SSH private key in the resolved auth config.
+func shouldUsePayloadSSHURL(overrideApplied bool, payloadSSHURL string, resolved git.ResolvedAuthConfig) bool {
+	if overrideApplied {
+		return false
+	}
+
+	return strings.TrimSpace(payloadSSHURL) != "" && resolved.SSHPrivateKey != ""
+}
+
+// repositoryNameFromWebhookPayload extracts the repository name from the webhook payload,
+// prioritizing the full name, then the clone URL, and finally the artifact. If none are available, it returns "unknown".
 func repositoryNameFromWebhookPayload(payload webhook.ParsedPayload) string {
 	if payload.FullName != "" {
 		return payload.FullName
@@ -119,10 +295,18 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	sourceType := config.SourceTypeGit
 
-	sourceRef := payload.CloneURL
+	var sourceRef string
+
+	cloneURLOverrideApplied := false
+
 	if payload.Source == webhook.PayloadSourceOCI {
 		sourceType = config.SourceTypeOCI
 		sourceRef = payload.Artifact
+	} else {
+		sourceRef, cloneURLOverrideApplied = resolveWebhookGitCloneURL(payload, appConfig)
+		if cloneURLOverrideApplied {
+			jobLog.Debug("using configured webhook clone URL override", slog.String("clone_url", sourceRef))
+		}
 	}
 
 	entity := logEntityForSourceType(sourceType)
@@ -157,8 +341,9 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	)
 
 	// Only attempt SSH clone when URL-specific credentials include an SSH private key.
+	// If a clone URL override is configured, do not switch back to the payload SSH URL.
 	resolvedSSH := git.ResolveAuthConfig(payload.SSHUrl, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken)
-	if sourceType == config.SourceTypeGit && payload.SSHUrl != "" && resolvedSSH.SSHPrivateKey != "" {
+	if sourceType == config.SourceTypeGit && shouldUsePayloadSSHURL(cloneURLOverrideApplied, payload.SSHUrl, resolvedSSH) {
 		sshAuth, authErr := git.GetAuthMethod(payload.SSHUrl, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken)
 		if authErr != nil {
 			onError(w, jobLog.With(logger.ErrAttr(authErr)), "failed to resolve SSH auth method", authErr.Error(), http.StatusInternalServerError, metadata)

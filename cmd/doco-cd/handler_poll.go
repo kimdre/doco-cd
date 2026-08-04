@@ -162,6 +162,14 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 	sourceType := config.NormalizeSourceType(pollConfig.Source)
 	sourceRef := pollConfig.SourceUrl
 	entity := logEntityForSourceType(sourceType)
+	sourceURLRewriteApplied := false
+
+	if sourceType == config.SourceTypeGit && appConfig != nil {
+		var rewritten string
+
+		rewritten, sourceURLRewriteApplied = rewriteSourceURL(sourceRef, appConfig.SourceURLRewrites)
+		sourceRef = rewritten
+	}
 
 	repoName := git.GetRepoName(sourceRef)
 	if sourceType == config.SourceTypeOCI {
@@ -171,6 +179,10 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 	jobLog := logger.With(
 		slog.String("job_id", metadata.JobID),
 	)
+
+	if sourceURLRewriteApplied {
+		jobLog.Debug("using configured source URL rewrite", slog.String("source_url", sourceRef))
+	}
 
 	if pollConfig.CustomTarget != "" {
 		jobLog = jobLog.With(slog.String("target", pollConfig.CustomTarget))
