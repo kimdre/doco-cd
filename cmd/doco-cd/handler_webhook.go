@@ -295,7 +295,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	sourceType := config.SourceTypeGit
 
-	sourceRef := payload.CloneURL
+	var sourceRef string
+
 	cloneURLOverrideApplied := false
 
 	if payload.Source == webhook.PayloadSourceOCI {
