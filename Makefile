@@ -23,9 +23,11 @@ test:
 	@echo "Running tests..."
 	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" ${COMPILER} go test ${BUILD_FLAGS} -cover ./... -timeout 10m
 
+# The nobitwarden build tag excludes the Bitwarden SDK, which is the only
+# dependency that requires cgo, so this target builds without a C compiler.
 test-nobitwarden:
 	@echo "Running tests without bitwarden integration..."
-	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" ${COMPILER} go test -ldflags="-X main.Version=dev" -tags nobitwarden -cover ./... -timeout 10m
+	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" CGO_ENABLED=0 go test -ldflags="-X main.Version=dev" -tags nobitwarden -cover ./... -timeout 10m
 
 test-verbose:
 	@echo "Running tests..."
