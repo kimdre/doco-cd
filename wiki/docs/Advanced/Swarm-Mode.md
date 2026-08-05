@@ -23,3 +23,10 @@ After rotating, doco-cd will also clean up old versions of the configs or secret
 For example, if you deploy a stack named `myapp` with a config named `db-settings` and the content of the config is `hello world`, doco-cd will create a config named `myapp_db-settings_a948904f` in the Swarm cluster.
 
 If you later change the content of the config to `hello universe`, doco-cd will create a new config named `myapp_db-settings_0b5c6934`, redeploy the service/container with the new config and remove the old config `myapp_db-settings_a948904f` from the Swarm cluster.
+
+## Docker API Permissions
+
+Swarm deployments need access to more Docker API resources than Compose deployments, namely
+services, tasks, nodes, configs and secrets.
+
+See [Docker API Permissions](Docker-API-Permissions.md) if you run doco-cd behind a Docker socket proxy.
