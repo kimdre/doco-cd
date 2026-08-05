@@ -86,7 +86,12 @@ func RemoveSwarmStack(ctx context.Context, dockerCli command.Cli, namespace stri
 	return swarmInternal.RunRemove(ctx, dockerCli, opts)
 }
 
-// addSwarmServiceLabels adds custom labels to the service containers in a Docker Swarm stack.
+// addSwarmServiceLabels adds custom labels to the services in a Docker Swarm stack.
+//
+// The labels are set as service-level labels (ServiceSpec.Labels) via Deploy.Labels,
+// never as container labels. Container labels are part of the task template, so
+// updating them on every deployment would make swarm recreate the tasks of every
+// service in the stack, even when nothing about the service actually changed.
 func addSwarmServiceLabels(stack *composetypes.Config, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
 	repoDir, appVersion, timestamp, latestCommit, projectHash string,
 ) {
@@ -109,46 +114,31 @@ func addSwarmServiceLabels(stack *composetypes.Config, deployConfig *deploy.Conf
 		DocoCDLabels.Source.URL:                     payload.WebURL,
 	}
 
-	// Service-level labels (ServiceSpec.Annotations.Labels) are required for Docker
-	// service events to be filterable by label. These are set via Deploy.Labels.
-	serviceLevelLabels := map[string]string{
-		DocoCDLabels.Metadata.Manager:        app.Name,
-		DocoCDLabels.Deployment.Name:         deployConfig.Name,
-		DocoCDLabels.Deployment.ConfigTarget: deployConfig.Internal.ConfigTarget,
-		DocoCDLabels.Source.Type:             SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
-		DocoCDLabels.Source.Name:             payload.FullName,
-	}
-
 	for i, s := range stack.Services {
-		if s.Labels == nil {
-			s.Labels = make(map[string]string)
-		}
-
-		maps.Copy(s.Labels, customLabels)
-
 		if s.Deploy.Labels == nil {
 			s.Deploy.Labels = make(map[string]string)
 		}
 
-		maps.Copy(s.Deploy.Labels, serviceLevelLabels)
+		maps.Copy(s.Deploy.Labels, customLabels)
 
 		stack.Services[i] = s
 	}
 }
 
 // addSwarmVolumeLabels adds custom labels to the volumes in a Docker Swarm stack.
+//
+// Volume labels end up in the mount options of the task template, so only labels that
+// stay the same between deployments may be set here. Volumes are looked up by their
+// stack namespace label and doco-cd labels are ignored when comparing volume configs,
+// so deployment metadata such as the timestamp is intentionally left out.
 func addSwarmVolumeLabels(stack *composetypes.Config, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
-	repoDir, appVersion, timestamp, latestCommit string,
+	repoDir string,
 ) {
 	customLabels := map[string]string{
 		DocoCDLabels.Metadata.Manager:        app.Name,
-		DocoCDLabels.Metadata.Version:        appVersion,
 		DocoCDLabels.Deployment.Name:         deployConfig.Name,
-		DocoCDLabels.Deployment.Timestamp:    timestamp,
 		DocoCDLabels.Deployment.WorkingDir:   repoDir,
 		DocoCDLabels.Deployment.ConfigTarget: deployConfig.Internal.ConfigTarget,
-		DocoCDLabels.Deployment.Trigger:      payload.CommitSHA,
-		DocoCDLabels.Deployment.CommitSHA:    latestCommit,
 		DocoCDLabels.Deployment.TargetRef:    ExtractOciArtifactTag(deployConfig.Reference),
 		DocoCDLabels.Source.Type:             SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
 		DocoCDLabels.Source.Name:             payload.FullName,

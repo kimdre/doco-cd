@@ -232,12 +232,14 @@ func (j *job) findMissingSwarmServicesOnStartup(ctx context.Context, jobLog *slo
 	existingStacks := set.New[string]()
 
 	for _, svc := range services {
+		labels := docker.SwarmServiceLabels(svc)
+
 		// Filter by repository to avoid matching services from other repos on the same swarm.
-		if strings.TrimSpace(svc.Spec.Labels[docker.DocoCDLabels.Source.Name]) != repositoryLabelValue {
+		if strings.TrimSpace(labels[docker.DocoCDLabels.Source.Name]) != repositoryLabelValue {
 			continue
 		}
 
-		if stackName := strings.TrimSpace(svc.Spec.Labels[docker.DocoCDLabels.Deployment.Name]); stackName != "" {
+		if stackName := strings.TrimSpace(labels[docker.DocoCDLabels.Deployment.Name]); stackName != "" {
 			existingStacks.Add(stackName)
 		}
 	}

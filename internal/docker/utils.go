@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,6 +66,62 @@ func (l Labels) getDeploymentComposeHash() (string, bool) {
 	return l.Get(DocoCDLabels.Deployment.ComposeHash)
 }
 
+// SwarmServiceLabels returns the labels of a swarm service, merged from the task
+// template and the service spec.
+//
+// Deployment metadata is stored in the service spec labels, because labels in the
+// task template are part of the service definition and changing them makes swarm
+// recreate all tasks of the service on every deployment.
+//
+// Stacks deployed by earlier versions carry the metadata in the container spec
+// instead, so both label sets are merged, with the service spec taking precedence.
+//
+// TODO: Remove the container spec fallback in a future release, once stacks have been
+// redeployed at least once.
+func SwarmServiceLabels(service swarm.Service) Labels {
+	containerLabels := swarmContainerLabels(service)
+
+	labels := make(Labels, len(containerLabels)+len(service.Spec.Labels))
+	maps.Copy(labels, containerLabels)
+	maps.Copy(labels, service.Spec.Labels)
+
+	return labels
+}
+
+// SwarmJobLabels returns the labels of a swarm service with the job configuration
+// taken from the task template only.
+//
+// Job labels are authored by the user as service labels in the compose file and are
+// therefore part of the task template, which is also where the deploy path reads them
+// from. Honoring job labels from the service spec here would schedule services that
+// are not set up as jobs during deployment.
+func SwarmJobLabels(service swarm.Service) Labels {
+	labels := SwarmServiceLabels(service)
+	containerLabels := swarmContainerLabels(service)
+
+	for key := range labels {
+		if !strings.HasPrefix(key, jobLabelPrefix) {
+			continue
+		}
+
+		if value, ok := containerLabels[key]; ok {
+			labels[key] = value
+		} else {
+			delete(labels, key)
+		}
+	}
+
+	return labels
+}
+
+func swarmContainerLabels(service swarm.Service) map[string]string {
+	if service.Spec.TaskTemplate.ContainerSpec == nil {
+		return nil
+	}
+
+	return service.Spec.TaskTemplate.ContainerSpec.Labels
+}
+
 // GetServiceLabels retrieves the Labels for each Service in a given stack.
 func GetServiceLabels(ctx context.Context, cli client.APIClient, swarmMode bool, stackName string) (map[Service]Labels, error) {
 	if swarmMode {
@@ -75,7 +132,7 @@ func GetServiceLabels(ctx context.Context, cli client.APIClient, swarmMode bool,
 
 		result := make(map[Service]Labels)
 		for _, service := range services {
-			result[Service(service.Spec.Name)] = service.Spec.TaskTemplate.ContainerSpec.Labels
+			result[Service(service.Spec.Name)] = SwarmServiceLabels(service)
 		}
 
 		return result, nil
@@ -117,7 +174,7 @@ func GetLabeledServices(ctx context.Context, cli client.APIClient, swarmMode boo
 
 		result := make(map[Service]map[string]string)
 		for _, service := range services {
-			result[Service(service.Spec.Name)] = service.Spec.TaskTemplate.ContainerSpec.Labels
+			result[Service(service.Spec.Name)] = SwarmServiceLabels(service)
 		}
 
 		return result, nil

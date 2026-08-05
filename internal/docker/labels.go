@@ -82,6 +82,9 @@ const (
 	DeprecatedAutoDiscoveryDeleteLabel = "cd.doco.deployment.auto_discovery.delete" //nolint:staticcheck
 )
 
+// jobLabelPrefix is the common prefix of all labels that configure scheduled jobs.
+const jobLabelPrefix = "cd.doco.job."
+
 var docoCDJobLabelNames = struct {
 	JobEnabled         string // Enable scheduling for a service/container
 	JobSchedule        string // Schedule of the job in 5-field cron format or @every duration

@@ -611,10 +611,12 @@ func (s *scheduler) discoverJobs(ctx context.Context) ([]scheduledJob, error) {
 
 		result := make([]scheduledJob, 0, len(services.Items))
 		for _, svc := range services.Items {
-			labels := map[string]string{}
-			if svc.Spec.TaskTemplate.ContainerSpec != nil && svc.Spec.TaskTemplate.ContainerSpec.Labels != nil {
-				labels = svc.Spec.TaskTemplate.ContainerSpec.Labels
-			}
+			// Deployment metadata is read from the service spec, but the job
+			// configuration itself must come from the task template only, because that
+			// is where the rest of the swarm job handling reads it from. Picking up job
+			// labels from the service spec here would schedule services that the deploy
+			// path does not treat as jobs.
+			labels := docker.SwarmJobLabels(svc)
 
 			result = append(result, scheduledJob{
 				key:    "swarm:" + svc.ID,
