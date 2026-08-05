@@ -89,7 +89,7 @@ FROM distroless-base AS release
 WORKDIR /
 
 # buildx plugin so compose v5 picks BuildKit instead of the legacy `/build` endpoint
-COPY --from=docker/buildx-bin:0.36.0@sha256:a7622548b38cb1826781a466e3f227476e85ab50b8009170b63d4f17bd4b3bc6 \
+COPY --from=docker/buildx-bin:0.36.1@sha256:1f2f6b2be4a2511ada67336e76892f1a588c89746009dd4b21069e4d867465be \
     /buildx /usr/libexec/docker/cli-plugins/docker-buildx
 
 COPY --from=build /doco-cd /doco-cd
