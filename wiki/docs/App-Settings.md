@@ -65,13 +65,53 @@ services:
 
 The settings in the `.env` file must be in the format `#!ini KEY=VALUE` or `#!yaml KEY: VALUE`, one setting per line.
 
+#### Simple example
+
 Example `.env` file:
 ```ini title=".env"
 GIT_ACCESS_TOKEN=xxx
 WEBHOOK_SECRET=xxx
 ```
 
+#### Multiline YAML options
+
+For multiline YAML options like `POLL_CONFIG` and `SOURCE_URL_REWRITES`, the `.env` file format does not support multiline values. Instead, use the corresponding `*_FILE` environment variables to point to separate YAML files:
+
+```ini title=".env"
+POLL_CONFIG_FILE=/mnt/poll-config.yaml
+SOURCE_URL_REWRITES_FILE=/mnt/source-url-rewrites.yaml
+```
+
+Then create the YAML files:
+
+```yaml title="poll-config.yaml"
+- url: https://github.com/example/repo1.git
+  interval: 300
+- url: https://github.com/example/repo2.git
+  reference: dev
+  interval: 600
+```
+
+```yaml title="source-url-rewrites.yaml"
+"https://forgejo.example.com/": "http://forgejo:3000/"
+"git@forgejo.example.com:": "ssh://git@forgejo.internal:2222/"
+```
+
+!!! note "Files must be mounted into the container"
+    When using `*_FILE` environment variables, you must mount the specified files into the doco-cd container. For example, if using `/mnt/poll-config.yaml`, ensure it is mounted as a volume in `docker-compose.yml`:
+    ```yaml
+    services:
+      app:
+        volumes:
+          - ./poll-config.yaml:/mnt/poll-config.yaml:ro
+          - ./source-url-rewrites.yaml:/mnt/source-url-rewrites.yaml:ro
+    ```
+
+Alternatively, use the `environment` option in `docker-compose.yml` instead of `.env` to set multiline values directly (see below).
+
 ### With `environment`
+
+#### Simple example
 
 Example with `environment` option:
 ```yaml title="docker-compose.yml"
@@ -80,6 +120,25 @@ services:
     environment:
       GIT_ACCESS_TOKEN: xxx
       WEBHOOK_SECRET: xxx
+```
+
+#### Multiline YAML options
+
+For multiline YAML options like `POLL_CONFIG` and `SOURCE_URL_REWRITES`, use YAML's literal block scalar (`|`):
+
+```yaml title="docker-compose.yml"
+services:
+  app:
+    environment:
+      POLL_CONFIG: |
+        - url: https://github.com/example/repo1.git
+          interval: 300
+        - url: https://github.com/example/repo2.git
+          reference: dev
+          interval: 600
+      SOURCE_URL_REWRITES: |
+        "https://forgejo.example.com/": "http://forgejo:3000/"
+        "git@forgejo.example.com:": "ssh://git@forgejo.internal:2222/"
 ```
 
 ## Usage with Docker Secrets
