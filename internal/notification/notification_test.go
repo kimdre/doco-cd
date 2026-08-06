@@ -40,7 +40,7 @@ func TestSend(t *testing.T) {
 		JobID:      id.GenID(),
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("expected POST request, got %s", r.Method)
 		}
@@ -119,7 +119,7 @@ func TestSendIncludesTruncatedRawAppriseResponse(t *testing.T) {
 
 	body := strings.Repeat("x", maxAppriseErrorResponseBodyBytes+100)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(body))
 	}))
