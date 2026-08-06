@@ -1291,33 +1291,12 @@ func normalizeOwnerRepo(p string) string {
 }
 
 // FormatGitErrorMessage formats a git operation error message by attempting to decode
-// any localized error response bodies (e.g., from Azure DevOps Server).
+// any localized error response bodies embedded in it (e.g. from Azure DevOps Server).
 // It returns the formatted error message suitable for logging.
 func FormatGitErrorMessage(err error) string {
 	if err == nil {
 		return ""
 	}
 
-	errorMsg := err.Error()
-
-	// Try to extract and decode JSON error response from the error message.
-	// Git errors might contain response bodies like:
-	// "remote authentication required (or check https://... for error details)\n..."
-	// or include JSON in the message.
-	// We look for common JSON patterns to extract and decode them.
-
-	// Look for potential JSON in the error message
-	if idx := strings.Index(errorMsg, "{"); idx >= 0 {
-		if endIdx := strings.LastIndex(errorMsg, "}"); endIdx > idx {
-			potentialJSON := errorMsg[idx : endIdx+1]
-
-			_, structured := httperror.FormatErrorResponseBody([]byte(potentialJSON))
-			if structured != "" {
-				// Return both the structured error details and original message
-				return fmt.Sprintf("%s (decoded: %s)", errorMsg, structured)
-			}
-		}
-	}
-
-	return errorMsg
+	return httperror.DecodeEmbeddedJSON(err.Error())
 }
