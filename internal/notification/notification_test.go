@@ -40,7 +40,7 @@ func TestSend(t *testing.T) {
 		JobID:      id.GenID(),
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("expected POST request, got %s", r.Method)
 		}
@@ -85,7 +85,7 @@ func TestSend(t *testing.T) {
 func TestSendIncludesAppriseErrorDetails(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(`{"error":"invalid notification type","notify_url":"discord://user:pass@discord.example/abcd"}`))
 	}))
