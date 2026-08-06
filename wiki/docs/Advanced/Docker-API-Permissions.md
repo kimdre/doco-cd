@@ -103,17 +103,18 @@ These endpoints are only needed when the corresponding setting is enabled.
     daemon directly, so your socket proxy does not apply to it, and every node needs the raw
     socket available. Set `prune_images: false` if this is unacceptable in your environment.
 
+### Building images
+
+If any of your services use `build:` in their compose file,
+you additionally need `POST /build` (and `POST /session` when BuildKit is used).
+
 ### Never used
 
 Doco-CD does not call these endpoints, so you can safely deny them:
 
 `POST /auth`, `POST /build`, `POST /commit`, `POST /containers/{id}/exec`, `POST /exec/{id}/start`,
 `GET /containers/{id}/logs`, `GET /containers/{id}/top`, `POST /containers/{id}/pause`,
-`GET /plugins`, `POST /session`, `GET /system/df`, `POST /swarm/init`, `POST /swarm/join`
-
-!!! note "Building images"
-    Doco-CD does not build images by default. If any of your services use `build:` in their
-    compose file, you additionally need `POST /build` (and `POST /session` when BuildKit is used).
+`GET /plugins`, `GET /system/df`, `POST /swarm/init`, `POST /swarm/join`
 
 ## Example socket proxy configuration
 
