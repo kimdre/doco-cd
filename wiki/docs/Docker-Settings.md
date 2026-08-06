@@ -27,3 +27,8 @@ Most users can leave them at the defaults, and you can set them with [environmen
 ## Docker Contexts
 
 See [Docker Contexts](Advanced/Docker-Contexts.md) for information on how to use Docker contexts with Doco-CD.
+
+## Docker API Permissions
+
+See [Docker API Permissions](Advanced/Docker-API-Permissions.md) for the list of Docker API endpoints Doco-CD uses
+and how to run it behind a Docker socket proxy.
