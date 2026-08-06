@@ -82,6 +82,60 @@ func TestSend(t *testing.T) {
 	}
 }
 
+func TestSendIncludesAppriseErrorDetails(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"invalid notification type","notify_url":"discord://user:pass@discord.example/abcd"}`))
+	}))
+	defer server.Close()
+
+	err := send(server.URL, "apprise://example.test", "Test Notification", "This is a test message", "info")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	got := err.Error()
+	if !strings.Contains(got, "apprise request failed with status: 400 Bad Request") {
+		t.Fatalf("expected status in error, got %q", got)
+	}
+
+	if !strings.Contains(got, "error: invalid notification type") {
+		t.Fatalf("expected parsed error in error text, got %q", got)
+	}
+
+	if !strings.Contains(got, `"notify_url":"[REDACTED]"`) {
+		t.Fatalf("expected response body to redact sensitive fields, got %q", got)
+	}
+
+	if strings.Contains(got, "discord://user:pass@discord.example/abcd") {
+		t.Fatalf("expected sensitive url to be redacted, got %q", got)
+	}
+}
+
+func TestSendIncludesTruncatedRawAppriseResponse(t *testing.T) {
+	t.Parallel()
+
+	body := strings.Repeat("x", maxAppriseErrorResponseBodyBytes+100)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(body))
+	}))
+	defer server.Close()
+
+	err := send(server.URL, "apprise://example.test", "Test Notification", "This is a test message", "info")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	got := err.Error()
+	if !strings.Contains(got, "(truncated)") {
+		t.Fatalf("expected truncated marker in error text, got %q", got)
+	}
+}
+
 func TestGetRevision(t *testing.T) {
 	t.Parallel()
 
