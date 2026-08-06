@@ -10,12 +10,14 @@ import (
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
-// TestAddSwarmServiceLabels_UsesServiceLevelLabels verifies that deployment metadata
-// is attached to the service and not to the task template.
+// TestAddSwarmServiceLabels_UsesServiceLevelLabels verifies that the full deployment
+// metadata is attached to the service and that only the subset that is stable between
+// deployments is attached to the task template.
 //
 // Labels in the task template are part of the service definition, so writing the
 // deployment timestamp there makes swarm recreate the tasks of every service on
-// every deployment, even when nothing changed.
+// every deployment, even when nothing changed. Stable labels are safe and keep the
+// containers identifiable on worker nodes.
 func TestAddSwarmServiceLabels_UsesServiceLevelLabels(t *testing.T) {
 	stack := &composetypes.Config{
 		Services: []composetypes.ServiceConfig{
@@ -63,14 +65,46 @@ func TestAddSwarmServiceLabels_UsesServiceLevelLabels(t *testing.T) {
 		DocoCDLabels.Source.URL,
 	}
 
+	// Labels that change on every deployment must never end up in the task template.
+	unstableLabels := []string{
+		DocoCDLabels.Metadata.Version,
+		DocoCDLabels.Deployment.Timestamp,
+		DocoCDLabels.Deployment.ComposeHash,
+		DocoCDLabels.Deployment.Trigger,
+		DocoCDLabels.Deployment.CommitSHA,
+		DocoCDLabels.Deployment.ConfigHash,
+		DocoCDLabels.Deployment.AutoDiscovery,
+		DocoCDLabels.Deployment.AutoDiscoveryConfig,
+	}
+
+	// Stable labels keep the containers identifiable on worker nodes.
+	stableLabels := []string{
+		DocoCDLabels.Metadata.Manager,
+		DocoCDLabels.Deployment.Name,
+		DocoCDLabels.Deployment.WorkingDir,
+		DocoCDLabels.Deployment.ConfigTarget,
+		DocoCDLabels.Deployment.TargetRef,
+		DocoCDLabels.Source.Type,
+		DocoCDLabels.Source.Name,
+		DocoCDLabels.Source.URL,
+	}
+
 	for _, service := range stack.Services {
 		for _, label := range metadataLabels {
 			if _, ok := service.Deploy.Labels[label]; !ok {
 				t.Errorf("service %q: expected label %q in Deploy.Labels, got none", service.Name, label)
 			}
+		}
 
+		for _, label := range unstableLabels {
 			if _, ok := service.Labels[label]; ok {
 				t.Errorf("service %q: label %q must not be set as a container label", service.Name, label)
+			}
+		}
+
+		for _, label := range stableLabels {
+			if _, ok := service.Labels[label]; !ok {
+				t.Errorf("service %q: expected stable label %q as a container label, got none", service.Name, label)
 			}
 		}
 	}

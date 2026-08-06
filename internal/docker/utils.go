@@ -75,9 +75,8 @@ func (l Labels) getDeploymentComposeHash() (string, bool) {
 //
 // Stacks deployed by earlier versions carry the metadata in the container spec
 // instead, so both label sets are merged, with the service spec taking precedence.
-//
-// TODO: Remove the container spec fallback in a future release, once stacks have been
-// redeployed at least once.
+// The container spec fallback can be dropped in a future release, once stacks have
+// been redeployed at least once.
 func SwarmServiceLabels(service swarm.Service) Labels {
 	containerLabels := swarmContainerLabels(service)
 

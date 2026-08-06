@@ -88,31 +88,42 @@ func RemoveSwarmStack(ctx context.Context, dockerCli command.Cli, namespace stri
 
 // addSwarmServiceLabels adds custom labels to the services in a Docker Swarm stack.
 //
-// The labels are set as service-level labels (ServiceSpec.Labels) via Deploy.Labels,
-// never as container labels. Container labels are part of the task template, so
-// updating them on every deployment would make swarm recreate the tasks of every
-// service in the stack, even when nothing about the service actually changed.
+// The full deployment metadata is set as service-level labels (ServiceSpec.Labels)
+// via Deploy.Labels. Container labels are part of the task template, so updating
+// them on every deployment would make swarm recreate the tasks of every service in
+// the stack, even when nothing about the service actually changed.
+//
+// A subset of the metadata that stays the same between deployments is additionally
+// set as container labels (via s.Labels), so the containers remain identifiable via
+// e.g. `docker ps --filter label=cd.doco.deployment.name=...` on worker nodes, where
+// the service spec is not available. Labels that change on every deployment, such as
+// the timestamp, must never be added to this subset.
 func addSwarmServiceLabels(stack *composetypes.Config, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
 	repoDir, appVersion, timestamp, latestCommit, projectHash string,
 ) {
+	stableLabels := map[string]string{
+		DocoCDLabels.Metadata.Manager:        app.Name,
+		DocoCDLabels.Deployment.Name:         deployConfig.Name,
+		DocoCDLabels.Deployment.WorkingDir:   repoDir,
+		DocoCDLabels.Deployment.ConfigTarget: deployConfig.Internal.ConfigTarget,
+		DocoCDLabels.Deployment.TargetRef:    ExtractOciArtifactTag(deployConfig.Reference),
+		DocoCDLabels.Source.Type:             SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
+		DocoCDLabels.Source.Name:             payload.FullName,
+		DocoCDLabels.Source.URL:              payload.WebURL,
+	}
+
 	customLabels := map[string]string{
-		DocoCDLabels.Metadata.Manager:               app.Name,
 		DocoCDLabels.Metadata.Version:               appVersion,
-		DocoCDLabels.Deployment.Name:                deployConfig.Name,
 		DocoCDLabels.Deployment.Timestamp:           timestamp,
 		DocoCDLabels.Deployment.ComposeHash:         projectHash,
-		DocoCDLabels.Deployment.WorkingDir:          repoDir,
-		DocoCDLabels.Deployment.ConfigTarget:        deployConfig.Internal.ConfigTarget,
 		DocoCDLabels.Deployment.Trigger:             payload.CommitSHA,
 		DocoCDLabels.Deployment.CommitSHA:           latestCommit,
-		DocoCDLabels.Deployment.TargetRef:           ExtractOciArtifactTag(deployConfig.Reference),
 		DocoCDLabels.Deployment.ConfigHash:          deployConfig.Internal.Hash,
 		DocoCDLabels.Deployment.AutoDiscovery:       strconv.FormatBool(deployConfig.AutoDiscovery.Enabled),
 		DocoCDLabels.Deployment.AutoDiscoveryConfig: MarshalAutoDiscoveryConfig(deployConfig.AutoDiscovery),
-		DocoCDLabels.Source.Type:                    SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
-		DocoCDLabels.Source.Name:                    payload.FullName,
-		DocoCDLabels.Source.URL:                     payload.WebURL,
 	}
+
+	maps.Copy(customLabels, stableLabels)
 
 	for i, s := range stack.Services {
 		if s.Deploy.Labels == nil {
@@ -120,6 +131,12 @@ func addSwarmServiceLabels(stack *composetypes.Config, deployConfig *deploy.Conf
 		}
 
 		maps.Copy(s.Deploy.Labels, customLabels)
+
+		if s.Labels == nil {
+			s.Labels = make(map[string]string)
+		}
+
+		maps.Copy(s.Labels, stableLabels)
 
 		stack.Services[i] = s
 	}
