@@ -23,7 +23,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
-	"github.com/kimdre/doco-cd/internal/common/httperror"
+	"github.com/kimdre/doco-cd/internal/common/errdecode"
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git/ssh"
@@ -1298,5 +1298,5 @@ func FormatGitErrorMessage(err error) string {
 		return ""
 	}
 
-	return httperror.DecodeEmbeddedJSON(err.Error())
+	return errdecode.DecodeEmbeddedJSON(err.Error())
 }

@@ -14,7 +14,7 @@ import (
 
 	"github.com/avast/retry-go/v5"
 
-	"github.com/kimdre/doco-cd/internal/common/httperror"
+	"github.com/kimdre/doco-cd/internal/common/errdecode"
 )
 
 const (
@@ -156,7 +156,7 @@ func responseErrorDetails(resp *http.Response) string {
 		return fmt.Sprintf(" (failed to read response body: %v)", err)
 	}
 
-	bodyText, structuredBodyText := httperror.FormatErrorResponseBody(body)
+	bodyText, structuredBodyText := errdecode.FormatErrorResponseBody(body)
 	if bodyText == "" && structuredBodyText == "" {
 		return ""
 	}
