@@ -192,6 +192,87 @@ func TestPost_APIError(t *testing.T) {
 	}
 }
 
+func TestPost_APIError_AzureDevOpsLocalizedMessage(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"message":"\u041d\u0435\u0434\u043e\u043f\u0443\u0441\u0442\u0438\u043c\u0430\u044f \u0432\u0435\u0442\u043a\u0430","typeName":"Microsoft.TeamFoundation.SourceControl.WebServer.InvalidRefNameException","errorCode":12345}`))
+	}))
+	defer srv.Close()
+
+	err := commitstatus.Post(context.Background(),
+		commitstatus.ProviderAzureDevOps,
+		"",
+		srv.URL+"/org/project/_git/repo",
+		"org/project/_git/repo",
+		"abc123",
+		"token",
+		commitstatus.Status{State: commitstatus.StateFailure},
+	)
+	assert.Assert(t, err != nil, "expected error for non-2xx response")
+
+	if err != nil {
+		assert.Assert(t, strings.Contains(err.Error(), "Недопустимая ветка"), "error should contain decoded message, got: %s", err.Error())
+		assert.Assert(t, strings.Contains(err.Error(), "typeName=Microsoft.TeamFoundation.SourceControl.WebServer.InvalidRefNameException"), "error should contain typeName, got: %s", err.Error())
+		assert.Assert(t, strings.Contains(err.Error(), "errorCode=12345"), "error should contain errorCode, got: %s", err.Error())
+		assert.Assert(t, !strings.Contains(err.Error(), "\\u041d"), "error should not contain escaped unicode, got: %s", err.Error())
+	}
+}
+
+func TestPost_APIError_FallsBackToRawBody(t *testing.T) {
+	t.Parallel()
+
+	const rawBody = `not-json body content`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(rawBody))
+	}))
+	defer srv.Close()
+
+	err := commitstatus.Post(context.Background(),
+		commitstatus.ProviderAuto,
+		"",
+		srv.URL+"/owner/repo",
+		"owner/repo",
+		"abc123",
+		"token",
+		commitstatus.Status{State: commitstatus.StateFailure},
+	)
+	assert.Assert(t, err != nil, "expected error for non-2xx response")
+
+	if err != nil {
+		assert.Assert(t, strings.Contains(err.Error(), rawBody), "error should contain raw body when JSON parsing fails, got: %s", err.Error())
+	}
+}
+
+func TestPost_APIError_DecodesJSONStringBody(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`"\u041d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e"`))
+	}))
+	defer srv.Close()
+
+	err := commitstatus.Post(context.Background(),
+		commitstatus.ProviderAuto,
+		"",
+		srv.URL+"/owner/repo",
+		"owner/repo",
+		"abc123",
+		"token",
+		commitstatus.Status{State: commitstatus.StateFailure},
+	)
+	assert.Assert(t, err != nil, "expected error for non-2xx response")
+
+	if err != nil {
+		assert.Assert(t, strings.Contains(err.Error(), "Недоступно"), "error should contain decoded JSON string message, got: %s", err.Error())
+		assert.Assert(t, !strings.Contains(err.Error(), "\\u041d"), "error should not contain escaped unicode, got: %s", err.Error())
+	}
+}
+
 func TestPost_UsesConfiguredAPIBaseURL(t *testing.T) {
 	t.Parallel()
 
