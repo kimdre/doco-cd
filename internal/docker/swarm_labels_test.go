@@ -1,6 +1,8 @@
 package docker
 
 import (
+	"slices"
+	"strings"
 	"testing"
 
 	composetypes "github.com/docker/cli/cli/compose/types"
@@ -46,26 +48,9 @@ func TestAddSwarmServiceLabels_UsesServiceLevelLabels(t *testing.T) {
 
 	addSwarmServiceLabels(stack, deployConfig, payload, "/repo", "dev", "2026-01-01T00:00:00Z", "def456", "projecthash")
 
-	metadataLabels := []string{
-		DocoCDLabels.Metadata.Manager,
-		DocoCDLabels.Metadata.Version,
-		DocoCDLabels.Deployment.Name,
-		DocoCDLabels.Deployment.Timestamp,
-		DocoCDLabels.Deployment.ComposeHash,
-		DocoCDLabels.Deployment.WorkingDir,
-		DocoCDLabels.Deployment.ConfigTarget,
-		DocoCDLabels.Deployment.Trigger,
-		DocoCDLabels.Deployment.CommitSHA,
-		DocoCDLabels.Deployment.TargetRef,
-		DocoCDLabels.Deployment.ConfigHash,
-		DocoCDLabels.Deployment.AutoDiscovery,
-		DocoCDLabels.Deployment.AutoDiscoveryConfig,
-		DocoCDLabels.Source.Type,
-		DocoCDLabels.Source.Name,
-		DocoCDLabels.Source.URL,
-	}
-
-	// Labels that change on every deployment must never end up in the task template.
+	// Labels that may differ between deployments of the same stack must never end up
+	// in the task template. Source.URL is included because it differs between webhook
+	// and poll triggers for the same repository.
 	unstableLabels := []string{
 		DocoCDLabels.Metadata.Version,
 		DocoCDLabels.Deployment.Timestamp,
@@ -75,6 +60,7 @@ func TestAddSwarmServiceLabels_UsesServiceLevelLabels(t *testing.T) {
 		DocoCDLabels.Deployment.ConfigHash,
 		DocoCDLabels.Deployment.AutoDiscovery,
 		DocoCDLabels.Deployment.AutoDiscoveryConfig,
+		DocoCDLabels.Source.URL,
 	}
 
 	// Stable labels keep the containers identifiable on worker nodes.
@@ -86,8 +72,9 @@ func TestAddSwarmServiceLabels_UsesServiceLevelLabels(t *testing.T) {
 		DocoCDLabels.Deployment.TargetRef,
 		DocoCDLabels.Source.Type,
 		DocoCDLabels.Source.Name,
-		DocoCDLabels.Source.URL,
 	}
+
+	metadataLabels := slices.Concat(stableLabels, unstableLabels)
 
 	for _, service := range stack.Services {
 		for _, label := range metadataLabels {
@@ -96,15 +83,17 @@ func TestAddSwarmServiceLabels_UsesServiceLevelLabels(t *testing.T) {
 			}
 		}
 
-		for _, label := range unstableLabels {
-			if _, ok := service.Labels[label]; ok {
-				t.Errorf("service %q: label %q must not be set as a container label", service.Name, label)
-			}
-		}
-
 		for _, label := range stableLabels {
 			if _, ok := service.Labels[label]; !ok {
 				t.Errorf("service %q: expected stable label %q as a container label, got none", service.Name, label)
+			}
+		}
+
+		// Exhaustiveness: any cd.doco.* container label not in the stable list is a
+		// new addition to the task template and must be reviewed for stability.
+		for label := range service.Labels {
+			if strings.HasPrefix(label, "cd.doco.") && !slices.Contains(stableLabels, label) {
+				t.Errorf("service %q: unexpected container label %q, add it to stableLabels only if it cannot change between deployments", service.Name, label)
 			}
 		}
 	}
@@ -146,6 +135,7 @@ func TestAddSwarmVolumeLabels_OmitsUnstableLabels(t *testing.T) {
 		DocoCDLabels.Deployment.CommitSHA,
 		DocoCDLabels.Deployment.Trigger,
 		DocoCDLabels.Metadata.Version,
+		DocoCDLabels.Source.URL,
 	} {
 		if _, ok := labels[label]; ok {
 			t.Errorf("label %q must not be set on volumes, it changes between deployments", label)
@@ -241,8 +231,9 @@ func TestSwarmServiceLabels(t *testing.T) {
 	}
 }
 
-// TestSwarmJobLabels verifies that job labels are only honored when they are part of
-// the task template, which is where the deploy path reads them from.
+// TestSwarmJobLabels verifies that job configuration labels are only honored when
+// they are part of the task template, which is where the deploy path reads them from,
+// while job runtime metadata written by doco-cd to the service spec is kept.
 func TestSwarmJobLabels(t *testing.T) {
 	service := swarmTypes.Service{
 		Spec: swarmTypes.ServiceSpec{
@@ -251,6 +242,7 @@ func TestSwarmJobLabels(t *testing.T) {
 					DocoCDLabels.Deployment.Name: "stack",
 					DocoCDJobLabels.JobEnabled:   "true",
 					DocoCDJobLabels.JobSchedule:  "@every 1h",
+					DocoCDJobLabels.JobLastRun:   "2026-01-01T00:00:00Z",
 				},
 			},
 			TaskTemplate: swarmTypes.TaskSpec{
@@ -264,14 +256,18 @@ func TestSwarmJobLabels(t *testing.T) {
 	labels := SwarmJobLabels(service)
 
 	if _, ok := labels[DocoCDJobLabels.JobEnabled]; ok {
-		t.Error("expected job labels that are only set on the service spec to be ignored")
+		t.Error("expected job config labels that are only set on the service spec to be ignored")
 	}
 
 	if got := labels[DocoCDJobLabels.JobSchedule]; got != "@every 5m" {
-		t.Errorf("expected the job label of the task template to be used, got %q", got)
+		t.Errorf("expected the job config label of the task template to be used, got %q", got)
 	}
 
 	if got := labels[DocoCDLabels.Deployment.Name]; got != "stack" {
 		t.Errorf("expected deployment metadata to be kept, got %q", got)
+	}
+
+	if got := labels[DocoCDJobLabels.JobLastRun]; got != "2026-01-01T00:00:00Z" {
+		t.Errorf("expected job runtime metadata of the service spec to be kept, got %q", got)
 	}
 }

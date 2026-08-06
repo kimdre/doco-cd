@@ -75,6 +75,9 @@ func (l Labels) getDeploymentComposeHash() (string, bool) {
 //
 // Stacks deployed by earlier versions carry the metadata in the container spec
 // instead, so both label sets are merged, with the service spec taking precedence.
+// Note that this only helps sites that read labels from an inspected service:
+// server-side filtered listings (e.g. GetServicesByLabel) match service spec labels
+// only, so legacy stacks stay invisible to them until they are redeployed once.
 // The container spec fallback can be dropped in a future release, once stacks have
 // been redeployed at least once.
 func SwarmServiceLabels(service swarm.Service) Labels {
@@ -90,27 +93,38 @@ func SwarmServiceLabels(service swarm.Service) Labels {
 // SwarmJobLabels returns the labels of a swarm service with the job configuration
 // taken from the task template only.
 //
-// Job labels are authored by the user as service labels in the compose file and are
-// therefore part of the task template, which is also where the deploy path reads them
-// from. Honoring job labels from the service spec here would schedule services that
-// are not set up as jobs during deployment.
+// Job configuration labels are authored by the user as service labels in the compose
+// file and are therefore part of the task template, which is also where the deploy
+// path reads them from. Honoring them from the service spec here would schedule
+// services that are not set up as jobs during deployment.
+//
+// Job runtime metadata (last/next run timestamps) is written by doco-cd itself to the
+// service spec, so it is exempt from this rule.
 func SwarmJobLabels(service swarm.Service) Labels {
-	labels := SwarmServiceLabels(service)
 	containerLabels := swarmContainerLabels(service)
 
-	for key := range labels {
-		if !strings.HasPrefix(key, jobLabelPrefix) {
+	labels := make(Labels, len(containerLabels)+len(service.Spec.Labels))
+	maps.Copy(labels, containerLabels)
+
+	for key, value := range service.Spec.Labels {
+		if isJobConfigLabel(key) {
 			continue
 		}
 
-		if value, ok := containerLabels[key]; ok {
-			labels[key] = value
-		} else {
-			delete(labels, key)
-		}
+		labels[key] = value
 	}
 
 	return labels
+}
+
+// isJobConfigLabel reports whether a label key configures a scheduled job, as opposed
+// to job runtime metadata maintained by doco-cd.
+func isJobConfigLabel(key string) bool {
+	if !strings.HasPrefix(key, jobLabelPrefix) {
+		return false
+	}
+
+	return key != docoCDJobLabelNames.JobLastRun && key != docoCDJobLabelNames.JobNextRun
 }
 
 func swarmContainerLabels(service swarm.Service) map[string]string {
