@@ -23,6 +23,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
+	"github.com/kimdre/doco-cd/internal/common/httperror"
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git/ssh"
@@ -340,7 +341,7 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 				slog.Warn("failed to validate requested reference in fetched refs before repair",
 					slog.String("path", path),
 					slog.String("ref", ref),
-					slog.String("error", fetchedCheckErr.Error()))
+					slog.String("error", FormatGitErrorMessage(fetchedCheckErr)))
 			}
 
 			if fetchedCheckErr == nil && !fetchedExists {
@@ -353,7 +354,7 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 
 			slog.Warn("detected possible repository corruption during checkout",
 				slog.String("path", path),
-				slog.String("error", err.Error()))
+				slog.String("error", FormatGitErrorMessage(err)))
 
 			// Release the lock before calling RepairRepository because repair may re-clone.
 			unlock()
@@ -365,7 +366,7 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 
 			slog.Error("failed to repair corrupted repository",
 				slog.String("path", path),
-				slog.String("repair_error", repairErr.Error()))
+				slog.String("repair_error", FormatGitErrorMessage(repairErr)))
 		}
 		// Attempt to deepen if the ref is unreachable in a shallow clone
 		if depth > 0 && isRefUnreachableError(err) {
@@ -1287,4 +1288,36 @@ func normalizeOwnerRepo(p string) string {
 
 	// Clean path
 	return path.Clean(p)
+}
+
+// FormatGitErrorMessage formats a git operation error message by attempting to decode
+// any localized error response bodies (e.g., from Azure DevOps Server).
+// It returns the formatted error message suitable for logging.
+func FormatGitErrorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	errorMsg := err.Error()
+
+	// Try to extract and decode JSON error response from the error message.
+	// Git errors might contain response bodies like:
+	// "remote authentication required (or check https://... for error details)\n..."
+	// or include JSON in the message.
+	// We look for common JSON patterns to extract and decode them.
+
+	// Look for potential JSON in the error message
+	if idx := strings.Index(errorMsg, "{"); idx >= 0 {
+		if endIdx := strings.LastIndex(errorMsg, "}"); endIdx > idx {
+			potentialJSON := errorMsg[idx : endIdx+1]
+
+			_, structured := httperror.FormatErrorResponseBody([]byte(potentialJSON))
+			if structured != "" {
+				// Return both the structured error details and original message
+				return fmt.Sprintf("%s (decoded: %s)", errorMsg, structured)
+			}
+		}
+	}
+
+	return errorMsg
 }
