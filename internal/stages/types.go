@@ -288,6 +288,46 @@ func (s *StageManager) NotifyFailure(notifyErr error) {
 	}
 }
 
+func (s *StageManager) NotifyDeploymentStarted() error {
+	var (
+		latestCommit string
+		commitErr    error
+		commitSha    string
+	)
+
+	if s.Repository.Git != nil {
+		latestCommit, commitErr = gitInternal.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
+		if commitErr == nil {
+			commitSha, commitErr = gitInternal.GetShortestUniqueCommitHash(s.Repository.Git, latestCommit, gitInternal.DefaultShortSHALength)
+			if commitErr != nil {
+				commitSha = latestCommit
+			}
+		}
+	}
+
+	if s.Repository.Git == nil {
+		commitSha = strings.TrimSpace(s.Repository.Revision)
+	}
+
+	revision := notification.GetRevision(s.DeployConfig.Reference, commitSha)
+
+	metadata := s.Metadata
+	metadata.Repository = s.Repository.Name
+	metadata.Stack = s.DeployConfig.Name
+	metadata.Context = s.DeployConfig.Context
+	metadata.Target = s.DeployConfig.Internal.ConfigTarget
+	metadata.Revision = revision
+	metadata.JobID = s.JobID
+	metadata.ChangedServices = s.DeployState.changedServiceNames()
+
+	return notification.Send(
+		notification.Info,
+		"Deployment started",
+		"Starting deployment of stack "+s.DeployConfig.Name,
+		metadata,
+	)
+}
+
 // resolveCommitSHA returns the full commit SHA for the current deployment.
 // For webhook triggers the SHA is taken directly from the payload; for poll
 // triggers it is resolved from the cloned repository after the init stage.

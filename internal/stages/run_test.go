@@ -96,6 +96,48 @@ func TestShouldPostPendingCommitStatus(t *testing.T) {
 	}
 }
 
+func TestShouldSendDeploymentStartedNotification(t *testing.T) {
+	tests := []struct {
+		name            string
+		stageName       StageName
+		destroyEnabled  bool
+		startedNotified bool
+		want            bool
+	}{
+		{
+			name:      "sends after pre deploy",
+			stageName: StagePreDeploy,
+			want:      true,
+		},
+		{
+			name:      "does not send after init",
+			stageName: StageInit,
+			want:      false,
+		},
+		{
+			name:           "does not send for destroy",
+			stageName:      StagePreDeploy,
+			destroyEnabled: true,
+			want:           false,
+		},
+		{
+			name:            "does not resend after sent",
+			stageName:       StagePreDeploy,
+			startedNotified: true,
+			want:            false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shouldSendDeploymentStartedNotification(tt.stageName, tt.destroyEnabled, tt.startedNotified)
+			if got != tt.want {
+				t.Fatalf("shouldSendDeploymentStartedNotification() = %t, want %t", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestFailureCommitStatusDescription(t *testing.T) {
 	tests := []struct {
 		name string
