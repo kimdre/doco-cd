@@ -93,9 +93,20 @@ These endpoints are only needed when the corresponding setting is enabled.
 | [`destroy.remove_volumes`](../Deploy-Settings.md)                     | `true`  | `GET /volumes/{name}`, `DELETE /volumes/{name}`                                         | destructive |
 | [`destroy.remove_images`](../Deploy-Settings.md)                      | `true`  | `DELETE /images/{name}`                                                                 | destructive |
 | [`reconciliation.enabled`](../Deploy-Settings.md)                     | `true`  | `GET /events`, `POST /containers/{id}/restart`                                          | read/write  |
-| `SCHEDULER_ENABLED`                                                   | `true`  | `POST /containers/create`, `POST /containers/{id}/wait`, `POST /containers/{id}/start`, Swarm: `POST /services/create`, `DELETE /services/{id}`, `GET /tasks` | read/write  |
+| `SCHEDULER_ENABLED`                                                   | `true`  | See [below](#scheduler_enabled-endpoint-details)                                 | read/write  |
 | [`wait_running_jobs`](../Deploy-Settings.md)                          | `true`  | `GET /tasks` (Swarm), `GET /containers/json` (Compose)                                  | read        |
-| [REST API](../Endpoints/REST-API.md) (`API_SECRET` set)               | off     | `GET /info`, `GET /containers/json`, `POST /containers/{id}/start|stop|restart`, Swarm: `GET /services`, `POST /services/{id}/update` | read/write  |
+| [REST API](../Endpoints/REST-API.md) (`API_SECRET` set)               | off     | See [below](#rest-api-endpoint-details)                                         | destructive |
+
+#### `SCHEDULER_ENABLED` endpoint details
+
+- Default (`execution_mode: restart`): `POST /containers/{id}/restart`; Swarm: `GET /services/{id}`, `POST /services/{id}/update`
+- `execution_mode: one_off`: `POST /containers/create`, `POST /containers/{id}/wait`, `POST /containers/{id}/start`; Swarm: `POST /services/create`, `DELETE /services/{id}`, `GET /tasks`
+- `stop_services`: `POST /containers/{id}/stop|start`; Swarm: `POST /services/{id}/update`, `GET /tasks`
+
+#### REST API endpoint details
+
+- Compose project management: `GET /containers/json`, `POST /containers/{id}/start|stop|restart`, `DELETE /containers/{id}`, `DELETE /networks/{id}`, `DELETE /volumes/{name}`, `DELETE /images/{name}`
+- Swarm stack/service management: `GET /services`, `POST /services/{id}/update`, `DELETE /services/{id}`, `DELETE /configs/{id}`, `DELETE /secrets/{id}`
 
 !!! danger "Image pruning in Swarm mode bypasses the proxy"
     In Swarm mode, `prune_images` runs `docker image prune` inside a global job service that
@@ -112,7 +123,7 @@ you additionally need `POST /build` (and `POST /session` when BuildKit is used).
 
 Doco-CD does not call these endpoints, so you can safely deny them:
 
-`POST /auth`, `POST /build`, `POST /commit`, `POST /containers/{id}/exec`, `POST /exec/{id}/start`,
+`POST /auth`, `POST /commit`, `POST /containers/{id}/exec`, `POST /exec/{id}/start`,
 `GET /containers/{id}/logs`, `GET /containers/{id}/top`, `POST /containers/{id}/pause`,
 `GET /plugins`, `GET /system/df`, `POST /swarm/init`, `POST /swarm/join`
 
