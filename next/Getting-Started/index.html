@@ -401,12 +401,14 @@
       
         
       
+        
+      
     
     
     
     
       <li class="md-tabs__item">
-        <a href="../Advanced/Docker-Contexts/" class="md-tabs__link">
+        <a href="../Advanced/Docker-API-Permissions/" class="md-tabs__link">
           
   
   Advanced
@@ -752,6 +754,17 @@
   
     <nav class="md-nav" aria-label="Run doco-cd">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#restricting-docker-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Restricting Docker access
+      </span>
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#notes-for-podman-users" class="md-nav__link">
@@ -1232,6 +1245,8 @@
       
         
       
+        
+      
     
     
     
@@ -1272,6 +1287,33 @@
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Advanced/Docker-API-Permissions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Docker API Permissions
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -1367,7 +1409,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" >
         
           
           <div class="md-nav__link md-nav__container">
@@ -1388,14 +1430,14 @@
             </a>
             
               
-              <label class="md-nav__link " for="__nav_4_3" id="__nav_4_3_label" tabindex="0">
+              <label class="md-nav__link " for="__nav_4_4" id="__nav_4_4_label" tabindex="0">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
           </div>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4_3">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_4">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1712,10 +1754,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_7" >
         
           
-          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4_7" id="__nav_4_7_label" tabindex="0">
             
   
   
@@ -1732,8 +1774,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4_6">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_7">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -2562,6 +2604,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#restricting-docker-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Restricting Docker access
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#notes-for-podman-users" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2898,6 +2951,10 @@ It does not require doco-cd to be reachable from the Git provider, which makes i
 </span></code></pre></div>
 <p>To be able to reach the application from external Git providers like GitHub or Gitlab, you need to expose the http endpoint of the application to the internet.
 You can use a reverse proxy like <a href="https://www.nginx.com/">NGINX</a>, <a href="https://traefik.io">Traefik</a> or <a href="https://caddyserver.com">Caddy</a> for this purpose.</p>
+<h3 id="restricting-docker-access">Restricting Docker access<a class="headerlink" href="#restricting-docker-access" title="Permanent link">&para;</a></h3>
+<p>Mounting the Docker socket grants doco-cd full control over the Docker host.
+If you prefer to restrict this, see <a data-preview="" href="../Advanced/Docker-API-Permissions/">Docker API Permissions</a>
+for the endpoints doco-cd uses and an example Docker socket proxy setup.</p>
 <h3 id="notes-for-podman-users">Notes for Podman users<a class="headerlink" href="#notes-for-podman-users" title="Permanent link">&para;</a></h3>
 <p>If you are using Podman instead of Docker, you may need to adjust the <code>docker-compose.yml</code> file to use the Podman socket instead of the Docker socket:</p>
 <div class="language-diff highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>services:

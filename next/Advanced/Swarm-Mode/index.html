@@ -401,12 +401,14 @@
       
         
       
+        
+      
     
     
     
     
       <li class="md-tabs__item md-tabs__item--active">
-        <a href="../Docker-Contexts/" class="md-tabs__link">
+        <a href="../Docker-API-Permissions/" class="md-tabs__link">
           
   
   Advanced
@@ -971,6 +973,8 @@
       
         
       
+        
+      
     
     
     
@@ -1014,6 +1018,33 @@
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Docker-API-Permissions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Docker API Permissions
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -1109,7 +1140,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" >
         
           
           <div class="md-nav__link md-nav__container">
@@ -1130,14 +1161,14 @@
             </a>
             
               
-              <label class="md-nav__link " for="__nav_4_3" id="__nav_4_3_label" tabindex="0">
+              <label class="md-nav__link " for="__nav_4_4" id="__nav_4_4_label" tabindex="0">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
           </div>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4_3">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_4">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1454,10 +1485,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_7" >
         
           
-          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4_7" id="__nav_4_7_label" tabindex="0">
             
   
   
@@ -1474,8 +1505,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4_6">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_7">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1747,6 +1778,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         Configs and Secrets
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#docker-api-permissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Docker API Permissions
       </span>
     </span>
   </a>
@@ -2302,6 +2344,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#docker-api-permissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Docker API Permissions
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2368,12 +2421,14 @@
       
         
       
+        
+      
     
     
     
     
       <li class="md-path__item">
-        <a href="../Docker-Contexts/" class="md-path__link">
+        <a href="../Docker-API-Permissions/" class="md-path__link">
           
   
   <span class="md-ellipsis">
@@ -2423,6 +2478,10 @@ This suffix is a shortened sha256 hash of the config or secret content, which al
 After rotating, doco-cd will also clean up old versions of the configs or secrets to prevent clutter.</p>
 <p>For example, if you deploy a stack named <code>myapp</code> with a config named <code>db-settings</code> and the content of the config is <code>hello world</code>, doco-cd will create a config named <code>myapp_db-settings_a948904f</code> in the Swarm cluster.</p>
 <p>If you later change the content of the config to <code>hello universe</code>, doco-cd will create a new config named <code>myapp_db-settings_0b5c6934</code>, redeploy the service/container with the new config and remove the old config <code>myapp_db-settings_a948904f</code> from the Swarm cluster.</p>
+<h2 id="docker-api-permissions">Docker API Permissions<a class="headerlink" href="#docker-api-permissions" title="Permanent link">&para;</a></h2>
+<p>Swarm deployments need access to more Docker API resources than Compose deployments, namely
+services, tasks, nodes, configs and secrets.</p>
+<p>See <a data-preview="" href="../Docker-API-Permissions/">Docker API Permissions</a> if you run doco-cd behind a Docker socket proxy.</p>
 
 
   <nav class="md-tags" >

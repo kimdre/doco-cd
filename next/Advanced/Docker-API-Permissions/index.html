@@ -12,13 +12,13 @@
         <meta name="author" content="Kim Oliver Drechsel">
       
       
-        <link rel="canonical" href="https://doco.cd/next/External-Secrets/Webhook/">
+        <link rel="canonical" href="https://doco.cd/next/Advanced/Docker-API-Permissions/">
       
       
-        <link rel="prev" href="../Openbao/">
+        <link rel="prev" href="../../Poll-Settings/">
       
       
-        <link rel="next" href="../../Advanced/Job-Scheduling/">
+        <link rel="next" href="../Docker-Contexts/">
       
       
         
@@ -31,7 +31,7 @@
   
     
       
-        <title>Webhook - Doco-CD Documentation</title>
+        <title>Docker API Permissions - Doco-CD Documentation</title>
       
     
   
@@ -133,7 +133,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#webhook" class="md-skip">
+        <a href="#docker-api-permissions" class="md-skip">
           Skip to content
         </a>
       
@@ -149,13 +149,13 @@
               
   <span data-next-version-message hidden>
     You're viewing the <strong>unreleased</strong> (next) version of this documentation. Content may be incomplete or subject to change.
-    <a href="../../../latest/External-Secrets/Webhook/">
+    <a href="../../../latest/Advanced/Docker-API-Permissions/">
       <strong>Click here to go to the latest stable version.</strong>
     </a>
   </span>
   <span data-non-next-version-message>
     You're not viewing the latest version.
-    <a href="../../../latest/External-Secrets/Webhook/">
+    <a href="../../../latest/Advanced/Docker-API-Permissions/">
       <strong>Click here to go to latest.</strong>
     </a>
   </span>
@@ -205,7 +205,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Webhook
+              Docker API Permissions
             
           </span>
         </div>
@@ -408,7 +408,7 @@
     
     
       <li class="md-tabs__item md-tabs__item--active">
-        <a href="../../Advanced/Docker-API-Permissions/" class="md-tabs__link">
+        <a href="././" class="md-tabs__link">
           
   
   Advanced
@@ -1023,10 +1023,36 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../Advanced/Docker-API-Permissions/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Docker API Permissions
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1041,6 +1067,177 @@
   
 
       </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#required-endpoints-per-feature" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Required endpoints per feature
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Required endpoints per feature">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#always-required" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Always required
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docker-compose-deployments" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Docker Compose deployments
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docker-swarm-deployments" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Docker Swarm deployments
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#optional-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Optional features
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Optional features">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scheduler_enabled-endpoint-details" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>SCHEDULER_ENABLED</code> endpoint details
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rest-api-endpoint-details" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        REST API endpoint details
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#building-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Building images
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#never-used" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Never used
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-socket-proxy-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Example socket proxy configuration
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Example socket proxy configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#minimal-standalone-compose-only-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Minimal standalone (Compose only) configuration
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Troubleshooting
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1053,7 +1250,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Docker-Contexts/" class="md-nav__link">
+      <a href="../Docker-Contexts/" class="md-nav__link">
         
   
   
@@ -1080,7 +1277,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Encryption/" class="md-nav__link">
+      <a href="../Encryption/" class="md-nav__link">
         
   
   
@@ -1104,8 +1301,6 @@
                 
   
   
-    
-  
   
   
     
@@ -1138,15 +1333,15 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" >
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../" class="md-nav__link ">
+            <a href="../../External-Secrets/" class="md-nav__link ">
               
   
   
@@ -1169,7 +1364,7 @@
             
           </div>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_4_4">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1188,7 +1383,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../AWS-Secrets-Manager/" class="md-nav__link">
+      <a href="../../External-Secrets/AWS-Secrets-Manager/" class="md-nav__link">
         
   
   
@@ -1215,7 +1410,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../Bitwarden-Secrets-Manager/" class="md-nav__link">
+      <a href="../../External-Secrets/Bitwarden-Secrets-Manager/" class="md-nav__link">
         
   
   
@@ -1242,7 +1437,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../Bitwarden-Vault-Vaultwarden/" class="md-nav__link">
+      <a href="../../External-Secrets/Bitwarden-Vault-Vaultwarden/" class="md-nav__link">
         
   
   
@@ -1269,7 +1464,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../1Password/" class="md-nav__link">
+      <a href="../../External-Secrets/1Password/" class="md-nav__link">
         
   
   
@@ -1296,7 +1491,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../1Password-Connect/" class="md-nav__link">
+      <a href="../../External-Secrets/1Password-Connect/" class="md-nav__link">
         
   
   
@@ -1323,7 +1518,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../Infisical/" class="md-nav__link">
+      <a href="../../External-Secrets/Infisical/" class="md-nav__link">
         
   
   
@@ -1350,7 +1545,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../Openbao/" class="md-nav__link">
+      <a href="../../External-Secrets/Openbao/" class="md-nav__link">
         
   
   
@@ -1374,36 +1569,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Webhook
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="././" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../External-Secrets/Webhook/" class="md-nav__link">
         
   
   
@@ -1418,182 +1587,6 @@
   
 
       </a>
-      
-        
-
-
-<nav class="md-nav md-nav--secondary" aria-label="On this page">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      On this page
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#environment-variables" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Environment Variables
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#secret-store" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Secret Store
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Secret Store">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#format" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Format
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#example-store-definitions" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Example store definitions
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#deployment-configuration" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Deployment Configuration
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#template-parameters" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Template Parameters
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#template-functions" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Template Functions
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#examples" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Examples
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Examples">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#basic-authentication-header" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Basic Authentication Header
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#url-encoded-query-parameter" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        URL-encoded Query Parameter
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#json-request-body" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        JSON Request Body
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#trimmed-and-uppercase-api-key-header" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Trimmed and Uppercase API Key Header
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#decoded-and-trimmed-secret" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Decoded and Trimmed Secret
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1614,7 +1607,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Job-Scheduling/" class="md-nav__link">
+      <a href="../Job-Scheduling/" class="md-nav__link">
         
   
   
@@ -1641,7 +1634,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Notifications/" class="md-nav__link">
+      <a href="../Notifications/" class="md-nav__link">
         
   
   
@@ -1726,7 +1719,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/OCI/Artifact-Usage/" class="md-nav__link">
+      <a href="../OCI/Artifact-Usage/" class="md-nav__link">
         
   
   
@@ -1753,7 +1746,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/OCI/Polling/" class="md-nav__link">
+      <a href="../OCI/Polling/" class="md-nav__link">
         
   
   
@@ -1780,7 +1773,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/OCI/Trust-Policy/" class="md-nav__link">
+      <a href="../OCI/Trust-Policy/" class="md-nav__link">
         
   
   
@@ -1807,7 +1800,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/OCI/Webhooks/" class="md-nav__link">
+      <a href="../OCI/Webhooks/" class="md-nav__link">
         
   
   
@@ -1842,7 +1835,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Pre-Post-Deployment-Scripts/" class="md-nav__link">
+      <a href="../Pre-Post-Deployment-Scripts/" class="md-nav__link">
         
   
   
@@ -1869,7 +1862,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Private-Container-Registries/" class="md-nav__link">
+      <a href="../Private-Container-Registries/" class="md-nav__link">
         
   
   
@@ -1896,7 +1889,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Self-Updating/" class="md-nav__link">
+      <a href="../Self-Updating/" class="md-nav__link">
         
   
   
@@ -1923,7 +1916,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Swarm-Mode/" class="md-nav__link">
+      <a href="../Swarm-Mode/" class="md-nav__link">
         
   
   
@@ -1950,7 +1943,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../Advanced/Tips-and-Tricks/" class="md-nav__link">
+      <a href="../Tips-and-Tricks/" class="md-nav__link">
         
   
   
@@ -2477,33 +2470,22 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#environment-variables" class="md-nav__link">
+  <a href="#required-endpoints-per-feature" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Environment Variables
+        Required endpoints per feature
       </span>
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#secret-store" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Secret Store
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Secret Store">
+    <nav class="md-nav" aria-label="Required endpoints per feature">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#format" class="md-nav__link">
+  <a href="#always-required" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Format
+        Always required
       </span>
     </span>
   </a>
@@ -2511,10 +2493,82 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#example-store-definitions" class="md-nav__link">
+  <a href="#docker-compose-deployments" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Example store definitions
+        Docker Compose deployments
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docker-swarm-deployments" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Docker Swarm deployments
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#optional-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Optional features
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Optional features">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scheduler_enabled-endpoint-details" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>SCHEDULER_ENABLED</code> endpoint details
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rest-api-endpoint-details" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        REST API endpoint details
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#building-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Building images
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#never-used" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Never used
       </span>
     </span>
   </a>
@@ -2527,99 +2581,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#deployment-configuration" class="md-nav__link">
+  <a href="#example-socket-proxy-configuration" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Deployment Configuration
+        Example socket proxy configuration
       </span>
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#template-parameters" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Template Parameters
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#template-functions" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Template Functions
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#examples" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Examples
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Examples">
+    <nav class="md-nav" aria-label="Example socket proxy configuration">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#basic-authentication-header" class="md-nav__link">
+  <a href="#minimal-standalone-compose-only-configuration" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Basic Authentication Header
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#url-encoded-query-parameter" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        URL-encoded Query Parameter
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#json-request-body" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        JSON Request Body
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#trimmed-and-uppercase-api-key-header" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Trimmed and Uppercase API Key Header
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#decoded-and-trimmed-secret" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Decoded and Trimmed Secret
+        Minimal standalone (Compose only) configuration
       </span>
     </span>
   </a>
@@ -2628,6 +2605,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Troubleshooting
+      </span>
+    </span>
+  </a>
   
 </li>
       
@@ -2704,55 +2692,11 @@
     
     
       <li class="md-path__item">
-        <a href="../../Advanced/Docker-API-Permissions/" class="md-path__link">
+        <a href="././" class="md-path__link">
           
   
   <span class="md-ellipsis">
     Advanced
-  </span>
-
-        </a>
-      </li>
-    
-  
-
-      
-        
-  
-  
-    
-    
-      
-        
-          
-        
-      
-        
-      
-        
-      
-        
-      
-        
-      
-        
-      
-        
-      
-        
-      
-        
-      
-    
-    
-    
-    
-      <li class="md-path__item">
-        <a href="../" class="md-path__link">
-          
-  
-  <span class="md-ellipsis">
-    External Secrets
   </span>
 
         </a>
@@ -2769,7 +2713,7 @@
                 
                   
   
-    <a href="https://github.com/kimdre/doco-cd/edit/main/wiki/docs/External-Secrets/Webhook.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/kimdre/doco-cd/edit/main/wiki/docs/Advanced/Docker-API-Permissions.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-pen" viewBox="0 0 24 24"><path d="M12.659 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v9.34"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10.378 12.622a1 1 0 0 1 3 3.003L8.36 20.637a2 2 0 0 1-.854.506l-2.867.837a.5.5 0 0 1-.62-.62l.836-2.869a2 2 0 0 1 .506-.853z"/></svg>
     </a>
@@ -2778,333 +2722,425 @@
     
       
     
-    <a href="https://github.com/kimdre/doco-cd/raw/main/wiki/docs/External-Secrets/Webhook.md" title="View source of this page" class="md-content__button md-icon">
+    <a href="https://github.com/kimdre/doco-cd/raw/main/wiki/docs/Advanced/Docker-API-Permissions.md" title="View source of this page" class="md-content__button md-icon">
       
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code-2" viewBox="0 0 24 24"><path d="M4 12.15V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2h-3.35"/><path d="M14 2v5a1 1 0 0 0 1 1h5M5 16l-3 3 3 3M9 22l3-3-3-3"/></svg>
     </a>
   
 
 
-<h1 id="webhook">Webhook<a class="headerlink" href="#webhook" title="Permanent link">&para;</a></h1>
-<p>The webhook provider uses global <a data-preview="" href="../Webhook/#secret-store">secret stores</a> defined in YAML.
-Each secret reference in <code>.doco-cd.yml</code> points to one store via <code>store_ref</code> and passes input values via <code>remote_ref</code>.</p>
-<h2 id="environment-variables">Environment Variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h2>
-<p>To use it, set the following environment variables:</p>
+<h1 id="docker-api-permissions">Docker API Permissions<a class="headerlink" href="#docker-api-permissions" title="Permanent link">&para;</a></h1>
+<p>Doco-CD needs access to the Docker API to deploy your stacks.
+By default this is the mounted Docker socket, which grants unrestricted control over the host.</p>
+<p>If you would rather place a <a data-preview="" href="#example-socket-proxy-configuration">Docker socket proxy</a> in front of the daemon, this page documents
+which Docker API endpoints doco-cd actually uses, so you can grant only what your setup needs.</p>
+<div class="admonition warning">
+<p class="admonition-title">A socket proxy limits the blast radius, it does not make access read-only</p>
+<p>Doco-CD is a deployment tool. It has to create, update and delete containers, images,
+networks and volumes (plus services, configs and secrets in Swarm mode) to do its job.
+A socket proxy is still worth it: it lets you deny endpoints doco-cd never uses, such as
+<code>/build</code>, <code>/exec</code> and <code>/plugins</code>, and it keeps the raw socket out of the container.</p>
+</div>
+<h2 id="required-endpoints-per-feature">Required endpoints per feature<a class="headerlink" href="#required-endpoints-per-feature" title="Permanent link">&para;</a></h2>
+<p>The tables below list the Docker Engine API endpoints doco-cd calls, grouped by feature.
+Paths are shown without the <code>/v1.x</code> API version prefix that the client prepends to every request.</p>
+<h3 id="always-required">Always required<a class="headerlink" href="#always-required" title="Permanent link">&para;</a></h3>
+<p>Every doco-cd installation needs these, regardless of the deployment mode.</p>
 <table>
 <thead>
 <tr>
-<th>Key</th>
-<th>Value</th>
+<th>Feature</th>
+<th>Docker API endpoints</th>
+<th>Access</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>SECRET_PROVIDER</code></td>
-<td><code>webhook</code></td>
+<td>Client handshake</td>
+<td><code>HEAD /_ping</code>, <code>GET /version</code></td>
+<td>read</td>
 </tr>
 <tr>
-<td><code>SECRET_PROVIDER_WEBHOOK_STORES</code></td>
-<td>YAML content defining webhook stores (mutually exclusive with <code>..._FILE</code>)</td>
+<td>Startup verification</td>
+<td><code>GET /info</code></td>
+<td>read</td>
 </tr>
 <tr>
-<td><code>SECRET_PROVIDER_WEBHOOK_STORES_FILE</code></td>
-<td>Path to a YAML file containing the store definitions (mutually exclusive with <code>...STORES</code>)</td>
+<td>Swarm mode detection</td>
+<td><code>GET /info</code></td>
+<td>read</td>
 </tr>
 <tr>
-<td><code>SECRET_PROVIDER_AUTH_USERNAME</code></td>
-<td>Optional auth value exposed in templates as <code>{{ .auth.username }}</code></td>
+<td>Own container lookup</td>
+<td><code>GET /containers/{id}/json</code></td>
+<td>read</td>
 </tr>
 <tr>
-<td><code>SECRET_PROVIDER_AUTH_PASSWORD</code></td>
-<td>Optional auth value exposed in templates as <code>{{ .auth.password }}</code></td>
+<td><a data-preview="" href="../Job-Scheduling/">Scheduled jobs</a> discovery</td>
+<td><code>GET /containers/json</code>, <code>GET /services</code> (Swarm), <code>GET /events</code></td>
+<td>read</td>
 </tr>
 <tr>
-<td><code>SECRET_PROVIDER_AUTH_TOKEN</code></td>
-<td>Optional auth value exposed in templates as <code>{{ .auth.token }}</code></td>
-</tr>
-<tr>
-<td><code>SECRET_PROVIDER_AUTH_APIKEY</code></td>
-<td>Optional auth value exposed in templates as <code>{{ .auth.api_key }}</code></td>
+<td><a data-preview="" href="../../Core-Concepts/">Reconciliation</a> watcher</td>
+<td><code>GET /events</code>, <code>GET /containers/json</code>, <code>GET /containers/{id}/json</code></td>
+<td>read</td>
 </tr>
 </tbody>
 </table>
-<h2 id="secret-store">Secret Store<a class="headerlink" href="#secret-store" title="Permanent link">&para;</a></h2>
-<h3 id="format">Format<a class="headerlink" href="#format" title="Permanent link">&para;</a></h3>
-<p>A store supports the following fields:</p>
+<div class="admonition info">
+<p class="admonition-title"><code>GET /events</code> is needed by default</p>
+<p>Both the scheduler (<code>SCHEDULER_ENABLED</code>) and reconciliation (<code>reconciliation.enabled</code>) are
+enabled by default and subscribe to the Docker event stream. Denying <code>/events</code> disables
+automatic drift recovery and scheduled jobs.</p>
+</div>
+<h3 id="docker-compose-deployments">Docker Compose deployments<a class="headerlink" href="#docker-compose-deployments" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
-<th>Field</th>
-<th>Required</th>
-<th>Description</th>
+<th>Feature</th>
+<th>Docker API endpoints</th>
+<th>Access</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>name</code></td>
-<td>Yes</td>
-<td>Store name (must be unique).</td>
+<td>Project discovery</td>
+<td><code>GET /containers/json</code>, <code>GET /containers/{id}/json</code>, <code>GET /networks</code>, <code>GET /volumes</code></td>
+<td>read</td>
 </tr>
 <tr>
-<td><code>version</code></td>
-<td>Yes</td>
-<td>Store schema version (currently <code>v1</code>).</td>
+<td>Image pull</td>
+<td><code>POST /images/create</code>, <code>GET /images/json</code>, <code>GET /images/{name}/json</code></td>
+<td>read/write</td>
 </tr>
 <tr>
-<td><code>url</code></td>
-<td>Yes</td>
-<td>Request URL template.</td>
+<td>Image drift check</td>
+<td><code>GET /distribution/{name}/json</code>, <code>GET /images/{name}/json</code>, <code>GET /containers/{id}/json</code></td>
+<td>read</td>
 </tr>
 <tr>
-<td><code>json_path</code></td>
-<td>Yes</td>
-<td><a href="https://jmespath.org/">JMESPath</a> expression used to extract the final secret value.</td>
+<td>Network creation</td>
+<td><code>GET /networks</code>, <code>GET /networks/{id}</code>, <code>POST /networks/create</code></td>
+<td>read/write</td>
 </tr>
 <tr>
-<td><code>method</code></td>
-<td>No</td>
-<td>HTTP method. Defaults to <code>GET</code>.</td>
+<td>Volume creation</td>
+<td><code>GET /volumes</code>, <code>GET /volumes/{name}</code>, <code>POST /volumes/create</code></td>
+<td>read/write</td>
 </tr>
 <tr>
-<td><code>headers</code></td>
-<td>No</td>
-<td>Optional HTTP headers map (template-supported).</td>
+<td>Container lifecycle</td>
+<td><code>POST /containers/create</code>, <code>POST /containers/{id}/start</code>, <code>POST /containers/{id}/stop</code>, <code>POST /containers/{id}/restart</code></td>
+<td>read/write</td>
 </tr>
 <tr>
-<td><code>body</code></td>
-<td>No</td>
-<td>Optional HTTP request body template.</td>
+<td>Container recreation</td>
+<td><code>POST /containers/{id}/rename</code>, <code>DELETE /containers/{id}</code></td>
+<td>destructive</td>
+</tr>
+<tr>
+<td>Network attachment</td>
+<td><code>POST /networks/{id}/connect</code>, <code>POST /networks/{id}/disconnect</code></td>
+<td>read/write</td>
+</tr>
+</tbody>
+</table>
+<h3 id="docker-swarm-deployments">Docker Swarm deployments<a class="headerlink" href="#docker-swarm-deployments" title="Permanent link">&para;</a></h3>
+<p>Used instead of most Compose endpoints when the daemon is a <a data-preview="" href="../Swarm-Mode/">Swarm manager</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Docker API endpoints</th>
+<th>Access</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Stack discovery</td>
+<td><code>GET /services</code>, <code>GET /services/{id}</code>, <code>GET /tasks</code></td>
+<td>read</td>
+</tr>
+<tr>
+<td>Convergence monitoring</td>
+<td><code>GET /services/{id}</code>, <code>GET /tasks</code>, <strong><code>GET /nodes</code></strong></td>
+<td>read</td>
+</tr>
+<tr>
+<td>Overlay networks</td>
+<td><code>GET /networks</code>, <code>GET /networks/{id}</code>, <code>POST /networks/create</code></td>
+<td>read/write</td>
+</tr>
+<tr>
+<td>Service deployment</td>
+<td><code>POST /services/create</code>, <code>POST /services/{id}/update</code></td>
+<td>read/write</td>
+</tr>
+<tr>
+<td>Configs</td>
+<td><code>GET /configs</code>, <code>GET /configs/{id}</code>, <code>POST /configs/create</code>, <code>POST /configs/{id}/update</code></td>
+<td>read/write</td>
+</tr>
+<tr>
+<td>Secrets</td>
+<td><code>GET /secrets</code>, <code>GET /secrets/{id}</code>, <code>POST /secrets/create</code>, <code>POST /secrets/{id}/update</code></td>
+<td>read/write</td>
+</tr>
+<tr>
+<td>Config / secret rotation</td>
+<td><code>DELETE /configs/{id}</code>, <code>DELETE /secrets/{id}</code></td>
+<td>destructive</td>
 </tr>
 </tbody>
 </table>
 <div class="admonition warning">
-<p class="admonition-title">The provider fails fast when:</p>
-<ul>
-<li><code>store_ref</code> does not exist</li>
-<li>a referenced <code>remote_ref</code> field is missing</li>
-<li><code>json_path</code> is missing or renders empty</li>
-</ul>
+<p class="admonition-title"><code>GET /nodes</code> is easy to miss</p>
+<p>Doco-CD waits for services to converge, which reads the list of active Swarm nodes.
+Most socket proxies gate this behind a separate <code>NODES</code> permission that is <strong>off by default</strong>.
+Without it, every Swarm deployment fails with <code>403 Forbidden</code>.</p>
 </div>
-<div class="admonition example">
-<p class="admonition-title">Examples for <code>json_path</code></p>
-<ul>
-<li><code>data.login.password</code></li>
-<li><code>data.fields[?name=='password'].value</code></li>
-</ul>
+<div class="admonition info">
+<p class="admonition-title">Why <code>POST /configs/{id}/update</code> is needed</p>
+<p>Doco-CD appends a content hash to config and secret names (see <a data-preview="" href="../Swarm-Mode/#configs-and-secrets">Swarm Mode</a>).
+A <strong>new or changed</strong> config is created with <code>POST /configs/create</code>.
+Redeploying an <strong>unchanged</strong> config finds the existing hashed name and refreshes it with
+<code>POST /configs/{id}/update</code>. Both are required. The same applies to secrets.</p>
 </div>
-<h3 id="example-store-definitions">Example store definitions<a class="headerlink" href="#example-store-definitions" title="Permanent link">&para;</a></h3>
-<p>The webhook provider supports two definition styles:</p>
-<ul>
-<li><code class="language-yaml highlight"><span class="nt">stores</span><span class="p">:</span></code> map style (multiple named stores in one document)</li>
-<li>top-level single-store style (can be combined using YAML multi-document <code class="language-yaml highlight"><span class="nn">---</span></code>)</li>
-</ul>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="example-store-definitions-stores-map-style" name="__tabbed_1" type="radio" /><input id="example-store-definitions-single-store-multi-document-style" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="example-store-definitions-stores-map-style"><code class="language-yaml highlight"><span class="nt">stores</span><span class="p">:</span></code> map style</label><label for="example-store-definitions-single-store-multi-document-style">Single-store multi-document style</label></div>
-<div class="tabbed-content">
-<div class="tabbed-block">
-<div class="language-yaml highlight"><span class="filename">secret-stores.yml</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">stores</span><span class="p">:</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">bitwarden-login</span><span class="p">:</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://bitwarden-api:8087/object/item/{{</span><span class="nv"> </span><span class="s">.remote_ref.key</span><span class="nv"> </span><span class="s">}}&quot;</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">GET</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="nt">headers</span><span class="p">:</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">      </span><span class="nt">Content-Type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">application/json</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nt">json_path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;data.login.{{</span><span class="nv"> </span><span class="s">.remote_ref.property</span><span class="nv"> </span><span class="s">}}&quot;</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span><span class="nt">bitwarden-fields</span><span class="p">:</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://bitwarden-api:8087/object/item/{{</span><span class="nv"> </span><span class="s">.remote_ref.key</span><span class="nv"> </span><span class="s">}}&quot;</span>
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">GET</span>
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">    </span><span class="nt">json_path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;data.fields[?name==&#39;{{</span><span class="nv"> </span><span class="s">.remote_ref.property</span><span class="nv"> </span><span class="s">}}&#39;].value&quot;</span>
-</span></code></pre></div>
-</div>
-<div class="tabbed-block">
-<div class="language-yaml highlight"><span class="filename">secret-stores.yml</span><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bitwarden-login</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://bitwarden-api:8087/object/item/{{</span><span class="nv"> </span><span class="s">.remote_ref.key</span><span class="nv"> </span><span class="s">}}&quot;</span>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">GET</span>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="nt">headers</span><span class="p">:</span>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">Content-Type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">application/json</span>
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="nt">json_path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;data.login.{{</span><span class="nv"> </span><span class="s">.remote_ref.property</span><span class="nv"> </span><span class="s">}}&quot;</span>
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="nn">---</span>
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">akeyless</span>
-</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
-</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.akeyless.io/v2/get-secret-value&quot;</span>
-</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">POST</span>
-</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="nt">headers</span><span class="p">:</span>
-</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="w">  </span><span class="nt">Content-Type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">application/json</span>
-</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="w">  </span><span class="nt">Authorization</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Basic</span><span class="nv"> </span><span class="s">{{</span><span class="nv"> </span><span class="s">print</span><span class="nv"> </span><span class="s">.auth.username</span><span class="nv"> </span><span class="s">\&quot;:\&quot;</span><span class="nv"> </span><span class="s">.auth.password</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">b64enc</span><span class="nv"> </span><span class="s">}}&quot;</span>
-</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="nt">body</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;{&quot;secret_name&quot;:&quot;{{</span><span class="nv"> </span><span class="s">.remote_ref.key</span><span class="nv"> </span><span class="s">}}&quot;,&quot;auth_method_access_token&quot;:&quot;{{</span><span class="nv"> </span><span class="s">.auth.token</span><span class="nv"> </span><span class="s">}}&quot;}&#39;</span>
-</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="nt">json_path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;value&quot;</span>
-</span></code></pre></div>
-</div>
-</div>
-</div>
-<h2 id="deployment-configuration">Deployment Configuration<a class="headerlink" href="#deployment-configuration" title="Permanent link">&para;</a></h2>
-<p>For webhook, <code>external_secrets</code> entries must use object references.
-Legacy string refs (e.g. <code class="language-yaml highlight"><span class="nt">DB_PASSWORD</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">some-id</span></code>) are rejected with a clear error.</p>
-<div class="language-yaml highlight"><span class="filename">.doco-cd.yml</span><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myapp</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">external_secrets</span><span class="p">:</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">DB_USERNAME</span><span class="p">:</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="nt">store_ref</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bitwarden-login</span>
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">    </span><span class="nt">remote_ref</span><span class="p">:</span>
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">      </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12345678-aaaa-bbbb-cccc-123456789abc</span>
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">      </span><span class="nt">property</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">username</span>
-</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>
-</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">  </span><span class="nt">DB_PASSWORD</span><span class="p">:</span>
-</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">    </span><span class="nt">store_ref</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bitwarden-login</span>
-</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">    </span><span class="nt">remote_ref</span><span class="p">:</span>
-</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="w">      </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12345678-aaaa-bbbb-cccc-123456789abc</span>
-</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="w">      </span><span class="nt">property</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">password</span>
-</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>
-</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="w">  </span><span class="nt">API_KEY</span><span class="p">:</span>
-</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="w">    </span><span class="nt">store_ref</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bitwarden-fields</span>
-</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="w">    </span><span class="nt">remote_ref</span><span class="p">:</span>
-</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="w">      </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dddddddd-1111-2222-3333-eeeeeeeeeeee</span>
-</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="w">      </span><span class="nt">property</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">api_key</span>
-</span></code></pre></div>
-<h2 id="template-parameters">Template Parameters<a class="headerlink" href="#template-parameters" title="Permanent link">&para;</a></h2>
-<p>All templated store fields (<code>url</code>, <code>headers</code>, <code>body</code>, <code>json_path</code>) can access the following objects:</p>
+<h3 id="optional-features">Optional features<a class="headerlink" href="#optional-features" title="Permanent link">&para;</a></h3>
+<p>These endpoints are only needed when the corresponding setting is enabled.</p>
 <table>
 <thead>
 <tr>
-<th>Parameter</th>
-<th>Description</th>
+<th>Setting</th>
+<th>Default</th>
+<th>Additional endpoints</th>
+<th>Access</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>remote_ref</code></td>
-<td>The per-secret object from <code>.doco-cd.yml</code> under <code>external_secrets.&lt;NAME&gt;.remote_ref</code>.</br>You can define any keys (for example <code>key</code>, <code>property</code>, <code>query</code>, <code>filters</code>).</td>
+<td><a data-preview="" href="../../Deploy-Settings/"><code>prune_images</code></a> (Compose)</td>
+<td><code>true</code></td>
+<td><code>DELETE /images/{name}</code></td>
+<td>destructive</td>
 </tr>
 <tr>
-<td><code>auth</code></td>
-<td>Provider auth values from <code>SECRET_PROVIDER_AUTH_*</code> environment variables.</br>Available keys: <code>username</code>, <code>password</code>, <code>token</code>, <code>api_key</code>.</td>
+<td><a data-preview="" href="../../Deploy-Settings/"><code>prune_images</code></a> (Swarm)</td>
+<td><code>true</code></td>
+<td><code>POST /services/create</code>, <code>GET /services</code>, <code>POST /services/{id}/update</code></td>
+<td>destructive</td>
+</tr>
+<tr>
+<td><a data-preview="" href="../../Deploy-Settings/"><code>remove_orphans</code></a></td>
+<td><code>true</code></td>
+<td><code>DELETE /containers/{id}</code>, <code>DELETE /networks/{id}</code>, <code>DELETE /services/{id}</code> (Swarm)</td>
+<td>destructive</td>
+</tr>
+<tr>
+<td><a data-preview="" href="../../Deploy-Settings/"><code>destroy.enabled</code></a></td>
+<td><code>false</code></td>
+<td><code>POST /containers/{id}/stop</code>, <code>DELETE /containers/{id}</code>, <code>DELETE /networks/{id}</code>, Swarm: <code>DELETE /services/{id}</code>, <code>DELETE /configs/{id}</code>, <code>DELETE /secrets/{id}</code></td>
+<td>destructive</td>
+</tr>
+<tr>
+<td><a data-preview="" href="../../Deploy-Settings/"><code>destroy.remove_volumes</code></a></td>
+<td><code>true</code></td>
+<td><code>GET /volumes/{name}</code>, <code>DELETE /volumes/{name}</code></td>
+<td>destructive</td>
+</tr>
+<tr>
+<td><a data-preview="" href="../../Deploy-Settings/"><code>destroy.remove_images</code></a></td>
+<td><code>true</code></td>
+<td><code>DELETE /images/{name}</code></td>
+<td>destructive</td>
+</tr>
+<tr>
+<td><a data-preview="" href="../../Deploy-Settings/"><code>reconciliation.enabled</code></a></td>
+<td><code>true</code></td>
+<td><code>GET /events</code>, <code>POST /containers/{id}/restart</code></td>
+<td>read/write</td>
+</tr>
+<tr>
+<td><code>SCHEDULER_ENABLED</code></td>
+<td><code>true</code></td>
+<td>See <a data-preview="" href="#scheduler_enabled-endpoint-details">below</a></td>
+<td>read/write</td>
+</tr>
+<tr>
+<td><a data-preview="" href="../../Deploy-Settings/"><code>wait_running_jobs</code></a></td>
+<td><code>true</code></td>
+<td><code>GET /tasks</code> (Swarm), <code>GET /containers/json</code> (Compose)</td>
+<td>read</td>
+</tr>
+<tr>
+<td><a data-preview="" href="../../Endpoints/REST-API/">REST API</a> (<code>API_SECRET</code> set)</td>
+<td>off</td>
+<td>See <a data-preview="" href="#rest-api-endpoint-details">below</a></td>
+<td>destructive</td>
 </tr>
 </tbody>
 </table>
-<div class="admonition example">
-<p class="admonition-title">Example</p>
-<div class="language-yaml highlight"><span class="filename">.doco-cd.yml</span><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">external_secrets</span><span class="p">:</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">DB_PASSWORD</span><span class="p">:</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="nt">store_ref</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bitwarden-login</span>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="nt">remote_ref</span><span class="p">:</span>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">      </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12345678-aaaa-bbbb-cccc-123456789abc</span>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">      </span><span class="nt">property</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">password</span>
-</span></code></pre></div>
-<div class="language-yaml highlight"><span class="filename">store definition</span><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://bitwarden-api:8087/object/item/{{</span><span class="nv"> </span><span class="s">.remote_ref.key</span><span class="nv"> </span><span class="s">}}&quot;</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">json_path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;data.login.{{</span><span class="nv"> </span><span class="s">.remote_ref.property</span><span class="nv"> </span><span class="s">}}&quot;</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nt">headers</span><span class="p">:</span>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">Authorization</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Bearer</span><span class="nv"> </span><span class="s">{{</span><span class="nv"> </span><span class="s">.auth.token</span><span class="nv"> </span><span class="s">}}&quot;</span>
-</span></code></pre></div>
-<p>Rendered values (example):</p>
+<h4 id="scheduler_enabled-endpoint-details"><code>SCHEDULER_ENABLED</code> endpoint details<a class="headerlink" href="#scheduler_enabled-endpoint-details" title="Permanent link">&para;</a></h4>
 <ul>
-<li><code>url</code>: <code>http://bitwarden-api:8087/object/item/12345678-aaaa-bbbb-cccc-123456789abc</code></li>
-<li><code>json_path</code>: <code>data.login.password</code></li>
+<li>Default (<code>execution_mode: restart</code>): <code>POST /containers/{id}/restart</code>; Swarm: <code>GET /services/{id}</code>, <code>POST /services/{id}/update</code></li>
+<li><code>execution_mode: one_off</code>: <code>POST /containers/create</code>, <code>POST /containers/{id}/wait</code>, <code>POST /containers/{id}/start</code>; Swarm: <code>POST /services/create</code>, <code>DELETE /services/{id}</code>, <code>GET /tasks</code></li>
+<li><code>stop_services</code>: <code>POST /containers/{id}/stop|start</code>; Swarm: <code>POST /services/{id}/update</code>, <code>GET /tasks</code></li>
 </ul>
+<h4 id="rest-api-endpoint-details">REST API endpoint details<a class="headerlink" href="#rest-api-endpoint-details" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Compose project management: <code>GET /containers/json</code>, <code>POST /containers/{id}/start|stop|restart</code>, <code>DELETE /containers/{id}</code>, <code>DELETE /networks/{id}</code>, <code>DELETE /volumes/{name}</code>, <code>DELETE /images/{name}</code></li>
+<li>Swarm stack/service management: <code>GET /services</code>, <code>POST /services/{id}/update</code>, <code>DELETE /services/{id}</code>, <code>DELETE /configs/{id}</code>, <code>DELETE /secrets/{id}</code></li>
+</ul>
+<div class="admonition danger">
+<p class="admonition-title">Image pruning in Swarm mode bypasses the proxy</p>
+<p>In Swarm mode, <code>prune_images</code> runs <code>docker image prune</code> inside a global job service that
+<strong>bind-mounts <code>/var/run/docker.sock</code> on every node</strong>. That container talks to the local
+daemon directly, so your socket proxy does not apply to it, and every node needs the raw
+socket available. Set <code>prune_images: false</code> if this is unacceptable in your environment.</p>
 </div>
-<h2 id="template-functions">Template Functions<a class="headerlink" href="#template-functions" title="Permanent link">&para;</a></h2>
-<p>Template functions are available in all templated fields (<code>url</code>, <code>headers</code>, <code>body</code>, <code>json_path</code>).
-Functions can be chained with <code>|</code> from left to right.</p>
+<h3 id="building-images">Building images<a class="headerlink" href="#building-images" title="Permanent link">&para;</a></h3>
+<p>If any of your services use <code>build:</code> in their compose file,
+you additionally need <code>POST /build</code> (and <code>POST /session</code> when BuildKit is used).</p>
+<h3 id="never-used">Never used<a class="headerlink" href="#never-used" title="Permanent link">&para;</a></h3>
+<p>Doco-CD does not call these endpoints, so you can safely deny them:</p>
+<p><code>POST /auth</code>, <code>POST /commit</code>, <code>POST /containers/{id}/exec</code>, <code>POST /exec/{id}/start</code>,
+<code>GET /containers/{id}/logs</code>, <code>GET /containers/{id}/top</code>, <code>POST /containers/{id}/pause</code>,
+<code>GET /plugins</code>, <code>GET /system/df</code>, <code>POST /swarm/init</code>, <code>POST /swarm/join</code></p>
+<h2 id="example-socket-proxy-configuration">Example socket proxy configuration<a class="headerlink" href="#example-socket-proxy-configuration" title="Permanent link">&para;</a></h2>
+<p>The following example uses <a href="https://github.com/Tecnativa/docker-socket-proxy">tecnativa/docker-socket-proxy</a>,
+which maps Docker API resources to environment variables.</p>
+<div class="admonition info">
+<p class="admonition-title">Other proxies use different variable names</p>
+<p>Environment variable names differ between socket proxy implementations.
+The <strong>Docker API endpoint tables above are the source of truth</strong> — map them to whatever
+your proxy of choice expects.</p>
+</div>
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">dockerproxy</span><span class="p">:</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/tecnativa/docker-socket-proxy:latest</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">      </span><span class="c1"># Required by every installation</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">      </span><span class="nt">PING</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">      </span><span class="nt">VERSION</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">      </span><span class="nt">INFO</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">      </span><span class="nt">EVENTS</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">      </span><span class="nt">CONTAINERS</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">      </span><span class="nt">IMAGES</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">      </span><span class="nt">NETWORKS</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">      </span><span class="nt">VOLUMES</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">      </span><span class="nt">DISTRIBUTION</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">      </span><span class="c1"># Docker Swarm only, omit these on a standalone daemon</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">      </span><span class="nt">SERVICES</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">      </span><span class="nt">TASKS</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">      </span><span class="nt">NODES</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w"> </span><span class="c1"># (1)!</span>
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">      </span><span class="nt">SECRETS</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">      </span><span class="nt">CONFIGS</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">      </span><span class="c1"># Required to deploy anything</span>
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">      </span><span class="nt">POST</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">      </span><span class="nt">DELETE</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w"> </span><span class="c1"># (2)!</span>
+</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="w">      </span><span class="c1"># Endpoints doco-cd never uses</span>
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="w">      </span><span class="nt">AUTH</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="w">      </span><span class="nt">BUILD</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="w">      </span><span class="nt">COMMIT</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="w">      </span><span class="nt">EXEC</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="w">      </span><span class="nt">PLUGINS</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="w">      </span><span class="nt">SESSION</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a><span class="w">      </span><span class="nt">SWARM</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a><span class="w">      </span><span class="nt">SYSTEM</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+</span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/run/docker.sock:/var/run/docker.sock:ro</span>
+</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
+</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>
+</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a><span class="w">  </span><span class="nt">doco-cd</span><span class="p">:</span>
+</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/kimdre/doco-cd:latest</span>
+</span><span id="__span-0-39"><a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">doco-cd</span>
+</span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a><span class="w">    </span><span class="nt">depends_on</span><span class="p">:</span>
+</span><span id="__span-0-41"><a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dockerproxy</span>
+</span><span id="__span-0-42"><a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+</span><span id="__span-0-43"><a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a><span class="w">      </span><span class="nt">DOCKER_HOST</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">tcp://dockerproxy:2375</span><span class="w"> </span><span class="c1"># (3)!</span>
+</span><span id="__span-0-44"><a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a><span class="w">      </span><span class="nt">WEBHOOK_SECRET</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xxx</span>
+</span><span id="__span-0-45"><a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
+</span><span id="__span-0-46"><a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;80:80&quot;</span>
+</span><span id="__span-0-47"><a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+</span><span id="__span-0-48"><a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">data:/data</span><span class="w"> </span><span class="c1"># (4)!</span>
+</span><span id="__span-0-49"><a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a><span class="w">    </span><span class="nt">cap_drop</span><span class="p">:</span>
+</span><span id="__span-0-50"><a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ALL</span>
+</span><span id="__span-0-51"><a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
+</span><span id="__span-0-52"><a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a>
+</span><span id="__span-0-53"><a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a><span class="nt">volumes</span><span class="p">:</span>
+</span><span id="__span-0-54"><a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a><span class="w">  </span><span class="nt">data</span><span class="p">:</span>
+</span></code></pre></div>
+<ol>
+<li>Needed to wait for Swarm services to converge. Without it every Swarm deployment fails with <code>403 Forbidden</code>.</li>
+<li>Required for recreating containers, rotating configs/secrets and <code>remove_orphans</code>. Set to <code>0</code> only if you accept that redeployments will fail.</li>
+<li>Point doco-cd at the proxy instead of mounting the socket. See <a data-preview="" href="../../Docker-Settings/">Docker Settings</a>.</li>
+<li>The Docker socket is no longer mounted here — only the data volume remains.</li>
+</ol>
+<h3 id="minimal-standalone-compose-only-configuration">Minimal standalone (Compose only) configuration<a class="headerlink" href="#minimal-standalone-compose-only-configuration" title="Permanent link">&para;</a></h3>
+<p>If you do not use Docker Swarm, drop the Swarm resources:</p>
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">dockerproxy</span><span class="p">:</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/tecnativa/docker-socket-proxy:latest</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">      </span><span class="nt">PING</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">      </span><span class="nt">VERSION</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">      </span><span class="nt">INFO</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">      </span><span class="nt">EVENTS</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">      </span><span class="nt">CONTAINERS</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">      </span><span class="nt">IMAGES</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">      </span><span class="nt">NETWORKS</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="w">      </span><span class="nt">VOLUMES</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="w">      </span><span class="nt">DISTRIBUTION</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="w">      </span><span class="nt">POST</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="w">      </span><span class="nt">DELETE</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/run/docker.sock:/var/run/docker.sock:ro</span>
+</span></code></pre></div>
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<p>If a deployment fails with a <code>403 Forbidden</code> error such as:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>failed to deploy stack myapp: Error response from daemon:
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>&lt;html&gt;&lt;body&gt;&lt;h1&gt;403 Forbidden&lt;/h1&gt;
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>Request forbidden by administrative rules.
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>&lt;/body&gt;&lt;/html&gt;
+</span></code></pre></div>
+<p>your proxy is blocking an endpoint that doco-cd needs.
+Most socket proxies log the rejected request, so check the proxy logs to find the exact
+method and path, then look it up in the <a data-preview="" href="#required-endpoints-per-feature">tables above</a>.</p>
+<p>The most common causes are:</p>
 <table>
 <thead>
 <tr>
-<th>Function</th>
-<th>Purpose</th>
+<th>Missing permission</th>
+<th>Symptom</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>b64enc</code></td>
-<td>Base64-encode a value</td>
+<td><code>NODES</code></td>
+<td>Swarm deployments fail while waiting for services to converge</td>
 </tr>
 <tr>
-<td><code>b64dec</code></td>
-<td>Base64-decode a value</td>
+<td><code>CONFIGS</code></td>
+<td>Swarm stacks using <code>configs:</code> fail to deploy</td>
 </tr>
 <tr>
-<td><code>urlencode</code></td>
-<td>URL-encode a value</td>
+<td><code>SECRETS</code></td>
+<td>Swarm stacks using <code>secrets:</code> fail to deploy</td>
 </tr>
 <tr>
-<td><code>urldecode</code></td>
-<td>URL-decode a value</td>
+<td><code>DISTRIBUTION</code></td>
+<td>Image update detection falls back or fails</td>
 </tr>
 <tr>
-<td><code>json</code></td>
-<td>Convert a value to a JSON string</td>
+<td><code>POST</code></td>
+<td>Nothing can be created; deployments fail immediately</td>
 </tr>
 <tr>
-<td><code>toUpper</code></td>
-<td>Convert text to uppercase</td>
-</tr>
-<tr>
-<td><code>toLower</code></td>
-<td>Convert text to lowercase</td>
-</tr>
-<tr>
-<td><code>trim</code></td>
-<td>Remove leading and trailing whitespace</td>
+<td><code>DELETE</code></td>
+<td>Container recreation, config/secret rotation and <code>destroy</code> fail</td>
 </tr>
 </tbody>
 </table>
-<details class="example">
-<summary>Function examples</summary>
-<ul>
-<li><code>{{ "secret123" | b64enc }}</code> -&gt; <code>c2VjcmV0MTIz</code></li>
-<li><code>{{ "c2VjcmV0MTIz" | b64dec }}</code> -&gt; <code>secret123</code></li>
-<li><code>{{ "hello world" | urlencode }}</code> -&gt; <code>hello+world</code></li>
-<li><code>{{ "hello+world" | urldecode }}</code> -&gt; <code>hello world</code></li>
-<li><code>{{ .remote_ref.data | json }}</code> -&gt; <code>{"key":"value"}</code></li>
-<li><code>{{ .remote_ref.data | json | b64enc }}</code> -&gt; <code>eyJrZXkiOiJ2YWx1ZSJ9</code> (JSON string encoded in Base64)</li>
-<li><code>{{ "hello" | toUpper }}</code> -&gt; <code>HELLO</code></li>
-<li><code>{{ "HELLO" | toLower }}</code> -&gt; <code>hello</code></li>
-<li><code>{{ "  hello  " | trim }}</code> -&gt; <code>hello</code></li>
-<li><code>{{ "  hello  " | trim | toUpper }}</code> -&gt; <code>HELLO</code></li>
-</ul>
-</details>
-<h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h2>
-<h3 id="basic-authentication-header">Basic Authentication Header<a class="headerlink" href="#basic-authentication-header" title="Permanent link">&para;</a></h3>
-<p><div class="language-yaml highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">headers</span><span class="p">:</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">Authorization</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Basic</span><span class="nv"> </span><span class="s">{{</span><span class="nv"> </span><span class="s">print</span><span class="nv"> </span><span class="s">.auth.username</span><span class="nv"> </span><span class="s">\&quot;:\&quot;</span><span class="nv"> </span><span class="s">.auth.password</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">b64enc</span><span class="nv"> </span><span class="s">}}&quot;</span>
-</span></code></pre></div>
-With <code>auth.username=admin</code> and <code>auth.password=secret123</code>:</p>
-<ul>
-<li>Result: <code>Authorization: Basic YWRtaW46c2VjcmV0MTIz</code></li>
-</ul>
-<h3 id="url-encoded-query-parameter">URL-encoded Query Parameter<a class="headerlink" href="#url-encoded-query-parameter" title="Permanent link">&para;</a></h3>
-<p><div class="language-yaml highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.example.com/search?q={{</span><span class="nv"> </span><span class="s">.remote_ref.query</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">urlencode</span><span class="nv"> </span><span class="s">}}&quot;</span>
-</span></code></pre></div>
-With <code>remote_ref.query=hello world</code>:</p>
-<ul>
-<li>Result: <code>https://api.example.com/search?q=hello+world</code></li>
-</ul>
-<h3 id="json-request-body">JSON Request Body<a class="headerlink" href="#json-request-body" title="Permanent link">&para;</a></h3>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nt">body</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;{&quot;filters&quot;:{{</span><span class="nv"> </span><span class="s">.remote_ref.filters</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">json</span><span class="nv"> </span><span class="s">}}}&#39;</span>
-</span></code></pre></div>
-<p>With <code>remote_ref</code> containing a map of filters:</p>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">remote_ref</span><span class="p">:</span>
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">filters</span><span class="p">:</span>
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">active</span>
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">user</span>
-</span></code></pre></div>
-<ul>
-<li>Result: <code>{"filters":{"status":"active","type":"user"}}</code></li>
-</ul>
-<h3 id="trimmed-and-uppercase-api-key-header">Trimmed and Uppercase API Key Header<a class="headerlink" href="#trimmed-and-uppercase-api-key-header" title="Permanent link">&para;</a></h3>
-<p><div class="language-yaml highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nt">headers</span><span class="p">:</span>
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span><span class="nt">X-API-Key</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{{</span><span class="nv"> </span><span class="s">.remote_ref.api_key</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">trim</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">toUpper</span><span class="nv"> </span><span class="s">}}&quot;</span>
-</span></code></pre></div>
-With <code>remote_ref.api_key=&lt;space&gt;my-secret-key&lt;space&gt;</code>:</p>
-<ul>
-<li>Result: <code>X-API-Key: MY-SECRET-KEY</code></li>
-</ul>
-<h3 id="decoded-and-trimmed-secret">Decoded and Trimmed Secret<a class="headerlink" href="#decoded-and-trimmed-secret" title="Permanent link">&para;</a></h3>
-<p><div class="language-yaml highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nt">json_path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;secret[?key==&#39;{{</span><span class="nv"> </span><span class="s">.remote_ref.encoded_id</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">b64dec</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">trim</span><span class="nv"> </span><span class="s">}}&#39;]&quot;</span>
-</span></code></pre></div>
-With <code>remote_ref.encoded_id=c2VjcmV0LWtleQ==</code>:</p>
-<ul>
-<li>Result: <code>secret[?key=='secret-key']</code></li>
-</ul>
 
 
   <nav class="md-tags" >
@@ -3120,14 +3156,14 @@ With <code>remote_ref.encoded_id=c2VjcmV0LWtleQ==</code>:</p>
       
       
       
-        <span class="md-tag">Secrets</span>
+        <span class="md-tag">Docker</span>
       
     
       
       
       
       
-        <span class="md-tag">Configuration</span>
+        <span class="md-tag">Security</span>
       
     
   </nav>
@@ -3172,7 +3208,7 @@ With <code>remote_ref.encoded_id=c2VjcmV0LWtleQ==</code>:</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../Openbao/" class="md-footer__link md-footer__link--prev" aria-label="Previous: OpenBao">
+          <a href="../../Poll-Settings/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Poll Settings">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -3182,20 +3218,20 @@ With <code>remote_ref.encoded_id=c2VjcmV0LWtleQ==</code>:</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                OpenBao
+                Poll Settings
               </div>
             </div>
           </a>
         
         
           
-          <a href="../../Advanced/Job-Scheduling/" class="md-footer__link md-footer__link--next" aria-label="Next: Job Scheduling &#x2f; Cron Jobs">
+          <a href="../Docker-Contexts/" class="md-footer__link md-footer__link--next" aria-label="Next: Docker Contexts">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Job Scheduling / Cron Jobs
+                Docker Contexts
               </div>
             </div>
             <div class="md-footer__button md-icon">
