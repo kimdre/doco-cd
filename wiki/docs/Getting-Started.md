@@ -79,6 +79,12 @@ docker compose logs -f
 To be able to reach the application from external Git providers like GitHub or Gitlab, you need to expose the http endpoint of the application to the internet.
 You can use a reverse proxy like [NGINX](https://www.nginx.com/), [Traefik](https://traefik.io) or [Caddy](https://caddyserver.com) for this purpose.
 
+### Restricting Docker access
+
+Mounting the Docker socket grants doco-cd full control over the Docker host.
+If you prefer to restrict this, see [Docker API Permissions](Advanced/Docker-API-Permissions.md)
+for the endpoints doco-cd uses and an example Docker socket proxy setup.
+
 ### Notes for Podman users
 
 If you are using Podman instead of Docker, you may need to adjust the `docker-compose.yml` file to use the Podman socket instead of the Docker socket:

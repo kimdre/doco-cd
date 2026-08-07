@@ -47,6 +47,10 @@ func shouldPostPendingCommitStatus(stageName StageName, destroyEnabled, pendingP
 	return !destroyEnabled && !pendingPosted && stageName == StagePreDeploy
 }
 
+func shouldSendDeploymentStartedNotification(stageName StageName, destroyEnabled, startedNotified bool) bool {
+	return !destroyEnabled && !startedNotified && stageName == StagePreDeploy
+}
+
 func shouldPostFailureCommitStatus(destroyEnabled bool) bool {
 	return !destroyEnabled
 }
@@ -112,6 +116,7 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 	}
 
 	pendingPosted := false
+	startedNotified := false
 
 	var finishedAt time.Time
 
@@ -147,6 +152,14 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 		stageLog.Debug(string("completed stage: "+stageName),
 			slog.String("duration", metadata.FinishedAt.Sub(metadata.StartedAt).Truncate(time.Millisecond).String()))
 		finishedAt = metadata.FinishedAt
+
+		if shouldSendDeploymentStartedNotification(stageName, s.DeployConfig.Destroy.Enabled, startedNotified) {
+			if err := s.NotifyDeploymentStarted(); err != nil {
+				stageLog.Error("failed to send notification", slog.Any("error", err))
+			}
+
+			startedNotified = true
+		}
 
 		// Post "pending" once the repository/commit has been resolved.
 		if shouldPostPendingCommitStatus(stageName, s.DeployConfig.Destroy.Enabled, pendingPosted) {
