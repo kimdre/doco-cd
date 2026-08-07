@@ -302,7 +302,7 @@ func run() error {
 
 	if c.SchedulerEnabled {
 		graceful.SafeGo(&wg, log.Logger, func() {
-			scheduler.Start(ctx, h.dockerCli, log.Logger, &wg)
+			scheduler.Start(ctx, h.dockerCli, log.Logger, &wg, h.secretProvider)
 		})
 	} else {
 		log.Info("scheduler disabled by configuration")

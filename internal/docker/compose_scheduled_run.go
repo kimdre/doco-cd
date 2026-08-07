@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -13,6 +14,8 @@ import (
 	"github.com/docker/compose/v5/pkg/compose"
 	containerTypes "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
+
+	"github.com/kimdre/doco-cd/internal/secretprovider"
 )
 
 var (
@@ -21,10 +24,11 @@ var (
 )
 
 type composeScheduledServiceRef struct {
-	Project     string
-	Service     string
-	WorkingDir  string
-	ConfigFiles []string
+	Project                string
+	Service                string
+	WorkingDir             string
+	ConfigFiles            []string
+	EncodedExternalSecrets map[string]string // provider-ready encoded external secret refs from deploy time
 }
 
 func RunComposeScheduledContainer(
@@ -33,13 +37,14 @@ func RunComposeScheduledContainer(
 	containerID string,
 	labels map[string]string,
 	waitForExit bool,
+	secretProvider *secretprovider.SecretProvider,
 ) error {
 	ref, err := composeScheduledServiceRefFromLabels(labels)
 	if err != nil {
 		return err
 	}
 
-	project, err := loadComposeScheduledProject(ctx, dockerCli, ref)
+	project, err := loadComposeScheduledProject(ctx, dockerCli, ref, secretProvider)
 	if err != nil {
 		return err
 	}
@@ -89,13 +94,18 @@ func RunComposeScheduledContainer(
 	return nil
 }
 
-func RunComposeOneOffFromServiceDefinition(ctx context.Context, dockerCli command.Cli, labels map[string]string) error {
+func RunComposeOneOffFromServiceDefinition(
+	ctx context.Context,
+	dockerCli command.Cli,
+	labels map[string]string,
+	secretProvider *secretprovider.SecretProvider,
+) error {
 	ref, err := composeScheduledServiceRefFromLabels(labels)
 	if err != nil {
 		return err
 	}
 
-	project, err := loadComposeScheduledProject(ctx, dockerCli, ref)
+	project, err := loadComposeScheduledProject(ctx, dockerCli, ref, secretProvider)
 	if err != nil {
 		return err
 	}
@@ -126,7 +136,12 @@ func RunComposeOneOffFromServiceDefinition(ctx context.Context, dockerCli comman
 	return nil
 }
 
-func loadComposeScheduledProject(ctx context.Context, dockerCli command.Cli, ref composeScheduledServiceRef) (*types.Project, error) {
+func loadComposeScheduledProject(
+	ctx context.Context,
+	dockerCli command.Cli,
+	ref composeScheduledServiceRef,
+	secretProvider *secretprovider.SecretProvider,
+) (*types.Project, error) {
 	if ref.WorkingDir == "" || len(ref.ConfigFiles) == 0 {
 		return nil, fmt.Errorf("%w: missing %q and/or %q label",
 			ErrComposeScheduledMetadataUnavailable,
@@ -153,6 +168,24 @@ func loadComposeScheduledProject(ctx context.Context, dockerCli command.Cli, ref
 	})
 	if err != nil {
 		return nil, fmt.Errorf("load compose project for scheduled service %s/%s: %w", ref.Project, ref.Service, err)
+	}
+
+	// Re-resolve external secrets so that environment-backed compose secrets
+	// (secrets.my_secret.environment: MY_VAR) have the correct value injected
+	// when compose calls injectSecrets during Start/RunOneOffContainer.
+	if secretProvider != nil && *secretProvider != nil && len(ref.EncodedExternalSecrets) > 0 {
+		resolved, resolveErr := (*secretProvider).ResolveSecretReferences(ctx, ref.EncodedExternalSecrets)
+		if resolveErr != nil {
+			return nil, fmt.Errorf("re-resolve external secrets for scheduled service %s/%s: %w", ref.Project, ref.Service, resolveErr)
+		}
+
+		if project.Environment == nil {
+			project.Environment = make(map[string]string)
+		}
+
+		for k, v := range resolved {
+			project.Environment[k] = v
+		}
 	}
 
 	project, err = project.WithSelectedServices([]string{ref.Service}, types.IgnoreDependencies)
@@ -197,12 +230,21 @@ func composeScheduledServiceRefFromLabels(labels map[string]string) (composeSche
 		)
 	}
 
-	return composeScheduledServiceRef{
+	ref := composeScheduledServiceRef{
 		Project:     project,
 		Service:     service,
 		WorkingDir:  strings.TrimSpace(labels[api.WorkingDirLabel]),
 		ConfigFiles: splitCommaSeparatedLabelValues(labels[api.ConfigFilesLabel]),
-	}, nil
+	}
+
+	if raw := strings.TrimSpace(labels[DocoCDJobLabels.JobExternalRefs]); raw != "" {
+		var encodedRefs map[string]string
+		if err := json.Unmarshal([]byte(raw), &encodedRefs); err == nil {
+			ref.EncodedExternalSecrets = encodedRefs
+		}
+	}
+
+	return ref, nil
 }
 
 func splitCommaSeparatedLabelValues(raw string) []string {

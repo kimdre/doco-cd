@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -48,6 +49,54 @@ func TestComposeScheduledServiceRefFromLabels(t *testing.T) {
 			t.Fatalf("expected ErrComposeScheduledMetadataUnavailable, got %v", err)
 		}
 	})
+
+	t.Run("parses external secrets JSON label", func(t *testing.T) {
+		t.Parallel()
+
+		encodedRefs := map[string]string{
+			"DB_PASSWORD": "my-secret-store/db-password",
+			"API_KEY":     "my-secret-store/api-key",
+		}
+		refsJSON, _ := json.Marshal(encodedRefs)
+
+		ref, err := composeScheduledServiceRefFromLabels(map[string]string{
+			api.ProjectLabel:                "project-a",
+			api.ServiceLabel:                "backup",
+			api.WorkingDirLabel:             "/repo/stack",
+			api.ConfigFilesLabel:            "/repo/stack/compose.yaml",
+			DocoCDJobLabels.JobExternalRefs: string(refsJSON),
+		})
+		if err != nil {
+			t.Fatalf("composeScheduledServiceRefFromLabels() unexpected error: %v", err)
+		}
+
+		if len(ref.EncodedExternalSecrets) != 2 {
+			t.Fatalf("expected 2 external secrets, got %d: %v", len(ref.EncodedExternalSecrets), ref.EncodedExternalSecrets)
+		}
+
+		if ref.EncodedExternalSecrets["DB_PASSWORD"] != "my-secret-store/db-password" {
+			t.Fatalf("unexpected DB_PASSWORD ref: %q", ref.EncodedExternalSecrets["DB_PASSWORD"])
+		}
+	})
+
+	t.Run("ignores malformed external secrets JSON label", func(t *testing.T) {
+		t.Parallel()
+
+		ref, err := composeScheduledServiceRefFromLabels(map[string]string{
+			api.ProjectLabel:                "project-a",
+			api.ServiceLabel:                "backup",
+			api.WorkingDirLabel:             "/repo/stack",
+			api.ConfigFilesLabel:            "/repo/stack/compose.yaml",
+			DocoCDJobLabels.JobExternalRefs: "not-valid-json",
+		})
+		if err != nil {
+			t.Fatalf("composeScheduledServiceRefFromLabels() unexpected error: %v", err)
+		}
+
+		if len(ref.EncodedExternalSecrets) != 0 {
+			t.Fatalf("expected empty external secrets on bad JSON, got %v", ref.EncodedExternalSecrets)
+		}
+	})
 }
 
 func TestSplitCommaSeparatedLabelValues(t *testing.T) {
@@ -65,7 +114,7 @@ func TestLoadComposeScheduledProject_RequiresComposeMetadata(t *testing.T) {
 	_, err := loadComposeScheduledProject(context.Background(), nil, composeScheduledServiceRef{
 		Project: "project-a",
 		Service: "backup",
-	})
+	}, nil)
 	if !errors.Is(err, ErrComposeScheduledMetadataUnavailable) {
 		t.Fatalf("expected ErrComposeScheduledMetadataUnavailable, got %v", err)
 	}
