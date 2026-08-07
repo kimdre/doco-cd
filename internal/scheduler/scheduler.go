@@ -795,8 +795,26 @@ func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, c
 	case scheduledJobModeContainer:
 		switch cfg.ExecutionMode {
 		case docker.JobExecutionModeOneOff:
+			err := docker.RunComposeOneOffFromServiceDefinition(ctx, s.dockerCli, job.labels)
+			if err == nil {
+				return nil
+			}
+
+			if !errors.Is(err, docker.ErrComposeScheduledMetadataUnavailable) {
+				return err
+			}
+
 			return docker.RunContainerOneOffFromExisting(ctx, s.dockerCli.Client(), job.id)
 		default:
+			err := docker.RunComposeScheduledContainer(ctx, s.dockerCli, job.id, job.labels, len(cfg.StopServices) > 0)
+			if err == nil {
+				return nil
+			}
+
+			if !errors.Is(err, docker.ErrComposeScheduledMetadataUnavailable) {
+				return err
+			}
+
 			if len(cfg.StopServices) > 0 {
 				// stop_services requires knowing when the job has finished.
 				// Use the blocking variant so services are not restarted while
