@@ -479,3 +479,145 @@ func TestCreateMountpointSymlink(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveDataMountPointUsesExplicitHostPath(t *testing.T) {
+	detectionCalled := false
+
+	mountPoint, err := resolveDataMountPoint(
+		"/srv/doco-cd",
+		"/data",
+		func() (container.MountPoint, error) {
+			detectionCalled = true
+
+			return container.MountPoint{}, errors.New("mount point detection must not be called")
+		},
+	)
+	if err != nil {
+		t.Fatalf("expected explicit host path to resolve, got %v", err)
+	}
+
+	if detectionCalled {
+		t.Fatal("expected explicit host path to bypass mount point detection")
+	}
+
+	expected := container.MountPoint{
+		Type:        "bind",
+		Source:      "/srv/doco-cd",
+		Destination: "/data",
+		Mode:        "rw",
+		RW:          true,
+	}
+	if mountPoint != expected {
+		t.Fatalf("expected mount point %+v, got %+v", expected, mountPoint)
+	}
+}
+
+func TestResolveDataMountPointWithoutHostPath(t *testing.T) {
+	expected := container.MountPoint{
+		Type:        "volume",
+		Source:      "/var/lib/docker/volumes/doco-cd/_data",
+		Destination: "/data",
+		Mode:        "rw",
+		RW:          true,
+	}
+	testCases := []struct {
+		name         string
+		detectionErr error
+	}{
+		{name: "uses automatic detection"},
+		{name: "returns detection error", detectionErr: errors.New("container unavailable on daemon")},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			detectionCalled := false
+
+			mountPoint, err := resolveDataMountPoint(
+				"",
+				"/data",
+				func() (container.MountPoint, error) {
+					detectionCalled = true
+
+					return expected, testCase.detectionErr
+				},
+			)
+			if !errors.Is(err, testCase.detectionErr) {
+				t.Fatalf("expected error %v, got %v", testCase.detectionErr, err)
+			}
+
+			if !detectionCalled {
+				t.Fatal("expected empty host path to use automatic mount point detection")
+			}
+
+			if testCase.detectionErr == nil && mountPoint != expected {
+				t.Fatalf("expected mount point %+v, got %+v", expected, mountPoint)
+			}
+		})
+	}
+}
+
+func TestDetectDataMountPoint(t *testing.T) {
+	const containerID = "doco-cd-container"
+
+	expectedMountPoint := container.MountPoint{
+		Source:      "/srv/doco-cd-data",
+		Destination: "/data",
+		RW:          true,
+	}
+	lookupErr := errors.New("container ID unavailable")
+	inspectionErr := errors.New("container unavailable on daemon")
+	testCases := []struct {
+		name               string
+		lookupErr          error
+		inspectionErr      error
+		expectedErr        error
+		expectedErrMessage string
+	}{
+		{name: "returns detected mount point"},
+		{
+			name:               "wraps container lookup error",
+			lookupErr:          lookupErr,
+			expectedErr:        lookupErr,
+			expectedErrMessage: "failed to retrieve doco-cd container id",
+		},
+		{
+			name:               "wraps mount inspection error",
+			inspectionErr:      inspectionErr,
+			expectedErr:        inspectionErr,
+			expectedErrMessage: "failed to retrieve /data mount point for container doco-cd-container",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			mountPoint, err := detectDataMountPoint(
+				"/data",
+				func() (string, error) {
+					return containerID, testCase.lookupErr
+				},
+				func(gotContainerID, destination string) (container.MountPoint, error) {
+					if gotContainerID != containerID {
+						t.Fatalf("expected container ID %q, got %q", containerID, gotContainerID)
+					}
+
+					if destination != "/data" {
+						t.Fatalf("expected destination %q, got %q", "/data", destination)
+					}
+
+					return expectedMountPoint, testCase.inspectionErr
+				},
+			)
+			if !errors.Is(err, testCase.expectedErr) {
+				t.Fatalf("expected error %v, got %v", testCase.expectedErr, err)
+			}
+
+			if testCase.expectedErrMessage != "" && !strings.Contains(err.Error(), testCase.expectedErrMessage) {
+				t.Fatalf("expected error to contain %q, got %v", testCase.expectedErrMessage, err)
+			}
+
+			if testCase.expectedErr == nil && mountPoint != expectedMountPoint {
+				t.Fatalf("expected mount point %+v, got %+v", expectedMountPoint, mountPoint)
+			}
+		})
+	}
+}

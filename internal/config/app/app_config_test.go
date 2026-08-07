@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/kimdre/doco-cd/internal/config"
@@ -374,6 +375,71 @@ func TestGetConfig_DataMountPathRejectsRelativePath(t *testing.T) {
 
 	if _, err := GetConfig(); err == nil {
 		t.Fatal("expected relative DATA_MOUNT_PATH to be rejected")
+	}
+}
+
+func TestGetConfig_DataHostPath(t *testing.T) {
+	testCases := []struct {
+		name         string
+		value        string
+		expected     string
+		unsetEnv     bool
+		expectsError bool
+	}{
+		{name: "defaults to empty", unsetEnv: true},
+		{name: "treats explicit empty as empty"},
+		{name: "treats whitespace as empty", value: "   "},
+		{name: "normalizes override", value: " /srv/doco-cd/../data/ ", expected: "/srv/data"},
+		{name: "rejects relative path", value: "srv/doco-cd", expectsError: true},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("LOG_LEVEL", "info")
+			t.Setenv("HTTP_PORT", "8080")
+			t.Setenv("WEBHOOK_SECRET", "secret")
+
+			if testCase.unsetEnv {
+				originalValue, wasSet := os.LookupEnv("DATA_HOST_PATH")
+
+				if err := os.Unsetenv("DATA_HOST_PATH"); err != nil {
+					t.Fatalf("failed to unset DATA_HOST_PATH: %v", err)
+				}
+
+				t.Cleanup(func() {
+					if wasSet {
+						if err := os.Setenv("DATA_HOST_PATH", originalValue); err != nil {
+							t.Errorf("failed to restore DATA_HOST_PATH: %v", err)
+						}
+
+						return
+					}
+
+					if err := os.Unsetenv("DATA_HOST_PATH"); err != nil {
+						t.Errorf("failed to keep DATA_HOST_PATH unset: %v", err)
+					}
+				})
+			} else {
+				t.Setenv("DATA_HOST_PATH", testCase.value)
+			}
+
+			cfg, err := GetConfig()
+			if testCase.expectsError {
+				if err == nil || !strings.Contains(err.Error(), "DATA_HOST_PATH") || !strings.Contains(err.Error(), testCase.value) {
+					t.Fatalf("expected DATA_HOST_PATH %q validation error, got %v", testCase.value, err)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("expected config to load, got %v", err)
+			}
+
+			if cfg.DataHostPath != testCase.expected {
+				t.Fatalf("expected DATA_HOST_PATH %q, got %q", testCase.expected, cfg.DataHostPath)
+			}
+		})
 	}
 }
 
