@@ -148,8 +148,8 @@ If `auto_discovery` is enabled, doco-cd will try to find projects/stacks to depl
 Doco-cd will internally generate new deploy configs based on the directory name and inherits all other settings from the 
 base deploy config inside the `.doco-cd.yml` file or the inline deployment config inside the poll config.
 
-When an app is no longer available in the `working_dir` (e.g. deleted or moved to another directory outside the working dir), 
-doco-cd will automatically remove the deployed project/stack from the docker host.
+When `auto_discovery.delete` is set to `true` and an app is no longer available in the `working_dir` (e.g. deleted or
+moved to another directory outside the working dir), doco-cd will remove the deployed project/stack from the docker host.
 
 #### Auto-Discovery settings
 
@@ -160,7 +160,7 @@ Use `auto_discovery: true` to enable it with defaults, or use the object form be
 |------------------|---------|------------------------------------------------------------------------------------------------------|---------------|
 | `enabled`        | boolean | Enables auto-discovery of services to deploy in the working directory                                | `false`       |
 | `depth`          | number  | Maximum depth of subdirectories to scan for docker-compose files, set to `0` for no limit            | `0`           |
-| `delete`         | boolean | Auto-remove obsolete auto-discovered deployments that are no longer present in the working directory | `true`        |
+| `delete`         | boolean | Auto-remove obsolete auto-discovered deployments that are no longer present in the working directory | `false`       |
 | `remove_volumes` | boolean | Remove volumes of auto-discovered deployments when they are deleted                                  | `false`       |
 | `remove_images`  | boolean | Remove images of auto-discovered deployments when they are deleted                                   | `true`        |
 
