@@ -109,7 +109,7 @@ func TestDeploySwarmStack(t *testing.T) {
 		func() error {
 			timestamp := time.Now().UTC().Format(time.RFC3339)
 			addSwarmServiceLabels(cfg, deployConfigs[0], &p, tmpDir, "dev", timestamp, commit, projectHash)
-			addSwarmVolumeLabels(cfg, deployConfigs[0], &p, tmpDir, "dev", timestamp, commit)
+			addSwarmVolumeLabels(cfg, deployConfigs[0], &p, tmpDir)
 			addSwarmConfigLabels(cfg, deployConfigs[0], &p, tmpDir, "dev", timestamp, commit)
 			addSwarmSecretLabels(cfg, deployConfigs[0], &p, tmpDir, "dev", timestamp, commit)
 

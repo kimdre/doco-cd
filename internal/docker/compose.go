@@ -671,7 +671,7 @@ func DeployStack(
 		}
 
 		addSwarmServiceLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit, projectHash)
-		addSwarmVolumeLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
+		addSwarmVolumeLabels(cfg, deployConfig, payload, externalWorkingDir)
 		addSwarmConfigLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
 		addSwarmSecretLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
 

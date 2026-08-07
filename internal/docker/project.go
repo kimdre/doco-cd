@@ -82,7 +82,7 @@ func copyProject(orig *types.Project) *types.Project {
 // should therefore be included in the project hash for redeploy detection.
 // All other cd.doco.* labels (metadata, timestamps, …) are excluded.
 var behaviorLabelPrefixes = []string{
-	"cd.doco.job.",
+	jobLabelPrefix,
 	"cd.doco.deployment.recreate.",
 }
 
