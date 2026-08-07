@@ -3208,8 +3208,8 @@ Entries/Keys, that appear in multiple files, get overwritten by the next occurre
 (see the <code>compose_files</code> setting) in subdirectories in the working directory (<code>working_dir</code>). </p>
 <p>Doco-cd will internally generate new deploy configs based on the directory name and inherits all other settings from the 
 base deploy config inside the <code>.doco-cd.yml</code> file or the inline deployment config inside the poll config.</p>
-<p>When an app is no longer available in the <code>working_dir</code> (e.g. deleted or moved to another directory outside the working dir), 
-doco-cd will automatically remove the deployed project/stack from the docker host.</p>
+<p>When <code>auto_discovery.delete</code> is set to <code>true</code> and an app is no longer available in the <code>working_dir</code> (e.g. deleted or
+moved to another directory outside the working dir), doco-cd will remove the deployed project/stack from the docker host.</p>
 <h4 id="auto-discovery-settings">Auto-Discovery settings<a class="headerlink" href="#auto-discovery-settings" title="Permanent link">&para;</a></h4>
 <p><code>auto_discovery</code> accepts either a boolean or a nested object in the deployment configuration file. 
 Use <code>auto_discovery: true</code> to enable it with defaults, or use the object form below to customize the settings.</p>
@@ -3239,7 +3239,7 @@ Use <code>auto_discovery: true</code> to enable it with defaults, or use the obj
 <td><code>delete</code></td>
 <td>boolean</td>
 <td>Auto-remove obsolete auto-discovered deployments that are no longer present in the working directory</td>
-<td><code>true</code></td>
+<td><code>false</code></td>
 </tr>
 <tr>
 <td><code>remove_volumes</code></td>
