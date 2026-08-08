@@ -140,6 +140,33 @@ func TestIsRollbackUpdateState(t *testing.T) {
 	}
 }
 
+func TestIsTerminalNonRollbackUpdateState(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		state swarmTypes.UpdateState
+		want  bool
+	}{
+		{name: "completed", state: swarmTypes.UpdateStateCompleted, want: true},
+		{name: "paused", state: swarmTypes.UpdateStatePaused, want: true},
+		{name: "updating", state: swarmTypes.UpdateStateUpdating, want: false},
+		{name: "rollback started", state: swarmTypes.UpdateStateRollbackStarted, want: false},
+		{name: "rollback paused", state: swarmTypes.UpdateStateRollbackPaused, want: false},
+		{name: "rollback completed", state: swarmTypes.UpdateStateRollbackCompleted, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := isTerminalNonRollbackUpdateState(tt.state); got != tt.want {
+				t.Fatalf("isTerminalNonRollbackUpdateState(%q) = %v, want %v", tt.state, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRollbackUpdateStatusError(t *testing.T) {
 	t.Parallel()
 
