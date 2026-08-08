@@ -2792,6 +2792,12 @@ On deployment the job's service/container is prepared but left idle:</p>
 <h3 id="restart"><code>restart</code><a class="headerlink" href="#restart" title="Permanent link">&para;</a></h3>
 <p>By default, scheduled jobs will be executed in <code>restart</code> mode, which means the service will be created on deployment 
 and then re-/started at the scheduled time without being removed after completion.</p>
+<div class="admonition note">
+<p class="admonition-title">Docker (Standalone) Compose services</p>
+<p>Scheduled services are started with their Compose service definition, so Compose-defined <code>secrets</code> and
+<code>configs</code> are applied when the job starts. Restart-mode services must have an effective scale of <code>1</code>; use
+<a data-preview="" href="#one_off"><code>one_off</code></a> for a multi-replica workload.</p>
+</div>
 <div class="admonition warning">
 <p class="admonition-title">Docker Swarm <code>global</code> + <code>restart</code> limitation</p>
 <p>In Docker Swarm, restart-mode scheduled jobs are deployed with <code>0</code> replicas so they do not run on deployment.
