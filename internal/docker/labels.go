@@ -98,7 +98,7 @@ var docoCDJobLabelNames = struct {
 	JobLastRun            string // Timestamp of the last run in RFC3339 format
 	JobNextRun            string // Timestamp of the next scheduled run in RFC3339 format
 	JobStopServices       string // Comma-separated list of services to stop before the job runs and restart after
-	JobExternalSecretRefs string // JSON-encoded map of provider-ready external references (env-var-name → encoded ref)
+	JobExternalSecretRefs string // JSON-encoded map of provider-ready external secret references (env-var-name → encoded ref)
 }{
 	JobEnabled:            "cd.doco.job.enabled",
 	JobSchedule:           "cd.doco.job.schedule",
