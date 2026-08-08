@@ -666,7 +666,7 @@ services:
 		func() error {
 			timestamp := time.Now().UTC().Format(time.RFC3339)
 			addSwarmServiceLabels(swarmStack, deployCfg, &p, tmpDir, "dev", timestamp, p.CommitSHA, projectHash)
-			addSwarmVolumeLabels(swarmStack, deployCfg, &p, tmpDir, "dev", timestamp, p.CommitSHA)
+			addSwarmVolumeLabels(swarmStack, deployCfg, &p, tmpDir)
 			addSwarmConfigLabels(swarmStack, deployCfg, &p, tmpDir, "dev", timestamp, p.CommitSHA)
 			addSwarmSecretLabels(swarmStack, deployCfg, &p, tmpDir, "dev", timestamp, p.CommitSHA)
 
