@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 
 	composeCli "github.com/compose-spec/compose-go/v2/cli"
@@ -183,9 +184,7 @@ func loadComposeScheduledProject(
 			project.Environment = make(map[string]string)
 		}
 
-		for k, v := range resolved {
-			project.Environment[k] = v
-		}
+		maps.Copy(project.Environment, resolved)
 	}
 
 	project, err = project.WithSelectedServices([]string{ref.Service}, types.IgnoreDependencies)
