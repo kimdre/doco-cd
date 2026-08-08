@@ -9,6 +9,7 @@ func TestSwarmModeEnabled(t *testing.T) {
 
 	prevDisable := disableSwarmFeature.Load()
 	prevMode := modeEnabled.Load()
+
 	t.Cleanup(func() {
 		disableSwarmFeature.Store(prevDisable)
 		modeEnabled.Store(prevMode)
