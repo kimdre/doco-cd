@@ -588,6 +588,38 @@ func logDeploymentHeartbeat(log *slog.Logger, phase string) {
 	log.Info("deployment in progress", slog.String("phase", normalizeDeploymentPhase(phase)))
 }
 
+func deploymentRepositoryKey(payload *webhook.ParsedPayload) string {
+	if payload == nil {
+		return ""
+	}
+
+	for _, candidate := range []string{payload.CloneURL, payload.FullName, payload.Artifact} {
+		if value := strings.TrimSpace(candidate); value != "" {
+			return value
+		}
+	}
+
+	return ""
+}
+
+func resolveDeploymentMetricsRepositoryLabel(payload *webhook.ParsedPayload) string {
+	repository := normalizeRepositoryForLabelMatch(deploymentRepositoryKey(payload))
+	if repository == "" {
+		return "unknown"
+	}
+
+	return repository
+}
+
+func resolveDeploymentMetricsDeploymentLabel(deployName string) string {
+	deployment := strings.TrimSpace(deployName)
+	if deployment == "" {
+		return "unknown"
+	}
+
+	return deployment
+}
+
 // DeployStack deploys the stack using the provided deployment configuration.
 func DeployStack(
 	jobLog *slog.Logger, externalRepoPath string, ctx *context.Context,
@@ -596,6 +628,8 @@ func DeployStack(
 	swarmMode bool,
 ) error {
 	startTime := time.Now()
+	repositoryLabel := resolveDeploymentMetricsRepositoryLabel(payload)
+	deploymentLabel := resolveDeploymentMetricsDeploymentLabel(deployConfig.Name)
 
 	stackLog := jobLog.
 		With(slog.String("stack", deployConfig.Name))
@@ -683,13 +717,13 @@ func DeployStack(
 		addSwarmSecretLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
 
 		if err = removeMismatchedRecreatableVolumes(*ctx, dockerCli.Client(), deployConfig.Name, project); err != nil {
-			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
+			prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel).Inc()
 			return fmt.Errorf("failed to remove mismatched recreatable volumes: %w", err)
 		}
 
 		err = DeploySwarmStack(*ctx, dockerCli, cfg, opts)
 		if err != nil {
-			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
+			prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel).Inc()
 
 			errMsg := "failed to deploy swarm stack " + deployConfig.Name
 
@@ -700,7 +734,7 @@ func DeployStack(
 
 		err = PruneStackConfigs(*ctx, dockerCli.Client(), deployConfig.Name)
 		if err != nil {
-			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
+			prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel).Inc()
 
 			errMsg := "failed to prune stack configs"
 
@@ -711,7 +745,7 @@ func DeployStack(
 
 		err = PruneStackSecrets(*ctx, dockerCli.Client(), deployConfig.Name)
 		if err != nil {
-			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
+			prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel).Inc()
 
 			errMsg := "failed to prune stack secrets"
 
@@ -725,7 +759,7 @@ func DeployStack(
 
 			err = RunImagePruneJob(*ctx, dockerCli)
 			if err != nil {
-				prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
+				prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel).Inc()
 
 				errMsg := "failed to run image prune job"
 
@@ -790,7 +824,7 @@ func DeployStack(
 		err = deployCompose(*ctx, dockerCli, project, deployConfig, recreateMode,
 			forcedServices.ToSlice(), needSignal, deploymentPhase.Set)
 		if err != nil {
-			prometheus.DeploymentErrorsTotal.WithLabelValues(deployConfig.Name).Inc()
+			prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel).Inc()
 			return fmt.Errorf("failed to deploy stack: %w", err)
 		}
 	}
@@ -798,14 +832,7 @@ func DeployStack(
 	deploymentPhase.Set("finalizing deployment status")
 
 	// cache the deployment status after successful deployment
-	repositoryKey := strings.TrimSpace(payload.CloneURL)
-	if repositoryKey == "" {
-		repositoryKey = strings.TrimSpace(payload.FullName)
-	}
-
-	if repositoryKey == "" {
-		repositoryKey = strings.TrimSpace(payload.Artifact)
-	}
+	repositoryKey := deploymentRepositoryKey(payload)
 
 	setDeployStatusToCache(gitInternal.GetRepoName(repositoryKey), deployConfig.Name,
 		deployStatus{
@@ -814,8 +841,8 @@ func DeployStack(
 		},
 	)
 
-	prometheus.DeploymentsTotal.WithLabelValues(deployConfig.Name).Inc()
-	prometheus.DeploymentDuration.WithLabelValues(deployConfig.Name).Observe(time.Since(startTime).Seconds())
+	prometheus.DeploymentsTotal.WithLabelValues(repositoryLabel, deploymentLabel).Inc()
+	prometheus.DeploymentDuration.WithLabelValues(repositoryLabel, deploymentLabel).Observe(time.Since(startTime).Seconds())
 
 	return nil
 }

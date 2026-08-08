@@ -3,6 +3,7 @@ package prometheus
 import (
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -57,5 +58,24 @@ func TestServe(t *testing.T) {
 
 	if !strings.Contains(rr.Body.String(), "doco_cd_scheduled_runs_total") {
 		t.Error("Expected response body to contain 'doco_cd_scheduled_runs_total' metric, but it does not")
+	}
+}
+
+func TestDeploymentMetricsIncludeRepositoryAndDeploymentLabels(t *testing.T) {
+	t.Parallel()
+
+	DeploymentsTotal.WithLabelValues("github.com/example/repo", "test-stack").Inc()
+
+	req, err := http.NewRequest("GET", MetricsPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := httptest.NewRecorder()
+	promhttp.Handler().ServeHTTP(rr, req)
+
+	linePattern := regexp.MustCompile(`doco_cd_deployments_total\{[^}]*deployment="test-stack"[^}]*repository="github.com/example/repo"[^}]*\}\s+1`)
+	if !linePattern.MatchString(rr.Body.String()) {
+		t.Fatalf("expected deployments_total with repository and deployment labels, got:\n%s", rr.Body.String())
 	}
 }
