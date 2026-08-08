@@ -75,18 +75,18 @@ var (
 		Namespace: MetricsNamespace,
 		Name:      "deployments_total",
 		Help:      "Total number of deployments processed",
-	}, []string{"repository"})
+	}, []string{"repository", "deployment"})
 	DeploymentErrorsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: MetricsNamespace,
 		Name:      "deployment_errors_total",
 		Help:      "Total number of errors during deployments",
-	}, []string{"repository"})
+	}, []string{"repository", "deployment"})
 	DeploymentDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: MetricsNamespace,
 		Name:      "deployment_duration_seconds",
 		Help:      "Duration of deployment operations in seconds",
 		Buckets:   prometheus.DefBuckets,
-	}, []string{"repository"})
+	}, []string{"repository", "deployment"})
 	DeploymentsActive = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: MetricsNamespace,
 		Name:      "deployments_active",
