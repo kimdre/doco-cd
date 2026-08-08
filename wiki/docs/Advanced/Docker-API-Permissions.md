@@ -33,7 +33,7 @@ Every doco-cd installation needs these, regardless of the deployment mode.
 | Client handshake       | `HEAD /_ping`, `GET /version`                                                            | read   |
 | Startup verification   | `GET /info`                                                                              | read   |
 | Swarm mode detection   | `GET /info`                                                                              | read   |
-| Own container lookup   | `GET /containers/{id}/json`                                                              | read   |
+| Own container lookup (unless [`DATA_HOST_PATH`](../App-Settings.md#general-settings) is set) | `GET /containers/{id}/json` | read   |
 | [Scheduled jobs](Job-Scheduling.md) discovery | `GET /containers/json`, `GET /services` (Swarm), `GET /events`         | read   |
 | [Reconciliation](../Core-Concepts.md) watcher | `GET /events`, `GET /containers/json`, `GET /containers/{id}/json`     | read   |
 

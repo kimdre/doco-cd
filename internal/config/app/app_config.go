@@ -63,6 +63,7 @@ type Config struct {
 	SchedulerEnabled              bool                   `env:"SCHEDULER_ENABLED,notEmpty" envDefault:"true"`                           // SchedulerEnabled controls whether the built-in scheduled job runner is started in this doco-cd instance
 	DockerSwarmFeatures           bool                   `env:"DOCKER_SWARM_FEATURES,notEmpty" envDefault:"true"`                       // DockerSwarmFeatures enables the usage Docker Swarm features in the application if it has detected that it is running in a Docker Swarm environment
 	DataMountPath                 string                 `env:"DATA_MOUNT_PATH" envDefault:"/data"`                                     // DataMountPath is the expected mount path inside the container for the writable deployment data volume.
+	DataHostPath                  string                 `env:"DATA_HOST_PATH"`                                                         // DataHostPath is the optional Docker daemon host path backing DataMountPath.
 	DeployConfigBaseDir           string                 `env:"DEPLOY_CONFIG_BASE_DIR" envDefault:"/"`                                  // DeployConfigBaseDir is the base directory (relative to the repository root) where deployment configuration files will be searched for.
 	PassEnv                       bool                   `env:"PASS_ENV"`                                                               // PassEnv controls whether environment variables from the doco-cd container should be passed to the deployment environment for docker compose variable interpolation. Use with caution, as this may expose sensitive information to the deployment environment.
 	PollConfigYAML                string                 `env:"POLL_CONFIG"`                                                            // PollConfigYAML is the unparsed string containing the PollConfig in YAML format
@@ -174,8 +175,16 @@ func GetConfig() (*Config, error) {
 	}
 
 	cfg.DataMountPath = path.Clean(dataMountPath)
-	if !strings.HasPrefix(cfg.DataMountPath, "/") {
+	if !path.IsAbs(cfg.DataMountPath) {
 		return nil, fmt.Errorf("DATA_MOUNT_PATH must be an absolute Unix path: %q", cfg.DataMountPath)
+	}
+
+	cfg.DataHostPath = strings.TrimSpace(cfg.DataHostPath)
+	if cfg.DataHostPath != "" {
+		cfg.DataHostPath = path.Clean(cfg.DataHostPath)
+		if !path.IsAbs(cfg.DataHostPath) {
+			return nil, fmt.Errorf("DATA_HOST_PATH must be an absolute Unix path: %q", cfg.DataHostPath)
+		}
 	}
 
 	err = notification.SetAppriseConfig(
