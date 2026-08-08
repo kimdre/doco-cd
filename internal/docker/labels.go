@@ -112,7 +112,7 @@ var docoCDJobLabelNames = struct {
 	JobLastRun:            "cd.doco.job.last_run",
 	JobNextRun:            "cd.doco.job.next_run",
 	JobStopServices:       "cd.doco.job.stop_services",
-	JobExternalSecretRefs: "cd.doco.job.external_secret_refs",
+	JobExternalSecretRefs: "cd.doco.job.external_secret_refs", // #nosec G101
 }
 
 // DocoCDJobLabels exposes the scheduler/job labels for consumers outside this package.
