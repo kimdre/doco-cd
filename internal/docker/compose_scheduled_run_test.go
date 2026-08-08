@@ -42,8 +42,6 @@ func newStubProvider(resolved map[string]string, err error) *secretprovider.Secr
 	return &sp
 }
 
-// ── composeScheduledServiceRefFromLabels ─────────────────────────────────────
-
 func TestComposeScheduledServiceRefFromLabels(t *testing.T) {
 	t.Parallel()
 
@@ -201,8 +199,6 @@ func TestComposeScheduledServiceRefFromLabels(t *testing.T) {
 	})
 }
 
-// ── splitCommaSeparatedLabelValues ───────────────────────────────────────────
-
 func TestSplitCommaSeparatedLabelValues(t *testing.T) {
 	t.Parallel()
 
@@ -235,8 +231,6 @@ func TestSplitCommaSeparatedLabelValues(t *testing.T) {
 		})
 	}
 }
-
-// ── loadComposeScheduledProject ──────────────────────────────────────────────
 
 func TestLoadComposeScheduledProject_RequiresComposeMetadata(t *testing.T) {
 	t.Parallel()
@@ -371,8 +365,6 @@ func TestLoadComposeScheduledProject_SkipsResolutionWithoutRefs(t *testing.T) {
 	}
 }
 
-// ── validateComposeScheduledServiceScale ─────────────────────────────────────
-
 func TestValidateComposeScheduledServiceScale(t *testing.T) {
 	t.Parallel()
 
@@ -437,8 +429,6 @@ func TestValidateComposeScheduledServiceScale(t *testing.T) {
 		}
 	})
 }
-
-// ── getServiceSchedulerLabels ────────────────────────────────────────────────
 
 func TestGetServiceSchedulerLabels(t *testing.T) {
 	t.Parallel()
