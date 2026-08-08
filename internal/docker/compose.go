@@ -1893,7 +1893,7 @@ func getServiceSchedulerLabels(svc types.ServiceConfig) map[string]string {
 		return svc.Labels
 	}
 
-	labels := make(map[string]string, len(svc.Labels)+len(svc.CustomLabels))
+	labels := make(map[string]string, len(svc.Labels))
 	maps.Copy(labels, svc.Labels)
 
 	maps.Copy(labels, svc.CustomLabels)
