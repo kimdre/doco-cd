@@ -44,8 +44,8 @@ auto_discovery: true
 			t.Fatalf("expected default auto_discovery.depth 0, got %d", configs[0].AutoDiscovery.ScanDepth)
 		}
 
-		if !configs[0].AutoDiscovery.Delete {
-			t.Fatal("expected default auto_discovery.delete to be true")
+		if configs[0].AutoDiscovery.Delete {
+			t.Fatal("expected default auto_discovery.delete to be false")
 		}
 	})
 
@@ -99,8 +99,8 @@ auto_discovery:
 			t.Fatalf("expected default auto_discovery.depth 0, got %d", cfg.AutoDiscovery.ScanDepth)
 		}
 
-		if !cfg.AutoDiscovery.Delete {
-			t.Fatal("expected default auto_discovery.delete to be true")
+		if cfg.AutoDiscovery.Delete {
+			t.Fatal("expected default auto_discovery.delete to be false")
 		}
 	})
 }

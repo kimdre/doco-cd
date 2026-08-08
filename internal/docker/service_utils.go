@@ -183,10 +183,7 @@ func getDeployStatus(ctx context.Context, client client.APIClient, swarmMode boo
 		ns := convert.NewNamespace(deployName)
 
 		for _, service := range services {
-			status := ServiceStatus{}
-			if service.Spec.TaskTemplate.ContainerSpec != nil {
-				status.Labels = service.Spec.TaskTemplate.ContainerSpec.Labels
-			}
+			status := ServiceStatus{Labels: SwarmServiceLabels(service)}
 
 			mode := service.Spec.Mode
 			switch {
