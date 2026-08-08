@@ -141,11 +141,11 @@ func TestComposeScheduledServiceRefFromLabels(t *testing.T) {
 		refsJSON, _ := json.Marshal(encodedRefs)
 
 		ref, err := composeScheduledServiceRefFromLabels(map[string]string{
-			api.ProjectLabel:                "project-a",
-			api.ServiceLabel:                "backup",
-			api.WorkingDirLabel:             "/repo/stack",
-			api.ConfigFilesLabel:            "/repo/stack/compose.yaml",
-			DocoCDJobLabels.JobExternalRefs: string(refsJSON),
+			api.ProjectLabel:                      "project-a",
+			api.ServiceLabel:                      "backup",
+			api.WorkingDirLabel:                   "/repo/stack",
+			api.ConfigFilesLabel:                  "/repo/stack/compose.yaml",
+			DocoCDJobLabels.JobExternalSecretRefs: string(refsJSON),
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -168,11 +168,11 @@ func TestComposeScheduledServiceRefFromLabels(t *testing.T) {
 		t.Parallel()
 
 		ref, err := composeScheduledServiceRefFromLabels(map[string]string{
-			api.ProjectLabel:                "project-a",
-			api.ServiceLabel:                "backup",
-			api.WorkingDirLabel:             "/repo/stack",
-			api.ConfigFilesLabel:            "/repo/stack/compose.yaml",
-			DocoCDJobLabels.JobExternalRefs: "not-valid-json",
+			api.ProjectLabel:                      "project-a",
+			api.ServiceLabel:                      "backup",
+			api.WorkingDirLabel:                   "/repo/stack",
+			api.ConfigFilesLabel:                  "/repo/stack/compose.yaml",
+			DocoCDJobLabels.JobExternalSecretRefs: "not-valid-json",
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -187,9 +187,9 @@ func TestComposeScheduledServiceRefFromLabels(t *testing.T) {
 		t.Parallel()
 
 		ref, err := composeScheduledServiceRefFromLabels(map[string]string{
-			api.ProjectLabel:                "project-a",
-			api.ServiceLabel:                "backup",
-			DocoCDJobLabels.JobExternalRefs: "   ",
+			api.ProjectLabel:                      "project-a",
+			api.ServiceLabel:                      "backup",
+			DocoCDJobLabels.JobExternalSecretRefs: "   ",
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)

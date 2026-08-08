@@ -236,7 +236,7 @@ func composeScheduledServiceRefFromLabels(labels map[string]string) (composeSche
 		ConfigFiles: splitCommaSeparatedLabelValues(labels[api.ConfigFilesLabel]),
 	}
 
-	if raw := strings.TrimSpace(labels[DocoCDJobLabels.JobExternalRefs]); raw != "" {
+	if raw := strings.TrimSpace(labels[DocoCDJobLabels.JobExternalSecretRefs]); raw != "" {
 		var encodedRefs map[string]string
 		if err := json.Unmarshal([]byte(raw), &encodedRefs); err == nil {
 			ref.EncodedExternalSecrets = encodedRefs

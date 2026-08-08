@@ -176,7 +176,7 @@ func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config
 		}
 
 		if externalSecretsJSON != "" {
-			s.CustomLabels[DocoCDJobLabels.JobExternalRefs] = externalSecretsJSON
+			s.CustomLabels[DocoCDJobLabels.JobExternalSecretRefs] = externalSecretsJSON
 		}
 
 		project.Services[i] = s
