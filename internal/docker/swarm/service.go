@@ -51,22 +51,27 @@ func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string)
 		defer pipeWriter.Close() //nolint:errcheck
 	}()
 
-	// Monitor the output of the progress reader for errors
-	err := jsonstream.ErrorReader(ctx, pipeReader)
-	if err == nil {
-		err = <-errChan
-	}
-
-	if err != nil {
-		return err
+	// Monitor the output of the progress reader for errors.
+	progressErr := jsonstream.ErrorReader(ctx, pipeReader)
+	if progressErr == nil {
+		progressErr = <-errChan
 	}
 
 	serviceResult, err := dockerCli.Client().ServiceInspect(ctx, serviceID, client.ServiceInspectOptions{})
 	if err != nil {
+		if progressErr != nil {
+			return progressErr
+		}
+
 		return fmt.Errorf("failed to inspect service %s update status: %w", serviceID, err)
 	}
 
-	return rollbackUpdateStatusError(serviceID, serviceResult.Service.Spec.Name, serviceResult.Service.UpdateStatus)
+	rollbackErr := rollbackUpdateStatusError(serviceID, serviceResult.Service.Spec.Name, serviceResult.Service.UpdateStatus)
+	if rollbackErr != nil {
+		return rollbackErr
+	}
+
+	return progressErr
 }
 
 // rollbackUpdateStatusError returns an error when a service update finished in a rollback state.
