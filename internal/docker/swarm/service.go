@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/docker/cli/cli/command"
@@ -56,7 +57,42 @@ func waitOnService(ctx context.Context, dockerCli command.Cli, serviceID string)
 		err = <-errChan
 	}
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	serviceResult, err := dockerCli.Client().ServiceInspect(ctx, serviceID, client.ServiceInspectOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to inspect service %s update status: %w", serviceID, err)
+	}
+
+	return rollbackUpdateStatusError(serviceID, serviceResult.Service.Spec.Name, serviceResult.Service.UpdateStatus)
+}
+
+// rollbackUpdateStatusError returns an error when a service update finished in a rollback state.
+func rollbackUpdateStatusError(serviceID, serviceName string, status *swarm.UpdateStatus) error {
+	if status == nil || !isRollbackUpdateState(status.State) {
+		return nil
+	}
+
+	target := strings.TrimSpace(serviceName)
+	if target == "" {
+		target = serviceID
+	}
+
+	message := strings.TrimSpace(status.Message)
+	if message == "" {
+		return fmt.Errorf("service %s entered rollback state %q", target, status.State)
+	}
+
+	return fmt.Errorf("service %s entered rollback state %q: %s", target, status.State, message)
+}
+
+// isRollbackUpdateState reports whether the update state indicates a rollback lifecycle.
+func isRollbackUpdateState(state swarm.UpdateState) bool {
+	return state == swarm.UpdateStateRollbackStarted ||
+		state == swarm.UpdateStateRollbackPaused ||
+		state == swarm.UpdateStateRollbackCompleted
 }
 
 // waitForNetwork waits for the network to be ready by repeatedly inspecting it until it succeeds or times out.

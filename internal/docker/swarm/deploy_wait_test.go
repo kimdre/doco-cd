@@ -1,6 +1,7 @@
 package swarm
 
 import (
+	"strings"
 	"testing"
 
 	swarmTypes "github.com/moby/moby/api/types/swarm"
@@ -107,6 +108,106 @@ func TestIsScheduledServiceSpec(t *testing.T) {
 
 			if got := isScheduledServiceSpec(tt.spec); got != tt.want {
 				t.Fatalf("isScheduledServiceSpec() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsRollbackUpdateState(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		state swarmTypes.UpdateState
+		want  bool
+	}{
+		{name: "rollback started", state: swarmTypes.UpdateStateRollbackStarted, want: true},
+		{name: "rollback paused", state: swarmTypes.UpdateStateRollbackPaused, want: true},
+		{name: "rollback completed", state: swarmTypes.UpdateStateRollbackCompleted, want: true},
+		{name: "completed", state: swarmTypes.UpdateStateCompleted, want: false},
+		{name: "updating", state: swarmTypes.UpdateStateUpdating, want: false},
+		{name: "paused", state: swarmTypes.UpdateStatePaused, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := isRollbackUpdateState(tt.state); got != tt.want {
+				t.Fatalf("isRollbackUpdateState(%q) = %v, want %v", tt.state, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRollbackUpdateStatusError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		serviceID   string
+		serviceName string
+		status      *swarmTypes.UpdateStatus
+		wantErr     bool
+		wantParts   []string
+	}{
+		{
+			name:        "nil status",
+			serviceID:   "svc-id",
+			serviceName: "stack_api",
+			status:      nil,
+			wantErr:     false,
+		},
+		{
+			name:        "non rollback state",
+			serviceID:   "svc-id",
+			serviceName: "stack_api",
+			status: &swarmTypes.UpdateStatus{
+				State:   swarmTypes.UpdateStateCompleted,
+				Message: "update completed",
+			},
+			wantErr: false,
+		},
+		{
+			name:        "rollback uses service name and message",
+			serviceID:   "svc-id",
+			serviceName: "stack_api",
+			status: &swarmTypes.UpdateStatus{
+				State:   swarmTypes.UpdateStateRollbackCompleted,
+				Message: "rollback completed",
+			},
+			wantErr:   true,
+			wantParts: []string{"stack_api", string(swarmTypes.UpdateStateRollbackCompleted), "rollback completed"},
+		},
+		{
+			name:        "rollback falls back to service id",
+			serviceID:   "svc-id",
+			serviceName: "   ",
+			status: &swarmTypes.UpdateStatus{
+				State: swarmTypes.UpdateStateRollbackStarted,
+			},
+			wantErr:   true,
+			wantParts: []string{"svc-id", string(swarmTypes.UpdateStateRollbackStarted)},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := rollbackUpdateStatusError(tt.serviceID, tt.serviceName, tt.status)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("rollbackUpdateStatusError() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if err == nil {
+				return
+			}
+
+			for _, wantPart := range tt.wantParts {
+				if !strings.Contains(err.Error(), wantPart) {
+					t.Fatalf("rollbackUpdateStatusError() error = %q, missing %q", err.Error(), wantPart)
+				}
 			}
 		})
 	}

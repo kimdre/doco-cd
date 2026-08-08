@@ -10,7 +10,7 @@ import (
 	"github.com/moby/moby/client"
 )
 
-func getDockerClient(t *testing.T) client.APIClient {
+func getDockerCli(t *testing.T) command.Cli {
 	t.Helper()
 
 	dockerCli, err := command.NewDockerCli(
@@ -28,6 +28,14 @@ func getDockerClient(t *testing.T) client.APIClient {
 	if err != nil {
 		t.Fatal(fmt.Errorf("failed to initialize docker cli: %w", err))
 	}
+
+	return dockerCli
+}
+
+func getDockerClient(t *testing.T) client.APIClient {
+	t.Helper()
+
+	dockerCli := getDockerCli(t)
 
 	return dockerCli.Client()
 }
