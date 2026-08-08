@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/avast/retry-go/v5"
+
+	"github.com/kimdre/doco-cd/internal/common/errdecode"
 )
 
 const (
@@ -140,6 +142,10 @@ func doGet(ctx context.Context, apiURL, authHeaderValue string, dst any) error {
 	return nil
 }
 
+// responseErrorDetails reads the response body and returns a string containing the error details, if any.
+// It limits the amount of data read to avoid excessive memory usage with maxErrorResponseBodyBytes.
+// If the response body is larger than the limit, it indicates that the content has been truncated.
+// If the response body is empty or cannot be read, it returns an empty string.
 func responseErrorDetails(resp *http.Response) string {
 	if resp.Body == nil {
 		return ""
@@ -150,16 +156,21 @@ func responseErrorDetails(resp *http.Response) string {
 		return fmt.Sprintf(" (failed to read response body: %v)", err)
 	}
 
-	bodyText := strings.Join(strings.Fields(strings.TrimSpace(string(body))), " ")
-	if bodyText == "" {
+	bodyText, structuredBodyText := errdecode.FormatErrorResponseBody(body)
+	if bodyText == "" && structuredBodyText == "" {
 		return ""
 	}
 
 	if len(body) > maxErrorResponseBodyBytes {
-		bodyText = strings.TrimSpace(string(body[:maxErrorResponseBodyBytes]))
-		bodyText = strings.Join(strings.Fields(bodyText), " ")
+		if structuredBodyText != "" {
+			return fmt.Sprintf(": %s (truncated)", structuredBodyText)
+		}
 
 		return fmt.Sprintf(": %s (truncated)", bodyText)
+	}
+
+	if structuredBodyText != "" {
+		return ": " + structuredBodyText
 	}
 
 	return ": " + bodyText
