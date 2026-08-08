@@ -7,18 +7,28 @@ import (
 func TestSwarmModeEnabled(t *testing.T) {
 	t.Parallel()
 
-	dockerCli := getDockerClient(t)
+	prevDisable := disableSwarmFeature.Load()
+	prevMode := modeEnabled.Load()
+	t.Cleanup(func() {
+		disableSwarmFeature.Store(prevDisable)
+		modeEnabled.Store(prevMode)
+	})
 
-	if GetModeEnabled() {
-		t.Fatal("GetModeEnabled want false, got true")
-	}
+	SetDisableSwarmFeature(false)
+
+	dockerCli := getDockerClient(t)
 
 	if err := RefreshModeEnabled(t.Context(), dockerCli); err != nil {
 		t.Fatal(err)
 	}
 
-	if enabled := GetModeEnabled(); enabled {
-		t.Logf("GetModeEnabled: %v", enabled)
+	want, err := ResolveModeEnabled(t.Context(), dockerCli)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := GetModeEnabled(); got != want {
+		t.Fatalf("GetModeEnabled() = %v, want %v", got, want)
 	}
 }
 
