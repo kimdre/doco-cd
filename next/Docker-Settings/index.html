@@ -934,6 +934,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#remote-docker-daemons" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Remote Docker Daemons
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#docker-contexts" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2364,6 +2375,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#remote-docker-daemons" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Remote Docker Daemons
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#docker-contexts" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2539,6 +2561,30 @@ The list below contains the most commonly used environment variables that are re
 </tr>
 </tbody>
 </table>
+<h2 id="remote-docker-daemons">Remote Docker Daemons<a class="headerlink" href="#remote-docker-daemons" title="Permanent link">&para;</a></h2>
+<p>By default, Doco-CD inspects its own container to discover the source of the writable data mount. That inspection is not possible when <code>DOCKER_HOST</code> points to a daemon that does not run the Doco-CD container. Set <a data-preview="" href="../App-Settings/#general-settings"><code>DATA_HOST_PATH</code></a> to bypass this inspection.</p>
+<p>The two data path settings describe opposite sides of the mount:</p>
+<ul>
+<li><code>DATA_MOUNT_PATH</code> is the destination inside the Doco-CD container, such as <code>/data</code>.</li>
+<li><code>DATA_HOST_PATH</code> is the source path visible in the target Docker daemon's host namespace, such as <code>/srv/doco-cd-data</code>.</li>
+</ul>
+<p>For example, Doco-CD can run on one host while <code>DOCKER_HOST</code> connects to a socket proxy on another Docker host:</p>
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">doco-cd</span><span class="p">:</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/kimdre/doco-cd:latest</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">      </span><span class="nt">DOCKER_HOST</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">tcp://docker-host.example.com:2375</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">      </span><span class="nt">DATA_MOUNT_PATH</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/data</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">      </span><span class="nt">DATA_HOST_PATH</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/doco-cd-data</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">      </span><span class="c1"># Shared storage that is also mounted at this path on the remote Docker host.</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/srv/doco-cd-data:/data</span>
+</span></code></pre></div>
+<p>The socket proxy on <code>docker-host.example.com</code> must expose the Docker API at the configured address. The <code>/srv/doco-cd-data</code> path must exist on that remote Docker host and contain the same shared deployment data mounted at <code>/data</code> in the Doco-CD container. Configuring <code>DATA_HOST_PATH</code> only tells Doco-CD which daemon-visible source path to use; it does not create, mount, synchronize, or share that storage.</p>
+<div class="admonition warning">
+<p class="admonition-title">Swarm storage is not shared automatically</p>
+<p>A host path is node-local. <code>DATA_HOST_PATH</code> does not make the directory available on other Swarm nodes. If workloads can run on multiple nodes, provide shared storage or ensure the same path and data are mounted on every eligible node.</p>
+</div>
 <h2 id="docker-contexts">Docker Contexts<a class="headerlink" href="#docker-contexts" title="Permanent link">&para;</a></h2>
 <p>See <a data-preview="" href="../Advanced/Docker-Contexts/">Docker Contexts</a> for information on how to use Docker contexts with Doco-CD.</p>
 <h2 id="docker-api-permissions">Docker API Permissions<a class="headerlink" href="#docker-api-permissions" title="Permanent link">&para;</a></h2>

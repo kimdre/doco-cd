@@ -2886,9 +2886,15 @@
 <td></td>
 </tr>
 <tr>
+<td><code>DATA_HOST_PATH</code></td>
+<td>string</td>
+<td>Optional source path of the deployment data mount as seen by the target Docker daemon. See <a data-preview="" href="../Docker-Settings/#remote-docker-daemons">Remote Docker daemons</a>.</td>
+<td>Automatically detected</td>
+</tr>
+<tr>
 <td><code>DATA_MOUNT_PATH</code></td>
 <td>string</td>
-<td>Container path of the writable deployment data mount (set this if you do not mount the data volume at <code>/data</code>).</td>
+<td>Destination path of the writable deployment data mount inside the doco-cd container (set this if you do not mount the data volume at <code>/data</code>).</td>
 <td><code>/data</code></td>
 </tr>
 <tr>
