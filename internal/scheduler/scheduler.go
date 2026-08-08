@@ -28,6 +28,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/reconciliation"
+	"github.com/kimdre/doco-cd/internal/secretprovider"
 )
 
 const (
@@ -74,10 +75,11 @@ type scheduledJobState struct {
 }
 
 type scheduler struct {
-	dockerCli command.Cli
-	log       *slog.Logger
-	wg        *sync.WaitGroup
-	startedAt time.Time
+	dockerCli      command.Cli
+	secretProvider *secretprovider.SecretProvider
+	log            *slog.Logger
+	wg             *sync.WaitGroup
+	startedAt      time.Time
 
 	states map[string]scheduledJobState
 
@@ -133,19 +135,20 @@ type JobInfo struct {
 	Valid          bool                    `json:"valid"`
 }
 
-func Start(ctx context.Context, dockerCli command.Cli, log *slog.Logger, wg *sync.WaitGroup) {
+func Start(ctx context.Context, dockerCli command.Cli, log *slog.Logger, wg *sync.WaitGroup, secretProvider *secretprovider.SecretProvider) {
 	if dockerCli == nil || log == nil || wg == nil {
 		return
 	}
 
 	s := &scheduler{
-		dockerCli: dockerCli,
-		log:       log.With(slog.String("component", "scheduler")),
-		wg:        wg,
-		startedAt: schedulerNow(),
-		states:    map[string]scheduledJobState{},
-		running:   map[string]bool{},
-		stopHolds: map[stopHoldKey]*stopHoldState{},
+		dockerCli:      dockerCli,
+		secretProvider: secretProvider,
+		log:            log.With(slog.String("component", "scheduler")),
+		wg:             wg,
+		startedAt:      schedulerNow(),
+		states:         map[string]scheduledJobState{},
+		running:        map[string]bool{},
+		stopHolds:      map[stopHoldKey]*stopHoldState{},
 	}
 
 	s.run(ctx)
@@ -795,8 +798,26 @@ func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, c
 	case scheduledJobModeContainer:
 		switch cfg.ExecutionMode {
 		case docker.JobExecutionModeOneOff:
+			err := docker.RunComposeOneOffFromServiceDefinition(ctx, s.dockerCli, job.labels, s.secretProvider)
+			if err == nil {
+				return nil
+			}
+
+			if !errors.Is(err, docker.ErrComposeScheduledMetadataUnavailable) {
+				return err
+			}
+
 			return docker.RunContainerOneOffFromExisting(ctx, s.dockerCli.Client(), job.id)
 		default:
+			err := docker.RunComposeScheduledContainer(ctx, s.dockerCli, job.id, job.labels, len(cfg.StopServices) > 0, s.secretProvider)
+			if err == nil {
+				return nil
+			}
+
+			if !errors.Is(err, docker.ErrComposeScheduledMetadataUnavailable) {
+				return err
+			}
+
 			if len(cfg.StopServices) > 0 {
 				// stop_services requires knowing when the job has finished.
 				// Use the blocking variant so services are not restarted while
