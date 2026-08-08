@@ -82,6 +82,42 @@ func CreateMountpointSymlink(m container.MountPoint) error {
 	return nil
 }
 
+func resolveDataMountPoint(
+	dataHostPath string,
+	dataMountPath string,
+	detectMountPoint func() (container.MountPoint, error),
+) (container.MountPoint, error) {
+	if dataHostPath != "" {
+		return container.MountPoint{
+			Type:        "bind",
+			Source:      dataHostPath,
+			Destination: dataMountPath,
+			Mode:        "rw",
+			RW:          true,
+		}, nil
+	}
+
+	return detectMountPoint()
+}
+
+func detectDataMountPoint(
+	dataMountPath string,
+	getContainerID func() (string, error),
+	getMountPoint func(string, string) (container.MountPoint, error),
+) (container.MountPoint, error) {
+	appContainerID, err := getContainerID()
+	if err != nil {
+		return container.MountPoint{}, fmt.Errorf("failed to retrieve doco-cd container id: %w", err)
+	}
+
+	mountPoint, err := getMountPoint(appContainerID, dataMountPath)
+	if err != nil {
+		return container.MountPoint{}, fmt.Errorf("failed to retrieve %s mount point for container %s: %w", dataMountPath, appContainerID, err)
+	}
+
+	return mountPoint, nil
+}
+
 func main() {
 	// split to app to make defer work when os.Exit().
 	if err := run(); err != nil {
@@ -200,20 +236,28 @@ func run() error {
 			slog.Bool("swarm_mode", swarm.GetModeEnabled()),
 		))
 
-	// Get doco-cd container id
-	appContainerID, err := getAppContainerID()
+	dataMountPoint, err := resolveDataMountPoint(
+		c.DataHostPath,
+		c.DataMountPath,
+		func() (container.MountPoint, error) {
+			return detectDataMountPoint(
+				c.DataMountPath,
+				func() (string, error) {
+					appContainerID, err := getAppContainerID()
+					if err == nil {
+						log.Debug("retrieved doco-cd container id", slog.String("container_id", appContainerID))
+					}
+
+					return appContainerID, err
+				},
+				func(containerID, destination string) (container.MountPoint, error) {
+					return docker.GetMountPointByDestination(dockerClient, containerID, destination)
+				},
+			)
+		},
+	)
 	if err != nil {
-		log.Critical("failed to retrieve doco-cd container id", logger.ErrAttr(err))
-
-		return err
-	}
-
-	log.Debug("retrieved doco-cd container id", slog.String("container_id", appContainerID))
-
-	// Check if the doco-cd container has a data mount point and get the host path
-	dataMountPoint, err := docker.GetMountPointByDestination(dockerClient, appContainerID, c.DataMountPath)
-	if err != nil {
-		log.Critical(fmt.Sprintf("failed to retrieve %s mount point for container %s", c.DataMountPath, appContainerID), logger.ErrAttr(err))
+		log.Critical("failed to resolve doco-cd data mount point", logger.ErrAttr(err))
 		return err
 	}
 
