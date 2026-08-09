@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/avast/retry-go/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	dockerClient "github.com/moby/moby/client"
 
@@ -79,7 +80,7 @@ func TestDeploySwarmStackIsIdempotent(t *testing.T) {
 
 	p := webhook.ParsedPayload{
 		Ref:       git.SwarmModeBranch,
-		CommitSHA: "244b6f9a5b3dc546ab3822d9c0744846f539c6ef",
+		CommitSHA: plumbing.NewHash("244b6f9a5b3dc546ab3822d9c0744846f539c6ef"),
 		Name:      stackName,
 		FullName:  "kimdre/doco-cd_tests",
 		CloneURL:  cloneUrlTest,

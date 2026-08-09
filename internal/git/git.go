@@ -30,8 +30,7 @@ import (
 )
 
 const (
-	ZeroSHA               = "0000000000000000000000000000000000000000" // ZeroSHA represents a non-existent commit
-	DefaultShortSHALength = 7                                          // Default length for shortened commit SHAs
+	DefaultShortSHALength = 7 // Default length for shortened commit SHAs
 	RemoteName            = "origin"
 	TagPrefix             = "refs/tags/"
 	BranchPrefix          = "refs/heads/"

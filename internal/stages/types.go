@@ -11,6 +11,7 @@ import (
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/moby/moby/api/types/container"
 
 	types2 "github.com/kimdre/doco-cd/internal/config"
@@ -346,8 +347,8 @@ func (s *StageManager) resolveCommitSHA() string {
 
 	// Fall back to the SHA carried in the webhook payload.
 	if s.Payload != nil {
-		sha := strings.TrimSpace(s.Payload.CommitSHA)
-		if sha != "" && sha != string(JobTriggerPoll) {
+		sha := strings.TrimSpace(s.Payload.CommitSHAString())
+		if sha != "" && s.Payload.CommitSHA != plumbing.ZeroHash {
 			return sha
 		}
 	}

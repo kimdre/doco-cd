@@ -17,6 +17,7 @@ import (
 	"github.com/avast/retry-go/v5"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/moby/moby/api/types/container"
 
 	"github.com/kimdre/doco-cd/internal/common/id"
@@ -99,7 +100,7 @@ func TestHandleEvent(t *testing.T) {
 			name: "Successful Deployment",
 			payload: webhook.ParsedPayload{
 				Ref:       git.MainBranch,
-				CommitSHA: validCommitSHA,
+				CommitSHA: plumbing.NewHash(validCommitSHA),
 				Name:      "doco-cd",
 				FullName:  "kimdre/doco-cd",
 				CloneURL:  "https://github.com/kimdre/doco-cd",
@@ -114,7 +115,7 @@ func TestHandleEvent(t *testing.T) {
 			name: "Successful Deployment with custom Target",
 			payload: webhook.ParsedPayload{
 				Ref:       git.MainBranch,
-				CommitSHA: "f291bfca73b06814293c1f9c9f3c7f95e4932564",
+				CommitSHA: plumbing.NewHash("f291bfca73b06814293c1f9c9f3c7f95e4932564"),
 				Name:      "doco-cd",
 				FullName:  "kimdre/doco-cd",
 				CloneURL:  "https://github.com/kimdre/doco-cd",
@@ -129,7 +130,7 @@ func TestHandleEvent(t *testing.T) {
 			name: "Invalid Reference",
 			payload: webhook.ParsedPayload{
 				Ref:       invalidBranch,
-				CommitSHA: validCommitSHA,
+				CommitSHA: plumbing.NewHash(validCommitSHA),
 				Name:      "doco-cd",
 				FullName:  "kimdre/doco-cd",
 				CloneURL:  "https://github.com/kimdre/doco-cd",
@@ -144,7 +145,7 @@ func TestHandleEvent(t *testing.T) {
 			name: "Private Repository",
 			payload: webhook.ParsedPayload{
 				Ref:       git.MainBranch,
-				CommitSHA: validCommitSHA,
+				CommitSHA: plumbing.NewHash(validCommitSHA),
 				Name:      "doco-cd",
 				FullName:  "kimdre/doco-cd",
 				CloneURL:  "https://github.com/kimdre/doco-cd",
@@ -159,7 +160,7 @@ func TestHandleEvent(t *testing.T) {
 			name: "Missing Deployment Configuration",
 			payload: webhook.ParsedPayload{
 				Ref:       git.MainBranch,
-				CommitSHA: "efefb4111f3c363692a2526f9be9b24560e6511f",
+				CommitSHA: plumbing.NewHash("efefb4111f3c363692a2526f9be9b24560e6511f"),
 				Name:      "kimdre",
 				FullName:  "kimdre/kimdre",
 				CloneURL:  "https://github.com/kimdre/kimdre",
@@ -174,7 +175,7 @@ func TestHandleEvent(t *testing.T) {
 			name: "With Remote Repository",
 			payload: webhook.ParsedPayload{
 				Ref:       "remote",
-				CommitSHA: "d02f87d2a886d6bae4673409f6b5108b45156f5c",
+				CommitSHA: plumbing.NewHash("d02f87d2a886d6bae4673409f6b5108b45156f5c"),
 				Name:      "doco-cd_tests",
 				FullName:  "kimdre/doco-cd_tests",
 				CloneURL:  "https://github.com/kimdre/doco-cd_tests",
@@ -189,7 +190,7 @@ func TestHandleEvent(t *testing.T) {
 			name: "With Swarm Mode",
 			payload: webhook.ParsedPayload{
 				Ref:       git.SwarmModeBranch,
-				CommitSHA: "01435dad4e7ff8f7da70202ca1ca77bccca9eb62",
+				CommitSHA: plumbing.NewHash("01435dad4e7ff8f7da70202ca1ca77bccca9eb62"),
 				Name:      "doco-cd_tests",
 				FullName:  "kimdre/doco-cd_tests",
 				CloneURL:  "https://github.com/kimdre/doco-cd_tests",
@@ -313,7 +314,7 @@ func TestHandleEvent(t *testing.T) {
 			metadata := notification.Metadata{
 				JobID:      jobID,
 				Repository: git.GetRepoName(tc.payload.CloneURL),
-				Revision:   notification.GetRevision(tc.payload.Ref, tc.payload.CommitSHA),
+				Revision:   notification.GetRevision(tc.payload.Ref, tc.payload.CommitSHAString()),
 			}
 
 			err = retry.New(

@@ -3,9 +3,10 @@ package webhook
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
-	"github.com/kimdre/doco-cd/internal/git"
+	"github.com/go-git/go-git/v5/plumbing"
 )
 
 func TestIsBranchOrTagDeletionEvent(t *testing.T) {
@@ -45,8 +46,8 @@ func TestIsBranchOrTagDeletionEvent(t *testing.T) {
 			provider:    Github,
 			eventHeader: "push",
 			payload: ParsedPayload{
-				Before: "abc123",
-				After:  git.ZeroSHA,
+				Before: plumbing.NewHash(strings.Repeat("1", 40)),
+				After:  plumbing.ZeroHash,
 			},
 			expectedResult: true,
 			expectedError:  false,
@@ -56,8 +57,8 @@ func TestIsBranchOrTagDeletionEvent(t *testing.T) {
 			provider:    Github,
 			eventHeader: "push",
 			payload: ParsedPayload{
-				Before: "abc123",
-				After:  "def456",
+				Before: plumbing.NewHash(strings.Repeat("1", 40)),
+				After:  plumbing.NewHash(strings.Repeat("2", 40)),
 			},
 			expectedResult: false,
 			expectedError:  false,
@@ -141,8 +142,8 @@ func TestIsBranchOrTagDeletionEvent(t *testing.T) {
 			provider:    Gitlab,
 			eventHeader: "Push Hook",
 			payload: ParsedPayload{
-				After:     git.ZeroSHA,
-				CommitSHA: "",
+				After:     plumbing.ZeroHash,
+				CommitSHA: plumbing.ZeroHash,
 			},
 			expectedResult: true,
 			expectedError:  false,
@@ -152,8 +153,8 @@ func TestIsBranchOrTagDeletionEvent(t *testing.T) {
 			provider:    Gitlab,
 			eventHeader: "Tag Push Hook",
 			payload: ParsedPayload{
-				After:     git.ZeroSHA,
-				CommitSHA: "",
+				After:     plumbing.ZeroHash,
+				CommitSHA: plumbing.ZeroHash,
 			},
 			expectedResult: true,
 			expectedError:  false,
@@ -163,8 +164,8 @@ func TestIsBranchOrTagDeletionEvent(t *testing.T) {
 			provider:    Gitlab,
 			eventHeader: "Push Hook",
 			payload: ParsedPayload{
-				After:     "abc123def456",
-				CommitSHA: "abc123def456",
+				After:     plumbing.NewHash(strings.Repeat("3", 40)),
+				CommitSHA: plumbing.NewHash(strings.Repeat("3", 40)),
 			},
 			expectedResult: false,
 			expectedError:  false,
@@ -174,8 +175,8 @@ func TestIsBranchOrTagDeletionEvent(t *testing.T) {
 			provider:    Gitlab,
 			eventHeader: "Push Hook",
 			payload: ParsedPayload{
-				After:     git.ZeroSHA,
-				CommitSHA: "abc123",
+				After:     plumbing.ZeroHash,
+				CommitSHA: plumbing.NewHash(strings.Repeat("4", 40)),
 			},
 			expectedResult: false,
 			expectedError:  false,
@@ -185,8 +186,8 @@ func TestIsBranchOrTagDeletionEvent(t *testing.T) {
 			provider:    Gitlab,
 			eventHeader: "Merge Request Hook",
 			payload: ParsedPayload{
-				After:     git.ZeroSHA,
-				CommitSHA: "",
+				After:     plumbing.ZeroHash,
+				CommitSHA: plumbing.ZeroHash,
 			},
 			expectedResult: false,
 			expectedError:  false,
