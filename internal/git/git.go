@@ -369,7 +369,7 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 				slog.String("repair_error", FormatGitErrorMessage(repairErr)))
 		}
 		// Attempt to deepen if the ref is unreachable in a shallow clone
-		if depth > 0 && isRefUnreachableError(err) {
+		if depth > 0 && IsRefUnreachableError(err) {
 			repo, deepenErr := deepenAndCheckout(repo, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
 			if deepenErr != nil {
 				return nil, fmt.Errorf("%w: %w", ErrCheckoutFailed, deepenErr)
@@ -599,7 +599,7 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 	err = CheckoutRepository(repo, ref, auth, cloneSubmodules)
 	if err != nil {
 		// Attempt to deepen if the ref is unreachable in a shallow clone
-		if depth > 0 && isRefUnreachableError(err) {
+		if depth > 0 && IsRefUnreachableError(err) {
 			repo, deepenErr := deepenAndCheckout(repo, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
 			if deepenErr != nil {
 				return nil, fmt.Errorf("%w: %w", ErrCheckoutFailed, deepenErr)
@@ -1193,10 +1193,10 @@ func needsReclone(repoPath string, depth int) bool {
 	return isShallow != wantShallow
 }
 
-// isRefUnreachableError returns true when the error indicates the requested ref
+// IsRefUnreachableError returns true when the error indicates the requested ref
 // could not be found, which in a shallow clone likely means the ref is outside
 // the fetched depth.
-func isRefUnreachableError(err error) bool {
+func IsRefUnreachableError(err error) bool {
 	if err == nil {
 		return false
 	}
