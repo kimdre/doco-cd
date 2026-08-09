@@ -23,7 +23,16 @@ Most users can leave them at the defaults, and you can set them with [environmen
 | `DOCKER_HOST`           | string  | The url that doco-cd will use to connect to the Docker Daemon (e.g. `tcp://192.168.0.10:2375`). Do not set this when using [Docker contexts](Advanced/Docker-Contexts.md) in deployment configs. |                         |
 | `DOCKER_QUIET_DEPLOY`   | boolean | Disable the status output of Docker Compose deployments (e.g. pull, create, start, healthy) in the application logs                                                                              | `true`                  |
 | `DOCKER_TLS_VERIFY`     | boolean | Enable or disable TLS verification                                                                                                                                                               |                         |
-| `DOCKER_SWARM_FEATURES` | boolean | Enable the use Docker Swarm Mode features if the app has detected that it is running in a Docker Swarm environment                                                                               | `true`                  |
+
+## Swarm Environment Variables
+
+These settings are specific to Docker Swarm mode behavior in Doco-CD.
+
+| Key                             | Type    | Description                                                                                                                                                                                                   | Default value |
+|---------------------------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `DOCKER_SWARM_FEATURES`         | boolean | Enable the use Docker Swarm Mode features if the app has detected that it is running in a Docker Swarm environment                                                                                            | `true`        |
+| `DOCKER_SWARM_CONFIG_RETENTION` | number  | Global default number of old Swarm config revisions to keep per resource (excluding the active revision). Use `-1` to disable automatic pruning. Can be overridden per deployment via [`swarm.config_retention`](Deploy-Settings.md#swarm-settings). | `0`           |
+| `DOCKER_SWARM_SECRET_RETENTION` | number  | Global default number of old Swarm secret revisions to keep per resource (excluding the active revision). Use `-1` to disable automatic pruning. Can be overridden per deployment via [`swarm.secret_retention`](Deploy-Settings.md#swarm-settings). | `0`           |
 
 ## Remote Docker Daemons
 

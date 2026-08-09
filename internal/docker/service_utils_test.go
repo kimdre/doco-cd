@@ -721,14 +721,14 @@ services:
 	t.Cleanup(func() {
 		ctx := context.Background()
 
-		err = PruneStackConfigs(ctx, dockerClient, stackName)
+		err = PruneStackConfigs(ctx, dockerClient, stackName, 0)
 		if err != nil {
 			t.Fatalf("Failed to prune stack configs: %v", err)
 		} else {
 			t.Logf("Stack configs pruned successfully")
 		}
 
-		err = PruneStackSecrets(ctx, dockerClient, stackName)
+		err = PruneStackSecrets(ctx, dockerClient, stackName, 0)
 		if err != nil {
 			t.Fatalf("Failed to prune stack secrets: %v", err)
 		} else {

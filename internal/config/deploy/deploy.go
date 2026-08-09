@@ -55,6 +55,7 @@ type Config struct {
 	EnvFiles           []string                                 `yaml:"env_files" json:"env_files" default:"[\".env\"]" doco:"allowOverride"`                                                                                   // EnvFiles is the list of dotenv files to use for variable interpolation
 	RemoveOrphans      bool                                     `yaml:"remove_orphans" json:"remove_orphans" default:"true" doco:"allowOverride"`                                                                               // RemoveOrphans removes containers for services not defined in the Compose file
 	PruneImages        bool                                     `yaml:"prune_images" json:"prune_images" default:"true" doco:"allowOverride"`                                                                                   // PruneImages removes images that are no longer used by any service
+	Swarm              SwarmConfig                              `yaml:"swarm" json:"swarm" doco:"allowOverride"`                                                                                                                // Swarm contains Docker Swarm-specific deployment settings
 	WaitRunningJobs    bool                                     `yaml:"wait_running_jobs" json:"wait_running_jobs" default:"true" doco:"allowOverride"`                                                                         // WaitRunningJobs waits for currently running scheduled job containers/services to finish before deployment
 	ForceRecreate      bool                                     `yaml:"force_recreate" json:"force_recreate" default:"false" doco:"allowOverride"`                                                                              // ForceRecreate forces the recreation/redeployment of containers even if the configuration has not changed
 	ForceImagePull     bool                                     `yaml:"force_image_pull" json:"force_image_pull" default:"false" doco:"allowOverride"`                                                                          // ForceImagePull always pulls the latest version of the image tags you've specified if a newer version is available
@@ -76,6 +77,12 @@ type Config struct {
 	} // Internal holds internal configuration values that are not set by the user
 }
 
+// SwarmConfig contains Docker Swarm-specific deployment settings.
+type SwarmConfig struct {
+	ConfigRetention *int `yaml:"config_retention,omitempty" json:"config_retention,omitempty"` // ConfigRetention is the number of old Swarm config revisions to keep per resource (excluding the active one). -1 disables automatic pruning. If unset, global DOCKER_SWARM_CONFIG_RETENTION is used.
+	SecretRetention *int `yaml:"secret_retention,omitempty" json:"secret_retention,omitempty"` // SecretRetention is the number of old Swarm secret revisions to keep per resource (excluding the active one). -1 disables automatic pruning. If unset, global DOCKER_SWARM_SECRET_RETENTION is used.
+}
+
 // ResolveGitDepth returns the effective git clone depth.
 // If the deploy-level GitDepth is > 0, it overrides the global value.
 // Otherwise, the global depth is used. 0 means full clone (no limit).
@@ -85,6 +92,30 @@ func (c *Config) ResolveGitDepth(globalDepth int) int {
 	}
 
 	return globalDepth
+}
+
+// ResolveSwarmConfigRetention returns the effective old-revision retention
+// for Swarm configs.
+// If deploy-level value is set, it overrides the global value.
+// If deploy-level value is unset, the global value is used.
+func (c *Config) ResolveSwarmConfigRetention(globalRetention int) int {
+	if c.Swarm.ConfigRetention != nil {
+		return *c.Swarm.ConfigRetention
+	}
+
+	return globalRetention
+}
+
+// ResolveSwarmSecretRetention returns the effective old-revision retention
+// for Swarm secrets.
+// If deploy-level value is set, it overrides the global value.
+// If deploy-level value is unset, the global value is used.
+func (c *Config) ResolveSwarmSecretRetention(globalRetention int) int {
+	if c.Swarm.SecretRetention != nil {
+		return *c.Swarm.SecretRetention
+	}
+
+	return globalRetention
 }
 
 // New creates a Config with default values.
@@ -124,6 +155,14 @@ func (c *Config) Validate() error {
 
 	if c.GitDepth < 0 {
 		return fmt.Errorf("%w: git_depth must be >= 0", ErrInvalidConfig)
+	}
+
+	if c.Swarm.ConfigRetention != nil && *c.Swarm.ConfigRetention < -1 {
+		return fmt.Errorf("%w: swarm.config_retention must be >= -1", ErrInvalidConfig)
+	}
+
+	if c.Swarm.SecretRetention != nil && *c.Swarm.SecretRetention < -1 {
+		return fmt.Errorf("%w: swarm.secret_retention must be >= -1", ErrInvalidConfig)
 	}
 
 	if c.Reconciliation.RestartTimeout < 0 {

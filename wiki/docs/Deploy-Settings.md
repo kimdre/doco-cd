@@ -56,6 +56,7 @@ The docker compose deployment can be configured inside the [deployment configura
 | `webhook_filter`    | string            | A regular expression to whitelist deployment triggers based on the webhook event payload. See the [Webhook Filter](#webhook-filter) Section below.                                                                                                                                                                                                                                                                                                                                   | ` ` (Ignored when not specified)                                                                                       |
 | `remove_orphans`    | boolean           | Remove/Prune containers/services that are not (or no longer) defined in the Compose file.                                                                                                                                                                                                                                                                                                                                                                                            | `true`                                                                                                                 |
 | `prune_images`      | boolean           | Prune images that are no longer in use after a deployment. If the image is still used by any other container, it won't get deleted.                                                                                                                                                                                                                                                                                                                                                  | `true`                                                                                                                 |
+| `swarm`             | object            | Docker Swarm-specific settings. See [Swarm settings](#swarm-settings). | see [Swarm settings](#swarm-settings) |
 | `force_recreate`    | boolean           | Forces the recreation/redeployment of containers even if the configuration has not changed.                                                                                                                                                                                                                                                                                                                                                                                          | `false`                                                                                                                |
 | `wait_running_jobs` | boolean           | Wait for currently running [scheduled jobs](Advanced/Job-Scheduling.md) to finish before deployment starts.                                                                                                                                                                                                                                                                                                                                                                          | `true`                                                                                                                 |
 | `force_image_pull`  | boolean           | Always pulls the latest version of the image tags you've specified if a newer version is available.                                                                                                                                                                                                                                                                                                                                                                                  | `false`                                                                                                                |
@@ -563,6 +564,35 @@ Precedence:
 
 - Service label `cd.doco.job.wait_running_jobs` (if set)
 - Deployment default `wait_running_jobs`
+
+### Swarm settings
+
+The following settings can be configured in the nested `swarm` object:
+
+| Key                | Type   | Description                                                                                                                                                                                         | Default value     |
+|--------------------|--------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|
+| `config_retention` | number | Number of old Swarm config revisions to keep per resource (excluding the active revision). `-1` disables automatic pruning. If unset, global [`DOCKER_SWARM_CONFIG_RETENTION`](Docker-Settings.md#swarm-environment-variables) is used. | unset (use global) |
+| `secret_retention` | number | Number of old Swarm secret revisions to keep per resource (excluding the active revision). `-1` disables automatic pruning. If unset, global [`DOCKER_SWARM_SECRET_RETENTION`](Docker-Settings.md#swarm-environment-variables) is used. | unset (use global) |
+
+#### Keep old Swarm configs/secrets
+
+In Swarm mode, doco-cd creates content-hashed config/secret names and rotates them when content changes.
+
+Use `swarm.config_retention` and `swarm.secret_retention` to keep old revisions:
+
+- `0` keeps no old revisions (only active ones remain)
+- `1` keeps one old revision per resource type
+- `-1` disables automatic pruning for that resource type
+- if unset, the corresponding global Docker setting is used:
+    - [`DOCKER_SWARM_CONFIG_RETENTION`](Docker-Settings.md#swarm-environment-variables)
+    - [`DOCKER_SWARM_SECRET_RETENTION`](Docker-Settings.md#swarm-environment-variables)
+
+```yaml title=".doco-cd.yml"
+name: some-project
+swarm:
+  config_retention: 2
+  secret_retention: 1
+```
 
 ## Multiple service deployments
 

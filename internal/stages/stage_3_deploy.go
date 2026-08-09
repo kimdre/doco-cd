@@ -33,7 +33,9 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 	err = docker.DeployStack(stageLog, s.Repository.PathExternal, &ctx, s.Docker.Cmd,
 		s.Payload, s.DeployConfig,
 		s.DeployState.changedServices, s.DeployState.ignoredInfo.NeedSendSignal,
-		latestCommit, app.Version, s.Docker.SwarmMode)
+		latestCommit, app.Version,
+		s.AppConfig.DockerSwarmConfigRetention, s.AppConfig.DockerSwarmSecretRetention,
+		s.Docker.SwarmMode)
 	if err != nil {
 		return fmt.Errorf("failed to deploy stack %s: %w", s.DeployConfig.Name, err)
 	}

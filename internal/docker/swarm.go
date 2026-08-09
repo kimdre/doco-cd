@@ -10,6 +10,8 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -32,9 +34,16 @@ import (
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
+const (
+	swarmResourceNameMaxLen = 64
+	swarmHashSuffixLen      = 8
+	swarmBaseNameMaxLen     = swarmResourceNameMaxLen - (1 + swarmHashSuffixLen) // "_" + hash
+)
+
 var (
 	ErrNotAJobService                = errors.New("service is not a job-mode service")
 	ErrJobServiceRestartNotSupported = errors.New("restart not supported for job services")
+	swarmContentHashSuffixPattern    = regexp.MustCompile(fmt.Sprintf(`_[a-f0-9]{%d}$`, swarmHashSuffixLen))
 
 	// ErrGlobalSwarmServiceNotScalable indicates a global/global-job service was
 	// targeted by an operation that scales replicas, which Swarm does not allow.
@@ -262,6 +271,10 @@ func SetConfigHashPrefixes(stack *composetypes.Config, namespace string) error {
 			c.Name = fmt.Sprintf("%s_%s", namespace, filepath.Base(c.File))
 		}
 
+		if err := validateSwarmBaseNameLength(c.Name, "config"); err != nil {
+			return err
+		}
+
 		oldName := c.Name
 		nameWithHash := fmt.Sprintf("%s_%s", c.Name, hash)
 		c.Name = nameWithHash
@@ -308,6 +321,10 @@ func SetSecretHashPrefixes(stack *composetypes.Config, namespace string) error {
 			s.Name = fmt.Sprintf("%s_%s", namespace, filepath.Base(s.File))
 		}
 
+		if err := validateSwarmBaseNameLength(s.Name, "secret"); err != nil {
+			return err
+		}
+
 		oldName := s.Name
 		nameWithHash := fmt.Sprintf("%s_%s", s.Name, hash)
 		s.Name = nameWithHash
@@ -348,24 +365,74 @@ func generateShortHash(data io.Reader) (hash string, err error) {
 	return hash, nil
 }
 
-func PruneStackConfigs(ctx context.Context, client dockerClient.APIClient, namespace string) error {
+// validateSwarmBaseNameLength checks if the base name of a Swarm resource (config or secret)
+// is within the allowed length limit (swarmBaseNameMaxLen).
+func validateSwarmBaseNameLength(name, resourceType string) error {
+	if name == "" {
+		return fmt.Errorf("%s name must not be empty", resourceType)
+	}
+
+	if len(name) <= swarmBaseNameMaxLen {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"%s name %q is too long (%d chars): max %d chars allowed before hash suffix (%d chars) to stay within Docker Swarm limit (%d)",
+		resourceType, name, len(name), swarmBaseNameMaxLen, swarmHashSuffixLen, swarmResourceNameMaxLen)
+}
+
+// stripSwarmContentHashSuffix removes the content hash suffix from a Swarm config or secret name.
+func stripSwarmContentHashSuffix(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+
+	return swarmContentHashSuffixPattern.ReplaceAllString(name, "")
+}
+
+// PruneStackConfigs removes old revisions of configs in a Docker Swarm stack,
+// keeping only the specified number of recent revisions.
+func PruneStackConfigs(ctx context.Context, client dockerClient.APIClient, namespace string, keepOldRevisions int) error {
+	if keepOldRevisions < 0 {
+		return nil
+	}
+
+	keepTotalRevisions := keepOldRevisions + 1
+
 	// List all configs in the swarm
 	configs, err := GetLabeledConfigs(ctx, client, swarmInternal.StackNamespaceLabel, namespace)
 	if err != nil {
 		return fmt.Errorf("failed to list configs: %w", err)
 	}
 
+	groupedConfigs := make(map[string][]swarmTypes.Config)
+
 	for _, c := range configs {
 		if c.Spec.Labels[swarmInternal.StackNamespaceLabel] == namespace {
-			// Remove the c if it belongs to the specified namespace
+			key := stripSwarmContentHashSuffix(c.Spec.Name)
+			groupedConfigs[key] = append(groupedConfigs[key], c)
+		}
+	}
+
+	for _, group := range groupedConfigs {
+		sort.Slice(group, func(i, j int) bool {
+			return group[i].Version.Index < group[j].Version.Index
+		})
+
+		removeTarget := len(group) - keepTotalRevisions
+		if removeTarget <= 0 {
+			continue
+		}
+
+		for _, c := range group[:removeTarget] {
 			_, err = client.ConfigRemove(ctx, c.ID, dockerClient.ConfigRemoveOptions{})
 			if err != nil {
 				if strings.Contains(err.Error(), ErrIsInUse.Error()) {
-					// If the config is in use, we can skip it
 					continue
 				}
 
-				return fmt.Errorf("failed to remove c %s: %w", c.ID, err)
+				return fmt.Errorf("failed to remove config %s: %w", c.ID, err)
 			}
 		}
 	}
@@ -373,20 +440,44 @@ func PruneStackConfigs(ctx context.Context, client dockerClient.APIClient, names
 	return nil
 }
 
-func PruneStackSecrets(ctx context.Context, client dockerClient.APIClient, namespace string) error {
+// PruneStackSecrets removes old revisions of secrets in a Docker Swarm stack,
+// keeping only the specified number of recent revisions.
+func PruneStackSecrets(ctx context.Context, client dockerClient.APIClient, namespace string, keepOldRevisions int) error {
+	if keepOldRevisions < 0 {
+		return nil
+	}
+
+	keepTotalRevisions := keepOldRevisions + 1
+
 	// List all secrets in the swarm
 	secrets, err := GetLabeledSecrets(ctx, client, swarmInternal.StackNamespaceLabel, namespace)
 	if err != nil {
 		return fmt.Errorf("failed to list secrets: %w", err)
 	}
 
+	groupedSecrets := make(map[string][]swarmTypes.Secret)
+
 	for _, s := range secrets {
 		if s.Spec.Labels[swarmInternal.StackNamespaceLabel] == namespace {
-			// Remove the secret if it belongs to the specified namespace
+			key := stripSwarmContentHashSuffix(s.Spec.Name)
+			groupedSecrets[key] = append(groupedSecrets[key], s)
+		}
+	}
+
+	for _, group := range groupedSecrets {
+		sort.Slice(group, func(i, j int) bool {
+			return group[i].Version.Index < group[j].Version.Index
+		})
+
+		removeTarget := len(group) - keepTotalRevisions
+		if removeTarget <= 0 {
+			continue
+		}
+
+		for _, s := range group[:removeTarget] {
 			_, err = client.SecretRemove(ctx, s.ID, dockerClient.SecretRemoveOptions{})
 			if err != nil {
 				if strings.Contains(err.Error(), ErrIsInUse.Error()) {
-					// If the config is in use, we can skip it
 					continue
 				}
 
