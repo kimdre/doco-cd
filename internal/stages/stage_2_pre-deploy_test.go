@@ -1,8 +1,12 @@
 package stages
 
 import (
+	"errors"
+	"fmt"
 	"slices"
 	"testing"
+
+	"github.com/go-git/go-git/v5/plumbing"
 
 	"github.com/kimdre/doco-cd/internal/docker"
 )
@@ -252,6 +256,49 @@ func TestShouldSkipOCIDeployment(t *testing.T) {
 			got := shouldSkipOCIDeployment(tt.forceRecreate, tt.deployed, tt.resolved)
 			if got != tt.want {
 				t.Errorf("shouldSkipOCIDeployment() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestShouldRecoverFromMissingDeployedCommit(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "object not found",
+			err:  plumbing.ErrObjectNotFound,
+			want: true,
+		},
+		{
+			name: "wrapped object not found",
+			err:  fmt.Errorf("wrapped: %w", plumbing.ErrObjectNotFound),
+			want: true,
+		},
+		{
+			name: "reference not found",
+			err:  plumbing.ErrReferenceNotFound,
+			want: true,
+		},
+		{
+			name: "generic error",
+			err:  errors.New("some other git error"),
+			want: false,
+		},
+		{
+			name: "nil error",
+			err:  nil,
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shouldRecoverFromMissingDeployedCommit(tt.err)
+			if got != tt.want {
+				t.Fatalf("shouldRecoverFromMissingDeployedCommit() = %v, want %v", got, tt.want)
 			}
 		})
 	}

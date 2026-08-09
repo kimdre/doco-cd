@@ -83,6 +83,13 @@ func shouldSkipOCIDeployment(forceRecreate bool, deployedDigest, resolvedDigest 
 	return deployedDigest == resolvedDigest
 }
 
+// shouldRecoverFromMissingDeployedCommit checks if the error indicates that the deployed commit is no longer reachable
+// in the Git history. This can happen if the commit has been removed or rewritten (e.g., due to a force push).
+// In such cases, we may want to recover by treating it as a full-change deployment.
+func shouldRecoverFromMissingDeployedCommit(err error) bool {
+	return git.IsRefUnreachableError(err)
+}
+
 func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Logger) error {
 	s.Stages.PreDeploy.StartedAt = time.Now()
 
@@ -248,9 +255,27 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		}
 
 		// Check for file changes
-		gitChangedFiles, err := git.GetChangedFilesBetweenCommits(s.Repository.Git, plumbing.NewHash(deployedCommit), plumbing.NewHash(latestCommit))
-		if err != nil {
-			return fmt.Errorf("failed to get changed files between commits: %w", err)
+		deployedHash := plumbing.NewHash(deployedCommit)
+		latestHash := plumbing.NewHash(latestCommit)
+		gitChangedFiles := make([]git.ChangedFile, 0)
+
+		if _, err := s.Repository.Git.CommitObject(deployedHash); err != nil {
+			if shouldRecoverFromMissingDeployedCommit(err) {
+				stageLog.Warn("previous deployed commit is no longer reachable; continuing with full-change deployment comparison",
+					slog.String("deployed_commit", deployedCommit),
+					slog.String("latest_commit", latestCommit),
+					slog.String("reason", err.Error()),
+				)
+
+				composeChanged = true
+			} else {
+				return fmt.Errorf("failed to resolve deployed commit %s: %w", deployedCommit, err)
+			}
+		} else {
+			gitChangedFiles, err = git.GetChangedFilesBetweenCommits(s.Repository.Git, deployedHash, latestHash)
+			if err != nil {
+				return fmt.Errorf("failed to get changed files between commits: %w", err)
+			}
 		}
 
 		changedFiles := docker.GetPathsFromGitChangedFiles(gitChangedFiles, s.Repository.PathExternal)
