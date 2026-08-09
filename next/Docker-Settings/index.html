@@ -2536,6 +2536,12 @@ The list below contains the most commonly used environment variables that are re
 <td></td>
 </tr>
 <tr>
+<td><code>DOCKER_CONFIG</code></td>
+<td>string</td>
+<td>Overrides the Docker CLI config directory. Doco-CD then reads Docker credentials from <code>&lt;DOCKER_CONFIG&gt;/config.json</code>.</td>
+<td><code>~/.docker/config.json</code></td>
+</tr>
+<tr>
 <td><code>DOCKER_HOST</code></td>
 <td>string</td>
 <td>The url that doco-cd will use to connect to the Docker Daemon (e.g. <code>tcp://192.168.0.10:2375</code>). Do not set this when using <a data-preview="" href="../Advanced/Docker-Contexts/">Docker contexts</a> in deployment configs.</td>

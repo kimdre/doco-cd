@@ -1724,6 +1724,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#supported-credential-setups" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Supported credential setups
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#mounting-an-existing-docker-config-file" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1739,6 +1750,28 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         Using a custom docker config file
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#using-docker_auth_config" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Using <code>DOCKER_AUTH_CONFIG</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting-auth-failures" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Troubleshooting auth failures
       </span>
     </span>
   </a>
@@ -2342,6 +2375,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#supported-credential-setups" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Supported credential setups
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#mounting-an-existing-docker-config-file" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2357,6 +2401,28 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         Using a custom docker config file
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#using-docker_auth_config" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Using <code>DOCKER_AUTH_CONFIG</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting-auth-failures" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Troubleshooting auth failures
       </span>
     </span>
   </a>
@@ -2475,6 +2541,13 @@
 
 <h1 id="private-container-registries">Private Container Registries<a class="headerlink" href="#private-container-registries" title="Permanent link">&para;</a></h1>
 <p>To access a private container registry, you need to provide the credentials by adding the docker config file <code>~/.docker/config.json</code> to the doco-cd container.</p>
+<h2 id="supported-credential-setups">Supported credential setups<a class="headerlink" href="#supported-credential-setups" title="Permanent link">&para;</a></h2>
+<p>doco-cd uses Docker CLI auth resolution. The following setups are supported:</p>
+<ul>
+<li>Inline credentials in <code>auths</code> (recommended), either in <a data-preview="" href="#mounting-an-existing-docker-config-file">mounted <code>config.json</code></a> or via <a data-preview="" href="#using-docker_auth_config"><code>DOCKER_AUTH_CONFIG</code></a>.</li>
+<li><code>credsStore</code> / <code>credHelpers</code> based configs <strong>only if</strong> the matching <code>docker-credential-*</code> helper binaries are available inside the doco-cd container.</li>
+</ul>
+<p>If your host <code>config.json</code> references helpers that are not available in the container, registry authentication will fail even though the file is mounted.</p>
 <h2 id="mounting-an-existing-docker-config-file">Mounting an existing docker config file<a class="headerlink" href="#mounting-an-existing-docker-config-file" title="Permanent link">&para;</a></h2>
 <p>You can mount your existing <code>~/.docker/config.json</code> file from the host to the container if you have already added the credentials using <code>docker login</code> on the host machine.</p>
 <details class="example">
@@ -2540,6 +2613,32 @@
 </span><span id="__span-4-25"><a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a><span class="w">  </span><span class="nt">data</span><span class="p">:</span>
 </span></code></pre></div>
 </li>
+</ol>
+<h2 id="using-docker_auth_config">Using <code>DOCKER_AUTH_CONFIG</code><a class="headerlink" href="#using-docker_auth_config" title="Permanent link">&para;</a></h2>
+<p>Instead of mounting a file, you can provide credentials directly through <code>DOCKER_AUTH_CONFIG</code>:</p>
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">      </span><span class="nt">DOCKER_AUTH_CONFIG</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">        </span><span class="no">{</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">          </span><span class="no">&quot;auths&quot;: {</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">            </span><span class="no">&quot;my.registry.example&quot;: {</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">              </span><span class="no">&quot;auth&quot;: &quot;BASE64_USERNAME_PASSWORD&quot;</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">            </span><span class="no">}</span>
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">          </span><span class="no">}</span>
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="w">        </span><span class="no">}</span>
+</span></code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title">Less secure than file or secret mounts</p>
+<p><code>DOCKER_AUTH_CONFIG</code> stores registry credentials directly in an environment variable. In containerized setups, environment variables are often easier to expose accidentally (for example through inspect/debug output, process environment dumps, or logs) than mounted files/secrets with restrictive permissions.
+Prefer mounted secrets or a mounted <code>config.json</code> where possible.</p>
+</div>
+<h2 id="troubleshooting-auth-failures">Troubleshooting auth failures<a class="headerlink" href="#troubleshooting-auth-failures" title="Permanent link">&para;</a></h2>
+<p>When pull/update logs contain authorization errors (for example <code>pull access denied</code>, <code>unauthorized</code>, or <code>access forbidden</code>):</p>
+<ol>
+<li>Ensure doco-cd reads the expected config path (<code>/root/.docker/config.json</code> by default, or your <a data-preview="" href="../../Docker-Settings/#common-environment-variables"><code>DOCKER_CONFIG</code></a> override).</li>
+<li>If config uses <code>credsStore</code> / <code>credHelpers</code>, ensure required <code>docker-credential-*</code> binaries exist in the container at the expected path (for example <code>/usr/local/bin/&lt;docker-credential-helper&gt;</code>). If they are missing, either install/mount them in the container or use a different credential setup.</li>
+<li>Prefer inline <code>auths</code> entries for containerized doco-cd deployments when helper binaries are unavailable.</li>
 </ol>
 
 
