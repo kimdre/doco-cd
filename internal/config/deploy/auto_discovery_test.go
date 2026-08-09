@@ -514,8 +514,6 @@ func TestAutoDiscoverDeployments_NoNestedConfig_BackwardsCompatible(t *testing.T
 func TestAutoDiscoverDeployments_SkipHeavyDirectories(t *testing.T) {
 	t.Parallel()
 
-	resetAutoDiscoveryCache()
-
 	repoRoot := t.TempDir()
 
 	if err := os.MkdirAll(filepath.Join(repoRoot, ".git", "objects"), 0o750); err != nil {
@@ -564,8 +562,6 @@ func TestAutoDiscoverDeployments_SkipHeavyDirectories(t *testing.T) {
 
 func TestAutoDiscoverDeployments_CacheKeyedByHeadAndSettings(t *testing.T) {
 	t.Parallel()
-
-	resetAutoDiscoveryCache()
 
 	repoRoot := t.TempDir()
 
@@ -639,13 +635,6 @@ func TestAutoDiscoverDeployments_CacheKeyedByHeadAndSettings(t *testing.T) {
 	if len(third) != 2 {
 		t.Fatalf("expected cache invalidation after HEAD change, got %d configs", len(third))
 	}
-}
-
-func resetAutoDiscoveryCache() {
-	autoDiscoveryCache.mu.Lock()
-	defer autoDiscoveryCache.mu.Unlock()
-
-	autoDiscoveryCache.entries = map[string][]*Config{}
 }
 
 func commitAll(t *testing.T, repo *git.Repository, message string) error {
