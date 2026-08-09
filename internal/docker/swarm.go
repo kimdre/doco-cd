@@ -425,12 +425,7 @@ func PruneStackConfigs(ctx context.Context, client dockerClient.APIClient, names
 			continue
 		}
 
-		removed := 0
-		for _, c := range group {
-			if removed >= removeTarget {
-				break
-			}
-
+		for _, c := range group[:removeTarget] {
 			_, err = client.ConfigRemove(ctx, c.ID, dockerClient.ConfigRemoveOptions{})
 			if err != nil {
 				if strings.Contains(err.Error(), ErrIsInUse.Error()) {
@@ -439,8 +434,6 @@ func PruneStackConfigs(ctx context.Context, client dockerClient.APIClient, names
 
 				return fmt.Errorf("failed to remove config %s: %w", c.ID, err)
 			}
-
-			removed++
 		}
 	}
 
@@ -481,12 +474,7 @@ func PruneStackSecrets(ctx context.Context, client dockerClient.APIClient, names
 			continue
 		}
 
-		removed := 0
-		for _, s := range group {
-			if removed >= removeTarget {
-				break
-			}
-
+		for _, s := range group[:removeTarget] {
 			_, err = client.SecretRemove(ctx, s.ID, dockerClient.SecretRemoveOptions{})
 			if err != nil {
 				if strings.Contains(err.Error(), ErrIsInUse.Error()) {
@@ -495,8 +483,6 @@ func PruneStackSecrets(ctx context.Context, client dockerClient.APIClient, names
 
 				return fmt.Errorf("failed to remove secret %s: %w", s.ID, err)
 			}
-
-			removed++
 		}
 	}
 
