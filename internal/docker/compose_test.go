@@ -217,7 +217,7 @@ func TestDeployCompose(t *testing.T) {
 
 	p := webhook.ParsedPayload{
 		Ref:       git.MainBranch,
-		CommitSHA: "4d877107dfa2e3b582bd8f8f803befbd3a1d867e",
+		CommitSHA: plumbing.NewHash("4d877107dfa2e3b582bd8f8f803befbd3a1d867e"),
 		Name:      id.GenID(),
 		FullName:  "kimdre/doco-cd_tests",
 		CloneURL:  cloneUrlTest,

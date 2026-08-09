@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/go-git/go-git/v5/plumbing"
+
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -226,7 +228,8 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 				Source:    webhook.PayloadSourceOCI,
 				Name:      s.Repository.Name,
 				Ref:       s.DeployConfig.Reference,
-				CommitSHA: s.Repository.Revision,
+				CommitSHA: plumbing.ZeroHash,
+				Trigger:   s.Repository.Revision,
 				FullName:  s.Repository.Name,
 				WebURL:    s.Repository.SourceUrl,
 				Artifact:  s.Repository.SourceUrl,
@@ -237,7 +240,8 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 				Source:    webhook.PayloadSourceGit,
 				Name:      git.GetRepoName(s.Repository.SourceUrl),
 				Ref:       s.DeployConfig.Reference,
-				CommitSHA: string(JobTriggerPoll),
+				CommitSHA: plumbing.ZeroHash,
+				Trigger:   string(JobTriggerPoll),
 				FullName:  git.GetFullName(s.Repository.SourceUrl),
 				CloneURL:  s.Repository.SourceUrl,
 				WebURL:    s.Repository.SourceUrl,

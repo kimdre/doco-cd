@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	composetypes "github.com/docker/cli/cli/compose/types"
+	"github.com/go-git/go-git/v5/plumbing"
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 
 	"github.com/kimdre/doco-cd/internal/config/deploy"
@@ -41,7 +42,7 @@ func TestAddSwarmServiceLabels_UsesServiceLevelLabels(t *testing.T) {
 	deployConfig.Internal.Hash = "confighash"
 
 	payload := &webhook.ParsedPayload{
-		CommitSHA: "abc123",
+		CommitSHA: plumbing.NewHash(strings.Repeat("a", 40)),
 		FullName:  "kimdre/doco-cd_tests",
 		WebURL:    "https://github.com/kimdre/doco-cd_tests",
 	}
@@ -121,7 +122,7 @@ func TestAddSwarmVolumeLabels_OmitsUnstableLabels(t *testing.T) {
 	}
 
 	deployConfig := &deploy.Config{Name: "test-stack"}
-	payload := &webhook.ParsedPayload{CommitSHA: "abc123", FullName: "kimdre/doco-cd_tests"}
+	payload := &webhook.ParsedPayload{CommitSHA: plumbing.NewHash(strings.Repeat("a", 40)), FullName: "kimdre/doco-cd_tests"}
 
 	addSwarmVolumeLabels(stack, deployConfig, payload, "/repo")
 

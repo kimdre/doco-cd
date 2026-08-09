@@ -12,6 +12,7 @@ import (
 
 	"github.com/containerd/errdefs"
 	composeapi "github.com/docker/compose/v5/pkg/api"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
@@ -111,7 +112,7 @@ func TestDeploy(t *testing.T) {
 
 	p := webhook.ParsedPayload{
 		Ref:       "7be81e788a40724cee7542eec00a2af0c4340eba",
-		CommitSHA: "7be81e788a40724cee7542eec00a2af0c4340eba",
+		CommitSHA: plumbing.NewHash("7be81e788a40724cee7542eec00a2af0c4340eba"),
 		FullName:  "kimdre/doco-cd_tests",
 		CloneURL:  "https://github.com/kimdre/doco-cd_tests.git",
 		Private:   false,
@@ -178,7 +179,7 @@ func TestDeploy(t *testing.T) {
 		notification.Metadata{
 			JobID:      jobId,
 			Repository: repoName,
-			Revision:   notification.GetRevision(p.Ref, p.CommitSHA),
+			Revision:   notification.GetRevision(p.Ref, p.CommitSHAString()),
 		},
 		stages.JobTriggerWebhook,
 		stages.RepositoryData{

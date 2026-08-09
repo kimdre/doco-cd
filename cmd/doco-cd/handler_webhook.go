@@ -277,7 +277,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	repoName := repositoryNameFromWebhookPayload(payload)
 	if runTracker != nil {
-		runTracker.SetMetadata(metadata.JobID, repoName, customTarget, notification.GetRevision(payload.Ref, payload.CommitSHA))
+		runTracker.SetMetadata(metadata.JobID, repoName, customTarget, notification.GetRevision(payload.Ref, payload.RevisionString()))
 		runTracker.MarkRunning(metadata.JobID)
 	}
 
@@ -324,7 +324,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	jobLog.Info("received new "+entity+" job",
 		slog.Group("trigger",
-			slog.String("commit", payload.CommitSHA), slog.String("ref", payload.Ref),
+			slog.String("commit", payload.RevisionString()), slog.String("ref", payload.Ref),
 			slog.String("event", string(stages.JobTriggerWebhook))))
 
 	git.ConfigureAuthResolver(
@@ -469,7 +469,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		if repositoryName := repositoryNameFromWebhookPayload(payload); repositoryName != "unknown" {
 			metadata.Repository = repositoryName
 
-			metadata.Revision = notification.GetRevision(payload.Ref, payload.CommitSHA)
+			metadata.Revision = notification.GetRevision(payload.Ref, payload.RevisionString())
 			if h.runTracker != nil {
 				h.runTracker.SetMetadata(jobID, metadata.Repository, customTarget, metadata.Revision)
 			}
@@ -490,7 +490,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		JSONResponse(w, errMsg, jobID, http.StatusAccepted)
 
 		if h.runTracker != nil {
-			h.runTracker.SetMetadata(jobID, repositoryNameFromWebhookPayload(payload), customTarget, notification.GetRevision(payload.Ref, payload.CommitSHA))
+			h.runTracker.SetMetadata(jobID, repositoryNameFromWebhookPayload(payload), customTarget, notification.GetRevision(payload.Ref, payload.RevisionString()))
 			h.runTracker.MarkSkipped(jobID, errMsg)
 		}
 
@@ -509,7 +509,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 	if metadata.Repository == "" || metadata.Repository == "unknown" {
 		metadata.Repository = repositoryNameFromWebhookPayload(payload)
-		metadata.Revision = notification.GetRevision(payload.Ref, payload.CommitSHA)
+		metadata.Revision = notification.GetRevision(payload.Ref, payload.RevisionString())
 	}
 
 	if h.runTracker != nil {

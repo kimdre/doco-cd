@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/kimdre/doco-cd/internal/git"
+	"github.com/go-git/go-git/v5/plumbing"
 )
 
 var ErrUnknownProvider = errors.New("unknown SCM provider")
@@ -29,7 +29,7 @@ func IsBranchOrTagDeletionEvent(r *http.Request, payload ParsedPayload, provider
 
 	switch provider {
 	case Github, Gitea, Gogs, Forgejo:
-		if payload.Before != git.ZeroSHA && payload.After == git.ZeroSHA {
+		if payload.Before != plumbing.ZeroHash && payload.After == plumbing.ZeroHash {
 			return true, nil
 		}
 
@@ -43,11 +43,11 @@ func IsBranchOrTagDeletionEvent(r *http.Request, payload ParsedPayload, provider
 			return false, nil
 		}
 
-		if payload.After != git.ZeroSHA {
+		if payload.After != plumbing.ZeroHash {
 			return false, nil
 		}
 		// Also verify checkout_sha is null for deletion events
-		return payload.CommitSHA == "", nil
+		return payload.CommitSHA == plumbing.ZeroHash, nil
 	case OCIRegistry:
 		// OCI events do not encode branch/tag deletion semantics.
 		return false, nil

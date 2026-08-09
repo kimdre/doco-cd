@@ -5,6 +5,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/google/go-containerregistry/pkg/name"
 )
 
@@ -57,22 +58,57 @@ type OCIArtifactPayload struct {
 // ParsedPayload is a struct that contains the parsed payload data.
 type ParsedPayload struct {
 	Source    PayloadSource
-	Ref       string // Ref is the branch or tag that triggered the webhook
-	RefType   string // RefType is the type of ref (branch or tag) that triggered the webhook, only present in delete events
-	Before    string // Before is the SHA of the commit before the push, only present in GitLab payloads
-	After     string // After is the SHA of the commit after the push, only present in GitLab payloads
-	CommitSHA string // CommitSHA is the SHA of the commit that triggered the webhook
-	Name      string // Name is the short name of the repository (without owner or organization)
-	FullName  string // FullName is the full name of the repository (e.g., owner/repo)
-	CloneURL  string // CloneURL is the URL to clone the repository
-	SSHUrl    string // SSHUrl is the SSH URL to clone the repository
-	WebURL    string // WebURL is the URL to view the repository in a web browser
-	Private   bool   // Private indicates whether the repository is private or public
-	Artifact  string // Artifact is the OCI artifact reference that triggered the webhook
-	Digest    string // Digest is the OCI digest that triggered the webhook
+	Ref       string        // Ref is the branch or tag that triggered the webhook
+	RefType   string        // RefType is the type of ref (branch or tag) that triggered the webhook, only present in delete events
+	Before    plumbing.Hash // Before is the hash of the commit before the push
+	After     plumbing.Hash // After is the hash of the commit after the push
+	CommitSHA plumbing.Hash // CommitSHA is the SHA of the commit that triggered the webhook
+	Trigger   string        // Trigger is the value that triggered the deployment (e.g., "poll", commit SHA, or OCI digest)
+	Name      string        // Name is the short name of the repository (without owner or organization)
+	FullName  string        // FullName is the full name of the repository (e.g., owner/repo)
+	CloneURL  string        // CloneURL is the URL to clone the repository
+	SSHUrl    string        // SSHUrl is the SSH URL to clone the repository
+	WebURL    string        // WebURL is the URL to view the repository in a web browser
+	Private   bool          // Private indicates whether the repository is private or public
+	Artifact  string        // Artifact is the OCI artifact reference that triggered the webhook
+	Digest    string        // Digest is the OCI digest that triggered the webhook
 }
 
-// ParsePayload parses the payload and returns a ParsedPayload struct.
+// CommitSHAString returns the CommitSHA as a string.
+// If the CommitSHA is empty, it returns an empty string.
+func (p ParsedPayload) CommitSHAString() string {
+	if p.CommitSHA == plumbing.ZeroHash {
+		return ""
+	}
+
+	return p.CommitSHA.String()
+}
+
+// TriggerString returns the trigger value for the payload.
+// For Git payloads, it returns the CommitSHA. For OCI payloads, it returns the Digest.
+func (p ParsedPayload) TriggerString() string {
+	if trigger := strings.TrimSpace(p.Trigger); trigger != "" {
+		return trigger
+	}
+
+	if p.Source == PayloadSourceOCI {
+		return strings.TrimSpace(p.Digest)
+	}
+
+	return p.CommitSHAString()
+}
+
+// RevisionString returns the revision string for the payload.
+// For Git payloads, it returns the CommitSHA. For OCI payloads, it returns the Digest.
+func (p ParsedPayload) RevisionString() string {
+	if p.Source == PayloadSourceOCI {
+		return strings.TrimSpace(p.Digest)
+	}
+
+	return p.CommitSHAString()
+}
+
+// parsePayload parses the payload and returns a ParsedPayload struct.
 func parsePayload(payload []byte, provider ScmProvider) (ParsedPayload, error) {
 	var (
 		githubPayload GithubPushPayload
@@ -91,9 +127,10 @@ func parsePayload(payload []byte, provider ScmProvider) (ParsedPayload, error) {
 			Source:    PayloadSourceGit,
 			Ref:       githubPayload.Ref,
 			RefType:   githubPayload.RefType,
-			Before:    githubPayload.Before,
-			After:     githubPayload.After, // GitHub doesn't have an "after" field, so we use the "after" field as the commit SHA
-			CommitSHA: githubPayload.After,
+			Before:    plumbing.NewHash(githubPayload.Before),
+			After:     plumbing.NewHash(githubPayload.After), // GitHub doesn't have an "after" field, so we use the "after" field as the commit SHA
+			CommitSHA: plumbing.NewHash(githubPayload.After),
+			Trigger:   strings.TrimSpace(githubPayload.After),
 			Name:      githubPayload.Repository.Name,
 			FullName:  githubPayload.Repository.FullName,
 			CloneURL:  githubPayload.Repository.CloneURL,
@@ -112,9 +149,10 @@ func parsePayload(payload []byte, provider ScmProvider) (ParsedPayload, error) {
 		parsedPayload := ParsedPayload{
 			Source:    PayloadSourceGit,
 			Ref:       gitlabPayload.Ref,
-			Before:    gitlabPayload.Before,
-			After:     gitlabPayload.After,
-			CommitSHA: gitlabPayload.CommitSHA,
+			Before:    plumbing.NewHash(gitlabPayload.Before),
+			After:     plumbing.NewHash(gitlabPayload.After),
+			CommitSHA: plumbing.NewHash(gitlabPayload.CommitSHA),
+			Trigger:   strings.TrimSpace(gitlabPayload.CommitSHA),
 			Name:      gitlabPayload.Repository.Name,
 			FullName:  gitlabPayload.Repository.PathWithNamespace,
 			CloneURL:  gitlabPayload.Repository.CloneURL,
@@ -139,7 +177,8 @@ func parsePayload(payload []byte, provider ScmProvider) (ParsedPayload, error) {
 		parsedPayload := ParsedPayload{
 			Source:    PayloadSourceOCI,
 			Ref:       ref,
-			CommitSHA: ociPayload.Digest,
+			CommitSHA: plumbing.ZeroHash,
+			Trigger:   strings.TrimSpace(ociPayload.Digest),
 			Name:      path.Base(repositoryName),
 			FullName:  repositoryName,
 			Artifact:  ociPayload.Artifact,

@@ -12,6 +12,7 @@ import (
 
 	"github.com/avast/retry-go/v5"
 	"github.com/compose-spec/compose-go/v2/types"
+	"github.com/go-git/go-git/v5/plumbing"
 
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 
@@ -651,7 +652,7 @@ services:
 
 	p := webhook.ParsedPayload{
 		Ref:       git.SwarmModeBranch,
-		CommitSHA: "244b6f9a5b3dc546ab3822d9c0744846f539c6ef",
+		CommitSHA: plumbing.NewHash("244b6f9a5b3dc546ab3822d9c0744846f539c6ef"),
 		Name:      stackName,
 		FullName:  repoName,
 		CloneURL:  cloneUrlTest,
@@ -665,10 +666,10 @@ services:
 	).Do(
 		func() error {
 			timestamp := time.Now().UTC().Format(time.RFC3339)
-			addSwarmServiceLabels(swarmStack, deployCfg, &p, tmpDir, "dev", timestamp, p.CommitSHA, projectHash)
+			addSwarmServiceLabels(swarmStack, deployCfg, &p, tmpDir, "dev", timestamp, p.CommitSHAString(), projectHash)
 			addSwarmVolumeLabels(swarmStack, deployCfg, &p, tmpDir)
-			addSwarmConfigLabels(swarmStack, deployCfg, &p, tmpDir, "dev", timestamp, p.CommitSHA)
-			addSwarmSecretLabels(swarmStack, deployCfg, &p, tmpDir, "dev", timestamp, p.CommitSHA)
+			addSwarmConfigLabels(swarmStack, deployCfg, &p, tmpDir, "dev", timestamp, p.CommitSHAString())
+			addSwarmSecretLabels(swarmStack, deployCfg, &p, tmpDir, "dev", timestamp, p.CommitSHAString())
 
 			return DeploySwarmStack(ctx, dockerCli, swarmStack, opts)
 		},
