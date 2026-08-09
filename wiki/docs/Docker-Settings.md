@@ -31,8 +31,8 @@ These settings are specific to Docker Swarm mode behavior in Doco-CD.
 | Key                             | Type    | Description                                                                                                                                                                                                   | Default value |
 |---------------------------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
 | `DOCKER_SWARM_FEATURES`         | boolean | Enable the use Docker Swarm Mode features if the app has detected that it is running in a Docker Swarm environment                                                                                            | `true`        |
-| `DOCKER_SWARM_CONFIG_RETENTION` | number  | Global default number of old Swarm config revisions to keep per resource (excluding the active revision). Can be overridden per deployment via [`swarm.config_retention`](Deploy-Settings.md#swarm-settings). | `0`           |
-| `DOCKER_SWARM_SECRET_RETENTION` | number  | Global default number of old Swarm secret revisions to keep per resource (excluding the active revision). Can be overridden per deployment via [`swarm.secret_retention`](Deploy-Settings.md#swarm-settings). | `0`           |
+| `DOCKER_SWARM_CONFIG_RETENTION` | number  | Global default number of old Swarm config revisions to keep per resource (excluding the active revision). Use `-1` to disable automatic pruning. Can be overridden per deployment via [`swarm.config_retention`](Deploy-Settings.md#swarm-settings). | `0`           |
+| `DOCKER_SWARM_SECRET_RETENTION` | number  | Global default number of old Swarm secret revisions to keep per resource (excluding the active revision). Use `-1` to disable automatic pruning. Can be overridden per deployment via [`swarm.secret_retention`](Deploy-Settings.md#swarm-settings). | `0`           |
 
 ## Remote Docker Daemons
 

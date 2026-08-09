@@ -161,12 +161,12 @@ func TestConfig_Validate_SwarmRetention(t *testing.T) {
 			t.Fatalf("validate: %v", err)
 		}
 
-		if dc.Swarm.ConfigRetention != -1 {
-			t.Fatalf("expected default swarm.config_retention to be -1, got %d", dc.Swarm.ConfigRetention)
+		if dc.Swarm.ConfigRetention != nil {
+			t.Fatalf("expected default swarm.config_retention to be unset (nil), got %v", dc.Swarm.ConfigRetention)
 		}
 
-		if dc.Swarm.SecretRetention != -1 {
-			t.Fatalf("expected default swarm.secret_retention to be -1, got %d", dc.Swarm.SecretRetention)
+		if dc.Swarm.SecretRetention != nil {
+			t.Fatalf("expected default swarm.secret_retention to be unset (nil), got %v", dc.Swarm.SecretRetention)
 		}
 
 		if got := dc.ResolveSwarmConfigRetention(3); got != 3 {
@@ -186,8 +186,8 @@ func TestConfig_Validate_SwarmRetention(t *testing.T) {
 			t.Fatalf("defaults: %v", err)
 		}
 
-		dc.Swarm.ConfigRetention = 0
-		dc.Swarm.SecretRetention = 2
+		dc.Swarm.ConfigRetention = new(0)
+		dc.Swarm.SecretRetention = new(2)
 
 		if err := dc.Validate(); err != nil {
 			t.Fatalf("validate: %v", err)
@@ -202,6 +202,30 @@ func TestConfig_Validate_SwarmRetention(t *testing.T) {
 		}
 	})
 
+	t.Run("allows minus one to disable pruning", func(t *testing.T) {
+		t.Parallel()
+
+		dc := Config{Name: "stack-a"}
+		if err := defaults.Set(&dc); err != nil {
+			t.Fatalf("defaults: %v", err)
+		}
+
+		dc.Swarm.ConfigRetention = new(-1)
+		dc.Swarm.SecretRetention = new(-1)
+
+		if err := dc.Validate(); err != nil {
+			t.Fatalf("expected -1 to be valid, got %v", err)
+		}
+
+		if got := dc.ResolveSwarmConfigRetention(3); got != -1 {
+			t.Fatalf("expected deploy config retention -1 to override global, got %d", got)
+		}
+
+		if got := dc.ResolveSwarmSecretRetention(4); got != -1 {
+			t.Fatalf("expected deploy secret retention -1 to override global, got %d", got)
+		}
+	})
+
 	t.Run("rejects config retention less than minus one", func(t *testing.T) {
 		t.Parallel()
 
@@ -210,7 +234,7 @@ func TestConfig_Validate_SwarmRetention(t *testing.T) {
 			t.Fatalf("defaults: %v", err)
 		}
 
-		dc.Swarm.ConfigRetention = -2
+		dc.Swarm.ConfigRetention = new(-2)
 
 		err := dc.Validate()
 		if err == nil {
@@ -230,7 +254,7 @@ func TestConfig_Validate_SwarmRetention(t *testing.T) {
 			t.Fatalf("defaults: %v", err)
 		}
 
-		dc.Swarm.SecretRetention = -2
+		dc.Swarm.SecretRetention = new(-2)
 
 		err := dc.Validate()
 		if err == nil {

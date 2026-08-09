@@ -79,8 +79,8 @@ type Config struct {
 
 // SwarmConfig contains Docker Swarm-specific deployment settings.
 type SwarmConfig struct {
-	ConfigRetention int `yaml:"config_retention" json:"config_retention" default:"-1"` // ConfigRetention is the number of old Swarm config revisions to keep per resource (excluding the active one). -1 means use global DOCKER_SWARM_CONFIG_RETENTION.
-	SecretRetention int `yaml:"secret_retention" json:"secret_retention" default:"-1"` // SecretRetention is the number of old Swarm secret revisions to keep per resource (excluding the active one). -1 means use global DOCKER_SWARM_SECRET_RETENTION.
+	ConfigRetention *int `yaml:"config_retention,omitempty" json:"config_retention,omitempty"` // ConfigRetention is the number of old Swarm config revisions to keep per resource (excluding the active one). -1 disables automatic pruning. If unset, global DOCKER_SWARM_CONFIG_RETENTION is used.
+	SecretRetention *int `yaml:"secret_retention,omitempty" json:"secret_retention,omitempty"` // SecretRetention is the number of old Swarm secret revisions to keep per resource (excluding the active one). -1 disables automatic pruning. If unset, global DOCKER_SWARM_SECRET_RETENTION is used.
 }
 
 // ResolveGitDepth returns the effective git clone depth.
@@ -96,11 +96,11 @@ func (c *Config) ResolveGitDepth(globalDepth int) int {
 
 // ResolveSwarmConfigRetention returns the effective old-revision retention
 // for Swarm configs.
-// If deploy-level value is >= 0, it overrides the global value.
-// If deploy-level value is -1, the global value is used.
+// If deploy-level value is set, it overrides the global value.
+// If deploy-level value is unset, the global value is used.
 func (c *Config) ResolveSwarmConfigRetention(globalRetention int) int {
-	if c.Swarm.ConfigRetention >= 0 {
-		return c.Swarm.ConfigRetention
+	if c.Swarm.ConfigRetention != nil {
+		return *c.Swarm.ConfigRetention
 	}
 
 	return globalRetention
@@ -108,11 +108,11 @@ func (c *Config) ResolveSwarmConfigRetention(globalRetention int) int {
 
 // ResolveSwarmSecretRetention returns the effective old-revision retention
 // for Swarm secrets.
-// If deploy-level value is >= 0, it overrides the global value.
-// If deploy-level value is -1, the global value is used.
+// If deploy-level value is set, it overrides the global value.
+// If deploy-level value is unset, the global value is used.
 func (c *Config) ResolveSwarmSecretRetention(globalRetention int) int {
-	if c.Swarm.SecretRetention >= 0 {
-		return c.Swarm.SecretRetention
+	if c.Swarm.SecretRetention != nil {
+		return *c.Swarm.SecretRetention
 	}
 
 	return globalRetention
@@ -157,11 +157,11 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("%w: git_depth must be >= 0", ErrInvalidConfig)
 	}
 
-	if c.Swarm.ConfigRetention < -1 {
+	if c.Swarm.ConfigRetention != nil && *c.Swarm.ConfigRetention < -1 {
 		return fmt.Errorf("%w: swarm.config_retention must be >= -1", ErrInvalidConfig)
 	}
 
-	if c.Swarm.SecretRetention < -1 {
+	if c.Swarm.SecretRetention != nil && *c.Swarm.SecretRetention < -1 {
 		return fmt.Errorf("%w: swarm.secret_retention must be >= -1", ErrInvalidConfig)
 	}
 

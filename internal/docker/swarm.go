@@ -395,7 +395,7 @@ func stripSwarmContentHashSuffix(name string) string {
 // keeping only the specified number of recent revisions.
 func PruneStackConfigs(ctx context.Context, client dockerClient.APIClient, namespace string, keepOldRevisions int) error {
 	if keepOldRevisions < 0 {
-		keepOldRevisions = 0
+		return nil
 	}
 
 	keepTotalRevisions := keepOldRevisions + 1
@@ -444,7 +444,7 @@ func PruneStackConfigs(ctx context.Context, client dockerClient.APIClient, names
 // keeping only the specified number of recent revisions.
 func PruneStackSecrets(ctx context.Context, client dockerClient.APIClient, namespace string, keepOldRevisions int) error {
 	if keepOldRevisions < 0 {
-		keepOldRevisions = 0
+		return nil
 	}
 
 	keepTotalRevisions := keepOldRevisions + 1

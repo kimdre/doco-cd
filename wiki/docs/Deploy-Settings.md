@@ -571,8 +571,8 @@ The following settings can be configured in the nested `swarm` object:
 
 | Key                | Type   | Description                                                                                                                                                                                         | Default value     |
 |--------------------|--------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|
-| `config_retention` | number | Number of old Swarm config revisions to keep per resource (excluding the active revision). `-1` means use global [`DOCKER_SWARM_CONFIG_RETENTION`](Docker-Settings.md#swarm-environment-variables). | `-1` (use global) |
-| `secret_retention` | number | Number of old Swarm secret revisions to keep per resource (excluding the active revision). `-1` means use global [`DOCKER_SWARM_SECRET_RETENTION`](Docker-Settings.md#swarm-environment-variables). | `-1` (use global) |
+| `config_retention` | number | Number of old Swarm config revisions to keep per resource (excluding the active revision). `-1` disables automatic pruning. If unset, global [`DOCKER_SWARM_CONFIG_RETENTION`](Docker-Settings.md#swarm-environment-variables) is used. | unset (use global) |
+| `secret_retention` | number | Number of old Swarm secret revisions to keep per resource (excluding the active revision). `-1` disables automatic pruning. If unset, global [`DOCKER_SWARM_SECRET_RETENTION`](Docker-Settings.md#swarm-environment-variables) is used. | unset (use global) |
 
 #### Keep old Swarm configs/secrets
 
@@ -582,9 +582,10 @@ Use `swarm.config_retention` and `swarm.secret_retention` to keep old revisions:
 
 - `0` keeps no old revisions (only active ones remain)
 - `1` keeps one old revision per resource type
-- `-1` (default) uses the corresponding global Docker setting:
-    - [`DOCKER_SWARM_CONFIG_RETENTION`](Docker-Settings.md#swarm-environment-variables)
-    - [`DOCKER_SWARM_SECRET_RETENTION`](Docker-Settings.md#swarm-environment-variables)
+- `-1` disables automatic pruning for that resource type
+- if unset, the corresponding global Docker setting is used:
+  - [`DOCKER_SWARM_CONFIG_RETENTION`](Docker-Settings.md#swarm-environment-variables)
+  - [`DOCKER_SWARM_SECRET_RETENTION`](Docker-Settings.md#swarm-environment-variables)
 
 ```yaml title=".doco-cd.yml"
 name: some-project

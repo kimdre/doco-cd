@@ -562,14 +562,30 @@ func TestGetConfig_DockerSwarmConfigRetentionDefaultsToZero(t *testing.T) {
 	}
 }
 
-func TestGetConfig_DockerSwarmConfigRetentionRejectsNegative(t *testing.T) {
+func TestGetConfig_DockerSwarmConfigRetentionAllowsMinusOne(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "info")
 	t.Setenv("HTTP_PORT", "8080")
 	t.Setenv("WEBHOOK_SECRET", "secret")
 	t.Setenv("DOCKER_SWARM_CONFIG_RETENTION", "-1")
 
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected DOCKER_SWARM_CONFIG_RETENTION=-1 to be accepted, got %v", err)
+	}
+
+	if cfg.DockerSwarmConfigRetention != -1 {
+		t.Fatalf("expected DOCKER_SWARM_CONFIG_RETENTION=-1, got %d", cfg.DockerSwarmConfigRetention)
+	}
+}
+
+func TestGetConfig_DockerSwarmConfigRetentionRejectsBelowMinusOne(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("DOCKER_SWARM_CONFIG_RETENTION", "-2")
+
 	if _, err := GetConfig(); err == nil {
-		t.Fatal("expected DOCKER_SWARM_CONFIG_RETENTION=-1 to be rejected")
+		t.Fatal("expected DOCKER_SWARM_CONFIG_RETENTION=-2 to be rejected")
 	}
 }
 
@@ -589,13 +605,29 @@ func TestGetConfig_DockerSwarmSecretRetentionDefaultsToZero(t *testing.T) {
 	}
 }
 
-func TestGetConfig_DockerSwarmSecretRetentionRejectsNegative(t *testing.T) {
+func TestGetConfig_DockerSwarmSecretRetentionAllowsMinusOne(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "info")
 	t.Setenv("HTTP_PORT", "8080")
 	t.Setenv("WEBHOOK_SECRET", "secret")
 	t.Setenv("DOCKER_SWARM_SECRET_RETENTION", "-1")
 
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected DOCKER_SWARM_SECRET_RETENTION=-1 to be accepted, got %v", err)
+	}
+
+	if cfg.DockerSwarmSecretRetention != -1 {
+		t.Fatalf("expected DOCKER_SWARM_SECRET_RETENTION=-1, got %d", cfg.DockerSwarmSecretRetention)
+	}
+}
+
+func TestGetConfig_DockerSwarmSecretRetentionRejectsBelowMinusOne(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("DOCKER_SWARM_SECRET_RETENTION", "-2")
+
 	if _, err := GetConfig(); err == nil {
-		t.Fatal("expected DOCKER_SWARM_SECRET_RETENTION=-1 to be rejected")
+		t.Fatal("expected DOCKER_SWARM_SECRET_RETENTION=-2 to be rejected")
 	}
 }

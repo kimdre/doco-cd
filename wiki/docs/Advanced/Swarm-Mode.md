@@ -18,12 +18,14 @@ The deployment happens the same way as with Docker Compose projects, see the [De
 
 When deploying configs or secrets in Swarm mode, doco-cd will add a suffix to the name of configs and secrets. 
 This suffix is a shortened SHA-256 hash of the config or secret content, which allows doco-cd to rotate them if their contents change.
-After rotating, doco-cd will also clean up old versions of the configs or secrets to prevent clutter.
+After rotating, doco-cd prunes old versions of configs or secrets according to the configured retention.
 
 How many old revisions are kept is configurable via:
 
 - [Deploy config](../Deploy-Settings.md#swarm-settings): `swarm.config_retention` and `swarm.secret_retention`
 - [Global config](../Docker-Settings.md#swarm-environment-variables): `DOCKER_SWARM_CONFIG_RETENTION` and `DOCKER_SWARM_SECRET_RETENTION`
+
+Set retention to `-1` to disable automatic pruning for that scope and keep old revisions until you remove them manually.
 
 For example, if you deploy a stack named `myapp` with a config named `db-settings` and the content of the config is `hello world`, doco-cd will create a config named `myapp_db-settings_a948904f` in the Swarm cluster.
 

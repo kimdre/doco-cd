@@ -748,26 +748,34 @@ func DeployStack(
 			return fmt.Errorf("%s: %w", errMsg, err)
 		}
 
-		deploymentPhase.Set("pruning stack configs")
+		if swarmConfigRetention >= 0 {
+			deploymentPhase.Set("pruning stack configs")
 
-		err = PruneStackConfigs(*ctx, dockerCli.Client(), deployConfig.Name, swarmConfigRetention)
-		if err != nil {
-			prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel).Inc()
+			err = PruneStackConfigs(*ctx, dockerCli.Client(), deployConfig.Name, swarmConfigRetention)
+			if err != nil {
+				prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel).Inc()
 
-			errMsg := "failed to prune stack configs"
+				errMsg := "failed to prune stack configs"
 
-			return fmt.Errorf("%s: %w", errMsg, err)
+				return fmt.Errorf("%s: %w", errMsg, err)
+			}
+		} else {
+			stackLog.Info("skipping swarm config prune: retention disabled", slog.Int("retention", swarmConfigRetention))
 		}
 
-		deploymentPhase.Set("pruning stack secrets")
+		if swarmSecretRetention >= 0 {
+			deploymentPhase.Set("pruning stack secrets")
 
-		err = PruneStackSecrets(*ctx, dockerCli.Client(), deployConfig.Name, swarmSecretRetention)
-		if err != nil {
-			prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel).Inc()
+			err = PruneStackSecrets(*ctx, dockerCli.Client(), deployConfig.Name, swarmSecretRetention)
+			if err != nil {
+				prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel).Inc()
 
-			errMsg := "failed to prune stack secrets"
+				errMsg := "failed to prune stack secrets"
 
-			return fmt.Errorf("%s: %w", errMsg, err)
+				return fmt.Errorf("%s: %w", errMsg, err)
+			}
+		} else {
+			stackLog.Info("skipping swarm secret prune: retention disabled", slog.Int("retention", swarmSecretRetention))
 		}
 
 		if deployConfig.PruneImages {

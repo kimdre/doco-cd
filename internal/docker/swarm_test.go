@@ -171,6 +171,7 @@ func TestSwarmConfigAndSecretRotationRetention(t *testing.T) {
 		name             string
 		keepOldRevisions int
 	}{
+		{name: "disable-pruning", keepOldRevisions: -1},
 		{name: "keep-no-old-revisions", keepOldRevisions: 0},
 		{name: "keep-one-old-revision", keepOldRevisions: 1},
 		{name: "keep-two-old-revisions", keepOldRevisions: 2},
@@ -269,8 +270,10 @@ func TestSwarmConfigAndSecretRotationRetention(t *testing.T) {
 			}
 
 			expectedRevisions := revisions
-			if keep := tc.keepOldRevisions + 1; keep < expectedRevisions {
-				expectedRevisions = keep
+			if tc.keepOldRevisions >= 0 {
+				if keep := tc.keepOldRevisions + 1; keep < expectedRevisions {
+					expectedRevisions = keep
+				}
 			}
 
 			if len(configs) != expectedRevisions {
