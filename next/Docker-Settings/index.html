@@ -934,6 +934,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#swarm-environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Swarm Environment Variables
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#remote-docker-daemons" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2375,6 +2386,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#swarm-environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Swarm Environment Variables
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#remote-docker-daemons" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2559,11 +2581,37 @@ The list below contains the most commonly used environment variables that are re
 <td>Enable or disable TLS verification</td>
 <td></td>
 </tr>
+</tbody>
+</table>
+<h2 id="swarm-environment-variables">Swarm Environment Variables<a class="headerlink" href="#swarm-environment-variables" title="Permanent link">&para;</a></h2>
+<p>These settings are specific to Docker Swarm mode behavior in Doco-CD.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default value</th>
+</tr>
+</thead>
+<tbody>
 <tr>
 <td><code>DOCKER_SWARM_FEATURES</code></td>
 <td>boolean</td>
 <td>Enable the use Docker Swarm Mode features if the app has detected that it is running in a Docker Swarm environment</td>
 <td><code>true</code></td>
+</tr>
+<tr>
+<td><code>DOCKER_SWARM_CONFIG_RETENTION</code></td>
+<td>number</td>
+<td>Global default number of old Swarm config revisions to keep per resource (excluding the active revision). Use <code>-1</code> to disable automatic pruning. Can be overridden per deployment via <a data-preview="" href="../Deploy-Settings/#swarm-settings"><code>swarm.config_retention</code></a>.</td>
+<td><code>0</code></td>
+</tr>
+<tr>
+<td><code>DOCKER_SWARM_SECRET_RETENTION</code></td>
+<td>number</td>
+<td>Global default number of old Swarm secret revisions to keep per resource (excluding the active revision). Use <code>-1</code> to disable automatic pruning. Can be overridden per deployment via <a data-preview="" href="../Deploy-Settings/#swarm-settings"><code>swarm.secret_retention</code></a>.</td>
+<td><code>0</code></td>
 </tr>
 </tbody>
 </table>

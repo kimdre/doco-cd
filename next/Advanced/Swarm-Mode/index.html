@@ -2474,10 +2474,16 @@ This is useful for deploying applications across multiple nodes and ensuring hig
 <p>The deployment happens the same way as with Docker Compose projects, see the <a data-preview="" href="../../Deploy-Settings/">Deploy Settings</a></p>
 <h2 id="configs-and-secrets">Configs and Secrets<a class="headerlink" href="#configs-and-secrets" title="Permanent link">&para;</a></h2>
 <p>When deploying configs or secrets in Swarm mode, doco-cd will add a suffix to the name of configs and secrets. 
-This suffix is a shortened sha256 hash of the config or secret content, which allows doco-cd to rotate them if their contents change.
-After rotating, doco-cd will also clean up old versions of the configs or secrets to prevent clutter.</p>
+This suffix is a shortened SHA-256 hash of the config or secret content, which allows doco-cd to rotate them if their contents change.
+After rotating, doco-cd prunes old versions of configs or secrets according to the configured retention.</p>
+<p>How many old revisions are kept is configurable via:</p>
+<ul>
+<li><a data-preview="" href="../../Deploy-Settings/#swarm-settings">Deploy config</a>: <code>swarm.config_retention</code> and <code>swarm.secret_retention</code></li>
+<li><a data-preview="" href="../../Docker-Settings/#swarm-environment-variables">Global config</a>: <code>DOCKER_SWARM_CONFIG_RETENTION</code> and <code>DOCKER_SWARM_SECRET_RETENTION</code></li>
+</ul>
+<p>Set retention to <code>-1</code> to disable automatic pruning for that scope and keep old revisions until you remove them manually.</p>
 <p>For example, if you deploy a stack named <code>myapp</code> with a config named <code>db-settings</code> and the content of the config is <code>hello world</code>, doco-cd will create a config named <code>myapp_db-settings_a948904f</code> in the Swarm cluster.</p>
-<p>If you later change the content of the config to <code>hello universe</code>, doco-cd will create a new config named <code>myapp_db-settings_0b5c6934</code>, redeploy the service/container with the new config and remove the old config <code>myapp_db-settings_a948904f</code> from the Swarm cluster.</p>
+<p>If you later change the content of the config to <code>hello universe</code>, doco-cd will create a new config named <code>myapp_db-settings_0b5c6934</code>, redeploy the service/container with the new config and then prune older config revisions according to the configured retention.</p>
 <h2 id="docker-api-permissions">Docker API Permissions<a class="headerlink" href="#docker-api-permissions" title="Permanent link">&para;</a></h2>
 <p>Swarm deployments need access to more Docker API resources than Compose deployments, namely
 services, tasks, nodes, configs and secrets.</p>
