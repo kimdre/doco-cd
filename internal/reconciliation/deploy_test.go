@@ -215,7 +215,7 @@ func TestDeploy(t *testing.T) {
 	waitForRunningContainerNames(ctx, t, dockerCli.Client(), stackName, firstPartWanted, 20*time.Second)
 }
 
-func getRunningContainerNames(ctx context.Context, cli client.APIClient, prefix string) ([]string, error) {
+func getRunningContainerNames(ctx context.Context, cli client.APIClient, stackName string) ([]string, error) {
 	result, err := cli.ContainerList(ctx, client.ContainerListOptions{
 		All: false,
 	})
@@ -223,11 +223,13 @@ func getRunningContainerNames(ctx context.Context, cli client.APIClient, prefix 
 		return nil, err
 	}
 
+	stackContainerPrefix := stackName + "-"
+
 	got := []string{}
 
 	for _, c := range result.Items {
 		name := strings.TrimPrefix(c.Names[0], "/")
-		if strings.HasPrefix(name, prefix) {
+		if strings.HasPrefix(name, stackContainerPrefix) {
 			got = append(got, name)
 		}
 	}
@@ -300,13 +302,13 @@ func waitForReconciliationJobReady(t *testing.T, repository string, timeout time
 	}
 }
 
-func waitForRunningContainerNames(ctx context.Context, t *testing.T, cli client.APIClient, prefix string, want []string, timeout time.Duration) {
+func waitForRunningContainerNames(ctx context.Context, t *testing.T, cli client.APIClient, stackName string, want []string, timeout time.Duration) {
 	t.Helper()
 
 	deadline := time.Now().Add(timeout)
 
 	for {
-		got, err := getRunningContainerNames(ctx, cli, prefix)
+		got, err := getRunningContainerNames(ctx, cli, stackName)
 		if err != nil {
 			t.Fatal("get containers err:", err)
 		}
