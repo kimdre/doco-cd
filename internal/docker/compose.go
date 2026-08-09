@@ -26,6 +26,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/common/types/slice"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
+	"github.com/kimdre/doco-cd/internal/docker/registryauth"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/filesystem"
@@ -416,6 +417,20 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		IgnoreBuildable: true,
 	})
 	if err != nil {
+		imageRefs := make([]string, 0, len(project.Services))
+		for _, svc := range project.Services {
+			if svc.Image == "" {
+				continue
+			}
+
+			imageRefs = append(imageRefs, svc.Image)
+		}
+
+		hint := registryauth.BuildFailureHint(dockerCli.ConfigFile(), imageRefs, err)
+		if hint != "" {
+			return fmt.Errorf("failed to pull images: %w; %s", err, hint)
+		}
+
 		return fmt.Errorf("failed to pull images: %w", err)
 	}
 

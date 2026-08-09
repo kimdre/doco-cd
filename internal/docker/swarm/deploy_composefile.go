@@ -13,6 +13,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 
 	"github.com/kimdre/doco-cd/internal/docker/options"
+	"github.com/kimdre/doco-cd/internal/docker/registryauth"
 
 	"github.com/docker/cli/cli/compose/convert"
 	composetypes "github.com/docker/cli/cli/compose/types"
@@ -319,7 +320,7 @@ func deployServices(ctx context.Context, dockerCLI command.Cli, services map[str
 			// Retrieve encoded auth token from the image reference
 			encodedAuth, err = command.RetrieveAuthTokenFromImage(dockerCLI.ConfigFile(), image)
 			if err != nil {
-				return nil, err
+				return nil, registryauth.WrapLookupError(dockerCLI.ConfigFile(), image, err)
 			}
 		}
 

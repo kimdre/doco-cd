@@ -9,6 +9,15 @@ tags:
 
 To access a private container registry, you need to provide the credentials by adding the docker config file `~/.docker/config.json` to the doco-cd container.
 
+## Supported credential setups
+
+doco-cd uses Docker CLI auth resolution. The following setups are supported:
+
+- Inline credentials in `auths` (recommended), either in [mounted `config.json`](#mounting-an-existing-docker-config-file) or via [`DOCKER_AUTH_CONFIG`](#using-docker_auth_config).
+- `credsStore` / `credHelpers` based configs **only if** the matching `docker-credential-*` helper binaries are available inside the doco-cd container.
+
+If your host `config.json` references helpers that are not available in the container, registry authentication will fail even though the file is mounted.
+
 ## Mounting an existing docker config file
 
 You can mount your existing `~/.docker/config.json` file from the host to the container if you have already added the credentials using `docker login` on the host machine.
@@ -84,3 +93,33 @@ services:
     volumes:
       data:
     ```
+
+## Using `DOCKER_AUTH_CONFIG`
+
+Instead of mounting a file, you can provide credentials directly through `DOCKER_AUTH_CONFIG`:
+
+```yaml title="docker-compose.yml"
+services:
+  app:
+    environment:
+      DOCKER_AUTH_CONFIG: |
+        {
+          "auths": {
+            "my.registry.example": {
+              "auth": "BASE64_USERNAME_PASSWORD"
+            }
+          }
+        }
+```
+
+!!! warning "Less secure than file or secret mounts"
+    `DOCKER_AUTH_CONFIG` stores registry credentials directly in an environment variable. In containerized setups, environment variables are often easier to expose accidentally (for example through inspect/debug output, process environment dumps, or logs) than mounted files/secrets with restrictive permissions.
+    Prefer mounted secrets or a mounted `config.json` where possible.
+
+## Troubleshooting auth failures
+
+When pull/update logs contain authorization errors (for example `pull access denied`, `unauthorized`, or `access forbidden`):
+
+1. Ensure doco-cd reads the expected config path (`/root/.docker/config.json` by default, or your [`DOCKER_CONFIG`](../Docker-Settings.md#common-environment-variables) override).
+2. If config uses `credsStore` / `credHelpers`, ensure required `docker-credential-*` binaries exist in the container at the expected path (for example `/usr/local/bin/<docker-credential-helper>`). If they are missing, either install/mount them in the container or use a different credential setup.
+3. Prefer inline `auths` entries for containerized doco-cd deployments when helper binaries are unavailable.

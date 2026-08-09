@@ -18,6 +18,7 @@ import (
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/docker/registryauth"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 )
 
@@ -257,7 +258,7 @@ func RunSwarmOneOffFromService(ctx context.Context, dockerCLI command.Cli, servi
 	if opts.SendRegistryAuth {
 		encodedAuth, authErr := command.RetrieveAuthTokenFromImage(dockerCLI.ConfigFile(), oneOffSpec.TaskTemplate.ContainerSpec.Image)
 		if authErr != nil {
-			return fmt.Errorf("retrieve auth token from image: %w", authErr)
+			return registryauth.WrapLookupError(dockerCLI.ConfigFile(), oneOffSpec.TaskTemplate.ContainerSpec.Image, authErr)
 		}
 
 		createOpts.EncodedRegistryAuth = encodedAuth
