@@ -82,17 +82,17 @@ func normalizeRepositoryForLabelMatch(repository string) string {
 
 // buildRepositoryLabelCandidates generates a set of candidate repository label values
 // for matching by normalizing the input repository string.
-func buildRepositoryLabelCandidates(repository string) map[string]struct{} {
+func buildRepositoryLabelCandidates(repository string) set.Set[string] {
 	if strings.TrimSpace(repository) == "" {
 		return map[string]struct{}{"": {}}
 	}
 
-	candidates := map[string]struct{}{}
+	candidates := set.Set[string]{}
 
 	add := func(v string) {
 		v = strings.TrimSpace(v)
 		if v != "" {
-			candidates[v] = struct{}{}
+			candidates.Add(v)
 		}
 	}
 

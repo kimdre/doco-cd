@@ -22,6 +22,7 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/common/types/set"
+	"github.com/kimdre/doco-cd/internal/docker/registryauth"
 
 	swarmInternal "github.com/kimdre/doco-cd/internal/docker/swarm"
 )
@@ -54,6 +55,13 @@ var (
 func registryAuthForImage(dockerCli command.Cli, imageRef string) string {
 	encoded, err := command.RetrieveAuthTokenFromImage(dockerCli.ConfigFile(), imageRef)
 	if err != nil {
+		hint := registryauth.BuildFailureHint(dockerCli.ConfigFile(), []string{imageRef}, err)
+		if hint != "" {
+			slog.Warn("failed to resolve registry auth token", slog.String("ref", imageRef), slog.String("err", err.Error()), slog.String("hint", hint))
+		} else {
+			slog.Warn("failed to resolve registry auth token", slog.String("ref", imageRef), slog.String("err", err.Error()))
+		}
+
 		return ""
 	}
 
@@ -490,7 +498,26 @@ func PullImages(ctx context.Context, dockerCli command.Cli, projectName string) 
 		return fmt.Errorf("failed to generate project: %w", err)
 	}
 
-	return service.Pull(ctx, project, api.PullOptions{Quiet: true})
+	err = service.Pull(ctx, project, api.PullOptions{Quiet: true})
+	if err != nil {
+		imageRefs := make([]string, 0, len(project.Services))
+		for _, svc := range project.Services {
+			if svc.Image == "" {
+				continue
+			}
+
+			imageRefs = append(imageRefs, svc.Image)
+		}
+
+		hint := registryauth.BuildFailureHint(dockerCli.ConfigFile(), imageRefs, err)
+		if hint != "" {
+			return fmt.Errorf("failed to pull images: %w; %s", err, hint)
+		}
+
+		return fmt.Errorf("failed to pull images: %w", err)
+	}
+
+	return nil
 }
 
 // vars used to allow overriding in tests without needing to mock the entire function.
