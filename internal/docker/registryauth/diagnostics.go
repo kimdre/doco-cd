@@ -10,6 +10,7 @@ import (
 
 	distReference "github.com/distribution/reference"
 	"github.com/docker/cli/cli/config/configfile"
+
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 )
 
