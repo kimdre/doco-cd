@@ -584,8 +584,8 @@ Use `swarm.config_retention` and `swarm.secret_retention` to keep old revisions:
 - `1` keeps one old revision per resource type
 - `-1` disables automatic pruning for that resource type
 - if unset, the corresponding global Docker setting is used:
-  - [`DOCKER_SWARM_CONFIG_RETENTION`](Docker-Settings.md#swarm-environment-variables)
-  - [`DOCKER_SWARM_SECRET_RETENTION`](Docker-Settings.md#swarm-environment-variables)
+    - [`DOCKER_SWARM_CONFIG_RETENTION`](Docker-Settings.md#swarm-environment-variables)
+    - [`DOCKER_SWARM_SECRET_RETENTION`](Docker-Settings.md#swarm-environment-variables)
 
 ```yaml title=".doco-cd.yml"
 name: some-project
