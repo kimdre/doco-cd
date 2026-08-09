@@ -640,7 +640,7 @@ func DeployStack(
 	jobLog *slog.Logger, externalRepoPath string, ctx *context.Context,
 	dockerCli command.Cli, payload *webhook.ParsedPayload, deployConfig *deploy.Config,
 	detectedChanges []Change, needSignal []SignalService, latestCommit, appVersion string,
-	swarmMode bool,
+	globalSwarmConfigRetention int, globalSwarmSecretRetention int, swarmMode bool,
 ) error {
 	startTime := time.Now()
 	repositoryLabel := resolveDeploymentMetricsRepositoryLabel(payload)
@@ -717,6 +717,9 @@ func DeployStack(
 
 	// When SwarmModeEnabled is true, we deploy the stack using Docker Swarm.
 	if swarmMode {
+		swarmConfigRetention := deployConfig.ResolveSwarmConfigRetention(globalSwarmConfigRetention)
+		swarmSecretRetention := deployConfig.ResolveSwarmSecretRetention(globalSwarmSecretRetention)
+
 		deploymentPhase.Set("deploying swarm stack")
 
 		stackLog.Info("deploying swarm stack")
@@ -747,7 +750,7 @@ func DeployStack(
 
 		deploymentPhase.Set("pruning stack configs")
 
-		err = PruneStackConfigs(*ctx, dockerCli.Client(), deployConfig.Name)
+		err = PruneStackConfigs(*ctx, dockerCli.Client(), deployConfig.Name, swarmConfigRetention)
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel).Inc()
 
@@ -758,7 +761,7 @@ func DeployStack(
 
 		deploymentPhase.Set("pruning stack secrets")
 
-		err = PruneStackSecrets(*ctx, dockerCli.Client(), deployConfig.Name)
+		err = PruneStackSecrets(*ctx, dockerCli.Client(), deployConfig.Name, swarmSecretRetention)
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel).Inc()
 

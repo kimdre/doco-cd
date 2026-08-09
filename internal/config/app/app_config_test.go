@@ -545,3 +545,57 @@ func TestGetConfig_SourceURLRewritesRejectsEnvAndFileTogether(t *testing.T) {
 		t.Fatal("expected config error when both SOURCE_URL_REWRITES and _FILE are set")
 	}
 }
+
+func TestGetConfig_DockerSwarmConfigRetentionDefaultsToZero(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("DOCKER_SWARM_CONFIG_RETENTION", "")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	if cfg.DockerSwarmConfigRetention != 0 {
+		t.Fatalf("expected DOCKER_SWARM_CONFIG_RETENTION default to be 0, got %d", cfg.DockerSwarmConfigRetention)
+	}
+}
+
+func TestGetConfig_DockerSwarmConfigRetentionRejectsNegative(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("DOCKER_SWARM_CONFIG_RETENTION", "-1")
+
+	if _, err := GetConfig(); err == nil {
+		t.Fatal("expected DOCKER_SWARM_CONFIG_RETENTION=-1 to be rejected")
+	}
+}
+
+func TestGetConfig_DockerSwarmSecretRetentionDefaultsToZero(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("DOCKER_SWARM_SECRET_RETENTION", "")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	if cfg.DockerSwarmSecretRetention != 0 {
+		t.Fatalf("expected DOCKER_SWARM_SECRET_RETENTION default to be 0, got %d", cfg.DockerSwarmSecretRetention)
+	}
+}
+
+func TestGetConfig_DockerSwarmSecretRetentionRejectsNegative(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("DOCKER_SWARM_SECRET_RETENTION", "-1")
+
+	if _, err := GetConfig(); err == nil {
+		t.Fatal("expected DOCKER_SWARM_SECRET_RETENTION=-1 to be rejected")
+	}
+}
