@@ -365,8 +365,58 @@ func TestCollectKeyRecordsSkipsEmptyAndDuplicateKeys(t *testing.T) {
 	}
 }
 
+func TestCollectKeyRecordsSameKeyDifferentPassphraseAreDistinct(t *testing.T) {
+	keys := collectKeyRecords(
+		KeyRecord{PrivateKey: "mykey", Passphrase: "passphrase-a"},
+		KeyRecord{PrivateKey: "mykey", Passphrase: "passphrase-b"},
+	)
+
+	if len(keys) != 2 {
+		t.Fatalf("expected two records (same key, different passphrase), got %d", len(keys))
+	}
+}
+
+func TestCollectKeyRecordsPreservesOrder(t *testing.T) {
+	keys := collectKeyRecords(
+		KeyRecord{PrivateKey: "first"},
+		KeyRecord{PrivateKey: "second"},
+		KeyRecord{PrivateKey: "third"},
+	)
+
+	if len(keys) != 3 {
+		t.Fatalf("expected 3 records, got %d", len(keys))
+	}
+
+	for i, want := range []string{"first", "second", "third"} {
+		if keys[i].PrivateKey != want {
+			t.Errorf("keys[%d]=%q, want %q", i, keys[i].PrivateKey, want)
+		}
+	}
+}
+
 func TestRegisterSSHAgentWithoutKeys(t *testing.T) {
 	if RegisterSSHAgent(t.Context(), slog.Default(), []KeyRecord{{PrivateKey: " "}}) {
 		t.Fatal("expected no SSH agent to be registered without usable keys")
+	}
+}
+
+func TestRegisterSSHAgentWithValidKeyReturnsTrue(t *testing.T) {
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+
+	privateKeyDER, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		t.Fatalf("marshal key: %v", err)
+	}
+
+	pemBytes := string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateKeyDER}))
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	if !RegisterSSHAgent(ctx, slog.Default(), []KeyRecord{{PrivateKey: pemBytes}}) {
+		t.Fatal("expected RegisterSSHAgent to return true with a valid key")
 	}
 }

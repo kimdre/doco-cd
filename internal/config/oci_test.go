@@ -15,11 +15,79 @@ func TestParseOciInsecureRegistries(t *testing.T) {
 	}
 }
 
+func TestParseOciInsecureRegistriesEmptyString(t *testing.T) {
+	t.Parallel()
+
+	registries, err := ParseOciInsecureRegistries("")
+	if err != nil {
+		t.Fatalf("unexpected error for empty string: %v", err)
+	}
+
+	if len(registries) != 0 {
+		t.Fatalf("expected empty slice for empty string, got %v", registries)
+	}
+}
+
+func TestParseOciInsecureRegistriesWhitespaceOnly(t *testing.T) {
+	t.Parallel()
+
+	registries, err := ParseOciInsecureRegistries("  ,  ,  ")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(registries) != 0 {
+		t.Fatalf("expected empty slice for whitespace-only input, got %v", registries)
+	}
+}
+
+func TestParseOciInsecureRegistriesIPv4(t *testing.T) {
+	t.Parallel()
+
+	registries, err := ParseOciInsecureRegistries("192.168.1.10:5000")
+	if err != nil {
+		t.Fatalf("unexpected error for IPv4 host:port: %v", err)
+	}
+
+	if len(registries) != 1 || registries[0] != "192.168.1.10:5000" {
+		t.Fatalf("unexpected registries: %v", registries)
+	}
+}
+
 func TestParseOciInsecureRegistriesRejectsInvalidRegistry(t *testing.T) {
 	t.Parallel()
 
 	if _, err := ParseOciInsecureRegistries("https://registry.example"); err == nil {
 		t.Fatal("expected URL to be rejected")
+	}
+}
+
+func TestParseOciInsecureRegistriesRejectsPortZero(t *testing.T) {
+	t.Parallel()
+
+	if _, err := ParseOciInsecureRegistries("registry.example:0"); err == nil {
+		t.Fatal("expected port 0 to be rejected")
+	}
+}
+
+func TestParseOciInsecureRegistriesRejectsPortOutOfRange(t *testing.T) {
+	t.Parallel()
+
+	if _, err := ParseOciInsecureRegistries("registry.example:65536"); err == nil {
+		t.Fatal("expected port > 65535 to be rejected")
+	}
+}
+
+func TestParseOciInsecureRegistriesDeduplicatesCaseInsensitive(t *testing.T) {
+	t.Parallel()
+
+	registries, err := ParseOciInsecureRegistries("Registry.Example:5000,registry.example:5000,REGISTRY.EXAMPLE:5000")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(registries) != 1 || registries[0] != "registry.example:5000" {
+		t.Fatalf("expected single normalized entry, got %v", registries)
 	}
 }
 

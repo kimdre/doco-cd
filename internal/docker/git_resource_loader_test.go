@@ -2,6 +2,8 @@ package docker
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -112,6 +114,256 @@ func TestNewRemoteResourceLoadersWithoutDockerCLIIncludesGitOnly(t *testing.T) {
 
 	if _, ok := loaders[0].(*gitResourceLoader); !ok {
 		t.Fatalf("expected Git resource loader, got %T", loaders[0])
+	}
+}
+
+func TestGitResourceLoaderCacheBaseDefaultsToTempDir(t *testing.T) {
+	l := newGitResourceLoader(gitResourceLoaderConfig{})
+	if l.cacheDirectory != filepath.Join(os.TempDir(), gitIncludeCacheDirectory) {
+		t.Fatalf("expected cache inside os.TempDir(), got %q", l.cacheDirectory)
+	}
+}
+
+func TestGitResourceLoaderDirFallbackPaths(t *testing.T) {
+	l := newGitResourceLoader(gitResourceLoaderConfig{CacheBase: t.TempDir()})
+
+	// Unknown resource that does not exist on disk → empty string.
+	if got := l.Dir("/nonexistent/path/that/does/not/exist"); got != "" {
+		t.Fatalf("expected empty string for unknown/nonexistent resource, got %q", got)
+	}
+
+	// Known file on disk → its directory.
+	dir := t.TempDir()
+	file := filepath.Join(dir, "compose.yaml")
+
+	if err := os.WriteFile(file, []byte("{}"), 0o600); err != nil {
+		t.Fatalf("create file: %v", err)
+	}
+
+	if got := l.Dir(file); got != dir {
+		t.Fatalf("expected dir %q for file resource, got %q", dir, got)
+	}
+
+	// Known directory on disk → the directory itself.
+	if got := l.Dir(dir); got != dir {
+		t.Fatalf("expected dir %q for directory resource, got %q", dir, got)
+	}
+}
+
+func TestGitResourceLoaderContextCancellation(t *testing.T) {
+	l := newGitResourceLoader(gitResourceLoaderConfig{CacheBase: t.TempDir()})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := l.Load(ctx, "https://github.com/example/repo.git")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestGitResourceLoaderLoadsExplicitComposeFile(t *testing.T) {
+	repo := createGitIncludeRepository(t)
+
+	restoreTransport := installLocalGitTransport(t, repo)
+	defer restoreTransport()
+
+	cacheBase := t.TempDir()
+	// Point directly at the file, not the directory.
+	resource := "git://example.test/repo.git#main:docker/docker-compose.yml"
+	l := newGitResourceLoader(gitResourceLoaderConfig{CacheBase: cacheBase})
+
+	loaded, err := l.Load(context.Background(), resource)
+	if err != nil {
+		t.Fatalf("load git include: %v", err)
+	}
+
+	if filepath.Base(loaded) != "docker-compose.yml" {
+		t.Fatalf("expected docker-compose.yml, got %q", loaded)
+	}
+
+	// Dir must still return the file's parent directory.
+	if got := l.Dir(resource); got != filepath.Dir(loaded) {
+		t.Fatalf("Dir(resource)=%q want %q", got, filepath.Dir(loaded))
+	}
+
+	if got := l.Dir(loaded); got != filepath.Dir(loaded) {
+		t.Fatalf("Dir(localPath)=%q want %q", got, filepath.Dir(loaded))
+	}
+}
+
+func TestGitResourceLoaderUpdatesCachedRepository(t *testing.T) {
+	repo := createGitIncludeRepository(t)
+
+	restoreTransport := installLocalGitTransport(t, repo)
+	defer restoreTransport()
+
+	cacheBase := t.TempDir()
+	resource := "git://example.test/repo.git#main:docker"
+	l := newGitResourceLoader(gitResourceLoaderConfig{CacheBase: cacheBase})
+
+	// First load clones.
+	first, err := l.Load(context.Background(), resource)
+	if err != nil {
+		t.Fatalf("first load: %v", err)
+	}
+
+	// Second load must hit the update path (repo already exists) and produce the same file.
+	second, err := l.Load(context.Background(), resource)
+	if err != nil {
+		t.Fatalf("second load: %v", err)
+	}
+
+	if first != second {
+		t.Fatalf("expected same path on re-load, got %q vs %q", first, second)
+	}
+}
+
+func TestGitResourceLoaderConcurrentLoads(t *testing.T) {
+	repo := createGitIncludeRepository(t)
+
+	restoreTransport := installLocalGitTransport(t, repo)
+	defer restoreTransport()
+
+	cacheBase := t.TempDir()
+	resource := "git://example.test/repo.git#main:docker"
+	l := newGitResourceLoader(gitResourceLoaderConfig{CacheBase: cacheBase})
+
+	const goroutines = 4
+
+	results := make([]string, goroutines)
+	errs := make([]error, goroutines)
+
+	var wg sync.WaitGroup
+
+	for i := range goroutines {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+
+			results[i], errs[i] = l.Load(context.Background(), resource)
+		}(i)
+	}
+
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("goroutine %d: %v", i, err)
+		}
+
+		if results[i] == "" {
+			t.Errorf("goroutine %d: empty result", i)
+		}
+	}
+}
+
+func TestFindComposeFileReturnsErrorWhenNoneFound(t *testing.T) {
+	empty := t.TempDir()
+	if _, err := findComposeFile(empty); err == nil {
+		t.Fatal("expected error for directory with no compose file")
+	}
+}
+
+func TestFindComposeFilePrefersFirstDefaultName(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write all default names and ensure the first one wins.
+	for i, name := range []string{"docker-compose.yaml", "docker-compose.yml", "compose.yml", "compose.yaml"} {
+		if err := os.WriteFile(filepath.Join(dir, name), fmt.Appendf(nil, "# %d", i), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	found, err := findComposeFile(dir)
+	if err != nil {
+		t.Fatalf("findComposeFile: %v", err)
+	}
+
+	// The first entry in cli.DefaultFileNames is "compose.yaml".
+	if filepath.Base(found) != "compose.yaml" {
+		t.Fatalf("expected compose.yaml (first default name), got %q", filepath.Base(found))
+	}
+}
+
+// gitIncludeIntegrationEnvVar enables real network tests for Compose Git includes.
+const gitIncludeIntegrationEnvVar = "DOCO_CD_RUN_GIT_INCLUDE_INTEGRATION_TESTS"
+
+func skipUnlessGitIncludeIntegration(t *testing.T) {
+	t.Helper()
+
+	if testing.Short() {
+		t.Skip("skipping Git include integration tests in short mode")
+	}
+
+	if os.Getenv(gitIncludeIntegrationEnvVar) != "1" {
+		t.Skipf("set %s=1 to run Git include integration tests", gitIncludeIntegrationEnvVar)
+	}
+}
+
+func TestLoadComposeWithRealPublicGitInclude(t *testing.T) {
+	skipUnlessGitIncludeIntegration(t)
+
+	// dev.compose.yaml in this repository defines a compose service "doco-cd",
+	// so it is a stable, self-contained real-world target.
+	const resource = "https://github.com/kimdre/doco-cd.git#main:dev.compose.yaml"
+
+	l := newGitResourceLoader(gitResourceLoaderConfig{CacheBase: t.TempDir()})
+
+	if !l.Accept(resource) {
+		t.Fatalf("expected loader to accept %q", resource)
+	}
+
+	loaded, err := l.Load(context.Background(), resource)
+	if err != nil {
+		t.Fatalf("load real Git include: %v", err)
+	}
+
+	if _, err := os.Stat(loaded); err != nil {
+		t.Fatalf("loaded path does not exist: %v", err)
+	}
+
+	if got := l.Dir(resource); got == "" {
+		t.Fatal("Dir(resource) returned empty string")
+	}
+}
+
+func TestLoadComposeWithRealPublicGitIncludeFullRoundtrip(t *testing.T) {
+	skipUnlessGitIncludeIntegration(t)
+
+	workingDirectory := t.TempDir()
+	t.Setenv("DATA_MOUNT_PATH", t.TempDir())
+	t.Setenv("WEBHOOK_SECRET", "test-secret")
+
+	// docker-compose.yml at the root of this repo defines the "doco-cd" service
+	// and has no .env or extends dependencies, making it a safe integration target.
+	const includedResource = "https://github.com/kimdre/doco-cd.git#main:docker-compose.yml"
+
+	rootCompose := "include:\n  - path: " + includedResource + "\n"
+	rootComposePath := filepath.Join(workingDirectory, "compose.yaml")
+
+	if err := os.WriteFile(rootComposePath, []byte(rootCompose), 0o600); err != nil {
+		t.Fatalf("write root compose file: %v", err)
+	}
+
+	project, err := LoadCompose(
+		context.Background(),
+		nil,
+		workingDirectory,
+		workingDirectory,
+		"git-include-integration",
+		[]string{rootComposePath},
+		nil,
+		nil,
+		map[string]string{},
+	)
+	if err != nil {
+		t.Fatalf("LoadCompose with real Git include: %v", err)
+	}
+
+	// docker-compose.yml in this repo defines the "app" service (container_name: doco-cd).
+	if _, err := project.GetService("app"); err != nil {
+		t.Fatalf("expected 'app' service from included file: %v", err)
 	}
 }
 
