@@ -94,38 +94,105 @@ This example configuration:
 
 === "GitLab"
 
-    The hosted Renovate app for `gitlab.com` is currently unavailable, so the recommended approach is to run Renovate with GitLab CI using the official `renovate-runner` project or your own scheduled pipeline.
+    === "GitLab.com"
 
-    **Setup**
+        The hosted Renovate app for [gitlab.com](https://gitlab.com/) is currently unavailable, so the recommended approach is to run Renovate with GitLab CI using the official `renovate-runner` project or your own scheduled pipeline.
+    
+        **Setup**
+    
+        1. Create a dedicated bot user or access token for Renovate.
+        2. Give the bot at least **Developer** access to the project.
+        3. If you want automerge on protected branches, also give it the permissions required to merge there.
+        4. Add your `renovate.json` file to the repository.
+        5. Create a scheduled pipeline that runs Renovate regularly, ideally hourly.
+    
+        **Minimal GitLab CI example**
+    
+        ```yaml title=".gitlab-ci.yml"
+        include:
+          - project: "renovate-bot/renovate-runner"
+            file: "/templates/renovate.gitlab-ci.yml"
+        ```
+    
+        Set these CI/CD variables in the project or group settings:
+    
+        - `RENOVATE_TOKEN`: GitLab access token for the Renovate bot
+        - `RENOVATE_PLATFORM`: `gitlab`
+    
+        For `gitlab.com`, no custom endpoint is needed.
+    
+        **Day-to-day usage**
+    
+        - Renovate opens merge requests on its schedule.
+        - Merge the onboarding MR first.
+        - After that, review and merge update MRs as usual.
 
-    1. Create a dedicated bot user or access token for Renovate.
-    2. Give the bot at least **Developer** access to the project.
-    3. If you want automerge on protected branches, also give it the permissions required to merge there.
-    4. Add your `renovate.json` file to the repository.
-    5. Create a scheduled pipeline that runs Renovate regularly, ideally hourly.
+    === "Self-hosted GitLab"
+    
+        For self-hosted instances, the recommended approach is to run Renovate in CI on a schedule; alternatively, run it yourself with Docker or the CLI and point it at your platform API.
+    
+        **Setup**
+    
+        1. Create a dedicated bot account.
+        2. Create a token for that bot account.
+        3. Add the recommended `renovate.json` to each repository you want Renovate to manage.
+        4. Run Renovate on a schedule.
+        5. Store tokens in environment variables or secrets, not in the repository.
+    
+        Use:
+    
+        - `platform=gitlab`
+        - `endpoint=https://gitlab.example.com/api/v4/`
+    
+        The Renovate bot or token should have at least **Developer** access to the repositories it manages.
+        If your protected branch rules only allow maintainers to merge, the bot also needs the corresponding merge permissions.
+    
+        **Example self-hosted config**
+    
+        This is **not** committed to the target repository. It is the global config for the Renovate service you run yourself.
+    
+        ```js title="config.js"
+        module.exports = {
+          platform: 'gitlab',
+          endpoint: 'https://gitlab.example.com/api/v4/',
+          token: process.env.RENOVATE_TOKEN,
+          autodiscover: true,
+          onboardingConfig: {
+            extends: ['config:best-practices']
+          }
+        };
+        ```
+    
+        **Minimal self-hosted GitLab pipeline example**
+    
+        ```yaml title=".gitlab-ci.yml"
+        stages:
+          - renovate
+    
+        renovate:
+          stage: renovate
+          image: renovate/renovate:latest
+          script:
+            - renovate
+          variables:
+            RENOVATE_PLATFORM: gitlab
+            RENOVATE_ENDPOINT: https://gitlab.example.com/api/v4/
+          rules:
+            - if: '$CI_PIPELINE_SOURCE == "schedule"'
+            - if: '$CI_PIPELINE_SOURCE == "web"'
+        ```
+    
+        Set `RENOVATE_TOKEN` as a masked/protected CI/CD variable under **Settings > CI/CD > Variables** in your project or group. Do not add it to the YAML file. Renovate reads it automatically from the environment.
+    
+        To trigger the job, create a [scheduled pipeline](https://docs.gitlab.com/ci/pipelines/schedules/) (e.g. hourly), since the `rules` above only run on schedule or manual (`web`) triggers.
+    
+        **Day-to-day usage**
+    
+        - Renovate opens merge requests on its schedule.
+        - Merge the onboarding MR first.
+        - After that, review and merge update MRs as usual.
 
-    **Minimal GitLab CI example**
-
-    ```yaml title=".gitlab-ci.yml"
-    include:
-      - project: "renovate-bot/renovate-runner"
-        file: "/templates/renovate.gitlab-ci.yml"
-    ```
-
-    Set these CI/CD variables in the project or group settings:
-
-    - `RENOVATE_TOKEN`: GitLab access token for the Renovate bot
-    - `RENOVATE_PLATFORM`: `gitlab`
-
-    For `gitlab.com`, no custom endpoint is needed.
-
-    **Day-to-day usage**
-
-    - Renovate opens merge requests on its schedule.
-    - Merge the onboarding MR first.
-    - After that, review and merge update MRs as usual.
-
-=== "Forgejo (self-hosted)"
+=== "Forgejo"
 
     For self-hosted instances, the recommended approach is to run Renovate in CI on a schedule; 
     alternatively, run it yourself with Docker or the CLI and point it at your platform API.
@@ -197,71 +264,6 @@ This example configuration:
     - Renovate opens pull requests on its schedule.
     - Merge the onboarding PR first.
     - After that, review and merge update PRs as usual.
-
-=== "GitLab (self-hosted)"
-
-    For self-hosted instances, the recommended approach is to run Renovate in CI on a schedule; alternatively, run it yourself with Docker or the CLI and point it at your platform API.
-
-    **Setup**
-
-    1. Create a dedicated bot account.
-    2. Create a token for that bot account.
-    3. Add the recommended `renovate.json` to each repository you want Renovate to manage.
-    4. Run Renovate on a schedule.
-    5. Store tokens in environment variables or secrets, not in the repository.
-
-    Use:
-
-    - `platform=gitlab`
-    - `endpoint=https://gitlab.example.com/api/v4/`
-
-    The Renovate bot or token should have at least **Developer** access to the repositories it manages.
-    If your protected branch rules only allow maintainers to merge, the bot also needs the corresponding merge permissions.
-
-    **Example self-hosted config**
-
-    This is **not** committed to the target repository. It is the global config for the Renovate service you run yourself.
-
-    ```js title="config.js"
-    module.exports = {
-      platform: 'gitlab',
-      endpoint: 'https://gitlab.example.com/api/v4/',
-      token: process.env.RENOVATE_TOKEN,
-      autodiscover: true,
-      onboardingConfig: {
-        extends: ['config:best-practices']
-      }
-    };
-    ```
-
-    **Minimal self-hosted GitLab pipeline example**
-
-    ```yaml title=".gitlab-ci.yml"
-    stages:
-      - renovate
-
-    renovate:
-      stage: renovate
-      image: renovate/renovate:latest
-      script:
-        - renovate
-      variables:
-        RENOVATE_PLATFORM: gitlab
-        RENOVATE_ENDPOINT: https://gitlab.example.com/api/v4/
-      rules:
-        - if: '$CI_PIPELINE_SOURCE == "schedule"'
-        - if: '$CI_PIPELINE_SOURCE == "web"'
-    ```
-
-    Set `RENOVATE_TOKEN` as a masked/protected CI/CD variable under **Settings > CI/CD > Variables** in your project or group. Do not add it to the YAML file. Renovate reads it automatically from the environment.
-
-    To trigger the job, create a [scheduled pipeline](https://docs.gitlab.com/ci/pipelines/schedules/) (e.g. hourly), since the `rules` above only run on schedule or manual (`web`) triggers.
-
-    **Day-to-day usage**
-
-    - Renovate opens merge requests on its schedule.
-    - Merge the onboarding MR first.
-    - After that, review and merge update MRs as usual.
 
 !!! tip
     Run self-hosted Renovate at least hourly so onboarding PRs, rebases, and security-related updates are not delayed unnecessarily.
