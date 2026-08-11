@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -18,7 +19,12 @@ import (
 	gitclient "github.com/go-git/go-git/v5/plumbing/transport/client"
 	"github.com/go-git/go-git/v5/plumbing/transport/server"
 
+	"github.com/docker/compose/v5/pkg/api"
+	"github.com/docker/compose/v5/pkg/compose"
+
 	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
+	"github.com/kimdre/doco-cd/internal/test"
 )
 
 var gitProtocolMu sync.Mutex
@@ -405,6 +411,14 @@ func TestLoadComposeWithGitIncludeWithoutDockerCLI(t *testing.T) {
 }
 
 func createGitIncludeRepository(t *testing.T) *gogit.Repository {
+	return createGitRepoWithCompose(t, map[string]string{
+		"docker/docker-compose.yml": "services:\n  included:\n    image: busybox\n",
+	})
+}
+
+// createGitRepoWithCompose creates an in-memory go-git repository with the given
+// file paths (relative to the repo root) mapped to their YAML content.
+func createGitRepoWithCompose(t *testing.T, files map[string]string) *gogit.Repository {
 	t.Helper()
 
 	repoPath := t.TempDir()
@@ -414,29 +428,31 @@ func createGitIncludeRepository(t *testing.T) *gogit.Repository {
 		t.Fatalf("initialize repository: %v", err)
 	}
 
-	composePath := filepath.Join(repoPath, "docker", "docker-compose.yml")
-	if err := os.MkdirAll(filepath.Dir(composePath), 0o700); err != nil {
-		t.Fatalf("create compose directory: %v", err)
-	}
-
-	if err := os.WriteFile(composePath, []byte("services:\n  included:\n    image: busybox\n"), 0o600); err != nil {
-		t.Fatalf("write compose file: %v", err)
-	}
-
 	worktree, err := repo.Worktree()
 	if err != nil {
 		t.Fatalf("get worktree: %v", err)
 	}
 
-	if _, err := worktree.Add("docker/docker-compose.yml"); err != nil {
-		t.Fatalf("stage compose file: %v", err)
+	for relPath, content := range files {
+		absPath := filepath.Join(repoPath, filepath.FromSlash(relPath))
+		if err := os.MkdirAll(filepath.Dir(absPath), 0o700); err != nil {
+			t.Fatalf("create directory for %s: %v", relPath, err)
+		}
+
+		if err := os.WriteFile(absPath, []byte(content), 0o600); err != nil {
+			t.Fatalf("write %s: %v", relPath, err)
+		}
+
+		if _, err := worktree.Add(relPath); err != nil {
+			t.Fatalf("stage %s: %v", relPath, err)
+		}
 	}
 
 	commit, err := worktree.Commit("add compose", &gogit.CommitOptions{
 		Author: &object.Signature{Name: "test", Email: "test@example.invalid", When: time.Now()},
 	})
 	if err != nil {
-		t.Fatalf("commit compose file: %v", err)
+		t.Fatalf("commit: %v", err)
 	}
 
 	if err := repo.Storer.SetReference(plumbing.NewHashReference(plumbing.NewBranchReferenceName("main"), commit)); err != nil {
@@ -444,7 +460,7 @@ func createGitIncludeRepository(t *testing.T) *gogit.Repository {
 	}
 
 	if err := repo.Storer.SetReference(plumbing.NewSymbolicReference(plumbing.HEAD, plumbing.NewBranchReferenceName("main"))); err != nil {
-		t.Fatalf("set main as HEAD: %v", err)
+		t.Fatalf("set HEAD: %v", err)
 	}
 
 	return repo
@@ -461,5 +477,138 @@ func installLocalGitTransport(t *testing.T, repo *gogit.Repository) func() {
 	return func() {
 		gitclient.InstallProtocol("git", oldTransport)
 		gitProtocolMu.Unlock()
+	}
+}
+
+// TestDeployComposeWithGitInclude verifies the full path from loading a compose
+// file whose include: directive points to a Git repository all the way to
+// containers being created and running in Docker.
+//
+// The Git repository is served by an in-process go-git server (no network), so
+// the test is self-contained and fast. It is skipped when the Docker daemon is
+// not available or is running in Swarm mode.
+func TestDeployComposeWithGitInclude(t *testing.T) {
+	ctx := context.Background()
+
+	// Skip if Docker is unavailable.
+	if err := VerifySocketConnection(); err != nil {
+		t.Skipf("Docker unavailable: %v", err)
+	}
+
+	dockerCli, err := CreateDockerCli(true /* quiet */)
+	if err != nil {
+		t.Fatalf("create Docker CLI: %v", err)
+	}
+
+	if err := swarm.RefreshModeEnabled(ctx, dockerCli.Client()); err != nil {
+		t.Fatalf("check Swarm mode: %v", err)
+	}
+
+	if swarm.GetModeEnabled() {
+		t.Skip("Swarm mode is enabled, skipping standalone Compose test")
+	}
+
+	// Build an in-process Git repo whose root compose file defines the service
+	// under test. alpine with a long sleep keeps the container alive long enough
+	// to be observed, and the image is tiny.
+	const includedComposeYAML = `services:
+  web:
+    image: alpine:latest
+    command: ["sleep", "300"]
+    labels:
+      test.git-include: "true"
+`
+
+	repo := createGitRepoWithCompose(t, map[string]string{
+		"compose.yaml": includedComposeYAML,
+	})
+
+	restoreTransport := installLocalGitTransport(t, repo)
+	defer restoreTransport()
+
+	// Set env vars required by LoadCompose → app.GetConfig().
+	workDir := t.TempDir()
+	t.Setenv("DATA_MOUNT_PATH", t.TempDir())
+	t.Setenv("WEBHOOK_SECRET", "test-secret")
+
+	// Root compose file whose only job is to include the Git-hosted one.
+	rootComposePath := filepath.Join(workDir, "compose.yaml")
+	rootCompose := "include:\n  - path: git://example.test/repo.git#main\n"
+
+	if err := os.WriteFile(rootComposePath, []byte(rootCompose), 0o600); err != nil {
+		t.Fatalf("write root compose file: %v", err)
+	}
+
+	stackName := strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-"))
+
+	project, err := LoadCompose(
+		ctx, dockerCli,
+		workDir, workDir, stackName,
+		[]string{rootComposePath},
+		nil, nil,
+		map[string]string{},
+	)
+	if err != nil {
+		t.Fatalf("LoadCompose: %v", err)
+	}
+
+	if _, err := project.GetService("web"); err != nil {
+		t.Fatalf("expected 'web' service from Git include: %v", err)
+	}
+
+	// Set the compose tracking labels that the Compose service expects.
+	for i, svc := range project.Services {
+		svc.CustomLabels = map[string]string{
+			api.ProjectLabel:     project.Name,
+			api.ServiceLabel:     svc.Name,
+			api.WorkingDirLabel:  project.WorkingDir,
+			api.ConfigFilesLabel: strings.Join(project.ComposeFiles, ","),
+			api.VersionLabel:     api.ComposeVersion,
+			api.OneoffLabel:      "False",
+		}
+		project.Services[i] = svc
+	}
+
+	composeSvc, err := compose.NewComposeService(dockerCli)
+	if err != nil {
+		t.Fatalf("create compose service: %v", err)
+	}
+
+	// Tear down after the test regardless of outcome.
+	t.Cleanup(func() {
+		if err := composeSvc.Down(context.WithoutCancel(ctx), stackName, api.DownOptions{
+			RemoveOrphans: true,
+			Images:        "local",
+			Volumes:       true,
+		}); err != nil {
+			t.Errorf("compose down: %v", err)
+		}
+	})
+
+	if err := composeSvc.Up(ctx, project, api.UpOptions{
+		Create: api.CreateOptions{RemoveOrphans: true},
+		Start:  api.StartOptions{Project: project},
+	}); err != nil {
+		t.Fatalf("compose up: %v", err)
+	}
+
+	containers, err := test.WaitForStack(ctx, t, composeSvc, stackName, 30*time.Second)
+	if err != nil {
+		t.Fatalf("wait for stack: %v", err)
+	}
+
+	if len(containers) == 0 {
+		t.Fatal("no running containers found for stack")
+	}
+
+	// All containers must be running and carry the label we set in the included compose file.
+	for _, c := range containers {
+		if c.State != "running" {
+			t.Errorf("container %q is in state %q, expected running", c.ID, c.State)
+		}
+
+		if c.Labels["test.git-include"] != "true" {
+			t.Errorf("container %q is missing expected label 'test.git-include'", c.ID)
+		}
 	}
 }
