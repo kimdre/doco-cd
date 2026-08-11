@@ -113,13 +113,45 @@ func TestGitResourceLoaderAcceptsDockerComposeGitReferences(t *testing.T) {
 }
 
 func TestNewRemoteResourceLoadersWithoutDockerCLIIncludesGitOnly(t *testing.T) {
-	loaders := newRemoteResourceLoaders(&app.Config{DataMountPath: t.TempDir()}, nil)
+	repoPath := filepath.Join(t.TempDir(), "repo")
+
+	loaders := newRemoteResourceLoaders(&app.Config{DataMountPath: t.TempDir()}, nil, repoPath)
 	if len(loaders) != 1 {
 		t.Fatalf("expected only the Git loader without a Docker CLI, got %d loaders", len(loaders))
 	}
 
-	if _, ok := loaders[0].(*gitResourceLoader); !ok {
+	l, ok := loaders[0].(*gitResourceLoader)
+	if !ok {
 		t.Fatalf("expected Git resource loader, got %T", loaders[0])
+	}
+
+	wantCacheBase := filepath.Dir(repoPath)
+	if got := filepath.Dir(l.cacheDirectory); got != wantCacheBase {
+		t.Fatalf("expected cache base %q, got %q", wantCacheBase, got)
+	}
+}
+
+func TestResolveIncludeCacheBaseUsesRepoParent(t *testing.T) {
+	repoPath := filepath.Join(t.TempDir(), "repo")
+	got := resolveIncludeCacheBase(&app.Config{DataMountPath: "/data", DataHostPath: "/host-data"}, repoPath)
+	want := filepath.Dir(repoPath)
+
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+func TestResolveIncludeCacheBaseFallsBackToDataHostPath(t *testing.T) {
+	got := resolveIncludeCacheBase(&app.Config{DataMountPath: "/data", DataHostPath: "/host-data"}, "")
+	if got != "/host-data" {
+		t.Fatalf("expected /host-data, got %q", got)
+	}
+}
+
+func TestResolveIncludeCacheBaseFallsBackToDataMountPath(t *testing.T) {
+	got := resolveIncludeCacheBase(&app.Config{DataMountPath: "/data"}, "")
+	if got != "/data" {
+		t.Fatalf("expected /data, got %q", got)
 	}
 }
 
@@ -289,6 +321,30 @@ func TestFindComposeFilePrefersFirstDefaultName(t *testing.T) {
 	// The first entry in cli.DefaultFileNames is "compose.yaml".
 	if filepath.Base(found) != "compose.yaml" {
 		t.Fatalf("expected compose.yaml (first default name), got %q", filepath.Base(found))
+	}
+}
+
+func TestValidateGitIncludePathPreservesProvidedPathPrefix(t *testing.T) {
+	repoReal := t.TempDir()
+	parent := t.TempDir()
+	repoAlias := filepath.Join(parent, "repo-alias")
+
+	if err := os.Symlink(repoReal, repoAlias); err != nil {
+		t.Skipf("symlink not supported in this environment: %v", err)
+	}
+
+	targetAlias := filepath.Join(repoAlias, "compose.yaml")
+	if err := os.WriteFile(filepath.Join(repoReal, "compose.yaml"), []byte("services:{}"), 0o600); err != nil {
+		t.Fatalf("write compose file: %v", err)
+	}
+
+	resolved, err := validateGitIncludePath(repoAlias, targetAlias, targetAlias)
+	if err != nil {
+		t.Fatalf("validateGitIncludePath: %v", err)
+	}
+
+	if resolved != filepath.Clean(targetAlias) {
+		t.Fatalf("expected path %q, got %q", filepath.Clean(targetAlias), resolved)
 	}
 }
 

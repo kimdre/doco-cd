@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,6 +43,34 @@ type gitResourceLoader struct {
 	knownMu         sync.RWMutex
 }
 
+type loggingResourceLoader struct {
+	kind   string
+	loader loader.ResourceLoader
+}
+
+func (l loggingResourceLoader) Accept(resource string) bool {
+	return l.loader.Accept(resource)
+}
+
+func (l loggingResourceLoader) Load(ctx context.Context, resource string) (string, error) {
+	slog.Debug("loading compose include resource", slog.String("type", l.kind), slog.String("resource", redactResourceForLog(resource)))
+
+	path, err := l.loader.Load(ctx, resource)
+	if err != nil {
+		slog.Debug("failed to load compose include resource", slog.String("type", l.kind), slog.String("resource", redactResourceForLog(resource)), slog.Any("error", err))
+
+		return "", err
+	}
+
+	slog.Debug("loaded compose include resource", slog.String("type", l.kind), slog.String("resource", redactResourceForLog(resource)), slog.String("path", path))
+
+	return path, nil
+}
+
+func (l loggingResourceLoader) Dir(resource string) string {
+	return l.loader.Dir(resource)
+}
+
 // gitResourceLoaderConfig configures a gitResourceLoader.
 type gitResourceLoaderConfig struct {
 	CacheBase       string
@@ -55,10 +85,13 @@ type gitResourceLoaderConfig struct {
 
 // newRemoteResourceLoaders configures Git includes independently of the Docker CLI.
 // OCI includes require the Docker CLI for registry credentials.
-func newRemoteResourceLoaders(c *app.Config, dockerCli command.Cli) []loader.ResourceLoader {
+func newRemoteResourceLoaders(c *app.Config, dockerCli command.Cli, repoPath string) []loader.ResourceLoader {
+	cacheBase := resolveIncludeCacheBase(c, repoPath)
+	slog.Debug("configured compose include cache base", slog.String("cache_base", cacheBase), slog.String("repo_path", repoPath))
+
 	remoteLoaders := []loader.ResourceLoader{
 		newGitResourceLoader(gitResourceLoaderConfig{
-			CacheBase:       c.DataMountPath,
+			CacheBase:       cacheBase,
 			SkipTLSVerify:   c.SkipTLSVerification,
 			ProxyOptions:    c.HttpProxy,
 			CloneSubmodules: c.GitCloneSubmodules,
@@ -69,12 +102,37 @@ func newRemoteResourceLoaders(c *app.Config, dockerCli command.Cli) []loader.Res
 		}),
 	}
 	if dockerCli != nil {
-		remoteLoaders = append(remoteLoaders, remote.NewOCIRemoteLoader(dockerCli, false, api.OCIOptions{
-			InsecureRegistries: c.OciInsecureRegistries,
-		}))
+		remoteLoaders = append(remoteLoaders, loggingResourceLoader{
+			kind: "oci",
+			loader: remote.NewOCIRemoteLoader(dockerCli, false, api.OCIOptions{
+				InsecureRegistries: c.OciInsecureRegistries,
+			}),
+		})
 	}
 
 	return remoteLoaders
+}
+
+func resolveIncludeCacheBase(c *app.Config, repoPath string) string {
+	repoPath = strings.TrimSpace(repoPath)
+	if repoPath != "" {
+		absRepoPath, err := filepath.Abs(repoPath)
+		if err == nil {
+			return filepath.Dir(absRepoPath)
+		}
+	}
+
+	if c != nil {
+		if base := strings.TrimSpace(c.DataHostPath); base != "" {
+			return base
+		}
+
+		if base := strings.TrimSpace(c.DataMountPath); base != "" {
+			return base
+		}
+	}
+
+	return os.TempDir()
 }
 
 // newGitResourceLoader creates a gitResourceLoader with the given configuration.
@@ -119,6 +177,12 @@ func (g *gitResourceLoader) Load(ctx context.Context, resource string) (string, 
 		ref.Ref = "HEAD" // default branch
 	}
 
+	slog.Debug("loading compose include from git repository",
+		slog.String("remote_host", gitRemoteHostForLog(ref.Remote)),
+		slog.String("ref", ref.Ref),
+		slog.String("subdir", ref.SubDir),
+	)
+
 	if err := os.MkdirAll(g.cacheDirectory, 0o700); err != nil {
 		return "", fmt.Errorf("create git include cache: %w", err)
 	}
@@ -130,6 +194,8 @@ func (g *gitResourceLoader) Load(ctx context.Context, resource string) (string, 
 	// The cache is keyed by remote and ref so that concurrently loaded includes
 	// of the same repository never switch the checkout under each other.
 	repoPath := filepath.Join(g.cacheDirectory, cacheKey(ref.Remote, ref.Ref))
+	slog.Debug("resolved git include cache path", slog.String("cache_path", repoPath))
+
 	lock, _ := gitIncludeLocks.LoadOrStore(repoPath, &sync.Mutex{})
 	repoLock := lock.(*sync.Mutex)
 	repoLock.Lock()
@@ -168,6 +234,12 @@ func (g *gitResourceLoader) Load(ctx context.Context, resource string) (string, 
 	g.known[localPath] = directory
 	g.knownMu.Unlock()
 
+	slog.Debug("loaded compose include from git repository",
+		slog.String("remote_host", gitRemoteHostForLog(ref.Remote)),
+		slog.String("ref", ref.Ref),
+		slog.String("resolved_path", localPath),
+	)
+
 	return localPath, nil
 }
 
@@ -200,20 +272,28 @@ func (g *gitResourceLoader) checkout(path, remote, ref string) error {
 	}
 
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		slog.Debug("git include repository not cached, cloning", slog.String("remote_host", gitRemoteHostForLog(remote)), slog.String("ref", ref), slog.String("cache_path", path))
+
 		_, err = git.CloneRepository(path, remote, ref, g.skipTLSVerify, g.proxyOptions, auth, g.cloneSubmodules, g.cloneDepth)
 		if err != nil {
 			return fmt.Errorf("clone git include %q: %w", remote, err)
 		}
+
+		slog.Debug("cloned git include repository", slog.String("remote_host", gitRemoteHostForLog(remote)), slog.String("ref", ref), slog.String("cache_path", path))
 
 		return nil
 	} else if err != nil {
 		return fmt.Errorf("stat git include cache: %w", err)
 	}
 
+	slog.Debug("git include repository already cached, updating", slog.String("remote_host", gitRemoteHostForLog(remote)), slog.String("ref", ref), slog.String("cache_path", path))
+
 	_, err = git.UpdateRepository(path, remote, ref, g.skipTLSVerify, g.proxyOptions, auth, g.cloneSubmodules, g.cloneDepth)
 	if err != nil {
 		return fmt.Errorf("update git include %q: %w", remote, err)
 	}
+
+	slog.Debug("updated git include repository", slog.String("remote_host", gitRemoteHostForLog(remote)), slog.String("ref", ref), slog.String("cache_path", path))
 
 	return nil
 }
@@ -260,7 +340,7 @@ func validateGitIncludePath(repoPath, target, description string) (string, error
 		return "", fmt.Errorf("git include path escapes repository: %q", description)
 	}
 
-	return resolvedTarget, nil
+	return filepath.Clean(target), nil
 }
 
 // findComposeFile searches for a Docker Compose file in the given directory.
@@ -279,4 +359,44 @@ func findComposeFile(directory string) (string, error) {
 	}
 
 	return "", fmt.Errorf("no compose file found in git include directory %q", directory)
+}
+
+// redactResourceForLog removes sensitive information from the resource string for logging purposes.
+func redactResourceForLog(resource string) string {
+	if resource == "" {
+		return resource
+	}
+
+	u, err := url.Parse(resource)
+	if err != nil || u.User == nil {
+		return resource
+	}
+
+	u.User = url.User("***")
+
+	return u.String()
+}
+
+// gitRemoteHostForLog extracts the host from a Git remote URL for logging purposes.
+func gitRemoteHostForLog(remote string) string {
+	if remote == "" {
+		return ""
+	}
+
+	if u, err := url.Parse(remote); err == nil && u.Host != "" {
+		return u.Host
+	}
+
+	if at := strings.LastIndex(remote, "@"); at >= 0 && at+1 < len(remote) {
+		hostAndPath := remote[at+1:]
+		if colon := strings.Index(hostAndPath, ":"); colon > 0 {
+			return hostAndPath[:colon]
+		}
+
+		if slash := strings.Index(hostAndPath, "/"); slash > 0 {
+			return hostAndPath[:slash]
+		}
+	}
+
+	return remote
 }

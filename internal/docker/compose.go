@@ -314,7 +314,7 @@ func LoadCompose(ctx context.Context, dockerCli command.Cli, repoPath, workingDi
 	}
 
 	// Remote include support (Git repositories and OCI artifacts).
-	for _, remoteLoader := range newRemoteResourceLoaders(c, dockerCli) {
+	for _, remoteLoader := range newRemoteResourceLoaders(c, dockerCli, repoPath) {
 		projectOptions = append(projectOptions, cli.WithResourceLoader(remoteLoader))
 	}
 
