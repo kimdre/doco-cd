@@ -8,13 +8,13 @@ tags:
 # Renovate
 
 [Renovate](https://docs.renovatebot.com/) is the perfect companion for your [GitOps](../Core-Concepts.md#how-doco-cd-works) workflow.
-It keeps dependencies, Docker images, GitHub Actions, and other package references up to date by opening pull requests or merge requests automatically in your Git repositories.
+It keeps dependencies, Docker images, GitHub Actions, and other package references up to date by automatically opening pull requests or merge requests in your Git repositories.
 
 This guide shows:
 
 1. How to add a recommended `renovate.json`
-2. How to enable Renovate on GitHub and GitLab
-3. How to run Renovate against self-hosted Forgejo and GitLab instances
+2. How to set up Renovate for your Git hosting platform (GitHub, GitLab, Forgejo, etc.)
+3. How to run Renovate in CI/CD pipelines for self-hosted instances
 
 !!! tip "Dependabot"
     If you are using GitHub, you may also consider [Dependabot](https://docs.github.com/en/code-security/tutorials/secure-your-dependencies/dependabot-quickstart) as an alternative to Renovate.
