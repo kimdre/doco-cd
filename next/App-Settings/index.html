@@ -2946,6 +2946,12 @@
 <td><code>9120</code></td>
 </tr>
 <tr>
+<td><code>OCI_INSECURE_REGISTRIES</code></td>
+<td>list</td>
+<td>Comma-separated OCI registry <code>host[:port]</code> entries for Compose includes. <strong>TLS verification is disabled</strong> for these registries; use only for trusted registries.</td>
+<td>Ignored when not specified</td>
+</tr>
+<tr>
 <td><code>PASS_ENV</code></td>
 <td>boolean</td>
 <td>Controls whether environment variables from the doco-cd container should be passed to the deployment environment for docker compose variable interpolation. Use with caution, as this may expose sensitive information to the deployment environment.</td>
