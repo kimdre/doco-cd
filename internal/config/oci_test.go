@@ -2,6 +2,27 @@ package config
 
 import "testing"
 
+func TestParseOciInsecureRegistries(t *testing.T) {
+	t.Parallel()
+
+	registries, err := ParseOciInsecureRegistries(" registry.example:5000,REGISTRY.example:5000, localhost ")
+	if err != nil {
+		t.Fatalf("parse registries: %v", err)
+	}
+
+	if len(registries) != 2 || registries[0] != "registry.example:5000" || registries[1] != "localhost" {
+		t.Fatalf("unexpected normalized registries: %v", registries)
+	}
+}
+
+func TestParseOciInsecureRegistriesRejectsInvalidRegistry(t *testing.T) {
+	t.Parallel()
+
+	if _, err := ParseOciInsecureRegistries("https://registry.example"); err == nil {
+		t.Fatal("expected URL to be rejected")
+	}
+}
+
 func TestNormalizeOciTrustPolicy_TrimsSubjectRegexp(t *testing.T) {
 	t.Parallel()
 

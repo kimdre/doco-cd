@@ -37,13 +37,11 @@ import (
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 
 	"github.com/compose-spec/compose-go/v2/cli"
-	"github.com/compose-spec/compose-go/v2/loader"
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/flags"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
-	"github.com/docker/compose/v5/pkg/remote"
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 
 	"github.com/kimdre/doco-cd/internal/prometheus"
@@ -306,26 +304,23 @@ func LoadCompose(ctx context.Context, dockerCli command.Cli, repoPath, workingDi
 		}
 	}
 
-	// Use Docker Compose's built-in loaders for remote git and OCI artifact includes.
-	// OCI loading needs the Docker CLI for registry credentials and HTTP configuration.
-	remoteLoaders := []loader.ResourceLoader{
-		remote.NewGitRemoteLoader(dockerCli, false),
-	}
-	if dockerCli != nil {
-		remoteLoaders = append(remoteLoaders, remote.NewOCIRemoteLoader(dockerCli, false, api.OCIOptions{}))
-	}
-
-	options, err := cli.NewProjectOptions(
-		absComposeFiles,
+	projectOptions := []cli.ProjectOptionsFn{
 		cli.WithName(projectName),
 		cli.WithWorkingDirectory(workingDir),
 		cli.WithInterpolation(true),
 		cli.WithResolvedPaths(true),
 		cli.WithEnvFiles(absEnvFiles...), // env files for variable interpolation
 		cli.WithProfiles(profiles),
-		cli.WithLoadOptions(func(opts *loader.Options) {
-			opts.ResourceLoaders = remoteLoaders
-		}),
+	}
+
+	// Remote include support (Git repositories and OCI artifacts).
+	for _, remoteLoader := range newRemoteResourceLoaders(c, dockerCli) {
+		projectOptions = append(projectOptions, cli.WithResourceLoader(remoteLoader))
+	}
+
+	options, err := cli.NewProjectOptions(
+		absComposeFiles,
+		projectOptions...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create project options: %w", err)

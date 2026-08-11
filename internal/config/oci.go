@@ -1,6 +1,11 @@
 package config
 
-import "strings"
+import (
+	"fmt"
+	"net/url"
+	"strconv"
+	"strings"
+)
 
 type OciKeylessIdentity struct {
 	Issuer        string `yaml:"issuer" json:"issuer"`
@@ -68,4 +73,45 @@ func EffectiveOciTrustPolicy(global OciTrustPolicy, override OciTrustPolicyOverr
 	}
 
 	return NormalizeOciTrustPolicy(p)
+}
+
+// ParseOciInsecureRegistries normalizes a comma-separated list of registry host[:port] entries.
+func ParseOciInsecureRegistries(value string) ([]string, error) {
+	registries := make([]string, 0)
+	seen := map[string]struct{}{}
+
+	for entry := range strings.SplitSeq(value, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+
+		parsed, err := url.Parse("//" + entry)
+		if err != nil || parsed.Host != entry || parsed.Hostname() == "" ||
+			strings.ContainsAny(entry, "/?#@") {
+			return nil, fmt.Errorf("invalid OCI insecure registry %q: expected host[:port]", entry)
+		}
+
+		if strings.Contains(entry, ":") {
+			port := parsed.Port()
+			if port == "" {
+				return nil, fmt.Errorf("invalid OCI insecure registry %q: expected host[:port]", entry)
+			}
+
+			portNumber, err := strconv.ParseUint(port, 10, 16)
+			if err != nil || portNumber == 0 {
+				return nil, fmt.Errorf("invalid OCI insecure registry %q: invalid port", entry)
+			}
+		}
+
+		normalized := strings.ToLower(entry)
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+
+		seen[normalized] = struct{}{}
+		registries = append(registries, normalized)
+	}
+
+	return registries, nil
 }

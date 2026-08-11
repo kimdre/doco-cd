@@ -292,10 +292,13 @@ func run() error {
 		},
 	)
 
-	// Initialize SSH agent if SSH private key is provided
-	if c.SSHPrivateKey != "" {
-		ssh.RegisterSSHAgent(ctx, log.Logger, c.SSHPrivateKey, c.SSHPrivateKeyPassphrase)
+	// Initialize SSH agent with the global and domain scoped SSH keys, if any are configured
+	sshKeys := []ssh.KeyRecord{{PrivateKey: c.SSHPrivateKey, Passphrase: c.SSHPrivateKeyPassphrase}}
+	for _, scoped := range c.GitAuthDomains {
+		sshKeys = append(sshKeys, ssh.KeyRecord{PrivateKey: scoped.SSHPrivateKey, Passphrase: scoped.SSHPrivateKeyPassphrase})
 	}
+
+	ssh.RegisterSSHAgent(ctx, log.Logger, sshKeys)
 
 	// Initialize the secret provider
 	secretProvider, err := secretprovider.Initialize(ctx, c.SecretProvider, app.Version)
