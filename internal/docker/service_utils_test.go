@@ -535,7 +535,7 @@ services:
 
 	stackName := test.ConvertTestName(t.Name())
 
-	_, err = LoadCompose(ctx, tmpDir, tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
+	_, err = LoadCompose(ctx, nil, tmpDir, tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -628,7 +628,7 @@ services:
 
 	stackName := test.ConvertTestName(t.Name())
 
-	project, err := LoadCompose(t.Context(), tmpDir, tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
+	project, err := LoadCompose(t.Context(), nil, tmpDir, tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
