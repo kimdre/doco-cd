@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"golang.org/x/crypto/ssh"
@@ -25,7 +26,40 @@ const (
 
 var socketAgentSocketPath = filepath.Join(os.TempDir(), "ssh_agent.sock")
 
-var ErrSSHAgentSocketPathEmpty = errors.New("socket path cannot be empty")
+var (
+	ErrSSHAgentSocketPathEmpty = errors.New("socket path cannot be empty")
+	ErrNoUsableSSHKeys         = errors.New("no usable SSH keys could be added to the agent")
+)
+
+// KeyRecord contains an SSH private key and its optional passphrase.
+type KeyRecord struct {
+	PrivateKey string
+	Passphrase string
+}
+
+// collectKeyRecords returns the given keys without empty entries and duplicates,
+// preserving the order in which they were provided.
+func collectKeyRecords(keys ...KeyRecord) []KeyRecord {
+	collected := make([]KeyRecord, 0, len(keys))
+	seen := make(map[KeyRecord]struct{}, len(keys))
+
+	for _, key := range keys {
+		key.PrivateKey = strings.TrimSpace(key.PrivateKey)
+		if key.PrivateKey == "" {
+			continue
+		}
+
+		if _, ok := seen[key]; ok {
+			continue
+		}
+
+		seen[key] = struct{}{}
+
+		collected = append(collected, key)
+	}
+
+	return collected
+}
 
 // cleanupSocketFile removes the socket file at the specified path.
 func cleanupSocketFile(socketPath string) {
@@ -34,12 +68,33 @@ func cleanupSocketFile(socketPath string) {
 
 // startSSHAgent starts an SSH agent that listens on a Unix domain socket at the specified path.
 // The function runs until the provided context is canceled.
-func startSSHAgent(ctx context.Context, log *slog.Logger, socketPath string, privateKey []byte, keyPassphrase string) error {
+func startSSHAgent(ctx context.Context, log *slog.Logger, socketPath string, keys []KeyRecord) error {
 	if socketPath == "" {
 		return ErrSSHAgentSocketPathEmpty
 	}
 
 	socketPath = filepath.Clean(socketPath)
+
+	// The keyring is populated before the listener is started so that failures
+	// return immediately instead of leaving a running agent behind.
+	keyring := agent.NewKeyring()
+
+	var added int
+
+	for _, key := range keys {
+		if err := addKeyToAgent(keyring, []byte(key.PrivateKey), key.Passphrase); err != nil {
+			// A single unusable key must not prevent the remaining keys from being served.
+			log.Warn("failed to add SSH key to agent", logger.ErrAttr(err))
+
+			continue
+		}
+
+		added++
+	}
+
+	if added == 0 {
+		return ErrNoUsableSSHKeys
+	}
 
 	// Remove stale socket if it exists
 	cleanupSocketFile(socketPath)
@@ -50,6 +105,15 @@ func startSSHAgent(ctx context.Context, log *slog.Logger, socketPath string, pri
 	}
 	defer listener.Close() // nolint:errcheck
 
+	// Set the SSH_AUTH_SOCK environment variable to point to the socket
+	if err = os.Setenv(SocketAgentSocketEnvVar, socketPath); err != nil {
+		cleanupSocketFile(socketPath)
+
+		return fmt.Errorf("failed to set %s environment variable: %w", SocketAgentSocketEnvVar, err)
+	}
+
+	defer cleanupSocketFile(socketPath)
+
 	wg := &sync.WaitGroup{}
 	defer wg.Wait()
 	// close the listener on context cancellation
@@ -58,19 +122,6 @@ func startSSHAgent(ctx context.Context, log *slog.Logger, socketPath string, pri
 
 		<-ctx.Done()
 	})
-
-	// Set the SSH_AUTH_SOCK environment variable to point to the socket
-	err = os.Setenv(SocketAgentSocketEnvVar, socketPath)
-	if err != nil {
-		return fmt.Errorf("failed to set %s environment variable: %w", SocketAgentSocketEnvVar, err)
-	}
-
-	defer cleanupSocketFile(socketPath)
-
-	keyring := agent.NewKeyring()
-	if err := addKeyToAgent(keyring, privateKey, keyPassphrase); err != nil {
-		return err
-	}
 
 	// Accept loop with context awareness
 	wg.Go(func() {

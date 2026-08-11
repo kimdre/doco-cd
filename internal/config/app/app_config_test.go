@@ -308,6 +308,22 @@ func TestGetConfig_OciTrustPolicyCanBeEnabled(t *testing.T) {
 	}
 }
 
+func TestGetConfig_OciInsecureRegistries(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("OCI_INSECURE_REGISTRIES", " registry.example:5000,REGISTRY.example:5000,localhost ")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	if got, want := strings.Join(cfg.OciInsecureRegistries, ","), "registry.example:5000,localhost"; got != want {
+		t.Fatalf("expected OCI insecure registries %q, got %q", want, got)
+	}
+}
+
 func TestGetConfig_OciVerifyMaxWorkersDefaultsToOne(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "info")
 	t.Setenv("HTTP_PORT", "8080")

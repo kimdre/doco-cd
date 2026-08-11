@@ -237,7 +237,8 @@ func hasIPv6NetworkWithoutExplicitSubnet(project *types.Project) bool {
 }
 
 // LoadCompose parses and loads Compose files as specified by the Docker Compose specification.
-func LoadCompose(ctx context.Context, repoPath, workingDir, projectName string, composeFiles,
+// dockerCli is required to load OCI artifact includes.
+func LoadCompose(ctx context.Context, dockerCli command.Cli, repoPath, workingDir, projectName string, composeFiles,
 	envFiles, profiles []string, environment map[string]string,
 ) (*types.Project, error) {
 	// Resolve compose file paths to absolute paths relative to workingDir.
@@ -303,14 +304,23 @@ func LoadCompose(ctx context.Context, repoPath, workingDir, projectName string, 
 		}
 	}
 
-	options, err := cli.NewProjectOptions(
-		absComposeFiles,
+	projectOptions := []cli.ProjectOptionsFn{
 		cli.WithName(projectName),
 		cli.WithWorkingDirectory(workingDir),
 		cli.WithInterpolation(true),
 		cli.WithResolvedPaths(true),
 		cli.WithEnvFiles(absEnvFiles...), // env files for variable interpolation
 		cli.WithProfiles(profiles),
+	}
+
+	// Remote include support (Git repositories and OCI artifacts).
+	for _, remoteLoader := range newRemoteResourceLoaders(c, dockerCli, repoPath) {
+		projectOptions = append(projectOptions, cli.WithResourceLoader(remoteLoader))
+	}
+
+	options, err := cli.NewProjectOptions(
+		absComposeFiles,
+		projectOptions...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create project options: %w", err)
@@ -671,7 +681,7 @@ func DeployStack(
 
 	deploymentPhase.Set("loading compose configuration")
 
-	project, err := LoadCompose(*ctx, externalRepoPath, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles,
+	project, err := LoadCompose(*ctx, dockerCli, externalRepoPath, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles,
 		deployConfig.EnvFiles, deployConfig.Profiles, deployConfig.Internal.Environment)
 	if err != nil {
 		return fmt.Errorf("failed to load compose config: %w", err)

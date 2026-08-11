@@ -86,6 +86,8 @@ type Config struct {
 	OciTrustPolicyYAML            string                 `env:"OCI_TRUST_POLICY"`                                                        // OciTrustPolicyYAML contains the app-level OCI signature trust policy as YAML
 	OciTrustPolicyFile            string                 `env:"OCI_TRUST_POLICY_FILE,file"`                                              // OciTrustPolicyFile is the file containing OCI trust policy YAML
 	OciTrustPolicy                config.OciTrustPolicy  `yaml:"-"`                                                                      // OciTrustPolicy is the parsed app-level OCI signature trust policy
+	OciInsecureRegistriesString   string                 `env:"OCI_INSECURE_REGISTRIES"`                                                 // OciInsecureRegistriesString is a comma-separated list of registries for OCI Compose includes with TLS verification disabled.
+	OciInsecureRegistries         []string               `yaml:"-"`                                                                      // OciInsecureRegistries holds normalized OCI Compose include registries with TLS verification disabled.
 }
 
 // GetConfig returns the app Config.
@@ -135,6 +137,11 @@ func GetConfig() (*Config, error) {
 	err = cfg.parseOciTrustPolicy()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse OCI_TRUST_POLICY: %w", err)
+	}
+
+	cfg.OciInsecureRegistries, err = config.ParseOciInsecureRegistries(cfg.OciInsecureRegistriesString)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse OCI_INSECURE_REGISTRIES: %w", err)
 	}
 
 	if _, err = commitstatus.ParseProvider(cfg.GitScmProvider); err != nil {
