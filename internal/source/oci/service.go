@@ -234,6 +234,12 @@ func extractTarStream(destination string, reader io.Reader, budget *extractionBu
 		}
 
 		cleanName := filepath.Clean(h.Name)
+
+		// Reject absolute paths and directory traversal attempts before constructing the target path.
+		if filepath.IsAbs(cleanName) || cleanName == ".." || strings.HasPrefix(cleanName, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("%w: %s", filesystem.ErrPathTraversal, h.Name)
+		}
+
 		target := filepath.Join(destination, cleanName)
 
 		if !filesystem.InBasePath(destination, target) {
