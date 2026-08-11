@@ -25,7 +25,7 @@ nav = [
     { "Getting Started" = "Getting-Started.md" },
     { "Setup Access Token" = "Setup-Access-Token.md" },
     { "Setup SSH Key" = "Setup-SSH-Key.md" },
-    { "Setup Webhook" = "Setup-Webhook.md" }
+    { "Setup Webhook" = "Setup-Webhook.md" },
   ] },
   { Configuration = [
     { "App Settings" = "App-Settings.md" },
@@ -58,6 +58,7 @@ nav = [
     ] },
     { "Pre- / Post-Deployment Scripts" = "Advanced/Pre-Post-Deployment-Scripts.md" },
     { "Private Container Registries" = "Advanced/Private-Container-Registries.md" },
+    { "Renovate Bot" = "Advanced/Renovate.md" },
     { "Self-Updating" = "Advanced/Self-Updating.md" },
     { "Swarm Mode" = "Advanced/Swarm-Mode.md" },
     { "Tips & Tricks" = "Advanced/Tips-and-Tricks.md" },
