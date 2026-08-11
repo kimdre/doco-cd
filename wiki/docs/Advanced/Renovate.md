@@ -17,7 +17,7 @@ This guide shows:
 3. How to run Renovate against self-hosted Forgejo and GitLab instances
 
 !!! tip "Dependabot"
-    If you are using GitHub, you may also consider [DependaBot](https://docs.github.com/en/code-security/tutorials/secure-your-dependencies/dependabot-quickstart) as an alternative to Renovate.
+    If you are using GitHub, you may also consider [Dependabot](https://docs.github.com/en/code-security/tutorials/secure-your-dependencies/dependabot-quickstart) as an alternative to Renovate.
     It is maintained by GitHub and has a simpler configuration, but it is less flexible and does not support all package types.
 
     I still recommend Renovate however because it is more flexible and supports more package types.
@@ -64,7 +64,7 @@ This example configuration:
 - Automerges patch updates, but not minor or major updates
 - Runs automerge only during quiet hours (3am-7am in Berlin time)
 
-!!! tip
+!!! tip "Renovate documentation"
     You can always find more options in the [Renovate configuration reference](https://docs.renovatebot.com/configuration-options/).
 
 ## Setup Renovate Bot
@@ -127,7 +127,8 @@ This example configuration:
 
 === "Forgejo (self-hosted)"
 
-    For self-hosted instances, run Renovate yourself with Docker, Kubernetes, or the CLI and point it at your platform API.
+    For self-hosted instances, the recommended approach is to run Renovate in CI on a schedule; 
+    alternatively, run it yourself with Docker or the CLI and point it at your platform API.
 
     **Setup**
 
@@ -167,19 +168,39 @@ This example configuration:
     };
     ```
 
-    **Example Docker run**
+    **Minimal Forgejo pipeline example**
 
-    ```sh
-    docker run --rm \
-      -e RENOVATE_TOKEN="$RENOVATE_TOKEN" \
-      -e RENOVATE_CONFIG_FILE=/usr/src/app/config.js \
-      -v "$(pwd)/config.js:/usr/src/app/config.js:ro" \
-      renovate/renovate
+    ```yaml title=".forgejo/workflows/renovate.yml"
+    name: Renovate
+
+    on:
+      schedule:
+        - cron: "0 * * * *"
+      workflow_dispatch:
+
+    jobs:
+      renovate:
+        runs-on: ubuntu-latest
+        steps:
+          - name: Run Renovate
+            uses: docker://renovate/renovate:latest
+            env:
+              RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
+              RENOVATE_PLATFORM: forgejo
+              RENOVATE_ENDPOINT: https://forgejo.example.com/api/v1/
     ```
+
+    Store the bot token as a repository or organization secret named `RENOVATE_TOKEN` under **Settings > Actions > Secrets**. Never commit it to the workflow file.
+
+    **Day-to-day usage**
+
+    - Renovate opens pull requests on its schedule.
+    - Merge the onboarding PR first.
+    - After that, review and merge update PRs as usual.
 
 === "GitLab (self-hosted)"
 
-    For self-hosted instances, run Renovate yourself with Docker, Kubernetes, or the CLI and point it at your platform API.
+    For self-hosted instances, the recommended approach is to run Renovate in CI on a schedule; alternatively, run it yourself with Docker or the CLI and point it at your platform API.
 
     **Setup**
 
@@ -213,15 +234,34 @@ This example configuration:
     };
     ```
 
-    **Example Docker run**
+    **Minimal self-hosted GitLab pipeline example**
 
-    ```sh
-    docker run --rm \
-      -e RENOVATE_TOKEN="$RENOVATE_TOKEN" \
-      -e RENOVATE_CONFIG_FILE=/usr/src/app/config.js \
-      -v "$(pwd)/config.js:/usr/src/app/config.js:ro" \
-      renovate/renovate
+    ```yaml title=".gitlab-ci.yml"
+    stages:
+      - renovate
+
+    renovate:
+      stage: renovate
+      image: renovate/renovate:latest
+      script:
+        - renovate
+      variables:
+        RENOVATE_PLATFORM: gitlab
+        RENOVATE_ENDPOINT: https://gitlab.example.com/api/v4/
+      rules:
+        - if: '$CI_PIPELINE_SOURCE == "schedule"'
+        - if: '$CI_PIPELINE_SOURCE == "web"'
     ```
+
+    Set `RENOVATE_TOKEN` as a masked/protected CI/CD variable under **Settings > CI/CD > Variables** in your project or group. Do not add it to the YAML file. Renovate reads it automatically from the environment.
+
+    To trigger the job, create a [scheduled pipeline](https://docs.gitlab.com/ci/pipelines/schedules/) (e.g. hourly), since the `rules` above only run on schedule or manual (`web`) triggers.
+
+    **Day-to-day usage**
+
+    - Renovate opens merge requests on its schedule.
+    - Merge the onboarding MR first.
+    - After that, review and merge update MRs as usual.
 
 !!! tip
     Run self-hosted Renovate at least hourly so onboarding PRs, rebases, and security-related updates are not delayed unnecessarily.
