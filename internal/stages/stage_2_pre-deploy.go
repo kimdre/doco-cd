@@ -218,7 +218,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		}
 
 		s.Docker.Project, err = docker.LoadCompose(
-			ctx, s.Repository.PathExternal, extAbsWorkingDir, s.DeployConfig.Name,
+			ctx, s.Docker.Cmd, s.Repository.PathExternal, extAbsWorkingDir, s.DeployConfig.Name,
 			s.DeployConfig.ComposeFiles, s.DeployConfig.EnvFiles,
 			s.DeployConfig.Profiles, s.DeployConfig.Internal.Environment)
 		if err != nil {

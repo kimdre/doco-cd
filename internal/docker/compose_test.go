@@ -112,7 +112,7 @@ func TestLoadCompose(t *testing.T) {
 
 	stackName := test.ConvertTestName(t.Name())
 
-	project, err := LoadCompose(ctx, tmpDir, tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
+	project, err := LoadCompose(ctx, nil, tmpDir, tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +260,7 @@ func TestDeployCompose(t *testing.T) {
 
 	stackName := test.ConvertTestName(t.Name())
 
-	project, err := LoadCompose(ctx, tmpDir, tmpDir, stackName, []string{filePath}, []string{}, []string{}, map[string]string{})
+	project, err := LoadCompose(ctx, nil, tmpDir, tmpDir, stackName, []string{filePath}, []string{}, []string{}, map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -436,6 +436,7 @@ compose_files:
 
 		expectedProject, err := LoadCompose(
 			ctx,
+			nil,
 			repoPath,
 			externalWorkingDir,
 			deployConf.Name,
@@ -1574,7 +1575,7 @@ func TestProjectFilesHaveChanges(t *testing.T) {
 				t.Fatalf("Failed to get changed files: %v", err)
 			}
 
-			project, err := LoadCompose(t.Context(), tmpDir, tmpDir, d.Name, d.ComposeFiles, d.EnvFiles, d.Profiles, map[string]string{})
+			project, err := LoadCompose(t.Context(), nil, tmpDir, tmpDir, d.Name, d.ComposeFiles, d.EnvFiles, d.Profiles, map[string]string{})
 			if err != nil {
 				t.Fatalf("Failed to load compose file: %v", err)
 			}
@@ -1912,7 +1913,7 @@ func TestInjectSecretsToProject(t *testing.T) {
 
 			t.Log("Resolved secrets:", resolvedSecrets)
 
-			project, err := LoadCompose(ctx, tmpDir, tmpDir, test.ConvertTestName(t.Name()), []string{filePath}, []string{".env"}, []string{}, resolvedSecrets)
+			project, err := LoadCompose(ctx, nil, tmpDir, tmpDir, test.ConvertTestName(t.Name()), []string{filePath}, []string{".env"}, []string{}, resolvedSecrets)
 			if err != nil {
 				t.Fatal(err)
 			}
