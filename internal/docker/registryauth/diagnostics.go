@@ -1,10 +1,8 @@
 package registryauth
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,7 +25,7 @@ const (
 // CheckDockerConfigReadable verifies if the docker config file is readable
 // for the current user in the container. It checks the path specified by the
 // DOCKER_CONFIG environment variable or defaults to ~/.docker/config.json.
-// Returns an error if the config file exists but is not readable.
+// Returns an error if the config file exists but is not readable or contains invalid content.
 func CheckDockerConfigReadable(cfg *configfile.ConfigFile) error {
 	if cfg == nil {
 		return errors.New("docker config is nil")
@@ -64,12 +62,26 @@ func CheckDockerConfigReadable(cfg *configfile.ConfigFile) error {
 		return fmt.Errorf("docker config path %q is not a regular file", configPath)
 	}
 
-	// Verify the file is readable by opening it
+	// Verify the file is readable and contains valid content using docker's own loader
+	if err := validateDockerConfigContent(configPath); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateDockerConfigContent checks if the docker config file is readable and contains valid content.
+func validateDockerConfigContent(configPath string) error {
 	file, err := os.Open(configPath)
 	if err != nil {
 		return fmt.Errorf("docker config file %q is not readable: %w", configPath, err)
 	}
 	defer file.Close()
+
+	testCfg := configfile.New(configPath)
+	if err := testCfg.LoadFromReader(file); err != nil {
+		return fmt.Errorf("docker config file %q is invalid: %w", configPath, err)
+	}
 
 	return nil
 }

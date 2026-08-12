@@ -47,10 +47,11 @@ func TestCheckDockerConfigReadable(t *testing.T) {
 		})
 	}
 
-	t.Run("config with readable file", func(t *testing.T) {
+	t.Run("config with readable and valid config file", func(t *testing.T) {
 		tmpFile := t.TempDir()
 		tmpConfigPath := filepath.Join(tmpFile, "config.json")
-		err := os.WriteFile(tmpConfigPath, []byte("{}"), 0644)
+		// Valid docker config format
+		err := os.WriteFile(tmpConfigPath, []byte(`{"auths":{}}`), 0644)
 		if err != nil {
 			t.Fatalf("failed to create temp config file: %v", err)
 		}
@@ -68,7 +69,7 @@ func TestCheckDockerConfigReadable(t *testing.T) {
 	t.Run("config with unreadable file", func(t *testing.T) {
 		tmpFile := t.TempDir()
 		tmpConfigPath := filepath.Join(tmpFile, "config.json")
-		err := os.WriteFile(tmpConfigPath, []byte("{}"), 0644)
+		err := os.WriteFile(tmpConfigPath, []byte(`{"auths":{}}`), 0644)
 		if err != nil {
 			t.Fatalf("failed to create temp config file: %v", err)
 		}
@@ -90,6 +91,28 @@ func TestCheckDockerConfigReadable(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "not readable") {
 			t.Fatalf("CheckDockerConfigReadable() error = %v, want error containing 'not readable'", err)
+		}
+	})
+
+	t.Run("config with invalid JSON", func(t *testing.T) {
+		tmpFile := t.TempDir()
+		tmpConfigPath := filepath.Join(tmpFile, "config.json")
+		// Invalid JSON format
+		err := os.WriteFile(tmpConfigPath, []byte(`{invalid json content}`), 0644)
+		if err != nil {
+			t.Fatalf("failed to create temp config file: %v", err)
+		}
+
+		cfg := &configfile.ConfigFile{
+			Filename: tmpConfigPath,
+		}
+
+		err = CheckDockerConfigReadable(cfg)
+		if err == nil {
+			t.Fatalf("CheckDockerConfigReadable() expected error for invalid config, got nil")
+		}
+		if !strings.Contains(err.Error(), "invalid") {
+			t.Fatalf("CheckDockerConfigReadable() error = %v, want error containing 'invalid'", err)
 		}
 	})
 }
