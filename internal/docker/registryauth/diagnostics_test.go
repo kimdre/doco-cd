@@ -2,12 +2,126 @@ package registryauth
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/docker/cli/cli/config/configfile"
 	configtypes "github.com/docker/cli/cli/config/types"
+
+	"github.com/kimdre/doco-cd/internal/filesystem"
 )
+
+func TestCheckDockerConfigReadable(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		cfg     *configfile.ConfigFile
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "nil config",
+			cfg:     nil,
+			wantErr: true,
+			errMsg:  "docker config is nil",
+		},
+		{
+			name: "config with non-existent file is acceptable",
+			cfg: &configfile.ConfigFile{
+				Filename: "/nonexistent/path/.docker/config.json",
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := CheckDockerConfigReadable(tc.cfg)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("CheckDockerConfigReadable() error = %v, wantErr %v", err, tc.wantErr)
+			}
+
+			if tc.wantErr && err != nil && tc.errMsg != "" && !strings.Contains(err.Error(), tc.errMsg) {
+				t.Fatalf("CheckDockerConfigReadable() error = %v, want error containing %q", err, tc.errMsg)
+			}
+		})
+	}
+
+	t.Run("config with readable and valid config file", func(t *testing.T) {
+		tmpFile := t.TempDir()
+		tmpConfigPath := filepath.Join(tmpFile, "config.json")
+		// Valid docker config format
+		err := os.WriteFile(tmpConfigPath, []byte(`{"auths":{}}`), filesystem.PermOwner)
+		if err != nil {
+			t.Fatalf("failed to create temp config file: %v", err)
+		}
+
+		cfg := &configfile.ConfigFile{
+			Filename: tmpConfigPath,
+		}
+
+		err = CheckDockerConfigReadable(cfg)
+		if err != nil {
+			t.Fatalf("CheckDockerConfigReadable() error = %v, wantErr false", err)
+		}
+	})
+
+	t.Run("config with unreadable file", func(t *testing.T) {
+		tmpFile := t.TempDir()
+		tmpConfigPath := filepath.Join(tmpFile, "config.json")
+
+		err := os.WriteFile(tmpConfigPath, []byte(`{"auths":{}}`), filesystem.PermOwner)
+		if err != nil {
+			t.Fatalf("failed to create temp config file: %v", err)
+		}
+
+		// Change permissions to make unreadable
+		err = os.Chmod(tmpConfigPath, 0o000)
+		if err != nil {
+			t.Fatalf("failed to change file permissions: %v", err)
+		}
+		defer os.Chmod(tmpConfigPath, filesystem.PermOwner) // nolint:errcheck
+
+		cfg := &configfile.ConfigFile{
+			Filename: tmpConfigPath,
+		}
+
+		err = CheckDockerConfigReadable(cfg)
+		if err == nil {
+			t.Fatalf("CheckDockerConfigReadable() expected error for unreadable file, got nil")
+		}
+
+		if !strings.Contains(err.Error(), "not readable") {
+			t.Fatalf("CheckDockerConfigReadable() error = %v, want error containing 'not readable'", err)
+		}
+	})
+
+	t.Run("config with invalid JSON", func(t *testing.T) {
+		tmpFile := t.TempDir()
+		tmpConfigPath := filepath.Join(tmpFile, "config.json")
+		// Invalid JSON format
+		err := os.WriteFile(tmpConfigPath, []byte(`{invalid json content}`), filesystem.PermOwner)
+		if err != nil {
+			t.Fatalf("failed to create temp config file: %v", err)
+		}
+
+		cfg := &configfile.ConfigFile{
+			Filename: tmpConfigPath,
+		}
+
+		err = CheckDockerConfigReadable(cfg)
+		if err == nil {
+			t.Fatalf("CheckDockerConfigReadable() expected error for invalid config, got nil")
+		}
+
+		if !strings.Contains(err.Error(), "invalid") {
+			t.Fatalf("CheckDockerConfigReadable() error = %v, want error containing 'invalid'", err)
+		}
+	})
+}
 
 func TestIsAuthRelatedError(t *testing.T) {
 	t.Parallel()

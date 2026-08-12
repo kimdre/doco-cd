@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -20,6 +21,75 @@ const (
 	dockerHubRegistryHost = "registry-1.docker.io"
 	dockerHubAuthConfig   = "https://index.docker.io/v1/"
 )
+
+// CheckDockerConfigReadable verifies if the docker config file is readable
+// for the current user in the container. It checks the path specified by the
+// DOCKER_CONFIG environment variable or defaults to ~/.docker/config.json.
+// Returns an error if the config file exists but is not readable or contains invalid content.
+func CheckDockerConfigReadable(cfg *configfile.ConfigFile) error {
+	if cfg == nil {
+		return errors.New("docker config is nil")
+	}
+
+	// Determine the config path to check
+	configPath := cfg.Filename
+	if configPath == "" {
+		// If no config file is loaded, use the DOCKER_CONFIG env var or default path
+		dockerConfigEnv := strings.TrimSpace(os.Getenv("DOCKER_CONFIG"))
+		if dockerConfigEnv != "" {
+			configPath = filepath.Join(dockerConfigEnv, "config.json")
+		} else {
+			homeDir, err := os.UserHomeDir()
+			if err != nil {
+				return fmt.Errorf("failed to determine home directory: %w", err)
+			}
+
+			configPath = filepath.Join(homeDir, ".docker", "config.json")
+		}
+	}
+
+	// Normalize the path to prevent path traversal
+	configPath = filepath.Clean(configPath)
+
+	// Check if the config file exists
+	fileInfo, err := os.Stat(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Config file doesn't exist, which is acceptable
+			return nil
+		}
+
+		return fmt.Errorf("failed to check docker config file %q: %w", configPath, err)
+	}
+
+	// If it exists, verify it's a regular file
+	if !fileInfo.Mode().IsRegular() {
+		return fmt.Errorf("docker config path %q is not a regular file", configPath)
+	}
+
+	// Verify the file is readable and contains valid content using docker's own loader
+	if err := validateDockerConfigContent(configPath); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateDockerConfigContent checks if the docker config file is readable and contains valid content.
+func validateDockerConfigContent(configPath string) error {
+	file, err := os.Open(configPath)
+	if err != nil {
+		return fmt.Errorf("docker config file %q is not readable: %w", configPath, err)
+	}
+	defer file.Close()
+
+	testCfg := configfile.New(configPath)
+	if err := testCfg.LoadFromReader(file); err != nil {
+		return fmt.Errorf("docker config file %q is invalid: %w", configPath, err)
+	}
+
+	return nil
+}
 
 // IsAuthRelatedError reports whether the provided error looks like a
 // registry-authorization/authentication failure.
