@@ -22,12 +22,12 @@ const (
 	dockerHubAuthConfig   = "https://index.docker.io/v1/"
 )
 
-// CheckDockerConfigReadable verifies if the docker config file is readable
+// ValidateDockerConfig verifies if the docker config file is readable
 // for the current user in the container. It checks the path specified by the
 // DOCKER_CONFIG environment variable or defaults to ~/.docker/config.json.
 // Returns an error if the config file exists but is not readable or contains invalid content.
 // Also checks for missing credential helper binaries configured in the docker config.
-func CheckDockerConfigReadable(cfg *configfile.ConfigFile) error {
+func ValidateDockerConfig(cfg *configfile.ConfigFile) error {
 	if cfg == nil {
 		return errors.New("docker config is nil")
 	}

@@ -39,7 +39,7 @@ func TestCheckDockerConfigReadable(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := CheckDockerConfigReadable(tc.cfg)
+			err := ValidateDockerConfig(tc.cfg)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("CheckDockerConfigReadable() error = %v, wantErr %v", err, tc.wantErr)
 			}
@@ -61,7 +61,7 @@ func TestCheckDockerConfigReadable(t *testing.T) {
 
 		cfg := loadDockerConfigFile(t, tmpConfigPath)
 
-		err = CheckDockerConfigReadable(cfg)
+		err = ValidateDockerConfig(cfg)
 		if err != nil {
 			t.Fatalf("CheckDockerConfigReadable() error = %v, wantErr false", err)
 		}
@@ -87,7 +87,7 @@ func TestCheckDockerConfigReadable(t *testing.T) {
 			Filename: tmpConfigPath,
 		}
 
-		err = CheckDockerConfigReadable(cfg)
+		err = ValidateDockerConfig(cfg)
 		if err == nil {
 			t.Fatalf("CheckDockerConfigReadable() expected error for unreadable file, got nil")
 		}
@@ -110,7 +110,7 @@ func TestCheckDockerConfigReadable(t *testing.T) {
 			Filename: tmpConfigPath,
 		}
 
-		err = CheckDockerConfigReadable(cfg)
+		err = ValidateDockerConfig(cfg)
 		if err == nil {
 			t.Fatalf("CheckDockerConfigReadable() expected error for invalid config, got nil")
 		}
@@ -131,7 +131,7 @@ func TestCheckDockerConfigReadable(t *testing.T) {
 
 		cfg := loadDockerConfigFile(t, tmpConfigPath)
 
-		err = CheckDockerConfigReadable(cfg)
+		err = ValidateDockerConfig(cfg)
 		if err == nil {
 			t.Fatalf("CheckDockerConfigReadable() expected error for missing credential helper, got nil")
 		}

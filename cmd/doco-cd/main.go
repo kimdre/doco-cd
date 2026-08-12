@@ -220,9 +220,9 @@ func run() error {
 		}
 	}(dockerClient)
 
-	// Check if docker config is readable if it exists
-	if err := registryauth.CheckDockerConfigReadable(dockerCli.ConfigFile()); err != nil {
-		log.Error("docker config readability check failed", logger.ErrAttr(err))
+	if err = registryauth.ValidateDockerConfig(dockerCli.ConfigFile()); err != nil {
+		log.Critical("docker config validation failed", logger.ErrAttr(err))
+		return err
 	}
 
 	if c.DockerSwarmFeatures {
