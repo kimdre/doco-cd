@@ -9,6 +9,8 @@ import (
 
 	"github.com/docker/cli/cli/config/configfile"
 	configtypes "github.com/docker/cli/cli/config/types"
+
+	"github.com/kimdre/doco-cd/internal/filesystem"
 )
 
 func TestCheckDockerConfigReadable(t *testing.T) {
@@ -41,6 +43,7 @@ func TestCheckDockerConfigReadable(t *testing.T) {
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("CheckDockerConfigReadable() error = %v, wantErr %v", err, tc.wantErr)
 			}
+
 			if tc.wantErr && err != nil && tc.errMsg != "" && !strings.Contains(err.Error(), tc.errMsg) {
 				t.Fatalf("CheckDockerConfigReadable() error = %v, want error containing %q", err, tc.errMsg)
 			}
@@ -51,7 +54,7 @@ func TestCheckDockerConfigReadable(t *testing.T) {
 		tmpFile := t.TempDir()
 		tmpConfigPath := filepath.Join(tmpFile, "config.json")
 		// Valid docker config format
-		err := os.WriteFile(tmpConfigPath, []byte(`{"auths":{}}`), 0644)
+		err := os.WriteFile(tmpConfigPath, []byte(`{"auths":{}}`), filesystem.PermOwner)
 		if err != nil {
 			t.Fatalf("failed to create temp config file: %v", err)
 		}
@@ -69,17 +72,18 @@ func TestCheckDockerConfigReadable(t *testing.T) {
 	t.Run("config with unreadable file", func(t *testing.T) {
 		tmpFile := t.TempDir()
 		tmpConfigPath := filepath.Join(tmpFile, "config.json")
-		err := os.WriteFile(tmpConfigPath, []byte(`{"auths":{}}`), 0644)
+
+		err := os.WriteFile(tmpConfigPath, []byte(`{"auths":{}}`), filesystem.PermOwner)
 		if err != nil {
 			t.Fatalf("failed to create temp config file: %v", err)
 		}
 
 		// Change permissions to make unreadable
-		err = os.Chmod(tmpConfigPath, 0000)
+		err = os.Chmod(tmpConfigPath, 0o000)
 		if err != nil {
 			t.Fatalf("failed to change file permissions: %v", err)
 		}
-		defer os.Chmod(tmpConfigPath, 0644)
+		defer os.Chmod(tmpConfigPath, filesystem.PermOwner) // nolint:errcheck
 
 		cfg := &configfile.ConfigFile{
 			Filename: tmpConfigPath,
@@ -89,6 +93,7 @@ func TestCheckDockerConfigReadable(t *testing.T) {
 		if err == nil {
 			t.Fatalf("CheckDockerConfigReadable() expected error for unreadable file, got nil")
 		}
+
 		if !strings.Contains(err.Error(), "not readable") {
 			t.Fatalf("CheckDockerConfigReadable() error = %v, want error containing 'not readable'", err)
 		}
@@ -98,7 +103,7 @@ func TestCheckDockerConfigReadable(t *testing.T) {
 		tmpFile := t.TempDir()
 		tmpConfigPath := filepath.Join(tmpFile, "config.json")
 		// Invalid JSON format
-		err := os.WriteFile(tmpConfigPath, []byte(`{invalid json content}`), 0644)
+		err := os.WriteFile(tmpConfigPath, []byte(`{invalid json content}`), filesystem.PermOwner)
 		if err != nil {
 			t.Fatalf("failed to create temp config file: %v", err)
 		}
@@ -111,6 +116,7 @@ func TestCheckDockerConfigReadable(t *testing.T) {
 		if err == nil {
 			t.Fatalf("CheckDockerConfigReadable() expected error for invalid config, got nil")
 		}
+
 		if !strings.Contains(err.Error(), "invalid") {
 			t.Fatalf("CheckDockerConfigReadable() error = %v, want error containing 'invalid'", err)
 		}
