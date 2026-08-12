@@ -31,6 +31,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/docker/registryauth"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/prometheus"
@@ -218,6 +219,11 @@ func run() error {
 			log.Error("failed to close docker client", logger.ErrAttr(err))
 		}
 	}(dockerClient)
+
+	if err = registryauth.ValidateDockerConfig(dockerCli.ConfigFile()); err != nil {
+		log.Critical("docker config validation failed", logger.ErrAttr(err), slog.String("config_file", dockerCli.ConfigFile().Filename))
+		return err
+	}
 
 	if c.DockerSwarmFeatures {
 		if err := swarm.RefreshModeEnabled(ctx, dockerClient); err != nil {
