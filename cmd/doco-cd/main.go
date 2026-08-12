@@ -355,6 +355,12 @@ func run() error {
 		log.Info("scheduler disabled by configuration")
 	}
 
+	if c.SecretRotationEnabled {
+		StartSecretRotation(ctx, &h, &wg)
+	} else {
+		log.Info("secret rotation monitor disabled by configuration")
+	}
+
 	registryApiServer(c, &h, log)
 	prometheus.RegisterServer(c.MetricsPort, log)
 

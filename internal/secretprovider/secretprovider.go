@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	onepassword "github.com/kimdre/doco-cd/internal/secretprovider/1password"
 	"github.com/kimdre/doco-cd/internal/secretprovider/awssecretsmanager"
@@ -33,6 +34,14 @@ type SecretProvider interface {
 	ResolveSecretReferences(ctx context.Context, secrets map[string]string) (secrettypes.ResolvedSecrets, error)
 	// Close cleans up resources used by the Provider.
 	Close()
+}
+
+// SecretRotationHintProvider is an optional provider capability that can request
+// proactive redeployment before values change. Implementations must only return
+// true when the next resolution is expected to return usable replacement values;
+// reporting metadata such as expiry without rotating upstream would cause a loop.
+type SecretRotationHintProvider interface {
+	ShouldRotateSecretReferences(ctx context.Context, refs map[string]string, rotateBefore time.Duration) (bool, string, error)
 }
 
 // The SecretValueProviderFunc type is an adapter to allow the use of ordinary

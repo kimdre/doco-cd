@@ -292,6 +292,27 @@ The following fields are always inherited from the base/root deployment config:
     - `working_dir` remains auto-discovered (`apps/wordpress/`)  unless explicitly overridden
     - `external_secrets` contains both `SHARED_SECRET` and `WORDPRESS_SECRET_1`
 
+### Secret rotation settings
+
+Use `secret_rotation` to enable auto-rotation checks for deployments that use `external_secrets`.
+When enabled, doco-cd periodically re-resolves external secret references and triggers a redeploy when resolved values change.
+
+| Key             | Type    | Description                                                                                                          | Default value |
+|-----------------|---------|----------------------------------------------------------------------------------------------------------------------|---------------|
+| `enabled`       | boolean | Enable periodic secret-rotation checks for this deployment.                                                          | `false`       |
+| `interval`      | string  | Optional check interval override for this deployment (Go duration format, e.g. `30s`, `5m`, `1h`).                 | Global default (`SECRET_ROTATION_INTERVAL_DEFAULT`) |
+| `rotate_before` | string  | Optional proactive hint window for providers that support preparing replacement values. Currently no built-in provider implements proactive hints. | `0` |
+
+!!! example
+    ```yaml title=".doco-cd.yml"
+    name: some-project
+    external_secrets:
+      DB_PASSWORD: "kv:secret:db-prod:password"
+    secret_rotation:
+      enabled: true
+      interval: 5m
+    ```
+
 ### Build settings
 
 The following settings can be used to build docker images during a deployment (Like `docker compose build` or `docker compose up --build`).

@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/go-git/go-git/v5"
@@ -38,7 +40,10 @@ var (
 	ErrKeyNotFound                   = errors.New("key not found")
 	ErrInvalidFilePath               = errors.New("invalid file path")
 	ErrMultipleYAMLDocuments         = errors.New("nested .doco-cd configuration file must contain only a single YAML document")
+	ErrSecretRotationIntervalTooLow  = errors.New("secret_rotation.interval too low")
 )
+
+const MinSecretRotationInterval = 10 * time.Second
 
 // Config is the structure of the deployment configuration file.
 type Config struct {
@@ -65,6 +70,7 @@ type Config struct {
 	Destroy            DestroyConfig                            `yaml:"destroy" json:"destroy" doco:"allowOverride"`                                                                                                            // Destroy configures destruction of the deployment and related resources
 	Profiles           []string                                 `yaml:"profiles" json:"profiles" default:"[]" doco:"allowOverride"`                                                                                             // Profiles is a list of profiles to use for the deployment, e.g., ["dev", "prod"]. See https://docs.docker.com/compose/how-tos/profiles/
 	ExternalSecrets    map[string]secrettypes.ExternalSecretRef `yaml:"external_secrets" json:"external_secrets" doco:"allowOverride"`                                                                                          // ExternalSecrets maps env vars to legacy string references or structured references (e.g. webhook store_ref/remote_ref).
+	SecretRotation     SecretRotationConfig                     `yaml:"secret_rotation" json:"secret_rotation" doco:"allowOverride"`                                                                                            // SecretRotation enables periodic provider-agnostic checks for external secret changes and triggers redeploys when values rotate.
 	AutoDiscovery      AutoDiscoveryConfig                      `yaml:"auto_discovery" json:"auto_discovery"`                                                                                                                   // AutoDiscovery configures autodiscovery of services to deploy in the working directory
 	Reconciliation     ReconciliationConfig                     `yaml:"reconciliation" json:"reconciliation" doco:"allowOverride"`                                                                                              // Reconciliation is the configuration for the reconciliation feature
 	Oci                config.OciTrustPolicyOverride            `yaml:"oci" json:"oci" doco:"allowOverride"`                                                                                                                    // Oci allows per-target overrides for OCI signature verification policy
@@ -81,6 +87,107 @@ type Config struct {
 type SwarmConfig struct {
 	ConfigRetention *int `yaml:"config_retention,omitempty" json:"config_retention,omitempty"` // ConfigRetention is the number of old Swarm config revisions to keep per resource (excluding the active one). -1 disables automatic pruning. If unset, global DOCKER_SWARM_CONFIG_RETENTION is used.
 	SecretRetention *int `yaml:"secret_retention,omitempty" json:"secret_retention,omitempty"` // SecretRetention is the number of old Swarm secret revisions to keep per resource (excluding the active one). -1 disables automatic pruning. If unset, global DOCKER_SWARM_SECRET_RETENTION is used.
+}
+
+type SecretRotationConfig struct {
+	Enabled      bool          `yaml:"enabled" json:"enabled"`                                 // Enabled turns on automatic secret-rotation checks for this deployment.
+	Interval     time.Duration `yaml:"interval,omitempty" json:"interval,omitempty"`           // Interval overrides the global default check interval.
+	RotateBefore time.Duration `yaml:"rotate_before,omitempty" json:"rotate_before,omitempty"` // RotateBefore is reserved for provider-specific proactive hint integrations.
+}
+
+type rawSecretRotationConfig struct {
+	Enabled      bool `yaml:"enabled" json:"enabled"`
+	Interval     any  `yaml:"interval" json:"interval"`
+	RotateBefore any  `yaml:"rotate_before" json:"rotate_before"`
+}
+
+func (c *SecretRotationConfig) UnmarshalYAML(unmarshal func(any) error) error {
+	var raw rawSecretRotationConfig
+	if err := unmarshal(&raw); err != nil {
+		return err
+	}
+
+	return c.applyRaw(raw)
+}
+
+func (c *SecretRotationConfig) UnmarshalJSON(data []byte) error {
+	var raw rawSecretRotationConfig
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	return c.applyRaw(raw)
+}
+
+func (c *SecretRotationConfig) applyRaw(raw rawSecretRotationConfig) error {
+	interval, err := parseSecretRotationDuration(raw.Interval)
+	if err != nil {
+		return fmt.Errorf("invalid secret_rotation.interval: %w", err)
+	}
+
+	rotateBefore, err := parseSecretRotationDuration(raw.RotateBefore)
+	if err != nil {
+		return fmt.Errorf("invalid secret_rotation.rotate_before: %w", err)
+	}
+
+	c.Enabled = raw.Enabled
+	c.Interval = interval
+	c.RotateBefore = rotateBefore
+
+	return nil
+}
+
+func parseSecretRotationDuration(value any) (time.Duration, error) {
+	switch v := value.(type) {
+	case nil:
+		return 0, nil
+	case time.Duration:
+		return v, nil
+	case string:
+		v = strings.TrimSpace(v)
+		if v == "" {
+			return 0, nil
+		}
+
+		return time.ParseDuration(v)
+	case int:
+		return secretRotationSecondsToDuration(int64(v))
+	case int64:
+		return secretRotationSecondsToDuration(v)
+	case uint:
+		if uint64(v) > math.MaxInt64 {
+			return 0, errors.New("duration is out of range")
+		}
+
+		return secretRotationSecondsToDuration(int64(v))
+	case uint64:
+		if v > math.MaxInt64 {
+			return 0, errors.New("duration is out of range")
+		}
+
+		return secretRotationSecondsToDuration(int64(v))
+	case float64:
+		if math.Trunc(v) != v || v > math.MaxInt64 || v < math.MinInt64 {
+			return 0, errors.New("duration seconds must be a whole number in range")
+		}
+
+		return secretRotationSecondsToDuration(int64(v))
+	default:
+		return 0, fmt.Errorf("unsupported duration type %T", value)
+	}
+}
+
+func secretRotationSecondsToDuration(seconds int64) (time.Duration, error) {
+	const (
+		maxSeconds = int64(math.MaxInt64) / int64(time.Second)
+		minSeconds = int64(math.MinInt64) / int64(time.Second)
+	)
+
+	if seconds > maxSeconds || seconds < minSeconds {
+		return 0, errors.New("duration is out of range")
+	}
+
+	return time.Duration(seconds) * time.Second, nil
 }
 
 // ResolveGitDepth returns the effective git clone depth.
@@ -116,6 +223,16 @@ func (c *Config) ResolveSwarmSecretRetention(globalRetention int) int {
 	}
 
 	return globalRetention
+}
+
+// ResolveSecretRotationInterval returns the effective secret-rotation interval.
+// Deploy-level interval overrides globalDefault when set.
+func (c *Config) ResolveSecretRotationInterval(globalDefault time.Duration) time.Duration {
+	if c.SecretRotation.Interval > 0 {
+		return c.SecretRotation.Interval
+	}
+
+	return globalDefault
 }
 
 // New creates a Config with default values.
@@ -181,6 +298,18 @@ func (c *Config) Validate() error {
 
 	if c.Reconciliation.RestartLimit > 0 && c.Reconciliation.RestartWindow == 0 {
 		return fmt.Errorf("%w: reconciliation.restart_window must be > 0 when reconciliation.restart_limit is set", ErrInvalidConfig)
+	}
+
+	if c.SecretRotation.Interval < 0 {
+		return fmt.Errorf("%w: secret_rotation.interval must be >= 0", ErrInvalidConfig)
+	}
+
+	if c.SecretRotation.RotateBefore < 0 {
+		return fmt.Errorf("%w: secret_rotation.rotate_before must be >= 0", ErrInvalidConfig)
+	}
+
+	if c.SecretRotation.Interval > 0 && c.SecretRotation.Interval < MinSecretRotationInterval {
+		return fmt.Errorf("%w: must be at least %s", ErrSecretRotationIntervalTooLow, MinSecretRotationInterval)
 	}
 
 	c.WorkingDirectory = filepath.Clean(c.WorkingDirectory)

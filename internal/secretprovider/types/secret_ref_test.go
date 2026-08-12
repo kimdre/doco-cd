@@ -91,3 +91,39 @@ func TestEncodeExternalSecretRefs(t *testing.T) {
 		t.Fatalf("expected JSON encoded structured ref, got %q", got["JSON"])
 	}
 }
+
+func TestHashResolvedExternalSecretValues(t *testing.T) {
+	t.Parallel()
+
+	refs := map[string]ExternalSecretRef{
+		"DB_PASSWORD": {LegacyRef: "db/password"},
+		"API_KEY":     {LegacyRef: "api/key"},
+	}
+
+	env1 := map[string]string{
+		"DB_PASSWORD": "secret-a",
+		"API_KEY":     "secret-b",
+	}
+	env2 := map[string]string{
+		"API_KEY":     "secret-b",
+		"DB_PASSWORD": "secret-a",
+	}
+
+	h1, err := HashResolvedExternalSecretValues(refs, env1)
+	if err != nil {
+		t.Fatalf("unexpected hash error: %v", err)
+	}
+
+	h2, err := HashResolvedExternalSecretValues(refs, env2)
+	if err != nil {
+		t.Fatalf("unexpected hash error: %v", err)
+	}
+
+	if h1 == "" || h2 == "" {
+		t.Fatalf("expected non-empty hash")
+	}
+
+	if h1 != h2 {
+		t.Fatalf("expected stable hash regardless of map order, got %q vs %q", h1, h2)
+	}
+}

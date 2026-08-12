@@ -13,6 +13,7 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/kimdre/doco-cd/internal/common/defaults"
 	"github.com/kimdre/doco-cd/internal/common/validation"
@@ -1369,5 +1370,88 @@ auto_discovery:
 
 	if found != expectedTotal {
 		t.Errorf("expected to find %d configs with correct properties, found %d", expectedTotal, found)
+	}
+}
+
+func TestConfigValidate_SecretRotationIntervalTooLow(t *testing.T) {
+	t.Parallel()
+
+	cfg := New("stack", "main")
+	cfg.SecretRotation.Enabled = true
+	cfg.SecretRotation.Interval = MinSecretRotationInterval - time.Second
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatalf("expected validation error")
+	}
+
+	if !errors.Is(err, ErrSecretRotationIntervalTooLow) {
+		t.Fatalf("expected ErrSecretRotationIntervalTooLow, got %v", err)
+	}
+}
+
+func TestConfigResolveSecretRotationInterval(t *testing.T) {
+	t.Parallel()
+
+	cfg := New("stack", "main")
+
+	if got := cfg.ResolveSecretRotationInterval(5 * time.Minute); got != 5*time.Minute {
+		t.Fatalf("expected global default interval, got %s", got)
+	}
+
+	cfg.SecretRotation.Interval = 42 * time.Second
+	if got := cfg.ResolveSecretRotationInterval(5 * time.Minute); got != 42*time.Second {
+		t.Fatalf("expected deploy-level interval, got %s", got)
+	}
+}
+
+func TestSecretRotationConfig_UnmarshalDurations(t *testing.T) {
+	t.Parallel()
+
+	var cfg Config
+
+	err := yaml.Unmarshal([]byte(`
+name: stack
+reference: main
+secret_rotation:
+  enabled: true
+  interval: 45m
+  rotate_before: 168h
+`), &cfg)
+	if err != nil {
+		t.Fatalf("unexpected unmarshal error: %v", err)
+	}
+
+	if !cfg.SecretRotation.Enabled {
+		t.Fatalf("expected secret rotation to be enabled")
+	}
+
+	if cfg.SecretRotation.Interval != 45*time.Minute {
+		t.Fatalf("expected 45m interval, got %s", cfg.SecretRotation.Interval)
+	}
+
+	if cfg.SecretRotation.RotateBefore != 7*24*time.Hour {
+		t.Fatalf("expected 168h rotate_before, got %s", cfg.SecretRotation.RotateBefore)
+	}
+}
+
+func TestSecretRotationConfig_UnmarshalNumericSeconds(t *testing.T) {
+	t.Parallel()
+
+	var cfg Config
+
+	err := yaml.Unmarshal([]byte(`
+name: stack
+reference: main
+secret_rotation:
+  enabled: true
+  interval: 3600
+`), &cfg)
+	if err != nil {
+		t.Fatalf("unexpected unmarshal error: %v", err)
+	}
+
+	if cfg.SecretRotation.Interval != time.Hour {
+		t.Fatalf("expected numeric interval to use seconds, got %s", cfg.SecretRotation.Interval)
 	}
 }

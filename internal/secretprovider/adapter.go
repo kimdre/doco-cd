@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"sync"
+	"time"
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
@@ -128,4 +129,19 @@ func (p *SecretProviderAdapter) ResolveSecretReferences(ctx context.Context, sec
 	}
 
 	return out, nil
+}
+
+// ShouldRotateSecretReferences forwards proactive hint checks when the adapted
+// value provider implements the optional capability.
+func (p *SecretProviderAdapter) ShouldRotateSecretReferences(
+	ctx context.Context,
+	refs map[string]string,
+	rotateBefore time.Duration,
+) (bool, string, error) {
+	hints, ok := p.impl.(SecretRotationHintProvider)
+	if !ok {
+		return false, "", nil
+	}
+
+	return hints.ShouldRotateSecretReferences(ctx, refs, rotateBefore)
 }

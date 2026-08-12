@@ -108,3 +108,44 @@ func (r *RetryingSecretProvider) ResolveSecretReferences(ctx context.Context, se
 		},
 	)
 }
+
+type rotationHintResult struct {
+	shouldRotate bool
+	reason       string
+}
+
+// ShouldRotateSecretReferences forwards proactive rotation hint checks to the
+// wrapped provider when supported and retries on rate-limit failures.
+func (r *RetryingSecretProvider) ShouldRotateSecretReferences(
+	ctx context.Context,
+	refs map[string]string,
+	rotateBefore time.Duration,
+) (bool, string, error) {
+	hints, ok := r.inner.(SecretRotationHintProvider)
+	if !ok {
+		return false, "", nil
+	}
+
+	// Create a copy so retries don't operate on a map potentially mutated by the caller.
+	original := make(map[string]string, len(refs))
+	maps.Copy(original, refs)
+
+	res, err := retry.NewWithData[rotationHintResult](newOptsWithContext(ctx)...).Do(
+		func() (rotationHintResult, error) {
+			attempt := make(map[string]string, len(original))
+			maps.Copy(attempt, original)
+
+			shouldRotate, reason, hintErr := hints.ShouldRotateSecretReferences(ctx, attempt, rotateBefore)
+			if hintErr != nil {
+				return rotationHintResult{}, hintErr
+			}
+
+			return rotationHintResult{shouldRotate: shouldRotate, reason: reason}, nil
+		},
+	)
+	if err != nil {
+		return false, "", err
+	}
+
+	return res.shouldRotate, res.reason, nil
+}

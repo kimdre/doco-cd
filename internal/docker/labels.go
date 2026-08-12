@@ -14,6 +14,7 @@ type docoCdLabelNamesDeployment struct {
 	Timestamp            string // Timestamp of deployment in RFC3339 format
 	ComposeHash          string // SHA256 hash of the generated compose project contents
 	WorkingDir           string // Working Directory where the deployment gets executed
+	DockerContext        string // Docker context targeted by the deployment
 	ConfigTarget         string // Deployment config target suffix (e.g., "nas" for .doco-cd.nas.yml)
 	TargetRef            string // Target reference (branch/tag) of the deployment
 	Trigger              string // Poll or SHA of the commit that triggered the deployment
@@ -21,6 +22,11 @@ type docoCdLabelNamesDeployment struct {
 	ConfigHash           string // SHA256 hash of the deploy-config used during deployment
 	AutoDiscovery        string // Whether the deployment was auto-discovered
 	AutoDiscoveryConfig  string // JSON-serialized AutoDiscoveryConfig settings
+	ExternalSecretsRefs  string // JSON-serialized provider-ready external secret refs (env-var-name → encoded ref)
+	ExternalSecretsHash  string // SHA256 hash of resolved external secret values used in the deployment
+	SecretRotation       string // Whether deploy-level secret rotation checks are enabled
+	SecretRotationPeriod string // Effective secret-rotation interval used by this deployment
+	SecretRotateBefore   string // Provider-hint proactive window for secret rotation checks
 	RecreateIgnore       string // Whether the deployment file changes should ignore recreate
 	RecreateIgnoreSignal string // Signal service when deployment file changes and ignore recreate
 }
@@ -30,6 +36,7 @@ type docoCdLabelNamesSource struct {
 	Type string // Source type (git or oci)
 	Name string // Repository or artifact name
 	URL  string // Repository or artifact URL
+	Ref  string // Original source branch/tag used to load deployment configuration
 }
 
 // docoCdLabelNames contains the labels used by DocoCD to identify deployed containers and their metadata.
@@ -50,6 +57,7 @@ var DocoCDLabels = docoCdLabelNames{
 		Timestamp:            "cd.doco.deployment.timestamp",
 		ComposeHash:          "cd.doco.deployment.compose.sha",
 		WorkingDir:           "cd.doco.deployment.working_dir",
+		DockerContext:        "cd.doco.deployment.docker_context",
 		ConfigTarget:         "cd.doco.deployment.config.target",
 		TargetRef:            "cd.doco.deployment.target.ref",
 		CommitSHA:            "cd.doco.deployment.target.sha",
@@ -57,6 +65,11 @@ var DocoCDLabels = docoCdLabelNames{
 		ConfigHash:           "cd.doco.deployment.config.sha",
 		AutoDiscovery:        "cd.doco.deployment.auto_discovery",
 		AutoDiscoveryConfig:  "cd.doco.deployment.auto_discovery.config",
+		ExternalSecretsRefs:  "cd.doco.deployment.external_secrets.refs", // #nosec G101
+		ExternalSecretsHash:  "cd.doco.deployment.external_secrets.sha",  // #nosec G101
+		SecretRotation:       "cd.doco.deployment.secret_rotation",
+		SecretRotationPeriod: "cd.doco.deployment.secret_rotation.period",
+		SecretRotateBefore:   "cd.doco.deployment.secret_rotation.rotate_before",
 		RecreateIgnore:       "cd.doco.deployment.recreate.ignore",
 		RecreateIgnoreSignal: "cd.doco.deployment.recreate.ignore.signal",
 	},
@@ -64,6 +77,7 @@ var DocoCDLabels = docoCdLabelNames{
 		Type: "cd.doco.source",
 		Name: "cd.doco.source.name",
 		URL:  "cd.doco.source.url",
+		Ref:  "cd.doco.source.ref",
 	},
 }
 

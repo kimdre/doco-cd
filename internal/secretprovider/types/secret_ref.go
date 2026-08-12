@@ -1,8 +1,10 @@
 package secrettypes
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"go.yaml.in/yaml/v4"
 )
@@ -124,4 +126,32 @@ func EncodeExternalSecretRefs(in map[string]ExternalSecretRef) (map[string]strin
 	}
 
 	return out, nil
+}
+
+// HashResolvedExternalSecretValues creates a stable digest for the subset of
+// resolved environment values sourced from external_secrets.
+func HashResolvedExternalSecretValues(
+	refs map[string]ExternalSecretRef,
+	resolvedEnv map[string]string,
+) (string, error) {
+	if len(refs) == 0 {
+		return "", nil
+	}
+
+	values := make(map[string]string, len(refs))
+	for envName := range refs {
+		values[envName] = resolvedEnv[envName]
+	}
+
+	return HashResolvedExternalSecretValuesFromMap(values)
+}
+
+// HashResolvedExternalSecretValuesFromMap hashes any map of stable secret values.
+func HashResolvedExternalSecretValuesFromMap(values map[string]string) (string, error) {
+	b, err := json.Marshal(values)
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%x", sha256.Sum256(b)), nil
 }

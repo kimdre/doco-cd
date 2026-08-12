@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/docker/cli/cli/command"
@@ -156,6 +157,40 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 			err:            err,
 			msg:            "invalid source type",
 			httpStatusCode: http.StatusBadRequest,
+		}
+	}
+
+	// Poll-triggered deployments do not carry webhook metadata. Normalize the
+	// canonical source identity here so deployed labels remain replayable by
+	// background features such as external secret rotation.
+	if strings.TrimSpace(payload.Ref) == "" {
+		payload.Ref = strings.TrimSpace(ref)
+	}
+
+	if strings.TrimSpace(payload.WebURL) == "" {
+		payload.WebURL = strings.TrimSpace(sourceRef)
+	}
+
+	if strings.TrimSpace(payload.Trigger) == "" {
+		payload.Trigger = string(jobTrigger)
+	}
+
+	switch sourceType {
+	case config.SourceTypeOCI:
+		payload.Source = webhook.PayloadSourceOCI
+		if strings.TrimSpace(payload.Artifact) == "" {
+			payload.Artifact = strings.TrimSpace(sourceRef)
+		}
+
+		if strings.TrimSpace(payload.FullName) == "" {
+			payload.FullName = oci.RepositoryNameFromArtifact(sourceRef)
+		}
+	case config.SourceTypeGit:
+		payload.Source = webhook.PayloadSourceGit
+
+		payload.CloneURL = strings.TrimSpace(sourceRef)
+		if strings.TrimSpace(payload.FullName) == "" {
+			payload.FullName = git.GetFullName(sourceRef)
 		}
 	}
 
@@ -345,6 +380,19 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 				err:            err,
 				msg:            "failed to get deploy configuration",
 				httpStatusCode: http.StatusInternalServerError,
+			}
+		}
+
+		if deploymentName := strings.TrimSpace(pollConfig.DeploymentName); deploymentName != "" {
+			deployConfigs = slices.DeleteFunc(deployConfigs, func(cfg *deploy.Config) bool {
+				return cfg == nil || cfg.Name != deploymentName
+			})
+			if len(deployConfigs) == 0 {
+				return handleError{
+					err:            fmt.Errorf("deployment configuration %q not found", deploymentName),
+					msg:            "failed to get deploy configuration",
+					httpStatusCode: http.StatusInternalServerError,
+				}
 			}
 		}
 	default:

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"go.yaml.in/yaml/v4"
@@ -61,6 +62,8 @@ type Config struct {
 	SkipTLSVerification           bool                   `env:"SKIP_TLS_VERIFICATION,notEmpty" envDefault:"false"`                       // SkipTLSVerification skips the TLS verification when cloning repositories.
 	DockerQuietDeploy             bool                   `env:"DOCKER_QUIET_DEPLOY,notEmpty" envDefault:"true"`                          // DockerQuietDeploy suppresses the status output of dockerCli in deployments (e.g. pull, create, start)
 	SchedulerEnabled              bool                   `env:"SCHEDULER_ENABLED,notEmpty" envDefault:"true"`                            // SchedulerEnabled controls whether the built-in scheduled job runner is started in this doco-cd instance
+	SecretRotationEnabled         bool                   `env:"SECRET_ROTATION_ENABLED,notEmpty" envDefault:"true"`                      // SecretRotationEnabled controls whether this instance runs deploy-level external secret rotation checks.
+	SecretRotationIntervalDefault time.Duration          `env:"SECRET_ROTATION_INTERVAL_DEFAULT,notEmpty" envDefault:"1h"`               // SecretRotationIntervalDefault is the global default interval for deploy-level secret_rotation checks when not overridden.
 	DockerSwarmFeatures           bool                   `env:"DOCKER_SWARM_FEATURES,notEmpty" envDefault:"true"`                        // DockerSwarmFeatures enables the usage Docker Swarm features in the application if it has detected that it is running in a Docker Swarm environment
 	DockerSwarmConfigRetention    int                    `env:"DOCKER_SWARM_CONFIG_RETENTION,notEmpty" envDefault:"0" validate:"min=-1"` // DockerSwarmConfigRetention is the global default number of old Swarm config revisions to keep per resource (excluding the active one). -1 disables automatic pruning.
 	DockerSwarmSecretRetention    int                    `env:"DOCKER_SWARM_SECRET_RETENTION,notEmpty" envDefault:"0" validate:"min=-1"` // DockerSwarmSecretRetention is the global default number of old Swarm secret revisions to keep per resource (excluding the active one). -1 disables automatic pruning.

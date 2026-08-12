@@ -139,7 +139,7 @@ This is required for future compose operations to work, such as finding
 containers that are part of a service.
 */
 func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
-	workingDir, appVersion, timestamp, composeVersion, latestCommit, projectHash, externalSecretsJSON string,
+	workingDir, appVersion, timestamp, composeVersion, latestCommit, projectHash, externalSecretsJSON, externalSecretsHash string,
 ) {
 	for i, s := range project.Services {
 		// Extract service dependencies (depends_on)
@@ -157,6 +157,7 @@ func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config
 			DocoCDLabels.Deployment.Timestamp:           timestamp,
 			DocoCDLabels.Deployment.ComposeHash:         projectHash,
 			DocoCDLabels.Deployment.WorkingDir:          workingDir,
+			DocoCDLabels.Deployment.DockerContext:       strings.TrimSpace(deployConfig.Context),
 			DocoCDLabels.Deployment.ConfigTarget:        deployConfig.Internal.ConfigTarget,
 			DocoCDLabels.Deployment.Trigger:             payload.TriggerString(),
 			DocoCDLabels.Deployment.CommitSHA:           latestCommit,
@@ -164,9 +165,11 @@ func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config
 			DocoCDLabels.Deployment.ConfigHash:          deployConfig.Internal.Hash,
 			DocoCDLabels.Deployment.AutoDiscovery:       strconv.FormatBool(deployConfig.AutoDiscovery.Enabled),
 			DocoCDLabels.Deployment.AutoDiscoveryConfig: MarshalAutoDiscoveryConfig(deployConfig.AutoDiscovery),
+			DocoCDLabels.Deployment.SecretRotation:      strconv.FormatBool(deployConfig.SecretRotation.Enabled),
 			DocoCDLabels.Source.Type:                    SourceTypeLabelValue(string(payload.Source), string(deployConfig.Source)),
 			DocoCDLabels.Source.Name:                    payload.FullName,
-			DocoCDLabels.Source.URL:                     payload.WebURL,
+			DocoCDLabels.Source.URL:                     sourceURLLabelValue(payload),
+			DocoCDLabels.Source.Ref:                     payload.Ref,
 			api.ProjectLabel:                            project.Name,
 			api.ServiceLabel:                            s.Name,
 			api.WorkingDirLabel:                         project.WorkingDir,
@@ -177,11 +180,36 @@ func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config
 		}
 
 		if externalSecretsJSON != "" {
+			s.CustomLabels[DocoCDLabels.Deployment.ExternalSecretsRefs] = externalSecretsJSON
 			s.CustomLabels[DocoCDJobLabels.JobExternalSecretRefs] = externalSecretsJSON
+		}
+
+		if externalSecretsHash != "" {
+			s.CustomLabels[DocoCDLabels.Deployment.ExternalSecretsHash] = externalSecretsHash
+		}
+
+		if deployConfig.SecretRotation.Interval > 0 {
+			s.CustomLabels[DocoCDLabels.Deployment.SecretRotationPeriod] = deployConfig.SecretRotation.Interval.String()
+		}
+
+		if deployConfig.SecretRotation.RotateBefore > 0 {
+			s.CustomLabels[DocoCDLabels.Deployment.SecretRotateBefore] = deployConfig.SecretRotation.RotateBefore.String()
 		}
 
 		project.Services[i] = s
 	}
+}
+
+func sourceURLLabelValue(payload *webhook.ParsedPayload) string {
+	if payload.Source == webhook.PayloadSourceOCI {
+		return strings.TrimSpace(payload.Artifact)
+	}
+
+	if cloneURL := strings.TrimSpace(payload.CloneURL); cloneURL != "" {
+		return cloneURL
+	}
+
+	return strings.TrimSpace(payload.WebURL)
 }
 
 func addComposeVolumeLabels(project *types.Project, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
@@ -725,6 +753,33 @@ func DeployStack(
 		return fmt.Errorf("failed to generate project hash: %w", err)
 	}
 
+	var (
+		externalSecretsJSON string
+		externalSecretsHash string
+	)
+
+	if len(deployConfig.ExternalSecrets) > 0 {
+		encodedRefs, encErr := secrettypes.EncodeExternalSecretRefs(deployConfig.ExternalSecrets)
+		if encErr != nil {
+			return fmt.Errorf("failed to encode external secret refs for label: %w", encErr)
+		}
+
+		b, marshalErr := json.Marshal(encodedRefs)
+		if marshalErr != nil {
+			return fmt.Errorf("failed to marshal external secret refs label: %w", marshalErr)
+		}
+
+		externalSecretsJSON = string(b)
+
+		externalSecretsHash, err = secrettypes.HashResolvedExternalSecretValues(
+			deployConfig.ExternalSecrets,
+			deployConfig.Internal.Environment,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to hash resolved external secret values: %w", err)
+		}
+	}
+
 	// When SwarmModeEnabled is true, we deploy the stack using Docker Swarm.
 	if swarmMode {
 		swarmConfigRetention := deployConfig.ResolveSwarmConfigRetention(globalSwarmConfigRetention)
@@ -739,7 +794,11 @@ func DeployStack(
 			return fmt.Errorf("failed to load swarm stack: %w", err)
 		}
 
-		addSwarmServiceLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit, projectHash)
+		addSwarmServiceLabels(
+			cfg, deployConfig, payload, externalWorkingDir,
+			appVersion, timestamp, latestCommit, projectHash,
+			externalSecretsJSON, externalSecretsHash,
+		)
 		addSwarmVolumeLabels(cfg, deployConfig, payload, externalWorkingDir)
 		addSwarmConfigLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
 		addSwarmSecretLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
@@ -803,25 +862,11 @@ func DeployStack(
 			}
 		}
 	} else {
-		// Encode external secret refs (just the references, not resolved values) into a JSON label
-		// so the scheduler can re-resolve them at run time for environment-backed compose secrets.
-		var externalSecretsJSON string
-
-		if len(deployConfig.ExternalSecrets) > 0 {
-			encodedRefs, encErr := secrettypes.EncodeExternalSecretRefs(deployConfig.ExternalSecrets)
-			if encErr != nil {
-				return fmt.Errorf("failed to encode external secret refs for label: %w", encErr)
-			}
-
-			b, marshalErr := json.Marshal(encodedRefs)
-			if marshalErr != nil {
-				return fmt.Errorf("failed to marshal external secret refs label: %w", marshalErr)
-			}
-
-			externalSecretsJSON = string(b)
-		}
-
-		addComposeServiceLabels(project, deployConfig, payload, externalWorkingDir, appVersion, timestamp, ComposeVersion, latestCommit, projectHash, externalSecretsJSON)
+		addComposeServiceLabels(
+			project, deployConfig, payload, externalWorkingDir, appVersion,
+			timestamp, ComposeVersion, latestCommit, projectHash,
+			externalSecretsJSON, externalSecretsHash,
+		)
 		addComposeVolumeLabels(project, deployConfig, payload, appVersion, timestamp, ComposeVersion, latestCommit, projectHash)
 
 		forcedServices := set.New[string]() // services to recreate if project files changed

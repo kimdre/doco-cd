@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
@@ -17,9 +18,11 @@ type mockSecretProvider struct {
 	getSecretFunc          func(ctx context.Context, id string) (string, error)
 	getSecretsFunc         func(ctx context.Context, ids []string) (map[string]string, error)
 	resolveSecretRefsFunc  func(ctx context.Context, secrets map[string]string) (secrettypes.ResolvedSecrets, error)
+	rotationHintFunc       func(ctx context.Context, refs map[string]string, rotateBefore time.Duration) (bool, string, error)
 	getSecretCalls         atomic.Int32
 	getSecretsCalls        atomic.Int32
 	resolveSecretRefsCalls atomic.Int32
+	rotationHintCalls      atomic.Int32
 	closeCalled            atomic.Int32
 }
 
@@ -39,6 +42,20 @@ func (m *mockSecretProvider) GetSecrets(ctx context.Context, ids []string) (map[
 func (m *mockSecretProvider) ResolveSecretReferences(ctx context.Context, secrets map[string]string) (secrettypes.ResolvedSecrets, error) {
 	m.resolveSecretRefsCalls.Add(1)
 	return m.resolveSecretRefsFunc(ctx, secrets)
+}
+
+func (m *mockSecretProvider) ShouldRotateSecretReferences(
+	ctx context.Context,
+	refs map[string]string,
+	rotateBefore time.Duration,
+) (bool, string, error) {
+	m.rotationHintCalls.Add(1)
+
+	if m.rotationHintFunc == nil {
+		return false, "", nil
+	}
+
+	return m.rotationHintFunc(ctx, refs, rotateBefore)
 }
 
 var (
@@ -222,6 +239,48 @@ func TestRetryingSecretProvider_ResolveSecretReferences_RetriesOnRateLimit(t *te
 
 	if totalCalls := mock.resolveSecretRefsCalls.Load(); totalCalls != 3 {
 		t.Errorf("expected 3 calls (2 retries + 1 success), got %d", totalCalls)
+	}
+}
+
+func TestRetryingSecretProvider_ShouldRotateSecretReferences_ForwardsWhenSupported(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockSecretProvider{
+		name: "test",
+		rotationHintFunc: func(_ context.Context, refs map[string]string, rotateBefore time.Duration) (bool, string, error) {
+			if rotateBefore <= 0 {
+				t.Fatalf("expected positive rotateBefore")
+			}
+
+			if len(refs) != 1 || refs["CERT"] == "" {
+				t.Fatalf("unexpected refs: %#v", refs)
+			}
+
+			return true, "expiring soon", nil
+		},
+	}
+
+	subject := NewRetryingSecretProvider(mock)
+
+	ok, reason, err := subject.ShouldRotateSecretReferences(
+		t.Context(),
+		map[string]string{"CERT": "pki:pki:test.example.com"},
+		time.Hour,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !ok {
+		t.Fatalf("expected proactive rotate=true")
+	}
+
+	if reason == "" {
+		t.Fatalf("expected non-empty reason")
+	}
+
+	if calls := mock.rotationHintCalls.Load(); calls != 1 {
+		t.Fatalf("expected 1 hint call, got %d", calls)
 	}
 }
 

@@ -131,7 +131,19 @@ func stableSwarmMetadataLabels(deployConfig *deploy.Config, payload *webhook.Par
 // service spec is not available.
 func addSwarmServiceLabels(stack *composetypes.Config, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
 	repoDir, appVersion, timestamp, latestCommit, projectHash string,
+	externalSecrets ...string,
 ) {
+	externalSecretsJSON := ""
+	externalSecretsHash := ""
+
+	if len(externalSecrets) > 0 {
+		externalSecretsJSON = externalSecrets[0]
+	}
+
+	if len(externalSecrets) > 1 {
+		externalSecretsHash = externalSecrets[1]
+	}
+
 	stableLabels := stableSwarmMetadataLabels(deployConfig, payload, repoDir)
 
 	serviceSpecLabels := map[string]string{
@@ -141,9 +153,28 @@ func addSwarmServiceLabels(stack *composetypes.Config, deployConfig *deploy.Conf
 		DocoCDLabels.Deployment.Trigger:             payload.TriggerString(),
 		DocoCDLabels.Deployment.CommitSHA:           latestCommit,
 		DocoCDLabels.Deployment.ConfigHash:          deployConfig.Internal.Hash,
+		DocoCDLabels.Deployment.DockerContext:       strings.TrimSpace(deployConfig.Context),
 		DocoCDLabels.Deployment.AutoDiscovery:       strconv.FormatBool(deployConfig.AutoDiscovery.Enabled),
 		DocoCDLabels.Deployment.AutoDiscoveryConfig: MarshalAutoDiscoveryConfig(deployConfig.AutoDiscovery),
-		DocoCDLabels.Source.URL:                     payload.WebURL,
+		DocoCDLabels.Deployment.SecretRotation:      strconv.FormatBool(deployConfig.SecretRotation.Enabled),
+		DocoCDLabels.Source.URL:                     sourceURLLabelValue(payload),
+		DocoCDLabels.Source.Ref:                     payload.Ref,
+	}
+
+	if deployConfig.SecretRotation.Interval > 0 {
+		serviceSpecLabels[DocoCDLabels.Deployment.SecretRotationPeriod] = deployConfig.SecretRotation.Interval.String()
+	}
+
+	if deployConfig.SecretRotation.RotateBefore > 0 {
+		serviceSpecLabels[DocoCDLabels.Deployment.SecretRotateBefore] = deployConfig.SecretRotation.RotateBefore.String()
+	}
+
+	if externalSecretsJSON != "" {
+		serviceSpecLabels[DocoCDLabels.Deployment.ExternalSecretsRefs] = externalSecretsJSON
+	}
+
+	if externalSecretsHash != "" {
+		serviceSpecLabels[DocoCDLabels.Deployment.ExternalSecretsHash] = externalSecretsHash
 	}
 
 	maps.Copy(serviceSpecLabels, stableLabels)
