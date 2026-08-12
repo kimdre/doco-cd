@@ -53,7 +53,7 @@ Run the tests with `make test` or `make test-verbose` and run specific tests wit
 
 You can provide container registry credentials to avoid rate limiting issues when running tests.
 
-Follow the [Accessing private container registries](https://doco.cd/latest/Advanced/Private-Container-Registries/) Guide in the docs for more information.
+Follow the [Container Registry Authentication](https://doco.cd/latest/Advanced/Container-Registry-Authentication/) Guide in the docs for more information.
 
 ### Building from Source
 

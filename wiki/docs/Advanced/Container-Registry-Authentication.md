@@ -5,22 +5,22 @@ tags:
   - Docker
 ---
 
-# Private Container Registries
+# Container Registry Authentication
 
-To access a private container registry, you need to provide the credentials by adding the docker config file `~/.docker/config.json` to the doco-cd container.
+This page covers how to configure authentication for container registries, including private registries. To access a registry that requires authentication, you need to provide the credentials by adding the docker config file `~/.docker/config.json` (see also [`DOCKER_CONFIG`](../Docker-Settings.md#common-environment-variables)) to the doco-cd container.
 
 ## Supported credential setups
 
-doco-cd uses Docker CLI auth resolution. The following setups are supported:
+Doco-CD uses Docker CLI auth resolution. The following setups are supported:
 
 - Inline credentials in `auths` (recommended), either in [mounted `config.json`](#mounting-an-existing-docker-config-file) or via [`DOCKER_AUTH_CONFIG`](#using-docker_auth_config).
 - `credsStore` / `credHelpers` based configs **only if** the matching `docker-credential-*` helper binaries are available inside the doco-cd container.
 
-If your host `config.json` references helpers that are not available in the container, registry authentication will fail even though the file is mounted.
+If your host `config.json` references helpers that are not available in the container, registry authentication will fail.
 
 ## Mounting an existing docker config file
 
-You can mount your existing `~/.docker/config.json` file from the host to the container if you have already added the credentials using `docker login` on the host machine.
+You can mount your existing `~/.docker/config.json` (see also [`DOCKER_CONFIG`](../Docker-Settings.md#common-environment-variables)) file from the host to the container if you have already added the credentials using `docker login` on the host machine.
 
 ??? example "How to add credentials using `docker login`"
 
@@ -41,8 +41,13 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - data:/data
-      - ~/.docker/config.json:/root/.docker/config.json:ro
+      - ~/.docker/config.json:/root/.docker/config.json:ro # !(1)!
 ```
+
+1. The `:ro` option mounts the file as read-only.
+
+!!! note "File permissions"
+    Make sure the mounted file has the correct permissions and is readable inside the container.
 
 ## Using a custom docker config file
 
