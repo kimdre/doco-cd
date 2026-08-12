@@ -221,7 +221,7 @@ func run() error {
 	}(dockerClient)
 
 	if err = registryauth.ValidateDockerConfig(dockerCli.ConfigFile()); err != nil {
-		log.Critical("docker config validation failed", logger.ErrAttr(err))
+		log.Critical("docker config validation failed", logger.ErrAttr(err), slog.String("config_file", dockerCli.ConfigFile().Filename))
 		return err
 	}
 
