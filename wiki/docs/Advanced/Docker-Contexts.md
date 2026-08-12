@@ -130,7 +130,7 @@ services:
 
     1. Adjust the `chmod` command accordingly, depending on your SSH key filenames.
 
-If you need private registry access, ensure the mounted Docker config includes required auth data (see [Private Container Registries](Private-Container-Registries.md)).
+If you need private registry access, ensure the mounted Docker config includes required auth data (see [Container Registry Authentication](Container-Registry-Authentication.md)).
 
 ## 4. Reference context in deployment config
 

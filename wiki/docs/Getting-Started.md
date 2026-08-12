@@ -130,7 +130,7 @@ See the [External Secrets](External-Secrets/index.md) wiki page for more informa
 
 ### Pulling images from a private registry
 
-If you want to pull images from a private registry, see [Private Container Registries](Advanced/Private-Container-Registries.md) in the wiki.
+If you want to pull images from a private registry, see [Container Registry Authentication](Advanced/Container-Registry-Authentication.md) in the wiki.
 
 ### Self-updating doco-cd
 
