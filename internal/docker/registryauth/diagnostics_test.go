@@ -59,9 +59,7 @@ func TestCheckDockerConfigReadable(t *testing.T) {
 			t.Fatalf("failed to create temp config file: %v", err)
 		}
 
-		cfg := &configfile.ConfigFile{
-			Filename: tmpConfigPath,
-		}
+		cfg := loadDockerConfigFile(t, tmpConfigPath)
 
 		err = CheckDockerConfigReadable(cfg)
 		if err != nil {
@@ -121,6 +119,54 @@ func TestCheckDockerConfigReadable(t *testing.T) {
 			t.Fatalf("CheckDockerConfigReadable() error = %v, want error containing 'invalid'", err)
 		}
 	})
+
+	t.Run("config with missing credential helper binaries", func(t *testing.T) {
+		tmpFile := t.TempDir()
+		tmpConfigPath := filepath.Join(tmpFile, "config.json")
+		// Valid config with global and registry-specific helpers that are unavailable.
+		err := os.WriteFile(tmpConfigPath, []byte(`{"credsStore":"fake-global-helper-12345","credHelpers":{"ghcr.io":"fake-registry-helper-12345"}}`), filesystem.PermOwner)
+		if err != nil {
+			t.Fatalf("failed to create temp config file: %v", err)
+		}
+
+		cfg := loadDockerConfigFile(t, tmpConfigPath)
+
+		err = CheckDockerConfigReadable(cfg)
+		if err == nil {
+			t.Fatalf("CheckDockerConfigReadable() expected error for missing credential helper, got nil")
+		}
+
+		if !strings.Contains(err.Error(), "missing credential helper binaries") {
+			t.Fatalf("CheckDockerConfigReadable() error = %v, want error containing 'missing credential helper binaries'", err)
+		}
+
+		for _, helper := range []string{"fake-global-helper-12345", "fake-registry-helper-12345"} {
+			if !strings.Contains(err.Error(), helper) {
+				t.Fatalf("CheckDockerConfigReadable() error = %v, want error containing %q", err, helper)
+			}
+		}
+	})
+}
+
+func loadDockerConfigFile(t *testing.T, configPath string) *configfile.ConfigFile {
+	t.Helper()
+
+	file, err := os.Open(configPath)
+	if err != nil {
+		t.Fatalf("failed to open temp config file: %v", err)
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			t.Errorf("failed to close temp config file: %v", err)
+		}
+	}()
+
+	cfg := configfile.New(configPath)
+	if err := cfg.LoadFromReader(file); err != nil {
+		t.Fatalf("failed to load temp config file: %v", err)
+	}
+
+	return cfg
 }
 
 func TestIsAuthRelatedError(t *testing.T) {

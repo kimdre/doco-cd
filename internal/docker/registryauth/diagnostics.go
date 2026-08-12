@@ -26,6 +26,7 @@ const (
 // for the current user in the container. It checks the path specified by the
 // DOCKER_CONFIG environment variable or defaults to ~/.docker/config.json.
 // Returns an error if the config file exists but is not readable or contains invalid content.
+// Also checks for missing credential helper binaries configured in the docker config.
 func CheckDockerConfigReadable(cfg *configfile.ConfigFile) error {
 	if cfg == nil {
 		return errors.New("docker config is nil")
@@ -48,7 +49,6 @@ func CheckDockerConfigReadable(cfg *configfile.ConfigFile) error {
 		}
 	}
 
-	// Normalize the path to prevent path traversal
 	configPath = filepath.Clean(configPath)
 
 	// Check if the config file exists
@@ -72,6 +72,11 @@ func CheckDockerConfigReadable(cfg *configfile.ConfigFile) error {
 		return err
 	}
 
+	// Check for missing credential helper binaries configured in docker config
+	if err := checkMissingCredentialHelpers(cfg); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -86,6 +91,26 @@ func validateDockerConfigContent(configPath string) error {
 	testCfg := configfile.New(configPath)
 	if err := testCfg.LoadFromReader(file); err != nil {
 		return fmt.Errorf("docker config file %q is invalid: %w", configPath, err)
+	}
+
+	return nil
+}
+
+// checkMissingCredentialHelpers verifies that all credential helpers configured in the docker config
+// are available in the system's PATH. Returns an error with details about missing helpers.
+func checkMissingCredentialHelpers(cfg *configfile.ConfigFile) error {
+	if cfg == nil {
+		return nil
+	}
+
+	// If no credential helpers are configured, there's nothing to check
+	if cfg.CredentialsStore == "" && len(cfg.CredentialHelpers) == 0 {
+		return nil
+	}
+
+	missing := missingConfiguredCredentialHelpers(cfg)
+	if len(missing) > 0 {
+		return fmt.Errorf("missing credential helper binaries in container: %s", strings.Join(missing, ", "))
 	}
 
 	return nil
@@ -226,10 +251,32 @@ func registriesWithoutConfigAuth(cfg *configfile.ConfigFile, registries []string
 // missingCredentialHelpers returns a list of credential helpers that are configured
 // in the Docker config file but are not found in the system's PATH.
 func missingCredentialHelpers(cfg *configfile.ConfigFile, registries []string) []string {
-	helperByName := map[string]string{}
+	helpers := make([]string, 0, len(registries))
 
 	for _, registry := range registries {
-		helper := configuredHelper(cfg, registry)
+		helpers = append(helpers, configuredHelper(cfg, registry))
+	}
+
+	return missingCredentialHelperBinaries(helpers)
+}
+
+// missingConfiguredCredentialHelpers returns missing helpers explicitly configured
+// by the Docker config, including both the global store and registry-specific helpers.
+func missingConfiguredCredentialHelpers(cfg *configfile.ConfigFile) []string {
+	helpers := make([]string, 0, len(cfg.CredentialHelpers)+1)
+	helpers = append(helpers, cfg.CredentialsStore)
+
+	for _, helper := range cfg.CredentialHelpers {
+		helpers = append(helpers, helper)
+	}
+
+	return missingCredentialHelperBinaries(helpers)
+}
+
+func missingCredentialHelperBinaries(helpers []string) []string {
+	helperByName := map[string]string{}
+
+	for _, helper := range helpers {
 		if helper == "" {
 			continue
 		}
