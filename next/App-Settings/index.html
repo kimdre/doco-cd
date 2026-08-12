@@ -410,7 +410,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../Advanced/Docker-API-Permissions/" class="md-tabs__link">
+        <a href="../Advanced/Container-Registry-Authentication/" class="md-tabs__link">
           
   
   Advanced
@@ -1299,6 +1299,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../Advanced/Container-Registry-Authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Container Registry Authentication
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../Advanced/Docker-API-Permissions/" class="md-nav__link">
         
   
@@ -1413,7 +1440,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_5" >
         
           
           <div class="md-nav__link md-nav__container">
@@ -1434,14 +1461,14 @@
             </a>
             
               
-              <label class="md-nav__link " for="__nav_4_4" id="__nav_4_4_label" tabindex="0">
+              <label class="md-nav__link " for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
           </div>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4_4">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1758,10 +1785,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_8" >
         
           
-          <label class="md-nav__link" for="__nav_4_7" id="__nav_4_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4_8" id="__nav_4_8_label" tabindex="0">
             
   
   
@@ -1778,8 +1805,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_8">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1919,33 +1946,6 @@
     
   
   Pre- / Post-Deployment Scripts
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../Advanced/Private-Container-Registries/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Private Container Registries
 
     
   </span>
@@ -3170,7 +3170,7 @@ You can still use <a href="https://docs.docker.com/compose/how-tos/use-secrets/"
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>docker<span class="w"> </span>service<span class="w"> </span>ps<span class="w"> </span>doco-cd_app
 </span></code></pre></div>
 <h2 id="pulling-images-from-a-private-registry">Pulling images from a private registry<a class="headerlink" href="#pulling-images-from-a-private-registry" title="Permanent link">&para;</a></h2>
-<p>If you want to pull images from a private registry, see <a data-preview="" href="../Advanced/Private-Container-Registries/">Private Container Registries</a> in the wiki.</p>
+<p>If you want to pull images from a private registry, see <a data-preview="" href="../Advanced/Container-Registry-Authentication/">Container Registry Authentication</a> in the wiki.</p>
 <h2 id="source-url-rewrites">Source URL Rewrites<a class="headerlink" href="#source-url-rewrites" title="Permanent link">&para;</a></h2>
 <p><code>SOURCE_URL_REWRITES</code> (and <code>SOURCE_URL_REWRITES_FILE</code>) let you rewrite git source URLs before doco-cd clones them. Rules apply to both webhook- and poll-triggered deployments.</p>
 <p>This is useful when your Git provider advertises a public URL (in webhook payloads or poll configs) but doco-cd should clone through an internal network path instead — for example when your Forgejo instance is behind a reverse proxy with a public domain, but is reachable directly over a Docker network.</p>
