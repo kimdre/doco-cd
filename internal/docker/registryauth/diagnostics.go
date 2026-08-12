@@ -43,9 +43,13 @@ func CheckDockerConfigReadable(cfg *configfile.ConfigFile) error {
 			if err != nil {
 				return fmt.Errorf("failed to determine home directory: %w", err)
 			}
+
 			configPath = filepath.Join(homeDir, ".docker", "config.json")
 		}
 	}
+
+	// Normalize the path to prevent path traversal
+	configPath = filepath.Clean(configPath)
 
 	// Check if the config file exists
 	fileInfo, err := os.Stat(configPath)
@@ -54,6 +58,7 @@ func CheckDockerConfigReadable(cfg *configfile.ConfigFile) error {
 			// Config file doesn't exist, which is acceptable
 			return nil
 		}
+
 		return fmt.Errorf("failed to check docker config file %q: %w", configPath, err)
 	}
 
