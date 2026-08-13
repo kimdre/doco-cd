@@ -68,16 +68,7 @@ func ValidateDockerConfig(cfg *configfile.ConfigFile) error {
 	}
 
 	// Verify the file is readable and contains valid content using docker's own loader
-	if err := validateDockerConfigContent(configPath); err != nil {
-		return err
-	}
-
-	// Check for missing credential helper binaries configured in docker config
-	if err := checkMissingCredentialHelpers(cfg); err != nil {
-		return err
-	}
-
-	return nil
+	return validateDockerConfigContent(configPath)
 }
 
 // validateDockerConfigContent checks if the docker config file is readable and contains valid content.
@@ -96,24 +87,28 @@ func validateDockerConfigContent(configPath string) error {
 	return nil
 }
 
-// checkMissingCredentialHelpers verifies that all credential helpers configured in the docker config
-// are available in the system's PATH. Returns an error with details about missing helpers.
-func checkMissingCredentialHelpers(cfg *configfile.ConfigFile) error {
-	if cfg == nil {
+// MissingHelper describes a credential helper binary that is configured in the
+// docker config but absent from the container's PATH.
+type MissingHelper struct {
+	// Helper is the short helper name (e.g. "osxkeychain").
+	Helper string
+	// Binary is the expected binary name (e.g. "docker-credential-osxkeychain").
+	Binary string
+	// Registries lists the config entries that rely on this helper.
+	// The sentinel value "all" indicates the global CredentialsStore.
+	Registries []string
+}
+
+// MissingConfiguredCredentialHelpers returns details about credential helper
+// binaries that are explicitly configured in cfg but absent from PATH. It
+// covers both the global CredentialsStore and every per-registry helper.
+// Returns nil when all configured helpers are present or none are configured.
+func MissingConfiguredCredentialHelpers(cfg *configfile.ConfigFile) []MissingHelper {
+	if cfg == nil || (cfg.CredentialsStore == "" && len(cfg.CredentialHelpers) == 0) {
 		return nil
 	}
 
-	// If no credential helpers are configured, there's nothing to check
-	if cfg.CredentialsStore == "" && len(cfg.CredentialHelpers) == 0 {
-		return nil
-	}
-
-	missing := missingConfiguredCredentialHelpers(cfg)
-	if len(missing) > 0 {
-		return fmt.Errorf("missing credential helper binaries in container: %s", strings.Join(missing, ", "))
-	}
-
-	return nil
+	return missingConfiguredCredentialHelpers(cfg)
 }
 
 // IsAuthRelatedError reports whether the provided error looks like a
@@ -262,15 +257,40 @@ func missingCredentialHelpers(cfg *configfile.ConfigFile, registries []string) [
 
 // missingConfiguredCredentialHelpers returns missing helpers explicitly configured
 // by the Docker config, including both the global store and registry-specific helpers.
-func missingConfiguredCredentialHelpers(cfg *configfile.ConfigFile) []string {
-	helpers := make([]string, 0, len(cfg.CredentialHelpers)+1)
-	helpers = append(helpers, cfg.CredentialsStore)
+// Each entry groups all registries that rely on that helper.
+func missingConfiguredCredentialHelpers(cfg *configfile.ConfigFile) []MissingHelper {
+	// Map helper name → registries that use it.
+	helperRegistries := make(map[string][]string, len(cfg.CredentialHelpers)+1)
 
-	for _, helper := range cfg.CredentialHelpers {
-		helpers = append(helpers, helper)
+	if cfg.CredentialsStore != "" {
+		helperRegistries[cfg.CredentialsStore] = append(helperRegistries[cfg.CredentialsStore], "all")
 	}
 
-	return missingCredentialHelperBinaries(helpers)
+	for registry, helper := range cfg.CredentialHelpers {
+		helperRegistries[helper] = append(helperRegistries[helper], registry)
+	}
+
+	var missing []MissingHelper
+
+	for helperName, registries := range helperRegistries {
+		binaryName := "docker-credential-" + helperName
+		if _, err := exec.LookPath(binaryName); err == nil {
+			continue
+		} else if errors.Is(err, exec.ErrNotFound) {
+			sort.Strings(registries)
+			missing = append(missing, MissingHelper{
+				Helper:     helperName,
+				Binary:     binaryName,
+				Registries: registries,
+			})
+		}
+	}
+
+	sort.Slice(missing, func(i, j int) bool {
+		return missing[i].Helper < missing[j].Helper
+	})
+
+	return missing
 }
 
 func missingCredentialHelperBinaries(helpers []string) []string {
