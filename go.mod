@@ -22,7 +22,7 @@ require (
 	github.com/compose-spec/compose-go/v2 v2.14.0
 	github.com/containerd/errdefs v1.0.0
 	github.com/distribution/reference v0.6.0
-	github.com/docker/cli v29.6.2+incompatible
+	github.com/docker/cli v29.7.2+incompatible
 	github.com/docker/compose/v5 v5.3.1
 	github.com/getsops/sops/v3 v3.13.3
 	github.com/go-co-op/gocron/v2 v2.22.0
