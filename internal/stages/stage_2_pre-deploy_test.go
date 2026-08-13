@@ -109,6 +109,19 @@ func TestAutoDiscoveryConfigLabelDriftServices(t *testing.T) {
 			wantServices:   nil,
 			wantFirstLabel: disabled,
 		},
+		{
+			name:     "disabled now, legacy deployment was enabled",
+			expected: disabled,
+			status: map[docker.Service]docker.ServiceStatus{
+				"web": {
+					Labels: docker.Labels{
+						docker.DocoCDLabels.Deployment.AutoDiscovery: "true",
+					},
+				},
+			},
+			wantServices:   []string{"web"},
+			wantFirstLabel: "",
+		},
 	}
 
 	for _, tt := range tests {

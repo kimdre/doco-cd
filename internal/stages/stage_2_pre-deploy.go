@@ -8,6 +8,7 @@ import (
 	"maps"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -56,10 +57,13 @@ func autoDiscoveryConfigLabelDriftServices(deployedStatus map[docker.Service]doc
 		}
 
 		// This label only steers the cleanup of obsolete auto-discovered stacks, and that
-		// cleanup reads containers labeled as auto-discovered. With auto-discovery off on
-		// both sides the label is inert, so a changed default is no reason to recreate
-		// every container of the stack.
-		if !expectedCfg.Enabled && !docker.ParseAutoDiscoveryConfig(actual).Enabled {
+		// cleanup reads containers labeled as auto-discovered. With auto-discovery off in
+		// both configs, including the legacy enabled label when the config label is absent,
+		// the config label is inert, so a changed default is no reason to recreate the stack.
+		deployedCfg := docker.ParseAutoDiscoveryConfig(actual)
+		legacyAutoDiscoveryEnabled, _ := strconv.ParseBool(status.Labels[docker.DocoCDLabels.Deployment.AutoDiscovery])
+
+		if !expectedCfg.Enabled && !deployedCfg.Enabled && (ok || !legacyAutoDiscoveryEnabled) {
 			continue
 		}
 
