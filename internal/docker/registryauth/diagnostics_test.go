@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -120,7 +121,7 @@ func TestCheckDockerConfigReadable(t *testing.T) {
 		}
 	})
 
-	t.Run("config with missing credential helper binaries", func(t *testing.T) {
+	t.Run("config with missing credential helper binaries does not error ValidateDockerConfig", func(t *testing.T) {
 		tmpFile := t.TempDir()
 		tmpConfigPath := filepath.Join(tmpFile, "config.json")
 		// Valid config with global and registry-specific helpers that are unavailable.
@@ -131,19 +132,38 @@ func TestCheckDockerConfigReadable(t *testing.T) {
 
 		cfg := loadDockerConfigFile(t, tmpConfigPath)
 
-		err = ValidateDockerConfig(cfg)
-		if err == nil {
-			t.Fatalf("CheckDockerConfigReadable() expected error for missing credential helper, got nil")
+		// Missing helpers are now a warning, not a blocking error.
+		if err = ValidateDockerConfig(cfg); err != nil {
+			t.Fatalf("ValidateDockerConfig() unexpected error: %v", err)
 		}
 
-		if !strings.Contains(err.Error(), "missing credential helper binaries") {
-			t.Fatalf("CheckDockerConfigReadable() error = %v, want error containing 'missing credential helper binaries'", err)
+		missing := MissingConfiguredCredentialHelpers(cfg)
+		if len(missing) == 0 {
+			t.Fatal("MissingConfiguredCredentialHelpers() expected non-empty result, got nil")
 		}
 
-		for _, helper := range []string{"fake-global-helper-12345", "fake-registry-helper-12345"} {
-			if !strings.Contains(err.Error(), helper) {
-				t.Fatalf("CheckDockerConfigReadable() error = %v, want error containing %q", err, helper)
+		wantHelpers := map[string]string{
+			"fake-global-helper-12345":   "all",
+			"fake-registry-helper-12345": "ghcr.io",
+		}
+
+		for _, m := range missing {
+			wantRegistry, ok := wantHelpers[m.Helper]
+			if !ok {
+				t.Fatalf("MissingConfiguredCredentialHelpers() unexpected helper %q", m.Helper)
 			}
+
+			found := slices.Contains(m.Registries, wantRegistry)
+
+			if !found {
+				t.Fatalf("MissingConfiguredCredentialHelpers() helper %q: registries = %v, want entry %q", m.Helper, m.Registries, wantRegistry)
+			}
+
+			delete(wantHelpers, m.Helper)
+		}
+
+		if len(wantHelpers) > 0 {
+			t.Fatalf("MissingConfiguredCredentialHelpers() missing expected helpers: %v", wantHelpers)
 		}
 	})
 }
