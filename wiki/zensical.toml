@@ -35,6 +35,7 @@ nav = [
     { "Poll Settings" = "Poll-Settings.md" },
   ] },
   { Advanced = [
+    { "Container Registry Authentication" = "Advanced/Container-Registry-Authentication.md" },
     { "Docker API Permissions" = "Advanced/Docker-API-Permissions.md" },
     { "Docker Contexts" = "Advanced/Docker-Contexts.md" },
     { Encryption = "Advanced/Encryption.md" },
@@ -57,7 +58,6 @@ nav = [
       { "Webhooks" = "Advanced/OCI/Webhooks.md" },
     ] },
     { "Pre- / Post-Deployment Scripts" = "Advanced/Pre-Post-Deployment-Scripts.md" },
-    { "Private Container Registries" = "Advanced/Private-Container-Registries.md" },
     { "Renovate Bot" = "Advanced/Renovate.md" },
     { "Self-Updating" = "Advanced/Self-Updating.md" },
     { "Swarm Mode" = "Advanced/Swarm-Mode.md" },

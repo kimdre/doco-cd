@@ -55,7 +55,7 @@ This includes, but is not limited to:
 - **Azure Container Registry** (`*.azurecr.io`)
 - **Private/Self-hosted registries** (supporting OCI Image Spec v1.0+)
 
-!!! note "See [Private Container Registries](../Private-Container-Registries.md) for authentication to private registries."
+!!! note "See [Container Registry Authentication](../Container-Registry-Authentication.md) for authentication to private registries."
 
 ---
 

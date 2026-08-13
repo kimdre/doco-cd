@@ -390,14 +390,25 @@ compose_files:
 			t.Fatalf("failed to mount: content of 'html/index.html' not equal to content of 'usr/share/nginx/html/index.html': %s", txtOutput)
 		}
 
-		// Get output of web server
-		htmlOutput, err := Exec(dockerCli.Client(), containerID, "curl", "localhost")
-		if err != nil {
-			t.Fatal(err)
-		}
+		// Get output of web server, retrying until nginx is ready to serve requests.
+		err = retry.New(
+			retry.Attempts(20),
+			retry.Delay(500*time.Millisecond),
+			retry.DelayType(retry.FixedDelay),
+		).Do(func() error {
+			out, execErr := Exec(dockerCli.Client(), containerID, "curl", "-sf", "localhost")
+			if execErr != nil {
+				return execErr
+			}
 
-		if strings.TrimSpace(htmlOutput) != expectedString {
-			t.Fatalf("failed to mount: content of 'html/index.html' not equal to content of 'usr/share/nginx/html/index.html': %s", htmlOutput)
+			if strings.TrimSpace(out) != expectedString {
+				return fmt.Errorf("unexpected curl output: %q", out)
+			}
+
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("nginx not ready after retries: %v", err)
 		}
 
 		t.Log("Destroying deployment")
