@@ -225,6 +225,17 @@ func run() error {
 		return err
 	}
 
+	if missing := registryauth.MissingConfiguredCredentialHelpers(dockerCli.ConfigFile()); len(missing) > 0 {
+		for _, m := range missing {
+			log.Warn("missing credential helper binary in container; image pulls from affected registries will fail",
+				slog.String("helper", m.Helper),
+				slog.String("binary", m.Binary),
+				slog.Any("affected_registries", m.Registries),
+				slog.String("config_file", dockerCli.ConfigFile().Filename),
+			)
+		}
+	}
+
 	if c.DockerSwarmFeatures {
 		if err := swarm.RefreshModeEnabled(ctx, dockerClient); err != nil {
 			log.Critical("failed to check if docker daemon is a swarm manager", logger.ErrAttr(err))
