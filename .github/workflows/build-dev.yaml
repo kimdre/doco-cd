@@ -63,8 +63,8 @@ jobs:
           annotations: ${{ steps.meta.outputs.annotations }}
           provenance: false
           sbom: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=build-dev
+          cache-to: type=gha,scope=build-dev,mode=max
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
