@@ -34,7 +34,7 @@ type composeScheduledServiceRef struct {
 	Service        string
 	WorkingDir     string
 	ConfigFiles    []string
-	Repository     string
+	RepositoryURL  string
 	DeploymentName string
 	ConfigTarget   string
 	Reference      string
@@ -212,12 +212,21 @@ func composeScheduledServiceRefFromLabels(labels map[string]string) (composeSche
 		)
 	}
 
+	// Prefer the full source URL label to reconstruct a host-qualified
+	// repository path (e.g. "github.com/owner/repo") via git.GetRepoName().
+	// The source "name" label only holds the short "owner/repo" form and
+	// cannot be used for this, since it does not carry the host segment.
+	repositoryURL := strings.TrimSpace(labels[DocoCDLabels.Source.URL])
+	if repositoryURL == "" {
+		repositoryURL = strings.TrimSpace(labels[DocoCDLabels.Source.Name])
+	}
+
 	ref := composeScheduledServiceRef{
 		Project:        project,
 		Service:        service,
 		WorkingDir:     strings.TrimSpace(labels[api.WorkingDirLabel]),
 		ConfigFiles:    splitCommaSeparatedLabelValues(labels[api.ConfigFilesLabel]),
-		Repository:     strings.TrimSpace(labels[DocoCDLabels.Source.Name]),
+		RepositoryURL:  repositoryURL,
 		DeploymentName: strings.TrimSpace(labels[DocoCDLabels.Deployment.Name]),
 		ConfigTarget:   strings.TrimSpace(labels[DocoCDLabels.Deployment.ConfigTarget]),
 		Reference:      strings.TrimSpace(labels[DocoCDLabels.Deployment.TargetRef]),
@@ -234,7 +243,7 @@ func loadComposeScheduledDeployConfig(
 	ref composeScheduledServiceRef,
 	secretProvider *secretprovider.SecretProvider,
 ) (*deploy.Config, string, error) {
-	if strings.TrimSpace(ref.Repository) == "" || strings.TrimSpace(ref.DeploymentName) == "" {
+	if strings.TrimSpace(ref.RepositoryURL) == "" || strings.TrimSpace(ref.DeploymentName) == "" {
 		return nil, "", fmt.Errorf("%w: missing deployment repository and/or name label",
 			ErrComposeScheduledMetadataUnavailable)
 	}
@@ -245,7 +254,7 @@ func loadComposeScheduledDeployConfig(
 	}
 
 	sourceRepoPath, err := filesystem.VerifyAndSanitizePath(
-		filepath.Join(appConfig.DataMountPath, git.GetRepoName(ref.Repository)),
+		filepath.Join(appConfig.DataMountPath, git.GetRepoName(ref.RepositoryURL)),
 		appConfig.DataMountPath,
 	)
 	if err != nil {

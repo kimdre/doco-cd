@@ -54,7 +54,8 @@ func TestComposeScheduledServiceRefFromLabels(t *testing.T) {
 			api.ServiceLabel:                     "backup",
 			api.WorkingDirLabel:                  "/repo/stack",
 			api.ConfigFilesLabel:                 "/repo/stack/compose.yaml, /repo/stack/compose.override.yaml",
-			DocoCDLabels.Source.Name:             "example.com/owner/repo",
+			DocoCDLabels.Source.Name:             "owner/repo",
+			DocoCDLabels.Source.URL:              "https://example.com/owner/repo",
 			DocoCDLabels.Deployment.Name:         "stack-a",
 			DocoCDLabels.Deployment.ConfigTarget: "nas",
 			DocoCDLabels.Deployment.TargetRef:    "refs/heads/main",
@@ -75,8 +76,11 @@ func TestComposeScheduledServiceRefFromLabels(t *testing.T) {
 			t.Fatalf("expected 2 config files, got %d (%v)", len(ref.ConfigFiles), ref.ConfigFiles)
 		}
 
-		if ref.Repository != "example.com/owner/repo" {
-			t.Fatalf("unexpected repository: %q", ref.Repository)
+		// RepositoryURL must come from the full source URL label, not the
+		// short "owner/repo" name label, so that git.GetRepoName() can
+		// reconstruct a host-qualified repository path.
+		if ref.RepositoryURL != "https://example.com/owner/repo" {
+			t.Fatalf("unexpected repository url: %q", ref.RepositoryURL)
 		}
 
 		if ref.DeploymentName != "stack-a" {
@@ -89,6 +93,24 @@ func TestComposeScheduledServiceRefFromLabels(t *testing.T) {
 
 		if ref.Reference != "refs/heads/main" {
 			t.Fatalf("unexpected reference: %q", ref.Reference)
+		}
+	})
+
+	t.Run("falls back to source name label when source url label is missing", func(t *testing.T) {
+		t.Parallel()
+
+		ref, err := composeScheduledServiceRefFromLabels(map[string]string{
+			api.ProjectLabel:             "project-a",
+			api.ServiceLabel:             "backup",
+			DocoCDLabels.Source.Name:     "owner/repo",
+			DocoCDLabels.Deployment.Name: "stack-a",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if ref.RepositoryURL != "owner/repo" {
+			t.Fatalf("unexpected repository url: %q", ref.RepositoryURL)
 		}
 	})
 
@@ -344,7 +366,7 @@ environment:
 		Service:        "backup",
 		WorkingDir:     workingDir,
 		ConfigFiles:    []string{composePath},
-		Repository:     "example.com/owner/repo",
+		RepositoryURL:  "https://example.com/owner/repo",
 		DeploymentName: "adguard-dns",
 		Reference:      "refs/heads/main",
 	}, nil)
