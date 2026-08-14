@@ -60,6 +60,28 @@ func TestResolveRequestIPUsesCustomHeaderWhenTrusted(t *testing.T) {
 	}
 }
 
+func TestResolveRequestIPUnmapsIPv4In6RemoteAddr(t *testing.T) {
+	trusted := []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")}
+	headers := make(http.Header)
+	headers.Set("X-Forwarded-For", "8.8.8.8")
+
+	got := resolveRequestIP("[::ffff:127.0.0.1]:58534", "X-Forwarded-For", headers, trusted)
+	if got != "8.8.8.8:58534" {
+		t.Fatalf("expected 4-in-6 remote address to match IPv4 trusted network, got %q", got)
+	}
+}
+
+func TestResolveRequestIPCustomHeaderDoesNotFallBackToXForwardedFor(t *testing.T) {
+	trusted := []netip.Prefix{netip.MustParsePrefix("172.16.0.0/12")}
+	headers := make(http.Header)
+	headers.Set("X-Forwarded-For", "8.8.8.8")
+
+	got := resolveRequestIP("172.18.0.24:58534", "X-Client-IP", headers, trusted)
+	if got != "172.18.0.24:58534" {
+		t.Fatalf("expected remote address to be used when custom header is missing, got %q", got)
+	}
+}
+
 func TestHandlerRequestIPUsesConfiguredTrustList(t *testing.T) {
 	h := handlerData{
 		appConfig: &app.Config{
