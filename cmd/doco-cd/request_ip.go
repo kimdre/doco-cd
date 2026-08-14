@@ -33,17 +33,11 @@ func resolveRequestIP(remoteAddr, trustedProxyHeader string, headers http.Header
 		return formatAddrWithOptionalPort(remoteIP, remotePort)
 	}
 
-	if trustedProxyHeader != "" {
-		if strings.EqualFold(trustedProxyHeader, "X-Forwarded-For") {
-			if clientIP, ok := resolveForwardedClientIP(headers.Values("X-Forwarded-For"), headers.Values("Forwarded"), trustedProxyNetworks); ok {
-				return formatAddrWithOptionalPort(clientIP, remotePort)
-			}
-		} else if clientIP, ok := parseHeaderIP(headers.Values(trustedProxyHeader)); ok {
+	if trustedProxyHeader == "" || strings.EqualFold(trustedProxyHeader, "X-Forwarded-For") {
+		if clientIP, ok := resolveForwardedClientIP(headers.Values("X-Forwarded-For"), headers.Values("Forwarded"), trustedProxyNetworks); ok {
 			return formatAddrWithOptionalPort(clientIP, remotePort)
 		}
-	}
-
-	if clientIP, ok := resolveForwardedClientIP(headers.Values("X-Forwarded-For"), headers.Values("Forwarded"), trustedProxyNetworks); ok {
+	} else if clientIP, ok := parseHeaderIP(headers.Values(trustedProxyHeader)); ok {
 		return formatAddrWithOptionalPort(clientIP, remotePort)
 	}
 
@@ -171,7 +165,9 @@ func parseHeaderAddr(value string) (netip.Addr, bool) {
 		return netip.Addr{}, false
 	}
 
-	return addr, true
+	// Unmap 4-in-6 addresses (e.g. ::ffff:127.0.0.1) to their canonical IPv4
+	// form so trust checks, chain resolution and log output are consistent.
+	return addr.Unmap(), true
 }
 
 // isTrustedProxy checks if the given IP address belongs to any of the trusted proxy networks.
@@ -179,6 +175,11 @@ func isTrustedProxy(addr netip.Addr, trustedProxyNetworks []netip.Prefix) bool {
 	if !addr.IsValid() {
 		return false
 	}
+
+	// Unmap 4-in-6 addresses (e.g. ::ffff:127.0.0.1) so they can be matched
+	// against IPv4 CIDRs; netip.Prefix.Contains treats them as a different
+	// address family otherwise.
+	addr = addr.Unmap()
 
 	for _, trustedNetwork := range trustedProxyNetworks {
 		if trustedNetwork.Contains(addr) {
