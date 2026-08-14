@@ -475,7 +475,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		onError(w, jobLog.With(slog.String("ip", r.RemoteAddr), logger.ErrAttr(err)), errMsg, err.Error(), statusCode, metadata)
+		onError(w, jobLog.With(slog.String("ip", h.requestIP(r)), logger.ErrAttr(err)), errMsg, err.Error(), statusCode, metadata)
 
 		if h.runTracker != nil {
 			h.runTracker.MarkFailed(jobID, errMsg+": "+err.Error())
