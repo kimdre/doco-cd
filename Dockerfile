@@ -18,7 +18,7 @@ RUN if ([ "$TARGETARCH" = "arm" ] && [ "$TARGETVARIANT" = "v7" ]) || ([ "$TARGET
 RUN if [ "$DISABLE_BITWARDEN" != "true" ] && \
     ! ([ "$TARGETARCH" = "arm" ] && [ "$TARGETVARIANT" = "v7" ]) && \
     ! ([ "$TARGETARCH" = "riscv64" ]); then \
-    apt-get update && apt-get install -y \
+    apt-get update && apt-get install -y --no-install-recommends \
     musl-tools \
     && rm -rf /var/lib/apt/lists/*; \
     fi
