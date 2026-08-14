@@ -2947,6 +2947,18 @@
 <td>Ignored when not specified</td>
 </tr>
 <tr>
+<td><code>TRUSTED_PROXY_HEADER</code></td>
+<td>string</td>
+<td>HTTP header name containing the client's original IP address. Only used when the remote peer's IP is in <code>TRUSTED_PROXY_NETWORKS</code>. Header names are matched case-insensitively.</td>
+<td><code>X-Forwarded-For</code> (falls back to <code>Forwarded</code> header <a href="https://tools.ietf.org/html/rfc7239">RFC 7239</a>)</td>
+</tr>
+<tr>
+<td><code>TRUSTED_PROXY_NETWORKS</code></td>
+<td>list</td>
+<td>Comma-separated CIDR ranges that identify trusted proxies. When the remote peer matches one of these ranges, doco-cd reads the client IP from the header specified in <code>TRUSTED_PROXY_HEADER</code>.</td>
+<td><code>127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1/128</code></td>
+</tr>
+<tr>
 <td><code>LOG_LEVEL</code></td>
 <td>string</td>
 <td>Log level of the app. Possible values: <code>debug</code>, <code>info</code>, <code>warn</code>, <code>error</code></td>
