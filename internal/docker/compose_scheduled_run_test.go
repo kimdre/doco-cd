@@ -2,14 +2,15 @@ package docker
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"maps"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/compose/v5/pkg/api"
 
+	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
@@ -49,10 +50,14 @@ func TestComposeScheduledServiceRefFromLabels(t *testing.T) {
 		t.Parallel()
 
 		ref, err := composeScheduledServiceRefFromLabels(map[string]string{
-			api.ProjectLabel:     "project-a",
-			api.ServiceLabel:     "backup",
-			api.WorkingDirLabel:  "/repo/stack",
-			api.ConfigFilesLabel: "/repo/stack/compose.yaml, /repo/stack/compose.override.yaml",
+			api.ProjectLabel:                     "project-a",
+			api.ServiceLabel:                     "backup",
+			api.WorkingDirLabel:                  "/repo/stack",
+			api.ConfigFilesLabel:                 "/repo/stack/compose.yaml, /repo/stack/compose.override.yaml",
+			DocoCDLabels.Source.Name:             "example.com/owner/repo",
+			DocoCDLabels.Deployment.Name:         "stack-a",
+			DocoCDLabels.Deployment.ConfigTarget: "nas",
+			DocoCDLabels.Deployment.TargetRef:    "refs/heads/main",
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -68,6 +73,22 @@ func TestComposeScheduledServiceRefFromLabels(t *testing.T) {
 
 		if len(ref.ConfigFiles) != 2 {
 			t.Fatalf("expected 2 config files, got %d (%v)", len(ref.ConfigFiles), ref.ConfigFiles)
+		}
+
+		if ref.Repository != "example.com/owner/repo" {
+			t.Fatalf("unexpected repository: %q", ref.Repository)
+		}
+
+		if ref.DeploymentName != "stack-a" {
+			t.Fatalf("unexpected deployment name: %q", ref.DeploymentName)
+		}
+
+		if ref.ConfigTarget != "nas" {
+			t.Fatalf("unexpected config target: %q", ref.ConfigTarget)
+		}
+
+		if ref.Reference != "refs/heads/main" {
+			t.Fatalf("unexpected reference: %q", ref.Reference)
 		}
 	})
 
@@ -126,75 +147,6 @@ func TestComposeScheduledServiceRefFromLabels(t *testing.T) {
 
 		if ref.WorkingDir != "/repo" {
 			t.Errorf("working dir not trimmed: %q", ref.WorkingDir)
-		}
-	})
-
-	t.Run("parses external refs JSON label", func(t *testing.T) {
-		t.Parallel()
-
-		encodedRefs := map[string]string{ //nolint:gosec // test data, not real credentials
-			"DB_PASSWORD": "my-store/db-password",
-			"API_KEY":     "my-store/api-key",
-		}
-		refsJSON, _ := json.Marshal(encodedRefs)
-
-		ref, err := composeScheduledServiceRefFromLabels(map[string]string{
-			api.ProjectLabel:                      "project-a",
-			api.ServiceLabel:                      "backup",
-			api.WorkingDirLabel:                   "/repo/stack",
-			api.ConfigFilesLabel:                  "/repo/stack/compose.yaml",
-			DocoCDJobLabels.JobExternalSecretRefs: string(refsJSON),
-		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		if len(ref.EncodedExternalSecrets) != 2 {
-			t.Fatalf("expected 2 external refs, got %d: %v", len(ref.EncodedExternalSecrets), ref.EncodedExternalSecrets)
-		}
-
-		if ref.EncodedExternalSecrets["DB_PASSWORD"] != "my-store/db-password" {
-			t.Errorf("unexpected DB_PASSWORD ref: %q", ref.EncodedExternalSecrets["DB_PASSWORD"])
-		}
-
-		if ref.EncodedExternalSecrets["API_KEY"] != "my-store/api-key" {
-			t.Errorf("unexpected API_KEY ref: %q", ref.EncodedExternalSecrets["API_KEY"])
-		}
-	})
-
-	t.Run("ignores malformed external refs JSON label", func(t *testing.T) {
-		t.Parallel()
-
-		ref, err := composeScheduledServiceRefFromLabels(map[string]string{
-			api.ProjectLabel:                      "project-a",
-			api.ServiceLabel:                      "backup",
-			api.WorkingDirLabel:                   "/repo/stack",
-			api.ConfigFilesLabel:                  "/repo/stack/compose.yaml",
-			DocoCDJobLabels.JobExternalSecretRefs: "not-valid-json",
-		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		if len(ref.EncodedExternalSecrets) != 0 {
-			t.Fatalf("expected empty external refs on bad JSON, got %v", ref.EncodedExternalSecrets)
-		}
-	})
-
-	t.Run("empty external refs JSON label is ignored", func(t *testing.T) {
-		t.Parallel()
-
-		ref, err := composeScheduledServiceRefFromLabels(map[string]string{
-			api.ProjectLabel:                      "project-a",
-			api.ServiceLabel:                      "backup",
-			DocoCDJobLabels.JobExternalSecretRefs: "   ",
-		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		if ref.EncodedExternalSecrets != nil {
-			t.Fatalf("expected nil external refs on empty label, got %v", ref.EncodedExternalSecrets)
 		}
 	})
 }
@@ -274,94 +226,143 @@ func TestLoadComposeScheduledProject_RequiresComposeMetadata(t *testing.T) {
 	})
 }
 
-func TestLoadComposeScheduledProject_InjectsResolvedSecrets(t *testing.T) {
+func TestPrepareComposeScheduledDeployConfig(t *testing.T) {
 	t.Parallel()
 
-	resolved := map[string]string{
-		"DB_PASSWORD": "s3cr3t",
-		"API_KEY":     "abc123",
-	}
-	provider := newStubProvider(resolved, nil)
+	t.Run("merges deploy environment and resolved secrets", func(t *testing.T) {
+		t.Parallel()
 
-	// Build a minimal in-memory project to stand in for the loaded one.
-	// We test the injection logic directly by constructing a project and
-	// calling the injection block's equivalent: verifying that the values
-	// returned by the provider end up in project.Environment.
-	project := &types.Project{
-		Name:        "project-a",
-		WorkingDir:  "/repo",
-		Environment: map[string]string{},
-		Services: types.Services{
-			"backup": {Name: "backup"},
-		},
+		provider := newStubProvider(map[string]string{
+			"SECRET":  "s3cr3t",
+			"API_KEY": "abc123",
+		}, nil)
+
+		sourceRepoPath := t.TempDir()
+
+		cfg := &deploy.Config{
+			Name:             "project-a",
+			WorkingDirectory: ".",
+			Environment:      map[string]string{"BACKUP_BASE_DIR": "/backups"},
+			ExternalSecrets: map[string]secrettypes.ExternalSecretRef{
+				"SECRET":  {LegacyRef: "store/secret"},  //nolint:gosec // test data, not real credentials
+				"API_KEY": {LegacyRef: "store/api-key"}, //nolint:gosec // test data, not real credentials
+			},
+		}
+
+		if err := prepareComposeScheduledDeployConfig(context.Background(), cfg, sourceRepoPath, sourceRepoPath, provider); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if cfg.Internal.Environment["BACKUP_BASE_DIR"] != "/backups" {
+			t.Fatalf("expected BACKUP_BASE_DIR to be preserved, got %q", cfg.Internal.Environment["BACKUP_BASE_DIR"])
+		}
+
+		if cfg.Internal.Environment["SECRET"] != "s3cr3t" {
+			t.Fatalf("expected SECRET from provider, got %q", cfg.Internal.Environment["SECRET"])
+		}
+
+		if cfg.Internal.Environment["API_KEY"] != "abc123" {
+			t.Fatalf("expected API_KEY from provider, got %q", cfg.Internal.Environment["API_KEY"])
+		}
+	})
+
+	t.Run("returns provider errors", func(t *testing.T) {
+		t.Parallel()
+
+		providerErr := errors.New("provider unavailable")
+		provider := newStubProvider(nil, providerErr)
+
+		cfg := &deploy.Config{
+			Name:             "project-a",
+			WorkingDirectory: ".",
+			ExternalSecrets: map[string]secrettypes.ExternalSecretRef{
+				"DB_PASSWORD": {LegacyRef: "store/db"}, //nolint:gosec // test data, not real credentials
+			},
+		}
+
+		err := prepareComposeScheduledDeployConfig(context.Background(), cfg, t.TempDir(), t.TempDir(), provider)
+		if !errors.Is(err, providerErr) {
+			t.Fatalf("expected provider error, got %v", err)
+		}
+	})
+
+	t.Run("loads dotenv values for interpolation", func(t *testing.T) {
+		t.Parallel()
+
+		repoPath := t.TempDir()
+		if err := os.WriteFile(filepath.Join(repoPath, ".env"), []byte("BACKUP_BASE_DIR=/backups\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		cfg := &deploy.Config{
+			Name:             "project-a",
+			WorkingDirectory: ".",
+			EnvFiles:         []string{".env"},
+		}
+
+		if err := prepareComposeScheduledDeployConfig(context.Background(), cfg, repoPath, repoPath, nil); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if cfg.Internal.Environment["BACKUP_BASE_DIR"] != "/backups" {
+			t.Fatalf("expected dotenv interpolation env, got %q", cfg.Internal.Environment["BACKUP_BASE_DIR"])
+		}
+	})
+}
+
+func TestLoadComposeScheduledProject_InterpolatesDeployConfigEnvironment(t *testing.T) {
+	dataMountPath := t.TempDir()
+	t.Setenv("DATA_MOUNT_PATH", dataMountPath)
+	t.Setenv("DEPLOY_CONFIG_BASE_DIR", "/")
+
+	repoRoot := filepath.Join(dataMountPath, "example.com", "owner", "repo")
+
+	workingDir := filepath.Join(repoRoot, "stacks", "nas", "adguard-dns")
+	if err := os.MkdirAll(workingDir, 0o755); err != nil {
+		t.Fatal(err)
 	}
 
-	// Simulate the re-resolution block from loadComposeScheduledProject.
-	refs := map[string]string{
-		"DB_PASSWORD": "store/db-password", //nolint:gosec // test data, not real credentials
-		"API_KEY":     "store/api-key",
-	}
+	composePath := filepath.Join(workingDir, "compose.yml")
+	createComposeFile(t, composePath, `services:
+  backup:
+    image: busybox:latest
+    volumes:
+      - ${BACKUP_BASE_DIR}/adguard-dns:/backup
+`)
 
-	r, err := (*provider).ResolveSecretReferences(context.Background(), refs)
+	createComposeFile(t, filepath.Join(repoRoot, ".doco-cd.yml"), `name: adguard-dns
+reference: refs/heads/main
+working_dir: stacks/nas/adguard-dns
+compose_files:
+  - compose.yml
+environment:
+  BACKUP_BASE_DIR: /backups
+`)
+
+	project, err := loadComposeScheduledProject(context.Background(), nil, composeScheduledServiceRef{
+		Project:        "adguard-dns",
+		Service:        "backup",
+		WorkingDir:     workingDir,
+		ConfigFiles:    []string{composePath},
+		Repository:     "example.com/owner/repo",
+		DeploymentName: "adguard-dns",
+		Reference:      "refs/heads/main",
+	}, nil)
 	if err != nil {
-		t.Fatalf("ResolveSecretReferences: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	maps.Copy(project.Environment, r)
-
-	if project.Environment["DB_PASSWORD"] != "s3cr3t" {
-		t.Errorf("expected DB_PASSWORD=%q, got %q", "s3cr3t", project.Environment["DB_PASSWORD"])
+	svc, err := project.GetService("backup")
+	if err != nil {
+		t.Fatalf("failed to get backup service: %v", err)
 	}
 
-	if project.Environment["API_KEY"] != "abc123" {
-		t.Errorf("expected API_KEY=%q, got %q", "abc123", project.Environment["API_KEY"])
-	}
-}
-
-func TestLoadComposeScheduledProject_SecretResolutionError(t *testing.T) {
-	t.Parallel()
-
-	providerErr := errors.New("provider unavailable")
-	provider := newStubProvider(nil, providerErr)
-
-	refs := map[string]string{"DB_PASSWORD": "store/db"} //nolint:gosec // test data, not real credentials
-
-	_, err := (*provider).ResolveSecretReferences(context.Background(), refs)
-	if !errors.Is(err, providerErr) {
-		t.Fatalf("expected provider error, got %v", err)
-	}
-}
-
-func TestLoadComposeScheduledProject_SkipsResolutionWithoutProvider(t *testing.T) {
-	t.Parallel()
-
-	// No provider (nil) — early return from metadata check is expected here;
-	// if metadata were present and a real docker was available it would skip
-	// the resolution block. We verify the guard condition directly.
-	var sp *secretprovider.SecretProvider
-
-	shouldResolve := sp != nil && *sp != nil
-
-	if shouldResolve {
-		t.Fatal("should not resolve secrets when provider is nil")
-	}
-}
-
-func TestLoadComposeScheduledProject_SkipsResolutionWithoutRefs(t *testing.T) {
-	t.Parallel()
-
-	provider := newStubProvider(map[string]string{"KEY": "val"}, nil)
-
-	// Zero encoded refs — the guard must prevent calling the provider.
-	ref := composeScheduledServiceRef{
-		Project:                "p",
-		Service:                "s",
-		EncodedExternalSecrets: nil,
+	if len(svc.Volumes) != 1 {
+		t.Fatalf("expected 1 volume, got %d", len(svc.Volumes))
 	}
 
-	shouldResolve := provider != nil && *provider != nil && len(ref.EncodedExternalSecrets) > 0
-	if shouldResolve {
-		t.Fatal("should not resolve secrets when encoded refs are empty")
+	if svc.Volumes[0].Source != "/backups/adguard-dns" {
+		t.Fatalf("expected interpolated backup source, got %q", svc.Volumes[0].Source)
 	}
 }
 

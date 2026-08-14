@@ -3,7 +3,6 @@ package docker
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -45,7 +44,6 @@ import (
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 
 	"github.com/kimdre/doco-cd/internal/prometheus"
-	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -139,7 +137,7 @@ This is required for future compose operations to work, such as finding
 containers that are part of a service.
 */
 func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
-	workingDir, appVersion, timestamp, composeVersion, latestCommit, projectHash, externalSecretsJSON string,
+	workingDir, appVersion, timestamp, composeVersion, latestCommit, projectHash string,
 ) {
 	for i, s := range project.Services {
 		// Extract service dependencies (depends_on)
@@ -174,10 +172,6 @@ func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config
 			api.VersionLabel:                            composeVersion,
 			api.OneoffLabel:                             "False", // default, will be overridden by docker compose
 			api.DependenciesLabel:                       strings.Join(dependencies, ","),
-		}
-
-		if externalSecretsJSON != "" {
-			s.CustomLabels[DocoCDJobLabels.JobExternalSecretRefs] = externalSecretsJSON
 		}
 
 		project.Services[i] = s
@@ -803,25 +797,7 @@ func DeployStack(
 			}
 		}
 	} else {
-		// Encode external secret refs (just the references, not resolved values) into a JSON label
-		// so the scheduler can re-resolve them at run time for environment-backed compose secrets.
-		var externalSecretsJSON string
-
-		if len(deployConfig.ExternalSecrets) > 0 {
-			encodedRefs, encErr := secrettypes.EncodeExternalSecretRefs(deployConfig.ExternalSecrets)
-			if encErr != nil {
-				return fmt.Errorf("failed to encode external secret refs for label: %w", encErr)
-			}
-
-			b, marshalErr := json.Marshal(encodedRefs)
-			if marshalErr != nil {
-				return fmt.Errorf("failed to marshal external secret refs label: %w", marshalErr)
-			}
-
-			externalSecretsJSON = string(b)
-		}
-
-		addComposeServiceLabels(project, deployConfig, payload, externalWorkingDir, appVersion, timestamp, ComposeVersion, latestCommit, projectHash, externalSecretsJSON)
+		addComposeServiceLabels(project, deployConfig, payload, externalWorkingDir, appVersion, timestamp, ComposeVersion, latestCommit, projectHash)
 		addComposeVolumeLabels(project, deployConfig, payload, appVersion, timestamp, ComposeVersion, latestCommit, projectHash)
 
 		forcedServices := set.New[string]() // services to recreate if project files changed
