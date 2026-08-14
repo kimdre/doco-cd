@@ -2,13 +2,13 @@ package docker
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
+	"os"
+	"path/filepath"
 	"strings"
 
-	composeCli "github.com/compose-spec/compose-go/v2/cli"
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
@@ -16,7 +16,12 @@ import (
 	containerTypes "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/deploy"
+	"github.com/kimdre/doco-cd/internal/filesystem"
+	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
+	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
 
 var (
@@ -25,11 +30,14 @@ var (
 )
 
 type composeScheduledServiceRef struct {
-	Project                string
-	Service                string
-	WorkingDir             string
-	ConfigFiles            []string
-	EncodedExternalSecrets map[string]string // provider-ready encoded external secret refs from deploy time
+	Project        string
+	Service        string
+	WorkingDir     string
+	ConfigFiles    []string
+	RepositoryURL  string
+	DeploymentName string
+	ConfigTarget   string
+	Reference      string
 }
 
 func RunComposeScheduledContainer(
@@ -111,6 +119,11 @@ func RunComposeOneOffFromServiceDefinition(
 		return err
 	}
 
+	project, err = prepareComposeProjectForOneOffRun(project, ref.Service)
+	if err != nil {
+		return err
+	}
+
 	service, err := compose.NewComposeService(dockerCli)
 	if err != nil {
 		return fmt.Errorf("create compose service: %w", err)
@@ -137,6 +150,42 @@ func RunComposeOneOffFromServiceDefinition(
 	return nil
 }
 
+// prepareComposeProjectForOneOffRun returns a copy of project whose target
+// service is marked as a scheduler-created ephemeral run. This keeps Compose
+// one-off containers from being rediscovered as standalone scheduled jobs while
+// preserving the rest of the service definition used to launch them.
+func prepareComposeProjectForOneOffRun(project *types.Project, serviceName string) (*types.Project, error) {
+	if project == nil {
+		return nil, errors.New("compose project is required")
+	}
+
+	svc, ok := project.Services[serviceName]
+	if !ok {
+		return nil, fmt.Errorf("compose service %q not found", serviceName)
+	}
+
+	if svc.Labels == nil {
+		svc.Labels = map[string]string{}
+	} else {
+		svc.Labels = maps.Clone(svc.Labels)
+	}
+
+	if svc.CustomLabels == nil {
+		svc.CustomLabels = map[string]string{}
+	} else {
+		svc.CustomLabels = maps.Clone(svc.CustomLabels)
+	}
+
+	svc.Labels[DocoCDJobLabels.JobEphemeral] = "true"
+	svc.CustomLabels[DocoCDJobLabels.JobEphemeral] = "true"
+
+	projectCopy := *project
+	projectCopy.Services = maps.Clone(project.Services)
+	projectCopy.Services[serviceName] = svc
+
+	return &projectCopy, nil
+}
+
 func loadComposeScheduledProject(
 	ctx context.Context,
 	dockerCli command.Cli,
@@ -151,40 +200,15 @@ func loadComposeScheduledProject(
 		)
 	}
 
-	service, err := compose.NewComposeService(dockerCli)
+	deployConfig, repoPath, err := loadComposeScheduledDeployConfig(ctx, ref, secretProvider)
 	if err != nil {
-		return nil, fmt.Errorf("create compose service: %w", err)
+		return nil, err
 	}
 
-	project, err := service.LoadProject(ctx, api.ProjectLoadOptions{
-		ProjectName: ref.Project,
-		ConfigPaths: ref.ConfigFiles,
-		WorkingDir:  ref.WorkingDir,
-		Services:    []string{ref.Service},
-		All:         true,
-		ProjectOptionsFns: []composeCli.ProjectOptionsFn{
-			composeCli.WithResolvedPaths(true),
-			composeCli.WithInterpolation(true),
-		},
-	})
+	project, err := LoadCompose(ctx, dockerCli, repoPath, ref.WorkingDir, ref.Project, ref.ConfigFiles,
+		deployConfig.EnvFiles, deployConfig.Profiles, deployConfig.Internal.Environment)
 	if err != nil {
 		return nil, fmt.Errorf("load compose project for scheduled service %s/%s: %w", ref.Project, ref.Service, err)
-	}
-
-	// Re-resolve external secrets so that environment-backed compose secrets
-	// (secrets.my_secret.environment: MY_VAR) have the correct value injected
-	// when compose calls injectSecrets during Start/RunOneOffContainer.
-	if secretProvider != nil && *secretProvider != nil && len(ref.EncodedExternalSecrets) > 0 {
-		resolved, resolveErr := (*secretProvider).ResolveSecretReferences(ctx, ref.EncodedExternalSecrets)
-		if resolveErr != nil {
-			return nil, fmt.Errorf("re-resolve external secrets for scheduled service %s/%s: %w", ref.Project, ref.Service, resolveErr)
-		}
-
-		if project.Environment == nil {
-			project.Environment = make(map[string]string)
-		}
-
-		maps.Copy(project.Environment, resolved)
 	}
 
 	project, err = project.WithSelectedServices([]string{ref.Service}, types.IgnoreDependencies)
@@ -229,21 +253,177 @@ func composeScheduledServiceRefFromLabels(labels map[string]string) (composeSche
 		)
 	}
 
-	ref := composeScheduledServiceRef{
-		Project:     project,
-		Service:     service,
-		WorkingDir:  strings.TrimSpace(labels[api.WorkingDirLabel]),
-		ConfigFiles: splitCommaSeparatedLabelValues(labels[api.ConfigFilesLabel]),
+	// Prefer the full source URL label to reconstruct a host-qualified
+	// repository path (e.g. "github.com/owner/repo") via git.GetRepoName().
+	// The source "name" label only holds the short "owner/repo" form and
+	// cannot be used for this, since it does not carry the host segment.
+	repositoryURL := strings.TrimSpace(labels[DocoCDLabels.Source.URL])
+	if repositoryURL == "" {
+		repositoryURL = strings.TrimSpace(labels[DocoCDLabels.Source.Name])
 	}
 
-	if raw := strings.TrimSpace(labels[DocoCDJobLabels.JobExternalSecretRefs]); raw != "" {
-		var encodedRefs map[string]string
-		if err := json.Unmarshal([]byte(raw), &encodedRefs); err == nil {
-			ref.EncodedExternalSecrets = encodedRefs
-		}
+	ref := composeScheduledServiceRef{
+		Project:        project,
+		Service:        service,
+		WorkingDir:     strings.TrimSpace(labels[api.WorkingDirLabel]),
+		ConfigFiles:    splitCommaSeparatedLabelValues(labels[api.ConfigFilesLabel]),
+		RepositoryURL:  repositoryURL,
+		DeploymentName: strings.TrimSpace(labels[DocoCDLabels.Deployment.Name]),
+		ConfigTarget:   strings.TrimSpace(labels[DocoCDLabels.Deployment.ConfigTarget]),
+		Reference:      strings.TrimSpace(labels[DocoCDLabels.Deployment.TargetRef]),
 	}
 
 	return ref, nil
+}
+
+// loadComposeScheduledDeployConfig reloads the deploy config that originally
+// defined the scheduled Compose service and returns the repository root that
+// should be used for LoadCompose interpolation and relative path resolution.
+func loadComposeScheduledDeployConfig(
+	ctx context.Context,
+	ref composeScheduledServiceRef,
+	secretProvider *secretprovider.SecretProvider,
+) (*deploy.Config, string, error) {
+	if strings.TrimSpace(ref.RepositoryURL) == "" || strings.TrimSpace(ref.DeploymentName) == "" {
+		return nil, "", fmt.Errorf("%w: missing deployment repository and/or name label",
+			ErrComposeScheduledMetadataUnavailable)
+	}
+
+	appConfig, err := app.GetConfig()
+	if err != nil {
+		return nil, "", fmt.Errorf("load app config for scheduled service %s/%s: %w", ref.Project, ref.Service, err)
+	}
+
+	sourceRepoPath, err := filesystem.VerifyAndSanitizePath(
+		filepath.Join(appConfig.DataMountPath, git.GetRepoName(ref.RepositoryURL)),
+		appConfig.DataMountPath,
+	)
+	if err != nil {
+		return nil, "", fmt.Errorf("resolve source repository path for scheduled service %s/%s: %w", ref.Project, ref.Service, err)
+	}
+
+	repoPath, err := resolveScheduledComposeRepoRoot(ref.WorkingDir, appConfig.DataMountPath, sourceRepoPath)
+	if err != nil {
+		return nil, "", err
+	}
+
+	configs, err := deploy.GetConfigs(sourceRepoPath, appConfig.DeployConfigBaseDir, ref.ConfigTarget, ref.Reference, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("load deploy config for scheduled service %s/%s: %w", ref.Project, ref.Service, err)
+	}
+
+	deployConfig, err := findComposeScheduledDeployConfig(configs, ref.DeploymentName)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if err = prepareComposeScheduledDeployConfig(ctx, deployConfig, sourceRepoPath, repoPath, secretProvider); err != nil {
+		return nil, "", err
+	}
+
+	return deployConfig, repoPath, nil
+}
+
+// findComposeScheduledDeployConfig selects the deploy config matching the
+// scheduled service's deployment name from the reloaded config set.
+func findComposeScheduledDeployConfig(configs []*deploy.Config, deploymentName string) (*deploy.Config, error) {
+	for _, cfg := range configs {
+		if strings.TrimSpace(cfg.Name) == deploymentName {
+			return cfg, nil
+		}
+	}
+
+	return nil, fmt.Errorf("load deploy config for scheduled service: %w: deployment %q not found",
+		ErrComposeScheduledMetadataUnavailable, deploymentName)
+}
+
+// prepareComposeScheduledDeployConfig rebuilds the interpolation environment
+// used by LoadCompose from env files, deploy-config environment, and any
+// external secrets that resolve to env vars at run time.
+func prepareComposeScheduledDeployConfig(
+	ctx context.Context,
+	deployConfig *deploy.Config,
+	sourceRepoPath string,
+	repoPath string,
+	secretProvider *secretprovider.SecretProvider,
+) error {
+	if deployConfig == nil {
+		return fmt.Errorf("%w: missing deployment config", ErrComposeScheduledMetadataUnavailable)
+	}
+
+	if deployConfig.RepositoryUrl != "" {
+		if err := deploy.LoadLocalDotEnv(deployConfig, sourceRepoPath); err != nil {
+			return fmt.Errorf("load local env files for scheduled service %s: %w", deployConfig.Name, err)
+		}
+
+		if err := deploy.LoadLocalDotEnv(deployConfig, filepath.Join(repoPath, deployConfig.WorkingDirectory)); err != nil {
+			return fmt.Errorf("load remote env files for scheduled service %s: %w", deployConfig.Name, err)
+		}
+	} else {
+		if err := deploy.LoadLocalDotEnv(deployConfig, filepath.Join(sourceRepoPath, deployConfig.WorkingDirectory)); err != nil {
+			return fmt.Errorf("load env files for scheduled service %s: %w", deployConfig.Name, err)
+		}
+	}
+
+	if deployConfig.Internal.Environment == nil {
+		deployConfig.Internal.Environment = make(map[string]string)
+	}
+
+	maps.Copy(deployConfig.Internal.Environment, deployConfig.Environment)
+
+	if secretProvider == nil || *secretProvider == nil || len(deployConfig.ExternalSecrets) == 0 {
+		return nil
+	}
+
+	encodedSecrets, err := secrettypes.EncodeExternalSecretRefs(deployConfig.ExternalSecrets)
+	if err != nil {
+		return fmt.Errorf("encode external secrets for scheduled service %s: %w", deployConfig.Name, err)
+	}
+
+	resolvedSecrets, err := (*secretProvider).ResolveSecretReferences(ctx, encodedSecrets)
+	if err != nil {
+		return fmt.Errorf("resolve external secrets for scheduled service %s: %w", deployConfig.Name, err)
+	}
+
+	maps.Copy(deployConfig.Internal.Environment, resolvedSecrets)
+
+	return nil
+}
+
+// resolveScheduledComposeRepoRoot walks up from the scheduled service working
+// directory to recover the checked-out repository root under the data mount.
+// If no git root can be found, it falls back to the repository path derived
+// from the deployment source label.
+func resolveScheduledComposeRepoRoot(workingDir, dataMountPath, fallbackRepoPath string) (string, error) {
+	resolvedWorkingDir, err := filepath.EvalSymlinks(workingDir)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("resolve scheduled compose working directory %q: %w", workingDir, err)
+		}
+
+		resolvedWorkingDir = filepath.Clean(workingDir)
+	}
+
+	for dir := resolvedWorkingDir; filesystem.InBasePath(dataMountPath, dir); dir = filepath.Dir(dir) {
+		if filesystem.IsDir(filepath.Join(dir, ".git")) {
+			return dir, nil
+		}
+
+		if dir == filepath.Clean(dataMountPath) {
+			break
+		}
+
+		if parent := filepath.Dir(dir); parent == dir {
+			break
+		}
+	}
+
+	if fallbackRepoPath != "" {
+		return fallbackRepoPath, nil
+	}
+
+	return "", fmt.Errorf("%w: could not determine repository root for %q",
+		ErrComposeScheduledMetadataUnavailable, workingDir)
 }
 
 func splitCommaSeparatedLabelValues(raw string) []string {
