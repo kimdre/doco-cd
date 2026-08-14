@@ -2949,8 +2949,8 @@
 <tr>
 <td><code>TRUSTED_PROXY_HEADER</code></td>
 <td>string</td>
-<td>HTTP header name containing the client's original IP address. Only used when the remote peer's IP is in <code>TRUSTED_PROXY_NETWORKS</code>. Header names are matched case-insensitively.</td>
-<td><code>X-Forwarded-For</code> (falls back to <code>Forwarded</code> header <a href="https://tools.ietf.org/html/rfc7239">RFC 7239</a>)</td>
+<td>HTTP header name containing the client's original IP address. Only used when the remote peer's IP is in <code>TRUSTED_PROXY_NETWORKS</code>. Header names are matched case-insensitively. When set to <code>X-Forwarded-For</code> (the default), falls back to the <a href="https://tools.ietf.org/html/rfc7239">RFC 7239</a> <code>Forwarded</code> header if <code>X-Forwarded-For</code> is absent. A custom header is used exclusively, with no fallback.</td>
+<td><code>X-Forwarded-For</code></td>
 </tr>
 <tr>
 <td><code>TRUSTED_PROXY_NETWORKS</code></td>
