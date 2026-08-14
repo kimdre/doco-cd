@@ -176,23 +176,6 @@ func prepareComposeProjectForOneOffRun(project *types.Project, serviceName strin
 		svc.CustomLabels = maps.Clone(svc.CustomLabels)
 	}
 
-	// Ensure the one-off container is created with the standard Compose tracking
-	// labels so it remains attributable to its compose project/service in
-	// downstream systems such as log aggregation.
-	svc.CustomLabels[api.ProjectLabel] = project.Name
-	svc.CustomLabels[api.ServiceLabel] = svc.Name
-	svc.CustomLabels[api.WorkingDirLabel] = project.WorkingDir
-	svc.CustomLabels[api.ConfigFilesLabel] = strings.Join(project.ComposeFiles, ",")
-	svc.CustomLabels[api.VersionLabel] = api.ComposeVersion
-
-	// Set oneoff=False on the service definition (Compose will overwrite it to True
-	// on the actual created container). We do not set it to True here because
-	// com.docker.compose.oneoff is a runtime marker managed by Compose itself—setting
-	// it on the service definition would blur the semantics and risk side effects.
-	// The actual container created by RunOneOffContainer will get oneoff=True,
-	// which we rely on as a fallback ephemeral detection mechanism in the scheduler.
-	svc.CustomLabels[api.OneoffLabel] = "False"
-
 	svc.Labels[DocoCDJobLabels.JobEphemeral] = "true"
 	svc.CustomLabels[DocoCDJobLabels.JobEphemeral] = "true"
 
