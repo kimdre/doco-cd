@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"net/netip"
 	"os"
 	"path"
 	"strconv"
@@ -321,6 +322,65 @@ func TestGetConfig_OciInsecureRegistries(t *testing.T) {
 
 	if got, want := strings.Join(cfg.OciInsecureRegistries, ","), "registry.example:5000,localhost"; got != want {
 		t.Fatalf("expected OCI insecure registries %q, got %q", want, got)
+	}
+}
+
+func TestGetConfig_TrustedProxyNetworks(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("TRUSTED_PROXY_NETWORKS", " 127.0.0.1/8, 10.0.0.0/8,10.0.0.0/8, ::1/128 ")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	got := make([]string, 0, len(cfg.TrustedProxyNetworks))
+	for _, network := range cfg.TrustedProxyNetworks {
+		got = append(got, network.String())
+	}
+
+	want := []string{netip.MustParsePrefix("127.0.0.0/8").String(), "10.0.0.0/8", "::1/128"}
+	if len(got) != len(want) {
+		t.Fatalf("expected %d trusted proxy networks, got %d (%v)", len(want), len(got), got)
+	}
+
+	for i, expected := range want {
+		if got[i] != expected {
+			t.Fatalf("expected trusted proxy network %d to be %q, got %q", i, expected, got[i])
+		}
+	}
+}
+
+func TestGetConfig_TrustedProxyHeader(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	if cfg.TrustedProxyHeader != "X-Forwarded-For" {
+		t.Fatalf("expected trusted proxy header to default to X-Forwarded-For, got %q", cfg.TrustedProxyHeader)
+	}
+}
+
+func TestGetConfig_TrustedProxyHeaderOverride(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("TRUSTED_PROXY_HEADER", "X-Client-IP")
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	if cfg.TrustedProxyHeader != "X-Client-IP" {
+		t.Fatalf("expected trusted proxy header to be set, got %q", cfg.TrustedProxyHeader)
 	}
 }
 
