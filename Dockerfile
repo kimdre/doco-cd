@@ -1,7 +1,6 @@
 # syntax=docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
 FROM golang:1.26.6@sha256:640a234f4bea3e399c056b7b8f9c667c4939befae8db2f14e9785e16eccd4205 AS prerequisites
 
-ARG APP_VERSION=dev
 ARG DISABLE_BITWARDEN=false
 ARG TARGETARCH
 ARG TARGETVARIANT
@@ -37,7 +36,6 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
 
 FROM prerequisites AS build
 
-ARG APP_VERSION=dev
 ARG DISABLE_BITWARDEN=false
 # Bitwarden SDK build flags https://github.com/bitwarden/sdk-go/blob/main/INSTRUCTIONS.md
 ARG BW_SDK_BUILD_FLAGS="-linkmode external -extldflags '-static -Wl,-unresolved-symbols=ignore-all'"
@@ -45,6 +43,8 @@ ARG TARGETARCH
 ARG TARGETVARIANT
 
 COPY . .
+
+ARG APP_VERSION=dev
 
 # Build with or without Bitwarden support
 # armv7 and riscv64 builds are automatically built without Bitwarden
