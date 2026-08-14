@@ -96,7 +96,7 @@ func registerApiEndpoints(c *app.Config, h *handlerData, log *logger.Logger, mux
 // GetScheduledJobsHandler handles API requests to list scheduler-managed jobs.
 func (h *handlerData) GetScheduledJobsHandler(w http.ResponseWriter, r *http.Request) {
 	jobID := id.GenID()
-	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
+	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", h.requestIP(r)))
 
 	jobLog.Debug("received api request")
 
@@ -128,7 +128,7 @@ func (h *handlerData) GetScheduledJobsHandler(w http.ResponseWriter, r *http.Req
 // GetDeploymentRunsHandler returns recent deployment runs tracked by doco-cd.
 func (h *handlerData) GetDeploymentRunsHandler(w http.ResponseWriter, r *http.Request) {
 	jobID := id.GenID()
-	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
+	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", h.requestIP(r)))
 
 	if !requireMethod(w, jobLog, r, http.MethodGet) {
 		return
@@ -177,7 +177,7 @@ func (h *handlerData) GetDeploymentRunsHandler(w http.ResponseWriter, r *http.Re
 // GetDeploymentRunHandler returns details for one deployment run identified by jobID.
 func (h *handlerData) GetDeploymentRunHandler(w http.ResponseWriter, r *http.Request) {
 	jobID := id.GenID()
-	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
+	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", h.requestIP(r)))
 
 	if !requireMethod(w, jobLog, r, http.MethodGet) {
 		return
@@ -213,7 +213,7 @@ func (h *handlerData) GetDeploymentRunHandler(w http.ResponseWriter, r *http.Req
 // TriggerScheduledJobHandler handles API requests to run one configured scheduled job immediately.
 func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.Request) {
 	jobID := id.GenID()
-	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
+	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", h.requestIP(r)))
 
 	jobLog.Debug("received api request")
 
@@ -250,7 +250,9 @@ func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.
 	}
 
 	triggerFn := func(ctx context.Context) error {
-		runID, err := scheduler.TriggerNow(ctx, h.dockerCli, h.log.Logger, jobName, stackName)
+		jobLog.Info("scheduled job run triggered via API", slog.String("job", jobName), slog.String("stack", stackName))
+
+		runID, err := scheduler.TriggerNow(ctx, h.dockerCli, h.log.Logger, jobName, stackName, h.secretProvider)
 
 		runLog := jobLog
 		if runID != "" {
@@ -258,7 +260,6 @@ func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.
 		}
 
 		if err == nil {
-			runLog.Info("scheduled job run triggered", slog.String("job", jobName), slog.String("stack", stackName))
 			return nil
 		}
 
@@ -414,7 +415,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 	// Add a job id to the context to track deployments in the logs
 	jobID := id.GenID()
-	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
+	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", h.requestIP(r)))
 
 	jobLog.Debug("received api request")
 
@@ -494,7 +495,7 @@ func (h *handlerData) GetProjectsApiHandler(w http.ResponseWriter, r *http.Reque
 
 	// Add a job id to the context to track deployments in the logs
 	jobID := id.GenID()
-	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
+	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", h.requestIP(r)))
 
 	jobLog.Debug("received api request")
 
@@ -532,7 +533,7 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 
 	// Add a job id to the context to track deployments in the logs
 	jobID := id.GenID()
-	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
+	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", h.requestIP(r)))
 
 	jobLog.Debug("received api request")
 
@@ -638,7 +639,7 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 
 	// Add a job id to the context to track deployments in the logs
 	jobID := id.GenID()
-	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
+	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", h.requestIP(r)))
 
 	jobLog.Debug("received api request")
 
@@ -824,7 +825,7 @@ func (h *handlerData) StackApiHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Add a job id to the context to track deployments in the logs
 	jobID := id.GenID()
-	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
+	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", h.requestIP(r)))
 
 	jobLog.Debug("received api request")
 
@@ -899,7 +900,7 @@ func (h *handlerData) GetStacksApiHandler(w http.ResponseWriter, r *http.Request
 
 	// Add a job id to the context to track deployments in the logs
 	jobID := id.GenID()
-	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
+	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", h.requestIP(r)))
 
 	jobLog.Debug("received api request")
 
@@ -935,7 +936,7 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 
 	// Add a job id to the context to track deployments in the logs
 	jobID := id.GenID()
-	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", r.RemoteAddr))
+	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", h.requestIP(r)))
 
 	jobLog.Debug("received api request")
 

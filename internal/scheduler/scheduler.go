@@ -254,7 +254,7 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 
 // TriggerNow executes one configured scheduled job immediately.
 // Job selection matches by container/service name and optional stack name.
-func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jobName, stackName string) (string, error) {
+func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jobName, stackName string, secretProvider *secretprovider.SecretProvider) (string, error) {
 	if dockerCli == nil {
 		return "", errors.New("docker cli is required")
 	}
@@ -268,10 +268,11 @@ func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jo
 	}
 
 	s := &scheduler{
-		dockerCli: dockerCli,
-		log:       log.With(slog.String("component", "scheduler")),
-		running:   map[string]bool{},
-		stopHolds: map[stopHoldKey]*stopHoldState{},
+		dockerCli:      dockerCli,
+		log:            log.With(slog.String("component", "scheduler")),
+		running:        map[string]bool{},
+		stopHolds:      map[stopHoldKey]*stopHoldState{},
+		secretProvider: secretProvider,
 	}
 
 	jobs, err := s.discoverJobs(ctx)
@@ -296,7 +297,7 @@ func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jo
 		slog.String("execution_mode", string(cfg.ExecutionMode)),
 	)
 
-	runLog.Info("triggering scheduled run via API")
+	runLog.Info("triggered scheduled job now")
 
 	runStart := time.Now()
 	runFailed := false
