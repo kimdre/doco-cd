@@ -250,6 +250,8 @@ func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.
 	}
 
 	triggerFn := func(ctx context.Context) error {
+		jobLog.Info("scheduled job run triggered via API", slog.String("job", jobName), slog.String("stack", stackName))
+
 		runID, err := scheduler.TriggerNow(ctx, h.dockerCli, h.log.Logger, jobName, stackName)
 
 		runLog := jobLog
@@ -258,7 +260,6 @@ func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.
 		}
 
 		if err == nil {
-			runLog.Info("scheduled job run triggered", slog.String("job", jobName), slog.String("stack", stackName))
 			return nil
 		}
 

@@ -296,7 +296,7 @@ func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jo
 		slog.String("execution_mode", string(cfg.ExecutionMode)),
 	)
 
-	runLog.Info("triggering scheduled run via API")
+	runLog.Info("triggered scheduled job now")
 
 	runStart := time.Now()
 	runFailed := false
