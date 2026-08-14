@@ -1447,16 +1447,14 @@ func isEphemeralScheduledContainer(labels map[string]string) bool {
 	}
 
 	raw, ok := labels[docker.DocoCDJobLabels.JobEphemeral]
-	if !ok {
-		return false
+	if ok {
+		isEphemeral, err := strconv.ParseBool(strings.TrimSpace(raw))
+		if err == nil && isEphemeral {
+			return true
+		}
 	}
 
-	isEphemeral, err := strconv.ParseBool(strings.TrimSpace(raw))
-	if err != nil {
-		return false
-	}
-
-	return isEphemeral
+	return strings.EqualFold(strings.TrimSpace(labels[api.OneoffLabel]), "true")
 }
 
 // containerJobKey derives the stable scheduler key for a container from its

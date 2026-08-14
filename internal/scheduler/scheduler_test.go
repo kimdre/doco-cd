@@ -423,6 +423,13 @@ func TestIsEphemeralScheduledContainer(t *testing.T) {
 			},
 			want: false,
 		},
+		{
+			name: "compose one-off label true",
+			labels: map[string]string{
+				api.OneoffLabel: "True",
+			},
+			want: true,
+		},
 	}
 
 	for _, tt := range tests {

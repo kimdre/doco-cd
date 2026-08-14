@@ -525,3 +525,63 @@ func TestGetServiceSchedulerLabels(t *testing.T) {
 		}
 	})
 }
+
+func TestPrepareComposeProjectForOneOffRun(t *testing.T) {
+	t.Parallel()
+
+	t.Run("marks target service as ephemeral without mutating input project", func(t *testing.T) {
+		t.Parallel()
+
+		project := &types.Project{
+			Services: types.Services{
+				"backup": {
+					Name:         "backup",
+					Labels:       map[string]string{"plain": "label"},
+					CustomLabels: map[string]string{DocoCDJobLabels.JobEnabled: "true"},
+				},
+			},
+		}
+
+		got, err := prepareComposeProjectForOneOffRun(project, "backup")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if got == project {
+			t.Fatal("expected returned project copy, got original pointer")
+		}
+
+		if got.Services["backup"].Labels[DocoCDJobLabels.JobEphemeral] != "true" {
+			t.Fatalf("expected service labels to mark one-off run as ephemeral, got %q",
+				got.Services["backup"].Labels[DocoCDJobLabels.JobEphemeral])
+		}
+
+		if got.Services["backup"].CustomLabels[DocoCDJobLabels.JobEphemeral] != "true" {
+			t.Fatalf("expected custom labels to mark one-off run as ephemeral, got %q",
+				got.Services["backup"].CustomLabels[DocoCDJobLabels.JobEphemeral])
+		}
+
+		if _, ok := project.Services["backup"].Labels[DocoCDJobLabels.JobEphemeral]; ok {
+			t.Fatal("input project labels were mutated")
+		}
+
+		if _, ok := project.Services["backup"].CustomLabels[DocoCDJobLabels.JobEphemeral]; ok {
+			t.Fatal("input project custom labels were mutated")
+		}
+	})
+
+	t.Run("returns error for unknown service", func(t *testing.T) {
+		t.Parallel()
+
+		project := &types.Project{
+			Services: types.Services{
+				"backup": {Name: "backup"},
+			},
+		}
+
+		_, err := prepareComposeProjectForOneOffRun(project, "missing")
+		if err == nil {
+			t.Fatal("expected error for missing service, got nil")
+		}
+	})
+}

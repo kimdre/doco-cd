@@ -119,6 +119,11 @@ func RunComposeOneOffFromServiceDefinition(
 		return err
 	}
 
+	project, err = prepareComposeProjectForOneOffRun(project, ref.Service)
+	if err != nil {
+		return err
+	}
+
 	service, err := compose.NewComposeService(dockerCli)
 	if err != nil {
 		return fmt.Errorf("create compose service: %w", err)
@@ -143,6 +148,42 @@ func RunComposeOneOffFromServiceDefinition(
 	}
 
 	return nil
+}
+
+// prepareComposeProjectForOneOffRun returns a copy of project whose target
+// service is marked as a scheduler-created ephemeral run. This keeps Compose
+// one-off containers from being rediscovered as standalone scheduled jobs while
+// preserving the rest of the service definition used to launch them.
+func prepareComposeProjectForOneOffRun(project *types.Project, serviceName string) (*types.Project, error) {
+	if project == nil {
+		return nil, errors.New("compose project is required")
+	}
+
+	svc, ok := project.Services[serviceName]
+	if !ok {
+		return nil, fmt.Errorf("compose service %q not found", serviceName)
+	}
+
+	if svc.Labels == nil {
+		svc.Labels = map[string]string{}
+	} else {
+		svc.Labels = maps.Clone(svc.Labels)
+	}
+
+	if svc.CustomLabels == nil {
+		svc.CustomLabels = map[string]string{}
+	} else {
+		svc.CustomLabels = maps.Clone(svc.CustomLabels)
+	}
+
+	svc.Labels[DocoCDJobLabels.JobEphemeral] = "true"
+	svc.CustomLabels[DocoCDJobLabels.JobEphemeral] = "true"
+
+	projectCopy := *project
+	projectCopy.Services = maps.Clone(project.Services)
+	projectCopy.Services[serviceName] = svc
+
+	return &projectCopy, nil
 }
 
 func loadComposeScheduledProject(
