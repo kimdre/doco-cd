@@ -252,7 +252,7 @@ func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.
 	triggerFn := func(ctx context.Context) error {
 		jobLog.Info("scheduled job run triggered via API", slog.String("job", jobName), slog.String("stack", stackName))
 
-		runID, err := scheduler.TriggerNow(ctx, h.dockerCli, h.log.Logger, jobName, stackName)
+		runID, err := scheduler.TriggerNow(ctx, h.dockerCli, h.log.Logger, jobName, stackName, h.secretProvider)
 
 		runLog := jobLog
 		if runID != "" {
