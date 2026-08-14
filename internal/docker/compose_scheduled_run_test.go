@@ -388,6 +388,75 @@ environment:
 	}
 }
 
+// TestLoadComposeScheduledProject_ResolvesExternalSecrets is a regression test
+// for https://github.com/kimdre/doco-cd/issues/1674: external secrets must be
+// re-resolved and interpolated into the compose service environment when a
+// standard (single-repository, non `repository_url`) scheduled job reloads
+// its deploy config at run time.
+func TestLoadComposeScheduledProject_ResolvesExternalSecrets(t *testing.T) {
+	dataMountPath := t.TempDir()
+	t.Setenv("DATA_MOUNT_PATH", dataMountPath)
+	t.Setenv("DEPLOY_CONFIG_BASE_DIR", "/")
+
+	repoRoot := filepath.Join(dataMountPath, "example.com", "owner", "repo")
+
+	workingDir := filepath.Join(repoRoot, "stacks", "nas", "backup")
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(workingDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	composePath := filepath.Join(workingDir, "compose.yml")
+	createComposeFile(t, composePath, `services:
+  backup:
+    image: busybox:latest
+    environment:
+      MY_SECRET: ${MY_SECRET}
+`)
+
+	createComposeFile(t, filepath.Join(repoRoot, ".doco-cd.yml"), `name: backup-job
+reference: refs/heads/main
+working_dir: stacks/nas/backup
+compose_files:
+  - compose.yml
+external_secrets:
+  MY_SECRET:
+    store_ref: bitwarden-login
+    remote_ref:
+      key: my-bitwarden-item-id
+      property: password
+`)
+
+	project, err := loadComposeScheduledProject(context.Background(), nil, composeScheduledServiceRef{
+		Project:        "backup-job",
+		Service:        "backup",
+		WorkingDir:     workingDir,
+		ConfigFiles:    []string{composePath},
+		RepositoryURL:  "https://example.com/owner/repo",
+		DeploymentName: "backup-job",
+		Reference:      "refs/heads/main",
+	}, newStubProvider(map[string]string{"MY_SECRET": "resolved-secret"}, nil))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	svc, err := project.GetService("backup")
+	if err != nil {
+		t.Fatalf("failed to get backup service: %v", err)
+	}
+
+	if svc.Environment == nil || svc.Environment["MY_SECRET"] == nil {
+		t.Fatal("expected MY_SECRET to be present in service environment")
+	}
+
+	if *svc.Environment["MY_SECRET"] != "resolved-secret" {
+		t.Fatalf("expected MY_SECRET to be resolved from external secret provider, got %q", *svc.Environment["MY_SECRET"])
+	}
+}
+
 func TestValidateComposeScheduledServiceScale(t *testing.T) {
 	t.Parallel()
 
