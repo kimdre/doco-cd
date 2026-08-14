@@ -533,6 +533,9 @@ func TestPrepareComposeProjectForOneOffRun(t *testing.T) {
 		t.Parallel()
 
 		project := &types.Project{
+			Name:         "adguard-dns",
+			WorkingDir:   "/repo/stacks/nas/adguard-dns",
+			ComposeFiles: []string{"/repo/stacks/nas/adguard-dns/compose.yml"},
 			Services: types.Services{
 				"backup": {
 					Name:         "backup",
@@ -561,12 +564,36 @@ func TestPrepareComposeProjectForOneOffRun(t *testing.T) {
 				got.Services["backup"].CustomLabels[DocoCDJobLabels.JobEphemeral])
 		}
 
+		if got.Services["backup"].CustomLabels[api.ProjectLabel] != "adguard-dns" {
+			t.Fatalf("expected compose project label, got %q",
+				got.Services["backup"].CustomLabels[api.ProjectLabel])
+		}
+
+		if got.Services["backup"].CustomLabels[api.ServiceLabel] != "backup" {
+			t.Fatalf("expected compose service label, got %q",
+				got.Services["backup"].CustomLabels[api.ServiceLabel])
+		}
+
+		if got.Services["backup"].CustomLabels[api.WorkingDirLabel] != "/repo/stacks/nas/adguard-dns" {
+			t.Fatalf("expected working dir label, got %q",
+				got.Services["backup"].CustomLabels[api.WorkingDirLabel])
+		}
+
+		if got.Services["backup"].CustomLabels[api.ConfigFilesLabel] != "/repo/stacks/nas/adguard-dns/compose.yml" {
+			t.Fatalf("expected config files label, got %q",
+				got.Services["backup"].CustomLabels[api.ConfigFilesLabel])
+		}
+
 		if _, ok := project.Services["backup"].Labels[DocoCDJobLabels.JobEphemeral]; ok {
 			t.Fatal("input project labels were mutated")
 		}
 
 		if _, ok := project.Services["backup"].CustomLabels[DocoCDJobLabels.JobEphemeral]; ok {
 			t.Fatal("input project custom labels were mutated")
+		}
+
+		if _, ok := project.Services["backup"].CustomLabels[api.ProjectLabel]; ok {
+			t.Fatal("input project compose labels were mutated")
 		}
 	})
 
