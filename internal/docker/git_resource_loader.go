@@ -177,8 +177,11 @@ func (g *gitResourceLoader) Load(ctx context.Context, resource string) (string, 
 		ref.Ref = "HEAD" // default branch
 	}
 
+	r := strings.Split(ref.Remote, "/")
+	repo := strings.Join(r[3:], "/")
+
 	slog.Debug("loading compose include from git repository",
-		slog.String("remote_host", gitRemoteHostForLog(ref.Remote)),
+		slog.String("remote", strings.Join([]string{gitRemoteHostForLog(ref.Remote), repo}, "/")),
 		slog.String("ref", ref.Ref),
 		slog.String("subdir", ref.SubDir),
 	)
