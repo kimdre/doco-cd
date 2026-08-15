@@ -1836,6 +1836,34 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#using-include-with-remote-compose-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Using <code>include</code> with remote compose files
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Using include with remote compose files">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#resolving-env-and-other-relative-paths" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Resolving <code>.env</code> and other relative paths
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#removing-a-container-service" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2362,6 +2390,34 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#using-include-with-remote-compose-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Using <code>include</code> with remote compose files
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Using include with remote compose files">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#resolving-env-and-other-relative-paths" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Resolving <code>.env</code> and other relative paths
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#removing-a-container-service" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2486,25 +2542,48 @@
 
 <h1 id="tips-and-tricks">Tips and Tricks<a class="headerlink" href="#tips-and-tricks" title="Permanent link">&para;</a></h1>
 <p>Some Tips and Tricks for using application.</p>
+<h2 id="using-include-with-remote-compose-files">Using <code>include</code> with remote compose files<a class="headerlink" href="#using-include-with-remote-compose-files" title="Permanent link">&para;</a></h2>
+<p>Docker Compose's <a href="https://docs.docker.com/compose/how-tos/multiple-compose-files/include/"><code>include</code></a> directive lets you pull in compose files from remote Git repositories or OCI artifacts directly:</p>
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">include</span><span class="p">:</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://github.com/example/app.git#v1.0.0:docker/docker-compose.yml</span>
+</span></code></pre></div>
+<div class="admonition abstract">
+<p class="admonition-title">Compose file reference</p>
+<p>See the full <code>include</code> syntax documentation in the <a href="https://docs.docker.com/reference/compose-file/include">Docker Compose documentation</a>.</p>
+</div>
+<h3 id="resolving-env-and-other-relative-paths">Resolving <code>.env</code> and other relative paths<a class="headerlink" href="#resolving-env-and-other-relative-paths" title="Permanent link">&para;</a></h3>
+<p>When a remote compose file references relative paths — most commonly <code>env_file: .env</code> in a service definition — Docker Compose resolves those paths against the remote include's own directory inside doco-cd's internal cache, <strong>not</strong> against your deployment repository.</p>
+<p>This means a deployment like the following will fail with <em>"env file … not found"</em> even if <code>.env</code> exists in your repository:</p>
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">include</span><span class="p">:</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://github.com/immich-app/immich.git#v3.0.3:docker/docker-compose.yml</span>
+</span></code></pre></div>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>env file /var/lib/.../compose-git-cache/.../docker/.env not found
+</span></code></pre></div>
+<p><strong>Fix:</strong> use the long <code>include</code> form and set <code>project_directory: .</code>. This tells Docker Compose to resolve relative paths in the included file against your deployment working directory:</p>
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">include</span><span class="p">:</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="hll"><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://github.com/immich-app/immich.git#v3.0.3:docker/docker-compose.yml</span>
+</span></span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="hll"><span class="w">    </span><span class="nt">project_directory</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.</span><span class="w">  </span><span class="c1"># resolve .env and other relative paths from your repo root</span>
+</span></span></code></pre></div>
+<p>With <code>project_directory: .</code>, any <code>.env</code> file you place in your repository root (or the directory configured as <code>working_dir</code> in <code>.doco-cd.yml</code>) will be picked up correctly by the included compose file.</p>
 <h2 id="removing-a-container-service">Removing a container service<a class="headerlink" href="#removing-a-container-service" title="Permanent link">&para;</a></h2>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="removing-a-container-service-docker-standalone" name="__tabbed_1" type="radio" /><input id="removing-a-container-service-docker-swarm" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="removing-a-container-service-docker-standalone">Docker Standalone</label><label for="removing-a-container-service-docker-swarm">Docker Swarm</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <p>You can add the <code>scale: 0</code> option in the <code>docker-compose.yml</code> file to remove a service (container). 
 The <code>scale</code> option sets the number of containers to run for the service. Setting it to <code>0</code> will scale the service down to zero containers.</p>
-<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">services</span><span class="p">:</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">webserver</span><span class="p">:</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="hll"><span class="w">    </span><span class="nt">scale</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
-</span></span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">nginx</span>
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">webserver</span><span class="p">:</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="hll"><span class="w">    </span><span class="nt">scale</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+</span></span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">nginx</span>
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
 <p>Add the following line to the <code>deploy</code> section of the service in the <code>docker-compose.yml</code> file to remove a service (container) in Docker Swarm mode:</p>
-<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">services</span><span class="p">:</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">webserver</span><span class="p">:</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="hll"><span class="w">    </span><span class="nt">deploy</span><span class="p">:</span>
-</span></span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="hll"><span class="w">      </span><span class="nt">replicas</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
-</span></span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">nginx</span>
+<div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">webserver</span><span class="p">:</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="hll"><span class="w">    </span><span class="nt">deploy</span><span class="p">:</span>
+</span></span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="hll"><span class="w">      </span><span class="nt">replicas</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+</span></span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">nginx</span>
 </span></code></pre></div>
 </div>
 </div>
