@@ -30,10 +30,6 @@ This means a deployment like the following will fail with *"env file … not fou
 ```yaml title="docker-compose.yml"
 include:
   - https://github.com/immich-app/immich.git#v3.0.3:docker/docker-compose.yml
-
-volumes:
-  db-data:
-  uploads:
 ```
 
 ```
