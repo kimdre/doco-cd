@@ -3,10 +3,14 @@ package openbao
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/moby/moby/api/pkg/stdcopy"
 
@@ -101,6 +105,13 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 	exitStatus, _ = stack.Exec(ctx, t, "vault", []string{"vault", "write", "pki/roles/example-dot-com", "allowed_domains=example.com", "allow_subdomains=true", "max_ttl=72h"})
 	if exitStatus != 0 {
 		t.Fatalf("failed to create pki role (exit code %d)", exitStatus)
+	}
+
+	// A short-lived role lets rotation tests exercise a certificate that falls within the
+	// default 72-hour CERT_ROTATION_THRESHOLD.
+	exitStatus, _ = stack.Exec(ctx, t, "vault", []string{"vault", "write", "pki/roles/rotation-test", "allowed_domains=example.com", "allow_subdomains=true", "ttl=1h", "max_ttl=1h"})
+	if exitStatus != 0 {
+		t.Fatalf("failed to create short-lived pki role (exit code %d)", exitStatus)
 	}
 
 	// Issue a test certificate
@@ -356,20 +367,72 @@ func TestProvider_OpenBao(t *testing.T) {
 	t.Run("PKIRoleIssuesFreshCertOnEachResolve", func(t *testing.T) {
 		ref := "pki-role:pki:example-dot-com:renew.example.com" // #nosec G101
 
-		first, err := provider.GetSecret(t.Context(), ref)
+		first, err := provider.ResolveSecretReferences(t.Context(), map[string]string{"CERT": ref})
 		if err != nil {
-			t.Fatalf("Failed to issue first certificate: %v", err)
+			t.Fatalf("Failed to resolve first certificate: %v", err)
 		}
 
-		second, err := provider.GetSecret(t.Context(), ref)
+		second, err := provider.ResolveSecretReferences(t.Context(), map[string]string{"CERT": ref})
 		if err != nil {
-			t.Fatalf("Failed to issue second certificate: %v", err)
+			t.Fatalf("Failed to resolve second certificate: %v", err)
 		}
 
-		if first == second {
-			t.Errorf("Expected each pki-role resolution to issue a distinct certificate, but got identical values")
+		firstCert := validateIssuedCertificatePair(t, first, "first")
+		secondCert := validateIssuedCertificatePair(t, second, "second")
+
+		if firstCert.SerialNumber.Cmp(secondCert.SerialNumber) == 0 {
+			t.Errorf("Expected each pki-role resolution to issue a certificate with a distinct serial number, got %s", firstCert.SerialNumber)
 		}
 	})
+
+	t.Run("PKIRoleShortLivedCertificateRequiresRotation", func(t *testing.T) {
+		resolved, err := provider.ResolveSecretReferences(t.Context(), map[string]string{
+			"CERT": "pki-role:pki:rotation-test:rotation.example.com", // #nosec G101
+		})
+		if err != nil {
+			t.Fatalf("Failed to resolve short-lived pki-role certificate: %v", err)
+		}
+
+		cert := validateIssuedCertificatePair(t, resolved, "short-lived")
+
+		rotationDeadline := time.Now().Add(72 * time.Hour)
+		if cert.NotAfter.After(rotationDeadline) {
+			t.Fatalf("Expected certificate expiring at %s to require rotation before the default 72h threshold deadline %s", cert.NotAfter, rotationDeadline)
+		}
+	})
+}
+
+// validateIssuedCertificatePair verifies that OpenBao issued a currently valid certificate and
+// that the generated private key belongs to that certificate.
+func validateIssuedCertificatePair(t *testing.T, resolved secrettypes.ResolvedSecrets, label string) *x509.Certificate {
+	t.Helper()
+
+	certPEM := resolved["CERT"]
+
+	keyPEM := resolved["CERT_KEY"]
+	if certPEM == "" || keyPEM == "" {
+		t.Fatalf("%s resolution must contain both CERT and CERT_KEY", label)
+	}
+
+	if _, err := tls.X509KeyPair([]byte(certPEM), []byte(keyPEM)); err != nil {
+		t.Fatalf("%s certificate and private key must form a valid pair: %v", label, err)
+	}
+
+	block, _ := pem.Decode([]byte(certPEM))
+	if block == nil {
+		t.Fatalf("%s certificate is not PEM encoded", label)
+	}
+
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatalf("%s certificate is invalid: %v", label, err)
+	}
+
+	if !cert.NotAfter.After(time.Now()) {
+		t.Fatalf("%s certificate is already expired at %s", label, cert.NotAfter)
+	}
+
+	return cert
 }
 
 func TestResolveSecretReferences_RejectsGeneratedPrivateKeyCollision(t *testing.T) {
