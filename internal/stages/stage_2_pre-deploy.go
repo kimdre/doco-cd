@@ -114,7 +114,8 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 
 	// Check for external secret changes and current deployed commit
 	var (
-		imagesChanged bool // Flag to indicate if images have changed
+		imagesChanged        bool     // Flag to indicate if images have changed
+		imageChangedServices []string // Services whose deployed image digest drifted from the registry
 	)
 
 	// Compare external secrets if a secret provider is configured
@@ -245,13 +246,16 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		} else if s.DeployConfig.ForceImagePull {
 			stageLog.Debug("force image pull enabled, checking deployed image digests against registry")
 
-			imagesChanged, err = docker.HaveDeployedServiceImageDigestsChanged(ctx, s.Docker.Cmd, s.Docker.SwarmMode, s.Docker.Project, stageLog)
+			imageChangedServices, err = docker.DeployedServicesWithChangedImageDigests(ctx, s.Docker.Cmd, s.Docker.SwarmMode, s.Docker.Project, stageLog)
 			if err != nil {
 				return fmt.Errorf("failed to compare deployed service image digests: %w", err)
 			}
 
+			imagesChanged = len(imageChangedServices) > 0
+
 			if imagesChanged {
-				stageLog.Debug("deployed image digests differ from registry, proceeding with deployment")
+				stageLog.Debug("deployed image digests differ from registry, proceeding with deployment",
+					slog.Any("services", imageChangedServices))
 			} else {
 				stageLog.Debug("deployed image digests match registry")
 			}
@@ -322,6 +326,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		}
 
 		s.DeployState.changedServices = changedServices
+		s.DeployState.imageChangedServices = imageChangedServices
 		s.DeployState.ignoredInfo = ignoredInfo
 
 		stageLog.Debug("changes detected, proceeding with deployment",
