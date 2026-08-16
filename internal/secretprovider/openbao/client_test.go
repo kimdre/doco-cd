@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/moby/moby/api/pkg/stdcopy"
@@ -202,6 +203,21 @@ func TestProvider_OpenBao(t *testing.T) {
 				expectErr: true,
 			},
 			{
+				name:      "Valid PKI role (issue) reference",
+				secretRef: "pki-role:pki:example-dot-com:issued.example.com", // #nosec G101
+				expectErr: false,
+			},
+			{
+				name:      "Invalid PKI role reference format",
+				secretRef: "pki-role:pki:example-dot-com", // #nosec G101
+				expectErr: true,
+			},
+			{
+				name:      "Non-existent PKI role",
+				secretRef: "pki-role:pki:nonexistent-role:issued.example.com", // #nosec G101
+				expectErr: true,
+			},
+			{
 				name:      "Invalid engine type",
 				secretRef: "invalid:creds:password", // #nosec G101
 				expectErr: true,
@@ -309,4 +325,65 @@ func TestProvider_OpenBao(t *testing.T) {
 			t.Errorf("Expected PEM encoded certificate but got: %s", cert)
 		}
 	})
+
+	t.Run("ResolvePKIRoleCertAndKey", func(t *testing.T) {
+		resolved, err := provider.ResolveSecretReferences(t.Context(), map[string]string{
+			"CERT": "pki-role:pki:example-dot-com:rotated.example.com", // #nosec G101
+		})
+		if err != nil {
+			t.Fatalf("Failed to resolve pki-role reference: %v", err)
+		}
+
+		cert, ok := resolved["CERT"]
+		if !ok || cert == "" {
+			t.Fatalf("Expected a certificate value for CERT but got: %q", cert)
+		}
+
+		if !bytes.Contains([]byte(cert), []byte("-----BEGIN CERTIFICATE-----")) {
+			t.Errorf("Expected PEM encoded certificate but got: %s", cert)
+		}
+
+		key, ok := resolved["CERT_KEY"]
+		if !ok || key == "" {
+			t.Fatalf("Expected a private key value for CERT_KEY but got: %q", key)
+		}
+
+		if !bytes.Contains([]byte(key), []byte("PRIVATE KEY-----")) {
+			t.Errorf("Expected PEM encoded private key but got: %s", key)
+		}
+	})
+
+	t.Run("PKIRoleIssuesFreshCertOnEachResolve", func(t *testing.T) {
+		ref := "pki-role:pki:example-dot-com:renew.example.com" // #nosec G101
+
+		first, err := provider.GetSecret(t.Context(), ref)
+		if err != nil {
+			t.Fatalf("Failed to issue first certificate: %v", err)
+		}
+
+		second, err := provider.GetSecret(t.Context(), ref)
+		if err != nil {
+			t.Fatalf("Failed to issue second certificate: %v", err)
+		}
+
+		if first == second {
+			t.Errorf("Expected each pki-role resolution to issue a distinct certificate, but got identical values")
+		}
+	})
+}
+
+func TestResolveSecretReferences_RejectsGeneratedPrivateKeyCollision(t *testing.T) {
+	provider := &Provider{}
+
+	_, err := provider.ResolveSecretReferences(t.Context(), map[string]string{
+		"CERT":     "pki-role:pki:example-dot-com:issued.example.com", // #nosec G101
+		"CERT_KEY": "kv:secret:private-key:value",                     // #nosec G101
+	})
+	if err == nil {
+		t.Fatal("expected pki-role private key collision to fail")
+	}
+
+	if !strings.Contains(err.Error(), "CERT_KEY") {
+		t.Fatalf("expected collision error to identify CERT_KEY, got: %v", err)
+	}
 }

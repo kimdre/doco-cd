@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"go.yaml.in/yaml/v4"
@@ -92,6 +93,9 @@ type Config struct {
 	OciTrustPolicy                config.OciTrustPolicy  `yaml:"-"`                                                                                              // OciTrustPolicy is the parsed app-level OCI signature trust policy
 	OciInsecureRegistriesString   string                 `env:"OCI_INSECURE_REGISTRIES"`                                                                         // OciInsecureRegistriesString is a comma-separated list of registries for OCI Compose includes with TLS verification disabled.
 	OciInsecureRegistries         []string               `yaml:"-"`                                                                                              // OciInsecureRegistries holds normalized OCI Compose include registries with TLS verification disabled.
+	CertRotationEnabled           bool                   `env:"CERT_ROTATION_ENABLED,notEmpty" envDefault:"false"`                                               // CertRotationEnabled enables the built-in watcher that automatically rotates certificates issued through rotation-capable external secret providers (e.g. OpenBao PKI roles)
+	CertRotationThreshold         time.Duration          `env:"CERT_ROTATION_THRESHOLD,notEmpty" envDefault:"72h" validate:"min=1"`                              // CertRotationThreshold is how far ahead of a certificate's expiry doco-cd triggers a rotation
+	CertRotationCheckInterval     time.Duration          `env:"CERT_ROTATION_CHECK_INTERVAL,notEmpty" envDefault:"1h" validate:"min=1"`                          // CertRotationCheckInterval is how often the certificate rotation watcher checks deployed certificates for upcoming expiry
 }
 
 // GetConfig returns the app Config.

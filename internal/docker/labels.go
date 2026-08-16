@@ -23,6 +23,8 @@ type docoCdLabelNamesDeployment struct {
 	AutoDiscoveryConfig  string // JSON-serialized AutoDiscoveryConfig settings
 	RecreateIgnore       string // Whether the deployment file changes should ignore recreate
 	RecreateIgnoreSignal string // Signal service when deployment file changes and ignore recreate
+	CertExpiry           string // RFC3339 timestamp of the earliest expiry among the deployment's cert-bearing external secrets
+	CertRotatable        string // Whether all cert-bearing external secrets for this deployment can be auto-rotated (issued via a role, as opposed to read-only refs)
 }
 
 // docoCdLabelNamesSource contains the labels used by DocoCD to identify the deployment source.
@@ -59,6 +61,8 @@ var DocoCDLabels = docoCdLabelNames{
 		AutoDiscoveryConfig:  "cd.doco.deployment.auto_discovery.config",
 		RecreateIgnore:       "cd.doco.deployment.recreate.ignore",
 		RecreateIgnoreSignal: "cd.doco.deployment.recreate.ignore.signal",
+		CertExpiry:           "cd.doco.deployment.cert.expiry",
+		CertRotatable:        "cd.doco.deployment.cert.rotatable",
 	},
 	Source: docoCdLabelNamesSource{
 		Type: "cd.doco.source",

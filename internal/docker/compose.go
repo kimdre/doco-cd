@@ -174,6 +174,8 @@ func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config
 			api.DependenciesLabel:                       strings.Join(dependencies, ","),
 		}
 
+		applyCertRotationLabelsToService(s.CustomLabels, s, project, deployConfig)
+
 		project.Services[i] = s
 	}
 }

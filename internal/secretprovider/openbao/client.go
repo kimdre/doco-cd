@@ -18,9 +18,18 @@ const (
 )
 
 const (
-	PKIRefFormat    = `^pki:(?:[^:]+:)?[^:]+:[^:]+$`      // #nosec G101 pki:<namespace(optional)>:<secretEngine>:<commonName>
-	SecretRefFormat = `^kv:(?:[^:]+:)?[^:]+:[^:]+:[^:]+$` // #nosec G101 kv:<namespace(optional)>:<secretEngine>:<secretName>:<key>
+	PKIRefFormat     = `^pki:(?:[^:]+:)?[^:]+:[^:]+$`            // #nosec G101 pki:<namespace(optional)>:<secretEngine>:<commonName>
+	PKIRoleRefFormat = `^pki-role:(?:[^:]+:)?[^:]+:[^:]+:[^:]+$` // #nosec G101 pki-role:<namespace(optional)>:<secretEngine>:<role>:<commonName>
+	SecretRefFormat  = `^kv:(?:[^:]+:)?[^:]+:[^:]+:[^:]+$`       // #nosec G101 kv:<namespace(optional)>:<secretEngine>:<secretName>:<key>
 )
+
+// PKIRoleKeySuffix is appended to the env var name of a pki-role external secret reference to
+// expose the matching private key issued alongside the certificate (e.g. CERT -> CERT_KEY).
+const PKIRoleKeySuffix = "_KEY"
+
+// pkiRoleRefRegexp is a precompiled matcher for PKIRoleRefFormat, used where matching happens in a
+// loop (e.g. ResolveSecretReferences) to avoid recompiling the pattern on every call.
+var pkiRoleRefRegexp = regexp.MustCompile(PKIRoleRefFormat)
 
 var ErrInvalidSecretReference = errors.New("invalid secret reference")
 
@@ -73,6 +82,14 @@ func (p *Provider) GetSecret(ctx context.Context, ref string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("failed to retrieve certificate with serial %s: %w", id, err)
 		}
+
+	case "pki-role":
+		issued, err := IssueCert(ctx, c, engineName, key, id)
+		if err != nil {
+			return "", fmt.Errorf("failed to issue certificate for common name %s using role %s: %w", id, key, err)
+		}
+
+		strValue = issued.Certificate
 
 	case "kv":
 		strValue, err = GetSecret(ctx, c, engineName, id, key)
@@ -137,27 +154,125 @@ func (p *Provider) GetSecrets(ctx context.Context, refs []string) (map[string]st
 
 // ResolveSecretReferences resolves the provided map of environment variable names to secret IDs
 // by fetching the corresponding secret values from the secret provider.
+//
+// A pki-role reference (see PKIRoleRefFormat) issues a fresh certificate and its matching private
+// key, and expands into two output entries: envVar holds the certificate PEM, and envVar + PKIRoleKeySuffix
+// (e.g. CERT_KEY) holds the private key PEM.
 func (p *Provider) ResolveSecretReferences(ctx context.Context, secrets map[string]string) (secrettypes.ResolvedSecrets, error) {
-	refs := make([]string, 0, len(secrets))
-	for _, id := range secrets {
-		refs = append(refs, id)
+	plainSecrets := make(map[string]string, len(secrets))
+	pkiRoleSecrets := make(map[string]string, len(secrets))
+
+	for envVar, ref := range secrets {
+		if pkiRoleRefRegexp.MatchString(ref) {
+			pkiRoleSecrets[envVar] = ref
+			continue
+		}
+
+		plainSecrets[envVar] = ref
 	}
 
-	resolved, err := p.GetSecrets(ctx, refs)
-	if err != nil {
-		return nil, err
+	for envVar := range pkiRoleSecrets {
+		if _, exists := secrets[envVar+PKIRoleKeySuffix]; exists {
+			return nil, fmt.Errorf("external secret %q conflicts with the private key generated for pki-role secret %q", envVar+PKIRoleKeySuffix, envVar)
+		}
 	}
 
-	out := make(map[string]string, len(secrets))
-	for envVar, secretID := range secrets {
-		if val, ok := resolved[secretID]; ok {
-			out[envVar] = val
-		} else {
-			out[envVar] = ""
+	out := make(map[string]string, len(secrets)+len(pkiRoleSecrets))
+
+	if len(plainSecrets) > 0 {
+		refs := make([]string, 0, len(plainSecrets))
+		for _, ref := range plainSecrets {
+			refs = append(refs, ref)
+		}
+
+		resolved, err := p.GetSecrets(ctx, refs)
+		if err != nil {
+			return nil, err
+		}
+
+		for envVar, ref := range plainSecrets {
+			if val, ok := resolved[ref]; ok {
+				out[envVar] = val
+			} else {
+				out[envVar] = ""
+			}
+		}
+	}
+
+	if len(pkiRoleSecrets) > 0 {
+		issued, err := p.issuePKIRoleCerts(ctx, pkiRoleSecrets)
+		if err != nil {
+			return nil, err
+		}
+
+		for envVar, cert := range issued {
+			out[envVar] = cert.Certificate
+			out[envVar+PKIRoleKeySuffix] = cert.PrivateKey
 		}
 	}
 
 	return out, nil
+}
+
+// issuePKIRoleCerts issues a fresh certificate/key pair for each pki-role reference in refs,
+// keyed by the same env var name used in the input map.
+func (p *Provider) issuePKIRoleCerts(ctx context.Context, refs map[string]string) (map[string]IssuedCertificate, error) {
+	issued := make(map[string]IssuedCertificate, len(refs))
+
+	var (
+		mu sync.Mutex
+		wg sync.WaitGroup
+	)
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	errCh := make(chan error, 1)
+
+	for envVar, ref := range refs {
+		wg.Add(1)
+
+		go func(envVar, ref string) {
+			defer wg.Done()
+
+			namespace, _, engineName, commonName, roleName, err := parseReference(ref)
+			if err != nil {
+				select {
+				case errCh <- err:
+					cancel()
+				default:
+				}
+
+				return
+			}
+
+			c := p.Client.WithNamespace(namespace)
+
+			cert, err := IssueCert(ctx, c, engineName, roleName, commonName)
+			if err != nil {
+				select {
+				case errCh <- fmt.Errorf("failed to issue certificate for common name %s: %w", commonName, err):
+					cancel()
+				default:
+				}
+
+				return
+			}
+
+			mu.Lock()
+			issued[envVar] = cert
+			mu.Unlock()
+		}(envVar, ref)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	if err, ok := <-errCh; ok {
+		return nil, err
+	}
+
+	return issued, nil
 }
 
 // Close cleans up resources used by the Provider.
@@ -168,10 +283,11 @@ func parseReference(ref string) (namespace, engineType, engineName, id, key stri
 	const defaultNamespace = "root"
 
 	matchedPKI, _ := regexp.MatchString(PKIRefFormat, ref)
+	matchedPKIRole, _ := regexp.MatchString(PKIRoleRefFormat, ref)
 	matchedSecret, _ := regexp.MatchString(SecretRefFormat, ref)
 
 	// Check if reference is in the correct format
-	if !matchedPKI && !matchedSecret {
+	if !matchedPKI && !matchedPKIRole && !matchedSecret {
 		return "", "", "", "", "", fmt.Errorf("%w: %s", ErrInvalidSecretReference, "unexpected ref format")
 	}
 
@@ -187,6 +303,20 @@ func parseReference(ref string) (namespace, engineType, engineName, id, key stri
 		}
 
 		return "", "", "", "", "", fmt.Errorf("%w: %s", ErrInvalidSecretReference, "expected format 'pki:<namespace(optional)>:<secretEngine>:<commonName>'")
+	}
+
+	// Handle PKI role (issuance) reference
+	if matchedPKIRole {
+		parts := strings.Split(ref, ":")
+		if len(parts) == 4 {
+			// pki-role:<engineType>:<role>:<commonName>
+			return defaultNamespace, parts[0], parts[1], parts[3], parts[2], nil
+		} else if len(parts) == 5 {
+			// pki-role:<namespace>:<engineType>:<role>:<commonName>
+			return parts[1], parts[0], parts[2], parts[4], parts[3], nil
+		}
+
+		return "", "", "", "", "", fmt.Errorf("%w: %s", ErrInvalidSecretReference, "expected format 'pki-role:<namespace(optional)>:<secretEngine>:<role>:<commonName>'")
 	}
 
 	// Handle Secret reference

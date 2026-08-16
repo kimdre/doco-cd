@@ -209,23 +209,9 @@ func loadComposeScheduledProject(
 	ref composeScheduledServiceRef,
 	secretProvider *secretprovider.SecretProvider,
 ) (*types.Project, error) {
-	if ref.WorkingDir == "" || len(ref.ConfigFiles) == 0 {
-		return nil, fmt.Errorf("%w: missing %q and/or %q label",
-			ErrComposeScheduledMetadataUnavailable,
-			api.WorkingDirLabel,
-			api.ConfigFilesLabel,
-		)
-	}
-
-	deployConfig, repoPath, err := loadComposeScheduledDeployConfig(ctx, ref, secretProvider)
+	project, _, err := loadComposeScheduledProjectAll(ctx, dockerCli, ref, secretProvider)
 	if err != nil {
 		return nil, err
-	}
-
-	project, err := LoadCompose(ctx, dockerCli, repoPath, ref.WorkingDir, ref.Project, ref.ConfigFiles,
-		deployConfig.EnvFiles, deployConfig.Profiles, deployConfig.Internal.Environment)
-	if err != nil {
-		return nil, fmt.Errorf("load compose project for scheduled service %s/%s: %w", ref.Project, ref.Service, err)
 	}
 
 	project, err = project.WithSelectedServices([]string{ref.Service}, types.IgnoreDependencies)
@@ -234,6 +220,41 @@ func loadComposeScheduledProject(
 	}
 
 	return project, nil
+}
+
+// loadComposeScheduledProjectAll reloads the deploy config referenced by ref and builds the full
+// compose project (all services, not just ref.Service) with freshly re-resolved external secrets.
+// It also returns the reloaded deploy config, which callers may need for the actual deploy/apply step.
+//
+// This is shared by the scheduled-job runner (which then selects a single service) and certificate
+// rotation (which needs every service in the project reloaded to identify those consuming the
+// freshly issued certificates).
+func loadComposeScheduledProjectAll(
+	ctx context.Context,
+	dockerCli command.Cli,
+	ref composeScheduledServiceRef,
+	secretProvider *secretprovider.SecretProvider,
+) (*types.Project, *deploy.Config, error) {
+	if ref.WorkingDir == "" || len(ref.ConfigFiles) == 0 {
+		return nil, nil, fmt.Errorf("%w: missing %q and/or %q label",
+			ErrComposeScheduledMetadataUnavailable,
+			api.WorkingDirLabel,
+			api.ConfigFilesLabel,
+		)
+	}
+
+	deployConfig, repoPath, err := loadComposeScheduledDeployConfig(ctx, ref, secretProvider)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	project, err := LoadCompose(ctx, dockerCli, repoPath, ref.WorkingDir, ref.Project, ref.ConfigFiles,
+		deployConfig.EnvFiles, deployConfig.Profiles, deployConfig.Internal.Environment)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load compose project for scheduled service %s/%s: %w", ref.Project, ref.Service, err)
+	}
+
+	return project, deployConfig, nil
 }
 
 func validateComposeScheduledServiceScale(project *types.Project, ref composeScheduledServiceRef) error {

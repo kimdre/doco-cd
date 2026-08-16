@@ -146,6 +146,11 @@ func addSwarmServiceLabels(stack *composetypes.Config, deployConfig *deploy.Conf
 		DocoCDLabels.Source.URL:                     payload.WebURL,
 	}
 
+	// Cert expiry/rotatable are recorded as service-spec labels only (not stable container
+	// labels), consistent with other per-deployment metadata such as AutoDiscovery: they may
+	// legitimately change on every rotation without forcing an unrelated task recreation.
+	applyCertRotationLabels(serviceSpecLabels, deployConfig)
+
 	maps.Copy(serviceSpecLabels, stableLabels)
 
 	for i, s := range stack.Services {
