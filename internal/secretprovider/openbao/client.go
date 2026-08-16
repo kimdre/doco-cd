@@ -177,7 +177,7 @@ func (p *Provider) ResolveSecretReferences(ctx context.Context, secrets map[stri
 		}
 	}
 
-	out := make(map[string]string, len(secrets)+len(pkiRoleSecrets))
+	out := make(map[string]string)
 
 	if len(plainSecrets) > 0 {
 		refs := make([]string, 0, len(plainSecrets))
