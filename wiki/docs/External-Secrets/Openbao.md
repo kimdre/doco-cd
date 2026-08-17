@@ -104,20 +104,20 @@ Automatic certificate rotation is currently only supported for OpenBao PKI roles
 
 ### How it works
 
-1. When a deployment resolves a `pki-role` external secret, doco-cd stamps two labels on the deployed container(s)/service(s):
+1. When a deployment resolves a `pki-role` external secret, doco-cd stamps three labels on the
+   deployed container(s)/service(s):
     - `cd.doco.deployment.cert.expiry`: the earliest expiry (RFC3339) among all certificates in the deployment.
-    - `cd.doco.deployment.cert.rotatable`: `true` only if **every** certificate-bearing external secret in the deployment used a `pki-role` reference..
+    - `cd.doco.deployment.cert.rotatable`: `true` only if **every** certificate-bearing external secret in the deployment used a `pki-role` reference.
+    - `cd.doco.deployment.cert.state`: the reference and serial number of every deployed `pki-role` certificate, used to detect revocation.
 2. The watcher periodically (every `CERT_ROTATION_CHECK_INTERVAL`) lists all deployments labeled
-   `cert.rotatable=true` and compares `now + CERT_ROTATION_THRESHOLD` against the recorded expiry.
+   `cert.rotatable=true` and rotates a deployment when either is true:
+    - its recorded expiry is within `CERT_ROTATION_THRESHOLD` (or already past),
+    - or any certificate in its `cert.state` label has since been revoked in OpenBao.
 3. When a deployment is due, doco-cd reloads its deploy config and re-resolves all external
    secrets. It issues brand-new certificates and keys for every `pki-role` reference, then
-   recreates only the services that actually consume a rotated certificate or private key. That
-   includes direct environment variables and `configs`/`secrets` entries. Unrelated services in the
-   same project/stack are left untouched.
+   redeploys to pick up the fresh values:
 
-!!! warning "Docker Swarm stacks not yet supported"
-    Automatic rotation redeploys currently support **standalone Docker Compose deployments only**.
-    Docker Swarm stacks are not yet supported and will be skipped by the watcher.
+    Only services that actually consume a rotated certificate or private key (via direct environment variables or `configs`/`secrets` entries) get recreated; unrelated services in the same project are left untouched.
 
 ### Private key access
 

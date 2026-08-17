@@ -14,6 +14,7 @@ import (
 	"github.com/docker/compose/v5/pkg/api"
 
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
@@ -181,6 +182,21 @@ func TestDueProjects(t *testing.T) {
 			t.Fatalf("expected no due projects, got %v", due)
 		}
 	})
+
+	t.Run("swarm service without api.ProjectLabel falls back to deployment name label", func(t *testing.T) {
+		services := map[docker.Service]map[string]string{
+			"stack-a_app.1": {
+				docker.DocoCDLabels.Deployment.Name:       "stack-a",
+				docker.DocoCDLabels.Deployment.CertExpiry: now.Add(1 * time.Hour).Format(time.RFC3339),
+			},
+		}
+
+		due := dueProjects(services, now, threshold, nil)
+
+		if _, ok := due["stack-a"]; !ok {
+			t.Fatalf("expected stack-a to be due via the deployment name label fallback, got %v", due)
+		}
+	})
 }
 
 type revocationCheckingProvider struct {
@@ -256,6 +272,32 @@ func TestRevokedProjects(t *testing.T) {
 
 	if _, ok := got["project-c"]; ok {
 		t.Fatalf("did not expect errored project-c to be marked revoked, got %v", got)
+	}
+}
+
+// TestRevokedProjectsSwarmLabels verifies that revocation detection also works for Docker Swarm
+// services, which never carry api.ProjectLabel (docker stack deploy doesn't set it); the project
+// grouping must fall back to DocoCDLabels.Deployment.Name in that case.
+func TestRevokedProjectsSwarmLabels(t *testing.T) {
+	services := map[docker.Service]map[string]string{
+		"stack-a_app.1": {
+			docker.DocoCDLabels.Deployment.Name:      "stack-a",
+			docker.DocoCDLabels.Deployment.CertState: `[{"ref":"pki-role:pki:role:a.example.com","serial":"01"}]`,
+		},
+	}
+
+	provider := &revocationCheckingProvider{
+		revoked: map[string]bool{
+			services["stack-a_app.1"][docker.DocoCDLabels.Deployment.CertState]: true,
+		},
+	}
+
+	var secretProvider secretprovider.SecretProvider = provider
+
+	got := revokedProjects(t.Context(), services, &secretProvider, nil)
+
+	if _, ok := got["stack-a"]; !ok {
+		t.Fatalf("expected stack-a to be marked revoked via the deployment name label fallback, got %v", got)
 	}
 }
 
@@ -384,24 +426,26 @@ func TestRotationReasonsForRevokedOnlyProject(t *testing.T) {
 	}
 }
 
-// TestCheckAndRotateSkipsSwarmMode verifies the watcher bails out early in Docker Swarm mode with
-// a single warning, instead of discovering rotatable stacks and then failing once per project on
-// every check interval (RotateProjectCertificates does not support Swarm redeploys yet).
-func TestCheckAndRotateSkipsSwarmMode(t *testing.T) {
-	var buf bytes.Buffer
+// TestSwarmMode verifies the swarmEnabled hook is consulted (falling back to
+// swarm.GetModeEnabled when unset), so checkAndRotate correctly passes the current Swarm state
+// through to docker.GetLabeledServices and docker.RotateProjectCertificates.
+func TestSwarmMode(t *testing.T) {
+	t.Run("uses swarmEnabled hook when set", func(t *testing.T) {
+		watcher := &Watcher{swarmEnabled: func() bool { return true }}
+		if !watcher.swarmMode() {
+			t.Fatal("expected swarmMode() to return true")
+		}
 
-	watcher := &Watcher{
-		log:          slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
-		threshold:    72 * time.Hour,
-		now:          time.Now,
-		swarmEnabled: func() bool { return true },
-	}
+		watcher = &Watcher{swarmEnabled: func() bool { return false }}
+		if watcher.swarmMode() {
+			t.Fatal("expected swarmMode() to return false")
+		}
+	})
 
-	// A nil dockerCli would panic if the swarm guard did not short-circuit before listing services.
-	watcher.checkAndRotate(t.Context())
-	watcher.checkAndRotate(t.Context())
-
-	if got := strings.Count(buf.String(), "certificate rotation is not supported in Docker Swarm mode"); got != 1 {
-		t.Fatalf("expected the Swarm notice to be logged exactly once, got %d occurrences in %q", got, buf.String())
-	}
+	t.Run("falls back to swarm.GetModeEnabled when unset", func(t *testing.T) {
+		watcher := &Watcher{}
+		if watcher.swarmMode() != swarm.GetModeEnabled() {
+			t.Fatalf("expected swarmMode() to match swarm.GetModeEnabled() (%v)", swarm.GetModeEnabled())
+		}
+	})
 }

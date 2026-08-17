@@ -2,8 +2,8 @@ package docker
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -12,28 +12,25 @@ import (
 	"github.com/docker/compose/v5/pkg/api"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/lock"
+	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
-
-// ErrCertRotationSwarmUnsupported is returned by RotateProjectCertificates when called for a
-// deployment running in Docker Swarm mode, which is not yet supported.
-var ErrCertRotationSwarmUnsupported = errors.New("automatic certificate rotation redeploy is not yet supported in Docker Swarm mode")
 
 // certRotationTrigger is the value stamped into DocoCDLabels.Deployment.Trigger by rotation-driven
 // redeploys, distinguishing them from webhook, poll, or scheduled-job triggered redeploys.
 const certRotationTrigger = "cert.rotation"
 
-// RotateProjectCertificates reloads the deploy config for a rotatable deployment (identified by its
-// doco-cd labels, see DocoCDLabels.Deployment.CertRotatable), re-resolves its external secrets
-// (which reissues any pki-role certificates through the configured secret provider), and forces a
-// recreate of the services that consume the rotated certificates and their matching private keys,
-// so the freshly-issued values take effect. Services in the same project that don't reference any
-// pki-role-backed secret are left untouched.
+// RotateProjectCertificates reloads the deploy config for a rotatable deployment (identified by
+// its doco-cd labels, see DocoCDLabels.Deployment.CertRotatable), re-resolves its external secrets
+// (reissuing any pki-role certificates through the configured secret provider), and redeploys so
+// the fresh values take effect.
 //
-// Only standalone Docker Compose deployments are currently supported; Swarm-mode stacks return
-// ErrCertRotationSwarmUnsupported.
+// Compose deployments only recreate the services actually consuming a rotated certificate/key.
+// Swarm stacks redeploy the whole stack, but Swarm's own spec diffing (see
+// stableSwarmMetadataLabels) still limits recreation to the affected services.
 func RotateProjectCertificates(
 	ctx context.Context,
 	dockerCli command.Cli,
@@ -42,7 +39,7 @@ func RotateProjectCertificates(
 	swarmMode bool,
 ) error {
 	if swarmMode {
-		return ErrCertRotationSwarmUnsupported
+		return rotateSwarmProjectCertificates(ctx, dockerCli, labels, secretProvider)
 	}
 
 	ref, err := composeScheduledServiceRefFromLabels(labels)
@@ -81,17 +78,7 @@ func RotateProjectCertificates(
 		return fmt.Errorf("select certificate-consuming services for rotation of %s: %w", ref.Project, err)
 	}
 
-	// Build a synthetic payload for relabeling purposes only. CommitSHA is intentionally left as
-	// the zero value: ParsedPayload.TriggerString() falls back to CommitSHAString(), which itself
-	// returns "" for a zero hash instead of panicking, but we set Trigger explicitly anyway so the
-	// resulting label clearly identifies this as a rotation-driven redeploy rather than an empty
-	// commit SHA.
-	payload := &webhook.ParsedPayload{
-		Source:   webhook.PayloadSourceGit,
-		Trigger:  certRotationTrigger,
-		FullName: strings.TrimSpace(labels[DocoCDLabels.Source.Name]),
-		WebURL:   strings.TrimSpace(labels[DocoCDLabels.Source.URL]),
-	}
+	payload := certRotationPayload(labels)
 
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 	latestCommit := strings.TrimSpace(labels[DocoCDLabels.Deployment.CommitSHA])
@@ -104,4 +91,94 @@ func RotateProjectCertificates(
 	}
 
 	return nil
+}
+
+// rotateSwarmProjectCertificates reissues certificates for a Docker Swarm deployment and
+// redeploys the whole stack. Unlike the standalone Compose path, no per-service selection is
+// needed: Swarm only recreates the tasks of services whose spec actually changed, so only the
+// services consuming the rotated certificate values end up being redeployed.
+func rotateSwarmProjectCertificates(
+	ctx context.Context,
+	dockerCli command.Cli,
+	labels map[string]string,
+	secretProvider *secretprovider.SecretProvider,
+) error {
+	ref, err := composeScheduledServiceRefFromSwarmLabels(labels)
+	if err != nil {
+		return fmt.Errorf("parse deployment labels for cert rotation: %w", err)
+	}
+
+	lock.LockStack(ref.Project)
+	defer lock.UnlockStack(ref.Project)
+
+	project, deployConfig, err := loadComposeScheduledProjectAll(ctx, dockerCli, ref, secretProvider)
+	if err != nil {
+		return fmt.Errorf("reload deploy config for cert rotation of %s: %w", ref.Project, err)
+	}
+
+	payload := certRotationPayload(labels)
+
+	timestamp := time.Now().UTC().Format(time.RFC3339)
+	latestCommit := strings.TrimSpace(labels[DocoCDLabels.Deployment.CommitSHA])
+	projectHash := strings.TrimSpace(labels[DocoCDLabels.Deployment.ComposeHash])
+
+	cfg, opts, err := LoadSwarmStack(dockerCli, project, deployConfig, ref.WorkingDir)
+	if err != nil {
+		return fmt.Errorf("load swarm stack for cert rotation of %s: %w", ref.Project, err)
+	}
+
+	addSwarmServiceLabels(cfg, project, deployConfig, payload, ref.WorkingDir, app.Version, timestamp, latestCommit, projectHash)
+	addSwarmVolumeLabels(cfg, deployConfig, payload, ref.WorkingDir)
+	addSwarmConfigLabels(cfg, deployConfig, payload, ref.WorkingDir, app.Version, timestamp, latestCommit)
+	addSwarmSecretLabels(cfg, deployConfig, payload, ref.WorkingDir, app.Version, timestamp, latestCommit)
+
+	if err = DeploySwarmStack(ctx, dockerCli, cfg, opts); err != nil {
+		return fmt.Errorf("redeploy swarm stack %s for cert rotation: %w", ref.Project, err)
+	}
+
+	pruneSwarmStackRevisions(ctx, dockerCli, ref.Project, deployConfig)
+
+	return nil
+}
+
+// pruneSwarmStackRevisions removes superseded config/secret revisions left behind by the
+// rotation redeploy, honoring the same retention settings as a normal Swarm deploy. Prune
+// failures are only logged, not returned, since the certificate has already been redeployed
+// successfully by the time this runs.
+func pruneSwarmStackRevisions(ctx context.Context, dockerCli command.Cli, stackName string, deployConfig *deploy.Config) {
+	appConfig, err := app.GetConfig()
+	if err != nil {
+		slog.Warn("skipping swarm config/secret prune after cert rotation: failed to load app config",
+			slog.String("project", stackName), logger.ErrAttr(err))
+
+		return
+	}
+
+	if retention := deployConfig.ResolveSwarmConfigRetention(appConfig.DockerSwarmConfigRetention); retention >= 0 {
+		if err := PruneStackConfigs(ctx, dockerCli.Client(), stackName, retention); err != nil {
+			slog.Warn("failed to prune swarm stack configs after cert rotation",
+				slog.String("project", stackName), logger.ErrAttr(err))
+		}
+	}
+
+	if retention := deployConfig.ResolveSwarmSecretRetention(appConfig.DockerSwarmSecretRetention); retention >= 0 {
+		if err := PruneStackSecrets(ctx, dockerCli.Client(), stackName, retention); err != nil {
+			slog.Warn("failed to prune swarm stack secrets after cert rotation",
+				slog.String("project", stackName), logger.ErrAttr(err))
+		}
+	}
+}
+
+// certRotationPayload builds a synthetic payload for relabeling purposes only. CommitSHA is
+// intentionally left as the zero value: ParsedPayload.TriggerString() falls back to
+// CommitSHAString(), which itself returns "" for a zero hash instead of panicking, but Trigger is
+// set explicitly anyway so the resulting label clearly identifies this as a rotation-driven
+// redeploy rather than an empty commit SHA.
+func certRotationPayload(labels map[string]string) *webhook.ParsedPayload {
+	return &webhook.ParsedPayload{
+		Source:   webhook.PayloadSourceGit,
+		Trigger:  certRotationTrigger,
+		FullName: strings.TrimSpace(labels[DocoCDLabels.Source.Name]),
+		WebURL:   strings.TrimSpace(labels[DocoCDLabels.Source.URL]),
+	}
 }

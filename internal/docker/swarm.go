@@ -129,12 +129,16 @@ func stableSwarmMetadataLabels(deployConfig *deploy.Config, payload *webhook.Par
 // s.Labels), so the containers remain identifiable via e.g.
 // `docker ps --filter label=cd.doco.deployment.name=...` on worker nodes, where the
 // service spec is not available.
-func addSwarmServiceLabels(stack *composetypes.Config, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
+//
+// Cert expiry/rotatable/state labels are applied per-service via
+// applyCertRotationLabelsToService, so only services actually using a rotated certificate carry
+// them. project resolves those references and may be nil, in which case no cert labels are added.
+func addSwarmServiceLabels(stack *composetypes.Config, project *types.Project, deployConfig *deploy.Config, payload *webhook.ParsedPayload,
 	repoDir, appVersion, timestamp, latestCommit, projectHash string,
 ) {
 	stableLabels := stableSwarmMetadataLabels(deployConfig, payload, repoDir)
 
-	serviceSpecLabels := map[string]string{
+	sharedServiceSpecLabels := map[string]string{
 		DocoCDLabels.Metadata.Version:               appVersion,
 		DocoCDLabels.Deployment.Timestamp:           timestamp,
 		DocoCDLabels.Deployment.ComposeHash:         projectHash,
@@ -146,19 +150,20 @@ func addSwarmServiceLabels(stack *composetypes.Config, deployConfig *deploy.Conf
 		DocoCDLabels.Source.URL:                     payload.WebURL,
 	}
 
-	// Cert expiry/rotatable are recorded as service-spec labels only (not stable container
-	// labels), consistent with other per-deployment metadata such as AutoDiscovery: they may
-	// legitimately change on every rotation without forcing an unrelated task recreation.
-	applyCertRotationLabels(serviceSpecLabels, deployConfig)
-
-	maps.Copy(serviceSpecLabels, stableLabels)
+	maps.Copy(sharedServiceSpecLabels, stableLabels)
 
 	for i, s := range stack.Services {
 		if s.Deploy.Labels == nil {
 			s.Deploy.Labels = make(map[string]string)
 		}
 
-		maps.Copy(s.Deploy.Labels, serviceSpecLabels)
+		maps.Copy(s.Deploy.Labels, sharedServiceSpecLabels)
+
+		if project != nil {
+			if projectService, ok := project.Services[s.Name]; ok {
+				applyCertRotationLabelsToService(s.Deploy.Labels, projectService, project, deployConfig)
+			}
+		}
 
 		if s.Labels == nil {
 			s.Labels = make(map[string]string)

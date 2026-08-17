@@ -15,7 +15,6 @@ import (
 	"maps"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/docker/cli/cli/command"
@@ -36,10 +35,6 @@ type Watcher struct {
 	secretProvider *secretprovider.SecretProvider
 	threshold      time.Duration
 	checkInterval  time.Duration
-
-	// swarmWarnOnce ensures the "unsupported in Swarm mode" notice is logged only once instead of
-	// on every check interval.
-	swarmWarnOnce sync.Once
 
 	// now and swarmEnabled are overridable in tests.
 	now          func() time.Time
@@ -107,17 +102,6 @@ func (w *Watcher) swarmMode() bool {
 // checkAndRotate discovers all rotatable deployments, and for each project whose certificate
 // expiry is within the configured threshold, triggers a rotation redeploy.
 func (w *Watcher) checkAndRotate(ctx context.Context) {
-	// RotateProjectCertificates cannot redeploy Swarm stacks yet, so bail out early instead of
-	// discovering rotatable stacks and then failing once per project on every check interval.
-	if w.swarmMode() {
-		w.swarmWarnOnce.Do(func() {
-			w.log.Warn("certificate rotation is not supported in Docker Swarm mode, skipping checks",
-				logger.ErrAttr(docker.ErrCertRotationSwarmUnsupported))
-		})
-
-		return
-	}
-
 	services, err := docker.GetLabeledServices(
 		ctx, w.dockerCli.Client(), w.swarmMode(),
 		docker.DocoCDLabels.Deployment.CertRotatable, "true",
@@ -155,6 +139,19 @@ func (w *Watcher) checkAndRotate(ctx context.Context) {
 	}
 }
 
+// projectKey returns the project/stack identifier used to group discovered services for
+// rotation-due and revocation checks. Standalone Docker Compose deployments carry Compose's own
+// api.ProjectLabel; Docker Swarm stacks never set that label (docker stack deploy doesn't apply
+// it), so DocoCDLabels.Deployment.Name (set by doco-cd itself for both modes) is used as a
+// fallback.
+func projectKey(labels map[string]string) string {
+	if project := labels[api.ProjectLabel]; project != "" {
+		return project
+	}
+
+	return labels[docker.DocoCDLabels.Deployment.Name]
+}
+
 func revokedProjects(
 	ctx context.Context,
 	services map[docker.Service]map[string]string,
@@ -173,7 +170,7 @@ func revokedProjects(
 	revoked := make(map[string]map[string]string)
 
 	for _, labels := range services {
-		project := labels[api.ProjectLabel]
+		project := projectKey(labels)
 		if project == "" {
 			continue
 		}
@@ -243,7 +240,7 @@ func dueProjects(
 	expiries := make(map[string]time.Time, len(services))
 
 	for _, labels := range services {
-		project := labels[api.ProjectLabel]
+		project := projectKey(labels)
 		if project == "" {
 			continue
 		}

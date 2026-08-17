@@ -235,11 +235,10 @@ func loadComposeScheduledProjectAll(
 	ref composeScheduledServiceRef,
 	secretProvider *secretprovider.SecretProvider,
 ) (*types.Project, *deploy.Config, error) {
-	if ref.WorkingDir == "" || len(ref.ConfigFiles) == 0 {
-		return nil, nil, fmt.Errorf("%w: missing %q and/or %q label",
+	if ref.WorkingDir == "" {
+		return nil, nil, fmt.Errorf("%w: missing %q label",
 			ErrComposeScheduledMetadataUnavailable,
 			api.WorkingDirLabel,
-			api.ConfigFilesLabel,
 		)
 	}
 
@@ -248,7 +247,22 @@ func loadComposeScheduledProjectAll(
 		return nil, nil, err
 	}
 
-	project, err := LoadCompose(ctx, dockerCli, repoPath, ref.WorkingDir, ref.Project, ref.ConfigFiles,
+	// Swarm-discovered deployments carry no com.docker.compose.config_files label (docker stack
+	// deploy never sets Compose's own tracking labels), so fall back to the freshly reloaded
+	// deploy config's compose file list - the same source a normal (non-scheduled) deploy uses.
+	configFiles := ref.ConfigFiles
+	if len(configFiles) == 0 {
+		configFiles = deployConfig.ComposeFiles
+	}
+
+	if len(configFiles) == 0 {
+		return nil, nil, fmt.Errorf("%w: missing %q label and no compose files configured",
+			ErrComposeScheduledMetadataUnavailable,
+			api.ConfigFilesLabel,
+		)
+	}
+
+	project, err := LoadCompose(ctx, dockerCli, repoPath, ref.WorkingDir, ref.Project, configFiles,
 		deployConfig.EnvFiles, deployConfig.Profiles, deployConfig.Internal.Environment)
 	if err != nil {
 		return nil, nil, fmt.Errorf("load compose project for scheduled service %s/%s: %w", ref.Project, ref.Service, err)
@@ -312,6 +326,41 @@ func composeScheduledServiceRefFromLabels(labels map[string]string) (composeSche
 	}
 
 	return ref, nil
+}
+
+// composeScheduledServiceRefFromSwarmLabels builds a composeScheduledServiceRef from a Swarm
+// service's labels for cert rotation. Unlike composeScheduledServiceRefFromLabels, Swarm services
+// never carry the Compose-managed com.docker.compose.* labels (docker stack deploy doesn't set them),
+// so the stack name and working directory are read from doco-cd's own labels instead, and
+// ConfigFiles is left empty for loadComposeScheduledProjectAll to fall back to the reloaded
+// deploy config. Service is also left empty: RotateProjectCertificates operates on the whole
+// stack in Swarm mode rather than a single named service.
+func composeScheduledServiceRefFromSwarmLabels(labels map[string]string) (composeScheduledServiceRef, error) {
+	if labels == nil {
+		return composeScheduledServiceRef{}, fmt.Errorf("%w: missing labels", ErrComposeScheduledMetadataUnavailable)
+	}
+
+	project := strings.TrimSpace(labels[DocoCDLabels.Deployment.Name])
+	if project == "" {
+		return composeScheduledServiceRef{}, fmt.Errorf("%w: missing %q label",
+			ErrComposeScheduledMetadataUnavailable,
+			DocoCDLabels.Deployment.Name,
+		)
+	}
+
+	repositoryURL := strings.TrimSpace(labels[DocoCDLabels.Source.URL])
+	if repositoryURL == "" {
+		repositoryURL = strings.TrimSpace(labels[DocoCDLabels.Source.Name])
+	}
+
+	return composeScheduledServiceRef{
+		Project:        project,
+		WorkingDir:     strings.TrimSpace(labels[DocoCDLabels.Deployment.WorkingDir]),
+		RepositoryURL:  repositoryURL,
+		DeploymentName: project,
+		ConfigTarget:   strings.TrimSpace(labels[DocoCDLabels.Deployment.ConfigTarget]),
+		Reference:      strings.TrimSpace(labels[DocoCDLabels.Deployment.TargetRef]),
+	}, nil
 }
 
 // loadComposeScheduledDeployConfig reloads the deploy config that originally
