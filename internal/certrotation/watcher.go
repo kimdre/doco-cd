@@ -192,8 +192,8 @@ func rotationReasons(
 }
 
 // dueProjects deduplicates discovered rotation-capable services by compose project. If services
-// have differing expiry labels (for example, after a prior scoped rotation), it uses the latest
-// expiry and its labels so an older stale label cannot cause repeated rotations.
+// have differing expiry labels (e.g. a partially failed rotation left one stale), it uses the
+// soonest expiry so a near-expiry certificate can never be masked by a sibling's fresher label.
 func dueProjects(
 	services map[docker.Service]map[string]string,
 	now time.Time,
@@ -219,7 +219,7 @@ func dueProjects(
 			continue
 		}
 
-		if current, seen := expiries[project]; !seen || expiry.After(current) {
+		if current, seen := expiries[project]; !seen || expiry.Before(current) {
 			byProject[project] = labels
 			expiries[project] = expiry
 		}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -112,7 +113,7 @@ func TestDueProjects(t *testing.T) {
 		}
 	})
 
-	t.Run("latest expiry wins when prior scoped rotation leaves a stale label", func(t *testing.T) {
+	t.Run("soonest expiry wins so a stale label after a partial rotation failure can't be masked", func(t *testing.T) {
 		services := map[docker.Service]map[string]string{
 			"project-d_app_1": {
 				api.ProjectLabel: "project-d",
@@ -126,8 +127,8 @@ func TestDueProjects(t *testing.T) {
 
 		due := dueProjects(services, now, threshold, nil)
 
-		if len(due) != 0 {
-			t.Fatalf("expected stale label not to retrigger rotation, got %v", due)
+		if _, ok := due["project-d"]; !ok {
+			t.Fatalf("expected project-d to remain due because of the stale near-expiry sibling label, got %v", due)
 		}
 	})
 
@@ -245,15 +246,15 @@ func TestRotationReasons(t *testing.T) {
 		},
 	)
 
-	if want := []string{"expiry"}; !slicesEqual(got["project-a"], want) {
+	if want := []string{"expiry"}; !slices.Equal(got["project-a"], want) {
 		t.Fatalf("expected project-a reasons %v, got %v", want, got["project-a"])
 	}
 
-	if want := []string{"expiry", "revoked"}; !slicesEqual(got["project-b"], want) {
+	if want := []string{"expiry", "revoked"}; !slices.Equal(got["project-b"], want) {
 		t.Fatalf("expected project-b reasons %v, got %v", want, got["project-b"])
 	}
 
-	if want := []string{"revoked"}; !slicesEqual(got["project-c"], want) {
+	if want := []string{"revoked"}; !slices.Equal(got["project-c"], want) {
 		t.Fatalf("expected project-c reasons %v, got %v", want, got["project-c"])
 	}
 }
@@ -300,18 +301,4 @@ func TestWatcherLogsWhenCertificateNeedsRotation(t *testing.T) {
 	if entry["reason"] != "expiry" {
 		t.Fatalf("expected reason attr %q, got %v", "expiry", entry["reason"])
 	}
-}
-
-func slicesEqual(got, want []string) bool {
-	if len(got) != len(want) {
-		return false
-	}
-
-	for i := range got {
-		if got[i] != want[i] {
-			return false
-		}
-	}
-
-	return true
 }
