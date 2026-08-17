@@ -132,6 +132,10 @@ func rotateSwarmProjectCertificates(
 	addSwarmConfigLabels(cfg, deployConfig, payload, ref.WorkingDir, app.Version, timestamp, latestCommit)
 	addSwarmSecretLabels(cfg, deployConfig, payload, ref.WorkingDir, app.Version, timestamp, latestCommit)
 
+	if err = removeMismatchedRecreatableVolumes(ctx, dockerCli.Client(), ref.Project, project); err != nil {
+		return fmt.Errorf("remove mismatched recreatable volumes for cert rotation of %s: %w", ref.Project, err)
+	}
+
 	if err = DeploySwarmStack(ctx, dockerCli, cfg, opts); err != nil {
 		return fmt.Errorf("redeploy swarm stack %s for cert rotation: %w", ref.Project, err)
 	}
