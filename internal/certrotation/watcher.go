@@ -15,6 +15,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/docker/cli/cli/command"
@@ -36,8 +37,13 @@ type Watcher struct {
 	threshold      time.Duration
 	checkInterval  time.Duration
 
-	// now is overridable in tests.
-	now func() time.Time
+	// swarmWarnOnce ensures the "unsupported in Swarm mode" notice is logged only once instead of
+	// on every check interval.
+	swarmWarnOnce sync.Once
+
+	// now and swarmEnabled are overridable in tests.
+	now          func() time.Time
+	swarmEnabled func() bool
 }
 
 // New creates a Watcher. threshold is how far ahead of a certificate's expiry rotation is
@@ -55,6 +61,7 @@ func New(
 		threshold:      threshold,
 		checkInterval:  checkInterval,
 		now:            time.Now,
+		swarmEnabled:   swarm.GetModeEnabled,
 	}
 }
 
@@ -87,11 +94,32 @@ func (w *Watcher) Start(ctx context.Context) {
 	}
 }
 
+// swarmMode reports whether the Docker host is running in Swarm mode, via an overridable hook so
+// tests can exercise both modes without a live daemon.
+func (w *Watcher) swarmMode() bool {
+	if w.swarmEnabled == nil {
+		return swarm.GetModeEnabled()
+	}
+
+	return w.swarmEnabled()
+}
+
 // checkAndRotate discovers all rotatable deployments, and for each project whose certificate
 // expiry is within the configured threshold, triggers a rotation redeploy.
 func (w *Watcher) checkAndRotate(ctx context.Context) {
+	// RotateProjectCertificates cannot redeploy Swarm stacks yet, so bail out early instead of
+	// discovering rotatable stacks and then failing once per project on every check interval.
+	if w.swarmMode() {
+		w.swarmWarnOnce.Do(func() {
+			w.log.Warn("certificate rotation is not supported in Docker Swarm mode, skipping checks",
+				logger.ErrAttr(docker.ErrCertRotationSwarmUnsupported))
+		})
+
+		return
+	}
+
 	services, err := docker.GetLabeledServices(
-		ctx, w.dockerCli.Client(), swarm.GetModeEnabled(),
+		ctx, w.dockerCli.Client(), w.swarmMode(),
 		docker.DocoCDLabels.Deployment.CertRotatable, "true",
 	)
 	if err != nil {
@@ -101,8 +129,12 @@ func (w *Watcher) checkAndRotate(ctx context.Context) {
 
 	due := dueProjects(services, w.now(), w.threshold, w.log)
 	revoked := revokedProjects(ctx, services, w.secretProvider, w.log)
-	maps.Copy(due, revoked)
+
+	// Reasons must be computed before merging revoked into due, otherwise a project that is only
+	// revoked (and not yet near expiry) would be reported as being due for "expiry" as well.
 	reasons := rotationReasons(due, revoked)
+
+	maps.Copy(due, revoked)
 
 	for project, labels := range due {
 		w.log.Info("certificate needs rotation",
@@ -110,7 +142,7 @@ func (w *Watcher) checkAndRotate(ctx context.Context) {
 			slog.String("reason", strings.Join(reasons[project], ",")),
 		)
 
-		if err := docker.RotateProjectCertificates(ctx, w.dockerCli, labels, w.secretProvider, swarm.GetModeEnabled()); err != nil {
+		if err := docker.RotateProjectCertificates(ctx, w.dockerCli, labels, w.secretProvider, w.swarmMode()); err != nil {
 			w.log.Error("failed to rotate certificate",
 				slog.String("project", project),
 				logger.ErrAttr(err),
@@ -143,6 +175,12 @@ func revokedProjects(
 	for _, labels := range services {
 		project := labels[api.ProjectLabel]
 		if project == "" {
+			continue
+		}
+
+		// One revoked certificate is enough to rotate the whole project, so skip the remaining
+		// services of a project already known to be revoked instead of re-querying the provider.
+		if _, alreadyRevoked := revoked[project]; alreadyRevoked {
 			continue
 		}
 

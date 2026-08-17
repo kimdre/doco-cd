@@ -45,6 +45,28 @@ func TestParseCertExpiry(t *testing.T) {
 	})
 }
 
+func TestFormatWatcherDuration(t *testing.T) {
+	tests := []struct {
+		name string
+		in   time.Duration
+		want string
+	}{
+		{name: "whole hours", in: 100 * time.Hour, want: "100h"},
+		{name: "hours with remainder are truncated", in: 3*time.Hour + 30*time.Minute + 2*time.Second, want: "3h"},
+		{name: "whole minutes", in: 15 * time.Minute, want: "15m"},
+		{name: "non minute duration", in: 90 * time.Second, want: "1m30s"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatWatcherDuration(tt.in)
+			if got != tt.want {
+				t.Fatalf("expected %q, got %q", tt.want, got)
+			}
+		})
+	}
+}
+
 func TestDueProjects(t *testing.T) {
 	now := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
 	threshold := 72 * time.Hour
@@ -164,6 +186,7 @@ func TestDueProjects(t *testing.T) {
 type revocationCheckingProvider struct {
 	revoked map[string]bool
 	errFor  map[string]error
+	calls   int
 }
 
 func (p *revocationCheckingProvider) Name() string { return "test" }
@@ -181,6 +204,8 @@ func (p *revocationCheckingProvider) ResolveSecretReferences(context.Context, ma
 }
 
 func (p *revocationCheckingProvider) DeploymentHasRevokedCertificate(_ context.Context, certState string) (bool, error) {
+	p.calls++
+
 	if err := p.errFor[certState]; err != nil {
 		return false, err
 	}
@@ -300,5 +325,83 @@ func TestWatcherLogsWhenCertificateNeedsRotation(t *testing.T) {
 
 	if entry["reason"] != "expiry" {
 		t.Fatalf("expected reason attr %q, got %v", "expiry", entry["reason"])
+	}
+}
+
+// TestRevokedProjectsStopsCheckingAfterFirstRevokedService verifies that once one service marks a
+// project as revoked, the remaining services of that same project are not re-checked, since a
+// single revoked certificate already forces a rotation of the whole project. This keeps the number
+// of provider (OpenBao) revocation lookups proportional to projects rather than to containers.
+func TestRevokedProjectsStopsCheckingAfterFirstRevokedService(t *testing.T) {
+	revokedState := `[{"ref":"pki-role:pki:role:a.example.com","serial":"01"}]`
+
+	services := map[docker.Service]map[string]string{
+		"project-a_app_1": {
+			api.ProjectLabel:                         "project-a",
+			docker.DocoCDLabels.Deployment.CertState: revokedState,
+		},
+		"project-a_app_2": {
+			api.ProjectLabel:                         "project-a",
+			docker.DocoCDLabels.Deployment.CertState: revokedState,
+		},
+		"project-a_app_3": {
+			api.ProjectLabel:                         "project-a",
+			docker.DocoCDLabels.Deployment.CertState: revokedState,
+		},
+	}
+
+	provider := &revocationCheckingProvider{revoked: map[string]bool{revokedState: true}}
+
+	var secretProvider secretprovider.SecretProvider = provider
+
+	got := revokedProjects(t.Context(), services, &secretProvider, nil)
+
+	if _, ok := got["project-a"]; !ok {
+		t.Fatalf("expected project-a to be marked revoked, got %v", got)
+	}
+
+	if provider.calls != 1 {
+		t.Fatalf("expected exactly one revocation lookup for the project, got %d", provider.calls)
+	}
+}
+
+// TestRotationReasonsForRevokedOnlyProject guards against reporting a misleading rotation reason:
+// a project that is revoked but not yet within the expiry threshold must be logged as "revoked"
+// only. Computing reasons after merging the revoked projects into the expiry-due map would
+// incorrectly attribute "expiry" to it as well.
+func TestRotationReasonsForRevokedOnlyProject(t *testing.T) {
+	expiryDue := map[string]map[string]string{"expiry-only": nil}
+	revoked := map[string]map[string]string{"revoked-only": nil}
+
+	reasons := rotationReasons(expiryDue, revoked)
+
+	if want := []string{"revoked"}; !slices.Equal(reasons["revoked-only"], want) {
+		t.Fatalf("expected revoked-only reasons %v, got %v", want, reasons["revoked-only"])
+	}
+
+	if want := []string{"expiry"}; !slices.Equal(reasons["expiry-only"], want) {
+		t.Fatalf("expected expiry-only reasons %v, got %v", want, reasons["expiry-only"])
+	}
+}
+
+// TestCheckAndRotateSkipsSwarmMode verifies the watcher bails out early in Docker Swarm mode with
+// a single warning, instead of discovering rotatable stacks and then failing once per project on
+// every check interval (RotateProjectCertificates does not support Swarm redeploys yet).
+func TestCheckAndRotateSkipsSwarmMode(t *testing.T) {
+	var buf bytes.Buffer
+
+	watcher := &Watcher{
+		log:          slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		threshold:    72 * time.Hour,
+		now:          time.Now,
+		swarmEnabled: func() bool { return true },
+	}
+
+	// A nil dockerCli would panic if the swarm guard did not short-circuit before listing services.
+	watcher.checkAndRotate(t.Context())
+	watcher.checkAndRotate(t.Context())
+
+	if got := strings.Count(buf.String(), "certificate rotation is not supported in Docker Swarm mode"); got != 1 {
+		t.Fatalf("expected the Swarm notice to be logged exactly once, got %d occurrences in %q", got, buf.String())
 	}
 }
