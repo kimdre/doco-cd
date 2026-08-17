@@ -10,6 +10,7 @@ package certrotation
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"maps"
 	"slices"
@@ -66,8 +67,8 @@ func (w *Watcher) Start(ctx context.Context) {
 	}
 
 	w.log.Info("starting certificate rotation watcher",
-		slog.Duration("threshold", w.threshold),
-		slog.Duration("check_interval", w.checkInterval),
+		slog.String("threshold", formatWatcherDuration(w.threshold)),
+		slog.String("check_interval", formatWatcherDuration(w.checkInterval)),
 	)
 
 	w.checkAndRotate(ctx)
@@ -252,4 +253,17 @@ func parseCertExpiry(value string) (time.Time, bool) {
 	}
 
 	return t, true
+}
+
+// formatWatcherDuration formats a time.Duration for logging, using the largest whole unit (hours or minutes).
+func formatWatcherDuration(d time.Duration) string {
+	if d >= time.Hour {
+		return fmt.Sprintf("%dh", d/time.Hour)
+	}
+
+	if d%time.Minute == 0 {
+		return fmt.Sprintf("%dm", d/time.Minute)
+	}
+
+	return d.String()
 }
