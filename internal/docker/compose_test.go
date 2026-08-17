@@ -338,7 +338,7 @@ compose_files:
 			}),
 		).Do(func() error {
 			return DeployStack(jobLog, repoPath, &ctx, dockerCli, &p, deployConf,
-				nil, nil, latestCommit, "dev", 0, 0, swarm.GetModeEnabled())
+				nil, nil, latestCommit, "dev", 0, 0, swarm.GetModeEnabled(), nil)
 		})
 		if err != nil {
 			t.Fatalf("failed to deploy stack: %v", err)

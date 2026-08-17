@@ -647,6 +647,7 @@ func DeployStack(
 	dockerCli command.Cli, payload *webhook.ParsedPayload, deployConfig *deploy.Config,
 	detectedChanges []Change, needSignal []SignalService, latestCommit, appVersion string,
 	globalSwarmConfigRetention int, globalSwarmSecretRetention int, swarmMode bool,
+	hashNormMap map[string]string,
 ) error {
 	startTime := time.Now()
 	repositoryLabel := resolveDeploymentMetricsRepositoryLabel(payload)
@@ -716,7 +717,7 @@ func DeployStack(
 
 	// Generate project hash with doco-cd labels
 	// We don't want to compare the hashes with these labels
-	projectHash, err := ProjectHash(project)
+	projectHash, err := ProjectHash(WithNormalizedEnvValues(project, hashNormMap))
 	if err != nil {
 		return fmt.Errorf("failed to generate project hash: %w", err)
 	}
