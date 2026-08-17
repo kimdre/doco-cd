@@ -209,23 +209,9 @@ func loadComposeScheduledProject(
 	ref composeScheduledServiceRef,
 	secretProvider *secretprovider.SecretProvider,
 ) (*types.Project, error) {
-	if ref.WorkingDir == "" || len(ref.ConfigFiles) == 0 {
-		return nil, fmt.Errorf("%w: missing %q and/or %q label",
-			ErrComposeScheduledMetadataUnavailable,
-			api.WorkingDirLabel,
-			api.ConfigFilesLabel,
-		)
-	}
-
-	deployConfig, repoPath, err := loadComposeScheduledDeployConfig(ctx, ref, secretProvider)
+	project, _, err := loadComposeScheduledProjectAll(ctx, dockerCli, ref, secretProvider)
 	if err != nil {
 		return nil, err
-	}
-
-	project, err := LoadCompose(ctx, dockerCli, repoPath, ref.WorkingDir, ref.Project, ref.ConfigFiles,
-		deployConfig.EnvFiles, deployConfig.Profiles, deployConfig.Internal.Environment)
-	if err != nil {
-		return nil, fmt.Errorf("load compose project for scheduled service %s/%s: %w", ref.Project, ref.Service, err)
 	}
 
 	project, err = project.WithSelectedServices([]string{ref.Service}, types.IgnoreDependencies)
@@ -234,6 +220,55 @@ func loadComposeScheduledProject(
 	}
 
 	return project, nil
+}
+
+// loadComposeScheduledProjectAll reloads the deploy config referenced by ref and builds the full
+// compose project (all services, not just ref.Service) with freshly re-resolved external secrets.
+// It also returns the reloaded deploy config, which callers may need for the actual deploy/apply step.
+//
+// This is shared by the scheduled-job runner (which then selects a single service) and certificate
+// rotation (which needs every service in the project reloaded to identify those consuming the
+// freshly issued certificates).
+func loadComposeScheduledProjectAll(
+	ctx context.Context,
+	dockerCli command.Cli,
+	ref composeScheduledServiceRef,
+	secretProvider *secretprovider.SecretProvider,
+) (*types.Project, *deploy.Config, error) {
+	if ref.WorkingDir == "" {
+		return nil, nil, fmt.Errorf("%w: missing %q label",
+			ErrComposeScheduledMetadataUnavailable,
+			api.WorkingDirLabel,
+		)
+	}
+
+	deployConfig, repoPath, err := loadComposeScheduledDeployConfig(ctx, ref, secretProvider)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Swarm-discovered deployments carry no com.docker.compose.config_files label (docker stack
+	// deploy never sets Compose's own tracking labels), so fall back to the freshly reloaded
+	// deploy config's compose file list - the same source a normal (non-scheduled) deploy uses.
+	configFiles := ref.ConfigFiles
+	if len(configFiles) == 0 {
+		configFiles = deployConfig.ComposeFiles
+	}
+
+	if len(configFiles) == 0 {
+		return nil, nil, fmt.Errorf("%w: missing %q label and no compose files configured",
+			ErrComposeScheduledMetadataUnavailable,
+			api.ConfigFilesLabel,
+		)
+	}
+
+	project, err := LoadCompose(ctx, dockerCli, repoPath, ref.WorkingDir, ref.Project, configFiles,
+		deployConfig.EnvFiles, deployConfig.Profiles, deployConfig.Internal.Environment)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load compose project for scheduled service %s/%s: %w", ref.Project, ref.Service, err)
+	}
+
+	return project, deployConfig, nil
 }
 
 func validateComposeScheduledServiceScale(project *types.Project, ref composeScheduledServiceRef) error {
@@ -293,6 +328,41 @@ func composeScheduledServiceRefFromLabels(labels map[string]string) (composeSche
 	return ref, nil
 }
 
+// composeScheduledServiceRefFromSwarmLabels builds a composeScheduledServiceRef from a Swarm
+// service's labels for cert rotation. Unlike composeScheduledServiceRefFromLabels, Swarm services
+// never carry the Compose-managed com.docker.compose.* labels (docker stack deploy doesn't set them),
+// so the stack name and working directory are read from doco-cd's own labels instead, and
+// ConfigFiles is left empty for loadComposeScheduledProjectAll to fall back to the reloaded
+// deploy config. Service is also left empty: RotateProjectCertificates operates on the whole
+// stack in Swarm mode rather than a single named service.
+func composeScheduledServiceRefFromSwarmLabels(labels map[string]string) (composeScheduledServiceRef, error) {
+	if labels == nil {
+		return composeScheduledServiceRef{}, fmt.Errorf("%w: missing labels", ErrComposeScheduledMetadataUnavailable)
+	}
+
+	project := strings.TrimSpace(labels[DocoCDLabels.Deployment.Name])
+	if project == "" {
+		return composeScheduledServiceRef{}, fmt.Errorf("%w: missing %q label",
+			ErrComposeScheduledMetadataUnavailable,
+			DocoCDLabels.Deployment.Name,
+		)
+	}
+
+	repositoryURL := strings.TrimSpace(labels[DocoCDLabels.Source.URL])
+	if repositoryURL == "" {
+		repositoryURL = strings.TrimSpace(labels[DocoCDLabels.Source.Name])
+	}
+
+	return composeScheduledServiceRef{
+		Project:        project,
+		WorkingDir:     strings.TrimSpace(labels[DocoCDLabels.Deployment.WorkingDir]),
+		RepositoryURL:  repositoryURL,
+		DeploymentName: project,
+		ConfigTarget:   strings.TrimSpace(labels[DocoCDLabels.Deployment.ConfigTarget]),
+		Reference:      strings.TrimSpace(labels[DocoCDLabels.Deployment.TargetRef]),
+	}, nil
+}
+
 // loadComposeScheduledDeployConfig reloads the deploy config that originally
 // defined the scheduled Compose service and returns the repository root that
 // should be used for LoadCompose interpolation and relative path resolution.
@@ -333,6 +403,14 @@ func loadComposeScheduledDeployConfig(
 	if err != nil {
 		return nil, "", err
 	}
+
+	// deploy.GetConfigs never sets Internal.ConfigTarget on the returned config (that's normally
+	// done by the webhook/poll handler after loading configs for a fresh deploy). Propagate it
+	// here from the original deployment's label so any relabeling performed after this reload
+	// (e.g. cert rotation redeploys) doesn't blank out the config target label on the recreated
+	// service(s), which would otherwise break subsequent reloads that depend on it to pick the
+	// correct deployment config file.
+	deployConfig.Internal.ConfigTarget = ref.ConfigTarget
 
 	if err = prepareComposeScheduledDeployConfig(ctx, deployConfig, sourceRepoPath, repoPath, secretProvider); err != nil {
 		return nil, "", err

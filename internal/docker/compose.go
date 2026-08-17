@@ -174,6 +174,8 @@ func addComposeServiceLabels(project *types.Project, deployConfig *deploy.Config
 			api.DependenciesLabel:                       strings.Join(dependencies, ","),
 		}
 
+		applyCertRotationLabelsToService(s.CustomLabels, s, project, deployConfig)
+
 		project.Services[i] = s
 	}
 }
@@ -733,7 +735,7 @@ func DeployStack(
 			return fmt.Errorf("failed to load swarm stack: %w", err)
 		}
 
-		addSwarmServiceLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit, projectHash)
+		addSwarmServiceLabels(cfg, project, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit, projectHash)
 		addSwarmVolumeLabels(cfg, deployConfig, payload, externalWorkingDir)
 		addSwarmConfigLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
 		addSwarmSecretLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)

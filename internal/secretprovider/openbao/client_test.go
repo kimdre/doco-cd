@@ -3,9 +3,15 @@ package openbao
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/moby/moby/api/pkg/stdcopy"
 
@@ -100,6 +106,13 @@ func setupOpenBaoContainers(t *testing.T) (siteUrl, accessToken string) {
 	exitStatus, _ = stack.Exec(ctx, t, "vault", []string{"vault", "write", "pki/roles/example-dot-com", "allowed_domains=example.com", "allow_subdomains=true", "max_ttl=72h"})
 	if exitStatus != 0 {
 		t.Fatalf("failed to create pki role (exit code %d)", exitStatus)
+	}
+
+	// A short-lived role lets rotation tests exercise a certificate that falls within the
+	// default 72-hour CERT_ROTATION_THRESHOLD.
+	exitStatus, _ = stack.Exec(ctx, t, "vault", []string{"vault", "write", "pki/roles/rotation-test", "allowed_domains=example.com", "allow_subdomains=true", "ttl=1h", "max_ttl=1h"})
+	if exitStatus != 0 {
+		t.Fatalf("failed to create short-lived pki role (exit code %d)", exitStatus)
 	}
 
 	// Issue a test certificate
@@ -199,6 +212,21 @@ func TestProvider_OpenBao(t *testing.T) {
 			{
 				name:      "Non-existent PKI cert",
 				secretRef: "pki:pki:nonexistent.example.com", // #nosec G101
+				expectErr: true,
+			},
+			{
+				name:      "Valid PKI role (issue) reference",
+				secretRef: "pki-role:pki:example-dot-com:issued.example.com", // #nosec G101
+				expectErr: false,
+			},
+			{
+				name:      "Invalid PKI role reference format",
+				secretRef: "pki-role:pki:example-dot-com", // #nosec G101
+				expectErr: true,
+			},
+			{
+				name:      "Non-existent PKI role",
+				secretRef: "pki-role:pki:nonexistent-role:issued.example.com", // #nosec G101
 				expectErr: true,
 			},
 			{
@@ -309,4 +337,161 @@ func TestProvider_OpenBao(t *testing.T) {
 			t.Errorf("Expected PEM encoded certificate but got: %s", cert)
 		}
 	})
+
+	t.Run("ResolvePKIRoleCertAndKey", func(t *testing.T) {
+		resolved, err := provider.ResolveSecretReferences(t.Context(), map[string]string{
+			"CERT": "pki-role:pki:example-dot-com:rotated.example.com", // #nosec G101
+		})
+		if err != nil {
+			t.Fatalf("Failed to resolve pki-role reference: %v", err)
+		}
+
+		cert, ok := resolved["CERT"]
+		if !ok || cert == "" {
+			t.Fatalf("Expected a certificate value for CERT but got: %q", cert)
+		}
+
+		if !bytes.Contains([]byte(cert), []byte("-----BEGIN CERTIFICATE-----")) {
+			t.Errorf("Expected PEM encoded certificate but got: %s", cert)
+		}
+
+		key, ok := resolved["CERT_KEY"]
+		if !ok || key == "" {
+			t.Fatalf("Expected a private key value for CERT_KEY but got: %q", key)
+		}
+
+		if !bytes.Contains([]byte(key), []byte("PRIVATE KEY-----")) {
+			t.Errorf("Expected PEM encoded private key but got: %s", key)
+		}
+	})
+
+	t.Run("PKIRoleIssuesFreshCertOnEachResolve", func(t *testing.T) {
+		ref := "pki-role:pki:example-dot-com:renew.example.com" // #nosec G101
+
+		first, err := provider.ResolveSecretReferences(t.Context(), map[string]string{"CERT": ref})
+		if err != nil {
+			t.Fatalf("Failed to resolve first certificate: %v", err)
+		}
+
+		second, err := provider.ResolveSecretReferences(t.Context(), map[string]string{"CERT": ref})
+		if err != nil {
+			t.Fatalf("Failed to resolve second certificate: %v", err)
+		}
+
+		firstCert := validateIssuedCertificatePair(t, first, "first")
+		secondCert := validateIssuedCertificatePair(t, second, "second")
+
+		if firstCert.SerialNumber.Cmp(secondCert.SerialNumber) == 0 {
+			t.Errorf("Expected each pki-role resolution to issue a certificate with a distinct serial number, got %s", firstCert.SerialNumber)
+		}
+	})
+
+	t.Run("PKIRoleShortLivedCertificateRequiresRotation", func(t *testing.T) {
+		resolved, err := provider.ResolveSecretReferences(t.Context(), map[string]string{
+			"CERT": "pki-role:pki:rotation-test:rotation.example.com", // #nosec G101
+		})
+		if err != nil {
+			t.Fatalf("Failed to resolve short-lived pki-role certificate: %v", err)
+		}
+
+		cert := validateIssuedCertificatePair(t, resolved, "short-lived")
+
+		rotationDeadline := time.Now().Add(72 * time.Hour)
+		if cert.NotAfter.After(rotationDeadline) {
+			t.Fatalf("Expected certificate expiring at %s to require rotation before the default 72h threshold deadline %s", cert.NotAfter, rotationDeadline)
+		}
+	})
+
+	t.Run("DeploymentHasRevokedCertificate", func(t *testing.T) {
+		ref := "pki-role:pki:example-dot-com:revoked.example.com" // #nosec G101
+
+		resolved, err := provider.ResolveSecretReferences(t.Context(), map[string]string{"CERT": ref})
+		if err != nil {
+			t.Fatalf("Failed to resolve certificate for revocation test: %v", err)
+		}
+
+		cert := validateIssuedCertificatePair(t, resolved, "revoked")
+
+		certStateJSON, err := json.Marshal([]deployedCertState{{
+			Ref:    ref,
+			Serial: hex.EncodeToString(cert.SerialNumber.Bytes()),
+		}})
+		if err != nil {
+			t.Fatalf("Failed to marshal cert state: %v", err)
+		}
+
+		revoked, err := provider.DeploymentHasRevokedCertificate(t.Context(), string(certStateJSON))
+		if err != nil {
+			t.Fatalf("Failed to check revocation before revoking certificate: %v", err)
+		}
+
+		if revoked {
+			t.Fatal("Expected freshly issued certificate not to be treated as revoked")
+		}
+
+		_, err = provider.Client.Logical().WriteWithContext(t.Context(), "pki/revoke", map[string]any{
+			"certificate": resolved["CERT"],
+		})
+		if err != nil {
+			t.Fatalf("Failed to revoke certificate: %v", err)
+		}
+
+		revoked, err = provider.DeploymentHasRevokedCertificate(t.Context(), string(certStateJSON))
+		if err != nil {
+			t.Fatalf("Failed to check revocation after revoking certificate: %v", err)
+		}
+
+		if !revoked {
+			t.Fatal("Expected revoked certificate to be detected")
+		}
+	})
+}
+
+// validateIssuedCertificatePair verifies that OpenBao issued a currently valid certificate and
+// that the generated private key belongs to that certificate.
+func validateIssuedCertificatePair(t *testing.T, resolved secrettypes.ResolvedSecrets, label string) *x509.Certificate {
+	t.Helper()
+
+	certPEM := resolved["CERT"]
+
+	keyPEM := resolved["CERT_KEY"]
+	if certPEM == "" || keyPEM == "" {
+		t.Fatalf("%s resolution must contain both CERT and CERT_KEY", label)
+	}
+
+	if _, err := tls.X509KeyPair([]byte(certPEM), []byte(keyPEM)); err != nil {
+		t.Fatalf("%s certificate and private key must form a valid pair: %v", label, err)
+	}
+
+	block, _ := pem.Decode([]byte(certPEM))
+	if block == nil {
+		t.Fatalf("%s certificate is not PEM encoded", label)
+	}
+
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatalf("%s certificate is invalid: %v", label, err)
+	}
+
+	if !cert.NotAfter.After(time.Now()) {
+		t.Fatalf("%s certificate is already expired at %s", label, cert.NotAfter)
+	}
+
+	return cert
+}
+
+func TestResolveSecretReferences_RejectsGeneratedPrivateKeyCollision(t *testing.T) {
+	provider := &Provider{}
+
+	_, err := provider.ResolveSecretReferences(t.Context(), map[string]string{
+		"CERT":     "pki-role:pki:example-dot-com:issued.example.com", // #nosec G101
+		"CERT_KEY": "kv:secret:private-key:value",                     // #nosec G101
+	})
+	if err == nil {
+		t.Fatal("expected pki-role private key collision to fail")
+	}
+
+	if !strings.Contains(err.Error(), "CERT_KEY") {
+		t.Fatalf("expected collision error to identify CERT_KEY, got: %v", err)
+	}
 }

@@ -173,6 +173,90 @@ func TestComposeScheduledServiceRefFromLabels(t *testing.T) {
 	})
 }
 
+func TestComposeScheduledServiceRefFromSwarmLabels(t *testing.T) {
+	t.Parallel()
+
+	t.Run("parses required and optional labels from doco-cd labels only", func(t *testing.T) {
+		t.Parallel()
+
+		ref, err := composeScheduledServiceRefFromSwarmLabels(map[string]string{
+			DocoCDLabels.Deployment.Name:         "stack-a",
+			DocoCDLabels.Deployment.WorkingDir:   "/repo/stack",
+			DocoCDLabels.Source.Name:             "owner/repo",
+			DocoCDLabels.Source.URL:              "https://example.com/owner/repo",
+			DocoCDLabels.Deployment.ConfigTarget: "nas",
+			DocoCDLabels.Deployment.TargetRef:    "refs/heads/main",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if ref.Project != "stack-a" || ref.DeploymentName != "stack-a" {
+			t.Fatalf("unexpected ref: %+v", ref)
+		}
+
+		if ref.Service != "" {
+			t.Fatalf("expected empty service for a swarm-derived ref, got %q", ref.Service)
+		}
+
+		if ref.WorkingDir != "/repo/stack" {
+			t.Fatalf("unexpected working dir: %q", ref.WorkingDir)
+		}
+
+		if len(ref.ConfigFiles) != 0 {
+			t.Fatalf("expected no config files for a swarm-derived ref, got %v", ref.ConfigFiles)
+		}
+
+		if ref.RepositoryURL != "https://example.com/owner/repo" {
+			t.Fatalf("unexpected repository url: %q", ref.RepositoryURL)
+		}
+
+		if ref.ConfigTarget != "nas" {
+			t.Fatalf("unexpected config target: %q", ref.ConfigTarget)
+		}
+
+		if ref.Reference != "refs/heads/main" {
+			t.Fatalf("unexpected reference: %q", ref.Reference)
+		}
+	})
+
+	t.Run("falls back to source name label when source url label is missing", func(t *testing.T) {
+		t.Parallel()
+
+		ref, err := composeScheduledServiceRefFromSwarmLabels(map[string]string{
+			DocoCDLabels.Deployment.Name: "stack-a",
+			DocoCDLabels.Source.Name:     "owner/repo",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if ref.RepositoryURL != "owner/repo" {
+			t.Fatalf("unexpected repository url: %q", ref.RepositoryURL)
+		}
+	})
+
+	t.Run("fails on nil label map", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := composeScheduledServiceRefFromSwarmLabels(nil)
+		if !errors.Is(err, ErrComposeScheduledMetadataUnavailable) {
+			t.Fatalf("expected ErrComposeScheduledMetadataUnavailable, got %v", err)
+		}
+	})
+
+	t.Run("fails when deployment name label is missing", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := composeScheduledServiceRefFromSwarmLabels(map[string]string{
+			DocoCDLabels.Deployment.WorkingDir: "/repo/stack",
+		})
+		if !errors.Is(err, ErrComposeScheduledMetadataUnavailable) {
+			t.Fatalf("expected ErrComposeScheduledMetadataUnavailable, got %v", err)
+		}
+	})
+}
+
 func TestSplitCommaSeparatedLabelValues(t *testing.T) {
 	t.Parallel()
 

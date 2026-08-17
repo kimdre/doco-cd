@@ -4,12 +4,15 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/compose-spec/compose-go/v2/types"
 	composetypes "github.com/docker/cli/cli/compose/types"
 	"github.com/go-git/go-git/v5/plumbing"
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 
 	"github.com/kimdre/doco-cd/internal/config/deploy"
+	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -47,7 +50,7 @@ func TestAddSwarmServiceLabels_UsesServiceLevelLabels(t *testing.T) {
 		WebURL:    "https://github.com/kimdre/doco-cd_tests",
 	}
 
-	addSwarmServiceLabels(stack, deployConfig, payload, "/repo", "dev", "2026-01-01T00:00:00Z", "def456", "projecthash")
+	addSwarmServiceLabels(stack, nil, deployConfig, payload, "/repo", "dev", "2026-01-01T00:00:00Z", "def456", "projecthash")
 
 	// Labels that may differ between deployments of the same stack must never end up
 	// in the task template. Source.URL is included because it differs between webhook
@@ -105,6 +108,66 @@ func TestAddSwarmServiceLabels_UsesServiceLevelLabels(t *testing.T) {
 
 	if got := stack.Services[0].Deploy.Labels["user.deploy.label"]; got != "keep-me-too" {
 		t.Errorf("expected user defined service label to be preserved, got %q", got)
+	}
+}
+
+// TestAddSwarmServiceLabels_ScopesCertLabelsPerService verifies that cert expiry/rotatable/state
+// labels are only applied to the swarm services that actually consume a rotated certificate,
+// mirroring the per-service scoping used for standalone Compose deployments.
+func TestAddSwarmServiceLabels_ScopesCertLabelsPerService(t *testing.T) {
+	certPEM := generateTestCertPEM(t, time.Now().Add(48*time.Hour).Truncate(time.Second))
+
+	stack := &composetypes.Config{
+		Services: []composetypes.ServiceConfig{
+			{Name: "uses-cert"},
+			{Name: "unrelated"},
+		},
+	}
+
+	deployConfig := &deploy.Config{Name: "test-stack"}
+	deployConfig.Internal.Environment = map[string]string{"CERT": certPEM}
+	deployConfig.ExternalSecrets = map[string]secrettypes.ExternalSecretRef{
+		"CERT": {LegacyRef: "pki-role:pki:my-role:app.example.com"},
+	}
+
+	unrelatedValue := "bar"
+	project := &types.Project{
+		Services: types.Services{
+			"uses-cert": {
+				Name:        "uses-cert",
+				Environment: types.MappingWithEquals{"CERT": &certPEM},
+			},
+			"unrelated": {
+				Name:        "unrelated",
+				Environment: types.MappingWithEquals{"FOO": &unrelatedValue},
+			},
+		},
+	}
+
+	payload := &webhook.ParsedPayload{
+		CommitSHA: plumbing.NewHash(strings.Repeat("a", 40)),
+		FullName:  "kimdre/doco-cd_tests",
+	}
+
+	addSwarmServiceLabels(stack, project, deployConfig, payload, "/repo", "dev", "2026-01-01T00:00:00Z", "def456", "projecthash")
+
+	byName := make(map[string]composetypes.ServiceConfig, len(stack.Services))
+	for _, s := range stack.Services {
+		byName[s.Name] = s
+	}
+
+	if _, ok := byName["uses-cert"].Deploy.Labels[DocoCDLabels.Deployment.CertRotatable]; !ok {
+		t.Errorf("expected certificate-consuming service to carry %q", DocoCDLabels.Deployment.CertRotatable)
+	}
+
+	if _, ok := byName["uses-cert"].Deploy.Labels[DocoCDLabels.Deployment.CertState]; !ok {
+		t.Errorf("expected certificate-consuming service to carry %q", DocoCDLabels.Deployment.CertState)
+	}
+
+	for _, label := range []string{DocoCDLabels.Deployment.CertRotatable, DocoCDLabels.Deployment.CertExpiry, DocoCDLabels.Deployment.CertState} {
+		if _, ok := byName["unrelated"].Deploy.Labels[label]; ok {
+			t.Errorf("expected unrelated service to not carry %q", label)
+		}
 	}
 }
 

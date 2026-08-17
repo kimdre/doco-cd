@@ -108,3 +108,18 @@ func (r *RetryingSecretProvider) ResolveSecretReferences(ctx context.Context, se
 		},
 	)
 }
+
+// DeploymentHasRevokedCertificate delegates to the wrapped provider when it supports revocation
+// checks, while still applying the same retry policy used for other provider operations.
+func (r *RetryingSecretProvider) DeploymentHasRevokedCertificate(ctx context.Context, certState string) (bool, error) {
+	checker, ok := r.inner.(DeploymentCertificateRevocationChecker)
+	if !ok {
+		return false, nil
+	}
+
+	return retry.NewWithData[bool](newOptsWithContext(ctx)...).Do(
+		func() (bool, error) {
+			return checker.DeploymentHasRevokedCertificate(ctx, certState)
+		},
+	)
+}

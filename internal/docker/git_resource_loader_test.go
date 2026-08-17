@@ -1,9 +1,12 @@
 package docker
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -128,6 +131,30 @@ func TestNewRemoteResourceLoadersWithoutDockerCLIIncludesGitOnly(t *testing.T) {
 	wantCacheBase := filepath.Dir(repoPath)
 	if got := filepath.Dir(l.cacheDirectory); got != wantCacheBase {
 		t.Fatalf("expected cache base %q, got %q", wantCacheBase, got)
+	}
+}
+
+func TestNewRemoteResourceLoadersDoesNotLogCacheBaseWithoutIncludeUsage(t *testing.T) {
+	var buf bytes.Buffer
+
+	previousDefault := slog.Default()
+
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() {
+		slog.SetDefault(previousDefault)
+	})
+
+	newRemoteResourceLoaders(&app.Config{DataMountPath: t.TempDir()}, nil, filepath.Join(t.TempDir(), "repo"))
+
+	var entry map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &entry); err == nil {
+		if msg, _ := entry["msg"].(string); msg == "configured compose include cache base" {
+			t.Fatal("did not expect cache base configuration to be logged before include usage")
+		}
+	}
+
+	if strings.Contains(buf.String(), "configured compose include cache base") {
+		t.Fatal("did not expect cache base configuration to be logged before include usage")
 	}
 }
 
