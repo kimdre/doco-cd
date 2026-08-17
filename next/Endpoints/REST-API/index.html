@@ -2902,19 +2902,19 @@
 <p>Set the <code>API_SECRET</code> or <code>API_SECRET_FILE</code> environment variable in the container to enable the API, see <a data-preview="" href="../../App-Settings/#general-settings">App Settings</a>.</p>
 <p>Use the <code>x-api-key</code> header to authenticate requests to the API using the secret value.</p>
 <p>Example:</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;x-api-key: your_api_key&quot;</span><span class="w"> </span>http://example.com/v1/api/projects
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">"x-api-key: your_api_key"</span><span class="w"> </span>http://example.com/v1/api/projects
 </span></code></pre></div>
 <h2 id="endpoints">Endpoints<a class="headerlink" href="#endpoints" title="Permanent link">&para;</a></h2>
 <h3 id="health-check">Health Check<a class="headerlink" href="#health-check" title="Permanent link">&para;</a></h3>
 <p>Doco-CD exposes a health check endpoint at <code>/v1/health</code> that, if the application is healthy, returns a <code>200</code> status code and the following JSON response:</p>
 <div class="language-json highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;details&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;healthy&quot;</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">"details"</span><span class="p">:</span><span class="w"> </span><span class="s2">"healthy"</span>
 </span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="p">}</span>
 </span></code></pre></div>
 <p>If the application is not healthy, the endpoint returns a <code>503</code> status code and the following JSON response:</p>
 <div class="language-json highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">&quot;details&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;unhealthy&quot;</span><span class="p">,</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;some error message&quot;</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">"details"</span><span class="p">:</span><span class="w"> </span><span class="s2">"unhealthy"</span><span class="p">,</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">"error"</span><span class="p">:</span><span class="w"> </span><span class="s2">"some error message"</span>
 </span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="p">}</span>
 </span></code></pre></div>
 <h3 id="deployment-runs">Deployment Runs<a class="headerlink" href="#deployment-runs" title="Permanent link">&para;</a></h3>
@@ -2946,12 +2946,12 @@ Use these endpoints to inspect the current status and recent history by <code>jo
 </table>
 <h4 id="example-requests">Example Requests<a class="headerlink" href="#example-requests" title="Permanent link">&para;</a></h4>
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>curl<span class="w"> </span>--request<span class="w"> </span>GET<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>--url<span class="w"> </span><span class="s1">&#39;https://cd.example.com/v1/api/runs?status=running&amp;limit=20&#39;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span>--header<span class="w"> </span><span class="s1">&#39;x-api-key: your-api-key&#39;</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>--url<span class="w"> </span><span class="s1">'https://cd.example.com/v1/api/runs?status=running&amp;limit=20'</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span>--header<span class="w"> </span><span class="s1">'x-api-key: your-api-key'</span>
 </span></code></pre></div>
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>curl<span class="w"> </span>--request<span class="w"> </span>GET<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>--url<span class="w"> </span><span class="s1">&#39;https://cd.example.com/v1/api/run/550e8400-e29b-41d4-a716-446655440000&#39;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span>--header<span class="w"> </span><span class="s1">&#39;x-api-key: your-api-key&#39;</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>--url<span class="w"> </span><span class="s1">'https://cd.example.com/v1/api/run/550e8400-e29b-41d4-a716-446655440000'</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span>--header<span class="w"> </span><span class="s1">'x-api-key: your-api-key'</span>
 </span></code></pre></div>
 <h3 id="polling">Polling<a class="headerlink" href="#polling" title="Permanent link">&para;</a></h3>
 <table>
@@ -2977,35 +2977,35 @@ Use these endpoints to inspect the current status and recent history by <code>jo
 <h4 id="example-request">Example Request<a class="headerlink" href="#example-request" title="Permanent link">&para;</a></h4>
 <p>Minimal example using the default settings:</p>
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>curl<span class="w"> </span>--request<span class="w"> </span>POST<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span>--url<span class="w"> </span><span class="s1">&#39;https://cd.example.com/v1/api/poll/run?wait=true&#39;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span>--header<span class="w"> </span><span class="s1">&#39;content-type: application/json&#39;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span>--header<span class="w"> </span><span class="s1">&#39;x-api-key: your-api-key&#39;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span>--data<span class="w"> </span><span class="s1">&#39;[</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span>--url<span class="w"> </span><span class="s1">'https://cd.example.com/v1/api/poll/run?wait=true'</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span>--header<span class="w"> </span><span class="s1">'content-type: application/json'</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span>--header<span class="w"> </span><span class="s1">'x-api-key: your-api-key'</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span>--data<span class="w"> </span><span class="s1">'[</span>
 </span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="s1">  {</span>
-</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="s1">    &quot;url&quot;: &quot;https://github.com/your/repo.git&quot;,</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="s1">    "url": "https://github.com/your/repo.git",</span>
 </span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="s1">  }</span>
-</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="s1">]&#39;</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="s1">]'</span>
 </span></code></pre></div>
 <p>Example with custom reference and inline deployment configuration:</p>
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>curl<span class="w"> </span>--request<span class="w"> </span>POST<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span>--url<span class="w"> </span><span class="s1">&#39;https://cd.example.com/v1/api/poll/run?wait=true&#39;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span>--header<span class="w"> </span><span class="s1">&#39;content-type: application/json&#39;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span>--header<span class="w"> </span><span class="s1">&#39;x-api-key: your-api-key&#39;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span>--data<span class="w"> </span><span class="s1">&#39;[</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span>--url<span class="w"> </span><span class="s1">'https://cd.example.com/v1/api/poll/run?wait=true'</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span>--header<span class="w"> </span><span class="s1">'content-type: application/json'</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span>--header<span class="w"> </span><span class="s1">'x-api-key: your-api-key'</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span>--data<span class="w"> </span><span class="s1">'[</span>
 </span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="s1">  {</span>
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="s1">    &quot;url&quot;: &quot;https://github.com/your/repo.git&quot;,</span>
-</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="s1">    &quot;reference&quot;: &quot;dev&quot;,</span>
-</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="s1">    &quot;deployments&quot;: [</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="s1">    "url": "https://github.com/your/repo.git",</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="s1">    "reference": "dev",</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="s1">    "deployments": [</span>
 </span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="s1">      {</span>
-</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="s1">        &quot;name&quot;: &quot;my-app&quot;,</span>
-</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="s1">        &quot;working_dir&quot;: &quot;/app&quot;,</span>
-</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="s1">        &quot;env_files&quot;: [</span>
-</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="s1">          &quot;.env&quot;</span>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="s1">        "name": "my-app",</span>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="s1">        "working_dir": "/app",</span>
+</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="s1">        "env_files": [</span>
+</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="s1">          ".env"</span>
 </span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="s1">        ]</span>
 </span><span id="__span-6-16"><a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="s1">      }</span>
 </span><span id="__span-6-17"><a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="s1">    ]</span>
 </span><span id="__span-6-18"><a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="s1">  }</span>
-</span><span id="__span-6-19"><a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="s1">]&#39;</span>
+</span><span id="__span-6-19"><a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="s1">]'</span>
 </span></code></pre></div>
 <h3 id="scheduled-jobs">Scheduled Jobs<a class="headerlink" href="#scheduled-jobs" title="Permanent link">&para;</a></h3>
 <table>
@@ -3060,20 +3060,20 @@ Use these endpoints to inspect the current status and recent history by <code>jo
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>curl<span class="w"> </span>--request<span class="w"> </span>POST<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span>--url<span class="w"> </span><span class="s1">&#39;https://cd.example.com/v1/api/job/my-stack-backup-1/run?wait=true&#39;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span>--header<span class="w"> </span><span class="s1">&#39;x-api-key: your-api-key&#39;</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span>--url<span class="w"> </span><span class="s1">'https://cd.example.com/v1/api/job/my-stack-backup-1/run?wait=true'</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span>--header<span class="w"> </span><span class="s1">'x-api-key: your-api-key'</span>
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>curl<span class="w"> </span>--request<span class="w"> </span>POST<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span>--url<span class="w"> </span><span class="s1">&#39;https://cd.example.com/v1/api/job/backup/run?stack=my-stack&amp;wait=true&#39;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span>--header<span class="w"> </span><span class="s1">&#39;x-api-key: your-api-key&#39;</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span>--url<span class="w"> </span><span class="s1">'https://cd.example.com/v1/api/job/backup/run?stack=my-stack&amp;wait=true'</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span>--header<span class="w"> </span><span class="s1">'x-api-key: your-api-key'</span>
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>curl<span class="w"> </span>--request<span class="w"> </span>GET<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span>--url<span class="w"> </span><span class="s1">&#39;https://cd.example.com/v1/api/jobs?stack=my-stack&#39;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span>--header<span class="w"> </span><span class="s1">&#39;x-api-key: your-api-key&#39;</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span>--url<span class="w"> </span><span class="s1">'https://cd.example.com/v1/api/jobs?stack=my-stack'</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span>--header<span class="w"> </span><span class="s1">'x-api-key: your-api-key'</span>
 </span></code></pre></div>
 </div>
 </div>
@@ -3204,13 +3204,13 @@ Use these endpoints to inspect the current status and recent history by <code>jo
 </table>
 <h2 id="example-request_2">Example Request<a class="headerlink" href="#example-request_2" title="Permanent link">&para;</a></h2>
 <h3 id="list-all-deployed-compose-projects">List all deployed compose projects<a class="headerlink" href="#list-all-deployed-compose-projects" title="Permanent link">&para;</a></h3>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;x-api-key: your_api_key&quot;</span><span class="w"> </span><span class="s2">&quot;http://example.com/v1/api/projects?all=true&quot;</span>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">"x-api-key: your_api_key"</span><span class="w"> </span><span class="s2">"http://example.com/v1/api/projects?all=true"</span>
 </span></code></pre></div>
 <h3 id="remove-a-specific-project-without-removing-associated-volumes">Remove a specific project without removing associated volumes<a class="headerlink" href="#remove-a-specific-project-without-removing-associated-volumes" title="Permanent link">&para;</a></h3>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>curl<span class="w"> </span>-X<span class="w"> </span>DELETE<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;x-api-key: your_api_key&quot;</span><span class="w"> </span><span class="s2">&quot;http://example.com/v1/api/project/my_project?volumes=false&quot;</span>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>curl<span class="w"> </span>-X<span class="w"> </span>DELETE<span class="w"> </span>-H<span class="w"> </span><span class="s2">"x-api-key: your_api_key"</span><span class="w"> </span><span class="s2">"http://example.com/v1/api/project/my_project?volumes=false"</span>
 </span></code></pre></div>
 <h3 id="restart-a-specific-project-with-a-custom-timeout">Restart a specific project with a custom timeout<a class="headerlink" href="#restart-a-specific-project-with-a-custom-timeout" title="Permanent link">&para;</a></h3>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;x-api-key: your_api_key&quot;</span><span class="w"> </span><span class="s2">&quot;http://example.com/v1/api/project/my_project/restart?timeout=60&quot;</span>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>-H<span class="w"> </span><span class="s2">"x-api-key: your_api_key"</span><span class="w"> </span><span class="s2">"http://example.com/v1/api/project/my_project/restart?timeout=60"</span>
 </span></code></pre></div>
 
 

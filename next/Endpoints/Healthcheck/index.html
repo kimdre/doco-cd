@@ -2447,7 +2447,7 @@
 </span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">      </span><span class="nt">retries</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
 </span></code></pre></div>
 <p>You can see the health status of the container with the following command:</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>docker<span class="w"> </span>inspect<span class="w"> </span>--format<span class="o">=</span><span class="s1">&#39;{{json .State.Health}}&#39;</span><span class="w"> </span>doco-cd
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>docker<span class="w"> </span>inspect<span class="w"> </span>--format<span class="o">=</span><span class="s1">'{{json .State.Health}}'</span><span class="w"> </span>doco-cd
 </span></code></pre></div>
 <p>See also the <a data-preview="" href="../REST-API/#health-check">Health Check API Endpoint</a>.</p>
 

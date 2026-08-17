@@ -2896,7 +2896,7 @@ Leave <code>DOCKER_HOST</code> unset and rely on the mounted socket and Docker c
 </span></code></pre></div>
 <h3 id="configs-and-secrets-with-file-sources">Configs and secrets with <code>file:</code> sources<a class="headerlink" href="#configs-and-secrets-with-file-sources" title="Permanent link">&para;</a></h3>
 <p>Docker Compose resolves <code>file:</code> references to absolute paths on the doco-cd host, then sends those paths to the remote daemon. The remote daemon tries to bind-mount them locally — and fails because the files don't exist there.</p>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># ✗ Will fail on remote contexts — remote daemon can&#39;t access this path</span>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># ✗ Will fail on remote contexts — remote daemon can't access this path</span>
 </span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="nt">configs</span><span class="p">:</span>
 </span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">  </span><span class="nt">app.conf</span><span class="p">:</span>
 </span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">    </span><span class="nt">file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">app.conf</span>

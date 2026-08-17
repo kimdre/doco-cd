@@ -2756,7 +2756,7 @@ Each variable should point to the encrypted file path inside the container.</p>
 <div class="admonition example">
 <p class="admonition-title">Encrypted Git access token</p>
 <p>To use an encrypted Git access token, create a text file with the token and encrypt it with SOPS:
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">printf</span><span class="w"> </span><span class="s2">&quot;my-git-access-token&quot;</span><span class="w"> </span>&gt;<span class="w"> </span>git-access-token.txt
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">printf</span><span class="w"> </span><span class="s2">"my-git-access-token"</span><span class="w"> </span>&gt;<span class="w"> </span>git-access-token.txt
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>sops<span class="w"> </span>encrypt<span class="w"> </span>--age<span class="w"> </span>age1g3lcl...<span class="w"> </span>git-access-token.txt<span class="w"> </span>&gt;<span class="w"> </span>git-access-token.enc.txt
 </span></code></pre></div></p>
 <p>Then set the <code>GIT_ACCESS_TOKEN_FILE</code> environment variable in your <code>docker-compose.yml</code> file to the encrypted file path:</p>
