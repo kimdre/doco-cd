@@ -378,9 +378,9 @@ func pkiRoleNormMap(externalSecrets map[string]secrettypes.ExternalSecretRef, en
 		}
 
 		// The matching private-key value is stored under <NAME>_KEY.
-		keyName := envVar + "_KEY"
+		keyName := envVar + secrettypes.PKIRoleKeySuffix
 		if v, ok := env[keyName]; ok && v != "" {
-			norm[v] = ref.LegacyRef + "_KEY"
+			norm[v] = ref.LegacyRef + secrettypes.PKIRoleKeySuffix
 		}
 	}
 

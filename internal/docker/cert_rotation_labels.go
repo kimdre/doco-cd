@@ -14,6 +14,7 @@ import (
 	"github.com/compose-spec/compose-go/v2/types"
 
 	"github.com/kimdre/doco-cd/internal/config/deploy"
+	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
 
 // certRefPrefixes identifies external secret references that resolve to a certificate. Only
@@ -24,10 +25,9 @@ const (
 	pkiRoleRefPrefix     = "pki-role:"
 )
 
-// pkiRoleKeySuffix is appended to a pki-role external secret's env var name for its private key
-// companion entry. This mirrors openbao.PKIRoleKeySuffix; it's duplicated here (instead of
-// importing the openbao package) to keep internal/docker provider-agnostic.
-const pkiRoleKeySuffix = "_KEY"
+// pkiRoleKeySuffix is the suffix appended to a pki-role external secret's env
+// var name for its private key companion entry.
+const pkiRoleKeySuffix = secrettypes.PKIRoleKeySuffix
 
 type deployedRotatableCertState struct {
 	Ref    string `json:"ref"`

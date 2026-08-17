@@ -26,7 +26,7 @@ const (
 
 // PKIRoleKeySuffix is appended to the env var name of a pki-role external secret reference to
 // expose the matching private key issued alongside the certificate (e.g. CERT -> CERT_KEY).
-const PKIRoleKeySuffix = "_KEY"
+const PKIRoleKeySuffix = secrettypes.PKIRoleKeySuffix
 
 // pkiRoleRefRegexp is a precompiled matcher for PKIRoleRefFormat, used where matching happens in a
 // loop (e.g. ResolveSecretReferences) to avoid recompiling the pattern on every call.
