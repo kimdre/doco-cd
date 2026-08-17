@@ -2,6 +2,7 @@ package openbao
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -35,6 +36,11 @@ var ErrInvalidSecretReference = errors.New("invalid secret reference")
 
 type Provider struct {
 	Client *openbao.Client
+}
+
+type deployedCertState struct {
+	Ref    string `json:"ref"`
+	Serial string `json:"serial"`
 }
 
 // Name returns the name of the secret provider.
@@ -123,10 +129,10 @@ func (p *Provider) GetSecrets(ctx context.Context, refs []string) (map[string]st
 		go func(secretName string) {
 			defer wg.Done()
 
-			v, err := p.GetSecret(ctx, ref)
+			v, err := p.GetSecret(ctx, secretName)
 			if err != nil {
 				select {
-				case errCh <- err:
+				case errCh <- fmt.Errorf("resolve secret reference %q: %w", secretName, err):
 					cancel()
 				default:
 				}
@@ -214,6 +220,59 @@ func (p *Provider) ResolveSecretReferences(ctx context.Context, secrets map[stri
 	return out, nil
 }
 
+// DeploymentHasRevokedCertificate reports whether any currently deployed pki-role certificate
+// described by certState has already been revoked in OpenBao.
+func (p *Provider) DeploymentHasRevokedCertificate(ctx context.Context, certState string) (bool, error) {
+	if strings.TrimSpace(certState) == "" {
+		return false, nil
+	}
+
+	var deployed []deployedCertState
+	if err := json.Unmarshal([]byte(certState), &deployed); err != nil {
+		return false, fmt.Errorf("parse deployed certificate state: %w", err)
+	}
+
+	type mountKey struct {
+		namespace string
+		engine    string
+	}
+
+	revokedByMount := make(map[mountKey]map[string]struct{}, len(deployed))
+
+	for _, cert := range deployed {
+		namespace, engineType, engineName, _, _, err := parseReference(cert.Ref)
+		if err != nil {
+			return false, fmt.Errorf("parse deployed certificate ref %q: %w", cert.Ref, err)
+		}
+
+		if engineType != "pki-role" {
+			continue
+		}
+
+		key := mountKey{namespace: namespace, engine: engineName}
+
+		if _, ok := revokedByMount[key]; !ok {
+			serials, err := ListRevokedCertSerials(ctx, p.Client.WithNamespace(namespace), engineName)
+			if err != nil {
+				return false, fmt.Errorf("list revoked certificates for %s/%s: %w", namespace, engineName, err)
+			}
+
+			revoked := make(map[string]struct{}, len(serials))
+			for _, serial := range serials {
+				revoked[normalizeCertSerial(serial)] = struct{}{}
+			}
+
+			revokedByMount[key] = revoked
+		}
+
+		if _, revoked := revokedByMount[key][normalizeCertSerial(cert.Serial)]; revoked {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // issuePKIRoleCerts issues a fresh certificate/key pair for each pki-role reference in refs,
 // keyed by the same env var name used in the input map.
 func (p *Provider) issuePKIRoleCerts(ctx context.Context, refs map[string]string) (map[string]IssuedCertificate, error) {
@@ -288,7 +347,7 @@ func parseReference(ref string) (namespace, engineType, engineName, id, key stri
 
 	// Check if reference is in the correct format
 	if !matchedPKI && !matchedPKIRole && !matchedSecret {
-		return "", "", "", "", "", fmt.Errorf("%w: %s", ErrInvalidSecretReference, "unexpected ref format")
+		return "", "", "", "", "", fmt.Errorf("%w: unexpected ref format %q", ErrInvalidSecretReference, ref)
 	}
 
 	// Handle PKI reference
@@ -302,7 +361,7 @@ func parseReference(ref string) (namespace, engineType, engineName, id, key stri
 			return parts[1], parts[0], parts[2], parts[3], "", nil
 		}
 
-		return "", "", "", "", "", fmt.Errorf("%w: %s", ErrInvalidSecretReference, "expected format 'pki:<namespace(optional)>:<secretEngine>:<commonName>'")
+		return "", "", "", "", "", fmt.Errorf("%w: expected format 'pki:<namespace(optional)>:<secretEngine>:<commonName>', got %q", ErrInvalidSecretReference, ref)
 	}
 
 	// Handle PKI role (issuance) reference
@@ -316,7 +375,7 @@ func parseReference(ref string) (namespace, engineType, engineName, id, key stri
 			return parts[1], parts[0], parts[2], parts[4], parts[3], nil
 		}
 
-		return "", "", "", "", "", fmt.Errorf("%w: %s", ErrInvalidSecretReference, "expected format 'pki-role:<namespace(optional)>:<secretEngine>:<role>:<commonName>'")
+		return "", "", "", "", "", fmt.Errorf("%w: expected format 'pki-role:<namespace(optional)>:<secretEngine>:<role>:<commonName>', got %q", ErrInvalidSecretReference, ref)
 	}
 
 	// Handle Secret reference
@@ -329,5 +388,5 @@ func parseReference(ref string) (namespace, engineType, engineName, id, key stri
 		return parts[1], parts[0], parts[2], parts[3], parts[4], nil
 	}
 
-	return "", "", "", "", "", fmt.Errorf("%w: %s", ErrInvalidSecretReference, "expected format 'kv:<namespace(optional)>:<secretEngine>:<secretName>:<key>'")
+	return "", "", "", "", "", fmt.Errorf("%w: expected format 'kv:<namespace(optional)>:<secretEngine>:<secretName>:<key>', got %q", ErrInvalidSecretReference, ref)
 }

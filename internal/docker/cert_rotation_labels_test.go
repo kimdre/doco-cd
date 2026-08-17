@@ -6,6 +6,8 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
 	"math/big"
 	"testing"
@@ -244,10 +246,57 @@ func TestApplyCertRotationLabelsToService(t *testing.T) {
 		t.Fatalf("expected certificate-consuming service to be labeled, got %v", certLabels)
 	}
 
+	var certState []deployedRotatableCertState
+	if err := json.Unmarshal([]byte(certLabels[DocoCDLabels.Deployment.CertState]), &certState); err != nil {
+		t.Fatalf("expected cert state label to contain valid JSON, got %q: %v", certLabels[DocoCDLabels.Deployment.CertState], err)
+	}
+
+	if len(certState) != 1 {
+		t.Fatalf("expected exactly one deployed cert state entry, got %v", certState)
+	}
+
+	if certState[0].Ref != "pki-role:pki:my-role:app.example.com" {
+		t.Fatalf("expected cert state ref to match the external secret, got %v", certState)
+	}
+
+	wantSerial, err := certificateSerial(certPEM)
+	if err != nil {
+		t.Fatalf("failed to parse test certificate serial: %v", err)
+	}
+
+	if certState[0].Serial != wantSerial {
+		t.Fatalf("expected cert state serial %q, got %q", wantSerial, certState[0].Serial)
+	}
+
 	unrelatedLabels := map[string]string{}
 	applyCertRotationLabelsToService(unrelatedLabels, project.Services["unrelated"], project, deployConfig)
 
 	if len(unrelatedLabels) != 0 {
 		t.Fatalf("expected unrelated service to have no cert rotation labels, got %v", unrelatedLabels)
+	}
+}
+
+func TestCertificateSerial(t *testing.T) {
+	expiry := time.Now().Add(24 * time.Hour)
+	certPEM := generateTestCertPEM(t, expiry)
+
+	serial, err := certificateSerial(certPEM)
+	if err != nil {
+		t.Fatalf("expected certificate serial parsing to succeed: %v", err)
+	}
+
+	block, _ := pem.Decode([]byte(certPEM))
+	if block == nil {
+		t.Fatal("expected PEM certificate block")
+	}
+
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatalf("expected generated certificate to parse: %v", err)
+	}
+
+	want := hex.EncodeToString(cert.SerialNumber.Bytes())
+	if serial != want {
+		t.Fatalf("expected serial %q, got %q", want, serial)
 	}
 }

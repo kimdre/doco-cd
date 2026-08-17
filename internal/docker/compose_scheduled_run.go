@@ -355,6 +355,14 @@ func loadComposeScheduledDeployConfig(
 		return nil, "", err
 	}
 
+	// deploy.GetConfigs never sets Internal.ConfigTarget on the returned config (that's normally
+	// done by the webhook/poll handler after loading configs for a fresh deploy). Propagate it
+	// here from the original deployment's label so any relabeling performed after this reload
+	// (e.g. cert rotation redeploys) doesn't blank out the config target label on the recreated
+	// service(s), which would otherwise break subsequent reloads that depend on it to pick the
+	// correct deployment config file.
+	deployConfig.Internal.ConfigTarget = ref.ConfigTarget
+
 	if err = prepareComposeScheduledDeployConfig(ctx, deployConfig, sourceRepoPath, repoPath, secretProvider); err != nil {
 		return nil, "", err
 	}

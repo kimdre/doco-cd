@@ -11,6 +11,9 @@ package certrotation
 import (
 	"context"
 	"log/slog"
+	"maps"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/docker/cli/cli/command"
@@ -96,9 +99,15 @@ func (w *Watcher) checkAndRotate(ctx context.Context) {
 	}
 
 	due := dueProjects(services, w.now(), w.threshold, w.log)
+	revoked := revokedProjects(ctx, services, w.secretProvider, w.log)
+	maps.Copy(due, revoked)
+	reasons := rotationReasons(due, revoked)
 
 	for project, labels := range due {
-		w.log.Info("rotating certificate ahead of expiry", slog.String("project", project))
+		w.log.Info("certificate needs rotation",
+			slog.String("project", project),
+			slog.String("reason", strings.Join(reasons[project], ",")),
+		)
 
 		if err := docker.RotateProjectCertificates(ctx, w.dockerCli, labels, w.secretProvider, swarm.GetModeEnabled()); err != nil {
 			w.log.Error("failed to rotate certificate",
@@ -111,6 +120,75 @@ func (w *Watcher) checkAndRotate(ctx context.Context) {
 
 		w.log.Info("certificate rotation redeploy completed", slog.String("project", project))
 	}
+}
+
+func revokedProjects(
+	ctx context.Context,
+	services map[docker.Service]map[string]string,
+	provider *secretprovider.SecretProvider,
+	log *slog.Logger,
+) map[string]map[string]string {
+	if provider == nil || *provider == nil {
+		return nil
+	}
+
+	checker, ok := (*provider).(secretprovider.DeploymentCertificateRevocationChecker)
+	if !ok {
+		return nil
+	}
+
+	revoked := make(map[string]map[string]string)
+
+	for _, labels := range services {
+		project := labels[api.ProjectLabel]
+		if project == "" {
+			continue
+		}
+
+		certState := labels[docker.DocoCDLabels.Deployment.CertState]
+		if certState == "" {
+			continue
+		}
+
+		isRevoked, err := checker.DeploymentHasRevokedCertificate(ctx, certState)
+		if err != nil {
+			if log != nil {
+				log.Warn("skipping deployment with unreadable cert revocation state",
+					slog.String("project", project),
+					logger.ErrAttr(err),
+				)
+			}
+
+			continue
+		}
+
+		if isRevoked {
+			revoked[project] = labels
+		}
+	}
+
+	return revoked
+}
+
+func rotationReasons(
+	expiryDue map[string]map[string]string,
+	revokedDue map[string]map[string]string,
+) map[string][]string {
+	reasons := make(map[string][]string, len(expiryDue)+len(revokedDue))
+
+	for project := range expiryDue {
+		reasons[project] = append(reasons[project], "expiry")
+	}
+
+	for project := range revokedDue {
+		reasons[project] = append(reasons[project], "revoked")
+	}
+
+	for project := range reasons {
+		slices.Sort(reasons[project])
+	}
+
+	return reasons
 }
 
 // dueProjects deduplicates discovered rotation-capable services by compose project. If services

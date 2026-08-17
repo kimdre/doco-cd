@@ -25,6 +25,7 @@ type docoCdLabelNamesDeployment struct {
 	RecreateIgnoreSignal string // Signal service when deployment file changes and ignore recreate
 	CertExpiry           string // RFC3339 timestamp of the earliest expiry among the deployment's cert-bearing external secrets
 	CertRotatable        string // Whether all cert-bearing external secrets for this deployment can be auto-rotated (issued via a role, as opposed to read-only refs)
+	CertState            string // JSON-serialized deployed pki-role cert refs and serials for revocation-aware rotation checks
 }
 
 // docoCdLabelNamesSource contains the labels used by DocoCD to identify the deployment source.
@@ -63,6 +64,7 @@ var DocoCDLabels = docoCdLabelNames{
 		RecreateIgnoreSignal: "cd.doco.deployment.recreate.ignore.signal",
 		CertExpiry:           "cd.doco.deployment.cert.expiry",
 		CertRotatable:        "cd.doco.deployment.cert.rotatable",
+		CertState:            "cd.doco.deployment.cert.state",
 	},
 	Source: docoCdLabelNamesSource{
 		Type: "cd.doco.source",

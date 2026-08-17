@@ -112,6 +112,89 @@ external_secrets:
 	if svc.CustomLabels[DocoCDLabels.Deployment.CertExpiry] == "" {
 		t.Fatal("expected a non-empty CertExpiry label")
 	}
+
+	if svc.CustomLabels[DocoCDLabels.Deployment.CertState] == "" {
+		t.Fatal("expected a non-empty CertState label")
+	}
+}
+
+// TestRotateProjectCertificates_ReloadPreservesConfigTargetLabel verifies that reloading a
+// rotatable deployment via a custom config target keeps the resulting deploy config's
+// Internal.ConfigTarget (and therefore the cd.doco.deployment.config.target label applied to the
+// recreated service) consistent with the target that was used to select the config file. Without
+// this, deploy.GetConfigs never sets Internal.ConfigTarget itself, so a rotation redeploy would
+// blank out the config target label on the affected service, breaking any subsequent reload that
+// relies on that label to find the correct .doco-cd.<target>.yml file.
+func TestRotateProjectCertificates_ReloadPreservesConfigTargetLabel(t *testing.T) {
+	dataMountPath := t.TempDir()
+	t.Setenv("DATA_MOUNT_PATH", dataMountPath)
+	t.Setenv("DEPLOY_CONFIG_BASE_DIR", "/")
+
+	repoRoot := filepath.Join(dataMountPath, "example.com", "owner", "repo")
+
+	workingDir := filepath.Join(repoRoot, "stacks", "nas", "mtls-app")
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(workingDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	composePath := filepath.Join(workingDir, "compose.yml")
+	createComposeFile(t, composePath, `services:
+  app:
+    image: busybox:latest
+    environment:
+      CERT: ${CERT}
+`)
+
+	createComposeFile(t, filepath.Join(repoRoot, ".doco-cd.nas.yml"), `name: mtls-app
+reference: refs/heads/main
+working_dir: stacks/nas/mtls-app
+compose_files:
+  - compose.yml
+external_secrets:
+  CERT: "pki-role:pki:my-role:app.example.com"
+`)
+
+	ref := composeScheduledServiceRef{
+		Project:        "mtls-app",
+		Service:        "app",
+		WorkingDir:     workingDir,
+		ConfigFiles:    []string{composePath},
+		RepositoryURL:  "https://example.com/owner/repo",
+		DeploymentName: "mtls-app",
+		ConfigTarget:   "nas",
+		Reference:      "refs/heads/main",
+	}
+
+	expiry := time.Now().Add(48 * time.Hour).Truncate(time.Second)
+	certPEM := generateTestCertPEM(t, expiry)
+
+	provider := newStubProvider(map[string]string{"CERT": certPEM}, nil)
+
+	project, deployConfig, err := loadComposeScheduledProjectAll(context.Background(), nil, ref, provider)
+	if err != nil {
+		t.Fatalf("unexpected error reloading project: %v", err)
+	}
+
+	if deployConfig.Internal.ConfigTarget != "nas" {
+		t.Fatalf("expected reloaded deploy config to keep ConfigTarget %q, got %q", "nas", deployConfig.Internal.ConfigTarget)
+	}
+
+	payload := &webhook.ParsedPayload{Trigger: certRotationTrigger}
+
+	addComposeServiceLabels(project, deployConfig, payload, ref.WorkingDir, "test", time.Now().UTC().Format(time.RFC3339), ComposeVersion, "", "")
+
+	svc, err := project.GetService("app")
+	if err != nil {
+		t.Fatalf("failed to get app service after relabeling: %v", err)
+	}
+
+	if svc.CustomLabels[DocoCDLabels.Deployment.ConfigTarget] != "nas" {
+		t.Fatalf("expected config target label %q, got %q", "nas", svc.CustomLabels[DocoCDLabels.Deployment.ConfigTarget])
+	}
 }
 
 // TestServicesUsingRotatableCerts verifies that only services actually consuming a pki-role-backed

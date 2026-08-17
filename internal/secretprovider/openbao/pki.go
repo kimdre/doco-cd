@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/openbao/openbao/api/v2"
@@ -68,6 +69,50 @@ func GetCert(ctx context.Context, client *api.Client, engineName, serial string)
 	}
 
 	return certValue, nil
+}
+
+// ListRevokedCertSerials returns the serial numbers of certificates revoked from the given PKI
+// mount. When the mount has no revoked certificates yet, OpenBao may return no list data.
+func ListRevokedCertSerials(ctx context.Context, client *api.Client, engineName string) ([]string, error) {
+	pathToList := engineName + "/certs/revoked"
+
+	response, err := client.Logical().ListWithContext(ctx, pathToList)
+	if err != nil {
+		return nil, fmt.Errorf("unable to list revoked certificates from OpenBao: %w", err)
+	}
+
+	if response == nil || response.Data == nil {
+		return nil, nil
+	}
+
+	keysRaw, ok := response.Data["keys"]
+	if !ok {
+		return nil, nil
+	}
+
+	switch keys := keysRaw.(type) {
+	case []string:
+		return keys, nil
+	case []any:
+		serials := make([]string, 0, len(keys))
+		for _, key := range keys {
+			serial, ok := key.(string)
+			if !ok {
+				continue
+			}
+
+			serials = append(serials, serial)
+		}
+
+		return serials, nil
+	default:
+		return nil, errors.New("unexpected revoked certificate list response")
+	}
+}
+
+func normalizeCertSerial(serial string) string {
+	replacer := strings.NewReplacer(":", "", "-", "")
+	return strings.ToLower(replacer.Replace(strings.TrimSpace(serial)))
 }
 
 // IssueCert issues a new certificate (with a matching private key) from the PKI engine in OpenBao

@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"path/filepath"
@@ -398,6 +399,50 @@ func TestProvider_OpenBao(t *testing.T) {
 		rotationDeadline := time.Now().Add(72 * time.Hour)
 		if cert.NotAfter.After(rotationDeadline) {
 			t.Fatalf("Expected certificate expiring at %s to require rotation before the default 72h threshold deadline %s", cert.NotAfter, rotationDeadline)
+		}
+	})
+
+	t.Run("DeploymentHasRevokedCertificate", func(t *testing.T) {
+		ref := "pki-role:pki:example-dot-com:revoked.example.com" // #nosec G101
+
+		resolved, err := provider.ResolveSecretReferences(t.Context(), map[string]string{"CERT": ref})
+		if err != nil {
+			t.Fatalf("Failed to resolve certificate for revocation test: %v", err)
+		}
+
+		cert := validateIssuedCertificatePair(t, resolved, "revoked")
+
+		certStateJSON, err := json.Marshal([]deployedCertState{{
+			Ref:    ref,
+			Serial: hex.EncodeToString(cert.SerialNumber.Bytes()),
+		}})
+		if err != nil {
+			t.Fatalf("Failed to marshal cert state: %v", err)
+		}
+
+		revoked, err := provider.DeploymentHasRevokedCertificate(t.Context(), string(certStateJSON))
+		if err != nil {
+			t.Fatalf("Failed to check revocation before revoking certificate: %v", err)
+		}
+
+		if revoked {
+			t.Fatal("Expected freshly issued certificate not to be treated as revoked")
+		}
+
+		_, err = provider.Client.Logical().WriteWithContext(t.Context(), "pki/revoke", map[string]any{
+			"certificate": resolved["CERT"],
+		})
+		if err != nil {
+			t.Fatalf("Failed to revoke certificate: %v", err)
+		}
+
+		revoked, err = provider.DeploymentHasRevokedCertificate(t.Context(), string(certStateJSON))
+		if err != nil {
+			t.Fatalf("Failed to check revocation after revoking certificate: %v", err)
+		}
+
+		if !revoked {
+			t.Fatal("Expected revoked certificate to be detected")
 		}
 	})
 }

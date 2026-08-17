@@ -2,8 +2,11 @@ package docker
 
 import (
 	"crypto/x509"
+	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +28,11 @@ const (
 // companion entry. This mirrors openbao.PKIRoleKeySuffix; it's duplicated here (instead of
 // importing the openbao package) to keep internal/docker provider-agnostic.
 const pkiRoleKeySuffix = "_KEY"
+
+type deployedRotatableCertState struct {
+	Ref    string `json:"ref"`
+	Serial string `json:"serial"`
+}
 
 // rotatableCertValues returns the resolved values (certificate PEM and, where present, its
 // private key PEM) of every pki-role-backed external secret in deployConfig, keyed by their env
@@ -201,20 +209,42 @@ func serviceUsesAnyValue(s types.ServiceConfig, project *types.Project, valueSet
 	return false
 }
 
+func serviceUsesValue(s types.ServiceConfig, project *types.Project, value string) bool {
+	return serviceUsesAnyValue(s, project, map[string]struct{}{value: {}})
+}
+
 // certificateNotAfter parses value as a PEM-encoded X.509 certificate and returns its NotAfter
 // (expiry) time.
 func certificateNotAfter(value string) (time.Time, error) {
-	block, _ := pem.Decode([]byte(value))
-	if block == nil || block.Type != "CERTIFICATE" {
-		return time.Time{}, errNotACertificate
-	}
-
-	cert, err := x509.ParseCertificate(block.Bytes)
+	cert, err := parseCertificate(value)
 	if err != nil {
 		return time.Time{}, err
 	}
 
 	return cert.NotAfter, nil
+}
+
+func certificateSerial(value string) (string, error) {
+	cert, err := parseCertificate(value)
+	if err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(cert.SerialNumber.Bytes()), nil
+}
+
+func parseCertificate(value string) (*x509.Certificate, error) {
+	block, _ := pem.Decode([]byte(value))
+	if block == nil || block.Type != "CERTIFICATE" {
+		return nil, errNotACertificate
+	}
+
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return cert, nil
 }
 
 // applyCertRotationLabels adds cert expiry/rotatable labels to the provided label map when the
@@ -245,7 +275,76 @@ func applyCertRotationLabelsToService(labels map[string]string, service types.Se
 
 	if serviceUsesAnyValue(service, project, valueSet) {
 		applyCertRotationLabels(labels, deployConfig)
+		applyRotatableCertStateLabel(labels, service, project, deployConfig)
 	}
+}
+
+func applyRotatableCertStateLabel(labels map[string]string, service types.ServiceConfig, project *types.Project, deployConfig *deploy.Config) {
+	state := deployedRotatableCertStates(service, project, deployConfig)
+	if len(state) == 0 {
+		return
+	}
+
+	data, err := json.Marshal(state)
+	if err != nil {
+		return
+	}
+
+	labels[DocoCDLabels.Deployment.CertState] = string(data)
+}
+
+func deployedRotatableCertStates(service types.ServiceConfig, project *types.Project, deployConfig *deploy.Config) []deployedRotatableCertState {
+	if deployConfig == nil || len(deployConfig.ExternalSecrets) == 0 {
+		return nil
+	}
+
+	states := make([]deployedRotatableCertState, 0, len(deployConfig.ExternalSecrets))
+	seen := make(map[string]struct{}, len(deployConfig.ExternalSecrets))
+
+	for envVar, ref := range deployConfig.ExternalSecrets {
+		if !strings.HasPrefix(ref.LegacyRef, pkiRoleRefPrefix) {
+			continue
+		}
+
+		certValue, ok := deployConfig.Internal.Environment[envVar]
+		if !ok || certValue == "" {
+			continue
+		}
+
+		keyValue := deployConfig.Internal.Environment[envVar+pkiRoleKeySuffix]
+		if !serviceUsesValue(service, project, certValue) && (keyValue == "" || !serviceUsesValue(service, project, keyValue)) {
+			continue
+		}
+
+		serial, err := certificateSerial(certValue)
+		if err != nil || serial == "" {
+			continue
+		}
+
+		state := deployedRotatableCertState{
+			Ref:    ref.LegacyRef,
+			Serial: serial,
+		}
+
+		key := state.Ref + "\x00" + state.Serial
+		if _, exists := seen[key]; exists {
+			continue
+		}
+
+		seen[key] = struct{}{}
+
+		states = append(states, state)
+	}
+
+	sort.Slice(states, func(i, j int) bool {
+		if states[i].Ref == states[j].Ref {
+			return states[i].Serial < states[j].Serial
+		}
+
+		return states[i].Ref < states[j].Ref
+	})
+
+	return states
 }
 
 // errNotACertificate is returned by certificateNotAfter when value does not decode to a PEM

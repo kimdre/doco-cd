@@ -35,6 +35,13 @@ type SecretProvider interface {
 	Close()
 }
 
+// DeploymentCertificateRevocationChecker is an optional capability for secret providers that can
+// determine whether any currently deployed certificate described by certState has been revoked.
+// certState is the JSON-serialized label value stored in cd.doco.deployment.cert.state.
+type DeploymentCertificateRevocationChecker interface {
+	DeploymentHasRevokedCertificate(ctx context.Context, certState string) (bool, error)
+}
+
 // The SecretValueProviderFunc type is an adapter to allow the use of ordinary
 // functions as secret providers. If f is a function with the appropriate signature,
 // SecretValueProviderFunc(f) is a SecretValueProvider that calls f.
