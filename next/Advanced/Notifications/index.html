@@ -2845,7 +2845,7 @@ You can find a list of all supported services and platforms in the <a href="http
 </tr>
 <tr>
 <td><code>.ChangedServices</code></td>
-<td>Sorted names of the services force-recreated by this deploy (changed mounted/referenced files or a changed auto-discovery label). Empty when the whole stack is (re)deployed for other reasons, e.g. a compose config change, an image update, state drift or <code>force_recreate</code></td>
+<td>Sorted names of the services changed by this deploy: force-recreated ones (changed mounted/referenced files or a changed auto-discovery label) plus services whose image digest changed in the registry (detected with <a data-preview="" href="../../Deploy-Settings/"><code>force_image_pull</code></a>). Empty when the whole stack is (re)deployed for other reasons, e.g. a compose config change (including image tag changes in the compose file), state drift or <code>force_recreate</code></td>
 </tr>
 </tbody>
 </table>
