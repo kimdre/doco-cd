@@ -35,7 +35,8 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 		s.DeployState.changedServices, s.DeployState.ignoredInfo.NeedSendSignal,
 		latestCommit, app.Version,
 		s.AppConfig.DockerSwarmConfigRetention, s.AppConfig.DockerSwarmSecretRetention,
-		s.Docker.SwarmMode)
+		s.Docker.SwarmMode,
+		pkiRoleNormMap(s.DeployConfig.ExternalSecrets, s.DeployConfig.Internal.Environment))
 	if err != nil {
 		return fmt.Errorf("failed to deploy stack %s: %w", s.DeployConfig.Name, err)
 	}

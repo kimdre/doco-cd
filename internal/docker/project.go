@@ -104,6 +104,48 @@ func shouldIgnoreLabelInProjectHash(label string) bool {
 	return true
 }
 
+// WithNormalizedEnvValues returns a copy of the project where any service
+// environment value or top-level config content matching a key in normMap is
+// replaced with the corresponding placeholder. Use this to produce a stable
+// project hash when secrets are re-issued on every resolution (e.g. pki-role certs),
+// so the hash only changes when the ref itself changes.
+func WithNormalizedEnvValues(p *types.Project, normMap map[string]string) *types.Project {
+	if len(normMap) == 0 || p == nil {
+		return p
+	}
+
+	pCopy := copyProject(p)
+
+	for name, svc := range pCopy.Services {
+		changed := false
+
+		for envKey, envVal := range svc.Environment {
+			if envVal == nil {
+				continue
+			}
+
+			if placeholder, ok := normMap[*envVal]; ok {
+				v := placeholder
+				svc.Environment[envKey] = &v
+				changed = true
+			}
+		}
+
+		if changed {
+			pCopy.Services[name] = svc
+		}
+	}
+
+	for cfgName, cfg := range pCopy.Configs {
+		if placeholder, ok := normMap[cfg.Content]; ok {
+			cfg.Content = placeholder
+			pCopy.Configs[cfgName] = cfg
+		}
+	}
+
+	return pCopy
+}
+
 // ProjectHash generates a SHA256 hash of the project configuration to be used for detecting changes in the project that may require a redeployment.
 func ProjectHash(p *types.Project) (string, error) {
 	pCopy := copyProject(p)

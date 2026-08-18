@@ -257,7 +257,13 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			}
 		}
 
-		newHash, err := docker.ProjectHash(s.Docker.Project)
+		// pki-role external secrets issue a fresh certificate on every resolution.
+		// Substitute the resolved cert/key PEM values with a stable per-ref placeholder
+		// before hashing so the hash only changes when the ref changes, not when the
+		// cert is re-issued (which would otherwise trigger a spurious redeploy every cycle).
+		hashProject := docker.WithNormalizedEnvValues(s.Docker.Project, pkiRoleNormMap(s.DeployConfig.ExternalSecrets, s.DeployConfig.Internal.Environment))
+
+		newHash, err := docker.ProjectHash(hashProject)
 		if err != nil {
 			return fmt.Errorf("failed to get project hash: %w", err)
 		}
@@ -349,4 +355,34 @@ func getAbsWorkingDir(repoPath, workingDir string) (string, error) {
 	}
 
 	return absPath, nil
+}
+
+// pkiRoleNormMap builds a map from resolved pki-role cert and private-key PEM
+// values to stable placeholder strings (the ref string itself), for use with
+// docker.WithNormalizedEnvValues during project hash computation.
+//
+// Certs issued by OpenBao pki-role refs are always freshly generated on every
+// ResolveSecretReferences call, so their PEM bytes differ each time even when no
+// configuration has changed. Using the ref string as a stable placeholder prevents
+// the project hash from changing on every poll cycle.
+func pkiRoleNormMap(externalSecrets map[string]secrettypes.ExternalSecretRef, env map[string]string) map[string]string {
+	norm := make(map[string]string)
+
+	for envVar, ref := range externalSecrets {
+		if !strings.HasPrefix(ref.LegacyRef, "pki-role:") {
+			continue
+		}
+
+		if v, ok := env[envVar]; ok && v != "" {
+			norm[v] = ref.LegacyRef
+		}
+
+		// The matching private-key value is stored under <NAME>_KEY.
+		keyName := envVar + secrettypes.PKIRoleKeySuffix
+		if v, ok := env[keyName]; ok && v != "" {
+			norm[v] = ref.LegacyRef + secrettypes.PKIRoleKeySuffix
+		}
+	}
+
+	return norm
 }

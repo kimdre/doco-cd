@@ -6,7 +6,10 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/go-git/go-git/v5/plumbing"
+
+	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
 	"github.com/kimdre/doco-cd/internal/docker"
 )
@@ -361,5 +364,102 @@ func TestShouldRecoverFromMissingDeployedCommit(t *testing.T) {
 				t.Fatalf("shouldRecoverFromMissingDeployedCommit() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestPkiRoleNormMap_BuildsStablePlaceholders(t *testing.T) {
+	t.Parallel()
+
+	certPEM := "-----BEGIN CERTIFICATE-----\nMIIFake...\n-----END CERTIFICATE-----\n"
+	keyPEM := "-----BEGIN EC PRIVATE KEY-----\nMIIFakeKey...\n-----END EC PRIVATE KEY-----\n" // #nosec G101
+	ref := "pki-role:pki:my-role:app.example.com"
+
+	externalSecrets := map[string]secrettypes.ExternalSecretRef{
+		"CERT": {LegacyRef: ref},
+	}
+	env := map[string]string{
+		"CERT":     certPEM,
+		"CERT_KEY": keyPEM,
+	}
+
+	norm := pkiRoleNormMap(externalSecrets, env)
+
+	if norm[certPEM] != ref {
+		t.Errorf("cert placeholder: want %q, got %q", ref, norm[certPEM])
+	}
+
+	if norm[keyPEM] != ref+"_KEY" {
+		t.Errorf("key placeholder: want %q, got %q", ref+"_KEY", norm[keyPEM])
+	}
+}
+
+func TestPkiRoleNormMap_SkipsNonPKIRoleRefs(t *testing.T) {
+	t.Parallel()
+
+	externalSecrets := map[string]secrettypes.ExternalSecretRef{
+		"DB_PASSWORD": {LegacyRef: "kv/secret/db#password"},
+		"API_KEY":     {LegacyRef: "kv/secret/api#key"},
+	}
+	env := map[string]string{
+		"DB_PASSWORD": "s3cr3t",
+		"API_KEY":     "apikey123",
+	}
+
+	norm := pkiRoleNormMap(externalSecrets, env)
+
+	if len(norm) != 0 {
+		t.Errorf("expected empty norm map for non-pki-role refs, got %v", norm)
+	}
+}
+
+// TestPkiRoleNormMap_HashStability is an end-to-end check: using pkiRoleNormMap
+// + docker.WithNormalizedEnvValues, consecutive cert re-issues should not change
+// the project hash.
+func TestPkiRoleNormMap_HashStability(t *testing.T) {
+	t.Parallel()
+
+	ref := "pki-role:pki:my-role:app.example.com"
+	cert1 := "-----BEGIN CERTIFICATE-----\nserial-1\n-----END CERTIFICATE-----\n"
+	cert2 := "-----BEGIN CERTIFICATE-----\nserial-2\n-----END CERTIFICATE-----\n"
+	key1 := "-----BEGIN EC PRIVATE KEY-----\nkey-1\n-----END EC PRIVATE KEY-----\n" // #nosec G101
+	key2 := "-----BEGIN EC PRIVATE KEY-----\nkey-2\n-----END EC PRIVATE KEY-----\n" // #nosec G101
+
+	externalSecrets := map[string]secrettypes.ExternalSecretRef{"CERT": {LegacyRef: ref}}
+
+	env1 := map[string]string{"CERT": cert1, "CERT_KEY": key1}
+	env2 := map[string]string{"CERT": cert2, "CERT_KEY": key2}
+
+	norm1 := pkiRoleNormMap(externalSecrets, env1)
+	norm2 := pkiRoleNormMap(externalSecrets, env2)
+
+	strPtr := func(s string) *string { return &s }
+
+	makeProject := func(cert, key string) *types.Project {
+		return &types.Project{
+			Services: types.Services{
+				"app": {
+					Name:  "app",
+					Image: "myapp:latest",
+					Environment: types.MappingWithEquals{
+						"CERT":     strPtr(cert),
+						"CERT_KEY": strPtr(key),
+					},
+				},
+			},
+		}
+	}
+
+	h1, err := docker.ProjectHash(docker.WithNormalizedEnvValues(makeProject(cert1, key1), norm1))
+	if err != nil {
+		t.Fatalf("hash 1: %v", err)
+	}
+
+	h2, err := docker.ProjectHash(docker.WithNormalizedEnvValues(makeProject(cert2, key2), norm2))
+	if err != nil {
+		t.Fatalf("hash 2: %v", err)
+	}
+
+	if h1 != h2 {
+		t.Errorf("hash changed despite same pki-role ref: %q vs %q", h1, h2)
 	}
 }
