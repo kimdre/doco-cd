@@ -1545,6 +1545,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#repeated-failures" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Repeated failures
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#metadata-fields" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2454,6 +2465,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#repeated-failures" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Repeated failures
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#metadata-fields" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2673,6 +2695,12 @@ You can find a list of all supported services and platforms in the <a href="http
 <td><code>success</code></td>
 </tr>
 <tr>
+<td><code>APPRISE_NOTIFY_REPEAT_INTERVAL</code></td>
+<td>duration</td>
+<td>How long an unchanged failure notification is suppressed before it is sent again as a reminder (see <a data-preview="" href="#repeated-failures">Repeated failures</a>). <code>0</code> sends every failure.</td>
+<td><code>1h</code></td>
+</tr>
+<tr>
 <td><code>APPRISE_NOTIFY_BODY_TEMPLATE</code></td>
 <td>string</td>
 <td>Optional <a href="https://pkg.go.dev/text/template">Go <code>text/template</code></a> rendering the notification body (see <a data-preview="" href="#custom-notification-body">Custom notification body</a>). Empty uses the built-in format.</td>
@@ -2715,6 +2743,28 @@ You can find a list of all supported services and platforms in the <a href="http
 </span></span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="hll"><span class="w">      </span><span class="nt">retries</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
 </span></span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="hll"><span class="w">      </span><span class="nt">start_period</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">20s</span>
 </span></span></code></pre></div>
+<h2 id="repeated-failures">Repeated failures<a class="headerlink" href="#repeated-failures" title="Permanent link">&para;</a></h2>
+<p>A failure repeats as often as its trigger. A poll job runs on its interval and a
+broken deployment fails the same way every run, so one fault produces one message
+per poll until somebody fixes it - an expired registry token can turn into
+hundreds of identical notifications overnight.</p>
+<p>Failure notifications are therefore de-duplicated per stack:</p>
+<ul>
+<li>The first failure of a stack is sent immediately.</li>
+<li>While the failure stays the same, further notifications are skipped and repeated
+  only once per <code>APPRISE_NOTIFY_REPEAT_INTERVAL</code>, so a long outage stays visible
+  without flooding.</li>
+<li>A different error on the same stack is sent right away - it is new information.</li>
+<li>A successful notification for that stack (e.g. <code>Deployment completed</code>) clears the
+  suppression, so it also acts as the recovery signal and the next failure is sent
+  immediately.</li>
+<li>Set <code>APPRISE_NOTIFY_REPEAT_INTERVAL</code> to <code>0</code> to send every failure, unchanged or not.</li>
+</ul>
+<p>Stacks are tracked separately per repository, target and Docker context, and the
+state is in memory: a restarted daemon sends the next failure again.</p>
+<p>For the same reason a failed deployment notifies <strong>once</strong>, not twice. The stack
+reports its own failure, and the poll job or webhook that received the same error
+no longer repeats it under its own title. Logs and metrics are unchanged.</p>
 <h2 id="metadata-fields">Metadata fields<a class="headerlink" href="#metadata-fields" title="Permanent link">&para;</a></h2>
 <p>When a notification is sent, the following metadata fields are included in the notification body:</p>
 <table>
