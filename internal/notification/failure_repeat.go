@@ -41,6 +41,10 @@ func SetFailureRepeatInterval(interval time.Duration) {
 	defer failureMu.Unlock()
 
 	failureRepeatInterval = interval
+
+	if interval <= 0 {
+		lastFailures = map[string]failureRecord{}
+	}
 }
 
 // failureKey identifies the thing that failed. The stack is what an operator
@@ -70,6 +74,8 @@ func shouldSendFailure(key, fingerprint string, now time.Time) bool {
 		return true
 	}
 
+	pruneFailures(now)
+
 	last, found := lastFailures[key]
 	if found && last.fingerprint == fingerprint && now.Sub(last.sentAt) < failureRepeatInterval {
 		return false
@@ -78,6 +84,18 @@ func shouldSendFailure(key, fingerprint string, now time.Time) bool {
 	lastFailures[key] = failureRecord{fingerprint: fingerprint, sentAt: now}
 
 	return true
+}
+
+// pruneFailures drops records that cannot suppress anything anymore. Past the
+// repeat interval the next failure is sent whatever the record says, so keeping
+// it only grows the map for stacks that are renamed, removed or fixed without a
+// success notification. Caller holds failureMu.
+func pruneFailures(now time.Time) {
+	for key, record := range lastFailures {
+		if now.Sub(record.sentAt) >= failureRepeatInterval {
+			delete(lastFailures, key)
+		}
+	}
 }
 
 // clearFailure forgets the last failure of a stack, so the next one is sent

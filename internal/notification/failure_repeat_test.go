@@ -96,6 +96,49 @@ func TestClearFailure_LetsNextFailureThrough(t *testing.T) {
 	}
 }
 
+func TestShouldSendFailure_PrunesStaleRecords(t *testing.T) {
+	resetFailureState(t, time.Hour)
+
+	now := time.Now()
+	fingerprint := failureFingerprint("Deployment Failed", "pull access denied")
+
+	gone := failureKey(Metadata{Repository: "acme/deploy", Stack: "removed"})
+	shouldSendFailure(gone, fingerprint, now)
+
+	alive := failureKey(Metadata{Repository: "acme/deploy", Stack: "app"})
+	shouldSendFailure(alive, fingerprint, now.Add(2*time.Hour))
+
+	failureMu.Lock()
+	_, found := lastFailures[gone]
+	size := len(lastFailures)
+	failureMu.Unlock()
+
+	if found {
+		t.Error("a record older than the repeat interval must be dropped")
+	}
+
+	if size != 1 {
+		t.Errorf("only the current failure must be kept, got %d records", size)
+	}
+}
+
+func TestSetFailureRepeatInterval_ZeroDropsRecords(t *testing.T) {
+	resetFailureState(t, time.Hour)
+
+	key := failureKey(Metadata{Repository: "acme/deploy", Stack: "app"})
+	shouldSendFailure(key, failureFingerprint("Deployment Failed", "pull access denied"), time.Now())
+
+	SetFailureRepeatInterval(0)
+
+	failureMu.Lock()
+	size := len(lastFailures)
+	failureMu.Unlock()
+
+	if size != 0 {
+		t.Errorf("turning suppression off must drop the records, got %d", size)
+	}
+}
+
 func TestShouldSendFailure_DisabledByZeroInterval(t *testing.T) {
 	resetFailureState(t, 0)
 

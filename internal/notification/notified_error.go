@@ -27,6 +27,10 @@ func MarkNotified(err error) error {
 }
 
 // WasNotified reports whether a failure notification was already sent for err.
+// It walks the unwrap chain, so every layer above MarkNotified must wrap with
+// %w. An error rebuilt on the way up - fmt.Errorf("...: %v", err),
+// errors.New(err.Error()), a fresh sentinel - drops the mark and gets notified
+// a second time.
 func WasNotified(err error) bool {
 	var notified *notifiedError
 
