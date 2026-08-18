@@ -40,4 +40,31 @@ func TestChangedServiceNames(t *testing.T) {
 			t.Errorf("expected %v, got %v", expected, got)
 		}
 	})
+
+	t.Run("merges image digest drift services", func(t *testing.T) {
+		t.Parallel()
+
+		d := &DeploymentState{
+			changedServices: []docker.Change{
+				{Type: "mounts", Services: []string{"worker", "web"}},
+			},
+			imageChangedServices: []string{"web", "app"},
+		}
+
+		expected := []string{"app", "web", "worker"}
+		if got := d.changedServiceNames(); !slices.Equal(got, expected) {
+			t.Errorf("expected %v, got %v", expected, got)
+		}
+	})
+
+	t.Run("image digest drift services alone", func(t *testing.T) {
+		t.Parallel()
+
+		d := &DeploymentState{imageChangedServices: []string{"app"}}
+
+		expected := []string{"app"}
+		if got := d.changedServiceNames(); !slices.Equal(got, expected) {
+			t.Errorf("expected %v, got %v", expected, got)
+		}
+	})
 }

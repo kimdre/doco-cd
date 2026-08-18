@@ -102,7 +102,7 @@ The following fields are available:
 | `.AffectedActorName`  | Affected container/service name                                          |
 | `.Commits`            | Commits deployed since the last deploy (see [Commit changelog](#commit-changelog)) |
 | `.Duration`           | Time the deployment (or destroy) took, from job start to the notification, e.g. `12.483s`. Zero where no deployment ran (reconciliation restarts, scheduled jobs) — hide it with `{{if .Duration}}...{{end}}` |
-| `.ChangedServices`    | Sorted names of the services force-recreated by this deploy (changed mounted/referenced files or a changed auto-discovery label). Empty when the whole stack is (re)deployed for other reasons, e.g. a compose config change, an image update, state drift or `force_recreate` |
+| `.ChangedServices`    | Sorted names of the services changed by this deploy: force-recreated ones (changed mounted/referenced files or a changed auto-discovery label) plus services whose image digest changed in the registry (detected with [`force_image_pull`](../Deploy-Settings.md)). Empty when the whole stack is (re)deployed for other reasons, e.g. a compose config change (including image tag changes in the compose file), state drift or `force_recreate` |
 
 `{{ .DefaultBody }}` renders the built-in body (message + metadata), so you can extend the default format instead of replacing it, e.g. `{{ .DefaultBody }}\nhost: my-vm`.
 

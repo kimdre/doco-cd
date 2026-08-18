@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -141,7 +142,7 @@ func TestRegistryManifestURL(t *testing.T) {
 	}
 }
 
-func TestHaveDeployedServiceImageDigestsChanged(t *testing.T) {
+func TestDeployedServicesWithChangedImageDigests(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	expectedLookupErr := errors.New("deployed lookup failed")
@@ -160,7 +161,7 @@ func TestHaveDeployedServiceImageDigestsChanged(t *testing.T) {
 		registryDigest       string
 		deployedDigests      map[string]string
 		deployedLookupErr    error
-		wantChanged          bool
+		wantChanged          []string
 		wantErr              error
 		wantRegistryCalls    int
 		wantRegistryCallRefs []string
@@ -173,7 +174,7 @@ func TestHaveDeployedServiceImageDigestsChanged(t *testing.T) {
 					"web": {Name: "web"},
 				},
 			},
-			wantChanged:       false,
+			wantChanged:       nil,
 			wantRegistryCalls: 0,
 		},
 		{
@@ -187,12 +188,12 @@ func TestHaveDeployedServiceImageDigestsChanged(t *testing.T) {
 			},
 			registryDigest:       "sha256:same",
 			deployedDigests:      map[string]string{"web": "sha256:same"},
-			wantChanged:          false,
+			wantChanged:          nil,
 			wantRegistryCalls:    1,
 			wantRegistryCallRefs: []string{"nginx:latest"},
 		},
 		{
-			name: "returns true when deployed digest missing",
+			name: "returns service when deployed digest missing",
 			project: &types.Project{
 				Name: "test",
 				Services: types.Services{
@@ -201,12 +202,12 @@ func TestHaveDeployedServiceImageDigestsChanged(t *testing.T) {
 			},
 			registryDigest:       "sha256:new",
 			deployedDigests:      map[string]string{},
-			wantChanged:          true,
+			wantChanged:          []string{"web"},
 			wantRegistryCalls:    1,
 			wantRegistryCallRefs: []string{"nginx:latest"},
 		},
 		{
-			name: "returns true on digest mismatch",
+			name: "returns service on digest mismatch",
 			project: &types.Project{
 				Name: "test",
 				Services: types.Services{
@@ -215,12 +216,12 @@ func TestHaveDeployedServiceImageDigestsChanged(t *testing.T) {
 			},
 			registryDigest:       "sha256:new",
 			deployedDigests:      map[string]string{"web": "sha256:old"},
-			wantChanged:          true,
+			wantChanged:          []string{"web"},
 			wantRegistryCalls:    1,
 			wantRegistryCallRefs: []string{"nginx:latest"},
 		},
 		{
-			name: "returns false when digests match",
+			name: "returns nothing when digests match",
 			project: &types.Project{
 				Name: "test",
 				Services: types.Services{
@@ -229,7 +230,7 @@ func TestHaveDeployedServiceImageDigestsChanged(t *testing.T) {
 			},
 			registryDigest:       "sha256:same",
 			deployedDigests:      map[string]string{"web": "sha256:same"},
-			wantChanged:          false,
+			wantChanged:          nil,
 			wantRegistryCalls:    1,
 			wantRegistryCallRefs: []string{"nginx:latest"},
 		},
@@ -258,9 +259,25 @@ func TestHaveDeployedServiceImageDigestsChanged(t *testing.T) {
 			},
 			registryDigest:       "sha256:same",
 			deployedDigests:      map[string]string{"web": "sha256:same", "worker": "sha256:same"},
-			wantChanged:          false,
+			wantChanged:          nil,
 			wantRegistryCalls:    1,
 			wantRegistryCallRefs: []string{"nginx:latest"},
+		},
+		{
+			name: "collects all changed services sorted",
+			project: &types.Project{
+				Name: "test",
+				Services: types.Services{
+					"web":    {Name: "web", Image: "nginx:latest"},
+					"worker": {Name: "worker", Image: "nginx:latest"},
+					"db":     {Name: "db", Image: "postgres:latest"},
+				},
+			},
+			registryDigest:       "sha256:new",
+			deployedDigests:      map[string]string{"web": "sha256:old", "worker": "sha256:old", "db": "sha256:new"},
+			wantChanged:          []string{"web", "worker"},
+			wantRegistryCalls:    2,
+			wantRegistryCallRefs: nil, // map iteration order is random, only the count is stable
 		},
 	}
 
@@ -279,12 +296,12 @@ func TestHaveDeployedServiceImageDigestsChanged(t *testing.T) {
 				return tc.deployedDigests, nil
 			}
 
-			changed, err := HaveDeployedServiceImageDigestsChanged(ctx, nil, false, tc.project, logger)
+			changed, err := DeployedServicesWithChangedImageDigests(ctx, nil, false, tc.project, logger)
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("expected error %v, got %v", tc.wantErr, err)
 			}
 
-			if changed != tc.wantChanged {
+			if !slices.Equal(changed, tc.wantChanged) {
 				t.Fatalf("changed = %v, want %v", changed, tc.wantChanged)
 			}
 
