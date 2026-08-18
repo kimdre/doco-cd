@@ -82,6 +82,7 @@ type Config struct {
 	AppriseNotifyUrls             string                 `env:"APPRISE_NOTIFY_URLS"`                                                                             // AppriseNotifyUrls is a comma-separated list of URLs to notify via the Apprise notification service
 	AppriseNotifyUrlsFile         string                 `env:"APPRISE_NOTIFY_URLS_FILE,file"`                                                                   // AppriseNotifyUrlsFile is the file containing the AppriseNotifyUrls
 	AppriseNotifyLevel            string                 `env:"APPRISE_NOTIFY_LEVEL,notEmpty" envDefault:"success"`                                              // AppriseNotifyLevel is the level of notifications to send via the Apprise notification service
+	AppriseNotifyRepeatInterval   time.Duration          `env:"APPRISE_NOTIFY_REPEAT_INTERVAL,notEmpty" envDefault:"1h"`                                         // AppriseNotifyRepeatInterval is how long an unchanged failure notification is suppressed before it is sent again as a reminder. Zero or less sends every failure.
 	AppriseNotifyBodyTemplate     string                 `env:"APPRISE_NOTIFY_BODY_TEMPLATE"`                                                                    // AppriseNotifyBodyTemplate is an optional Go text/template rendering the notification body. Empty uses the built-in format.
 	AppriseNotifyBodyTemplateFile string                 `env:"APPRISE_NOTIFY_BODY_TEMPLATE_FILE,file"`                                                          // AppriseNotifyBodyTemplateFile is the file containing the AppriseNotifyBodyTemplate
 	SecretProvider                string                 `env:"SECRET_PROVIDER"`                                                                                 // SecretProvider is the secret provider/manager to use for retrieving secrets (e.g. bitwarden secrets manager)
@@ -208,6 +209,8 @@ func GetConfig() (*Config, error) {
 			return nil, fmt.Errorf("DATA_HOST_PATH must be an absolute Unix path: %q", cfg.DataHostPath)
 		}
 	}
+
+	notification.SetFailureRepeatInterval(cfg.AppriseNotifyRepeatInterval)
 
 	err = notification.SetAppriseConfig(
 		string(cfg.AppriseApiURL),

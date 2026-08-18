@@ -18,6 +18,7 @@ For that, specify the required settings in the app `environment` section and add
 | `APPRISE_NOTIFY_URLS`      | string | A comma-separated list of Apprise-URLs to send notifications to the [supported services/platforms](https://appriseit.com/services/) (e.g. `pover://{user_key}@{token},mailto://{user}:{password}@{domain}`) |               |
 | `APPRISE_NOTIFY_URLS_FILE` | string | Path to the file inside the container containing the Apprise-URLs (see `APPRISE_NOTIFY_URLS`). Mutually exclusive with `APPRISE_NOTIFY_URLS`.                                                               |               |
 | `APPRISE_NOTIFY_LEVEL`     | string | The minimum level of notifications to send. Possible values: `info`, `success`, `warning`, `failure`                                                                                                        | `success`     |
+| `APPRISE_NOTIFY_REPEAT_INTERVAL` | duration | How long an unchanged failure notification is suppressed before it is sent again as a reminder (see [Repeated failures](#repeated-failures)). `0` sends every failure.                                        | `1h`          |
 | `APPRISE_NOTIFY_BODY_TEMPLATE`  | string | Optional [Go `text/template`](https://pkg.go.dev/text/template) rendering the notification body (see [Custom notification body](#custom-notification-body)). Empty uses the built-in format.                  |               |
 | `APPRISE_NOTIFY_BODY_TEMPLATE_FILE` | string | Path to a file inside the container containing the template (see `APPRISE_NOTIFY_BODY_TEMPLATE`). Mutually exclusive with `APPRISE_NOTIFY_BODY_TEMPLATE`.                                                          |               |
 
@@ -53,6 +54,32 @@ services:
       retries: 3
       start_period: 20s
 ```
+
+## Repeated failures
+
+A failure repeats as often as its trigger. A poll job runs on its interval and a
+broken deployment fails the same way every run, so one fault produces one message
+per poll until somebody fixes it - an expired registry token can turn into
+hundreds of identical notifications overnight.
+
+Failure notifications are therefore de-duplicated per stack:
+
+- The first failure of a stack is sent immediately.
+- While the failure stays the same, further notifications are skipped and repeated
+  only once per `APPRISE_NOTIFY_REPEAT_INTERVAL`, so a long outage stays visible
+  without flooding.
+- A different error on the same stack is sent right away - it is new information.
+- A successful notification for that stack (e.g. `Deployment completed`) clears the
+  suppression, so it also acts as the recovery signal and the next failure is sent
+  immediately.
+- Set `APPRISE_NOTIFY_REPEAT_INTERVAL` to `0` to send every failure, unchanged or not.
+
+Stacks are tracked separately per repository, target and Docker context, and the
+state is in memory: a restarted daemon sends the next failure again.
+
+For the same reason a failed deployment notifies **once**, not twice. The stack
+reports its own failure, and the poll job or webhook that received the same error
+no longer repeats it under its own title. Logs and metrics are unchanged.
 
 ## Metadata fields
 
