@@ -1,0 +1,5 @@
+# Same stub as shop-dev — the env difference arrives only through the vars in
+# .doco-cd.shop-prod.yml and the per-env env/secret files.
+include:
+  - path: https://github.com/example/shop-be.git#${SHOP_COMPOSE_SHA}:deploy
+    project_directory: .

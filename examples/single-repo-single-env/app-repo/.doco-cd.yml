@@ -1,0 +1,19 @@
+# Deploy config. The VM's doco-cd polls this repo and reconciles deploy/ on
+# every push to main.
+#
+# Split by sensitivity:
+#   - Non-secrets live HERE in git: the domain and the deployed image tag.
+#     Bumping APP_TAG is the release — commit + push, doco-cd redeploys.
+#     A CI job can do the bump after the image build (commit with [skip ci]).
+#   - Secrets are NOT here. They live on the VM in secrets.env, loaded by the
+#     doco-cd container and forwarded into compose interpolation via
+#     PASS_ENV=true (see server/compose.yaml).
+name: app
+working_dir: deploy
+environment:
+  APP_DOMAIN: app.example.com
+  APP_TAG: "v1.10.1" # pin exact tags; a floating `latest` never auto-deploys
+# Runtime self-healing: doco-cd watches Docker events on this stack. A failing
+# healthcheck -> in-place container restart (redeploy fallback if gone).
+reconciliation:
+  events: [unhealthy]

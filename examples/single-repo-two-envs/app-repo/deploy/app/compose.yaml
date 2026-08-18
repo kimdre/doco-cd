@@ -1,0 +1,30 @@
+# Web stack. Talks to postgres in the OTHER stack (deploy/db) over the
+# external network below — each stack is a separate compose project, so a
+# shared network must be external. Create once per VM:
+#   docker network create appnet
+services:
+  web:
+    image: ghcr.io/example/app:${APP_TAG}
+    restart: unless-stopped
+    ports:
+      - "80:8080"
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL}
+      APP_DOMAIN: ${APP_DOMAIN}
+      # Secret from the VM's secrets.env, forwarded by PASS_ENV on the daemon.
+      DATABASE_URL: postgres://app:${PG_PASSWORD:-}@postgres:5432/app
+    networks:
+      - appnet
+    # Readiness gate for `reconciliation: [unhealthy]`. Distroless image has no
+    # curl — probe with your own binary.
+    healthcheck:
+      test: ["CMD", "/app", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+networks:
+  appnet:
+    name: appnet
+    external: true

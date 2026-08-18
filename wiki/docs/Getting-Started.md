@@ -23,6 +23,10 @@ If you are new to Doco-CD, follow the pages in this order:
 
     You can find the available tags/versions on the [GitHub Container Registry](https://github.com/kimdre/doco-cd/pkgs/container/doco-cd).
 
+!!! tip "Full working examples"
+    The [`examples/`](https://github.com/kimdre/doco-cd/tree/main/examples) directory in the repository contains complete setups for common scenarios:
+    a single repo deployed to one environment, a single repo deployed to two environments, and a central deployments repo that manages many apps across many VMs.
+
 Find out about the [Core Concepts](Core-Concepts.md) of Doco-CD to understand how the application works and how to configure it.
 
 You can find all available app settings on the [App Settings](App-Settings.md) wiki page.

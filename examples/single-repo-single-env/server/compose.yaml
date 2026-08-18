@@ -1,0 +1,31 @@
+# doco-cd itself. This file lives on the VM (e.g. /opt/doco-cd/), NOT in the
+# app repo — the controller cannot GitOps itself.
+#
+# Poll-only setup: no published ports, webhook/API endpoints stay disabled
+# (their secrets are unset), the VM firewall stays closed.
+services:
+  doco-cd:
+    image: ghcr.io/kimdre/doco-cd:latest # pin tag+digest in real use
+    restart: unless-stopped
+    # secrets.env holds the app stack's secrets. PASS_ENV forwards the daemon's
+    # own env into every deployment's compose interpolation, so ${API_KEY} in
+    # the app compose resolves here — secrets stay on the VM, never in git.
+    env_file:
+      - secrets.env
+    environment:
+      TZ: Etc/UTC
+      POLL_CONFIG_FILE: /etc/doco-cd/poll.yaml
+      PASS_ENV: "true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./poll.yaml:/etc/doco-cd/poll.yaml:ro
+      - data:/data
+    healthcheck:
+      test: ["CMD", "/doco-cd", "healthcheck"]
+      start_period: 15s
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  data:

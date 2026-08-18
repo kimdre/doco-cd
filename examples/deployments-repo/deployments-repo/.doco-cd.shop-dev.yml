@@ -1,0 +1,23 @@
+# Deploy config for the shop-dev VM. Its daemon polls this repo with
+# `target: shop-dev` and reads ONLY this file.
+#
+# RULE: every service this VM runs has its version pinned HERE — our images by
+# git sha (rolled by app-repo CI bump jobs), third-party by exact tag. Nothing
+# floats. A version change is a commit.
+name: shop
+working_dir: shop/shop-dev
+environment:
+  ENV_NAME: "dev"
+  DOMAIN: "dev.shop.example.com"
+  REGISTRY: "ghcr.io/example"
+  # --- compose pin (app repo's deploy/compose.yaml at this sha)
+  SHOP_COMPOSE_SHA: "b3e21007ad8c2ac1223537d7d5f7c1e2ef51be77"
+  # --- our images
+  SHOP_BE_TAG: "dd5c00230acc348c4b0524730a848ff592189b16"
+  # --- third-party
+  REDIS_TAG: "7.2-alpine"
+# Dropped services must not linger as orphans — an orphaned crashlooper keeps
+# the drift-redeploy loop alive.
+remove_orphans: true
+reconciliation:
+  events: [unhealthy] # never `die` — one-shot/post_start exits would loop it
