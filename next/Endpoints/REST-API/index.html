@@ -2897,7 +2897,8 @@
 
 
 <h1 id="rest-api">REST API<a class="headerlink" href="#rest-api" title="Permanent link">&para;</a></h1>
-<p>Doco-CD exposes a RESTful API at the <code>/v1/api</code> endpoint.</p>
+<p>Doco-CD exposes a RESTful API at the <code>/v1/api</code> endpoint.
+Set both <code>HTTP_TLS_CERT_FILE</code> and <code>HTTP_TLS_KEY_FILE</code> if you want doco-cd itself to serve the API over HTTPS.</p>
 <h2 id="authentication">Authentication<a class="headerlink" href="#authentication" title="Permanent link">&para;</a></h2>
 <p>Set the <code>API_SECRET</code> or <code>API_SECRET_FILE</code> environment variable in the container to enable the API, see <a data-preview="" href="../../App-Settings/#general-settings">App Settings</a>.</p>
 <p>Use the <code>x-api-key</code> header to authenticate requests to the API using the secret value.</p>

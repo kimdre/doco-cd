@@ -2620,7 +2620,8 @@
 
 <h1 id="webhook-listener">Webhook Listener<a class="headerlink" href="#webhook-listener" title="Permanent link">&para;</a></h1>
 <p>The webhook payload is expected to be in JSON format and must contain the payload from a <a data-preview="" href="../../#supported-git-providers">supported Git Provider</a> or for a <a data-preview="" href="../../Advanced/OCI/Webhooks/">OCI artifact</a>.</p>
-<p>The application listens for incoming webhooks on the <code>/v1/webhook</code> endpoint with the port specified by the <code>HTTP_PORT</code> environment variable, see <a data-preview="" href="../../App-Settings/#general-settings">App Settings</a>.</p>
+<p>The application listens for incoming webhooks on the <code>/v1/webhook</code> endpoint with the port specified by the <code>HTTP_PORT</code> environment variable, see <a data-preview="" href="../../App-Settings/#general-settings">App Settings</a>.
+Set both <code>HTTP_TLS_CERT_FILE</code> and <code>HTTP_TLS_KEY_FILE</code> to serve the endpoint over HTTPS directly from doco-cd.</p>
 <div class="admonition info">
 <p class="admonition-title">Source URL Rewrites</p>
 <p>Webhook deployments support rewriting git clone URLs to internal addresses via <a data-preview="" href="../../App-Settings/#source-url-rewrites"><code>SOURCE_URL_REWRITES</code></a>. This is useful when the Git provider advertises a public URL in webhooks but doco-cd should clone via an internal network path.</p>

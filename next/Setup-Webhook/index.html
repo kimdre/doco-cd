@@ -2531,7 +2531,8 @@
 </div>
 <h2 id="webhook-endpoint">Webhook Endpoint<a class="headerlink" href="#webhook-endpoint" title="Permanent link">&para;</a></h2>
 <p>To enable the webhook endpoint, set the <code>WEBHOOK_SECRET</code> <a data-preview="" href="../App-Settings/#general-settings">environment variable</a> to a secure secret value and publish the webhook port in the doco-cd <code>docker-compose.yml</code> file.
-The default port is <code>80</code>; see the <code>HTTP_PORT</code> <a data-preview="" href="../App-Settings/#general-settings">environment variable</a>.</p>
+The default port is <code>80</code>; see the <code>HTTP_PORT</code> <a data-preview="" href="../App-Settings/#general-settings">environment variable</a>.
+If you want doco-cd to terminate TLS itself, also set both <code>HTTP_TLS_CERT_FILE</code> and <code>HTTP_TLS_KEY_FILE</code>.</p>
 <p>You can use tools like <a href="https://linux.die.net/man/1/pwgen">pwgen</a> or <a href="https://www.openssl.org/">openssl</a> to generate a random secret for <code>WEBHOOK_SECRET</code>.</p>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="webhook-endpoint-pwgen" name="__tabbed_1" type="radio" /><input id="webhook-endpoint-openssl" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="webhook-endpoint-pwgen">pwgen</label><label for="webhook-endpoint-openssl">openssl</label></div>
 <div class="tabbed-content">

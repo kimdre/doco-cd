@@ -2435,7 +2435,8 @@
 
 
 <h1 id="healthcheck">Healthcheck<a class="headerlink" href="#healthcheck" title="Permanent link">&para;</a></h1>
-<p>The Doco-CD image has a Docker health check that checks against <code>http://localhost:${HTTP_PORT}/v1/health</code> inside the container.</p>
+<p>The Doco-CD image has a Docker health check that checks against <code>http://localhost:${HTTP_PORT}/v1/health</code> inside the container by default.
+When both <code>HTTP_TLS_CERT_FILE</code> and <code>HTTP_TLS_KEY_FILE</code> are set, the built-in health check automatically switches to <code>https://localhost:${HTTP_PORT}/v1/health</code>.</p>
 <p>You can adjust the health check settings in your <code>docker-compose.yml</code> file like this:</p>
 <div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">services</span><span class="p">:</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>

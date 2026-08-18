@@ -2941,6 +2941,18 @@
 <td><code>80</code></td>
 </tr>
 <tr>
+<td><code>HTTP_TLS_CERT_FILE</code></td>
+<td>string</td>
+<td>Path to the PEM certificate file used by the main webhook/API/healthcheck and metrics servers. HTTPS is enabled automatically when both <code>HTTP_TLS_CERT_FILE</code> and <code>HTTP_TLS_KEY_FILE</code> are set.</td>
+<td></td>
+</tr>
+<tr>
+<td><code>HTTP_TLS_KEY_FILE</code></td>
+<td>string</td>
+<td>Path to the PEM private key file used by the main webhook/API/healthcheck and metrics servers. HTTPS is enabled automatically when both <code>HTTP_TLS_CERT_FILE</code> and <code>HTTP_TLS_KEY_FILE</code> are set.</td>
+<td></td>
+</tr>
+<tr>
 <td><code>HTTP_PROXY</code></td>
 <td>string</td>
 <td>HTTP proxy to use for outgoing requests (e.g. <code>http://username:password@proxy.com:8080</code>)</td>
