@@ -18,9 +18,15 @@ const (
 )
 
 // RegisterServer registers the Prometheus metrics server.
-func RegisterServer(port uint16, log *logger.Logger) {
+func RegisterServer(port uint16, tlsCertFile string, tlsKeyFile string, log *logger.Logger) {
+	protocol := "http"
+	if tlsCertFile != "" && tlsKeyFile != "" {
+		protocol = "https"
+	}
+
 	log.Info("serving prometheus metrics",
 		slog.Int("http_port", int(port)),
+		slog.String("protocol", protocol),
 		slog.String("path", MetricsPath),
 	)
 
@@ -33,5 +39,5 @@ func RegisterServer(port uint16, log *logger.Logger) {
 		Handler:           mux,
 	}
 
-	graceful.RegisterServer(graceful.NewHttpServer("prometheus", server))
+	graceful.RegisterServer(graceful.NewHttpServer("prometheus", server, tlsCertFile, tlsKeyFile))
 }

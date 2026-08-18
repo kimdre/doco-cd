@@ -171,9 +171,14 @@ func run() error {
 	log = logger.New(logLevel)
 
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
-		checkUrl := fmt.Sprintf("http://localhost:%d%s", c.HttpPort, healthPath)
+		scheme := "http"
+		if c.HttpTLSEnabled {
+			scheme = "https"
+		}
 
-		err := healthcheck.Check(ctx, checkUrl)
+		checkUrl := fmt.Sprintf("%s://localhost:%d%s", scheme, c.HttpPort, healthPath)
+
+		err := healthcheck.Check(ctx, checkUrl, c.HttpTLSEnabled)
 		if err != nil {
 			log.Critical("health check failed", logger.ErrAttr(err), slog.String("url", checkUrl))
 			return err
@@ -392,7 +397,7 @@ func run() error {
 	}
 
 	registryApiServer(c, &h, log)
-	prometheus.RegisterServer(c.MetricsPort, log)
+	prometheus.RegisterServer(c.MetricsPort, c.HttpTLSCertFile, c.HttpTLSKeyFile, log)
 
 	if err := graceful.Serve(log.Logger); err != nil {
 		log.Critical("failed to serve", logger.ErrAttr(err))
