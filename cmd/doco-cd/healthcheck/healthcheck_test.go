@@ -20,10 +20,16 @@ func TestCheck(t *testing.T) {
 	}))
 	t.Cleanup(notOk.Close)
 
+	okTLS := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(okTLS.Close)
+
 	testCases := []struct {
-		name    string
-		url     string
-		wantErr bool
+		name          string
+		url           string
+		skipTLSVerify bool
+		wantErr       bool
 	}{
 		{
 			name:    "Valid URL",
@@ -40,13 +46,24 @@ func TestCheck(t *testing.T) {
 			url:     notOk.URL,
 			wantErr: true,
 		},
+		{
+			name:          "Valid TLS URL",
+			url:           okTLS.URL,
+			skipTLSVerify: true,
+			wantErr:       false,
+		},
+		{
+			name:    "TLS URL without verify skip fails",
+			url:     okTLS.URL,
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := Check(context.Background(), tc.url)
+			err := Check(context.Background(), tc.url, tc.skipTLSVerify)
 			if (err != nil) != tc.wantErr {
 				t.Errorf("Check(%q) error = %v, wantErr %v", tc.url, err, tc.wantErr)
 			}

@@ -10,6 +10,7 @@ tags:
 The webhook payload is expected to be in JSON format and must contain the payload from a [supported Git Provider](../index.md#supported-git-providers) or for a [OCI artifact](../Advanced/OCI/Webhooks.md).
 
 The application listens for incoming webhooks on the `/v1/webhook` endpoint with the port specified by the `HTTP_PORT` environment variable, see [App Settings](../App-Settings.md#general-settings).
+Set both `HTTP_TLS_CERT_FILE` and `HTTP_TLS_KEY_FILE` to serve the endpoint over HTTPS directly from doco-cd.
 
 !!! info "Source URL Rewrites"
     Webhook deployments support rewriting git clone URLs to internal addresses via [`SOURCE_URL_REWRITES`](../App-Settings.md#source-url-rewrites). This is useful when the Git provider advertises a public URL in webhooks but doco-cd should clone via an internal network path.

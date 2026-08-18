@@ -17,6 +17,7 @@ This page shows how to set up a webhook for your deployments.
 
 To enable the webhook endpoint, set the `WEBHOOK_SECRET` [environment variable](App-Settings.md#general-settings) to a secure secret value and publish the webhook port in the doco-cd `docker-compose.yml` file.
 The default port is `80`; see the `HTTP_PORT` [environment variable](App-Settings.md#general-settings).
+If you want doco-cd to terminate TLS itself, also set both `HTTP_TLS_CERT_FILE` and `HTTP_TLS_KEY_FILE`.
 
 You can use tools like [pwgen](https://linux.die.net/man/1/pwgen) or [openssl](https://www.openssl.org/) to generate a random secret for `WEBHOOK_SECRET`.
 

@@ -31,6 +31,9 @@ var (
 type Config struct {
 	LogLevel                      string                 `env:"LOG_LEVEL,notEmpty" envDefault:"info"`                          // LogLevel is the log level for the application
 	HttpPort                      uint16                 `env:"HTTP_PORT,notEmpty" envDefault:"80" validate:"min=1,max=65535"` // HttpPort is the port the HTTP server will listen on
+	HttpTLSEnabled                bool                   `yaml:"-"`                                                            // HttpTLSEnabled indicates whether the main HTTP server serves HTTPS using the configured TLS certificate and key files.
+	HttpTLSCertFile               string                 `env:"HTTP_TLS_CERT_FILE"`                                            // HttpTLSCertFile is the path to the TLS certificate PEM file used by the main HTTP server when configured.
+	HttpTLSKeyFile                string                 `env:"HTTP_TLS_KEY_FILE"`                                             // HttpTLSKeyFile is the path to the TLS private key PEM file used by the main HTTP server when configured.
 	HttpProxyString               string                 `env:"HTTP_PROXY"`                                                    // HttpProxyString is the HTTP proxy URL as a string
 	HttpProxy                     transport.ProxyOptions // HttpProxy is the HTTP proxy configuration parsed from the HttpProxyString
 	TrustedProxyNetworksString    string                 `env:"TRUSTED_PROXY_NETWORKS" envDefault:"127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1/128"` // TrustedProxyNetworksString is the comma-separated list of trusted proxy CIDRs.
@@ -179,6 +182,15 @@ func GetConfig() (*Config, error) {
 	if cfg.HttpPort == cfg.MetricsPort {
 		return nil, fmt.Errorf("HTTP_PORT and METRICS_PORT cannot be the same port number: %d", cfg.HttpPort)
 	}
+
+	cfg.HttpTLSCertFile = strings.TrimSpace(cfg.HttpTLSCertFile)
+	cfg.HttpTLSKeyFile = strings.TrimSpace(cfg.HttpTLSKeyFile)
+
+	if (cfg.HttpTLSCertFile == "") != (cfg.HttpTLSKeyFile == "") {
+		return nil, errors.New("HTTP_TLS_CERT_FILE and HTTP_TLS_KEY_FILE must be set together")
+	}
+
+	cfg.HttpTLSEnabled = cfg.HttpTLSCertFile != "" && cfg.HttpTLSKeyFile != ""
 
 	if cfg.HttpProxyString != "" {
 		cfg.HttpProxy = transport.ProxyOptions{

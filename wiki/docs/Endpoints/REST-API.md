@@ -8,6 +8,7 @@ tags:
 # REST API
 
 Doco-CD exposes a RESTful API at the `/v1/api` endpoint.
+Set both `HTTP_TLS_CERT_FILE` and `HTTP_TLS_KEY_FILE` if you want doco-cd itself to serve the API over HTTPS.
 
 ## Authentication
 

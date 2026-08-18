@@ -8,6 +8,7 @@ tags:
 # Prometheus Metrics
 
 The application exposes Prometheus metrics at the `/metrics` endpoint. This endpoint provides various metrics about the application's performance and health, which can be scraped by a Prometheus server for monitoring purposes.
+When both `HTTP_TLS_CERT_FILE` and `HTTP_TLS_KEY_FILE` are set, the metrics endpoint is served over HTTPS as well.
 
 By default, this endpoint is available on Port `9120`, but can be configured using the `METRICS_PORT` environment variable, see [App Settings](../App-Settings.md#general-settings).
 

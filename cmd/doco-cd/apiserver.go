@@ -16,9 +16,15 @@ func registryApiServer(c *app.Config, h *handlerData, log *logger.Logger) {
 	apiServerMux := http.NewServeMux()
 	enabledApiEndpoints := registerApiEndpoints(c, h, log, apiServerMux)
 
+	protocol := "http"
+	if c.HttpTLSEnabled {
+		protocol = "https"
+	}
+
 	log.Info(
 		"listening for events",
 		slog.Int("http_port", int(c.HttpPort)),
+		slog.String("protocol", protocol),
 		slog.Any("enabled_endpoints", enabledApiEndpoints),
 	)
 
@@ -36,5 +42,5 @@ func registryApiServer(c *app.Config, h *handlerData, log *logger.Logger) {
 		Handler: apiServerMux,
 	}
 
-	graceful.RegisterServer(graceful.NewHttpServer("api", server))
+	graceful.RegisterServer(graceful.NewHttpServer("api", server, c.HttpTLSCertFile, c.HttpTLSKeyFile))
 }

@@ -384,6 +384,82 @@ func TestGetConfig_TrustedProxyHeaderOverride(t *testing.T) {
 	}
 }
 
+func TestGetConfig_HTTPTLS(t *testing.T) {
+	testCases := []struct {
+		name         string
+		certFile     string
+		keyFile      string
+		wantErr      bool
+		wantEnabled  bool
+		wantCertFile string
+		wantKeyFile  string
+	}{
+		{
+			name:        "defaults disabled",
+			wantEnabled: false,
+		},
+		{
+			name:         "enabled with cert and key",
+			certFile:     " /tls/server.crt ",
+			keyFile:      " /tls/server.key ",
+			wantEnabled:  true,
+			wantCertFile: "/tls/server.crt",
+			wantKeyFile:  "/tls/server.key",
+		},
+		{
+			name:     "cert without key",
+			certFile: "/tls/server.crt",
+			wantErr:  true,
+		},
+		{
+			name:    "key without cert",
+			keyFile: "/tls/server.key",
+			wantErr: true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("LOG_LEVEL", "info")
+			t.Setenv("HTTP_PORT", "8080")
+			t.Setenv("WEBHOOK_SECRET", "secret")
+
+			if testCase.certFile != "" {
+				t.Setenv("HTTP_TLS_CERT_FILE", testCase.certFile)
+			}
+
+			if testCase.keyFile != "" {
+				t.Setenv("HTTP_TLS_KEY_FILE", testCase.keyFile)
+			}
+
+			cfg, err := GetConfig()
+			if testCase.wantErr {
+				if err == nil {
+					t.Fatal("expected TLS config validation error")
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("expected config to load, got %v", err)
+			}
+
+			if cfg.HttpTLSEnabled != testCase.wantEnabled {
+				t.Fatalf("expected HttpTLSEnabled=%v, got %v", testCase.wantEnabled, cfg.HttpTLSEnabled)
+			}
+
+			if cfg.HttpTLSCertFile != testCase.wantCertFile {
+				t.Fatalf("expected HttpTLSCertFile=%q, got %q", testCase.wantCertFile, cfg.HttpTLSCertFile)
+			}
+
+			if cfg.HttpTLSKeyFile != testCase.wantKeyFile {
+				t.Fatalf("expected HttpTLSKeyFile=%q, got %q", testCase.wantKeyFile, cfg.HttpTLSKeyFile)
+			}
+		})
+	}
+}
+
 func TestGetConfig_OciVerifyMaxWorkersDefaultsToOne(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "info")
 	t.Setenv("HTTP_PORT", "8080")
