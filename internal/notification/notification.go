@@ -425,8 +425,20 @@ func Send(level level, title, message string, metadata Metadata, opts ...SendOpt
 		return nil
 	}
 
+	// A success is the recovery signal for whatever failed there before, so the
+	// next failure of that stack is sent even if it repeats an older one. Done
+	// before the level check, so a configured level cannot leave stale state.
+	if level == Success {
+		clearFailure(failureKey(metadata))
+	}
+
 	if level < notifyLevel {
 		return nil // Do not send notification if the level is lower than the configured level
+	}
+
+	// Suppress a failure that is already reported and unchanged, see failure_repeat.go.
+	if level == Failure && !shouldSendFailure(failureKey(metadata), failureFingerprint(title, message), time.Now()) {
+		return nil
 	}
 
 	var o sendOptions

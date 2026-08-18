@@ -236,7 +236,10 @@ type handlerData struct {
 }
 
 // onError handles errors by logging them, sending a JSON error response, and sending a notification.
-func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any, statusCode int, metadata notification.Metadata) {
+// cause is the error behind the response: when a failure notification was already
+// sent for it deeper down, the HTTP response and the log stay the same and only
+// the second notification is dropped.
+func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any, statusCode int, metadata notification.Metadata, cause error) {
 	prometheus.WebhookErrorsTotal.WithLabelValues(metadata.Repository).Inc()
 	log.Error(errMsg)
 	JSONError(w,
@@ -251,6 +254,10 @@ func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any
 
 	if details != "" {
 		errMsg = fmt.Sprintf("%s\n%s", errMsg, details)
+	}
+
+	if notification.WasNotified(cause) {
+		return
 	}
 
 	go func() {
@@ -346,7 +353,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	if sourceType == config.SourceTypeGit && shouldUsePayloadSSHURL(cloneURLOverrideApplied, payload.SSHUrl, resolvedSSH) {
 		sshAuth, authErr := git.GetAuthMethod(payload.SSHUrl, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken)
 		if authErr != nil {
-			onError(w, jobLog.With(logger.ErrAttr(authErr)), "failed to resolve SSH auth method", authErr.Error(), http.StatusInternalServerError, metadata)
+			onError(w, jobLog.With(logger.ErrAttr(authErr)), "failed to resolve SSH auth method", authErr.Error(), http.StatusInternalServerError, metadata, authErr)
 
 			if runTracker != nil {
 				runTracker.MarkFailed(metadata.JobID, "failed to resolve SSH auth method: "+authErr.Error())
@@ -369,13 +376,13 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		// In synchronous mode we should return an error to the caller
 		// For async mode, w is noopResponseWriter and JSONError is a no-op
 		if hr, ok := deployErr.(handleError); ok {
-			onError(w, jobLog.With(logger.ErrAttr(hr.err)), hr.msg, hr.err.Error(), hr.httpStatusCode, metadata)
+			onError(w, jobLog.With(logger.ErrAttr(hr.err)), hr.msg, hr.err.Error(), hr.httpStatusCode, metadata, hr.err)
 
 			if runTracker != nil {
 				runTracker.MarkFailed(metadata.JobID, hr.Error())
 			}
 		} else {
-			onError(w, jobLog.With(logger.ErrAttr(deployErr)), "deployment failed", deployErr.Error(), http.StatusInternalServerError, metadata)
+			onError(w, jobLog.With(logger.ErrAttr(deployErr)), "deployment failed", deployErr.Error(), http.StatusInternalServerError, metadata, deployErr)
 
 			if runTracker != nil {
 				runTracker.MarkFailed(metadata.JobID, deployErr.Error())
@@ -475,7 +482,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		onError(w, jobLog.With(slog.String("ip", h.requestIP(r)), logger.ErrAttr(err)), errMsg, err.Error(), statusCode, metadata)
+		onError(w, jobLog.With(slog.String("ip", h.requestIP(r)), logger.ErrAttr(err)), errMsg, err.Error(), statusCode, metadata, err)
 
 		if h.runTracker != nil {
 			h.runTracker.MarkFailed(jobID, errMsg+": "+err.Error())

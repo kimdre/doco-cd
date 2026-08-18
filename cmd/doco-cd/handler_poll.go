@@ -138,6 +138,12 @@ func pollError(jobLog *slog.Logger, metadata notification.Metadata, err error) {
 		jobLog.Error("error during poll job", log.ErrAttr(err))
 	}
 
+	// The stack that failed already sent its own notification with the same
+	// error text, so a job-level one only says it twice.
+	if notification.WasNotified(err) {
+		return
+	}
+
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {

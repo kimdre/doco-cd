@@ -140,13 +140,13 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 				return nil
 			}
 
-			s.NotifyFailure(err)
+			notifiedErr := s.NotifyFailure(err)
 
 			if shouldPostFailureCommitStatus(s.DeployConfig.Destroy.Enabled) {
 				s.PostCommitStatus(ctx, failureCommitStatusState(stageName), failureCommitStatusDescription(err))
 			}
 
-			return err
+			return notifiedErr
 		}
 
 		stageLog.Debug(string("completed stage: "+stageName),

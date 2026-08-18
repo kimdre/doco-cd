@@ -248,8 +248,11 @@ func (s *StageManager) GetStageMetaData(stageName StageName) (*MetaData, error) 
 	}
 }
 
-// NotifyFailure sends a failure notification using the provided NotifyFailureFunc.
-func (s *StageManager) NotifyFailure(notifyErr error) {
+// NotifyFailure sends a failure notification using the provided NotifyFailureFunc
+// and returns notifyErr marked as already reported, so the caller that receives
+// it does not notify about the same failure a second time. Without a
+// NotifyFailureFunc nothing is sent and the error is returned unchanged.
+func (s *StageManager) NotifyFailure(notifyErr error) error {
 	var (
 		latestCommit string
 		commitErr    error
@@ -289,7 +292,11 @@ func (s *StageManager) NotifyFailure(notifyErr error) {
 		}
 
 		s.NotifyFailureFunc(s.Log, notifyErr, metadata)
+
+		return notification.MarkNotified(notifyErr)
 	}
+
+	return notifyErr
 }
 
 func (s *StageManager) NotifyDeploymentStarted() error {

@@ -101,10 +101,20 @@ func TestStageManagerNotifyFailureIncludesTarget(t *testing.T) {
 		got = metadata
 	}
 
-	sm.NotifyFailure(errors.New("boom"))
+	boom := errors.New("boom")
+
+	returned := sm.NotifyFailure(boom)
 
 	if got.Target != "prod-vm" {
 		t.Fatalf("expected target prod-vm, got %q", got.Target)
+	}
+
+	if !notification.WasNotified(returned) {
+		t.Error("a sent notification must mark the error as reported")
+	}
+
+	if !errors.Is(returned, boom) {
+		t.Error("marking must keep the original error unwrappable")
 	}
 }
 
