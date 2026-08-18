@@ -1859,7 +1859,9 @@ func assessStartedServiceStates(containers []api.ContainerSummary, targetService
 			case "unhealthy":
 				status.unhealthy = true
 			}
-		case "exited", "dead":
+		// "restarting" exists only after a container died and restart policy
+		// kicked in - right after deploy that is a crash, not a slow start
+		case "restarting", "exited", "dead":
 			status.terminal = state
 		}
 
@@ -1886,7 +1888,28 @@ func assessStartedServiceStates(containers []api.ContainerSummary, targetService
 	return len(waiting) == 0, waiting, nil
 }
 
+// startReadyStableSamples is how many consecutive ready samples (1s apart)
+// services must hold before start counts as successful. A service that
+// crashes moments after start spends most of each crash cycle in a short
+// "running" window - one lucky sample used to mark the deploy successful,
+// and every following poll redeployed the crashed container as drift.
+const startReadyStableSamples = 3
+
+// projectContainerLister abstracts container listing so the wait loop can be
+// tested without a Docker daemon.
+type projectContainerLister func(ctx context.Context) ([]api.ContainerSummary, error)
+
 func waitForStartedServices(ctx context.Context, dockerCli command.Cli, projectName string,
+	startServices []string, jobServices set.Set[string], timeout time.Duration,
+) error {
+	listContainers := func(ctx context.Context) ([]api.ContainerSummary, error) {
+		return GetProjectContainers(ctx, dockerCli, projectName)
+	}
+
+	return waitForStartedServicesWith(ctx, listContainers, startServices, jobServices, timeout)
+}
+
+func waitForStartedServicesWith(ctx context.Context, listContainers projectContainerLister,
 	startServices []string, jobServices set.Set[string], timeout time.Duration,
 ) error {
 	nonJobServices := getNonJobServices(startServices, jobServices)
@@ -1903,8 +1926,10 @@ func waitForStartedServices(ctx context.Context, dockerCli command.Cli, projectN
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
+	readyStreak := 0
+
 	for {
-		containers, err := GetProjectContainers(ctx, dockerCli, projectName)
+		containers, err := listContainers(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to inspect project containers: %w", err)
 		}
@@ -1915,11 +1940,16 @@ func waitForStartedServices(ctx context.Context, dockerCli command.Cli, projectN
 		}
 
 		if ready {
-			return nil
-		}
+			readyStreak++
+			if readyStreak >= startReadyStableSamples {
+				return nil
+			}
+		} else {
+			readyStreak = 0
 
-		if time.Now().After(deadline) {
-			return fmt.Errorf("timed out after %s waiting for services to start: %s", timeout, strings.Join(waiting, ", "))
+			if time.Now().After(deadline) {
+				return fmt.Errorf("timed out after %s waiting for services to start: %s", timeout, strings.Join(waiting, ", "))
+			}
 		}
 
 		select {

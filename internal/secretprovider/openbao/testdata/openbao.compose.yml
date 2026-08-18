@@ -47,6 +47,7 @@ services:
     restart: unless-stopped
     cap_add:
       - IPC_LOCK
+    user: root
     ports:
       - "8200"  # random port on host to avoid conflicts
     depends_on:

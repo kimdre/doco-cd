@@ -135,12 +135,13 @@ type Docker struct {
 
 // DeploymentState holds the dynamic state information during the deployment process.
 type DeploymentState struct {
-	changedServices []docker.Change
-	ignoredInfo     docker.IgnoredInfo
-	DeployedCommit  string // previously-deployed commit SHA, carried to post-deploy for the changelog
+	changedServices      []docker.Change
+	imageChangedServices []string // services whose deployed image digest drifted from the registry (force_image_pull)
+	ignoredInfo          docker.IgnoredInfo
+	DeployedCommit       string // previously-deployed commit SHA, carried to post-deploy for the changelog
 }
 
-// changedServiceNames flattens the detected changes into a unique list of service names.
+// changedServiceNames flattens the detected changes and image digest drifts into a unique list of service names.
 func (d *DeploymentState) changedServiceNames() []string {
 	if d == nil {
 		return nil
@@ -150,6 +151,8 @@ func (d *DeploymentState) changedServiceNames() []string {
 	for _, change := range d.changedServices {
 		names = append(names, change.Services...)
 	}
+
+	names = append(names, d.imageChangedServices...)
 
 	names = slice.Unique(names)
 	slices.Sort(names)

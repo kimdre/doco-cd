@@ -1,7 +1,9 @@
 package docker
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/compose/v5/pkg/api"
@@ -330,5 +332,108 @@ func TestAssessStartedServiceStates_FailsWhenNonJobExited(t *testing.T) {
 	_, _, err := assessStartedServiceStates(containers, set.New[string]("api"))
 	if err == nil {
 		t.Fatalf("expected error when target service has an exited container")
+	}
+}
+
+func TestAssessStartedServiceStates_FailsWhenRestarting(t *testing.T) {
+	t.Parallel()
+
+	containers := []api.ContainerSummary{
+		{
+			State: "restarting",
+			Labels: map[string]string{
+				api.ServiceLabel: "api",
+			},
+		},
+	}
+
+	_, _, err := assessStartedServiceStates(containers, set.New[string]("api"))
+	if err == nil {
+		t.Fatalf("expected error when target service has a restarting container")
+	}
+}
+
+// scriptedLister returns one containers sample per call, holding the last
+// sample once the script is exhausted.
+func scriptedLister(t *testing.T, samples [][]api.ContainerSummary, calls *int) projectContainerLister {
+	t.Helper()
+
+	return func(_ context.Context) ([]api.ContainerSummary, error) {
+		i := *calls
+		if i >= len(samples) {
+			i = len(samples) - 1
+		}
+
+		*calls++
+
+		return samples[i], nil
+	}
+}
+
+func runningContainer(service string) api.ContainerSummary {
+	return api.ContainerSummary{
+		State: "running",
+		Labels: map[string]string{
+			api.ServiceLabel: service,
+		},
+	}
+}
+
+func TestWaitForStartedServices_FailsOnCrashLoop(t *testing.T) {
+	t.Parallel()
+
+	// crash-right-after-start: first sample catches the brief "running"
+	// window, the next one sees the restart-policy backoff
+	calls := 0
+	lister := scriptedLister(t, [][]api.ContainerSummary{
+		{runningContainer("api")},
+		{{State: "restarting", Labels: map[string]string{api.ServiceLabel: "api"}}},
+	}, &calls)
+
+	err := waitForStartedServicesWith(t.Context(), lister, []string{"api"}, set.New[string](), 30*time.Second)
+	if err == nil {
+		t.Fatalf("expected crashlooping service to fail the start wait")
+	}
+}
+
+func TestWaitForStartedServices_RequiresStableReadiness(t *testing.T) {
+	t.Parallel()
+
+	// a not-yet-running sample resets the streak: success must take the
+	// full startReadyStableSamples consecutive ready samples after the dip
+	calls := 0
+	lister := scriptedLister(t, [][]api.ContainerSummary{
+		{runningContainer("api")},
+		{{State: "created", Labels: map[string]string{api.ServiceLabel: "api"}}},
+		{runningContainer("api")},
+		{runningContainer("api")},
+		{runningContainer("api")},
+	}, &calls)
+
+	err := waitForStartedServicesWith(t.Context(), lister, []string{"api"}, set.New[string](), 30*time.Second)
+	if err != nil {
+		t.Fatalf("waitForStartedServicesWith() returned unexpected error: %v", err)
+	}
+
+	if calls != 5 {
+		t.Fatalf("expected success on the 5th sample (streak reset by the dip), got %d calls", calls)
+	}
+}
+
+func TestWaitForStartedServices_SucceedsAfterStableSamples(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+	lister := scriptedLister(t, [][]api.ContainerSummary{
+		{runningContainer("api")},
+	}, &calls)
+
+	err := waitForStartedServicesWith(t.Context(), lister, []string{"api"}, set.New[string](), 30*time.Second)
+	if err != nil {
+		t.Fatalf("waitForStartedServicesWith() returned unexpected error: %v", err)
+	}
+
+	if calls != startReadyStableSamples {
+		t.Fatalf("expected exactly %d samples before success, got %d", startReadyStableSamples, calls)
 	}
 }

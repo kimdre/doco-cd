@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/compose-spec/compose-go/v2/types"
@@ -528,15 +529,15 @@ var (
 	registryDigestDistributionLookup = registryDigestForRefViaDistributionInspect
 )
 
-// HaveDeployedServiceImageDigestsChanged checks if any currently deployed
-// service image digest differs from the registry digest of the configured image ref.
+// DeployedServicesWithChangedImageDigests returns the sorted names of deployed
+// services whose image digest differs from the registry digest of the configured image ref.
 //
 // This compares:
 //  1. deployed service image digest (currently running/deployed)
 //  2. registry digest of configured service image reference (DistributionInspect)
 //
-// Returns true as soon as one service differs.
-func HaveDeployedServiceImageDigestsChanged(ctx context.Context, dockerCli command.Cli, swarmMode bool, project *types.Project, logger *slog.Logger) (bool, error) {
+// A service without a deployed digest is treated as changed.
+func DeployedServicesWithChangedImageDigests(ctx context.Context, dockerCli command.Cli, swarmMode bool, project *types.Project, logger *slog.Logger) ([]string, error) {
 	// service name -> configured image ref
 	configuredRefs := make(map[string]string)
 	uniqueRefs := set.New[string]()
@@ -552,7 +553,7 @@ func HaveDeployedServiceImageDigestsChanged(ctx context.Context, dockerCli comma
 	}
 
 	if len(configuredRefs) == 0 {
-		return false, nil
+		return nil, nil
 	}
 
 	registryDigests := make(map[string]string, uniqueRefs.Len())
@@ -568,8 +569,10 @@ func HaveDeployedServiceImageDigestsChanged(ctx context.Context, dockerCli comma
 
 	deployedDigests, err := deployedServiceDigestLookup(ctx, dockerCli, swarmMode, project.Name, logger)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
+
+	var changedServices []string
 
 	for serviceName, configuredRef := range configuredRefs {
 		registryDigest, ok := registryDigests[configuredRef]
@@ -581,7 +584,10 @@ func HaveDeployedServiceImageDigestsChanged(ctx context.Context, dockerCli comma
 		deployedDigest, ok := deployedDigests[serviceName]
 		if !ok {
 			logger.Debug("deployed service image digest unavailable, treating as changed", slog.String("service", serviceName), slog.String("ref", configuredRef))
-			return true, nil
+
+			changedServices = append(changedServices, serviceName)
+
+			continue
 		}
 
 		if deployedDigest != registryDigest {
@@ -596,9 +602,11 @@ func HaveDeployedServiceImageDigestsChanged(ctx context.Context, dockerCli comma
 				),
 			)
 
-			return true, nil
+			changedServices = append(changedServices, serviceName)
 		}
 	}
 
-	return false, nil
+	slices.Sort(changedServices)
+
+	return changedServices, nil
 }
