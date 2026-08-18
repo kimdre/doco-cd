@@ -11,6 +11,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -86,6 +87,53 @@ func TestPostEarlyCommitStatus(t *testing.T) {
 
 func assertErr(msg string) error {
 	return simpleError(msg)
+}
+
+func TestPostEarlyCommitStatus_FallsBackToGitHubAppToken(t *testing.T) {
+	var received map[string]string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got, want := r.URL.Path, "/api/v1/repos/owner/repo/statuses/deadbeef"; got != want {
+			t.Fatalf("unexpected path: got %q want %q", got, want)
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	git.ConfigureAuthResolver(nil, "", "", "", "", git.GitHubAppConfig{
+		ID:         "12345",
+		PrivateKey: "test-private-key",
+	})
+
+	restoreProvider := git.SwapGitHubAppTokenProviderForTest(func(_ string, cfg git.GitHubAppConfig) (string, error) {
+		if cfg.ID != "12345" {
+			t.Fatalf("expected app id 12345, got %s", cfg.ID)
+		}
+
+		return "ghs-install-token", nil
+	})
+
+	t.Cleanup(func() {
+		restoreProvider()
+		git.ConfigureAuthResolver(nil, "", "", "", "", git.GitHubAppConfig{})
+	})
+
+	// No GitAccessToken configured: the GitHub App installation token must be used instead.
+	postEarlyCommitStatus(context.Background(), slog.Default(), &app.Config{
+		GitCommitStatus: true,
+		GitScmProvider:  "gitea",
+	}, config.SourceTypeGit, srv.URL+"/owner/repo", "deadbeef", webhook.ParsedPayload{
+		FullName: "owner/repo",
+	}, "doco-cd/deploy", "bad config")
+
+	if got, want := received["state"], "error"; got != want {
+		t.Fatalf("state = %q, want %q", got, want)
+	}
 }
 
 type simpleError string

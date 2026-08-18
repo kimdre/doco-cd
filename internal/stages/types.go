@@ -388,7 +388,11 @@ func (s *StageManager) resolveCommitStatusRequest() (commitstatus.Provider, stri
 
 	resolved := gitInternal.ResolveAuthConfig(s.Repository.SourceUrl, "", "", "")
 
-	token := resolved.GitAccessToken
+	token, err := gitInternal.ResolveHTTPToken(s.Repository.SourceUrl, resolved)
+	if err != nil {
+		s.Log.Warn("failed to resolve commit status token", slog.String("error", err.Error()))
+	}
+
 	if token == "" {
 		token = s.AppConfig.GitAccessToken
 	}

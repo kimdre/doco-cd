@@ -90,8 +90,8 @@ func resolveGitHubAppInstallationToken(repoURL string, cfg GitHubAppConfig) (str
 	})
 }
 
-// swapGitHubAppTokenProviderForTest replaces the GitHub App token provider and returns a restore function.
-func swapGitHubAppTokenProviderForTest(provider func(string, GitHubAppConfig) (string, error)) func() {
+// SwapGitHubAppTokenProviderForTest replaces the GitHub App token provider and returns a restore function.
+func SwapGitHubAppTokenProviderForTest(provider func(string, GitHubAppConfig) (string, error)) func() {
 	authResolverMu.Lock()
 	old := githubAppTokenProvider
 	githubAppTokenProvider = provider
@@ -310,20 +310,38 @@ func GetAuthMethod(url, privateKey, keyPassphrase, token string) (transport.Auth
 		return SSHAuth(resolved.SSHPrivateKey, resolved.SSHPrivateKeyPassphrase)
 	}
 
+	httpToken, err := ResolveHTTPToken(url, resolved)
+	if err != nil {
+		return nil, err
+	}
+
+	if httpToken == "" {
+		return nil, nil
+	}
+
+	return HttpTokenAuth(resolved.HTTPAuthUser, httpToken), nil
+}
+
+// ResolveHTTPToken returns the access token to use for HTTP(S) requests (git transport as well as
+// SCM API calls like commit status posting) against a repository URL. It prefers an explicit
+// GitAccessToken and falls back to minting a short-lived GitHub App installation token from
+// resolved.GitHubApp when no access token is configured. Returns an empty string (and no error)
+// when neither credential is configured.
+func ResolveHTTPToken(url string, resolved ResolvedAuthConfig) (string, error) {
 	if resolved.GitAccessToken != "" {
-		return HttpTokenAuth(resolved.HTTPAuthUser, resolved.GitAccessToken), nil
+		return resolved.GitAccessToken, nil
 	}
 
 	if resolved.GitHubApp.ID != "" && resolved.GitHubApp.PrivateKey != "" {
 		installationToken, err := githubAppTokenProvider(url, resolved.GitHubApp)
 		if err != nil {
-			return nil, fmt.Errorf("failed to resolve GitHub App installation token: %w", err)
+			return "", fmt.Errorf("failed to resolve GitHub App installation token: %w", err)
 		}
 
-		return HttpTokenAuth(resolved.HTTPAuthUser, installationToken), nil
+		return installationToken, nil
 	}
 
-	return nil, nil
+	return "", nil
 }
 
 // IsSSH checks if a given URL is an SSH URL.
