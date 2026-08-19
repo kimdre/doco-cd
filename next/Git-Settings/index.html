@@ -3281,7 +3281,7 @@ Doco-CD will auto-detect the installation by repository <em>owner/name</em> and 
 <tr>
 <td><code>GIT_COMMIT_STATUS</code></td>
 <td>boolean</td>
-<td>Enable commit status reporting. When <code>true</code>, doco-cd posts a status to the source provider for every deployment. Requires <a data-preview="" href="#authentication"><code>GIT_ACCESS_TOKEN</code></a> (or <a data-preview="" href="#domain-scoped-authentication">domain-scoped token</a> via <code>GIT_AUTH_DOMAINS</code>).</td>
+<td>Enable commit status reporting. When <code>true</code>, doco-cd posts a status to the source provider for every deployment. Requires <a data-preview="" href="#authentication"><code>GIT_ACCESS_TOKEN</code></a> (or <a data-preview="" href="#domain-scoped-authentication">domain-scoped token</a> via <code>GIT_AUTH_DOMAINS</code>), or a configured <a data-preview="" href="#github-apps">GitHub App</a> with the <strong>Commit statuses: Read and write</strong> permission. Doco-cd reuses the same installation token minted for git operations, no separate token needed.</td>
 <td><code>false</code></td>
 </tr>
 <tr>
@@ -3299,8 +3299,12 @@ Doco-CD will auto-detect the installation by repository <em>owner/name</em> and 
 </tbody>
 </table>
 <h3 id="required-token-permissions_1">Required Token Permissions<a class="headerlink" href="#required-token-permissions_1" title="Permanent link">&para;</a></h3>
-<p>The token used for commit status reporting needs permission to <strong>write commit statuses</strong> through the provider API. The same requirements apply whether you use the global <a data-preview="" href="#authentication"><code>GIT_ACCESS_TOKEN</code></a> or a <a data-preview="" href="#domain-scoped-authentication">domain-scoped token</a> from <code>GIT_AUTH_DOMAINS</code>.</p>
+<p>The token used for commit status reporting needs permission to <strong>write commit statuses</strong> through the provider API. The same requirements apply whether you use the global <a data-preview="" href="#authentication"><code>GIT_ACCESS_TOKEN</code></a>, a <a data-preview="" href="#domain-scoped-authentication">domain-scoped token</a> from <code>GIT_AUTH_DOMAINS</code>, or a <a data-preview="" href="#github-apps">GitHub App</a>.</p>
 <p>If an access token is also used to clone Git repositories over HTTP(S) (see <a data-preview="" href="#authentication">Authentication</a>), add the permission below <strong>in addition to</strong> the existing clone permissions required by your provider (see <a data-preview="" href="#required-token-permissions">Required Token Permissions</a> above).</p>
+<div class="admonition info">
+<p class="admonition-title">GitHub Apps reuse their installation token</p>
+<p>When no <code>GIT_ACCESS_TOKEN</code> is configured (globally or per domain) but a GitHub App is, doco-cd reuses the same short-lived installation token used for git clone/fetch to post commit statuses. Grant the App the <strong>Commit statuses: Read and write</strong> repository permission; no additional PAT is required.</p>
+</div>
 <table>
 <thead>
 <tr>
