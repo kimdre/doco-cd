@@ -128,7 +128,10 @@ func CreateDockerCliWithContext(quiet bool, dockerContext string) (command.Cli, 
 			contextName, strings.TrimSpace(initErrBuf.String()))
 	}
 
-	return dockerCli, nil
+	// Wrap so ConfigFile() re-reads the docker config from disk on every auth
+	// lookup — required for short-lived registry tokens (ECR etc.) that get
+	// refreshed on disk while the daemon runs. See reloadConfigCli.
+	return reloadConfigCli{dockerCli}, nil
 }
 
 /*
