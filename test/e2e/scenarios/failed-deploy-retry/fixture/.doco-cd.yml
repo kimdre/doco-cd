@@ -1,0 +1,5 @@
+name: e2e-retry
+working_dir: deploy
+environment:
+  # v1 ships a breaking post_start hook on purpose, the scenario flips it to 0
+  HOOK_EXIT: "1"
