@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Scenario for discussion #1702: a deployment that fails AFTER containers were
 # created (post_start hook exits 1) must be recorded, retried on every poll
-# with a full recreate, and the marker must clear on the first success.
+# with a full recreate, and the record must clear on the first success.
 # Before the fix the daemon logged "no changes detected, skipping deployment"
 # forever and the failure was reported exactly once.
 set -euo pipefail
@@ -11,9 +11,6 @@ source "$E2E_LIB"
 
 e2e::wait_for 120 "first deployment attempt failed" \
 	e2e::daemon_has_log "deployment failed"
-
-e2e::wait_for 30 "failure marker recorded in data volume" \
-	e2e::marker_present
 
 cid_after_fail="$(e2e::container_id e2e-retry app)"
 [ -n "$cid_after_fail" ] ||
@@ -31,13 +28,15 @@ recreated() {
 
 e2e::wait_for 90 "retry force-recreated the stack" recreated
 
-# fix the hook, expect success to clear the marker and stop the retries
+# fix the hook and push. Success must clear the record: the first "no changes"
+# skip in the whole log proves both the successful deploy and the cleared
+# record - with the record present the daemon never skips.
 sed -i.bak 's/HOOK_EXIT: "1"/HOOK_EXIT: "0"/' "$E2E_WORKDIR/.doco-cd.yml"
 rm -f "$E2E_WORKDIR/.doco-cd.yml.bak"
 e2e::repo_push "fix the hook"
 
-e2e::wait_for 120 "marker cleared after successful deploy" \
-	e2e::marker_absent
+e2e::wait_for 120 "post-fix poll skips deployment (record cleared by success)" \
+	e2e::daemon_has_log "no changes detected, skipping deployment"
 
 cid_ok="$(e2e::container_id e2e-retry app)"
 [ -n "$cid_ok" ] || e2e::fail "app container must run after the successful deploy"

@@ -61,8 +61,9 @@ During a deployment, Doco-CD will:
 4. Deploy the services defined in the `docker-compose.yml` files.
 
 ### Failed Deployment Retry
-A deployment that fails after its containers were already created (for example a failed lifecycle hook) is recorded in the data volume and retried on every following trigger until it succeeds, also across Doco-CD restarts.
+A deployment that fails after its containers were already created (for example a failed lifecycle hook) is recorded and retried on every following trigger until it succeeds.
 A retry of a failed deploy stage recreates the whole stack, so partially applied changes like never-finished hooks run again.
+The record lives in memory: a restart of Doco-CD drops it and the regular change detection applies again.
 Each failed attempt reports a failure [notification](Advanced/Notifications.md), de-duplicated with periodic reminders.
 
 ### Deployment Configuration

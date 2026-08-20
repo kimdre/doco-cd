@@ -2,16 +2,10 @@ package stages
 
 import (
 	"errors"
-	"io"
-	"log/slog"
 	"testing"
 
 	"github.com/kimdre/doco-cd/internal/docker"
 )
-
-func discardLog() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
-}
 
 func TestStageRecordsDeploymentFailure(t *testing.T) {
 	t.Parallel()
@@ -33,15 +27,25 @@ func TestStageRecordsDeploymentFailure(t *testing.T) {
 	}
 }
 
+// the failure store is process-global, every test uses its own stack name.
+func newFailureTestManager(t *testing.T, stack string) *StageManager {
+	t.Helper()
+
+	sm := newTestStageManager()
+	sm.DeployConfig.Name = stack
+	sm.Repository.Revision = "573a16e"
+
+	t.Cleanup(func() { docker.ClearDeploymentFailure(sm.Repository.Name, stack) })
+
+	return sm
+}
+
 func TestRecordAndClearDeploymentFailure(t *testing.T) {
 	t.Parallel()
 
-	sm := newTestStageManager()
-	sm.AppConfig.DataMountPath = t.TempDir()
-	sm.DeployConfig.Name = "app"
-	sm.Repository.Revision = "573a16e"
+	sm := newFailureTestManager(t, "app-record-clear")
 
-	sm.recordDeploymentFailure(discardLog(), StageDeploy, errors.New("hook exited with status 1"))
+	sm.recordDeploymentFailure(StageDeploy, errors.New("hook exited with status 1"))
 
 	failure, ok := sm.lastDeploymentFailure()
 	if !ok {
@@ -52,7 +56,7 @@ func TestRecordAndClearDeploymentFailure(t *testing.T) {
 		t.Fatalf("unexpected failure record: %+v", failure)
 	}
 
-	sm.clearDeploymentFailure(discardLog())
+	sm.clearDeploymentFailure()
 
 	if _, ok := sm.lastDeploymentFailure(); ok {
 		t.Fatal("expected no failure record after clearing")
@@ -62,12 +66,10 @@ func TestRecordAndClearDeploymentFailure(t *testing.T) {
 func TestRecordDeploymentFailureSkipsPreDeployStages(t *testing.T) {
 	t.Parallel()
 
-	sm := newTestStageManager()
-	sm.AppConfig.DataMountPath = t.TempDir()
-	sm.DeployConfig.Name = "app"
+	sm := newFailureTestManager(t, "app-skip-predeploy")
 
-	sm.recordDeploymentFailure(discardLog(), StageInit, errors.New("clone failed"))
-	sm.recordDeploymentFailure(discardLog(), StagePreDeploy, errors.New("status lookup failed"))
+	sm.recordDeploymentFailure(StageInit, errors.New("clone failed"))
+	sm.recordDeploymentFailure(StagePreDeploy, errors.New("status lookup failed"))
 
 	if _, ok := sm.lastDeploymentFailure(); ok {
 		t.Fatal("init and pre-deploy failures must not be recorded, they retry naturally")
@@ -77,32 +79,12 @@ func TestRecordDeploymentFailureSkipsPreDeployStages(t *testing.T) {
 func TestRecordDeploymentFailureSkipsDestroy(t *testing.T) {
 	t.Parallel()
 
-	sm := newTestStageManager()
-	sm.AppConfig.DataMountPath = t.TempDir()
-	sm.DeployConfig.Name = "app"
+	sm := newFailureTestManager(t, "app-skip-destroy")
 	sm.DeployConfig.Destroy.Enabled = true
 
-	sm.recordDeploymentFailure(discardLog(), StageDestroy, errors.New("destroy failed"))
+	sm.recordDeploymentFailure(StageDestroy, errors.New("destroy failed"))
 
 	if _, ok := sm.lastDeploymentFailure(); ok {
 		t.Fatal("destroy failures must not be recorded")
-	}
-}
-
-func TestDeploymentFailureHelpersWithoutDataPath(t *testing.T) {
-	t.Parallel()
-
-	sm := newTestStageManager() // AppConfig has no DataMountPath
-
-	sm.recordDeploymentFailure(discardLog(), StageDeploy, errors.New("boom"))
-	sm.clearDeploymentFailure(discardLog())
-
-	if _, ok := sm.lastDeploymentFailure(); ok {
-		t.Fatal("expected no failure record without a data mount path")
-	}
-
-	// direct store access must also see nothing
-	if _, ok := docker.GetDeploymentFailure("", sm.Repository.Name, sm.DeployConfig.Name); ok {
-		t.Fatal("expected no marker written without a data mount path")
 	}
 }

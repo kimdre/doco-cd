@@ -37,14 +37,6 @@ e2e::daemon_logs() { docker logs "$E2E_DAEMON" 2>&1; }
 
 e2e::daemon_has_log() { e2e::daemon_logs | grep -q "$1"; }
 
-# The failure markers live in the daemon's data volume. `docker cp` works on
-# distroless (no shell needed) and errors when the directory does not exist.
-e2e::marker_present() {
-	docker cp "$E2E_DAEMON":/data/failed-deployments - 2>/dev/null | tar -t 2>/dev/null | grep -q '\.json$'
-}
-
-e2e::marker_absent() { ! e2e::marker_present; }
-
 # e2e::container_id <compose-project> <service>
 e2e::container_id() {
 	docker ps -q --filter "label=com.docker.compose.project=$1" --filter "label=com.docker.compose.service=$2"

@@ -10,7 +10,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/commitstatus"
 	"github.com/kimdre/doco-cd/internal/docker"
-	"github.com/kimdre/doco-cd/internal/logger"
 )
 
 type StageFunc func(ctx context.Context, stageLog *slog.Logger) error
@@ -142,7 +141,7 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 				return nil
 			}
 
-			s.recordDeploymentFailure(stageLog, stageName, err)
+			s.recordDeploymentFailure(stageName, err)
 
 			notifiedErr := s.NotifyFailure(err)
 
@@ -178,7 +177,7 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 	}
 
 	// Success (deploy or destroy) closes any recorded failure, retries stop.
-	s.clearDeploymentFailure(s.Log)
+	s.clearDeploymentFailure()
 
 	return nil
 }
@@ -197,48 +196,30 @@ func stageRecordsDeploymentFailure(stageName StageName) bool {
 	}
 }
 
-// recordDeploymentFailure persists the failure marker so the next run retries
-// the deployment instead of skipping it as already deployed.
-func (s *StageManager) recordDeploymentFailure(stageLog *slog.Logger, stageName StageName, cause error) {
+// recordDeploymentFailure records the failure so the next run retries the
+// deployment instead of skipping it as already deployed.
+func (s *StageManager) recordDeploymentFailure(stageName StageName, cause error) {
 	if s.DeployConfig.Destroy.Enabled || !stageRecordsDeploymentFailure(stageName) {
 		return
 	}
 
-	if s.AppConfig == nil || strings.TrimSpace(s.AppConfig.DataMountPath) == "" {
-		return
-	}
-
-	failure := docker.DeploymentFailure{
+	docker.RecordDeploymentFailure(s.Repository.Name, s.DeployConfig.Name, docker.DeploymentFailure{
 		Repository: s.Repository.Name,
 		Stack:      s.DeployConfig.Name,
 		CommitSHA:  s.Repository.Revision,
 		Stage:      string(stageName),
 		Error:      cause.Error(),
 		FailedAt:   time.Now().UTC(),
-	}
-
-	if err := docker.RecordDeploymentFailure(s.AppConfig.DataMountPath, s.Repository.Name, s.DeployConfig.Name, failure); err != nil {
-		stageLog.Error("failed to record deployment failure for retry", logger.ErrAttr(err))
-	}
+	})
 }
 
 // lastDeploymentFailure returns the recorded failure of the stack's last
 // deployment attempt, if any.
 func (s *StageManager) lastDeploymentFailure() (docker.DeploymentFailure, bool) {
-	if s.AppConfig == nil || strings.TrimSpace(s.AppConfig.DataMountPath) == "" {
-		return docker.DeploymentFailure{}, false
-	}
-
-	return docker.GetDeploymentFailure(s.AppConfig.DataMountPath, s.Repository.Name, s.DeployConfig.Name)
+	return docker.GetDeploymentFailure(s.Repository.Name, s.DeployConfig.Name)
 }
 
-// clearDeploymentFailure removes the failure marker of the stack, if present.
-func (s *StageManager) clearDeploymentFailure(log *slog.Logger) {
-	if s.AppConfig == nil || strings.TrimSpace(s.AppConfig.DataMountPath) == "" {
-		return
-	}
-
-	if err := docker.ClearDeploymentFailure(s.AppConfig.DataMountPath, s.Repository.Name, s.DeployConfig.Name); err != nil {
-		log.Error("failed to clear deployment failure marker", logger.ErrAttr(err))
-	}
+// clearDeploymentFailure removes the failure record of the stack, if present.
+func (s *StageManager) clearDeploymentFailure() {
+	docker.ClearDeploymentFailure(s.Repository.Name, s.DeployConfig.Name)
 }

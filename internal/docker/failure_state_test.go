@@ -1,20 +1,20 @@
 package docker
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
 
 func TestDeploymentFailureRoundtrip(t *testing.T) {
-	dataDir := t.TempDir()
-	repo := "github.com/example/app"
-	stack := "app"
+	t.Parallel()
 
-	if _, ok := GetDeploymentFailure(dataDir, repo, stack); ok {
-		t.Fatal("expected no failure marker before recording")
+	repo, stack := "github.com/example/app", "roundtrip"
+
+	t.Cleanup(func() { ClearDeploymentFailure(repo, stack) })
+
+	if _, ok := GetDeploymentFailure(repo, stack); ok {
+		t.Fatal("expected no failure record before recording")
 	}
 
 	want := DeploymentFailure{
@@ -26,66 +26,43 @@ func TestDeploymentFailureRoundtrip(t *testing.T) {
 		FailedAt:   time.Now().UTC().Truncate(time.Second),
 	}
 
-	if err := RecordDeploymentFailure(dataDir, repo, stack, want); err != nil {
-		t.Fatalf("failed to record failure: %v", err)
-	}
+	RecordDeploymentFailure(repo, stack, want)
 
-	got, ok := GetDeploymentFailure(dataDir, repo, stack)
+	got, ok := GetDeploymentFailure(repo, stack)
 	if !ok {
-		t.Fatal("expected failure marker after recording")
+		t.Fatal("expected failure record after recording")
 	}
 
 	if got != want {
-		t.Fatalf("marker mismatch: got %+v, want %+v", got, want)
+		t.Fatalf("record mismatch: got %+v, want %+v", got, want)
 	}
 
-	if err := ClearDeploymentFailure(dataDir, repo, stack); err != nil {
-		t.Fatalf("failed to clear failure marker: %v", err)
-	}
+	ClearDeploymentFailure(repo, stack)
 
-	if _, ok := GetDeploymentFailure(dataDir, repo, stack); ok {
-		t.Fatal("expected no failure marker after clearing")
+	if _, ok := GetDeploymentFailure(repo, stack); ok {
+		t.Fatal("expected no failure record after clearing")
 	}
 }
 
-func TestClearDeploymentFailureMissingMarker(t *testing.T) {
-	if err := ClearDeploymentFailure(t.TempDir(), "github.com/example/app", "app"); err != nil {
-		t.Fatalf("expected no error for a missing marker, got %v", err)
-	}
-}
+func TestClearDeploymentFailureMissingRecord(t *testing.T) {
+	t.Parallel()
 
-func TestGetDeploymentFailureCorruptedMarkerStillCounts(t *testing.T) {
-	dataDir := t.TempDir()
-	repo := "github.com/example/app"
-	stack := "app"
-
-	path := deploymentFailurePath(dataDir, repo, stack)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatalf("failed to create marker dir: %v", err)
-	}
-
-	if err := os.WriteFile(path, []byte("{not json"), 0o600); err != nil {
-		t.Fatalf("failed to write corrupted marker: %v", err)
-	}
-
-	if _, ok := GetDeploymentFailure(dataDir, repo, stack); !ok {
-		t.Fatal("corrupted marker must still count as a failure")
-	}
+	// must be a no-op, not a panic
+	ClearDeploymentFailure("github.com/example/app", "never-recorded")
 }
 
 func TestRecordDeploymentFailureTruncatesError(t *testing.T) {
-	dataDir := t.TempDir()
-	repo := "github.com/example/app"
-	stack := "app"
+	t.Parallel()
 
-	failure := DeploymentFailure{Error: strings.Repeat("x", maxRecordedErrorLength+100)}
-	if err := RecordDeploymentFailure(dataDir, repo, stack, failure); err != nil {
-		t.Fatalf("failed to record failure: %v", err)
-	}
+	repo, stack := "github.com/example/app", "truncate"
 
-	got, ok := GetDeploymentFailure(dataDir, repo, stack)
+	t.Cleanup(func() { ClearDeploymentFailure(repo, stack) })
+
+	RecordDeploymentFailure(repo, stack, DeploymentFailure{Error: strings.Repeat("x", maxRecordedErrorLength+100)})
+
+	got, ok := GetDeploymentFailure(repo, stack)
 	if !ok {
-		t.Fatal("expected failure marker after recording")
+		t.Fatal("expected failure record after recording")
 	}
 
 	if len(got.Error) != maxRecordedErrorLength {
@@ -93,25 +70,9 @@ func TestRecordDeploymentFailureTruncatesError(t *testing.T) {
 	}
 }
 
-func TestSanitizeStateFileName(t *testing.T) {
-	tests := []struct {
-		in   string
-		want string
-	}{
-		{"github.com/user/repo", "github.com_user_repo"},
-		{"stack-name_1.0", "stack-name_1.0"},
-		{"", "_"},
-		{"a b:c", "a_b_c"},
-	}
-
-	for _, tt := range tests {
-		if got := sanitizeStateFileName(tt.in); got != tt.want {
-			t.Errorf("sanitizeStateFileName(%q) = %q, want %q", tt.in, got, tt.want)
-		}
-	}
-}
-
 func TestForcedRecreateServices(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		changes []Change
