@@ -9,7 +9,9 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/logger"
@@ -157,6 +159,7 @@ func TestMCPServerGetHealth(t *testing.T) {
 	session := connectMCPTestClient(t, server)
 	requestsBefore := testutil.ToFloat64(prometheusmetrics.McpRequestsTotal.WithLabelValues("get_health"))
 	errorsBefore := testutil.ToFloat64(prometheusmetrics.McpErrorsTotal.WithLabelValues("get_health"))
+	durationsBefore := histogramSampleCount(t, prometheusmetrics.McpRequestDuration.WithLabelValues("get_health"))
 
 	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "get_health", Arguments: struct{}{}})
 	if err != nil {
@@ -178,6 +181,7 @@ func TestMCPServerGetHealth(t *testing.T) {
 
 	requestsAfter := testutil.ToFloat64(prometheusmetrics.McpRequestsTotal.WithLabelValues("get_health"))
 	errorsAfter := testutil.ToFloat64(prometheusmetrics.McpErrorsTotal.WithLabelValues("get_health"))
+	durationsAfter := histogramSampleCount(t, prometheusmetrics.McpRequestDuration.WithLabelValues("get_health"))
 
 	if requestsAfter-requestsBefore != 1 {
 		t.Fatalf("expected one instrumented call, got delta %v", requestsAfter-requestsBefore)
@@ -185,6 +189,10 @@ func TestMCPServerGetHealth(t *testing.T) {
 
 	if errorsAfter != errorsBefore {
 		t.Fatalf("expected no error metric increment, got delta %v", errorsAfter-errorsBefore)
+	}
+
+	if durationsAfter-durationsBefore != 1 {
+		t.Fatalf("expected one duration observation, got delta %d", durationsAfter-durationsBefore)
 	}
 }
 
@@ -318,4 +326,20 @@ func containsEndpoint(endpoints []string, target string) bool {
 	}
 
 	return false
+}
+
+func histogramSampleCount(t *testing.T, observer prometheus.Observer) uint64 {
+	t.Helper()
+
+	metric, ok := observer.(prometheus.Metric)
+	if !ok {
+		t.Fatalf("expected histogram observer to implement prometheus.Metric, got %T", observer)
+	}
+
+	dtoMetric := &dto.Metric{}
+	if err := metric.Write(dtoMetric); err != nil {
+		t.Fatalf("write histogram metric: %v", err)
+	}
+
+	return dtoMetric.GetHistogram().GetSampleCount()
 }
