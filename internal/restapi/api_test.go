@@ -19,12 +19,13 @@ func TestValidateApiKey(t *testing.T) {
 		name       string
 		apiKey     string
 		checkKey   string
+		setHeader  bool
 		shouldPass bool
 	}{
-		{"Valid API Key", appConfig.ApiSecret, appConfig.ApiSecret, true},
-		{"Invalid API Key", appConfig.ApiSecret, "invalid_key", false},
-		{"Missing API Key", appConfig.ApiSecret, "", false},
-		{"Unset API Key", "", "", false},
+		{"Valid API Key", appConfig.ApiSecret, appConfig.ApiSecret, true, true},
+		{"Invalid API Key", appConfig.ApiSecret, "invalid_key", true, false},
+		{"Missing API Key", appConfig.ApiSecret, "", false, false},
+		{"Unset API Key", "", "api_key", true, false},
 	}
 
 	for _, tc := range testCases {
@@ -36,7 +37,7 @@ func TestValidateApiKey(t *testing.T) {
 				t.Fatalf("Failed to create request: %v", err)
 			}
 
-			if tc.apiKey != "" {
+			if tc.setHeader {
 				req.Header.Add(KeyHeader, tc.checkKey)
 			}
 
