@@ -460,13 +460,10 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 		JSONResponse(w, containers, jobID, http.StatusOK)
 	case http.MethodDelete:
 		timeoutSec := getQueryParam(r, w, jobLog, jobID, "timeout", "int", 30).(int)
-		timeout := time.Duration(timeoutSec) * time.Second
 		removeVolumes := getQueryParam(r, w, jobLog, jobID, "volumes", "bool", true).(bool)
 		removeImages := getQueryParam(r, w, jobLog, jobID, "images", "bool", true).(bool)
 
-		jobLog.Info("removing project", slog.String("project", projectName), slog.Bool("remove_volumes", removeVolumes), slog.Bool("remove_images", removeImages))
-
-		err := docker.RemoveProject(ctx, h.dockerCli, projectName, timeout, removeVolumes, removeImages)
+		result, err := h.destroyProject(ctx, projectName, timeoutSec, removeVolumes, removeImages, jobLog)
 		if err != nil {
 			errMsg := "failed to remove project: " + projectName
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
@@ -475,7 +472,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
-		JSONResponse(w, "project removed: "+projectName, jobID, http.StatusOK)
+		JSONResponse(w, result.Message, jobID, http.StatusOK)
 	default:
 		err := ErrInvalidHTTPMethod
 		h.log.Error(err.Error())
@@ -560,81 +557,154 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	timeoutSec := getQueryParam(r, w, jobLog, jobID, "timeout", "int", 30).(int)
-	timeout := time.Duration(timeoutSec) * time.Second
 
-	containers, err := docker.GetProjectContainers(ctx, h.dockerCli, projectName)
-	if err != nil {
-		errMsg := "failed to get project: " + projectName
-		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
-		JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
+	if err = h.requireProject(ctx, projectName); err != nil {
+		if errors.Is(err, errProjectNotFound) {
+			JSONError(w, err.Error(), "", jobID, http.StatusNotFound)
+			return
+		}
 
-		return
-	}
+		var lookupErr *projectLookupError
+		if errors.As(err, &lookupErr) {
+			errMsg := "failed to get project: " + projectName
+			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+			JSONError(w, errMsg, lookupErr.cause.Error(), jobID, http.StatusInternalServerError)
 
-	if len(containers) == 0 {
-		JSONError(w, "project not found: "+projectName, "", jobID, http.StatusNotFound)
-		return
+			return
+		}
 	}
 
 	action := r.PathValue("action")
 	switch action {
-	case "start":
+	case "start", "stop", "restart":
 		if !requireMethod(w, jobLog, r, http.MethodPost) {
 			return
 		}
 
-		jobLog.Info("starting project", slog.String("project", projectName))
-
-		err := docker.StartProject(ctx, h.dockerCli, projectName, timeout)
+		result, err := h.executeProjectAction(ctx, projectName, action, timeoutSec, jobLog)
 		if err != nil {
-			errMsg := "failed to start project"
+			errMsg := "failed to " + action + " project"
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 			JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
 
 			return
 		}
 
-		JSONResponse(w, "project started: "+projectName, jobID, http.StatusOK)
-	case "stop":
-		if !requireMethod(w, jobLog, r, http.MethodPost) {
-			return
-		}
-
-		jobLog.Info("stopping project", slog.String("project", projectName))
-
-		err := docker.StopProject(ctx, h.dockerCli, projectName, timeout)
-		if err != nil {
-			errMsg := "failed to stop project"
-			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
-			JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
-
-			return
-		}
-
-		JSONResponse(w, "project stopped: "+projectName, jobID, http.StatusOK)
-	case "restart":
-		if !requireMethod(w, jobLog, r, http.MethodPost) {
-			return
-		}
-
-		jobLog.Info("restarting project", slog.String("project", projectName))
-
-		err := docker.RestartProject(ctx, h.dockerCli, projectName, timeout)
-		if err != nil {
-			errMsg := "failed to restart project"
-			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
-			JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
-
-			return
-		}
-
-		JSONResponse(w, "project restarted: "+projectName, jobID, http.StatusOK)
+		JSONResponse(w, result.Message, jobID, http.StatusOK)
 	default:
 		jobLog.Error(restAPI.ErrInvalidAction.Error())
 		JSONError(w, restAPI.ErrInvalidAction.Error(), "action not supported: "+action, jobID, http.StatusBadRequest)
 
 		return
 	}
+}
+
+var errProjectNotFound = errors.New("project not found")
+
+type projectLookupError struct {
+	projectName string
+	cause       error
+}
+
+func (e *projectLookupError) Error() string {
+	return fmt.Sprintf("failed to get project: %s: %v", e.projectName, e.cause)
+}
+
+func (e *projectLookupError) Unwrap() error {
+	return e.cause
+}
+
+type destroyProjectResult struct {
+	ProjectName string
+	Message     string
+	Volumes     bool
+	Images      bool
+}
+
+type projectActionResult struct {
+	ProjectName string
+	Action      string
+	Message     string
+}
+
+func (h *handlerData) destroyProject(ctx context.Context, projectName string, timeoutSec int, removeVolumes, removeImages bool, jobLog *slog.Logger) (destroyProjectResult, error) {
+	if h.dockerCli == nil {
+		return destroyProjectResult{}, errors.New("docker cli is required")
+	}
+
+	jobLog.Info("removing project", slog.String("project", projectName), slog.Bool("remove_volumes", removeVolumes), slog.Bool("remove_images", removeImages))
+
+	if err := docker.RemoveProject(ctx, h.dockerCli, projectName, time.Duration(timeoutSec)*time.Second, removeVolumes, removeImages); err != nil {
+		return destroyProjectResult{}, err
+	}
+
+	return destroyProjectResult{
+		ProjectName: projectName,
+		Message:     "project removed: " + projectName,
+		Volumes:     removeVolumes,
+		Images:      removeImages,
+	}, nil
+}
+
+func (h *handlerData) runProjectAction(ctx context.Context, projectName, action string, timeoutSec int, jobLog *slog.Logger) (projectActionResult, error) {
+	if err := h.requireProject(ctx, projectName); err != nil {
+		return projectActionResult{}, err
+	}
+
+	return h.executeProjectAction(ctx, projectName, action, timeoutSec, jobLog)
+}
+
+func (h *handlerData) requireProject(ctx context.Context, projectName string) error {
+	if h.dockerCli == nil {
+		return errors.New("docker cli is required")
+	}
+
+	containers, err := docker.GetProjectContainers(ctx, h.dockerCli, projectName)
+	if err != nil {
+		return &projectLookupError{projectName: projectName, cause: err}
+	}
+
+	if len(containers) == 0 {
+		return fmt.Errorf("%w: %s", errProjectNotFound, projectName)
+	}
+
+	return nil
+}
+
+func (h *handlerData) executeProjectAction(ctx context.Context, projectName, action string, timeoutSec int, jobLog *slog.Logger) (projectActionResult, error) {
+	if h.dockerCli == nil {
+		return projectActionResult{}, errors.New("docker cli is required")
+	}
+
+	var (
+		result projectActionResult
+		err    error
+	)
+
+	switch action {
+	case "start":
+		jobLog.Info("starting project", slog.String("project", projectName))
+		err = docker.StartProject(ctx, h.dockerCli, projectName, time.Duration(timeoutSec)*time.Second)
+		result.Message = "project started: " + projectName
+	case "stop":
+		jobLog.Info("stopping project", slog.String("project", projectName))
+		err = docker.StopProject(ctx, h.dockerCli, projectName, time.Duration(timeoutSec)*time.Second)
+		result.Message = "project stopped: " + projectName
+	case "restart":
+		jobLog.Info("restarting project", slog.String("project", projectName))
+		err = docker.RestartProject(ctx, h.dockerCli, projectName, time.Duration(timeoutSec)*time.Second)
+		result.Message = "project restarted: " + projectName
+	default:
+		return projectActionResult{}, fmt.Errorf("%w: action not supported: %s", restAPI.ErrInvalidAction, action)
+	}
+	result.ProjectName = projectName
+	result.Action = action
+
+	if err != nil {
+		return projectActionResult{}, err
+	}
+
+	return result, nil
 }
 
 // StackActionApiHandler handles API requests to manage Docker Swarm stacks.

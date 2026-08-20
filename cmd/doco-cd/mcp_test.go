@@ -13,7 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/prometheus/client_golang/prometheus"
@@ -31,6 +33,15 @@ import (
 )
 
 const testMCPAPIKey = "test-mcp-api-key" // #nosec G101 -- test fixture, not a real credential.
+
+const projectToolsComposeContent = `services:
+  nginx:
+    image: nginx:latest
+    volumes:
+      - data:/data
+volumes:
+  data:
+`
 
 type apiKeyRoundTripper struct {
 	apiKey string
@@ -142,7 +153,7 @@ func TestMCPServerRouteRegistration(t *testing.T) {
 	})
 }
 
-func TestMCPServerListsReadOnlyTools(t *testing.T) {
+func TestMCPServerListsTools(t *testing.T) {
 	server, _ := newMCPTestServer(t, true, testMCPAPIKey, 1024)
 	session := connectMCPTestClient(t, server)
 
@@ -151,8 +162,8 @@ func TestMCPServerListsReadOnlyTools(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(result.Tools) != 8 {
-		t.Fatalf("expected exactly eight MCP tools, got %#v", result.Tools)
+	if len(result.Tools) != 10 {
+		t.Fatalf("expected exactly ten MCP tools, got %#v", result.Tools)
 	}
 
 	wantTools := map[string]bool{
@@ -164,6 +175,8 @@ func TestMCPServerListsReadOnlyTools(t *testing.T) {
 		"get_project":          false,
 		"list_stacks":          false,
 		"get_stack":            false,
+		"control_project":      false,
+		"destroy_project":      false,
 	}
 	wantInputProperties := map[string][]string{
 		"list_deployment_runs": {"limit", "status", "trigger"},
@@ -172,6 +185,12 @@ func TestMCPServerListsReadOnlyTools(t *testing.T) {
 		"list_projects":        {"all"},
 		"get_project":          {"project_name"},
 		"get_stack":            {"stack_name"},
+		"control_project":      {"project_name", "action", "timeout"},
+		"destroy_project":      {"project_name", "timeout", "volumes", "images"},
+	}
+	wantRequiredProperties := map[string][]string{
+		"control_project": {"project_name", "action"},
+		"destroy_project": {"project_name"},
 	}
 
 	for _, tool := range result.Tools {
@@ -180,7 +199,11 @@ func TestMCPServerListsReadOnlyTools(t *testing.T) {
 		}
 
 		wantTools[tool.Name] = true
-		if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
+		if tool.Annotations == nil {
+			t.Fatalf("%s must have annotations", tool.Name)
+		}
+
+		if tool.Name != "control_project" && tool.Name != "destroy_project" && !tool.Annotations.ReadOnlyHint {
 			t.Fatalf("%s must have readOnlyHint=true: %#v", tool.Name, tool.Annotations)
 		}
 
@@ -199,9 +222,32 @@ func TestMCPServerListsReadOnlyTools(t *testing.T) {
 			}
 		}
 
+		if tool.Name == "control_project" {
+			assertMCPProjectToolAnnotations(t, tool, true, false)
+
+			actionSchema := toolSchemaProperty(t, tool.InputSchema, "action")
+			if !slices.Equal(actionSchema["enum"].([]any), []any{"start", "stop", "restart"}) {
+				t.Fatalf("control_project action enum = %#v", actionSchema["enum"])
+			}
+		}
+
+		if tool.Name == "destroy_project" {
+			assertMCPProjectToolAnnotations(t, tool, true, true)
+
+			if !strings.Contains(strings.ToLower(tool.Description), "restored automatically") {
+				t.Fatalf("destroy_project description must warn about reconciliation: %q", tool.Description)
+			}
+		}
+
 		for _, property := range wantInputProperties[tool.Name] {
 			if !toolSchemaHasProperty(tool.InputSchema, property) {
 				t.Fatalf("%s input schema must contain snake_case property %q: %#v", tool.Name, property, tool.InputSchema)
+			}
+		}
+
+		for _, property := range wantRequiredProperties[tool.Name] {
+			if !toolSchemaRequiresProperty(tool.InputSchema, property) {
+				t.Fatalf("%s input schema must require %q: %#v", tool.Name, property, tool.InputSchema)
 			}
 		}
 	}
@@ -210,6 +256,115 @@ func TestMCPServerListsReadOnlyTools(t *testing.T) {
 		if !found {
 			t.Fatalf("expected tool %q to be registered", name)
 		}
+	}
+}
+
+func TestMCPProjectToolValidation(t *testing.T) {
+	h := &handlerData{appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
+	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
+	session := connectMCPTestClient(t, server)
+
+	for _, testCase := range []struct {
+		name      string
+		tool      string
+		arguments map[string]any
+		contains  string
+	}{
+		{name: "control missing project", tool: "control_project", arguments: map[string]any{"action": "start"}, contains: "project_name"},
+		{name: "control blank project", tool: "control_project", arguments: map[string]any{"project_name": "  ", "action": "start"}, contains: "missing project name"},
+		{name: "control missing action", tool: "control_project", arguments: map[string]any{"project_name": "project"}, contains: "action"},
+		{name: "control invalid action", tool: "control_project", arguments: map[string]any{"project_name": "project", "action": "invalid"}, contains: "not in enum"},
+		{name: "control invalid timeout", tool: "control_project", arguments: map[string]any{"project_name": "project", "action": "start", "timeout": "invalid"}, contains: "timeout"},
+		{name: "control nil docker", tool: "control_project", arguments: map[string]any{"project_name": "project", "action": "start"}, contains: "docker cli is required"},
+		{name: "destroy missing project", tool: "destroy_project", arguments: map[string]any{}, contains: "project_name"},
+		{name: "destroy blank project", tool: "destroy_project", arguments: map[string]any{"project_name": "  "}, contains: "missing project name"},
+		{name: "destroy invalid timeout", tool: "destroy_project", arguments: map[string]any{"project_name": "project", "timeout": "invalid"}, contains: "timeout"},
+		{name: "destroy nil docker", tool: "destroy_project", arguments: map[string]any{"project_name": "project"}, contains: "docker cli is required"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			assertMCPToolError(t, session, testCase.tool, testCase.arguments, testCase.contains)
+		})
+	}
+}
+
+func TestMCPProjectTools(t *testing.T) {
+	skipWithoutLiveDocker(t)
+
+	dockerCli, err := docker.CreateDockerCli(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() { _ = dockerCli.Client().Close() })
+
+	if dockerswarm.GetModeEnabled() {
+		t.Skip("compose project tools require standalone mode")
+	}
+
+	projectName := test.ConvertTestName(t.Name())
+	test.ComposeUp(t.Context(), t, test.WithYAML(projectToolsComposeContent), test.WithName(projectName))
+
+	h := &handlerData{dockerCli: dockerCli, appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
+	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
+	session := connectMCPTestClient(t, server)
+
+	for _, action := range []string{"stop", "start", "restart"} {
+		result := callMCPTool(t, session, "control_project", map[string]any{
+			"project_name": projectName,
+			"action":       action,
+			"timeout":      30,
+		})
+
+		var output controlProjectOutput
+		decodeMCPStructuredContent(t, result, &output)
+
+		if output.ProjectName != projectName || output.Action != action || output.Status != "completed" {
+			t.Fatalf("unexpected %s output: %#v", action, output)
+		}
+
+		wantState := "running"
+		if action == "stop" {
+			wantState = "exited"
+		}
+
+		waitForProjectState(t, dockerCli, projectName, wantState)
+	}
+
+	assertMCPToolError(t, session, "control_project", map[string]any{
+		"project_name": "missing",
+		"action":       "stop",
+	}, "project not found")
+
+	result := callMCPTool(t, session, "destroy_project", map[string]any{
+		"project_name": projectName,
+		"timeout":      30,
+		"volumes":      true,
+		"images":       false,
+	})
+
+	var output destroyProjectOutput
+	decodeMCPStructuredContent(t, result, &output)
+
+	if output.ProjectName != projectName || output.Status != "destroyed" || !output.Volumes || output.Images {
+		t.Fatalf("unexpected destroy output: %#v", output)
+	}
+
+	containers, err := docker.GetProjectContainers(t.Context(), dockerCli, projectName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(containers) != 0 {
+		t.Fatalf("project still has containers after destroy: %#v", containers)
+	}
+
+	volumes, err := docker.GetLabeledVolumes(t.Context(), dockerCli.Client(), api.ProjectLabel, projectName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(volumes) != 0 {
+		t.Fatalf("project still has volumes after destroy: %#v", volumes)
 	}
 }
 
@@ -759,6 +914,20 @@ func toolSchemaHasProperty(schema any, property string) bool {
 	return ok
 }
 
+func toolSchemaRequiresProperty(schema any, property string) bool {
+	schemaMap, ok := schema.(map[string]any)
+	if !ok {
+		return false
+	}
+
+	required, ok := schemaMap["required"].([]any)
+	if !ok {
+		return false
+	}
+
+	return slices.Contains(required, any(property))
+}
+
 func toolSchemaProperty(t *testing.T, schema any, property string) map[string]any {
 	t.Helper()
 
@@ -778,6 +947,44 @@ func toolSchemaProperty(t *testing.T, schema any, property string) map[string]an
 	}
 
 	return propertySchema
+}
+
+func assertMCPProjectToolAnnotations(t *testing.T, tool *mcp.Tool, destructive, idempotent bool) {
+	t.Helper()
+
+	annotations := tool.Annotations
+	if annotations.ReadOnlyHint || annotations.IdempotentHint != idempotent {
+		t.Fatalf("%s annotations = %#v", tool.Name, annotations)
+	}
+
+	if annotations.DestructiveHint == nil || *annotations.DestructiveHint != destructive {
+		t.Fatalf("%s destructiveHint = %#v, want %t", tool.Name, annotations.DestructiveHint, destructive)
+	}
+
+	if annotations.OpenWorldHint == nil || *annotations.OpenWorldHint {
+		t.Fatalf("%s openWorldHint = %#v, want false", tool.Name, annotations.OpenWorldHint)
+	}
+}
+
+func waitForProjectState(t *testing.T, dockerCli command.Cli, projectName, want string) {
+	t.Helper()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		containers, err := docker.GetProjectContainers(t.Context(), dockerCli, projectName)
+		if err == nil && len(containers) > 0 && strings.EqualFold(string(containers[0].State), want) {
+			return
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	containers, err := docker.GetProjectContainers(t.Context(), dockerCli, projectName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Fatalf("project %q state = %#v, want %q", projectName, containers, want)
 }
 
 func skipWithoutLiveDocker(t *testing.T) {

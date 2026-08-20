@@ -31,6 +31,7 @@ func (h *handlerData) newMCPHandler(c *app.Config) http.Handler {
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 	}, instrumentMCPTool(h.log, "get_health", getHealth))
 	h.addReadOnlyMCPTools(server)
+	h.addProjectMCPTools(server)
 
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return server
