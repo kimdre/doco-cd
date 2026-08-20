@@ -2606,6 +2606,10 @@
 <p class="admonition-title">File permissions</p>
 <p>Make sure the mounted file has the correct permissions and is readable inside the container.</p>
 </div>
+<div class="admonition tip">
+<p class="admonition-title">Short-lived registry tokens (ECR, GCR, ACR)</p>
+<p>Doco-CD re-reads the config file from disk on every registry auth lookup, so credentials refreshed on disk (for example an ECR token rotated by a cron with <code>aws ecr get-login-password | docker login</code>) take effect without a restart of doco-cd.</p>
+</div>
 <h2 id="using-a-custom-docker-config-file">Using a custom docker config file<a class="headerlink" href="#using-a-custom-docker-config-file" title="Permanent link">&para;</a></h2>
 <ol>
 <li>
