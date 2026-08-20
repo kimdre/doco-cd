@@ -288,6 +288,35 @@ func TestGetConfig_McpEnabled(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("enabled with API secret file", func(t *testing.T) {
+		const apiSecret = "file-secret"
+
+		apiSecretFile := path.Join(t.TempDir(), "api-secret")
+		if err := os.WriteFile(apiSecretFile, []byte(apiSecret), filesystem.PermOwner); err != nil {
+			t.Fatalf("failed to write API secret file: %v", err)
+		}
+
+		t.Setenv("LOG_LEVEL", "info")
+		t.Setenv("HTTP_PORT", "8080")
+		t.Setenv("WEBHOOK_SECRET", "secret")
+		t.Setenv("MCP_ENABLED", "true")
+		t.Setenv("API_SECRET", "")
+		t.Setenv("API_SECRET_FILE", apiSecretFile)
+
+		cfg, err := GetConfig()
+		if err != nil {
+			t.Fatalf("expected config to load, got %v", err)
+		}
+
+		if !cfg.McpEnabled {
+			t.Fatal("expected McpEnabled to be true")
+		}
+
+		if cfg.ApiSecret != apiSecret {
+			t.Fatalf("expected ApiSecret=%q, got %q", apiSecret, cfg.ApiSecret)
+		}
+	})
 }
 
 func TestGetConfig_GlobalGitHubAppRejectsTokenMix(t *testing.T) {
