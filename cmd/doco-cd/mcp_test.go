@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -200,18 +199,11 @@ func TestMCPServerGetHealth(t *testing.T) {
 }
 
 func TestMCPServerGetHealthFailure(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	dockerHost := "tcp://" + listener.Addr().String()
-
-	if err := listener.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Setenv("DOCKER_HOST", dockerHost)
+	dockerAPIServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(dockerAPIServer.Close)
+	t.Setenv("DOCKER_HOST", "tcp://"+strings.TrimPrefix(dockerAPIServer.URL, "http://"))
 
 	server, _ := newMCPTestServer(t, true, testMCPAPIKey, 1024)
 	session := connectMCPTestClient(t, server)

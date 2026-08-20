@@ -331,7 +331,7 @@ func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.
 }
 
 // HealthCheckHandler handles health check requests.
-func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
+func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request) {
 	var (
 		err     error
 		errType error
@@ -346,7 +346,7 @@ func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, r *http.Request)
 		Revision:   "",
 	}
 
-	err, errType = docker.VerifyDockerAPIAccessContext(r.Context())
+	err, errType = docker.VerifyDockerAPIAccess() //nolint:contextcheck // REST health checks must not propagate caller cancellation to notifications.
 	if err != nil {
 		onError(w, h.log.With(logger.ErrAttr(err)), errType.Error(), err.Error(), http.StatusServiceUnavailable, metadata, err)
 
