@@ -273,8 +273,8 @@ func TestMCPDeploymentRunTools(t *testing.T) {
 		arguments map[string]any
 		contains  string
 	}{
-		{name: "zero limit", tool: "list_deployment_runs", arguments: map[string]any{"limit": 0}, contains: "positive integer"},
-		{name: "negative limit", tool: "list_deployment_runs", arguments: map[string]any{"limit": -1}, contains: "positive integer"},
+		{name: "zero limit", tool: "list_deployment_runs", arguments: map[string]any{"limit": 0}, contains: "less than 1"},
+		{name: "negative limit", tool: "list_deployment_runs", arguments: map[string]any{"limit": -1}, contains: "less than 1"},
 		{name: "invalid status", tool: "list_deployment_runs", arguments: map[string]any{"status": "unknown"}, contains: "invalid deployment run status"},
 		{name: "invalid trigger", tool: "list_deployment_runs", arguments: map[string]any{"trigger": "unknown"}, contains: "invalid deployment run trigger"},
 		{name: "missing job id", tool: "get_deployment_run", arguments: map[string]any{}, contains: "job_id"},
