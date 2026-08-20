@@ -22,10 +22,33 @@ func TestValidateApiKey(t *testing.T) {
 		setHeader  bool
 		shouldPass bool
 	}{
-		{"Valid API Key", appConfig.ApiSecret, appConfig.ApiSecret, true, true},
-		{"Invalid API Key", appConfig.ApiSecret, "invalid_key", true, false},
-		{"Missing API Key", appConfig.ApiSecret, "", false, false},
-		{"Unset API Key", "", "api_key", true, false},
+		{
+			name:       "Valid API Key",
+			apiKey:     appConfig.ApiSecret,
+			checkKey:   appConfig.ApiSecret,
+			setHeader:  true,
+			shouldPass: true,
+		},
+		{
+			name:       "Invalid API Key",
+			apiKey:     appConfig.ApiSecret,
+			checkKey:   "test_apiSecret2",
+			setHeader:  true,
+			shouldPass: false,
+		},
+		{
+			name:       "Missing API Key",
+			apiKey:     appConfig.ApiSecret,
+			setHeader:  false,
+			shouldPass: false,
+		},
+		{
+			name:       "Unset API Key",
+			apiKey:     "",
+			checkKey:   "",
+			setHeader:  true,
+			shouldPass: false,
+		},
 	}
 
 	for _, tc := range testCases {
