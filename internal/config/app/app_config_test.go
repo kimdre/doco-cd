@@ -237,6 +237,59 @@ func TestGetConfig_SchedulerEnabled(t *testing.T) {
 	}
 }
 
+func TestGetConfig_McpEnabled(t *testing.T) {
+	tests := []struct {
+		name        string
+		mcpEnabled  string
+		apiSecret   string
+		wantEnabled bool
+		wantErr     string
+	}{
+		{
+			name: "disabled by default",
+		},
+		{
+			name:        "enabled with API secret",
+			mcpEnabled:  "true",
+			apiSecret:   "x",
+			wantEnabled: true,
+		},
+		{
+			name:       "enabled without API secret",
+			mcpEnabled: "true",
+			wantErr:    "MCP_ENABLED requires API_SECRET",
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("LOG_LEVEL", "info")
+			t.Setenv("HTTP_PORT", "8080")
+			t.Setenv("WEBHOOK_SECRET", "secret")
+			t.Setenv("MCP_ENABLED", testCase.mcpEnabled)
+			t.Setenv("API_SECRET", testCase.apiSecret)
+			t.Setenv("API_SECRET_FILE", "")
+
+			cfg, err := GetConfig()
+			if testCase.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), testCase.wantErr) {
+					t.Fatalf("expected error containing %q, got %v", testCase.wantErr, err)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("expected config to load, got %v", err)
+			}
+
+			if cfg.McpEnabled != testCase.wantEnabled {
+				t.Fatalf("expected McpEnabled=%v, got %v", testCase.wantEnabled, cfg.McpEnabled)
+			}
+		})
+	}
+}
+
 func TestGetConfig_GlobalGitHubAppRejectsTokenMix(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "info")
 	t.Setenv("HTTP_PORT", "8080")

@@ -69,6 +69,7 @@ type Config struct {
 	SkipTLSVerification           bool                   `env:"SKIP_TLS_VERIFICATION,notEmpty" envDefault:"false"`                                               // SkipTLSVerification skips the TLS verification when cloning repositories.
 	DockerQuietDeploy             bool                   `env:"DOCKER_QUIET_DEPLOY,notEmpty" envDefault:"true"`                                                  // DockerQuietDeploy suppresses the status output of dockerCli in deployments (e.g. pull, create, start)
 	SchedulerEnabled              bool                   `env:"SCHEDULER_ENABLED,notEmpty" envDefault:"true"`                                                    // SchedulerEnabled controls whether the built-in scheduled job runner is started in this doco-cd instance
+	McpEnabled                    bool                   `env:"MCP_ENABLED,notEmpty" envDefault:"false"`                                                         // McpEnabled enables the built-in MCP server and requires API_SECRET.
 	DockerSwarmFeatures           bool                   `env:"DOCKER_SWARM_FEATURES,notEmpty" envDefault:"true"`                                                // DockerSwarmFeatures enables the usage Docker Swarm features in the application if it has detected that it is running in a Docker Swarm environment
 	DockerSwarmConfigRetention    int                    `env:"DOCKER_SWARM_CONFIG_RETENTION,notEmpty" envDefault:"0" validate:"min=-1"`                         // DockerSwarmConfigRetention is the global default number of old Swarm config revisions to keep per resource (excluding the active one). -1 disables automatic pruning.
 	DockerSwarmSecretRetention    int                    `env:"DOCKER_SWARM_SECRET_RETENTION,notEmpty" envDefault:"0" validate:"min=-1"`                         // DockerSwarmSecretRetention is the global default number of old Swarm secret revisions to keep per resource (excluding the active one). -1 disables automatic pruning.
@@ -124,6 +125,10 @@ func GetConfig() (*Config, error) {
 	err := config.ParseConfigFromEnv(&cfg, &mappings)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", config.ErrParseConfigFailed, err)
+	}
+
+	if cfg.McpEnabled && cfg.ApiSecret == "" {
+		return nil, errors.New("MCP_ENABLED requires API_SECRET")
 	}
 
 	err = cfg.parsePollConfig()
