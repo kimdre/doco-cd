@@ -319,6 +319,21 @@ func TestGetConfig_McpEnabled(t *testing.T) {
 	})
 }
 
+func TestGetConfigRejectsNonPositiveMaxPayloadSize(t *testing.T) {
+	for _, value := range []string{"0", "-1"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("MAX_PAYLOAD_SIZE", value)
+			t.Setenv("WEBHOOK_SECRET", "secret")
+			t.Setenv("API_SECRET", "")
+			t.Setenv("API_SECRET_FILE", "")
+
+			if _, err := GetConfig(); err == nil {
+				t.Fatalf("expected MAX_PAYLOAD_SIZE=%s to be rejected", value)
+			}
+		})
+	}
+}
+
 func TestGetConfig_GlobalGitHubAppRejectsTokenMix(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "info")
 	t.Setenv("HTTP_PORT", "8080")

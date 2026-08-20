@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -196,6 +199,39 @@ func TestMCPServerGetHealth(t *testing.T) {
 	}
 }
 
+func TestMCPServerGetHealthFailure(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dockerHost := "tcp://" + listener.Addr().String()
+
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("DOCKER_HOST", dockerHost)
+
+	server, _ := newMCPTestServer(t, true, testMCPAPIKey, 1024)
+	session := connectMCPTestClient(t, server)
+	errorsBefore := testutil.ToFloat64(prometheusmetrics.McpErrorsTotal.WithLabelValues("get_health"))
+
+	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "get_health", Arguments: struct{}{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !result.IsError {
+		t.Fatalf("expected get_health tool error, got %#v", result)
+	}
+
+	errorsAfter := testutil.ToFloat64(prometheusmetrics.McpErrorsTotal.WithLabelValues("get_health"))
+	if errorsAfter-errorsBefore != 1 {
+		t.Fatalf("expected one error metric increment, got delta %v", errorsAfter-errorsBefore)
+	}
+}
+
 func TestMCPServerRejectsOversizedBody(t *testing.T) {
 	server, _ := newMCPTestServer(t, true, testMCPAPIKey, 32)
 
@@ -224,7 +260,7 @@ func TestInstrumentMCPToolCountsResultErrors(t *testing.T) {
 
 	requestsBefore := testutil.ToFloat64(prometheusmetrics.McpRequestsTotal.WithLabelValues(toolName))
 	errorsBefore := testutil.ToFloat64(prometheusmetrics.McpErrorsTotal.WithLabelValues(toolName))
-	handler := instrumentMCPTool(toolName, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, struct{}, error) {
+	handler := instrumentMCPTool(logger.New(logger.LevelCritical), toolName, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, struct{}, error) {
 		return &mcp.CallToolResult{IsError: true}, struct{}{}, nil
 	})
 
@@ -254,7 +290,7 @@ func TestInstrumentMCPToolCountsHandlerErrorsOnce(t *testing.T) {
 
 	requestsBefore := testutil.ToFloat64(prometheusmetrics.McpRequestsTotal.WithLabelValues(toolName))
 	errorsBefore := testutil.ToFloat64(prometheusmetrics.McpErrorsTotal.WithLabelValues(toolName))
-	handler := instrumentMCPTool(toolName, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, struct{}, error) {
+	handler := instrumentMCPTool(logger.New(logger.LevelCritical), toolName, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, struct{}, error) {
 		return &mcp.CallToolResult{IsError: true}, struct{}{}, errors.New("failed")
 	})
 
@@ -272,6 +308,41 @@ func TestInstrumentMCPToolCountsHandlerErrorsOnce(t *testing.T) {
 
 	if errorsAfter-errorsBefore != 1 {
 		t.Fatalf("expected one error without double counting, got delta %v", errorsAfter-errorsBefore)
+	}
+}
+
+func TestInstrumentMCPToolLogsHandlerFailure(t *testing.T) {
+	for _, testCase := range []struct {
+		name       string
+		result     *mcp.CallToolResult
+		err        error
+		wantDetail string
+	}{
+		{name: "handler error", result: &mcp.CallToolResult{IsError: true}, err: errors.New("handler failed"), wantDetail: "handler failed"},
+		{name: "error result", result: &mcp.CallToolResult{IsError: true}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			var logOutput bytes.Buffer
+
+			log := &logger.Logger{
+				Logger: slog.New(slog.NewTextHandler(&logOutput, nil)),
+				Level:  slog.LevelDebug,
+			}
+			handler := instrumentMCPTool(log, "test_failure", func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, struct{}, error) {
+				return testCase.result, struct{}{}, testCase.err
+			})
+
+			_, _, _ = handler(t.Context(), nil, struct{}{})
+
+			logged := logOutput.String()
+			if !strings.Contains(logged, "tool=test_failure") || testCase.wantDetail != "" && !strings.Contains(logged, testCase.wantDetail) {
+				t.Fatalf("expected tool failure in log, got %q", logged)
+			}
+
+			if count := strings.Count(logged, "MCP tool call failed"); count != 1 {
+				t.Fatalf("expected one failure log entry, got %d in %q", count, logged)
+			}
+		})
 	}
 }
 

@@ -127,17 +127,17 @@ var (
 	McpRequestsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: MetricsNamespace,
 		Name:      "mcp_requests_total",
-		Help:      "Total number of MCP tool calls",
+		Help:      "Total number of dispatched MCP tool calls",
 	}, []string{"tool"})
 	McpErrorsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: MetricsNamespace,
 		Name:      "mcp_errors_total",
-		Help:      "Total number of failed MCP tool calls",
+		Help:      "Total number of failed dispatched MCP tool calls",
 	}, []string{"tool"})
 	McpRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: MetricsNamespace,
 		Name:      "mcp_request_duration_seconds",
-		Help:      "Duration of MCP tool calls in seconds",
+		Help:      "Duration of dispatched MCP tool calls in seconds",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"tool"})
 	/* --8<-- [end:collectors]

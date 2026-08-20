@@ -10,6 +10,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/logger"
 	prometheusmetrics "github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/restapi"
 )
@@ -23,20 +24,22 @@ type getHealthOutput struct {
 }
 
 func (h *handlerData) newMCPHandler(c *app.Config) http.Handler {
-	server := mcp.NewServer(&mcp.Implementation{Name: "doco-cd", Version: app.Version}, nil)
+	server := mcp.NewServer(&mcp.Implementation{Name: "doco-cd", Version: app.Version}, &mcp.ServerOptions{Logger: h.log.Logger})
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_health",
 		Description: "Verify that doco-cd can access the Docker API.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
-	}, instrumentMCPTool("get_health", getHealth))
+	}, instrumentMCPTool(h.log, "get_health", getHealth))
 
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return server
 	}, &mcp.StreamableHTTPOptions{
 		Stateless:                    true,
 		PropagateRequestCancellation: true,
-		DisableLocalhostProtection:   true,
-		MaxRequestBodyBytes:          c.MaxPayloadSize,
+		// Same-host reverse proxies are supported, and every request requires API-key authentication.
+		DisableLocalhostProtection: true,
+		MaxRequestBodyBytes:        c.MaxPayloadSize,
+		Logger:                     h.log.Logger,
 	})
 
 	return h.requireMCPAPIKey(c, handler)
@@ -55,8 +58,8 @@ func (h *handlerData) requireMCPAPIKey(c *app.Config, next http.Handler) http.Ha
 	})
 }
 
-func getHealth(context.Context, *mcp.CallToolRequest, getHealthInput) (*mcp.CallToolResult, getHealthOutput, error) {
-	err, _ := docker.VerifyDockerAPIAccess()
+func getHealth(ctx context.Context, _ *mcp.CallToolRequest, _ getHealthInput) (*mcp.CallToolResult, getHealthOutput, error) {
+	err, _ := docker.VerifyDockerAPIAccessContext(ctx)
 	if err != nil {
 		return nil, getHealthOutput{}, err
 	}
@@ -64,7 +67,7 @@ func getHealth(context.Context, *mcp.CallToolRequest, getHealthInput) (*mcp.Call
 	return nil, getHealthOutput{Status: "healthy"}, nil
 }
 
-func instrumentMCPTool[In, Out any](tool string, handler mcp.ToolHandlerFor[In, Out]) mcp.ToolHandlerFor[In, Out] {
+func instrumentMCPTool[In, Out any](log *logger.Logger, tool string, handler mcp.ToolHandlerFor[In, Out]) mcp.ToolHandlerFor[In, Out] {
 	return func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 		started := time.Now()
 
@@ -76,6 +79,12 @@ func instrumentMCPTool[In, Out any](tool string, handler mcp.ToolHandlerFor[In, 
 
 		if err != nil || result != nil && result.IsError {
 			prometheusmetrics.McpErrorsTotal.WithLabelValues(tool).Inc()
+
+			if err != nil {
+				log.Error("MCP tool call failed", slog.String("tool", tool), logger.ErrAttr(err))
+			} else {
+				log.Error("MCP tool call failed", slog.String("tool", tool))
+			}
 		}
 
 		return result, output, err
