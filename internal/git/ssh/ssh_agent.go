@@ -148,11 +148,10 @@ func startSSHAgent(ctx context.Context, log *slog.Logger, socketPath string, key
 			wg.Go(func() {
 				defer conn.Close() // nolint:errcheck
 
-				if err := agent.ServeAgent(keyring, conn); err != nil {
-					// Ignore expected close conditions
-					if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
-						log.Warn("Error serving SSH agent:", logger.ErrAttr(err))
-					}
+				err := agent.ServeAgent(keyring, conn)
+				// Ignore expected close conditions
+				if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
+					log.Warn("Error serving SSH agent:", logger.ErrAttr(err))
 				}
 			})
 		}
