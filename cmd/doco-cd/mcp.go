@@ -30,6 +30,7 @@ func (h *handlerData) newMCPHandler(c *app.Config) http.Handler {
 		Description: "Verify that doco-cd can access the Docker API.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 	}, instrumentMCPTool(h.log, "get_health", getHealth))
+	h.addReadOnlyMCPTools(server)
 
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return server

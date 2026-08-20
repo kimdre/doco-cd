@@ -3,22 +3,31 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/docker/compose/v5/pkg/api"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	dto "github.com/prometheus/client_model/go"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/docker"
+	dockerswarm "github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/logger"
 	prometheusmetrics "github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/restapi"
+	"github.com/kimdre/doco-cd/internal/scheduler"
+	"github.com/kimdre/doco-cd/internal/test"
 )
 
 const testMCPAPIKey = "test-mcp-api-key" // #nosec G101 -- test fixture, not a real credential.
@@ -133,7 +142,7 @@ func TestMCPServerRouteRegistration(t *testing.T) {
 	})
 }
 
-func TestMCPServerListsGetHealth(t *testing.T) {
+func TestMCPServerListsReadOnlyTools(t *testing.T) {
 	server, _ := newMCPTestServer(t, true, testMCPAPIKey, 1024)
 	session := connectMCPTestClient(t, server)
 
@@ -142,18 +151,295 @@ func TestMCPServerListsGetHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(result.Tools) != 1 {
-		t.Fatalf("expected exactly one MCP tool, got %#v", result.Tools)
+	if len(result.Tools) != 8 {
+		t.Fatalf("expected exactly eight MCP tools, got %#v", result.Tools)
 	}
 
-	tool := result.Tools[0]
-	if tool.Name != "get_health" {
-		t.Fatalf("expected get_health, got %q", tool.Name)
+	wantTools := map[string]bool{
+		"get_health":           false,
+		"list_deployment_runs": false,
+		"get_deployment_run":   false,
+		"list_scheduled_jobs":  false,
+		"list_projects":        false,
+		"get_project":          false,
+		"list_stacks":          false,
+		"get_stack":            false,
+	}
+	wantInputProperties := map[string][]string{
+		"list_deployment_runs": {"limit", "status", "trigger"},
+		"get_deployment_run":   {"job_id"},
+		"list_scheduled_jobs":  {"stack"},
+		"list_projects":        {"all"},
+		"get_project":          {"project_name"},
+		"get_stack":            {"stack_name"},
 	}
 
-	if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
-		t.Fatalf("get_health must have readOnlyHint=true: %#v", tool.Annotations)
+	for _, tool := range result.Tools {
+		if _, ok := wantTools[tool.Name]; !ok {
+			t.Fatalf("unexpected tool %q", tool.Name)
+		}
+
+		wantTools[tool.Name] = true
+		if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
+			t.Fatalf("%s must have readOnlyHint=true: %#v", tool.Name, tool.Annotations)
+		}
+
+		if tool.Name == "get_project" && !strings.Contains(tool.Description, "returns the project's containers") {
+			t.Fatalf("get_project description must say it returns the project's containers: %q", tool.Description)
+		}
+
+		for _, property := range wantInputProperties[tool.Name] {
+			if !toolSchemaHasProperty(tool.InputSchema, property) {
+				t.Fatalf("%s input schema must contain snake_case property %q: %#v", tool.Name, property, tool.InputSchema)
+			}
+		}
 	}
+
+	for name, found := range wantTools {
+		if !found {
+			t.Fatalf("expected tool %q to be registered", name)
+		}
+	}
+}
+
+func TestMCPDeploymentRunTools(t *testing.T) {
+	tracker := newDeploymentRunTracker(nil)
+	tracker.TrackAccepted("job-webhook", deploymentRunTriggerWebhook)
+	tracker.MarkSucceeded("job-webhook", "complete")
+	tracker.TrackAccepted("job-poll", deploymentRunTriggerPoll)
+
+	h := &handlerData{runTracker: tracker, appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
+	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
+	session := connectMCPTestClient(t, server)
+
+	t.Run("list defaults and normalized filters", func(t *testing.T) {
+		result := callMCPTool(t, session, "list_deployment_runs", map[string]any{
+			"limit":   1,
+			"status":  " SUCCEEDED ",
+			"trigger": " WEBHOOK ",
+		})
+
+		var output listDeploymentRunsOutput
+		decodeMCPStructuredContent(t, result, &output)
+
+		if len(output.Runs) != 1 || output.Runs[0].JobID != "job-webhook" {
+			t.Fatalf("unexpected filtered runs: %#v", output.Runs)
+		}
+	})
+
+	t.Run("list defaults to 50", func(t *testing.T) {
+		defaultTracker := newDeploymentRunTracker(map[deploymentRunTrigger]int{deploymentRunTriggerWebhook: 60})
+		for i := range 60 {
+			defaultTracker.TrackAccepted("default-job-"+strconv.Itoa(i), deploymentRunTriggerWebhook)
+		}
+
+		defaultHandler := &handlerData{runTracker: defaultTracker, appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
+		defaultServer, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, defaultHandler)
+		result := callMCPTool(t, connectMCPTestClient(t, defaultServer), "list_deployment_runs", map[string]any{})
+
+		var output listDeploymentRunsOutput
+		decodeMCPStructuredContent(t, result, &output)
+
+		if len(output.Runs) != 50 {
+			t.Fatalf("expected default limit 50, got %d runs", len(output.Runs))
+		}
+	})
+
+	t.Run("get run", func(t *testing.T) {
+		result := callMCPTool(t, session, "get_deployment_run", map[string]any{"job_id": " job-webhook "})
+
+		var output getDeploymentRunOutput
+		decodeMCPStructuredContent(t, result, &output)
+
+		if output.Run.JobID != "job-webhook" || output.Run.Status != deploymentRunStatusSucceeded {
+			t.Fatalf("unexpected run: %#v", output.Run)
+		}
+	})
+
+	for _, testCase := range []struct {
+		name      string
+		tool      string
+		arguments map[string]any
+		contains  string
+	}{
+		{name: "zero limit", tool: "list_deployment_runs", arguments: map[string]any{"limit": 0}, contains: "positive integer"},
+		{name: "negative limit", tool: "list_deployment_runs", arguments: map[string]any{"limit": -1}, contains: "positive integer"},
+		{name: "invalid status", tool: "list_deployment_runs", arguments: map[string]any{"status": "unknown"}, contains: "invalid deployment run status"},
+		{name: "invalid trigger", tool: "list_deployment_runs", arguments: map[string]any{"trigger": "unknown"}, contains: "invalid deployment run trigger"},
+		{name: "missing job id", tool: "get_deployment_run", arguments: map[string]any{}, contains: "job_id"},
+		{name: "blank job id", tool: "get_deployment_run", arguments: map[string]any{"job_id": "  "}, contains: "missing job id"},
+		{name: "run not found", tool: "get_deployment_run", arguments: map[string]any{"job_id": "missing"}, contains: "run not found: missing"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			assertMCPToolError(t, session, testCase.tool, testCase.arguments, testCase.contains)
+		})
+	}
+}
+
+func TestMCPListDeploymentRunsCapsLimitAt200(t *testing.T) {
+	tracker := newDeploymentRunTracker(map[deploymentRunTrigger]int{
+		deploymentRunTriggerWebhook: 250,
+	})
+	for i := range 205 {
+		tracker.TrackAccepted("job-"+strconv.Itoa(i), deploymentRunTriggerWebhook)
+	}
+
+	h := &handlerData{runTracker: tracker, appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
+	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
+	result := callMCPTool(t, connectMCPTestClient(t, server), "list_deployment_runs", map[string]any{"limit": 201})
+
+	var output listDeploymentRunsOutput
+	decodeMCPStructuredContent(t, result, &output)
+
+	if len(output.Runs) != 200 {
+		t.Fatalf("expected limit to be capped at 200, got %d runs", len(output.Runs))
+	}
+}
+
+func TestMCPDockerReadTools(t *testing.T) {
+	skipWithoutLiveDocker(t)
+
+	dockerCli, err := docker.CreateDockerCli(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() { _ = dockerCli.Client().Close() })
+
+	if dockerswarm.GetModeEnabled() {
+		t.Skip("compose project tools require standalone mode")
+	}
+
+	projectName := test.ConvertTestName(t.Name())
+	test.ComposeUp(t.Context(), t, test.WithYAML(composeContent), test.WithName(projectName))
+
+	h := &handlerData{dockerCli: dockerCli, appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
+	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
+	session := connectMCPTestClient(t, server)
+
+	t.Run("list projects", func(t *testing.T) {
+		result := callMCPTool(t, session, "list_projects", map[string]any{"all": true})
+
+		var output listProjectsOutput
+		decodeMCPStructuredContent(t, result, &output)
+
+		if !containsProject(output.Projects, projectName) {
+			t.Fatalf("expected project %q in %#v", projectName, output.Projects)
+		}
+	})
+
+	t.Run("get project containers", func(t *testing.T) {
+		result := callMCPTool(t, session, "get_project", map[string]any{"project_name": projectName})
+
+		var output getProjectOutput
+		decodeMCPStructuredContent(t, result, &output)
+
+		if len(output.Containers) == 0 {
+			t.Fatalf("expected containers for project %q", projectName)
+		}
+	})
+
+	assertMCPToolError(t, session, "get_project", map[string]any{"project_name": "missing"}, "project not found")
+}
+
+func TestMCPGetProjectRequiresName(t *testing.T) {
+	h := &handlerData{appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
+	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
+	session := connectMCPTestClient(t, server)
+
+	assertMCPToolError(t, session, "get_project", map[string]any{}, "project_name")
+	assertMCPToolError(t, session, "get_project", map[string]any{"project_name": "  "}, "missing project name")
+}
+
+func TestMCPScheduledJobsTool(t *testing.T) {
+	skipWithoutLiveDocker(t)
+
+	dockerCli, err := docker.CreateDockerCli(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() { _ = dockerCli.Client().Close() })
+
+	if dockerswarm.GetModeEnabled() {
+		t.Skip("compose scheduled-job fixture requires standalone mode")
+	}
+
+	projectName := test.ConvertTestName(t.Name())
+	test.ComposeUp(t.Context(), t, test.WithYAML(composeContent), test.WithName(projectName))
+
+	h := &handlerData{dockerCli: dockerCli, appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
+	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
+	session := connectMCPTestClient(t, server)
+	result := callMCPTool(t, session, "list_scheduled_jobs", map[string]any{"stack": " " + projectName + " "})
+
+	var output listScheduledJobsOutput
+	decodeMCPStructuredContent(t, result, &output)
+
+	if !containsScheduledJob(output.Jobs, projectName) {
+		t.Fatalf("expected scheduled job for stack %q in %#v", projectName, output.Jobs)
+	}
+}
+
+func TestMCPSwarmToolsRuntimeBehavior(t *testing.T) {
+	dockerCli, err := docker.CreateDockerCli(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() { _ = dockerCli.Client().Close() })
+
+	h := &handlerData{dockerCli: dockerCli, appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
+	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
+	session := connectMCPTestClient(t, server)
+
+	assertMCPToolError(t, session, "get_stack", map[string]any{}, "stack_name")
+	assertMCPToolError(t, session, "get_stack", map[string]any{"stack_name": "  "}, "missing stack name")
+
+	if !dockerswarm.GetModeEnabled() {
+		assertMCPToolError(t, session, "list_stacks", map[string]any{}, "swarm")
+		assertMCPToolError(t, session, "get_stack", map[string]any{"stack_name": "missing"}, "swarm")
+
+		return
+	}
+
+	result := callMCPTool(t, session, "list_stacks", map[string]any{})
+
+	var output listStacksOutput
+	decodeMCPStructuredContent(t, result, &output)
+
+	for stackName := range output.Stacks {
+		stackResult := callMCPTool(t, session, "get_stack", map[string]any{"stack_name": stackName})
+
+		var stackOutput getStackOutput
+		decodeMCPStructuredContent(t, stackResult, &stackOutput)
+
+		if len(stackOutput.Services) == 0 {
+			t.Fatalf("expected services for stack %q", stackName)
+		}
+
+		return
+	}
+
+	t.Log("swarm is active, but no stack fixture is available for get_stack success coverage")
+}
+
+func TestMCPSwarmToolsDisabledAtRuntime(t *testing.T) {
+	dockerCli, err := docker.CreateDockerCli(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() { _ = dockerCli.Client().Close() })
+	dockerswarm.SetDisableSwarmFeature(true)
+	t.Cleanup(func() { dockerswarm.SetDisableSwarmFeature(false) })
+
+	h := &handlerData{dockerCli: dockerCli, appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
+	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
+	session := connectMCPTestClient(t, server)
+
+	assertMCPToolError(t, session, "list_stacks", map[string]any{}, "disabled")
+	assertMCPToolError(t, session, "get_stack", map[string]any{"stack_name": "stack"}, "disabled")
 }
 
 func TestMCPServerGetHealth(t *testing.T) {
@@ -341,19 +627,120 @@ func TestInstrumentMCPToolLogsHandlerFailure(t *testing.T) {
 func newMCPTestServer(t *testing.T, enabled bool, apiSecret string, maxPayloadSize int64) (*httptest.Server, []string) {
 	t.Helper()
 
+	h := &handlerData{appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
+
+	return newMCPTestServerWithHandler(t, enabled, apiSecret, maxPayloadSize, h)
+}
+
+func newMCPTestServerWithHandler(t *testing.T, enabled bool, apiSecret string, maxPayloadSize int64, handler *handlerData) (*httptest.Server, []string) {
+	t.Helper()
+
 	config := &app.Config{
 		ApiSecret:      apiSecret,
 		McpEnabled:     enabled,
 		MaxPayloadSize: maxPayloadSize,
 	}
-	log := logger.New(logger.LevelCritical)
-	handler := &handlerData{appConfig: &app.Config{}, appVersion: app.Version, log: log}
+	log := handler.log
 	mux := http.NewServeMux()
 	enabledEndpoints := registerApiEndpoints(config, handler, log, mux)
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 
 	return server, enabledEndpoints
+}
+
+func callMCPTool(t *testing.T, session *mcp.ClientSession, name string, arguments any) *mcp.CallToolResult {
+	t.Helper()
+
+	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: name, Arguments: arguments})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.IsError {
+		t.Fatalf("%s returned a tool error: %#v", name, result.Content)
+	}
+
+	return result
+}
+
+func assertMCPToolError(t *testing.T, session *mcp.ClientSession, name string, arguments any, contains string) {
+	t.Helper()
+
+	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: name, Arguments: arguments})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !result.IsError {
+		t.Fatalf("expected %s tool error, got %#v", name, result)
+	}
+
+	encoded, err := json.Marshal(result.Content)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(strings.ToLower(string(encoded)), strings.ToLower(contains)) {
+		t.Fatalf("expected %s error to contain %q, got %s", name, contains, encoded)
+	}
+}
+
+func decodeMCPStructuredContent(t *testing.T, result *mcp.CallToolResult, output any) {
+	t.Helper()
+
+	encoded, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := json.Unmarshal(encoded, output); err != nil {
+		t.Fatalf("decode structured content %s: %v", encoded, err)
+	}
+}
+
+func containsProject(projects []api.Stack, name string) bool {
+	for _, project := range projects {
+		if project.Name == name {
+			return true
+		}
+	}
+
+	return false
+}
+
+func containsScheduledJob(jobs []scheduler.JobInfo, stack string) bool {
+	for _, job := range jobs {
+		if job.Stack == stack {
+			return true
+		}
+	}
+
+	return false
+}
+
+func toolSchemaHasProperty(schema any, property string) bool {
+	schemaMap, ok := schema.(map[string]any)
+	if !ok {
+		return false
+	}
+
+	properties, ok := schemaMap["properties"].(map[string]any)
+	if !ok {
+		return false
+	}
+
+	_, ok = properties[property]
+
+	return ok
+}
+
+func skipWithoutLiveDocker(t *testing.T) {
+	t.Helper()
+
+	if os.Getenv("DOCO_CD_TEST_FAKE_DOCKER") != "" {
+		t.Skip("requires a live Docker daemon")
+	}
 }
 
 func connectMCPTestClient(t *testing.T, server *httptest.Server) *mcp.ClientSession {
@@ -382,13 +769,7 @@ func connectMCPTestClient(t *testing.T, server *httptest.Server) *mcp.ClientSess
 }
 
 func containsEndpoint(endpoints []string, target string) bool {
-	for _, endpoint := range endpoints {
-		if endpoint == target {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(endpoints, target)
 }
 
 func histogramSampleCount(t *testing.T, observer prometheus.Observer) uint64 {
