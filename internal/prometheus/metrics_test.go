@@ -4,10 +4,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	clientPrometheus "github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
@@ -77,5 +79,33 @@ func TestDeploymentMetricsIncludeRepositoryAndDeploymentLabels(t *testing.T) {
 	linePattern := regexp.MustCompile(`doco_cd_deployments_total\{[^}]*deployment="test-stack"[^}]*repository="github.com/example/repo"[^}]*\}\s+1`)
 	if !linePattern.MatchString(rr.Body.String()) {
 		t.Fatalf("expected deployments_total with repository and deployment labels, got:\n%s", rr.Body.String())
+	}
+}
+
+func TestMCPMetricsAreRegistered(t *testing.T) {
+	t.Parallel()
+
+	McpRequestsTotal.WithLabelValues("list_projects").Inc()
+	McpErrorsTotal.WithLabelValues("list_projects").Inc()
+	McpRequestDuration.WithLabelValues("list_projects").Observe(0.1)
+
+	metricFamilies, err := clientPrometheus.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+
+	metricNames := make([]string, 0, len(metricFamilies))
+	for _, metricFamily := range metricFamilies {
+		metricNames = append(metricNames, metricFamily.GetName())
+	}
+
+	for _, expectedName := range []string{
+		"doco_cd_mcp_requests_total",
+		"doco_cd_mcp_errors_total",
+		"doco_cd_mcp_request_duration_seconds",
+	} {
+		if !slices.Contains(metricNames, expectedName) {
+			t.Errorf("expected gathered metrics to contain %q", expectedName)
+		}
 	}
 }
