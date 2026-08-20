@@ -11,7 +11,7 @@ network access beyond image pulls.
 ## Run
 
 ```sh
-./test/e2e/run.sh                       # all scenarios
+make test-e2e                           # all scenarios
 ./test/e2e/run.sh failed-deploy-retry   # one scenario
 KEEP=1 ./test/e2e/run.sh <scenario>     # keep the harness up for debugging
 ```

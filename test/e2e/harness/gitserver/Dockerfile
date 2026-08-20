@@ -1,5 +1,5 @@
-FROM alpine:3.22
-RUN apk add --no-cache git git-daemon nginx fcgiwrap spawn-fcgi \
+FROM nginx:1.29-alpine
+RUN apk add --no-cache git git-daemon fcgiwrap spawn-fcgi \
     && test -x /usr/libexec/git-core/git-http-backend \
     # bind-mounted repos are owned by the host user (CI: uid 1001), while
     # git-http-backend runs as root - without this git refuses them with

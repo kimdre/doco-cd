@@ -1,7 +1,7 @@
 GO_BIN?=$(shell pwd)/.bin
 BINARY_DIR=bin
 BINARY_NAME=doco-cd
-.PHONY: test test-verbose test-coverage test-run build fmt lint update update-all download tools compose-up compose-down wiki-tools wiki-build wiki-serve wiki-version-publish
+.PHONY: test test-verbose test-coverage test-run test-e2e build fmt lint update update-all download tools compose-up compose-down wiki-tools wiki-build wiki-serve wiki-version-publish
 
 ifneq (,$(wildcard ./.env))
     include .env
@@ -42,6 +42,11 @@ test-coverage:
 test-run:
 	@echo "Running tests: $(filter-out $@,$(MAKECMDGOALS))"
 	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" ${COMPILER} go test ${BUILD_FLAGS} -cover ./... -timeout 10m -run $(filter-out $@,$(MAKECMDGOALS))
+
+# Run e2e scenarios against a real doco-cd built from the working tree.
+# Optionally pass scenario names: make test-e2e E2E_SCENARIOS="failed-deploy-retry"
+test-e2e:
+	@./test/e2e/run.sh $(E2E_SCENARIOS)
 
 build:
 	mkdir -p $(BINARY_DIR)
