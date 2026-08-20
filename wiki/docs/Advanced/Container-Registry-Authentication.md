@@ -49,6 +49,9 @@ services:
 !!! note "File permissions"
     Make sure the mounted file has the correct permissions and is readable inside the container.
 
+!!! tip "Short-lived registry tokens (ECR, GCR, ACR)"
+    Doco-CD re-reads the config file from disk on every registry auth lookup, so credentials refreshed on disk (for example an ECR token rotated by a cron with `aws ecr get-login-password | docker login`) take effect without a restart of doco-cd.
+
 ## Using a custom docker config file
 
 1. Encode your credentials to base64 (here we use `printf` to avoid the trailing newline, you can also use `echo -n`):
