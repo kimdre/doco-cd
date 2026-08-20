@@ -25,6 +25,11 @@ func SetDisableSwarmFeature(ignore bool) {
 	disableSwarmFeature.Store(ignore)
 }
 
+// GetDisableSwarmFeature returns whether swarm features are explicitly disabled.
+func GetDisableSwarmFeature() bool {
+	return disableSwarmFeature.Load()
+}
+
 // GetModeEnabled, Whether the docker host is running in swarm mode,
 // it will return false if ignoreSwarmFeature is true.
 func GetModeEnabled() bool {

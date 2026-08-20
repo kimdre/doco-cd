@@ -188,6 +188,17 @@ func TestMCPServerListsReadOnlyTools(t *testing.T) {
 			t.Fatalf("get_project description must say it returns the project's containers: %q", tool.Description)
 		}
 
+		if tool.Name == "list_deployment_runs" {
+			limitSchema := toolSchemaProperty(t, tool.InputSchema, "limit")
+			if minimum, ok := limitSchema["minimum"].(float64); !ok || minimum != 1 {
+				t.Fatalf("list_deployment_runs limit minimum = %#v, want 1", limitSchema["minimum"])
+			}
+
+			if _, ok := limitSchema["maximum"]; ok {
+				t.Fatalf("list_deployment_runs limit schema must not set maximum: %#v", limitSchema)
+			}
+		}
+
 		for _, property := range wantInputProperties[tool.Name] {
 			if !toolSchemaHasProperty(tool.InputSchema, property) {
 				t.Fatalf("%s input schema must contain snake_case property %q: %#v", tool.Name, property, tool.InputSchema)
@@ -351,6 +362,16 @@ func TestMCPGetProjectRequiresName(t *testing.T) {
 	assertMCPToolError(t, session, "get_project", map[string]any{"project_name": "  "}, "missing project name")
 }
 
+func TestMCPDockerReadToolsRequireDockerCLI(t *testing.T) {
+	h := &handlerData{appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
+	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
+	session := connectMCPTestClient(t, server)
+
+	assertMCPToolError(t, session, "list_scheduled_jobs", map[string]any{}, "docker cli is required")
+	assertMCPToolError(t, session, "list_projects", map[string]any{}, "docker cli is required")
+	assertMCPToolError(t, session, "get_project", map[string]any{"project_name": "project"}, "docker cli is required")
+}
+
 func TestMCPScheduledJobsTool(t *testing.T) {
 	skipWithoutLiveDocker(t)
 
@@ -431,8 +452,11 @@ func TestMCPSwarmToolsDisabledAtRuntime(t *testing.T) {
 	}
 
 	t.Cleanup(func() { _ = dockerCli.Client().Close() })
+
+	previousDisableSwarmFeature := dockerswarm.GetDisableSwarmFeature()
+
 	dockerswarm.SetDisableSwarmFeature(true)
-	t.Cleanup(func() { dockerswarm.SetDisableSwarmFeature(false) })
+	t.Cleanup(func() { dockerswarm.SetDisableSwarmFeature(previousDisableSwarmFeature) })
 
 	h := &handlerData{dockerCli: dockerCli, appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
 	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
@@ -733,6 +757,27 @@ func toolSchemaHasProperty(schema any, property string) bool {
 	_, ok = properties[property]
 
 	return ok
+}
+
+func toolSchemaProperty(t *testing.T, schema any, property string) map[string]any {
+	t.Helper()
+
+	schemaMap, ok := schema.(map[string]any)
+	if !ok {
+		t.Fatalf("expected object schema, got %T", schema)
+	}
+
+	properties, ok := schemaMap["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected schema properties, got %#v", schemaMap["properties"])
+	}
+
+	propertySchema, ok := properties[property].(map[string]any)
+	if !ok {
+		t.Fatalf("expected schema for property %q, got %#v", property, properties[property])
+	}
+
+	return propertySchema
 }
 
 func skipWithoutLiveDocker(t *testing.T) {

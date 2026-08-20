@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/docker/compose/v5/pkg/api"
+	"github.com/google/jsonschema-go/jsonschema"
 	dockerswarmtypes "github.com/moby/moby/api/types/swarm"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -74,10 +75,18 @@ type getStackOutput struct {
 func (h *handlerData) addReadOnlyMCPTools(server *mcp.Server) {
 	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true}
 
+	listDeploymentRunsSchema, err := jsonschema.For[listDeploymentRunsInput](nil)
+	if err != nil {
+		panic(fmt.Sprintf("infer list_deployment_runs input schema: %v", err))
+	}
+
+	listDeploymentRunsSchema.Properties["limit"].Minimum = jsonschema.Ptr(1.0)
+
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_deployment_runs",
 		Description: "List recent deployment runs, optionally filtered by status and trigger.",
 		Annotations: readOnly,
+		InputSchema: listDeploymentRunsSchema,
 	}, instrumentMCPTool(h.log, "list_deployment_runs", h.listDeploymentRuns))
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_deployment_run",
@@ -158,6 +167,10 @@ func (h *handlerData) getDeploymentRun(_ context.Context, _ *mcp.CallToolRequest
 }
 
 func (h *handlerData) listScheduledJobs(ctx context.Context, _ *mcp.CallToolRequest, input listScheduledJobsInput) (*mcp.CallToolResult, listScheduledJobsOutput, error) {
+	if h.dockerCli == nil {
+		return nil, listScheduledJobsOutput{}, errors.New("docker cli is required")
+	}
+
 	jobs, err := scheduler.ListJobs(ctx, h.dockerCli, strings.TrimSpace(input.Stack))
 	if err != nil {
 		return nil, listScheduledJobsOutput{}, fmt.Errorf("failed to list scheduled jobs: %w", err)
@@ -167,6 +180,10 @@ func (h *handlerData) listScheduledJobs(ctx context.Context, _ *mcp.CallToolRequ
 }
 
 func (h *handlerData) listProjects(ctx context.Context, _ *mcp.CallToolRequest, input listProjectsInput) (*mcp.CallToolResult, listProjectsOutput, error) {
+	if h.dockerCli == nil {
+		return nil, listProjectsOutput{}, errors.New("docker cli is required")
+	}
+
 	projects, err := docker.GetProjects(ctx, h.dockerCli, input.All)
 	if err != nil {
 		return nil, listProjectsOutput{}, fmt.Errorf("failed to get projects: %w", err)
@@ -185,9 +202,13 @@ func (h *handlerData) getProject(ctx context.Context, _ *mcp.CallToolRequest, in
 		return nil, getProjectOutput{}, errors.New("missing project name")
 	}
 
+	if h.dockerCli == nil {
+		return nil, getProjectOutput{}, errors.New("docker cli is required")
+	}
+
 	containers, err := docker.GetProjectContainers(ctx, h.dockerCli, projectName)
 	if err != nil {
-		return nil, getProjectOutput{}, fmt.Errorf("failed to get project %s: %w", projectName, err)
+		return nil, getProjectOutput{}, fmt.Errorf("failed to get project: %s: %w", projectName, err)
 	}
 
 	if len(containers) == 0 {
@@ -226,7 +247,7 @@ func (h *handlerData) getStack(ctx context.Context, _ *mcp.CallToolRequest, inpu
 
 	services, err := swarm.GetStackServices(ctx, h.dockerCli.Client(), stackName)
 	if err != nil {
-		return nil, getStackOutput{}, fmt.Errorf("failed to get stack %s: %w", stackName, err)
+		return nil, getStackOutput{}, fmt.Errorf("failed to get stack: %s: %w", stackName, err)
 	}
 
 	if len(services) == 0 {
