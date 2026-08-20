@@ -74,6 +74,12 @@ func registerApiEndpoints(c *app.Config, h *handlerData, log *logger.Logger, mux
 		log.Info("api endpoints disabled, no api secret configured")
 	}
 
+	if c.McpEnabled && c.ApiSecret != "" {
+		enabledEndpoints = append(enabledEndpoints, mcpPath)
+		mux.Handle("POST "+mcpPath, h.newMCPHandler(c))
+		log.Debug("register MCP endpoint", slog.String("path", mcpPath))
+	}
+
 	if c.WebhookSecret != "" {
 		enabledEndpoints = append(enabledEndpoints, webhookPath)
 
