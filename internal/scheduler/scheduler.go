@@ -475,6 +475,8 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 				nextRun:     schedule.Next(now),
 				deployment:  deploymentID,
 				cfg:         cfg,
+				// Keep last run across fingerprint changes (schedule/label edits).
+				lastRun: prevState.lastRun,
 			}
 
 			s.states[job.key] = state
@@ -1547,11 +1549,23 @@ func schedulerNow() time.Time {
 	return time.Now().In(time.Local)
 }
 
+// setRuntimeStatesSnapshot merges in the loop's recomputed states, keeping
+// the newer lastRun so a manually triggered run isn't wiped by the next tick.
 func setRuntimeStatesSnapshot(states map[string]scheduledJobState) {
 	runtimeStatesMu.Lock()
 	defer runtimeStatesMu.Unlock()
 
-	runtimeStates = copyMapLocked(states)
+	merged := make(map[string]scheduledJobState, len(states))
+
+	for key, state := range states {
+		if existing, ok := runtimeStates[key]; ok && existing.lastRun.After(state.lastRun) {
+			state.lastRun = existing.lastRun
+		}
+
+		merged[key] = state
+	}
+
+	runtimeStates = merged
 }
 
 func getRuntimeStatesSnapshot() map[string]scheduledJobState {
