@@ -3,6 +3,8 @@ BINARY_DIR=bin
 BINARY_NAME=doco-cd
 .PHONY: test test-verbose test-coverage test-run build fmt lint update update-all download tools compose-up compose-down wiki-tools wiki-build wiki-serve wiki-version-publish
 
+.DEFAULT_GOAL := build
+
 ifneq (,$(wildcard ./.env))
     include .env
     export
