@@ -532,8 +532,6 @@ func (h *handlerData) GetProjectsApiHandler(w http.ResponseWriter, r *http.Reque
 func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	var err error
-
 	// Add a job id to the context to track deployments in the logs
 	jobID := id.GenID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", h.requestIP(r)))
@@ -549,7 +547,7 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 
 	projectName := r.PathValue("projectName")
 	if projectName == "" {
-		err = errors.New("missing project name")
+		err := errors.New("missing project name")
 		jobLog.Error(err.Error())
 		JSONError(w, err, "", jobID, http.StatusBadRequest)
 
@@ -558,9 +556,17 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 
 	timeoutSec := getQueryParam(r, w, jobLog, jobID, "timeout", "int", 30).(int)
 
-	if err = h.requireProject(ctx, projectName); err != nil {
+	if !requireMethod(w, jobLog, r, http.MethodPost) {
+		return
+	}
+
+	action := r.PathValue("action")
+
+	result, err := h.runProjectAction(ctx, projectName, action, timeoutSec, jobLog)
+	if err != nil {
 		if errors.Is(err, errProjectNotFound) {
 			JSONError(w, err.Error(), "", jobID, http.StatusNotFound)
+
 			return
 		}
 
@@ -572,31 +578,22 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 
 			return
 		}
-	}
 
-	action := r.PathValue("action")
-	switch action {
-	case "start", "stop", "restart":
-		if !requireMethod(w, jobLog, r, http.MethodPost) {
-			return
-		}
-
-		result, err := h.executeProjectAction(ctx, projectName, action, timeoutSec, jobLog)
-		if err != nil {
-			errMsg := "failed to " + action + " project"
-			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
-			JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
+		if errors.Is(err, restAPI.ErrInvalidAction) {
+			jobLog.Error(restAPI.ErrInvalidAction.Error())
+			JSONError(w, restAPI.ErrInvalidAction.Error(), "action not supported: "+action, jobID, http.StatusBadRequest)
 
 			return
 		}
 
-		JSONResponse(w, result.Message, jobID, http.StatusOK)
-	default:
-		jobLog.Error(restAPI.ErrInvalidAction.Error())
-		JSONError(w, restAPI.ErrInvalidAction.Error(), "action not supported: "+action, jobID, http.StatusBadRequest)
+		errMsg := "failed to " + action + " project"
+		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+		JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
 
 		return
 	}
+
+	JSONResponse(w, result.Message, jobID, http.StatusOK)
 }
 
 var errProjectNotFound = errors.New("project not found")
@@ -697,6 +694,7 @@ func (h *handlerData) executeProjectAction(ctx context.Context, projectName, act
 	default:
 		return projectActionResult{}, fmt.Errorf("%w: action not supported: %s", restAPI.ErrInvalidAction, action)
 	}
+
 	result.ProjectName = projectName
 	result.Action = action
 

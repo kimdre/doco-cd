@@ -62,7 +62,7 @@ func (h *handlerData) addProjectMCPTools(server *mcp.Server) {
 	}, instrumentMCPTool(h.log, "control_project", h.controlProject))
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "destroy_project",
-		Description: "Destroy a Docker Compose project and optionally remove its volumes and images. Reconciliation-managed projects may be restored automatically.",
+		Description: "Destroy a Docker Compose project and optionally remove its volumes and images. Reconciliation-managed projects may be restored automatically by drift recovery.",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &destructive,
 			IdempotentHint:  true,

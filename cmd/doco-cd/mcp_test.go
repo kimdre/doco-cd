@@ -234,8 +234,9 @@ func TestMCPServerListsTools(t *testing.T) {
 		if tool.Name == "destroy_project" {
 			assertMCPProjectToolAnnotations(t, tool, true, true)
 
-			if !strings.Contains(strings.ToLower(tool.Description), "restored automatically") {
-				t.Fatalf("destroy_project description must warn about reconciliation: %q", tool.Description)
+			description := strings.ToLower(tool.Description)
+			if !strings.Contains(description, "restored automatically") || !strings.Contains(description, "drift recovery") {
+				t.Fatalf("destroy_project description must warn about reconciliation drift recovery: %q", tool.Description)
 			}
 		}
 
