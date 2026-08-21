@@ -143,11 +143,13 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 		{"Restart Project - With Timeout", "/project/{projectName}/{action}", "/project/{projectName}/restart?timeout=60", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK},
 		{"Restart Project - Invalid Timeout", "/project/{projectName}/{action}", "/project/{projectName}/restart?timeout=x", http.MethodPost, h.ProjectActionApiHandler, http.StatusBadRequest},
 		{"Restart Project - Invalid Method", "/project/{projectName}/{action}", "/project/{projectName}/restart", http.MethodGet, h.ProjectActionApiHandler, http.StatusMethodNotAllowed},
-		{"Restart Project - Invalid Method and Non-existent Project", "/project/{projectName}/{action}", "/project/nonexistent/restart", http.MethodGet, h.ProjectActionApiHandler, http.StatusMethodNotAllowed},
+		{"Restart Project - Invalid Method and Non-existent Project", "/project/{projectName}/{action}", "/project/nonexistent/restart", http.MethodGet, h.ProjectActionApiHandler, http.StatusNotFound},
 		{"Stop Project", "/project/{projectName}/{action}", "/project/{projectName}/stop", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK},
+		{"Stop Project - Invalid Method", "/project/{projectName}/{action}", "/project/{projectName}/stop", http.MethodGet, h.ProjectActionApiHandler, http.StatusMethodNotAllowed},
 		{"Stop Project - Non-existent Project", "/project/{projectName}/{action}", "/project/nonexistent/stop", http.MethodPost, h.ProjectActionApiHandler, http.StatusNotFound},
 		{"Start Project", "/project/{projectName}/{action}", "/project/{projectName}/start", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK},
 		{"Invalid Action", "/project/{projectName}/{action}", "/project/{projectName}/invalid", http.MethodPost, h.ProjectActionApiHandler, http.StatusBadRequest},
+		{"Invalid Action - Invalid Method", "/project/{projectName}/{action}", "/project/{projectName}/invalid", http.MethodGet, h.ProjectActionApiHandler, http.StatusBadRequest},
 		{"Invalid Action - Non-existent Project", "/project/{projectName}/{action}", "/project/nonexistent/invalid", http.MethodPost, h.ProjectActionApiHandler, http.StatusNotFound},
 	}
 
@@ -186,6 +188,17 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 
 			if status := rr.Code; status != tc.expectedStatus {
 				t.Errorf("handler returned wrong status code: got %v want %v", status, tc.expectedStatus)
+			}
+
+			if tc.name == "Stop Project - Invalid Method" {
+				containers, err := docker.GetProjectContainers(ctx, dockerCli, stackName)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if len(containers) == 0 || !strings.EqualFold(string(containers[0].State), "running") {
+					t.Fatalf("invalid method must not stop project containers: %#v", containers)
+				}
 			}
 		})
 	}

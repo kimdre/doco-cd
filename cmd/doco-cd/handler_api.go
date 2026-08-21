@@ -555,14 +555,9 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	timeoutSec := getQueryParam(r, w, jobLog, jobID, "timeout", "int", 30).(int)
-
-	if !requireMethod(w, jobLog, r, http.MethodPost) {
-		return
-	}
-
 	action := r.PathValue("action")
 
-	result, err := h.runProjectAction(ctx, projectName, action, timeoutSec, jobLog)
+	operation, err := h.resolveProjectAction(ctx, projectName, action, timeoutSec)
 	if err != nil {
 		if errors.Is(err, errProjectNotFound) {
 			JSONError(w, err.Error(), "", jobID, http.StatusNotFound)
@@ -586,6 +581,19 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 			return
 		}
 
+		errMsg := "failed to " + action + " project"
+		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+		JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
+
+		return
+	}
+
+	if !requireMethod(w, jobLog, r, http.MethodPost) {
+		return
+	}
+
+	result, err := h.executeProjectAction(ctx, operation, jobLog)
+	if err != nil {
 		errMsg := "failed to " + action + " project"
 		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 		JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
@@ -624,6 +632,13 @@ type projectActionResult struct {
 	Message     string
 }
 
+type projectActionOperation struct {
+	projectName string
+	action      string
+	message     string
+	execute     func(context.Context, *slog.Logger) error
+}
+
 func (h *handlerData) destroyProject(ctx context.Context, projectName string, timeoutSec int, removeVolumes, removeImages bool, jobLog *slog.Logger) (destroyProjectResult, error) {
 	if h.dockerCli == nil {
 		return destroyProjectResult{}, errors.New("docker cli is required")
@@ -644,11 +659,49 @@ func (h *handlerData) destroyProject(ctx context.Context, projectName string, ti
 }
 
 func (h *handlerData) runProjectAction(ctx context.Context, projectName, action string, timeoutSec int, jobLog *slog.Logger) (projectActionResult, error) {
-	if err := h.requireProject(ctx, projectName); err != nil {
+	operation, err := h.resolveProjectAction(ctx, projectName, action, timeoutSec)
+	if err != nil {
 		return projectActionResult{}, err
 	}
 
-	return h.executeProjectAction(ctx, projectName, action, timeoutSec, jobLog)
+	return h.executeProjectAction(ctx, operation, jobLog)
+}
+
+func (h *handlerData) resolveProjectAction(ctx context.Context, projectName, action string, timeoutSec int) (projectActionOperation, error) {
+	if err := h.requireProject(ctx, projectName); err != nil {
+		return projectActionOperation{}, err
+	}
+
+	timeout := time.Duration(timeoutSec) * time.Second
+	operation := projectActionOperation{projectName: projectName, action: action}
+
+	switch action {
+	case "start":
+		operation.message = "project started: " + projectName
+		operation.execute = func(ctx context.Context, jobLog *slog.Logger) error {
+			jobLog.Info("starting project", slog.String("project", projectName))
+
+			return docker.StartProject(ctx, h.dockerCli, projectName, timeout)
+		}
+	case "stop":
+		operation.message = "project stopped: " + projectName
+		operation.execute = func(ctx context.Context, jobLog *slog.Logger) error {
+			jobLog.Info("stopping project", slog.String("project", projectName))
+
+			return docker.StopProject(ctx, h.dockerCli, projectName, timeout)
+		}
+	case "restart":
+		operation.message = "project restarted: " + projectName
+		operation.execute = func(ctx context.Context, jobLog *slog.Logger) error {
+			jobLog.Info("restarting project", slog.String("project", projectName))
+
+			return docker.RestartProject(ctx, h.dockerCli, projectName, timeout)
+		}
+	default:
+		return projectActionOperation{}, fmt.Errorf("%w: action not supported: %s", restAPI.ErrInvalidAction, action)
+	}
+
+	return operation, nil
 }
 
 func (h *handlerData) requireProject(ctx context.Context, projectName string) error {
@@ -668,41 +721,16 @@ func (h *handlerData) requireProject(ctx context.Context, projectName string) er
 	return nil
 }
 
-func (h *handlerData) executeProjectAction(ctx context.Context, projectName, action string, timeoutSec int, jobLog *slog.Logger) (projectActionResult, error) {
-	if h.dockerCli == nil {
-		return projectActionResult{}, errors.New("docker cli is required")
-	}
-
-	var (
-		result projectActionResult
-		err    error
-	)
-
-	switch action {
-	case "start":
-		jobLog.Info("starting project", slog.String("project", projectName))
-		err = docker.StartProject(ctx, h.dockerCli, projectName, time.Duration(timeoutSec)*time.Second)
-		result.Message = "project started: " + projectName
-	case "stop":
-		jobLog.Info("stopping project", slog.String("project", projectName))
-		err = docker.StopProject(ctx, h.dockerCli, projectName, time.Duration(timeoutSec)*time.Second)
-		result.Message = "project stopped: " + projectName
-	case "restart":
-		jobLog.Info("restarting project", slog.String("project", projectName))
-		err = docker.RestartProject(ctx, h.dockerCli, projectName, time.Duration(timeoutSec)*time.Second)
-		result.Message = "project restarted: " + projectName
-	default:
-		return projectActionResult{}, fmt.Errorf("%w: action not supported: %s", restAPI.ErrInvalidAction, action)
-	}
-
-	result.ProjectName = projectName
-	result.Action = action
-
-	if err != nil {
+func (h *handlerData) executeProjectAction(ctx context.Context, operation projectActionOperation, jobLog *slog.Logger) (projectActionResult, error) {
+	if err := operation.execute(ctx, jobLog); err != nil {
 		return projectActionResult{}, err
 	}
 
-	return result, nil
+	return projectActionResult{
+		ProjectName: operation.projectName,
+		Action:      operation.action,
+		Message:     operation.message,
+	}, nil
 }
 
 // StackActionApiHandler handles API requests to manage Docker Swarm stacks.
