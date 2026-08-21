@@ -1,0 +1,64 @@
+# doco-cd + Apprise sidecar. Same file on both VMs — only poll.yaml differs.
+# Lives on the VM (e.g. /opt/doco-cd/), NOT in the app repo.
+services:
+  doco-cd:
+    image: ghcr.io/kimdre/doco-cd:latest # pin tag+digest in real use
+    restart: unless-stopped
+    # secrets.env: GIT_ACCESS_TOKEN (private repo), PG_PASSWORD (forwarded to
+    # the stacks via PASS_ENV), APPRISE_NOTIFY_URLS (carries the bot token).
+    env_file:
+      - secrets.env
+    environment:
+      TZ: Etc/UTC
+      POLL_CONFIG_FILE: /etc/doco-cd/poll.yaml
+      PASS_ENV: "true"
+      # Notifications -> Telegram (or 100+ other targets) via the Apprise
+      # sidecar. `success` is a MINIMUM level: fires on completed/failed
+      # deploys + reconciliation warnings, never per-poll.
+      APPRISE_API_URL: http://apprise:8000/notify
+      APPRISE_NOTIFY_LEVEL: success
+      # Compact body (default is verbose): identity one-liner, then one line
+      # per deployed commit. Validated at startup — a bad field means the
+      # daemon won't boot. Notes:
+      #   - .Message carries the failure reason and is appended only on
+      #     non-success — without it a failed deploy pings with no error.
+      #   - .Commits is empty on first deploy / failures / reconcile events,
+      #     so the body degrades back to the one-liner.
+      #   - the repo prefix is a literal: each daemon polls one repo anyway.
+      APPRISE_NOTIFY_BODY_TEMPLATE: |-
+        myapp -> {{.Stack}} @ {{.Revision}}{{if .IsReconciliation}} · {{.ReconciliationEvent}}{{else}} in {{.Duration}}{{end}}{{if ne .Level "success"}} — {{.Message}}{{end}}
+        {{- range .Commits }}
+        - {{ . }}
+        {{- end }}
+    depends_on:
+      # started, not healthy: a broken apprise must never block polling.
+      - apprise
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./poll.yaml:/etc/doco-cd/poll.yaml:ro
+      - data:/data
+    healthcheck:
+      test: ["CMD", "/doco-cd", "healthcheck"]
+      start_period: 15s
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Apprise API server — doco-cd's notification transport. Stateless,
+  # internal-only (no published port; reached at apprise:8000 on the compose
+  # network). Turns doco-cd's POST into the actual Telegram/Slack/email call.
+  apprise:
+    image: caronc/apprise:latest
+    restart: unless-stopped
+    environment:
+      TZ: Etc/UTC
+      APPRISE_WORKER_COUNT: 1
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  data:

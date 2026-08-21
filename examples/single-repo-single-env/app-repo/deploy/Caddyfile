@@ -1,0 +1,5 @@
+# Edits here auto-apply: doco-cd force-recreates caddy on the next poll after
+# the change lands on main.
+{$APP_DOMAIN} {
+	reverse_proxy app:80
+}
