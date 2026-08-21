@@ -616,7 +616,7 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 
 	action := r.PathValue("action")
 
-	operation, err := h.resolveProjectAction(ctx, projectName, action, timeoutSec)
+	operation, err := h.resolveProjectAction(ctx, projectName, action)
 	if err != nil {
 		if errors.Is(err, errProjectNotFound) {
 			JSONError(w, err.Error(), "", jobID, http.StatusNotFound)
@@ -640,12 +640,6 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 			return
 		}
 
-		if errors.Is(err, errInvalidProjectTimeout) {
-			JSONError(w, err.Error(), "", jobID, http.StatusBadRequest)
-
-			return
-		}
-
 		errMsg := "failed to " + action + " project"
 		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 		JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
@@ -657,8 +651,14 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	result, err := h.executeProjectAction(ctx, operation, jobLog)
+	result, err := h.executeProjectAction(ctx, operation, timeoutSec, jobLog)
 	if err != nil {
+		if errors.Is(err, errInvalidProjectTimeout) {
+			JSONError(w, err.Error(), "", jobID, http.StatusBadRequest)
+
+			return
+		}
+
 		errMsg := "failed to " + action + " project"
 		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 		JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
@@ -701,7 +701,7 @@ type projectActionOperation struct {
 	projectName string
 	action      string
 	message     string
-	execute     func(context.Context, *slog.Logger) error
+	execute     func(context.Context, time.Duration, *slog.Logger) error
 }
 
 func (h *handlerData) destroyProject(ctx context.Context, projectName string, timeoutSec int, removeVolumes, removeImages bool, jobLog *slog.Logger) (destroyProjectResult, error) {
@@ -729,21 +729,16 @@ func (h *handlerData) destroyProject(ctx context.Context, projectName string, ti
 }
 
 func (h *handlerData) runProjectAction(ctx context.Context, projectName, action string, timeoutSec int, jobLog *slog.Logger) (projectActionResult, error) {
-	operation, err := h.resolveProjectAction(ctx, projectName, action, timeoutSec)
+	operation, err := h.resolveProjectAction(ctx, projectName, action)
 	if err != nil {
 		return projectActionResult{}, err
 	}
 
-	return h.executeProjectAction(ctx, operation, jobLog)
+	return h.executeProjectAction(ctx, operation, timeoutSec, jobLog)
 }
 
-func (h *handlerData) resolveProjectAction(ctx context.Context, projectName, action string, timeoutSec int) (projectActionOperation, error) {
+func (h *handlerData) resolveProjectAction(ctx context.Context, projectName, action string) (projectActionOperation, error) {
 	if err := h.requireProject(ctx, projectName); err != nil {
-		return projectActionOperation{}, err
-	}
-
-	timeout, err := projectActionTimeout(timeoutSec)
-	if err != nil {
 		return projectActionOperation{}, err
 	}
 
@@ -752,21 +747,21 @@ func (h *handlerData) resolveProjectAction(ctx context.Context, projectName, act
 	switch action {
 	case "start":
 		operation.message = "project started: " + projectName
-		operation.execute = func(ctx context.Context, jobLog *slog.Logger) error {
+		operation.execute = func(ctx context.Context, timeout time.Duration, jobLog *slog.Logger) error {
 			jobLog.Info("starting project", slog.String("project", projectName))
 
 			return docker.StartProject(ctx, h.dockerCli, projectName, timeout)
 		}
 	case "stop":
 		operation.message = "project stopped: " + projectName
-		operation.execute = func(ctx context.Context, jobLog *slog.Logger) error {
+		operation.execute = func(ctx context.Context, timeout time.Duration, jobLog *slog.Logger) error {
 			jobLog.Info("stopping project", slog.String("project", projectName))
 
 			return docker.StopProject(ctx, h.dockerCli, projectName, timeout)
 		}
 	case "restart":
 		operation.message = "project restarted: " + projectName
-		operation.execute = func(ctx context.Context, jobLog *slog.Logger) error {
+		operation.execute = func(ctx context.Context, timeout time.Duration, jobLog *slog.Logger) error {
 			jobLog.Info("restarting project", slog.String("project", projectName))
 
 			return docker.RestartProject(ctx, h.dockerCli, projectName, timeout)
@@ -805,8 +800,13 @@ func (h *handlerData) requireProject(ctx context.Context, projectName string) er
 	return nil
 }
 
-func (h *handlerData) executeProjectAction(ctx context.Context, operation projectActionOperation, jobLog *slog.Logger) (projectActionResult, error) {
-	if err := operation.execute(ctx, jobLog); err != nil {
+func (h *handlerData) executeProjectAction(ctx context.Context, operation projectActionOperation, timeoutSec int, jobLog *slog.Logger) (projectActionResult, error) {
+	timeout, err := projectActionTimeout(timeoutSec)
+	if err != nil {
+		return projectActionResult{}, err
+	}
+
+	if err := operation.execute(ctx, timeout, jobLog); err != nil {
 		return projectActionResult{}, err
 	}
 
