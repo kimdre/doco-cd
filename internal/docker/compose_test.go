@@ -2285,6 +2285,28 @@ func TestRemoveProject(t *testing.T) {
 	}
 }
 
+func TestProjectDownOptionsImageRemoval(t *testing.T) {
+	t.Parallel()
+
+	for _, testCase := range []struct {
+		name         string
+		removeImages bool
+		wantImages   string
+	}{
+		{name: "retain images", removeImages: false, wantImages: ""},
+		{name: "remove images", removeImages: true, wantImages: "all"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			options := projectDownOptions(time.Second, false, testCase.removeImages)
+			if options.Images != testCase.wantImages {
+				t.Fatalf("Images = %q, want %q", options.Images, testCase.wantImages)
+			}
+		})
+	}
+}
+
 func TestGetProject(t *testing.T) {
 	ctx := context.Background()
 

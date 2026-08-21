@@ -5,13 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"strings"
+	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-const defaultProjectActionTimeout = 30
+const (
+	defaultProjectActionTimeout = 30
+	maxProjectActionTimeout     = math.MaxInt64 / int64(time.Second)
+)
 
 type controlProjectInput struct {
 	ProjectName string `json:"project_name" jsonschema:"Compose project name"`
@@ -46,6 +51,14 @@ func (h *handlerData) addProjectMCPTools(server *mcp.Server) {
 	}
 
 	controlSchema.Properties["action"].Enum = []any{"start", "stop", "restart"}
+	setProjectTimeoutSchema(controlSchema)
+
+	destroySchema, err := jsonschema.For[destroyProjectInput](nil)
+	if err != nil {
+		panic(fmt.Sprintf("infer destroy_project input schema: %v", err))
+	}
+
+	setProjectTimeoutSchema(destroySchema)
 
 	destructive := true
 	closedWorld := false
@@ -68,7 +81,14 @@ func (h *handlerData) addProjectMCPTools(server *mcp.Server) {
 			IdempotentHint:  true,
 			OpenWorldHint:   &closedWorld,
 		},
+		InputSchema: destroySchema,
 	}, instrumentMCPTool(h.log, "destroy_project", h.destroyProjectTool))
+}
+
+func setProjectTimeoutSchema(schema *jsonschema.Schema) {
+	timeoutSchema := schema.Properties["timeout"]
+	timeoutSchema.Minimum = jsonschema.Ptr(1.0)
+	timeoutSchema.Maximum = jsonschema.Ptr(float64(maxProjectActionTimeout))
 }
 
 func (h *handlerData) controlProject(ctx context.Context, _ *mcp.CallToolRequest, input controlProjectInput) (*mcp.CallToolResult, controlProjectOutput, error) {

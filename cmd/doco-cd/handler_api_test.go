@@ -142,6 +142,7 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 		{"Restart Project - Non-existent Project", "/project/{projectName}/{action}", "/project/nonexistent/restart", http.MethodPost, h.ProjectActionApiHandler, http.StatusNotFound},
 		{"Restart Project - With Timeout", "/project/{projectName}/{action}", "/project/{projectName}/restart?timeout=60", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK},
 		{"Restart Project - Invalid Timeout", "/project/{projectName}/{action}", "/project/{projectName}/restart?timeout=x", http.MethodPost, h.ProjectActionApiHandler, http.StatusBadRequest},
+		{"Stop Project - Invalid Timeout", "/project/{projectName}/{action}", "/project/{projectName}/stop?timeout=x", http.MethodPost, h.ProjectActionApiHandler, http.StatusBadRequest},
 		{"Restart Project - Invalid Method", "/project/{projectName}/{action}", "/project/{projectName}/restart", http.MethodGet, h.ProjectActionApiHandler, http.StatusMethodNotAllowed},
 		{"Restart Project - Invalid Method and Non-existent Project", "/project/{projectName}/{action}", "/project/nonexistent/restart", http.MethodGet, h.ProjectActionApiHandler, http.StatusNotFound},
 		{"Stop Project", "/project/{projectName}/{action}", "/project/{projectName}/stop", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK},
@@ -190,7 +191,7 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 				t.Errorf("handler returned wrong status code: got %v want %v", status, tc.expectedStatus)
 			}
 
-			if tc.name == "Stop Project - Invalid Method" {
+			if tc.name == "Stop Project - Invalid Method" || tc.name == "Stop Project - Invalid Timeout" {
 				containers, err := docker.GetProjectContainers(ctx, dockerCli, stackName)
 				if err != nil {
 					t.Fatal(err)
@@ -198,6 +199,17 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 
 				if len(containers) == 0 || !strings.EqualFold(string(containers[0].State), "running") {
 					t.Fatalf("invalid method must not stop project containers: %#v", containers)
+				}
+			}
+
+			if strings.HasPrefix(tc.name, "Remove Project - Invalid") {
+				containers, err := docker.GetProjectContainers(ctx, dockerCli, stackName)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if len(containers) == 0 {
+					t.Fatal("invalid remove parameter must not remove project containers")
 				}
 			}
 		})

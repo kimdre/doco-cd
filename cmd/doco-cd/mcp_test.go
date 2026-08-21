@@ -224,6 +224,7 @@ func TestMCPServerListsTools(t *testing.T) {
 
 		if tool.Name == "control_project" {
 			assertMCPProjectToolAnnotations(t, tool, true, false)
+			assertMCPProjectTimeoutSchema(t, tool)
 
 			actionSchema := toolSchemaProperty(t, tool.InputSchema, "action")
 			if !slices.Equal(actionSchema["enum"].([]any), []any{"start", "stop", "restart"}) {
@@ -233,6 +234,7 @@ func TestMCPServerListsTools(t *testing.T) {
 
 		if tool.Name == "destroy_project" {
 			assertMCPProjectToolAnnotations(t, tool, true, true)
+			assertMCPProjectTimeoutSchema(t, tool)
 
 			description := strings.ToLower(tool.Description)
 			if !strings.Contains(description, "restored automatically") || !strings.Contains(description, "drift recovery") {
@@ -276,10 +278,14 @@ func TestMCPProjectToolValidation(t *testing.T) {
 		{name: "control missing action", tool: "control_project", arguments: map[string]any{"project_name": "project"}, contains: "action"},
 		{name: "control invalid action", tool: "control_project", arguments: map[string]any{"project_name": "project", "action": "invalid"}, contains: "not in enum"},
 		{name: "control invalid timeout", tool: "control_project", arguments: map[string]any{"project_name": "project", "action": "start", "timeout": "invalid"}, contains: "timeout"},
+		{name: "control zero timeout", tool: "control_project", arguments: map[string]any{"project_name": "project", "action": "start", "timeout": 0}, contains: "minimum"},
+		{name: "control overflowing timeout", tool: "control_project", arguments: map[string]any{"project_name": "project", "action": "start", "timeout": maxProjectActionTimeout + 1}, contains: "maximum"},
 		{name: "control nil docker", tool: "control_project", arguments: map[string]any{"project_name": "project", "action": "start"}, contains: "docker cli is required"},
 		{name: "destroy missing project", tool: "destroy_project", arguments: map[string]any{}, contains: "project_name"},
 		{name: "destroy blank project", tool: "destroy_project", arguments: map[string]any{"project_name": "  "}, contains: "missing project name"},
 		{name: "destroy invalid timeout", tool: "destroy_project", arguments: map[string]any{"project_name": "project", "timeout": "invalid"}, contains: "timeout"},
+		{name: "destroy zero timeout", tool: "destroy_project", arguments: map[string]any{"project_name": "project", "timeout": 0}, contains: "minimum"},
+		{name: "destroy overflowing timeout", tool: "destroy_project", arguments: map[string]any{"project_name": "project", "timeout": maxProjectActionTimeout + 1}, contains: "maximum"},
 		{name: "destroy nil docker", tool: "destroy_project", arguments: map[string]any{"project_name": "project"}, contains: "docker cli is required"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -964,6 +970,19 @@ func assertMCPProjectToolAnnotations(t *testing.T, tool *mcp.Tool, destructive, 
 
 	if annotations.OpenWorldHint == nil || *annotations.OpenWorldHint {
 		t.Fatalf("%s openWorldHint = %#v, want false", tool.Name, annotations.OpenWorldHint)
+	}
+}
+
+func assertMCPProjectTimeoutSchema(t *testing.T, tool *mcp.Tool) {
+	t.Helper()
+
+	timeoutSchema := toolSchemaProperty(t, tool.InputSchema, "timeout")
+	if timeoutSchema["minimum"] != float64(1) {
+		t.Fatalf("%s timeout minimum = %#v, want 1", tool.Name, timeoutSchema["minimum"])
+	}
+
+	if timeoutSchema["maximum"] != float64(maxProjectActionTimeout) {
+		t.Fatalf("%s timeout maximum = %#v, want %d", tool.Name, timeoutSchema["maximum"], maxProjectActionTimeout)
 	}
 }
 

@@ -402,6 +402,44 @@ func getQueryParam(r *http.Request, w http.ResponseWriter, log *slog.Logger, job
 	}
 }
 
+func getProjectIntQueryParam(r *http.Request, w http.ResponseWriter, log *slog.Logger, jobID, key string, defaultValue int) (int, bool) {
+	queryParam := r.URL.Query().Get(key)
+	if queryParam == "" {
+		return defaultValue, true
+	}
+
+	value, err := strconv.ParseInt(queryParam, 10, strconv.IntSize)
+	if err != nil {
+		err = fmt.Errorf("invalid parameter: %s", key)
+		errMsg := "'" + key + "' parameter must be a integer"
+		log.With(logger.ErrAttr(err)).Error(errMsg)
+		JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
+
+		return 0, false
+	}
+
+	return int(value), true
+}
+
+func getProjectBoolQueryParam(r *http.Request, w http.ResponseWriter, log *slog.Logger, jobID, key string, defaultValue bool) (bool, bool) {
+	queryParam := r.URL.Query().Get(key)
+	if queryParam == "" {
+		return defaultValue, true
+	}
+
+	value, err := strconv.ParseBool(queryParam)
+	if err != nil {
+		err = fmt.Errorf("invalid parameter: %s", key)
+		errMsg := "'" + key + "' parameter must be true or false"
+		log.With(logger.ErrAttr(err)).Error(errMsg)
+		JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
+
+		return false, false
+	}
+
+	return value, true
+}
+
 // requireMethod checks if the HTTP request method matches the required method and sends an error response if it does not.
 func requireMethod(w http.ResponseWriter, log *slog.Logger, r *http.Request, method string) bool {
 	if r.Method == method {
@@ -459,12 +497,29 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 		JSONResponse(w, containers, jobID, http.StatusOK)
 	case http.MethodDelete:
-		timeoutSec := getQueryParam(r, w, jobLog, jobID, "timeout", "int", 30).(int)
-		removeVolumes := getQueryParam(r, w, jobLog, jobID, "volumes", "bool", true).(bool)
-		removeImages := getQueryParam(r, w, jobLog, jobID, "images", "bool", true).(bool)
+		timeoutSec, ok := getProjectIntQueryParam(r, w, jobLog, jobID, "timeout", defaultProjectActionTimeout)
+		if !ok {
+			return
+		}
+
+		removeVolumes, ok := getProjectBoolQueryParam(r, w, jobLog, jobID, "volumes", true)
+		if !ok {
+			return
+		}
+
+		removeImages, ok := getProjectBoolQueryParam(r, w, jobLog, jobID, "images", true)
+		if !ok {
+			return
+		}
 
 		result, err := h.destroyProject(ctx, projectName, timeoutSec, removeVolumes, removeImages, jobLog)
 		if err != nil {
+			if errors.Is(err, errInvalidProjectTimeout) {
+				JSONError(w, err.Error(), "", jobID, http.StatusBadRequest)
+
+				return
+			}
+
 			errMsg := "failed to remove project: " + projectName
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 			JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
@@ -554,7 +609,11 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	timeoutSec := getQueryParam(r, w, jobLog, jobID, "timeout", "int", 30).(int)
+	timeoutSec, ok := getProjectIntQueryParam(r, w, jobLog, jobID, "timeout", defaultProjectActionTimeout)
+	if !ok {
+		return
+	}
+
 	action := r.PathValue("action")
 
 	operation, err := h.resolveProjectAction(ctx, projectName, action, timeoutSec)
@@ -577,6 +636,12 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 		if errors.Is(err, restAPI.ErrInvalidAction) {
 			jobLog.Error(restAPI.ErrInvalidAction.Error())
 			JSONError(w, restAPI.ErrInvalidAction.Error(), "action not supported: "+action, jobID, http.StatusBadRequest)
+
+			return
+		}
+
+		if errors.Is(err, errInvalidProjectTimeout) {
+			JSONError(w, err.Error(), "", jobID, http.StatusBadRequest)
 
 			return
 		}
@@ -640,13 +705,18 @@ type projectActionOperation struct {
 }
 
 func (h *handlerData) destroyProject(ctx context.Context, projectName string, timeoutSec int, removeVolumes, removeImages bool, jobLog *slog.Logger) (destroyProjectResult, error) {
+	timeout, err := projectActionTimeout(timeoutSec)
+	if err != nil {
+		return destroyProjectResult{}, err
+	}
+
 	if h.dockerCli == nil {
 		return destroyProjectResult{}, errors.New("docker cli is required")
 	}
 
 	jobLog.Info("removing project", slog.String("project", projectName), slog.Bool("remove_volumes", removeVolumes), slog.Bool("remove_images", removeImages))
 
-	if err := docker.RemoveProject(ctx, h.dockerCli, projectName, time.Duration(timeoutSec)*time.Second, removeVolumes, removeImages); err != nil {
+	if err := docker.RemoveProject(ctx, h.dockerCli, projectName, timeout, removeVolumes, removeImages); err != nil {
 		return destroyProjectResult{}, err
 	}
 
@@ -668,11 +738,15 @@ func (h *handlerData) runProjectAction(ctx context.Context, projectName, action 
 }
 
 func (h *handlerData) resolveProjectAction(ctx context.Context, projectName, action string, timeoutSec int) (projectActionOperation, error) {
+	timeout, err := projectActionTimeout(timeoutSec)
+	if err != nil {
+		return projectActionOperation{}, err
+	}
+
 	if err := h.requireProject(ctx, projectName); err != nil {
 		return projectActionOperation{}, err
 	}
 
-	timeout := time.Duration(timeoutSec) * time.Second
 	operation := projectActionOperation{projectName: projectName, action: action}
 
 	switch action {
@@ -702,6 +776,16 @@ func (h *handlerData) resolveProjectAction(ctx context.Context, projectName, act
 	}
 
 	return operation, nil
+}
+
+var errInvalidProjectTimeout = errors.New("invalid project timeout")
+
+func projectActionTimeout(timeoutSec int) (time.Duration, error) {
+	if timeoutSec < 1 || int64(timeoutSec) > maxProjectActionTimeout {
+		return 0, fmt.Errorf("%w: must be between 1 and %d seconds", errInvalidProjectTimeout, maxProjectActionTimeout)
+	}
+
+	return time.Duration(timeoutSec) * time.Second, nil
 }
 
 func (h *handlerData) requireProject(ctx context.Context, projectName string) error {
