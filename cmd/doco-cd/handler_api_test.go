@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/api/types/container"
+	dockerswarmtypes "github.com/moby/moby/api/types/swarm"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
@@ -223,6 +225,101 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestStackActionApiHandlerValidationPrecedence(t *testing.T) {
+	var actionRequests int
+
+	h := newStackActionRESTTestHandler(t, []dockerswarmtypes.Service{{
+		Spec: dockerswarmtypes.ServiceSpec{
+			Annotations: dockerswarmtypes.Annotations{Name: "stack_web"},
+			Mode:        dockerswarmtypes.ServiceMode{Replicated: &dockerswarmtypes.ReplicatedService{}},
+		},
+	}}, &actionRequests)
+
+	for _, testCase := range []struct {
+		name       string
+		path       string
+		method     string
+		wantStatus int
+		contains   string
+	}{
+		{name: "invalid action before method", path: "/stack/stack/invalid", method: http.MethodGet, wantStatus: http.StatusBadRequest, contains: "invalid action"},
+		{name: "method before wait parsing", path: "/stack/stack/restart?wait=invalid", method: http.MethodGet, wantStatus: http.StatusMethodNotAllowed, contains: "invalid http method"},
+		{name: "invalid wait aborts action", path: "/stack/stack/restart?wait=invalid", method: http.MethodPost, wantStatus: http.StatusBadRequest, contains: "wait"},
+		{name: "invalid replicas aborts action", path: "/stack/stack/scale?replicas=invalid", method: http.MethodPost, wantStatus: http.StatusBadRequest, contains: "replicas"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			mux := http.NewServeMux()
+			mux.HandleFunc("/stack/{stackName}/{action}", h.StackActionApiHandler)
+
+			req := httptest.NewRequest(testCase.method, testCase.path, nil)
+			req.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+			mux.ServeHTTP(rr, req)
+
+			if rr.Code != testCase.wantStatus || !strings.Contains(rr.Body.String(), testCase.contains) {
+				t.Fatalf("response = %d %s, want %d containing %q", rr.Code, rr.Body.String(), testCase.wantStatus, testCase.contains)
+			}
+		})
+	}
+
+	if actionRequests != 0 {
+		t.Fatalf("validation failures dispatched %d stack actions", actionRequests)
+	}
+}
+
+func TestStackActionApiHandlerLooksUpStackBeforeValidation(t *testing.T) {
+	h := newStackActionRESTTestHandler(t, nil, nil)
+	rr := httptest.NewRecorder()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/stack/{stackName}/{action}", h.StackActionApiHandler)
+
+	req := httptest.NewRequest(http.MethodGet, "/stack/missing/invalid", nil)
+	req.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound || !strings.Contains(rr.Body.String(), "stack not found: missing") {
+		t.Fatalf("response = %d %s, want stack lookup 404", rr.Code, rr.Body.String())
+	}
+}
+
+func newStackActionRESTTestHandler(t *testing.T, services []dockerswarmtypes.Service, actionRequests *int) *handlerData {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/services"):
+			_ = json.NewEncoder(w).Encode(services)
+		case strings.Contains(r.URL.Path, "/services/"):
+			if actionRequests != nil {
+				(*actionRequests)++
+			}
+
+			http.Error(w, "unexpected action request", http.StatusInternalServerError)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("DOCKER_HOST", server.URL)
+	t.Setenv("DOCKER_API_VERSION", "1.52")
+
+	dockerCli, err := docker.CreateDockerCli(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() { _ = dockerCli.Client().Close() })
+
+	return &handlerData{
+		dockerCli:  dockerCli,
+		appConfig:  &app.Config{ApiSecret: "stack-test-secret"}, // #nosec G101 -- test fixture, not a real credential.
+		appVersion: app.Version,
+		log:        logger.New(logger.LevelCritical),
 	}
 }
 

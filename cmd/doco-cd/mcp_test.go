@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
+	dockerswarmtypes "github.com/moby/moby/api/types/swarm"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -162,8 +164,8 @@ func TestMCPServerListsTools(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(result.Tools) != 10 {
-		t.Fatalf("expected exactly ten MCP tools, got %#v", result.Tools)
+	if len(result.Tools) != 12 {
+		t.Fatalf("expected exactly twelve MCP tools, got %#v", result.Tools)
 	}
 
 	wantTools := map[string]bool{
@@ -177,6 +179,8 @@ func TestMCPServerListsTools(t *testing.T) {
 		"get_stack":            false,
 		"control_project":      false,
 		"destroy_project":      false,
+		"control_stack":        false,
+		"remove_stack":         false,
 	}
 	wantInputProperties := map[string][]string{
 		"list_deployment_runs": {"limit", "status", "trigger"},
@@ -187,10 +191,14 @@ func TestMCPServerListsTools(t *testing.T) {
 		"get_stack":            {"stack_name"},
 		"control_project":      {"project_name", "action", "timeout"},
 		"destroy_project":      {"project_name", "timeout", "volumes", "images"},
+		"control_stack":        {"stack_name", "action", "replicas", "service", "wait"},
+		"remove_stack":         {"stack_name"},
 	}
 	wantRequiredProperties := map[string][]string{
 		"control_project": {"project_name", "action"},
 		"destroy_project": {"project_name"},
+		"control_stack":   {"stack_name", "action"},
+		"remove_stack":    {"stack_name"},
 	}
 
 	for _, tool := range result.Tools {
@@ -203,7 +211,7 @@ func TestMCPServerListsTools(t *testing.T) {
 			t.Fatalf("%s must have annotations", tool.Name)
 		}
 
-		if tool.Name != "control_project" && tool.Name != "destroy_project" && !tool.Annotations.ReadOnlyHint {
+		if tool.Name != "control_project" && tool.Name != "destroy_project" && tool.Name != "control_stack" && tool.Name != "remove_stack" && !tool.Annotations.ReadOnlyHint {
 			t.Fatalf("%s must have readOnlyHint=true: %#v", tool.Name, tool.Annotations)
 		}
 
@@ -242,6 +250,24 @@ func TestMCPServerListsTools(t *testing.T) {
 			}
 		}
 
+		if tool.Name == "control_stack" {
+			assertMCPProjectToolAnnotations(t, tool, true, false)
+
+			actionSchema := toolSchemaProperty(t, tool.InputSchema, "action")
+			if !slices.Equal(actionSchema["enum"].([]any), []any{"scale", "restart", "run"}) {
+				t.Fatalf("control_stack action enum = %#v", actionSchema["enum"])
+			}
+
+			replicasSchema := toolSchemaProperty(t, tool.InputSchema, "replicas")
+			if replicasSchema["minimum"] != float64(0) {
+				t.Fatalf("control_stack replicas minimum = %#v, want 0", replicasSchema["minimum"])
+			}
+		}
+
+		if tool.Name == "remove_stack" {
+			assertMCPProjectToolAnnotations(t, tool, true, true)
+		}
+
 		for _, property := range wantInputProperties[tool.Name] {
 			if !toolSchemaHasProperty(tool.InputSchema, property) {
 				t.Fatalf("%s input schema must contain snake_case property %q: %#v", tool.Name, property, tool.InputSchema)
@@ -260,6 +286,105 @@ func TestMCPServerListsTools(t *testing.T) {
 			t.Fatalf("expected tool %q to be registered", name)
 		}
 	}
+}
+
+func TestMCPStackToolValidation(t *testing.T) {
+	h := &handlerData{appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
+	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
+	session := connectMCPTestClient(t, server)
+
+	for _, testCase := range []struct {
+		name      string
+		tool      string
+		arguments map[string]any
+		contains  string
+	}{
+		{name: "control missing stack", tool: "control_stack", arguments: map[string]any{"action": "restart"}, contains: "stack_name"},
+		{name: "control blank stack", tool: "control_stack", arguments: map[string]any{"stack_name": "  ", "action": "restart"}, contains: "missing stack name"},
+		{name: "control missing action", tool: "control_stack", arguments: map[string]any{"stack_name": "stack"}, contains: "action"},
+		{name: "control invalid action", tool: "control_stack", arguments: map[string]any{"stack_name": "stack", "action": "invalid"}, contains: "not in enum"},
+		{name: "scale missing replicas", tool: "control_stack", arguments: map[string]any{"stack_name": "stack", "action": "scale"}, contains: "replicas"},
+		{name: "scale negative replicas", tool: "control_stack", arguments: map[string]any{"stack_name": "stack", "action": "scale", "replicas": -1}, contains: "minimum"},
+		{name: "restart ignores omitted replicas", tool: "control_stack", arguments: map[string]any{"stack_name": "stack", "action": "restart"}, contains: "docker cli is required"},
+		{name: "remove missing stack", tool: "remove_stack", arguments: map[string]any{}, contains: "stack_name"},
+		{name: "remove blank stack", tool: "remove_stack", arguments: map[string]any{"stack_name": "  "}, contains: "missing stack name"},
+		{name: "remove nil docker", tool: "remove_stack", arguments: map[string]any{"stack_name": "stack"}, contains: "docker cli is required"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			assertMCPToolError(t, session, testCase.tool, testCase.arguments, testCase.contains)
+		})
+	}
+}
+
+func TestRunStackActionReturnsSkippedServices(t *testing.T) {
+	services := []dockerswarmtypes.Service{
+		{Spec: dockerswarmtypes.ServiceSpec{Annotations: dockerswarmtypes.Annotations{Name: "stack_web"}, Mode: dockerswarmtypes.ServiceMode{Replicated: &dockerswarmtypes.ReplicatedService{}}}},
+		{Spec: dockerswarmtypes.ServiceSpec{Annotations: dockerswarmtypes.Annotations{Name: "stack_job"}, Mode: dockerswarmtypes.ServiceMode{ReplicatedJob: &dockerswarmtypes.ReplicatedJob{}}}},
+		{Spec: dockerswarmtypes.ServiceSpec{Annotations: dockerswarmtypes.Annotations{Name: "stack_global"}, Mode: dockerswarmtypes.ServiceMode{Global: &dockerswarmtypes.GlobalService{}}}},
+	}
+
+	for _, testCase := range []struct {
+		name       string
+		action     string
+		service    string
+		wantStatus string
+		wantReason string
+	}{
+		{name: "restart job", action: "restart", service: "job", wantStatus: "skipped", wantReason: docker.ErrJobServiceRestartNotSupported.Error()},
+		{name: "run replicated service", action: "run", service: "web", wantStatus: "skipped", wantReason: docker.ErrNotAJobService.Error()},
+		{name: "scale global service", action: "scale", service: "global", wantStatus: "skipped", wantReason: dockerswarm.ErrNotReplicatedService.Error()},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			h := newStackActionTestHandler(t, services)
+
+			results, err := h.runStackAction(t.Context(), "stack", testCase.action, testCase.service, 0, true, slog.Default())
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if len(results) != 1 || results[0].Service != "stack_"+testCase.service || results[0].Status != testCase.wantStatus || results[0].Reason != testCase.wantReason {
+				t.Fatalf("unexpected results: %#v", results)
+			}
+		})
+	}
+}
+
+func newStackActionTestHandler(t *testing.T, services []dockerswarmtypes.Service) *handlerData {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/services"):
+			_ = json.NewEncoder(w).Encode(services)
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/services/"):
+			serviceName := path.Base(r.URL.Path)
+			for _, service := range services {
+				if service.Spec.Name == serviceName {
+					_ = json.NewEncoder(w).Encode(service)
+
+					return
+				}
+			}
+
+			http.NotFound(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("DOCKER_HOST", server.URL)
+	t.Setenv("DOCKER_API_VERSION", "1.52")
+
+	dockerCli, err := docker.CreateDockerCli(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() { _ = dockerCli.Client().Close() })
+
+	return &handlerData{dockerCli: dockerCli, appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
 }
 
 func TestMCPProjectToolValidation(t *testing.T) {
@@ -582,6 +707,8 @@ func TestMCPSwarmToolsRuntimeBehavior(t *testing.T) {
 	if !dockerswarm.GetModeEnabled() {
 		assertMCPToolError(t, session, "list_stacks", map[string]any{}, "swarm")
 		assertMCPToolError(t, session, "get_stack", map[string]any{"stack_name": "missing"}, "swarm")
+		assertMCPToolError(t, session, "control_stack", map[string]any{"stack_name": "missing", "action": "restart"}, "swarm")
+		assertMCPToolError(t, session, "remove_stack", map[string]any{"stack_name": "missing"}, "swarm")
 
 		return
 	}
@@ -626,6 +753,8 @@ func TestMCPSwarmToolsDisabledAtRuntime(t *testing.T) {
 
 	assertMCPToolError(t, session, "list_stacks", map[string]any{}, "disabled")
 	assertMCPToolError(t, session, "get_stack", map[string]any{"stack_name": "stack"}, "disabled")
+	assertMCPToolError(t, session, "control_stack", map[string]any{"stack_name": "stack", "action": "restart"}, "disabled")
+	assertMCPToolError(t, session, "remove_stack", map[string]any{"stack_name": "stack"}, "disabled")
 }
 
 func TestMCPServerGetHealth(t *testing.T) {

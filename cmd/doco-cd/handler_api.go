@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	dockerswarmtypes "github.com/moby/moby/api/types/swarm"
+
 	"github.com/kimdre/doco-cd/internal/common/id"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
@@ -817,6 +819,142 @@ func (h *handlerData) executeProjectAction(ctx context.Context, operation projec
 	}, nil
 }
 
+type stackActionResult struct {
+	Service string `json:"service"`
+	Status  string `json:"status"`
+	Reason  string `json:"reason,omitempty"`
+}
+
+var errStackNotFound = errors.New("stack not found")
+
+type stackLookupError struct {
+	cause error
+}
+
+func (e *stackLookupError) Error() string {
+	return e.cause.Error()
+}
+
+func (e *stackLookupError) Unwrap() error {
+	return e.cause
+}
+
+func (h *handlerData) getStackServices(ctx context.Context, stack string) ([]dockerswarmtypes.Service, error) {
+	if h.dockerCli == nil {
+		return nil, errors.New("docker cli is required")
+	}
+
+	services, err := swarm.GetStackServices(ctx, h.dockerCli.Client(), stack)
+	if err != nil {
+		return nil, &stackLookupError{cause: err}
+	}
+
+	if len(services) == 0 {
+		return nil, fmt.Errorf("%w: %s", errStackNotFound, stack)
+	}
+
+	return services, nil
+}
+
+func (h *handlerData) runStackAction(ctx context.Context, stack, action, service string, replicas int, wait bool, jobLog *slog.Logger) ([]stackActionResult, error) {
+	services, err := h.getStackServices(ctx, stack)
+	if err != nil {
+		return nil, err
+	}
+
+	return h.runStackActionOnServices(ctx, services, stack, action, service, replicas, wait, jobLog)
+}
+
+func (h *handlerData) runStackActionOnServices(
+	ctx context.Context,
+	services []dockerswarmtypes.Service,
+	stack, action, service string,
+	replicas int,
+	wait bool,
+	jobLog *slog.Logger,
+) ([]stackActionResult, error) {
+	if action == "scale" && replicas < 0 {
+		return nil, errors.New("'replicas' parameter is required and must be a non-negative integer")
+	}
+
+	if action != "scale" && action != "restart" && action != "run" {
+		return nil, fmt.Errorf("%w: %s", restAPI.ErrInvalidAction, action)
+	}
+
+	results := make([]stackActionResult, 0, len(services))
+
+	fullServiceName := ""
+	if service != "" {
+		fullServiceName = stack + "_" + service
+	}
+
+	for _, svc := range services {
+		svcName := svc.Spec.Name
+		if fullServiceName != "" && svcName != fullServiceName {
+			continue
+		}
+
+		result := stackActionResult{Service: svcName, Status: "ok"}
+
+		var err error
+
+		switch action {
+		case "scale":
+			jobLog.Info("scaling service", slog.String("service", svcName), slog.Int("replicas", replicas))
+
+			err = swarm.ScaleService(ctx, h.dockerCli, svcName, uint64(replicas), wait, false) // #nosec G115 -- replicas is validated as non-negative above.
+			if errors.Is(err, swarm.ErrNotReplicatedService) {
+				result.Status = "skipped"
+				result.Reason = swarm.ErrNotReplicatedService.Error()
+			}
+		case "restart":
+			if svc.Spec.Mode.ReplicatedJob != nil || svc.Spec.Mode.GlobalJob != nil {
+				result.Status = "skipped"
+				result.Reason = docker.ErrJobServiceRestartNotSupported.Error()
+				err = docker.ErrJobServiceRestartNotSupported
+			} else {
+				jobLog.Info("restarting service", slog.String("service", svcName))
+
+				err = docker.RestartService(ctx, h.dockerCli.Client(), svcName)
+				if errors.Is(err, docker.ErrJobServiceRestartNotSupported) {
+					result.Status = "skipped"
+					result.Reason = docker.ErrJobServiceRestartNotSupported.Error()
+				}
+			}
+		case "run":
+			jobLog.Info("retriggering job service", slog.String("service", svcName))
+
+			err = docker.RerunJobService(ctx, h.dockerCli.Client(), svcName)
+			if errors.Is(err, docker.ErrNotAJobService) {
+				result.Status = "skipped"
+				result.Reason = docker.ErrNotAJobService.Error()
+			}
+		}
+
+		if err != nil && result.Status != "skipped" {
+			return nil, err
+		}
+
+		if result.Status == "skipped" {
+			jobLog.Debug("skipping service for stack action", slog.String("service", svcName), slog.String("action", action), slog.String("reason", result.Reason))
+		}
+
+		results = append(results, result)
+	}
+
+	return results, nil
+}
+
+func (h *handlerData) removeStack(ctx context.Context, stack string, jobLog *slog.Logger) error {
+	if h.dockerCli == nil {
+		return errors.New("docker cli is required")
+	}
+
+	jobLog.Info("removing stack", slog.String("stack", stack))
+
+	return docker.RemoveSwarmStack(ctx, h.dockerCli, stack)
+}
+
 // StackActionApiHandler handles API requests to manage Docker Swarm stacks.
 func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -845,31 +983,51 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	serviceName := getQueryParam(r, w, jobLog, jobID, "service", "string", "").(string)
-	waitForServices := getQueryParam(r, w, jobLog, jobID, "wait", "bool", true).(bool)
-
-	services, err := swarm.GetStackServices(ctx, h.dockerCli.Client(), stackName)
+	services, err := h.getStackServices(ctx, stackName)
 	if err != nil {
-		errMsg := "failed to get stack: " + stackName
-		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
-		JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
+		var lookupErr *stackLookupError
 
-		return
-	}
+		if errors.Is(err, errStackNotFound) {
+			JSONError(w, "stack not found: "+stackName, "", jobID, http.StatusNotFound)
+		} else if errors.As(err, &lookupErr) {
+			errMsg := "failed to get stack: " + stackName
+			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+			JSONError(w, errMsg, lookupErr.cause.Error(), jobID, http.StatusInternalServerError)
+		} else {
+			errMsg := "failed to get stack: " + stackName
+			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+			JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
+		}
 
-	if len(services) == 0 {
-		JSONError(w, "stack not found: "+stackName, "", jobID, http.StatusNotFound)
 		return
 	}
 
 	action := r.PathValue("action")
-	switch action {
-	case "scale":
-		if !requireMethod(w, jobLog, r, http.MethodPost) {
+	if action != "scale" && action != "restart" && action != "run" {
+		jobLog.Error(restAPI.ErrInvalidAction.Error())
+		JSONError(w, restAPI.ErrInvalidAction.Error(), "action not supported: "+action, jobID, http.StatusBadRequest)
+
+		return
+	}
+
+	if !requireMethod(w, jobLog, r, http.MethodPost) {
+		return
+	}
+
+	serviceName := r.URL.Query().Get("service")
+
+	waitForServices, ok := getProjectBoolQueryParam(r, w, jobLog, jobID, "wait", true)
+	if !ok {
+		return
+	}
+
+	replicas := -1
+	if action == "scale" {
+		replicas, ok = getProjectIntQueryParam(r, w, jobLog, jobID, "replicas", -1)
+		if !ok {
 			return
 		}
 
-		replicas := getQueryParam(r, w, jobLog, jobID, "replicas", "int", -1).(int)
 		if replicas < 0 {
 			err = errors.New("missing or invalid replicas parameter")
 			errMsg := "'replicas' parameter is required and must be a non-negative integer"
@@ -878,130 +1036,60 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 
 			return
 		}
+	}
 
-		for _, svc := range services {
-			svcName := svc.Spec.Name
-			if serviceName != "" {
-				if svcName != fmt.Sprintf("%s_%s", stackName, serviceName) {
-					continue
-				}
-			}
+	results, err := h.runStackActionOnServices(ctx, services, stackName, action, serviceName, replicas, waitForServices, jobLog)
+	if err != nil {
+		errMsg := map[string]string{
+			"scale":   "failed to scale service",
+			"restart": "failed to restart service",
+			"run":     "failed to retrigger job service",
+		}[action]
+		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+		JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
 
-			jobLog.Info("scaling service", slog.String("service", svcName), slog.Int("replicas", replicas))
+		return
+	}
 
-			err = swarm.ScaleService(ctx, h.dockerCli, svcName, uint64(replicas), waitForServices, false)
-			if err != nil {
-				if errors.Is(err, swarm.ErrNotReplicatedService) {
-					jobLog.Debug("skipping non-replicated service for scale action", slog.String("service", svcName))
-					continue
-				}
+	successCount := 0
 
-				errMsg := "failed to scale service"
-				jobLog.With(logger.ErrAttr(err)).Error(errMsg)
-				JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
+	for _, result := range results {
+		if result.Status == "ok" {
+			successCount++
+		}
+	}
 
-				return
-			}
+	switch action {
+	case "scale":
+		if serviceName != "" && successCount > 0 {
+			JSONResponse(w, fmt.Sprintf("service scaled: %s to %d replicas", serviceName, replicas), jobID, http.StatusOK)
 
-			if serviceName != "" {
-				JSONResponse(w, fmt.Sprintf("service scaled: %s to %d replicas", serviceName, replicas), jobID, http.StatusOK)
-				return
-			}
+			return
 		}
 
 		JSONResponse(w, fmt.Sprintf("stack scaled: %s to %d replicas", stackName, replicas), jobID, http.StatusOK)
 	case "restart":
-		if !requireMethod(w, jobLog, r, http.MethodPost) {
+		if serviceName != "" && successCount > 0 {
+			JSONResponse(w, "service restarted: "+stackName+"_"+serviceName, jobID, http.StatusOK)
+
 			return
-		}
-
-		for _, svc := range services {
-			svcName := svc.Spec.Name
-			if serviceName != "" {
-				if svcName != fmt.Sprintf("%s_%s", stackName, serviceName) {
-					continue
-				}
-			}
-
-			// Job services cannot be updated with UpdateConfig present; treat restart as a no-op.
-			if svc.Spec.Mode.ReplicatedJob != nil || svc.Spec.Mode.GlobalJob != nil {
-				jobLog.Debug("skipping restart for job-mode service", slog.String("service", svcName))
-				continue
-			}
-
-			jobLog.Info("restarting service", slog.String("service", svcName))
-
-			// Swarm restart supports replicated/global and skips job-mode services.
-			err = docker.RestartService(ctx, h.dockerCli.Client(), svcName)
-			if err != nil {
-				if errors.Is(err, docker.ErrJobServiceRestartNotSupported) {
-					jobLog.Debug("skipping restart for job-mode service", slog.String("service", svcName))
-					continue
-				}
-
-				errMsg := "failed to restart service"
-				jobLog.With(logger.ErrAttr(err)).Error(errMsg)
-				JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
-
-				return
-			}
-
-			if serviceName != "" {
-				JSONResponse(w, "service restarted: "+svcName, jobID, http.StatusOK)
-				return
-			}
 		}
 
 		JSONResponse(w, "stack restarted: "+stackName, jobID, http.StatusOK)
 	case "run":
-		if !requireMethod(w, jobLog, r, http.MethodPost) {
-			return
-		}
-
-		var reRunCounter int64
-
-		for _, svc := range services {
-			svcName := svc.Spec.Name
-			if serviceName != "" && svcName != fmt.Sprintf("%s_%s", stackName, serviceName) {
-				continue
-			}
-
-			jobLog.Info("retriggering job service", slog.String("service", svcName))
-
-			err = docker.RerunJobService(ctx, h.dockerCli.Client(), svcName)
-			if err != nil {
-				if errors.Is(err, docker.ErrNotAJobService) {
-					jobLog.Debug("skipping non-job service for run action", slog.String("service", svcName))
-					continue
-				}
-
-				errMsg := "failed to retrigger job service"
-				jobLog.With(logger.ErrAttr(err)).Error(errMsg)
-				JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
-
-				return
-			}
-
-			reRunCounter++
-
-			if serviceName != "" {
-				JSONResponse(w, "job retriggered: "+svcName, jobID, http.StatusOK)
-				return
-			}
-		}
-
-		if reRunCounter == 0 {
+		if successCount == 0 {
 			JSONError(w, "no job services found to retrigger in stack: "+stackName, "", jobID, http.StatusNotFound)
+
 			return
 		}
 
-		JSONResponse(w, strconv.FormatInt(reRunCounter, 10)+" job(s) retriggered in stack: "+stackName, jobID, http.StatusOK)
+		if serviceName != "" {
+			JSONResponse(w, "job retriggered: "+stackName+"_"+serviceName, jobID, http.StatusOK)
 
-	default:
-		jobLog.Error(restAPI.ErrInvalidAction.Error())
-		JSONError(w, restAPI.ErrInvalidAction.Error(), "action not supported: "+action, jobID, http.StatusBadRequest)
+			return
+		}
 
-		return
+		JSONResponse(w, strconv.Itoa(successCount)+" job(s) retriggered in stack: "+stackName, jobID, http.StatusOK)
 	}
 }
 
@@ -1049,9 +1137,7 @@ func (h *handlerData) StackApiHandler(w http.ResponseWriter, r *http.Request) {
 
 		JSONResponse(w, services, jobID, http.StatusOK)
 	case http.MethodDelete:
-		jobLog.Info("removing stack", slog.String("stack", stackName))
-
-		err := docker.RemoveSwarmStack(ctx, h.dockerCli, stackName)
+		err := h.removeStack(ctx, stackName, jobLog)
 		if err != nil {
 			errMsg := "failed to remove stack: " + stackName
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
