@@ -1,7 +1,7 @@
 GO_BIN?=$(shell pwd)/.bin
 BINARY_DIR=bin
 BINARY_NAME=doco-cd
-.PHONY: test test-verbose test-coverage test-run build fmt lint update update-all download tools compose-up compose-down wiki-tools wiki-build wiki-serve wiki-version-publish
+.PHONY: test test-verbose test-coverage test-run build build-bitwarden fmt lint update update-all download tools compose-up compose-down wiki-tools wiki-build wiki-serve wiki-version-publish
 
 .DEFAULT_GOAL := build
 
@@ -46,6 +46,12 @@ test-run:
 	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" ${COMPILER} go test ${BUILD_FLAGS} -cover ./... -timeout 10m -run $(filter-out $@,$(MAKECMDGOALS))
 
 build:
+	@echo "Building without bitwarden integration (no CGO)..."
+	mkdir -p $(BINARY_DIR)
+	CGO_ENABLED=0 go build -ldflags="-X main.Version=dev" -tags nobitwarden -o $(BINARY_DIR) ./...
+
+# Build with Bitwarden SDK support, which requires cgo.
+build-bitwarden:
 	mkdir -p $(BINARY_DIR)
 	${COMPILER} go build ${BUILD_FLAGS} -o $(BINARY_DIR) ./...
 
