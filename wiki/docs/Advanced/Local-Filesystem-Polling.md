@@ -43,6 +43,7 @@ See [Poll Settings](../Poll-Settings.md) for the full list of poll configuration
 ## How it works
 
 - `url` must be an absolute path inside the container, prefixed with `file://` (e.g. `file:///local-repos/my-app`).
+- Both regular repositories (with a `.git` directory) and bare repositories (e.g. `my-app.git`) are supported, as are linked worktrees and submodule checkouts that use a `.git` file.
 - `reference` behaves exactly like it does for remote Git repositories: a branch name, tag name, or commit SHA.
 - On every poll interval, doco-cd checks the local repository for new commits on `reference` and, if changed, deploys them using the same pipeline as remote Git polling (including `.doco-cd.yml`/`.doco-cd.*.yml` discovery and [auto-discovery](../Deploy-Settings.md#auto-discovery)).
 - No credentials are needed or used for `file://` URLs.
@@ -51,3 +52,4 @@ See [Poll Settings](../Poll-Settings.md) for the full list of poll configuration
 
 - Local filesystem sources are poll-only. There is no webhook equivalent, since there is no SCM to send a webhook.
 - No commit status is posted back to an SCM, since there is none to post to.
+- Shallow clones are not supported for local repositories: [`git_depth`](../Deploy-Settings.md) and `GIT_CLONE_DEPTH` are ignored and the repository is always cloned in full. Since no data is transferred over a network, this has no meaningful cost.
