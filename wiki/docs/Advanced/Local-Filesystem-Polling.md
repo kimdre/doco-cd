@@ -48,8 +48,22 @@ See [Poll Settings](../Poll-Settings.md) for the full list of poll configuration
 - On every poll interval, doco-cd checks the local repository for new commits on `reference` and, if changed, deploys them using the same pipeline as remote Git polling (including `.doco-cd.yml`/`.doco-cd.*.yml` discovery and [auto-discovery](../Deploy-Settings.md#auto-discovery)).
 - No credentials are needed or used for `file://` URLs.
 
+## Webhook-triggered local mirrors
+
+Local repositories do not emit webhooks themselves. If the repository is a local mirror of a GitHub, GitLab, or Forgejo repository, its SCM webhook can trigger deployment from the local mirror instead.
+
+Configure an explicit `SOURCE_URL_REWRITES` rule that transforms the SCM clone URL into the mounted local path:
+
+```yaml title="docker-compose.yaml"
+environment:
+  SOURCE_URL_REWRITES: |
+    https://forgejo.example.com/: file:///local-repos/
+```
+
+For example, a webhook whose clone URL is `https://forgejo.example.com/org/my-app.git` then deploys from `file:///local-repos/org/my-app.git`. For safety, doco-cd rejects a `file://` clone URL supplied directly by a webhook payload; it must result from a configured rewrite.
+
 ## Limitations
 
-- Local filesystem sources are poll-only. There is no webhook equivalent, since there is no SCM to send a webhook.
+- Local repositories have no native webhook source. Webhook-triggered deployments require an SCM webhook and an explicit `SOURCE_URL_REWRITES` rule as shown above.
 - No commit status is posted back to an SCM, since there is none to post to.
-- Shallow clones are not supported for local repositories: [`git_depth`](../Deploy-Settings.md) and `GIT_CLONE_DEPTH` are ignored and the repository is always cloned in full. Since no data is transferred over a network, this has no meaningful cost.
+- Shallow clones are not supported for local repositories: [`git_depth`](../Deploy-Settings.md) and `GIT_CLONE_DEPTH` are ignored and the repository is always cloned in full. This avoids network transfer, but can still cost disk I/O and storage for large histories.

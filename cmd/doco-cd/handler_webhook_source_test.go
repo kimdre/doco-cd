@@ -119,6 +119,44 @@ func TestRewriteSourceURL_UsedByPollAndWebhook(t *testing.T) {
 	}
 }
 
+func TestIsWebhookGitCloneURLAllowed(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name           string
+		url            string
+		rewriteApplied bool
+		want           bool
+	}{
+		{
+			name: "allows remote URL from payload",
+			url:  "https://forgejo.example.com/org/repo.git",
+			want: true,
+		},
+		{
+			name: "rejects local URL from payload",
+			url:  "file:///local-repos/org/repo.git",
+			want: false,
+		},
+		{
+			name:           "allows local URL from configured rewrite",
+			url:            "file:///local-repos/org/repo.git",
+			rewriteApplied: true,
+			want:           true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := isWebhookGitCloneURLAllowed(tc.url, tc.rewriteApplied); got != tc.want {
+				t.Errorf("isWebhookGitCloneURLAllowed(%q, %t) = %t, want %t", tc.url, tc.rewriteApplied, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestShouldUsePayloadSSHURL(t *testing.T) {
 	t.Parallel()
 
