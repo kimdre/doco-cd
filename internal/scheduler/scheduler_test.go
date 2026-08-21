@@ -360,6 +360,40 @@ func TestStatusForScheduledJob(t *testing.T) {
 	}
 }
 
+// TestSetRuntimeStatesSnapshot_PreservesNewerManualLastRun guards against a
+// manual TriggerNow's last_run_at being wiped by the scheduler's next tick.
+func TestSetRuntimeStatesSnapshot_PreservesNewerManualLastRun(t *testing.T) {
+	key := "container:project/service"
+
+	runtimeStatesMu.Lock()
+	runtimeStates = map[string]scheduledJobState{}
+	runtimeStatesMu.Unlock()
+
+	manualRun := time.Now()
+	setRuntimeLastRun(key, manualRun)
+
+	// Simulate the loop's next refresh, unaware of the manual run.
+	setRuntimeStatesSnapshot(map[string]scheduledJobState{
+		key: {nextRun: manualRun.Add(time.Hour)},
+	})
+
+	got := getRuntimeStatesSnapshot()[key]
+	if !got.lastRun.Equal(manualRun) {
+		t.Fatalf("expected manually triggered last run %v to survive scheduler refresh, got %v", manualRun, got.lastRun)
+	}
+
+	// A genuinely newer lastRun must still win.
+	newerRun := manualRun.Add(2 * time.Hour)
+	setRuntimeStatesSnapshot(map[string]scheduledJobState{
+		key: {lastRun: newerRun},
+	})
+
+	got = getRuntimeStatesSnapshot()[key]
+	if !got.lastRun.Equal(newerRun) {
+		t.Fatalf("expected newer scheduler-tracked last run %v to win, got %v", newerRun, got.lastRun)
+	}
+}
+
 func TestUpdateRuntimeRunStatus(t *testing.T) {
 	t.Parallel()
 
