@@ -82,6 +82,32 @@ RUN apt-get update && \
           cp -L "$lib" "/ssh-root$dir/$name"; \
         done
 
+FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258 AS git-client
+
+# Copy the distroless base filesystem so we can skip libraries already present there.
+COPY --from=distroless-base / /distroless-root/
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git && \
+    rm -rf /var/lib/apt/lists/* && \
+    mkdir -p /git-root/usr/bin && \
+    cp /usr/bin/git /git-root/usr/bin/git && \
+    ln -s git /git-root/usr/bin/git-upload-pack && \
+    ln -s git /git-root/usr/bin/git-receive-pack && \
+    ldd /usr/bin/git | awk '$3 ~ /^\// { print $3 }' | \
+        while IFS= read -r lib; do \
+          dir=$(realpath "$(dirname "$lib")"); \
+          name=$(basename "$lib"); \
+          [ -f "/distroless-root$dir/$name" ] && continue; \
+          mkdir -p "/git-root$dir"; \
+          cp -L "$lib" "/git-root$dir/$name"; \
+        done && \
+    # Mounted local repos are typically owned by a different UID than the
+    # container process; modern git refuses to touch repos it doesn't own
+    # unless explicitly marked safe. Trust all directories system-wide since
+    # doco-cd only ever reads repositories the operator explicitly mounted in.
+    mkdir -p /git-root/etc && \
+    printf '[safe]\n\tdirectory = *\n' > /git-root/etc/gitconfig
+
 FROM distroless-base AS release
 
 WORKDIR /
@@ -95,6 +121,9 @@ COPY --from=build /doco-cd /doco-cd
 # SSH client required for Docker contexts using the ssh:// transport.
 # The entire /ssh-root tree (binary + all shared library dependencies) is copied in.
 COPY --from=ssh-client /ssh-root/ /
+
+# git binary required for polling Git repositories on the local filesystem (file:// URLs).
+COPY --from=git-client /git-root/ /
 
 ENV TZ=UTC \
     HTTP_PORT=80 \

@@ -19,15 +19,15 @@ They must be in the format of a YAML list/array (also called YAML Sequence) and 
 
 !!! note "Settings without a default value are required."
 
-| Key           | Type                                          | Description                                                                                                                                                                                                                                               | Default value                    |
-|---------------|-----------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------|
-| `source`      | string                                        | Source backend for this poll job. Use `git` (default) for repositories or `oci` for [OCI artifacts](Advanced/OCI/Artifact-Usage.md).                                                                                                                      | `git`                            |
-| `url`         | string                                        | Source URL. For `source: git`, this is the Git clone URL (e.g. `https://github.com/kimdre/doco-cd.git` or `git@github.com:kimdre/doco-cd.git`). For `source: oci`, this is the full artifact reference (e.g. `ghcr.io/myorg/config:main`).                |                                  |
-| `reference`   | string                                        | Source revision used by deployment configs. For Git this is the branch/tag/ref (e.g. `main` or `refs/heads/main`). For [OCI](Advanced/OCI/Polling.md), the tag from `url` is used automatically when present.                                             | `refs/heads/main`                |
-| `interval`    | integer or string                             | Poll interval (min 10s). Supports integer seconds (e.g. `300`), numeric strings treated as seconds (e.g. `"300"`), and [Go duration](https://pkg.go.dev/time#ParseDuration) strings (e.g. `"5m"`, `"1m30s"`). Set to `0` or `"0s"` to disable a poll job. | `180s`                           |
-| `target`      | string                                        | Similar to the *custom target* [webhook endpoint](Endpoints/Webhook-Listener.md#with-custom-target), used to target a specific deployment config, e.g., `#!yaml target: test` -> `.doco-cd.test.yaml`                                                     | ` ` (Ignored when not specified) |
-| `run_once`    | boolean                                       | Stop the poll job after the first run. Useful if you only want to do the first initial deployment via the poll job but do all future deployments via webhooks                                                                                             | `false`                          |
-| `deployments` | array of [Deploy Configs](Deploy-Settings.md) | In-line configuration for [deployment settings](Deploy-Settings.md) specific to this poll configuration. Overrides the `.doco-cd.yml` file in the target repository (`url`) if exists.<br>See the [example below](#inline-deploy-configs).                | `[]`                             |
+| Key           | Type                                          | Description                                                                                                                                                                                                                                                                                                                                                                                                                                         | Default value                    |
+|---------------|-----------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------|
+| `source`      | string                                        | Source backend for this poll job. Use `git` (default) for repositories or `oci` for [OCI artifacts](Advanced/OCI/Artifact-Usage.md).                                                                                                                                                                                                                                                                                                                | `git`                            |
+| `url`         | string                                        | Source URL. For `source: git`, this is the Git clone URL (e.g. `https://github.com/kimdre/doco-cd.git` or `git@github.com:kimdre/doco-cd.git`), or a `file://` URL pointing to a local Git repository mounted into the container (e.g. `file:///local-repos/my-app`, see [Polling Local Filesystem Repositories](Advanced/Local-Filesystem-Polling.md)). For `source: oci`, this is the full artifact reference (e.g. `ghcr.io/myorg/config:main`). |                                  |
+| `reference`   | string                                        | Source revision used by deployment configs. For Git this is the branch/tag/ref (e.g. `main` or `refs/heads/main`). For [OCI](Advanced/OCI/Polling.md), the tag from `url` is used automatically when present.                                                                                                                                                                                                                                       | `refs/heads/main`                |
+| `interval`    | integer or string                             | Poll interval (min 10s). Supports integer seconds (e.g. `300`), numeric strings treated as seconds (e.g. `"300"`), and [Go duration](https://pkg.go.dev/time#ParseDuration) strings (e.g. `"5m"`, `"1m30s"`). Set to `0` or `"0s"` to disable a poll job.                                                                                                                                                                                           | `180s`                           |
+| `target`      | string                                        | Similar to the *custom target* [webhook endpoint](Endpoints/Webhook-Listener.md#with-custom-target), used to target a specific deployment config, e.g., `#!yaml target: test` -> `.doco-cd.test.yaml`                                                                                                                                                                                                                                               | ` ` (Ignored when not specified) |
+| `run_once`    | boolean                                       | Stop the poll job after the first run. Useful if you only want to do the first initial deployment via the poll job but do all future deployments via webhooks                                                                                                                                                                                                                                                                                       | `false`                          |
+| `deployments` | array of [Deploy Configs](Deploy-Settings.md) | In-line configuration for [deployment settings](Deploy-Settings.md) specific to this poll configuration. Overrides the `.doco-cd.yml` file in the target repository (`url`) if exists.<br>See the [example below](#inline-deploy-configs).                                                                                                                                                                                                          | `[]`                             |
 
 ## Example
 
@@ -173,6 +173,19 @@ configs:
 1. Or as a Go duration: 5m
 
 See more at [Polling with OCI](Advanced/OCI/Polling.md) and [OCI Artifact Usage](Advanced/OCI/Artifact-Usage.md)
+
+### Local Filesystem Example
+
+```yaml title="poll-config.yaml"
+- source: git
+  url: file:///local-repos/my-app
+  reference: main
+  interval: 60 # (1)!
+```
+
+1. Or as a Go duration: 1m
+
+See more at [Polling Local Filesystem Repositories](Advanced/Local-Filesystem-Polling.md)
 
 ### Inline Deploy Configs
 

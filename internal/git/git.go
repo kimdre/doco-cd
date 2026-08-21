@@ -259,7 +259,7 @@ func FetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxy
 		}
 
 		opts.RemoteURL = ConvertSSHUrl(url)
-	} else {
+	} else if !IsLocalFile(url) {
 		opts.InsecureSkipTLS = skipTLSVerify
 
 		if proxyOpts != (transport.ProxyOptions{}) {
@@ -546,7 +546,7 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 		}
 
 		opts.URL = ConvertSSHUrl(url)
-	} else {
+	} else if !IsLocalFile(url) {
 		opts.InsecureSkipTLS = skipTLSVerify
 
 		if proxyOpts != (transport.ProxyOptions{}) {
@@ -1125,6 +1125,18 @@ func GetRepoName(cloneURL string) string {
 
 				return host + "/" + ownerRepo
 			}
+		}
+	}
+
+	// Local filesystem repositories: use the absolute path (minus leading slash) as the
+	// name, mirroring the "host/owner/repo" hierarchy used for remote URLs so that two
+	// different local paths never collide.
+	if strings.HasPrefix(u, "file://") {
+		parsed, err := url.Parse(u)
+		if err == nil {
+			p := strings.TrimPrefix(parsed.Path, "/")
+
+			return normalizeOwnerRepo(p)
 		}
 	}
 

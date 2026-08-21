@@ -98,6 +98,11 @@ func TestGitUrlValidate(t *testing.T) {
 		{name: "empty is allowed", in: "", want: true},
 		{name: "invalid scheme", in: "ftp://example.com/repo.git", want: false},
 		{name: "missing host", in: "ssh:///repo.git", want: false},
+		{name: "valid file url", in: "file:///data/local-repos/my-app", want: true},
+		{name: "valid file url with trailing .git", in: "file:///data/local-repos/my-app.git", want: true},
+		{name: "file url missing path", in: "file://", want: false},
+		{name: "file url with relative path", in: "file:relative/path", want: false},
+		{name: "file url with host is rejected", in: "file://host/abs/path", want: false},
 	}
 
 	for _, tt := range tests {

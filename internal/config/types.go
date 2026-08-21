@@ -97,8 +97,17 @@ func (g GitUrl) Validate() error {
 		}
 
 		return nil
+	case "file":
+		// A local Git repository on the filesystem, e.g. for polling repositories
+		// mounted into the container instead of hosted on a remote SCM.
+		// Only the standard file:///abs/path form (empty authority) is supported.
+		if u.Host != "" || u.Path == "" || !strings.HasPrefix(u.Path, "/") {
+			return fmt.Errorf("%w: file URL must be of the form file:///absolute/path, got '%s'", ErrInvalidGitUrl, s)
+		}
+
+		return nil
 	default:
-		return fmt.Errorf("%w: URL must start with http, https or ssh, got '%s'", ErrInvalidGitUrl, s)
+		return fmt.Errorf("%w: URL must start with http, https, ssh or file, got '%s'", ErrInvalidGitUrl, s)
 	}
 }
 
