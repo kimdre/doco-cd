@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -140,9 +141,14 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 		{"Remove Project - Invalid volumes Param", "/project/{projectName}", "/project/{projectName}?volumes=x", http.MethodDelete, h.ProjectApiHandler, http.StatusBadRequest},
 		{"Restart Project", "/project/{projectName}/{action}", "/project/{projectName}/restart", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK},
 		{"Restart Project - Non-existent Project", "/project/{projectName}/{action}", "/project/nonexistent/restart", http.MethodPost, h.ProjectActionApiHandler, http.StatusNotFound},
+		{"Restart Project - Non-existent Project and Zero Timeout", "/project/{projectName}/{action}", "/project/nonexistent/restart?timeout=0", http.MethodPost, h.ProjectActionApiHandler, http.StatusNotFound},
+		{"Restart Project - Non-existent Project and Overflowing Timeout", "/project/{projectName}/{action}", "/project/nonexistent/restart?timeout=" + strconv.FormatInt(maxProjectActionTimeout+1, 10), http.MethodPost, h.ProjectActionApiHandler, http.StatusNotFound},
 		{"Restart Project - With Timeout", "/project/{projectName}/{action}", "/project/{projectName}/restart?timeout=60", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK},
 		{"Restart Project - Invalid Timeout", "/project/{projectName}/{action}", "/project/{projectName}/restart?timeout=x", http.MethodPost, h.ProjectActionApiHandler, http.StatusBadRequest},
 		{"Stop Project - Invalid Timeout", "/project/{projectName}/{action}", "/project/{projectName}/stop?timeout=x", http.MethodPost, h.ProjectActionApiHandler, http.StatusBadRequest},
+		{"Stop Project - Zero Timeout", "/project/{projectName}/{action}", "/project/{projectName}/stop?timeout=0", http.MethodPost, h.ProjectActionApiHandler, http.StatusBadRequest},
+		{"Stop Project - Negative Timeout", "/project/{projectName}/{action}", "/project/{projectName}/stop?timeout=-1", http.MethodPost, h.ProjectActionApiHandler, http.StatusBadRequest},
+		{"Stop Project - Overflowing Timeout", "/project/{projectName}/{action}", "/project/{projectName}/stop?timeout=" + strconv.FormatInt(maxProjectActionTimeout+1, 10), http.MethodPost, h.ProjectActionApiHandler, http.StatusBadRequest},
 		{"Restart Project - Invalid Method", "/project/{projectName}/{action}", "/project/{projectName}/restart", http.MethodGet, h.ProjectActionApiHandler, http.StatusMethodNotAllowed},
 		{"Restart Project - Invalid Method and Non-existent Project", "/project/{projectName}/{action}", "/project/nonexistent/restart", http.MethodGet, h.ProjectActionApiHandler, http.StatusNotFound},
 		{"Stop Project", "/project/{projectName}/{action}", "/project/{projectName}/stop", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK},
@@ -191,7 +197,7 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 				t.Errorf("handler returned wrong status code: got %v want %v", status, tc.expectedStatus)
 			}
 
-			if tc.name == "Stop Project - Invalid Method" || tc.name == "Stop Project - Invalid Timeout" {
+			if tc.name == "Stop Project - Invalid Method" || strings.Contains(tc.name, "Timeout") {
 				containers, err := docker.GetProjectContainers(ctx, dockerCli, stackName)
 				if err != nil {
 					t.Fatal(err)

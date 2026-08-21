@@ -738,12 +738,12 @@ func (h *handlerData) runProjectAction(ctx context.Context, projectName, action 
 }
 
 func (h *handlerData) resolveProjectAction(ctx context.Context, projectName, action string, timeoutSec int) (projectActionOperation, error) {
-	timeout, err := projectActionTimeout(timeoutSec)
-	if err != nil {
+	if err := h.requireProject(ctx, projectName); err != nil {
 		return projectActionOperation{}, err
 	}
 
-	if err := h.requireProject(ctx, projectName); err != nil {
+	timeout, err := projectActionTimeout(timeoutSec)
+	if err != nil {
 		return projectActionOperation{}, err
 	}
 
