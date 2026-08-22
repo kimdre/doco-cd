@@ -405,6 +405,8 @@
       
         
       
+        
+      
     
     
     
@@ -1080,6 +1082,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#local-filesystem-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Local Filesystem Example
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#inline-deploy-configs" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1119,6 +1132,8 @@
   
     
     
+      
+        
       
         
       
@@ -1632,6 +1647,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../Advanced/Local-Filesystem-Polling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Local Filesystem Polling
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../Advanced/Notifications/" class="md-nav__link">
         
   
@@ -1680,10 +1722,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_8" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_9" >
         
           
-          <label class="md-nav__link" for="__nav_4_8" id="__nav_4_8_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4_9" id="__nav_4_9_label" tabindex="0">
             
   
   
@@ -1700,8 +1742,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_8_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4_8">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_9">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -2569,6 +2611,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#local-filesystem-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Local Filesystem Example
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#inline-deploy-configs" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2711,7 +2764,7 @@
 <tr>
 <td><code>url</code></td>
 <td>string</td>
-<td>Source URL. For <code>source: git</code>, this is the Git clone URL (e.g. <code>https://github.com/kimdre/doco-cd.git</code> or <code>git@github.com:kimdre/doco-cd.git</code>). For <code>source: oci</code>, this is the full artifact reference (e.g. <code>ghcr.io/myorg/config:main</code>).</td>
+<td>Source URL. For <code>source: git</code>, this is the Git clone URL (e.g. <code>https://github.com/kimdre/doco-cd.git</code> or <code>git@github.com:kimdre/doco-cd.git</code>), or a local absolute path mounted into the container (e.g. <code>/local-repos/my-app</code>, equivalent to <code>file:///local-repos/my-app</code>, see <a data-preview="" href="../Advanced/Local-Filesystem-Polling/">Polling Local Filesystem Repositories</a>). For <code>source: oci</code>, this is the full artifact reference (e.g. <code>ghcr.io/myorg/config:main</code>).</td>
 <td></td>
 </tr>
 <tr>
@@ -2874,19 +2927,29 @@
 <li>Or as a Go duration: 5m</li>
 </ol>
 <p>See more at <a data-preview="" href="../Advanced/OCI/Polling/">Polling with OCI</a> and <a data-preview="" href="../Advanced/OCI/Artifact-Usage/">OCI Artifact Usage</a></p>
+<h3 id="local-filesystem-example">Local Filesystem Example<a class="headerlink" href="#local-filesystem-example" title="Permanent link">&para;</a></h3>
+<div class="language-yaml highlight"><span class="filename">poll-config.yaml</span><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/local-repos/my-app</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="nt">reference</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">main</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">60</span><span class="w"> </span><span class="c1"># (1)!</span>
+</span></code></pre></div>
+<ol>
+<li>Or as a Go duration: 1m</li>
+</ol>
+<p>See more at <a data-preview="" href="../Advanced/Local-Filesystem-Polling/">Polling Local Filesystem Repositories</a></p>
 <h3 id="inline-deploy-configs">Inline Deploy Configs<a class="headerlink" href="#inline-deploy-configs" title="Permanent link">&para;</a></h3>
 <p>Inline deployments reuse the same fields as <code>.doco-cd.yml</code> files (See <a data-preview="" href="../Deploy-Settings/">Deploy Settings</a>), including support for external secrets and destroy workflows. The poll job <code>url</code> is always used as the deployment source URL.</p>
 <p>If the poll config has an inline deployment config and the target repository also contains a <code>.doco-cd.yml</code> file, the file will be ignored in favor of the inline deployment config.</p>
-<div class="language-yaml highlight"><span class="filename">Poll Config with inline deploy config</span><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://github.com/example/app.git</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">reference</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">refs/heads/main</span>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">300</span>
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span><span class="nt">deployments</span><span class="p">:</span>
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">example-app</span>
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">      </span><span class="nt">working_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">services/app</span>
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">      </span><span class="nt">compose_files</span><span class="p">:</span>
-</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">compose.yaml</span>
-</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">      </span><span class="nt">env_files</span><span class="p">:</span>
-</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.env.production</span>
+<div class="language-yaml highlight"><span class="filename">Poll Config with inline deploy config</span><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://github.com/example/app.git</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="nt">reference</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">refs/heads/main</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">300</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span><span class="nt">deployments</span><span class="p">:</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">example-app</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">      </span><span class="nt">working_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">services/app</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">      </span><span class="nt">compose_files</span><span class="p">:</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">compose.yaml</span>
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">      </span><span class="nt">env_files</span><span class="p">:</span>
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.env.production</span>
 </span></code></pre></div>
 
 
