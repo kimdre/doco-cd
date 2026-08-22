@@ -11,7 +11,7 @@ import (
 // TestLoadLocalDotEnv_CascadingSelfReference reproduces the scenario from
 // https://github.com/kimdre/doco-cd/issues/1722: a broader-scope .env file
 // defines the real value for a variable, while more specific (deeper) .env
-// files re-declare the same variable as a self-referencing placeholder
+// files redeclare the same variable as a self-referencing placeholder
 // (VAR=${VAR}) intended to simply "pass through" whatever value was already
 // resolved. The placeholder must resolve using the already-accumulated
 // environment, not to an empty string.
