@@ -47,7 +47,7 @@ See [Poll Settings](../Poll-Settings.md) for the full list of poll configuration
 - Both regular repositories (with a `.git` directory) and bare repositories (e.g. `my-app.git`) are supported, as are linked worktrees and submodule checkouts that use a `.git` file.
 - `reference` behaves exactly like it does for remote Git repositories: a branch name, tag name, or commit SHA.
 - On every poll interval, doco-cd checks the local repository for new commits on `reference` and, if changed, deploys them using the same pipeline as remote Git polling (including `.doco-cd.yml`/`.doco-cd.*.yml` discovery and [auto-discovery](../Deploy-Settings.md#auto-discovery)).
-- No credentials are needed or used for `file://` URLs.
+- No credentials are needed or used for local repositories.
 
 ## Webhook-triggered local mirrors
 
