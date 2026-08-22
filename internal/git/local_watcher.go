@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -60,11 +61,41 @@ func WatchLocalGitRef(ctx context.Context, repoURL string, log *slog.Logger) (<-
 
 	go func() {
 		defer func() { _ = watcher.Close() }()
-		defer close(ch)
 
 		var debounce *time.Timer
 
+		var debounceMu sync.Mutex
+
+		stopped := false
+
+		defer func() {
+			if debounce != nil {
+				debounce.Stop()
+			}
+
+			debounceMu.Lock()
+			stopped = true
+
+			for {
+				select {
+				case <-ch:
+				default:
+					close(ch)
+					debounceMu.Unlock()
+
+					return
+				}
+			}
+		}()
+
 		send := func() {
+			debounceMu.Lock()
+			defer debounceMu.Unlock()
+
+			if stopped {
+				return
+			}
+
 			select {
 			case ch <- struct{}{}:
 			default: // already pending
@@ -103,7 +134,9 @@ func WatchLocalGitRef(ctx context.Context, repoURL string, log *slog.Logger) (<-
 					debounce.Stop()
 				}
 
-				debounce = time.AfterFunc(watchDebounce, send)
+				debounce = time.AfterFunc(watchDebounce, func() {
+					send()
+				})
 
 			case err, ok := <-watcher.Errors:
 				if !ok {

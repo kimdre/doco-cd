@@ -38,13 +38,20 @@ const (
 	pollTriggerWatch   = "poll-watch" // triggered by the local repository filesystem watcher
 )
 
+// pollWatcherlessFallbackInterval is used when a local git poll job has no
+// configured Interval and either has the watcher disabled or the watcher
+// failed to start/closed unexpectedly. It's intentionally long since the job
+// is expected to be event-driven, this is just a safety net against never
+// polling again.
+const pollWatcherlessFallbackInterval = 24 * time.Hour
+
 // StartPoll initializes PollJob with the provided configuration and starts the PollHandler goroutine.
 func StartPoll(ctx context.Context, h *handlerData, pollConfig poll.Config, wg *sync.WaitGroup) error {
 	isLocalGit := config.NormalizeSourceType(pollConfig.Source) == config.SourceTypeGit &&
 		git.IsLocalFile(pollConfig.SourceUrl)
 
-	// interval=0 disables polling, unless the source is a local git repo that
-	// will be driven by a filesystem watcher instead.
+	// interval=0 disables polling, unless the source is a local git repo, which
+	// can be driven by a filesystem watcher instead (see pollConfig.Watch).
 	if pollConfig.Interval == 0 && !pollConfig.RunOnce && !isLocalGit {
 		h.log.Info("polling job disabled by config", "config", &pollConfig)
 
@@ -94,7 +101,7 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 	// trigger deployment immediately without waiting for the next interval.
 	var watchCh <-chan struct{}
 
-	if sourceType == config.SourceTypeGit && git.IsLocalFile(pollJob.Config.SourceUrl) {
+	if sourceType == config.SourceTypeGit && git.IsLocalFile(pollJob.Config.SourceUrl) && pollJob.Config.Watch {
 		var watchErr error
 
 		watchCh, watchErr = git.WatchLocalGitRef(ctx, pollJob.Config.SourceUrl, logger)
@@ -106,21 +113,17 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 		}
 	}
 
-	// When only a watcher is configured (interval == 0) use a very long fallback
-	// interval so the timer almost never fires, but the process stays responsive
-	// to ctx cancellation. If the watcher failed to start and no interval is
-	// configured, fall back to the minimum poll interval instead of spinning in
-	// a tight loop on time.After(0).
+	// If no interval is configured, rely purely on watcher-triggered runs (no
+	// periodic fallback at all) as long as the watcher is running. If the
+	// watcher failed to start (or is disabled) and no interval is configured,
+	// fall back to a long safety-net interval instead of spinning in a tight
+	// loop on time.After(0) or never polling again.
 	pollInterval := pollJob.Config.Interval
-	if pollInterval == 0 {
-		if watchCh != nil {
-			pollInterval = 24 * time.Hour
-		} else {
-			logger.Warn("no watcher and no poll interval configured, falling back to minimum poll interval",
-				slog.Duration("interval", poll.MinPollInterval))
+	if pollInterval == 0 && watchCh == nil {
+		logger.Warn("no watcher and no poll interval configured, falling back to safety-net poll interval",
+			slog.Duration("interval", pollWatcherlessFallbackInterval))
 
-			pollInterval = poll.MinPollInterval
-		}
+		pollInterval = pollWatcherlessFallbackInterval
 	}
 
 	doRun := func(trigger string) {
@@ -158,7 +161,13 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 		}
 
 		pollJob.LastRun = time.Now().Unix()
-		pollJob.NextRun = time.Now().Add(pollInterval).Unix()
+
+		if pollInterval > 0 {
+			pollJob.NextRun = time.Now().Add(pollInterval).Unix()
+		} else {
+			// Watcher-only mode: no periodic run is scheduled.
+			pollJob.NextRun = 0
+		}
 	}
 
 	// Always run immediately on startup.
@@ -171,12 +180,38 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 
 	// Use a single reusable timer instead of time.After() in the loop below:
 	// time.After() allocates a new timer on every iteration that lingers until
-	// it fires, which would leak timers (potentially with a 24h duration) every
-	// time a watch event triggers a run.
-	timer := time.NewTimer(pollInterval)
-	defer timer.Stop()
+	// it fires. When pollInterval is 0 (watcher-only mode), no timer is created
+	// at all and timerC stays nil, which permanently disables that select case.
+	var (
+		timer  *time.Timer
+		timerC <-chan time.Time
+	)
+
+	if pollInterval > 0 {
+		timer = time.NewTimer(pollInterval)
+		timerC = timer.C
+
+		defer timer.Stop()
+	}
 
 	resetTimer := func(d time.Duration) {
+		if d <= 0 {
+			if timer != nil {
+				timer.Stop()
+			}
+
+			timerC = nil
+
+			return
+		}
+
+		if timer == nil {
+			timer = time.NewTimer(d)
+			timerC = timer.C
+
+			return
+		}
+
 		if !timer.Stop() {
 			select {
 			case <-timer.C:
@@ -185,6 +220,7 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 		}
 
 		timer.Reset(d)
+		timerC = timer.C
 	}
 
 	for {
@@ -193,7 +229,7 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 			logger.Debug("ctx is done in poll handler")
 			return
 
-		case <-timer.C:
+		case <-timerC:
 			doRun("interval")
 			resetTimer(pollInterval)
 
@@ -205,7 +241,7 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 				pollInterval = pollJob.Config.Interval
 
 				if pollInterval == 0 {
-					pollInterval = poll.MinPollInterval
+					pollInterval = pollWatcherlessFallbackInterval
 				}
 
 				logger.Warn("local repository watcher closed, continuing with interval polling",

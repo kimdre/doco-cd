@@ -248,6 +248,7 @@ func TestPollHandlerFallsBackWhenWatcherFailsWithZeroInterval(t *testing.T) {
 		SourceUrl: "file:///nonexistent/path/that/does/not/exist",
 		Reference: "main",
 		Interval:  0, // watcher-only mode; watcher creation will fail for this path
+		Watch:     true,
 	}
 
 	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
@@ -255,7 +256,7 @@ func TestPollHandlerFallsBackWhenWatcherFailsWithZeroInterval(t *testing.T) {
 
 	h.PollHandler(ctx, &poll.Job{Config: jobConfig})
 
-	// With the fix, the fallback interval is poll.MinPollInterval (10s), so within
+	// With the fix, the fallback interval is a 24h safety net, so within
 	// 500ms only the initial startup run should have happened. Without the fix,
 	// time.After(0) would fire continuously and runCount would be much higher.
 	if got := runCount.Load(); got != 1 {
@@ -323,6 +324,7 @@ func TestPollHandlerReportsWatchTriggerReason(t *testing.T) {
 		SourceUrl: "file://" + srcPath,
 		Reference: "main",
 		Interval:  0, // watcher-only mode
+		Watch:     true,
 	}
 
 	ctx := t.Context()
@@ -347,5 +349,146 @@ func TestPollHandlerReportsWatchTriggerReason(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for watch-triggered poll run")
+	}
+}
+
+// TestPollHandlerWatchDisabledFallsBackTo24h verifies that setting
+// Watch: false on a local git poll config skips starting the filesystem
+// watcher entirely, even for an otherwise valid local repository, and falls
+// back to the 24h safety-net poll interval when no Interval is configured.
+func TestPollHandlerWatchDisabledFallsBackTo24h(t *testing.T) {
+	log := logger.New(logger.LevelCritical)
+
+	srcPath := t.TempDir()
+
+	repo, err := gogit.PlainInit(srcPath, false)
+	if err != nil {
+		t.Fatalf("init repo: %v", err)
+	}
+
+	if err := repo.Storer.SetReference(plumbing.NewSymbolicReference(plumbing.HEAD, plumbing.NewBranchReferenceName("main"))); err != nil {
+		t.Fatalf("set HEAD: %v", err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+
+	sig := &object.Signature{Name: "test", Email: "test@example.com", When: time.Now()}
+
+	if err := os.WriteFile(filepath.Join(srcPath, "a.txt"), []byte("a\n"), 0o600); err != nil {
+		t.Fatalf("write a.txt: %v", err)
+	}
+
+	if _, err := wt.Add("a.txt"); err != nil {
+		t.Fatalf("add a.txt: %v", err)
+	}
+
+	if _, err := wt.Commit("initial commit", &gogit.CommitOptions{Author: sig}); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	var runCount atomic.Int32
+
+	h := handlerData{
+		log: log,
+		runPoll: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+			_ command.Cli, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+			_ string,
+		) error {
+			runCount.Add(1)
+
+			return nil
+		},
+	}
+
+	jobConfig := poll.Config{
+		Source:    config.SourceTypeGit,
+		SourceUrl: "file://" + srcPath,
+		Reference: "main",
+		Interval:  0, // no interval, and watcher disabled below
+		Watch:     false,
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	defer cancel()
+
+	h.PollHandler(ctx, &poll.Job{Config: jobConfig})
+
+	// With Watch disabled and no Interval, the handler must fall back to a
+	// 24h safety-net interval instead of busy-looping, so within 500ms only
+	// the initial startup run should have happened.
+	if got := runCount.Load(); got != 1 {
+		t.Fatalf("expected exactly 1 run (startup only) with watch disabled and no interval, got %d", got)
+	}
+}
+
+// TestPollHandlerWatcherOnlyModeHasNoPeriodicFallback verifies that when Watch
+// is enabled and the watcher starts successfully with Interval: 0, no periodic
+// timer is armed at all (the 24h fallback was removed) - only the initial
+// startup run happens until a new commit triggers the watcher.
+func TestPollHandlerWatcherOnlyModeHasNoPeriodicFallback(t *testing.T) {
+	log := logger.New(logger.LevelCritical)
+
+	srcPath := t.TempDir()
+
+	repo, err := gogit.PlainInit(srcPath, false)
+	if err != nil {
+		t.Fatalf("init repo: %v", err)
+	}
+
+	if err := repo.Storer.SetReference(plumbing.NewSymbolicReference(plumbing.HEAD, plumbing.NewBranchReferenceName("main"))); err != nil {
+		t.Fatalf("set HEAD: %v", err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+
+	sig := &object.Signature{Name: "test", Email: "test@example.com", When: time.Now()}
+
+	if err := os.WriteFile(filepath.Join(srcPath, "a.txt"), []byte("a\n"), 0o600); err != nil {
+		t.Fatalf("write a.txt: %v", err)
+	}
+
+	if _, err := wt.Add("a.txt"); err != nil {
+		t.Fatalf("add a.txt: %v", err)
+	}
+
+	if _, err := wt.Commit("initial commit", &gogit.CommitOptions{Author: sig}); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	var runCount atomic.Int32
+
+	h := handlerData{
+		log: log,
+		runPoll: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+			_ command.Cli, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+			_ string,
+		) error {
+			runCount.Add(1)
+
+			return nil
+		},
+	}
+
+	jobConfig := poll.Config{
+		Source:    config.SourceTypeGit,
+		SourceUrl: "file://" + srcPath,
+		Reference: "main",
+		Interval:  0, // watcher-only mode, watcher should start successfully here
+		Watch:     true,
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 1500*time.Millisecond)
+	defer cancel()
+
+	h.PollHandler(ctx, &poll.Job{Config: jobConfig})
+
+	if got := runCount.Load(); got != 1 {
+		t.Fatalf("expected exactly 1 run (startup only, no periodic fallback) with a working watcher and no interval, got %d", got)
 	}
 }

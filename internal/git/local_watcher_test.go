@@ -96,6 +96,14 @@ func TestWatchLocalGitRef_CancelStopsWatcher(t *testing.T) {
 		t.Fatalf("WatchLocalGitRef: %v", err)
 	}
 
+	// Queue a debounced callback, then cancel before its debounce interval
+	// elapses. The callback must finish before WatchLocalGitRef closes watchCh.
+	if err := os.WriteFile(filepath.Join(srcPath, ".git", "refs", "heads", "watch-cancel"),
+		[]byte("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n"), 0o600); err != nil {
+		t.Fatalf("write ref: %v", err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
 	cancel()
 
 	// After cancellation the channel should be closed (not just silent).
