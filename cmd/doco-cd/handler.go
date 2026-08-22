@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -400,6 +401,10 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 	if err := reconciliation.Deploy(ctx, jobLog, appConfig,
 		dataMountPoint, dockerCli, secretProvider, metadata, jobTrigger,
 		repoData, deployConfigs, &payload, testName); err != nil {
+		if errors.Is(err, stages.ErrWebhookFilterMismatch) {
+			return err
+		}
+
 		return handleError{
 			err:            err,
 			msg:            "deployment failed",

@@ -392,6 +392,19 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		stages.JobTriggerWebhook, sourceType, sourceRef, payload.Ref, payload.Private,
 		metadata, customTarget, testName, poll.Config{}, payload,
 	)
+	if errors.Is(deployErr, stages.ErrWebhookFilterMismatch) {
+		msg := "deployment skipped, webhook filter did not match"
+		elapsedTime := time.Since(startTime)
+		jobLog.Info(msg, slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()))
+		JSONResponse(w, msg, metadata.JobID, http.StatusAccepted)
+
+		if runTracker != nil {
+			runTracker.MarkSkipped(metadata.JobID, msg)
+		}
+
+		return
+	}
+
 	if deployErr != nil {
 		// In synchronous mode we should return an error to the caller
 		// For async mode, w is noopResponseWriter and JSONError is a no-op

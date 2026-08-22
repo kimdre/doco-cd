@@ -1233,7 +1233,7 @@ func HeadMatchesCommit(repoPath, commitSHA string) (bool, error) {
 
 	head, err := repo.Head()
 	if err != nil {
-		return false, nil
+		return false, fmt.Errorf("%w for repository '%s': %w", ErrGetHeadFailed, repoPath, err)
 	}
 
 	return head.Hash().String() == commitSHA, nil
