@@ -335,6 +335,7 @@ func TestHandlerData_TriggerPollHandlerWithoutWait_DetachesRequestContext(t *tes
 		log:       logger.New(logger.LevelCritical),
 		runPoll: func(ctx context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
 			_ command.Cli, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+			_ string,
 		) error {
 			time.Sleep(50 * time.Millisecond)
 

@@ -303,6 +303,37 @@ func TestConfig_UnmarshalYAML_IntervalDuration(t *testing.T) {
 	}
 }
 
+func TestConfig_UnmarshalYAML_WatchDefaultsToTrueAndCanBeDisabled(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`
+- source: git
+  url: /local-repos/my-app
+  reference: main
+- source: git
+  url: /local-repos/other-app
+  reference: main
+  watch: false
+`)
+
+	var cfg []Config
+	if err := yaml.Unmarshal(raw, &cfg); err != nil {
+		t.Fatalf("failed to unmarshal yaml: %v", err)
+	}
+
+	if len(cfg) != 2 {
+		t.Fatalf("expected 2 configs, got %d", len(cfg))
+	}
+
+	if !cfg[0].Watch {
+		t.Fatal("expected watch to default to true when unset")
+	}
+
+	if cfg[1].Watch {
+		t.Fatal("expected watch to be false when explicitly disabled")
+	}
+}
+
 func TestConfig_UnmarshalJSON_IntervalVariants(t *testing.T) {
 	t.Parallel()
 
@@ -310,21 +341,31 @@ func TestConfig_UnmarshalJSON_IntervalVariants(t *testing.T) {
 		name     string
 		input    string
 		expected time.Duration
+		watch    bool
 	}{
 		{
 			name:     "duration string",
 			input:    `{"source":"git","url":"https://example.com/repo.git","reference":"main","interval":"1m30s"}`,
 			expected: 90 * time.Second,
+			watch:    true,
 		},
 		{
 			name:     "numeric string treated as seconds",
 			input:    `{"source":"git","url":"https://example.com/repo.git","reference":"main","interval":"300"}`,
 			expected: 300 * time.Second,
+			watch:    true,
 		},
 		{
 			name:     "integer seconds",
 			input:    `{"source":"git","url":"https://example.com/repo.git","reference":"main","interval":45}`,
 			expected: 45 * time.Second,
+			watch:    true,
+		},
+		{
+			name:     "watch disabled",
+			input:    `{"source":"git","url":"https://example.com/repo.git","reference":"main","interval":45,"watch":false}`,
+			expected: 45 * time.Second,
+			watch:    false,
 		},
 	}
 
@@ -339,6 +380,10 @@ func TestConfig_UnmarshalJSON_IntervalVariants(t *testing.T) {
 
 			if cfg.Interval != tc.expected {
 				t.Fatalf("expected interval %s, got %s", tc.expected, cfg.Interval)
+			}
+
+			if cfg.Watch != tc.watch {
+				t.Fatalf("expected watch=%t, got %t", tc.watch, cfg.Watch)
 			}
 		})
 	}

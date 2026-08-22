@@ -1046,7 +1046,7 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 					JobID:      jobID,
 				}
 
-				errs <- runner(ctx, pollConfig, h.appConfig, h.dataMountPoint, h.dockerCli, h.log.Logger, metadata, h.secretProvider)
+				errs <- runner(ctx, pollConfig, h.appConfig, h.dataMountPoint, h.dockerCli, h.log.Logger, metadata, h.secretProvider, pollTriggerDefault)
 			}(pollCtx, p)
 		}
 
