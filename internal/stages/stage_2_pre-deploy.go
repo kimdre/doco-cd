@@ -21,14 +21,16 @@ import (
 	"github.com/kimdre/doco-cd/internal/git"
 )
 
-func shouldSkipDeployment(composeChanged bool,
+func shouldSkipDeployment(retryAfterFailure bool,
+	composeChanged bool,
 	autoDiscoveryLabelChanged bool,
 	changedServices []docker.Change,
 	ignoredInfo docker.IgnoredInfo,
 	imagesChanged bool,
 	mismatchServices []docker.ServiceMismatch,
 ) bool {
-	return !composeChanged &&
+	return !retryAfterFailure &&
+		!composeChanged &&
 		!autoDiscoveryLabelChanged &&
 		len(changedServices) == 0 &&
 		!ignoredInfo.IsNeedSignal() &&
@@ -152,6 +154,24 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		return fmt.Errorf("failed to get latest state from deployed services: %w", err)
 	}
 
+	// A recorded failure means the last attempt of this stack did not finish.
+	// The commit/hash labels then lie (compose stamps them before hooks and
+	// later stages run), so the skip checks below must not trust them (#1702).
+	lastFailure, retryAfterFailure := s.lastDeploymentFailure()
+	if retryAfterFailure {
+		stageLog.Warn("last deployment attempt failed, retrying",
+			slog.String("failed_stage", lastFailure.Stage),
+			slog.String("failed_commit", lastFailure.CommitSHA),
+			slog.Time("failed_at", lastFailure.FailedAt),
+			slog.String("error", lastFailure.Error),
+		)
+	}
+
+	// Only a failed deploy stage leaves half-applied containers behind (e.g. a
+	// lifecycle hook that never finished), and a plain re-up of an unchanged
+	// project would touch nothing. Force recreate so the retry re-runs it all.
+	retryForceRecreate := retryAfterFailure && lastFailure.Stage == string(StageDeploy)
+
 	expectedAutoDiscoveryLabel := docker.MarshalAutoDiscoveryConfig(s.DeployConfig.AutoDiscovery)
 	autoDiscoveryDriftServices, deployedAutoDiscoveryLabel := autoDiscoveryConfigLabelDriftServices(
 		deployedState.DeployedStatus,
@@ -171,7 +191,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		deployedDigest := deployedState.GetDeploymentCommitSHA()
 		resolvedDigest := s.Repository.Revision
 
-		if shouldSkipOCIDeployment(s.DeployConfig.ForceRecreate, deployedDigest, resolvedDigest) && !autoDiscoveryConfigChanged {
+		if shouldSkipOCIDeployment(s.DeployConfig.ForceRecreate, deployedDigest, resolvedDigest) && !autoDiscoveryConfigChanged && !retryAfterFailure {
 			stageLog.Debug("OCI artifact digest unchanged, skipping deployment",
 				slog.String("deployed_digest", strings.TrimSpace(deployedDigest)),
 				slog.String("resolved_digest", strings.TrimSpace(resolvedDigest)),
@@ -192,10 +212,18 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		}
 
 		if autoDiscoveryConfigChanged {
-			s.DeployState.changedServices = []docker.Change{{
+			s.DeployState.changedServices = append(s.DeployState.changedServices, docker.Change{
 				Type:     "auto_discovery_config_label",
 				Services: autoDiscoveryDriftServices,
-			}}
+			})
+		}
+
+		if retryForceRecreate {
+			// No compose project is loaded at this point. An empty service
+			// list force-recreates the whole project.
+			s.DeployState.changedServices = append(s.DeployState.changedServices, docker.Change{
+				Type: docker.ChangeTypeFailedDeployRetry,
+			})
 		}
 
 		return nil
@@ -317,13 +345,21 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			})
 		}
 
+		if retryForceRecreate {
+			// Empty service list force-recreates the whole project: the failed
+			// part (e.g. a lifecycle hook) is not attributable to one service.
+			changedServices = append(changedServices, docker.Change{
+				Type: docker.ChangeTypeFailedDeployRetry,
+			})
+		}
+
 		mismatchServices := docker.CheckServiceMismatch(s.Docker.SwarmMode, deployedState.DeployedStatus, s.Docker.Project.Services)
 
 		if s.DeployConfig.ForceRecreate {
 			stageLog.Debug("force recreate enabled, proceeding with deployment",
 				slog.String("directory", s.DeployConfig.WorkingDirectory),
 			)
-		} else if shouldSkipDeployment(composeChanged, autoDiscoveryConfigChanged, changedServices, ignoredInfo, imagesChanged, mismatchServices) {
+		} else if shouldSkipDeployment(retryAfterFailure, composeChanged, autoDiscoveryConfigChanged, changedServices, ignoredInfo, imagesChanged, mismatchServices) {
 			stageLog.Debug("no changes detected, skipping deployment",
 				slog.String("directory", s.DeployConfig.WorkingDirectory),
 			)
