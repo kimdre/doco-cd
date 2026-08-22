@@ -7,13 +7,20 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/joho/godotenv"
+	"github.com/compose-spec/compose-go/v2/dotenv"
 
 	"github.com/kimdre/doco-cd/internal/encryption"
 )
 
 // LoadLocalDotEnv processes local dotenv files and loads their variables into the Config.Internal Environment map.
 // Remote dotenv files (prefixed with "remote:") are collected and left in Config.EnvFiles for later processing.
+//
+// Env files are parsed with compose-go's lookup-aware parser so that variable references (e.g. VAR=${VAR})
+// resolve against values already accumulated from previously processed files, matching the cascading
+// resolution behavior compose-go itself uses when loading multiple --env-file entries. Without this,
+// a later, more specific env file using a self-referencing placeholder (common in gitops setups that
+// declare an env var per-directory to be filled in from a broader-scope .env file) would resolve to an
+// empty string and silently overwrite a correctly resolved value from an earlier file.
 func LoadLocalDotEnv(config *Config, basePath string) error {
 	const remotePrefix = "remote:"
 
@@ -21,6 +28,11 @@ func LoadLocalDotEnv(config *Config, basePath string) error {
 
 	if len(config.Internal.Environment) == 0 {
 		config.Internal.Environment = make(map[string]string)
+	}
+
+	lookupFn := func(key string) (string, bool) {
+		v, ok := config.Internal.Environment[key]
+		return v, ok
 	}
 
 	for _, f := range config.EnvFiles {
@@ -39,23 +51,23 @@ func LoadLocalDotEnv(config *Config, basePath string) error {
 				return fmt.Errorf("failed to check if env file is encrypted %s: %w", absPath, err)
 			}
 
-			var envMap map[string]string
+			var content []byte
 
 			if isEncrypted {
-				decryptedContent, err := encryption.DecryptFile(absPath)
+				content, err = encryption.DecryptFile(absPath)
 				if err != nil {
 					return fmt.Errorf("failed to decrypt env file %s: %w", absPath, err)
 				}
-
-				envMap, err = godotenv.UnmarshalBytes(decryptedContent)
-				if err != nil {
-					return fmt.Errorf("failed to parse decrypted env file %s: %w", absPath, err)
-				}
 			} else {
-				envMap, err = godotenv.Read(absPath)
+				content, err = os.ReadFile(absPath)
 				if err != nil {
 					return fmt.Errorf("failed to read local env file %s: %w", absPath, err)
 				}
+			}
+
+			envMap, err := dotenv.UnmarshalBytesWithLookup(content, lookupFn)
+			if err != nil {
+				return fmt.Errorf("failed to parse env file %s: %w", absPath, err)
 			}
 
 			maps.Copy(config.Internal.Environment, envMap)
