@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -67,7 +68,7 @@ func (h HttpUrl) Validate() error {
 
 // Validate checks whether the GitUrl is a valid Git repository URL.
 func (g GitUrl) Validate() error {
-	s := strings.TrimSpace(string(g))
+	s := NormalizeGitURL(string(g))
 
 	if s == "" {
 		return nil // empty is handled by required checks
@@ -107,8 +108,24 @@ func (g GitUrl) Validate() error {
 
 		return nil
 	default:
-		return fmt.Errorf("%w: URL must start with http, https, ssh or file, got '%s'", ErrInvalidGitUrl, s)
+		return fmt.Errorf("%w: URL must start with http, https, ssh or file (or be an absolute local path), got '%s'", ErrInvalidGitUrl, s)
 	}
+}
+
+// NormalizeGitURL canonicalizes Git source values.
+// Absolute local paths are converted to file:// URLs so downstream code can
+// handle all local repositories consistently.
+func NormalizeGitURL(raw string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return s
+	}
+
+	if filepath.IsAbs(s) && !strings.Contains(s, "://") {
+		return "file://" + filepath.ToSlash(filepath.Clean(s))
+	}
+
+	return s
 }
 
 // Validate checks whether the OciUrl is a valid OCI artifact reference.

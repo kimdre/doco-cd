@@ -42,12 +42,14 @@ func normalizeSourceURLRewriteKey(value string) string {
 // resolveWebhookGitCloneURL checks if there is a configured clone URL override for the given webhook payload and
 // returns the resolved clone URL along with a boolean indicating whether an override was applied.
 func resolveWebhookGitCloneURL(payload webhook.ParsedPayload, appConfig *app.Config) (string, bool) {
-	defaultURL := strings.TrimSpace(payload.CloneURL)
+	defaultURL := config.NormalizeGitURL(payload.CloneURL)
 	if appConfig == nil || len(appConfig.SourceURLRewrites) == 0 {
 		return defaultURL, false
 	}
 
-	return rewriteSourceURL(defaultURL, appConfig.SourceURLRewrites)
+	rewritten, applied := rewriteSourceURL(defaultURL, appConfig.SourceURLRewrites)
+
+	return config.NormalizeGitURL(rewritten), applied
 }
 
 // isWebhookGitCloneURLAllowed prevents an authenticated webhook payload from

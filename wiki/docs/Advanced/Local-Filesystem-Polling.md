@@ -14,7 +14,7 @@ This reuses the exact same [polling](../Core-Concepts.md#polling) mechanism, dep
 
 ## Configuration
 
-Mount the local Git repository into the doco-cd container (read-only is recommended, doco-cd never writes to it - it clones into its own working directory), then reference it in a [poll configuration](../Poll-Settings.md) using a `file://` URL:
+Mount the local Git repository into the doco-cd container (read-only is recommended, doco-cd never writes to it - it clones into its own working directory), then reference it in a [poll configuration](../Poll-Settings.md) using either an absolute path or a `file://` URL:
 
 ```yaml title="docker-compose.yaml" hl_lines="9-12 15"
 services:
@@ -42,7 +42,7 @@ See [Poll Settings](../Poll-Settings.md) for the full list of poll configuration
 
 ## How it works
 
-- `url` must be an absolute path inside the container, prefixed with `file://` (e.g. `file:///local-repos/my-app`).
+- `url` must be an absolute path inside the container (e.g. `/local-repos/my-app`) or the equivalent `file://` URL (e.g. `file:///local-repos/my-app`).
 - Both regular repositories (with a `.git` directory) and bare repositories (e.g. `my-app.git`) are supported, as are linked worktrees and submodule checkouts that use a `.git` file.
 - `reference` behaves exactly like it does for remote Git repositories: a branch name, tag name, or commit SHA.
 - On every poll interval, doco-cd checks the local repository for new commits on `reference` and, if changed, deploys them using the same pipeline as remote Git polling (including `.doco-cd.yml`/`.doco-cd.*.yml` discovery and [auto-discovery](../Deploy-Settings.md#auto-discovery)).

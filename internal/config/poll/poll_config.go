@@ -72,6 +72,8 @@ func (c *Config) Validate() error {
 
 	switch c.Source {
 	case config.SourceTypeGit:
+		c.SourceUrl = config.NormalizeGitURL(c.SourceUrl)
+
 		if c.SourceUrl == "" {
 			return fmt.Errorf("%w: url", deploy.ErrKeyNotFound)
 		}

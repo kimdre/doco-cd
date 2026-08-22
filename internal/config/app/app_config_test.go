@@ -783,3 +783,28 @@ func TestGetConfig_DockerSwarmSecretRetentionRejectsBelowMinusOne(t *testing.T) 
 		t.Fatal("expected DOCKER_SWARM_SECRET_RETENTION=-2 to be rejected")
 	}
 }
+
+func TestGetConfig_PollConfigAbsolutePathNormalizedInPlace(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("POLL_CONFIG", `
+- source: git
+  url: /local-repos/my-app
+  reference: refs/heads/main
+`)
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected poll config to be accepted, got %v", err)
+	}
+
+	if len(cfg.PollConfig) != 1 {
+		t.Fatalf("expected 1 poll config, got %d", len(cfg.PollConfig))
+	}
+
+	want := "file:///local-repos/my-app"
+	if got := cfg.PollConfig[0].SourceUrl; got != want {
+		t.Fatalf("expected normalized SourceUrl %q to be persisted, got %q", want, got)
+	}
+}

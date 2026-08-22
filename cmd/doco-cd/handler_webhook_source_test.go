@@ -74,6 +74,26 @@ func TestResolveWebhookGitCloneURL(t *testing.T) {
 			expectedURL:     "https://github.com/org/repo.git",
 			expectedApplied: false,
 		},
+		{
+			name: "rewrite to absolute local path is normalized to file URL",
+			payload: webhook.ParsedPayload{
+				CloneURL: "https://forgejo.example.com/org/repo.git",
+			},
+			rewrites: map[string]string{
+				"https://forgejo.example.com/": "/local-repos/",
+			},
+			expectedURL:     "file:///local-repos/org/repo.git",
+			expectedApplied: true,
+		},
+		{
+			name: "payload absolute local path is normalized when no rewrite",
+			payload: webhook.ParsedPayload{
+				CloneURL: "/local-repos/org/repo.git",
+			},
+			rewrites:        map[string]string{},
+			expectedURL:     "file:///local-repos/org/repo.git",
+			expectedApplied: false,
+		},
 	}
 
 	for _, tc := range testCases {

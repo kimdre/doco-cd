@@ -100,8 +100,10 @@ func TestGitUrlValidate(t *testing.T) {
 		{name: "missing host", in: "ssh:///repo.git", want: false},
 		{name: "valid file url", in: "file:///data/local-repos/my-app", want: true},
 		{name: "valid file url with trailing .git", in: "file:///data/local-repos/my-app.git", want: true},
+		{name: "valid absolute local path", in: "/data/local-repos/my-app", want: true},
 		{name: "file url missing path", in: "file://", want: false},
 		{name: "file url with relative path", in: "file:relative/path", want: false},
+		{name: "relative local path is rejected", in: "./local-repos/my-app", want: false},
 		{name: "file url with host is rejected", in: "file://host/abs/path", want: false},
 	}
 
