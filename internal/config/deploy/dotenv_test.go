@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/kimdre/doco-cd/internal/encryption"
 )
 
 // TestLoadLocalDotEnv_CascadingSelfReference reproduces the scenario from
@@ -85,6 +87,37 @@ func TestLoadLocalDotEnv_SingleFile(t *testing.T) {
 
 	if cfg.Internal.Environment["BAZ"] != "qux" {
 		t.Errorf("BAZ = %q, want %q", cfg.Internal.Environment["BAZ"], "qux")
+	}
+}
+
+// TestLoadLocalDotEnv_EncryptedFile verifies SOPS-encrypted env files are
+// decrypted and parsed correctly (regression check for the parser swap from
+// joho/godotenv to compose-go/v2/dotenv).
+func TestLoadLocalDotEnv_EncryptedFile(t *testing.T) {
+	encryption.SetupAgeKeyEnvVar(t)
+
+	tmpDir := t.TempDir()
+	dst := filepath.Join(tmpDir, ".env")
+
+	src, err := os.ReadFile("../../encryption/testdata/encrypted.env")
+	if err != nil {
+		t.Fatalf("failed to read encrypted test fixture: %v", err)
+	}
+
+	if err := createTestFile(t, dst, string(src)); err != nil {
+		t.Fatalf("failed to copy encrypted test fixture: %v", err)
+	}
+
+	cfg := &Config{
+		EnvFiles: []string{".env"},
+	}
+
+	if err := LoadLocalDotEnv(cfg, tmpDir); err != nil {
+		t.Fatalf("LoadLocalDotEnv() returned an error: %v", err)
+	}
+
+	if got, want := cfg.Internal.Environment["THIS_IS_ENCRYPTED"], "yes"; got != want {
+		t.Errorf("THIS_IS_ENCRYPTED = %q, want %q", got, want)
 	}
 }
 
