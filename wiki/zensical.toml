@@ -50,6 +50,7 @@ nav = [
       { OpenBao = "External-Secrets/Openbao.md" },
       { Webhook = "External-Secrets/Webhook.md" }] },
     { "Job Scheduling / Cron Jobs" = "Advanced/Job-Scheduling.md" },
+    { "Local Filesystem Polling" = "Advanced/Local-Filesystem-Polling.md" },
     { Notifications = "Advanced/Notifications.md" },
     { "OCI Artifacts" = [
       { "Artifact Usage" = "Advanced/OCI/Artifact-Usage.md" },

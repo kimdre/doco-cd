@@ -304,6 +304,11 @@ func wildcardMatches(host, suffix string) bool {
 
 // GetAuthMethod determines the appropriate authentication method based on the URL and provided credentials.
 func GetAuthMethod(url, privateKey, keyPassphrase, token string) (transport.AuthMethod, error) {
+	// Local filesystem repositories (file:// URLs) need no credentials.
+	if IsLocalFile(url) {
+		return nil, nil
+	}
+
 	resolved := ResolveAuthConfig(url, privateKey, keyPassphrase, token)
 
 	if IsSSH(url) {
@@ -347,6 +352,11 @@ func ResolveHTTPToken(url string, resolved ResolvedAuthConfig) (string, error) {
 // IsSSH checks if a given URL is an SSH URL.
 func IsSSH(url string) bool {
 	return strings.HasPrefix(url, "git@") || strings.HasPrefix(url, "ssh://")
+}
+
+// IsLocalFile checks if a given URL points to a local filesystem Git repository (file:// scheme).
+func IsLocalFile(url string) bool {
+	return strings.HasPrefix(url, "file://")
 }
 
 // SSHAuth creates an SSH authentication method using the provided private key.

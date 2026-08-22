@@ -54,6 +54,15 @@ func TestGetFullName(t *testing.T) {
 			cloneURL: "https://gitlab.com/gitlab-org/5-minute-production-app/sandbox/cats.git",
 			expected: "gitlab-org/5-minute-production-app/sandbox/cats",
 		},
+		// Local filesystem repositories (file:// URLs)
+		{
+			cloneURL: "file:///data/local-repos/my-app",
+			expected: "local-repos/my-app",
+		},
+		{
+			cloneURL: "file:///my-app",
+			expected: "my-app",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.cloneURL, func(t *testing.T) {

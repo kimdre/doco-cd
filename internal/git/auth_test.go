@@ -7,6 +7,43 @@ import (
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 )
 
+func TestIsLocalFile(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		url  string
+		want bool
+	}{
+		{"file:///data/local-repos/my-app", true},
+		{"https://example.com/repo.git", false},
+		{"ssh://git@example.com/repo.git", false},
+		{"git@example.com:owner/repo.git", false},
+		{"", false},
+	}
+
+	for _, tt := range tests {
+		if got := IsLocalFile(tt.url); got != tt.want {
+			t.Errorf("IsLocalFile(%q) = %v, want %v", tt.url, got, tt.want)
+		}
+	}
+}
+
+func TestGetAuthMethod_LocalFileNeedsNoCredentials(t *testing.T) {
+	ConfigureAuthResolver(nil, "", "", "global-token", "", GitHubAppConfig{})
+	t.Cleanup(func() {
+		ConfigureAuthResolver(nil, "", "", "", "", GitHubAppConfig{})
+	})
+
+	auth, err := GetAuthMethod("file:///data/local-repos/my-app", "", "", "")
+	if err != nil {
+		t.Fatalf("GetAuthMethod() error = %v, want nil", err)
+	}
+
+	if auth != nil {
+		t.Fatalf("GetAuthMethod() = %v, want nil auth for local file URL", auth)
+	}
+}
+
 func TestResolveScopedCredentials_ExactBeatsWildcard(t *testing.T) {
 	ConfigureAuthResolver([]ScopedAuthConfig{
 		{

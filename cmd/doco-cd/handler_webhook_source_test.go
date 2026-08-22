@@ -74,6 +74,26 @@ func TestResolveWebhookGitCloneURL(t *testing.T) {
 			expectedURL:     "https://github.com/org/repo.git",
 			expectedApplied: false,
 		},
+		{
+			name: "rewrite to absolute local path is normalized to file URL",
+			payload: webhook.ParsedPayload{
+				CloneURL: "https://forgejo.example.com/org/repo.git",
+			},
+			rewrites: map[string]string{
+				"https://forgejo.example.com/": "/local-repos/",
+			},
+			expectedURL:     "file:///local-repos/org/repo.git",
+			expectedApplied: true,
+		},
+		{
+			name: "payload absolute local path is normalized when no rewrite",
+			payload: webhook.ParsedPayload{
+				CloneURL: "/local-repos/org/repo.git",
+			},
+			rewrites:        map[string]string{},
+			expectedURL:     "file:///local-repos/org/repo.git",
+			expectedApplied: false,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -116,6 +136,44 @@ func TestRewriteSourceURL_UsedByPollAndWebhook(t *testing.T) {
 	pollURL, pollApplied := rewriteSourceURL("https://forgejo.example.com/org/repo.git", cfg.SourceURLRewrites)
 	if !pollApplied || pollURL != "http://forgejo:3000/org/repo.git" {
 		t.Fatalf("expected poll URL rewrite to apply, got applied=%v url=%q", pollApplied, pollURL)
+	}
+}
+
+func TestIsWebhookGitCloneURLAllowed(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name           string
+		url            string
+		rewriteApplied bool
+		want           bool
+	}{
+		{
+			name: "allows remote URL from payload",
+			url:  "https://forgejo.example.com/org/repo.git",
+			want: true,
+		},
+		{
+			name: "rejects local URL from payload",
+			url:  "file:///local-repos/org/repo.git",
+			want: false,
+		},
+		{
+			name:           "allows local URL from configured rewrite",
+			url:            "file:///local-repos/org/repo.git",
+			rewriteApplied: true,
+			want:           true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := isWebhookGitCloneURLAllowed(tc.url, tc.rewriteApplied); got != tc.want {
+				t.Errorf("isWebhookGitCloneURLAllowed(%q, %t) = %t, want %t", tc.url, tc.rewriteApplied, got, tc.want)
+			}
+		})
 	}
 }
 

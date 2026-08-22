@@ -42,12 +42,21 @@ func normalizeSourceURLRewriteKey(value string) string {
 // resolveWebhookGitCloneURL checks if there is a configured clone URL override for the given webhook payload and
 // returns the resolved clone URL along with a boolean indicating whether an override was applied.
 func resolveWebhookGitCloneURL(payload webhook.ParsedPayload, appConfig *app.Config) (string, bool) {
-	defaultURL := strings.TrimSpace(payload.CloneURL)
+	defaultURL := config.NormalizeGitURL(payload.CloneURL)
 	if appConfig == nil || len(appConfig.SourceURLRewrites) == 0 {
 		return defaultURL, false
 	}
 
-	return rewriteSourceURL(defaultURL, appConfig.SourceURLRewrites)
+	rewritten, applied := rewriteSourceURL(defaultURL, appConfig.SourceURLRewrites)
+
+	return config.NormalizeGitURL(rewritten), applied
+}
+
+// isWebhookGitCloneURLAllowed prevents an authenticated webhook payload from
+// directly selecting an arbitrary local repository. Local URLs must come from
+// an operator-configured source URL rewrite.
+func isWebhookGitCloneURLAllowed(url string, rewriteApplied bool) bool {
+	return rewriteApplied || !git.IsLocalFile(url)
 }
 
 // rewriteSourceURL applies the configured source URL rewrites to the given source URL and
@@ -311,6 +320,17 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		sourceRef = payload.Artifact
 	} else {
 		sourceRef, cloneURLOverrideApplied = resolveWebhookGitCloneURL(payload, appConfig)
+		if !isWebhookGitCloneURLAllowed(sourceRef, cloneURLOverrideApplied) {
+			err := errors.New("local filesystem Git URLs in webhook payloads require a configured source URL rewrite")
+			onError(w, jobLog.With(logger.ErrAttr(err)), "webhook clone URL is not allowed", err, http.StatusForbidden, metadata, err)
+
+			if runTracker != nil {
+				runTracker.MarkFailed(metadata.JobID, err.Error())
+			}
+
+			return
+		}
+
 		if cloneURLOverrideApplied {
 			jobLog.Debug("using configured webhook clone URL override", slog.String("clone_url", sourceRef))
 		}

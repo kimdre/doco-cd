@@ -165,8 +165,8 @@ func GetConfig() (*Config, error) {
 		return nil, fmt.Errorf("invalid GIT_SCM_PROVIDER: %w", err)
 	}
 
-	for _, pollConfig := range cfg.PollConfig {
-		if err = pollConfig.Validate(); err != nil {
+	for i := range cfg.PollConfig {
+		if err = cfg.PollConfig[i].Validate(); err != nil {
 			return nil, fmt.Errorf("%w: %w", poll.ErrInvalidConfig, err)
 		}
 	}

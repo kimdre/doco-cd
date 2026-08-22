@@ -174,7 +174,9 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 		var rewritten string
 
 		rewritten, sourceURLRewriteApplied = rewriteSourceURL(sourceRef, appConfig.SourceURLRewrites)
-		sourceRef = rewritten
+		sourceRef = config.NormalizeGitURL(rewritten)
+	} else if sourceType == config.SourceTypeGit {
+		sourceRef = config.NormalizeGitURL(sourceRef)
 	}
 
 	repoName := git.GetRepoName(sourceRef)

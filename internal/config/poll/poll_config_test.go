@@ -20,6 +20,7 @@ func TestConfig_Validate(t *testing.T) {
 		config   Config
 		expected error
 		wantRef  string
+		wantURL  string
 	}{
 		{
 			name: "Valid git config",
@@ -42,6 +43,30 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expected: nil,
 			wantRef:  "main",
+		},
+		{
+			name: "Valid git config - local filesystem file:// URL",
+			config: Config{
+				Source:    config.SourceTypeGit,
+				SourceUrl: "file:///data/local-repos/my-app",
+				Reference: "main",
+				Interval:  10 * time.Second,
+			},
+			expected: nil,
+			wantRef:  "main",
+			wantURL:  "file:///data/local-repos/my-app",
+		},
+		{
+			name: "Valid git config - local filesystem absolute path",
+			config: Config{
+				Source:    config.SourceTypeGit,
+				SourceUrl: "/data/local-repos/my-app",
+				Reference: "main",
+				Interval:  10 * time.Second,
+			},
+			expected: nil,
+			wantRef:  "main",
+			wantURL:  "file:///data/local-repos/my-app",
 		},
 		{
 			name: "Valid OCI config",
@@ -150,6 +175,10 @@ func TestConfig_Validate(t *testing.T) {
 
 			if tc.wantRef != "" && tc.config.Reference != tc.wantRef {
 				t.Errorf("expected reference %q, got %q", tc.wantRef, tc.config.Reference)
+			}
+
+			if tc.wantURL != "" && tc.config.SourceUrl != tc.wantURL {
+				t.Errorf("expected source URL %q, got %q", tc.wantURL, tc.config.SourceUrl)
 			}
 		})
 	}

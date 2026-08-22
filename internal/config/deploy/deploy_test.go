@@ -146,6 +146,27 @@ func TestConfig_Validate_ContextTrim(t *testing.T) {
 	}
 }
 
+func TestConfig_Validate_RepositoryURLAbsolutePathNormalization(t *testing.T) {
+	t.Parallel()
+
+	dc := Config{
+		Name:          "test",
+		RepositoryUrl: "/local-repos/my-app.git",
+	}
+
+	if err := defaults.Set(&dc); err != nil {
+		t.Fatalf("defaults: %v", err)
+	}
+
+	if err := dc.Validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+
+	if got := string(dc.RepositoryUrl); got != "file:///local-repos/my-app.git" {
+		t.Fatalf("expected normalized repository_url %q, got %q", "file:///local-repos/my-app.git", got)
+	}
+}
+
 func TestConfig_Validate_SwarmRetention(t *testing.T) {
 	t.Parallel()
 
