@@ -4,10 +4,18 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	gogit "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
+
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -37,6 +45,7 @@ func TestPollHandlerAllowsConcurrentRunsForSameRepository(t *testing.T) {
 		log: log,
 		runPoll: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
 			_ command.Cli, _ *slog.Logger, metadata notification.Metadata, _ *secretprovider.SecretProvider,
+			_ string,
 		) error {
 			started <- metadata
 
@@ -200,14 +209,143 @@ func TestRunPoll(t *testing.T) {
 	}
 
 	// Run initial poll
-	if err := RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, log.With(), metadata, &secretProvider); err != nil {
+	if err := RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, log.With(), metadata, &secretProvider, pollTriggerDefault); err != nil {
 		t.Fatalf("Initial poll deployment failed: %v", err)
 	}
 
 	pollConfig.Reference = "destroy"
 
 	// Run the second poll to destroy
-	if err := RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, log.With(), metadata, &secretProvider); err != nil {
+	if err := RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, log.With(), metadata, &secretProvider, pollTriggerDefault); err != nil {
 		t.Fatalf("Second poll deployment failed: %v", err)
+	}
+}
+
+// TestPollHandlerFallsBackWhenWatcherFailsWithZeroInterval ensures that when a
+// local git source is configured with interval=0 (watcher-only mode) but the
+// filesystem watcher fails to start (e.g. an invalid/missing repository path),
+// PollHandler falls back to a safe minimum interval instead of busy-looping on
+// time.After(0).
+func TestPollHandlerFallsBackWhenWatcherFailsWithZeroInterval(t *testing.T) {
+	log := logger.New(logger.LevelCritical)
+
+	var runCount atomic.Int32
+
+	h := handlerData{
+		log: log,
+		runPoll: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+			_ command.Cli, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+			_ string,
+		) error {
+			runCount.Add(1)
+
+			return nil
+		},
+	}
+
+	jobConfig := poll.Config{
+		Source:    config.SourceTypeGit,
+		SourceUrl: "file:///nonexistent/path/that/does/not/exist",
+		Reference: "main",
+		Interval:  0, // watcher-only mode; watcher creation will fail for this path
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	defer cancel()
+
+	h.PollHandler(ctx, &poll.Job{Config: jobConfig})
+
+	// With the fix, the fallback interval is poll.MinPollInterval (10s), so within
+	// 500ms only the initial startup run should have happened. Without the fix,
+	// time.After(0) would fire continuously and runCount would be much higher.
+	if got := runCount.Load(); got != 1 {
+		t.Fatalf("expected exactly 1 run (startup) within 500ms fallback window, got %d (possible busy loop)", got)
+	}
+}
+
+// TestPollHandlerReportsWatchTriggerReason verifies that a poll run triggered by
+// the local repository filesystem watcher reports a distinct trigger reason
+// ("poll-watch") from the initial startup run ("poll"), so log lines can tell
+// interval/startup-driven polls apart from watcher-driven ones.
+func TestPollHandlerReportsWatchTriggerReason(t *testing.T) {
+	log := logger.New(logger.LevelCritical)
+
+	srcPath := t.TempDir()
+
+	repo, err := gogit.PlainInit(srcPath, false)
+	if err != nil {
+		t.Fatalf("init repo: %v", err)
+	}
+
+	if err := repo.Storer.SetReference(plumbing.NewSymbolicReference(plumbing.HEAD, plumbing.NewBranchReferenceName("main"))); err != nil {
+		t.Fatalf("set HEAD: %v", err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+
+	sig := &object.Signature{Name: "test", Email: "test@example.com", When: time.Now()}
+
+	writeAndCommit := func(name, content, msg string) {
+		if err := os.WriteFile(filepath.Join(srcPath, name), []byte(content), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+
+		if _, err := wt.Add(name); err != nil {
+			t.Fatalf("add %s: %v", name, err)
+		}
+
+		if _, err := wt.Commit(msg, &gogit.CommitOptions{Author: sig}); err != nil {
+			t.Fatalf("commit %s: %v", msg, err)
+		}
+	}
+
+	writeAndCommit("a.txt", "a\n", "initial commit")
+
+	reasons := make(chan string, 10)
+
+	h := handlerData{
+		log: log,
+		runPoll: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+			_ command.Cli, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+			triggerReason string,
+		) error {
+			reasons <- triggerReason
+
+			return nil
+		},
+	}
+
+	jobConfig := poll.Config{
+		Source:    config.SourceTypeGit,
+		SourceUrl: "file://" + srcPath,
+		Reference: "main",
+		Interval:  0, // watcher-only mode
+	}
+
+	ctx := t.Context()
+
+	go h.PollHandler(ctx, &poll.Job{Config: jobConfig})
+
+	select {
+	case r := <-reasons:
+		if r != pollTriggerDefault {
+			t.Fatalf("expected startup run to report trigger reason %q, got %q", pollTriggerDefault, r)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for startup poll run")
+	}
+
+	writeAndCommit("b.txt", "b\n", "second commit")
+
+	select {
+	case r := <-reasons:
+		if r != pollTriggerWatch {
+			t.Fatalf("expected watch-triggered run to report trigger reason %q, got %q", pollTriggerWatch, r)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for watch-triggered poll run")
 	}
 }

@@ -27,11 +27,25 @@ import (
 
 type pollRunner func(ctx context.Context, pollConfig poll.Config, appConfig *app.Config, dataMountPoint container.MountPoint,
 	dockerCli command.Cli, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
+	triggerReason string,
 ) error
+
+// Poll trigger reasons, reported in the "polling <entity>" log line's
+// trigger.event field so it's possible to tell a regular interval-driven poll
+// apart from one triggered by the local repository filesystem watcher.
+const (
+	pollTriggerDefault = "poll"       // regular interval/startup/API-triggered poll
+	pollTriggerWatch   = "poll-watch" // triggered by the local repository filesystem watcher
+)
 
 // StartPoll initializes PollJob with the provided configuration and starts the PollHandler goroutine.
 func StartPoll(ctx context.Context, h *handlerData, pollConfig poll.Config, wg *sync.WaitGroup) error {
-	if pollConfig.Interval == 0 && !pollConfig.RunOnce {
+	isLocalGit := config.NormalizeSourceType(pollConfig.Source) == config.SourceTypeGit &&
+		git.IsLocalFile(pollConfig.SourceUrl)
+
+	// interval=0 disables polling, unless the source is a local git repo that
+	// will be driven by a filesystem watcher instead.
+	if pollConfig.Interval == 0 && !pollConfig.RunOnce && !isLocalGit {
 		h.log.Info("polling job disabled by config", "config", &pollConfig)
 
 		return nil
@@ -76,55 +90,135 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 		runner = RunPoll
 	}
 
-	for {
-		if pollJob.LastRun == 0 || time.Now().Unix() >= pollJob.NextRun {
-			jobID := id.GenID()
+	// For local git repositories, start a filesystem watcher so new commits
+	// trigger deployment immediately without waiting for the next interval.
+	var watchCh <-chan struct{}
 
-			metadata := notification.Metadata{
-				Repository: repoName,
-				Stack:      "",
-				Target:     pollJob.Config.CustomTarget,
-				Revision:   notification.GetRevision(pollJob.Config.Reference, ""),
-				JobID:      jobID,
-			}
+	if sourceType == config.SourceTypeGit && git.IsLocalFile(pollJob.Config.SourceUrl) {
+		var watchErr error
 
-			logger.Debug("start poll job")
-
-			if h.runTracker != nil {
-				h.runTracker.TrackAccepted(jobID, deploymentRunTriggerPoll)
-				h.runTracker.SetMetadata(jobID, repoName, "", notification.GetRevision(pollJob.Config.Reference, ""))
-				h.runTracker.MarkRunning(jobID)
-			}
-
-			err := runner(ctx, pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, logger, metadata, h.secretProvider)
-
-			if h.runTracker != nil {
-				if err != nil {
-					h.runTracker.MarkFailed(jobID, err.Error())
-				} else {
-					h.runTracker.MarkSucceeded(jobID, "poll completed successfully")
-				}
-			}
-
-			pollJob.NextRun = time.Now().Add(pollJob.Config.Interval).Unix()
+		watchCh, watchErr = git.WatchLocalGitRef(ctx, pollJob.Config.SourceUrl, logger)
+		if watchErr != nil {
+			logger.Warn("failed to start local repository watcher, falling back to interval polling",
+				log.ErrAttr(watchErr))
 		} else {
-			logger.Debug("skipping poll, waiting for next run")
+			logger.Info("watching local repository for changes")
+		}
+	}
+
+	// When only a watcher is configured (interval == 0) use a very long fallback
+	// interval so the timer almost never fires, but the process stays responsive
+	// to ctx cancellation. If the watcher failed to start and no interval is
+	// configured, fall back to the minimum poll interval instead of spinning in
+	// a tight loop on time.After(0).
+	pollInterval := pollJob.Config.Interval
+	if pollInterval == 0 {
+		if watchCh != nil {
+			pollInterval = 24 * time.Hour
+		} else {
+			logger.Warn("no watcher and no poll interval configured, falling back to minimum poll interval",
+				slog.Duration("interval", poll.MinPollInterval))
+
+			pollInterval = poll.MinPollInterval
+		}
+	}
+
+	doRun := func(trigger string) {
+		jobID := id.GenID()
+
+		metadata := notification.Metadata{
+			Repository: repoName,
+			Stack:      "",
+			Target:     pollJob.Config.CustomTarget,
+			Revision:   notification.GetRevision(pollJob.Config.Reference, ""),
+			JobID:      jobID,
 		}
 
-		// If run_once is set, perform a single run and exit after the initial run.
-		if pollJob.Config.RunOnce {
-			logger.Debug("run_once is set, exiting poll handler after run")
-			return
+		logger.Debug("start poll job", slog.String("trigger", trigger))
+
+		if h.runTracker != nil {
+			h.runTracker.TrackAccepted(jobID, deploymentRunTriggerPoll)
+			h.runTracker.SetMetadata(jobID, repoName, "", notification.GetRevision(pollJob.Config.Reference, ""))
+			h.runTracker.MarkRunning(jobID)
+		}
+
+		triggerReason := pollTriggerDefault
+		if trigger == "watch" {
+			triggerReason = pollTriggerWatch
+		}
+
+		err := runner(ctx, pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, logger, metadata, h.secretProvider, triggerReason)
+
+		if h.runTracker != nil {
+			if err != nil {
+				h.runTracker.MarkFailed(jobID, err.Error())
+			} else {
+				h.runTracker.MarkSucceeded(jobID, "poll completed successfully")
+			}
 		}
 
 		pollJob.LastRun = time.Now().Unix()
+		pollJob.NextRun = time.Now().Add(pollInterval).Unix()
+	}
 
+	// Always run immediately on startup.
+	doRun("startup")
+
+	if pollJob.Config.RunOnce {
+		logger.Debug("run_once is set, exiting poll handler after run")
+		return
+	}
+
+	// Use a single reusable timer instead of time.After() in the loop below:
+	// time.After() allocates a new timer on every iteration that lingers until
+	// it fires, which would leak timers (potentially with a 24h duration) every
+	// time a watch event triggers a run.
+	timer := time.NewTimer(pollInterval)
+	defer timer.Stop()
+
+	resetTimer := func(d time.Duration) {
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+
+		timer.Reset(d)
+	}
+
+	for {
 		select {
 		case <-ctx.Done():
 			logger.Debug("ctx is done in poll handler")
 			return
-		case <-time.After(pollJob.Config.Interval):
-			continue
+
+		case <-timer.C:
+			doRun("interval")
+			resetTimer(pollInterval)
+
+		case _, ok := <-watchCh:
+			if !ok {
+				// Watcher closed unexpectedly; fall back to interval polling so
+				// the job keeps running instead of going silent until restart.
+				watchCh = nil
+				pollInterval = pollJob.Config.Interval
+
+				if pollInterval == 0 {
+					pollInterval = poll.MinPollInterval
+				}
+
+				logger.Warn("local repository watcher closed, continuing with interval polling",
+					slog.Duration("interval", pollInterval))
+
+				resetTimer(pollInterval)
+
+				continue
+			}
+
+			logger.Debug("local repository watcher detected new commit(s), triggering poll")
+			doRun("watch")
+			resetTimer(pollInterval)
 		}
 	}
 }
@@ -160,9 +254,13 @@ func pollError(jobLog *slog.Logger, metadata notification.Metadata, err error) {
 	}()
 }
 
-// RunPoll deploys compose projects based on the provided configuration.
+// RunPoll deploys compose projects based on the provided configuration. triggerReason
+// identifies what caused this run (e.g. "poll" for interval/API-triggered runs, or
+// "poll-watch" when triggered by the local repository filesystem watcher) and is
+// reported in the "polling <entity>" log line's trigger.event field.
 func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config, dataMountPoint container.MountPoint,
 	dockerCli command.Cli, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
+	triggerReason string,
 ) error {
 	startTime := time.Now()
 	sourceType := config.NormalizeSourceType(pollConfig.Source)
@@ -201,9 +299,14 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 		configVal = log.BuildLogValue(&pollConfig, "Reference", "Deployments.Internal")
 	}
 
+	eventValue := triggerReason
+	if eventValue == "" {
+		eventValue = pollTriggerDefault
+	}
+
 	jobLog.Info("polling "+entity,
 		slog.Group("trigger",
-			slog.String("event", string(stages.JobTriggerPoll)),
+			slog.String("event", eventValue),
 			slog.Attr{Key: "config", Value: configVal}))
 
 	// For OCI sources, use the tag from the artifact reference as the deployment reference
