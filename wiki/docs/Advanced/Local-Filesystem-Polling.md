@@ -7,7 +7,8 @@ tags:
 
 # Polling Local Filesystem Repositories
 
-Some stacks cannot be deployed without a running SCM available (e.g. a self-hosted Gitea/Forgejo instance that isn't reachable from doco-cd, or that you don't want to depend on at all).
+Some stacks cannot be deployed without a running SCM available (e.g. a self-hosted Gitea/Forgejo instance that should be deployed via doco-cd (hence a chicken-and-egg problem), or a stack that is deployed from a local Git repository that is not hosted on any remote SCM).
+
 For these cases, doco-cd can poll a Git repository that already lives on the local filesystem, e.g. bind-mounted into the container, instead of a remote host.
 
 This reuses the exact same [polling](../Core-Concepts.md#polling) mechanism, deployment pipeline and [auto-discovery](../Deploy-Settings.md#auto-discovery) used for remote Git repositories - the only difference is the `url` scheme.
@@ -16,7 +17,7 @@ This reuses the exact same [polling](../Core-Concepts.md#polling) mechanism, dep
 
 Mount the local Git repository into the doco-cd container (read-only is recommended, doco-cd never writes to it - it clones into its own working directory), then reference it in a [poll configuration](../Poll-Settings.md) using either an absolute path or a `file://` URL:
 
-```yaml title="docker-compose.yaml" hl_lines="9-12 15"
+```yaml title="docker-compose.yaml" hl_lines="9-12 16"
 services:
   app:
     container_name: doco-cd
@@ -26,7 +27,7 @@ services:
       TZ: Europe/Berlin
       POLL_CONFIG: |
         - source: git
-          url: file:///local-repos/my-app
+          url: file:///local-repos/my-app # Or use `url: /local-repos/my-app`
           reference: main
           interval: 60s
     volumes:
