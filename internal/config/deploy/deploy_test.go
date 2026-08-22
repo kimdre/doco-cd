@@ -23,7 +23,8 @@ import (
 func createTestFile(t *testing.T, fileName string, content string) error {
 	t.Helper()
 
-	err := os.WriteFile(fileName, []byte(content), filesystem.PermOwner)
+	//nolint:gosec // test helper writes fixture files to test-controlled paths
+	err := os.WriteFile(filepath.Clean(fileName), []byte(content), filesystem.PermOwner)
 	if err != nil {
 		return err
 	}
