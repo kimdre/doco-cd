@@ -392,7 +392,7 @@ func run() error {
 				watcher.Start(ctx)
 			})
 		}
-	} else {
+	} else if c.SecretProvider == openbao.Name {
 		log.Info("certificate rotation watcher disabled by configuration")
 	}
 
