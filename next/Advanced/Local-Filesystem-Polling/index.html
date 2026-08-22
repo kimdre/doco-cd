@@ -2617,6 +2617,7 @@
 <li><code>reference</code> behaves exactly like it does for remote Git repositories: a branch name, tag name, or commit SHA.</li>
 <li>On every poll interval, doco-cd checks the local repository for new commits on <code>reference</code> and, if changed, deploys them using the same pipeline as remote Git polling (including <code>.doco-cd.yml</code>/<code>.doco-cd.*.yml</code> discovery and <a data-preview="" href="../../Deploy-Settings/#auto-discovery">auto-discovery</a>).</li>
 <li>No credentials are needed or used for local repositories.</li>
+<li>In addition to interval-based polling, doco-cd watches the local repository's git directory for changes and triggers a deployment check immediately when new commits land, without waiting for the next interval. This is enabled by default; set <code>watch: false</code> to disable it and rely on <code>interval</code> only. Set <code>interval: 0</code> (with <code>watch</code> left enabled) to rely on the watcher exclusively, with no periodic fallback polling at all.</li>
 </ul>
 <h2 id="webhook-triggered-local-mirrors">Webhook-triggered local mirrors<a class="headerlink" href="#webhook-triggered-local-mirrors" title="Permanent link">&para;</a></h2>
 <p>Local repositories do not emit webhooks themselves. If the repository is a local mirror of a GitHub, GitLab, or Forgejo repository, its SCM webhook can trigger deployment from the local mirror instead.</p>
@@ -2631,6 +2632,8 @@
 <li>Local repositories have no native webhook source. Webhook-triggered deployments require an SCM webhook and an explicit <code>SOURCE_URL_REWRITES</code> rule as shown above.</li>
 <li>No commit status is posted back to an SCM, since there is none to post to.</li>
 <li>Shallow clones are not supported for local repositories: <a data-preview="" href="../../Deploy-Settings/"><code>git_depth</code></a> and <code>GIT_CLONE_DEPTH</code> are ignored and the repository is always cloned in full. This avoids network transfer, but can still cost disk I/O and storage for large histories.</li>
+<li>The change watcher detects updates to top-level branch refs and <code>packed-refs</code>. Nested branch names (e.g. <code>release/1.0</code>, which git stores under a <code>refs/heads/release/</code> subdirectory) are only detected if that subdirectory already existed when the watcher started; if not, changes to that branch are picked up on the next poll interval instead of immediately. Non-nested branch names (e.g. <code>main</code>, <code>release-1.0</code>) are unaffected.</li>
+<li>If the watcher fails to start, is disabled (<code>watch: false</code>), or closes unexpectedly while <code>interval: 0</code>, doco-cd falls back to a 24h safety-net poll interval instead of never polling again.</li>
 </ul>
 
 

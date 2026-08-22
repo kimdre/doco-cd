@@ -2792,6 +2792,12 @@
 <td><code>false</code></td>
 </tr>
 <tr>
+<td><code>watch</code></td>
+<td>boolean</td>
+<td>For local filesystem <code>git</code> sources only: watch the repository for new commits and trigger a poll immediately instead of waiting for <code>interval</code>. Set to <code>false</code> to disable and rely on <code>interval</code> only. Ignored for non-local Git and <code>oci</code> sources. See <a data-preview="" href="../Advanced/Local-Filesystem-Polling/">Polling Local Filesystem Repositories</a></td>
+<td><code>true</code></td>
+</tr>
+<tr>
 <td><code>deployments</code></td>
 <td>array of <a data-preview="" href="../Deploy-Settings/">Deploy Configs</a></td>
 <td>In-line configuration for <a data-preview="" href="../Deploy-Settings/">deployment settings</a> specific to this poll configuration. Overrides the <code>.doco-cd.yml</code> file in the target repository (<code>url</code>) if exists.<br>See the <a data-preview="" href="#inline-deploy-configs">example below</a>.</td>
