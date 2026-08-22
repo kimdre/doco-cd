@@ -4,8 +4,7 @@ x-poll-config: &poll-config
       url: ghcr.io/kimdre/doco-cd_tests:test
       interval: 0
     - source: git
-      url: /doco-cd_tests
-      #url: https://github.com/kimdre/doco-cd_tests.git
+      url: https://github.com/kimdre/doco-cd_tests.git
       #url: git@github.com:kimdre/doco-cd_tests.git
       reference: main
       interval: 10
@@ -29,8 +28,6 @@ services:
       apprise:
         condition: "service_healthy"
         required: false
-    volumes:
-      - /tmp/doco-cd_tests:/doco-cd_tests:ro
     env_file:
       - .env
     environment:
