@@ -230,16 +230,34 @@ func handleDeploy(ctx context.Context,
 	wg.Wait()
 	close(resultCh)
 
-	var errs []error
+	var (
+		errs         []error
+		successCount int
+	)
 
 	for e := range resultCh {
-		if e != nil {
-			errs = append(errs, e)
-			// keep looping to drain channel
+		if e == nil {
+			successCount++
+			continue
 		}
+
+		if errors.Is(e, stages.ErrWebhookFilterMismatch) {
+			continue // counted implicitly via successCount staying 0
+		}
+
+		errs = append(errs, e)
 	}
 
-	return errors.Join(errs...)
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+
+	if successCount == 0 && len(deployConfigs) > 0 {
+		// All deployments were skipped by the webhook filter
+		return stages.ErrWebhookFilterMismatch
+	}
+
+	return nil
 }
 
 // deployContextCLI holds a resolved Docker CLI (and its metadata) for a single Docker context,

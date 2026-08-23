@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -246,6 +247,22 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 
 	switch sourceType {
 	case config.SourceTypeGit:
+		// Skip the network fetch when the payload carries the exact commit SHA and
+		// the local repo HEAD already matches it (e.g. webhook re-deliveries).
+		if sha := strings.TrimSpace(payload.CommitSHAString()); sha != "" {
+			if matches, _ := git.HeadMatchesCommit(internalRepoPath, sha); matches {
+				jobLog.Debug("skipping fetch, repository already at requested commit", slog.String("commit", sha))
+
+				if repo, openErr := git.OpenRepository(internalRepoPath); openErr == nil {
+					if latestCommit, latestErr := git.GetLatestCommit(repo, ref); latestErr == nil {
+						resolvedRevision = strings.TrimSpace(latestCommit)
+					}
+				}
+
+				break
+			}
+		}
+
 		repo, err := git.CloneOrUpdateRepository(jobLog,
 			sourceRef, ref, internalRepoPath, externalRepoPath,
 			private, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken,
@@ -384,6 +401,10 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 	if err := reconciliation.Deploy(ctx, jobLog, appConfig,
 		dataMountPoint, dockerCli, secretProvider, metadata, jobTrigger,
 		repoData, deployConfigs, &payload, testName); err != nil {
+		if errors.Is(err, stages.ErrWebhookFilterMismatch) {
+			return err
+		}
+
 		return handleError{
 			err:            err,
 			msg:            "deployment failed",

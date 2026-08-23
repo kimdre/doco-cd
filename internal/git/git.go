@@ -1213,6 +1213,32 @@ func MatchesHead(path, ref string) (bool, error) {
 	return head.Hash() == r.Hash(), nil
 }
 
+// HeadMatchesCommit reports whether the repository at path has exactly the given
+// commit SHA at HEAD. Returns false (no error) when the repository does not exist
+// or HEAD cannot be resolved, so callers can treat a false result as "go ahead and fetch".
+func HeadMatchesCommit(repoPath, commitSHA string) (bool, error) {
+	commitSHA = strings.TrimSpace(commitSHA)
+	if commitSHA == "" {
+		return false, nil
+	}
+
+	repo, err := OpenRepository(repoPath)
+	if err != nil {
+		if errors.Is(err, git.ErrRepositoryNotExists) {
+			return false, nil
+		}
+
+		return false, fmt.Errorf("failed to open repository at %s: %w", repoPath, err)
+	}
+
+	head, err := repo.Head()
+	if err != nil {
+		return false, fmt.Errorf("%w for repository '%s': %w", ErrGetHeadFailed, repoPath, err)
+	}
+
+	return head.Hash().String() == commitSHA, nil
+}
+
 // needsReclone returns true when the on-disk repository shallow state does not
 // match the requested depth, indicating a transition (e.g. full→shallow or shallow→full).
 func needsReclone(repoPath string, depth int) bool {
