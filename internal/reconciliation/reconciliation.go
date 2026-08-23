@@ -550,7 +550,7 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConf
 	contextDCs := j.deployConfigsForContext(contextName)
 
 	if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
-		contextCLI, contextSwarmMode, j.info.repoData.SourceUrl,
+		contextCLI, contextSwarmMode, contextName, j.info.repoData.SourceUrl,
 		contextDCs,
 		j.info.metadata); err != nil {
 		jobLog.Error("failed to clean up obsolete auto-discovered containers", logger.ErrAttr(err))

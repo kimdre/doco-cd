@@ -1,6 +1,9 @@
 package lock
 
-import "sync"
+import (
+	"strings"
+	"sync"
+)
 
 // RepoLock represents a lock for a specific repository.
 type RepoLock struct {
@@ -51,6 +54,20 @@ func GetRepoLock(repoName string) *RepoLock {
 func getStackMutex(stackName string) *sync.Mutex {
 	mu, _ := stackLocks.LoadOrStore(stackName, &sync.Mutex{})
 	return mu.(*sync.Mutex)
+}
+
+// StackKey builds the per-stack lock key for a stack deployed to a Docker context.
+// Stack names are only unique within a Docker context, so same-named stacks on
+// different contexts must not block each other. The default context keeps the bare
+// stack name so callers that only ever operate on it (the job scheduler and the
+// certificate rotation watcher) stay mutually exclusive with its deployments.
+func StackKey(contextName, stackName string) string {
+	contextName = strings.TrimSpace(contextName)
+	if contextName == "" {
+		return stackName
+	}
+
+	return contextName + "/" + stackName
 }
 
 // LockStack acquires the per-stack scheduler/deployment lock for stackName.

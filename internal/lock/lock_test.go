@@ -278,3 +278,64 @@ func TestLockStack_EmptyNameIsNoOp(t *testing.T) {
 	LockStack("")
 	UnlockStack("")
 }
+
+// TestStackKey verifies that the default context keeps the bare stack name, which is what
+// the job scheduler and the certificate rotation watcher lock on, while named contexts are
+// namespaced so same-named stacks on different Docker hosts don't block each other.
+func TestStackKey(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name        string
+		contextName string
+		stackName   string
+		want        string
+	}{
+		{name: "default context keeps bare stack name", contextName: "", stackName: "telegraf", want: "telegraf"},
+		{name: "blank context is treated as default", contextName: "   ", stackName: "telegraf", want: "telegraf"},
+		{name: "named context is namespaced", contextName: "docker01", stackName: "telegraf", want: "docker01/telegraf"},
+		{name: "context is trimmed", contextName: " docker02 ", stackName: "telegraf", want: "docker02/telegraf"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := StackKey(tc.contextName, tc.stackName); got != tc.want {
+				t.Fatalf("StackKey(%q, %q) = %q, want %q", tc.contextName, tc.stackName, got, tc.want)
+			}
+		})
+	}
+
+	if StackKey("docker01", "telegraf") == StackKey("docker02", "telegraf") {
+		t.Fatal("expected same-named stacks on different contexts to produce distinct lock keys")
+	}
+}
+
+// TestLockStack_SameStackDifferentContextsDontBlock ensures a deployment of a stack on one
+// Docker context does not serialize behind a same-named stack on another context.
+func TestLockStack_SameStackDifferentContextsDontBlock(t *testing.T) {
+	t.Parallel()
+
+	stackName := t.Name()
+	keyA := StackKey("docker01", stackName)
+	keyB := StackKey("docker02", stackName)
+
+	LockStack(keyA)
+	defer UnlockStack(keyA)
+
+	acquired := make(chan struct{})
+
+	go func() {
+		LockStack(keyB)
+		close(acquired)
+		UnlockStack(keyB)
+	}()
+
+	select {
+	case <-acquired:
+		// correct: the same stack name on another context did not block
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("LockStack for the same stack name on a different context should not block")
+	}
+}

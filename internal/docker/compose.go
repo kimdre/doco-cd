@@ -660,9 +660,11 @@ func DeployStack(
 		With(slog.String("stack", deployConfig.Name))
 
 	stackLog.Debug("waiting for scheduler/deploy lock")
-	lock.LockStack(deployConfig.Name)
 
-	defer lock.UnlockStack(deployConfig.Name)
+	stackLockKey := lock.StackKey(deployConfig.Context, deployConfig.Name)
+	lock.LockStack(stackLockKey)
+
+	defer lock.UnlockStack(stackLockKey)
 
 	stackLog.Debug("acquired scheduler/deploy lock")
 

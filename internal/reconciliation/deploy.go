@@ -127,7 +127,7 @@ func deploy(ctx context.Context,
 		}
 
 		if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
-			cleanupCli, cleanupSwarmMode, repoData.SourceUrl,
+			cleanupCli, cleanupSwarmMode, contextName, repoData.SourceUrl,
 			groupedConfigs,
 			metadata); err != nil {
 			jobLog.Error("failed to clean up obsolete auto-discovered containers for context",
