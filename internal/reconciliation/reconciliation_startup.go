@@ -109,9 +109,10 @@ func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *s
 	}
 }
 
-// uniqueRedeployDCsFromGroupByEvent returns a deduplicated slice (by stack name) of deploy configs
-// that have at least one non-restart reconciliation event configured (e.g. "die", "destroy", "update").
-// These are the stacks that should be redeployed when their containers/services go missing.
+// uniqueRedeployDCsFromGroupByEvent returns a deduplicated slice (by Docker context and stack name)
+// of deploy configs that have at least one non-restart reconciliation event configured (e.g. "die",
+// "destroy", "update"). These are the stacks that should be redeployed when their containers/services
+// go missing.
 func uniqueRedeployDCsFromGroupByEvent(grouped map[string][]*deployConfig.Config) []*deployConfig.Config {
 	seen := set.New[string]()
 
@@ -127,8 +128,10 @@ func uniqueRedeployDCsFromGroupByEvent(grouped map[string][]*deployConfig.Config
 				continue
 			}
 
-			if !seen.Contains(dc.Name) {
-				seen.Add(dc.Name)
+			key := dc.Context + "\x00" + dc.Name
+			if !seen.Contains(key) {
+				seen.Add(key)
+
 				result = append(result, dc)
 			}
 		}

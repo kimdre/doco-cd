@@ -331,24 +331,34 @@ func TestGetConfigs_MissingTargetConfigFile(t *testing.T) {
 	}
 }
 
-// TestGetConfigs_DuplicateProjectName checks if the function returns an error
-// when there are duplicate project names in the config files.
+// TestGetConfigs_DuplicateProjectName checks that project names are unique per Docker context.
 func TestGetConfigs_DuplicateProjectName(t *testing.T) {
 	t.Parallel()
 
-	dc := Config{
+	dc := &Config{
 		Name:             t.Name(),
 		Reference:        "refs/heads/test",
 		WorkingDirectory: "/test",
 		ComposeFiles:     []string{"test.compose.yaml"},
 	}
 
-	configs := []*Config{&dc, &dc}
+	t.Run("same context", func(t *testing.T) {
+		err := ValidateUniqueProjectNames([]*Config{dc, dc})
+		if !errors.Is(err, ErrDuplicateProjectName) {
+			t.Fatal("expected error for duplicate project names in the same context, got nil")
+		}
+	})
 
-	err := ValidateUniqueProjectNames(configs)
-	if !errors.Is(err, ErrDuplicateProjectName) {
-		t.Fatal("expected error for duplicate project names, got nil")
-	}
+	t.Run("different contexts", func(t *testing.T) {
+		dc1 := *dc
+		dc1.Context = "docker01"
+		dc2 := *dc
+		dc2.Context = "docker02"
+
+		if err := ValidateUniqueProjectNames([]*Config{&dc1, &dc2}); err != nil {
+			t.Fatalf("expected duplicate project names in different contexts to be valid, got %v", err)
+		}
+	})
 }
 
 // TestGetConfigs_RepositoryURL checks if the repository URL field validates Git URLs correctly.

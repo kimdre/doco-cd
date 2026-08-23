@@ -743,9 +743,11 @@ func TestUniqueRedeployDCsFromGroupByEvent(t *testing.T) {
 	dcDestroy := deployConfig.New("stack-destroy", "main")
 	dcBoth := deployConfig.New("stack-both", "main")       // registered under two redeploy events
 	dcRestart := deployConfig.New("stack-restart", "main") // only restart events → must be excluded
+	dcDifferentContext := deployConfig.New("stack-die", "main")
+	dcDifferentContext.Context = "remote"
 
 	grouped := map[string][]*deployConfig.Config{
-		"die":       {dcDie, dcBoth},
+		"die":       {dcDie, dcBoth, dcDifferentContext},
 		"destroy":   {dcDestroy, dcBoth}, // dcBoth appears again — must be deduplicated
 		"unhealthy": {dcRestart},         // restart-oriented — must be excluded
 		"stop":      {dcRestart},         // restart-oriented — must be excluded
@@ -759,8 +761,8 @@ func TestUniqueRedeployDCsFromGroupByEvent(t *testing.T) {
 		names[dc.Name] = struct{}{}
 	}
 
-	if len(got) != 3 {
-		t.Fatalf("expected 3 unique redeploy configs, got %d: %v", len(got), names)
+	if len(got) != 4 {
+		t.Fatalf("expected 4 unique redeploy configs, got %d: %v", len(got), names)
 	}
 
 	for _, wantName := range []string{"stack-die", "stack-destroy", "stack-both"} {
@@ -771,6 +773,18 @@ func TestUniqueRedeployDCsFromGroupByEvent(t *testing.T) {
 
 	if _, ok := names["stack-restart"]; ok {
 		t.Error("expected stack-restart to be excluded (only restart-oriented events)")
+	}
+
+	var stackDieContexts []string
+
+	for _, dc := range got {
+		if dc.Name == "stack-die" {
+			stackDieContexts = append(stackDieContexts, dc.Context)
+		}
+	}
+
+	if !slices.Contains(stackDieContexts, "") || !slices.Contains(stackDieContexts, "remote") {
+		t.Fatalf("expected stack-die in default and remote contexts, got %v", stackDieContexts)
 	}
 }
 

@@ -165,7 +165,8 @@ reference: main
 working_dir: deploy
 ```
 
-Each deployment uses its own Docker context for deploy, destroy, and cleanup operations.
+Each deployment uses its own Docker context for deploy, destroy, and cleanup operations. 
+Stack/project names must be unique within a Docker context, but the same name can be used on different contexts.
 
 ## Remote host limitations
 
