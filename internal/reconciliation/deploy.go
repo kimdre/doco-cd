@@ -199,13 +199,13 @@ func handleDeploy(ctx context.Context,
 			deployCfg.Name = test.ConvertTestName(testName)
 		}
 
-		reconciliationHandler.startStackDeployment(repoData.Name, deployCfg.Name)
+		reconciliationHandler.startStackDeployment(repoData.Name, deployCfg.Context, deployCfg.Name)
 
 		wg.Add(1)
 
 		go func(dc *deployConfig.Config) {
 			defer wg.Done()
-			defer reconciliationHandler.finishStackDeployment(repoData.Name, dc.Name)
+			defer reconciliationHandler.finishStackDeployment(repoData.Name, dc.Context, dc.Name)
 
 			entry, ok := contextCLIs[strings.TrimSpace(dc.Context)]
 			if !ok || entry.err != nil {

@@ -408,28 +408,34 @@ func TestStackDeploymentInProgressTracking(t *testing.T) {
 	r := newReconciliation()
 	repo := "github.com/example/repo"
 	stack := "stack-a"
+	context := ""
 
-	if r.isStackDeploymentInProgress(repo, stack) {
+	if r.isStackDeploymentInProgress(repo, context, stack) {
 		t.Fatal("expected stack deployment to be initially not in progress")
 	}
 
-	r.startStackDeployment(repo, stack)
+	r.startStackDeployment(repo, context, stack)
 
-	if !r.isStackDeploymentInProgress(repo, stack) {
+	if !r.isStackDeploymentInProgress(repo, context, stack) {
 		t.Fatal("expected stack deployment to be marked in progress")
 	}
 
-	// Reference counting should keep stack marked as in-progress until all marks are cleared.
-	r.startStackDeployment(repo, stack)
-	r.finishStackDeployment(repo, stack)
+	// A same-named stack in a different context must be tracked independently.
+	if r.isStackDeploymentInProgress(repo, "other-context", stack) {
+		t.Fatal("expected same-named stack in a different context to be unaffected")
+	}
 
-	if !r.isStackDeploymentInProgress(repo, stack) {
+	// Reference counting should keep stack marked as in-progress until all marks are cleared.
+	r.startStackDeployment(repo, context, stack)
+	r.finishStackDeployment(repo, context, stack)
+
+	if !r.isStackDeploymentInProgress(repo, context, stack) {
 		t.Fatal("expected stack deployment to remain in progress after one of two marks is cleared")
 	}
 
-	r.finishStackDeployment(repo, stack)
+	r.finishStackDeployment(repo, context, stack)
 
-	if r.isStackDeploymentInProgress(repo, stack) {
+	if r.isStackDeploymentInProgress(repo, context, stack) {
 		t.Fatal("expected stack deployment to be cleared after all marks are removed")
 	}
 }
@@ -733,6 +739,31 @@ func TestDeployConfigsByName(t *testing.T) {
 
 	if got[0].Name != "stack-a" || got[1].Name != "stack-a" {
 		t.Fatalf("expected only stack-a deploy configs, got %#v", got)
+	}
+}
+
+// TestFilterConfigsByContext_SameNameDifferentContexts ensures that stacks sharing a name across
+// different Docker contexts are only matched within their own context, since duplicate stack names
+// are now permitted as long as they target different Docker contexts.
+func TestFilterConfigsByContext_SameNameDifferentContexts(t *testing.T) {
+	t.Parallel()
+
+	dcDefault := deployConfig.New("telegraf", "main")
+	dcDocker01 := deployConfig.New("telegraf", "main")
+	dcDocker01.Context = "docker01"
+	dcDocker02 := deployConfig.New("telegraf", "main")
+	dcDocker02.Context = "docker02"
+
+	all := []*deployConfig.Config{dcDefault, dcDocker01, dcDocker02}
+
+	got := filterConfigsByContext(all, "docker01")
+	if len(got) != 1 || got[0] != dcDocker01 {
+		t.Fatalf("expected only the docker01 config, got %#v", got)
+	}
+
+	got = filterConfigsByContext(all, "")
+	if len(got) != 1 || got[0] != dcDefault {
+		t.Fatalf("expected only the default context config, got %#v", got)
 	}
 }
 

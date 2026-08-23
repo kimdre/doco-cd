@@ -154,7 +154,7 @@ func TestDeploy(t *testing.T) {
 
 	t.Cleanup(func() {
 		for _, dc := range dcs {
-			waitForStackDeploymentToFinish(t, repoName, dc.Name, 20*time.Second)
+			waitForStackDeploymentToFinish(t, repoName, dc.Context, dc.Name, 20*time.Second)
 		}
 
 		reconciliationHandler.close()
@@ -262,13 +262,13 @@ func rmContainer(ctx context.Context, t *testing.T, cli client.APIClient, contai
 	return nil
 }
 
-func waitForStackDeploymentToFinish(t *testing.T, repository, stack string, timeout time.Duration) {
+func waitForStackDeploymentToFinish(t *testing.T, repository, context, stack string, timeout time.Duration) {
 	t.Helper()
 
 	deadline := time.Now().Add(timeout)
 
 	for {
-		if !reconciliationHandler.isStackDeploymentInProgress(repository, stack) {
+		if !reconciliationHandler.isStackDeploymentInProgress(repository, context, stack) {
 			return
 		}
 
