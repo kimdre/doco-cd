@@ -45,6 +45,8 @@ type Harness struct {
 	worktree   string // host worktree dir used to build fixture/commits
 	dataVolume string
 
+	daemonImage string // tag built for this scenario, removed on teardown
+
 	wt     *git.Worktree
 	docker *client.Client
 	net    *testcontainers.DockerNetwork
@@ -161,6 +163,7 @@ func (h *Harness) startDaemon(pollConfigPath string) {
 	h.t.Helper()
 
 	image := h.buildDaemonImage()
+	h.daemonImage = image
 
 	daemon, err := testcontainers.GenericContainer(h.ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
@@ -223,7 +226,10 @@ func gitServerImageName() string {
 func (h *Harness) buildDaemonImage() string {
 	h.t.Helper()
 
-	tag := "doco-cd-e2e:" + h.scenario
+	// Scoped by pid as well as scenario: two concurrent runs against one docker
+	// daemon would otherwise build the same tag, and the second build would move it
+	// out from under the first run's containers. Same reason gitServerImageName does it.
+	tag := fmt.Sprintf("doco-cd-e2e:%s-%d", h.scenario, os.Getpid())
 
 	cmd := exec.CommandContext(h.ctx, "docker", "build",
 		"-t", tag,
@@ -303,6 +309,10 @@ func (h *Harness) teardownInternal() {
 		}
 
 		_, _ = h.docker.VolumeRemove(h.ctx, h.dataVolume, client.VolumeRemoveOptions{Force: true})
+
+		if h.daemonImage != "" {
+			_, _ = h.docker.ImageRemove(h.ctx, h.daemonImage, client.ImageRemoveOptions{Force: true})
+		}
 
 		_ = os.RemoveAll(h.workDir)
 	})
