@@ -2077,6 +2077,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#failed-deployment-retry" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Failed Deployment Retry
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#deployment-configuration" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2672,6 +2683,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#failed-deployment-retry" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Failed Deployment Retry
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#deployment-configuration" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2878,6 +2900,11 @@ A deployment is triggered either by an incoming <a data-preview="" href="../Endp
 <li>Build Docker images if necessary.</li>
 <li>Deploy the services defined in the <code>docker-compose.yml</code> files.</li>
 </ol>
+<h3 id="failed-deployment-retry">Failed Deployment Retry<a class="headerlink" href="#failed-deployment-retry" title="Permanent link">&para;</a></h3>
+<p>A deployment that fails after its containers were already created (for example a failed lifecycle hook) is recorded and retried on every following trigger until it succeeds.
+A retry of a failed deploy stage recreates the whole stack, so partially applied changes like never-finished hooks run again.
+The record lives in memory: a restart of Doco-CD drops it and the regular change detection applies again.
+Each failed attempt reports a failure <a data-preview="" href="../Advanced/Notifications/">notification</a>, de-duplicated with periodic reminders.</p>
 <h3 id="deployment-configuration">Deployment Configuration<a class="headerlink" href="#deployment-configuration" title="Permanent link">&para;</a></h3>
 <p>A YAML file (<code>.doco-cd.yml</code> or <code>.doco-cd.yaml</code>) placed in the root of a Git repository that controls how a deployment is performed.
 It specifies the working directory, compose files, environment variables, and other deployment settings.</p>
