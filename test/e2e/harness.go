@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -34,9 +35,10 @@ const repoDir = "../.."
 // its own instance (own network, own containers, own workdir), so scenarios
 // can run in parallel and don't share daemon state.
 type Harness struct {
-	t        *testing.T
-	ctx      context.Context
-	scenario string
+	t         *testing.T
+	ctx       context.Context
+	scenario  string
+	keepAlive bool
 
 	workDir  string // host tmp dir: repos/<scenario>.git + src/<scenario>
 	repoPath string // bare repo dir the gitserver container mounts read-only
@@ -48,7 +50,14 @@ type Harness struct {
 	net    *testcontainers.DockerNetwork
 	gitSrv testcontainers.Container
 	daemon testcontainers.Container
+
+	teardownOnce sync.Once
 }
+
+var (
+	suiteHarnessesMu sync.Mutex
+	suiteHarnesses   []*Harness
+)
 
 // NewHarness prepares a harness for the given scenario. Call Start to bring
 // up the gitserver + doco-cd containers.
@@ -60,17 +69,29 @@ func NewHarness(t *testing.T, scenario string) *Harness {
 		t.Fatalf("docker client: %v", err)
 	}
 
+	workDir, err := os.MkdirTemp("", "doco-cd-e2e-"+scenario+"-")
+	if err != nil {
+		t.Fatalf("create temp work dir: %v", err)
+	}
+
+	keepAlive := keepComponentsAcrossSuite()
+
 	h := &Harness{
-		t:        t,
-		ctx:      context.Background(),
-		scenario: scenario,
-		workDir:  t.TempDir(),
-		docker:   dockerCli,
+		t:         t,
+		ctx:       context.Background(),
+		scenario:  scenario,
+		keepAlive: keepAlive,
+		workDir:   workDir,
+		docker:    dockerCli,
 	}
 	h.repoPath = filepath.Join(h.workDir, "repos", scenario+".git")
 	h.worktree = filepath.Join(h.workDir, "src", scenario)
 
-	t.Cleanup(h.teardown)
+	if keepAlive {
+		registerSuiteHarness(h)
+	} else {
+		t.Cleanup(h.teardown)
+	}
 
 	return h
 }
@@ -203,28 +224,62 @@ func (h *Harness) writePollConfig() string {
 }
 
 func (h *Harness) teardown() {
-	if h.t.Failed() {
-		h.logf("--- daemon logs (last 100 lines) ---")
-		h.dumpTailLogs(h.daemon, 100)
-	}
-
-	if h.daemon != nil {
-		_ = h.daemon.Terminate(h.ctx)
-	}
-
-	if h.gitSrv != nil {
-		_ = h.gitSrv.Terminate(h.ctx)
-	}
-
-	if h.net != nil {
-		_ = h.net.Remove(h.ctx)
-	}
-
-	_, _ = h.docker.VolumeRemove(h.ctx, "doco-cd-e2e-data-"+h.scenario, client.VolumeRemoveOptions{Force: true})
-
-	h.cleanupStacks()
+	h.teardownInternal(true)
 }
 
 func (h *Harness) logf(format string, args ...any) {
 	h.t.Logf("[e2e] "+format, args...)
+}
+
+func (h *Harness) teardownSuite() {
+	h.teardownInternal(false)
+}
+
+func (h *Harness) teardownInternal(includeFailureLogs bool) {
+	h.teardownOnce.Do(func() {
+		if includeFailureLogs && h.t != nil && h.t.Failed() {
+			h.logf("--- daemon logs (last 100 lines) ---")
+			h.dumpTailLogs(h.daemon, 100)
+		}
+
+		if h.daemon != nil {
+			_ = h.daemon.Terminate(h.ctx)
+		}
+
+		if h.gitSrv != nil {
+			_ = h.gitSrv.Terminate(h.ctx)
+		}
+
+		if h.net != nil {
+			_ = h.net.Remove(h.ctx)
+		}
+
+		_, _ = h.docker.VolumeRemove(h.ctx, "doco-cd-e2e-data-"+h.scenario, client.VolumeRemoveOptions{Force: true})
+
+		h.cleanupStacks()
+		_ = os.RemoveAll(h.workDir)
+	})
+}
+
+func keepComponentsAcrossSuite() bool {
+	return os.Getenv("E2E_KEEP_COMPONENTS_RUNNING") != "0"
+}
+
+func registerSuiteHarness(h *Harness) {
+	suiteHarnessesMu.Lock()
+	defer suiteHarnessesMu.Unlock()
+
+	suiteHarnesses = append(suiteHarnesses, h)
+}
+
+func teardownSuiteHarnesses() {
+	suiteHarnessesMu.Lock()
+
+	harnesses := append([]*Harness(nil), suiteHarnesses...)
+	suiteHarnesses = nil
+	suiteHarnessesMu.Unlock()
+
+	for i := len(harnesses) - 1; i >= 0; i-- {
+		harnesses[i].teardownSuite()
+	}
 }
