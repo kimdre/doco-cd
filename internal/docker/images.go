@@ -525,6 +525,7 @@ func PullImages(ctx context.Context, dockerCli command.Cli, projectName string) 
 var (
 	registryDigestLookup             = registryDigestForRef           // registryDigestLookup fetches registry digests for image refs, can be overridden in tests
 	deployedServiceDigestLookup      = getDeployedServiceImageDigests // deployedServiceDigestLookup fetches deployed service image digests, can be overridden in tests
+	deployedServiceRefLookup         = getDeployedServiceImageRefs    // deployedServiceRefLookup fetches deployed service image references, can be overridden in tests
 	registryDigestHeadLookup         = registryDigestForRefViaHEAD
 	registryDigestDistributionLookup = registryDigestForRefViaDistributionInspect
 )
@@ -603,6 +604,159 @@ func DeployedServicesWithChangedImageDigests(ctx context.Context, dockerCli comm
 			)
 
 			changedServices = append(changedServices, serviceName)
+		}
+	}
+
+	slices.Sort(changedServices)
+
+	return changedServices, nil
+}
+
+// normalizeImageRef returns a comparable form of an image reference.
+//
+// Docker reports a deployed image in whatever form it was pulled while compose reports
+// what the project file says, so `nginx` and `docker.io/library/nginx:latest` have to
+// compare equal. A digest-pinned reference is already exact and is left alone; only a
+// tag-less reference needs `:latest` filled in.
+//
+// An unparseable reference is returned untouched: comparing two raw strings is still
+// better than dropping the comparison entirely.
+func normalizeImageRef(ref string) string {
+	if ref == "" {
+		return ""
+	}
+
+	parsed, err := distreference.ParseNormalizedNamed(ref)
+	if err != nil {
+		return ref
+	}
+
+	if _, ok := parsed.(distreference.Canonical); ok {
+		return parsed.String()
+	}
+
+	return distreference.TagNameOnly(parsed).String()
+}
+
+// getDeployedServiceImageRefs returns a map of service name to the image reference of
+// the container or swarm service currently deployed for it.
+//
+// Unlike getDeployedServiceImageDigests this needs no registry round trip and no image
+// inspect, which is what makes it cheap enough to run on every deployment instead of
+// only under force_image_pull.
+func getDeployedServiceImageRefs(ctx context.Context, dockerCli command.Cli, swarmMode bool, projectName string, logger *slog.Logger) (map[string]string, error) {
+	deployed := make(map[string]string)
+
+	if swarmMode {
+		services, err := swarmInternal.GetStackServices(ctx, dockerCli.Client(), projectName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list swarm services for %s: %w", projectName, err)
+		}
+
+		ns := convert.NewNamespace(projectName)
+		for _, svc := range services {
+			deployed[ns.Descope(svc.Spec.Name)] = svc.Spec.TaskTemplate.ContainerSpec.Image
+		}
+
+		logger.Debug("resolved deployed service image references", slog.String("project", projectName), slog.Int("services", len(deployed)))
+
+		return deployed, nil
+	}
+
+	containers, err := GetProjectContainers(ctx, dockerCli, projectName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list project containers for %s: %w", projectName, err)
+	}
+
+	selected := make(map[string]api.ContainerSummary)
+
+	for _, cont := range containers {
+		svcName := cont.Labels[api.ServiceLabel]
+		if svcName == "" {
+			continue
+		}
+
+		existing, ok := selected[svcName]
+		if !ok || (existing.State != container.StateRunning && cont.State == container.StateRunning) {
+			selected[svcName] = cont
+		}
+	}
+
+	for svcName, cont := range selected {
+		deployed[svcName] = cont.Image
+	}
+
+	logger.Debug("resolved deployed service image references", slog.String("project", projectName), slog.Int("services", len(deployed)))
+
+	return deployed, nil
+}
+
+// DeployedServicesWithChangedImageRefs returns the sorted names of services whose
+// configured image reference differs from the one currently deployed.
+//
+// This is the tag-level counterpart of DeployedServicesWithChangedImageDigests. It
+// answers "which services does this deployment move" for the ordinary case of a tag
+// bump in the deploy config, where the digest comparison never runs because
+// force_image_pull is off. It is local only, so it costs no registry lookups.
+//
+// It deliberately under-reports rather than guess, because it feeds a notification and
+// a wrong service name is worse than a missing one:
+//   - nothing deployed yet, i.e. the first deployment of this stack, yields no services;
+//     the stack level notification already says the whole stack came up
+//   - a service whose deployed reference cannot be determined is skipped
+//
+// A service that is configured but has no deployed counterpart while other services do
+// IS reported: it is genuinely arriving with this deployment.
+func DeployedServicesWithChangedImageRefs(ctx context.Context, dockerCli command.Cli, swarmMode bool, project *types.Project, logger *slog.Logger) ([]string, error) {
+	if project == nil {
+		return nil, nil
+	}
+
+	deployedRefs, err := deployedServiceRefLookup(ctx, dockerCli, swarmMode, project.Name, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(deployedRefs) == 0 {
+		return nil, nil
+	}
+
+	var changedServices []string
+
+	for _, svc := range project.Services {
+		// Scale-0 services never produce a container, so they have nothing to compare.
+		if svc.Image == "" || isScaledToZero(svc) {
+			continue
+		}
+
+		configuredRef := normalizeImageRef(svc.Image)
+
+		deployedRaw, ok := deployedRefs[svc.Name]
+		if !ok {
+			logger.Debug("service is not deployed yet, treating as changed", slog.String("service", svc.Name), slog.String("ref", svc.Image))
+
+			changedServices = append(changedServices, svc.Name)
+
+			continue
+		}
+
+		deployedRef := normalizeImageRef(deployedRaw)
+		if deployedRef == "" {
+			logger.Debug("deployed image reference unavailable, skipping service", slog.String("service", svc.Name), slog.String("ref", svc.Image))
+
+			continue
+		}
+
+		if deployedRef != configuredRef {
+			logger.Info("service image reference changed",
+				slog.String("service", svc.Name),
+				slog.Group("image",
+					slog.String("deployed", deployedRef),
+					slog.String("configured", configuredRef),
+				),
+			)
+
+			changedServices = append(changedServices, svc.Name)
 		}
 	}
 

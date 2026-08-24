@@ -143,7 +143,7 @@ type Docker struct {
 // DeploymentState holds the dynamic state information during the deployment process.
 type DeploymentState struct {
 	changedServices      []docker.Change
-	imageChangedServices []string // services whose deployed image digest drifted from the registry (force_image_pull)
+	imageChangedServices []string // services whose image moved: digest drift under force_image_pull, otherwise a changed image reference
 	ignoredInfo          docker.IgnoredInfo
 	DeployedCommit       string // previously-deployed commit SHA, carried to post-deploy for the changelog
 }

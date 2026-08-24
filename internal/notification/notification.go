@@ -90,7 +90,7 @@ type Metadata struct {
 	AffectedActorName   string
 	Commits             []git.CommitInfo // commits deployed since the last deploy; empty on first deploy/failure/OCI
 	Duration            time.Duration    // time from job start to the notification; zero when no deploy/destroy ran
-	ChangedServices     []string         // services force-recreated by this deploy or with image digest drift; empty when the whole stack is (re)deployed
+	ChangedServices     []string         // services force-recreated by this deploy, or whose image moved; empty on the first deployment of a stack
 }
 
 // TemplateData is the data exposed to a user-configured notification body template.

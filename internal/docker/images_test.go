@@ -579,3 +579,152 @@ func requireRegistryIntegrationTestGate(t *testing.T) {
 		t.Skipf("set %s=1 to run registry integration tests", registryIntegrationEnvVar)
 	}
 }
+
+func TestNormalizeImageRef(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		ref  string
+		want string
+	}{
+		{name: "empty stays empty", ref: "", want: ""},
+		{name: "bare name gets registry and tag", ref: "nginx", want: "docker.io/library/nginx:latest"},
+		{name: "tagged name gets registry", ref: "nginx:1.27", want: "docker.io/library/nginx:1.27"},
+		{name: "fully qualified is stable", ref: "docker.io/library/nginx:latest", want: "docker.io/library/nginx:latest"},
+		{name: "private registry is preserved", ref: "637423286173.dkr.ecr.eu-central-1.amazonaws.com/login-be:20260824-e5136680", want: "637423286173.dkr.ecr.eu-central-1.amazonaws.com/login-be:20260824-e5136680"},
+		{name: "digest pin is left exact", ref: "nginx@sha256:0000000000000000000000000000000000000000000000000000000000000000", want: "docker.io/library/nginx@sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+		{name: "unparseable ref is returned untouched", ref: "NOT A REF", want: "NOT A REF"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := normalizeImageRef(tc.ref); got != tc.want {
+				t.Fatalf("normalizeImageRef(%q) = %q, want %q", tc.ref, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDeployedServicesWithChangedImageRefs(t *testing.T) {
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	expectedLookupErr := errors.New("deployed lookup failed")
+
+	oldRefLookup := deployedServiceRefLookup
+
+	t.Cleanup(func() {
+		deployedServiceRefLookup = oldRefLookup
+	})
+
+	tests := []struct {
+		name              string
+		project           *types.Project
+		deployedRefs      map[string]string
+		deployedLookupErr error
+		wantChanged       []string
+		wantErr           error
+	}{
+		{
+			name:        "nil project returns nothing",
+			project:     nil,
+			wantChanged: nil,
+		},
+		{
+			name: "first deployment of a stack reports nothing",
+			project: &types.Project{
+				Name:     "test",
+				Services: types.Services{"web": {Name: "web", Image: "nginx:1.27"}},
+			},
+			deployedRefs: map[string]string{},
+			wantChanged:  nil,
+		},
+		{
+			name: "tag bump names only the moved service",
+			project: &types.Project{
+				Name: "test",
+				Services: types.Services{
+					"web": {Name: "web", Image: "nginx:1.28"},
+					"db":  {Name: "db", Image: "postgres:17"},
+				},
+			},
+			deployedRefs: map[string]string{"web": "nginx:1.27", "db": "postgres:17"},
+			wantChanged:  []string{"web"},
+		},
+		{
+			name: "equivalent references do not count as a change",
+			project: &types.Project{
+				Name:     "test",
+				Services: types.Services{"web": {Name: "web", Image: "nginx"}},
+			},
+			deployedRefs: map[string]string{"web": "docker.io/library/nginx:latest"},
+			wantChanged:  nil,
+		},
+		{
+			name: "service new to an existing stack is reported",
+			project: &types.Project{
+				Name: "test",
+				Services: types.Services{
+					"web":    {Name: "web", Image: "nginx:1.27"},
+					"worker": {Name: "worker", Image: "nginx:1.27"},
+				},
+			},
+			deployedRefs: map[string]string{"web": "nginx:1.27"},
+			wantChanged:  []string{"worker"},
+		},
+		{
+			name: "service without an image is skipped",
+			project: &types.Project{
+				Name: "test",
+				Services: types.Services{
+					"built": {Name: "built"},
+					"web":   {Name: "web", Image: "nginx:1.28"},
+				},
+			},
+			deployedRefs: map[string]string{"web": "nginx:1.27", "built": "test-built:latest"},
+			wantChanged:  []string{"web"},
+		},
+		{
+			name: "unknown deployed reference is skipped rather than guessed",
+			project: &types.Project{
+				Name:     "test",
+				Services: types.Services{"web": {Name: "web", Image: "nginx:1.28"}},
+			},
+			deployedRefs: map[string]string{"web": ""},
+			wantChanged:  nil,
+		},
+		{
+			name: "lookup error is returned",
+			project: &types.Project{
+				Name:     "test",
+				Services: types.Services{"web": {Name: "web", Image: "nginx:1.28"}},
+			},
+			deployedLookupErr: expectedLookupErr,
+			wantErr:           expectedLookupErr,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			deployedServiceRefLookup = func(context.Context, command.Cli, bool, string, *slog.Logger) (map[string]string, error) {
+				if tc.deployedLookupErr != nil {
+					return nil, tc.deployedLookupErr
+				}
+
+				return tc.deployedRefs, nil
+			}
+
+			changed, err := DeployedServicesWithChangedImageRefs(ctx, nil, false, tc.project, logger)
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("expected error %v, got %v", tc.wantErr, err)
+			}
+
+			if !slices.Equal(changed, tc.wantChanged) {
+				t.Fatalf("changed = %v, want %v", changed, tc.wantChanged)
+			}
+		})
+	}
+}
