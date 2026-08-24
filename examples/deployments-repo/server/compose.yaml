@@ -1,0 +1,33 @@
+# doco-cd on one fleet host. Same file on every host — only poll.yaml (the
+# `target:`) differs. Lives on the host (e.g. /opt/doco-cd/), NOT in git.
+services:
+  doco-cd:
+    image: ghcr.io/kimdre/doco-cd:latest # pin tag+digest in real use
+    restart: unless-stopped
+    env_file:
+      - secrets.env # GIT_ACCESS_TOKEN for the private deployments repo
+    environment:
+      TZ: Etc/UTC
+      POLL_CONFIG_FILE: /etc/doco-cd/poll.yaml
+      # Private age key for SOPS decryption of */secrets/*.sops.env. Mounted
+      # as a docker secret below, never in an env var.
+      SOPS_AGE_KEY_FILE: /run/secrets/sops_age_key
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./poll.yaml:/etc/doco-cd/poll.yaml:ro
+      - data:/data
+    secrets:
+      - sops_age_key
+    healthcheck:
+      test: ["CMD", "/doco-cd", "healthcheck"]
+      start_period: 15s
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+secrets:
+  sops_age_key:
+    file: ./age.key # chmod 600, delivered to the host out of band
+
+volumes:
+  data:

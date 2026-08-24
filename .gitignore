@@ -33,6 +33,8 @@ ed25519
 
 *.env
 .env
+# examples commit their env files on purpose (cleartext non-secret config)
+!examples/**/*.env
 
 cover.out
 cover.html

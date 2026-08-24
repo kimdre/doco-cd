@@ -1,0 +1,8 @@
+# Stub: the real compose lives in the app repo at deploy/compose.yaml,
+# included here pinned at ${SHOP_COMPOSE_SHA} (rolled by the app repo's CI
+# bump job together with the image tags — compose moves through envs with the
+# code). project_directory makes the included file's relative paths
+# (../env/*, ../secrets/*) resolve against THIS per-env directory.
+include:
+  - path: https://github.com/example/shop-be.git#${SHOP_COMPOSE_SHA}:deploy
+    project_directory: .

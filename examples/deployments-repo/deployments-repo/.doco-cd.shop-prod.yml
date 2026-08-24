@@ -1,0 +1,18 @@
+# Deploy config for the shop-prod host (target: shop-prod). Same rules as dev:
+# everything pinned, nothing floats. Pins here move only when a release
+# promotes them — usually by the app repo's CI, sometimes by hand.
+name: shop
+working_dir: shop/shop-prod
+environment:
+  ENV_NAME: "prod"
+  DOMAIN: "shop.example.com"
+  REGISTRY: "ghcr.io/example"
+  # --- compose pin (app repo's deploy/compose.yaml at this sha)
+  SHOP_COMPOSE_SHA: "a7f89ee10def020ff18f46fa7ab167d7939402d7"
+  # --- our images
+  SHOP_BE_TAG: "20b524730a848ff592189b16dd5c00230acc348c"
+  # --- third-party
+  REDIS_TAG: "7.2-alpine"
+remove_orphans: true
+reconciliation:
+  events: [unhealthy]
