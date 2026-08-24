@@ -189,7 +189,8 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 			Valid:      true,
 
 			LastRunAt:      parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobLastRun]),
-			LabelNextRunAt: parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobNextRun])}
+			LabelNextRunAt: parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobNextRun]),
+		}
 
 		// A run is active if either an execution is currently observed (e.g. a
 		// running one_off ephemeral container) or the in-process scheduler is

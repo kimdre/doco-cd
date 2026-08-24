@@ -231,7 +231,8 @@ func getServiceStatusFromContainerStatus(projectName string, containers []contai
 			// except com.docker.compose.container-number, com.docker.compose.replace
 			// so just use the labels of the first container we encounter for each service
 			status = ServiceStatus{
-				Labels: cont.Labels}
+				Labels: cont.Labels,
+			}
 		}
 
 		if cont.State == container.StateRunning {
