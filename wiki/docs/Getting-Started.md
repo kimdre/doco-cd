@@ -25,7 +25,7 @@ If you are new to Doco-CD, follow the pages in this order:
 
 !!! tip "Full working examples"
     The [`examples/`](https://github.com/kimdre/doco-cd/tree/main/examples) directory in the repository contains complete setups for common scenarios:
-    a single repo deployed to one environment, a single repo deployed to two environments, and a central deployments repo that manages many apps across many VMs.
+    a single repo deployed to one environment, a single repo deployed to two environments, and a central deployments repo that manages many apps across many Docker hosts.
 
 Find out about the [Core Concepts](Core-Concepts.md) of Doco-CD to understand how the application works and how to configure it.
 

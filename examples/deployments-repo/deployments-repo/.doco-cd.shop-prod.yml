@@ -1,4 +1,4 @@
-# Deploy config for the shop-prod VM (target: shop-prod). Same rules as dev:
+# Deploy config for the shop-prod host (target: shop-prod). Same rules as dev:
 # everything pinned, nothing floats. Pins here move only when a release
 # promotes them — usually by the app repo's CI, sometimes by hand.
 name: shop

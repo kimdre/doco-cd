@@ -1,5 +1,5 @@
-# doco-cd + Apprise sidecar. Same file on both VMs — only poll.yaml differs.
-# Lives on the VM (e.g. /opt/doco-cd/), NOT in the app repo.
+# doco-cd + Apprise sidecar. Same file on both hosts — only poll.yaml differs.
+# Lives on the host (e.g. /opt/doco-cd/), NOT in the app repo.
 services:
   doco-cd:
     image: ghcr.io/kimdre/doco-cd:latest # pin tag+digest in real use

@@ -7,7 +7,8 @@ services:
     image: traefik/whoami:${APP_TAG}
     restart: unless-stopped
     environment:
-      # A secret from the VM's secrets.env, arrives via PASS_ENV on the daemon.
+      # A secret from the host's secrets.env, arrives via PASS_ENV on the
+      # daemon.
       # `:-` keeps the compose renderable when the var is absent.
       API_KEY: ${API_KEY:-}
     # whoami is a scratch image with no shell, so no healthcheck is possible

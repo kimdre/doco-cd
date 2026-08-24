@@ -7,7 +7,7 @@ services:
     environment:
       POSTGRES_DB: app
       POSTGRES_USER: app
-      POSTGRES_PASSWORD: ${PG_PASSWORD:-} # VM's secrets.env via PASS_ENV
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-} # host's secrets.env via PASS_ENV
     volumes:
       # Host bind mount: data survives redeploys, backups stay boring.
       - /srv/app/pgdata:/var/lib/postgresql/data

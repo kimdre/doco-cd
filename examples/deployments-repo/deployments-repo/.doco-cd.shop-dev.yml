@@ -1,9 +1,9 @@
-# Deploy config for the shop-dev VM. Its daemon polls this repo with
-# `target: shop-dev` and reads ONLY this file.
+# Deploy config for the shop-dev host. Its doco-cd instance polls this repo
+# with `target: shop-dev` and reads ONLY this file.
 #
-# RULE: every service this VM runs has its version pinned HERE — our images by
-# git sha (rolled by app-repo CI bump jobs), third-party by exact tag. Nothing
-# floats. A version change is a commit.
+# RULE: every service this host runs has its version pinned HERE — our images
+# by git sha (rolled by app-repo CI bump jobs), third-party by exact tag.
+# Nothing floats. A version change is a commit.
 name: shop
 working_dir: shop/shop-dev
 environment:

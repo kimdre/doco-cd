@@ -1,4 +1,4 @@
-# PROD VM — copy to /opt/doco-cd/poll.yaml there. `target: prod` picks
+# PROD host — copy to /opt/doco-cd/poll.yaml there. `target: prod` picks
 # .doco-cd.prod.yml, and this daemon never reads the bare .doco-cd.yml.
 #
 # Optional hardening: point `reference` at a moving release tag instead of

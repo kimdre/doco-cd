@@ -1,6 +1,6 @@
 # Single repo → two environments
 
-One app repo, two VMs (staging + prod). The repo carries **two deploy configs**. Each VM's doco-cd picks its own via the poll `target:` field. Two stacks per environment: `app` and `db`.
+One app repo, two Docker hosts (staging + prod). The repo carries **two deploy configs**. Each host's doco-cd instance picks its own via the poll `target:` field. Two stacks per environment: `app` and `db`.
 
 ## What this example shows
 
@@ -20,19 +20,19 @@ app-repo/                  # your Git repository
   deploy/
     app/compose.yaml       # web stack
     db/compose.yaml        # postgres + one-shot migrate
-server/                    # one copy per VM, e.g. /opt/doco-cd/
-  compose.yaml             # doco-cd + apprise sidecar (same file on both VMs)
-  poll.staging.yaml        # staging VM: no target
-  poll.prod.yaml           # prod VM: target: prod
+server/                    # one copy per host, e.g. /opt/doco-cd/
+  compose.yaml             # doco-cd + apprise sidecar (same file on both hosts)
+  poll.staging.yaml        # staging host: no target
+  poll.prod.yaml           # prod host: target: prod
   secrets.env.example
 ```
 
 ## Try it
 
 1. Push `app-repo/` contents to a Git repository.
-2. On each VM: copy `server/` to `/opt/doco-cd/`, rename the VM's poll file to `poll.yaml`.
+2. On each host: copy `server/` to `/opt/doco-cd/`, rename the host's poll file to `poll.yaml`.
 3. Fill in `secrets.env` (from the example), `chmod 600`.
-4. Create the shared network once per VM: `docker network create appnet`.
+4. Create the shared network once per host: `docker network create appnet`.
 5. `docker compose up -d` in `/opt/doco-cd/`.
 
 ## Release flow

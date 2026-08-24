@@ -1,5 +1,6 @@
-# What this VM's doco-cd watches. No `target:` -> the repo's bare .doco-cd.yml
-# is used. Push to main -> within one interval the VM runs `docker compose up`.
+# What this doco-cd instance watches. No `target:` -> the repo's bare
+# .doco-cd.yml is used. Push to main -> within one interval doco-cd runs
+# `docker compose up` on the host.
 # Private repo? Add GIT_ACCESS_TOKEN to secrets.env.
 - url: https://github.com/example/app-repo.git
   reference: refs/heads/main

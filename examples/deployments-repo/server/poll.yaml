@@ -1,7 +1,7 @@
-# Every fleet VM polls the SAME deployments repo. The `target:` names the VM:
-# its daemon reads only .doco-cd.<target>.yml and deploys only its own stacks.
-# This file is the only per-VM difference — here the shop-dev VM; the prod VM
-# says `target: shop-prod`.
+# Every doco-cd instance in the fleet polls the SAME deployments repo. The
+# `target:` names the host: the instance reads only .doco-cd.<target>.yml and
+# deploys only its own stacks. This file is the only per-host difference —
+# here the shop-dev host; the prod host says `target: shop-prod`.
 - url: https://github.com/example/deployments-repo.git
   reference: refs/heads/main
   interval: 30

@@ -1,5 +1,5 @@
-# doco-cd on one fleet VM. Same file on every VM — only poll.yaml (the
-# `target:`) differs. Lives on the VM (e.g. /opt/doco-cd/), NOT in git.
+# doco-cd on one fleet host. Same file on every host — only poll.yaml (the
+# `target:`) differs. Lives on the host (e.g. /opt/doco-cd/), NOT in git.
 services:
   doco-cd:
     image: ghcr.io/kimdre/doco-cd:latest # pin tag+digest in real use
@@ -27,7 +27,7 @@ services:
 
 secrets:
   sops_age_key:
-    file: ./age.key # chmod 600, delivered to the VM out of band
+    file: ./age.key # chmod 600, delivered to the host out of band
 
 volumes:
   data:

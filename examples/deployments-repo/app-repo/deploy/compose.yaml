@@ -3,7 +3,7 @@
 # repo's per-env stubs via compose `include:` pinned at a sha of this repo.
 #
 # Env differences arrive ONLY through interpolation vars from the env's
-# .doco-cd.<vm>.yml and the per-env env/secret files (relative paths resolve
+# .doco-cd.<host>.yml and the per-env env/secret files (relative paths resolve
 # against the stub's project_directory).
 services:
   shop-be:

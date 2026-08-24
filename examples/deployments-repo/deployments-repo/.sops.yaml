@@ -1,5 +1,5 @@
 # SOPS creation rules. Every file under */secrets/ is encrypted to this age
-# recipient. The matching PRIVATE key sits on each VM next to the daemon
+# recipient. The matching PRIVATE key sits on each host next to the daemon
 # (see server/compose.yaml, SOPS_AGE_KEY_FILE).
 #
 # Generate a pair: age-keygen -o age.key  (public key is printed).

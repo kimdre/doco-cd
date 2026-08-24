@@ -1,6 +1,7 @@
-# STAGING deploy config (both stacks). The staging VM polls with no `target:`,
-# so it reads this bare file. The prod VM polls with `target: prod` and reads
-# ONLY .doco-cd.prod.yml — that is real isolation, staging values cannot leak.
+# STAGING deploy config (both stacks). The staging doco-cd instance polls with
+# no `target:`, so it reads this bare file. The prod instance polls with
+# `target: prod` and reads ONLY .doco-cd.prod.yml — that is real isolation,
+# staging values cannot leak.
 #
 # The rationale for every knob lives here; .doco-cd.prod.yml carries only the
 # values that differ, so the two files cannot argue.
