@@ -53,7 +53,6 @@ func (h *Harness) initRepo() {
 		h.t.Fatalf("get worktree: %v", err)
 	}
 
-	h.repo = repo
 	h.wt = wt
 }
 

@@ -18,13 +18,16 @@ make test-e2e E2E_RUN=TestFailedDeployRetry         # one scenario
 go test -tags e2e ./test/e2e/... -run TestFailedDeployRetry -v
 ```
 
+Set `E2E_KEEP_COMPONENTS_RUNNING=0` to stop each harness when its test ends,
+rather than at suite teardown.
+
 Also runs in CI on pull requests (`.github/workflows/test.yaml`, job `e2e`).
 
 ## How it works
 
 ```
 harness.go             Harness: builds/starts gitserver + doco-cd containers
-                        via testcontainers-go, tears them down after the test
+                        via testcontainers-go, tears them down after the suite
 helpers.go              wait-for, log grep, repo push, container lookup,
                         stack cleanup helpers used by scenario tests
 harness/gitserver/      tiny anonymous git-over-HTTP server image
@@ -58,4 +61,5 @@ by reading the stack name(s) straight from the fixture's `.doco-cd.yml`
 3. `go test -tags e2e ./test/e2e/... -run Test<Name> -v`.
 
 Keep scenarios independent: every scenario gets a fresh daemon, a fresh data
-volume and a fresh repo.
+volume and a fresh repo. Harness containers remain running until the e2e suite
+finishes; deployed stacks are still cleaned up after each test.

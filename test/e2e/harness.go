@@ -35,16 +35,15 @@ const repoDir = "../.."
 // its own instance (own network, own containers, own workdir), so scenarios
 // can run in parallel and don't share daemon state.
 type Harness struct {
-	t         *testing.T
-	ctx       context.Context
-	scenario  string
-	keepAlive bool
+	t        *testing.T
+	ctx      context.Context
+	scenario string
 
-	workDir  string // host tmp dir: repos/<scenario>.git + src/<scenario>
-	repoPath string // bare repo dir the gitserver container mounts read-only
-	worktree string // host worktree dir used to build fixture/commits
+	workDir    string // host tmp dir: repos/<scenario>.git + src/<scenario>
+	repoPath   string // bare repo dir the gitserver container mounts read-only
+	worktree   string // host worktree dir used to build fixture/commits
+	dataVolume string
 
-	repo   *git.Repository
 	wt     *git.Worktree
 	docker *client.Client
 	net    *testcontainers.DockerNetwork
@@ -77,15 +76,18 @@ func NewHarness(t *testing.T, scenario string) *Harness {
 	keepAlive := keepComponentsAcrossSuite()
 
 	h := &Harness{
-		t:         t,
-		ctx:       context.Background(),
-		scenario:  scenario,
-		keepAlive: keepAlive,
-		workDir:   workDir,
-		docker:    dockerCli,
+		t:          t,
+		ctx:        context.Background(),
+		scenario:   scenario,
+		workDir:    workDir,
+		dataVolume: "doco-cd-e2e-data-" + filepath.Base(workDir),
+		docker:     dockerCli,
 	}
 	h.repoPath = filepath.Join(h.workDir, "repos", scenario+".git")
 	h.worktree = filepath.Join(h.workDir, "src", scenario)
+
+	t.Cleanup(h.cleanupStacks)
+	t.Cleanup(h.logFailure)
 
 	if keepAlive {
 		registerSuiteHarness(h)
@@ -163,7 +165,7 @@ func (h *Harness) startDaemon(pollConfigPath string) {
 				"POLL_CONFIG_FILE": "/config/poll.yaml",
 			},
 			Mounts: testcontainers.ContainerMounts{
-				{Source: testcontainers.GenericVolumeMountSource{Name: "doco-cd-e2e-data-" + h.scenario}, Target: "/data"},
+				{Source: testcontainers.GenericVolumeMountSource{Name: h.dataVolume}, Target: "/data"},
 			},
 			HostConfigModifier: func(hc *container.HostConfig) {
 				hc.Binds = append(hc.Binds,
@@ -224,7 +226,7 @@ func (h *Harness) writePollConfig() string {
 }
 
 func (h *Harness) teardown() {
-	h.teardownInternal(true)
+	h.teardownInternal()
 }
 
 func (h *Harness) logf(format string, args ...any) {
@@ -232,16 +234,11 @@ func (h *Harness) logf(format string, args ...any) {
 }
 
 func (h *Harness) teardownSuite() {
-	h.teardownInternal(false)
+	h.teardownInternal()
 }
 
-func (h *Harness) teardownInternal(includeFailureLogs bool) {
+func (h *Harness) teardownInternal() {
 	h.teardownOnce.Do(func() {
-		if includeFailureLogs && h.t != nil && h.t.Failed() {
-			h.logf("--- daemon logs (last 100 lines) ---")
-			h.dumpTailLogs(h.daemon, 100)
-		}
-
 		if h.daemon != nil {
 			_ = h.daemon.Terminate(h.ctx)
 		}
@@ -254,11 +251,17 @@ func (h *Harness) teardownInternal(includeFailureLogs bool) {
 			_ = h.net.Remove(h.ctx)
 		}
 
-		_, _ = h.docker.VolumeRemove(h.ctx, "doco-cd-e2e-data-"+h.scenario, client.VolumeRemoveOptions{Force: true})
+		_, _ = h.docker.VolumeRemove(h.ctx, h.dataVolume, client.VolumeRemoveOptions{Force: true})
 
-		h.cleanupStacks()
 		_ = os.RemoveAll(h.workDir)
 	})
+}
+
+func (h *Harness) logFailure() {
+	if h.t.Failed() {
+		h.logf("--- daemon logs (last 100 lines) ---")
+		h.dumpTailLogs(h.daemon, 100)
+	}
 }
 
 func keepComponentsAcrossSuite() bool {
