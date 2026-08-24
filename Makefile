@@ -47,9 +47,9 @@ test-run:
 	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" ${COMPILER} go test ${BUILD_FLAGS} -cover ./... -timeout 10m -run $(filter-out $@,$(MAKECMDGOALS))
 
 # Run e2e scenarios against a real doco-cd built from the working tree.
-# Optionally pass scenario names: make test-e2e E2E_SCENARIOS="failed-deploy-retry"
+# Optionally filter scenarios: make test-e2e E2E_RUN=TestFailedDeployRetry
 test-e2e:
-	@./test/e2e/run.sh $(E2E_SCENARIOS)
+	@go test -tags e2e ./test/e2e/... -v -timeout 30m -run '$(E2E_RUN)'
 
 build:
 	@echo "Building without bitwarden integration (no CGO)..."

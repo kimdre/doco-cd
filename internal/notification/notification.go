@@ -122,15 +122,13 @@ func validateTemplate(tmpl string) (*template.Template, error) {
 	sample := TemplateData{
 		Level: logLevels[Success], Emoji: levelEmojis[Success],
 		Title: "Deployment completed", Message: "sample",
-		Metadata: Metadata{
-			Repository: "github.com/acme/app", Stack: "app", Context: "default",
-			Revision: "refs/heads/main (abc123)", JobID: "sample",
-			Commits: []git.CommitInfo{
-				{Hash: "abc123", ShortHash: "abc123", Subject: "sample commit", Author: "Jane Doe"},
-			},
-			Duration:        42 * time.Second,
-			ChangedServices: []string{"app"},
+		Repository: "github.com/acme/app", Stack: "app", Context: "default",
+		Revision: "refs/heads/main (abc123)", JobID: "sample",
+		Commits: []git.CommitInfo{
+			{Hash: "abc123", ShortHash: "abc123", Subject: "sample commit", Author: "Jane Doe"},
 		},
+		Duration:        42 * time.Second,
+		ChangedServices: []string{"app"},
 	}
 	if err := t.Execute(io.Discard, sample); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidTemplate, err)

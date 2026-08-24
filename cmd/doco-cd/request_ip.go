@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"slices"
 	"strings"
 )
 
@@ -64,9 +65,9 @@ func resolveForwardedHeaderChain(chain []netip.Addr, trustedProxyNetworks []neti
 		return netip.Addr{}, false
 	}
 
-	for i := len(chain) - 1; i >= 0; i-- {
-		if !isTrustedProxy(chain[i], trustedProxyNetworks) {
-			return chain[i], true
+	for _, c := range slices.Backward(chain) {
+		if !isTrustedProxy(c, trustedProxyNetworks) {
+			return c, true
 		}
 	}
 

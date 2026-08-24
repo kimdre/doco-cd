@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -186,10 +187,9 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 			Mode:       string(job.mode),
 			Repository: job.labels[docker.DocoCDLabels.Source.Name],
 			Valid:      true,
-		}
 
-		info.LastRunAt = parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobLastRun])
-		info.LabelNextRunAt = parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobNextRun])
+			LastRunAt:      parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobLastRun]),
+			LabelNextRunAt: parseRFC3339Time(job.labels[docker.DocoCDJobLabels.JobNextRun])}
 
 		// A run is active if either an execution is currently observed (e.g. a
 		// running one_off ephemeral container) or the in-process scheduler is
@@ -1160,8 +1160,8 @@ func lockStacks(stacks ...string) (unlock func()) {
 	}
 
 	return func() {
-		for i := len(unique) - 1; i >= 0; i-- {
-			lock.UnlockStack(unique[i])
+		for _, u := range slices.Backward(unique) {
+			lock.UnlockStack(u)
 		}
 	}
 }
@@ -1641,8 +1641,7 @@ func updateRuntimeRunStatus(job scheduledJob, cfg docker.JobScheduleConfig, runE
 		return
 	}
 
-	var exitErr *docker.ContainerExitError
-	if errors.As(runErr, &exitErr) {
+	if exitErr, ok := errors.AsType[*docker.ContainerExitError](runErr); ok {
 		setRuntimeRunStatus(job.key, formatExitStatus(exitErr.ExitCode))
 	}
 }

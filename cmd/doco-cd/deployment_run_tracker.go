@@ -220,12 +220,12 @@ func (t *deploymentRunTracker) List(limit int, trigger string, status string) []
 		triggerType := deploymentRunTrigger(trigger)
 
 		order := t.orderByTrigger[triggerType]
-		for i := len(order) - 1; i >= 0; i-- {
+		for _, o := range slices.Backward(order) {
 			if len(runs) >= limit {
 				break
 			}
 
-			r := t.runs[order[i]]
+			r := t.runs[o]
 
 			if status != "" && string(r.Status) != status {
 				continue
