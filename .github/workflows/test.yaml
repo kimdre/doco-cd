@@ -101,8 +101,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
       - name: Run e2e scenarios
-        run: ./test/e2e/run.sh
+        run: go test -tags e2e ./test/e2e/... -v -timeout 25m
 
   docs-validation:
     name: Validate wiki build

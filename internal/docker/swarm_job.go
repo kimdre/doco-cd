@@ -65,13 +65,11 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 	defer lock.Unlock()
 
 	newServiceSpec := swarmTypes.ServiceSpec{
-		Annotations: swarmTypes.Annotations{
-			Name: name,
-			Labels: map[string]string{
-				DocoCDLabels.Metadata.Manager:   app.Name,
-				DocoCDLabels.Metadata.Version:   app.Version,
-				DocoCDLabels.Deployment.Trigger: title,
-			},
+		Name: name,
+		Labels: map[string]string{
+			DocoCDLabels.Metadata.Manager:   app.Name,
+			DocoCDLabels.Metadata.Version:   app.Version,
+			DocoCDLabels.Deployment.Trigger: title,
 		},
 		TaskTemplate: swarmTypes.TaskSpec{
 			ContainerSpec: &swarmTypes.ContainerSpec{

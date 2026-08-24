@@ -43,6 +43,3 @@ git-auth-domains.yaml
 # Agents/Copilot files
 issue.md
 .github/AGENTS.md
-
-# e2e working state (repos, clones, generated poll config)
-test/e2e/.work/
