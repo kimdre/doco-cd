@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -56,6 +57,8 @@ type Harness struct {
 var (
 	suiteHarnessesMu sync.Mutex
 	suiteHarnesses   []*Harness
+
+	buildGitServerImageOnce = sync.OnceValues(buildGitServerImage)
 )
 
 // NewHarness prepares a harness for the given scenario. Call Start to bring
@@ -128,12 +131,15 @@ func (h *Harness) Start() {
 func (h *Harness) startGitServer() {
 	h.t.Helper()
 
+	image, err := buildGitServerImageOnce()
+	if err != nil {
+		h.t.Fatalf("build gitserver image: %v", err)
+	}
+
 	gitSrv, err := testcontainers.GenericContainer(h.ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
-			FromDockerfile: testcontainers.FromDockerfile{
-				Context:    filepath.Join(repoDir, "test", "e2e", "harness", "gitserver"),
-				Dockerfile: "Dockerfile",
-			},
+			Image:          image,
+			Name:           h.containerName("gitserver"),
 			Networks:       []string{h.net.Name},
 			NetworkAliases: map[string][]string{h.net.Name: {"gitserver"}},
 			HostConfigModifier: func(hc *container.HostConfig) {
@@ -148,6 +154,7 @@ func (h *Harness) startGitServer() {
 	}
 
 	h.gitSrv = gitSrv
+	h.logContainerStart("gitserver", gitSrv)
 }
 
 func (h *Harness) startDaemon(pollConfigPath string) {
@@ -158,6 +165,7 @@ func (h *Harness) startDaemon(pollConfigPath string) {
 	daemon, err := testcontainers.GenericContainer(h.ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:    image,
+			Name:     h.containerName("doco-cd"),
 			Networks: []string{h.net.Name},
 			Env: map[string]string{
 				"TZ":               "Etc/UTC",
@@ -186,6 +194,26 @@ func (h *Harness) startDaemon(pollConfigPath string) {
 	}
 
 	h.daemon = daemon
+	h.logContainerStart("doco-cd", daemon)
+}
+
+// buildGitServerImage builds the static gitserver image once for the test
+// process; scenarios only create containers from the shared image.
+func buildGitServerImage() (string, error) {
+	image := gitServerImageName()
+	cmd := exec.Command("docker", "build", "-t", image, filepath.Join(repoDir, "test", "e2e", "harness", "gitserver"))
+
+	cmd.Env = append(os.Environ(), "DOCKER_BUILDKIT=1")
+
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("%w\n%s", err, out)
+	}
+
+	return image, nil
+}
+
+func gitServerImageName() string {
+	return fmt.Sprintf("doco-cd-e2e-gitserver:%d", os.Getpid())
 }
 
 // buildDaemonImage builds the doco-cd image from the working tree via the
@@ -225,12 +253,35 @@ func (h *Harness) writePollConfig() string {
 	return path
 }
 
+func (h *Harness) containerName(component string) string {
+	return "doco-cd-e2e-" + component + "-" + strings.TrimPrefix(filepath.Base(h.workDir), "doco-cd-e2e-")
+}
+
 func (h *Harness) teardown() {
 	h.teardownInternal()
 }
 
 func (h *Harness) logf(format string, args ...any) {
 	h.t.Logf("[e2e] "+format, args...)
+}
+
+func (h *Harness) logContainerStart(component string, c testcontainers.Container) {
+	name := c.GetContainerID()
+
+	inspect, err := c.Inspect(h.ctx)
+	if err == nil && inspect != nil && inspect.Name != "" {
+		name = strings.TrimPrefix(inspect.Name, "/")
+	}
+
+	h.logf("%s container: %s (%s)", component, name, shortContainerID(c.GetContainerID()))
+}
+
+func shortContainerID(id string) string {
+	if len(id) > 12 {
+		return id[:12]
+	}
+
+	return id
 }
 
 func (h *Harness) teardownSuite() {
