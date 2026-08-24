@@ -8,7 +8,7 @@ body:
     attributes:
       label: "Description"
       description: Please enter an explicit description of your issue
-      placeholder: Short and explicit description of your incident...
+      placeholder: Short and explicit description of your issue...
     validations:
       required: true
   - type: textarea
@@ -23,17 +23,12 @@ body:
       render: bash
     validations:
       required: true
-  - type: dropdown
-    id: os
+  - type: input
+    id: version
     attributes:
-      label: "Operating System"
-      description: What operating system are you using?
-      multiple: true
-      options:
-        - Windows
-        - Linux
-        - Mac
-        - Other
+      label: "doco-cd Version"
+      description: What version of doco-cd are you using?
+      placeholder: e.g. v1.2.3
     validations:
       required: true
   - type: textarea

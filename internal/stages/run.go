@@ -136,8 +136,14 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 			stageLog.Debug(string("end stage early: "+stageName),
 				slog.String("reason", err.Error()),
 				slog.String("duration", metadata.FinishedAt.Sub(metadata.StartedAt).Truncate(time.Millisecond).String()))
-			// If the error is ErrSkipDeployment, we don't treat it as a failure
+			// If the error is ErrSkipDeployment, we don't treat it as a failure.
+			// ErrWebhookFilterMismatch wraps ErrSkipDeployment but must propagate so
+			// the HTTP handler can return a "skipped" response rather than "success".
 			if errors.Is(err, ErrSkipDeployment) {
+				if errors.Is(err, ErrWebhookFilterMismatch) {
+					return err
+				}
+
 				return nil
 			}
 

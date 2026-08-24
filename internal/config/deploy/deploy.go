@@ -135,6 +135,8 @@ func (c *Config) LogValue() slog.Value {
 
 func (c *Config) Validate() error {
 	c.Source = config.NormalizeSourceType(c.Source)
+	c.RepositoryUrl = config.GitUrl(config.NormalizeGitURL(string(c.RepositoryUrl)))
+
 	if err := config.ValidateSourceType(c.Source); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
 	}

@@ -239,9 +239,27 @@ func OpenRepository(path string) (*git.Repository, error) {
 	return git.PlainOpen(path)
 }
 
+// effectiveDepth returns the usable clone/fetch depth for a URL.
+// Local file:// repositories are always fetched in full: the in-process transport
+// used for them (see local_transport.go) does not implement git's shallow capability,
+// so any depth > 0 would fail the transfer outright.
+func effectiveDepth(url string, depth int) int {
+	if depth > 0 && IsLocalFile(url) {
+		slog.Debug("ignoring shallow depth for local filesystem repository",
+			slog.String("url", url),
+			slog.Int("requested_depth", depth))
+
+		return 0
+	}
+
+	return depth
+}
+
 // FetchRepository fetches updates from the remote repository, including all branches and tags, and prunes deleted references.
 // If depth > 0, a shallow fetch is performed with the specified number of commits.
 func FetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, depth int) error {
+	depth = effectiveDepth(url, depth)
+
 	opts := &git.FetchOptions{
 		RemoteName: RemoteName,
 		RemoteURL:  url,
@@ -259,7 +277,7 @@ func FetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxy
 		}
 
 		opts.RemoteURL = ConvertSSHUrl(url)
-	} else {
+	} else if !IsLocalFile(url) {
 		opts.InsecureSkipTLS = skipTLSVerify
 
 		if proxyOpts != (transport.ProxyOptions{}) {
@@ -296,6 +314,8 @@ func FetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxy
 // within the current depth, the repository is incrementally deepened before falling
 // back to a full fetch.
 func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, cloneSubmodules bool, depth int) (*git.Repository, error) {
+	depth = effectiveDepth(url, depth)
+
 	// Serialize operations on the same path
 	unlock := AcquirePathLock(path)
 	defer unlock()
@@ -518,6 +538,8 @@ func CheckoutRepository(repo *git.Repository, ref string, auth transport.AuthMet
 // CloneRepository clones a repository with HTTP or SSH auth.
 // If depth > 0, a shallow clone is performed with the specified number of commits.
 func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, cloneSubmodules bool, depth int) (*git.Repository, error) {
+	depth = effectiveDepth(url, depth)
+
 	// Serialize operations on the same path to avoid concurrent partial clones
 	unlock := AcquirePathLock(path)
 	defer unlock()
@@ -546,7 +568,7 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 		}
 
 		opts.URL = ConvertSSHUrl(url)
-	} else {
+	} else if !IsLocalFile(url) {
 		opts.InsecureSkipTLS = skipTLSVerify
 
 		if proxyOpts != (transport.ProxyOptions{}) {
@@ -1128,6 +1150,18 @@ func GetRepoName(cloneURL string) string {
 		}
 	}
 
+	// Local filesystem repositories: use the absolute path (minus leading slash) as the
+	// name, mirroring the "host/owner/repo" hierarchy used for remote URLs so that two
+	// different local paths never collide.
+	if strings.HasPrefix(u, "file://") {
+		parsed, err := url.Parse(u)
+		if err == nil {
+			p := strings.TrimPrefix(parsed.Path, "/")
+
+			return normalizeOwnerRepo(p)
+		}
+	}
+
 	// For URLs with a scheme use net/url
 	parsed, err := url.Parse(u)
 	if err == nil && parsed.Host != "" {
@@ -1177,6 +1211,32 @@ func MatchesHead(path, ref string) (bool, error) {
 	}
 
 	return head.Hash() == r.Hash(), nil
+}
+
+// HeadMatchesCommit reports whether the repository at path has exactly the given
+// commit SHA at HEAD. Returns false (no error) when the repository does not exist
+// or HEAD cannot be resolved, so callers can treat a false result as "go ahead and fetch".
+func HeadMatchesCommit(repoPath, commitSHA string) (bool, error) {
+	commitSHA = strings.TrimSpace(commitSHA)
+	if commitSHA == "" {
+		return false, nil
+	}
+
+	repo, err := OpenRepository(repoPath)
+	if err != nil {
+		if errors.Is(err, git.ErrRepositoryNotExists) {
+			return false, nil
+		}
+
+		return false, fmt.Errorf("failed to open repository at %s: %w", repoPath, err)
+	}
+
+	head, err := repo.Head()
+	if err != nil {
+		return false, fmt.Errorf("%w for repository '%s': %w", ErrGetHeadFailed, repoPath, err)
+	}
+
+	return head.Hash().String() == commitSHA, nil
 }
 
 // needsReclone returns true when the on-disk repository shallow state does not

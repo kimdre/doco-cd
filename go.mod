@@ -1,6 +1,6 @@
 module github.com/kimdre/doco-cd
 
-go 1.26.6
+go 1.27.0
 
 tool (
 	github.com/bombsimon/wsl/v5/cmd/wsl
@@ -34,7 +34,6 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/infisical/go-sdk v0.8.0
 	github.com/jmespath/go-jmespath v0.4.1-0.20220621161143-b0104c826a24
-	github.com/joho/godotenv v1.5.1
 	github.com/moby/buildkit v0.32.2
 	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.5.1
@@ -102,7 +101,7 @@ require (
 	github.com/aws/smithy-go v1.27.8 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
-	github.com/bombsimon/wsl/v5 v5.8.0 // indirect
+	github.com/bombsimon/wsl/v5 v5.9.0 // indirect
 	github.com/buger/goterm v1.0.4 // indirect
 	github.com/catenacyber/perfsprint v0.10.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
@@ -146,6 +145,7 @@ require (
 	github.com/fatih/color v1.19.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fsnotify/fsevents v0.2.0 // indirect
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/fvbommel/sortorder v1.1.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
@@ -356,8 +356,8 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.28.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
-	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/mod v0.39.0 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	golang.org/x/mod v0.40.0 // indirect
 	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect

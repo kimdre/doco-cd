@@ -23,7 +23,8 @@ import (
 func createTestFile(t *testing.T, fileName string, content string) error {
 	t.Helper()
 
-	err := os.WriteFile(fileName, []byte(content), filesystem.PermOwner)
+	//nolint:gosec // test helper writes fixture files to test-controlled paths
+	err := os.WriteFile(filepath.Clean(fileName), []byte(content), filesystem.PermOwner)
 	if err != nil {
 		return err
 	}
@@ -143,6 +144,27 @@ func TestConfig_Validate_ContextTrim(t *testing.T) {
 
 	if dc.Context != "remote-prod" {
 		t.Fatalf("expected trimmed context %q, got %q", "remote-prod", dc.Context)
+	}
+}
+
+func TestConfig_Validate_RepositoryURLAbsolutePathNormalization(t *testing.T) {
+	t.Parallel()
+
+	dc := Config{
+		Name:          "test",
+		RepositoryUrl: "/local-repos/my-app.git",
+	}
+
+	if err := defaults.Set(&dc); err != nil {
+		t.Fatalf("defaults: %v", err)
+	}
+
+	if err := dc.Validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+
+	if got := string(dc.RepositoryUrl); got != "file:///local-repos/my-app.git" {
+		t.Fatalf("expected normalized repository_url %q, got %q", "file:///local-repos/my-app.git", got)
 	}
 }
 

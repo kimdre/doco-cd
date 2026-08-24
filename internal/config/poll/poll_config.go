@@ -26,6 +26,7 @@ type Config struct {
 	Interval     time.Duration     `yaml:"interval" default:"180s"`                     // Interval is the interval at which to poll for changes
 	CustomTarget string            `yaml:"target" json:"target" default:""`             // CustomTarget is the name of an optional custom deployment config file, e.g. ".doco-cd.custom-name.yaml"
 	RunOnce      bool              `yaml:"run_once" default:"false"`                    // RunOnce when true, performs a single run and exits
+	Watch        bool              `yaml:"watch" json:"watch" default:"true"`           // Watch enables a filesystem watcher for local git repositories that triggers a poll immediately on new commits; ignored for non-local git and OCI sources
 	Deployments  []*deploy.Config  `yaml:"deployments" json:"deployments" default:"[]"` // Deployments allows defining deployment configs inline in the poll configuration
 }
 
@@ -36,6 +37,7 @@ type rawConfig struct {
 	Interval     any               `yaml:"interval" json:"interval" default:"180s"`
 	CustomTarget string            `yaml:"target" json:"target" default:""`
 	RunOnce      bool              `yaml:"run_once" json:"run_once" default:"false"`
+	Watch        bool              `yaml:"watch" json:"watch" default:"true"`
 	Deployments  []*deploy.Config  `yaml:"deployments" json:"deployments" default:"[]"`
 }
 
@@ -72,6 +74,8 @@ func (c *Config) Validate() error {
 
 	switch c.Source {
 	case config.SourceTypeGit:
+		c.SourceUrl = config.NormalizeGitURL(c.SourceUrl)
+
 		if c.SourceUrl == "" {
 			return fmt.Errorf("%w: url", deploy.ErrKeyNotFound)
 		}
@@ -151,6 +155,7 @@ func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 		Interval:     c.Interval,
 		CustomTarget: c.CustomTarget,
 		RunOnce:      c.RunOnce,
+		Watch:        c.Watch,
 		Deployments:  c.Deployments,
 	}
 
@@ -169,6 +174,7 @@ func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 	c.Interval = parsedInterval
 	c.CustomTarget = raw.CustomTarget
 	c.RunOnce = raw.RunOnce
+	c.Watch = raw.Watch
 	c.Deployments = raw.Deployments
 
 	return nil
@@ -187,6 +193,7 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 		Interval:     c.Interval,
 		CustomTarget: c.CustomTarget,
 		RunOnce:      c.RunOnce,
+		Watch:        c.Watch,
 		Deployments:  c.Deployments,
 	}
 
@@ -205,6 +212,7 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 	c.Interval = parsedInterval
 	c.CustomTarget = raw.CustomTarget
 	c.RunOnce = raw.RunOnce
+	c.Watch = raw.Watch
 	c.Deployments = raw.Deployments
 
 	return nil
