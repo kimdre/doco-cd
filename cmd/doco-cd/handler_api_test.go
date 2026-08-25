@@ -742,6 +742,39 @@ func TestTriggerScheduledJobWorksWithoutTracker(t *testing.T) {
 	}
 }
 
+func TestTriggerScheduledJobSyncPanicMarksFailedAndReturnsError(t *testing.T) {
+	tracker := newDeploymentRunTracker(nil)
+	h := handlerData{
+		log:        logger.New(logger.LevelCritical),
+		runTracker: tracker,
+		triggerScheduledJob: func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error) {
+			panic("boom")
+		},
+	}
+
+	jobID, err := h.triggerScheduledJobRun(t.Context(), "deployment-job-id", "backup", "", true)
+	if err == nil {
+		t.Fatal("expected internal error after scheduled job panic")
+	}
+
+	if !errors.Is(err, errScheduledJobRunPanicked) {
+		t.Fatalf("error = %v, want errors.Is(_, errScheduledJobRunPanicked)", err)
+	}
+
+	if errors.Is(err, scheduler.ErrScheduledJobNotFound) || errors.Is(err, scheduler.ErrScheduledJobDisabled) || errors.Is(err, scheduler.ErrScheduledJobAmbiguous) {
+		t.Fatalf("panic error must remain internally classified: %v", err)
+	}
+
+	run, ok := tracker.Get(jobID)
+	if !ok {
+		t.Fatalf("tracked run %q not found", jobID)
+	}
+
+	if run.Status != deploymentRunStatusFailed || run.Message != "scheduled job run panicked" {
+		t.Fatalf("unexpected tracked run after panic: %#v", run)
+	}
+}
+
 func TestTriggerScheduledJobHandlerMapsSchedulerErrors(t *testing.T) {
 	appConfig, err := app.GetConfig()
 	if err != nil {
@@ -774,6 +807,7 @@ func TestTriggerScheduledJobHandlerMapsSchedulerErrors(t *testing.T) {
 			requestPath := path.Join(apiPath, "/job/example-job/run")
 			req := httptest.NewRequest(http.MethodPost, requestPath, nil)
 			req.Header.Set(restAPI.KeyHeader, appConfig.ApiSecret)
+
 			rr := httptest.NewRecorder()
 			mux := http.NewServeMux()
 			mux.HandleFunc(endpoint, h.TriggerScheduledJobHandler)

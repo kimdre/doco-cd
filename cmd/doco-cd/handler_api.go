@@ -281,6 +281,8 @@ func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.
 
 type scheduledJobTrigger func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error)
 
+var errScheduledJobRunPanicked = errors.New("scheduled job run panicked")
+
 func (h *handlerData) triggerScheduledJobRun(ctx context.Context, jobID, jobName, stackName string, wait bool) (string, error) {
 	if jobID == "" {
 		jobID = id.GenID()
@@ -292,7 +294,19 @@ func (h *handlerData) triggerScheduledJobRun(ctx context.Context, jobID, jobName
 		h.runTracker.SetMetadata(jobID, "scheduled:"+jobName, stackName, "")
 	}
 
-	run := func(ctx context.Context) error {
+	run := func(ctx context.Context) (err error) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				logRecoveredPanic(jobLog, "scheduled job run", recovered)
+
+				if h.runTracker != nil {
+					h.runTracker.MarkFailed(jobID, errScheduledJobRunPanicked.Error())
+				}
+
+				err = fmt.Errorf("%w: %v", errScheduledJobRunPanicked, recovered)
+			}
+		}()
+
 		if h.runTracker != nil {
 			h.runTracker.MarkRunning(jobID)
 		}
@@ -333,16 +347,6 @@ func (h *handlerData) triggerScheduledJobRun(ctx context.Context, jobID, jobName
 	}
 
 	go func() {
-		defer func() {
-			if recovered := recover(); recovered != nil {
-				logRecoveredPanic(jobLog, "scheduled job run", recovered)
-
-				if h.runTracker != nil {
-					h.runTracker.MarkFailed(jobID, "scheduled job run panicked")
-				}
-			}
-		}()
-
 		_ = run(context.WithoutCancel(ctx))
 	}()
 
