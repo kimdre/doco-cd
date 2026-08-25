@@ -1,0 +1,39 @@
+# Database stack: postgres + a one-shot migrate container that runs on every
+# deploy of THIS stack (a web-only release does not touch it — separate tags).
+services:
+  postgres:
+    image: postgres:${PG_TAG}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-} # host's secrets.env via PASS_ENV
+    volumes:
+      # Host bind mount: data survives redeploys, backups stay boring.
+      - /srv/app/pgdata:/var/lib/postgresql/data
+    networks:
+      - appnet
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # One-shot: runs migrations, exits 0. This exit is WHY the stack's
+  # reconciliation must never watch `die` (see .doco-cd.yml).
+  migrate:
+    image: ghcr.io/example/app-migrations:${DB_TAG}
+    restart: "no"
+    environment:
+      DATABASE_URL: postgres://app:${PG_PASSWORD:-}@postgres:5432/app
+    networks:
+      - appnet
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+networks:
+  appnet:
+    name: appnet
+    external: true

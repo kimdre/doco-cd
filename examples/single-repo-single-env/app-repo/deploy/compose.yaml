@@ -1,0 +1,38 @@
+# The stack doco-cd reconciles. Only caddy publishes ports; the app stays
+# internal to the compose network.
+services:
+  app:
+    # Stand-in for your app image. The tag comes from .doco-cd.yml, so git
+    # always states what runs. whoami is used here so the example runs as-is.
+    image: traefik/whoami:${APP_TAG}
+    restart: unless-stopped
+    environment:
+      # A secret from the host's secrets.env, arrives via PASS_ENV on the
+      # daemon.
+      # `:-` keeps the compose renderable when the var is absent.
+      API_KEY: ${API_KEY:-}
+    # whoami is a scratch image with no shell, so no healthcheck is possible
+    # here. Give your real app one — `reconciliation: [unhealthy]` in
+    # .doco-cd.yml keys off it. Distroless image -> probe with your own binary:
+    #   test: ["CMD", "/app", "healthcheck"]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+    volumes:
+      # Caddyfile edits auto-apply: doco-cd tracks files a service mounts and
+      # force-recreates ONLY caddy when the content changes. No --watch needed.
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Host bind mount so certs survive redeploys — no re-ACME on every deploy.
+      - /srv/app/caddy:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:2019/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

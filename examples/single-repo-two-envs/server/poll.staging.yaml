@@ -1,0 +1,5 @@
+# STAGING host — copy to /opt/doco-cd/poll.yaml there. No `target:` -> the bare
+# .doco-cd.yml (both stacks). Push to main -> staging deploys.
+- url: https://github.com/example/app-repo.git
+  reference: refs/heads/main
+  interval: 30
