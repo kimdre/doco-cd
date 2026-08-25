@@ -17,7 +17,10 @@ import (
 	"github.com/kimdre/doco-cd/internal/source/oci"
 )
 
-var errPollRunPanicked = errors.New("poll run panicked")
+var (
+	errNoPollConfiguration = errors.New("no poll configuration provided in request body")
+	errPollRunPanicked     = errors.New("poll run panicked")
+)
 
 type pollConfigValidationError struct {
 	Index int
@@ -94,6 +97,9 @@ func (h *handlerData) triggerPollTool(ctx context.Context, _ *mcp.CallToolReques
 
 func (h *handlerData) runPollConfigs(ctx context.Context, configs []poll.Config, wait bool, jobLog *slog.Logger) (string, error) {
 	jobID := id.GenID()
+	if len(configs) == 0 {
+		return jobID, errNoPollConfiguration
+	}
 
 	if jobLog == nil {
 		jobLog = h.log.Logger

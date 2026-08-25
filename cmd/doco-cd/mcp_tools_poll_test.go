@@ -21,6 +21,40 @@ import (
 const validPollSourceURL = "https://github.com/kimdre/doco-cd_tests.git"
 
 func TestRunPollConfigsAppliesDefaultsAndReportsIndexedValidationErrors(t *testing.T) {
+	t.Run("empty configs", func(t *testing.T) {
+		tracker := newDeploymentRunTracker(nil)
+		runs := 0
+		h := &handlerData{
+			appConfig:  &app.Config{},
+			log:        logger.New(logger.LevelCritical),
+			runTracker: tracker,
+			runPoll: func(context.Context, poll.Config, *app.Config, container.MountPoint,
+				command.Cli, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider,
+			) error {
+				runs++
+
+				return nil
+			},
+		}
+
+		jobID, err := h.runPollConfigs(t.Context(), nil, true, h.log.Logger)
+		if !errors.Is(err, errNoPollConfiguration) {
+			t.Fatalf("empty configs error = %v", err)
+		}
+
+		if jobID == "" {
+			t.Fatal("expected generated job ID")
+		}
+
+		if _, ok := tracker.Get(jobID); ok {
+			t.Fatal("empty configs must not be tracked")
+		}
+
+		if runs != 0 {
+			t.Fatalf("empty configs started %d poll runs", runs)
+		}
+	})
+
 	t.Run("defaults", func(t *testing.T) {
 		var got poll.Config
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -1306,6 +1307,9 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 
 		return
 	}
+	defer func() {
+		_ = r.Body.Close()
+	}()
 
 	wait, ok := getProjectBoolQueryParam(r, w, jobLog, jobID, "wait", true)
 	if !ok {
@@ -1315,23 +1319,20 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 	r.Body = http.MaxBytesReader(w, r.Body, h.appConfig.MaxPayloadSize)
 
 	decoder := json.NewDecoder(r.Body)
-	defer func() {
-		_ = r.Body.Close()
-	}()
 
 	var pollConfigs []poll.Config
 	if err := decoder.Decode(&pollConfigs); err != nil {
-		errMsg := "failed to decode json in body"
-		h.log.Error(errMsg, logger.ErrAttr(err))
+		h.pollDecodeError(w, jobID, err)
 
-		status := http.StatusBadRequest
+		return
+	}
 
-		var maxBytesError *http.MaxBytesError
-		if errors.As(err, &maxBytesError) {
-			status = http.StatusRequestEntityTooLarge
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		if err == nil {
+			err = errors.New("request body must contain a single JSON value")
 		}
 
-		JSONError(w, errMsg, err.Error(), jobID, status)
+		h.pollDecodeError(w, jobID, err)
 
 		return
 	}
@@ -1365,4 +1366,18 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	JSONResponse(w, "poll jobs started", jobID, http.StatusAccepted)
+}
+
+func (h *handlerData) pollDecodeError(w http.ResponseWriter, jobID string, err error) {
+	errMsg := "failed to decode json in body"
+	h.log.Error(errMsg, logger.ErrAttr(err))
+
+	status := http.StatusBadRequest
+
+	var maxBytesError *http.MaxBytesError
+	if errors.As(err, &maxBytesError) {
+		status = http.StatusRequestEntityTooLarge
+	}
+
+	JSONError(w, errMsg, err.Error(), jobID, status)
 }

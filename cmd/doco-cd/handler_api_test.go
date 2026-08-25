@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -621,11 +622,16 @@ func TestHandlerData_TriggerPollHandlerRejectsInvalidRequestsBeforeTracking(t *t
 		body       string
 		maxPayload int64
 		wantStatus int
+		wantError  string
 	}{
 		{name: "malformed wait", query: "?wait=eventually", body: `[{"url":"` + validPollSourceURL + `"}]`, maxPayload: 1024, wantStatus: http.StatusBadRequest},
 		{name: "invalid JSON", body: `[{`, maxPayload: 1024, wantStatus: http.StatusBadRequest},
 		{name: "invalid config", body: `[{}]`, maxPayload: 1024, wantStatus: http.StatusBadRequest},
+		{name: "empty config list", body: `[]`, maxPayload: 1024, wantStatus: http.StatusBadRequest, wantError: "no poll configuration provided in request body"},
+		{name: "second JSON value", body: `[{"url":"` + validPollSourceURL + `"}] {}`, maxPayload: 1024, wantStatus: http.StatusBadRequest},
+		{name: "trailing non-whitespace", body: `[{"url":"` + validPollSourceURL + `"}] trailing`, maxPayload: 1024, wantStatus: http.StatusBadRequest},
 		{name: "oversized body", body: `[{"url":"` + validPollSourceURL + `"}]`, maxPayload: 8, wantStatus: http.StatusRequestEntityTooLarge},
+		{name: "oversized valid prefix with trailing whitespace", body: `[{"url":"` + validPollSourceURL + `"}]  `, maxPayload: int64(len(`[{"url":"`+validPollSourceURL+`"}]`) + 1), wantStatus: http.StatusRequestEntityTooLarge},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			tracker := newDeploymentRunTracker(nil)
@@ -642,14 +648,30 @@ func TestHandlerData_TriggerPollHandlerRejectsInvalidRequestsBeforeTracking(t *t
 					return nil
 				},
 			}
+			body := &trackingReadCloser{Reader: strings.NewReader(testCase.body)}
 			recorder := httptest.NewRecorder()
-			request := httptest.NewRequest(http.MethodPost, apiPath+"/poll/run"+testCase.query, strings.NewReader(testCase.body))
+			request := httptest.NewRequest(http.MethodPost, apiPath+"/poll/run"+testCase.query, body)
 			request.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
 
 			h.TriggerPollHandler(recorder, request)
 
 			if recorder.Code != testCase.wantStatus {
 				t.Fatalf("status = %d, want %d: %s", recorder.Code, testCase.wantStatus, recorder.Body.String())
+			}
+
+			if testCase.wantError != "" {
+				var response jsonError
+				if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+					t.Fatal(err)
+				}
+
+				if response.Error != testCase.wantError {
+					t.Fatalf("error = %q, want %q", response.Error, testCase.wantError)
+				}
+			}
+
+			if !body.closed {
+				t.Fatal("request body was not closed")
 			}
 
 			if runs != 0 {
@@ -661,6 +683,41 @@ func TestHandlerData_TriggerPollHandlerRejectsInvalidRequestsBeforeTracking(t *t
 			}
 		})
 	}
+}
+
+func TestHandlerData_TriggerPollHandlerAcceptsTrailingWhitespace(t *testing.T) {
+	runs := 0
+	h := &handlerData{
+		appConfig: &app.Config{ApiSecret: "poll-secret", MaxPayloadSize: 1024}, // #nosec G101 -- test fixture.
+		log:       logger.New(logger.LevelCritical),
+		runPoll: func(context.Context, poll.Config, *app.Config, container.MountPoint,
+			command.Cli, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider,
+		) error {
+			runs++
+
+			return nil
+		},
+	}
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, apiPath+"/poll/run", strings.NewReader(`[{"url":"`+validPollSourceURL+`"}] \n\t`))
+	request.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+
+	h.TriggerPollHandler(response, request)
+
+	if response.Code != http.StatusOK || runs != 1 {
+		t.Fatalf("status = %d, runs = %d, body = %s", response.Code, runs, response.Body.String())
+	}
+}
+
+type trackingReadCloser struct {
+	io.Reader
+	closed bool
+}
+
+func (r *trackingReadCloser) Close() error {
+	r.closed = true
+
+	return nil
 }
 
 func TestHandlerData_TriggerScheduledJobHandlerValidation(t *testing.T) {

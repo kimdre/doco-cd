@@ -300,6 +300,7 @@ func TestMCPServerListsTools(t *testing.T) {
 			if !ok {
 				t.Fatalf("trigger_poll configs items schema = %#v", configsSchema["items"])
 			}
+
 			items = resolveToolSchemaRef(t, tool.InputSchema, items)
 
 			for _, property := range []string{"source", "url", "reference", "interval", "target", "run_once", "deployments"} {
@@ -353,7 +354,12 @@ func TestMCPTriggerPollValidationAndDefaultWait(t *testing.T) {
 	session := connectMCPTestClient(t, server)
 
 	assertMCPToolError(t, session, "trigger_poll", map[string]any{}, "configs")
+	assertMCPToolError(t, session, "trigger_poll", map[string]any{"configs": []any{}}, "no poll configuration provided in request body")
 	assertMCPToolError(t, session, "trigger_poll", map[string]any{"configs": []any{map[string]any{}}}, "index 0")
+
+	if got := tracker.List(10, string(deploymentRunTriggerPoll), ""); len(got) != 0 {
+		t.Fatalf("invalid MCP poll requests were tracked: %#v", got)
+	}
 
 	result := callMCPTool(t, session, "trigger_poll", map[string]any{
 		"configs": []any{map[string]any{"url": validPollSourceURL, "interval": "1h"}},
