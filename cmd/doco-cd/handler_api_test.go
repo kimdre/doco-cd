@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -761,6 +762,10 @@ func TestTriggerScheduledJobSyncPanicMarksFailedAndReturnsError(t *testing.T) {
 		t.Fatalf("error = %v, want errors.Is(_, errScheduledJobRunPanicked)", err)
 	}
 
+	if err.Error() != "scheduled job run panicked" {
+		t.Fatalf("panic error exposed recovered value: %q", err)
+	}
+
 	if errors.Is(err, scheduler.ErrScheduledJobNotFound) || errors.Is(err, scheduler.ErrScheduledJobDisabled) || errors.Is(err, scheduler.ErrScheduledJobAmbiguous) {
 		t.Fatalf("panic error must remain internally classified: %v", err)
 	}
@@ -772,6 +777,107 @@ func TestTriggerScheduledJobSyncPanicMarksFailedAndReturnsError(t *testing.T) {
 
 	if run.Status != deploymentRunStatusFailed || run.Message != "scheduled job run panicked" {
 		t.Fatalf("unexpected tracked run after panic: %#v", run)
+	}
+}
+
+func TestTriggerScheduledJobAsyncLifecycleWaitsBeforeResourceClose(t *testing.T) {
+	appCtx, appCancel := context.WithCancel(t.Context())
+	defer appCancel()
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	resourceClosed := make(chan struct{})
+	tracker := newDeploymentRunTracker(nil)
+	backgroundWG := &sync.WaitGroup{}
+	h := handlerData{
+		backgroundCtx: appCtx,
+		backgroundWG:  backgroundWG,
+		log:           logger.New(logger.LevelCritical),
+		runTracker:    tracker,
+		triggerScheduledJob: func(ctx context.Context, _ command.Cli, _ *slog.Logger, _, _ string, _ *secretprovider.SecretProvider) (string, error) {
+			close(started)
+			<-release
+
+			if ctx.Err() != nil {
+				return "", ctx.Err()
+			}
+
+			return "scheduled-run-id", nil
+		},
+	}
+
+	requestCtx, requestCancel := context.WithCancel(t.Context())
+
+	jobID, err := h.triggerScheduledJobRun(requestCtx, "", "backup", "", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for async trigger to start")
+	}
+
+	requestCancel()
+
+	go func() {
+		backgroundWG.Wait()
+		close(resourceClosed)
+	}()
+
+	select {
+	case <-resourceClosed:
+		t.Fatal("resource closed before scheduled job completed")
+	default:
+	}
+
+	close(release)
+
+	select {
+	case <-resourceClosed:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for lifecycle-owned scheduled job")
+	}
+
+	waitForDeploymentRunStatus(t, tracker, jobID, deploymentRunStatusSucceeded)
+}
+
+func TestTriggerScheduledJobAsyncLifecycleCancellationMarksFailed(t *testing.T) {
+	appCtx, appCancel := context.WithCancel(t.Context())
+	started := make(chan struct{})
+	tracker := newDeploymentRunTracker(nil)
+	backgroundWG := &sync.WaitGroup{}
+	h := handlerData{
+		backgroundCtx: appCtx,
+		backgroundWG:  backgroundWG,
+		log:           logger.New(logger.LevelCritical),
+		runTracker:    tracker,
+		triggerScheduledJob: func(ctx context.Context, _ command.Cli, _ *slog.Logger, _, _ string, _ *secretprovider.SecretProvider) (string, error) {
+			close(started)
+			<-ctx.Done()
+
+			return "", ctx.Err()
+		},
+	}
+
+	jobID, err := h.triggerScheduledJobRun(t.Context(), "", "backup", "", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for async trigger to start")
+	}
+
+	appCancel()
+	backgroundWG.Wait()
+
+	run := waitForDeploymentRunStatus(t, tracker, jobID, deploymentRunStatusFailed)
+	if !strings.Contains(run.Message, context.Canceled.Error()) {
+		t.Fatalf("cancellation failure message = %q", run.Message)
 	}
 }
 
@@ -825,9 +931,12 @@ func TestTriggerScheduledJobAsyncTracksAcceptedThenTerminal(t *testing.T) {
 	release := make(chan struct{})
 	finished := make(chan struct{})
 	tracker := newDeploymentRunTracker(nil)
+	backgroundWG := &sync.WaitGroup{}
 	h := handlerData{
-		log:        logger.New(logger.LevelCritical),
-		runTracker: tracker,
+		backgroundCtx: t.Context(),
+		backgroundWG:  backgroundWG,
+		log:           logger.New(logger.LevelCritical),
+		runTracker:    tracker,
 		triggerScheduledJob: func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error) {
 			close(started)
 			<-release
@@ -866,13 +975,17 @@ func TestTriggerScheduledJobAsyncTracksAcceptedThenTerminal(t *testing.T) {
 	}
 
 	waitForDeploymentRunStatus(t, tracker, jobID, deploymentRunStatusSucceeded)
+	backgroundWG.Wait()
 }
 
 func TestTriggerScheduledJobAsyncPanicMarksFailed(t *testing.T) {
 	tracker := newDeploymentRunTracker(nil)
+	backgroundWG := &sync.WaitGroup{}
 	h := handlerData{
-		log:        logger.New(logger.LevelCritical),
-		runTracker: tracker,
+		backgroundCtx: t.Context(),
+		backgroundWG:  backgroundWG,
+		log:           logger.New(logger.LevelCritical),
+		runTracker:    tracker,
 		triggerScheduledJob: func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error) {
 			panic("boom")
 		},
@@ -887,6 +1000,8 @@ func TestTriggerScheduledJobAsyncPanicMarksFailed(t *testing.T) {
 	if run.Message != "scheduled job run panicked" {
 		t.Fatalf("panic failure message = %q", run.Message)
 	}
+
+	backgroundWG.Wait()
 }
 
 func TestTriggerScheduledJobHandlerMalformedWaitDoesNotTrigger(t *testing.T) {

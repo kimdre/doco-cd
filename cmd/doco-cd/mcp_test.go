@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -348,11 +349,14 @@ func TestMCPTriggerScheduledJobAsyncJobIDResolves(t *testing.T) {
 	tracker := newDeploymentRunTracker(nil)
 	started := make(chan struct{})
 	release := make(chan struct{})
+	backgroundWG := &sync.WaitGroup{}
 	h := &handlerData{
-		appConfig:  &app.Config{},
-		appVersion: app.Version,
-		log:        logger.New(logger.LevelCritical),
-		runTracker: tracker,
+		appConfig:     &app.Config{},
+		appVersion:    app.Version,
+		backgroundCtx: t.Context(),
+		backgroundWG:  backgroundWG,
+		log:           logger.New(logger.LevelCritical),
+		runTracker:    tracker,
 		triggerScheduledJob: func(ctx context.Context, _ command.Cli, _ *slog.Logger, _, _ string, _ *secretprovider.SecretProvider) (string, error) {
 			close(started)
 			<-release
@@ -392,6 +396,7 @@ func TestMCPTriggerScheduledJobAsyncJobIDResolves(t *testing.T) {
 
 	close(release)
 	waitForDeploymentRunStatus(t, tracker, output.JobID, deploymentRunStatusSucceeded)
+	backgroundWG.Wait()
 }
 
 func TestMCPStackToolValidation(t *testing.T) {

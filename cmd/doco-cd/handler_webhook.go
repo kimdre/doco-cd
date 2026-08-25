@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/docker/cli/cli/command"
@@ -224,8 +225,10 @@ func repositoryNameFromWebhookPayload(payload webhook.ParsedPayload) string {
 }
 
 type handlerData struct {
-	appConfig           *app.Config          // Application configuration
-	appVersion          string               // Application version
+	appConfig           *app.Config // Application configuration
+	appVersion          string      // Application version
+	backgroundCtx       context.Context
+	backgroundWG        *sync.WaitGroup
 	dataMountPoint      container.MountPoint // Mount point for the data directory
 	dockerCli           command.Cli          // Docker CLI client
 	log                 *logger.Logger       // Logger for logging messages

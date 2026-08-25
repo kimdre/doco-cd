@@ -23,6 +23,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/git"
+	"github.com/kimdre/doco-cd/internal/graceful"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 	restAPI "github.com/kimdre/doco-cd/internal/restapi"
@@ -303,7 +304,7 @@ func (h *handlerData) triggerScheduledJobRun(ctx context.Context, jobID, jobName
 					h.runTracker.MarkFailed(jobID, errScheduledJobRunPanicked.Error())
 				}
 
-				err = fmt.Errorf("%w: %v", errScheduledJobRunPanicked, recovered)
+				err = errScheduledJobRunPanicked
 			}
 		}()
 
@@ -346,11 +347,23 @@ func (h *handlerData) triggerScheduledJobRun(ctx context.Context, jobID, jobName
 		return jobID, run(ctx)
 	}
 
-	go func() {
-		_ = run(context.WithoutCancel(ctx))
-	}()
+	h.runBackground(ctx, func(ctx context.Context) {
+		_ = run(ctx)
+	})
 
 	return jobID, nil
+}
+
+func (h *handlerData) runBackground(requestCtx context.Context, run func(context.Context)) {
+	if h.backgroundCtx == nil || h.backgroundWG == nil {
+		run(context.WithoutCancel(requestCtx))
+
+		return
+	}
+
+	graceful.SafeGo(h.backgroundWG, h.log.Logger, func() {
+		run(h.backgroundCtx)
+	})
 }
 
 // HealthCheckHandler handles health check requests.

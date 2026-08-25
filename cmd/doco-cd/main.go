@@ -305,10 +305,6 @@ func run() error {
 	}
 
 	var wg sync.WaitGroup
-	defer wg.Wait()
-	// cancel the root context to signal all goroutines to stop,
-	// avoid wg.wait hang infinitely.
-	defer rootCancel()
 
 	graceful.SafeGo(&wg, log.Logger,
 		func() {
@@ -338,9 +334,15 @@ func run() error {
 		log.Info("secret provider initialized", slog.String("provider", secretProvider.Name()))
 	}
 
+	defer wg.Wait()
+	// Cancel lifecycle work before waiting, then close shared resources after all jobs stop.
+	defer rootCancel()
+
 	h := handlerData{
 		appConfig:      c,
 		appVersion:     app.Version,
+		backgroundCtx:  ctx,
+		backgroundWG:   &wg,
 		dataMountPoint: dataMountPoint,
 		dockerCli:      dockerCli,
 		log:            log,
