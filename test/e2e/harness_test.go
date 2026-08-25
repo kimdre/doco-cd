@@ -61,6 +61,7 @@ func TestDaemonBuildArgs(t *testing.T) {
 	}
 
 	t.Setenv("E2E_BUILD_CACHE_SCOPE", "e2e-standalone")
+
 	if got, want := daemonBuildArgs(tag), []string{
 		"buildx", "build", "--load",
 		"--cache-from", "type=gha,scope=e2e-standalone",
