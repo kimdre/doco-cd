@@ -827,6 +827,29 @@ type stackActionResult struct {
 
 var errStackNotFound = errors.New("stack not found")
 
+var errNoApplicableStackServices = errors.New("no applicable services found")
+
+type stackServiceNotFoundError struct {
+	Service string
+}
+
+func (e *stackServiceNotFoundError) Error() string {
+	return "service not found: " + e.Service
+}
+
+type stackServiceActionError struct {
+	Service string
+	Cause   error
+}
+
+func (e *stackServiceActionError) Error() string {
+	return fmt.Sprintf("stack action failed for service %s: %v", e.Service, e.Cause)
+}
+
+func (e *stackServiceActionError) Unwrap() error {
+	return e.Cause
+}
+
 type stackLookupError struct {
 	cause error
 }
@@ -882,6 +905,8 @@ func (h *handlerData) runStackActionOnServices(
 	}
 
 	results := make([]stackActionResult, 0, len(services))
+	matched := false
+	succeeded := false
 
 	fullServiceName := ""
 	if service != "" {
@@ -893,6 +918,8 @@ func (h *handlerData) runStackActionOnServices(
 		if fullServiceName != "" && svcName != fullServiceName {
 			continue
 		}
+
+		matched = true
 
 		result := stackActionResult{Service: svcName, Status: "ok"}
 
@@ -932,7 +959,7 @@ func (h *handlerData) runStackActionOnServices(
 		}
 
 		if err != nil && result.Status != "skipped" {
-			return nil, err
+			return results, &stackServiceActionError{Service: svcName, Cause: err}
 		}
 
 		if result.Status == "skipped" {
@@ -940,6 +967,17 @@ func (h *handlerData) runStackActionOnServices(
 		}
 
 		results = append(results, result)
+		if result.Status == "ok" {
+			succeeded = true
+		}
+	}
+
+	if !matched {
+		return results, &stackServiceNotFoundError{Service: fullServiceName}
+	}
+
+	if !succeeded {
+		return results, errNoApplicableStackServices
 	}
 
 	return results, nil
@@ -1040,6 +1078,24 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 
 	results, err := h.runStackActionOnServices(ctx, services, stackName, action, serviceName, replicas, waitForServices, jobLog)
 	if err != nil {
+		var serviceNotFound *stackServiceNotFoundError
+		if errors.As(err, &serviceNotFound) {
+			JSONError(w, err.Error(), "", jobID, http.StatusNotFound)
+
+			return
+		}
+
+		if errors.Is(err, errNoApplicableStackServices) {
+			errMsg := map[string]string{
+				"scale":   "no services found to scale in stack: " + stackName,
+				"restart": "no services found to restart in stack: " + stackName,
+				"run":     "no job services found to retrigger in stack: " + stackName,
+			}[action]
+			JSONError(w, errMsg, "", jobID, http.StatusNotFound)
+
+			return
+		}
+
 		errMsg := map[string]string{
 			"scale":   "failed to scale service",
 			"restart": "failed to restart service",

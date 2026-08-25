@@ -58,7 +58,7 @@ func (h *handlerData) addStackMCPTools(server *mcp.Server) {
 	}, instrumentMCPTool(h.log, "control_stack", h.controlStack))
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "remove_stack",
-		Description: "Remove a Docker Swarm stack.",
+		Description: "Remove a Docker Swarm stack. Removal may be partial if Docker returns an error after deleting some resources.",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &destructive,
 			IdempotentHint:  true,
@@ -94,11 +94,24 @@ func (h *handlerData) controlStack(ctx context.Context, _ *mcp.CallToolRequest, 
 	jobLog := h.log.With(slog.String("mcp_tool", "control_stack"))
 
 	results, err := h.runStackAction(ctx, stackName, input.Action, strings.TrimSpace(input.Service), replicas, wait, jobLog)
+	output := controlStackOutput{StackName: stackName, Action: input.Action, Results: results}
+
 	if err != nil {
+		var (
+			serviceNotFound *stackServiceNotFoundError
+			actionErr       *stackServiceActionError
+		)
+		if errors.As(err, &serviceNotFound) || errors.As(err, &actionErr) || errors.Is(err, errNoApplicableStackServices) {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}},
+			}, output, nil
+		}
+
 		return nil, controlStackOutput{}, err
 	}
 
-	return nil, controlStackOutput{StackName: stackName, Action: input.Action, Results: results}, nil
+	return nil, output, nil
 }
 
 func (h *handlerData) removeStackTool(ctx context.Context, _ *mcp.CallToolRequest, input removeStackInput) (*mcp.CallToolResult, removeStackOutput, error) {

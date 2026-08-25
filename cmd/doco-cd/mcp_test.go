@@ -338,14 +338,117 @@ func TestRunStackActionReturnsSkippedServices(t *testing.T) {
 			h := newStackActionTestHandler(t, services)
 
 			results, err := h.runStackAction(t.Context(), "stack", testCase.action, testCase.service, 0, true, slog.Default())
-			if err != nil {
-				t.Fatal(err)
+			if !errors.Is(err, errNoApplicableStackServices) {
+				t.Fatalf("error = %v, want no applicable services", err)
 			}
 
 			if len(results) != 1 || results[0].Service != "stack_"+testCase.service || results[0].Status != testCase.wantStatus || results[0].Reason != testCase.wantReason {
 				t.Fatalf("unexpected results: %#v", results)
 			}
 		})
+	}
+}
+
+func TestRunStackActionRejectsMissingService(t *testing.T) {
+	services := []dockerswarmtypes.Service{{Spec: dockerswarmtypes.ServiceSpec{Annotations: dockerswarmtypes.Annotations{Name: "stack_web"}}}}
+
+	for _, action := range []string{"scale", "restart", "run"} {
+		t.Run(action, func(t *testing.T) {
+			h := newStackActionTestHandler(t, services)
+			results, err := h.runStackAction(t.Context(), "stack", action, "missing", 1, true, slog.Default())
+
+			var notFound *stackServiceNotFoundError
+			if !errors.As(err, &notFound) || notFound.Service != "stack_missing" || len(results) != 0 {
+				t.Fatalf("results = %#v, error = %#v", results, err)
+			}
+		})
+	}
+}
+
+func TestRunStackActionReturnsPartialResultsOnHardError(t *testing.T) {
+	services := []dockerswarmtypes.Service{
+		{ID: "first-id", Spec: dockerswarmtypes.ServiceSpec{Annotations: dockerswarmtypes.Annotations{Name: "stack_first"}, Mode: dockerswarmtypes.ServiceMode{Replicated: &dockerswarmtypes.ReplicatedService{}}}},
+		{ID: "second-id", Spec: dockerswarmtypes.ServiceSpec{Annotations: dockerswarmtypes.Annotations{Name: "stack_second"}, Mode: dockerswarmtypes.ServiceMode{Replicated: &dockerswarmtypes.ReplicatedService{}}}},
+		{ID: "third-id", Spec: dockerswarmtypes.ServiceSpec{Annotations: dockerswarmtypes.Annotations{Name: "stack_third"}, Mode: dockerswarmtypes.ServiceMode{Replicated: &dockerswarmtypes.ReplicatedService{}}}},
+	}
+
+	var inspectedThird bool
+
+	h := newStackActionTestHandlerWithFailure(t, services, "stack_second", &inspectedThird)
+
+	results, err := h.runStackAction(t.Context(), "stack", "restart", "", 0, true, slog.Default())
+
+	var actionErr *stackServiceActionError
+	if !errors.As(err, &actionErr) || actionErr.Service != "stack_second" || !strings.Contains(err.Error(), "forced inspect failure") {
+		t.Fatalf("error = %#v", err)
+	}
+
+	if len(results) != 1 || results[0] != (stackActionResult{Service: "stack_first", Status: "ok"}) {
+		t.Fatalf("results = %#v", results)
+	}
+
+	if inspectedThird {
+		t.Fatal("action continued after hard failure")
+	}
+}
+
+func TestControlStackReturnsStructuredOperationalErrors(t *testing.T) {
+	job := dockerswarmtypes.Service{ID: "job-id", Spec: dockerswarmtypes.ServiceSpec{Annotations: dockerswarmtypes.Annotations{Name: "stack_job"}, Mode: dockerswarmtypes.ServiceMode{ReplicatedJob: &dockerswarmtypes.ReplicatedJob{}}}}
+	h := newStackActionTestHandler(t, []dockerswarmtypes.Service{job})
+
+	result, output, err := h.controlStack(t.Context(), nil, controlStackInput{StackName: "stack", Action: "restart"})
+	if err != nil || result == nil || !result.IsError {
+		t.Fatalf("result = %#v, output = %#v, error = %v", result, output, err)
+	}
+
+	if output.StackName != "stack" || output.Action != "restart" || len(output.Results) != 1 || output.Results[0].Status != "skipped" {
+		t.Fatalf("structured output = %#v", output)
+	}
+
+	if len(result.Content) != 1 || !strings.Contains(result.Content[0].(*mcp.TextContent).Text, "no applicable") {
+		t.Fatalf("content = %#v", result.Content)
+	}
+}
+
+func TestControlStackReturnsMissingServiceErrorContent(t *testing.T) {
+	service := dockerswarmtypes.Service{Spec: dockerswarmtypes.ServiceSpec{Annotations: dockerswarmtypes.Annotations{Name: "stack_web"}}}
+	h := newStackActionTestHandler(t, []dockerswarmtypes.Service{service})
+
+	result, output, err := h.controlStack(t.Context(), nil, controlStackInput{StackName: "stack", Action: "restart", Service: "missing"})
+	if err != nil || result == nil || !result.IsError {
+		t.Fatalf("result = %#v, output = %#v, error = %v", result, output, err)
+	}
+
+	if output.StackName != "stack" || output.Action != "restart" || len(output.Results) != 0 {
+		t.Fatalf("structured output = %#v", output)
+	}
+
+	if len(result.Content) != 1 || !strings.Contains(result.Content[0].(*mcp.TextContent).Text, "service not found: stack_missing") {
+		t.Fatalf("content = %#v", result.Content)
+	}
+}
+
+func TestControlStackReturnsPartialStructuredOutputOnHardError(t *testing.T) {
+	services := []dockerswarmtypes.Service{
+		{ID: "first-id", Spec: dockerswarmtypes.ServiceSpec{Annotations: dockerswarmtypes.Annotations{Name: "stack_first"}, Mode: dockerswarmtypes.ServiceMode{Replicated: &dockerswarmtypes.ReplicatedService{}}}},
+		{ID: "second-id", Spec: dockerswarmtypes.ServiceSpec{Annotations: dockerswarmtypes.Annotations{Name: "stack_second"}, Mode: dockerswarmtypes.ServiceMode{Replicated: &dockerswarmtypes.ReplicatedService{}}}},
+	}
+
+	var inspectedThird bool
+
+	h := newStackActionTestHandlerWithFailure(t, services, "stack_second", &inspectedThird)
+
+	result, output, err := h.controlStack(t.Context(), nil, controlStackInput{StackName: "stack", Action: "restart"})
+	if err != nil || result == nil || !result.IsError {
+		t.Fatalf("result = %#v, output = %#v, error = %v", result, output, err)
+	}
+
+	if output.StackName != "stack" || output.Action != "restart" || len(output.Results) != 1 || output.Results[0] != (stackActionResult{Service: "stack_first", Status: "ok"}) {
+		t.Fatalf("structured output = %#v", output)
+	}
+
+	if len(result.Content) != 1 || !strings.Contains(result.Content[0].(*mcp.TextContent).Text, "stack_second") || !strings.Contains(result.Content[0].(*mcp.TextContent).Text, "forced inspect failure") {
+		t.Fatalf("content = %#v", result.Content)
 	}
 }
 
@@ -356,6 +459,8 @@ func newStackActionTestHandler(t *testing.T, services []dockerswarmtypes.Service
 		w.Header().Set("Content-Type", "application/json")
 
 		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/info"):
+			_, _ = w.Write([]byte(`{"Swarm":{"ControlAvailable":true}}`))
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/services"):
 			_ = json.NewEncoder(w).Encode(services)
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/services/"):
@@ -369,6 +474,55 @@ func newStackActionTestHandler(t *testing.T, services []dockerswarmtypes.Service
 			}
 
 			http.NotFound(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("DOCKER_HOST", server.URL)
+	t.Setenv("DOCKER_API_VERSION", "1.52")
+
+	dockerCli, err := docker.CreateDockerCli(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() { _ = dockerCli.Client().Close() })
+
+	return &handlerData{dockerCli: dockerCli, appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
+}
+
+func newStackActionTestHandlerWithFailure(t *testing.T, services []dockerswarmtypes.Service, failedService string, inspectedThird *bool) *handlerData {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		serviceName := path.Base(r.URL.Path)
+
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/info"):
+			_, _ = w.Write([]byte(`{"Swarm":{"ControlAvailable":true}}`))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/services"):
+			_ = json.NewEncoder(w).Encode(services)
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/services/"):
+			if serviceName == "stack_third" {
+				*inspectedThird = true
+			}
+
+			if serviceName == failedService {
+				http.Error(w, "forced inspect failure", http.StatusInternalServerError)
+				return
+			}
+
+			for _, service := range services {
+				if service.Spec.Name == serviceName {
+					_ = json.NewEncoder(w).Encode(service)
+					return
+				}
+			}
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/update"):
+			_, _ = w.Write([]byte(`{}`))
 		default:
 			http.NotFound(w, r)
 		}

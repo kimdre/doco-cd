@@ -285,6 +285,86 @@ func TestStackActionApiHandlerLooksUpStackBeforeValidation(t *testing.T) {
 	}
 }
 
+func TestStackActionApiHandlerReturnsNotFoundForMissingService(t *testing.T) {
+	services := []dockerswarmtypes.Service{{
+		Spec: dockerswarmtypes.ServiceSpec{
+			Annotations: dockerswarmtypes.Annotations{Name: "stack_web"},
+			Mode:        dockerswarmtypes.ServiceMode{Replicated: &dockerswarmtypes.ReplicatedService{}},
+		},
+	}}
+	h := newStackActionRESTTestHandler(t, services, nil)
+
+	for _, testCase := range []struct {
+		action string
+		query  string
+	}{
+		{action: "scale", query: "service=missing&replicas=1"},
+		{action: "restart", query: "service=missing"},
+		{action: "run", query: "service=missing"},
+	} {
+		t.Run(testCase.action, func(t *testing.T) {
+			rr := callStackActionREST(t, h, "/stack/stack/"+testCase.action+"?"+testCase.query)
+
+			if rr.Code != http.StatusNotFound || !strings.Contains(rr.Body.String(), "service not found: stack_missing") {
+				t.Fatalf("response = %d %s, want missing service 404", rr.Code, rr.Body.String())
+			}
+		})
+	}
+}
+
+func TestStackActionApiHandlerReturnsNotFoundWhenAllServicesSkipped(t *testing.T) {
+	for _, testCase := range []struct {
+		name     string
+		action   string
+		query    string
+		service  dockerswarmtypes.Service
+		contains string
+	}{
+		{
+			name:   "scale global service",
+			action: "scale",
+			query:  "replicas=1",
+			service: dockerswarmtypes.Service{Spec: dockerswarmtypes.ServiceSpec{
+				Annotations: dockerswarmtypes.Annotations{Name: "stack_global"},
+				Mode:        dockerswarmtypes.ServiceMode{Global: &dockerswarmtypes.GlobalService{}},
+			}},
+			contains: "no services found to scale in stack: stack",
+		},
+		{
+			name:   "restart job service",
+			action: "restart",
+			service: dockerswarmtypes.Service{Spec: dockerswarmtypes.ServiceSpec{
+				Annotations: dockerswarmtypes.Annotations{Name: "stack_job"},
+				Mode:        dockerswarmtypes.ServiceMode{ReplicatedJob: &dockerswarmtypes.ReplicatedJob{}},
+			}},
+			contains: "no services found to restart in stack: stack",
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			h := newStackActionRESTTestHandler(t, []dockerswarmtypes.Service{testCase.service}, nil)
+			rr := callStackActionREST(t, h, "/stack/stack/"+testCase.action+"?"+testCase.query)
+
+			if rr.Code != http.StatusNotFound || !strings.Contains(rr.Body.String(), testCase.contains) {
+				t.Fatalf("response = %d %s, want all-skipped 404 containing %q", rr.Code, rr.Body.String(), testCase.contains)
+			}
+		})
+	}
+}
+
+func callStackActionREST(t *testing.T, h *handlerData, requestPath string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	rr := httptest.NewRecorder()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/stack/{stackName}/{action}", h.StackActionApiHandler)
+
+	req := httptest.NewRequest(http.MethodPost, requestPath, nil)
+	req.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+	mux.ServeHTTP(rr, req)
+
+	return rr
+}
+
 func newStackActionRESTTestHandler(t *testing.T, services []dockerswarmtypes.Service, actionRequests *int) *handlerData {
 	t.Helper()
 
@@ -294,6 +374,21 @@ func newStackActionRESTTestHandler(t *testing.T, services []dockerswarmtypes.Ser
 		switch {
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/services"):
 			_ = json.NewEncoder(w).Encode(services)
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/services/"):
+			if actionRequests != nil {
+				(*actionRequests)++
+			}
+
+			serviceName := path.Base(r.URL.Path)
+			for _, service := range services {
+				if service.Spec.Name == serviceName {
+					_ = json.NewEncoder(w).Encode(service)
+
+					return
+				}
+			}
+
+			http.NotFound(w, r)
 		case strings.Contains(r.URL.Path, "/services/"):
 			if actionRequests != nil {
 				(*actionRequests)++
