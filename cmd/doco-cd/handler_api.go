@@ -9,27 +9,23 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/docker/cli/cli/command"
 	dockerswarmtypes "github.com/moby/moby/api/types/swarm"
 
 	"github.com/kimdre/doco-cd/internal/common/id"
-	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
-	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/graceful"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 	restAPI "github.com/kimdre/doco-cd/internal/restapi"
 	"github.com/kimdre/doco-cd/internal/scheduler"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
-	"github.com/kimdre/doco-cd/internal/source/oci"
 )
 
 const (
@@ -1294,8 +1290,6 @@ func (h *handlerData) GetStacksApiHandler(w http.ResponseWriter, r *http.Request
 // This can be used to manually trigger a poll outside the planned intervals,
 // for example after a failed deployment or to check for new commits after a network outage.
 func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-
 	// Add a job id to the context to track deployments in the logs
 	jobID := id.GenID()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", h.requestIP(r)))
@@ -1313,14 +1307,12 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	wait := getQueryParam(r, w, jobLog, jobID, "wait", "bool", true).(bool)
-	if h.runTracker != nil {
-		h.runTracker.TrackAccepted(jobID, deploymentRunTriggerPoll)
-
-		if wait {
-			h.runTracker.MarkRunning(jobID)
-		}
+	wait, ok := getProjectBoolQueryParam(r, w, jobLog, jobID, "wait", true)
+	if !ok {
+		return
 	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, h.appConfig.MaxPayloadSize)
 
 	decoder := json.NewDecoder(r.Body)
 	defer func() {
@@ -1331,140 +1323,46 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 	if err := decoder.Decode(&pollConfigs); err != nil {
 		errMsg := "failed to decode json in body"
 		h.log.Error(errMsg, logger.ErrAttr(err))
-		JSONError(w, errMsg, err.Error(), jobID, http.StatusBadRequest)
 
-		if h.runTracker != nil {
-			h.runTracker.MarkFailed(jobID, errMsg+": "+err.Error())
+		status := http.StatusBadRequest
+
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			status = http.StatusRequestEntityTooLarge
 		}
+
+		JSONError(w, errMsg, err.Error(), jobID, status)
 
 		return
 	}
 
-	// Set default values for api-called poll jobs
-	for i, p := range pollConfigs {
-		p.RunOnce = true
-		p.Interval = 0
-
-		err = p.Validate()
-		if err != nil {
-			errMsg := fmt.Sprintf("invalid poll configuration at index %d", i)
-			h.log.Error(errMsg, logger.ErrAttr(err))
-			JSONError(w, errMsg, err.Error(), jobID, http.StatusBadRequest)
-
-			if h.runTracker != nil {
-				h.runTracker.MarkFailed(jobID, errMsg+": "+err.Error())
-			}
-
-			return
-		}
-
-		pollConfigs[i] = p
-	}
-
-	if len(pollConfigs) > 0 {
-		h.log.Info("poll triggered via API")
-
-		var wg sync.WaitGroup
-
-		errs := make(chan error, len(pollConfigs))
-
-		pollCtx := r.Context()
-		if !wait {
-			pollCtx = context.WithoutCancel(pollCtx)
-		}
-
-		runner := h.runPoll
-		if runner == nil {
-			runner = RunPoll
-		}
-
-		if h.runTracker != nil {
-			repository := "multiple"
-			if len(pollConfigs) == 1 {
-				repository = pollRepositoryName(pollConfigs[0])
-			}
-
-			h.runTracker.SetMetadata(jobID, repository, "", "")
-		}
-
-		for _, p := range pollConfigs {
-			wg.Add(1)
-
-			go func(ctx context.Context, pollConfig poll.Config) {
-				defer wg.Done()
-				defer func() {
-					if recovered := recover(); recovered != nil {
-						logRecoveredPanic(jobLog, "poll run", recovered)
-
-						errs <- errors.New("poll run panicked")
-					}
-				}()
-
-				repository := pollRepositoryName(pollConfig)
-				metadata := notification.Metadata{
-					Repository: repository,
-					Stack:      "",
-					Revision:   notification.GetRevision(pollConfig.Reference, ""),
-					JobID:      jobID,
-				}
-
-				errs <- runner(ctx, pollConfig, h.appConfig, h.dataMountPoint, h.dockerCli, h.log.Logger, metadata, h.secretProvider)
-			}(pollCtx, p)
-		}
-
-		completeTracking := func() {
-			wg.Wait()
-			close(errs)
-
-			var failedRuns int
-
-			for runErr := range errs {
-				if runErr != nil {
-					failedRuns++
-				}
-			}
-
-			if h.runTracker != nil {
-				if failedRuns > 0 {
-					h.runTracker.MarkFailed(jobID, fmt.Sprintf("%d/%d poll jobs failed", failedRuns, len(pollConfigs)))
-				} else {
-					h.runTracker.MarkSucceeded(jobID, "poll jobs complete")
-				}
-			}
-		}
-
-		if wait {
-			completeTracking()
+	jobID, err := h.runPollConfigs(r.Context(), pollConfigs, wait, jobLog)
+	if err != nil {
+		var runsFailed *pollRunsFailedError
+		if wait && errors.As(err, &runsFailed) {
 			JSONResponse(w, "poll jobs complete", jobID, http.StatusOK)
 
 			return
 		}
 
-		if h.runTracker != nil {
-			h.runTracker.MarkRunning(jobID)
+		errMsg := err.Error()
+
+		var validationErr *pollConfigValidationError
+		if errors.As(err, &validationErr) {
+			errMsg = fmt.Sprintf("invalid poll configuration at index %d", validationErr.Index)
 		}
 
-		JSONResponse(w, "poll jobs started", jobID, http.StatusAccepted)
-
-		go completeTracking()
+		jobLog.Error(errMsg, logger.ErrAttr(err))
+		JSONError(w, errMsg, errors.Unwrap(err), jobID, http.StatusBadRequest)
 
 		return
 	}
 
-	err = errors.New("no poll configuration provided in request body")
-	jobLog.Error(err.Error())
-	JSONError(w, err.Error(), "", jobID, http.StatusBadRequest)
+	if wait {
+		JSONResponse(w, "poll jobs complete", jobID, http.StatusOK)
 
-	if h.runTracker != nil {
-		h.runTracker.MarkFailed(jobID, err.Error())
-	}
-}
-
-func pollRepositoryName(cfg poll.Config) string {
-	sourceType := config.NormalizeSourceType(cfg.Source)
-	if sourceType == config.SourceTypeOCI {
-		return oci.RepositoryNameFromArtifact(cfg.SourceUrl)
+		return
 	}
 
-	return git.GetRepoName(cfg.SourceUrl)
+	JSONResponse(w, "poll jobs started", jobID, http.StatusAccepted)
 }

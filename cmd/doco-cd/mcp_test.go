@@ -19,6 +19,7 @@ import (
 
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
+	"github.com/moby/moby/api/types/container"
 	dockerswarmtypes "github.com/moby/moby/api/types/swarm"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/prometheus/client_golang/prometheus"
@@ -26,9 +27,11 @@ import (
 	dto "github.com/prometheus/client_model/go"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/docker"
 	dockerswarm "github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/logger"
+	"github.com/kimdre/doco-cd/internal/notification"
 	prometheusmetrics "github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/restapi"
 	"github.com/kimdre/doco-cd/internal/scheduler"
@@ -166,8 +169,8 @@ func TestMCPServerListsTools(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(result.Tools) != 13 {
-		t.Fatalf("expected exactly thirteen MCP tools, got %#v", result.Tools)
+	if len(result.Tools) != 14 {
+		t.Fatalf("expected exactly fourteen MCP tools, got %#v", result.Tools)
 	}
 
 	wantTools := map[string]bool{
@@ -184,6 +187,7 @@ func TestMCPServerListsTools(t *testing.T) {
 		"control_stack":         false,
 		"remove_stack":          false,
 		"trigger_scheduled_job": false,
+		"trigger_poll":          false,
 	}
 	wantInputProperties := map[string][]string{
 		"list_deployment_runs":  {"limit", "status", "trigger"},
@@ -197,6 +201,7 @@ func TestMCPServerListsTools(t *testing.T) {
 		"control_stack":         {"stack_name", "action", "replicas", "service", "wait"},
 		"remove_stack":          {"stack_name"},
 		"trigger_scheduled_job": {"job_name", "stack", "wait"},
+		"trigger_poll":          {"configs", "wait"},
 	}
 	wantRequiredProperties := map[string][]string{
 		"control_project":       {"project_name", "action"},
@@ -204,6 +209,7 @@ func TestMCPServerListsTools(t *testing.T) {
 		"control_stack":         {"stack_name", "action"},
 		"remove_stack":          {"stack_name"},
 		"trigger_scheduled_job": {"job_name"},
+		"trigger_poll":          {"configs"},
 	}
 
 	for _, tool := range result.Tools {
@@ -216,7 +222,7 @@ func TestMCPServerListsTools(t *testing.T) {
 			t.Fatalf("%s must have annotations", tool.Name)
 		}
 
-		if tool.Name != "control_project" && tool.Name != "destroy_project" && tool.Name != "control_stack" && tool.Name != "remove_stack" && tool.Name != "trigger_scheduled_job" && !tool.Annotations.ReadOnlyHint {
+		if tool.Name != "control_project" && tool.Name != "destroy_project" && tool.Name != "control_stack" && tool.Name != "remove_stack" && tool.Name != "trigger_scheduled_job" && tool.Name != "trigger_poll" && !tool.Annotations.ReadOnlyHint {
 			t.Fatalf("%s must have readOnlyHint=true: %#v", tool.Name, tool.Annotations)
 		}
 
@@ -281,6 +287,28 @@ func TestMCPServerListsTools(t *testing.T) {
 			}
 		}
 
+		if tool.Name == "trigger_poll" {
+			assertMCPProjectToolAnnotations(t, tool, true, false)
+
+			if !strings.Contains(tool.Description, "Prefer wait=false and poll get_deployment_run") || !strings.Contains(tool.Description, "10s grace") {
+				t.Fatalf("trigger_poll description lacks wait guidance: %q", tool.Description)
+			}
+
+			configsSchema := toolSchemaProperty(t, tool.InputSchema, "configs")
+
+			items, ok := configsSchema["items"].(map[string]any)
+			if !ok {
+				t.Fatalf("trigger_poll configs items schema = %#v", configsSchema["items"])
+			}
+			items = resolveToolSchemaRef(t, tool.InputSchema, items)
+
+			for _, property := range []string{"source", "url", "reference", "interval", "target", "run_once", "deployments"} {
+				if !toolSchemaHasProperty(items, property) {
+					t.Fatalf("trigger_poll config schema lacks %q: %#v", property, items)
+				}
+			}
+		}
+
 		for _, property := range wantInputProperties[tool.Name] {
 			if !toolSchemaHasProperty(tool.InputSchema, property) {
 				t.Fatalf("%s input schema must contain snake_case property %q: %#v", tool.Name, property, tool.InputSchema)
@@ -299,6 +327,103 @@ func TestMCPServerListsTools(t *testing.T) {
 			t.Fatalf("expected tool %q to be registered", name)
 		}
 	}
+}
+
+func TestMCPTriggerPollValidationAndDefaultWait(t *testing.T) {
+	tracker := newDeploymentRunTracker(nil)
+	runs := 0
+	h := &handlerData{
+		appConfig:  &app.Config{},
+		appVersion: app.Version,
+		log:        logger.New(logger.LevelCritical),
+		runTracker: tracker,
+		runPoll: func(_ context.Context, cfg poll.Config, _ *app.Config, _ container.MountPoint,
+			_ command.Cli, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+		) error {
+			runs++
+
+			if !cfg.RunOnce || cfg.Interval != 0 {
+				t.Errorf("poll defaults = %#v", cfg)
+			}
+
+			return nil
+		},
+	}
+	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
+	session := connectMCPTestClient(t, server)
+
+	assertMCPToolError(t, session, "trigger_poll", map[string]any{}, "configs")
+	assertMCPToolError(t, session, "trigger_poll", map[string]any{"configs": []any{map[string]any{}}}, "index 0")
+
+	result := callMCPTool(t, session, "trigger_poll", map[string]any{
+		"configs": []any{map[string]any{"url": validPollSourceURL, "interval": "1h"}},
+	})
+
+	var output triggerPollOutput
+	decodeMCPStructuredContent(t, result, &output)
+
+	if output.JobID == "" || output.Status != string(deploymentRunStatusSucceeded) || runs != 1 {
+		t.Fatalf("unexpected trigger output: %#v, runs %d", output, runs)
+	}
+}
+
+func TestMCPTriggerPollAsyncJobIDResolves(t *testing.T) {
+	tracker := newDeploymentRunTracker(nil)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	backgroundWG := &sync.WaitGroup{}
+	h := &handlerData{
+		appConfig:     &app.Config{},
+		appVersion:    app.Version,
+		backgroundCtx: t.Context(),
+		backgroundWG:  backgroundWG,
+		log:           logger.New(logger.LevelCritical),
+		runTracker:    tracker,
+		runPoll: func(ctx context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+			_ command.Cli, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+		) error {
+			close(started)
+			<-release
+
+			if ctx.Err() != nil {
+				t.Errorf("async poll context was cancelled: %v", ctx.Err())
+			}
+
+			return nil
+		},
+	}
+	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
+	session := connectMCPTestClient(t, server)
+	result := callMCPTool(t, session, "trigger_poll", map[string]any{
+		"configs": []any{map[string]any{"url": validPollSourceURL}},
+		"wait":    false,
+	})
+
+	var output triggerPollOutput
+	decodeMCPStructuredContent(t, result, &output)
+
+	if output.JobID == "" || output.Status != string(deploymentRunStatusAccepted) {
+		t.Fatalf("unexpected async output: %#v", output)
+	}
+
+	getResult := callMCPTool(t, session, "get_deployment_run", map[string]any{"job_id": output.JobID})
+
+	var getOutput getDeploymentRunOutput
+	decodeMCPStructuredContent(t, getResult, &getOutput)
+
+	if getOutput.Run.JobID != output.JobID || getOutput.Run.Trigger != deploymentRunTriggerPoll {
+		t.Fatalf("async job ID did not resolve: %#v", getOutput.Run)
+	}
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("async poll did not start")
+	}
+
+	close(release)
+	waitForDeploymentRunStatus(t, tracker, output.JobID, deploymentRunStatusSucceeded)
+	backgroundWG.Wait()
 }
 
 func TestMCPTriggerScheduledJobValidation(t *testing.T) {
@@ -1348,6 +1473,37 @@ func toolSchemaProperty(t *testing.T, schema any, property string) map[string]an
 	}
 
 	return propertySchema
+}
+
+func resolveToolSchemaRef(t *testing.T, root any, schema map[string]any) map[string]any {
+	t.Helper()
+
+	ref, ok := schema["$ref"].(string)
+	if !ok {
+		return schema
+	}
+
+	const defsPrefix = "#/$defs/"
+	if !strings.HasPrefix(ref, defsPrefix) {
+		t.Fatalf("unsupported schema reference %q", ref)
+	}
+
+	rootMap, ok := root.(map[string]any)
+	if !ok {
+		t.Fatalf("expected root object schema, got %T", root)
+	}
+
+	defs, ok := rootMap["$defs"].(map[string]any)
+	if !ok {
+		t.Fatalf("schema reference %q has no definitions: %#v", ref, rootMap)
+	}
+
+	resolved, ok := defs[strings.TrimPrefix(ref, defsPrefix)].(map[string]any)
+	if !ok {
+		t.Fatalf("schema reference %q is unresolved: %#v", ref, defs)
+	}
+
+	return resolved
 }
 
 func assertMCPProjectToolAnnotations(t *testing.T, tool *mcp.Tool, destructive, idempotent bool) {

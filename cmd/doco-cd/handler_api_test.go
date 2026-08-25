@@ -614,6 +614,55 @@ func TestHandlerData_TriggerPollHandlerWithoutWait_DetachesRequestContext(t *tes
 	}
 }
 
+func TestHandlerData_TriggerPollHandlerRejectsInvalidRequestsBeforeTracking(t *testing.T) {
+	for _, testCase := range []struct {
+		name       string
+		query      string
+		body       string
+		maxPayload int64
+		wantStatus int
+	}{
+		{name: "malformed wait", query: "?wait=eventually", body: `[{"url":"` + validPollSourceURL + `"}]`, maxPayload: 1024, wantStatus: http.StatusBadRequest},
+		{name: "invalid JSON", body: `[{`, maxPayload: 1024, wantStatus: http.StatusBadRequest},
+		{name: "invalid config", body: `[{}]`, maxPayload: 1024, wantStatus: http.StatusBadRequest},
+		{name: "oversized body", body: `[{"url":"` + validPollSourceURL + `"}]`, maxPayload: 8, wantStatus: http.StatusRequestEntityTooLarge},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			tracker := newDeploymentRunTracker(nil)
+			runs := 0
+			h := &handlerData{
+				appConfig:  &app.Config{ApiSecret: "poll-secret", MaxPayloadSize: testCase.maxPayload}, // #nosec G101 -- test fixture.
+				log:        logger.New(logger.LevelCritical),
+				runTracker: tracker,
+				runPoll: func(context.Context, poll.Config, *app.Config, container.MountPoint,
+					command.Cli, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider,
+				) error {
+					runs++
+
+					return nil
+				},
+			}
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodPost, apiPath+"/poll/run"+testCase.query, strings.NewReader(testCase.body))
+			request.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+
+			h.TriggerPollHandler(recorder, request)
+
+			if recorder.Code != testCase.wantStatus {
+				t.Fatalf("status = %d, want %d: %s", recorder.Code, testCase.wantStatus, recorder.Body.String())
+			}
+
+			if runs != 0 {
+				t.Fatalf("invalid request started %d poll runs", runs)
+			}
+
+			if got := tracker.List(10, string(deploymentRunTriggerPoll), ""); len(got) != 0 {
+				t.Fatalf("invalid request was tracked: %#v", got)
+			}
+		})
+	}
+}
+
 func TestHandlerData_TriggerScheduledJobHandlerValidation(t *testing.T) {
 	t.Parallel()
 

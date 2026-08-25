@@ -23,9 +23,9 @@ type Config struct {
 	Source       config.SourceType `yaml:"source" json:"source" default:"git"`          // Source selects the poll source backend (git or oci)
 	SourceUrl    string            `yaml:"url" json:"url"`                              // SourceUrl is the repository/artifact URL; validated as GitUrl or OciUrl depending on Source
 	Reference    string            `yaml:"reference" json:"reference"`                  // Reference is the Git reference to the deployment, e.g., refs/heads/main, main, refs/tags/v1.0.0 or v1.0.0
-	Interval     time.Duration     `yaml:"interval" default:"180s"`                     // Interval is the interval at which to poll for changes
+	Interval     time.Duration     `yaml:"interval" json:"interval" default:"180s"`     // Interval is the interval at which to poll for changes
 	CustomTarget string            `yaml:"target" json:"target" default:""`             // CustomTarget is the name of an optional custom deployment config file, e.g. ".doco-cd.custom-name.yaml"
-	RunOnce      bool              `yaml:"run_once" default:"false"`                    // RunOnce when true, performs a single run and exits
+	RunOnce      bool              `yaml:"run_once" json:"run_once" default:"false"`    // RunOnce when true, performs a single run and exits
 	Deployments  []*deploy.Config  `yaml:"deployments" json:"deployments" default:"[]"` // Deployments allows defining deployment configs inline in the poll configuration
 }
 

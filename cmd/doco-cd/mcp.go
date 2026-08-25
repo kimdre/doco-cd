@@ -34,6 +34,7 @@ func (h *handlerData) newMCPHandler(c *app.Config) http.Handler {
 	h.addProjectMCPTools(server)
 	h.addStackMCPTools(server)
 	h.addScheduledJobMCPTools(server)
+	h.addPollMCPTools(server)
 
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return server
