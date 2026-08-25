@@ -472,6 +472,53 @@ environment:
 	}
 }
 
+// TestLoadComposeScheduledProject_FallsBackWhenLabeledComposeFileIsStale is a
+// regression test for https://github.com/kimdre/doco-cd/issues/1737.
+func TestLoadComposeScheduledProject_FallsBackWhenLabeledComposeFileIsStale(t *testing.T) {
+	dataMountPath := t.TempDir()
+	t.Setenv("DATA_MOUNT_PATH", dataMountPath)
+	t.Setenv("DEPLOY_CONFIG_BASE_DIR", "/")
+
+	repoRoot := filepath.Join(dataMountPath, "example.com", "owner", "repo")
+
+	workingDir := filepath.Join(repoRoot, "apps", "imap-backup")
+	if err := os.MkdirAll(workingDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Only the renamed file exists; the label still points at the old name.
+	createComposeFile(t, filepath.Join(workingDir, "compose.yaml"), `services:
+  backup:
+    image: busybox:latest
+`)
+
+	createComposeFile(t, filepath.Join(repoRoot, ".doco-cd.yml"), `name: imap-backup
+reference: refs/heads/main
+working_dir: apps/imap-backup
+compose_files:
+  - compose.yaml
+`)
+
+	staleComposePath := filepath.Join(workingDir, "docker-compose.yml")
+
+	project, err := loadComposeScheduledProject(context.Background(), nil, composeScheduledServiceRef{
+		Project:        "imap-backup",
+		Service:        "backup",
+		WorkingDir:     workingDir,
+		ConfigFiles:    []string{staleComposePath},
+		RepositoryURL:  "https://example.com/owner/repo",
+		DeploymentName: "imap-backup",
+		Reference:      "refs/heads/main",
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, err := project.GetService("backup"); err != nil {
+		t.Fatalf("failed to get backup service: %v", err)
+	}
+}
+
 // TestLoadComposeScheduledProject_ResolvesExternalSecrets is a regression test
 // for https://github.com/kimdre/doco-cd/issues/1674: external secrets must be
 // re-resolved and interpolated into the compose service environment when a
