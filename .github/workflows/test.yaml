@@ -74,7 +74,9 @@ jobs:
         run: |
           sudo apt install -y musl-tools
       - run: go mod download
-      - run: if [ "${{ matrix.mode }}" = "swarm" ]; then docker swarm init; fi
+      - name: Enable Swarm mode
+        if: matrix.mode == 'swarm'
+        run: docker swarm init
       - run: go test -ldflags="$BW_SDK_BUILD_FLAGS" -v -coverprofile=coverage-${{ matrix.mode }}.out -covermode=atomic -timeout 20m ./...
         timeout-minutes: 20
         env:
