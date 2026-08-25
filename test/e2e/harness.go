@@ -91,7 +91,6 @@ func NewHarness(t *testing.T, scenario string) *Harness {
 	h.repoPath = filepath.Join(h.workDir, "repos", scenario+".git")
 	h.worktree = filepath.Join(h.workDir, "src", scenario)
 
-	t.Cleanup(h.cleanupStacks)
 	t.Cleanup(h.logFailure)
 
 	if keepAlive {
@@ -299,6 +298,8 @@ func (h *Harness) teardownInternal() {
 		if h.daemon != nil {
 			_ = h.daemon.Terminate(h.ctx)
 		}
+
+		h.cleanupStacks()
 
 		if h.gitSrv != nil {
 			_ = h.gitSrv.Terminate(h.ctx)

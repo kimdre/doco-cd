@@ -5,9 +5,11 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -188,9 +190,16 @@ func (h *Harness) dumpTailLogs(c logsContainer, n int) {
 func (h *Harness) ContainerID(project, service string) string {
 	h.t.Helper()
 
-	f := client.Filters{}.
-		Add("label", "com.docker.compose.project="+project).
-		Add("label", "com.docker.compose.service="+service)
+	f := client.Filters{}
+	if h.isSwarmMode() {
+		f = f.
+			Add("label", "com.docker.stack.namespace="+project).
+			Add("label", "com.docker.swarm.service.name="+project+"_"+service)
+	} else {
+		f = f.
+			Add("label", "com.docker.compose.project="+project).
+			Add("label", "com.docker.compose.service="+service)
+	}
 
 	containers, err := h.docker.ContainerList(h.ctx, client.ContainerListOptions{Filters: f})
 	if err != nil {
@@ -214,11 +223,9 @@ func (h *Harness) WaitForContainerRecreate(project, service, oldID string, timeo
 	})
 }
 
-// cleanupStacks removes every container belonging to the compose projects
-// that doco-cd deploys for this scenario, mirroring the `docker compose -p
-// <stack> down -v` cleanup in run.sh. Those stacks are created by doco-cd
-// itself (via docker compose in the daemon container against the host
-// docker socket), not by this harness, so they need independent cleanup.
+// cleanupStacks removes the Compose and Swarm resources that doco-cd deploys
+// for this scenario. Both are cleaned because a local Docker daemon can switch
+// modes between test runs.
 //
 // Stack names are read straight from the fixture's .doco-cd.yml files
 // (their top-level "name" field, the same one doco-cd itself uses as the
@@ -226,17 +233,76 @@ func (h *Harness) WaitForContainerRecreate(project, service, oldID string, timeo
 // a single source of truth for a scenario's stack names.
 func (h *Harness) cleanupStacks() {
 	for _, stack := range h.fixtureStackNames() {
-		f := client.Filters{}.Add("label", "com.docker.compose.project="+stack)
+		h.removeComposeResources(stack)
+		h.removeSwarmStack(stack)
+	}
+}
 
-		containers, err := h.docker.ContainerList(h.ctx, client.ContainerListOptions{All: true, Filters: f})
-		if err != nil {
-			continue
-		}
+func (h *Harness) removeComposeResources(stack string) {
+	f := client.Filters{}.Add("label", "com.docker.compose.project="+stack)
 
+	containers, err := h.docker.ContainerList(h.ctx, client.ContainerListOptions{All: true, Filters: f})
+	if err != nil {
+		h.logf("list compose containers for %s: %v", stack, err)
+	} else {
 		for _, c := range containers.Items {
-			_, _ = h.docker.ContainerRemove(h.ctx, c.ID, client.ContainerRemoveOptions{Force: true, RemoveVolumes: true})
+			if _, err := h.docker.ContainerRemove(h.ctx, c.ID, client.ContainerRemoveOptions{Force: true, RemoveVolumes: true}); err != nil {
+				h.logf("remove compose container %s: %v", c.ID, err)
+			}
 		}
 	}
+
+	networks, err := h.docker.NetworkList(h.ctx, client.NetworkListOptions{Filters: f})
+	if err != nil {
+		h.logf("list compose networks for %s: %v", stack, err)
+		return
+	}
+
+	for _, network := range networks.Items {
+		if _, err := h.docker.NetworkRemove(h.ctx, network.ID, client.NetworkRemoveOptions{}); err != nil {
+			h.logf("remove compose network %s: %v", network.Name, err)
+		}
+	}
+}
+
+func (h *Harness) removeSwarmStack(stack string) {
+	if !h.isSwarmMode() {
+		return
+	}
+
+	cmd := exec.CommandContext(h.ctx, "docker", "stack", "rm", stack)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		h.logf("remove swarm stack %s: %v: %s", stack, err, out)
+		return
+	}
+
+	f := client.Filters{}.Add("label", "com.docker.stack.namespace="+stack)
+	deadline := time.Now().Add(30 * time.Second)
+
+	for {
+		containers, containerErr := h.docker.ContainerList(h.ctx, client.ContainerListOptions{All: true, Filters: f})
+
+		networks, networkErr := h.docker.NetworkList(h.ctx, client.NetworkListOptions{Filters: f})
+		if containerErr == nil && networkErr == nil && len(containers.Items) == 0 && len(networks.Items) == 0 {
+			return
+		}
+
+		if time.Now().After(deadline) {
+			_, _ = fmt.Fprintf(os.Stderr, "[e2e] timed out waiting for swarm resources for %s to be removed\n", stack)
+			return
+		}
+
+		time.Sleep(2 * time.Second)
+	}
+}
+
+func (h *Harness) isSwarmMode() bool {
+	result, err := h.docker.Info(h.ctx, client.InfoOptions{})
+	if err != nil {
+		return false
+	}
+
+	return result.Info.Swarm.ControlAvailable
 }
 
 // fixtureStackNames walks the scenario's fixture directory and collects the
