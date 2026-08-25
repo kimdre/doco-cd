@@ -1,12 +1,9 @@
 //go:build e2e
 
 // Package e2e runs black-box tests against a real doco-cd instance built
-// from the working tree, using testcontainers-go to start it next to a tiny
-// anonymous git server. Scenarios drive it the way a user would: commit
-// changes, wait, assert on containers and daemon state with the docker
-// client - the same approach as the legacy shell harness in run.sh/lib.sh,
-// ported to Go. Repo state is written directly with go-git rather than
-// shelling out to the git binary.
+// from the working tree next to a tiny anonymous git server.
+// Scenarios drive it the way a user would: commit changes, wait, assert
+// on containers and daemon state with the docker client.
 package e2e
 
 import (
@@ -15,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -111,6 +109,8 @@ func (h *Harness) Start() {
 		h.t.Fatalf("unknown scenario %q: %v", h.scenario, err)
 	}
 
+	prewarmImages()
+
 	h.initRepo()
 	h.copyFixture(fixtureDir)
 	h.RepoPush("e2e: initial fixture")
@@ -186,7 +186,7 @@ func (h *Harness) startDaemon(pollConfigPath string) {
 			},
 			WaitingFor: wait.ForExec([]string{"/doco-cd", "healthcheck"}).
 				WithStartupTimeout(60 * time.Second).
-				WithPollInterval(2 * time.Second),
+				WithPollInterval(500 * time.Millisecond),
 		},
 		Started: true,
 	})
@@ -198,6 +198,14 @@ func (h *Harness) startDaemon(pollConfigPath string) {
 
 	h.daemon = daemon
 	h.logContainerStart("doco-cd", daemon)
+}
+
+// prewarmImages starts both image builds in the background so repo, fixture
+// and network setup overlap with them. Both are sync.OnceValues, so
+// startGitServer/startDaemon reuse these results and still report any error.
+func prewarmImages() {
+	go func() { _, _ = buildGitServerImageOnce() }()
+	go func() { _, _ = buildDaemonImageOnce() }()
 }
 
 // buildGitServerImage builds the static gitserver image once for the test
@@ -220,14 +228,24 @@ func gitServerImageName() string {
 }
 
 // buildDaemonImage builds the doco-cd image from the working tree once per test
-// process via the
-// docker CLI (as opposed to testcontainers' FromDockerfile, which drives the
-// raw ImageBuild API and can't establish the BuildKit session the
-// Dockerfile's --mount=type=cache instructions require) and returns its tag.
+// process via the docker CLI (as opposed to testcontainers FromDockerfile,
+// which drives the raw ImageBuild API) and returns its tag.
+//
+// The binary is compiled on the host and injected as the Dockerfile's `build`
+// stage, so the image build skips the in-image Go compile: BuildKit's
+// `--mount=type=cache` Go build cache is not exported by `--cache-to`, which
+// made that compile a multi-minute, never-cached step on every CI run.
 func buildDaemonImage() (string, error) {
 	tag := daemonImageName()
 
-	cmd := exec.Command("docker", daemonBuildArgs(tag)...) // #nosec G204 -- arguments are passed directly, never through a shell.
+	binDir, err := buildDaemonBinary()
+	if err != nil {
+		return "", err
+	}
+
+	defer func() { _ = os.RemoveAll(binDir) }()
+
+	cmd := exec.Command("docker", daemonBuildArgs(tag, binDir)...) // #nosec G204 -- arguments are passed directly, never through a shell.
 
 	cmd.Env = append(os.Environ(), "DOCKER_BUILDKIT=1")
 
@@ -238,12 +256,48 @@ func buildDaemonImage() (string, error) {
 	return tag, nil
 }
 
-func daemonBuildArgs(tag string) []string {
-	args := []string{
-		"build",
-		"-t", tag,
-		"--build-arg", "DISABLE_BITWARDEN=true", // not exercised by e2e, skipping it halves the build
+// buildDaemonBinary compiles doco-cd into a fresh directory for the platform
+// the docker daemon runs containers on. The nobitwarden tag keeps the build
+// CGO-free and mirrors the image build's DISABLE_BITWARDEN=true.
+func buildDaemonBinary() (string, error) {
+	binDir, err := os.MkdirTemp("", "doco-cd-e2e-bin-")
+	if err != nil {
+		return "", fmt.Errorf("create binary dir: %w", err)
 	}
+
+	cmd := exec.Command("go", "build",
+		"-tags", "nobitwarden",
+		"-ldflags", "-s -w -X github.com/kimdre/doco-cd/internal/config/app.Version=e2e",
+		"-o", binDir,
+		"./cmd/doco-cd",
+	)
+	cmd.Dir = repoDir
+
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+daemonGoArch())
+
+	if out, err := cmd.CombinedOutput(); err != nil {
+		_ = os.RemoveAll(binDir)
+
+		return "", fmt.Errorf("build doco-cd binary: %w\n%s", err, out)
+	}
+
+	return binDir, nil
+}
+
+// daemonGoArch reports the GOARCH the docker daemon runs containers with, so
+// the host build still produces a runnable binary when the host and the daemon
+// differ (e.g. an arm64 host driving an amd64 daemon).
+func daemonGoArch() string {
+	out, err := exec.Command("docker", "version", "--format", "{{.Server.Arch}}").Output()
+	if arch := strings.TrimSpace(string(out)); err == nil && arch != "" {
+		return arch
+	}
+
+	return runtime.GOARCH
+}
+
+func daemonBuildArgs(tag, binDir string) []string {
+	args := []string{"build"}
 
 	if scope := os.Getenv("E2E_BUILD_CACHE_SCOPE"); scope != "" {
 		args = []string{
@@ -252,11 +306,14 @@ func daemonBuildArgs(tag string) []string {
 			"--cache-from", "type=gha,scope=" + scope,
 			"--cache-to", "type=gha,mode=max,scope=" + scope,
 		}
-		args = append(args,
-			"-t", tag,
-			"--build-arg", "DISABLE_BITWARDEN=true",
-		)
 	}
+
+	args = append(args,
+		"-t", tag,
+		"--provenance", "false", // attestations are dead weight for a throwaway image
+		"--build-arg", "DISABLE_BITWARDEN=true", // not exercised by e2e, and the host build is CGO-free
+		"--build-context", "build="+binDir, // replaces the Dockerfile's Go build stage with the host-built binary
+	)
 
 	return append(args, repoDir)
 }
