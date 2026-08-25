@@ -247,11 +247,10 @@ func loadComposeScheduledProjectAll(
 		return nil, nil, err
 	}
 
-	// Swarm-discovered deployments carry no com.docker.compose.config_files label (docker stack
-	// deploy never sets Compose's own tracking labels), so fall back to the freshly reloaded
-	// deploy config's compose file list - the same source a normal (non-scheduled) deploy uses.
+	// Fall back to the reloaded deploy config's compose files if the label is empty
+	// (Swarm) or stale (e.g. renamed compose file not yet reflected in the label).
 	configFiles := ref.ConfigFiles
-	if len(configFiles) == 0 {
+	if len(configFiles) == 0 || !composeConfigFilesExist(configFiles, ref.WorkingDir) {
 		configFiles = deployConfig.ComposeFiles
 	}
 
@@ -269,6 +268,26 @@ func loadComposeScheduledProjectAll(
 	}
 
 	return project, deployConfig, nil
+}
+
+// composeConfigFilesExist reports whether all configFiles exist on disk, resolving
+// relative paths against workingDir like LoadCompose does.
+func composeConfigFilesExist(configFiles []string, workingDir string) bool {
+	if len(configFiles) == 0 {
+		return false
+	}
+
+	for _, f := range configFiles {
+		if !filepath.IsAbs(f) {
+			f = filepath.Join(workingDir, f)
+		}
+
+		if _, err := os.Stat(f); err != nil {
+			return false
+		}
+	}
+
+	return true
 }
 
 func validateComposeScheduledServiceScale(project *types.Project, ref composeScheduledServiceRef) error {
