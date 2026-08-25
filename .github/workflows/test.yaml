@@ -112,12 +112,16 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+
       - name: Enable Swarm mode
         if: matrix.mode == 'swarm'
         run: docker swarm init
 
       - name: Run e2e scenarios
         run: go test -tags e2e ./test/e2e/... -v -timeout 25m
+        env:
+          E2E_BUILD_CACHE_SCOPE: doco-cd-e2e-${{ matrix.mode }}
 
   docs-validation:
     name: Validate wiki build

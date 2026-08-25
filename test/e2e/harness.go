@@ -227,11 +227,7 @@ func gitServerImageName() string {
 func buildDaemonImage() (string, error) {
 	tag := daemonImageName()
 
-	cmd := exec.Command("docker", "build",
-		"-t", tag,
-		"--build-arg", "DISABLE_BITWARDEN=true", // not exercised by e2e, skipping it halves the build
-		repoDir,
-	)
+	cmd := exec.Command("docker", daemonBuildArgs(tag)...)
 
 	cmd.Env = append(os.Environ(), "DOCKER_BUILDKIT=1")
 
@@ -240,6 +236,29 @@ func buildDaemonImage() (string, error) {
 	}
 
 	return tag, nil
+}
+
+func daemonBuildArgs(tag string) []string {
+	args := []string{
+		"build",
+		"-t", tag,
+		"--build-arg", "DISABLE_BITWARDEN=true", // not exercised by e2e, skipping it halves the build
+	}
+
+	if scope := os.Getenv("E2E_BUILD_CACHE_SCOPE"); scope != "" {
+		args = []string{
+			"buildx", "build",
+			"--load",
+			"--cache-from", "type=gha,scope=" + scope,
+			"--cache-to", "type=gha,mode=max,scope=" + scope,
+		}
+		args = append(args,
+			"-t", tag,
+			"--build-arg", "DISABLE_BITWARDEN=true",
+		)
+	}
+
+	return append(args, repoDir)
 }
 
 func daemonImageName() string {
