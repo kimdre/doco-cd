@@ -594,7 +594,7 @@ func TestNormalizeImageRef(t *testing.T) {
 		{name: "fully qualified is stable", ref: "docker.io/library/nginx:latest", want: "docker.io/library/nginx:latest"},
 		{name: "private registry is preserved", ref: "637423286173.dkr.ecr.eu-central-1.amazonaws.com/login-be:20260824-e5136680", want: "637423286173.dkr.ecr.eu-central-1.amazonaws.com/login-be:20260824-e5136680"},
 		{name: "digest pin is left exact", ref: "nginx@sha256:0000000000000000000000000000000000000000000000000000000000000000", want: "docker.io/library/nginx@sha256:0000000000000000000000000000000000000000000000000000000000000000"},
-		{name: "unparseable ref is returned untouched", ref: "NOT A REF", want: "NOT A REF"},
+		{name: "unparsable ref is returned untouched", ref: "NOT A REF", want: "NOT A REF"},
 	}
 
 	for _, tc := range tests {

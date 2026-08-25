@@ -619,7 +619,7 @@ func DeployedServicesWithChangedImageDigests(ctx context.Context, dockerCli comm
 // compare equal. A digest-pinned reference is already exact and is left alone; only a
 // tag-less reference needs `:latest` filled in.
 //
-// An unparseable reference is returned untouched: comparing two raw strings is still
+// An unparsable reference is returned untouched: comparing two raw strings is still
 // better than dropping the comparison entirely.
 func normalizeImageRef(ref string) string {
 	if ref == "" {
