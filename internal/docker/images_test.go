@@ -608,6 +608,49 @@ func TestNormalizeImageRef(t *testing.T) {
 	}
 }
 
+func TestImageRefsEqual(t *testing.T) {
+	t.Parallel()
+
+	const (
+		digestA = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+		digestB = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+	)
+
+	tests := []struct {
+		name       string
+		configured string
+		deployed   string
+		want       bool
+	}{
+		{name: "identical tags", configured: "nginx:1.27", deployed: "nginx:1.27", want: true},
+		{name: "familiar and fully qualified are the same image", configured: "nginx", deployed: "docker.io/library/nginx:latest", want: true},
+		{name: "different tag is a change", configured: "nginx:1.28", deployed: "nginx:1.27", want: false},
+		{name: "different repository is a change", configured: "nginx:1.27", deployed: "httpd:1.27", want: false},
+		// Swarm pins the digest it resolved onto the deployed reference. A tag-based
+		// configuration must ignore it, otherwise every tagged swarm service reads as
+		// changed on every deployment.
+		{name: "swarm deployed digest is ignored for a tag-based config", configured: "nginx:1.27", deployed: "nginx:1.27@" + digestA, want: true},
+		{name: "swarm deployed digest is ignored, tag still compared", configured: "nginx:1.28", deployed: "nginx:1.27@" + digestA, want: false},
+		// A digest-pinned configuration means the digest IS the identity.
+		{name: "digest pinned config matches same digest", configured: "nginx@" + digestA, deployed: "nginx@" + digestA, want: true},
+		{name: "digest pinned config matches same digest under any tag", configured: "nginx@" + digestA, deployed: "nginx:1.27@" + digestA, want: true},
+		{name: "digest pinned config sees a different digest", configured: "nginx@" + digestA, deployed: "nginx@" + digestB, want: false},
+		{name: "digest pinned config against an undigested deployment", configured: "nginx@" + digestA, deployed: "nginx:1.27", want: false},
+		{name: "unparsable refs fall back to raw comparison", configured: "NOT A REF", deployed: "NOT A REF", want: true},
+		{name: "unparsable ref against a real one", configured: "NOT A REF", deployed: "nginx:1.27", want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := imageRefsEqual(tc.configured, tc.deployed); got != tc.want {
+				t.Fatalf("imageRefsEqual(%q, %q) = %v, want %v", tc.configured, tc.deployed, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestDeployedServicesWithChangedImageRefs(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -662,6 +705,23 @@ func TestDeployedServicesWithChangedImageRefs(t *testing.T) {
 			},
 			deployedRefs: map[string]string{"web": "docker.io/library/nginx:latest"},
 			wantChanged:  nil,
+		},
+		{
+			// Swarm reports `<tag>@<digest>`; a tag-based config must not read that as
+			// a change, or every tagged swarm service is flagged on every deployment.
+			name: "swarm digest on the deployed ref is not a change",
+			project: &types.Project{
+				Name: "test",
+				Services: types.Services{
+					"web": {Name: "web", Image: "nginx:1.27"},
+					"db":  {Name: "db", Image: "postgres:17"},
+				},
+			},
+			deployedRefs: map[string]string{
+				"web": "nginx:1.27@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+				"db":  "postgres:17@sha256:2222222222222222222222222222222222222222222222222222222222222222",
+			},
+			wantChanged: nil,
 		},
 		{
 			name: "service new to an existing stack is reported",

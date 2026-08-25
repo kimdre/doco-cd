@@ -638,6 +638,48 @@ func normalizeImageRef(ref string) string {
 	return distreference.TagNameOnly(parsed).String()
 }
 
+// refTag returns the tag of a reference, defaulting to `latest` when it carries none.
+func refTag(named distreference.Named) string {
+	if tagged, ok := named.(distreference.Tagged); ok {
+		return tagged.Tag()
+	}
+
+	return "latest"
+}
+
+// imageRefsEqual reports whether a deployed image reference is the same image as the
+// configured one.
+//
+// A literal comparison does not work. Swarm records the digest it resolved onto the
+// reference it deployed (`nginx:1.27@sha256:...`) while a compose project normally
+// configures a plain tag (`nginx:1.27`), so every tagged swarm service would be flagged
+// on every deployment. The comparison therefore follows what the CONFIGURATION asks for:
+//
+//   - configured by tag: compare repository and tag, ignore any deployed digest
+//   - configured by digest: compare repository and digest, ignore any tag
+func imageRefsEqual(configured, deployed string) bool {
+	confNamed, confErr := distreference.ParseNormalizedNamed(configured)
+	deplNamed, deplErr := distreference.ParseNormalizedNamed(deployed)
+
+	if confErr != nil || deplErr != nil {
+		// One side is not a reference we can reason about. Comparing the raw strings is
+		// still better than declaring them equal.
+		return configured == deployed
+	}
+
+	if distreference.TrimNamed(confNamed).String() != distreference.TrimNamed(deplNamed).String() {
+		return false
+	}
+
+	if confCanonical, pinned := confNamed.(distreference.Canonical); pinned {
+		deplCanonical, ok := deplNamed.(distreference.Canonical)
+
+		return ok && confCanonical.Digest() == deplCanonical.Digest()
+	}
+
+	return refTag(confNamed) == refTag(deplNamed)
+}
+
 // getDeployedServiceImageRefs returns a map of service name to the image reference of
 // the container or swarm service currently deployed for it.
 //
@@ -740,18 +782,17 @@ func DeployedServicesWithChangedImageRefs(ctx context.Context, dockerCli command
 			continue
 		}
 
-		deployedRef := normalizeImageRef(deployedRaw)
-		if deployedRef == "" {
+		if deployedRaw == "" {
 			logger.Debug("deployed image reference unavailable, skipping service", slog.String("service", svc.Name), slog.String("ref", svc.Image))
 
 			continue
 		}
 
-		if deployedRef != configuredRef {
+		if !imageRefsEqual(svc.Image, deployedRaw) {
 			logger.Info("service image reference changed",
 				slog.String("service", svc.Name),
 				slog.Group("image",
-					slog.String("deployed", deployedRef),
+					slog.String("deployed", normalizeImageRef(deployedRaw)),
 					slog.String("configured", configuredRef),
 				),
 			)
