@@ -109,8 +109,7 @@ func (h *Harness) ReplaceInWorktree(relPath, old, replacement string) {
 	}
 }
 
-// WaitFor re-runs check every 2s until it returns true or the timeout hits,
-// mirroring e2e::wait_for from lib.sh.
+// WaitFor re-runs check every second until it returns true or the timeout hits.
 func (h *Harness) WaitFor(timeout time.Duration, desc string, check func() bool) {
 	h.t.Helper()
 
@@ -126,7 +125,7 @@ func (h *Harness) WaitFor(timeout time.Duration, desc string, check func() bool)
 			h.t.Fatalf("timed out after %s waiting for: %s", timeout, desc)
 		}
 
-		time.Sleep(2 * time.Second)
+		time.Sleep(time.Second)
 	}
 }
 

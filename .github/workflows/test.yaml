@@ -112,6 +112,18 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
+      # Dedicated build cache for the CGO-free, nobitwarden host build of the
+      # doco-cd binary that the e2e image is assembled from. Kept apart from
+      # the setup-go cache, which other jobs fill with a different build config.
+      - name: Restore e2e Go build cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/e2e-go-build
+          key: e2e-go-build-${{ hashFiles('go.mod', 'go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            e2e-go-build-${{ hashFiles('go.mod', 'go.sum') }}-
+            e2e-go-build-
+
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
 
       - name: Enable Swarm mode
@@ -122,6 +134,16 @@ jobs:
         run: go test -tags e2e ./test/e2e/... -v -timeout 25m
         env:
           E2E_BUILD_CACHE_SCOPE: doco-cd-e2e-${{ matrix.mode }}
+          GOCACHE: ${{ runner.temp }}/e2e-go-build
+
+      # Both matrix jobs build the identical binary, so only one of them needs
+      # to write the shared cache entry back.
+      - name: Save e2e Go build cache
+        if: always() && matrix.mode == 'standalone'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/e2e-go-build
+          key: e2e-go-build-${{ hashFiles('go.mod', 'go.sum') }}-${{ github.sha }}
 
   docs-validation:
     name: Validate wiki build

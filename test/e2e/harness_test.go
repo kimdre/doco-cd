@@ -54,19 +54,29 @@ func TestDaemonBuildArgs(t *testing.T) {
 	t.Setenv("E2E_BUILD_CACHE_SCOPE", "")
 
 	tag := "doco-cd-e2e:test"
-	if got, want := daemonBuildArgs(tag), []string{
-		"build", "-t", tag, "--build-arg", "DISABLE_BITWARDEN=true", repoDir,
+	binDir := "/tmp/doco-cd-e2e-bin-123"
+
+	if got, want := daemonBuildArgs(tag, binDir), []string{
+		"build", "-t", tag,
+		"--provenance", "false",
+		"--build-arg", "DISABLE_BITWARDEN=true",
+		"--build-context", "build=" + binDir,
+		repoDir,
 	}; !slices.Equal(got, want) {
 		t.Fatalf("daemonBuildArgs() = %v, want %v", got, want)
 	}
 
 	t.Setenv("E2E_BUILD_CACHE_SCOPE", "e2e-standalone")
 
-	if got, want := daemonBuildArgs(tag), []string{
+	if got, want := daemonBuildArgs(tag, binDir), []string{
 		"buildx", "build", "--load",
 		"--cache-from", "type=gha,scope=e2e-standalone",
 		"--cache-to", "type=gha,mode=max,scope=e2e-standalone",
-		"-t", tag, "--build-arg", "DISABLE_BITWARDEN=true", repoDir,
+		"-t", tag,
+		"--provenance", "false",
+		"--build-arg", "DISABLE_BITWARDEN=true",
+		"--build-context", "build=" + binDir,
+		repoDir,
 	}; !slices.Equal(got, want) {
 		t.Fatalf("daemonBuildArgs() = %v, want %v", got, want)
 	}

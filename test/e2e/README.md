@@ -10,6 +10,12 @@ Needs docker (with BuildKit) and go. Nothing else, no tokens, no network
 access beyond image pulls, no local git binary - repo state is written
 directly with [go-git](https://github.com/go-git/go-git).
 
+The doco-cd binary is compiled on the host (`-tags nobitwarden`, so CGO is not
+needed) and injected into the image build as the Dockerfile's `build` stage via
+`docker build --build-context build=<dir>`. Compiling inside the image instead
+would add minutes to every run: BuildKit's `--mount=type=cache` Go build cache
+is not exported by `--cache-to`, so it is always cold in CI.
+
 ## Run
 
 ```sh
