@@ -1,0 +1,22 @@
+# PROD deploy config. Selected by the prod doco-cd instance's poll
+# `target: prod` — a targeted daemon reads ONLY this file, never the bare
+# .doco-cd.yml.
+#
+# Deliberately only the values that differ from staging. Anything BEHAVIOURAL
+# (the reconciliation blocks) is copied verbatim on purpose.
+name: app
+working_dir: deploy/app
+environment:
+  APP_TAG: "1c8842de" # written by the release job, never edit by hand
+  APP_DOMAIN: app.example.com
+  LOG_LEVEL: info
+reconciliation:
+  events: [unhealthy]
+---
+name: db
+working_dir: deploy/db
+environment:
+  DB_TAG: "1c8842de" # written by the release job, never edit by hand
+  PG_TAG: "17-alpine"
+reconciliation:
+  events: [unhealthy]

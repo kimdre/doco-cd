@@ -149,6 +149,7 @@ func TestAutoDiscoveryConfigLabelDriftServices(t *testing.T) {
 func TestShouldSkipDeployment(t *testing.T) {
 	tests := []struct {
 		name                      string
+		retryAfterFailure         bool
 		composeChanged            bool
 		autoDiscoveryLabelChanged bool
 		changedServices           []docker.Change
@@ -157,6 +158,17 @@ func TestShouldSkipDeployment(t *testing.T) {
 		mismatchServices          []docker.ServiceMismatch
 		want                      bool
 	}{
+		{
+			name:                      "retry after failed deployment",
+			retryAfterFailure:         true,
+			composeChanged:            false,
+			autoDiscoveryLabelChanged: false,
+			changedServices:           nil,
+			ignoredInfo:               docker.IgnoredInfo{},
+			imagesChanged:             false,
+			mismatchServices:          nil,
+			want:                      false,
+		},
 		{
 			name:                      "no changes",
 			composeChanged:            false,
@@ -254,7 +266,7 @@ func TestShouldSkipDeployment(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := shouldSkipDeployment(tt.composeChanged, tt.autoDiscoveryLabelChanged, tt.changedServices, tt.ignoredInfo, tt.imagesChanged, tt.mismatchServices)
+			got := shouldSkipDeployment(tt.retryAfterFailure, tt.composeChanged, tt.autoDiscoveryLabelChanged, tt.changedServices, tt.ignoredInfo, tt.imagesChanged, tt.mismatchServices)
 			if got != tt.want {
 				t.Errorf("shouldSkipDeployment() = %v, want %v", got, tt.want)
 			}

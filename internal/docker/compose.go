@@ -814,10 +814,7 @@ func DeployStack(
 		switch {
 		case len(detectedChanges) > 0:
 			recreateMode = api.RecreateForce
-
-			for _, change := range detectedChanges {
-				forcedServices.Add(change.Services...)
-			}
+			forcedServices = forcedRecreateServices(detectedChanges)
 
 			stackLog.Debug("changed project files detected, forcing recreate", slog.Any("changes", detectedChanges))
 		case len(needSignal) > 0:
@@ -1292,6 +1289,24 @@ func HasChangedBuildFiles(repoPathExternal string, paths []string, project *type
 type Change struct {
 	Type     string
 	Services []string
+}
+
+// forcedRecreateServices returns the services to force-recreate for the
+// detected changes. A change without service scope (e.g. a failed-deploy
+// retry) widens the force to the whole project, expressed as an empty set:
+// compose selects all services when the list is empty.
+func forcedRecreateServices(detectedChanges []Change) set.Set[string] {
+	forced := set.New[string]()
+
+	for _, change := range detectedChanges {
+		if len(change.Services) == 0 {
+			return set.New[string]()
+		}
+
+		forced.Add(change.Services...)
+	}
+
+	return forced
 }
 
 // sortChanges sorts the changes first by type and then by service name within each change.

@@ -24,11 +24,9 @@ func JSONError(w http.ResponseWriter, err, details any, jobId string, code int) 
 	}
 
 	resp := jsonError{
-		Error: err.(string),
-		jsonResponse: jsonResponse{
-			Content: details,
-			JobID:   jobId,
-		},
+		Error:   err.(string),
+		Content: details,
+		JobID:   jobId,
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")

@@ -1274,10 +1274,8 @@ func createTestRepo(t *testing.T, repoPath string) (repo *git.Repository) {
 
 	// Init git repo at repoRoot with main branch
 	repo, err := git.PlainInitWithOptions(repoPath, &git.PlainInitOptions{
-		Bare: false,
-		InitOptions: git.InitOptions{
-			DefaultBranch: DefaultReference,
-		},
+		Bare:          false,
+		DefaultBranch: DefaultReference,
 	})
 	if err != nil {
 		t.Fatal(err)

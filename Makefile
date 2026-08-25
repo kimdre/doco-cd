@@ -1,7 +1,8 @@
 GO_BIN?=$(shell pwd)/.bin
 BINARY_DIR=bin
 BINARY_NAME=doco-cd
-.PHONY: test test-verbose test-coverage test-run build build-bitwarden fmt lint update update-all download tools compose-up compose-down wiki-tools wiki-build wiki-serve wiki-version-publish
+
+.PHONY: test test-verbose test-coverage test-run test-e2e build build-bitwarden fmt lint update update-all download tools compose-up compose-down wiki-tools wiki-build wiki-serve wiki-version-publish
 
 .DEFAULT_GOAL := build
 
@@ -45,6 +46,11 @@ test-run:
 	@echo "Running tests: $(filter-out $@,$(MAKECMDGOALS))"
 	@WEBHOOK_SECRET="test_Secret1" API_SECRET="test_apiSecret1" ${COMPILER} go test ${BUILD_FLAGS} -cover ./... -timeout 10m -run $(filter-out $@,$(MAKECMDGOALS))
 
+# Run e2e scenarios against a real doco-cd built from the working tree.
+# Optionally filter scenarios: make test-e2e E2E_RUN=TestFailedDeployRetry
+test-e2e:
+	@go test -tags e2e ./test/e2e/... -v -timeout 30m -run '$(E2E_RUN)'
+
 build:
 	@echo "Building without bitwarden integration (no CGO)..."
 	mkdir -p $(BINARY_DIR)
@@ -57,7 +63,7 @@ build-bitwarden:
 
 lint fmt:
 	${GO_BIN}/golangci-lint run --fix ./...
-	@go fix ./...
+	go fix ./...
 
 update:
 	git pull origin main

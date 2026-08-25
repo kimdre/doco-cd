@@ -27,11 +27,9 @@ func TestWaitOnServiceDetectsRollbackIntegration(t *testing.T) {
 	replicas := uint64(1)
 
 	createSpec := swarmTypes.ServiceSpec{
-		Annotations: swarmTypes.Annotations{
-			Name: serviceName,
-			Labels: map[string]string{
-				"doco-cd.test": "rollback-detection",
-			},
+		Name: serviceName,
+		Labels: map[string]string{
+			"doco-cd.test": "rollback-detection",
 		},
 		TaskTemplate: swarmTypes.TaskSpec{
 			ContainerSpec: &swarmTypes.ContainerSpec{

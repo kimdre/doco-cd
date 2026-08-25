@@ -1,0 +1,2 @@
+name: e2e-image-digest-bump
+working_dir: deploy
