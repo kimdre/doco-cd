@@ -18,6 +18,10 @@ func TestFailedDeployRetry(t *testing.T) {
 	t.Parallel()
 
 	h := NewHarness(t, "failed-deploy-retry")
+	if h.isSwarmMode() {
+		t.Skip("post_start hooks are not supported by Docker Swarm")
+	}
+
 	h.Start()
 
 	h.WaitForLog("deployment failed", 120*time.Second)

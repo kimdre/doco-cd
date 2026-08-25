@@ -45,8 +45,6 @@ type Harness struct {
 	worktree   string // host worktree dir used to build fixture/commits
 	dataVolume string
 
-	daemonImage string // tag built for this scenario, removed on teardown
-
 	wt     *git.Worktree
 	docker *client.Client
 	net    *testcontainers.DockerNetwork
@@ -61,6 +59,7 @@ var (
 	suiteHarnesses   []*Harness
 
 	buildGitServerImageOnce = sync.OnceValues(buildGitServerImage)
+	buildDaemonImageOnce    = sync.OnceValues(buildDaemonImage)
 )
 
 // NewHarness prepares a harness for the given scenario. Call Start to bring
@@ -91,7 +90,6 @@ func NewHarness(t *testing.T, scenario string) *Harness {
 	h.repoPath = filepath.Join(h.workDir, "repos", scenario+".git")
 	h.worktree = filepath.Join(h.workDir, "src", scenario)
 
-	t.Cleanup(h.cleanupStacks)
 	t.Cleanup(h.logFailure)
 
 	if keepAlive {
@@ -162,8 +160,10 @@ func (h *Harness) startGitServer() {
 func (h *Harness) startDaemon(pollConfigPath string) {
 	h.t.Helper()
 
-	image := h.buildDaemonImage()
-	h.daemonImage = image
+	image, err := buildDaemonImageOnce()
+	if err != nil {
+		h.t.Fatalf("build doco-cd image: %v", err)
+	}
 
 	daemon, err := testcontainers.GenericContainer(h.ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
@@ -219,31 +219,50 @@ func gitServerImageName() string {
 	return fmt.Sprintf("doco-cd-e2e-gitserver:%d", os.Getpid())
 }
 
-// buildDaemonImage builds the doco-cd image from the working tree via the
+// buildDaemonImage builds the doco-cd image from the working tree once per test
+// process via the
 // docker CLI (as opposed to testcontainers' FromDockerfile, which drives the
 // raw ImageBuild API and can't establish the BuildKit session the
 // Dockerfile's --mount=type=cache instructions require) and returns its tag.
-func (h *Harness) buildDaemonImage() string {
-	h.t.Helper()
+func buildDaemonImage() (string, error) {
+	tag := daemonImageName()
 
-	// Scoped by pid as well as scenario: two concurrent runs against one docker
-	// daemon would otherwise build the same tag, and the second build would move it
-	// out from under the first run's containers. Same reason gitServerImageName does it.
-	tag := fmt.Sprintf("doco-cd-e2e:%s-%d", h.scenario, os.Getpid())
-
-	cmd := exec.CommandContext(h.ctx, "docker", "build",
-		"-t", tag,
-		"--build-arg", "DISABLE_BITWARDEN=true", // not exercised by e2e, skipping it halves the build
-		repoDir,
-	)
+	cmd := exec.Command("docker", daemonBuildArgs(tag)...) // #nosec G204 -- arguments are passed directly, never through a shell.
 
 	cmd.Env = append(os.Environ(), "DOCKER_BUILDKIT=1")
 
 	if out, err := cmd.CombinedOutput(); err != nil {
-		h.t.Fatalf("build doco-cd image: %v\n%s", err, out)
+		return "", fmt.Errorf("%w\n%s", err, out)
 	}
 
-	return tag
+	return tag, nil
+}
+
+func daemonBuildArgs(tag string) []string {
+	args := []string{
+		"build",
+		"-t", tag,
+		"--build-arg", "DISABLE_BITWARDEN=true", // not exercised by e2e, skipping it halves the build
+	}
+
+	if scope := os.Getenv("E2E_BUILD_CACHE_SCOPE"); scope != "" {
+		args = []string{
+			"buildx", "build",
+			"--load",
+			"--cache-from", "type=gha,scope=" + scope,
+			"--cache-to", "type=gha,mode=max,scope=" + scope,
+		}
+		args = append(args,
+			"-t", tag,
+			"--build-arg", "DISABLE_BITWARDEN=true",
+		)
+	}
+
+	return append(args, repoDir)
+}
+
+func daemonImageName() string {
+	return fmt.Sprintf("doco-cd-e2e:%d", os.Getpid())
 }
 
 func (h *Harness) writePollConfig() string {
@@ -300,6 +319,8 @@ func (h *Harness) teardownInternal() {
 			_ = h.daemon.Terminate(h.ctx)
 		}
 
+		h.cleanupStacks()
+
 		if h.gitSrv != nil {
 			_ = h.gitSrv.Terminate(h.ctx)
 		}
@@ -309,10 +330,6 @@ func (h *Harness) teardownInternal() {
 		}
 
 		_, _ = h.docker.VolumeRemove(h.ctx, h.dataVolume, client.VolumeRemoveOptions{Force: true})
-
-		if h.daemonImage != "" {
-			_, _ = h.docker.ImageRemove(h.ctx, h.daemonImage, client.ImageRemoveOptions{Force: true})
-		}
 
 		_ = os.RemoveAll(h.workDir)
 	})

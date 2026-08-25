@@ -1,0 +1,2 @@
+name: e2e-image-tag-bump
+working_dir: deploy
