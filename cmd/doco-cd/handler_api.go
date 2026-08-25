@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/docker/cli/cli/command"
 	dockerswarmtypes "github.com/moby/moby/api/types/swarm"
 
 	"github.com/kimdre/doco-cd/internal/common/id"
@@ -26,6 +27,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 	restAPI "github.com/kimdre/doco-cd/internal/restapi"
 	"github.com/kimdre/doco-cd/internal/scheduler"
+	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/source/oci"
 )
 
@@ -245,74 +247,23 @@ func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
-	stackName := getQueryParam(r, w, jobLog, jobID, "stack", "string", "").(string)
+	stackName := r.URL.Query().Get("stack")
 
-	wait := getQueryParam(r, w, jobLog, jobID, "wait", "bool", true).(bool)
-	if h.runTracker != nil {
-		h.runTracker.TrackAccepted(jobID, deploymentRunTriggerScheduledJob)
-		h.runTracker.SetMetadata(jobID, "scheduled:"+jobName, stackName, "")
-
-		if wait {
-			h.runTracker.MarkRunning(jobID)
-		}
-	}
-
-	triggerFn := func(ctx context.Context) error {
-		jobLog.Info("scheduled job run triggered via API", slog.String("job", jobName), slog.String("stack", stackName))
-
-		runID, err := scheduler.TriggerNow(ctx, h.dockerCli, h.log.Logger, jobName, stackName, h.secretProvider)
-
-		runLog := jobLog
-		if runID != "" {
-			runLog = runLog.With(slog.String("scheduled_run_id", runID))
-		}
-
-		if err == nil {
-			return nil
-		}
-
-		runLog.With(logger.ErrAttr(err)).Error("failed to trigger scheduled job run", slog.String("job", jobName), slog.String("stack", stackName))
-
-		return err
+	wait, ok := getProjectBoolQueryParam(r, w, jobLog, jobID, "wait", true)
+	if !ok {
+		return
 	}
 
 	if !wait {
-		go func(ctx context.Context) {
-			defer func() {
-				if r := recover(); r != nil {
-					logRecoveredPanic(jobLog, "scheduled job run", r)
-
-					if h.runTracker != nil {
-						h.runTracker.MarkFailed(jobID, "scheduled job run panicked")
-					}
-				}
-			}()
-
-			if h.runTracker != nil {
-				h.runTracker.MarkRunning(jobID)
-			}
-
-			err := triggerFn(ctx)
-			if h.runTracker != nil {
-				if err != nil {
-					h.runTracker.MarkFailed(jobID, err.Error())
-				} else {
-					h.runTracker.MarkSucceeded(jobID, "scheduled job run completed")
-				}
-			}
-		}(context.WithoutCancel(r.Context()))
+		_, _ = h.triggerScheduledJobRun(r.Context(), jobID, jobName, stackName, false)
 
 		JSONResponse(w, "scheduled job run accepted", jobID, http.StatusAccepted)
 
 		return
 	}
 
-	err := triggerFn(r.Context())
+	_, err := h.triggerScheduledJobRun(r.Context(), jobID, jobName, stackName, true)
 	if err != nil {
-		if h.runTracker != nil {
-			h.runTracker.MarkFailed(jobID, err.Error())
-		}
-
 		switch {
 		case errors.Is(err, scheduler.ErrScheduledJobNotFound):
 			JSONError(w, err.Error(), "", jobID, http.StatusNotFound)
@@ -326,10 +277,76 @@ func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.
 	}
 
 	JSONResponse(w, "scheduled job run completed", jobID, http.StatusOK)
+}
 
-	if h.runTracker != nil {
-		h.runTracker.MarkSucceeded(jobID, "scheduled job run completed")
+type scheduledJobTrigger func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error)
+
+func (h *handlerData) triggerScheduledJobRun(ctx context.Context, jobID, jobName, stackName string, wait bool) (string, error) {
+	if jobID == "" {
+		jobID = id.GenID()
 	}
+
+	jobLog := h.log.With(slog.String("job_id", jobID))
+	if h.runTracker != nil {
+		h.runTracker.TrackAccepted(jobID, deploymentRunTriggerScheduledJob)
+		h.runTracker.SetMetadata(jobID, "scheduled:"+jobName, stackName, "")
+	}
+
+	run := func(ctx context.Context) error {
+		if h.runTracker != nil {
+			h.runTracker.MarkRunning(jobID)
+		}
+
+		jobLog.Info("scheduled job run triggered", slog.String("job", jobName), slog.String("stack", stackName))
+
+		trigger := h.triggerScheduledJob
+		if trigger == nil {
+			trigger = scheduler.TriggerNow
+		}
+
+		scheduledRunID, err := trigger(ctx, h.dockerCli, h.log.Logger, jobName, stackName, h.secretProvider)
+
+		runLog := jobLog
+		if scheduledRunID != "" {
+			runLog = runLog.With(slog.String("scheduled_run_id", scheduledRunID))
+		}
+
+		if err != nil {
+			runLog.With(logger.ErrAttr(err)).Error("failed to trigger scheduled job run", slog.String("job", jobName), slog.String("stack", stackName))
+
+			if h.runTracker != nil {
+				h.runTracker.MarkFailed(jobID, err.Error())
+			}
+
+			return err
+		}
+
+		if h.runTracker != nil {
+			h.runTracker.MarkSucceeded(jobID, "scheduled job run completed")
+		}
+
+		return nil
+	}
+
+	if wait {
+		return jobID, run(ctx)
+	}
+
+	go func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				logRecoveredPanic(jobLog, "scheduled job run", recovered)
+
+				if h.runTracker != nil {
+					h.runTracker.MarkFailed(jobID, "scheduled job run panicked")
+				}
+			}
+		}()
+
+		_ = run(context.WithoutCancel(ctx))
+	}()
+
+	return jobID, nil
 }
 
 // HealthCheckHandler handles health check requests.

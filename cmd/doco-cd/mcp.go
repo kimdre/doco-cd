@@ -33,6 +33,7 @@ func (h *handlerData) newMCPHandler(c *app.Config) http.Handler {
 	h.addReadOnlyMCPTools(server)
 	h.addProjectMCPTools(server)
 	h.addStackMCPTools(server)
+	h.addScheduledJobMCPTools(server)
 
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return server

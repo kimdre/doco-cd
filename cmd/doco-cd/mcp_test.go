@@ -31,6 +31,7 @@ import (
 	prometheusmetrics "github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/restapi"
 	"github.com/kimdre/doco-cd/internal/scheduler"
+	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/test"
 )
 
@@ -164,41 +165,44 @@ func TestMCPServerListsTools(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(result.Tools) != 12 {
-		t.Fatalf("expected exactly twelve MCP tools, got %#v", result.Tools)
+	if len(result.Tools) != 13 {
+		t.Fatalf("expected exactly thirteen MCP tools, got %#v", result.Tools)
 	}
 
 	wantTools := map[string]bool{
-		"get_health":           false,
-		"list_deployment_runs": false,
-		"get_deployment_run":   false,
-		"list_scheduled_jobs":  false,
-		"list_projects":        false,
-		"get_project":          false,
-		"list_stacks":          false,
-		"get_stack":            false,
-		"control_project":      false,
-		"destroy_project":      false,
-		"control_stack":        false,
-		"remove_stack":         false,
+		"get_health":            false,
+		"list_deployment_runs":  false,
+		"get_deployment_run":    false,
+		"list_scheduled_jobs":   false,
+		"list_projects":         false,
+		"get_project":           false,
+		"list_stacks":           false,
+		"get_stack":             false,
+		"control_project":       false,
+		"destroy_project":       false,
+		"control_stack":         false,
+		"remove_stack":          false,
+		"trigger_scheduled_job": false,
 	}
 	wantInputProperties := map[string][]string{
-		"list_deployment_runs": {"limit", "status", "trigger"},
-		"get_deployment_run":   {"job_id"},
-		"list_scheduled_jobs":  {"stack"},
-		"list_projects":        {"all"},
-		"get_project":          {"project_name"},
-		"get_stack":            {"stack_name"},
-		"control_project":      {"project_name", "action", "timeout"},
-		"destroy_project":      {"project_name", "timeout", "volumes", "images"},
-		"control_stack":        {"stack_name", "action", "replicas", "service", "wait"},
-		"remove_stack":         {"stack_name"},
+		"list_deployment_runs":  {"limit", "status", "trigger"},
+		"get_deployment_run":    {"job_id"},
+		"list_scheduled_jobs":   {"stack"},
+		"list_projects":         {"all"},
+		"get_project":           {"project_name"},
+		"get_stack":             {"stack_name"},
+		"control_project":       {"project_name", "action", "timeout"},
+		"destroy_project":       {"project_name", "timeout", "volumes", "images"},
+		"control_stack":         {"stack_name", "action", "replicas", "service", "wait"},
+		"remove_stack":          {"stack_name"},
+		"trigger_scheduled_job": {"job_name", "stack", "wait"},
 	}
 	wantRequiredProperties := map[string][]string{
-		"control_project": {"project_name", "action"},
-		"destroy_project": {"project_name"},
-		"control_stack":   {"stack_name", "action"},
-		"remove_stack":    {"stack_name"},
+		"control_project":       {"project_name", "action"},
+		"destroy_project":       {"project_name"},
+		"control_stack":         {"stack_name", "action"},
+		"remove_stack":          {"stack_name"},
+		"trigger_scheduled_job": {"job_name"},
 	}
 
 	for _, tool := range result.Tools {
@@ -211,7 +215,7 @@ func TestMCPServerListsTools(t *testing.T) {
 			t.Fatalf("%s must have annotations", tool.Name)
 		}
 
-		if tool.Name != "control_project" && tool.Name != "destroy_project" && tool.Name != "control_stack" && tool.Name != "remove_stack" && !tool.Annotations.ReadOnlyHint {
+		if tool.Name != "control_project" && tool.Name != "destroy_project" && tool.Name != "control_stack" && tool.Name != "remove_stack" && tool.Name != "trigger_scheduled_job" && !tool.Annotations.ReadOnlyHint {
 			t.Fatalf("%s must have readOnlyHint=true: %#v", tool.Name, tool.Annotations)
 		}
 
@@ -268,6 +272,14 @@ func TestMCPServerListsTools(t *testing.T) {
 			assertMCPProjectToolAnnotations(t, tool, true, true)
 		}
 
+		if tool.Name == "trigger_scheduled_job" {
+			assertMCPProjectToolAnnotations(t, tool, true, false)
+
+			if !strings.Contains(tool.Description, "Prefer wait=false and poll get_deployment_run") || !strings.Contains(tool.Description, "10s grace") {
+				t.Fatalf("trigger_scheduled_job description lacks wait guidance: %q", tool.Description)
+			}
+		}
+
 		for _, property := range wantInputProperties[tool.Name] {
 			if !toolSchemaHasProperty(tool.InputSchema, property) {
 				t.Fatalf("%s input schema must contain snake_case property %q: %#v", tool.Name, property, tool.InputSchema)
@@ -286,6 +298,100 @@ func TestMCPServerListsTools(t *testing.T) {
 			t.Fatalf("expected tool %q to be registered", name)
 		}
 	}
+}
+
+func TestMCPTriggerScheduledJobValidation(t *testing.T) {
+	h := &handlerData{appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
+	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
+	session := connectMCPTestClient(t, server)
+
+	assertMCPToolError(t, session, "trigger_scheduled_job", map[string]any{}, "job_name")
+	assertMCPToolError(t, session, "trigger_scheduled_job", map[string]any{"job_name": "  "}, "missing job name")
+}
+
+func TestMCPTriggerScheduledJobDefaultsToWait(t *testing.T) {
+	tracker := newDeploymentRunTracker(nil)
+	triggered := make(chan context.Context, 1)
+	h := &handlerData{
+		appConfig:  &app.Config{},
+		appVersion: app.Version,
+		log:        logger.New(logger.LevelCritical),
+		runTracker: tracker,
+		triggerScheduledJob: func(ctx context.Context, _ command.Cli, _ *slog.Logger, jobName, stack string, _ *secretprovider.SecretProvider) (string, error) {
+			if jobName != "backup" || stack != "prod" {
+				t.Errorf("trigger arguments = %q, %q", jobName, stack)
+			}
+
+			triggered <- ctx
+
+			return "scheduled-run-id", nil
+		},
+	}
+	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
+	result := callMCPTool(t, connectMCPTestClient(t, server), "trigger_scheduled_job", map[string]any{"job_name": " backup ", "stack": " prod "})
+
+	var output triggerScheduledJobOutput
+	decodeMCPStructuredContent(t, result, &output)
+
+	if output.JobID == "" || output.Status != string(deploymentRunStatusSucceeded) {
+		t.Fatalf("unexpected trigger output: %#v", output)
+	}
+
+	select {
+	case <-triggered:
+	case <-time.After(time.Second):
+		t.Fatal("sync trigger was not called")
+	}
+}
+
+func TestMCPTriggerScheduledJobAsyncJobIDResolves(t *testing.T) {
+	tracker := newDeploymentRunTracker(nil)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	h := &handlerData{
+		appConfig:  &app.Config{},
+		appVersion: app.Version,
+		log:        logger.New(logger.LevelCritical),
+		runTracker: tracker,
+		triggerScheduledJob: func(ctx context.Context, _ command.Cli, _ *slog.Logger, _, _ string, _ *secretprovider.SecretProvider) (string, error) {
+			close(started)
+			<-release
+
+			if ctx.Err() != nil {
+				t.Errorf("async trigger context was cancelled: %v", ctx.Err())
+			}
+
+			return "scheduled-run-id", nil
+		},
+	}
+	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
+	session := connectMCPTestClient(t, server)
+	result := callMCPTool(t, session, "trigger_scheduled_job", map[string]any{"job_name": "backup", "wait": false})
+
+	var output triggerScheduledJobOutput
+	decodeMCPStructuredContent(t, result, &output)
+
+	if output.JobID == "" || output.Status != string(deploymentRunStatusAccepted) {
+		t.Fatalf("unexpected async output: %#v", output)
+	}
+
+	getResult := callMCPTool(t, session, "get_deployment_run", map[string]any{"job_id": output.JobID})
+
+	var getOutput getDeploymentRunOutput
+	decodeMCPStructuredContent(t, getResult, &getOutput)
+
+	if getOutput.Run.JobID != output.JobID || getOutput.Run.Trigger != deploymentRunTriggerScheduledJob {
+		t.Fatalf("async job ID did not resolve: %#v", getOutput.Run)
+	}
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("async trigger did not start")
+	}
+
+	close(release)
+	waitForDeploymentRunStatus(t, tracker, output.JobID, deploymentRunStatusSucceeded)
 }
 
 func TestMCPStackToolValidation(t *testing.T) {

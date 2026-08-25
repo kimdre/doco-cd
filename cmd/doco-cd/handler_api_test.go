@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -29,6 +30,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 	restAPI "github.com/kimdre/doco-cd/internal/restapi"
+	"github.com/kimdre/doco-cd/internal/scheduler"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 )
 
@@ -669,6 +671,246 @@ func TestHandlerData_TriggerScheduledJobHandlerValidation(t *testing.T) {
 				t.Fatalf("handler returned wrong status code: got %v want %v", rr.Code, tc.expectedStatus)
 			}
 		})
+	}
+}
+
+func TestTriggerScheduledJobSyncTracksResult(t *testing.T) {
+	tests := []struct {
+		name       string
+		triggerErr error
+		wantStatus deploymentRunStatus
+		wantErr    error
+	}{
+		{name: "success", wantStatus: deploymentRunStatusSucceeded},
+		{name: "not found", triggerErr: scheduler.ErrScheduledJobNotFound, wantStatus: deploymentRunStatusFailed, wantErr: scheduler.ErrScheduledJobNotFound},
+		{name: "disabled conflict", triggerErr: scheduler.ErrScheduledJobDisabled, wantStatus: deploymentRunStatusFailed, wantErr: scheduler.ErrScheduledJobDisabled},
+		{name: "ambiguous conflict", triggerErr: scheduler.ErrScheduledJobAmbiguous, wantStatus: deploymentRunStatusFailed, wantErr: scheduler.ErrScheduledJobAmbiguous},
+		{name: "internal", triggerErr: errors.New("trigger failed"), wantStatus: deploymentRunStatusFailed},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tracker := newDeploymentRunTracker(nil)
+			h := handlerData{
+				log:        logger.New(logger.LevelCritical),
+				runTracker: tracker,
+				triggerScheduledJob: func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error) {
+					return "scheduled-run-id", tc.triggerErr
+				},
+			}
+
+			jobID, err := h.triggerScheduledJobRun(t.Context(), "deployment-job-id", "backup", "prod", true)
+			if jobID != "deployment-job-id" {
+				t.Fatalf("job ID = %q, want deployment-job-id", jobID)
+			}
+
+			if tc.wantErr != nil && !errors.Is(err, tc.wantErr) {
+				t.Fatalf("error = %v, want errors.Is(_, %v)", err, tc.wantErr)
+			}
+
+			if tc.wantErr == nil && tc.triggerErr == nil && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if tc.triggerErr != nil && err == nil {
+				t.Fatal("expected trigger error")
+			}
+
+			run, ok := tracker.Get(jobID)
+			if !ok {
+				t.Fatalf("tracked run %q not found", jobID)
+			}
+
+			if run.Status != tc.wantStatus || run.Repository != "scheduled:backup" || run.Target != "prod" {
+				t.Fatalf("unexpected tracked run: %#v", run)
+			}
+		})
+	}
+}
+
+func TestTriggerScheduledJobWorksWithoutTracker(t *testing.T) {
+	h := handlerData{
+		log: logger.New(logger.LevelCritical),
+		triggerScheduledJob: func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error) {
+			return "scheduled-run-id", nil
+		},
+	}
+
+	jobID, err := h.triggerScheduledJobRun(t.Context(), "", "backup", "", true)
+	if err != nil || jobID == "" {
+		t.Fatalf("job ID = %q, error = %v", jobID, err)
+	}
+}
+
+func TestTriggerScheduledJobHandlerMapsSchedulerErrors(t *testing.T) {
+	appConfig, err := app.GetConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name       string
+		triggerErr error
+		wantStatus int
+		wantBody   string
+	}{
+		{name: "not found", triggerErr: scheduler.ErrScheduledJobNotFound, wantStatus: http.StatusNotFound, wantBody: scheduler.ErrScheduledJobNotFound.Error()},
+		{name: "disabled", triggerErr: scheduler.ErrScheduledJobDisabled, wantStatus: http.StatusConflict, wantBody: scheduler.ErrScheduledJobDisabled.Error()},
+		{name: "ambiguous", triggerErr: scheduler.ErrScheduledJobAmbiguous, wantStatus: http.StatusConflict, wantBody: scheduler.ErrScheduledJobAmbiguous.Error()},
+		{name: "internal", triggerErr: errors.New("trigger failed"), wantStatus: http.StatusInternalServerError, wantBody: "failed to trigger scheduled job run"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := handlerData{
+				appConfig: appConfig,
+				log:       logger.New(logger.LevelCritical),
+				triggerScheduledJob: func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error) {
+					return "scheduled-run-id", tc.triggerErr
+				},
+			}
+
+			endpoint := path.Join(apiPath, "/job/{jobName}/run")
+			requestPath := path.Join(apiPath, "/job/example-job/run")
+			req := httptest.NewRequest(http.MethodPost, requestPath, nil)
+			req.Header.Set(restAPI.KeyHeader, appConfig.ApiSecret)
+			rr := httptest.NewRecorder()
+			mux := http.NewServeMux()
+			mux.HandleFunc(endpoint, h.TriggerScheduledJobHandler)
+			mux.ServeHTTP(rr, req)
+
+			if rr.Code != tc.wantStatus || !strings.Contains(rr.Body.String(), tc.wantBody) {
+				t.Fatalf("status = %d, body = %q; want status %d containing %q", rr.Code, rr.Body.String(), tc.wantStatus, tc.wantBody)
+			}
+		})
+	}
+}
+
+func TestTriggerScheduledJobAsyncTracksAcceptedThenTerminal(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	finished := make(chan struct{})
+	tracker := newDeploymentRunTracker(nil)
+	h := handlerData{
+		log:        logger.New(logger.LevelCritical),
+		runTracker: tracker,
+		triggerScheduledJob: func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error) {
+			close(started)
+			<-release
+			close(finished)
+
+			return "scheduled-run-id", nil
+		},
+	}
+
+	jobID, err := h.triggerScheduledJobRun(t.Context(), "", "backup", "prod", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if jobID == "" {
+		t.Fatal("expected generated job ID")
+	}
+
+	run, ok := tracker.Get(jobID)
+	if !ok || run.Status != deploymentRunStatusAccepted && run.Status != deploymentRunStatusRunning {
+		t.Fatalf("async run must be immediately resolvable as accepted or running: %#v, %t", run, ok)
+	}
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for async trigger to start")
+	}
+
+	close(release)
+
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for async trigger to finish")
+	}
+
+	waitForDeploymentRunStatus(t, tracker, jobID, deploymentRunStatusSucceeded)
+}
+
+func TestTriggerScheduledJobAsyncPanicMarksFailed(t *testing.T) {
+	tracker := newDeploymentRunTracker(nil)
+	h := handlerData{
+		log:        logger.New(logger.LevelCritical),
+		runTracker: tracker,
+		triggerScheduledJob: func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error) {
+			panic("boom")
+		},
+	}
+
+	jobID, err := h.triggerScheduledJobRun(t.Context(), "", "backup", "", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	run := waitForDeploymentRunStatus(t, tracker, jobID, deploymentRunStatusFailed)
+	if run.Message != "scheduled job run panicked" {
+		t.Fatalf("panic failure message = %q", run.Message)
+	}
+}
+
+func TestTriggerScheduledJobHandlerMalformedWaitDoesNotTrigger(t *testing.T) {
+	appConfig, err := app.GetConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	triggered := false
+	h := handlerData{
+		appConfig: appConfig,
+		log:       logger.New(logger.LevelCritical),
+		triggerScheduledJob: func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error) {
+			triggered = true
+
+			return "", nil
+		},
+	}
+
+	endpoint := path.Join(apiPath, "/job/{jobName}/run")
+	requestPath := path.Join(apiPath, "/job/example-job/run") + "?wait=invalid"
+	req := httptest.NewRequest(http.MethodPost, requestPath, nil)
+	req.Header.Set(restAPI.KeyHeader, appConfig.ApiSecret)
+
+	rr := httptest.NewRecorder()
+	mux := http.NewServeMux()
+	mux.HandleFunc(endpoint, h.TriggerScheduledJobHandler)
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+	}
+
+	if triggered {
+		t.Fatal("scheduled job triggered after malformed wait query")
+	}
+}
+
+func waitForDeploymentRunStatus(t *testing.T, tracker *deploymentRunTracker, jobID string, want deploymentRunStatus) deploymentRun {
+	t.Helper()
+
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
+
+	for {
+		run, ok := tracker.Get(jobID)
+		if ok && run.Status == want {
+			return run
+		}
+
+		select {
+		case <-ticker.C:
+		case <-timer.C:
+			t.Fatalf("timed out waiting for run %q status %q; last run: %#v", jobID, want, run)
+		}
 	}
 }
 
