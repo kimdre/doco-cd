@@ -227,7 +227,7 @@ func gitServerImageName() string {
 func buildDaemonImage() (string, error) {
 	tag := daemonImageName()
 
-	cmd := exec.Command("docker", daemonBuildArgs(tag)...)
+	cmd := exec.Command("docker", daemonBuildArgs(tag)...) // #nosec G204 -- arguments are passed directly, never through a shell.
 
 	cmd.Env = append(os.Environ(), "DOCKER_BUILDKIT=1")
 
