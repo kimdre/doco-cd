@@ -117,7 +117,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	// Check for external secret changes and current deployed commit
 	var (
 		imagesChanged        bool     // Flag to indicate if images have changed
-		imageChangedServices []string // Services whose deployed image digest drifted from the registry
+		imageChangedServices []string // Services whose image moved: digest drift under force_image_pull, otherwise a changed image reference
 	)
 
 	// Compare external secrets if a secret provider is configured
@@ -365,6 +365,20 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			)
 
 			return ErrSkipDeployment
+		}
+
+		// The digest comparison above only runs under force_image_pull, but a tag bump in
+		// the deploy config moves images too and its services are knowable without any
+		// registry round trip. Deciding to deploy is already done at this point, so this
+		// only enriches the notification and must never change the outcome: an error is
+		// logged and dropped rather than failing a deployment that is going ahead.
+		if len(imageChangedServices) == 0 {
+			refChangedServices, err := docker.DeployedServicesWithChangedImageRefs(ctx, s.Docker.Cmd, s.Docker.SwarmMode, s.Docker.Project, stageLog)
+			if err != nil {
+				stageLog.Warn("failed to compare deployed image references", slog.String("err", err.Error()))
+			} else {
+				imageChangedServices = refChangedServices
+			}
 		}
 
 		s.DeployState.changedServices = changedServices
