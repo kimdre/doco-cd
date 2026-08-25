@@ -33,3 +33,18 @@ func TestGitServerImageUsesReadablePrefix(t *testing.T) {
 		t.Fatal("gitserver image tag must be non-empty")
 	}
 }
+
+func TestDaemonImageUsesReadablePrefix(t *testing.T) {
+	image, tag, found := strings.Cut(daemonImageName(), ":")
+	if !found {
+		t.Fatalf("daemon image %q has no tag", image)
+	}
+
+	if image != "doco-cd-e2e" {
+		t.Fatalf("daemon image repository = %q", image)
+	}
+
+	if tag == "" {
+		t.Fatal("daemon image tag must be non-empty")
+	}
+}
