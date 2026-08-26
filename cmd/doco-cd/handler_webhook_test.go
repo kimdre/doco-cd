@@ -114,8 +114,9 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	// a local, ephemeral fixture repository so this test doesn't depend on
 	// the live kimdre/doco-cd GitHub repository.
 	payloadCloneUrl := "https://github.com/kimdre/doco-cd.git"
-	cloneUrl := payloadCloneUrl
 	indexPath := "index.html"
+
+	var cloneUrl string
 
 	if swarm.GetModeEnabled() {
 		payloadFile = githubPayloadFileSwarmMode
