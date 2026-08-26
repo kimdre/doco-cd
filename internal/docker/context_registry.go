@@ -52,6 +52,7 @@ type ContextRegistry struct {
 	resolveSwarm func(context.Context, client.APIClient) (bool, error)
 }
 
+// NewContextRegistry creates a new ContextRegistry with the given baseCli and quiet flag.
 func NewContextRegistry(baseCli command.Cli, quiet bool) *ContextRegistry {
 	registry := &ContextRegistry{
 		baseCli:      baseCli,
@@ -71,6 +72,8 @@ func NewContextRegistry(baseCli command.Cli, quiet bool) *ContextRegistry {
 	return registry
 }
 
+// NormalizeContextName normalizes the given context name by trimming whitespace
+// and converting the default context name to an empty string.
 func NormalizeContextName(name string) string {
 	name = strings.TrimSpace(name)
 	if strings.EqualFold(name, DefaultContextName) {
@@ -80,6 +83,8 @@ func NormalizeContextName(name string) string {
 	return name
 }
 
+// DisplayContextName returns the display name for the given context name.
+// If the name is empty, it returns the default context name.
 func DisplayContextName(name string) string {
 	name = NormalizeContextName(name)
 	if name == "" {
@@ -89,6 +94,7 @@ func DisplayContextName(name string) string {
 	return name
 }
 
+// Refresh refreshes the list of available docker contexts in the registry.
 func (r *ContextRegistry) Refresh() error {
 	if r == nil {
 		return errors.New("docker context registry is required")
@@ -131,6 +137,7 @@ func (r *ContextRegistry) Refresh() error {
 	return nil
 }
 
+// Names returns the names of all available docker contexts in the registry.
 func (r *ContextRegistry) Names() ([]string, error) {
 	if err := r.Refresh(); err != nil {
 		return nil, err
@@ -151,6 +158,7 @@ func (r *ContextRegistry) Names() ([]string, error) {
 	return names, nil
 }
 
+// Get returns a ContextClient for the given context name.
 func (r *ContextRegistry) Get(ctx context.Context, name string) (ContextClient, error) {
 	name = NormalizeContextName(name)
 	if name != "" {
@@ -172,6 +180,7 @@ func (r *ContextRegistry) Get(ctx context.Context, name string) (ContextClient, 
 	return ContextClient{Name: name, Cli: cli, SwarmMode: swarmMode}, nil
 }
 
+// List returns a list of ContextClientResult for all available docker contexts in the registry.
 func (r *ContextRegistry) List(ctx context.Context) ([]ContextClientResult, error) {
 	names, err := r.Names()
 	if err != nil {
@@ -204,6 +213,7 @@ func (r *ContextRegistry) List(ctx context.Context) ([]ContextClientResult, erro
 	return results, nil
 }
 
+// clientForKnownContext returns a command.Cli for the given context name if it is known.
 func (r *ContextRegistry) clientForKnownContext(name string) (command.Cli, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -238,6 +248,7 @@ func (r *ContextRegistry) clientForKnownContext(name string) (command.Cli, error
 	return cli, nil
 }
 
+// Close closes all docker clients in the registry and marks the registry as closed.
 func (r *ContextRegistry) Close() error {
 	if r == nil {
 		return nil
