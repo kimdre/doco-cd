@@ -1241,6 +1241,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#operational-context-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Operational context support
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#remote-host-limitations" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2609,6 +2620,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#operational-context-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Operational context support
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#remote-host-limitations" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2912,6 +2934,10 @@ Leave <code>DOCKER_HOST</code> unset and rely on the mounted socket and Docker c
 </span></code></pre></div>
 <p>Each deployment uses its own Docker context for deploy, destroy, and cleanup operations. 
 Stack/project names must be unique within a Docker context, but the same name can be used on different contexts.</p>
+<h2 id="operational-context-support">Operational context support<a class="headerlink" href="#operational-context-support" title="Permanent link">&para;</a></h2>
+<p>The scheduler and certificate-rotation watcher inspect DocoCD-managed resources on every context available in the mounted Docker CLI context store. Failures on one context do not stop processing on healthy contexts.</p>
+<p>Project, stack, and scheduled-job <a data-preview="" href="../../Endpoints/REST-API/#docker-context-selection">REST API</a> endpoints accept <code>?context=&lt;name&gt;</code>. Omitting the parameter uses <code>default</code>. 
+Deployment and scheduled-job metrics include a <code>context</code> label, and deployment-run metadata reports each resolved context/stack target.</p>
 <h2 id="remote-host-limitations">Remote host limitations<a class="headerlink" href="#remote-host-limitations" title="Permanent link">&para;</a></h2>
 <p>When deploying to a remote Docker context, the <strong>remote daemon</strong> executes the compose stack. This has important implications for bind mounts, configs, and secrets.</p>
 <h3 id="bind-mounts">Bind mounts<a class="headerlink" href="#bind-mounts" title="Permanent link">&para;</a></h3>
