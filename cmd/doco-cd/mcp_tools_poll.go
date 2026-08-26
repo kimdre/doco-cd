@@ -11,6 +11,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/common/id"
 	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -45,8 +46,16 @@ func (e *pollRunsFailedError) Error() string {
 }
 
 type triggerPollInput struct {
-	Configs []poll.Config `json:"configs" jsonschema:"poll configurations to run"`
-	Wait    *bool         `json:"wait,omitempty" jsonschema:"wait for completion; defaults to true"`
+	Configs []triggerPollConfig `json:"configs" jsonschema:"poll configurations to run"`
+	Wait    *bool               `json:"wait,omitempty" jsonschema:"wait for completion; defaults to true"`
+}
+
+type triggerPollConfig struct {
+	Source       config.SourceType `json:"source" default:"git"`
+	SourceURL    string            `json:"url"`
+	Reference    string            `json:"reference"`
+	CustomTarget string            `json:"target" default:""`
+	Deployments  []*deploy.Config  `json:"deployments" default:"[]"`
 }
 
 type triggerPollOutput struct {
@@ -75,7 +84,18 @@ func (h *handlerData) triggerPollTool(ctx context.Context, _ *mcp.CallToolReques
 		wait = *input.Wait
 	}
 
-	jobID, err := h.runPollConfigs(ctx, input.Configs, wait, h.log.Logger)
+	configs := make([]poll.Config, len(input.Configs))
+	for i, cfg := range input.Configs {
+		configs[i] = poll.Config{
+			Source:       cfg.Source,
+			SourceUrl:    cfg.SourceURL,
+			Reference:    cfg.Reference,
+			CustomTarget: cfg.CustomTarget,
+			Deployments:  cfg.Deployments,
+		}
+	}
+
+	jobID, err := h.runPollConfigs(ctx, configs, wait, h.log.Logger)
 
 	status := deploymentRunStatusAccepted
 	if wait {
@@ -193,9 +213,15 @@ func (h *handlerData) runPollConfigs(ctx context.Context, configs []poll.Config,
 		return jobID, run(ctx)
 	}
 
-	h.runBackground(ctx, func(backgroundCtx context.Context) {
+	if err := h.runBackground(ctx, func(backgroundCtx context.Context) {
 		_ = run(backgroundCtx)
-	})
+	}); err != nil {
+		if h.runTracker != nil {
+			h.runTracker.MarkFailed(jobID, err.Error())
+		}
+
+		return jobID, err
+	}
 
 	return jobID, nil
 }

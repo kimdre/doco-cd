@@ -253,7 +253,12 @@ func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.
 	}
 
 	if !wait {
-		_, _ = h.triggerScheduledJobRun(r.Context(), jobID, jobName, stackName, false)
+		_, err := h.triggerScheduledJobRun(r.Context(), jobID, jobName, stackName, false)
+		if err != nil {
+			JSONError(w, err.Error(), "", jobID, http.StatusServiceUnavailable)
+
+			return
+		}
 
 		JSONResponse(w, "scheduled job run accepted", jobID, http.StatusAccepted)
 
@@ -344,23 +349,37 @@ func (h *handlerData) triggerScheduledJobRun(ctx context.Context, jobID, jobName
 		return jobID, run(ctx)
 	}
 
-	h.runBackground(ctx, func(ctx context.Context) {
+	if err := h.runBackground(ctx, func(ctx context.Context) {
 		_ = run(ctx)
-	})
+	}); err != nil {
+		if h.runTracker != nil {
+			h.runTracker.MarkFailed(jobID, err.Error())
+		}
+
+		return jobID, err
+	}
 
 	return jobID, nil
 }
 
-func (h *handlerData) runBackground(requestCtx context.Context, run func(context.Context)) {
+func (h *handlerData) runBackground(requestCtx context.Context, run func(context.Context)) error {
+	if h.backgroundCtx != nil && h.backgroundWork != nil {
+		return h.backgroundWork.Go(func() {
+			run(h.backgroundCtx)
+		})
+	}
+
 	if h.backgroundCtx == nil || h.backgroundWG == nil {
 		run(context.WithoutCancel(requestCtx))
 
-		return
+		return nil
 	}
 
 	graceful.SafeGo(h.backgroundWG, h.log.Logger, func() {
 		run(h.backgroundCtx)
 	})
+
+	return nil
 }
 
 // HealthCheckHandler handles health check requests.
@@ -1339,9 +1358,15 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 
 	jobID, err := h.runPollConfigs(r.Context(), pollConfigs, wait, jobLog)
 	if err != nil {
+		if errors.Is(err, errBackgroundWorkClosed) {
+			JSONError(w, err.Error(), "", jobID, http.StatusServiceUnavailable)
+
+			return
+		}
+
 		var runsFailed *pollRunsFailedError
 		if wait && errors.As(err, &runsFailed) {
-			JSONResponse(w, "poll jobs complete", jobID, http.StatusOK)
+			JSONError(w, err.Error(), "", jobID, http.StatusInternalServerError)
 
 			return
 		}

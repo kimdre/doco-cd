@@ -306,6 +306,8 @@ func run() error {
 
 	var wg sync.WaitGroup
 
+	backgroundWork := newBackgroundWork()
+
 	graceful.SafeGo(&wg, log.Logger,
 		func() {
 			notificationForNewAppVersion(log.Logger)
@@ -335,6 +337,7 @@ func run() error {
 	}
 
 	defer wg.Wait()
+	defer backgroundWork.CloseAndWait()
 	// Cancel lifecycle work before waiting, then close shared resources after all jobs stop.
 	defer rootCancel()
 
@@ -343,6 +346,7 @@ func run() error {
 		appVersion:     app.Version,
 		backgroundCtx:  ctx,
 		backgroundWG:   &wg,
+		backgroundWork: backgroundWork,
 		dataMountPoint: dataMountPoint,
 		dockerCli:      dockerCli,
 		log:            log,

@@ -229,6 +229,7 @@ type handlerData struct {
 	appVersion          string      // Application version
 	backgroundCtx       context.Context
 	backgroundWG        *sync.WaitGroup
+	backgroundWork      *backgroundWork
 	dataMountPoint      container.MountPoint // Mount point for the data directory
 	dockerCli           command.Cli          // Docker CLI client
 	log                 *logger.Logger       // Logger for logging messages

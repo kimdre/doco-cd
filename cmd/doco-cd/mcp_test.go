@@ -303,10 +303,28 @@ func TestMCPServerListsTools(t *testing.T) {
 
 			items = resolveToolSchemaRef(t, tool.InputSchema, items)
 
-			for _, property := range []string{"source", "url", "reference", "interval", "target", "run_once", "deployments"} {
+			for _, property := range []string{"source", "url", "reference", "target", "deployments"} {
 				if !toolSchemaHasProperty(items, property) {
 					t.Fatalf("trigger_poll config schema lacks %q: %#v", property, items)
 				}
+			}
+
+			for _, property := range []string{"interval", "run_once"} {
+				if toolSchemaHasProperty(items, property) {
+					t.Fatalf("trigger_poll config schema exposes ignored property %q: %#v", property, items)
+				}
+			}
+
+			deploymentsSchema := toolSchemaProperty(t, items, "deployments")
+
+			deploymentItems, ok := deploymentsSchema["items"].(map[string]any)
+			if !ok {
+				t.Fatalf("trigger_poll deployments items schema = %#v", deploymentsSchema["items"])
+			}
+
+			deploymentItems = resolveToolSchemaRef(t, tool.InputSchema, deploymentItems)
+			if toolSchemaHasProperty(deploymentItems, "Internal") || toolSchemaHasProperty(deploymentItems, "internal") {
+				t.Fatalf("trigger_poll deployment schema exposes internal state: %#v", deploymentItems)
 			}
 		}
 
@@ -362,7 +380,7 @@ func TestMCPTriggerPollValidationAndDefaultWait(t *testing.T) {
 	}
 
 	result := callMCPTool(t, session, "trigger_poll", map[string]any{
-		"configs": []any{map[string]any{"url": validPollSourceURL, "interval": "1h"}},
+		"configs": []any{map[string]any{"url": validPollSourceURL}},
 	})
 
 	var output triggerPollOutput

@@ -255,6 +255,37 @@ func TestRunPollConfigsAsyncUsesApplicationLifecycle(t *testing.T) {
 	waitForDeploymentRunStatus(t, tracker, jobID, deploymentRunStatusFailed)
 }
 
+func TestRunPollConfigsAsyncRejectsWorkDuringShutdown(t *testing.T) {
+	tracker := newDeploymentRunTracker(nil)
+	background := newBackgroundWork()
+	background.CloseAndWait()
+
+	h := &handlerData{
+		appConfig:      &app.Config{},
+		backgroundCtx:  t.Context(),
+		backgroundWork: background,
+		log:            logger.New(logger.LevelCritical),
+		runTracker:     tracker,
+		runPoll: func(context.Context, poll.Config, *app.Config, container.MountPoint,
+			command.Cli, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider,
+		) error {
+			t.Fatal("poll run started during shutdown")
+
+			return nil
+		},
+	}
+
+	jobID, err := h.runPollConfigs(t.Context(), []poll.Config{{SourceUrl: validPollSourceURL}}, false, nil)
+	if !errors.Is(err, errBackgroundWorkClosed) {
+		t.Fatalf("error = %v, want %v", err, errBackgroundWorkClosed)
+	}
+
+	run, ok := tracker.Get(jobID)
+	if !ok || run.Status != deploymentRunStatusFailed || run.Message != errBackgroundWorkClosed.Error() {
+		t.Fatalf("tracked run = %#v, found = %t", run, ok)
+	}
+}
+
 func TestRunPollConfigsWaitUsesRequestContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

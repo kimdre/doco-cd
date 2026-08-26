@@ -709,6 +709,71 @@ func TestHandlerData_TriggerPollHandlerAcceptsTrailingWhitespace(t *testing.T) {
 	}
 }
 
+func TestHandlerData_TriggerPollHandlerReportsPollFailures(t *testing.T) {
+	tracker := newDeploymentRunTracker(nil)
+	h := &handlerData{
+		appConfig:  &app.Config{ApiSecret: "poll-secret", MaxPayloadSize: 1024}, // #nosec G101 -- test fixture.
+		log:        logger.New(logger.LevelCritical),
+		runTracker: tracker,
+		runPoll: func(_ context.Context, cfg poll.Config, _ *app.Config, _ container.MountPoint,
+			_ command.Cli, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+		) error {
+			if strings.Contains(cfg.SourceUrl, "failed") {
+				return errors.New("poll failed")
+			}
+
+			return nil
+		},
+	}
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, apiPath+"/poll/run", strings.NewReader(`[
+		{"url":"https://example.com/succeeded.git"},
+		{"url":"https://example.com/failed.git"}
+	]`))
+	request.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+
+	h.TriggerPollHandler(response, request)
+
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusInternalServerError, response.Body.String())
+	}
+
+	var result jsonError
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+
+	if result.Error != "1/2 poll jobs failed" || result.JobID == "" {
+		t.Fatalf("response = %#v", result)
+	}
+
+	run, ok := tracker.Get(result.JobID)
+	if !ok || run.Status != deploymentRunStatusFailed || run.Message != "1/2 poll jobs failed" {
+		t.Fatalf("tracked run = %#v, found = %t", run, ok)
+	}
+}
+
+func TestHandlerData_TriggerPollHandlerRejectsAsyncWorkDuringShutdown(t *testing.T) {
+	background := newBackgroundWork()
+	background.CloseAndWait()
+	h := &handlerData{
+		appConfig:      &app.Config{ApiSecret: "poll-secret", MaxPayloadSize: 1024}, // #nosec G101 -- test fixture.
+		backgroundCtx:  t.Context(),
+		backgroundWork: background,
+		log:            logger.New(logger.LevelCritical),
+		runTracker:     newDeploymentRunTracker(nil),
+	}
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, apiPath+"/poll/run?wait=false", strings.NewReader(`[{"url":"`+validPollSourceURL+`"}]`))
+	request.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+
+	h.TriggerPollHandler(response, request)
+
+	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), errBackgroundWorkClosed.Error()) {
+		t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
+	}
+}
+
 type trackingReadCloser struct {
 	io.Reader
 	closed bool
@@ -1032,6 +1097,28 @@ func TestTriggerScheduledJobHandlerMapsSchedulerErrors(t *testing.T) {
 	}
 }
 
+func TestTriggerScheduledJobHandlerRejectsAsyncWorkDuringShutdown(t *testing.T) {
+	background := newBackgroundWork()
+	background.CloseAndWait()
+	h := handlerData{
+		appConfig:      &app.Config{ApiSecret: "job-secret"}, // #nosec G101 -- test fixture.
+		backgroundCtx:  t.Context(),
+		backgroundWork: background,
+		log:            logger.New(logger.LevelCritical),
+		runTracker:     newDeploymentRunTracker(nil),
+	}
+	req := httptest.NewRequest(http.MethodPost, apiPath+"/job/example-job/run?wait=false", nil)
+	req.SetPathValue("jobName", "example-job")
+	req.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+	rr := httptest.NewRecorder()
+
+	h.TriggerScheduledJobHandler(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable || !strings.Contains(rr.Body.String(), errBackgroundWorkClosed.Error()) {
+		t.Fatalf("status = %d, body = %q", rr.Code, rr.Body.String())
+	}
+}
+
 func TestTriggerScheduledJobAsyncTracksAcceptedThenTerminal(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
@@ -1082,6 +1169,33 @@ func TestTriggerScheduledJobAsyncTracksAcceptedThenTerminal(t *testing.T) {
 
 	waitForDeploymentRunStatus(t, tracker, jobID, deploymentRunStatusSucceeded)
 	backgroundWG.Wait()
+}
+
+func TestTriggerScheduledJobAsyncRejectsWorkDuringShutdown(t *testing.T) {
+	tracker := newDeploymentRunTracker(nil)
+	background := newBackgroundWork()
+	background.CloseAndWait()
+	h := handlerData{
+		backgroundCtx:  t.Context(),
+		backgroundWork: background,
+		log:            logger.New(logger.LevelCritical),
+		runTracker:     tracker,
+		triggerScheduledJob: func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error) {
+			t.Fatal("scheduled job started during shutdown")
+
+			return "", nil
+		},
+	}
+
+	jobID, err := h.triggerScheduledJobRun(t.Context(), "", "backup", "prod", false)
+	if !errors.Is(err, errBackgroundWorkClosed) {
+		t.Fatalf("error = %v, want %v", err, errBackgroundWorkClosed)
+	}
+
+	run, ok := tracker.Get(jobID)
+	if !ok || run.Status != deploymentRunStatusFailed || run.Message != errBackgroundWorkClosed.Error() {
+		t.Fatalf("tracked run = %#v, found = %t", run, ok)
+	}
 }
 
 func TestTriggerScheduledJobAsyncPanicMarksFailed(t *testing.T) {
