@@ -435,8 +435,8 @@ func TestRotationReasonsForRevokedOnlyProject(t *testing.T) {
 // a live Docker daemon. It embeds the (nil) interface so it satisfies client.APIClient, and only
 // overrides the two calls certrotation actually needs: ContainerList for standalone Compose
 // discovery and ServiceList for Swarm discovery. Any other method call panics via the nil
-// embedded interface, which is intentional: it surfaces a test bug immediately rather than
-// silently doing nothing.
+// embedded interface, which is intentional: it surfaces an incorrect test setup immediately
+// rather than silently doing nothing.
 type fakeAPIClient struct {
 	client.APIClient
 
