@@ -120,6 +120,7 @@ func (h *Harness) Start() {
 	h.t.Helper()
 
 	h.logf("preparing scenario %q", h.scenario)
+
 	fixtureDir := filepath.Join(repoDir, "test", "e2e", "scenarios", h.scenario, "fixture")
 	if _, err := os.Stat(fixtureDir); err != nil {
 		h.t.Fatalf("unknown scenario %q: %v", h.scenario, err)
@@ -156,12 +157,14 @@ func (h *Harness) startGitServer() {
 	h.t.Helper()
 
 	h.logf("building/reusing gitserver image")
+
 	image, err := buildGitServerImageOnce()
 	if err != nil {
 		h.t.Fatalf("build gitserver image: %v", err)
 	}
 
 	h.logf("waiting for gitserver container startup")
+
 	gitSrv, err := testcontainers.GenericContainer(h.ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:          image,
@@ -187,12 +190,14 @@ func (h *Harness) startDaemon(pollConfigPath string) {
 	h.t.Helper()
 
 	h.logf("building/reusing daemon image")
+
 	image, err := buildDaemonImageOnce()
 	if err != nil {
 		h.t.Fatalf("build doco-cd image: %v", err)
 	}
 
 	h.logf("waiting for daemon healthcheck")
+
 	daemon, err := testcontainers.GenericContainer(h.ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:    image,
@@ -236,6 +241,7 @@ func (h *Harness) startRemoteDocker() {
 	h.t.Helper()
 
 	h.logf("waiting for remote Docker API")
+
 	remote, err := testcontainers.GenericContainer(h.ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:          docker.TestRemoteDockerImage,
