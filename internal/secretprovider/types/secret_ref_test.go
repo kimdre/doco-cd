@@ -91,3 +91,36 @@ func TestEncodeExternalSecretRefs(t *testing.T) {
 		t.Fatalf("expected JSON encoded structured ref, got %q", got["JSON"])
 	}
 }
+
+func TestInterpolateExternalSecretRefs(t *testing.T) {
+	t.Setenv("PROJECT_STAGE", "lab")
+
+	in := map[string]ExternalSecretRef{
+		"DEFAULT": {LegacyRef: "kv:db-${PROJECT_STAGE:-prod}"},
+		"SET":     {LegacyRef: "kv:db-${PROJECT_STAGE}"},
+	}
+
+	got, err := InterpolateExternalSecretRefs(in)
+	if err != nil {
+		t.Fatalf("unexpected interpolation error: %v", err)
+	}
+	if got["DEFAULT"].LegacyRef != "kv:db-lab" || got["SET"].LegacyRef != "kv:db-lab" {
+		t.Fatalf("unexpected interpolated refs: %#v", got)
+	}
+	if in["DEFAULT"].LegacyRef != "kv:db-${PROJECT_STAGE:-prod}" {
+		t.Fatal("input refs were mutated")
+	}
+}
+
+func TestInterpolateExternalSecretRefs_DefaultValue(t *testing.T) {
+	t.Setenv("PROJECT_STAGE", "")
+
+	got, err := InterpolateExternalSecretRefs(
+		map[string]ExternalSecretRef{"DB": {LegacyRef: "kv:db-${PROJECT_STAGE:-prod}"}})
+	if err != nil {
+		t.Fatalf("unexpected interpolation error: %v", err)
+	}
+	if got["DB"].LegacyRef != "kv:db-prod" {
+		t.Fatalf("got %q, want %q", got["DB"].LegacyRef, "kv:db-prod")
+	}
+}
