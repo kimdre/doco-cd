@@ -2910,7 +2910,8 @@ Leave <code>DOCKER_HOST</code> unset and rely on the mounted socket and Docker c
 </span></span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="nt">reference</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">main</span>
 </span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="nt">working_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">deploy</span>
 </span></code></pre></div>
-<p>Each deployment uses its own Docker context for deploy, destroy, and cleanup operations.</p>
+<p>Each deployment uses its own Docker context for deploy, destroy, and cleanup operations. 
+Stack/project names must be unique within a Docker context, but the same name can be used on different contexts.</p>
 <h2 id="remote-host-limitations">Remote host limitations<a class="headerlink" href="#remote-host-limitations" title="Permanent link">&para;</a></h2>
 <p>When deploying to a remote Docker context, the <strong>remote daemon</strong> executes the compose stack. This has important implications for bind mounts, configs, and secrets.</p>
 <h3 id="bind-mounts">Bind mounts<a class="headerlink" href="#bind-mounts" title="Permanent link">&para;</a></h3>
