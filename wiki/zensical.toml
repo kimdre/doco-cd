@@ -67,6 +67,7 @@ nav = [
     { "Core Concepts" = "Core-Concepts.md" },
     { Endpoints = [
       { "Healthcheck" = "Endpoints/Healthcheck.md" },
+      { "MCP Server" = "Endpoints/MCP-Server.md" },
       { "Prometheus Metrics / Monitoring" = "Endpoints/Metrics.md" },
       { "REST API" = "Endpoints/REST-API.md" },
       { "Webhook Listener" = "Endpoints/Webhook-Listener.md" },
