@@ -70,7 +70,7 @@ Set `DOCO_CD_API_SECRET` in the environment that starts OpenCode. Other Streamab
 | `get_stack` | Get the services of one Docker Swarm stack. |
 | `control_stack` | Scale, restart, or run matching services in a Docker Swarm stack. |
 | `remove_stack` | Remove a Docker Swarm stack. |
-| `trigger_scheduled_job` | Trigger one configured scheduled job immediately. |
+| `trigger_scheduled_job` | Initiate one configured scheduled job trigger immediately. |
 | `trigger_poll` | Trigger one or more poll configurations immediately. |
 
 Swarm tools are always advertised. Calls fail if Docker Swarm features are unavailable or disabled.
@@ -85,6 +85,8 @@ Swarm tools are always advertised. Calls fail if Docker Swarm features are unava
 - Use `wait: false` for long-running operations. The tool returns an accepted `job_id` immediately.
 - Pass the `job_id` to `get_deployment_run` until the status is terminal: `succeeded`, `failed`, or `skipped`.
 - With `wait: true`, the request remains open and is cancelled if the server shuts down after its graceful shutdown period.
+
+For `trigger_scheduled_job`, `succeeded` means that the trigger operation completed without error. Compose restarts and Swarm reruns can return after Docker accepts the start or update, so this status does not guarantee that the scheduled workload finished successfully or that its process exited with code 0.
 
 Background jobs use the application lifecycle rather than the MCP request lifecycle. Cancelling a completed `wait: false` request does not cancel its accepted job, but application shutdown does.
 
