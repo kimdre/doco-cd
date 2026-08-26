@@ -47,7 +47,7 @@ type listProjectsInput struct {
 }
 
 type listProjectsOutput struct {
-	Projects []api.Stack `json:"projects"`
+	Projects []mcpProjectSummary `json:"projects"`
 }
 
 type getProjectInput struct {
@@ -55,13 +55,13 @@ type getProjectInput struct {
 }
 
 type getProjectOutput struct {
-	Containers []api.ContainerSummary `json:"containers"`
+	Containers []mcpContainerSummary `json:"containers"`
 }
 
 type listStacksInput struct{}
 
 type listStacksOutput struct {
-	Stacks map[string][]dockerswarmtypes.Service `json:"stacks"`
+	Stacks map[string][]mcpServiceSummary `json:"stacks"`
 }
 
 type getStackInput struct {
@@ -69,7 +69,42 @@ type getStackInput struct {
 }
 
 type getStackOutput struct {
-	Services []dockerswarmtypes.Service `json:"services"`
+	Services []mcpServiceSummary `json:"services"`
+}
+
+type mcpProjectSummary struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
+}
+
+type mcpContainerSummary struct {
+	ID         string           `json:"id"`
+	Name       string           `json:"name"`
+	Service    string           `json:"service,omitempty"`
+	Image      string           `json:"image"`
+	State      string           `json:"state"`
+	Status     string           `json:"status"`
+	Health     string           `json:"health,omitempty"`
+	Publishers []mcpPortSummary `json:"published_ports,omitempty"`
+}
+
+type mcpServiceSummary struct {
+	ID           string           `json:"id"`
+	Name         string           `json:"name"`
+	Image        string           `json:"image,omitempty"`
+	Mode         string           `json:"mode"`
+	DesiredTasks uint64           `json:"desired_tasks"`
+	RunningTasks uint64           `json:"running_tasks"`
+	UpdateState  string           `json:"update_state,omitempty"`
+	Publishers   []mcpPortSummary `json:"published_ports,omitempty"`
+}
+
+type mcpPortSummary struct {
+	TargetPort    int64  `json:"target_port"`
+	PublishedPort int64  `json:"published_port"`
+	Protocol      string `json:"protocol,omitempty"`
+	Mode          string `json:"mode,omitempty"`
 }
 
 func (h *handlerData) addReadOnlyMCPTools(server *mcp.Server) {
@@ -193,7 +228,7 @@ func (h *handlerData) listProjects(ctx context.Context, _ *mcp.CallToolRequest, 
 		return nil, listProjectsOutput{}, errors.New("no projects found")
 	}
 
-	return nil, listProjectsOutput{Projects: projects}, nil
+	return nil, listProjectsOutput{Projects: summarizeProjects(projects)}, nil
 }
 
 func (h *handlerData) getProject(ctx context.Context, _ *mcp.CallToolRequest, input getProjectInput) (*mcp.CallToolResult, getProjectOutput, error) {
@@ -215,7 +250,7 @@ func (h *handlerData) getProject(ctx context.Context, _ *mcp.CallToolRequest, in
 		return nil, getProjectOutput{}, fmt.Errorf("project not found: %s", projectName)
 	}
 
-	return nil, getProjectOutput{Containers: containers}, nil
+	return nil, getProjectOutput{Containers: summarizeContainers(containers)}, nil
 }
 
 func (h *handlerData) listStacks(ctx context.Context, _ *mcp.CallToolRequest, _ listStacksInput) (*mcp.CallToolResult, listStacksOutput, error) {
@@ -232,7 +267,7 @@ func (h *handlerData) listStacks(ctx context.Context, _ *mcp.CallToolRequest, _ 
 		return nil, listStacksOutput{}, errors.New("no stacks found")
 	}
 
-	return nil, listStacksOutput{Stacks: stacks}, nil
+	return nil, listStacksOutput{Stacks: summarizeStacks(stacks)}, nil
 }
 
 func (h *handlerData) getStack(ctx context.Context, _ *mcp.CallToolRequest, input getStackInput) (*mcp.CallToolResult, getStackOutput, error) {
@@ -254,7 +289,109 @@ func (h *handlerData) getStack(ctx context.Context, _ *mcp.CallToolRequest, inpu
 		return nil, getStackOutput{}, fmt.Errorf("stack not found: %s", stackName)
 	}
 
-	return nil, getStackOutput{Services: services}, nil
+	return nil, getStackOutput{Services: summarizeServices(services)}, nil
+}
+
+func summarizeProjects(projects []api.Stack) []mcpProjectSummary {
+	summaries := make([]mcpProjectSummary, len(projects))
+	for i, project := range projects {
+		summaries[i] = mcpProjectSummary{
+			ID:     project.ID,
+			Name:   project.Name,
+			Status: project.Status,
+		}
+	}
+
+	return summaries
+}
+
+func summarizeContainers(containers []api.ContainerSummary) []mcpContainerSummary {
+	summaries := make([]mcpContainerSummary, len(containers))
+	for i, container := range containers {
+		publishers := make([]mcpPortSummary, len(container.Publishers))
+		for j, publisher := range container.Publishers {
+			publishers[j] = mcpPortSummary{
+				TargetPort:    int64(publisher.TargetPort),
+				PublishedPort: int64(publisher.PublishedPort),
+				Protocol:      publisher.Protocol,
+			}
+		}
+
+		summaries[i] = mcpContainerSummary{
+			ID:         container.ID,
+			Name:       container.Name,
+			Service:    container.Service,
+			Image:      container.Image,
+			State:      string(container.State),
+			Status:     container.Status,
+			Health:     string(container.Health),
+			Publishers: publishers,
+		}
+	}
+
+	return summaries
+}
+
+func summarizeStacks(stacks map[string][]dockerswarmtypes.Service) map[string][]mcpServiceSummary {
+	summaries := make(map[string][]mcpServiceSummary, len(stacks))
+	for stackName, services := range stacks {
+		summaries[stackName] = summarizeServices(services)
+	}
+
+	return summaries
+}
+
+func summarizeServices(services []dockerswarmtypes.Service) []mcpServiceSummary {
+	summaries := make([]mcpServiceSummary, len(services))
+	for i, service := range services {
+		summary := mcpServiceSummary{
+			ID:   service.ID,
+			Name: service.Spec.Name,
+			Mode: serviceMode(service.Spec.Mode),
+		}
+
+		if service.Spec.TaskTemplate.ContainerSpec != nil {
+			summary.Image = service.Spec.TaskTemplate.ContainerSpec.Image
+		}
+
+		if service.ServiceStatus != nil {
+			summary.DesiredTasks = service.ServiceStatus.DesiredTasks
+			summary.RunningTasks = service.ServiceStatus.RunningTasks
+		}
+
+		if service.UpdateStatus != nil {
+			summary.UpdateState = string(service.UpdateStatus.State)
+		}
+
+		summary.Publishers = make([]mcpPortSummary, len(service.Endpoint.Ports))
+		for j, port := range service.Endpoint.Ports {
+			summary.Publishers[j] = mcpPortSummary{
+				TargetPort:    int64(port.TargetPort),
+				PublishedPort: int64(port.PublishedPort),
+				Protocol:      string(port.Protocol),
+				Mode:          string(port.PublishMode),
+			}
+		}
+
+		summaries[i] = summary
+	}
+
+	return summaries
+}
+
+func serviceMode(mode dockerswarmtypes.ServiceMode) string {
+	switch {
+	case mode.Replicated != nil:
+		return "replicated"
+	case mode.Global != nil:
+		return "global"
+	case mode.ReplicatedJob != nil:
+		return "replicated_job"
+	case mode.GlobalJob != nil:
+		return "global_job"
+	default:
+		return "unknown"
+	}
 }
 
 func (h *handlerData) requireSwarmMode(ctx context.Context) error {

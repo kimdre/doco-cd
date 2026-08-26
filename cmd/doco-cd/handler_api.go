@@ -260,7 +260,7 @@ func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.
 			return
 		}
 
-		JSONResponse(w, "scheduled job run accepted", jobID, http.StatusAccepted)
+		JSONResponse(w, "scheduled job trigger accepted", jobID, http.StatusAccepted)
 
 		return
 	}
@@ -279,7 +279,7 @@ func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
-	JSONResponse(w, "scheduled job run completed", jobID, http.StatusOK)
+	JSONResponse(w, "scheduled job triggered", jobID, http.StatusOK)
 }
 
 type scheduledJobTrigger func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error)
@@ -339,14 +339,19 @@ func (h *handlerData) triggerScheduledJobRun(ctx context.Context, jobID, jobName
 		}
 
 		if h.runTracker != nil {
-			h.runTracker.MarkSucceeded(jobID, "scheduled job run completed")
+			h.runTracker.MarkSucceeded(jobID, "scheduled job trigger completed")
 		}
 
 		return nil
 	}
 
 	if wait {
-		return jobID, run(ctx)
+		err := h.runSynchronous(ctx, run)
+		if err != nil && h.runTracker != nil {
+			h.runTracker.MarkFailed(jobID, err.Error())
+		}
+
+		return jobID, err
 	}
 
 	if err := h.runBackground(ctx, func(ctx context.Context) {
@@ -380,6 +385,28 @@ func (h *handlerData) runBackground(requestCtx context.Context, run func(context
 	})
 
 	return nil
+}
+
+func (h *handlerData) runSynchronous(requestCtx context.Context, run func(context.Context) error) error {
+	if h.backgroundCtx == nil || h.backgroundWork == nil {
+		return run(requestCtx)
+	}
+
+	release, err := h.backgroundWork.Register()
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	runCtx, cancel := context.WithCancel(requestCtx)
+
+	stopApplicationCancel := context.AfterFunc(h.backgroundCtx, cancel) //nolint:contextcheck // The synchronous call is intentionally cancelled by either the request or application lifecycle.
+	defer func() {
+		stopApplicationCancel()
+		cancel()
+	}()
+
+	return run(runCtx)
 }
 
 // HealthCheckHandler handles health check requests.

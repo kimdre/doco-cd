@@ -896,6 +896,10 @@ func TestTriggerScheduledJobSyncTracksResult(t *testing.T) {
 			if run.Status != tc.wantStatus || run.Repository != "scheduled:backup" || run.Target != "prod" {
 				t.Fatalf("unexpected tracked run: %#v", run)
 			}
+
+			if tc.triggerErr == nil && run.Message != "scheduled job trigger completed" {
+				t.Fatalf("success message = %q", run.Message)
+			}
 		})
 	}
 }

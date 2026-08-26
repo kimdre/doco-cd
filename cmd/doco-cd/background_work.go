@@ -17,15 +17,36 @@ func newBackgroundWork() *backgroundWork {
 	return &backgroundWork{}
 }
 
-func (w *backgroundWork) Go(run func()) error {
+func (w *backgroundWork) Register() (func(), error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	if w.closed {
-		return errBackgroundWorkClosed
+		return nil, errBackgroundWorkClosed
 	}
 
-	w.wg.Go(run)
+	w.wg.Add(1)
+
+	var once sync.Once
+
+	release := func() {
+		once.Do(w.wg.Done)
+	}
+
+	return release, nil
+}
+
+func (w *backgroundWork) Go(run func()) error {
+	release, err := w.Register()
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		defer release()
+
+		run()
+	}()
 
 	return nil
 }

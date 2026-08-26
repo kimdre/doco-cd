@@ -25,7 +25,7 @@ func (h *handlerData) addScheduledJobMCPTools(server *mcp.Server) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "trigger_scheduled_job",
-		Description: "Trigger one configured scheduled job immediately. Prefer wait=false and poll get_deployment_run - long wait=true calls are cancelled if the server shuts down (10s grace).",
+		Description: "Trigger one configured scheduled job immediately. A succeeded result means the trigger operation completed; it does not guarantee workload completion. Prefer wait=false and poll get_deployment_run - long wait=true calls are cancelled if the server shuts down (10s grace).",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &destructive,
 			IdempotentHint:  false,

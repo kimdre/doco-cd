@@ -30,6 +30,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/docker"
 	dockerswarm "github.com/kimdre/doco-cd/internal/docker/swarm"
+	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 	prometheusmetrics "github.com/kimdre/doco-cd/internal/prometheus"
@@ -285,6 +286,10 @@ func TestMCPServerListsTools(t *testing.T) {
 			if !strings.Contains(tool.Description, "Prefer wait=false and poll get_deployment_run") || !strings.Contains(tool.Description, "10s grace") {
 				t.Fatalf("trigger_scheduled_job description lacks wait guidance: %q", tool.Description)
 			}
+
+			if !strings.Contains(tool.Description, "trigger operation") || !strings.Contains(tool.Description, "does not guarantee workload completion") {
+				t.Fatalf("trigger_scheduled_job description overstates completion semantics: %q", tool.Description)
+			}
 		}
 
 		if tool.Name == "trigger_poll" {
@@ -307,6 +312,14 @@ func TestMCPServerListsTools(t *testing.T) {
 				if !toolSchemaHasProperty(items, property) {
 					t.Fatalf("trigger_poll config schema lacks %q: %#v", property, items)
 				}
+			}
+
+			if !toolSchemaRequiresProperty(items, "url") {
+				t.Fatalf("trigger_poll config schema must require url: %#v", items)
+			}
+
+			if toolSchemaRequiresProperty(items, "reference") {
+				t.Fatalf("trigger_poll config schema must not require reference: %#v", items)
 			}
 
 			for _, property := range []string{"interval", "run_once"} {
@@ -361,7 +374,7 @@ func TestMCPTriggerPollValidationAndDefaultWait(t *testing.T) {
 		) error {
 			runs++
 
-			if !cfg.RunOnce || cfg.Interval != 0 {
+			if !cfg.RunOnce || cfg.Interval != 0 || cfg.Reference != git.MainBranch {
 				t.Errorf("poll defaults = %#v", cfg)
 			}
 
@@ -1054,6 +1067,74 @@ func TestMCPDockerReadTools(t *testing.T) {
 	assertMCPToolError(t, session, "get_project", map[string]any{"project_name": "missing"}, "project not found")
 }
 
+func TestMCPReadOutputSanitizesDockerObjects(t *testing.T) {
+	t.Parallel()
+
+	const secret = "sentinel-secret"
+
+	projects := summarizeProjects([]api.Stack{{
+		ID:          "project-id",
+		Name:        "project",
+		Status:      api.RUNNING,
+		ConfigFiles: "/home/" + secret + "/compose.yaml",
+		Reason:      secret,
+	}})
+	containers := summarizeContainers([]api.ContainerSummary{{
+		ID:         "container-id",
+		Name:       "container",
+		Image:      "example:latest",
+		Command:    secret,
+		Service:    "web",
+		State:      container.StateRunning,
+		Status:     "Up",
+		Health:     container.Healthy,
+		Labels:     map[string]string{"secret": secret},
+		Mounts:     []string{secret},
+		Publishers: api.PortPublishers{{TargetPort: 80, PublishedPort: 8080, Protocol: "tcp"}},
+	}})
+	replicas := uint64(2)
+	services := summarizeServices([]dockerswarmtypes.Service{{
+		ID: "service-id",
+		Spec: dockerswarmtypes.ServiceSpec{
+			Annotations: dockerswarmtypes.Annotations{
+				Name:   "stack_web",
+				Labels: map[string]string{"secret": secret},
+			},
+			TaskTemplate: dockerswarmtypes.TaskSpec{ContainerSpec: &dockerswarmtypes.ContainerSpec{
+				Image:   "example:latest",
+				Env:     []string{"SECRET=" + secret},
+				Command: []string{secret},
+			}},
+			Mode: dockerswarmtypes.ServiceMode{Replicated: &dockerswarmtypes.ReplicatedService{Replicas: &replicas}},
+		},
+		Endpoint: dockerswarmtypes.Endpoint{Ports: []dockerswarmtypes.PortConfig{{
+			TargetPort: 80, PublishedPort: 8080,
+		}}},
+		ServiceStatus: &dockerswarmtypes.ServiceStatus{DesiredTasks: 2, RunningTasks: 1},
+	}})
+
+	encoded, err := json.Marshal(struct {
+		Projects   []mcpProjectSummary   `json:"projects"`
+		Containers []mcpContainerSummary `json:"containers"`
+		Services   []mcpServiceSummary   `json:"services"`
+	}{
+		Projects:   projects,
+		Containers: containers,
+		Services:   services,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(string(encoded), secret) {
+		t.Fatalf("sanitized MCP output leaks secret: %s", encoded)
+	}
+
+	if projects[0].Name != "project" || containers[0].Service != "web" || services[0].RunningTasks != 1 {
+		t.Fatalf("sanitized MCP output lost safe summary fields: %s", encoded)
+	}
+}
+
 func TestMCPGetProjectRequiresName(t *testing.T) {
 	h := &handlerData{appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
 	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
@@ -1428,7 +1509,7 @@ func decodeMCPStructuredContent(t *testing.T, result *mcp.CallToolResult, output
 	}
 }
 
-func containsProject(projects []api.Stack, name string) bool {
+func containsProject(projects []mcpProjectSummary, name string) bool {
 	for _, project := range projects {
 		if project.Name == name {
 			return true
