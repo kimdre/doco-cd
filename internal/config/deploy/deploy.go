@@ -521,10 +521,16 @@ func getConfigsFromFile(dir string, files []os.DirEntry, configFile string) ([]*
 	return nil, ErrConfigFileNotFound
 }
 
-// ValidateUniqueProjectNames checks if the project names in the configs are unique.
+// ValidateUniqueProjectNames checks if project names are unique within each Docker context.
 func ValidateUniqueProjectNames(configs []*Config) error {
-	names := make(map[string]bool)
+	namesByContext := make(map[string]map[string]bool)
 	for _, dc := range configs {
+		names, ok := namesByContext[dc.Context]
+		if !ok {
+			names = make(map[string]bool)
+			namesByContext[dc.Context] = names
+		}
+
 		if names[dc.Name] {
 			return fmt.Errorf("%w: %s", ErrDuplicateProjectName, dc.Name)
 		}

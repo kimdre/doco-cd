@@ -382,7 +382,9 @@ func dockerEventTime(event events.Message) time.Time {
 
 func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events.Message, contextName string) {
 	action := normalizeReconciliationEventAction(string(event.Action))
-	dcs := j.deployConfigGroupByEvent[action]
+	// Restrict candidates to the context the event originated from, since stack
+	// names are only guaranteed to be unique within a single Docker context.
+	dcs := filterConfigsByContext(j.deployConfigGroupByEvent[action], contextName)
 
 	if len(dcs) == 0 {
 		return
@@ -418,7 +420,7 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		return
 	}
 
-	if reconciliationHandler.isStackDeploymentInProgress(j.info.metadata.Repository, stackName) {
+	if reconciliationHandler.isStackDeploymentInProgress(j.info.metadata.Repository, contextName, stackName) {
 		jobLog.Debug("suppressing reconciliation event while stack deployment is in progress",
 			slog.String("event", action),
 			slog.String("stack", stackName),
@@ -458,7 +460,7 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		return
 	}
 
-	stackID := j.info.metadata.Repository + "/" + stackName
+	stackID := j.info.metadata.Repository + "/" + contextName + "/" + stackName
 	stackLock := lock.GetRepoLock(stackID)
 
 	if !stackLock.TryLock(id.GenID()) {
@@ -548,7 +550,7 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConf
 	contextDCs := j.deployConfigsForContext(contextName)
 
 	if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
-		contextCLI, contextSwarmMode, j.info.repoData.SourceUrl,
+		contextCLI, contextSwarmMode, contextName, j.info.repoData.SourceUrl,
 		contextDCs,
 		j.info.metadata); err != nil {
 		jobLog.Error("failed to clean up obsolete auto-discovered containers", logger.ErrAttr(err))

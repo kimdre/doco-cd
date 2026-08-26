@@ -23,8 +23,10 @@ import (
 
 // cleanupObsoleteAutoDiscoveredContainers removes obsolete auto-discovered containers that are no longer defined in
 // the current deployment configurations but still exist on the Docker host.
+// contextName is the Docker context dockerCli is connected to and is only used to attribute
+// notifications, since the same stack name can exist on several contexts.
 func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.Logger,
-	dockerCli command.Cli, swarmMode bool,
+	dockerCli command.Cli, swarmMode bool, contextName string,
 	cloneUrl string, deployConfigs []*deployConfig.Config, metadata notification.Metadata,
 ) error {
 	autoDiscoveredNames := make(map[string]bool)
@@ -149,6 +151,7 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 			notifyMetadata := metadata
 			notifyMetadata.Target = stackConfigTarget
 			notifyMetadata.Stack = stackName
+			notifyMetadata.Context = contextName
 
 			removeConfig := &deployConfig.Config{Name: stackName}
 			removeConfig.Destroy.Enabled = true

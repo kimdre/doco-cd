@@ -249,28 +249,31 @@ func (r *reconciliation) isServiceSchedulerStopHeld(attrs map[string]string) boo
 	return false
 }
 
-func stackDeploymentKey(repository, stack string) string {
-	return repository + "/" + stack
+// stackDeploymentKey builds the tracking key for a deployment. Stack names are
+// only guaranteed unique within a Docker context, so context is included to
+// avoid conflating same-named stacks deployed to different contexts.
+func stackDeploymentKey(repository, context, stack string) string {
+	return repository + "/" + context + "/" + stack
 }
 
-func (r *reconciliation) startStackDeployment(repository, stack string) {
+func (r *reconciliation) startStackDeployment(repository, context, stack string) {
 	if repository == "" || stack == "" {
 		return
 	}
 
-	key := stackDeploymentKey(repository, stack)
+	key := stackDeploymentKey(repository, context, stack)
 
 	r.m.Lock()
 	r.deployingStacks[key]++
 	r.m.Unlock()
 }
 
-func (r *reconciliation) finishStackDeployment(repository, stack string) {
+func (r *reconciliation) finishStackDeployment(repository, context, stack string) {
 	if repository == "" || stack == "" {
 		return
 	}
 
-	key := stackDeploymentKey(repository, stack)
+	key := stackDeploymentKey(repository, context, stack)
 
 	r.m.Lock()
 	defer r.m.Unlock()
@@ -284,12 +287,12 @@ func (r *reconciliation) finishStackDeployment(repository, stack string) {
 	r.deployingStacks[key] = count - 1
 }
 
-func (r *reconciliation) isStackDeploymentInProgress(repository, stack string) bool {
+func (r *reconciliation) isStackDeploymentInProgress(repository, context, stack string) bool {
 	if repository == "" || stack == "" {
 		return false
 	}
 
-	key := stackDeploymentKey(repository, stack)
+	key := stackDeploymentKey(repository, context, stack)
 
 	r.m.Lock()
 	defer r.m.Unlock()
