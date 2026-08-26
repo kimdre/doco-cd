@@ -20,6 +20,8 @@ import (
 	"github.com/kimdre/doco-cd/internal/filesystem"
 )
 
+const remoteAutoDiscoveryFixtureCommit = "ee6dda09a7cef86ace9e5991dcf3c4b9a56716d3"
+
 func createTestFile(t *testing.T, fileName string, content string) error {
 	t.Helper()
 
@@ -1333,31 +1335,30 @@ func TestGetConfigs_WithAutoDiscovery_WithRemoteUrl_WithMultipleConfigs(t *testi
 
 	createTestRepo(t, repoRoot)
 
-	// Two deploy configs in one file using YAML document separator
-	dc := `
-# Config for main branch - should discover 1 deployment with name 'test'
+	// Three deploy configs in one file using YAML document separators
+	dc := fmt.Sprintf(`
+# Main branch fixture - should discover 1 deployment with name 'test-deploy'
 name: main-stack
 repository_url: https://github.com/kimdre/doco-cd_tests.git
 reference: main
 auto_discovery:
   enabled: true
 ---
-# Config for doco-cd repo - should discover 1 deployment with name 'test''
-name: test-stack
-repository_url: https://github.com/kimdre/doco-cd.git
-reference: main
+# Pinned remote fixture - should discover 1 deployment with name 'test-deploy1'
+name: remote-stack
+repository_url: https://github.com/kimdre/doco-cd_tests.git
+reference: %s
 compose_files: ["test.compose.yaml"]
-working_dir: test
 auto_discovery:
   enabled: true
 ---
-# Config for dual branch - should discover 2 deployments with names 'app1' and 'app2'
+# Dual branch fixture - should discover 2 deployments with names 'app1' and 'app2'
 name: dual-stack
 repository_url: https://github.com/kimdre/doco-cd_tests.git
 reference: dual
 auto_discovery:
   enabled: true
-`
+`, remoteAutoDiscoveryFixtureCommit)
 
 	filePath := filepath.Join(repoRoot, ".doco-cd.yaml")
 
@@ -1371,33 +1372,32 @@ auto_discovery:
 		t.Fatal(err)
 	}
 
-	// First config (main branch) should discover 1, second config (dual branch) should discover 2
-	expectedTotal := 4
-	if len(configs) != expectedTotal {
-		t.Fatalf("expected %d configs, got %d", expectedTotal, len(configs))
+	expected := map[string]struct{}{
+		"test-deploy@main": {},
+		"test-deploy1@" + remoteAutoDiscoveryFixtureCommit: {},
+		"app1@dual": {},
+		"app2@dual": {},
 	}
 
-	found := 0
+	if len(configs) != len(expected) {
+		t.Fatalf("expected %d configs, got %d", len(expected), len(configs))
+	}
+
+	seen := make(map[string]int, len(configs))
 
 	for _, cfg := range configs {
 		t.Logf("Discovered config: Name=%s, Reference=%s", cfg.Name, cfg.Reference)
 
-		switch cfg.RepositoryUrl {
-		case "https://github.com/kimdre/doco-cd.git":
-			if cfg.Name == "test" && cfg.Reference == "main" {
-				found++
-			}
-		case "https://github.com/kimdre/doco-cd_tests.git":
-			if (cfg.Name == "app1" || cfg.Name == "app2") && cfg.Reference == "dual" {
-				found++
-			} else if cfg.Name == "test-deploy" && cfg.Reference == "main" {
-				// Name overridden by nested .doco-cd.yaml in the remote repo (was "main-stack")
-				found++
-			}
+		if cfg.RepositoryUrl != "https://github.com/kimdre/doco-cd_tests.git" {
+			t.Errorf("unexpected repository URL %q", cfg.RepositoryUrl)
 		}
+
+		seen[cfg.Name+"@"+cfg.Reference]++
 	}
 
-	if found != expectedTotal {
-		t.Errorf("expected to find %d configs with correct properties, found %d", expectedTotal, found)
+	for key := range expected {
+		if seen[key] != 1 {
+			t.Errorf("expected config %q exactly once, found %d", key, seen[key])
+		}
 	}
 }
