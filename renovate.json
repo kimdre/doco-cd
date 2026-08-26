@@ -53,10 +53,10 @@
       "description": "Track Docker-in-Docker image used in e2e tests",
       "managerFilePatterns": ["/internal/docker/images\\.go$/"],
       "matchStrings": [
-        "RemoteDockerImage\\s+=\\s+\"(?<depName>docker):(?<currentValue>[0-9]+-dind)\""
+        "TestRemoteDockerImage\\s+=\\s+\"(?<depName>docker):(?<currentValue>[0-9]+-dind)(?:@(?<currentDigest>sha256:[a-f0-9]{64}))?\""
       ],
+      "autoReplaceStringTemplate": "TestRemoteDockerImage = \"{{{depName}}}:{{{newValue}}}{{#if newDigest}}@{{{newDigest}}}{{/if}}\"",
       "datasourceTemplate": "docker"
     }
   ]
 }
-
