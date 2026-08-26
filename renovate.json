@@ -51,7 +51,7 @@
     {
       "customType": "regex",
       "description": "Track Docker-in-Docker image tag used by e2e harness",
-      "managerFilePatterns": ["/test\\/e2e\\/harness\\.go$/"],
+      "managerFilePatterns": ["test/e2e/harness\\.go$"],
       "matchStrings": [
         "const remoteDockerImage = \"(?<depName>docker):(?<currentValue>[0-9]+-dind)\""
       ],
