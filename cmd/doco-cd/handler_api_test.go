@@ -1110,6 +1110,7 @@ func TestTriggerScheduledJobHandlerRejectsAsyncWorkDuringShutdown(t *testing.T) 
 	req := httptest.NewRequest(http.MethodPost, apiPath+"/job/example-job/run?wait=false", nil)
 	req.SetPathValue("jobName", "example-job")
 	req.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+
 	rr := httptest.NewRecorder()
 
 	h.TriggerScheduledJobHandler(rr, req)
