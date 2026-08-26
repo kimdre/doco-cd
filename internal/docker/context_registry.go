@@ -183,8 +183,8 @@ func (r *ContextRegistry) List(ctx context.Context) ([]ContextClientResult, erro
 		cli, cliErr := r.clientForKnownContext(name)
 		if cliErr != nil {
 			results = append(results, ContextClientResult{
-				ContextClient: ContextClient{Name: name},
-				Err:           cliErr,
+				Name: name,
+				Err:  cliErr,
 			})
 
 			continue
@@ -196,8 +196,8 @@ func (r *ContextRegistry) List(ctx context.Context) ([]ContextClientResult, erro
 		}
 
 		results = append(results, ContextClientResult{
-			ContextClient: ContextClient{Name: name, Cli: cli, SwarmMode: swarmMode},
-			Err:           swarmErr,
+			Name: name, Cli: cli, SwarmMode: swarmMode,
+			Err: swarmErr,
 		})
 	}
 

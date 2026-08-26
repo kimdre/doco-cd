@@ -487,11 +487,11 @@ func TestCheckAndRotate_ContextErrorIsolation(t *testing.T) {
 
 	results := []docker.ContextClientResult{
 		{
-			ContextClient: docker.ContextClient{Name: "broken"},
-			Err:           errors.New("connection refused"),
+			Name: "broken",
+			Err:  errors.New("connection refused"),
 		},
 		{
-			ContextClient: docker.ContextClient{Name: "", Cli: fakeCli{apiClient: healthyClient}, SwarmMode: false},
+			Name: "", Cli: fakeCli{apiClient: healthyClient}, SwarmMode: false,
 		},
 	}
 
@@ -507,7 +507,7 @@ func TestCheckAndRotate_ContextErrorIsolation(t *testing.T) {
 
 	var sawBrokenContextSkipped bool
 
-	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
 		var entry map[string]any
 		if err := json.Unmarshal([]byte(line), &entry); err != nil {
 			t.Fatalf("expected JSON log entry, got %q: %v", line, err)
@@ -555,8 +555,8 @@ func TestCheckAndRotate_UsesEachContextsOwnSwarmMode(t *testing.T) {
 	}
 
 	results := []docker.ContextClientResult{
-		{ContextClient: docker.ContextClient{Name: "", Cli: fakeCli{apiClient: standaloneClient}, SwarmMode: false}},
-		{ContextClient: docker.ContextClient{Name: "swarm-remote", Cli: fakeCli{apiClient: swarmClient}, SwarmMode: true}},
+		{Name: "", Cli: fakeCli{apiClient: standaloneClient}, SwarmMode: false},
+		{Name: "swarm-remote", Cli: fakeCli{apiClient: swarmClient}, SwarmMode: true},
 	}
 
 	watcher := &Watcher{
@@ -605,7 +605,7 @@ func TestCheckAndRotate_TagsLogsWithDisplayContextName(t *testing.T) {
 	}
 
 	results := []docker.ContextClientResult{
-		{ContextClient: docker.ContextClient{Name: "", Cli: fakeCli{apiClient: defaultClient}, SwarmMode: false}},
+		{Name: "", Cli: fakeCli{apiClient: defaultClient}, SwarmMode: false},
 	}
 
 	watcher := &Watcher{
@@ -621,7 +621,7 @@ func TestCheckAndRotate_TagsLogsWithDisplayContextName(t *testing.T) {
 
 	var sawDefaultContextEntry bool
 
-	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
 		var entry map[string]any
 		if err := json.Unmarshal([]byte(line), &entry); err != nil {
 			t.Fatalf("expected JSON log entry, got %q: %v", line, err)
@@ -679,8 +679,8 @@ func TestCheckAndRotate_RotatesEachContextIndependently(t *testing.T) {
 	log := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 	results := []docker.ContextClientResult{
-		{ContextClient: docker.ContextClient{Name: "", Cli: fakeCli{apiClient: defaultClient}, SwarmMode: false}},
-		{ContextClient: docker.ContextClient{Name: "remote", Cli: fakeCli{apiClient: remoteClient}, SwarmMode: true}},
+		{Name: "", Cli: fakeCli{apiClient: defaultClient}, SwarmMode: false},
+		{Name: "remote", Cli: fakeCli{apiClient: remoteClient}, SwarmMode: true},
 	}
 
 	watcher := &Watcher{
@@ -700,7 +700,7 @@ func TestCheckAndRotate_RotatesEachContextIndependently(t *testing.T) {
 	// one context's failure short-circuiting the other's.
 	seenContexts := map[string]bool{}
 
-	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
 		var entry map[string]any
 		if err := json.Unmarshal([]byte(line), &entry); err != nil {
 			t.Fatalf("expected JSON log entry, got %q: %v", line, err)

@@ -216,10 +216,8 @@ func (t *deploymentRunTracker) AddDeployment(jobID, stack, contextName string) {
 	}
 
 	t.update(jobID, func(r *deploymentRun) {
-		for _, existing := range r.Deployments {
-			if existing == target {
-				return
-			}
+		if slices.Contains(r.Deployments, target) {
+			return
 		}
 
 		r.Deployments = append(r.Deployments, target)
