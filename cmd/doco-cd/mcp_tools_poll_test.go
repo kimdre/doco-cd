@@ -307,3 +307,74 @@ func TestRunPollConfigsWaitUsesRequestContext(t *testing.T) {
 		t.Fatalf("wait=true cancellation result = %v", err)
 	}
 }
+
+func TestRunPollConfigsWaitUsesApplicationLifecycle(t *testing.T) {
+	appCtx, cancelApp := context.WithCancel(context.Background())
+	background := newBackgroundWork()
+	tracker := newDeploymentRunTracker(nil)
+	started := make(chan struct{})
+	h := &handlerData{
+		appConfig:      &app.Config{},
+		backgroundCtx:  appCtx,
+		backgroundWork: background,
+		log:            logger.New(logger.LevelCritical),
+		runTracker:     tracker,
+		runPoll: func(ctx context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+			_ command.Cli, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+		) error {
+			close(started)
+			<-ctx.Done()
+
+			return ctx.Err()
+		},
+	}
+
+	result := make(chan struct {
+		jobID string
+		err   error
+	}, 1)
+	go func() {
+		jobID, err := h.runPollConfigs(context.Background(), []poll.Config{{SourceUrl: validPollSourceURL}}, true, h.log.Logger)
+		result <- struct {
+			jobID string
+			err   error
+		}{jobID, err}
+	}()
+
+	<-started
+	cancelApp()
+	background.CloseAndWait()
+
+	runResult := <-result
+	if runResult.err == nil {
+		t.Fatal("expected lifecycle cancellation error")
+	}
+
+	run, ok := tracker.Get(runResult.jobID)
+	if !ok || run.Status != deploymentRunStatusFailed {
+		t.Fatalf("tracked lifecycle cancellation = %#v, found = %t", run, ok)
+	}
+}
+
+func TestRunPollConfigsWaitRejectsWorkDuringShutdown(t *testing.T) {
+	tracker := newDeploymentRunTracker(nil)
+	background := newBackgroundWork()
+	background.CloseAndWait()
+	h := &handlerData{
+		appConfig:      &app.Config{},
+		backgroundCtx:  t.Context(),
+		backgroundWork: background,
+		log:            logger.New(logger.LevelCritical),
+		runTracker:     tracker,
+	}
+
+	jobID, err := h.runPollConfigs(t.Context(), []poll.Config{{SourceUrl: validPollSourceURL}}, true, h.log.Logger)
+	if !errors.Is(err, errBackgroundWorkClosed) {
+		t.Fatalf("error = %v, want %v", err, errBackgroundWorkClosed)
+	}
+
+	run, ok := tracker.Get(jobID)
+	if !ok || run.Status != deploymentRunStatusFailed || run.Message != errBackgroundWorkClosed.Error() {
+		t.Fatalf("tracked rejected sync run = %#v, found = %t", run, ok)
+	}
+}

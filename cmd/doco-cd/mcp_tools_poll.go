@@ -53,7 +53,7 @@ type triggerPollInput struct {
 type triggerPollConfig struct {
 	Source       config.SourceType `json:"source" default:"git"`
 	SourceURL    string            `json:"url"`
-	Reference    string            `json:"reference"`
+	Reference    string            `json:"reference,omitempty"`
 	CustomTarget string            `json:"target" default:""`
 	Deployments  []*deploy.Config  `json:"deployments" default:"[]"`
 }
@@ -210,7 +210,12 @@ func (h *handlerData) runPollConfigs(ctx context.Context, configs []poll.Config,
 	}
 
 	if wait {
-		return jobID, run(ctx)
+		err := h.runSynchronous(ctx, run)
+		if err != nil && h.runTracker != nil {
+			h.runTracker.MarkFailed(jobID, err.Error())
+		}
+
+		return jobID, err
 	}
 
 	if err := h.runBackground(ctx, func(backgroundCtx context.Context) {
