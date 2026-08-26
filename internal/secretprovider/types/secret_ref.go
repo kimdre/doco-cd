@@ -3,7 +3,10 @@ package secrettypes
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
 
+	"github.com/compose-spec/compose-go/v2/template"
 	"go.yaml.in/yaml/v4"
 )
 
@@ -121,6 +124,29 @@ func EncodeExternalSecretRefs(in map[string]ExternalSecretRef) (map[string]strin
 		}
 
 		out[envName] = encoded
+	}
+
+	return out, nil
+}
+
+// InterpolateExternalSecretRefs expands Compose-style variables in external
+// secret references using the doco-cd process environment. It never invokes a
+// shell or uses deployment environment values.
+func InterpolateExternalSecretRefs(in map[string]ExternalSecretRef) (map[string]ExternalSecretRef, error) {
+	out := make(map[string]ExternalSecretRef, len(in))
+
+	for envName, ref := range in {
+		if ref.LegacyRef == "" {
+			continue
+		}
+
+		value, err := template.SubstituteWithOptions(ref.LegacyRef, os.LookupEnv, template.WithoutLogging)
+		if err != nil {
+			return nil, fmt.Errorf("interpolate external secret %q: %w", envName, err)
+		}
+
+		ref.LegacyRef = value
+		out[envName] = ref
 	}
 
 	return out, nil

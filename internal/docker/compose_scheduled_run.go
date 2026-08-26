@@ -489,7 +489,12 @@ func prepareComposeScheduledDeployConfig(
 		return nil
 	}
 
-	encodedSecrets, err := secrettypes.EncodeExternalSecretRefs(deployConfig.ExternalSecrets)
+	interpolatedRefs, err := secrettypes.InterpolateExternalSecretRefs(deployConfig.ExternalSecrets)
+	if err != nil {
+		return fmt.Errorf("interpolate external secrets for scheduled service %s: %w", deployConfig.Name, err)
+	}
+
+	encodedSecrets, err := secrettypes.EncodeExternalSecretRefs(interpolatedRefs)
 	if err != nil {
 		return fmt.Errorf("encode external secrets for scheduled service %s: %w", deployConfig.Name, err)
 	}
