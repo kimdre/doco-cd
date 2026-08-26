@@ -5,16 +5,21 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/swarm"
+	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/docker"
-	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
@@ -426,26 +431,289 @@ func TestRotationReasonsForRevokedOnlyProject(t *testing.T) {
 	}
 }
 
-// TestSwarmMode verifies the swarmEnabled hook is consulted (falling back to
-// swarm.GetModeEnabled when unset), so checkAndRotate correctly passes the current Swarm state
-// through to docker.GetLabeledServices and docker.RotateProjectCertificates.
-func TestSwarmMode(t *testing.T) {
-	t.Run("uses swarmEnabled hook when set", func(t *testing.T) {
-		watcher := &Watcher{swarmEnabled: func() bool { return true }}
-		if !watcher.swarmMode() {
-			t.Fatal("expected swarmMode() to return true")
+// fakeAPIClient is a minimal client.APIClient stub used to exercise checkAndRotateContext without
+// a live Docker daemon. It embeds the (nil) interface so it satisfies client.APIClient, and only
+// overrides the two calls certrotation actually needs: ContainerList for standalone Compose
+// discovery and ServiceList for Swarm discovery. Any other method call panics via the nil
+// embedded interface, which is intentional: it surfaces an incorrect test setup immediately
+// rather than silently doing nothing.
+type fakeAPIClient struct {
+	client.APIClient
+
+	containerList func(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error)
+	serviceList   func(ctx context.Context, options client.ServiceListOptions) (client.ServiceListResult, error)
+}
+
+func (c *fakeAPIClient) ContainerList(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
+	if c.containerList == nil {
+		return client.ContainerListResult{}, nil
+	}
+
+	return c.containerList(ctx, options)
+}
+
+func (c *fakeAPIClient) ServiceList(ctx context.Context, options client.ServiceListOptions) (client.ServiceListResult, error) {
+	if c.serviceList == nil {
+		return client.ServiceListResult{}, nil
+	}
+
+	return c.serviceList(ctx, options)
+}
+
+// fakeCli is a minimal command.Cli stub that returns a fixed client.APIClient, for use as a
+// docker.ContextClient.Cli value in tests.
+type fakeCli struct {
+	command.Cli
+
+	apiClient client.APIClient
+}
+
+func (c fakeCli) Client() client.APIClient { return c.apiClient }
+
+// TestCheckAndRotate_ContextErrorIsolation verifies that a context which failed to resolve (e.g.
+// an unreachable remote Docker host) is logged and skipped without preventing the remaining,
+// healthy contexts from being checked. It also verifies the skipped context's display name (see
+// docker.DisplayContextName) is attached to the log entry.
+func TestCheckAndRotate_ContextErrorIsolation(t *testing.T) {
+	var buf bytes.Buffer
+
+	log := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+	healthyClient := &fakeAPIClient{
+		containerList: func(context.Context, client.ContainerListOptions) (client.ContainerListResult, error) {
+			return client.ContainerListResult{}, nil
+		},
+	}
+
+	results := []docker.ContextClientResult{
+		{
+			Name: "broken",
+			Err:  errors.New("connection refused"),
+		},
+		{
+			Name: "", Cli: fakeCli{apiClient: healthyClient}, SwarmMode: false,
+		},
+	}
+
+	watcher := &Watcher{
+		log: log,
+		now: time.Now,
+		listContexts: func(context.Context) ([]docker.ContextClientResult, error) {
+			return results, nil
+		},
+	}
+
+	watcher.checkAndRotate(t.Context())
+
+	var sawBrokenContextSkipped bool
+
+	for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatalf("expected JSON log entry, got %q: %v", line, err)
 		}
 
-		watcher = &Watcher{swarmEnabled: func() bool { return false }}
-		if watcher.swarmMode() {
-			t.Fatal("expected swarmMode() to return false")
+		if entry["context"] == "broken" {
+			if msg, _ := entry["msg"].(string); strings.Contains(msg, "skipping docker context") {
+				sawBrokenContextSkipped = true
+			}
 		}
-	})
+	}
 
-	t.Run("falls back to swarm.GetModeEnabled when unset", func(t *testing.T) {
-		watcher := &Watcher{}
-		if watcher.swarmMode() != swarm.GetModeEnabled() {
-			t.Fatalf("expected swarmMode() to match swarm.GetModeEnabled() (%v)", swarm.GetModeEnabled())
+	if !sawBrokenContextSkipped {
+		t.Fatalf("expected a log entry noting the broken context was skipped, got logs:\n%s", buf.String())
+	}
+}
+
+// TestCheckAndRotate_UsesEachContextsOwnSwarmMode verifies that discovery for each context uses
+// that context's own SwarmMode (from docker.ContextClientResult), never a single shared/global
+// value: a standalone context must only ever be queried via ContainerList, and a Swarm context
+// only ever via ServiceList, even when both are checked in the same pass.
+func TestCheckAndRotate_UsesEachContextsOwnSwarmMode(t *testing.T) {
+	var containerCalls, serviceCalls int32
+
+	standaloneClient := &fakeAPIClient{
+		containerList: func(context.Context, client.ContainerListOptions) (client.ContainerListResult, error) {
+			atomic.AddInt32(&containerCalls, 1)
+			return client.ContainerListResult{}, nil
+		},
+		serviceList: func(context.Context, client.ServiceListOptions) (client.ServiceListResult, error) {
+			t.Error("unexpected ServiceList call for a standalone (non-swarm) context")
+			return client.ServiceListResult{}, nil
+		},
+	}
+
+	swarmClient := &fakeAPIClient{
+		containerList: func(context.Context, client.ContainerListOptions) (client.ContainerListResult, error) {
+			t.Error("unexpected ContainerList call for a swarm-mode context")
+			return client.ContainerListResult{}, nil
+		},
+		serviceList: func(context.Context, client.ServiceListOptions) (client.ServiceListResult, error) {
+			atomic.AddInt32(&serviceCalls, 1)
+			return client.ServiceListResult{}, nil
+		},
+	}
+
+	results := []docker.ContextClientResult{
+		{Name: "", Cli: fakeCli{apiClient: standaloneClient}, SwarmMode: false},
+		{Name: "swarm-remote", Cli: fakeCli{apiClient: swarmClient}, SwarmMode: true},
+	}
+
+	watcher := &Watcher{
+		log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		now: time.Now,
+		listContexts: func(context.Context) ([]docker.ContextClientResult, error) {
+			return results, nil
+		},
+	}
+
+	watcher.checkAndRotate(t.Context())
+
+	if containerCalls != 1 {
+		t.Errorf("expected exactly 1 ContainerList call, got %d", containerCalls)
+	}
+
+	if serviceCalls != 1 {
+		t.Errorf("expected exactly 1 ServiceList call, got %d", serviceCalls)
+	}
+}
+
+// TestCheckAndRotate_TagsLogsWithDisplayContextName verifies that log entries produced while
+// processing a context (both the discovery step and the per-project rotation attempt) carry that
+// context's display name (see docker.DisplayContextName), including for the default/local context
+// whose internal Name is empty but which must be logged as "default".
+func TestCheckAndRotate_TagsLogsWithDisplayContextName(t *testing.T) {
+	var buf bytes.Buffer
+
+	log := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+	now := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	dueLabels := map[string]string{
+		api.ProjectLabel: "app",
+		api.ServiceLabel: "web",
+		docker.DocoCDLabels.Deployment.CertRotatable: "true",
+		docker.DocoCDLabels.Deployment.CertExpiry:    now.Add(1 * time.Hour).Format(time.RFC3339),
+	}
+
+	defaultClient := &fakeAPIClient{
+		containerList: func(context.Context, client.ContainerListOptions) (client.ContainerListResult, error) {
+			return client.ContainerListResult{
+				Items: []container.Summary{{Names: []string{"/app_web_1"}, Labels: dueLabels}},
+			}, nil
+		},
+	}
+
+	results := []docker.ContextClientResult{
+		{Name: "", Cli: fakeCli{apiClient: defaultClient}, SwarmMode: false},
+	}
+
+	watcher := &Watcher{
+		log:       log,
+		threshold: 72 * time.Hour,
+		now:       func() time.Time { return now },
+		listContexts: func(context.Context) ([]docker.ContextClientResult, error) {
+			return results, nil
+		},
+	}
+
+	watcher.checkAndRotate(t.Context())
+
+	var sawDefaultContextEntry bool
+
+	for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatalf("expected JSON log entry, got %q: %v", line, err)
 		}
-	})
+
+		if entry["context"] == "default" && entry["project"] == "app" {
+			sawDefaultContextEntry = true
+		}
+	}
+
+	if !sawDefaultContextEntry {
+		t.Fatalf(`expected a log entry tagged context="default" for project "app", got logs:\n%s`, buf.String())
+	}
+}
+
+// TestCheckAndRotate_RotatesEachContextIndependently verifies that a due project discovered on
+// one context is rotated using that specific context's name and Docker client (via
+// docker.RotateProjectCertificates), and that a failure rotating one context's project does not
+// stop the other context's project from being attempted.
+func TestCheckAndRotate_RotatesEachContextIndependently(t *testing.T) {
+	dataMountPath := t.TempDir()
+	t.Setenv("DATA_MOUNT_PATH", dataMountPath)
+	t.Setenv("DEPLOY_CONFIG_BASE_DIR", "/")
+
+	now := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	dueLabelsFor := func(project string) map[string]string {
+		return map[string]string{
+			api.ProjectLabel: project,
+			api.ServiceLabel: "web",
+			docker.DocoCDLabels.Deployment.CertRotatable: "true",
+			docker.DocoCDLabels.Deployment.CertExpiry:    now.Add(1 * time.Hour).Format(time.RFC3339),
+		}
+	}
+
+	defaultClient := &fakeAPIClient{
+		containerList: func(context.Context, client.ContainerListOptions) (client.ContainerListResult, error) {
+			return client.ContainerListResult{
+				Items: []container.Summary{{Names: []string{"/app-default_web_1"}, Labels: dueLabelsFor("app-default")}},
+			}, nil
+		},
+	}
+
+	remoteLabels := dueLabelsFor("app-remote")
+	remoteClient := &fakeAPIClient{
+		serviceList: func(context.Context, client.ServiceListOptions) (client.ServiceListResult, error) {
+			return client.ServiceListResult{
+				Items: []swarm.Service{{Spec: swarm.ServiceSpec{Annotations: swarm.Annotations{Name: "app-remote_web", Labels: remoteLabels}}}},
+			}, nil
+		},
+	}
+
+	var buf bytes.Buffer
+
+	log := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+	results := []docker.ContextClientResult{
+		{Name: "", Cli: fakeCli{apiClient: defaultClient}, SwarmMode: false},
+		{Name: "remote", Cli: fakeCli{apiClient: remoteClient}, SwarmMode: true},
+	}
+
+	watcher := &Watcher{
+		log:       log,
+		threshold: 72 * time.Hour,
+		now:       func() time.Time { return now },
+		listContexts: func(context.Context) ([]docker.ContextClientResult, error) {
+			return results, nil
+		},
+	}
+
+	watcher.checkAndRotate(t.Context())
+
+	// Both projects lack the on-disk deploy config RotateProjectCertificates needs to reload, so
+	// both rotation attempts are expected to fail; what this test verifies is that both contexts
+	// were independently attempted (each tagged with its own display context name) rather than
+	// one context's failure short-circuiting the other's.
+	seenContexts := map[string]bool{}
+
+	for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatalf("expected JSON log entry, got %q: %v", line, err)
+		}
+
+		if msg, _ := entry["msg"].(string); msg == "failed to rotate certificate" {
+			if ctxName, _ := entry["context"].(string); ctxName != "" {
+				seenContexts[ctxName] = true
+			}
+		}
+	}
+
+	if !seenContexts["default"] || !seenContexts["remote"] {
+		t.Fatalf("expected both contexts to be attempted independently, got contexts: %v (logs:\n%s)", seenContexts, buf.String())
+	}
 }

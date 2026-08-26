@@ -19,6 +19,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/config/poll"
+	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
@@ -148,6 +149,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 	dataMountPoint container.MountPoint,
 	secretProvider *secretprovider.SecretProvider,
 	dockerCli command.Cli,
+	contexts *docker.ContextRegistry,
 	jobTrigger stages.JobTrigger,
 	sourceType config.SourceType, sourceRef string, ref string, private bool,
 	metadata notification.Metadata,
@@ -386,6 +388,9 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 
 	for _, cfg := range deployConfigs {
 		cfg.Internal.ConfigTarget = strings.TrimSpace(customTarget)
+		if metadata.DeploymentTargetObserver != nil {
+			metadata.DeploymentTargetObserver(cfg.Name, cfg.Context)
+		}
 	}
 
 	repoData := stages.RepositoryData{
@@ -399,7 +404,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 	}
 
 	if err := reconciliation.Deploy(ctx, jobLog, appConfig,
-		dataMountPoint, dockerCli, secretProvider, metadata, jobTrigger,
+		dataMountPoint, dockerCli, contexts, secretProvider, metadata, jobTrigger,
 		repoData, deployConfigs, &payload, testName); err != nil {
 		if errors.Is(err, stages.ErrWebhookFilterMismatch) {
 			return err

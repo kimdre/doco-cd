@@ -14,6 +14,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
+	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/stages"
@@ -26,7 +27,7 @@ import (
 )
 
 type pollRunner func(ctx context.Context, pollConfig poll.Config, appConfig *app.Config, dataMountPoint container.MountPoint,
-	dockerCli command.Cli, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
+	dockerCli command.Cli, contexts *docker.ContextRegistry, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
 	triggerReason string,
 ) error
 
@@ -130,11 +131,12 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 		jobID := id.GenID()
 
 		metadata := notification.Metadata{
-			Repository: repoName,
-			Stack:      "",
-			Target:     pollJob.Config.CustomTarget,
-			Revision:   notification.GetRevision(pollJob.Config.Reference, ""),
-			JobID:      jobID,
+			Repository:               repoName,
+			Stack:                    "",
+			Target:                   pollJob.Config.CustomTarget,
+			Revision:                 notification.GetRevision(pollJob.Config.Reference, ""),
+			JobID:                    jobID,
+			DeploymentTargetObserver: h.deploymentTargetObserver(jobID),
 		}
 
 		logger.Debug("start poll job", slog.String("trigger", trigger))
@@ -150,7 +152,7 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 			triggerReason = pollTriggerWatch
 		}
 
-		err := runner(ctx, pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, logger, metadata, h.secretProvider, triggerReason)
+		err := runner(ctx, pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.contexts, logger, metadata, h.secretProvider, triggerReason)
 
 		if h.runTracker != nil {
 			if err != nil {
@@ -295,7 +297,7 @@ func pollError(jobLog *slog.Logger, metadata notification.Metadata, err error) {
 // "poll-watch" when triggered by the local repository filesystem watcher) and is
 // reported in the "polling <entity>" log line's trigger.event field.
 func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config, dataMountPoint container.MountPoint,
-	dockerCli command.Cli, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
+	dockerCli command.Cli, contexts *docker.ContextRegistry, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
 	triggerReason string,
 ) error {
 	startTime := time.Now()
@@ -353,7 +355,7 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 	}
 
 	deployErr := handle(ctx, jobLog,
-		appConfig, dataMountPoint, secretProvider, dockerCli,
+		appConfig, dataMountPoint, secretProvider, dockerCli, contexts,
 		stages.JobTriggerPoll, sourceType, sourceRef, pollReference, false,
 		metadata, pollConfig.CustomTarget, "",
 		pollConfig, webhook.ParsedPayload{},

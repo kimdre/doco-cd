@@ -293,6 +293,8 @@ func TestStackKey(t *testing.T) {
 	}{
 		{name: "default context keeps bare stack name", contextName: "", stackName: "telegraf", want: "telegraf"},
 		{name: "blank context is treated as default", contextName: "   ", stackName: "telegraf", want: "telegraf"},
+		{name: "explicit default context keeps bare stack name", contextName: "default", stackName: "telegraf", want: "telegraf"},
+		{name: "default context is case insensitive", contextName: " DEFAULT ", stackName: "telegraf", want: "telegraf"},
 		{name: "named context is namespaced", contextName: "docker01", stackName: "telegraf", want: "docker01/telegraf"},
 		{name: "context is trimmed", contextName: " docker02 ", stackName: "telegraf", want: "docker02/telegraf"},
 	}

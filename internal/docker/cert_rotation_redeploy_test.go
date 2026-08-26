@@ -11,21 +11,65 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/filesystem"
+	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/test"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
 func TestRotateProjectCertificates_MissingLabels(t *testing.T) {
-	err := RotateProjectCertificates(context.Background(), nil, map[string]string{}, nil, false)
+	err := RotateProjectCertificates(context.Background(), "", nil, map[string]string{}, nil, false)
 	if err == nil {
 		t.Fatal("expected an error for missing deployment labels")
 	}
 }
 
 func TestRotateProjectCertificates_SwarmMissingLabels(t *testing.T) {
-	err := RotateProjectCertificates(context.Background(), nil, map[string]string{}, nil, true)
+	err := RotateProjectCertificates(context.Background(), "", nil, map[string]string{}, nil, true)
 	if err == nil {
 		t.Fatal("expected an error for missing deployment labels in swarm mode")
+	}
+}
+
+// TestRotateProjectCertificates_ContextNamespacesLock verifies that RotateProjectCertificates
+// locks using lock.StackKey(contextName, stack), so a rotation on a named Docker context does not
+// serialize behind a same-named stack rotation on a different context (or the default context).
+// It uses the Swarm-labels path (composeScheduledServiceRefFromSwarmLabels) since it only requires
+// the doco-cd deployment name label to reach the lock acquisition, unlike the Compose path which
+// also requires the Compose service label.
+func TestRotateProjectCertificates_ContextNamespacesLock(t *testing.T) {
+	stackName := test.ConvertTestName(t.Name())
+
+	labels := map[string]string{
+		DocoCDLabels.Deployment.Name: stackName,
+	}
+
+	keyDefault := lock.StackKey("", stackName)
+	keyRemote := lock.StackKey("docker01", stackName)
+
+	if keyDefault == keyRemote {
+		t.Fatalf("expected different lock keys for default and remote contexts, both got %q", keyDefault)
+	}
+
+	lock.LockStack(keyDefault)
+	defer lock.UnlockStack(keyDefault)
+
+	// With the default-context lock held, RotateProjectCertificates for the same stack name on a
+	// different (remote) context must still be able to acquire its own (different) lock key. It
+	// will fail quickly afterwards because the deployment labels carry no working directory, but
+	// that failure must happen right after acquiring the lock, not be blocked by it.
+	done := make(chan error, 1)
+
+	go func() {
+		done <- RotateProjectCertificates(context.Background(), "docker01", nil, labels, nil, true)
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected an error since the deployment labels carry no working directory")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out: rotation for a different context blocked on the default context's lock")
 	}
 }
 
@@ -444,7 +488,7 @@ external_secrets:
 		}
 	})
 
-	if err := RotateProjectCertificates(t.Context(), dockerCli, labels, provider, true); err != nil {
+	if err := RotateProjectCertificates(t.Context(), "", dockerCli, labels, provider, true); err != nil {
 		t.Fatalf("unexpected error rotating swarm project certificates: %v", err)
 	}
 

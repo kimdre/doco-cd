@@ -47,6 +47,15 @@
       "matchStrings": ["\\sgo (?<currentValue>.+?)\\s"],
       "depNameTemplate": "golang",
       "datasourceTemplate": "golang-version"
+    },
+    {
+      "customType": "regex",
+      "description": "Track Docker-in-Docker image tag used by e2e harness",
+      "managerFilePatterns": ["/test\\/e2e\\/harness\\.go$/"],
+      "matchStrings": [
+        "Image:\\s+\\\"(?<depName>docker):(?<currentValue>[0-9]+-dind)\\\""
+      ],
+      "datasourceTemplate": "docker"
     }
   ]
 }

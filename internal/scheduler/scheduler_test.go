@@ -3,6 +3,7 @@ package scheduler
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -373,7 +374,7 @@ func TestSetRuntimeStatesSnapshot_PreservesNewerManualLastRun(t *testing.T) {
 	setRuntimeLastRun(key, manualRun)
 
 	// Simulate the loop's next refresh, unaware of the manual run.
-	setRuntimeStatesSnapshot(map[string]scheduledJobState{
+	setRuntimeStatesSnapshot("", map[string]scheduledJobState{
 		key: {nextRun: manualRun.Add(time.Hour)},
 	})
 
@@ -384,13 +385,84 @@ func TestSetRuntimeStatesSnapshot_PreservesNewerManualLastRun(t *testing.T) {
 
 	// A genuinely newer lastRun must still win.
 	newerRun := manualRun.Add(2 * time.Hour)
-	setRuntimeStatesSnapshot(map[string]scheduledJobState{
+	setRuntimeStatesSnapshot("", map[string]scheduledJobState{
 		key: {lastRun: newerRun},
 	})
 
 	got = getRuntimeStatesSnapshot()[key]
 	if !got.lastRun.Equal(newerRun) {
 		t.Fatalf("expected newer scheduler-tracked last run %v to win, got %v", newerRun, got.lastRun)
+	}
+}
+
+func TestSetRuntimeStatesSnapshotPreservesOtherContexts(t *testing.T) {
+	runtimeStatesMu.Lock()
+	runtimeStates = map[string]scheduledJobState{
+		"remote::container:shared/job": {deployment: "remote"},
+	}
+	runtimeStatesMu.Unlock()
+
+	setRuntimeStatesSnapshot("", map[string]scheduledJobState{
+		"container:shared/job": {deployment: "default"},
+	})
+
+	states := getRuntimeStatesSnapshot()
+	if len(states) != 2 {
+		t.Fatalf("expected both context partitions, got %#v", states)
+	}
+
+	setRuntimeStatesSnapshot("remote", map[string]scheduledJobState{})
+
+	states = getRuntimeStatesSnapshot()
+	if _, ok := states["remote::container:shared/job"]; ok {
+		t.Fatal("expected stale remote state to be removed")
+	}
+
+	if _, ok := states["container:shared/job"]; !ok {
+		t.Fatal("expected default state to be preserved")
+	}
+}
+
+func TestClearRuntimeContext(t *testing.T) {
+	t.Cleanup(func() {
+		runtimeStatesMu.Lock()
+		runtimeStates = map[string]scheduledJobState{}
+		runtimeRunStatuses = map[string]string{}
+		runtimeRunningStates = map[string]bool{}
+		runtimeStatesMu.Unlock()
+	})
+
+	runtimeStatesMu.Lock()
+	runtimeStates = map[string]scheduledJobState{
+		"container:shared/job":         {deployment: "default"},
+		"remote::container:shared/job": {deployment: "remote"},
+	}
+	runtimeRunStatuses = map[string]string{
+		"container:shared/job":         "running",
+		"remote::container:shared/job": "exited (0)",
+	}
+	runtimeRunningStates = map[string]bool{
+		"container:shared/job":         true,
+		"remote::container:shared/job": true,
+	}
+	runtimeStatesMu.Unlock()
+
+	clearRuntimeContext("remote")
+
+	if _, ok := getRuntimeStatesSnapshot()["remote::container:shared/job"]; ok {
+		t.Fatal("expected remote runtime state to be removed")
+	}
+
+	if _, ok := getRuntimeRunStatusesSnapshot()["remote::container:shared/job"]; ok {
+		t.Fatal("expected remote run status to be removed")
+	}
+
+	if _, ok := getRuntimeRunningStatesSnapshot()["remote::container:shared/job"]; ok {
+		t.Fatal("expected remote running state to be removed")
+	}
+
+	if _, ok := getRuntimeStatesSnapshot()["container:shared/job"]; !ok {
+		t.Fatal("expected default runtime state to be preserved")
 	}
 }
 
@@ -611,14 +683,40 @@ func TestLockStacks_DeduplicatesAndLocksSortedOrder(t *testing.T) {
 
 	// Repeated/empty entries must not cause a self-deadlock (locking the same
 	// stack twice) and must not be double-unlocked.
-	unlock := lockStacks("zeta", "alpha", "alpha", "", "zeta")
+	unlock := lockStacks("", "zeta", "alpha", "alpha", "", "zeta")
 	unlock()
 
 	// If dedup/unlock bookkeeping were broken, acquiring the same stacks again
 	// would deadlock (this call would hang forever), so a normal test timeout
 	// failure would catch it.
-	unlock2 := lockStacks("alpha", "zeta")
+	unlock2 := lockStacks("", "alpha", "zeta")
 	unlock2()
+}
+
+func TestLockStacks_SameStackDifferentContextsDoNotBlock(t *testing.T) {
+	t.Parallel()
+
+	// Two different Docker contexts using the same stack name must not share
+	// a lock (see lock.StackKey): locking "prod" on "context-a" must not block
+	// locking "prod" on "context-b" concurrently.
+	unlockA := lockStacks("context-a", "prod")
+
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		unlockB := lockStacks("context-b", "prod")
+		unlockB()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("lockStacks() for the same stack name on a different context blocked; expected independent locks")
+	}
+
+	unlockA()
 }
 
 func TestStopHold_RefCounting(t *testing.T) {
@@ -684,5 +782,95 @@ func TestStopHold_SwarmReplicasSurviveUntilLastRelease(t *testing.T) {
 
 	if replicas != 3 {
 		t.Fatalf("replicas = %d, want 3", replicas)
+	}
+}
+
+func TestStopHold_IsolatedAcrossContexts(t *testing.T) {
+	t.Parallel()
+
+	// Two scheduler workers on different Docker contexts must not share a
+	// stop hold for the same project/service name: a hold acquired on one
+	// context must not be visible to (or block) the other context's worker.
+	sDefault := &scheduler{contextName: "", stopHolds: map[stopHoldKey]*stopHoldState{}}
+	sRemote := &scheduler{contextName: "remote", stopHolds: map[stopHoldKey]*stopHoldState{}}
+
+	if isFirst := sDefault.acquireStopHold(scheduledJobModeContainer, "proj", "db"); !isFirst {
+		t.Fatal("expected first acquireStopHold() on default context to report isFirst=true")
+	}
+
+	// The same project/service on a different context must be an independent
+	// hold, so this must also report isFirst=true.
+	if isFirst := sRemote.acquireStopHold(scheduledJobModeContainer, "proj", "db"); !isFirst {
+		t.Fatal("expected first acquireStopHold() on remote context to report isFirst=true, holds leaked across contexts")
+	}
+
+	if isLast, _ := sRemote.releaseStopHold(scheduledJobModeContainer, "proj", "db"); !isLast {
+		t.Fatal("expected releaseStopHold() on remote context to report isLast=true")
+	}
+
+	// Releasing the remote context's hold must not have touched the default
+	// context's hold.
+	if isLast, _ := sDefault.releaseStopHold(scheduledJobModeContainer, "proj", "db"); !isLast {
+		t.Fatal("expected releaseStopHold() on default context to report isLast=true")
+	}
+}
+
+func TestJobKeyPrefix(t *testing.T) {
+	t.Parallel()
+
+	if got := jobKeyPrefix(""); got != "" {
+		t.Fatalf("jobKeyPrefix(\"\") = %q, want empty (default context keeps unprefixed keys)", got)
+	}
+
+	if got, want := jobKeyPrefix("remote"), "remote::"; got != want {
+		t.Fatalf("jobKeyPrefix(%q) = %q, want %q", "remote", got, want)
+	}
+}
+
+func TestGetScheduledRunMetricLabels_IncludesContext(t *testing.T) {
+	t.Parallel()
+
+	cfg := docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff}
+
+	defaultJob := scheduledJob{name: "backup", mode: scheduledJobModeContainer, context: ""}
+	if got, want := getScheduledRunMetricLabels(defaultJob, cfg, "stack"), []string{"default", "stack", "backup", "container", "one_off"}; !slices.Equal(got, want) {
+		t.Fatalf("getScheduledRunMetricLabels() = %v, want %v", got, want)
+	}
+
+	remoteJob := scheduledJob{name: "backup", mode: scheduledJobModeContainer, context: "remote"}
+	if got, want := getScheduledRunMetricLabels(remoteJob, cfg, "stack"), []string{"remote", "stack", "backup", "container", "one_off"}; !slices.Equal(got, want) {
+		t.Fatalf("getScheduledRunMetricLabels() = %v, want %v", got, want)
+	}
+}
+
+func TestJobInfo_ContextField(t *testing.T) {
+	t.Parallel()
+
+	// JobInfo.Context must use the external display value ("default"), not
+	// the internal normalized (empty-string) representation.
+	if got, want := docker.DisplayContextName(""), "default"; got != want {
+		t.Fatalf("docker.DisplayContextName(\"\") = %q, want %q", got, want)
+	}
+}
+
+func TestNewScheduler_NormalizesContextAndCarriesSwarmMode(t *testing.T) {
+	t.Parallel()
+
+	s := newScheduler(docker.ContextClient{Name: "Default", SwarmMode: true}, nil, nil, nil)
+	if s.contextName != "" {
+		t.Fatalf("newScheduler() contextName = %q, want empty string for the default context", s.contextName)
+	}
+
+	if !s.swarmMode {
+		t.Fatal("newScheduler() did not carry through SwarmMode=true from the context client")
+	}
+
+	remote := newScheduler(docker.ContextClient{Name: "remote", SwarmMode: false}, nil, nil, nil)
+	if remote.contextName != "remote" {
+		t.Fatalf("newScheduler() contextName = %q, want %q", remote.contextName, "remote")
+	}
+
+	if remote.swarmMode {
+		t.Fatal("newScheduler() reported swarmMode=true, want false")
 	}
 }

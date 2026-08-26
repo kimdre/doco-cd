@@ -22,6 +22,27 @@ Example:
 curl -H "x-api-key: your_api_key" http://example.com/v1/api/projects
 ```
 
+## Query Parameters
+
+Management endpoints support these common query parameters:
+
+| Query Parameter | Type    | Description                                                                          |
+|-----------------|---------|--------------------------------------------------------------------------------------|
+| `context`       | string  | Docker context for project, stack, and scheduled-job endpoints (default: `default`). |
+| `timeout`       | integer | Timeout in seconds (default: `30`).                                                  |
+
+## Docker context selection
+
+Project, stack, and scheduled-job endpoints accept one optional `context` query parameter. If it is omitted or set to `default`, the endpoint uses the default Docker context. 
+Named contexts must exist in the Docker CLI context store available to doco-cd.
+
+These endpoints return the selected external context name in the `X-Doco-CD-Context` response header. Their JSON response shapes do not change.
+
+```sh
+curl -i -H "x-api-key: your_api_key" \
+  "http://example.com/v1/api/projects?context=remote"
+```
+
 ## Endpoints
 
 
@@ -48,11 +69,12 @@ If the application is not healthy, the endpoint returns a `503` status code and 
 
 The API tracks deployment-related runs (for example webhook-triggered deployments and API-triggered poll runs) in memory.
 Use these endpoints to inspect the current status and recent history by `job_id`.
+Each run's `deployments` collection reports the resolved stack and Docker context targets. A single poll or webhook run can contain targets from multiple contexts.
 
-| Endpoint              | Method | Description                           | Query Parameters                                                                                                                                                        |
-|-----------------------|--------|---------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Endpoint              | Method | Description                           | Query Parameters                                                                                                                                                                                                 |
+|-----------------------|--------|---------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `/v1/api/runs`        | GET    | List recent tracked deployment runs   | - `limit` (integer, default: `50`, max: `200`)<br/>- `status` (string, optional): `accepted`, `running`, `succeeded`, `failed`, `skipped`<br/>- `trigger` (string, optional): `webhook`, `poll`, `scheduled_job` |
-| `/v1/api/run/{jobID}` | GET    | Get details for a specific run/job ID |                                                                                                                                                                         |
+| `/v1/api/run/{jobID}` | GET    | Get details for a specific run/job ID |                                                                                                                                                                                                                  |
 
 #### Example Requests
 
@@ -135,6 +157,7 @@ curl --request POST \
     You can get the `jobName` from the scheduler logs (`"job":"..."`) or from `GET /v1/api/jobs`.
 
 - If multiple jobs share the same `jobName`, provide `stack` to disambiguate for the run endpoint.
+- If the same job and stack names exist on multiple Docker contexts, provide `context`.
 - If the matched job is disabled, the run endpoint returns a conflict response.
 
 **Common run endpoint outcomes**
@@ -197,14 +220,6 @@ curl --request POST \
 | `/v1/api/stack/{stackName}/scale`   | POST   | Rescale a Swarm stack or service                                                                                  | - `replicas` (integer): Scale to n replicas.<br/>- `service` (string, optional): Name of service to scale.<br/>- `wait` (boolean, default: `true`): Wait for service to be running/healthy | 
 | `/v1/api/stack/{stackName}/restart` | POST   | Restart/Redeploy a Swarm stack or service                                                                         | - `service` (string, optional): Name of service to restart.                                                                                                                                | 
 | `/v1/api/stack/{stackName}/run`     | POST   | Trigger one or all [jobs](https://docs.docker.com/reference/cli/docker/service/create/#running-as-a-job) in stack | - `service` (string, optional): Name of the job service to run.                                                                                                                            |
-
-## Query Parameters
-
-All endpoints that support query parameters accept the following common parameters:
-
-| Query Parameter | Type    | Description                         |
-|-----------------|---------|-------------------------------------|
-| `timeout`       | integer | Timeout in seconds (default: `30`). |
 
 ## Example Request
 

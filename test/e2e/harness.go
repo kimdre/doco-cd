@@ -9,6 +9,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -48,6 +49,11 @@ type Harness struct {
 	net    *testcontainers.DockerNetwork
 	gitSrv testcontainers.Container
 	daemon testcontainers.Container
+
+	remoteContext    bool
+	contextConfigDir string
+	remoteDaemon     testcontainers.Container
+	remoteDocker     *client.Client
 
 	teardownOnce sync.Once
 }
@@ -99,6 +105,13 @@ func NewHarness(t *testing.T, scenario string) *Harness {
 	return h
 }
 
+// EnableRemoteContext adds a second disposable Docker daemon exposed to doco-cd
+// as the named context "remote". Call before Start.
+func (h *Harness) EnableRemoteContext() {
+	h.t.Helper()
+	h.remoteContext = true
+}
+
 // Start creates the initial fixture commit, builds and starts the gitserver
 // + doco-cd containers, and waits for the daemon to become healthy.
 func (h *Harness) Start() {
@@ -123,6 +136,11 @@ func (h *Harness) Start() {
 	h.net = net
 
 	h.startGitServer()
+
+	if h.remoteContext {
+		h.startRemoteDocker()
+		h.writeDockerContextConfig()
+	}
 
 	pollPath := h.writePollConfig()
 	h.startDaemon(pollPath)
@@ -174,6 +192,7 @@ func (h *Harness) startDaemon(pollConfigPath string) {
 				"TZ":               "Etc/UTC",
 				"LOG_LEVEL":        "debug",
 				"POLL_CONFIG_FILE": "/config/poll.yaml",
+				"DOCKER_CONFIG":    "/root/.docker",
 			},
 			Mounts: testcontainers.ContainerMounts{
 				{Source: testcontainers.GenericVolumeMountSource{Name: h.dataVolume}, Target: "/data"},
@@ -183,6 +202,9 @@ func (h *Harness) startDaemon(pollConfigPath string) {
 					"/var/run/docker.sock:/var/run/docker.sock",
 					pollConfigPath+":/config/poll.yaml:ro",
 				)
+				if h.contextConfigDir != "" {
+					hc.Binds = append(hc.Binds, h.contextConfigDir+":/root/.docker:ro")
+				}
 			},
 			WaitingFor: wait.ForExec([]string{"/doco-cd", "healthcheck"}).
 				WithStartupTimeout(60 * time.Second).
@@ -198,6 +220,79 @@ func (h *Harness) startDaemon(pollConfigPath string) {
 
 	h.daemon = daemon
 	h.logContainerStart("doco-cd", daemon)
+}
+
+func (h *Harness) startRemoteDocker() {
+	h.t.Helper()
+
+	remote, err := testcontainers.GenericContainer(h.ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: testcontainers.ContainerRequest{
+			Image:          "docker:29-dind",
+			Name:           h.containerName("remote-docker"),
+			Networks:       []string{h.net.Name},
+			NetworkAliases: map[string][]string{h.net.Name: {"remote-docker"}},
+			Env:            map[string]string{"DOCKER_TLS_CERTDIR": ""},
+			Cmd:            []string{"--host=tcp://0.0.0.0:2375"},
+			ExposedPorts:   []string{"2375/tcp"},
+			HostConfigModifier: func(hc *container.HostConfig) {
+				hc.Privileged = true
+			},
+			WaitingFor: wait.ForListeningPort("2375/tcp").
+				WithStartupTimeout(90 * time.Second).
+				WithPollInterval(500 * time.Millisecond),
+		},
+		Started: true,
+	})
+	if err != nil {
+		h.t.Fatalf("start remote Docker daemon: %v", err)
+	}
+
+	host, err := remote.Host(h.ctx)
+	if err != nil {
+		_ = remote.Terminate(h.ctx)
+		h.t.Fatalf("resolve remote Docker host: %v", err)
+	}
+
+	port, err := remote.MappedPort(h.ctx, "2375/tcp")
+	if err != nil {
+		_ = remote.Terminate(h.ctx)
+		h.t.Fatalf("resolve remote Docker port: %v", err)
+	}
+
+	remoteDocker, err := client.New(
+		client.WithHost("tcp://" + net.JoinHostPort(host, port.Port())),
+	)
+	if err != nil {
+		_ = remote.Terminate(h.ctx)
+		h.t.Fatalf("create remote Docker client: %v", err)
+	}
+
+	if _, err := remoteDocker.Ping(h.ctx, client.PingOptions{}); err != nil {
+		_ = remoteDocker.Close()
+		_ = remote.Terminate(h.ctx)
+		h.t.Fatalf("ping remote Docker daemon: %v", err)
+	}
+
+	h.remoteDaemon = remote
+	h.remoteDocker = remoteDocker
+	h.logContainerStart("remote-docker", remote)
+}
+
+func (h *Harness) writeDockerContextConfig() {
+	h.t.Helper()
+
+	configDir := filepath.Join(h.workDir, "docker-config")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		h.t.Fatalf("create Docker context config: %v", err)
+	}
+
+	cmd := exec.Command("docker", "--config", configDir, "context", "create", "remote",
+		"--docker", "host=tcp://remote-docker:2375")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		h.t.Fatalf("create remote Docker context: %v\n%s", err, out)
+	}
+
+	h.contextConfigDir = configDir
 }
 
 // prewarmImages starts both image builds in the background so repo, fixture
@@ -378,6 +473,14 @@ func (h *Harness) teardownInternal() {
 
 		h.cleanupStacks()
 
+		if h.remoteDocker != nil {
+			_ = h.remoteDocker.Close()
+		}
+
+		if h.remoteDaemon != nil {
+			_ = h.remoteDaemon.Terminate(h.ctx)
+		}
+
 		if h.gitSrv != nil {
 			_ = h.gitSrv.Terminate(h.ctx)
 		}
@@ -396,6 +499,11 @@ func (h *Harness) logFailure() {
 	if h.t.Failed() {
 		h.logf("--- daemon logs (last 100 lines) ---")
 		h.dumpTailLogs(h.daemon, 100)
+
+		if h.remoteDaemon != nil {
+			h.logf("--- remote Docker logs (last 100 lines) ---")
+			h.dumpTailLogs(h.remoteDaemon, 100)
+		}
 	}
 }
 

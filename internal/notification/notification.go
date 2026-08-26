@@ -77,20 +77,21 @@ type appriseRequest struct {
 }
 
 type Metadata struct {
-	Repository          string
-	Stack               string
-	Context             string // Docker context the stack is deployed to (empty = default context)
-	Target              string // Custom webhook/poll target suffix (e.g., "prod-vm" for .doco-cd.prod-vm.yml)
-	Revision            string
-	JobID               string
-	TraceID             string
-	ReconciliationEvent string
-	AffectedActorKind   string
-	AffectedActorID     string
-	AffectedActorName   string
-	Commits             []git.CommitInfo // commits deployed since the last deploy; empty on first deploy/failure/OCI
-	Duration            time.Duration    // time from job start to the notification; zero when no deploy/destroy ran
-	ChangedServices     []string         // services force-recreated by this deploy, or whose image moved; empty on the first deployment of a stack
+	Repository               string
+	Stack                    string
+	Context                  string // Docker context the stack is deployed to (empty = default context)
+	Target                   string // Custom webhook/poll target suffix (e.g., "prod-vm" for .doco-cd.prod-vm.yml)
+	Revision                 string
+	JobID                    string
+	TraceID                  string
+	ReconciliationEvent      string
+	AffectedActorKind        string
+	AffectedActorID          string
+	AffectedActorName        string
+	Commits                  []git.CommitInfo // commits deployed since the last deploy; empty on first deploy/failure/OCI
+	Duration                 time.Duration    // time from job start to the notification; zero when no deploy/destroy ran
+	ChangedServices          []string         // services force-recreated by this deploy, or whose image moved; empty on the first deployment of a stack
+	DeploymentTargetObserver func(stack, context string)
 }
 
 // TemplateData is the data exposed to a user-configured notification body template.
@@ -491,6 +492,15 @@ func (d TemplateData) DefaultBody() string {
 
 	if m.Stack != "" {
 		fields["stack"] = m.Stack
+
+		contextName := strings.TrimSpace(m.Context)
+		if contextName == "" {
+			contextName = "default"
+		}
+
+		fields["context"] = contextName
+	} else if strings.TrimSpace(m.Context) != "" {
+		fields["context"] = strings.TrimSpace(m.Context)
 	}
 
 	if m.Revision != "" {

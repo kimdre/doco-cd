@@ -1,0 +1,7 @@
+name: e2e-multi-context
+working_dir: deploy
+context: default
+---
+name: e2e-multi-context
+working_dir: deploy
+context: remote

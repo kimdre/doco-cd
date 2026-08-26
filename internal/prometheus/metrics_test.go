@@ -26,7 +26,7 @@ func TestServe(t *testing.T) {
 	}
 
 	AppInfo.WithLabelValues("test", appConfig.LogLevel, time.Now().Format(time.RFC3339)).Set(1)
-	ScheduledRunsTotal.WithLabelValues("test-stack", "backup", "container", "restart").Inc()
+	ScheduledRunsTotal.WithLabelValues("default", "test-stack", "backup", "container", "restart").Inc()
 
 	req, err := http.NewRequest("GET", MetricsPath, nil)
 	if err != nil {
@@ -61,10 +61,10 @@ func TestServe(t *testing.T) {
 	}
 }
 
-func TestDeploymentMetricsIncludeRepositoryAndDeploymentLabels(t *testing.T) {
+func TestDeploymentMetricsIncludeContextLabel(t *testing.T) {
 	t.Parallel()
 
-	DeploymentsTotal.WithLabelValues("github.com/example/repo", "test-stack").Inc()
+	DeploymentsTotal.WithLabelValues("github.com/example/repo", "test-stack", "remote").Inc()
 
 	req, err := http.NewRequest("GET", MetricsPath, nil)
 	if err != nil {
@@ -74,8 +74,8 @@ func TestDeploymentMetricsIncludeRepositoryAndDeploymentLabels(t *testing.T) {
 	rr := httptest.NewRecorder()
 	promhttp.Handler().ServeHTTP(rr, req)
 
-	linePattern := regexp.MustCompile(`doco_cd_deployments_total\{[^}]*deployment="test-stack"[^}]*repository="github.com/example/repo"[^}]*\}\s+1`)
+	linePattern := regexp.MustCompile(`doco_cd_deployments_total\{[^}]*context="remote"[^}]*deployment="test-stack"[^}]*repository="github.com/example/repo"[^}]*\}\s+1`)
 	if !linePattern.MatchString(rr.Body.String()) {
-		t.Fatalf("expected deployments_total with repository and deployment labels, got:\n%s", rr.Body.String())
+		t.Fatalf("expected deployments_total with context label, got:\n%s", rr.Body.String())
 	}
 }

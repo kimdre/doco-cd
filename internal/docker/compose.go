@@ -655,6 +655,7 @@ func DeployStack(
 	startTime := time.Now()
 	repositoryLabel := resolveDeploymentMetricsRepositoryLabel(payload)
 	deploymentLabel := resolveDeploymentMetricsDeploymentLabel(deployConfig.Name)
+	contextLabel := DisplayContextName(deployConfig.Context)
 
 	stackLog := jobLog.
 		With(slog.String("stack", deployConfig.Name))
@@ -747,13 +748,13 @@ func DeployStack(
 		addSwarmSecretLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
 
 		if err = removeMismatchedRecreatableVolumes(*ctx, dockerCli.Client(), deployConfig.Name, project); err != nil {
-			prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel).Inc()
+			prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel, contextLabel).Inc()
 			return fmt.Errorf("failed to remove mismatched recreatable volumes: %w", err)
 		}
 
 		err = DeploySwarmStack(*ctx, dockerCli, cfg, opts)
 		if err != nil {
-			prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel).Inc()
+			prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel, contextLabel).Inc()
 
 			errMsg := "failed to deploy swarm stack " + deployConfig.Name
 
@@ -765,7 +766,7 @@ func DeployStack(
 
 			err = PruneStackConfigs(*ctx, dockerCli.Client(), deployConfig.Name, swarmConfigRetention)
 			if err != nil {
-				prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel).Inc()
+				prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel, contextLabel).Inc()
 
 				errMsg := "failed to prune stack configs"
 
@@ -780,7 +781,7 @@ func DeployStack(
 
 			err = PruneStackSecrets(*ctx, dockerCli.Client(), deployConfig.Name, swarmSecretRetention)
 			if err != nil {
-				prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel).Inc()
+				prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel, contextLabel).Inc()
 
 				errMsg := "failed to prune stack secrets"
 
@@ -797,7 +798,7 @@ func DeployStack(
 
 			err = RunImagePruneJob(*ctx, dockerCli)
 			if err != nil {
-				prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel).Inc()
+				prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel, contextLabel).Inc()
 
 				errMsg := "failed to run image prune job"
 
@@ -841,7 +842,7 @@ func DeployStack(
 		err = deployCompose(*ctx, dockerCli, project, deployConfig, recreateMode,
 			forcedServices.ToSlice(), needSignal, deploymentPhase.Set)
 		if err != nil {
-			prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel).Inc()
+			prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel, contextLabel).Inc()
 			return fmt.Errorf("failed to deploy stack: %w", err)
 		}
 	}
@@ -858,8 +859,8 @@ func DeployStack(
 		},
 	)
 
-	prometheus.DeploymentsTotal.WithLabelValues(repositoryLabel, deploymentLabel).Inc()
-	prometheus.DeploymentDuration.WithLabelValues(repositoryLabel, deploymentLabel).Observe(time.Since(startTime).Seconds())
+	prometheus.DeploymentsTotal.WithLabelValues(repositoryLabel, deploymentLabel, contextLabel).Inc()
+	prometheus.DeploymentDuration.WithLabelValues(repositoryLabel, deploymentLabel, contextLabel).Observe(time.Since(startTime).Seconds())
 
 	return nil
 }

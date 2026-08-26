@@ -17,6 +17,9 @@ func TestDeploymentRunTrackerLifecycle(t *testing.T) {
 
 	tracker.TrackAccepted(jobID, deploymentRunTriggerWebhook)
 	tracker.SetMetadata(jobID, "owner/repo", "prod", "refs/heads/main")
+	tracker.AddDeployment(jobID, "api", "remote")
+	tracker.AddDeployment(jobID, "web", "")
+	tracker.AddDeployment(jobID, "api", "remote")
 	tracker.MarkRunning(jobID)
 	tracker.MarkSucceeded(jobID, "done")
 
@@ -39,6 +42,15 @@ func TestDeploymentRunTrackerLifecycle(t *testing.T) {
 
 	if run.Message != "done" {
 		t.Fatalf("expected message to be set, got %q", run.Message)
+	}
+
+	if len(run.Deployments) != 2 {
+		t.Fatalf("expected two deployment targets, got %#v", run.Deployments)
+	}
+
+	if run.Deployments[0] != (deploymentRunTarget{Stack: "web", Context: "default"}) ||
+		run.Deployments[1] != (deploymentRunTarget{Stack: "api", Context: "remote"}) {
+		t.Fatalf("unexpected deployment targets: %#v", run.Deployments)
 	}
 }
 

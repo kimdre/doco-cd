@@ -42,39 +42,29 @@ type contextualEvent struct {
 // initContextCLIs populates j.contextCLIs with a Docker CLI entry for the default context
 // and for every unique non-default context referenced in the job's deploy configs.
 func (j *job) initContextCLIs(ctx context.Context, quiet bool) {
-	contextCLIs := map[string]contextCLIEntry{
-		"": {cli: j.info.dockerCli, swarmMode: swarm.GetModeEnabled()},
-	}
+	contextCLIs := make(map[string]contextCLIEntry)
 
 	for _, dc := range j.info.deployConfigs {
-		ctxName := strings.TrimSpace(dc.Context)
-		if ctxName == "" {
-			continue
-		}
-
+		ctxName := docker.NormalizeContextName(dc.Context)
 		if _, already := contextCLIs[ctxName]; already {
 			continue
 		}
 
-		cli, closeFn, err := dockerCliForContext(j.info.dockerCli, quiet, ctxName)
-		if err != nil {
+		entry := resolveDeployContext(ctx, j.info.contexts, j.info.dockerCli, quiet, ctxName)
+		if entry.err != nil {
 			j.info.jobLog.Error("failed to create Docker CLI for context; skipping event listener for that context",
-				slog.String("context", ctxName),
-				logger.ErrAttr(err),
+				slog.String("context", docker.DisplayContextName(ctxName)),
+				logger.ErrAttr(entry.err),
 			)
 
 			continue
 		}
 
-		swarmMode, err := swarm.ResolveModeEnabled(ctx, cli.Client())
-		if err != nil {
-			j.info.jobLog.Warn("failed to determine swarm mode for context, assuming non-swarm",
-				slog.String("context", ctxName),
-				logger.ErrAttr(err),
-			)
+		contextCLIs[ctxName] = contextCLIEntry{
+			cli:       entry.cli,
+			closeFn:   entry.closeFn,
+			swarmMode: entry.swarmMode,
 		}
-
-		contextCLIs[ctxName] = contextCLIEntry{cli: cli, closeFn: closeFn, swarmMode: swarmMode}
 	}
 
 	j.contextCLIs = contextCLIs
@@ -83,7 +73,7 @@ func (j *job) initContextCLIs(ctx context.Context, quiet bool) {
 // cliForContext returns the Docker CLI for the given context name, falling back to the
 // default CLI if the context is not found.
 func (j *job) cliForContext(contextName string) command.Cli {
-	contextName = strings.TrimSpace(contextName)
+	contextName = docker.NormalizeContextName(contextName)
 	if j.contextCLIs != nil {
 		if e, ok := j.contextCLIs[contextName]; ok {
 			return e.cli
@@ -96,7 +86,7 @@ func (j *job) cliForContext(contextName string) command.Cli {
 // swarmModeForContext returns the swarm mode for the given context name, falling back to the
 // globally cached value for the default context.
 func (j *job) swarmModeForContext(contextName string) bool {
-	contextName = strings.TrimSpace(contextName)
+	contextName = docker.NormalizeContextName(contextName)
 	if j.contextCLIs != nil {
 		if e, ok := j.contextCLIs[contextName]; ok {
 			return e.swarmMode
@@ -429,7 +419,7 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		return
 	}
 
-	if reconciliationHandler.isServiceSchedulerStopHeld(event.Actor.Attributes) {
+	if reconciliationHandler.isServiceSchedulerStopHeld(contextName, event.Actor.Attributes) {
 		jobLog.Debug("suppressing reconciliation event for service intentionally held stopped by job scheduler",
 			slog.String("event", action),
 			slog.String("stack", stackName),
@@ -575,7 +565,7 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConf
 
 	// handleDeploy accepts the base CLI; it handles per-context routing internally.
 	if err := handleDeploy(ctx, jobLog, j.info.appConfig,
-		j.info.dataMountPoint, j.info.dockerCli,
+		j.info.dataMountPoint, j.info.dockerCli, j.info.contexts,
 		j.info.secretProvider, metadata.JobID, j.info.jobTrigger,
 		j.info.repoData, reconcileDCs, j.info.payload, j.info.testName, metadata); err != nil {
 		jobLog.Error("failed to deploy", logger.ErrAttr(err))

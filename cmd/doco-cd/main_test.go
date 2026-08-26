@@ -453,6 +453,7 @@ env_files:
 					tc.customTarget,
 					metadata,
 					dockerCli,
+					nil,
 					&secretProvider,
 					stackName,
 					newDeploymentRunTracker(map[deploymentRunTrigger]int{

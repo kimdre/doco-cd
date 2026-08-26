@@ -44,6 +44,7 @@ func TestDeploy_RejectsUnverifiedOCIArtifact(t *testing.T) {
 		container.MountPoint{},
 		nil,
 		nil,
+		nil,
 		notification.Metadata{},
 		stages.JobTriggerWebhook,
 		stages.RepositoryData{
@@ -175,6 +176,7 @@ func TestDeploy(t *testing.T) {
 			Mode:        "rw",
 		},
 		dockerCli,
+		nil,
 		&secretProvider,
 		notification.Metadata{
 			JobID:      jobId,
