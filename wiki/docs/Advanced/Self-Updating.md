@@ -19,6 +19,38 @@ The setup can look like this:
 2. The **updater** instance watches the repository with [polling](../Poll-Settings.md) and deploys the main instance via a custom target such as `updater`.
 3. Scheduled jobs should usually stay on the main instance. Set [`SCHEDULER_ENABLED`](../App-Settings.md) to `false` on the **updater** instance.
 
+## Simpler option: scheduled image updates
+
+If you only want the main instance to follow a mutable image tag such as `latest`, a second doco-cd instance is not required.
+For a standalone Docker Compose installation, [Watchtower](https://containrrr.dev/watchtower/) can check for a new image and recreate the selected container on a schedule.
+
+Add the label to the main instance and add Watchtower to the same Compose file:
+
+```yaml title="doco-cd/compose.main.yaml"
+services:
+  app:
+    container_name: doco-cd
+    image: ghcr.io/kimdre/doco-cd:latest
+    restart: unless-stopped
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    # environment and volumes omitted
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    command: --label-enable --schedule "0 0 4 * * *" --cleanup
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+```
+
+The example checks daily at 04:00 (the schedule includes seconds), pulls a changed doco-cd image, recreates only containers with the opt-in label, and removes old image layers.
+Set a schedule appropriate for your maintenance window.
+
+!!! warning "Scope and Docker socket access"
+    This option updates image changes only; it does not apply changes to your Compose file, environment, or doco-cd deployment configuration.
+    Watchtower needs Docker socket access, which effectively grants it control over the Docker host. Restrict updates with `--label-enable` as shown and review the [Docker API permission guidance](Docker-API-Permissions.md).
+
 ## Requirements
 
 - Both instances need access to the same Docker socket.
