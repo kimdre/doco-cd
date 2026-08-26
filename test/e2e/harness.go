@@ -260,8 +260,7 @@ func (h *Harness) startRemoteDocker() {
 	}
 
 	remoteDocker, err := client.New(
-		client.WithHost("tcp://"+net.JoinHostPort(host, port.Port())),
-		client.WithAPIVersionNegotiation(),
+		client.WithHost("tcp://" + net.JoinHostPort(host, port.Port())),
 	)
 	if err != nil {
 		_ = remote.Terminate(h.ctx)
