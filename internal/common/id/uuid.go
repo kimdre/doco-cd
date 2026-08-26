@@ -1,7 +1,8 @@
 package id
 
-import "github.com/google/uuid"
+import "uuid"
 
-func GenID() string {
-	return uuid.Must(uuid.NewV7()).String()
+// New generates a new UUID v7 string.
+func New() string {
+	return uuid.NewV7().String()
 }

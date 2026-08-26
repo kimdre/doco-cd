@@ -453,7 +453,7 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 	stackID := j.info.metadata.Repository + "/" + contextName + "/" + stackName
 	stackLock := lock.GetRepoLock(stackID)
 
-	if !stackLock.TryLock(id.GenID()) {
+	if !stackLock.TryLock(id.New()) {
 		jobLog.Debug("skipping reconciliation, already in progress for this stack", slog.String("stack", stackName))
 		return
 	}
@@ -464,7 +464,7 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		actorGroupName = "service"
 	}
 
-	traceID := id.GenID()
+	traceID := id.New()
 	event = withReconciliationTraceID(event, traceID)
 
 	eventLog := logger.

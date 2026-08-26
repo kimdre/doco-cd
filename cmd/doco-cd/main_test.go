@@ -375,7 +375,7 @@ env_files:
 				t.Skip("Skipping test for private repository because GIT_ACCESS_TOKEN is not set")
 			}
 
-			jobID := id.GenID()
+			jobID := id.New()
 			jobLog := logger.New(logger.LevelCritical).With(slog.String("job_id", jobID))
 
 			ctx := context.Background()

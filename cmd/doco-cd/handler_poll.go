@@ -128,7 +128,7 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 	}
 
 	doRun := func(trigger string) {
-		jobID := id.GenID()
+		jobID := id.New()
 
 		metadata := notification.Metadata{
 			Repository:               repoName,

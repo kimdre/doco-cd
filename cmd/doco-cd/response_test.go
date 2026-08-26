@@ -14,7 +14,7 @@ func TestJSONResponse(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 
-	jobId := id.GenID()
+	jobId := id.New()
 
 	JSONResponse(rr, "this is a test", jobId, http.StatusOK)
 
@@ -35,7 +35,7 @@ func TestJSONError(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 
-	jobId := id.GenID()
+	jobId := id.New()
 
 	JSONError(rr, "this is a error", "this is a detail", jobId, http.StatusInternalServerError)
 

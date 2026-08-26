@@ -78,7 +78,7 @@ func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *s
 			containerName = strings.TrimPrefix(c.Names[0], "/")
 		}
 
-		traceID := id.GenID()
+		traceID := id.New()
 
 		eventLog := logger.
 			WithoutAttr(jobLog, "job_id").
@@ -163,7 +163,7 @@ func (j *job) redeployMissingServicesOnStartup(ctx context.Context, jobLog *slog
 		return
 	}
 
-	traceID := id.GenID()
+	traceID := id.New()
 
 	eventLog := logger.
 		WithoutAttr(jobLog, "job_id").

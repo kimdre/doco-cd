@@ -218,7 +218,7 @@ func TestDeployCompose(t *testing.T) {
 	p := webhook.ParsedPayload{
 		Ref:       git.MainBranch,
 		CommitSHA: plumbing.NewHash("4d877107dfa2e3b582bd8f8f803befbd3a1d867e"),
-		Name:      id.GenID(),
+		Name:      id.New(),
 		FullName:  "kimdre/doco-cd_tests",
 		CloneURL:  cloneUrlTest,
 		Private:   false,
@@ -311,7 +311,7 @@ compose_files:
 
 		t.Logf("Deploying '%s'", deployConf.Name)
 
-		jobID := id.GenID()
+		jobID := id.New()
 
 		testLog := logger.New(slog.LevelInfo)
 		jobLog := testLog.With(slog.String("job_id", jobID))
