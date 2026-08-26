@@ -37,7 +37,7 @@ func TestSend(t *testing.T) {
 		Repository: "test",
 		Stack:      "test-stack",
 		Revision:   "main",
-		JobID:      id.GenID(),
+		JobID:      id.New(),
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

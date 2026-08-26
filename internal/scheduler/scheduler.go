@@ -325,7 +325,7 @@ func (s *scheduler) triggerNow(ctx context.Context, jobName, stackName string) (
 		return "", err
 	}
 
-	runID := id.GenID()
+	runID := id.New()
 	stack := getJobStackName(job)
 	metricLabels := getScheduledRunMetricLabels(job, cfg, stack)
 
@@ -943,7 +943,7 @@ func (s *scheduler) triggerRun(ctx context.Context, job scheduledJob, cfg docker
 			}
 		}()
 
-		runID := id.GenID()
+		runID := id.New()
 
 		runLog := s.log.With(
 			slog.String("job_id", runID),
