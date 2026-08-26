@@ -63,7 +63,7 @@ func getStackMutex(stackName string) *sync.Mutex {
 // certificate rotation watcher) stay mutually exclusive with its deployments.
 func StackKey(contextName, stackName string) string {
 	contextName = strings.TrimSpace(contextName)
-	if contextName == "" {
+	if contextName == "" || strings.EqualFold(contextName, "default") {
 		return stackName
 	}
 

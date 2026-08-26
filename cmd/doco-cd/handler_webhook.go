@@ -19,6 +19,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
+	"github.com/kimdre/doco-cd/internal/docker"
 
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -28,6 +29,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/prometheus"
+	"github.com/kimdre/doco-cd/internal/scheduler"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -237,9 +239,11 @@ type handlerData struct {
 	appVersion     string               // Application version
 	dataMountPoint container.MountPoint // Mount point for the data directory
 	dockerCli      command.Cli          // Docker CLI client
-	log            *logger.Logger       // Logger for logging messages
+	contexts       *docker.ContextRegistry
+	log            *logger.Logger // Logger for logging messages
 	runTracker     *deploymentRunTracker
 	runPoll        pollRunner
+	scheduler      *scheduler.Manager
 	secretProvider *secretprovider.SecretProvider
 	testName       string // Overwrites the deployConfig.Name to make test deployments unique and prevent conflicts between tests when running in parallel. Not used in production.
 }
@@ -286,7 +290,7 @@ func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any
 // HandleEvent executes the deployment process for a given webhook event.
 func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *app.Config,
 	dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget string, metadata notification.Metadata,
-	dockerCli command.Cli, secretProvider *secretprovider.SecretProvider,
+	dockerCli command.Cli, contexts *docker.ContextRegistry, secretProvider *secretprovider.SecretProvider,
 	testName string, runTracker *deploymentRunTracker,
 ) {
 	startTime := time.Now()
@@ -388,7 +392,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	deployErr := handle(ctx, jobLog,
-		appConfig, dataMountPoint, secretProvider, dockerCli,
+		appConfig, dataMountPoint, secretProvider, dockerCli, contexts,
 		stages.JobTriggerWebhook, sourceType, sourceRef, payload.Ref, payload.Private,
 		metadata, customTarget, testName, poll.Config{}, payload,
 	)
@@ -460,11 +464,12 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	metadata := notification.Metadata{
-		JobID:      jobID,
-		Repository: "unknown", // Will be updated later if we can parse the payload
-		Stack:      "",
-		Target:     strings.TrimSpace(customTarget),
-		Revision:   "",
+		JobID:                    jobID,
+		Repository:               "unknown", // Will be updated later if we can parse the payload
+		Stack:                    "",
+		Target:                   strings.TrimSpace(customTarget),
+		Revision:                 "",
+		DeploymentTargetObserver: h.deploymentTargetObserver(jobID),
 	}
 	if h.runTracker != nil {
 		h.runTracker.TrackAccepted(jobID, deploymentRunTriggerWebhook)
@@ -595,7 +600,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 		defer repoLock.Unlock()
 
-		HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, metadata, h.dockerCli, h.secretProvider, h.testName, h.runTracker)
+		HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, metadata, h.dockerCli, h.contexts, h.secretProvider, h.testName, h.runTracker)
 	}
 
 	if wait {

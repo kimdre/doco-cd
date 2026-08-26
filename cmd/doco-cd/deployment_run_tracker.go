@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/kimdre/doco-cd/internal/docker"
 )
 
 type (
@@ -35,17 +37,23 @@ var (
 )
 
 type deploymentRun struct {
-	JobID      string               `json:"job_id"`
-	Trigger    deploymentRunTrigger `json:"trigger"`
-	Status     deploymentRunStatus  `json:"status"`
-	Repository string               `json:"repository,omitempty"`
-	Target     string               `json:"target,omitempty"`
-	Revision   string               `json:"revision,omitempty"`
-	Message    string               `json:"message,omitempty"`
-	CreatedAt  time.Time            `json:"created_at"`
-	StartedAt  *time.Time           `json:"started_at,omitempty"`
-	FinishedAt *time.Time           `json:"finished_at,omitempty"`
-	UpdatedAt  time.Time            `json:"updated_at"`
+	JobID       string                `json:"job_id"`
+	Trigger     deploymentRunTrigger  `json:"trigger"`
+	Status      deploymentRunStatus   `json:"status"`
+	Repository  string                `json:"repository,omitempty"`
+	Target      string                `json:"target,omitempty"`
+	Revision    string                `json:"revision,omitempty"`
+	Deployments []deploymentRunTarget `json:"deployments,omitempty"`
+	Message     string                `json:"message,omitempty"`
+	CreatedAt   time.Time             `json:"created_at"`
+	StartedAt   *time.Time            `json:"started_at,omitempty"`
+	FinishedAt  *time.Time            `json:"finished_at,omitempty"`
+	UpdatedAt   time.Time             `json:"updated_at"`
+}
+
+type deploymentRunTarget struct {
+	Stack   string `json:"stack,omitempty"`
+	Context string `json:"context"`
 }
 
 // deploymentRunTracker is a thread-safe, in-memory registry for tracking deployment runs.
@@ -57,6 +65,16 @@ type deploymentRunTracker struct {
 	orderByTrigger    map[deploymentRunTrigger][]string
 	maxEntriesPerType map[deploymentRunTrigger]int
 	ttl               time.Duration
+}
+
+func (h *handlerData) deploymentTargetObserver(jobID string) func(string, string) {
+	if h == nil || h.runTracker == nil {
+		return nil
+	}
+
+	return func(stack, contextName string) {
+		h.runTracker.AddDeployment(jobID, stack, contextName)
+	}
 }
 
 // newDeploymentRunTracker creates a new deployment run tracker with per-type limits.
@@ -186,6 +204,32 @@ func (t *deploymentRunTracker) SetMetadata(jobID, repository, target, revision s
 			r.Revision = revision
 		}
 
+		r.UpdatedAt = time.Now().UTC()
+	})
+}
+
+func (t *deploymentRunTracker) AddDeployment(jobID, stack, contextName string) {
+	stack = strings.TrimSpace(stack)
+	target := deploymentRunTarget{
+		Stack:   stack,
+		Context: docker.DisplayContextName(contextName),
+	}
+
+	t.update(jobID, func(r *deploymentRun) {
+		for _, existing := range r.Deployments {
+			if existing == target {
+				return
+			}
+		}
+
+		r.Deployments = append(r.Deployments, target)
+		slices.SortFunc(r.Deployments, func(a, b deploymentRunTarget) int {
+			if order := strings.Compare(a.Context, b.Context); order != 0 {
+				return order
+			}
+
+			return strings.Compare(a.Stack, b.Stack)
+		})
 		r.UpdatedAt = time.Now().UTC()
 	})
 }

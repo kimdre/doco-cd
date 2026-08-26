@@ -46,7 +46,9 @@ scenarios/<name>/
 Each scenario gets its own Harness: its own docker network, its own
 gitserver and doco-cd containers, its own host-side git repo and worktree,
 and its own `/data` volume - so scenarios are isolated and can run in
-parallel (`t.Parallel()`).
+parallel (`t.Parallel()`). Scenarios that call `EnableRemoteContext` also
+receive a privileged Docker-in-Docker daemon registered as the `remote`
+context.
 
 The daemon polls `http://gitserver/<scenario>.git` every 10s (the minimum).
 Commits are written directly into the repo's storage directory via go-git,

@@ -14,6 +14,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/app"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 
+	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/graceful"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
@@ -44,6 +45,7 @@ type jobInfo struct {
 	appConfig      *app.Config
 	dataMountPoint container.MountPoint
 	dockerCli      command.Cli
+	contexts       *docker.ContextRegistry
 	secretProvider *secretprovider.SecretProvider
 
 	jobLog *slog.Logger
@@ -121,7 +123,7 @@ type reconciliation struct {
 
 	repoJobs              map[string]*job
 	deployingStacks       map[string]int
-	schedulerHeldServices map[string]schedulerHoldEntry // key = "project/service"
+	schedulerHeldServices map[string]schedulerHoldEntry // key = "context/project/service"
 }
 
 func newReconciliation() *reconciliation {
@@ -147,12 +149,15 @@ func (r *reconciliation) close() {
 }
 
 // MarkSchedulerStopHeld records that the scheduler has intentionally stopped the
-// given compose service (identified by its compose project and service name) so
-// that the reconciliation event listener does not try to restart it while the
-// scheduled job is running. The hold is refcounted to handle concurrent jobs
-// that stop the same service.
-func MarkSchedulerStopHeld(project, service string) {
-	reconciliationHandler.markSchedulerStopHeld(project, service)
+// given compose service (identified by its Docker context, compose project, and
+// service name) so that the reconciliation event listener does not try to
+// restart it while the scheduled job is running. The hold is refcounted to
+// handle concurrent jobs that stop the same service. contextName is the
+// normalized Docker context name (empty string = default context) the
+// service lives on; the same project/service name on two different contexts
+// are tracked independently.
+func MarkSchedulerStopHeld(contextName, project, service string) {
+	reconciliationHandler.markSchedulerStopHeld(contextName, project, service)
 }
 
 // UnmarkSchedulerStopHeld releases a hold previously registered via
@@ -160,20 +165,21 @@ func MarkSchedulerStopHeld(project, service string) {
 // grace period (see schedulerStopHoldGracePeriod) so that any Docker stop
 // event still buffered in the reconciliation channel does not trigger a
 // spurious restart.
-func UnmarkSchedulerStopHeld(project, service string) {
-	reconciliationHandler.unmarkSchedulerStopHeld(project, service)
+func UnmarkSchedulerStopHeld(contextName, project, service string) {
+	reconciliationHandler.unmarkSchedulerStopHeld(contextName, project, service)
 }
 
-func schedulerHeldServiceKey(project, service string) string {
-	return project + "/" + service
+func schedulerHeldServiceKey(contextName, project, service string) string {
+	contextName = docker.NormalizeContextName(contextName)
+	return contextName + "/" + project + "/" + service
 }
 
-func (r *reconciliation) markSchedulerStopHeld(project, service string) {
+func (r *reconciliation) markSchedulerStopHeld(contextName, project, service string) {
 	if project == "" || service == "" {
 		return
 	}
 
-	key := schedulerHeldServiceKey(project, service)
+	key := schedulerHeldServiceKey(contextName, project, service)
 
 	r.m.Lock()
 	entry := r.schedulerHeldServices[key]
@@ -183,12 +189,12 @@ func (r *reconciliation) markSchedulerStopHeld(project, service string) {
 	r.m.Unlock()
 }
 
-func (r *reconciliation) unmarkSchedulerStopHeld(project, service string) {
+func (r *reconciliation) unmarkSchedulerStopHeld(contextName, project, service string) {
 	if project == "" || service == "" {
 		return
 	}
 
-	key := schedulerHeldServiceKey(project, service)
+	key := schedulerHeldServiceKey(contextName, project, service)
 
 	r.m.Lock()
 	defer r.m.Unlock()
@@ -211,8 +217,9 @@ func (r *reconciliation) unmarkSchedulerStopHeld(project, service string) {
 
 // isServiceSchedulerStopHeld reports whether the container described by attrs is
 // currently held stopped by the job scheduler (or within the post-release grace
-// period). It uses the standard Docker Compose labels to identify the service.
-func (r *reconciliation) isServiceSchedulerStopHeld(attrs map[string]string) bool {
+// period) on the given Docker context. It uses the standard Docker Compose
+// labels to identify the service.
+func (r *reconciliation) isServiceSchedulerStopHeld(contextName string, attrs map[string]string) bool {
 	if attrs == nil {
 		return false
 	}
@@ -224,7 +231,7 @@ func (r *reconciliation) isServiceSchedulerStopHeld(attrs map[string]string) boo
 		return false
 	}
 
-	key := schedulerHeldServiceKey(project, service)
+	key := schedulerHeldServiceKey(contextName, project, service)
 
 	r.m.Lock()
 	defer r.m.Unlock()
@@ -253,6 +260,7 @@ func (r *reconciliation) isServiceSchedulerStopHeld(attrs map[string]string) boo
 // only guaranteed unique within a Docker context, so context is included to
 // avoid conflating same-named stacks deployed to different contexts.
 func stackDeploymentKey(repository, context, stack string) string {
+	context = docker.NormalizeContextName(context)
 	return repository + "/" + context + "/" + stack
 }
 

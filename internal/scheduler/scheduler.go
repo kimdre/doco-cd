@@ -64,6 +64,9 @@ type scheduledJob struct {
 	containerState  string // Docker container state (container mode only), e.g. "running", "exited"
 	containerStatus string // Docker container status string (container mode only), e.g. "Exited (0) 2 hours ago"
 	running         bool   // An execution is currently active (e.g. a running one_off ephemeral container)
+	// context is the normalized Docker context name the job was discovered on
+	// (empty string means the default context). See docker.NormalizeContextName.
+	context string
 }
 
 type scheduledJobState struct {
@@ -76,7 +79,16 @@ type scheduledJobState struct {
 }
 
 type scheduler struct {
-	dockerCli      command.Cli
+	dockerCli command.Cli
+	// contextName is the normalized Docker context this worker operates on
+	// (empty string means the default context). See docker.NormalizeContextName.
+	contextName string
+	// swarmMode reflects the swarm mode of this worker's Docker context,
+	// resolved once via the context registry (or swarm.GetModeEnabled for the
+	// legacy single-context entry points). Using the per-context value instead
+	// of the process-global swarm.GetModeEnabled() lets each worker discover
+	// and schedule jobs correctly regardless of other contexts' modes.
+	swarmMode      bool
 	secretProvider *secretprovider.SecretProvider
 	log            *slog.Logger
 	wg             *sync.WaitGroup
@@ -101,8 +113,11 @@ type scheduler struct {
 }
 
 // stopHoldKey identifies a service that may be concurrently held stopped by
-// more than one scheduled job run.
+// more than one scheduled job run. context is the normalized Docker context
+// name the hold applies to, so that two workers operating on different
+// contexts never share a hold for a same-named project/service.
 type stopHoldKey struct {
+	context string
 	mode    scheduledJobMode
 	project string
 	service string
@@ -118,6 +133,7 @@ type stopHoldState struct {
 // JobInfo describes one scheduler-managed target and its runtime scheduling status.
 type JobInfo struct {
 	Name           string                  `json:"name"`
+	Context        string                  `json:"context"`
 	Enabled        bool                    `json:"enabled"`
 	Stack          string                  `json:"stack,omitempty"`
 	Mode           string                  `json:"mode"`
@@ -141,28 +157,52 @@ func Start(ctx context.Context, dockerCli command.Cli, log *slog.Logger, wg *syn
 		return
 	}
 
-	s := &scheduler{
-		dockerCli:      dockerCli,
+	s := newScheduler(docker.ContextClient{Cli: dockerCli, SwarmMode: swarm.GetModeEnabled()}, log, wg, secretProvider)
+
+	s.run(ctx)
+}
+
+// newScheduler builds a scheduler worker bound to a single Docker context, as
+// resolved by a docker.ContextRegistry (or synthesised for the legacy
+// single-context entry points Start/ListJobs/TriggerNow). log and wg may be
+// nil for short-lived, one-shot workers (e.g. a single ListJobs/TriggerNow
+// call) that never call run().
+func newScheduler(cc docker.ContextClient, log *slog.Logger, wg *sync.WaitGroup, secretProvider *secretprovider.SecretProvider) *scheduler {
+	if log == nil {
+		log = slog.Default()
+	}
+
+	contextName := docker.NormalizeContextName(cc.Name)
+
+	return &scheduler{
+		dockerCli:      cc.Cli,
+		contextName:    contextName,
+		swarmMode:      cc.SwarmMode,
 		secretProvider: secretProvider,
-		log:            log.With(slog.String("component", "scheduler")),
+		log:            log.With(slog.String("component", "scheduler"), slog.String("context", docker.DisplayContextName(contextName))),
 		wg:             wg,
 		startedAt:      schedulerNow(),
 		states:         map[string]scheduledJobState{},
 		running:        map[string]bool{},
 		stopHolds:      map[stopHoldKey]*stopHoldState{},
 	}
-
-	s.run(ctx)
 }
 
-// ListJobs returns all discovered scheduler jobs, optionally filtered by stack name.
+// ListJobs returns all discovered scheduler jobs on the default Docker context,
+// optionally filtered by stack name.
 func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]JobInfo, error) {
 	if dockerCli == nil {
 		return nil, errors.New("docker cli is required")
 	}
 
-	s := &scheduler{dockerCli: dockerCli}
+	s := newScheduler(docker.ContextClient{Cli: dockerCli, SwarmMode: swarm.GetModeEnabled()}, nil, nil, nil)
 
+	return s.listJobs(ctx, stackName)
+}
+
+// listJobs returns all jobs discovered on this worker's Docker context,
+// optionally filtered by stack name.
+func (s *scheduler) listJobs(ctx context.Context, stackName string) ([]JobInfo, error) {
 	jobs, err := s.discoverJobs(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to discover scheduled jobs: %w", err)
@@ -183,6 +223,7 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 
 		info := JobInfo{
 			Name:       job.name,
+			Context:    docker.DisplayContextName(job.context),
 			Stack:      stack,
 			Mode:       string(job.mode),
 			Repository: job.labels[docker.DocoCDLabels.Source.Name],
@@ -253,27 +294,25 @@ func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]J
 	return result, nil
 }
 
-// TriggerNow executes one configured scheduled job immediately.
-// Job selection matches by container/service name and optional stack name.
+// TriggerNow executes one configured scheduled job immediately on the default
+// Docker context. Job selection matches by container/service name and
+// optional stack name.
 func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jobName, stackName string, secretProvider *secretprovider.SecretProvider) (string, error) {
 	if dockerCli == nil {
 		return "", errors.New("docker cli is required")
 	}
 
+	s := newScheduler(docker.ContextClient{Cli: dockerCli, SwarmMode: swarm.GetModeEnabled()}, log, nil, secretProvider)
+
+	return s.triggerNow(ctx, jobName, stackName)
+}
+
+// triggerNow executes one configured scheduled job immediately on this
+// worker's Docker context. Job selection matches by container/service name
+// and optional stack name.
+func (s *scheduler) triggerNow(ctx context.Context, jobName, stackName string) (string, error) {
 	if strings.TrimSpace(jobName) == "" {
 		return "", errors.New("job name is required")
-	}
-
-	if log == nil {
-		log = slog.Default()
-	}
-
-	s := &scheduler{
-		dockerCli:      dockerCli,
-		log:            log.With(slog.String("component", "scheduler")),
-		running:        map[string]bool{},
-		stopHolds:      map[stopHoldKey]*stopHoldState{},
-		secretProvider: secretProvider,
 	}
 
 	jobs, err := s.discoverJobs(ctx)
@@ -317,7 +356,7 @@ func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jo
 
 	// Lock the job's own stack plus any stacks referenced by stop_services (see lockStacks).
 	lockedStacks := append([]string{stack}, resolveStopServiceStacks(cfg.StopServices, stack)...)
-	unlockStacks := lockStacks(lockedStacks...)
+	unlockStacks := lockStacks(s.contextName, lockedStacks...)
 
 	defer unlockStacks()
 
@@ -341,6 +380,179 @@ func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jo
 	s.sendRunNotification(job, cfg, runID, true, "Scheduled job completed", fmt.Sprintf("scheduled job '%s' completed successfully", job.name))
 
 	return runID, nil
+}
+
+// contextRefreshInterval controls how often Manager re-lists the Docker
+// context registry to pick up newly available contexts (e.g. one that was
+// previously unreachable) and start a worker for them. Contexts that are
+// already running a worker are left untouched.
+const contextRefreshInterval = time.Minute
+
+// Manager runs one scheduler worker per Docker context known to a
+// docker.ContextRegistry and exposes context-aware ListJobs/TriggerNow for
+// REST wiring. It can be constructed even when automatic scheduling is
+// disabled: Start only needs to be called to run the background workers,
+// while ListJobs/TriggerNow work standalone (discovering jobs on demand) as
+// long as the registry can resolve the requested context.
+type Manager struct {
+	registry       *docker.ContextRegistry
+	log            *slog.Logger
+	wg             *sync.WaitGroup
+	secretProvider *secretprovider.SecretProvider
+
+	mu      sync.Mutex
+	workers map[string]managedWorker // key = normalized context name
+}
+
+type managedWorker struct {
+	cancel    context.CancelFunc
+	swarmMode bool
+}
+
+// NewManager creates a scheduler Manager bound to registry. log and wg are
+// required for Start (running background workers) but may be omitted if the
+// Manager is only used for on-demand ListJobs/TriggerNow calls.
+func NewManager(registry *docker.ContextRegistry, log *slog.Logger, wg *sync.WaitGroup, secretProvider *secretprovider.SecretProvider) *Manager {
+	if log == nil {
+		log = slog.Default()
+	}
+
+	return &Manager{
+		registry:       registry,
+		log:            log.With(slog.String("component", "scheduler_manager")),
+		wg:             wg,
+		secretProvider: secretProvider,
+		workers:        map[string]managedWorker{},
+	}
+}
+
+// Start launches one background scheduler worker per Docker context currently
+// known to the registry, and periodically re-lists the registry to start
+// workers for any contexts that become available later. Contexts that fail to
+// resolve (e.g. an unreachable remote daemon) are logged and skipped without
+// affecting already-running workers for other contexts.
+func (m *Manager) Start(ctx context.Context) {
+	if m == nil || m.registry == nil || m.wg == nil {
+		return
+	}
+
+	m.refreshWorkers(ctx)
+
+	graceful.SafeGo(m.wg, m.log, func() {
+		ticker := time.NewTicker(contextRefreshInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				m.refreshWorkers(ctx)
+			}
+		}
+	})
+}
+
+// refreshWorkers reconciles scheduler workers with the current context list.
+// Unavailable contexts do not disturb existing workers, while removed contexts
+// are stopped and swarm-mode changes restart only the affected worker.
+func (m *Manager) refreshWorkers(ctx context.Context) {
+	results, err := m.registry.List(ctx)
+	if err != nil {
+		m.log.Error("failed to list docker contexts for scheduler", logger.ErrAttr(err))
+		return
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	available := make(map[string]struct{}, len(results))
+	for _, result := range results {
+		name := docker.NormalizeContextName(result.Name)
+		available[name] = struct{}{}
+
+		running, hasWorker := m.workers[name]
+		if result.Err != nil {
+			if hasWorker {
+				continue
+			}
+
+			m.log.Warn("skipping unavailable docker context for scheduler",
+				slog.String("context", docker.DisplayContextName(name)),
+				logger.ErrAttr(result.Err),
+			)
+
+			continue
+		}
+
+		if hasWorker && running.swarmMode == result.SwarmMode {
+			continue
+		}
+
+		if hasWorker {
+			running.cancel()
+			delete(m.workers, name)
+			m.log.Info("restarting scheduler worker after Docker swarm mode changed",
+				slog.String("context", docker.DisplayContextName(name)),
+			)
+		}
+
+		worker := newScheduler(result.ContextClient, m.log, m.wg, m.secretProvider)
+		workerCtx, cancel := context.WithCancel(ctx)
+		m.workers[name] = managedWorker{
+			cancel:    cancel,
+			swarmMode: result.SwarmMode,
+		}
+
+		graceful.SafeGo(m.wg, m.log, func() {
+			worker.run(workerCtx)
+		})
+	}
+
+	for name, worker := range m.workers {
+		if _, ok := available[name]; ok {
+			continue
+		}
+
+		worker.cancel()
+		delete(m.workers, name)
+		clearRuntimeContext(name)
+		m.log.Info("stopped scheduler worker for removed Docker context",
+			slog.String("context", docker.DisplayContextName(name)),
+		)
+	}
+}
+
+// ListJobs returns all discovered scheduler jobs for the given Docker context
+// (normalized/display form accepted, empty means the default context),
+// optionally filtered by stack name.
+func (m *Manager) ListJobs(ctx context.Context, contextName, stackName string) ([]JobInfo, error) {
+	if m == nil || m.registry == nil {
+		return nil, errors.New("scheduler manager is not configured with a docker context registry")
+	}
+
+	cc, err := m.registry.Get(ctx, contextName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve docker context %q: %w", docker.DisplayContextName(contextName), err)
+	}
+
+	return newScheduler(cc, m.log, nil, m.secretProvider).listJobs(ctx, stackName)
+}
+
+// TriggerNow executes one configured scheduled job immediately on the given
+// Docker context. Job selection matches by container/service name and
+// optional stack name.
+func (m *Manager) TriggerNow(ctx context.Context, contextName, jobName, stackName string, secretProvider *secretprovider.SecretProvider) (string, error) {
+	if m == nil || m.registry == nil {
+		return "", errors.New("scheduler manager is not configured with a docker context registry")
+	}
+
+	cc, err := m.registry.Get(ctx, contextName)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve docker context %q: %w", docker.DisplayContextName(contextName), err)
+	}
+
+	return newScheduler(cc, m.log, nil, secretProvider).triggerNow(ctx, jobName, stackName)
 }
 
 func findRunnableJob(jobs []scheduledJob, jobName, stackName string) (scheduledJob, docker.JobScheduleConfig, error) {
@@ -532,7 +744,7 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 		nearestNextRun, _ = getNearestNextRun(s.states)
 	}
 
-	setRuntimeStatesSnapshot(s.states)
+	setRuntimeStatesSnapshot(s.contextName, s.states)
 
 	return nearestNextRun, !nearestNextRun.IsZero()
 }
@@ -545,7 +757,7 @@ func (s *scheduler) watchJobChanges(ctx context.Context) <-chan struct{} {
 
 		for ctx.Err() == nil {
 			filters := make(client.Filters)
-			if swarm.GetModeEnabled() {
+			if s.swarmMode {
 				filters.Add("type", "service")
 
 				for _, action := range []string{"create", "update", "remove"} {
@@ -610,7 +822,7 @@ func (s *scheduler) discoverJobs(ctx context.Context) ([]scheduledJob, error) {
 		return nil, nil
 	}
 
-	if swarm.GetModeEnabled() {
+	if s.swarmMode {
 		services, err := s.dockerCli.Client().ServiceList(ctx, client.ServiceListOptions{})
 		if err != nil {
 			return nil, err
@@ -626,11 +838,12 @@ func (s *scheduler) discoverJobs(ctx context.Context) ([]scheduledJob, error) {
 			labels := docker.SwarmJobLabels(svc)
 
 			result = append(result, scheduledJob{
-				key:    "swarm:" + svc.ID,
-				name:   svc.Spec.Name,
-				id:     svc.Spec.Name,
-				mode:   scheduledJobModeSwarm,
-				labels: labels,
+				key:     jobKeyPrefix(s.contextName) + "swarm:" + svc.ID,
+				name:    svc.Spec.Name,
+				id:      svc.Spec.Name,
+				mode:    scheduledJobModeSwarm,
+				labels:  labels,
+				context: s.contextName,
 			})
 		}
 
@@ -649,7 +862,7 @@ func (s *scheduler) discoverJobs(ctx context.Context) ([]scheduledJob, error) {
 	runningEphemeralByKey := make(map[string]bool)
 
 	for _, c := range containers.Items {
-		key := containerJobKey(c.ID, c.Labels)
+		key := jobKeyPrefix(s.contextName) + containerJobKey(c.ID, c.Labels)
 
 		// One_off runs execute in an ephemeral clone of the source container that
 		// carries the same compose project/service labels. It must not be treated
@@ -681,6 +894,7 @@ func (s *scheduler) discoverJobs(ctx context.Context) ([]scheduledJob, error) {
 			labels:          c.Labels,
 			containerState:  string(c.State),
 			containerStatus: c.Status,
+			context:         s.contextName,
 		}
 	}
 
@@ -746,7 +960,7 @@ func (s *scheduler) triggerRun(ctx context.Context, job scheduledJob, cfg docker
 		lockedStacks := append([]string{stackName}, resolveStopServiceStacks(cfg.StopServices, stackName)...)
 
 		runLog.Debug("waiting for scheduler/deploy lock(s)", slog.Any("stacks", lockedStacks))
-		unlockStacks := lockStacks(lockedStacks...)
+		unlockStacks := lockStacks(s.contextName, lockedStacks...)
 
 		defer unlockStacks()
 
@@ -864,7 +1078,7 @@ const stopServicesTimeout = 30 * time.Second
 // already held stopped and must not stop it again or restore it until they
 // are the last holder to release it.
 func (s *scheduler) acquireStopHold(mode scheduledJobMode, project, service string) bool {
-	key := stopHoldKey{mode: mode, project: project, service: service}
+	key := stopHoldKey{context: s.contextName, mode: mode, project: project, service: service}
 
 	s.stopHoldsMu.Lock()
 	defer s.stopHoldsMu.Unlock()
@@ -883,7 +1097,7 @@ func (s *scheduler) acquireStopHold(mode scheduledJobMode, project, service stri
 // setStopHoldReplicas records the original swarm replica count for a held
 // service, so the last holder to release it can restore it.
 func (s *scheduler) setStopHoldReplicas(mode scheduledJobMode, project, service string, replicas uint64) {
-	key := stopHoldKey{mode: mode, project: project, service: service}
+	key := stopHoldKey{context: s.contextName, mode: mode, project: project, service: service}
 
 	s.stopHoldsMu.Lock()
 	defer s.stopHoldsMu.Unlock()
@@ -898,7 +1112,7 @@ func (s *scheduler) setStopHoldReplicas(mode scheduledJobMode, project, service 
 // holder, meaning the caller must actually perform the restart; otherwise
 // another concurrent run still needs the target held stopped.
 func (s *scheduler) releaseStopHold(mode scheduledJobMode, project, service string) (isLast bool, replicas uint64) {
-	key := stopHoldKey{mode: mode, project: project, service: service}
+	key := stopHoldKey{context: s.contextName, mode: mode, project: project, service: service}
 
 	s.stopHoldsMu.Lock()
 	defer s.stopHoldsMu.Unlock()
@@ -961,7 +1175,7 @@ func (s *scheduler) stopServicesForJob(ctx context.Context, mode scheduledJobMod
 			// Mark each service as scheduler-held so that the reconciliation
 			// event listener does not restart it while the job is running.
 			for _, svc := range toStop {
-				reconciliation.MarkSchedulerStopHeld(project, svc)
+				reconciliation.MarkSchedulerStopHeld(s.contextName, project, svc)
 			}
 
 			s.log.Info("stopping services before scheduled job",
@@ -1073,7 +1287,7 @@ func (s *scheduler) startServicesForJob(ctx context.Context, mode scheduledJobMo
 			// Unmark the scheduler hold before starting — if our start fails,
 			// reconciliation can step in and recover the service.
 			for _, svc := range toStart {
-				reconciliation.UnmarkSchedulerStopHeld(project, svc)
+				reconciliation.UnmarkSchedulerStopHeld(s.contextName, project, svc)
 			}
 
 			s.log.Info("restarting services after scheduled job",
@@ -1134,9 +1348,12 @@ func (s *scheduler) startServicesForJob(ctx context.Context, mode scheduledJobMo
 // caller-supplied order — prevents ABBA deadlocks when two scheduled runs
 // need to lock an overlapping set of stacks concurrently (e.g. a job's own
 // stack plus stacks referenced by its stop_services, which another run might
-// need to lock in the opposite order). It returns an unlock function that
-// releases all acquired locks; callers must call it exactly once.
-func lockStacks(stacks ...string) (unlock func()) {
+// need to lock in the opposite order). Stack names are only unique within a
+// Docker context (see lock.StackKey), so contextName is included in every
+// lock key to keep same-named stacks on different contexts from blocking each
+// other. It returns an unlock function that releases all acquired locks;
+// callers must call it exactly once.
+func lockStacks(contextName string, stacks ...string) (unlock func()) {
 	seen := make(map[string]struct{}, len(stacks))
 	unique := make([]string, 0, len(stacks))
 
@@ -1146,18 +1363,19 @@ func lockStacks(stacks ...string) (unlock func()) {
 			continue
 		}
 
-		if _, ok := seen[stack]; ok {
+		key := lock.StackKey(contextName, stack)
+		if _, ok := seen[key]; ok {
 			continue
 		}
 
-		seen[stack] = struct{}{}
-		unique = append(unique, stack)
+		seen[key] = struct{}{}
+		unique = append(unique, key)
 	}
 
 	sort.Strings(unique)
 
-	for _, stack := range unique {
-		lock.LockStack(stack)
+	for _, key := range unique {
+		lock.LockStack(key)
 	}
 
 	return func() {
@@ -1244,6 +1462,7 @@ func (s *scheduler) sendRunNotification(job scheduledJob, cfg docker.JobSchedule
 		Repository:        job.labels[docker.DocoCDLabels.Source.Name],
 		Stack:             job.labels[docker.DocoCDLabels.Deployment.Name],
 		Target:            job.labels[docker.DocoCDLabels.Deployment.ConfigTarget],
+		Context:           docker.DisplayContextName(job.context),
 		Revision:          notification.GetRevision("", job.labels[docker.DocoCDLabels.Deployment.CommitSHA]),
 		JobID:             runID,
 		AffectedActorKind: actorKind,
@@ -1311,7 +1530,7 @@ func shouldStopContainerForOneOffDeployRun(job scheduledJob, cfg docker.JobSched
 }
 
 func getScheduledRunMetricLabels(job scheduledJob, cfg docker.JobScheduleConfig, stackName string) []string {
-	return []string{stackName, job.name, string(job.mode), string(cfg.ExecutionMode)}
+	return []string{docker.DisplayContextName(job.context), stackName, job.name, string(job.mode), string(cfg.ExecutionMode)}
 }
 
 func nextScheduledRun(schedule gocron.Cron, scheduledAt, now time.Time) time.Time {
@@ -1461,6 +1680,20 @@ func isEphemeralScheduledContainer(labels map[string]string) bool {
 	return strings.EqualFold(strings.TrimSpace(labels[api.OneoffLabel]), "true")
 }
 
+// jobKeyPrefix returns the prefix applied to every scheduler job/runtime state
+// key discovered on contextName, so that the same compose project/service or
+// swarm service ID on two different Docker daemons never collide in the
+// (process-global) runtime state, run-status, or in-progress maps. The
+// default context keeps the historical unprefixed keys for compatibility with
+// state persisted before multi-context support existed.
+func jobKeyPrefix(contextName string) string {
+	if contextName == "" {
+		return ""
+	}
+
+	return contextName + "::"
+}
+
 // containerJobKey derives the stable scheduler key for a container from its
 // compose project/service labels, falling back to the container ID. An ephemeral
 // one_off clone shares the source's project/service labels, so it resolves to the
@@ -1550,13 +1783,18 @@ func schedulerNow() time.Time {
 	return time.Now().In(time.Local)
 }
 
-// setRuntimeStatesSnapshot merges in the loop's recomputed states, keeping
-// the newer lastRun so a manually triggered run isn't wiped by the next tick.
-func setRuntimeStatesSnapshot(states map[string]scheduledJobState) {
+// setRuntimeStatesSnapshot replaces one context's states while preserving all
+// other context partitions and newer manual-run timestamps.
+func setRuntimeStatesSnapshot(contextName string, states map[string]scheduledJobState) {
 	runtimeStatesMu.Lock()
 	defer runtimeStatesMu.Unlock()
 
-	merged := make(map[string]scheduledJobState, len(states))
+	merged := make(map[string]scheduledJobState, len(runtimeStates)+len(states))
+	for key, state := range runtimeStates {
+		if !runtimeKeyInContext(contextName, key) {
+			merged[key] = state
+		}
+	}
 
 	for key, state := range states {
 		if existing, ok := runtimeStates[key]; ok && existing.lastRun.After(state.lastRun) {
@@ -1567,6 +1805,37 @@ func setRuntimeStatesSnapshot(states map[string]scheduledJobState) {
 	}
 
 	runtimeStates = merged
+}
+
+func runtimeKeyInContext(contextName, key string) bool {
+	if contextName == "" {
+		return !strings.Contains(key, "::")
+	}
+
+	return strings.HasPrefix(key, jobKeyPrefix(contextName))
+}
+
+func clearRuntimeContext(contextName string) {
+	runtimeStatesMu.Lock()
+	defer runtimeStatesMu.Unlock()
+
+	for key := range runtimeStates {
+		if runtimeKeyInContext(contextName, key) {
+			delete(runtimeStates, key)
+		}
+	}
+
+	for key := range runtimeRunStatuses {
+		if runtimeKeyInContext(contextName, key) {
+			delete(runtimeRunStatuses, key)
+		}
+	}
+
+	for key := range runtimeRunningStates {
+		if runtimeKeyInContext(contextName, key) {
+			delete(runtimeRunningStates, key)
+		}
+	}
 }
 
 func getRuntimeStatesSnapshot() map[string]scheduledJobState {

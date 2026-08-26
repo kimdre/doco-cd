@@ -28,18 +28,26 @@ const certRotationTrigger = "cert.rotation"
 // (reissuing any pki-role certificates through the configured secret provider), and redeploys so
 // the fresh values take effect.
 //
+// contextName identifies the Docker context dockerCli was created for (empty for the local
+// default context, see NormalizeContextName/DisplayContextName); it is only used to namespace the
+// per-stack scheduler/deploy lock (see lock.StackKey) so that same-named stacks on different
+// Docker contexts don't block each other. Discovered resources need no extra "context" label of
+// their own for this: the caller (certrotation.Watcher) already knows which context's client
+// produced labels, since it scans one context's resources at a time.
+//
 // Compose deployments only recreate the services actually consuming a rotated certificate/key.
 // Swarm stacks redeploy the whole stack, but Swarm's own spec diffing (see
 // stableSwarmMetadataLabels) still limits recreation to the affected services.
 func RotateProjectCertificates(
 	ctx context.Context,
+	contextName string,
 	dockerCli command.Cli,
 	labels map[string]string,
 	secretProvider *secretprovider.SecretProvider,
 	swarmMode bool,
 ) error {
 	if swarmMode {
-		return rotateSwarmProjectCertificates(ctx, dockerCli, labels, secretProvider)
+		return rotateSwarmProjectCertificates(ctx, contextName, dockerCli, labels, secretProvider)
 	}
 
 	ref, err := composeScheduledServiceRefFromLabels(labels)
@@ -52,8 +60,10 @@ func RotateProjectCertificates(
 		stackName = ref.Project
 	}
 
-	lock.LockStack(stackName)
-	defer lock.UnlockStack(stackName)
+	stackLockKey := lock.StackKey(contextName, stackName)
+
+	lock.LockStack(stackLockKey)
+	defer lock.UnlockStack(stackLockKey)
 
 	project, deployConfig, err := loadComposeScheduledProjectAll(ctx, dockerCli, ref, secretProvider)
 	if err != nil {
@@ -97,8 +107,12 @@ func RotateProjectCertificates(
 // redeploys the whole stack. Unlike the standalone Compose path, no per-service selection is
 // needed: Swarm only recreates the tasks of services whose spec actually changed, so only the
 // services consuming the rotated certificate values end up being redeployed.
+//
+// contextName is used the same way as in RotateProjectCertificates: only to namespace the
+// per-stack lock so the same stack name on different Docker contexts never blocks each other.
 func rotateSwarmProjectCertificates(
 	ctx context.Context,
+	contextName string,
 	dockerCli command.Cli,
 	labels map[string]string,
 	secretProvider *secretprovider.SecretProvider,
@@ -108,8 +122,10 @@ func rotateSwarmProjectCertificates(
 		return fmt.Errorf("parse deployment labels for cert rotation: %w", err)
 	}
 
-	lock.LockStack(ref.Project)
-	defer lock.UnlockStack(ref.Project)
+	stackLockKey := lock.StackKey(contextName, ref.Project)
+
+	lock.LockStack(stackLockKey)
+	defer lock.UnlockStack(stackLockKey)
 
 	project, deployConfig, err := loadComposeScheduledProjectAll(ctx, dockerCli, ref, secretProvider)
 	if err != nil {

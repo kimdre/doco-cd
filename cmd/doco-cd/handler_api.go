@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/docker/cli/cli/command"
+
 	"github.com/kimdre/doco-cd/internal/common/id"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
@@ -28,10 +30,59 @@ import (
 )
 
 const (
-	apiPath     = "/v1/api"
-	webhookPath = "/v1/webhook"
-	healthPath  = "/v1/health"
+	apiPath             = "/v1/api"
+	webhookPath         = "/v1/webhook"
+	healthPath          = "/v1/health"
+	dockerContextHeader = "X-Doco-CD-Context"
 )
+
+func (h *handlerData) dockerCliForRequest(
+	w http.ResponseWriter,
+	r *http.Request,
+	jobLog *slog.Logger,
+	jobID string,
+) (command.Cli, string, bool) {
+	values, present := r.URL.Query()["context"]
+	if len(values) > 1 {
+		JSONError(w, "invalid parameter: context", "'context' parameter must be specified at most once", jobID, http.StatusBadRequest)
+		return nil, "", false
+	}
+
+	contextName := ""
+	if present && len(values) == 1 {
+		contextName = docker.NormalizeContextName(values[0])
+	}
+
+	displayName := docker.DisplayContextName(contextName)
+	w.Header().Set(dockerContextHeader, displayName)
+
+	if h.contexts == nil {
+		if contextName != "" {
+			JSONError(w, "unknown docker context: "+displayName, "", jobID, http.StatusBadRequest)
+			return nil, "", false
+		}
+
+		return h.dockerCli, displayName, true
+	}
+
+	contextClient, err := h.contexts.Get(r.Context(), contextName)
+	if err != nil {
+		status := http.StatusInternalServerError
+		errMsg := "failed to resolve docker context: " + displayName
+
+		if errors.Is(err, docker.ErrDockerContextNotFound) {
+			status = http.StatusBadRequest
+			errMsg = "unknown docker context: " + displayName
+		}
+
+		jobLog.Error(errMsg, logger.ErrAttr(err))
+		JSONError(w, errMsg, err.Error(), jobID, status)
+
+		return nil, "", false
+	}
+
+	return contextClient.Cli, contextClient.DisplayName(), true
+}
 
 // registerApiEndpoints registers the API endpoints based on the application configuration and
 // returns a list of all enabled endpoints.
@@ -111,9 +162,24 @@ func (h *handlerData) GetScheduledJobsHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	dockerCli, contextName, ok := h.dockerCliForRequest(w, r, jobLog, jobID)
+	if !ok {
+		return
+	}
+
+	jobLog = jobLog.With(slog.String("context", contextName))
 	stackName := getQueryParam(r, w, jobLog, jobID, "stack", "string", "").(string)
 
-	jobs, err := scheduler.ListJobs(r.Context(), h.dockerCli, stackName)
+	var (
+		jobs []scheduler.JobInfo
+		err  error
+	)
+	if h.scheduler != nil {
+		jobs, err = h.scheduler.ListJobs(r.Context(), contextName, stackName)
+	} else {
+		jobs, err = scheduler.ListJobs(r.Context(), dockerCli, stackName)
+	}
+
 	if err != nil {
 		errMsg := "failed to list scheduled jobs"
 		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
@@ -237,12 +303,19 @@ func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
+	dockerCli, contextName, ok := h.dockerCliForRequest(w, r, jobLog, jobID)
+	if !ok {
+		return
+	}
+
+	jobLog = jobLog.With(slog.String("context", contextName))
 	stackName := getQueryParam(r, w, jobLog, jobID, "stack", "string", "").(string)
 
 	wait := getQueryParam(r, w, jobLog, jobID, "wait", "bool", true).(bool)
 	if h.runTracker != nil {
 		h.runTracker.TrackAccepted(jobID, deploymentRunTriggerScheduledJob)
 		h.runTracker.SetMetadata(jobID, "scheduled:"+jobName, stackName, "")
+		h.runTracker.AddDeployment(jobID, stackName, contextName)
 
 		if wait {
 			h.runTracker.MarkRunning(jobID)
@@ -252,7 +325,15 @@ func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.
 	triggerFn := func(ctx context.Context) error {
 		jobLog.Info("scheduled job run triggered via API", slog.String("job", jobName), slog.String("stack", stackName))
 
-		runID, err := scheduler.TriggerNow(ctx, h.dockerCli, h.log.Logger, jobName, stackName, h.secretProvider)
+		var (
+			runID string
+			err   error
+		)
+		if h.scheduler != nil {
+			runID, err = h.scheduler.TriggerNow(ctx, contextName, jobName, stackName, h.secretProvider)
+		} else {
+			runID, err = scheduler.TriggerNow(ctx, dockerCli, h.log.Logger, jobName, stackName, h.secretProvider)
+		}
 
 		runLog := jobLog
 		if runID != "" {
@@ -435,9 +516,16 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	dockerCli, contextName, ok := h.dockerCliForRequest(w, r, jobLog, jobID)
+	if !ok {
+		return
+	}
+
+	jobLog = jobLog.With(slog.String("context", contextName))
+
 	switch r.Method {
 	case http.MethodGet:
-		containers, err := docker.GetProjectContainers(ctx, h.dockerCli, projectName)
+		containers, err := docker.GetProjectContainers(ctx, dockerCli, projectName)
 		if err != nil {
 			errMsg := "failed to get project: " + projectName
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
@@ -460,7 +548,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 		jobLog.Info("removing project", slog.String("project", projectName), slog.Bool("remove_volumes", removeVolumes), slog.Bool("remove_images", removeImages))
 
-		err := docker.RemoveProject(ctx, h.dockerCli, projectName, timeout, removeVolumes, removeImages)
+		err := docker.RemoveProject(ctx, dockerCli, projectName, timeout, removeVolumes, removeImages)
 		if err != nil {
 			errMsg := "failed to remove project: " + projectName
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
@@ -506,9 +594,16 @@ func (h *handlerData) GetProjectsApiHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	dockerCli, contextName, ok := h.dockerCliForRequest(w, r, jobLog, jobID)
+	if !ok {
+		return
+	}
+
+	jobLog = jobLog.With(slog.String("context", contextName))
+
 	showAll := getQueryParam(r, w, jobLog, jobID, "all", "bool", false).(bool)
 
-	projects, err := docker.GetProjects(ctx, h.dockerCli, showAll)
+	projects, err := docker.GetProjects(ctx, dockerCli, showAll)
 	if err != nil {
 		errMsg := "failed to get projects"
 		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
@@ -553,10 +648,17 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	dockerCli, contextName, ok := h.dockerCliForRequest(w, r, jobLog, jobID)
+	if !ok {
+		return
+	}
+
+	jobLog = jobLog.With(slog.String("context", contextName))
+
 	timeoutSec := getQueryParam(r, w, jobLog, jobID, "timeout", "int", 30).(int)
 	timeout := time.Duration(timeoutSec) * time.Second
 
-	containers, err := docker.GetProjectContainers(ctx, h.dockerCli, projectName)
+	containers, err := docker.GetProjectContainers(ctx, dockerCli, projectName)
 	if err != nil {
 		errMsg := "failed to get project: " + projectName
 		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
@@ -579,7 +681,7 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 
 		jobLog.Info("starting project", slog.String("project", projectName))
 
-		err := docker.StartProject(ctx, h.dockerCli, projectName, timeout)
+		err := docker.StartProject(ctx, dockerCli, projectName, timeout)
 		if err != nil {
 			errMsg := "failed to start project"
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
@@ -596,7 +698,7 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 
 		jobLog.Info("stopping project", slog.String("project", projectName))
 
-		err := docker.StopProject(ctx, h.dockerCli, projectName, timeout)
+		err := docker.StopProject(ctx, dockerCli, projectName, timeout)
 		if err != nil {
 			errMsg := "failed to stop project"
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
@@ -613,7 +715,7 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 
 		jobLog.Info("restarting project", slog.String("project", projectName))
 
-		err := docker.RestartProject(ctx, h.dockerCli, projectName, timeout)
+		err := docker.RestartProject(ctx, dockerCli, projectName, timeout)
 		if err != nil {
 			errMsg := "failed to restart project"
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
@@ -659,10 +761,17 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	dockerCli, contextName, ok := h.dockerCliForRequest(w, r, jobLog, jobID)
+	if !ok {
+		return
+	}
+
+	jobLog = jobLog.With(slog.String("context", contextName))
+
 	serviceName := getQueryParam(r, w, jobLog, jobID, "service", "string", "").(string)
 	waitForServices := getQueryParam(r, w, jobLog, jobID, "wait", "bool", true).(bool)
 
-	services, err := swarm.GetStackServices(ctx, h.dockerCli.Client(), stackName)
+	services, err := swarm.GetStackServices(ctx, dockerCli.Client(), stackName)
 	if err != nil {
 		errMsg := "failed to get stack: " + stackName
 		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
@@ -703,7 +812,7 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 
 			jobLog.Info("scaling service", slog.String("service", svcName), slog.Int("replicas", replicas))
 
-			err = swarm.ScaleService(ctx, h.dockerCli, svcName, uint64(replicas), waitForServices, false)
+			err = swarm.ScaleService(ctx, dockerCli, svcName, uint64(replicas), waitForServices, false)
 			if err != nil {
 				if errors.Is(err, swarm.ErrNotReplicatedService) {
 					jobLog.Debug("skipping non-replicated service for scale action", slog.String("service", svcName))
@@ -746,7 +855,7 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 			jobLog.Info("restarting service", slog.String("service", svcName))
 
 			// Swarm restart supports replicated/global and skips job-mode services.
-			err = docker.RestartService(ctx, h.dockerCli.Client(), svcName)
+			err = docker.RestartService(ctx, dockerCli.Client(), svcName)
 			if err != nil {
 				if errors.Is(err, docker.ErrJobServiceRestartNotSupported) {
 					jobLog.Debug("skipping restart for job-mode service", slog.String("service", svcName))
@@ -782,7 +891,7 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 
 			jobLog.Info("retriggering job service", slog.String("service", svcName))
 
-			err = docker.RerunJobService(ctx, h.dockerCli.Client(), svcName)
+			err = docker.RerunJobService(ctx, dockerCli.Client(), svcName)
 			if err != nil {
 				if errors.Is(err, docker.ErrNotAJobService) {
 					jobLog.Debug("skipping non-job service for run action", slog.String("service", svcName))
@@ -845,9 +954,16 @@ func (h *handlerData) StackApiHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	dockerCli, contextName, ok := h.dockerCliForRequest(w, r, jobLog, jobID)
+	if !ok {
+		return
+	}
+
+	jobLog = jobLog.With(slog.String("context", contextName))
+
 	switch r.Method {
 	case http.MethodGet:
-		services, err := swarm.GetStackServices(ctx, h.dockerCli.Client(), stackName)
+		services, err := swarm.GetStackServices(ctx, dockerCli.Client(), stackName)
 		if err != nil {
 			errMsg := "failed to get stack: " + stackName
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
@@ -865,7 +981,7 @@ func (h *handlerData) StackApiHandler(w http.ResponseWriter, r *http.Request) {
 	case http.MethodDelete:
 		jobLog.Info("removing stack", slog.String("stack", stackName))
 
-		err := docker.RemoveSwarmStack(ctx, h.dockerCli, stackName)
+		err := docker.RemoveSwarmStack(ctx, dockerCli, stackName)
 		if err != nil {
 			errMsg := "failed to remove stack: " + stackName
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
@@ -911,7 +1027,14 @@ func (h *handlerData) GetStacksApiHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	stacks, err := swarm.GetStacks(ctx, h.dockerCli.Client())
+	dockerCli, contextName, ok := h.dockerCliForRequest(w, r, jobLog, jobID)
+	if !ok {
+		return
+	}
+
+	jobLog = jobLog.With(slog.String("context", contextName))
+
+	stacks, err := swarm.GetStacks(ctx, dockerCli.Client())
 	if err != nil {
 		errMsg := "failed to get stacks"
 		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
@@ -1040,13 +1163,14 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 
 				repository := pollRepositoryName(pollConfig)
 				metadata := notification.Metadata{
-					Repository: repository,
-					Stack:      "",
-					Revision:   notification.GetRevision(pollConfig.Reference, ""),
-					JobID:      jobID,
+					Repository:               repository,
+					Stack:                    "",
+					Revision:                 notification.GetRevision(pollConfig.Reference, ""),
+					JobID:                    jobID,
+					DeploymentTargetObserver: h.deploymentTargetObserver(jobID),
 				}
 
-				errs <- runner(ctx, pollConfig, h.appConfig, h.dataMountPoint, h.dockerCli, h.log.Logger, metadata, h.secretProvider, pollTriggerDefault)
+				errs <- runner(ctx, pollConfig, h.appConfig, h.dataMountPoint, h.dockerCli, h.contexts, h.log.Logger, metadata, h.secretProvider, pollTriggerDefault)
 			}(pollCtx, p)
 		}
 

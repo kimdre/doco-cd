@@ -168,6 +168,13 @@ working_dir: deploy
 Each deployment uses its own Docker context for deploy, destroy, and cleanup operations. 
 Stack/project names must be unique within a Docker context, but the same name can be used on different contexts.
 
+## Operational context support
+
+The scheduler and certificate-rotation watcher inspect DocoCD-managed resources on every context available in the mounted Docker CLI context store. Failures on one context do not stop processing on healthy contexts.
+
+Project, stack, and scheduled-job [REST API](../Endpoints/REST-API.md#docker-context-selection) endpoints accept `?context=<name>`. Omitting the parameter uses `default`. 
+Deployment and scheduled-job metrics include a `context` label, and deployment-run metadata reports each resolved context/stack target.
+
 ## Remote host limitations
 
 When deploying to a remote Docker context, the **remote daemon** executes the compose stack. This has important implications for bind mounts, configs, and secrets.

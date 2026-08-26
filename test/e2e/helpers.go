@@ -189,8 +189,26 @@ func (h *Harness) dumpTailLogs(c logsContainer, n int) {
 func (h *Harness) ContainerID(project, service string) string {
 	h.t.Helper()
 
+	return h.containerID(h.docker, h.isSwarmMode(), project, service)
+}
+
+// RemoteContainerID returns a Compose container from the disposable remote
+// Docker context enabled with EnableRemoteContext.
+func (h *Harness) RemoteContainerID(project, service string) string {
+	h.t.Helper()
+
+	if h.remoteDocker == nil {
+		h.t.Fatal("remote Docker context is not enabled")
+	}
+
+	return h.containerID(h.remoteDocker, false, project, service)
+}
+
+func (h *Harness) containerID(dockerClient *client.Client, swarmMode bool, project, service string) string {
+	h.t.Helper()
+
 	f := client.Filters{}
-	if h.isSwarmMode() {
+	if swarmMode {
 		f = f.
 			Add("label", "com.docker.stack.namespace="+project).
 			Add("label", "com.docker.swarm.service.name="+project+"_"+service)
@@ -200,7 +218,7 @@ func (h *Harness) ContainerID(project, service string) string {
 			Add("label", "com.docker.compose.service="+service)
 	}
 
-	containers, err := h.docker.ContainerList(h.ctx, client.ContainerListOptions{Filters: f})
+	containers, err := dockerClient.ContainerList(h.ctx, client.ContainerListOptions{Filters: f})
 	if err != nil {
 		h.t.Fatalf("list containers for %s/%s: %v", project, service, err)
 	}

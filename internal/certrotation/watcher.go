@@ -17,11 +17,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
 
 	"github.com/kimdre/doco-cd/internal/docker"
-	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 )
@@ -29,42 +27,56 @@ import (
 // Watcher periodically checks all deployments carrying rotation-capable certificate labels and
 // triggers reissuance + redeploy for any deployment whose certificate expiry falls within the
 // configured rotation threshold.
+//
+// Rotation is performed independently for every locally configured Docker context (see
+// docker.ContextRegistry), not just the default/local one: each context is discovered and
+// processed on its own, using that context's own Docker client and Swarm-mode state, so a broken
+// or unreachable context can never prevent rotation on the others. Contexts are processed
+// sequentially rather than concurrently; this keeps rotation runs simple to reason about and
+// avoids overlapping rotations without needing extra coordination, since each check interval is
+// expected to comfortably fit a full sequential pass over all configured contexts.
 type Watcher struct {
-	dockerCli      command.Cli
+	contexts       *docker.ContextRegistry
 	log            *slog.Logger
 	secretProvider *secretprovider.SecretProvider
 	threshold      time.Duration
 	checkInterval  time.Duration
 
-	// now and swarmEnabled are overridable in tests.
+	// now and listContexts are overridable in tests.
 	now          func() time.Time
-	swarmEnabled func() bool
+	listContexts func(ctx context.Context) ([]docker.ContextClientResult, error)
 }
 
 // New creates a Watcher. threshold is how far ahead of a certificate's expiry rotation is
-// triggered; checkInterval is how often deployments are checked.
+// triggered; checkInterval is how often deployments are checked. contexts is used to discover and
+// connect to every locally configured Docker context on each check.
 func New(
-	dockerCli command.Cli,
+	contexts *docker.ContextRegistry,
 	log *slog.Logger,
 	secretProvider *secretprovider.SecretProvider,
 	threshold, checkInterval time.Duration,
 ) *Watcher {
-	return &Watcher{
-		dockerCli:      dockerCli,
+	w := &Watcher{
+		contexts:       contexts,
 		log:            log.With(slog.String("component", "certrotation")),
 		secretProvider: secretProvider,
 		threshold:      threshold,
 		checkInterval:  checkInterval,
 		now:            time.Now,
-		swarmEnabled:   swarm.GetModeEnabled,
 	}
+
+	if contexts != nil {
+		w.listContexts = contexts.List
+	}
+
+	return w
 }
 
 // Start runs the watcher loop until ctx is cancelled. It performs an initial check immediately,
 // then rechecks every checkInterval. Callers are expected to run Start in its own goroutine, e.g.
 // via graceful.SafeGo, which handles WaitGroup bookkeeping.
 func (w *Watcher) Start(ctx context.Context) {
-	if w.dockerCli == nil || w.log == nil {
+	if w.contexts == nil || w.log == nil {
 		return
 	}
 
@@ -89,30 +101,58 @@ func (w *Watcher) Start(ctx context.Context) {
 	}
 }
 
-// swarmMode reports whether the Docker host is running in Swarm mode, via an overridable hook so
-// tests can exercise both modes without a live daemon.
-func (w *Watcher) swarmMode() bool {
-	if w.swarmEnabled == nil {
-		return swarm.GetModeEnabled()
-	}
-
-	return w.swarmEnabled()
-}
-
-// checkAndRotate discovers all rotatable deployments, and for each project whose certificate
-// expiry is within the configured threshold, triggers a rotation redeploy.
+// checkAndRotate discovers every locally configured Docker context and processes each one
+// independently: for each healthy context, it discovers all rotatable deployments in that
+// context, and for each project whose certificate expiry is within the configured threshold (or
+// whose certificate has been revoked), triggers a rotation redeploy against that context's own
+// Docker client.
+//
+// Contexts are processed sequentially, and a failure discovering or checking one context (e.g. an
+// unreachable remote Docker host) is logged and skipped without aborting the remaining contexts.
 func (w *Watcher) checkAndRotate(ctx context.Context) {
-	services, err := docker.GetLabeledServices(
-		ctx, w.dockerCli.Client(), w.swarmMode(),
-		docker.DocoCDLabels.Deployment.CertRotatable, "true",
-	)
-	if err != nil {
-		w.log.Error("failed to list certificate-rotatable deployments", logger.ErrAttr(err))
+	if w.listContexts == nil {
 		return
 	}
 
-	due := dueProjects(services, w.now(), w.threshold, w.log)
-	revoked := revokedProjects(ctx, services, w.secretProvider, w.log)
+	results, err := w.listContexts(ctx)
+	if err != nil {
+		w.log.Error("failed to list docker contexts for certificate rotation", logger.ErrAttr(err))
+		return
+	}
+
+	for _, result := range results {
+		w.checkAndRotateContext(ctx, result)
+	}
+}
+
+// checkAndRotateContext runs a single certificate-rotation check/redeploy pass against one Docker
+// context. It never returns an error: failures are logged (tagged with the context's display
+// name, see docker.DisplayContextName) and the context is simply skipped, so that one broken or
+// unreachable context can never prevent rotation on the others.
+func (w *Watcher) checkAndRotateContext(ctx context.Context, result docker.ContextClientResult) {
+	contextLog := w.log.With(slog.String("context", result.DisplayName()))
+
+	if result.Err != nil {
+		contextLog.Error("skipping docker context for certificate rotation", logger.ErrAttr(result.Err))
+		return
+	}
+
+	if result.Cli == nil {
+		contextLog.Error("skipping docker context for certificate rotation: no docker client available")
+		return
+	}
+
+	services, err := docker.GetLabeledServices(
+		ctx, result.Cli.Client(), result.SwarmMode,
+		docker.DocoCDLabels.Deployment.CertRotatable, "true",
+	)
+	if err != nil {
+		contextLog.Error("failed to list certificate-rotatable deployments", logger.ErrAttr(err))
+		return
+	}
+
+	due := dueProjects(services, w.now(), w.threshold, contextLog)
+	revoked := revokedProjects(ctx, services, w.secretProvider, contextLog)
 
 	// Reasons must be computed before merging revoked into due, otherwise a project that is only
 	// revoked (and not yet near expiry) would be reported as being due for "expiry" as well.
@@ -121,13 +161,13 @@ func (w *Watcher) checkAndRotate(ctx context.Context) {
 	maps.Copy(due, revoked)
 
 	for project, labels := range due {
-		w.log.Info("certificate needs rotation",
+		contextLog.Info("certificate needs rotation",
 			slog.String("project", project),
 			slog.String("reason", strings.Join(reasons[project], ",")),
 		)
 
-		if err := docker.RotateProjectCertificates(ctx, w.dockerCli, labels, w.secretProvider, w.swarmMode()); err != nil {
-			w.log.Error("failed to rotate certificate",
+		if err := docker.RotateProjectCertificates(ctx, result.Name, result.Cli, labels, w.secretProvider, result.SwarmMode); err != nil {
+			contextLog.Error("failed to rotate certificate",
 				slog.String("project", project),
 				logger.ErrAttr(err),
 			)
@@ -135,7 +175,7 @@ func (w *Watcher) checkAndRotate(ctx context.Context) {
 			continue
 		}
 
-		w.log.Info("certificate rotation redeploy completed", slog.String("project", project))
+		contextLog.Info("certificate rotation redeploy completed", slog.String("project", project))
 	}
 }
 

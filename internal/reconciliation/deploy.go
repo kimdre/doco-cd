@@ -32,6 +32,7 @@ func Deploy(ctx context.Context,
 	appConfig *app.Config,
 	dataMountPoint container.MountPoint,
 	dockerCli command.Cli,
+	contexts *docker.ContextRegistry,
 	secretProvider *secretprovider.SecretProvider,
 	metadata notification.Metadata,
 	jobTrigger stages.JobTrigger,
@@ -41,7 +42,7 @@ func Deploy(ctx context.Context,
 	testName string,
 ) error {
 	err := deploy(ctx, jobLog, appConfig,
-		dataMountPoint, dockerCli, secretProvider, metadata,
+		dataMountPoint, dockerCli, contexts, secretProvider, metadata,
 		jobTrigger, repoData, deployConfigs, payload, testName)
 
 	// Skip long-lived reconciliation listeners for test-triggered deployments.
@@ -52,6 +53,7 @@ func Deploy(ctx context.Context,
 			appConfig:      appConfig,
 			dataMountPoint: dataMountPoint,
 			dockerCli:      dockerCli,
+			contexts:       contexts,
 			secretProvider: secretProvider,
 			jobLog:         jobLog,
 			metadata:       metadata,
@@ -71,6 +73,7 @@ func deploy(ctx context.Context,
 	appConfig *app.Config,
 	dataMountPoint container.MountPoint,
 	dockerCli command.Cli,
+	contexts *docker.ContextRegistry,
 	secretProvider *secretprovider.SecretProvider,
 	metadata notification.Metadata,
 	jobTrigger stages.JobTrigger,
@@ -86,7 +89,7 @@ func deploy(ctx context.Context,
 	configsByContext := map[string][]*deployConfig.Config{}
 
 	for _, dc := range deployConfigs {
-		contextName := strings.TrimSpace(dc.Context)
+		contextName := docker.NormalizeContextName(dc.Context)
 		configsByContext[contextName] = append(configsByContext[contextName], dc)
 	}
 
@@ -96,51 +99,32 @@ func deploy(ctx context.Context,
 	}
 
 	for contextName, groupedConfigs := range configsByContext {
-		cleanupCli, closeFn, err := dockerCliForContext(dockerCli, dockerQuiet, contextName)
-		if err != nil {
+		entry := resolveDeployContext(ctx, contexts, dockerCli, dockerQuiet, contextName)
+		if entry.err != nil {
 			// Isolate per-context failures: an unreachable context must not block
 			// cleanup/deploy for other (healthy) contexts. handleDeploy below fails
 			// only the affected deployments.
 			jobLog.Error("failed to create docker client for context, skipping cleanup for it",
-				slog.String("context", contextName), logger.ErrAttr(err))
+				slog.String("context", docker.DisplayContextName(contextName)), logger.ErrAttr(entry.err))
 
 			continue
 		}
 
-		// For the default context use the globally cached swarm mode; for a custom
-		// context probe the remote daemon directly.
-		var cleanupSwarmMode bool
-		if contextName == "" {
-			cleanupSwarmMode = dockerSwarm.GetModeEnabled()
-		} else {
-			cleanupSwarmMode, err = dockerSwarm.ResolveModeEnabled(ctx, cleanupCli.Client())
-			if err != nil {
-				jobLog.Error("failed to check swarm mode for context, skipping cleanup for it",
-					slog.String("context", contextName), logger.ErrAttr(err))
-
-				if closeFn != nil {
-					closeFn()
-				}
-
-				continue
-			}
-		}
-
 		if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
-			cleanupCli, cleanupSwarmMode, contextName, repoData.SourceUrl,
+			entry.cli, entry.swarmMode, contextName, repoData.SourceUrl,
 			groupedConfigs,
 			metadata); err != nil {
 			jobLog.Error("failed to clean up obsolete auto-discovered containers for context",
-				slog.String("context", contextName), logger.ErrAttr(err))
+				slog.String("context", docker.DisplayContextName(contextName)), logger.ErrAttr(err))
 		}
 
-		if closeFn != nil {
-			closeFn()
+		if entry.closeFn != nil {
+			entry.closeFn()
 		}
 	}
 
 	return handleDeploy(ctx, jobLog, appConfig,
-		dataMountPoint, dockerCli, secretProvider, metadata.JobID, jobTrigger,
+		dataMountPoint, dockerCli, contexts, secretProvider, metadata.JobID, jobTrigger,
 		repoData, deployConfigs, payload, testName, metadata)
 }
 
@@ -149,6 +133,7 @@ func handleDeploy(ctx context.Context,
 	appConfig *app.Config,
 	dataMountPoint container.MountPoint,
 	dockerCli command.Cli,
+	contexts *docker.ContextRegistry,
 	secretProvider *secretprovider.SecretProvider,
 	jobID string,
 	jobTrigger stages.JobTrigger,
@@ -165,7 +150,7 @@ func handleDeploy(ctx context.Context,
 
 	// Build one Docker CLI per distinct context up front and share it across all
 	// deployments targeting that context, instead of creating a client per deployment.
-	contextCLIs := buildDeployContextCLIs(ctx, dockerCli, dockerQuiet, deployConfigs)
+	contextCLIs := buildDeployContextCLIs(ctx, contexts, dockerCli, dockerQuiet, deployConfigs)
 
 	defer func() {
 		for contextName, entry := range contextCLIs {
@@ -207,12 +192,14 @@ func handleDeploy(ctx context.Context,
 			defer wg.Done()
 			defer reconciliationHandler.finishStackDeployment(repoData.Name, dc.Context, dc.Name)
 
-			entry, ok := contextCLIs[strings.TrimSpace(dc.Context)]
+			contextName := docker.NormalizeContextName(dc.Context)
+
+			entry, ok := contextCLIs[contextName]
 			if !ok || entry.err != nil {
 				if ok && entry.err != nil {
 					resultCh <- entry.err
 				} else {
-					resultCh <- fmt.Errorf("no docker client available for context %q", strings.TrimSpace(dc.Context))
+					resultCh <- fmt.Errorf("no docker client available for context %q", docker.DisplayContextName(contextName))
 				}
 
 				return
@@ -273,41 +260,51 @@ type deployContextCLI struct {
 // The default context (empty string) reuses baseCli; custom contexts get a dedicated client whose
 // closeFn must be called by the caller. Errors are captured per context so only the affected
 // deployments fail rather than the whole batch.
-func buildDeployContextCLIs(ctx context.Context, baseCli command.Cli, quiet bool, deployConfigs []*deployConfig.Config) map[string]deployContextCLI {
+func buildDeployContextCLIs(ctx context.Context, contexts *docker.ContextRegistry, baseCli command.Cli, quiet bool, deployConfigs []*deployConfig.Config) map[string]deployContextCLI {
 	contextCLIs := make(map[string]deployContextCLI)
 
 	for _, dc := range deployConfigs {
-		contextName := strings.TrimSpace(dc.Context)
+		contextName := docker.NormalizeContextName(dc.Context)
 		if _, exists := contextCLIs[contextName]; exists {
 			continue
 		}
 
-		if contextName == "" {
-			contextCLIs[contextName] = deployContextCLI{cli: baseCli, swarmMode: dockerSwarm.GetModeEnabled()}
-			continue
-		}
-
-		cli, closeFn, err := dockerCliForContext(baseCli, quiet, contextName)
-		if err != nil {
-			contextCLIs[contextName] = deployContextCLI{err: err}
-			continue
-		}
-
-		swarmMode, err := dockerSwarm.ResolveModeEnabled(ctx, cli.Client())
-		if err != nil {
-			if closeFn != nil {
-				closeFn()
-			}
-
-			contextCLIs[contextName] = deployContextCLI{err: fmt.Errorf("failed to check if docker host is running in swarm mode: %w", err)}
-
-			continue
-		}
-
-		contextCLIs[contextName] = deployContextCLI{cli: cli, closeFn: closeFn, swarmMode: swarmMode}
+		contextCLIs[contextName] = resolveDeployContext(ctx, contexts, baseCli, quiet, contextName)
 	}
 
 	return contextCLIs
+}
+
+func resolveDeployContext(ctx context.Context, contexts *docker.ContextRegistry, baseCli command.Cli, quiet bool, contextName string) deployContextCLI {
+	contextName = docker.NormalizeContextName(contextName)
+	if contexts != nil {
+		cc, err := contexts.Get(ctx, contextName)
+		if err != nil {
+			return deployContextCLI{err: err}
+		}
+
+		return deployContextCLI{cli: cc.Cli, swarmMode: cc.SwarmMode}
+	}
+
+	if contextName == "" {
+		return deployContextCLI{cli: baseCli, swarmMode: dockerSwarm.GetModeEnabled()}
+	}
+
+	cli, closeFn, err := dockerCliForContext(baseCli, quiet, contextName)
+	if err != nil {
+		return deployContextCLI{err: err}
+	}
+
+	swarmMode, err := dockerSwarm.ResolveModeEnabled(ctx, cli.Client())
+	if err != nil {
+		if closeFn != nil {
+			closeFn()
+		}
+
+		return deployContextCLI{err: fmt.Errorf("failed to check if docker host is running in swarm mode: %w", err)}
+	}
+
+	return deployContextCLI{cli: cli, closeFn: closeFn, swarmMode: swarmMode}
 }
 
 func handleOneDeploy(ctx context.Context, deployLog *slog.Logger,
@@ -358,7 +355,7 @@ func handleOneDeploy(ctx context.Context, deployLog *slog.Logger,
 }
 
 func dockerCliForContext(baseCli command.Cli, quiet bool, contextName string) (command.Cli, func(), error) {
-	contextName = strings.TrimSpace(contextName)
+	contextName = docker.NormalizeContextName(contextName)
 	if contextName == "" {
 		return baseCli, nil, nil
 	}

@@ -44,7 +44,7 @@ func TestPollHandlerAllowsConcurrentRunsForSameRepository(t *testing.T) {
 	h := handlerData{
 		log: log,
 		runPoll: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
-			_ command.Cli, _ *slog.Logger, metadata notification.Metadata, _ *secretprovider.SecretProvider,
+			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, metadata notification.Metadata, _ *secretprovider.SecretProvider,
 			_ string,
 		) error {
 			started <- metadata
@@ -209,14 +209,14 @@ func TestRunPoll(t *testing.T) {
 	}
 
 	// Run initial poll
-	if err := RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, log.With(), metadata, &secretProvider, pollTriggerDefault); err != nil {
+	if err := RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, nil, log.With(), metadata, &secretProvider, pollTriggerDefault); err != nil {
 		t.Fatalf("Initial poll deployment failed: %v", err)
 	}
 
 	pollConfig.Reference = "destroy"
 
 	// Run the second poll to destroy
-	if err := RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, log.With(), metadata, &secretProvider, pollTriggerDefault); err != nil {
+	if err := RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, nil, log.With(), metadata, &secretProvider, pollTriggerDefault); err != nil {
 		t.Fatalf("Second poll deployment failed: %v", err)
 	}
 }
@@ -234,7 +234,7 @@ func TestPollHandlerFallsBackWhenWatcherFailsWithZeroInterval(t *testing.T) {
 	h := handlerData{
 		log: log,
 		runPoll: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
-			_ command.Cli, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
 			_ string,
 		) error {
 			runCount.Add(1)
@@ -310,7 +310,7 @@ func TestPollHandlerReportsWatchTriggerReason(t *testing.T) {
 	h := handlerData{
 		log: log,
 		runPoll: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
-			_ command.Cli, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
 			triggerReason string,
 		) error {
 			reasons <- triggerReason
@@ -394,7 +394,7 @@ func TestPollHandlerWatchDisabledFallsBackTo24h(t *testing.T) {
 	h := handlerData{
 		log: log,
 		runPoll: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
-			_ command.Cli, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
 			_ string,
 		) error {
 			runCount.Add(1)
@@ -466,7 +466,7 @@ func TestPollHandlerWatcherOnlyModeHasNoPeriodicFallback(t *testing.T) {
 	h := handlerData{
 		log: log,
 		runPoll: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
-			_ command.Cli, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
 			_ string,
 		) error {
 			runCount.Add(1)

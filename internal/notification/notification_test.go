@@ -248,7 +248,21 @@ func TestDefaultBody(t *testing.T) {
 			AffectedActorID:     "abc123def456",
 			AffectedActorName:   "prod_api",
 		})
-		expected := "Deployment triggered\n\nrepository: acme/api\nstack: prod\nreconciliation:\n  event: unhealthy\n  service_id: abc123def456\n  service_name: prod_api\n  trace_id: trace-123"
+		expected := "Deployment triggered\n\ncontext: default\nrepository: acme/api\nstack: prod\nreconciliation:\n  event: unhealthy\n  service_id: abc123def456\n  service_name: prod_api\n  trace_id: trace-123"
+
+		if message != expected {
+			t.Errorf("expected %q, got %q", expected, message)
+		}
+	})
+
+	t.Run("named docker context is included", func(t *testing.T) {
+		t.Parallel()
+
+		message := defaultBody("Deployment completed", Metadata{
+			Stack:   "prod",
+			Context: "remote",
+		})
+		expected := "Deployment completed\n\ncontext: remote\nstack: prod"
 
 		if message != expected {
 			t.Errorf("expected %q, got %q", expected, message)

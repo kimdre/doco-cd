@@ -253,6 +253,13 @@ func run() error {
 		log.Debug("swarm features disabled by configuration")
 	}
 
+	contexts := docker.NewContextRegistry(dockerCli, c.DockerQuietDeploy)
+	defer func() {
+		if closeErr := contexts.Close(); closeErr != nil {
+			log.Error("failed to close docker context clients", logger.ErrAttr(closeErr))
+		}
+	}()
+
 	log.Debug("negotiated docker versions to use",
 		slog.Group("versions",
 			slog.String("docker_client", dockerClient.ClientVersion()),
@@ -338,17 +345,21 @@ func run() error {
 		log.Info("secret provider initialized", slog.String("provider", secretProvider.Name()))
 	}
 
+	schedulerManager := scheduler.NewManager(contexts, log.Logger, &wg, &secretProvider)
+
 	h := handlerData{
 		appConfig:      c,
 		appVersion:     app.Version,
 		dataMountPoint: dataMountPoint,
 		dockerCli:      dockerCli,
+		contexts:       contexts,
 		log:            log,
 		runTracker: newDeploymentRunTracker(map[deploymentRunTrigger]int{
 			deploymentRunTriggerPoll:         50,
 			deploymentRunTriggerWebhook:      50,
 			deploymentRunTriggerScheduledJob: 50,
 		}),
+		scheduler:      schedulerManager,
 		secretProvider: &secretProvider,
 	}
 
@@ -373,7 +384,7 @@ func run() error {
 
 	if c.SchedulerEnabled {
 		graceful.SafeGo(&wg, log.Logger, func() {
-			scheduler.Start(ctx, h.dockerCli, log.Logger, &wg, h.secretProvider)
+			schedulerManager.Start(ctx)
 		})
 	} else {
 		log.Info("scheduler disabled by configuration")
@@ -386,7 +397,7 @@ func run() error {
 				slog.String("secret_provider", c.SecretProvider),
 			)
 		} else {
-			watcher := certrotation.New(h.dockerCli, log.Logger, h.secretProvider, c.CertRotationThreshold, c.CertRotationCheckInterval)
+			watcher := certrotation.New(contexts, log.Logger, h.secretProvider, c.CertRotationThreshold, c.CertRotationCheckInterval)
 
 			graceful.SafeGo(&wg, log.Logger, func() {
 				watcher.Start(ctx)

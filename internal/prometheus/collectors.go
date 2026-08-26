@@ -75,18 +75,18 @@ var (
 		Namespace: MetricsNamespace,
 		Name:      "deployments_total",
 		Help:      "Total number of deployments processed",
-	}, []string{"repository", "deployment"})
+	}, []string{"repository", "deployment", "context"})
 	DeploymentErrorsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: MetricsNamespace,
 		Name:      "deployment_errors_total",
 		Help:      "Total number of errors during deployments",
-	}, []string{"repository", "deployment"})
+	}, []string{"repository", "deployment", "context"})
 	DeploymentDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: MetricsNamespace,
 		Name:      "deployment_duration_seconds",
 		Help:      "Duration of deployment operations in seconds",
 		Buckets:   prometheus.DefBuckets,
-	}, []string{"repository", "deployment"})
+	}, []string{"repository", "deployment", "context"})
 	DeploymentsActive = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: MetricsNamespace,
 		Name:      "deployments_active",
@@ -101,28 +101,28 @@ var (
 		Namespace: MetricsNamespace,
 		Name:      "scheduled_runs_total",
 		Help:      "Total number of scheduled job runs processed",
-	}, []string{"stack", "job", "mode", "execution_mode"})
+	}, []string{"context", "stack", "job", "mode", "execution_mode"})
 	ScheduledRunErrorsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: MetricsNamespace,
 		Name:      "scheduled_run_errors_total",
 		Help:      "Total number of failed scheduled job runs",
-	}, []string{"stack", "job", "mode", "execution_mode"})
+	}, []string{"context", "stack", "job", "mode", "execution_mode"})
 	ScheduledRunSkippedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: MetricsNamespace,
 		Name:      "scheduled_run_skipped_total",
 		Help:      "Total number of skipped scheduled job runs",
-	}, []string{"stack", "job", "mode", "execution_mode", "reason"})
+	}, []string{"context", "stack", "job", "mode", "execution_mode", "reason"})
 	ScheduledRunDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: MetricsNamespace,
 		Name:      "scheduled_run_duration_seconds",
 		Help:      "Duration of scheduled job runs in seconds",
 		Buckets:   prometheus.DefBuckets,
-	}, []string{"stack", "job", "mode", "execution_mode"})
+	}, []string{"context", "stack", "job", "mode", "execution_mode"})
 	ScheduledRunsActive = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: MetricsNamespace,
 		Name:      "scheduled_runs_active",
 		Help:      "Number of currently active scheduled job runs",
-	}, []string{"stack", "job", "mode", "execution_mode"})
+	}, []string{"context", "stack", "job", "mode", "execution_mode"})
 	/* --8<-- [end:collectors]
 	Add new collectors above this comment */
 )
