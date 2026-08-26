@@ -34,6 +34,16 @@ See the provider-specific pages for details.
 
 Doco-CD uses variable interpolation to replace variables in your Compose files with the values fetched from the external secret provider, see the [Compose file reference](https://docs.docker.com/reference/compose-file/interpolation/) for more information and examples.
 
+External-secret references also support Compose-style interpolation using environment variables set on the doco-cd deployment itself. This is useful when the same configuration is deployed to multiple environments:
+
+```yaml title=".doco-cd.yml"
+name: myapp
+external_secrets:
+  DB_PASSWORD: "kv:db-${PROJECT_STAGE:-prod}"
+```
+
+With `PROJECT_STAGE=lab` set in the doco-cd container or process environment, the provider receives `kv:db-lab`. If `PROJECT_STAGE` is not set, the default `prod` is used.
+
 For example with [Bitwarden Secrets Manager](Bitwarden-Secrets-Manager.md), if you want to use secrets named `DB_PASSWORD` and `LABEL_SECRET` in your Compose file, you can reference it like this:
 
 ```yaml title=".doco-cd.yml"
