@@ -47,6 +47,27 @@ const (
 `
 )
 
+// webhookFixtureFiles backs the local, network-independent fixture repo used
+// by TestHandlerData_WebhookHandler in non-swarm mode, so that test doesn't
+// depend on cloning the live kimdre/doco-cd GitHub repository.
+var webhookFixtureFiles = map[string]string{
+	".doco-cd.yaml": `
+name: webhook-test-deploy
+compose_files:
+  - test.compose.yaml
+`,
+	"test.compose.yaml": `
+services:
+  app:
+    image: nginx:latest
+    ports:
+      - "80"  # use random published port
+    volumes:
+      - ./:/usr/share/nginx/html
+`,
+	"index.html": "webhook test fixture index page\n",
+}
+
 func newWebhookRequest(t *testing.T, url string, payload []byte, appConfig *app.Config) *http.Request {
 	t.Helper()
 
@@ -88,13 +109,22 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	stackName := test.ConvertTestName(t.Name())
 
 	payloadFile := githubPayloadFile
-	cloneUrl := "https://github.com/kimdre/doco-cd.git"
-	indexPath := path.Join("test", "index.html")
+	// payloadCloneUrl is the clone_url baked into the webhook payload fixture
+	// file. In non-swarm mode it is rewritten below (via SourceURLRewrites) to
+	// a local, ephemeral fixture repository so this test doesn't depend on
+	// the live kimdre/doco-cd GitHub repository.
+	payloadCloneUrl := "https://github.com/kimdre/doco-cd.git"
+	indexPath := "index.html"
+
+	var cloneUrl string
 
 	if swarm.GetModeEnabled() {
 		payloadFile = githubPayloadFileSwarmMode
 		cloneUrl = "https://github.com/kimdre/doco-cd_tests.git"
 		indexPath = path.Join("html", "index.html")
+	} else {
+		_, fixtureCloneURL, _ := newLocalFixtureRepo(t, webhookFixtureFiles)
+		cloneUrl = fixtureCloneURL
 	}
 
 	indexPath = path.Join(tmpDir, git.GetRepoName(cloneUrl), indexPath)
@@ -117,6 +147,14 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 	}
 
 	appConfig.GitCommitStatus = false
+
+	if !swarm.GetModeEnabled() {
+		// Route the payload's clone URL to the local fixture repo created
+		// above, so this test never clones the live kimdre/doco-cd repo.
+		appConfig.SourceURLRewrites = map[string]string{
+			payloadCloneUrl: cloneUrl,
+		}
+	}
 
 	log := logger.New(logger.LevelCritical)
 
