@@ -25,13 +25,12 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	tcnetwork "github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/kimdre/doco-cd/internal/docker"
 )
 
 // repoDir is the doco-cd repo root, relative to this package (test/e2e).
 const repoDir = "../.."
-
-// remoteDockerImage is the Docker-in-Docker image used for the remote context.
-const remoteDockerImage = "docker:29-dind"
 
 // Harness owns one gitserver + one doco-cd container built from the working
 // tree, plus the host-side git repo the daemon polls. Every scenario gets
@@ -230,7 +229,7 @@ func (h *Harness) startRemoteDocker() {
 
 	remote, err := testcontainers.GenericContainer(h.ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
-			Image:          remoteDockerImage,
+			Image:          docker.TestRemoteDockerImage,
 			Name:           h.containerName("remote-docker"),
 			Networks:       []string{h.net.Name},
 			NetworkAliases: map[string][]string{h.net.Name: {"remote-docker"}},

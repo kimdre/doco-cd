@@ -38,6 +38,10 @@ const (
 	dockerContentDigest    = "Docker-Content-Digest"
 	wwwAuthenticateHeader  = "Www-Authenticate"
 	registryAuthBearer     = "Bearer"
+	// TestRemoteDockerImage is the Docker-in-Docker image version used in e2e tests.
+	// Tracked by Renovate for automated updates .
+	// Needs to be outside of test/ directory because Renovate ignores test/ by default.
+	TestRemoteDockerImage = "docker:29-dind"
 )
 
 var (
