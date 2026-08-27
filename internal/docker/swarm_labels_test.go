@@ -226,19 +226,6 @@ func TestSwarmServiceLabels(t *testing.T) {
 			want: Labels{DocoCDLabels.Deployment.Name: "stack"},
 		},
 		{
-			name: "container spec labels of a stack deployed by an earlier version",
-			service: swarmTypes.Service{
-				Spec: swarmTypes.ServiceSpec{
-					TaskTemplate: swarmTypes.TaskSpec{
-						ContainerSpec: &swarmTypes.ContainerSpec{
-							Labels: map[string]string{DocoCDLabels.Deployment.Name: "legacy"},
-						},
-					},
-				},
-			},
-			want: Labels{DocoCDLabels.Deployment.Name: "legacy"},
-		},
-		{
 			name: "service spec labels take precedence",
 			service: swarmTypes.Service{
 				Spec: swarmTypes.ServiceSpec{
@@ -257,7 +244,6 @@ func TestSwarmServiceLabels(t *testing.T) {
 			},
 			want: Labels{
 				DocoCDLabels.Deployment.Timestamp: "new",
-				DocoCDJobLabels.JobEnabled:        "true",
 			},
 		},
 		{

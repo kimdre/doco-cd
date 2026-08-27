@@ -75,21 +75,6 @@ var DocoCDLabels = docoCdLabelNames{
 	},
 }
 
-/*
-DeprecatedAutoDiscoverLabel and DeprecatedAutoDiscoverDeleteLabel are the old label names
-kept for backwards-compatible reads. New deployments only write the new labels.
-
-Deprecated: Use DocoCDLabels.Deployment.AutoDiscovery and DocoCDLabels.Deployment.AutoDiscoveryConfig instead.
-
-TODO: Remove in a future release.
-*/
-const (
-	DeprecatedAutoDiscoverLabel       = "cd.doco.deployment.auto_discover"
-	DeprecatedAutoDiscoverDeleteLabel = "cd.doco.deployment.auto_discover.delete"
-	// DeprecatedAutoDiscoveryDeleteLabel is the pre-consolidation scalar label for the delete setting.
-	DeprecatedAutoDiscoveryDeleteLabel = "cd.doco.deployment.auto_discovery.delete" //nolint:staticcheck
-)
-
 // jobLabelPrefix is the common prefix of all labels that configure scheduled jobs.
 const jobLabelPrefix = "cd.doco.job."
 
