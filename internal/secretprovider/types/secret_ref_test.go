@@ -386,3 +386,17 @@ func TestInterpolateResolvedSecrets(t *testing.T) {
 		})
 	}
 }
+
+func TestInterpolateExternalSecretRefs_Disabled(t *testing.T) {
+	t.Setenv("PROJECT_STAGE", "lab")
+
+	got, err := InterpolateExternalSecretRefs(
+		map[string]ExternalSecretRef{"DB": {LegacyRef: "kv:db-${PROJECT_STAGE:-prod}"}}, false)
+	if err != nil {
+		t.Fatalf("unexpected interpolation error: %v", err)
+	}
+
+	if got["DB"].LegacyRef != "kv:db-${PROJECT_STAGE:-prod}" {
+		t.Fatalf("got %q while interpolation is disabled", got["DB"].LegacyRef)
+	}
+}
