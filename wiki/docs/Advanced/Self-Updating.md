@@ -24,7 +24,7 @@ The setup can look like this:
 If you only want the main instance to follow a mutable image tag such as `latest`, a second doco-cd instance is not required.
 For a standalone Docker Compose installation, use a host-managed systemd timer to pull and recreate the main instance on a schedule.
 
-Create this one-shot service on the Docker host. Update `WorkingDirectory` to the directory containing your Compose file:
+Create this one-shot service on the Docker host. Update `WorkingDirectory` to the directory containing your Compose file and replace `app` with your doco-cd Compose service name:
 
 ```ini title="/etc/systemd/system/doco-cd-update.service"
 [Unit]
