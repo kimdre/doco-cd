@@ -1036,7 +1036,7 @@ func TestCheckServiceMismatch(t *testing.T) {
 			want: nil,
 		},
 		{
-			name: "swarmMode=true, ignore unnecessary scheduler ephemeral by legacy name fallback",
+			name: "swarmMode=true, ignore unnecessary scheduler ephemeral by execution mode",
 			deployed: map[Service]ServiceStatus{
 				"foo": {Replicas: 1, SwarmMode: swarm.DeployModeReplicated},
 				"foo-doco-job-1730000000000000000": {

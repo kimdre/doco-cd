@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -66,28 +65,13 @@ func (l Labels) getDeploymentComposeHash() (string, bool) {
 	return l.Get(DocoCDLabels.Deployment.ComposeHash)
 }
 
-// SwarmServiceLabels returns the labels of a swarm service, merged from the task
-// template and the service spec.
+// SwarmServiceLabels returns the labels of a swarm service.
 //
 // Deployment metadata is stored in the service spec labels, because labels in the
 // task template are part of the service definition and changing them makes swarm
 // recreate all tasks of the service on every deployment.
-//
-// Stacks deployed by earlier versions carry the metadata in the container spec
-// instead, so both label sets are merged, with the service spec taking precedence.
-// Note that this only helps sites that read labels from an inspected service:
-// server-side filtered listings (e.g. GetServicesByLabel) match service spec labels
-// only, so legacy stacks stay invisible to them until they are redeployed once.
-// The container spec fallback can be dropped in a future release, once stacks have
-// been redeployed at least once.
 func SwarmServiceLabels(service swarm.Service) Labels {
-	containerLabels := swarmContainerLabels(service)
-
-	labels := make(Labels, len(containerLabels)+len(service.Spec.Labels))
-	maps.Copy(labels, containerLabels)
-	maps.Copy(labels, service.Spec.Labels)
-
-	return labels
+	return service.Spec.Labels
 }
 
 // SwarmJobLabels returns the labels of a swarm service with the job configuration
@@ -101,10 +85,7 @@ func SwarmServiceLabels(service swarm.Service) Labels {
 // Job runtime metadata (last/next run timestamps) is written by doco-cd itself to the
 // service spec, so it is exempt from this rule.
 func SwarmJobLabels(service swarm.Service) Labels {
-	containerLabels := swarmContainerLabels(service)
-
-	labels := make(Labels, len(containerLabels)+len(service.Spec.Labels))
-	maps.Copy(labels, containerLabels)
+	labels := make(Labels, len(service.Spec.Labels))
 
 	for key, value := range service.Spec.Labels {
 		if isJobConfigLabel(key) {
@@ -112,6 +93,14 @@ func SwarmJobLabels(service swarm.Service) Labels {
 		}
 
 		labels[key] = value
+	}
+
+	if containerSpec := service.Spec.TaskTemplate.ContainerSpec; containerSpec != nil {
+		for key, value := range containerSpec.Labels {
+			if isJobConfigLabel(key) {
+				labels[key] = value
+			}
+		}
 	}
 
 	return labels
@@ -125,14 +114,6 @@ func isJobConfigLabel(key string) bool {
 	}
 
 	return key != docoCDJobLabelNames.JobLastRun && key != docoCDJobLabelNames.JobNextRun
-}
-
-func swarmContainerLabels(service swarm.Service) map[string]string {
-	if service.Spec.TaskTemplate.ContainerSpec == nil {
-		return nil
-	}
-
-	return service.Spec.TaskTemplate.ContainerSpec.Labels
 }
 
 // GetServiceLabels retrieves the Labels for each Service in a given stack.

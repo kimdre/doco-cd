@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"maps"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/docker/cli/cli/command"
@@ -44,30 +42,16 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 
 	var processedStacks []string
 
-	// Query both new and deprecated labels. We keep reading the deprecated label to
-	// handle containers deployed before the label rename.
-	newServiceLabels, err := docker.GetLabeledServices(ctx, dockerCli.Client(), swarmMode, docker.DocoCDLabels.Deployment.AutoDiscovery, "true")
+	serviceLabels, err := docker.GetAutoDiscoveryServices(ctx, dockerCli.Client(), swarmMode)
 	if err != nil {
-		return fmt.Errorf("failed to retrieve containers for auto-discovery cleanup: %w", err)
-	}
+		if serviceLabels == nil {
+			return fmt.Errorf("failed to retrieve containers for auto-discovery cleanup: %w", err)
+		}
 
-	deprecatedServiceLabels, err := docker.GetLabeledServices(ctx, dockerCli.Client(), swarmMode, docker.DeprecatedAutoDiscoverLabel, "true") //nolint:staticcheck // fallback for pre-rename containers
-	if err != nil {
-		return fmt.Errorf("failed to retrieve containers for auto-discovery cleanup: %w", err)
-	}
-
-	if len(deprecatedServiceLabels) > 0 {
-		jobLog.Warn("found containers with deprecated label, please recreate them to migrate to the new label",
-			slog.String("deprecated_label", docker.DeprecatedAutoDiscoverLabel), //nolint:staticcheck // include deprecated label key in warning for migration clarity
-			slog.String("new_label", docker.DocoCDLabels.Deployment.AutoDiscovery),
+		jobLog.Warn("failed to migrate auto-discovery labels for some services; continuing cleanup",
+			logger.ErrAttr(err),
 		)
 	}
-
-	// Merge label maps and prefer the new label set when a service appears in both.
-	serviceLabels := make(map[docker.Service]map[string]string, len(deprecatedServiceLabels)+len(newServiceLabels))
-	maps.Copy(serviceLabels, deprecatedServiceLabels)
-
-	maps.Copy(serviceLabels, newServiceLabels)
 
 	for _, labels := range serviceLabels {
 		stackName := labels[docker.DocoCDLabels.Deployment.Name]
@@ -120,23 +104,7 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 
 			stackLog.Debug("checking auto-discovered stack for obsolescence")
 
-			// Parse the auto-discovery config from the new JSON label.
-			// Fall back to the old scalar labels for containers deployed before this change.
 			autoDiscoverCfg := docker.ParseAutoDiscoveryConfig(labels[docker.DocoCDLabels.Deployment.AutoDiscoveryConfig])
-
-			// If the new label was absent, try the legacy scalar delete label.
-			if labels[docker.DocoCDLabels.Deployment.AutoDiscoveryConfig] == "" {
-				legacyDelete := labels[docker.DeprecatedAutoDiscoveryDeleteLabel] //nolint:staticcheck // fallback for pre-consolidation containers
-				if legacyDelete == "" {
-					legacyDelete = labels[docker.DeprecatedAutoDiscoverDeleteLabel] //nolint:staticcheck // fallback for pre-rename containers
-				}
-
-				if legacyDelete != "" {
-					if parsed, err := strconv.ParseBool(legacyDelete); err == nil {
-						autoDiscoverCfg.Delete = parsed
-					}
-				}
-			}
 
 			if !autoDiscoverCfg.Delete {
 				stackLog.Debug("skipping removal of obsolete auto-discovered stack as per configuration")

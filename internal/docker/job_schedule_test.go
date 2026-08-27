@@ -101,24 +101,16 @@ func TestParseJobScheduleLabels(t *testing.T) {
 	}
 }
 
-func TestParseJobScheduleLabels_OneShotDeprecatedAlias(t *testing.T) {
+func TestParseJobScheduleLabels_RejectsOneShotExecutionMode(t *testing.T) {
 	t.Parallel()
 
-	cfg, enabled, err := ParseJobScheduleLabels(map[string]string{
+	_, _, err := ParseJobScheduleLabels(map[string]string{
 		docoCDJobLabelNames.JobEnabled:       "true",
 		docoCDJobLabelNames.JobSchedule:      "0 * * * *",
-		docoCDJobLabelNames.JobExecutionMode: string(JobExecutionModeOneShotDeprecated),
+		docoCDJobLabelNames.JobExecutionMode: "one_shot",
 	})
-	if err != nil {
-		t.Fatalf("ParseJobScheduleLabels() failed with deprecated one_shot alias: %v", err)
-	}
-
-	if !enabled {
-		t.Fatalf("expected enabled=true")
-	}
-
-	if cfg.ExecutionMode != JobExecutionModeOneOff {
-		t.Fatalf("expected execution mode to be normalized to %q, got %q", JobExecutionModeOneOff, cfg.ExecutionMode)
+	if err == nil {
+		t.Fatal("expected one_shot execution mode to be rejected")
 	}
 }
 

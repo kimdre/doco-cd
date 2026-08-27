@@ -1,6 +1,6 @@
 todo-pr-checker:
   post_comment: 'items_found'
-  case_sensitive: true,
-  always_split_snippets: false,
-  action_items: ['TODO', 'FIXME', 'BUG']
+  case_sensitive: false
+  always_split_snippets: false
+  action_items: ['TODO', 'FIXME']
   ignore_files: ['.github/config.yml']

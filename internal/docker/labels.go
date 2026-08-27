@@ -21,6 +21,7 @@ type docoCdLabelNamesDeployment struct {
 	ConfigHash           string // SHA256 hash of the deploy-config used during deployment
 	AutoDiscovery        string // Whether the deployment was auto-discovered
 	AutoDiscoveryConfig  string // JSON-serialized AutoDiscoveryConfig settings
+	Autostart            string // Whether deployment should start the service automatically
 	RecreateIgnore       string // Whether the deployment file changes should ignore recreate
 	RecreateIgnoreSignal string // Signal service when deployment file changes and ignore recreate
 	CertExpiry           string // RFC3339 timestamp of the earliest expiry among the deployment's cert-bearing external secrets
@@ -60,6 +61,7 @@ var DocoCDLabels = docoCdLabelNames{
 		ConfigHash:           "cd.doco.deployment.config.sha",
 		AutoDiscovery:        "cd.doco.deployment.auto_discovery",
 		AutoDiscoveryConfig:  "cd.doco.deployment.auto_discovery.config",
+		Autostart:            "cd.doco.deployment.autostart",
 		RecreateIgnore:       "cd.doco.deployment.recreate.ignore",
 		RecreateIgnoreSignal: "cd.doco.deployment.recreate.ignore.signal",
 		CertExpiry:           "cd.doco.deployment.cert.expiry",
@@ -72,21 +74,6 @@ var DocoCDLabels = docoCdLabelNames{
 		URL:  "cd.doco.source.url",
 	},
 }
-
-/*
-DeprecatedAutoDiscoverLabel and DeprecatedAutoDiscoverDeleteLabel are the old label names
-kept for backwards-compatible reads. New deployments only write the new labels.
-
-Deprecated: Use DocoCDLabels.Deployment.AutoDiscovery and DocoCDLabels.Deployment.AutoDiscoveryConfig instead.
-
-TODO: Remove in a future release.
-*/
-const (
-	DeprecatedAutoDiscoverLabel       = "cd.doco.deployment.auto_discover"
-	DeprecatedAutoDiscoverDeleteLabel = "cd.doco.deployment.auto_discover.delete"
-	// DeprecatedAutoDiscoveryDeleteLabel is the pre-consolidation scalar label for the delete setting.
-	DeprecatedAutoDiscoveryDeleteLabel = "cd.doco.deployment.auto_discovery.delete" //nolint:staticcheck
-)
 
 // jobLabelPrefix is the common prefix of all labels that configure scheduled jobs.
 const jobLabelPrefix = "cd.doco.job."

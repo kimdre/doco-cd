@@ -370,8 +370,6 @@ func SSHAuth(privateKey, keyPassphrase string) (transport.AuthMethod, error) {
 		return nil, fmt.Errorf("failed to create SSH public keys: %w", err)
 	}
 
-	// auth.HostKeyCallback = ssh2.InsecureIgnoreHostKey()
-
 	return auth, nil
 }
 
