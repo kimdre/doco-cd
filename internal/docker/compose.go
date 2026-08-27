@@ -476,7 +476,23 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 		QuietPull:            true,
 	}
 
-	startServices, err := getStartServicesForDeploy(project)
+	autostartDisabledServices, err := getAutostartDisabledServices(project)
+	if err != nil {
+		return err
+	}
+
+	runningServices := set.New[string]()
+
+	if autostartDisabledServices.Len() > 0 {
+		containers, err := GetProjectContainers(ctx, dockerCli, project.Name)
+		if err != nil {
+			return fmt.Errorf("failed to inspect existing services before deployment: %w", err)
+		}
+
+		runningServices = getRunningServices(containers)
+	}
+
+	startServices, err := getStartServicesForDeploy(project, autostartDisabledServices, runningServices)
 	if err != nil {
 		return err
 	}
@@ -485,6 +501,8 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 	if err != nil {
 		return err
 	}
+
+	stoppedAutostartServices := autostartDisabledServices.Difference(runningServices)
 
 	// Remove mismatched recreatable volumes (tmpfs, NFS, CIFS mounts) before create.
 	// Docker Compose then recreates them with the desired configuration during service.Create.
@@ -506,9 +524,8 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, project *types.Pr
 
 		// Docker Compose's Start ignores StartOptions.Services and starts every
 		// service in the passed project (including containers in the "created" or
-		// "exited" state). Scheduled job services must not run at deploy time, so
-		// narrow the project to non-job services before starting.
-		startProject, err := projectForStart(project, jobServices)
+		// "exited" state), so narrow the project to services allowed to start.
+		startProject, err := projectForStart(project, jobServices, stoppedAutostartServices)
 		if err != nil {
 			return err
 		}
@@ -1716,7 +1733,47 @@ func DecryptProjectFiles(repoPath string, p *types.Project) ([]string, error) {
 	return decryptedFiles, nil
 }
 
-func getStartServicesForDeploy(project *types.Project) ([]string, error) {
+func getAutostartDisabledServices(project *types.Project) (set.Set[string], error) {
+	disabled := set.New[string]()
+	if project == nil {
+		return disabled, nil
+	}
+
+	for serviceName, svc := range project.Services {
+		raw, ok := getServiceSchedulerLabels(svc)[DocoCDLabels.Deployment.Autostart]
+		if !ok {
+			continue
+		}
+
+		enabled, err := strconv.ParseBool(strings.TrimSpace(raw))
+		if err != nil {
+			return nil, fmt.Errorf("service %s: invalid %s label value %q",
+				serviceName, DocoCDLabels.Deployment.Autostart, raw)
+		}
+
+		if !enabled {
+			disabled.Add(serviceName)
+		}
+	}
+
+	return disabled, nil
+}
+
+func getRunningServices(containers []api.ContainerSummary) set.Set[string] {
+	running := set.New[string]()
+
+	for _, cont := range containers {
+		if strings.EqualFold(strings.TrimSpace(string(cont.State)), "running") {
+			if serviceName := strings.TrimSpace(cont.Labels[api.ServiceLabel]); serviceName != "" {
+				running.Add(serviceName)
+			}
+		}
+	}
+
+	return running
+}
+
+func getStartServicesForDeploy(project *types.Project, autostartDisabledServices, runningServices set.Set[string]) ([]string, error) {
 	startServices := make([]string, 0, len(project.Services))
 	completedDependencyServices := getServiceCompletedDependencies(project)
 
@@ -1739,6 +1796,10 @@ func getStartServicesForDeploy(project *types.Project) ([]string, error) {
 		}
 
 		if svc.GetScale() == 0 {
+			continue
+		}
+
+		if autostartDisabledServices.Contains(serviceName) && !runningServices.Contains(serviceName) {
 			continue
 		}
 
@@ -1812,16 +1873,15 @@ func getNonJobServices(startServices []string, jobServices set.Set[string]) set.
 	return nonJobServices
 }
 
-// projectForStart returns a copy of the project containing only the services
-// that should be started at deploy time, i.e. all services except scheduled job
-// services. Docker Compose's Start starts every service present in the project
-// (ignoring StartOptions.Services), so job services must be removed from the
-// project to keep them from running on deployment.
-func projectForStart(project *types.Project, jobServices set.Set[string]) (*types.Project, error) {
+// projectForStart returns a copy containing only services that may start during deployment.
+// Docker Compose's Start ignores StartOptions.Services and starts every service in the project.
+func projectForStart(project *types.Project, jobServices, stoppedAutostartServices set.Set[string]) (*types.Project, error) {
 	nonJobServiceNames := make([]string, 0, len(project.Services))
 
 	for serviceName, svc := range project.Services {
-		if jobServices.Contains(serviceName) || (svc.Name != "" && jobServices.Contains(svc.Name)) {
+		if jobServices.Contains(serviceName) || (svc.Name != "" && jobServices.Contains(svc.Name)) ||
+			stoppedAutostartServices.Contains(serviceName) ||
+			(svc.Name != "" && stoppedAutostartServices.Contains(svc.Name)) {
 			continue
 		}
 
