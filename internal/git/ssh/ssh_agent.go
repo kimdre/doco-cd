@@ -185,14 +185,6 @@ func getRawPrivateKey(pemBytes []byte, passphrase string) (any, error) {
 	}
 
 	switch block.Type {
-	case "ENCRYPTED PRIVATE KEY":
-		// Deprecated, but we still use it for compatibility
-		der, err := x509.DecryptPEMBlock(block, []byte(passphrase)) // nolint:staticcheck
-		if err != nil {
-			return nil, err
-		}
-
-		return x509.ParsePKCS8PrivateKey(der)
 	case "PRIVATE KEY":
 		return x509.ParsePKCS8PrivateKey(block.Bytes)
 	default:
