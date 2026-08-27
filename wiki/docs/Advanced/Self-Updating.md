@@ -22,34 +22,45 @@ The setup can look like this:
 ## Simpler option: scheduled image updates
 
 If you only want the main instance to follow a mutable image tag such as `latest`, a second doco-cd instance is not required.
-For a standalone Docker Compose installation, [Watchtower](https://containrrr.dev/watchtower/) can check for a new image and recreate the selected container on a schedule.
+For a standalone Docker Compose installation, use a host-managed systemd timer to pull and recreate the main instance on a schedule.
 
-Add the label to the main instance and add Watchtower to the same Compose file:
+Create this one-shot service on the Docker host. Update `WorkingDirectory` to the directory containing your Compose file:
 
-```yaml title="doco-cd/compose.main.yaml"
-services:
-  app:
-    container_name: doco-cd
-    image: ghcr.io/kimdre/doco-cd:latest
-    restart: unless-stopped
-    labels:
-      com.centurylinklabs.watchtower.enable: "true"
-    # environment and volumes omitted
+```ini title="/etc/systemd/system/doco-cd-update.service"
+[Unit]
+Description=Update doco-cd image
 
-  watchtower:
-    image: containrrr/watchtower:latest
-    command: --label-enable --schedule "0 0 4 * * *" --cleanup
-    restart: unless-stopped
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/doco-cd
+ExecStart=/usr/bin/docker compose pull app
+ExecStart=/usr/bin/docker compose up --detach --no-deps app
 ```
 
-The example checks daily at 04:00 (the schedule includes seconds), pulls a changed doco-cd image, recreates only containers with the opt-in label, and removes old image layers.
+Then create and enable the daily timer:
+
+```ini title="/etc/systemd/system/doco-cd-update.timer"
+[Unit]
+Description=Schedule doco-cd image updates
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now doco-cd-update.timer
+```
+
+The timer pulls the configured image tag and recreates only the `app` service. `Persistent=true` runs a missed update once after the host becomes available.
 Set a schedule appropriate for your maintenance window.
 
-!!! warning "Scope and Docker socket access"
+!!! warning "Scope"
     This option updates image changes only; it does not apply changes to your Compose file, environment, or doco-cd deployment configuration.
-    Watchtower needs Docker socket access, which effectively grants it control over the Docker host. Restrict updates with `--label-enable` as shown and review the [Docker API permission guidance](Docker-API-Permissions.md).
 
 ## Requirements
 
