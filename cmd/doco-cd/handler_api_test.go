@@ -462,7 +462,7 @@ func newStackActionRESTTestHandler(t *testing.T, services []dockerswarmtypes.Ser
 		}
 	}))
 	t.Cleanup(server.Close)
-	t.Setenv("DOCKER_HOST", server.URL)
+	t.Setenv("DOCKER_HOST", "tcp://"+strings.TrimPrefix(server.URL, "http://"))
 	t.Setenv("DOCKER_API_VERSION", "1.52")
 
 	dockerCli, err := docker.CreateDockerCli(true)
@@ -561,6 +561,11 @@ func TestHandlerData_TriggerPollHandler(t *testing.T) {
 				appVersion: app.Version,
 				log:        logger.New(logger.LevelCritical),
 				testName:   test.ConvertTestName(t.Name()),
+				runPoll: func(context.Context, poll.Config, *app.Config, container.MountPoint,
+					command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider, string,
+				) error {
+					return nil
+				},
 			}
 
 			endpoint := path.Join(apiPath, "/poll/run")
@@ -762,7 +767,7 @@ func TestHandlerData_TriggerPollHandlerAcceptsTrailingWhitespace(t *testing.T) {
 		},
 	}
 	response := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, apiPath+"/poll/run", strings.NewReader(`[{"url":"`+validPollSourceURL+`"}] \n\t`))
+	request := httptest.NewRequest(http.MethodPost, apiPath+"/poll/run", strings.NewReader(`[{"url":"`+validPollSourceURL+`"}] `+"\n\t"))
 	request.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
 
 	h.TriggerPollHandler(response, request)

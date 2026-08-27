@@ -390,6 +390,7 @@ func (h *handlerData) triggerScheduledJobRun(ctx context.Context, jobID string, 
 		jobLog.Info("scheduled job run triggered", slog.String("job", jobName), slog.String("stack", stackName))
 
 		var scheduledRunID string
+
 		switch {
 		case h.triggerScheduledJob != nil:
 			scheduledRunID, err = h.triggerScheduledJob(ctx, dockerCli, h.log.Logger, jobName, stackName, h.secretProvider)
@@ -433,6 +434,7 @@ func (h *handlerData) triggerScheduledJobRun(ctx context.Context, jobID string, 
 	if errors.Is(err, errBackgroundWorkClosed) && h.runTracker != nil {
 		h.runTracker.MarkFailed(jobID, err.Error())
 	}
+
 	if err != nil {
 		return jobID, err
 	}
@@ -1203,13 +1205,14 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		var lookupErr *stackLookupError
 
-		if errors.Is(err, errStackNotFound) {
+		switch {
+		case errors.Is(err, errStackNotFound):
 			JSONError(w, "stack not found: "+stackName, "", jobID, http.StatusNotFound)
-		} else if errors.As(err, &lookupErr) {
+		case errors.As(err, &lookupErr):
 			errMsg := "failed to get stack: " + stackName
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 			JSONError(w, errMsg, lookupErr.cause.Error(), jobID, http.StatusInternalServerError)
-		} else {
+		default:
 			errMsg := "failed to get stack: " + stackName
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 			JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)

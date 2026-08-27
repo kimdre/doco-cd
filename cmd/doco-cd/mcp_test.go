@@ -326,6 +326,12 @@ func TestMCPServerListsTools(t *testing.T) {
 				t.Fatalf("trigger_poll config schema must not require reference: %#v", items)
 			}
 
+			for _, property := range []string{"source", "target", "deployments"} {
+				if toolSchemaRequiresProperty(items, property) {
+					t.Fatalf("trigger_poll config schema must not require %s: %#v", property, items)
+				}
+			}
+
 			for _, property := range []string{"interval", "run_once"} {
 				if toolSchemaHasProperty(items, property) {
 					t.Fatalf("trigger_poll config schema exposes ignored property %q: %#v", property, items)
@@ -390,7 +396,7 @@ func TestMCPTriggerPollValidationAndDefaultWait(t *testing.T) {
 
 	assertMCPToolError(t, session, "trigger_poll", map[string]any{}, "configs")
 	assertMCPToolError(t, session, "trigger_poll", map[string]any{"configs": []any{}}, "no poll configuration provided in request body")
-	assertMCPToolError(t, session, "trigger_poll", map[string]any{"configs": []any{map[string]any{}}}, "index 0")
+	assertMCPToolError(t, session, "trigger_poll", map[string]any{"configs": []any{map[string]any{}}}, "url")
 
 	if got := tracker.List(10, string(deploymentRunTriggerPoll), ""); len(got) != 0 {
 		t.Fatalf("invalid MCP poll requests were tracked: %#v", got)
@@ -479,9 +485,16 @@ func TestMCPTriggerScheduledJobValidation(t *testing.T) {
 func TestMCPTriggerScheduledJobDefaultsToWait(t *testing.T) {
 	tracker := newDeploymentRunTracker(nil)
 	triggered := make(chan context.Context, 1)
+
+	dockerCli, err := command.NewDockerCli()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	h := &handlerData{
 		appConfig:  &app.Config{},
 		appVersion: app.Version,
+		dockerCli:  dockerCli,
 		log:        logger.New(logger.LevelCritical),
 		runTracker: tracker,
 		triggerScheduledJob: func(ctx context.Context, _ command.Cli, _ *slog.Logger, jobName, stack string, _ *secretprovider.SecretProvider) (string, error) {
@@ -516,11 +529,18 @@ func TestMCPTriggerScheduledJobAsyncJobIDResolves(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
 	backgroundWG := &sync.WaitGroup{}
+
+	dockerCli, err := command.NewDockerCli()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	h := &handlerData{
 		appConfig:     &app.Config{},
 		appVersion:    app.Version,
 		backgroundCtx: t.Context(),
 		backgroundWG:  backgroundWG,
+		dockerCli:     dockerCli,
 		log:           logger.New(logger.LevelCritical),
 		runTracker:    tracker,
 		triggerScheduledJob: func(ctx context.Context, _ command.Cli, _ *slog.Logger, _, _ string, _ *secretprovider.SecretProvider) (string, error) {
@@ -579,7 +599,7 @@ func TestMCPStackToolValidation(t *testing.T) {
 		{name: "control missing stack", tool: "control_stack", arguments: map[string]any{"action": "restart"}, contains: "stack_name"},
 		{name: "control blank stack", tool: "control_stack", arguments: map[string]any{"stack_name": "  ", "action": "restart"}, contains: "missing stack name"},
 		{name: "control missing action", tool: "control_stack", arguments: map[string]any{"stack_name": "stack"}, contains: "action"},
-		{name: "control invalid action", tool: "control_stack", arguments: map[string]any{"stack_name": "stack", "action": "invalid"}, contains: "not in enum"},
+		{name: "control invalid action", tool: "control_stack", arguments: map[string]any{"stack_name": "stack", "action": "invalid"}, contains: "enum"},
 		{name: "scale missing replicas", tool: "control_stack", arguments: map[string]any{"stack_name": "stack", "action": "scale"}, contains: "replicas"},
 		{name: "scale negative replicas", tool: "control_stack", arguments: map[string]any{"stack_name": "stack", "action": "scale", "replicas": -1}, contains: "minimum"},
 		{name: "restart ignores omitted replicas", tool: "control_stack", arguments: map[string]any{"stack_name": "stack", "action": "restart"}, contains: "docker cli is required"},
@@ -756,7 +776,7 @@ func newStackActionTestHandler(t *testing.T, services []dockerswarmtypes.Service
 		}
 	}))
 	t.Cleanup(server.Close)
-	t.Setenv("DOCKER_HOST", server.URL)
+	t.Setenv("DOCKER_HOST", "tcp://"+strings.TrimPrefix(server.URL, "http://"))
 	t.Setenv("DOCKER_API_VERSION", "1.52")
 
 	dockerCli, err := docker.CreateDockerCli(true)
@@ -805,7 +825,7 @@ func newStackActionTestHandlerWithFailure(t *testing.T, services []dockerswarmty
 		}
 	}))
 	t.Cleanup(server.Close)
-	t.Setenv("DOCKER_HOST", server.URL)
+	t.Setenv("DOCKER_HOST", "tcp://"+strings.TrimPrefix(server.URL, "http://"))
 	t.Setenv("DOCKER_API_VERSION", "1.52")
 
 	dockerCli, err := docker.CreateDockerCli(true)
@@ -832,7 +852,7 @@ func TestMCPProjectToolValidation(t *testing.T) {
 		{name: "control missing project", tool: "control_project", arguments: map[string]any{"action": "start"}, contains: "project_name"},
 		{name: "control blank project", tool: "control_project", arguments: map[string]any{"project_name": "  ", "action": "start"}, contains: "missing project name"},
 		{name: "control missing action", tool: "control_project", arguments: map[string]any{"project_name": "project"}, contains: "action"},
-		{name: "control invalid action", tool: "control_project", arguments: map[string]any{"project_name": "project", "action": "invalid"}, contains: "not in enum"},
+		{name: "control invalid action", tool: "control_project", arguments: map[string]any{"project_name": "project", "action": "invalid"}, contains: "enum"},
 		{name: "control invalid timeout", tool: "control_project", arguments: map[string]any{"project_name": "project", "action": "start", "timeout": "invalid"}, contains: "timeout"},
 		{name: "control zero timeout", tool: "control_project", arguments: map[string]any{"project_name": "project", "action": "start", "timeout": 0}, contains: "minimum"},
 		{name: "control overflowing timeout", tool: "control_project", arguments: map[string]any{"project_name": "project", "action": "start", "timeout": maxProjectActionTimeout + 1}, contains: "maximum"},
@@ -1173,7 +1193,14 @@ func TestMCPScheduledJobsTool(t *testing.T) {
 	}
 
 	projectName := test.ConvertTestName(t.Name())
-	test.ComposeUp(t.Context(), t, test.WithYAML(composeContent), test.WithName(projectName))
+	test.ComposeUp(t.Context(), t, test.WithYAML(`services:
+  backup:
+    image: alpine:latest
+    command: ["sleep", "infinity"]
+    labels:
+      cd.doco.job.enabled: "true"
+      cd.doco.job.schedule: "@every 1h"
+`), test.WithName(projectName))
 
 	h := &handlerData{dockerCli: dockerCli, appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
 	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)

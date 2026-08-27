@@ -63,11 +63,11 @@ type triggerPollInput struct {
 }
 
 type triggerPollConfig struct {
-	Source       config.SourceType `json:"source" default:"git"`
+	Source       config.SourceType `json:"source,omitempty"`
 	SourceURL    string            `json:"url"`
 	Reference    string            `json:"reference,omitempty"`
-	CustomTarget string            `json:"target" default:""`
-	Deployments  []*deploy.Config  `json:"deployments" default:"[]"`
+	CustomTarget string            `json:"target,omitempty"`
+	Deployments  []*deploy.Config  `json:"deployments,omitempty"`
 }
 
 type triggerPollOutput struct {
@@ -165,6 +165,7 @@ func (h *handlerData) runPollConfigs(ctx context.Context, configs []poll.Config,
 
 		repository := "multiple"
 		target := ""
+
 		if len(configs) == 1 {
 			repository = pollRepositoryName(configs[0])
 			target = configs[0].CustomTarget
@@ -230,11 +231,13 @@ func (h *handlerData) runPollConfigs(ctx context.Context, configs []poll.Config,
 		close(errs)
 
 		failedRuns := 0
+
 		var lifecycleErr error
 
 		for runErr := range errs {
 			if runErr != nil {
 				failedRuns++
+
 				if lifecycleErr == nil && isLifecycleCancellation(runErr) {
 					lifecycleErr = runErr
 				}
@@ -269,6 +272,7 @@ func (h *handlerData) runPollConfigs(ctx context.Context, configs []poll.Config,
 	if errors.Is(err, errBackgroundWorkClosed) && h.runTracker != nil {
 		h.runTracker.MarkFailed(jobID, err.Error())
 	}
+
 	if err != nil {
 		return jobID, err
 	}

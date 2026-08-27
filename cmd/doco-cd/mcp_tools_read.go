@@ -221,6 +221,7 @@ func (h *handlerData) listScheduledJobs(ctx context.Context, _ *mcp.CallToolRequ
 	} else {
 		jobs, err = scheduler.ListJobs(ctx, contextClient.Cli, stackName)
 	}
+
 	if err != nil {
 		return nil, listScheduledJobsOutput{}, fmt.Errorf("failed to list scheduled jobs: %w", err)
 	}
@@ -451,6 +452,7 @@ func requireMCPDockerSwarm(ctx context.Context, contextClient docker.ContextClie
 	enabled := contextClient.SwarmMode
 	if contextClient.Name == "" {
 		var err error
+
 		enabled, err = swarm.ResolveModeEnabled(ctx, contextClient.Cli.Client())
 		if err != nil {
 			return fmt.Errorf("failed to check Docker Swarm mode: %w", err)

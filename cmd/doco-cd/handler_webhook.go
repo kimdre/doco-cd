@@ -598,6 +598,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if r := recover(); r != nil {
 				logRecoveredPanic(jobLog, "webhook deployment", r)
+
 				err = errWebhookDeploymentPanicked
 			}
 		}()

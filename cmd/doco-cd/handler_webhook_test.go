@@ -63,6 +63,7 @@ func TestAcquireWebhookRepoLockReportsWaitAndAcquires(t *testing.T) {
 
 	waiting := make(chan struct{}, 1)
 	acquired := make(chan bool, 1)
+
 	go func() {
 		acquired <- acquireWebhookRepoLock(t.Context(), repoLock, "waiter", func() {
 			waiting <- struct{}{}

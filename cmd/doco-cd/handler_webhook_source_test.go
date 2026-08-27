@@ -175,7 +175,7 @@ func TestIsWebhookGitCloneURLAllowed(t *testing.T) {
 				t.Errorf("isWebhookGitCloneURLAllowed(%q, %t) = %t, want %t", tc.url, tc.rewriteApplied, got, tc.want)
 			}
 		})
- 	}
+	}
 }
 
 func TestRedactURLUserinfo(t *testing.T) {

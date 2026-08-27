@@ -24,6 +24,7 @@ func TestRepoLockLockContextHonorsCancellation(t *testing.T) {
 	}
 
 	lock.Unlock()
+
 	if !lock.TryLock("next") {
 		t.Fatal("cancelled waiter retained the lock")
 	}
@@ -43,20 +44,24 @@ func TestRepoLockLockContextPreservesWaiterOrder(t *testing.T) {
 		"first":  make(chan struct{}),
 		"second": make(chan struct{}),
 	}
+
 	for index, jobID := range []string{"first", "second"} {
 		go func() {
 			if lock.LockContext(t.Context(), jobID) {
 				acquired <- jobID
+
 				<-releases[jobID]
 				lock.Unlock()
 			}
 		}()
 
 		deadline := time.Now().Add(time.Second)
+
 		for {
 			lock.mu.Lock()
 			waiterCount := len(lock.waiters)
 			lock.mu.Unlock()
+
 			if waiterCount == index+1 {
 				break
 			}
@@ -64,6 +69,7 @@ func TestRepoLockLockContextPreservesWaiterOrder(t *testing.T) {
 			if time.Now().After(deadline) {
 				t.Fatal("waiter was not queued")
 			}
+
 			time.Sleep(time.Millisecond)
 		}
 	}
@@ -76,6 +82,7 @@ func TestRepoLockLockContextPreservesWaiterOrder(t *testing.T) {
 			if got != want {
 				t.Fatalf("acquisition order = %q, want %q", got, want)
 			}
+
 			close(releases[want])
 		case <-time.After(time.Second):
 			t.Fatalf("waiter %q did not acquire lock", want)
@@ -93,6 +100,7 @@ func TestRepoLockLockContextCancellationSkipsQueuedWaiter(t *testing.T) {
 
 	cancelledCtx, cancel := context.WithCancel(t.Context())
 	firstDone := make(chan bool, 1)
+
 	go func() {
 		firstDone <- lock.LockContext(cancelledCtx, "cancelled")
 	}()
@@ -103,25 +111,31 @@ func TestRepoLockLockContextCancellationSkipsQueuedWaiter(t *testing.T) {
 	}()
 
 	deadline := time.Now().Add(time.Second)
+
 	for {
 		lock.mu.Lock()
 		waiterCount := len(lock.waiters)
 		lock.mu.Unlock()
+
 		if waiterCount == 2 {
 			break
 		}
+
 		if time.Now().After(deadline) {
 			t.Fatal("waiters were not queued")
 		}
+
 		time.Sleep(time.Millisecond)
 	}
 
 	cancel()
+
 	if acquired := <-firstDone; acquired {
 		t.Fatal("cancelled waiter acquired lock")
 	}
 
 	lock.Unlock()
+
 	select {
 	case acquired := <-secondAcquired:
 		if !acquired {

@@ -15,6 +15,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
@@ -59,6 +60,7 @@ func TestRunPollConfigsAppliesDefaultsAndReportsIndexedValidationErrors(t *testi
 
 	t.Run("defaults", func(t *testing.T) {
 		tracker := newDeploymentRunTracker(nil)
+
 		var (
 			gotConfig   poll.Config
 			gotMetadata notification.Metadata
@@ -300,7 +302,7 @@ func TestRunPollConfigsTracksSuccessFailureAndPanic(t *testing.T) {
 				t.Fatalf("tracked run = %#v", run)
 			}
 
-			if run.Repository != "doco-cd_tests" {
+			if run.Repository != git.GetRepoName(validPollSourceURL) {
 				t.Fatalf("repository metadata = %q", run.Repository)
 			}
 		})

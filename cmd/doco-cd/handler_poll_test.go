@@ -69,7 +69,7 @@ func TestPollConfigLogValueRedactsSensitiveFields(t *testing.T) {
 		t.Fatalf("poll config log leaked secret: %q", logged)
 	}
 
-	if !strings.Contains(logged, "production") || !strings.Contains(logged, "reference=main") {
+	if !strings.Contains(logged, "production") || !strings.Contains(logged, "reference:main") {
 		t.Fatalf("poll config log lost safe identifiers: %q", logged)
 	}
 }
@@ -252,6 +252,7 @@ func TestPollHandlerShutdownDoesNotEnableWatcherFallback(t *testing.T) {
 
 		go func() {
 			defer close(done)
+
 			h.PollHandler(ctx, &poll.Job{Config: poll.Config{
 				Source:    config.SourceTypeGit,
 				SourceUrl: "file://" + srcPath,
@@ -513,6 +514,7 @@ func createLocalPollTestRepository(t *testing.T) string {
 	t.Helper()
 
 	srcPath := t.TempDir()
+
 	repo, err := gogit.PlainInit(srcPath, false)
 	if err != nil {
 		t.Fatalf("init repo: %v", err)

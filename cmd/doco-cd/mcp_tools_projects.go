@@ -105,6 +105,7 @@ func (h *handlerData) controlProject(ctx context.Context, _ *mcp.CallToolRequest
 	}
 
 	jobLog := h.log.With(slog.String("mcp_tool", "control_project"))
+
 	contextClient, err := h.resolveMCPDockerContext(ctx, input.Context)
 	if err != nil {
 		return nil, controlProjectOutput{}, err
@@ -140,6 +141,7 @@ func (h *handlerData) destroyProjectTool(ctx context.Context, _ *mcp.CallToolReq
 	}
 
 	jobLog := h.log.With(slog.String("mcp_tool", "destroy_project"))
+
 	contextClient, err := h.resolveMCPDockerContext(ctx, input.Context)
 	if err != nil {
 		return nil, destroyProjectOutput{}, err
