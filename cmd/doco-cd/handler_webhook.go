@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/docker/cli/cli/command"
@@ -142,6 +143,17 @@ func rewriteHostInStandardURL(sourceURL, matchHost, target string) (string, bool
 	return u.String(), true
 }
 
+func redactURLUserinfo(value string) string {
+	u, err := url.Parse(value)
+	if err != nil || u.Host == "" {
+		return "[REDACTED_URL]"
+	}
+
+	u.User = nil
+
+	return u.String()
+}
+
 // rewriteHostInSCPURL rewrites the host in an SCP-style Git URL (e.g., "git@github.com:user/repo.git")
 // if it matches the specified matchHost, replacing it with the target host.
 func rewriteHostInSCPURL(sourceURL, matchHost, target string) (string, bool) {
@@ -235,17 +247,21 @@ func repositoryNameFromWebhookPayload(payload webhook.ParsedPayload) string {
 }
 
 type handlerData struct {
-	appConfig      *app.Config          // Application configuration
-	appVersion     string               // Application version
-	dataMountPoint container.MountPoint // Mount point for the data directory
-	dockerCli      command.Cli          // Docker CLI client
-	contexts       *docker.ContextRegistry
-	log            *logger.Logger // Logger for logging messages
-	runTracker     *deploymentRunTracker
-	runPoll        pollRunner
-	scheduler      *scheduler.Manager
-	secretProvider *secretprovider.SecretProvider
-	testName       string // Overwrites the deployConfig.Name to make test deployments unique and prevent conflicts between tests when running in parallel. Not used in production.
+	appConfig           *app.Config // Application configuration
+	appVersion          string      // Application version
+	backgroundCtx       context.Context
+	backgroundWG        *sync.WaitGroup
+	backgroundWork      *backgroundWork
+	dataMountPoint      container.MountPoint // Mount point for the data directory
+	dockerCli           command.Cli          // Docker CLI client
+	contexts            *docker.ContextRegistry
+	log                 *logger.Logger // Logger for logging messages
+	runTracker          *deploymentRunTracker
+	runPoll             pollRunner
+	scheduler           *scheduler.Manager
+	triggerScheduledJob scheduledJobTrigger
+	secretProvider      *secretprovider.SecretProvider
+	testName            string // Overwrites the deployConfig.Name to make test deployments unique and prevent conflicts between tests when running in parallel. Not used in production.
 }
 
 // onError handles errors by logging them, sending a JSON error response, and sending a notification.
@@ -336,7 +352,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		}
 
 		if cloneURLOverrideApplied {
-			jobLog.Debug("using configured webhook clone URL override", slog.String("clone_url", sourceRef))
+			jobLog.Debug("using configured webhook clone URL override", slog.String("clone_url", redactURLUserinfo(sourceRef)))
 		}
 	}
 
@@ -444,8 +460,6 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 // WebhookHandler handles incoming webhook requests.
 func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := context.WithoutCancel(r.Context())
-
 	customTarget := r.PathValue("customTarget")
 
 	// Add a job id to the context to track deployments in the logs
@@ -572,7 +586,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	// Prevent concurrent deployments for the same repository using a lock
 	repoLock := lock.GetRepoLock(metadata.Repository)
 
-	handleFn := func(w http.ResponseWriter) {
+	handleFn := func(ctx context.Context, w http.ResponseWriter) {
 		defer func() {
 			if r := recover(); r != nil {
 				logRecoveredPanic(jobLog, "webhook deployment", r)
@@ -584,10 +598,16 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		}()
 
 		locked := make(chan struct{})
+		abandoned := make(chan struct{})
 
 		go func() {
 			repoLock.Lock()
-			close(locked)
+
+			select {
+			case <-abandoned:
+				repoLock.Unlock()
+			case locked <- struct{}{}:
+			}
 		}()
 
 		select {
@@ -595,7 +615,26 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 			// Acquired immediately
 		case <-time.After(10 * time.Millisecond):
 			jobLog.Info("waiting for webhook "+lockEntity+" lock", slog.String(lockEntity, lockLogValue))
-			<-locked
+
+			select {
+			case <-locked:
+			case <-ctx.Done():
+				close(abandoned)
+
+				if h.runTracker != nil {
+					h.runTracker.MarkFailed(jobID, ctx.Err().Error())
+				}
+
+				return
+			}
+		case <-ctx.Done():
+			close(abandoned)
+
+			if h.runTracker != nil {
+				h.runTracker.MarkFailed(jobID, ctx.Err().Error())
+			}
+
+			return
 		}
 
 		defer repoLock.Unlock()
@@ -604,12 +643,21 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if wait {
-		handleFn(w)
+		handleFn(r.Context(), w)
 	} else {
-		// Async mode: respond immediately and run the deployment in the background.
-		JSONResponse(w, "job accepted", jobID, http.StatusAccepted)
+		if err := h.runBackground(r.Context(), func(backgroundCtx context.Context) {
+			handleFn(backgroundCtx, noopResponseWriter{})
+		}); err != nil {
+			if h.runTracker != nil {
+				h.runTracker.MarkFailed(jobID, err.Error())
+			}
 
-		go handleFn(noopResponseWriter{})
+			JSONError(w, err.Error(), "", jobID, http.StatusServiceUnavailable)
+
+			return
+		}
+
+		JSONResponse(w, "job accepted", jobID, http.StatusAccepted)
 	}
 }
 

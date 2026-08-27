@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -17,11 +19,13 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
+	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 	"github.com/kimdre/doco-cd/internal/test"
 
 	"github.com/kimdre/doco-cd/internal/git"
@@ -35,6 +39,40 @@ import (
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/logger"
 )
+
+func TestPollConfigLogValueRedactsSensitiveFields(t *testing.T) {
+	t.Parallel()
+
+	const secret = "sentinel-secret"
+
+	var output bytes.Buffer
+
+	log := slog.New(slog.NewTextHandler(&output, nil))
+	config := poll.Config{
+		SourceUrl: "https://user:" + secret + "@example.com/repository.git",
+		Reference: "main",
+		Deployments: []*deploy.Config{{
+			Name:          "production",
+			RepositoryUrl: "https://user:" + secret + "@example.com/deployment.git",
+			Environment:   map[string]string{"TOKEN": secret},
+			ExternalSecrets: map[string]secrettypes.ExternalSecretRef{
+				"PASSWORD": {LegacyRef: secret},
+			},
+		}},
+	}
+
+	log.Info("polling", slog.Attr{Key: "config", Value: pollConfigLogValue(config)})
+
+	logged := output.String()
+
+	if strings.Contains(logged, secret) {
+		t.Fatalf("poll config log leaked secret: %q", logged)
+	}
+
+	if !strings.Contains(logged, "production") || !strings.Contains(logged, "reference=main") {
+		t.Fatalf("poll config log lost safe identifiers: %q", logged)
+	}
+}
 
 func TestPollHandlerAllowsConcurrentRunsForSameRepository(t *testing.T) {
 	log := logger.New(logger.LevelCritical)

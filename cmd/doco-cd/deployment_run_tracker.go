@@ -364,7 +364,7 @@ func (t *deploymentRunTracker) cleanup(now time.Time) {
 		newOrder := make([]string, 0, len(jobIDs))
 		for _, jobID := range jobIDs {
 			run, ok := t.runs[jobID]
-			if ok && run.CreatedAt.After(cutoffTime) {
+			if ok && (run.CreatedAt.After(cutoffTime) || !isTerminalDeploymentRunStatus(run.Status)) {
 				newOrder = append(newOrder, jobID)
 			} else if ok {
 				delete(t.runs, jobID)
@@ -375,8 +375,7 @@ func (t *deploymentRunTracker) cleanup(now time.Time) {
 	}
 }
 
-// upsert adds or updates a run. Enforces per-type max entry limits with FIFO eviction.
-// When a trigger type exceeds its limit, the oldest run of that type is removed.
+// upsert adds or updates a run and prunes terminal history above the per-type limit.
 func (t *deploymentRunTracker) upsert(run deploymentRun) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -387,6 +386,7 @@ func (t *deploymentRunTracker) upsert(run deploymentRun) {
 		}
 
 		t.runs[run.JobID] = run
+		t.pruneTerminalRuns(run.Trigger)
 
 		return
 	}
@@ -394,20 +394,29 @@ func (t *deploymentRunTracker) upsert(run deploymentRun) {
 	t.runs[run.JobID] = run
 	order := t.orderByTrigger[run.Trigger]
 	t.orderByTrigger[run.Trigger] = append(order, run.JobID)
+	t.pruneTerminalRuns(run.Trigger)
+}
 
-	maxForType := t.maxEntriesPerType[run.Trigger]
+func (t *deploymentRunTracker) pruneTerminalRuns(trigger deploymentRunTrigger) {
+	maxForType := t.maxEntriesPerType[trigger]
 	if maxForType < 1 {
 		maxForType = 50
 	}
 
-	if len(t.orderByTrigger[run.Trigger]) <= maxForType {
-		return
-	}
+	for len(t.orderByTrigger[trigger]) > maxForType {
+		terminalIndex := slices.IndexFunc(t.orderByTrigger[trigger], func(jobID string) bool {
+			run, ok := t.runs[jobID]
 
-	// Evict oldest entry of this trigger type
-	oldestJobID := t.orderByTrigger[run.Trigger][0]
-	t.orderByTrigger[run.Trigger] = t.orderByTrigger[run.Trigger][1:]
-	delete(t.runs, oldestJobID)
+			return ok && isTerminalDeploymentRunStatus(run.Status)
+		})
+		if terminalIndex < 0 {
+			return
+		}
+
+		jobID := t.orderByTrigger[trigger][terminalIndex]
+		t.orderByTrigger[trigger] = slices.Delete(t.orderByTrigger[trigger], terminalIndex, terminalIndex+1)
+		delete(t.runs, jobID)
+	}
 }
 
 // update modifies an existing run using the provided callback function.
@@ -423,4 +432,9 @@ func (t *deploymentRunTracker) update(jobID string, fn func(*deploymentRun)) {
 
 	fn(&run)
 	t.runs[jobID] = run
+	t.pruneTerminalRuns(run.Trigger)
+}
+
+func isTerminalDeploymentRunStatus(status deploymentRunStatus) bool {
+	return status == deploymentRunStatusSucceeded || status == deploymentRunStatusFailed || status == deploymentRunStatusSkipped
 }
