@@ -166,11 +166,6 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 		}
 	}
 
-	// defer func() {
-	//	// Remove the service after completion
-	//	_ = apiClient.ServiceRemove(ctx, response.ID)
-	// }()
-
 	// Wait for container to complete
 	err = swarm.WaitOnServices(ctx, dockerCLI, []string{serviceId})
 	if err != nil {

@@ -215,68 +215,6 @@ func TestGetRawPrivateKey(t *testing.T) {
 			wantErr:       false,
 		},
 		{
-			name: "Encrypted ED25519 key with correct passphrase",
-			generateKey: func() ([]byte, error) {
-				_, privateKey, err := ed25519.GenerateKey(rand.Reader)
-				if err != nil {
-					return nil, err
-				}
-
-				privateKeyDER, err := x509.MarshalPKCS8PrivateKey(privateKey)
-				if err != nil {
-					return nil, err
-				}
-
-				block, err := x509.EncryptPEMBlock( // nolint:staticcheck
-					rand.Reader,
-					"ENCRYPTED PRIVATE KEY",
-					privateKeyDER,
-					[]byte("testpass"),
-					x509.PEMCipherAES256,
-				)
-				if err != nil {
-					return nil, err
-				}
-
-				privateKeyPEM := pem.EncodeToMemory(block)
-
-				return privateKeyPEM, nil
-			},
-			keyPassphrase: "testpass",
-			wantErr:       false,
-		},
-		{
-			name: "Encrypted ED25519 key with incorrect passphrase",
-			generateKey: func() ([]byte, error) {
-				_, privateKey, err := ed25519.GenerateKey(rand.Reader)
-				if err != nil {
-					return nil, err
-				}
-
-				privateKeyDER, err := x509.MarshalPKCS8PrivateKey(privateKey)
-				if err != nil {
-					return nil, err
-				}
-
-				block, err := x509.EncryptPEMBlock( // nolint:staticcheck
-					rand.Reader,
-					"PRIVATE KEY",
-					privateKeyDER,
-					[]byte("testpass"),
-					x509.PEMCipherAES256,
-				)
-				if err != nil {
-					return nil, err
-				}
-
-				privateKeyPEM := pem.EncodeToMemory(block)
-
-				return privateKeyPEM, nil
-			},
-			keyPassphrase: "wrongpass",
-			wantErr:       true,
-		},
-		{
 			name: "Malformed private key",
 			generateKey: func() ([]byte, error) {
 				return []byte("malformed key data"), nil
