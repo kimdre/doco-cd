@@ -31,9 +31,63 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/encryption"
+	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
+
+func TestAcquireWebhookRepoLockHonorsCancellation(t *testing.T) {
+	t.Parallel()
+
+	repoLock := lock.GetRepoLock(t.Name())
+	if !repoLock.TryLock("holder") {
+		t.Fatal("failed to acquire test lock")
+	}
+	defer repoLock.Unlock()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	if acquireWebhookRepoLock(ctx, repoLock, "waiter", func() {}) {
+		t.Fatal("acquired repository lock after cancellation")
+	}
+}
+
+func TestAcquireWebhookRepoLockReportsWaitAndAcquires(t *testing.T) {
+	t.Parallel()
+
+	repoLock := lock.GetRepoLock(t.Name())
+	if !repoLock.TryLock("holder") {
+		t.Fatal("failed to acquire test lock")
+	}
+
+	waiting := make(chan struct{}, 1)
+	acquired := make(chan bool, 1)
+	go func() {
+		acquired <- acquireWebhookRepoLock(t.Context(), repoLock, "waiter", func() {
+			waiting <- struct{}{}
+		})
+	}()
+
+	select {
+	case <-waiting:
+	case <-time.After(time.Second):
+		t.Fatal("repository lock wait was not reported")
+	}
+
+	repoLock.Unlock()
+
+	select {
+	case ok := <-acquired:
+		if !ok {
+			t.Fatal("repository lock acquisition was cancelled")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("repository lock was not acquired")
+	}
+
+	repoLock.Unlock()
+}
 
 const (
 	githubPayloadFile          = "testdata/github_payload.json"

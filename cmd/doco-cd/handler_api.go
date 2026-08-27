@@ -338,6 +338,8 @@ func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.
 	_, err := h.triggerScheduledJobRun(r.Context(), jobID, dockerCli, contextName, jobName, stackName, true)
 	if err != nil {
 		switch {
+		case isLifecycleCancellation(err):
+			JSONError(w, err.Error(), "", jobID, http.StatusServiceUnavailable)
 		case errors.Is(err, scheduler.ErrScheduledJobNotFound):
 			JSONError(w, err.Error(), "", jobID, http.StatusNotFound)
 		case errors.Is(err, scheduler.ErrScheduledJobDisabled), errors.Is(err, scheduler.ErrScheduledJobAmbiguous):
@@ -419,22 +421,19 @@ func (h *handlerData) triggerScheduledJobRun(ctx context.Context, jobID string, 
 		return nil
 	}
 
+	var err error
 	if wait {
-		err := h.runSynchronous(ctx, run)
-		if err != nil && h.runTracker != nil {
-			h.runTracker.MarkFailed(jobID, err.Error())
-		}
-
-		return jobID, err
+		err = h.runSynchronous(ctx, run)
+	} else {
+		err = h.runBackground(ctx, func(ctx context.Context) {
+			_ = run(ctx)
+		})
 	}
 
-	if err := h.runBackground(ctx, func(ctx context.Context) {
-		_ = run(ctx)
-	}); err != nil {
-		if h.runTracker != nil {
-			h.runTracker.MarkFailed(jobID, err.Error())
-		}
-
+	if errors.Is(err, errBackgroundWorkClosed) && h.runTracker != nil {
+		h.runTracker.MarkFailed(jobID, err.Error())
+	}
+	if err != nil {
 		return jobID, err
 	}
 
@@ -442,21 +441,18 @@ func (h *handlerData) triggerScheduledJobRun(ctx context.Context, jobID string, 
 }
 
 func (h *handlerData) runBackground(requestCtx context.Context, run func(context.Context)) error {
-	if h.backgroundCtx != nil && h.backgroundWork != nil {
+	switch {
+	case h.backgroundCtx != nil && h.backgroundWork != nil:
 		return h.backgroundWork.Go(func() {
 			run(h.backgroundCtx)
 		})
-	}
-
-	if h.backgroundCtx == nil || h.backgroundWG == nil {
+	case h.backgroundCtx != nil && h.backgroundWG != nil:
+		graceful.SafeGo(h.backgroundWG, h.log.Logger, func() {
+			run(h.backgroundCtx)
+		})
+	default:
 		run(context.WithoutCancel(requestCtx))
-
-		return nil
 	}
-
-	graceful.SafeGo(h.backgroundWG, h.log.Logger, func() {
-		run(h.backgroundCtx)
-	})
 
 	return nil
 }
@@ -473,14 +469,16 @@ func (h *handlerData) runSynchronous(requestCtx context.Context, run func(contex
 	defer release()
 
 	runCtx, cancel := context.WithCancel(requestCtx)
+	defer cancel()
 
 	stopApplicationCancel := context.AfterFunc(h.backgroundCtx, cancel) //nolint:contextcheck // The synchronous call is intentionally cancelled by either the request or application lifecycle.
-	defer func() {
-		stopApplicationCancel()
-		cancel()
-	}()
+	defer stopApplicationCancel()
 
 	return run(runCtx)
+}
+
+func isLifecycleCancellation(err error) bool {
+	return errors.Is(err, errBackgroundWorkClosed) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
 // HealthCheckHandler handles health check requests.
@@ -1502,7 +1500,7 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 
 	jobID, err := h.runPollConfigs(r.Context(), pollConfigs, wait, jobLog)
 	if err != nil {
-		if errors.Is(err, errBackgroundWorkClosed) {
+		if isLifecycleCancellation(err) {
 			JSONError(w, err.Error(), "", jobID, http.StatusServiceUnavailable)
 
 			return

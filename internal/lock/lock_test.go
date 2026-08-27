@@ -1,11 +1,138 @@
 package lock
 
 import (
+	"context"
 	"strconv"
 	"sync"
 	"testing"
 	"time"
 )
+
+func TestRepoLockLockContextHonorsCancellation(t *testing.T) {
+	t.Parallel()
+
+	lock := &RepoLock{}
+	if !lock.TryLock("holder") {
+		t.Fatal("failed to acquire test lock")
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	if lock.LockContext(ctx, "waiter") {
+		t.Fatal("acquired lock after cancellation")
+	}
+
+	lock.Unlock()
+	if !lock.TryLock("next") {
+		t.Fatal("cancelled waiter retained the lock")
+	}
+	lock.Unlock()
+}
+
+func TestRepoLockLockContextPreservesWaiterOrder(t *testing.T) {
+	t.Parallel()
+
+	lock := &RepoLock{}
+	if !lock.TryLock("holder") {
+		t.Fatal("failed to acquire test lock")
+	}
+
+	acquired := make(chan string, 2)
+	releases := map[string]chan struct{}{
+		"first":  make(chan struct{}),
+		"second": make(chan struct{}),
+	}
+	for index, jobID := range []string{"first", "second"} {
+		go func() {
+			if lock.LockContext(t.Context(), jobID) {
+				acquired <- jobID
+				<-releases[jobID]
+				lock.Unlock()
+			}
+		}()
+
+		deadline := time.Now().Add(time.Second)
+		for {
+			lock.mu.Lock()
+			waiterCount := len(lock.waiters)
+			lock.mu.Unlock()
+			if waiterCount == index+1 {
+				break
+			}
+
+			if time.Now().After(deadline) {
+				t.Fatal("waiter was not queued")
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	lock.Unlock()
+
+	for _, want := range []string{"first", "second"} {
+		select {
+		case got := <-acquired:
+			if got != want {
+				t.Fatalf("acquisition order = %q, want %q", got, want)
+			}
+			close(releases[want])
+		case <-time.After(time.Second):
+			t.Fatalf("waiter %q did not acquire lock", want)
+		}
+	}
+}
+
+func TestRepoLockLockContextCancellationSkipsQueuedWaiter(t *testing.T) {
+	t.Parallel()
+
+	lock := &RepoLock{}
+	if !lock.TryLock("holder") {
+		t.Fatal("failed to acquire test lock")
+	}
+
+	cancelledCtx, cancel := context.WithCancel(t.Context())
+	firstDone := make(chan bool, 1)
+	go func() {
+		firstDone <- lock.LockContext(cancelledCtx, "cancelled")
+	}()
+
+	secondAcquired := make(chan bool, 1)
+	go func() {
+		secondAcquired <- lock.LockContext(t.Context(), "second")
+	}()
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		lock.mu.Lock()
+		waiterCount := len(lock.waiters)
+		lock.mu.Unlock()
+		if waiterCount == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("waiters were not queued")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	cancel()
+	if acquired := <-firstDone; acquired {
+		t.Fatal("cancelled waiter acquired lock")
+	}
+
+	lock.Unlock()
+	select {
+	case acquired := <-secondAcquired:
+		if !acquired {
+			t.Fatal("second waiter did not acquire lock")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("second waiter did not acquire lock")
+	}
+
+	lock.Unlock()
+}
 
 // reset helper to isolate tests.
 func resetRepoLocks(t *testing.T) {

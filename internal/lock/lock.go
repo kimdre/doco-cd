@@ -1,40 +1,112 @@
 package lock
 
 import (
+	"context"
 	"strings"
 	"sync"
 )
 
 // RepoLock represents a lock for a specific repository.
 type RepoLock struct {
-	mu     sync.Mutex
-	holder string
+	mu      sync.Mutex
+	locked  bool
+	holder  string
+	waiters []*repoLockWaiter
+}
+
+type repoLockWaiter struct {
+	jobID   string
+	granted chan struct{}
 }
 
 // TryLock attempts to acquire the lock for the given jobID.
 // It returns true if the lock was successfully acquired.
 func (l *RepoLock) TryLock(jobID string) bool {
-	if l.mu.TryLock() {
-		l.holder = jobID
-		return true
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.locked {
+		return false
 	}
 
-	return false
+	l.locked = true
+	l.holder = jobID
+
+	return true
 }
 
 // Unlock releases the lock.
 func (l *RepoLock) Unlock() {
-	l.holder = ""
-	l.mu.Unlock()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if len(l.waiters) == 0 {
+		l.locked = false
+		l.holder = ""
+
+		return
+	}
+
+	waiter := l.waiters[0]
+	l.waiters = l.waiters[1:]
+	l.holder = waiter.jobID
+	close(waiter.granted)
 }
 
 // Lock acquires the lock, blocking until it is available.
 func (l *RepoLock) Lock() {
+	l.LockContext(context.Background(), "")
+}
+
+// LockContext acquires the lock in waiter order or returns false when ctx is cancelled.
+func (l *RepoLock) LockContext(ctx context.Context, jobID string) bool {
 	l.mu.Lock()
+	if !l.locked {
+		select {
+		case <-ctx.Done():
+			l.mu.Unlock()
+
+			return false
+		default:
+		}
+
+		l.locked = true
+		l.holder = jobID
+		l.mu.Unlock()
+
+		return true
+	}
+
+	waiter := &repoLockWaiter{jobID: jobID, granted: make(chan struct{})}
+	l.waiters = append(l.waiters, waiter)
+	l.mu.Unlock()
+
+	select {
+	case <-waiter.granted:
+		return true
+	case <-ctx.Done():
+		l.mu.Lock()
+		for i, queued := range l.waiters {
+			if queued == waiter {
+				l.waiters = append(l.waiters[:i], l.waiters[i+1:]...)
+				l.mu.Unlock()
+
+				return false
+			}
+		}
+		l.mu.Unlock()
+
+		l.Unlock()
+
+		return false
+	}
 }
 
 // Holder returns the jobID of the current lock holder.
 func (l *RepoLock) Holder() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
 	return l.holder
 }
 

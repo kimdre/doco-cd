@@ -46,10 +46,15 @@ func (e *pollConfigValidationError) Unwrap() error {
 type pollRunsFailedError struct {
 	Failed int
 	Total  int
+	Cause  error
 }
 
 func (e *pollRunsFailedError) Error() string {
 	return fmt.Sprintf("%d/%d poll jobs failed", e.Failed, e.Total)
+}
+
+func (e *pollRunsFailedError) Unwrap() error {
+	return e.Cause
 }
 
 type triggerPollInput struct {
@@ -208,7 +213,7 @@ func (h *handlerData) runPollConfigs(ctx context.Context, configs []poll.Config,
 							JobID:                    jobID,
 							DeploymentTargetObserver: h.deploymentTargetObserver(jobID),
 						}
-						errs <- runner(runCtx, cfg, h.appConfig, h.dataMountPoint, h.dockerCli, h.contexts, h.log.Logger, metadata, h.secretProvider, pollTriggerDefault)
+						errs <- runner(runCtx, cfg, h.appConfig, h.dataMountPoint, h.dockerCli, h.contexts, jobLog, metadata, h.secretProvider, pollTriggerDefault)
 					}()
 				}
 			})
@@ -224,15 +229,19 @@ func (h *handlerData) runPollConfigs(ctx context.Context, configs []poll.Config,
 		close(errs)
 
 		failedRuns := 0
+		var lifecycleErr error
 
 		for runErr := range errs {
 			if runErr != nil {
 				failedRuns++
+				if lifecycleErr == nil && isLifecycleCancellation(runErr) {
+					lifecycleErr = runErr
+				}
 			}
 		}
 
 		if failedRuns > 0 {
-			err := &pollRunsFailedError{Failed: failedRuns, Total: len(configs)}
+			err := &pollRunsFailedError{Failed: failedRuns, Total: len(configs), Cause: lifecycleErr}
 			if h.runTracker != nil {
 				h.runTracker.MarkFailed(jobID, err.Error())
 			}
@@ -247,22 +256,19 @@ func (h *handlerData) runPollConfigs(ctx context.Context, configs []poll.Config,
 		return nil
 	}
 
+	var err error
 	if wait {
-		err := h.runSynchronous(ctx, run)
-		if err != nil && h.runTracker != nil {
-			h.runTracker.MarkFailed(jobID, err.Error())
-		}
-
-		return jobID, err
+		err = h.runSynchronous(ctx, run)
+	} else {
+		err = h.runBackground(ctx, func(backgroundCtx context.Context) {
+			_ = run(backgroundCtx)
+		})
 	}
 
-	if err := h.runBackground(ctx, func(backgroundCtx context.Context) {
-		_ = run(backgroundCtx)
-	}); err != nil {
-		if h.runTracker != nil {
-			h.runTracker.MarkFailed(jobID, err.Error())
-		}
-
+	if errors.Is(err, errBackgroundWorkClosed) && h.runTracker != nil {
+		h.runTracker.MarkFailed(jobID, err.Error())
+	}
+	if err != nil {
 		return jobID, err
 	}
 

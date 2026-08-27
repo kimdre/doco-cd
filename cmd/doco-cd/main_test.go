@@ -443,7 +443,7 @@ env_files:
 					return strings.Contains(strings.ToLower(err.Error()), "no such image")
 				}),
 			).Do(func() error {
-				HandleEvent(
+				if err := HandleEvent(
 					ctx,
 					jobLog,
 					rr,
@@ -461,7 +461,9 @@ env_files:
 						deploymentRunTriggerPoll:         10,
 						deploymentRunTriggerScheduledJob: 10,
 					}),
-				)
+				); err != nil {
+					return err
+				}
 
 				expectedReturnMessage := fmt.Sprintf(tc.expectedResponseBody, jobID, filepath.Join(tmpDir, git.GetRepoName(tc.payload.CloneURL)), stackName) + "\n"
 				if rr.Body.String() != expectedReturnMessage {

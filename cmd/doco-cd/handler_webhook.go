@@ -264,6 +264,8 @@ type handlerData struct {
 	testName            string // Overwrites the deployConfig.Name to make test deployments unique and prevent conflicts between tests when running in parallel. Not used in production.
 }
 
+var errWebhookDeploymentPanicked = errors.New("webhook deployment panicked")
+
 // onError handles errors by logging them, sending a JSON error response, and sending a notification.
 // cause is the error behind the response: when a failure notification was already
 // sent for it deeper down, the HTTP response and the log stay the same and only
@@ -308,7 +310,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget string, metadata notification.Metadata,
 	dockerCli command.Cli, contexts *docker.ContextRegistry, secretProvider *secretprovider.SecretProvider,
 	testName string, runTracker *deploymentRunTracker,
-) {
+) error {
 	startTime := time.Now()
 
 	repoName := repositoryNameFromWebhookPayload(payload)
@@ -326,7 +328,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			runTracker.MarkSkipped(metadata.JobID, msg)
 		}
 
-		return
+		return nil
 	}
 
 	sourceType := config.SourceTypeGit
@@ -348,7 +350,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				runTracker.MarkFailed(metadata.JobID, err.Error())
 			}
 
-			return
+			return nil
 		}
 
 		if cloneURLOverrideApplied {
@@ -399,7 +401,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 				runTracker.MarkFailed(metadata.JobID, "failed to resolve SSH auth method: "+authErr.Error())
 			}
 
-			return
+			return nil
 		}
 
 		if sshAuth != nil {
@@ -422,10 +424,14 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			runTracker.MarkSkipped(metadata.JobID, msg)
 		}
 
-		return
+		return nil
 	}
 
 	if deployErr != nil {
+		if isLifecycleCancellation(deployErr) {
+			return deployErr
+		}
+
 		// In synchronous mode we should return an error to the caller
 		// For async mode, w is noopResponseWriter and JSONError is a no-op
 		if hr, ok := deployErr.(handleError); ok {
@@ -442,7 +448,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			}
 		}
 
-		return
+		return nil
 	}
 
 	msg := "job completed successfully"
@@ -456,6 +462,8 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 	prometheus.WebhookRequestsTotal.WithLabelValues(repoName).Inc()
 	prometheus.WebhookDuration.WithLabelValues(repoName).Observe(elapsedTime.Seconds())
+
+	return nil
 }
 
 // WebhookHandler handles incoming webhook requests.
@@ -586,67 +594,46 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	// Prevent concurrent deployments for the same repository using a lock
 	repoLock := lock.GetRepoLock(metadata.Repository)
 
-	handleFn := func(ctx context.Context, w http.ResponseWriter) {
+	handleFn := func(ctx context.Context, w http.ResponseWriter) (err error) {
 		defer func() {
 			if r := recover(); r != nil {
 				logRecoveredPanic(jobLog, "webhook deployment", r)
-
-				if h.runTracker != nil {
-					h.runTracker.MarkFailed(jobID, "webhook deployment panicked")
-				}
+				err = errWebhookDeploymentPanicked
 			}
 		}()
 
-		locked := make(chan struct{})
-		abandoned := make(chan struct{})
-
-		go func() {
-			repoLock.Lock()
-
-			select {
-			case <-abandoned:
-				repoLock.Unlock()
-			case locked <- struct{}{}:
-			}
-		}()
-
-		select {
-		case <-locked:
-			// Acquired immediately
-		case <-time.After(10 * time.Millisecond):
+		if !acquireWebhookRepoLock(ctx, repoLock, jobID, func() {
 			jobLog.Info("waiting for webhook "+lockEntity+" lock", slog.String(lockEntity, lockLogValue))
-
-			select {
-			case <-locked:
-			case <-ctx.Done():
-				close(abandoned)
-
-				if h.runTracker != nil {
-					h.runTracker.MarkFailed(jobID, ctx.Err().Error())
-				}
-
-				return
-			}
-		case <-ctx.Done():
-			close(abandoned)
-
-			if h.runTracker != nil {
-				h.runTracker.MarkFailed(jobID, ctx.Err().Error())
-			}
-
-			return
+		}) {
+			return ctx.Err()
 		}
 
 		defer repoLock.Unlock()
 
-		HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, metadata, h.dockerCli, h.contexts, h.secretProvider, h.testName, h.runTracker)
+		return HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, metadata, h.dockerCli, h.contexts, h.secretProvider, h.testName, h.runTracker)
 	}
 
 	if wait {
-		handleFn(r.Context(), w)
+		err := h.runSynchronous(r.Context(), func(ctx context.Context) error {
+			return handleFn(ctx, w)
+		})
+		if err != nil {
+			if h.runTracker != nil {
+				h.runTracker.MarkFailed(jobID, err.Error())
+			}
+
+			switch {
+			case errors.Is(err, errWebhookDeploymentPanicked):
+				JSONError(w, err.Error(), "", jobID, http.StatusInternalServerError)
+			case isLifecycleCancellation(err):
+				JSONError(w, err.Error(), "", jobID, http.StatusServiceUnavailable)
+			}
+		}
 	} else {
 		if err := h.runBackground(r.Context(), func(backgroundCtx context.Context) {
-			handleFn(backgroundCtx, noopResponseWriter{})
+			if err := handleFn(backgroundCtx, noopResponseWriter{}); err != nil && h.runTracker != nil {
+				h.runTracker.MarkFailed(jobID, err.Error())
+			}
 		}); err != nil {
 			if h.runTracker != nil {
 				h.runTracker.MarkFailed(jobID, err.Error())
@@ -659,6 +646,15 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 		JSONResponse(w, "job accepted", jobID, http.StatusAccepted)
 	}
+}
+
+func acquireWebhookRepoLock(ctx context.Context, repoLock *lock.RepoLock, jobID string, onWait func()) bool {
+	waitTimer := time.AfterFunc(10*time.Millisecond, onWait)
+	defer waitTimer.Stop()
+
+	acquired := repoLock.LockContext(ctx, jobID)
+
+	return acquired
 }
 
 // noopResponseWriter is used when we run HandleEvent asynchronously.

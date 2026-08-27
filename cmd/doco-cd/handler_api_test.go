@@ -36,6 +36,15 @@ import (
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 )
 
+func TestHandleErrorPreservesLifecycleCancellation(t *testing.T) {
+	t.Parallel()
+
+	err := handleError{msg: "deployment failed", err: context.Canceled, httpStatusCode: http.StatusInternalServerError}
+	if !isLifecycleCancellation(err) {
+		t.Fatalf("handleError does not preserve cancellation identity: %v", err)
+	}
+}
+
 func TestDockerCliForRequestContextValidation(t *testing.T) {
 	t.Parallel()
 
