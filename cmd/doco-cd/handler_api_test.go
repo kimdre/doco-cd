@@ -498,14 +498,19 @@ func newStackActionRESTSuccessTestHandler(t *testing.T, services []dockerswarmty
 	}
 }
 
-// TestGetProjectsApiHandlerInvalidAllParamSingleResponse pins the fix for the
-// former double-response bug: an invalid ?all= value must produce exactly one
-// 400 JSON document and stop before any Docker API call.
+// TestGetProjectsApiHandlerInvalidAllParamSingleResponse pins the
+// double-response regression: an invalid ?all= value must produce exactly one
+// 400 JSON document and stop before listing projects on the Docker daemon.
 func TestGetProjectsApiHandlerInvalidAllParamSingleResponse(t *testing.T) {
-	var daemonRequests atomic.Int32
+	// Only project/container listing counts as reaching the daemon; the Docker
+	// client may issue bookkeeping requests such as /_ping on its own.
+	var daemonListRequests atomic.Int32
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		daemonRequests.Add(1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/containers") {
+			daemonListRequests.Add(1)
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`[]`))
 	}))
@@ -552,8 +557,8 @@ func TestGetProjectsApiHandlerInvalidAllParamSingleResponse(t *testing.T) {
 		t.Fatalf("unexpected error content: %#v", response)
 	}
 
-	if got := daemonRequests.Load(); got != 0 {
-		t.Fatalf("invalid parameter reached the Docker daemon %d time(s)", got)
+	if got := daemonListRequests.Load(); got != 0 {
+		t.Fatalf("invalid parameter reached the Docker daemon listing %d time(s)", got)
 	}
 }
 
