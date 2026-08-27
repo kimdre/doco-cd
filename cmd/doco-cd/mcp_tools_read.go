@@ -116,11 +116,7 @@ type mcpPortSummary struct {
 func (h *handlerData) addReadOnlyMCPTools(server *mcp.Server) {
 	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true}
 
-	listDeploymentRunsSchema, err := jsonschema.For[listDeploymentRunsInput](nil)
-	if err != nil {
-		panic(fmt.Sprintf("infer list_deployment_runs input schema: %v", err))
-	}
-
+	listDeploymentRunsSchema := mustToolInputSchema[listDeploymentRunsInput]("list_deployment_runs")
 	listDeploymentRunsSchema.Properties["limit"].Minimum = jsonschema.Ptr(1.0)
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -182,10 +178,6 @@ func (h *handlerData) listDeploymentRuns(_ context.Context, _ *mcp.CallToolReque
 		return nil, listDeploymentRunsOutput{}, err
 	}
 
-	if h.runTracker == nil {
-		return nil, listDeploymentRunsOutput{Runs: []deploymentRun{}}, nil
-	}
-
 	return nil, listDeploymentRunsOutput{Runs: h.runTracker.List(limit, trigger, status)}, nil
 }
 
@@ -193,10 +185,6 @@ func (h *handlerData) getDeploymentRun(_ context.Context, _ *mcp.CallToolRequest
 	jobID := strings.TrimSpace(input.JobID)
 	if jobID == "" {
 		return nil, getDeploymentRunOutput{}, errors.New("missing job id")
-	}
-
-	if h.runTracker == nil {
-		return nil, getDeploymentRunOutput{}, fmt.Errorf("run not found: %s", jobID)
 	}
 
 	run, ok := h.runTracker.Get(jobID)

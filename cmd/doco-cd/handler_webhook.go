@@ -314,19 +314,14 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	startTime := time.Now()
 
 	repoName := repositoryNameFromWebhookPayload(payload)
-	if runTracker != nil {
-		runTracker.SetMetadata(metadata.JobID, repoName, customTarget, notification.GetRevision(payload.Ref, payload.RevisionString()))
-		runTracker.MarkRunning(metadata.JobID)
-	}
+	runTracker.SetMetadata(metadata.JobID, repoName, customTarget, notification.GetRevision(payload.Ref, payload.RevisionString()))
+	runTracker.MarkRunning(metadata.JobID)
 
 	if payload.Source != webhook.PayloadSourceOCI && payload.Ref == "" {
 		msg := "no reference provided in webhook payload, skipping event"
 		jobLog.Warn(msg)
 		JSONError(w, msg, msg, metadata.JobID, http.StatusBadRequest)
-
-		if runTracker != nil {
-			runTracker.MarkSkipped(metadata.JobID, msg)
-		}
+		runTracker.MarkSkipped(metadata.JobID, msg)
 
 		return nil
 	}
@@ -345,10 +340,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		if !isWebhookGitCloneURLAllowed(sourceRef, cloneURLOverrideApplied) {
 			err := errors.New("local filesystem Git URLs in webhook payloads require a configured source URL rewrite")
 			onError(w, jobLog.With(logger.ErrAttr(err)), "webhook clone URL is not allowed", err, http.StatusForbidden, metadata, err)
-
-			if runTracker != nil {
-				runTracker.MarkFailed(metadata.JobID, err.Error())
-			}
+			runTracker.MarkFailed(metadata.JobID, err.Error())
 
 			return nil
 		}
@@ -396,10 +388,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		sshAuth, authErr := git.GetAuthMethod(payload.SSHUrl, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken)
 		if authErr != nil {
 			onError(w, jobLog.With(logger.ErrAttr(authErr)), "failed to resolve SSH auth method", authErr.Error(), http.StatusInternalServerError, metadata, authErr)
-
-			if runTracker != nil {
-				runTracker.MarkFailed(metadata.JobID, "failed to resolve SSH auth method: "+authErr.Error())
-			}
+			runTracker.MarkFailed(metadata.JobID, "failed to resolve SSH auth method: "+authErr.Error())
 
 			return nil
 		}
@@ -419,10 +408,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		elapsedTime := time.Since(startTime)
 		jobLog.Info(msg, slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()))
 		JSONResponse(w, msg, metadata.JobID, http.StatusAccepted)
-
-		if runTracker != nil {
-			runTracker.MarkSkipped(metadata.JobID, msg)
-		}
+		runTracker.MarkSkipped(metadata.JobID, msg)
 
 		return nil
 	}
@@ -436,16 +422,10 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		// For async mode, w is noopResponseWriter and JSONError is a no-op
 		if hr, ok := deployErr.(handleError); ok {
 			onError(w, jobLog.With(logger.ErrAttr(hr.err)), hr.msg, hr.err.Error(), hr.httpStatusCode, metadata, hr.err)
-
-			if runTracker != nil {
-				runTracker.MarkFailed(metadata.JobID, hr.Error())
-			}
+			runTracker.MarkFailed(metadata.JobID, hr.Error())
 		} else {
 			onError(w, jobLog.With(logger.ErrAttr(deployErr)), "deployment failed", deployErr.Error(), http.StatusInternalServerError, metadata, deployErr)
-
-			if runTracker != nil {
-				runTracker.MarkFailed(metadata.JobID, deployErr.Error())
-			}
+			runTracker.MarkFailed(metadata.JobID, deployErr.Error())
 		}
 
 		return nil
@@ -455,10 +435,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	elapsedTime := time.Since(startTime)
 	jobLog.Info(msg, slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()))
 	JSONResponse(w, msg, metadata.JobID, http.StatusCreated)
-
-	if runTracker != nil {
-		runTracker.MarkSucceeded(metadata.JobID, msg)
-	}
+	runTracker.MarkSucceeded(metadata.JobID, msg)
 
 	prometheus.WebhookRequestsTotal.WithLabelValues(repoName).Inc()
 	prometheus.WebhookDuration.WithLabelValues(repoName).Observe(elapsedTime.Seconds())
@@ -493,13 +470,11 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		Revision:                 "",
 		DeploymentTargetObserver: h.deploymentTargetObserver(jobID),
 	}
-	if h.runTracker != nil {
-		h.runTracker.TrackAccepted(jobID, deploymentRunTriggerWebhook)
-		h.runTracker.SetMetadata(jobID, metadata.Repository, customTarget, metadata.Revision)
+	h.runTracker.TrackAccepted(jobID, deploymentRunTriggerWebhook)
+	h.runTracker.SetMetadata(jobID, metadata.Repository, customTarget, metadata.Revision)
 
-		if wait {
-			h.runTracker.MarkRunning(jobID)
-		}
+	if wait {
+		h.runTracker.MarkRunning(jobID)
 	}
 
 	// Limit the request body size
@@ -537,16 +512,11 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 			metadata.Repository = repositoryName
 
 			metadata.Revision = notification.GetRevision(payload.Ref, payload.RevisionString())
-			if h.runTracker != nil {
-				h.runTracker.SetMetadata(jobID, metadata.Repository, customTarget, metadata.Revision)
-			}
+			h.runTracker.SetMetadata(jobID, metadata.Repository, customTarget, metadata.Revision)
 		}
 
 		onError(w, jobLog.With(slog.String("ip", h.requestIP(r)), logger.ErrAttr(err)), errMsg, err.Error(), statusCode, metadata, err)
-
-		if h.runTracker != nil {
-			h.runTracker.MarkFailed(jobID, errMsg+": "+err.Error())
-		}
+		h.runTracker.MarkFailed(jobID, errMsg+": "+err.Error())
 
 		return
 	}
@@ -555,21 +525,15 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		errMsg := "branch or tag deletion event received, skipping webhook event"
 		jobLog.Info(errMsg)
 		JSONResponse(w, errMsg, jobID, http.StatusAccepted)
-
-		if h.runTracker != nil {
-			h.runTracker.SetMetadata(jobID, repositoryNameFromWebhookPayload(payload), customTarget, notification.GetRevision(payload.Ref, payload.RevisionString()))
-			h.runTracker.MarkSkipped(jobID, errMsg)
-		}
+		h.runTracker.SetMetadata(jobID, repositoryNameFromWebhookPayload(payload), customTarget, notification.GetRevision(payload.Ref, payload.RevisionString()))
+		h.runTracker.MarkSkipped(jobID, errMsg)
 
 		return
 	} else if eErr != nil {
 		errMsg := "failed to check if event is branch or tag deletion"
 		jobLog.Error(errMsg, logger.ErrAttr(eErr))
 		JSONError(w, errMsg, eErr.Error(), jobID, http.StatusInternalServerError)
-
-		if h.runTracker != nil {
-			h.runTracker.MarkFailed(jobID, errMsg+": "+eErr.Error())
-		}
+		h.runTracker.MarkFailed(jobID, errMsg+": "+eErr.Error())
 
 		return
 	}
@@ -579,9 +543,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		metadata.Revision = notification.GetRevision(payload.Ref, payload.RevisionString())
 	}
 
-	if h.runTracker != nil {
-		h.runTracker.SetMetadata(jobID, metadata.Repository, customTarget, metadata.Revision)
-	}
+	h.runTracker.SetMetadata(jobID, metadata.Repository, customTarget, metadata.Revision)
 
 	lockEntity := "repository"
 	lockLogValue := metadata.Repository
@@ -619,9 +581,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 			return handleFn(ctx, w)
 		})
 		if err != nil {
-			if h.runTracker != nil {
-				h.runTracker.MarkFailed(jobID, err.Error())
-			}
+			h.runTracker.MarkFailed(jobID, err.Error())
 
 			switch {
 			case errors.Is(err, errWebhookDeploymentPanicked):
@@ -632,14 +592,11 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		if err := h.runBackground(r.Context(), func(backgroundCtx context.Context) {
-			if err := handleFn(backgroundCtx, noopResponseWriter{}); err != nil && h.runTracker != nil {
+			if err := handleFn(backgroundCtx, noopResponseWriter{}); err != nil {
 				h.runTracker.MarkFailed(jobID, err.Error())
 			}
 		}); err != nil {
-			if h.runTracker != nil {
-				h.runTracker.MarkFailed(jobID, err.Error())
-			}
-
+			h.runTracker.MarkFailed(jobID, err.Error())
 			JSONError(w, err.Error(), "", jobID, http.StatusServiceUnavailable)
 
 			return

@@ -1,9 +1,7 @@
 package docker
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -18,19 +16,9 @@ var (
 	ErrDockerHostConnectionFailed   = errors.New("failed to connect to docker host")
 )
 
-// ConnectToSocket connects to the docker socket.
-func ConnectToSocket() (net.Conn, error) {
-	return ConnectToSocketContext(context.Background())
-}
-
 // ConnectToSocketContext connects to the Docker socket with context cancellation.
 func ConnectToSocketContext(ctx context.Context) (net.Conn, error) {
-	c, err := (&net.Dialer{}).DialContext(ctx, "unix", SocketPath)
-	if err != nil {
-		return nil, err
-	}
-
-	return c, nil
+	return (&net.Dialer{}).DialContext(ctx, "unix", SocketPath)
 }
 
 func NewHttpClient() *http.Client {
@@ -43,19 +31,9 @@ func NewHttpClient() *http.Client {
 	}
 }
 
-// VerifySocketRead verifies whether the application can read from the docker socket.
-func VerifySocketRead(httpClient *http.Client) error {
-	return VerifySocketReadContext(context.Background(), httpClient)
-}
-
 // VerifySocketReadContext verifies whether the application can read from the Docker socket with context cancellation.
 func VerifySocketReadContext(ctx context.Context, httpClient *http.Client) error {
-	reqBody, err := json.Marshal("")
-	if err != nil {
-		return err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost/info", bytes.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost/info", http.NoBody)
 	if err != nil {
 		return err
 	}
@@ -68,7 +46,7 @@ func VerifySocketReadContext(ctx context.Context, httpClient *http.Client) error
 
 	responseBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to get containers: %s", responseBody)
+		return fmt.Errorf("failed to get docker info: %s", responseBody)
 	}
 
 	return nil
@@ -95,11 +73,6 @@ func VerifySocketConnectionContext(ctx context.Context) error {
 	defer httpClient.CloseIdleConnections()
 
 	return VerifySocketReadContext(ctx, httpClient)
-}
-
-// VerifyDockerHostConnection verifies the connection to the specified DOCKER_HOST.
-func VerifyDockerHostConnection(dockerHost string) error {
-	return VerifyDockerHostConnectionContext(context.Background(), dockerHost)
 }
 
 // VerifyDockerHostConnectionContext verifies the connection to the specified DOCKER_HOST with context cancellation.
@@ -147,7 +120,7 @@ func VerifyDockerHostConnectionContext(ctx context.Context, dockerHost string) e
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("failed to get info: %s", body)
+		return fmt.Errorf("failed to get docker info: %s", body)
 	}
 
 	return nil

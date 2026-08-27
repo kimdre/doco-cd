@@ -37,35 +37,20 @@ type removeStackOutput struct {
 }
 
 func (h *handlerData) addStackMCPTools(server *mcp.Server) {
-	controlSchema, err := jsonschema.For[controlStackInput](nil)
-	if err != nil {
-		panic(fmt.Sprintf("infer control_stack input schema: %v", err))
-	}
-
+	controlSchema := mustToolInputSchema[controlStackInput]("control_stack")
 	controlSchema.Properties["action"].Enum = []any{"scale", "restart", "run"}
 	controlSchema.Properties["replicas"].Minimum = jsonschema.Ptr(0.0)
-
-	destructive := true
-	closedWorld := false
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "control_stack",
 		Description: "Scale, restart, or run services in a Docker Swarm stack. Returns one result per matching service, including skipped services.",
-		Annotations: &mcp.ToolAnnotations{
-			DestructiveHint: &destructive,
-			IdempotentHint:  false,
-			OpenWorldHint:   &closedWorld,
-		},
+		Annotations: destructiveMCPAnnotations(false),
 		InputSchema: controlSchema,
 	}, instrumentMCPTool(h.log, "control_stack", h.controlStack))
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "remove_stack",
 		Description: "Remove a Docker Swarm stack. Removal may be partial if Docker returns an error after deleting some resources.",
-		Annotations: &mcp.ToolAnnotations{
-			DestructiveHint: &destructive,
-			IdempotentHint:  true,
-			OpenWorldHint:   &closedWorld,
-		},
+		Annotations: destructiveMCPAnnotations(true),
 	}, instrumentMCPTool(h.log, "remove_stack", h.removeStackTool))
 }
 
@@ -89,11 +74,7 @@ func (h *handlerData) controlStack(ctx context.Context, _ *mcp.CallToolRequest, 
 		return nil, controlStackOutput{}, err
 	}
 
-	wait := true
-	if input.Wait != nil {
-		wait = *input.Wait
-	}
-
+	wait := valueOr(input.Wait, true)
 	jobLog := h.log.With(slog.String("mcp_tool", "control_stack"))
 
 	results, err := h.runStackAction(ctx, contextClient.Cli, stackName, input.Action, strings.TrimSpace(input.Service), replicas, wait, jobLog)

@@ -174,7 +174,7 @@ func (h *handlerData) GetScheduledJobsHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	jobLog = jobLog.With(slog.String("context", contextName))
-	stackName := getQueryParam(r, w, jobLog, jobID, "stack", "string", "").(string)
+	stackName := r.URL.Query().Get("stack")
 
 	var (
 		jobs []scheduler.JobInfo
@@ -237,11 +237,6 @@ func (h *handlerData) GetDeploymentRunsHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if h.runTracker == nil {
-		JSONResponse(w, []deploymentRun{}, jobID, http.StatusOK)
-		return
-	}
-
 	runs := h.runTracker.List(limit, trigger, status)
 	JSONResponse(w, runs, jobID, http.StatusOK)
 }
@@ -265,11 +260,6 @@ func (h *handlerData) GetDeploymentRunHandler(w http.ResponseWriter, r *http.Req
 	requestedJobID := strings.TrimSpace(r.PathValue("jobID"))
 	if requestedJobID == "" {
 		JSONError(w, "missing job id", "", jobID, http.StatusBadRequest)
-		return
-	}
-
-	if h.runTracker == nil {
-		JSONError(w, "run not found: "+requestedJobID, "", jobID, http.StatusNotFound)
 		return
 	}
 
@@ -317,25 +307,12 @@ func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.
 	jobLog = jobLog.With(slog.String("context", contextName))
 	stackName := r.URL.Query().Get("stack")
 
-	wait, ok := getProjectBoolQueryParam(r, w, jobLog, jobID, "wait", true)
+	wait, ok := getBoolQueryParam(r, w, jobLog, jobID, "wait", true)
 	if !ok {
 		return
 	}
 
-	if !wait {
-		_, err := h.triggerScheduledJobRun(r.Context(), jobID, dockerCli, contextName, jobName, stackName, false)
-		if err != nil {
-			JSONError(w, err.Error(), "", jobID, http.StatusServiceUnavailable)
-
-			return
-		}
-
-		JSONResponse(w, "scheduled job trigger accepted", jobID, http.StatusAccepted)
-
-		return
-	}
-
-	_, err := h.triggerScheduledJobRun(r.Context(), jobID, dockerCli, contextName, jobName, stackName, true)
+	_, err := h.triggerScheduledJobRun(r.Context(), jobID, dockerCli, contextName, jobName, stackName, wait)
 	if err != nil {
 		switch {
 		case isLifecycleCancellation(err):
@@ -347,6 +324,12 @@ func (h *handlerData) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.
 		default:
 			JSONError(w, "failed to trigger scheduled job run", err.Error(), jobID, http.StatusInternalServerError)
 		}
+
+		return
+	}
+
+	if !wait {
+		JSONResponse(w, "scheduled job trigger accepted", jobID, http.StatusAccepted)
 
 		return
 	}
@@ -364,28 +347,21 @@ func (h *handlerData) triggerScheduledJobRun(ctx context.Context, jobID string, 
 	}
 
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("context", contextName))
-	if h.runTracker != nil {
-		h.runTracker.TrackAccepted(jobID, deploymentRunTriggerScheduledJob)
-		h.runTracker.SetMetadata(jobID, "scheduled:"+jobName, stackName, "")
-		h.runTracker.AddDeployment(jobID, stackName, contextName)
-	}
+	h.runTracker.TrackAccepted(jobID, deploymentRunTriggerScheduledJob)
+	h.runTracker.SetMetadata(jobID, "scheduled:"+jobName, stackName, "")
+	h.runTracker.AddDeployment(jobID, stackName, contextName)
 
 	run := func(ctx context.Context) (err error) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				logRecoveredPanic(jobLog, "scheduled job run", recovered)
-
-				if h.runTracker != nil {
-					h.runTracker.MarkFailed(jobID, errScheduledJobRunPanicked.Error())
-				}
+				h.runTracker.MarkFailed(jobID, errScheduledJobRunPanicked.Error())
 
 				err = errScheduledJobRunPanicked
 			}
 		}()
 
-		if h.runTracker != nil {
-			h.runTracker.MarkRunning(jobID)
-		}
+		h.runTracker.MarkRunning(jobID)
 
 		jobLog.Info("scheduled job run triggered", slog.String("job", jobName), slog.String("stack", stackName))
 
@@ -407,17 +383,12 @@ func (h *handlerData) triggerScheduledJobRun(ctx context.Context, jobID string, 
 
 		if err != nil {
 			runLog.With(logger.ErrAttr(err)).Error("failed to trigger scheduled job run", slog.String("job", jobName), slog.String("stack", stackName))
-
-			if h.runTracker != nil {
-				h.runTracker.MarkFailed(jobID, err.Error())
-			}
+			h.runTracker.MarkFailed(jobID, err.Error())
 
 			return err
 		}
 
-		if h.runTracker != nil {
-			h.runTracker.MarkSucceeded(jobID, "scheduled job trigger completed")
-		}
+		h.runTracker.MarkSucceeded(jobID, "scheduled job trigger completed")
 
 		return nil
 	}
@@ -431,15 +402,11 @@ func (h *handlerData) triggerScheduledJobRun(ctx context.Context, jobID string, 
 		})
 	}
 
-	if errors.Is(err, errBackgroundWorkClosed) && h.runTracker != nil {
+	if errors.Is(err, errBackgroundWorkClosed) {
 		h.runTracker.MarkFailed(jobID, err.Error())
 	}
 
-	if err != nil {
-		return jobID, err
-	}
-
-	return jobID, nil
+	return jobID, err
 }
 
 func (h *handlerData) runBackground(requestCtx context.Context, run func(context.Context)) error {
@@ -509,72 +476,30 @@ func (h *handlerData) HealthCheckHandler(w http.ResponseWriter, _ *http.Request)
 	JSONResponse(w, "healthy", jobID, http.StatusOK)
 }
 
-// getQueryParam retrieves and validates a query parameter from the HTTP request.
-func getQueryParam(r *http.Request, w http.ResponseWriter, log *slog.Logger, jobID, key, keyType string, defaultVal any) any {
-	queryParam := r.URL.Query().Get(key)
-	if queryParam == "" {
-		return defaultVal
-	}
-
-	ErrInvalidParam := errors.New("invalid parameter")
-
-	switch keyType {
-	case "bool":
-		value, err := strconv.ParseBool(queryParam)
-		if err != nil {
-			err = fmt.Errorf("%w: %s", ErrInvalidParam, key)
-			errMsg := "'" + key + "' parameter must be true or false"
-			log.With(logger.ErrAttr(err)).Error(errMsg)
-			JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
-
-			return defaultVal
-		}
-
-		return value
-	case "int":
-		value, err := strconv.Atoi(queryParam)
-		if err != nil {
-			err = fmt.Errorf("%w: %s", ErrInvalidParam, key)
-			errMsg := "'" + key + "' parameter must be a integer"
-			log.With(logger.ErrAttr(err)).Error(errMsg)
-			JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
-
-			return defaultVal
-		}
-
-		return value
-	case "string":
-		return queryParam
-	default:
-		err := errors.New("invalid key type")
-		errMsg := "key type must be 'bool', 'int' or 'string'"
-		log.With(logger.ErrAttr(err)).Error(errMsg)
-		JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
-
-		return defaultVal
-	}
-}
-
-func getProjectIntQueryParam(r *http.Request, w http.ResponseWriter, log *slog.Logger, jobID, key string, defaultValue int) (int, bool) {
+// getIntQueryParam parses an optional integer query parameter.
+// On invalid input it writes a 400 response and returns false so the handler stops.
+func getIntQueryParam(r *http.Request, w http.ResponseWriter, log *slog.Logger, jobID, key string, defaultValue int) (int, bool) {
 	queryParam := r.URL.Query().Get(key)
 	if queryParam == "" {
 		return defaultValue, true
 	}
 
-	value, err := strconv.ParseInt(queryParam, 10, strconv.IntSize)
+	value, err := strconv.Atoi(queryParam)
 	if err != nil {
-		err = fmt.Errorf("invalid parameter: %s", key)
-		errMsg := "'" + key + "' parameter must be a integer"
+		err = errors.New("invalid parameter: " + key)
+		errMsg := "'" + key + "' parameter must be an integer"
 		log.With(logger.ErrAttr(err)).Error(errMsg)
 		JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
 
 		return 0, false
 	}
 
-	return int(value), true
+	return value, true
 }
 
-func getProjectBoolQueryParam(r *http.Request, w http.ResponseWriter, log *slog.Logger, jobID, key string, defaultValue bool) (bool, bool) {
+// getBoolQueryParam parses an optional boolean query parameter.
+// On invalid input it writes a 400 response and returns false so the handler stops.
+func getBoolQueryParam(r *http.Request, w http.ResponseWriter, log *slog.Logger, jobID, key string, defaultValue bool) (bool, bool) {
 	queryParam := r.URL.Query().Get(key)
 	if queryParam == "" {
 		return defaultValue, true
@@ -582,7 +507,7 @@ func getProjectBoolQueryParam(r *http.Request, w http.ResponseWriter, log *slog.
 
 	value, err := strconv.ParseBool(queryParam)
 	if err != nil {
-		err = fmt.Errorf("invalid parameter: %s", key)
+		err = errors.New("invalid parameter: " + key)
 		errMsg := "'" + key + "' parameter must be true or false"
 		log.With(logger.ErrAttr(err)).Error(errMsg)
 		JSONError(w, err, errMsg, jobID, http.StatusBadRequest)
@@ -657,17 +582,17 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 
 		JSONResponse(w, containers, jobID, http.StatusOK)
 	case http.MethodDelete:
-		timeoutSec, ok := getProjectIntQueryParam(r, w, jobLog, jobID, "timeout", defaultProjectActionTimeout)
+		timeoutSec, ok := getIntQueryParam(r, w, jobLog, jobID, "timeout", defaultProjectActionTimeout)
 		if !ok {
 			return
 		}
 
-		removeVolumes, ok := getProjectBoolQueryParam(r, w, jobLog, jobID, "volumes", true)
+		removeVolumes, ok := getBoolQueryParam(r, w, jobLog, jobID, "volumes", true)
 		if !ok {
 			return
 		}
 
-		removeImages, ok := getProjectBoolQueryParam(r, w, jobLog, jobID, "images", true)
+		removeImages, ok := getBoolQueryParam(r, w, jobLog, jobID, "images", true)
 		if !ok {
 			return
 		}
@@ -731,7 +656,10 @@ func (h *handlerData) GetProjectsApiHandler(w http.ResponseWriter, r *http.Reque
 
 	jobLog = jobLog.With(slog.String("context", contextName))
 
-	showAll := getQueryParam(r, w, jobLog, jobID, "all", "bool", false).(bool)
+	showAll, ok := getBoolQueryParam(r, w, jobLog, jobID, "all", false)
+	if !ok {
+		return
+	}
 
 	projects, err := docker.GetProjects(ctx, dockerCli, showAll)
 	if err != nil {
@@ -783,7 +711,7 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 
 	jobLog = jobLog.With(slog.String("context", contextName))
 
-	timeoutSec, ok := getProjectIntQueryParam(r, w, jobLog, jobID, "timeout", defaultProjectActionTimeout)
+	timeoutSec, ok := getIntQueryParam(r, w, jobLog, jobID, "timeout", defaultProjectActionTimeout)
 	if !ok {
 		return
 	}
@@ -1022,18 +950,6 @@ func (e *stackServiceActionError) Unwrap() error {
 	return e.Cause
 }
 
-type stackLookupError struct {
-	cause error
-}
-
-func (e *stackLookupError) Error() string {
-	return e.cause.Error()
-}
-
-func (e *stackLookupError) Unwrap() error {
-	return e.cause
-}
-
 func (h *handlerData) getStackServices(ctx context.Context, dockerCli command.Cli, stack string) ([]dockerswarmtypes.Service, error) {
 	if dockerCli == nil {
 		return nil, errors.New("docker cli is required")
@@ -1041,7 +957,7 @@ func (h *handlerData) getStackServices(ctx context.Context, dockerCli command.Cl
 
 	services, err := swarm.GetStackServices(ctx, dockerCli.Client(), stack)
 	if err != nil {
-		return nil, &stackLookupError{cause: err}
+		return nil, err
 	}
 
 	if len(services) == 0 {
@@ -1203,20 +1119,15 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 
 	services, err := h.getStackServices(ctx, dockerCli, stackName)
 	if err != nil {
-		var lookupErr *stackLookupError
-
-		switch {
-		case errors.Is(err, errStackNotFound):
+		if errors.Is(err, errStackNotFound) {
 			JSONError(w, "stack not found: "+stackName, "", jobID, http.StatusNotFound)
-		case errors.As(err, &lookupErr):
-			errMsg := "failed to get stack: " + stackName
-			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
-			JSONError(w, errMsg, lookupErr.cause.Error(), jobID, http.StatusInternalServerError)
-		default:
-			errMsg := "failed to get stack: " + stackName
-			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
-			JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
+
+			return
 		}
+
+		errMsg := "failed to get stack: " + stackName
+		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
+		JSONError(w, errMsg, err.Error(), jobID, http.StatusInternalServerError)
 
 		return
 	}
@@ -1235,14 +1146,14 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 
 	serviceName := r.URL.Query().Get("service")
 
-	waitForServices, ok := getProjectBoolQueryParam(r, w, jobLog, jobID, "wait", true)
+	waitForServices, ok := getBoolQueryParam(r, w, jobLog, jobID, "wait", true)
 	if !ok {
 		return
 	}
 
 	replicas := -1
 	if action == "scale" {
-		replicas, ok = getProjectIntQueryParam(r, w, jobLog, jobID, "replicas", -1)
+		replicas, ok = getIntQueryParam(r, w, jobLog, jobID, "replicas", -1)
 		if !ok {
 			return
 		}
@@ -1288,17 +1199,11 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	successCount := 0
-
-	for _, result := range results {
-		if result.Status == "ok" {
-			successCount++
-		}
-	}
-
+	// runStackActionOnServices returns errNoApplicableStackServices when nothing
+	// succeeded, so at least one service succeeded on this path.
 	switch action {
 	case "scale":
-		if serviceName != "" && successCount > 0 {
+		if serviceName != "" {
 			JSONResponse(w, fmt.Sprintf("service scaled: %s to %d replicas", serviceName, replicas), jobID, http.StatusOK)
 
 			return
@@ -1306,7 +1211,7 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 
 		JSONResponse(w, fmt.Sprintf("stack scaled: %s to %d replicas", stackName, replicas), jobID, http.StatusOK)
 	case "restart":
-		if serviceName != "" && successCount > 0 {
+		if serviceName != "" {
 			JSONResponse(w, "service restarted: "+stackName+"_"+serviceName, jobID, http.StatusOK)
 
 			return
@@ -1314,16 +1219,18 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 
 		JSONResponse(w, "stack restarted: "+stackName, jobID, http.StatusOK)
 	case "run":
-		if successCount == 0 {
-			JSONError(w, "no job services found to retrigger in stack: "+stackName, "", jobID, http.StatusNotFound)
-
-			return
-		}
-
 		if serviceName != "" {
 			JSONResponse(w, "job retriggered: "+stackName+"_"+serviceName, jobID, http.StatusOK)
 
 			return
+		}
+
+		successCount := 0
+
+		for _, result := range results {
+			if result.Status == "ok" {
+				successCount++
+			}
 		}
 
 		JSONResponse(w, strconv.Itoa(successCount)+" job(s) retriggered in stack: "+stackName, jobID, http.StatusOK)
@@ -1475,7 +1382,7 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 		_ = r.Body.Close()
 	}()
 
-	wait, ok := getProjectBoolQueryParam(r, w, jobLog, jobID, "wait", true)
+	wait, ok := getBoolQueryParam(r, w, jobLog, jobID, "wait", true)
 	if !ok {
 		return
 	}

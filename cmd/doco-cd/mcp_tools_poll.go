@@ -76,33 +76,19 @@ type triggerPollOutput struct {
 }
 
 func (h *handlerData) addPollMCPTools(server *mcp.Server) {
-	destructive := true
-	closedWorld := false
-
-	inputSchema, err := jsonschema.For[triggerPollInput](nil)
-	if err != nil {
-		panic(fmt.Sprintf("infer trigger_poll input schema: %v", err))
-	}
-
+	inputSchema := mustToolInputSchema[triggerPollInput]("trigger_poll")
 	inputSchema.Properties["configs"].MaxItems = jsonschema.Ptr(maxTriggerPollConfigs)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "trigger_poll",
 		Description: "Trigger one or more poll configurations immediately. Prefer wait=false and poll get_deployment_run - long wait=true calls are cancelled if the server shuts down (10s grace).",
-		Annotations: &mcp.ToolAnnotations{
-			DestructiveHint: &destructive,
-			IdempotentHint:  false,
-			OpenWorldHint:   &closedWorld,
-		},
+		Annotations: destructiveMCPAnnotations(false),
 		InputSchema: inputSchema,
 	}, instrumentMCPTool(h.log, "trigger_poll", h.triggerPollTool))
 }
 
 func (h *handlerData) triggerPollTool(ctx context.Context, _ *mcp.CallToolRequest, input triggerPollInput) (*mcp.CallToolResult, triggerPollOutput, error) {
-	wait := true
-	if input.Wait != nil {
-		wait = *input.Wait
-	}
+	wait := valueOr(input.Wait, true)
 
 	configs := make([]poll.Config, len(input.Configs))
 	for i, cfg := range input.Configs {
@@ -116,23 +102,9 @@ func (h *handlerData) triggerPollTool(ctx context.Context, _ *mcp.CallToolReques
 	}
 
 	jobID, err := h.runPollConfigs(ctx, configs, wait, h.log.Logger)
+	result, status := triggerRunToolResult(wait, err)
 
-	status := deploymentRunStatusAccepted
-	if wait {
-		status = deploymentRunStatusSucceeded
-	}
-
-	output := triggerPollOutput{JobID: jobID, Status: string(status)}
-	if err != nil {
-		output.Status = string(deploymentRunStatusFailed)
-
-		return &mcp.CallToolResult{ //nolint:nilerr // Operational errors are returned as structured MCP tool errors with the deployment job ID.
-			IsError: true,
-			Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}},
-		}, output, nil
-	}
-
-	return nil, output, nil
+	return result, triggerPollOutput{JobID: jobID, Status: status}, nil
 }
 
 func (h *handlerData) runPollConfigs(ctx context.Context, configs []poll.Config, wait bool, jobLog *slog.Logger) (string, error) {
@@ -160,24 +132,20 @@ func (h *handlerData) runPollConfigs(ctx context.Context, configs []poll.Config,
 		}
 	}
 
-	if h.runTracker != nil {
-		h.runTracker.TrackAccepted(jobID, deploymentRunTriggerPoll)
+	h.runTracker.TrackAccepted(jobID, deploymentRunTriggerPoll)
 
-		repository := "multiple"
-		target := ""
+	repository := "multiple"
+	target := ""
 
-		if len(configs) == 1 {
-			repository = pollRepositoryName(configs[0])
-			target = configs[0].CustomTarget
-		}
-
-		h.runTracker.SetMetadata(jobID, repository, target, "")
+	if len(configs) == 1 {
+		repository = pollRepositoryName(configs[0])
+		target = configs[0].CustomTarget
 	}
 
+	h.runTracker.SetMetadata(jobID, repository, target, "")
+
 	run := func(runCtx context.Context) error {
-		if h.runTracker != nil {
-			h.runTracker.MarkRunning(jobID)
-		}
+		h.runTracker.MarkRunning(jobID)
 
 		runner := h.runPoll
 		if runner == nil {
@@ -246,16 +214,12 @@ func (h *handlerData) runPollConfigs(ctx context.Context, configs []poll.Config,
 
 		if failedRuns > 0 {
 			err := &pollRunsFailedError{Failed: failedRuns, Total: len(configs), Cause: lifecycleErr}
-			if h.runTracker != nil {
-				h.runTracker.MarkFailed(jobID, err.Error())
-			}
+			h.runTracker.MarkFailed(jobID, err.Error())
 
 			return err
 		}
 
-		if h.runTracker != nil {
-			h.runTracker.MarkSucceeded(jobID, "poll jobs complete")
-		}
+		h.runTracker.MarkSucceeded(jobID, "poll jobs complete")
 
 		return nil
 	}
@@ -269,15 +233,11 @@ func (h *handlerData) runPollConfigs(ctx context.Context, configs []poll.Config,
 		})
 	}
 
-	if errors.Is(err, errBackgroundWorkClosed) && h.runTracker != nil {
+	if errors.Is(err, errBackgroundWorkClosed) {
 		h.runTracker.MarkFailed(jobID, err.Error())
 	}
 
-	if err != nil {
-		return jobID, err
-	}
-
-	return jobID, nil
+	return jobID, err
 }
 
 func pollRepositoryName(cfg poll.Config) string {

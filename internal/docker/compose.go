@@ -1553,17 +1553,16 @@ func RemoveProject(ctx context.Context, dockerCli command.Cli, projectName strin
 }
 
 func projectDownOptions(timeout time.Duration, removeVolumes, removeImages bool) api.DownOptions {
+	images := ""
+	if removeImages {
+		images = "all"
+	}
+
 	return api.DownOptions{
 		RemoveOrphans: true,
 		Timeout:       &timeout,
 		Volumes:       removeVolumes,
-		Images: func() string {
-			if removeImages {
-				return "all"
-			}
-
-			return ""
-		}(),
+		Images:        images,
 	}
 }
 

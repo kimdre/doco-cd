@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
@@ -64,12 +66,61 @@ func (h *handlerData) requireMCPAPIKey(c *app.Config, next http.Handler) http.Ha
 }
 
 func getHealth(ctx context.Context, _ *mcp.CallToolRequest, _ getHealthInput) (*mcp.CallToolResult, getHealthOutput, error) {
-	err, _ := docker.VerifyDockerAPIAccessContext(ctx)
+	err, errType := docker.VerifyDockerAPIAccessContext(ctx)
 	if err != nil {
-		return nil, getHealthOutput{}, err
+		return nil, getHealthOutput{}, fmt.Errorf("%w: %w", errType, err)
 	}
 
 	return nil, getHealthOutput{Status: "healthy"}, nil
+}
+
+// mustToolInputSchema infers the JSON schema for an MCP tool input type.
+// It panics on failure, which can only happen at startup for invalid struct tags.
+func mustToolInputSchema[T any](tool string) *jsonschema.Schema {
+	schema, err := jsonschema.For[T](nil)
+	if err != nil {
+		panic(fmt.Sprintf("infer %s input schema: %v", tool, err))
+	}
+
+	return schema
+}
+
+// valueOr returns the value p points to, or def when p is nil.
+func valueOr[T any](p *T, def T) T {
+	if p != nil {
+		return *p
+	}
+
+	return def
+}
+
+// destructiveMCPAnnotations returns tool annotations for a state-changing, closed-world MCP tool.
+func destructiveMCPAnnotations(idempotent bool) *mcp.ToolAnnotations {
+	destructive := true
+	closedWorld := false
+
+	return &mcp.ToolAnnotations{
+		DestructiveHint: &destructive,
+		IdempotentHint:  idempotent,
+		OpenWorldHint:   &closedWorld,
+	}
+}
+
+// triggerRunToolResult maps a trigger outcome to an MCP tool result and deployment run status.
+// Operational errors are reported as structured MCP tool errors so callers keep the deployment job ID.
+func triggerRunToolResult(wait bool, err error) (*mcp.CallToolResult, string) {
+	if err != nil {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}},
+		}, string(deploymentRunStatusFailed)
+	}
+
+	if wait {
+		return nil, string(deploymentRunStatusSucceeded)
+	}
+
+	return nil, string(deploymentRunStatusAccepted)
 }
 
 func instrumentMCPTool[In, Out any](log *logger.Logger, tool string, handler mcp.ToolHandlerFor[In, Out]) mcp.ToolHandlerFor[In, Out] {
@@ -82,7 +133,7 @@ func instrumentMCPTool[In, Out any](log *logger.Logger, tool string, handler mcp
 
 		prometheusmetrics.McpRequestDuration.WithLabelValues(tool).Observe(time.Since(started).Seconds())
 
-		if err != nil || result != nil && result.IsError {
+		if err != nil || (result != nil && result.IsError) {
 			prometheusmetrics.McpErrorsTotal.WithLabelValues(tool).Inc()
 
 			if err != nil {

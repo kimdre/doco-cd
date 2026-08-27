@@ -60,16 +60,12 @@ func (l *RepoLock) Lock() {
 
 // LockContext acquires the lock in waiter order or returns false when ctx is cancelled.
 func (l *RepoLock) LockContext(ctx context.Context, jobID string) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+
 	l.mu.Lock()
 	if !l.locked {
-		select {
-		case <-ctx.Done():
-			l.mu.Unlock()
-
-			return false
-		default:
-		}
-
 		l.locked = true
 		l.holder = jobID
 		l.mu.Unlock()

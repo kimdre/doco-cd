@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"math"
 	"strings"
@@ -47,42 +46,23 @@ type destroyProjectOutput struct {
 }
 
 func (h *handlerData) addProjectMCPTools(server *mcp.Server) {
-	controlSchema, err := jsonschema.For[controlProjectInput](nil)
-	if err != nil {
-		panic(fmt.Sprintf("infer control_project input schema: %v", err))
-	}
-
+	controlSchema := mustToolInputSchema[controlProjectInput]("control_project")
 	controlSchema.Properties["action"].Enum = []any{"start", "stop", "restart"}
 	setProjectTimeoutSchema(controlSchema)
 
-	destroySchema, err := jsonschema.For[destroyProjectInput](nil)
-	if err != nil {
-		panic(fmt.Sprintf("infer destroy_project input schema: %v", err))
-	}
-
+	destroySchema := mustToolInputSchema[destroyProjectInput]("destroy_project")
 	setProjectTimeoutSchema(destroySchema)
-
-	destructive := true
-	closedWorld := false
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "control_project",
 		Description: "Start, stop, or restart a Docker Compose project.",
-		Annotations: &mcp.ToolAnnotations{
-			DestructiveHint: &destructive,
-			IdempotentHint:  false,
-			OpenWorldHint:   &closedWorld,
-		},
+		Annotations: destructiveMCPAnnotations(false),
 		InputSchema: controlSchema,
 	}, instrumentMCPTool(h.log, "control_project", h.controlProject))
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "destroy_project",
 		Description: "Destroy a Docker Compose project and optionally remove its volumes and images. Reconciliation-managed projects may be restored automatically by drift recovery.",
-		Annotations: &mcp.ToolAnnotations{
-			DestructiveHint: &destructive,
-			IdempotentHint:  true,
-			OpenWorldHint:   &closedWorld,
-		},
+		Annotations: destructiveMCPAnnotations(true),
 		InputSchema: destroySchema,
 	}, instrumentMCPTool(h.log, "destroy_project", h.destroyProjectTool))
 }
@@ -99,11 +79,7 @@ func (h *handlerData) controlProject(ctx context.Context, _ *mcp.CallToolRequest
 		return nil, controlProjectOutput{}, errors.New("missing project name")
 	}
 
-	timeout := defaultProjectActionTimeout
-	if input.Timeout != nil {
-		timeout = *input.Timeout
-	}
-
+	timeout := valueOr(input.Timeout, defaultProjectActionTimeout)
 	jobLog := h.log.With(slog.String("mcp_tool", "control_project"))
 
 	contextClient, err := h.resolveMCPDockerContext(ctx, input.Context)
@@ -125,21 +101,9 @@ func (h *handlerData) destroyProjectTool(ctx context.Context, _ *mcp.CallToolReq
 		return nil, destroyProjectOutput{}, errors.New("missing project name")
 	}
 
-	timeout := defaultProjectActionTimeout
-	if input.Timeout != nil {
-		timeout = *input.Timeout
-	}
-
-	removeVolumes := true
-	if input.Volumes != nil {
-		removeVolumes = *input.Volumes
-	}
-
-	removeImages := true
-	if input.Images != nil {
-		removeImages = *input.Images
-	}
-
+	timeout := valueOr(input.Timeout, defaultProjectActionTimeout)
+	removeVolumes := valueOr(input.Volumes, true)
+	removeImages := valueOr(input.Images, true)
 	jobLog := h.log.With(slog.String("mcp_tool", "destroy_project"))
 
 	contextClient, err := h.resolveMCPDockerContext(ctx, input.Context)
