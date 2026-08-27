@@ -252,7 +252,6 @@ const (
 	ServiceMismatchReasonSwarmMode   = "swarm mode mismatch"
 	ServiceMismatchReasonReplicas    = "replicas mismatch"
 	oneOffServiceNameSeparator       = "-doco-job-"
-	legacyOneShotExecutionMode       = "one_shot"
 )
 
 type ServiceMismatch struct {
@@ -401,7 +400,7 @@ func isEphemeralOneOffService(name string, status ServiceStatus, declaredService
 	}
 
 	mode := strings.TrimSpace(labels[DocoCDJobLabels.JobExecutionMode])
-	if mode != string(JobExecutionModeOneOff) && mode != legacyOneShotExecutionMode {
+	if mode != string(JobExecutionModeOneOff) {
 		return false
 	}
 

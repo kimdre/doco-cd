@@ -238,7 +238,7 @@ func (s *scheduler) listJobs(ctx context.Context, stackName string) ([]JobInfo, 
 		// mid-run for this job.
 		running := job.running || runningStates[job.key]
 
-		cfg, enabled, parseErr := parseJobConfig(job, s.log)
+		cfg, enabled, parseErr := parseJobConfig(job)
 		if parseErr != nil {
 			info.Valid = false
 			info.ScheduleError = parseErr.Error()
@@ -646,7 +646,7 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 	for _, job := range jobs {
 		discoveredByKey[job.key] = job
 
-		cfg, enabled, parseErr := parseJobConfig(job, s.log)
+		cfg, enabled, parseErr := parseJobConfig(job)
 		if parseErr != nil {
 			s.log.Warn("ignoring job with invalid schedule labels",
 				slog.String("job", job.name),
@@ -1631,8 +1631,8 @@ func jobOwnIdentity(job scheduledJob) (project, service string) {
 // (rather than in docker.ParseJobScheduleLabels) lets the self-reference
 // check use the correct own-identity resolution for both compose and Swarm
 // jobs; see jobOwnIdentity.
-func parseJobConfig(job scheduledJob, log ...*slog.Logger) (docker.JobScheduleConfig, bool, error) {
-	cfg, enabled, err := docker.ParseJobScheduleLabels(job.labels, log...)
+func parseJobConfig(job scheduledJob) (docker.JobScheduleConfig, bool, error) {
+	cfg, enabled, err := docker.ParseJobScheduleLabels(job.labels)
 	if err != nil || !enabled || len(cfg.StopServices) == 0 {
 		return cfg, enabled, err
 	}
