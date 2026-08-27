@@ -585,6 +585,63 @@ func TestMCPTriggerScheduledJobAsyncJobIDResolves(t *testing.T) {
 	backgroundWG.Wait()
 }
 
+// TestMCPTriggerScheduledJobErrorKeepsJobID pins the trigger error contract:
+// the tool reports IsError with the failure text while the structured output
+// still carries the job ID and failed status, and the job ID resolves through
+// get_deployment_run.
+func TestMCPTriggerScheduledJobErrorKeepsJobID(t *testing.T) {
+	tracker := newDeploymentRunTracker(nil)
+
+	dockerCli, err := command.NewDockerCli()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	h := &handlerData{
+		appConfig:  &app.Config{},
+		appVersion: app.Version,
+		dockerCli:  dockerCli,
+		log:        logger.New(logger.LevelCritical),
+		runTracker: tracker,
+		triggerScheduledJob: func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error) {
+			return "", errors.New("scheduled trigger exploded")
+		},
+	}
+	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
+	session := connectMCPTestClient(t, server)
+
+	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "trigger_scheduled_job", Arguments: map[string]any{"job_name": "backup"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !result.IsError {
+		t.Fatalf("expected tool error, got %#v", result)
+	}
+
+	encodedContent, err := json.Marshal(result.Content)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(encodedContent), "scheduled trigger exploded") {
+		t.Fatalf("error content lacks trigger failure: %s", encodedContent)
+	}
+
+	var output triggerScheduledJobOutput
+
+	decodeMCPStructuredContent(t, result, &output)
+
+	if output.JobID == "" || output.Status != string(deploymentRunStatusFailed) {
+		t.Fatalf("structured error output = %#v, want job ID with failed status", output)
+	}
+
+	run, ok := tracker.Get(output.JobID)
+	if !ok || run.Status != deploymentRunStatusFailed {
+		t.Fatalf("job ID from error output did not resolve to a failed run: %#v (found %t)", run, ok)
+	}
+}
+
 func TestMCPStackToolValidation(t *testing.T) {
 	h := &handlerData{appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
 	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
@@ -1244,6 +1301,12 @@ func TestMCPSwarmToolsRuntimeBehavior(t *testing.T) {
 	var output listStacksOutput
 	decodeMCPStructuredContent(t, result, &output)
 
+	if len(output.Stacks) == 0 {
+		// Passing without asserting anything would be test theater; make the
+		// missing fixture visible instead.
+		t.Skip("swarm is active, but no stack fixture is available for get_stack success coverage")
+	}
+
 	for stackName := range output.Stacks {
 		stackResult := callMCPTool(t, session, "get_stack", map[string]any{"stack_name": stackName})
 
@@ -1253,11 +1316,7 @@ func TestMCPSwarmToolsRuntimeBehavior(t *testing.T) {
 		if len(stackOutput.Services) == 0 {
 			t.Fatalf("expected services for stack %q", stackName)
 		}
-
-		return
 	}
-
-	t.Log("swarm is active, but no stack fixture is available for get_stack success coverage")
 }
 
 func TestMCPSwarmToolsDisabledAtRuntime(t *testing.T) {
@@ -1343,6 +1402,17 @@ func TestMCPServerGetHealthFailure(t *testing.T) {
 
 	if !result.IsError {
 		t.Fatalf("expected get_health tool error, got %#v", result)
+	}
+
+	encodedContent, err := json.Marshal(result.Content)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The error must carry the connection-kind sentinel so operators can tell
+	// a DOCKER_HOST failure from a socket failure.
+	if !strings.Contains(string(encodedContent), docker.ErrDockerHostConnectionFailed.Error()) {
+		t.Fatalf("get_health error lacks connection sentinel: %s", encodedContent)
 	}
 
 	errorsAfter := testutil.ToFloat64(prometheusmetrics.McpErrorsTotal.WithLabelValues("get_health"))

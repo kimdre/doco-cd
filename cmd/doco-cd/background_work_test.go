@@ -38,6 +38,36 @@ func TestBackgroundWorkCloseWaitsForRegistration(t *testing.T) {
 	}
 }
 
+func TestBackgroundWorkGoRunsAndCompletesBeforeClose(t *testing.T) {
+	t.Parallel()
+
+	work := newBackgroundWork()
+	ran := make(chan struct{})
+
+	if err := work.Go(func() { close(ran) }); err != nil {
+		t.Fatalf("Go returned error before shutdown: %v", err)
+	}
+
+	select {
+	case <-ran:
+	case <-time.After(time.Second):
+		t.Fatal("background function did not run")
+	}
+
+	done := make(chan struct{})
+
+	go func() {
+		work.CloseAndWait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("CloseAndWait did not return after background function completed")
+	}
+}
+
 func TestBackgroundWorkRejectsRegistrationDuringShutdown(t *testing.T) {
 	t.Parallel()
 

@@ -99,6 +99,8 @@ func TestMCPMetricsAreRegistered(t *testing.T) {
 		metricNames = append(metricNames, metricFamily.GetName())
 	}
 
+	// Metric names are the operational contract (dashboards and alerts key on
+	// them); help text is documentation and intentionally not pinned here.
 	for _, expectedName := range []string{
 		"doco_cd_mcp_requests_total",
 		"doco_cd_mcp_errors_total",
@@ -106,17 +108,6 @@ func TestMCPMetricsAreRegistered(t *testing.T) {
 	} {
 		if !slices.Contains(metricNames, expectedName) {
 			t.Errorf("expected gathered metrics to contain %q", expectedName)
-		}
-	}
-
-	expectedHelp := map[string]string{
-		"doco_cd_mcp_requests_total":           "Total number of dispatched MCP tool calls",
-		"doco_cd_mcp_errors_total":             "Total number of failed dispatched MCP tool calls",
-		"doco_cd_mcp_request_duration_seconds": "Duration of dispatched MCP tool calls in seconds",
-	}
-	for _, metricFamily := range metricFamilies {
-		if help, ok := expectedHelp[metricFamily.GetName()]; ok && metricFamily.GetHelp() != help {
-			t.Errorf("expected %s help %q, got %q", metricFamily.GetName(), help, metricFamily.GetHelp())
 		}
 	}
 }

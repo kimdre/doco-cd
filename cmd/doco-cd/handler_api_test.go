@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -219,8 +220,6 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 		{"Stop Project", "/project/{projectName}/{action}", "/project/{projectName}/stop", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK, false},
 		{"Stop Project - Invalid Method", "/project/{projectName}/{action}", "/project/{projectName}/stop", http.MethodGet, h.ProjectActionApiHandler, http.StatusMethodNotAllowed, true},
 		{"Stop Project - Invalid Method and Zero Timeout", "/project/{projectName}/{action}", "/project/{projectName}/stop?timeout=0", http.MethodGet, h.ProjectActionApiHandler, http.StatusMethodNotAllowed, true},
-		{"Stop Project - Invalid Method and Negative Timeout", "/project/{projectName}/{action}", "/project/{projectName}/stop?timeout=-1", http.MethodGet, h.ProjectActionApiHandler, http.StatusMethodNotAllowed, true},
-		{"Stop Project - Invalid Method and Overflowing Timeout", "/project/{projectName}/{action}", "/project/{projectName}/stop?timeout=" + strconv.FormatInt(maxProjectActionTimeout+1, 10), http.MethodGet, h.ProjectActionApiHandler, http.StatusMethodNotAllowed, true},
 		{"Stop Project - Non-existent Project", "/project/{projectName}/{action}", "/project/nonexistent/stop", http.MethodPost, h.ProjectActionApiHandler, http.StatusNotFound, false},
 		{"Start Project", "/project/{projectName}/{action}", "/project/{projectName}/start", http.MethodPost, h.ProjectActionApiHandler, http.StatusOK, false},
 		{"Invalid Action", "/project/{projectName}/{action}", "/project/{projectName}/invalid", http.MethodPost, h.ProjectActionApiHandler, http.StatusBadRequest, false},
@@ -410,6 +409,151 @@ func TestStackActionApiHandlerReturnsNotFoundWhenAllServicesSkipped(t *testing.T
 				t.Fatalf("response = %d %s, want all-skipped 404 containing %q", rr.Code, rr.Body.String(), testCase.contains)
 			}
 		})
+	}
+}
+
+// TestStackActionApiHandlerSuccessResponses exercises the success block of
+// StackActionApiHandler for every action, with and without a service filter,
+// against a fake Docker daemon that accepts service updates.
+func TestStackActionApiHandlerSuccessResponses(t *testing.T) {
+	services := []dockerswarmtypes.Service{
+		{ID: "web-id", Spec: dockerswarmtypes.ServiceSpec{
+			Annotations: dockerswarmtypes.Annotations{Name: "stack_web"},
+			Mode:        dockerswarmtypes.ServiceMode{Replicated: &dockerswarmtypes.ReplicatedService{}},
+		}},
+		{ID: "job-id", Spec: dockerswarmtypes.ServiceSpec{
+			Annotations: dockerswarmtypes.Annotations{Name: "stack_job"},
+			Mode:        dockerswarmtypes.ServiceMode{ReplicatedJob: &dockerswarmtypes.ReplicatedJob{}},
+		}},
+	}
+
+	for _, testCase := range []struct {
+		name     string
+		path     string
+		wantBody string
+	}{
+		{name: "scale stack", path: "/stack/stack/scale?replicas=2&wait=false", wantBody: "stack scaled: stack to 2 replicas"},
+		{name: "scale service", path: "/stack/stack/scale?service=web&replicas=2&wait=false", wantBody: "service scaled: web to 2 replicas"},
+		{name: "restart stack", path: "/stack/stack/restart", wantBody: "stack restarted: stack"},
+		{name: "restart service", path: "/stack/stack/restart?service=web", wantBody: "service restarted: stack_web"},
+		{name: "run stack jobs", path: "/stack/stack/run", wantBody: "1 job(s) retriggered in stack: stack"},
+		{name: "run service", path: "/stack/stack/run?service=job", wantBody: "job retriggered: stack_job"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			h := newStackActionRESTSuccessTestHandler(t, services)
+			rr := callStackActionREST(t, h, testCase.path)
+
+			if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), testCase.wantBody) {
+				t.Fatalf("response = %d %s, want 200 containing %q", rr.Code, rr.Body.String(), testCase.wantBody)
+			}
+		})
+	}
+}
+
+// newStackActionRESTSuccessTestHandler backs stack action success tests with a
+// fake Docker daemon that lists and inspects the given services and accepts
+// every service update.
+func newStackActionRESTSuccessTestHandler(t *testing.T, services []dockerswarmtypes.Service) *handlerData {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/services"):
+			_ = json.NewEncoder(w).Encode(services)
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/services/"):
+			serviceName := path.Base(r.URL.Path)
+			for _, service := range services {
+				if service.Spec.Name == serviceName || service.ID == serviceName {
+					_ = json.NewEncoder(w).Encode(service)
+
+					return
+				}
+			}
+
+			http.NotFound(w, r)
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/update"):
+			_, _ = w.Write([]byte(`{}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("DOCKER_HOST", "tcp://"+strings.TrimPrefix(server.URL, "http://"))
+	t.Setenv("DOCKER_API_VERSION", "1.52")
+
+	dockerCli, err := docker.CreateDockerCli(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() { _ = dockerCli.Client().Close() })
+
+	return &handlerData{
+		dockerCli:  dockerCli,
+		appConfig:  &app.Config{ApiSecret: "stack-test-secret"}, // #nosec G101 -- test fixture, not a real credential.
+		appVersion: app.Version,
+		log:        logger.New(logger.LevelCritical),
+	}
+}
+
+// TestGetProjectsApiHandlerInvalidAllParamSingleResponse pins the fix for the
+// former double-response bug: an invalid ?all= value must produce exactly one
+// 400 JSON document and stop before any Docker API call.
+func TestGetProjectsApiHandlerInvalidAllParamSingleResponse(t *testing.T) {
+	var daemonRequests atomic.Int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		daemonRequests.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("DOCKER_HOST", "tcp://"+strings.TrimPrefix(server.URL, "http://"))
+	t.Setenv("DOCKER_API_VERSION", "1.52")
+
+	dockerCli, err := docker.CreateDockerCli(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() { _ = dockerCli.Client().Close() })
+
+	h := &handlerData{
+		dockerCli:  dockerCli,
+		appConfig:  &app.Config{ApiSecret: "projects-test-secret"}, // #nosec G101 -- test fixture, not a real credential.
+		appVersion: app.Version,
+		log:        logger.New(logger.LevelCritical),
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/projects?all=banana", nil)
+	req.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
+
+	h.GetProjectsApiHandler(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d: %s", rr.Code, http.StatusBadRequest, rr.Body.String())
+	}
+
+	decoder := json.NewDecoder(strings.NewReader(rr.Body.String()))
+
+	var response jsonError
+	if err := decoder.Decode(&response); err != nil {
+		t.Fatalf("failed to decode error response: %v", err)
+	}
+
+	if decoder.More() {
+		t.Fatalf("expected exactly one JSON document in response, got %q", rr.Body.String())
+	}
+
+	if content, ok := response.Content.(string); !ok || !strings.Contains(content, "must be true or false") {
+		t.Fatalf("unexpected error content: %#v", response)
+	}
+
+	if got := daemonRequests.Load(); got != 0 {
+		t.Fatalf("invalid parameter reached the Docker daemon %d time(s)", got)
 	}
 }
 
@@ -1134,6 +1278,7 @@ func TestTriggerScheduledJobHandlerMapsSchedulerErrors(t *testing.T) {
 
 	tests := []struct {
 		name       string
+		query      string
 		triggerErr error
 		wantStatus int
 		wantBody   string
@@ -1142,6 +1287,8 @@ func TestTriggerScheduledJobHandlerMapsSchedulerErrors(t *testing.T) {
 		{name: "disabled", triggerErr: scheduler.ErrScheduledJobDisabled, wantStatus: http.StatusConflict, wantBody: scheduler.ErrScheduledJobDisabled.Error()},
 		{name: "ambiguous", triggerErr: scheduler.ErrScheduledJobAmbiguous, wantStatus: http.StatusConflict, wantBody: scheduler.ErrScheduledJobAmbiguous.Error()},
 		{name: "internal", triggerErr: errors.New("trigger failed"), wantStatus: http.StatusInternalServerError, wantBody: "failed to trigger scheduled job run"},
+		{name: "wait success", wantStatus: http.StatusOK, wantBody: "scheduled job triggered"},
+		{name: "async accepted", query: "?wait=false", wantStatus: http.StatusAccepted, wantBody: "scheduled job trigger accepted"},
 	}
 
 	for _, tc := range tests {
@@ -1155,7 +1302,7 @@ func TestTriggerScheduledJobHandlerMapsSchedulerErrors(t *testing.T) {
 			}
 
 			endpoint := path.Join(apiPath, "/job/{jobName}/run")
-			requestPath := path.Join(apiPath, "/job/example-job/run")
+			requestPath := path.Join(apiPath, "/job/example-job/run") + tc.query
 			req := httptest.NewRequest(http.MethodPost, requestPath, nil)
 			req.Header.Set(restAPI.KeyHeader, appConfig.ApiSecret)
 

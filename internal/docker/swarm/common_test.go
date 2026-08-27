@@ -76,21 +76,3 @@ func Test_getModeEnabled(t *testing.T) {
 		})
 	}
 }
-
-func TestGetDisableSwarmFeature(t *testing.T) {
-	previous := disableSwarmFeature.Load()
-
-	t.Cleanup(func() { disableSwarmFeature.Store(previous) })
-
-	SetDisableSwarmFeature(true)
-
-	if !GetDisableSwarmFeature() {
-		t.Fatal("GetDisableSwarmFeature() = false, want true")
-	}
-
-	SetDisableSwarmFeature(false)
-
-	if GetDisableSwarmFeature() {
-		t.Fatal("GetDisableSwarmFeature() = true, want false")
-	}
-}

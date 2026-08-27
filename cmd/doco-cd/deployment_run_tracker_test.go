@@ -227,3 +227,30 @@ func TestNormalizeDeploymentRunParams(t *testing.T) {
 		t.Fatalf("unexpected status normalization: %q (%v)", status, err)
 	}
 }
+
+// TestDeploymentRunTrackerNilReceiverIsSafe pins the documented contract that
+// every tracker method is a safe no-op on a nil tracker, which the handlers
+// rely on after dropping their per-call nil guards. List must return a
+// non-nil empty slice so JSON responses stay [] instead of null.
+func TestDeploymentRunTrackerNilReceiverIsSafe(t *testing.T) {
+	t.Parallel()
+
+	var tracker *deploymentRunTracker
+
+	tracker.TrackAccepted("job", deploymentRunTriggerWebhook)
+	tracker.SetMetadata("job", "repo", "target", "revision")
+	tracker.AddDeployment("job", "stack", "context")
+	tracker.MarkRunning("job")
+	tracker.MarkSucceeded("job", "done")
+	tracker.MarkFailed("job", "failed")
+	tracker.MarkSkipped("job", "skipped")
+
+	if run, ok := tracker.Get("job"); ok || run.JobID != "" {
+		t.Fatalf("nil tracker Get = %#v, %t; want zero run and false", run, ok)
+	}
+
+	runs := tracker.List(0, "", "")
+	if runs == nil || len(runs) != 0 {
+		t.Fatalf("nil tracker List = %#v; want non-nil empty slice", runs)
+	}
+}

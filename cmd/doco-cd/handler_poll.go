@@ -232,23 +232,13 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 
 		case _, ok := <-watchCh:
 			if !ok {
-				if ctx.Err() != nil {
-					logger.Debug("ctx is done in poll handler")
-
+				fallbackInterval, stop := watcherClosedFallback(ctx, logger, pollJob.Config.Interval)
+				if stop {
 					return
 				}
 
-				// Watcher closed unexpectedly; fall back to interval polling so
-				// the job keeps running instead of going silent until restart.
 				watchCh = nil
-				pollInterval = pollJob.Config.Interval
-
-				if pollInterval == 0 {
-					pollInterval = pollWatcherlessFallbackInterval
-				}
-
-				logger.Warn("local repository watcher closed, continuing with interval polling",
-					slog.Duration("interval", pollInterval))
+				pollInterval = fallbackInterval
 
 				resetTimer(pollInterval)
 
@@ -260,6 +250,30 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 			resetTimer(pollInterval)
 		}
 	}
+}
+
+// watcherClosedFallback decides how PollHandler reacts to a closed local
+// repository watcher channel. During application shutdown it returns
+// stop=true so the handler exits quietly. Otherwise the watcher died
+// unexpectedly: it logs a warning and returns the interval to continue
+// polling with, falling back to the safety-net interval when no interval is
+// configured, so the job keeps running instead of going silent until restart.
+func watcherClosedFallback(ctx context.Context, logger *slog.Logger, configuredInterval time.Duration) (time.Duration, bool) {
+	if ctx.Err() != nil {
+		logger.Debug("ctx is done in poll handler")
+
+		return 0, true
+	}
+
+	fallbackInterval := configuredInterval
+	if fallbackInterval == 0 {
+		fallbackInterval = pollWatcherlessFallbackInterval
+	}
+
+	logger.Warn("local repository watcher closed, continuing with interval polling",
+		slog.Duration("interval", fallbackInterval))
+
+	return fallbackInterval, false
 }
 
 func pollError(jobLog *slog.Logger, metadata notification.Metadata, err error) {

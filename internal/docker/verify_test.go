@@ -4,10 +4,65 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestVerifyDockerHostConnectionContextErrors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("non-200 response", func(t *testing.T) {
+		t.Parallel()
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "daemon exploded", http.StatusInternalServerError)
+		}))
+		t.Cleanup(server.Close)
+
+		host := "tcp://" + strings.TrimPrefix(server.URL, "http://")
+
+		err := VerifyDockerHostConnectionContext(t.Context(), host)
+		if err == nil || !strings.Contains(err.Error(), "failed to get docker info") {
+			t.Fatalf("error = %v, want docker info failure", err)
+		}
+	})
+
+	t.Run("unsupported scheme", func(t *testing.T) {
+		t.Parallel()
+
+		err := VerifyDockerHostConnectionContext(t.Context(), "http://127.0.0.1:2375")
+		if err == nil || !strings.Contains(err.Error(), "unsupported DOCKER_HOST scheme") {
+			t.Fatalf("error = %v, want unsupported scheme failure", err)
+		}
+	})
+}
+
+// TestVerifyDockerAPIAccessContextSelectsSentinel verifies that the sentinel
+// error identifying the connection kind matches the configured DOCKER_HOST.
+func TestVerifyDockerAPIAccessContextSelectsSentinel(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(server.Close)
+
+	t.Setenv("DOCKER_HOST", "tcp://"+strings.TrimPrefix(server.URL, "http://"))
+
+	err, errType := VerifyDockerAPIAccessContext(t.Context())
+	if err == nil || !errors.Is(errType, ErrDockerHostConnectionFailed) {
+		t.Fatalf("err = %v, errType = %v; want docker host sentinel", err, errType)
+	}
+
+	t.Setenv("DOCKER_HOST", "")
+
+	_, errType = VerifyDockerAPIAccessContext(t.Context())
+	if !errors.Is(errType, ErrDockerSocketConnectionFailed) {
+		t.Fatalf("errType = %v; want docker socket sentinel", errType)
+	}
+}
 
 func TestVerifyDockerHostConnectionContextCancellation(t *testing.T) {
 	for _, testCase := range []struct {

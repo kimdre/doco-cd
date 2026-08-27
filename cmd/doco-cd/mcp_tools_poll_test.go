@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"github.com/moby/moby/api/types/container"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/git"
@@ -128,7 +130,7 @@ func TestRunPollConfigsAppliesDefaultsAndReportsIndexedValidationErrors(t *testi
 		}
 
 		jobID, err := h.runPollConfigs(t.Context(), []poll.Config{{SourceUrl: validPollSourceURL}, {}}, true, h.log.Logger)
-		if err == nil || err.Error() != "invalid poll configuration at index 1: key not found: url" {
+		if !errors.Is(err, deploy.ErrKeyNotFound) || !strings.Contains(err.Error(), "at index 1:") {
 			t.Fatalf("unexpected validation error: %v", err)
 		}
 

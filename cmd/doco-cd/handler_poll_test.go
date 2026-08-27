@@ -224,6 +224,57 @@ func TestPollHandlerTracksCustomTarget(t *testing.T) {
 	}
 }
 
+// TestWatcherClosedFallback deterministically covers both branches of the
+// watcher-closed handling: shutdown must stop the handler without the
+// fallback warning, while an unexpected watcher death must log the warning
+// and select the configured or safety-net interval.
+func TestWatcherClosedFallback(t *testing.T) {
+	t.Parallel()
+
+	for _, testCase := range []struct {
+		name         string
+		cancelled    bool
+		interval     time.Duration
+		wantStop     bool
+		wantInterval time.Duration
+		wantWarning  bool
+	}{
+		{name: "shutdown stops without fallback", cancelled: true, interval: 0, wantStop: true},
+		{name: "unexpected close falls back to safety net", interval: 0, wantInterval: pollWatcherlessFallbackInterval, wantWarning: true},
+		{name: "unexpected close keeps configured interval", interval: 5 * time.Minute, wantInterval: 5 * time.Minute, wantWarning: true},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := t.Context()
+			if testCase.cancelled {
+				cancelledCtx, cancel := context.WithCancel(ctx)
+				cancel()
+
+				ctx = cancelledCtx
+			}
+
+			var output bytes.Buffer
+
+			log := slog.New(slog.NewTextHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+			gotInterval, gotStop := watcherClosedFallback(ctx, log, testCase.interval)
+			if gotStop != testCase.wantStop {
+				t.Fatalf("stop = %t, want %t", gotStop, testCase.wantStop)
+			}
+
+			if !gotStop && gotInterval != testCase.wantInterval {
+				t.Fatalf("interval = %s, want %s", gotInterval, testCase.wantInterval)
+			}
+
+			warned := strings.Contains(output.String(), "local repository watcher closed, continuing with interval polling")
+			if warned != testCase.wantWarning {
+				t.Fatalf("warning logged = %t, want %t: %q", warned, testCase.wantWarning, output.String())
+			}
+		})
+	}
+}
+
 func TestPollHandlerShutdownDoesNotEnableWatcherFallback(t *testing.T) {
 	for range 20 {
 		var output bytes.Buffer
