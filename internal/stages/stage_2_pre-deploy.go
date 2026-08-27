@@ -17,6 +17,7 @@ import (
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
 	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/git"
 )
@@ -124,10 +125,16 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	if s.SecretProvider != nil && *s.SecretProvider != nil && len(s.DeployConfig.ExternalSecrets) > 0 {
 		stageLog.Debug("resolving external secrets", slog.Any("external_secrets", s.DeployConfig.ExternalSecrets))
 
-		interpolatedRefs, err := secrettypes.InterpolateExternalSecretRefs(s.DeployConfig.ExternalSecrets)
+		appConfig, err := app.GetConfig()
+		if err != nil {
+			return fmt.Errorf("failed to get app config: %w", err)
+		}
+
+		interpolatedRefs, err := secrettypes.InterpolateExternalSecretRefs(s.DeployConfig.ExternalSecrets, appConfig.InterpolateExternalSecrets)
 		if err != nil {
 			return fmt.Errorf("failed to interpolate external secret references: %w", err)
 		}
+		s.DeployConfig.ExternalSecrets = interpolatedRefs
 
 		encodedSecrets, err := secrettypes.EncodeExternalSecretRefs(interpolatedRefs)
 		if err != nil {

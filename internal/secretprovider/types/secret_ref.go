@@ -129,14 +129,19 @@ func EncodeExternalSecretRefs(in map[string]ExternalSecretRef) (map[string]strin
 	return out, nil
 }
 
-// InterpolateExternalSecretRefs expands Compose-style variables in external
-// secret references using the doco-cd process environment. It never invokes a
-// shell or uses deployment environment values.
-func InterpolateExternalSecretRefs(in map[string]ExternalSecretRef) (map[string]ExternalSecretRef, error) {
+// InterpolateExternalSecretRefs expands Compose-style variables in legacy
+// external secret references when enabled. Structured references are preserved
+// unchanged and the input map is never mutated.
+func InterpolateExternalSecretRefs(in map[string]ExternalSecretRef, enabled bool) (map[string]ExternalSecretRef, error) {
+	if !enabled {
+		return in, nil
+	}
+
 	out := make(map[string]ExternalSecretRef, len(in))
 
 	for envName, ref := range in {
 		if ref.LegacyRef == "" {
+			out[envName] = ref
 			continue
 		}
 
