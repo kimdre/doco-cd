@@ -96,13 +96,10 @@ func valueOr[T any](p *T, def T) T {
 
 // destructiveMCPAnnotations returns tool annotations for a state-changing, closed-world MCP tool.
 func destructiveMCPAnnotations(idempotent bool) *mcp.ToolAnnotations {
-	destructive := true
-	closedWorld := false
-
 	return &mcp.ToolAnnotations{
-		DestructiveHint: &destructive,
+		DestructiveHint: new(true),
 		IdempotentHint:  idempotent,
-		OpenWorldHint:   &closedWorld,
+		OpenWorldHint:   new(false),
 	}
 }
 

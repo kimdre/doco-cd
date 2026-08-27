@@ -81,11 +81,10 @@ func (h *handlerData) controlStack(ctx context.Context, _ *mcp.CallToolRequest, 
 	output := controlStackOutput{StackName: stackName, Action: input.Action, Results: results}
 
 	if err != nil {
-		var (
-			serviceNotFound *stackServiceNotFoundError
-			actionErr       *stackServiceActionError
-		)
-		if errors.As(err, &serviceNotFound) || errors.As(err, &actionErr) || errors.Is(err, errNoApplicableStackServices) {
+		_, isServiceNotFound := errors.AsType[*stackServiceNotFoundError](err)
+		_, isActionError := errors.AsType[*stackServiceActionError](err)
+
+		if isServiceNotFound || isActionError || errors.Is(err, errNoApplicableStackServices) {
 			return &mcp.CallToolResult{
 				IsError: true,
 				Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}},

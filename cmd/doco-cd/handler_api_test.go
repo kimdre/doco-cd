@@ -834,16 +834,17 @@ func TestHandlerData_TriggerPollHandlerWithoutWait_DetachesRequestContext(t *tes
 
 func TestHandlerData_TriggerPollHandlerRejectsInvalidRequestsBeforeTracking(t *testing.T) {
 	for _, testCase := range []struct {
-		name       string
-		query      string
-		body       string
-		maxPayload int64
-		wantStatus int
-		wantError  string
+		name        string
+		query       string
+		body        string
+		maxPayload  int64
+		wantStatus  int
+		wantError   string
+		wantContent string
 	}{
 		{name: "malformed wait", query: "?wait=eventually", body: `[{"url":"` + validPollSourceURL + `"}]`, maxPayload: 1024, wantStatus: http.StatusBadRequest},
 		{name: "invalid JSON", body: `[{`, maxPayload: 1024, wantStatus: http.StatusBadRequest},
-		{name: "invalid config", body: `[{}]`, maxPayload: 1024, wantStatus: http.StatusBadRequest},
+		{name: "invalid config", body: `[{}]`, maxPayload: 1024, wantStatus: http.StatusBadRequest, wantError: "invalid poll configuration at index 0", wantContent: "url"},
 		{name: "empty config list", body: `[]`, maxPayload: 1024, wantStatus: http.StatusBadRequest, wantError: "no poll configuration provided in request body"},
 		{name: "second JSON value", body: `[{"url":"` + validPollSourceURL + `"}] {}`, maxPayload: 1024, wantStatus: http.StatusBadRequest},
 		{name: "trailing non-whitespace", body: `[{"url":"` + validPollSourceURL + `"}] trailing`, maxPayload: 1024, wantStatus: http.StatusBadRequest},
@@ -884,6 +885,13 @@ func TestHandlerData_TriggerPollHandlerRejectsInvalidRequestsBeforeTracking(t *t
 
 				if response.Error != testCase.wantError {
 					t.Fatalf("error = %q, want %q", response.Error, testCase.wantError)
+				}
+
+				if testCase.wantContent != "" {
+					content, ok := response.Content.(string)
+					if !ok || !strings.Contains(content, testCase.wantContent) {
+						t.Fatalf("content = %#v, want string containing %q", response.Content, testCase.wantContent)
+					}
 				}
 			}
 
@@ -1320,6 +1328,39 @@ func TestTriggerScheduledJobHandlerMapsSchedulerErrors(t *testing.T) {
 				t.Fatalf("status = %d, body = %q; want status %d containing %q", rr.Code, rr.Body.String(), tc.wantStatus, tc.wantBody)
 			}
 		})
+	}
+}
+
+// TestRunBackgroundRecoversPanic verifies that a panic in background
+// orchestration is logged and contained instead of crashing the process, and
+// that shutdown still drains the registration.
+func TestRunBackgroundRecoversPanic(t *testing.T) {
+	t.Parallel()
+
+	background := newBackgroundWork()
+	h := &handlerData{
+		backgroundCtx:  t.Context(),
+		backgroundWork: background,
+		log:            logger.New(logger.LevelCritical),
+	}
+
+	if err := h.runBackground(t.Context(), func(context.Context) {
+		panic("background boom")
+	}); err != nil {
+		t.Fatalf("runBackground returned error: %v", err)
+	}
+
+	done := make(chan struct{})
+
+	go func() {
+		background.CloseAndWait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("CloseAndWait did not return after panicking background work")
 	}
 }
 

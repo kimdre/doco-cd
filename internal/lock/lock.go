@@ -35,10 +35,17 @@ func (l *RepoLock) TryLock(jobID string) bool {
 	return true
 }
 
-// Unlock releases the lock.
+// Unlock releases the lock and hands it to the next queued waiter, if any.
+// It panics when the lock is not held, mirroring sync.Mutex misuse semantics:
+// a stray Unlock would otherwise silently grant the lock to a waiter while
+// the real holder is still running.
 func (l *RepoLock) Unlock() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+
+	if !l.locked {
+		panic("lock: Unlock of unlocked RepoLock")
+	}
 
 	if len(l.waiters) == 0 {
 		l.locked = false

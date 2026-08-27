@@ -44,7 +44,9 @@ func VerifySocketReadContext(ctx context.Context, httpClient *http.Client) error
 	}
 	defer resp.Body.Close() //nolint:errcheck
 
-	responseBody, _ := io.ReadAll(resp.Body)
+	// Best-effort error detail; bound the read so a misconfigured endpoint
+	// cannot stream an arbitrarily large body into an error message.
+	responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to get docker info: %s", responseBody)
 	}
@@ -119,7 +121,8 @@ func VerifyDockerHostConnectionContext(ctx context.Context, dockerHost string) e
 	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+
 		return fmt.Errorf("failed to get docker info: %s", body)
 	}
 

@@ -312,7 +312,7 @@ func TestRunPollConfigsTracksSuccessFailureAndPanic(t *testing.T) {
 }
 
 func TestRunPollConfigsAsyncUsesApplicationLifecycle(t *testing.T) {
-	appCtx, cancelApp := context.WithCancel(context.Background())
+	appCtx, cancelApp := context.WithCancel(t.Context())
 	backgroundWG := &sync.WaitGroup{}
 	started := make(chan struct{})
 	finished := make(chan error, 1)
@@ -335,7 +335,7 @@ func TestRunPollConfigsAsyncUsesApplicationLifecycle(t *testing.T) {
 		},
 	}
 
-	requestCtx, cancelRequest := context.WithCancel(context.Background())
+	requestCtx, cancelRequest := context.WithCancel(t.Context())
 
 	jobID, err := h.runPollConfigs(requestCtx, []poll.Config{{SourceUrl: validPollSourceURL}}, false, h.log.Logger)
 	if err != nil {
@@ -408,7 +408,7 @@ func TestRunPollConfigsAsyncRejectsWorkDuringShutdown(t *testing.T) {
 }
 
 func TestRunPollConfigsWaitUsesRequestContext(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
 	h := &handlerData{
@@ -423,14 +423,14 @@ func TestRunPollConfigsWaitUsesRequestContext(t *testing.T) {
 
 	_, err := h.runPollConfigs(ctx, []poll.Config{{SourceUrl: validPollSourceURL}}, true, h.log.Logger)
 
-	var failed *pollRunsFailedError
-	if !errors.As(err, &failed) || failed.Failed != 1 || failed.Total != 1 {
+	failed, ok := errors.AsType[*pollRunsFailedError](err)
+	if !ok || failed.Failed != 1 || failed.Total != 1 {
 		t.Fatalf("wait=true cancellation result = %v", err)
 	}
 }
 
 func TestRunPollConfigsWaitUsesApplicationLifecycle(t *testing.T) {
-	appCtx, cancelApp := context.WithCancel(context.Background())
+	appCtx, cancelApp := context.WithCancel(t.Context())
 	background := newBackgroundWork()
 	tracker := newDeploymentRunTracker(nil)
 	started := make(chan struct{})
@@ -455,7 +455,7 @@ func TestRunPollConfigsWaitUsesApplicationLifecycle(t *testing.T) {
 		err   error
 	}, 1)
 	go func() {
-		jobID, err := h.runPollConfigs(context.Background(), []poll.Config{{SourceUrl: validPollSourceURL}}, true, h.log.Logger)
+		jobID, err := h.runPollConfigs(t.Context(), []poll.Config{{SourceUrl: validPollSourceURL}}, true, h.log.Logger)
 		result <- struct {
 			jobID string
 			err   error

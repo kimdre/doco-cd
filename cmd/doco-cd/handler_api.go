@@ -398,6 +398,7 @@ func (h *handlerData) triggerScheduledJobRun(ctx context.Context, jobID string, 
 		err = h.runSynchronous(ctx, run)
 	} else {
 		err = h.runBackground(ctx, func(ctx context.Context) {
+			// The run outcome is already recorded in runTracker by run itself.
 			_ = run(ctx)
 		})
 	}
@@ -413,6 +414,14 @@ func (h *handlerData) runBackground(requestCtx context.Context, run func(context
 	switch {
 	case h.backgroundCtx != nil && h.backgroundWork != nil:
 		return h.backgroundWork.Go(func() {
+			// Mirror graceful.SafeGo: a panic in background orchestration must
+			// be logged instead of crashing the process.
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					logRecoveredPanic(h.log.Logger, "background work", recovered)
+				}
+			}()
+
 			run(h.backgroundCtx)
 		})
 	case h.backgroundCtx != nil && h.backgroundWG != nil:
@@ -420,6 +429,8 @@ func (h *handlerData) runBackground(requestCtx context.Context, run func(context
 			run(h.backgroundCtx)
 		})
 	default:
+		// No lifecycle wiring (tests only): run inline on a detached context so
+		// completion stays deterministic for the caller.
 		run(context.WithoutCancel(requestCtx))
 	}
 
@@ -726,8 +737,7 @@ func (h *handlerData) ProjectActionApiHandler(w http.ResponseWriter, r *http.Req
 			return
 		}
 
-		var lookupErr *projectLookupError
-		if errors.As(err, &lookupErr) {
+		if lookupErr, ok := errors.AsType[*projectLookupError](err); ok {
 			errMsg := "failed to get project: " + projectName
 			jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 			JSONError(w, errMsg, lookupErr.cause.Error(), jobID, http.StatusInternalServerError)
@@ -1170,8 +1180,7 @@ func (h *handlerData) StackActionApiHandler(w http.ResponseWriter, r *http.Reque
 
 	results, err := h.runStackActionOnServices(ctx, dockerCli, services, stackName, action, serviceName, replicas, waitForServices, jobLog)
 	if err != nil {
-		var serviceNotFound *stackServiceNotFoundError
-		if errors.As(err, &serviceNotFound) {
+		if _, ok := errors.AsType[*stackServiceNotFoundError](err); ok {
 			JSONError(w, err.Error(), "", jobID, http.StatusNotFound)
 
 			return
@@ -1416,22 +1425,22 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 			return
 		}
 
-		var runsFailed *pollRunsFailedError
-		if wait && errors.As(err, &runsFailed) {
+		if _, ok := errors.AsType[*pollRunsFailedError](err); ok && wait {
 			JSONError(w, err.Error(), "", jobID, http.StatusInternalServerError)
 
 			return
 		}
 
 		errMsg := err.Error()
+		detail := ""
 
-		var validationErr *pollConfigValidationError
-		if errors.As(err, &validationErr) {
-			errMsg = fmt.Sprintf("invalid poll configuration at index %d", validationErr.Index)
+		if validationErr, ok := errors.AsType[*pollConfigValidationError](err); ok {
+			errMsg = "invalid poll configuration at index " + strconv.Itoa(validationErr.Index)
+			detail = validationErr.Err.Error()
 		}
 
 		jobLog.Error(errMsg, logger.ErrAttr(err))
-		JSONError(w, errMsg, errors.Unwrap(err), jobID, http.StatusBadRequest)
+		JSONError(w, errMsg, detail, jobID, http.StatusBadRequest)
 
 		return
 	}
@@ -1450,9 +1459,7 @@ func (h *handlerData) pollDecodeError(w http.ResponseWriter, jobID string, err e
 	h.log.Error(errMsg, logger.ErrAttr(err))
 
 	status := http.StatusBadRequest
-
-	var maxBytesError *http.MaxBytesError
-	if errors.As(err, &maxBytesError) {
+	if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 		status = http.StatusRequestEntityTooLarge
 	}
 

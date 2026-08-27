@@ -229,6 +229,7 @@ func (h *handlerData) runPollConfigs(ctx context.Context, configs []poll.Config,
 		err = h.runSynchronous(ctx, run)
 	} else {
 		err = h.runBackground(ctx, func(backgroundCtx context.Context) {
+			// The run outcome is already recorded in runTracker by run itself.
 			_ = run(backgroundCtx)
 		})
 	}

@@ -237,6 +237,21 @@ func TestRepoLockCancelledWaiterAfterGrantReleasesOwnership(t *testing.T) {
 	t.Fatal("cancellation-after-grant interleaving was never observed")
 }
 
+// TestRepoLockUnlockOfUnlockedPanics pins the sync.Mutex-style misuse
+// semantics: releasing a lock that is not held is a programmer error and must
+// panic instead of silently corrupting the waiter queue.
+func TestRepoLockUnlockOfUnlockedPanics(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("Unlock of an unlocked RepoLock did not panic")
+		}
+	}()
+
+	(&RepoLock{}).Unlock()
+}
+
 // reset helper to isolate tests.
 func resetRepoLocks(t *testing.T) {
 	t.Helper()

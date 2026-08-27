@@ -247,8 +247,12 @@ func repositoryNameFromWebhookPayload(payload webhook.ParsedPayload) string {
 }
 
 type handlerData struct {
-	appConfig           *app.Config // Application configuration
-	appVersion          string      // Application version
+	appConfig  *app.Config // Application configuration
+	appVersion string      // Application version
+	// backgroundCtx is the application-lifecycle context used to detach
+	// background work from request contexts. Storing it on this
+	// process-lifetime struct is the deliberate lifecycle exception to
+	// "do not store contexts in structs" (compare net/http.Server.BaseContext).
 	backgroundCtx       context.Context
 	backgroundWG        *sync.WaitGroup
 	backgroundWork      *backgroundWork
@@ -420,7 +424,7 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 		// In synchronous mode we should return an error to the caller
 		// For async mode, w is noopResponseWriter and JSONError is a no-op
-		if hr, ok := deployErr.(handleError); ok {
+		if hr, ok := errors.AsType[handleError](deployErr); ok {
 			onError(w, jobLog.With(logger.ErrAttr(hr.err)), hr.msg, hr.err.Error(), hr.httpStatusCode, metadata, hr.err)
 			runTracker.MarkFailed(metadata.JobID, hr.Error())
 		} else {
