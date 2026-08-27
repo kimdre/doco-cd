@@ -84,12 +84,8 @@ func (h *handlerData) controlStack(ctx context.Context, _ *mcp.CallToolRequest, 
 		return nil, controlStackOutput{}, errors.New("'replicas' parameter is required and must be a non-negative integer")
 	}
 
-	contextClient, err := h.resolveMCPDockerContext(ctx, input.Context)
+	contextClient, err := h.resolveMCPSwarmDockerContext(ctx, input.Context)
 	if err != nil {
-		return nil, controlStackOutput{}, err
-	}
-
-	if err := requireMCPDockerSwarm(ctx, contextClient); err != nil {
 		return nil, controlStackOutput{}, err
 	}
 
@@ -127,12 +123,8 @@ func (h *handlerData) removeStackTool(ctx context.Context, _ *mcp.CallToolReques
 		return nil, removeStackOutput{}, errors.New("missing stack name")
 	}
 
-	contextClient, err := h.resolveMCPDockerContext(ctx, input.Context)
+	contextClient, err := h.resolveMCPSwarmDockerContext(ctx, input.Context)
 	if err != nil {
-		return nil, removeStackOutput{}, err
-	}
-
-	if err := requireMCPDockerSwarm(ctx, contextClient); err != nil {
 		return nil, removeStackOutput{}, err
 	}
 

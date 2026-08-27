@@ -401,7 +401,7 @@ func pollConfigLogValue(pollConfig poll.Config) slog.Value {
 		RunOnce:      pollConfig.RunOnce,
 		Deployments:  deployments,
 	}
-	if pollConfig.Source == config.SourceTypeOCI {
+	if config.NormalizeSourceType(pollConfig.Source) == config.SourceTypeOCI {
 		value.Reference = ""
 	}
 

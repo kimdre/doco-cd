@@ -27,13 +27,7 @@ func (w *backgroundWork) Register() (func(), error) {
 
 	w.wg.Add(1)
 
-	var once sync.Once
-
-	release := func() {
-		once.Do(w.wg.Done)
-	}
-
-	return release, nil
+	return sync.OnceFunc(w.wg.Done), nil
 }
 
 func (w *backgroundWork) Go(run func()) error {

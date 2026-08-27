@@ -213,11 +213,13 @@ func (h *handlerData) listScheduledJobs(ctx context.Context, _ *mcp.CallToolRequ
 		return nil, listScheduledJobsOutput{}, err
 	}
 
+	stackName := strings.TrimSpace(input.Stack)
+
 	var jobs []scheduler.JobInfo
 	if h.scheduler != nil {
-		jobs, err = h.scheduler.ListJobs(ctx, contextClient.Name, strings.TrimSpace(input.Stack))
+		jobs, err = h.scheduler.ListJobs(ctx, contextClient.Name, stackName)
 	} else {
-		jobs, err = scheduler.ListJobs(ctx, contextClient.Cli, strings.TrimSpace(input.Stack))
+		jobs, err = scheduler.ListJobs(ctx, contextClient.Cli, stackName)
 	}
 	if err != nil {
 		return nil, listScheduledJobsOutput{}, fmt.Errorf("failed to list scheduled jobs: %w", err)
@@ -268,12 +270,8 @@ func (h *handlerData) getProject(ctx context.Context, _ *mcp.CallToolRequest, in
 }
 
 func (h *handlerData) listStacks(ctx context.Context, _ *mcp.CallToolRequest, input listStacksInput) (*mcp.CallToolResult, listStacksOutput, error) {
-	contextClient, err := h.resolveMCPDockerContext(ctx, input.Context)
+	contextClient, err := h.resolveMCPSwarmDockerContext(ctx, input.Context)
 	if err != nil {
-		return nil, listStacksOutput{}, err
-	}
-
-	if err := requireMCPDockerSwarm(ctx, contextClient); err != nil {
 		return nil, listStacksOutput{}, err
 	}
 
@@ -295,12 +293,8 @@ func (h *handlerData) getStack(ctx context.Context, _ *mcp.CallToolRequest, inpu
 		return nil, getStackOutput{}, errors.New("missing stack name")
 	}
 
-	contextClient, err := h.resolveMCPDockerContext(ctx, input.Context)
+	contextClient, err := h.resolveMCPSwarmDockerContext(ctx, input.Context)
 	if err != nil {
-		return nil, getStackOutput{}, err
-	}
-
-	if err := requireMCPDockerSwarm(ctx, contextClient); err != nil {
 		return nil, getStackOutput{}, err
 	}
 
@@ -438,6 +432,19 @@ func (h *handlerData) resolveMCPDockerContext(ctx context.Context, contextName s
 	}
 
 	return docker.ContextClient{Name: "", Cli: h.dockerCli}, nil
+}
+
+func (h *handlerData) resolveMCPSwarmDockerContext(ctx context.Context, contextName string) (docker.ContextClient, error) {
+	contextClient, err := h.resolveMCPDockerContext(ctx, contextName)
+	if err != nil {
+		return docker.ContextClient{}, err
+	}
+
+	if err := requireMCPDockerSwarm(ctx, contextClient); err != nil {
+		return docker.ContextClient{}, err
+	}
+
+	return contextClient, nil
 }
 
 func requireMCPDockerSwarm(ctx context.Context, contextClient docker.ContextClient) error {
