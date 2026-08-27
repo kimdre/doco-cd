@@ -163,14 +163,14 @@ func (h *handlerData) runPollConfigs(ctx context.Context, configs []poll.Config,
 	if h.runTracker != nil {
 		h.runTracker.TrackAccepted(jobID, deploymentRunTriggerPoll)
 
-		if len(configs) > 0 {
-			repository := "multiple"
-			if len(configs) == 1 {
-				repository = pollRepositoryName(configs[0])
-			}
-
-			h.runTracker.SetMetadata(jobID, repository, "", "")
+		repository := "multiple"
+		target := ""
+		if len(configs) == 1 {
+			repository = pollRepositoryName(configs[0])
+			target = configs[0].CustomTarget
 		}
+
+		h.runTracker.SetMetadata(jobID, repository, target, "")
 	}
 
 	run := func(runCtx context.Context) error {
@@ -209,6 +209,7 @@ func (h *handlerData) runPollConfigs(ctx context.Context, configs []poll.Config,
 
 						metadata := notification.Metadata{
 							Repository:               pollRepositoryName(cfg),
+							Target:                   cfg.CustomTarget,
 							Revision:                 notification.GetRevision(cfg.Reference, ""),
 							JobID:                    jobID,
 							DeploymentTargetObserver: h.deploymentTargetObserver(jobID),

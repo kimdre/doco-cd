@@ -85,21 +85,29 @@ func (l *RepoLock) LockContext(ctx context.Context, jobID string) bool {
 	case <-waiter.granted:
 		return true
 	case <-ctx.Done():
-		l.mu.Lock()
-		for i, queued := range l.waiters {
-			if queued == waiter {
-				l.waiters = append(l.waiters[:i], l.waiters[i+1:]...)
-				l.mu.Unlock()
-
-				return false
-			}
+		if l.removeQueuedWaiter(waiter) {
+			return false
 		}
-		l.mu.Unlock()
 
 		l.Unlock()
 
 		return false
 	}
+}
+
+func (l *RepoLock) removeQueuedWaiter(waiter *repoLockWaiter) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	for i, queued := range l.waiters {
+		if queued == waiter {
+			l.waiters = append(l.waiters[:i], l.waiters[i+1:]...)
+
+			return true
+		}
+	}
+
+	return false
 }
 
 // Holder returns the jobID of the current lock holder.

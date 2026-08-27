@@ -152,6 +152,125 @@ func TestPollHandlerAllowsConcurrentRunsForSameRepository(t *testing.T) {
 	}
 }
 
+func TestPollHandlerRunOnceDoesNotStartLocalWatcher(t *testing.T) {
+	var output bytes.Buffer
+
+	log := &logger.Logger{
+		Logger: slog.New(slog.NewTextHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Level:  slog.LevelDebug,
+	}
+	srcPath := createLocalPollTestRepository(t)
+
+	h := handlerData{
+		log: log,
+		runPoll: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+			_ string,
+		) error {
+			return nil
+		},
+	}
+
+	pollJob := &poll.Job{Config: poll.Config{
+		Source:    config.SourceTypeGit,
+		SourceUrl: "file://" + srcPath,
+		Reference: "main",
+		RunOnce:   true,
+		Watch:     true,
+	}}
+	h.PollHandler(t.Context(), pollJob)
+
+	logged := output.String()
+	if strings.Contains(logged, "watching local repository for changes") {
+		t.Fatal("run_once poll started a local repository watcher")
+	}
+
+	if strings.Contains(logged, "falling back to safety-net poll interval") {
+		t.Fatal("run_once poll enabled watcher fallback polling")
+	}
+
+	if pollJob.NextRun != 0 {
+		t.Fatalf("run_once poll next run = %d, want 0", pollJob.NextRun)
+	}
+}
+
+func TestPollHandlerTracksCustomTarget(t *testing.T) {
+	tracker := newDeploymentRunTracker(nil)
+	h := handlerData{
+		log:        logger.New(logger.LevelCritical),
+		runTracker: tracker,
+		runPoll: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+			_ string,
+		) error {
+			return nil
+		},
+	}
+
+	h.PollHandler(t.Context(), &poll.Job{Config: poll.Config{
+		SourceUrl:    "https://github.com/kimdre/doco-cd_tests.git",
+		Reference:    "main",
+		CustomTarget: "prod-vm",
+		RunOnce:      true,
+	}})
+
+	runs := tracker.List(1, string(deploymentRunTriggerPoll), "")
+	if len(runs) != 1 {
+		t.Fatalf("expected one tracked poll run, got %d", len(runs))
+	}
+
+	if runs[0].Target != "prod-vm" {
+		t.Fatalf("tracked target = %q, want %q", runs[0].Target, "prod-vm")
+	}
+}
+
+func TestPollHandlerShutdownDoesNotEnableWatcherFallback(t *testing.T) {
+	for range 20 {
+		var output bytes.Buffer
+
+		log := &logger.Logger{
+			Logger: slog.New(slog.NewTextHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug})),
+			Level:  slog.LevelDebug,
+		}
+		srcPath := createLocalPollTestRepository(t)
+		started := make(chan struct{})
+		release := make(chan struct{})
+		h := handlerData{
+			log: log,
+			runPoll: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+				_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+				_ string,
+			) error {
+				close(started)
+				<-release
+
+				return nil
+			},
+		}
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan struct{})
+
+		go func() {
+			defer close(done)
+			h.PollHandler(ctx, &poll.Job{Config: poll.Config{
+				Source:    config.SourceTypeGit,
+				SourceUrl: "file://" + srcPath,
+				Reference: "main",
+				Watch:     true,
+			}})
+		}()
+
+		<-started
+		cancel()
+		close(release)
+		<-done
+
+		if strings.Contains(output.String(), "local repository watcher closed, continuing with interval polling") {
+			t.Fatal("application shutdown enabled watcher fallback polling")
+		}
+	}
+}
+
 func TestRunPoll(t *testing.T) {
 	encryption.SetupAgeKeyEnvVar(t)
 
@@ -388,6 +507,43 @@ func TestPollHandlerReportsWatchTriggerReason(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for watch-triggered poll run")
 	}
+}
+
+func createLocalPollTestRepository(t *testing.T) string {
+	t.Helper()
+
+	srcPath := t.TempDir()
+	repo, err := gogit.PlainInit(srcPath, false)
+	if err != nil {
+		t.Fatalf("init repo: %v", err)
+	}
+
+	if err := repo.Storer.SetReference(plumbing.NewSymbolicReference(plumbing.HEAD, plumbing.NewBranchReferenceName("main"))); err != nil {
+		t.Fatalf("set HEAD: %v", err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(srcPath, "initial.txt"), []byte("initial\n"), 0o600); err != nil {
+		t.Fatalf("write initial file: %v", err)
+	}
+
+	if _, err := wt.Add("initial.txt"); err != nil {
+		t.Fatalf("add initial file: %v", err)
+	}
+
+	if _, err := wt.Commit("initial commit", &gogit.CommitOptions{Author: &object.Signature{
+		Name:  "test",
+		Email: "test@example.com",
+		When:  time.Now(),
+	}}); err != nil {
+		t.Fatalf("commit initial file: %v", err)
+	}
+
+	return srcPath
 }
 
 // TestPollHandlerWatchDisabledFallsBackTo24h verifies that setting

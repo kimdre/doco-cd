@@ -84,11 +84,10 @@ Swarm tools are always advertised. Calls fail if Docker Swarm features are unava
 
 - Use `wait: false` for long-running operations. The tool returns an accepted `job_id` immediately.
 - Pass the `job_id` to `get_deployment_run` until the status is terminal: `succeeded`, `failed`, or `skipped`.
-- With `wait: true`, the request remains open and is cancelled if the server shuts down after its graceful shutdown period.
+- With `wait: true`, cancelling the client request cancels the running operation. During application shutdown, active HTTP requests receive the server's graceful shutdown period before remaining work is cancelled.
+- With `wait: false`, the accepted job uses the application lifecycle rather than the completed request lifecycle. Cancelling or disconnecting the client after the response does not cancel the job, but application shutdown does.
 
 For `trigger_scheduled_job`, `succeeded` means that the trigger operation completed without error. Compose restarts and Swarm reruns can return after Docker accepts the start or update, so this status does not guarantee that the scheduled workload finished successfully or that its process exited with code 0.
-
-Background jobs use the application lifecycle rather than the MCP request lifecycle. Cancelling a completed `wait: false` request does not cancel its accepted job, but application shutdown does.
 
 ## Poll Input
 

@@ -652,9 +652,7 @@ func acquireWebhookRepoLock(ctx context.Context, repoLock *lock.RepoLock, jobID 
 	waitTimer := time.AfterFunc(10*time.Millisecond, onWait)
 	defer waitTimer.Stop()
 
-	acquired := repoLock.LockContext(ctx, jobID)
-
-	return acquired
+	return repoLock.LockContext(ctx, jobID)
 }
 
 // noopResponseWriter is used when we run HandleEvent asynchronously.

@@ -58,21 +58,31 @@ func TestRunPollConfigsAppliesDefaultsAndReportsIndexedValidationErrors(t *testi
 	})
 
 	t.Run("defaults", func(t *testing.T) {
-		var got poll.Config
+		tracker := newDeploymentRunTracker(nil)
+		var (
+			gotConfig   poll.Config
+			gotMetadata notification.Metadata
+		)
 
 		h := &handlerData{
-			appConfig: &app.Config{},
-			log:       logger.New(logger.LevelCritical),
+			appConfig:  &app.Config{},
+			log:        logger.New(logger.LevelCritical),
+			runTracker: tracker,
 			runPoll: func(_ context.Context, cfg poll.Config, _ *app.Config, _ container.MountPoint,
-				_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider, _ string,
+				_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, metadata notification.Metadata, _ *secretprovider.SecretProvider, _ string,
 			) error {
-				got = cfg
+				gotConfig = cfg
+				gotMetadata = metadata
 
 				return nil
 			},
 		}
 
-		jobID, err := h.runPollConfigs(t.Context(), []poll.Config{{SourceUrl: validPollSourceURL, Interval: time.Hour}}, true, h.log.Logger)
+		jobID, err := h.runPollConfigs(t.Context(), []poll.Config{{
+			SourceUrl:    validPollSourceURL,
+			Interval:     time.Hour,
+			CustomTarget: "prod-vm",
+		}}, true, h.log.Logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -81,8 +91,21 @@ func TestRunPollConfigsAppliesDefaultsAndReportsIndexedValidationErrors(t *testi
 			t.Fatal("expected generated job ID")
 		}
 
-		if !got.RunOnce || got.Interval != 0 {
-			t.Fatalf("poll defaults = run_once %t, interval %s", got.RunOnce, got.Interval)
+		if !gotConfig.RunOnce || gotConfig.Interval != 0 {
+			t.Fatalf("poll defaults = run_once %t, interval %s", gotConfig.RunOnce, gotConfig.Interval)
+		}
+
+		if gotMetadata.Target != "prod-vm" {
+			t.Fatalf("poll metadata target = %q, want %q", gotMetadata.Target, "prod-vm")
+		}
+
+		run, ok := tracker.Get(jobID)
+		if !ok {
+			t.Fatal("tracked poll run not found")
+		}
+
+		if run.Target != "prod-vm" {
+			t.Fatalf("tracked target = %q, want %q", run.Target, "prod-vm")
 		}
 	})
 

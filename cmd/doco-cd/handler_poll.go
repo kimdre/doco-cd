@@ -102,7 +102,7 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 	// trigger deployment immediately without waiting for the next interval.
 	var watchCh <-chan struct{}
 
-	if sourceType == config.SourceTypeGit && git.IsLocalFile(pollJob.Config.SourceUrl) && pollJob.Config.Watch {
+	if sourceType == config.SourceTypeGit && git.IsLocalFile(pollJob.Config.SourceUrl) && pollJob.Config.Watch && !pollJob.Config.RunOnce {
 		var watchErr error
 
 		watchCh, watchErr = git.WatchLocalGitRef(ctx, pollJob.Config.SourceUrl, logger)
@@ -120,7 +120,7 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 	// fall back to a long safety-net interval instead of spinning in a tight
 	// loop on time.After(0) or never polling again.
 	pollInterval := pollJob.Config.Interval
-	if pollInterval == 0 && watchCh == nil {
+	if pollInterval == 0 && watchCh == nil && !pollJob.Config.RunOnce {
 		logger.Warn("no watcher and no poll interval configured, falling back to safety-net poll interval",
 			slog.Duration("interval", pollWatcherlessFallbackInterval))
 
@@ -143,7 +143,7 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 
 		if h.runTracker != nil {
 			h.runTracker.TrackAccepted(jobID, deploymentRunTriggerPoll)
-			h.runTracker.SetMetadata(jobID, repoName, "", notification.GetRevision(pollJob.Config.Reference, ""))
+			h.runTracker.SetMetadata(jobID, repoName, pollJob.Config.CustomTarget, notification.GetRevision(pollJob.Config.Reference, ""))
 			h.runTracker.MarkRunning(jobID)
 		}
 
@@ -237,6 +237,12 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 
 		case _, ok := <-watchCh:
 			if !ok {
+				if ctx.Err() != nil {
+					logger.Debug("ctx is done in poll handler")
+
+					return
+				}
+
 				// Watcher closed unexpectedly; fall back to interval polling so
 				// the job keeps running instead of going silent until restart.
 				watchCh = nil
@@ -356,14 +362,13 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 		pollConfig, webhook.ParsedPayload{},
 	)
 
-	nextRun := time.Now().Add(pollConfig.Interval).Format(time.RFC3339)
 	elapsedTime := time.Since(startTime)
 
 	if deployErr != nil {
 		pollError(jobLog, metadata, deployErr)
-		jobLog.Warn("job completed with errors", log.ErrAttr(deployErr), slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()), slog.String("next_run", nextRun))
+		jobLog.Warn("job completed with errors", log.ErrAttr(deployErr), slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()))
 	} else {
-		jobLog.Info("job completed successfully", slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()), slog.String("next_run", nextRun))
+		jobLog.Info("job completed successfully", slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()))
 	}
 
 	prometheus.PollTotal.WithLabelValues(repoName).Inc()
