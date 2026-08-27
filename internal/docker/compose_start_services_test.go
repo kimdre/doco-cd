@@ -54,7 +54,7 @@ func TestGetStartServicesForDeploy(t *testing.T) {
 		},
 	}
 
-	services, err := getStartServicesForDeploy(project)
+	services, err := getStartServicesForDeploy(project, set.New[string](), set.New[string]())
 	if err != nil {
 		t.Fatalf("getStartServicesForDeploy() failed: %v", err)
 	}
@@ -79,8 +79,121 @@ func TestGetStartServicesForDeploy_InvalidLabels(t *testing.T) {
 		},
 	}
 
-	if _, err := getStartServicesForDeploy(project); err == nil {
+	if _, err := getStartServicesForDeploy(project, set.New[string](), set.New[string]()); err == nil {
 		t.Fatalf("expected error for invalid schedule labels")
+	}
+}
+
+func TestGetAutostartDisabledServices(t *testing.T) {
+	t.Parallel()
+
+	project := &types.Project{
+		Services: types.Services{
+			"default": {Name: "default"},
+			"enabled": {
+				Name: "enabled",
+				Labels: map[string]string{
+					DocoCDLabels.Deployment.Autostart: "true",
+				},
+			},
+			"disabled": {
+				Name: "disabled",
+				Labels: map[string]string{
+					DocoCDLabels.Deployment.Autostart: "false",
+				},
+			},
+			"custom-disabled": {
+				Name: "custom-disabled",
+				CustomLabels: map[string]string{
+					DocoCDLabels.Deployment.Autostart: " FALSE ",
+				},
+			},
+		},
+	}
+
+	disabled, err := getAutostartDisabledServices(project)
+	if err != nil {
+		t.Fatalf("getAutostartDisabledServices() failed: %v", err)
+	}
+
+	if !disabled.Contains("disabled") || !disabled.Contains("custom-disabled") {
+		t.Fatalf("expected disabled services, got %v", disabled.ToSlice())
+	}
+
+	if disabled.Contains("default") || disabled.Contains("enabled") {
+		t.Fatalf("unexpected disabled services: %v", disabled.ToSlice())
+	}
+}
+
+func TestGetAutostartDisabledServices_InvalidValue(t *testing.T) {
+	t.Parallel()
+
+	project := &types.Project{
+		Services: types.Services{
+			"bad": {
+				Name: "bad",
+				Labels: map[string]string{
+					DocoCDLabels.Deployment.Autostart: "sometimes",
+				},
+			},
+		},
+	}
+
+	if _, err := getAutostartDisabledServices(project); err == nil {
+		t.Fatalf("expected invalid autostart label to fail")
+	}
+}
+
+func TestGetStartServicesForDeploy_PreservesAutostartState(t *testing.T) {
+	t.Parallel()
+
+	project := &types.Project{
+		Services: types.Services{
+			"api":     {Name: "api"},
+			"running": {Name: "running"},
+			"stopped": {Name: "stopped"},
+		},
+	}
+
+	services, err := getStartServicesForDeploy(
+		project,
+		set.New[string]("running", "stopped"),
+		set.New[string]("running"),
+	)
+	if err != nil {
+		t.Fatalf("getStartServicesForDeploy() failed: %v", err)
+	}
+
+	got := set.New[string](services...)
+	if !got.Contains("api") || !got.Contains("running") {
+		t.Fatalf("expected normal and previously running services to start, got %v", services)
+	}
+
+	if got.Contains("stopped") {
+		t.Fatalf("previously stopped service must not start, got %v", services)
+	}
+}
+
+func TestGetRunningServices(t *testing.T) {
+	t.Parallel()
+
+	services := getRunningServices([]api.ContainerSummary{
+		{
+			State:  "running",
+			Labels: map[string]string{api.ServiceLabel: "api"},
+		},
+		{
+			State:  "exited",
+			Labels: map[string]string{api.ServiceLabel: "stopped"},
+		},
+		{
+			State:  "running",
+			Labels: map[string]string{},
+		},
+	})
+
+	if !services.Contains("api") || services.Contains("stopped") || services.Contains("") {
+		t.Fatalf("unexpected running services: %v", services.ToSlice())
 	}
 }
 
@@ -109,7 +222,7 @@ func TestGetStartServicesForDeploy_ExcludesCompletedDependencyServices(t *testin
 		},
 	}
 
-	services, err := getStartServicesForDeploy(project)
+	services, err := getStartServicesForDeploy(project, set.New[string](), set.New[string]())
 	if err != nil {
 		t.Fatalf("getStartServicesForDeploy() failed: %v", err)
 	}
@@ -196,7 +309,7 @@ func TestProjectForStart_ExcludesJobServices(t *testing.T) {
 		t.Fatalf("getJobServices() failed: %v", err)
 	}
 
-	startProject, err := projectForStart(project, jobServices)
+	startProject, err := projectForStart(project, jobServices, set.New[string]())
 	if err != nil {
 		t.Fatalf("projectForStart() failed: %v", err)
 	}
@@ -244,7 +357,7 @@ func TestProjectForStart_DependencyOnJobServiceStripped(t *testing.T) {
 		t.Fatalf("getJobServices() failed: %v", err)
 	}
 
-	startProject, err := projectForStart(project, jobServices)
+	startProject, err := projectForStart(project, jobServices, set.New[string]())
 	if err != nil {
 		t.Fatalf("projectForStart() failed: %v", err)
 	}
@@ -279,13 +392,49 @@ func TestProjectForStart_OnlyJobServices(t *testing.T) {
 		t.Fatalf("getJobServices() failed: %v", err)
 	}
 
-	startProject, err := projectForStart(project, jobServices)
+	startProject, err := projectForStart(project, jobServices, set.New[string]())
 	if err != nil {
 		t.Fatalf("projectForStart() failed: %v", err)
 	}
 
 	if len(startProject.Services) != 0 {
 		t.Fatalf("expected no services to start when only job services exist, got: %v", startProject.ServiceNames())
+	}
+}
+
+func TestProjectForStart_ExcludesStoppedAutostartServices(t *testing.T) {
+	t.Parallel()
+
+	project := &types.Project{
+		Name: "stack",
+		Services: types.Services{
+			"api": {
+				Name: "api",
+				DependsOn: types.DependsOnConfig{
+					"on-demand": {Condition: "service_started"},
+				},
+			},
+			"on-demand": {
+				Name: "on-demand",
+			},
+		},
+	}
+
+	startProject, err := projectForStart(
+		project,
+		set.New[string](),
+		set.New[string]("on-demand"),
+	)
+	if err != nil {
+		t.Fatalf("projectForStart() failed: %v", err)
+	}
+
+	if _, ok := startProject.Services["on-demand"]; ok {
+		t.Fatalf("stopped autostart service must be excluded from start project")
+	}
+
+	if _, ok := startProject.Services["api"].DependsOn["on-demand"]; ok {
+		t.Fatalf("dependency on stopped autostart service must be stripped")
 	}
 }
 
