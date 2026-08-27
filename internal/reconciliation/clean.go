@@ -42,12 +42,10 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 
 	var processedStacks []string
 
-	newServiceLabels, err := docker.GetLabeledServices(ctx, dockerCli.Client(), swarmMode, docker.DocoCDLabels.Deployment.AutoDiscovery, "true")
+	serviceLabels, err := docker.GetAutoDiscoveryServices(ctx, dockerCli.Client(), swarmMode)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve containers for auto-discovery cleanup: %w", err)
 	}
-
-	serviceLabels := newServiceLabels
 
 	for _, labels := range serviceLabels {
 		stackName := labels[docker.DocoCDLabels.Deployment.Name]
