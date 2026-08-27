@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"strconv"
@@ -36,6 +37,8 @@ func getAndMigrateSwarmAutoDiscoveryServices(ctx context.Context, cli client.API
 	}
 
 	result := make(map[Service]map[string]string)
+
+	var migrationErrors []error
 
 	for _, service := range response.Items {
 		labels := maps.Clone(service.Spec.Labels)
@@ -79,14 +82,15 @@ func getAndMigrateSwarmAutoDiscoveryServices(ctx context.Context, cli client.API
 				Version: service.Version,
 				Spec:    spec,
 			}); err != nil {
-				return nil, fmt.Errorf("failed to migrate auto-discovery labels for service %s: %w", service.Spec.Name, err)
+				migrationErrors = append(migrationErrors,
+					fmt.Errorf("failed to migrate auto-discovery labels for service %s: %w", service.Spec.Name, err))
 			}
 		}
 
 		result[Service(service.Spec.Name)] = normalized
 	}
 
-	return result, nil
+	return result, errors.Join(migrationErrors...)
 }
 
 func needsSwarmAutoDiscoveryLabelMigration(labels map[string]string) bool {

@@ -44,7 +44,13 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 
 	serviceLabels, err := docker.GetAutoDiscoveryServices(ctx, dockerCli.Client(), swarmMode)
 	if err != nil {
-		return fmt.Errorf("failed to retrieve containers for auto-discovery cleanup: %w", err)
+		if serviceLabels == nil {
+			return fmt.Errorf("failed to retrieve containers for auto-discovery cleanup: %w", err)
+		}
+
+		jobLog.Warn("failed to migrate auto-discovery labels for some services; continuing cleanup",
+			logger.ErrAttr(err),
+		)
 	}
 
 	for _, labels := range serviceLabels {

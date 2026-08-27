@@ -1,10 +1,32 @@
 package docker
 
 import (
+	"context"
+	"errors"
 	"testing"
+
+	swarmtypes "github.com/moby/moby/api/types/swarm"
+	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 )
+
+type autoDiscoveryMigrationTestClient struct {
+	client.APIClient
+	services    []swarmtypes.Service
+	updateError error
+	updatedIDs  []string
+}
+
+func (c *autoDiscoveryMigrationTestClient) ServiceList(context.Context, client.ServiceListOptions) (client.ServiceListResult, error) {
+	return client.ServiceListResult{Items: c.services}, nil
+}
+
+func (c *autoDiscoveryMigrationTestClient) ServiceUpdate(_ context.Context, serviceID string, _ client.ServiceUpdateOptions) (client.ServiceUpdateResult, error) {
+	c.updatedIDs = append(c.updatedIDs, serviceID)
+
+	return client.ServiceUpdateResult{}, c.updateError
+}
 
 func TestNormalizeAutoDiscoveryLabels(t *testing.T) {
 	tests := []struct {
@@ -123,5 +145,47 @@ func TestNeedsSwarmAutoDiscoveryLabelMigration(t *testing.T) {
 		if !needsSwarmAutoDiscoveryLabelMigration(labels) {
 			t.Errorf("labels should require migration: %v", labels)
 		}
+	}
+}
+
+func TestGetAndMigrateSwarmAutoDiscoveryServices_ContinuesAfterUpdateFailure(t *testing.T) {
+	updateErr := errors.New("update failed")
+	apiClient := &autoDiscoveryMigrationTestClient{
+		updateError: updateErr,
+		services: []swarmtypes.Service{
+			{
+				ID: "first-id",
+				Spec: swarmtypes.ServiceSpec{Annotations: swarmtypes.Annotations{
+					Name: "first",
+					Labels: map[string]string{
+						legacyAutoDiscoverLabel:      "true",
+						DocoCDLabels.Deployment.Name: "first-stack",
+					},
+				}},
+			},
+			{
+				ID: "second-id",
+				Spec: swarmtypes.ServiceSpec{Annotations: swarmtypes.Annotations{
+					Name: "second",
+					Labels: map[string]string{
+						legacyAutoDiscoverLabel:      "true",
+						DocoCDLabels.Deployment.Name: "second-stack",
+					},
+				}},
+			},
+		},
+	}
+
+	services, err := getAndMigrateSwarmAutoDiscoveryServices(t.Context(), apiClient)
+	if !errors.Is(err, updateErr) {
+		t.Fatalf("error = %v, want wrapped update error", err)
+	}
+
+	if len(services) != 2 {
+		t.Fatalf("services = %d, want 2", len(services))
+	}
+
+	if len(apiClient.updatedIDs) != 2 {
+		t.Fatalf("updates = %v, want both services attempted", apiClient.updatedIDs)
 	}
 }
