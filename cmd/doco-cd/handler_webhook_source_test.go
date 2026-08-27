@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
@@ -116,6 +117,21 @@ func TestRewriteSourceURL_UsedByPollAndWebhook(t *testing.T) {
 	pollURL, pollApplied := rewriteSourceURL("https://forgejo.example.com/org/repo.git", cfg.SourceURLRewrites)
 	if !pollApplied || pollURL != "http://forgejo:3000/org/repo.git" {
 		t.Fatalf("expected poll URL rewrite to apply, got applied=%v url=%q", pollApplied, pollURL)
+	}
+}
+
+func TestRedactURLUserinfo(t *testing.T) {
+	t.Parallel()
+
+	const secret = "sentinel-secret"
+
+	redacted := redactURLUserinfo("https://user:" + secret + "@forgejo.internal/org/repo.git")
+	if strings.Contains(redacted, secret) || strings.Contains(redacted, "user@") {
+		t.Fatalf("redacted URL exposes userinfo: %q", redacted)
+	}
+
+	if redacted != "https://forgejo.internal/org/repo.git" {
+		t.Fatalf("redacted URL = %q", redacted)
 	}
 }
 

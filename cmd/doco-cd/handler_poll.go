@@ -187,22 +187,17 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 	)
 
 	if sourceURLRewriteApplied {
-		jobLog.Debug("using configured source URL rewrite", slog.String("source_url", sourceRef))
+		jobLog.Debug("using configured source URL rewrite", slog.String("source_url", redactURLUserinfo(sourceRef)))
 	}
 
 	if pollConfig.CustomTarget != "" {
 		jobLog = jobLog.With(slog.String("target", pollConfig.CustomTarget))
 	}
 
-	configVal := log.BuildLogValue(&pollConfig, "Deployments.Internal")
-	if pollConfig.Source == config.SourceTypeOCI {
-		configVal = log.BuildLogValue(&pollConfig, "Reference", "Deployments.Internal")
-	}
-
 	jobLog.Info("polling "+entity,
 		slog.Group("trigger",
 			slog.String("event", string(stages.JobTriggerPoll)),
-			slog.Attr{Key: "config", Value: configVal}))
+			slog.Attr{Key: "config", Value: pollConfigLogValue(pollConfig)}))
 
 	// For OCI sources, use the tag from the artifact reference as the deployment reference
 	// (e.g., "latest" from "ghcr.io/org/repo:latest") rather than pollConfig.Reference.
@@ -232,4 +227,40 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 	prometheus.PollDuration.WithLabelValues(repoName).Observe(elapsedTime.Seconds())
 
 	return deployErr
+}
+
+func pollConfigLogValue(pollConfig poll.Config) slog.Value {
+	type deploymentLogValue struct {
+		Name string `yaml:"name"`
+	}
+
+	type configLogValue struct {
+		Source       config.SourceType    `yaml:"source"`
+		Reference    string               `yaml:"reference"`
+		Interval     time.Duration        `yaml:"interval"`
+		CustomTarget string               `yaml:"target"`
+		RunOnce      bool                 `yaml:"run_once"`
+		Deployments  []deploymentLogValue `yaml:"deployments"`
+	}
+
+	deployments := make([]deploymentLogValue, 0, len(pollConfig.Deployments))
+	for _, deployment := range pollConfig.Deployments {
+		if deployment != nil {
+			deployments = append(deployments, deploymentLogValue{Name: deployment.Name})
+		}
+	}
+
+	value := configLogValue{
+		Source:       pollConfig.Source,
+		Reference:    pollConfig.Reference,
+		Interval:     pollConfig.Interval,
+		CustomTarget: pollConfig.CustomTarget,
+		RunOnce:      pollConfig.RunOnce,
+		Deployments:  deployments,
+	}
+	if pollConfig.Source == config.SourceTypeOCI {
+		value.Reference = ""
+	}
+
+	return log.BuildLogValue(value)
 }

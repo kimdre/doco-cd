@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kimdre/doco-cd/internal/encryption"
@@ -113,6 +114,21 @@ func TestGitUrlValidate(t *testing.T) {
 				t.Fatal("GitUrl.Validate() = nil, want error")
 			}
 		})
+	}
+}
+
+func TestGitURLValidationErrorDoesNotExposeCredentials(t *testing.T) {
+	t.Parallel()
+
+	const secret = "sentinel-secret"
+
+	err := GitUrl("ftp://user:" + secret + "@example.com/repo.git").Validate()
+	if err == nil {
+		t.Fatal("GitUrl.Validate() = nil, want error")
+	}
+
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("GitUrl.Validate() exposed credentials: %v", err)
 	}
 }
 

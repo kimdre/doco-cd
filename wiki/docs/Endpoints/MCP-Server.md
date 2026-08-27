@@ -92,7 +92,7 @@ Background jobs use the application lifecycle rather than the MCP request lifecy
 
 ## Poll Input
 
-`trigger_poll` requires a `configs` array and accepts `wait` as an optional top-level field:
+`trigger_poll` requires a `configs` array with at most 32 items and accepts `wait` as an optional top-level field:
 
 ```json
 {
@@ -116,6 +116,7 @@ Each item in `configs` accepts these fields:
 - `deployments`: optional inline deployment configurations.
 
 The scheduled polling fields `interval` and `run_once` are not accepted because MCP-triggered polls always run once immediately.
+Poll configurations in one request run with bounded concurrency controlled by `MAX_CONCURRENT_DEPLOYMENTS` (default: 4).
 
 ## Operational Notes
 

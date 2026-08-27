@@ -81,24 +81,24 @@ func (g GitUrl) Validate() error {
 
 	u, err := url.Parse(s)
 	if err != nil {
-		return fmt.Errorf("%w: failed to parse URL '%s'", ErrInvalidGitUrl, s)
+		return fmt.Errorf("%w: failed to parse URL", ErrInvalidGitUrl)
 	}
 
 	switch u.Scheme {
 	case "http", "https":
 		if u.Host == "" {
-			return fmt.Errorf("%w: URL must have a host, got '%s'", ErrInvalidGitUrl, s)
+			return fmt.Errorf("%w: URL must have a host", ErrInvalidGitUrl)
 		}
 
 		return nil
 	case "ssh":
 		if u.Host == "" || u.Path == "" {
-			return fmt.Errorf("%w: SSH URL must include host and path, got '%s'", ErrInvalidGitUrl, s)
+			return fmt.Errorf("%w: SSH URL must include host and path", ErrInvalidGitUrl)
 		}
 
 		return nil
 	default:
-		return fmt.Errorf("%w: URL must start with http, https or ssh, got '%s'", ErrInvalidGitUrl, s)
+		return fmt.Errorf("%w: URL must start with http, https or ssh", ErrInvalidGitUrl)
 	}
 }
 

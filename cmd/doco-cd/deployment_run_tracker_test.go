@@ -160,6 +160,7 @@ func TestDeploymentRunTrackerCleanupRetainsExpiredActiveRuns(t *testing.T) {
 	tracker.MarkRunning("running")
 
 	expiredAt := time.Now().Add(-deploymentRunTTL - time.Hour)
+
 	for _, jobID := range []string{"accepted", "running"} {
 		run := tracker.runs[jobID]
 		run.CreatedAt = expiredAt

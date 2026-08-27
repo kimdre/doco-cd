@@ -300,6 +300,9 @@ func TestMCPServerListsTools(t *testing.T) {
 			}
 
 			configsSchema := toolSchemaProperty(t, tool.InputSchema, "configs")
+			if configsSchema["maxItems"] != float64(maxTriggerPollConfigs) {
+				t.Fatalf("trigger_poll configs maxItems = %#v, want %d", configsSchema["maxItems"], maxTriggerPollConfigs)
+			}
 
 			items, ok := configsSchema["items"].(map[string]any)
 			if !ok {

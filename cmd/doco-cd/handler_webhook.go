@@ -132,6 +132,17 @@ func rewriteHostInStandardURL(sourceURL, matchHost, target string) (string, bool
 	return u.String(), true
 }
 
+func redactURLUserinfo(value string) string {
+	u, err := url.Parse(value)
+	if err != nil || u.Host == "" {
+		return "[REDACTED_URL]"
+	}
+
+	u.User = nil
+
+	return u.String()
+}
+
 // rewriteHostInSCPURL rewrites the host in an SCP-style Git URL (e.g., "git@github.com:user/repo.git")
 // if it matches the specified matchHost, replacing it with the target host.
 func rewriteHostInSCPURL(sourceURL, matchHost, target string) (string, bool) {

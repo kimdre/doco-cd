@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/kimdre/doco-cd/internal/common/id"
@@ -19,8 +20,14 @@ import (
 )
 
 var (
-	errNoPollConfiguration = errors.New("no poll configuration provided in request body")
-	errPollRunPanicked     = errors.New("poll run panicked")
+	errNoPollConfiguration       = errors.New("no poll configuration provided in request body")
+	errTooManyPollConfigurations = errors.New("too many poll configurations: maximum is 32")
+	errPollRunPanicked           = errors.New("poll run panicked")
+)
+
+const (
+	maxTriggerPollConfigs           = 32
+	defaultConcurrentPollExecutions = 4
 )
 
 type pollConfigValidationError struct {
@@ -67,6 +74,13 @@ func (h *handlerData) addPollMCPTools(server *mcp.Server) {
 	destructive := true
 	closedWorld := false
 
+	inputSchema, err := jsonschema.For[triggerPollInput](nil)
+	if err != nil {
+		panic(fmt.Sprintf("infer trigger_poll input schema: %v", err))
+	}
+
+	inputSchema.Properties["configs"].MaxItems = jsonschema.Ptr(maxTriggerPollConfigs)
+
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "trigger_poll",
 		Description: "Trigger one or more poll configurations immediately. Prefer wait=false and poll get_deployment_run - long wait=true calls are cancelled if the server shuts down (10s grace).",
@@ -75,6 +89,7 @@ func (h *handlerData) addPollMCPTools(server *mcp.Server) {
 			IdempotentHint:  false,
 			OpenWorldHint:   &closedWorld,
 		},
+		InputSchema: inputSchema,
 	}, instrumentMCPTool(h.log, "trigger_poll", h.triggerPollTool))
 }
 
@@ -121,6 +136,10 @@ func (h *handlerData) runPollConfigs(ctx context.Context, configs []poll.Config,
 		return jobID, errNoPollConfiguration
 	}
 
+	if len(configs) > maxTriggerPollConfigs {
+		return jobID, errTooManyPollConfigurations
+	}
+
 	if jobLog == nil {
 		jobLog = h.log.Logger
 	}
@@ -159,28 +178,46 @@ func (h *handlerData) runPollConfigs(ctx context.Context, configs []poll.Config,
 			runner = RunPoll
 		}
 
-		var wg sync.WaitGroup
+		workerCount := defaultConcurrentPollExecutions
+		if h.appConfig != nil && h.appConfig.MaxConcurrentDeployments > 0 {
+			workerCount = int(min(h.appConfig.MaxConcurrentDeployments, uint(len(configs))))
+		}
 
+		workerCount = min(workerCount, len(configs))
+
+		jobs := make(chan poll.Config)
 		errs := make(chan error, len(configs))
 
-		for _, cfg := range configs {
+		var wg sync.WaitGroup
+
+		for range workerCount {
 			wg.Go(func() {
-				defer func() {
-					if recovered := recover(); recovered != nil {
-						logRecoveredPanic(jobLog, "poll run", recovered)
+				for cfg := range jobs {
+					func() {
+						defer func() {
+							if recovered := recover(); recovered != nil {
+								logRecoveredPanic(jobLog, "poll run", recovered)
 
-						errs <- errPollRunPanicked
-					}
-				}()
+								errs <- errPollRunPanicked
+							}
+						}()
 
-				metadata := notification.Metadata{
-					Repository: pollRepositoryName(cfg),
-					Revision:   notification.GetRevision(cfg.Reference, ""),
-					JobID:      jobID,
+						metadata := notification.Metadata{
+							Repository: pollRepositoryName(cfg),
+							Revision:   notification.GetRevision(cfg.Reference, ""),
+							JobID:      jobID,
+						}
+						errs <- runner(runCtx, cfg, h.appConfig, h.dataMountPoint, h.dockerCli, h.log.Logger, metadata, h.secretProvider)
+					}()
 				}
-				errs <- runner(runCtx, cfg, h.appConfig, h.dataMountPoint, h.dockerCli, h.log.Logger, metadata, h.secretProvider)
 			})
 		}
+
+		for _, cfg := range configs {
+			jobs <- cfg
+		}
+
+		close(jobs)
 
 		wg.Wait()
 		close(errs)

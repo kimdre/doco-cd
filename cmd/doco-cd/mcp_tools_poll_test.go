@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -117,6 +118,98 @@ func TestRunPollConfigsAppliesDefaultsAndReportsIndexedValidationErrors(t *testi
 			t.Fatal("validation failure must not be tracked")
 		}
 	})
+}
+
+func TestRunPollConfigsRejectsTooManyConfigs(t *testing.T) {
+	t.Parallel()
+
+	tracker := newDeploymentRunTracker(nil)
+	h := &handlerData{
+		appConfig:  &app.Config{},
+		log:        logger.New(logger.LevelCritical),
+		runTracker: tracker,
+	}
+
+	configs := make([]poll.Config, maxTriggerPollConfigs+1)
+	for i := range configs {
+		configs[i].SourceUrl = validPollSourceURL
+	}
+
+	jobID, err := h.runPollConfigs(t.Context(), configs, true, h.log.Logger)
+	if !errors.Is(err, errTooManyPollConfigurations) {
+		t.Fatalf("error = %v, want %v", err, errTooManyPollConfigurations)
+	}
+
+	if _, ok := tracker.Get(jobID); ok {
+		t.Fatal("rejected poll batch must not be tracked")
+	}
+}
+
+func TestRunPollConfigsBoundsConcurrentRunners(t *testing.T) {
+	t.Parallel()
+
+	const maxConcurrent = 2
+
+	var (
+		running atomic.Int32
+		peak    atomic.Int32
+	)
+
+	release := make(chan struct{})
+	started := make(chan struct{}, maxTriggerPollConfigs)
+	h := &handlerData{
+		appConfig: &app.Config{MaxConcurrentDeployments: maxConcurrent},
+		log:       logger.New(logger.LevelCritical),
+		runPoll: func(context.Context, poll.Config, *app.Config, container.MountPoint,
+			command.Cli, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider,
+		) error {
+			current := running.Add(1)
+			for previous := peak.Load(); current > previous; previous = peak.Load() {
+				if peak.CompareAndSwap(previous, current) {
+					break
+				}
+			}
+
+			started <- struct{}{}
+
+			<-release
+			running.Add(-1)
+
+			return nil
+		},
+	}
+
+	configs := make([]poll.Config, 5)
+	for i := range configs {
+		configs[i].SourceUrl = validPollSourceURL
+	}
+
+	done := make(chan error, 1)
+
+	go func() {
+		_, err := h.runPollConfigs(t.Context(), configs, true, h.log.Logger)
+		done <- err
+	}()
+
+	for range maxConcurrent {
+		<-started
+	}
+
+	select {
+	case <-started:
+		t.Fatal("poll runners exceeded configured concurrency")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	close(release)
+
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+
+	if got := peak.Load(); got != maxConcurrent {
+		t.Fatalf("peak concurrent poll runners = %d, want %d", got, maxConcurrent)
+	}
 }
 
 func TestRunPollConfigsTracksSuccessFailureAndPanic(t *testing.T) {
