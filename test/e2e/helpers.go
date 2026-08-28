@@ -192,6 +192,21 @@ func (h *Harness) ContainerID(project, service string) string {
 	return h.containerID(h.docker, h.isSwarmMode(), project, service)
 }
 
+// ComposeContainerID returns the running Compose container for a deployment
+// that explicitly selected Compose mode on a Swarm-capable Docker daemon.
+func (h *Harness) ComposeContainerID(project, service string) string {
+	h.t.Helper()
+
+	return h.containerID(h.docker, false, project, service)
+}
+
+// SwarmContainerID returns the running Swarm task container for a deployment.
+func (h *Harness) SwarmContainerID(project, service string) string {
+	h.t.Helper()
+
+	return h.containerID(h.docker, true, project, service)
+}
+
 // RemoteContainerID returns a Compose container from the disposable remote
 // Docker context enabled with EnableRemoteContext.
 func (h *Harness) RemoteContainerID(project, service string) string {

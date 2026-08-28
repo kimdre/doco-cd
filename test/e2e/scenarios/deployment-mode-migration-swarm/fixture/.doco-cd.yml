@@ -1,0 +1,4 @@
+name: e2e-deployment-mode-migration-swarm
+working_dir: deploy
+swarm:
+  enabled: true

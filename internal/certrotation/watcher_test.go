@@ -527,8 +527,8 @@ func TestCheckAndRotate_ContextErrorIsolation(t *testing.T) {
 
 // TestCheckAndRotate_UsesEachContextsOwnSwarmMode verifies that discovery for each context uses
 // that context's own SwarmMode (from docker.ContextClientResult), never a single shared/global
-// value: a standalone context must only ever be queried via ContainerList, and a Swarm context
-// only ever via ServiceList, even when both are checked in the same pass.
+// value: a standalone context is queried via ContainerList, while a Swarm manager is queried
+// via both ContainerList and ServiceList so it can rotate Compose and Swarm deployments.
 func TestCheckAndRotate_UsesEachContextsOwnSwarmMode(t *testing.T) {
 	var containerCalls, serviceCalls int32
 
@@ -545,7 +545,7 @@ func TestCheckAndRotate_UsesEachContextsOwnSwarmMode(t *testing.T) {
 
 	swarmClient := &fakeAPIClient{
 		containerList: func(context.Context, client.ContainerListOptions) (client.ContainerListResult, error) {
-			t.Error("unexpected ContainerList call for a swarm-mode context")
+			atomic.AddInt32(&containerCalls, 1)
 			return client.ContainerListResult{}, nil
 		},
 		serviceList: func(context.Context, client.ServiceListOptions) (client.ServiceListResult, error) {
@@ -569,8 +569,8 @@ func TestCheckAndRotate_UsesEachContextsOwnSwarmMode(t *testing.T) {
 
 	watcher.checkAndRotate(t.Context())
 
-	if containerCalls != 1 {
-		t.Errorf("expected exactly 1 ContainerList call, got %d", containerCalls)
+	if containerCalls != 2 {
+		t.Errorf("expected exactly 2 ContainerList calls, got %d", containerCalls)
 	}
 
 	if serviceCalls != 1 {

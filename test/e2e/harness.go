@@ -45,6 +45,7 @@ type Harness struct {
 	repoPath   string // bare repo dir the gitserver container mounts read-only
 	worktree   string // host worktree dir used to build fixture/commits
 	dataVolume string
+	volumes    []string
 
 	wt     *git.Worktree
 	docker *client.Client
@@ -96,13 +97,13 @@ func NewHarness(t *testing.T, scenario string) *Harness {
 	h.repoPath = filepath.Join(h.workDir, "repos", scenario+".git")
 	h.worktree = filepath.Join(h.workDir, "src", scenario)
 
-	t.Cleanup(h.logFailure)
-
 	if keepAlive {
 		registerSuiteHarness(h)
 	} else {
 		t.Cleanup(h.teardown)
 	}
+
+	t.Cleanup(h.logFailure)
 
 	return h
 }
@@ -112,6 +113,12 @@ func NewHarness(t *testing.T, scenario string) *Harness {
 func (h *Harness) EnableRemoteContext() {
 	h.t.Helper()
 	h.remoteContext = true
+}
+
+// TrackVolume registers a scenario-owned named volume for teardown.
+func (h *Harness) TrackVolume(name string) {
+	h.t.Helper()
+	h.volumes = append(h.volumes, name)
 }
 
 // Start creates the initial fixture commit, builds and starts the gitserver
@@ -489,6 +496,12 @@ func (h *Harness) teardownInternal() {
 		}
 
 		h.cleanupStacks()
+
+		for _, volume := range h.volumes {
+			if _, err := h.docker.VolumeRemove(h.ctx, volume, client.VolumeRemoveOptions{Force: true}); err != nil {
+				h.logf("remove named volume %s: %v", volume, err)
+			}
+		}
 
 		if h.remoteDocker != nil {
 			_ = h.remoteDocker.Close()

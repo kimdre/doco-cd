@@ -38,6 +38,7 @@ var (
 	ErrKeyNotFound                   = errors.New("key not found")
 	ErrInvalidFilePath               = errors.New("invalid file path")
 	ErrMultipleYAMLDocuments         = errors.New("nested .doco-cd configuration file must contain only a single YAML document")
+	ErrSwarmModeUnavailable          = errors.New("docker swarm mode is not available for this deployment")
 )
 
 // Config is the structure of the deployment configuration file.
@@ -79,8 +80,9 @@ type Config struct {
 
 // SwarmConfig contains Docker Swarm-specific deployment settings.
 type SwarmConfig struct {
-	ConfigRetention *int `yaml:"config_retention,omitempty" json:"config_retention,omitempty"` // ConfigRetention is the number of old Swarm config revisions to keep per resource (excluding the active one). -1 disables automatic pruning. If unset, global DOCKER_SWARM_CONFIG_RETENTION is used.
-	SecretRetention *int `yaml:"secret_retention,omitempty" json:"secret_retention,omitempty"` // SecretRetention is the number of old Swarm secret revisions to keep per resource (excluding the active one). -1 disables automatic pruning. If unset, global DOCKER_SWARM_SECRET_RETENTION is used.
+	Enabled         *bool `yaml:"enabled,omitempty" json:"enabled,omitempty"`                   // Enabled explicitly selects Swarm deployment mode. When unset, the Docker context determines the mode.
+	ConfigRetention *int  `yaml:"config_retention,omitempty" json:"config_retention,omitempty"` // ConfigRetention is the number of old Swarm config revisions to keep per resource (excluding the active one). -1 disables automatic pruning. If unset, global DOCKER_SWARM_CONFIG_RETENTION is used.
+	SecretRetention *int  `yaml:"secret_retention,omitempty" json:"secret_retention,omitempty"` // SecretRetention is the number of old Swarm secret revisions to keep per resource (excluding the active one). -1 disables automatic pruning. If unset, global DOCKER_SWARM_SECRET_RETENTION is used.
 }
 
 // ResolveGitDepth returns the effective git clone depth.
@@ -116,6 +118,21 @@ func (c *Config) ResolveSwarmSecretRetention(globalRetention int) int {
 	}
 
 	return globalRetention
+}
+
+// ResolveSwarmMode returns the deployment mode selected by this config. When
+// swarm.enabled is omitted, the mode detected for the Docker context is used.
+// An explicit Swarm request must not silently fall back to Compose.
+func (c *Config) ResolveSwarmMode(swarmAvailable bool) (bool, error) {
+	if c.Swarm.Enabled == nil {
+		return swarmAvailable, nil
+	}
+
+	if *c.Swarm.Enabled && !swarmAvailable {
+		return false, ErrSwarmModeUnavailable
+	}
+
+	return *c.Swarm.Enabled, nil
 }
 
 // New creates a Config with default values.

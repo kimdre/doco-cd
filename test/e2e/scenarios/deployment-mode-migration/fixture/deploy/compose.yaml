@@ -1,0 +1,16 @@
+services:
+  app:
+    image: alpine:3.22
+    command: ["sleep", "600"]
+    volumes:
+      - data:/data
+  scheduled:
+    image: alpine:3.22
+    command: ["true"]
+    labels:
+      cd.doco.job.enabled: "true"
+      cd.doco.job.schedule: "@every 24h"
+
+volumes:
+  data:
+    name: e2e-deployment-mode-migration-data
