@@ -22,6 +22,18 @@ import (
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
+func mergeDeploymentEnvironment(config *deploy.Config) {
+	if len(config.Environment) == 0 {
+		return
+	}
+
+	if config.Internal.Environment == nil {
+		config.Internal.Environment = make(map[string]string)
+	}
+
+	maps.Copy(config.Internal.Environment, config.Environment)
+}
+
 // RunInitStage executes the initialization stage logic for the deployment process.
 func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) error {
 	var err error
@@ -90,6 +102,8 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		if err != nil {
 			return fmt.Errorf("failed to parse env files from OCI artifact: %w", err)
 		}
+
+		mergeDeploymentEnvironment(s.DeployConfig)
 
 		s.Log = s.Log.With(
 			slog.String("stack", s.DeployConfig.Name),
@@ -170,13 +184,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		}
 	}
 
-	if len(s.DeployConfig.Environment) > 0 {
-		if s.DeployConfig.Internal.Environment == nil {
-			s.DeployConfig.Internal.Environment = make(map[string]string)
-		}
-
-		maps.Copy(s.DeployConfig.Internal.Environment, s.DeployConfig.Environment)
-	}
+	mergeDeploymentEnvironment(s.DeployConfig)
 
 	if s.DeployConfig.Destroy.Enabled {
 		// Skip deployment if another project with the same name already exists
