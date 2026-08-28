@@ -615,10 +615,22 @@ Precedence:
 
 The following settings can be configured in the nested `swarm` object:
 
-| Key                | Type   | Description                                                                                                                                                                                         | Default value     |
-|--------------------|--------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|
-| `config_retention` | number | Number of old Swarm config revisions to keep per resource (excluding the active revision). `-1` disables automatic pruning. If unset, global [`DOCKER_SWARM_CONFIG_RETENTION`](Docker-Settings.md#swarm-environment-variables) is used. | unset (use global) |
-| `secret_retention` | number | Number of old Swarm secret revisions to keep per resource (excluding the active revision). `-1` disables automatic pruning. If unset, global [`DOCKER_SWARM_SECRET_RETENTION`](Docker-Settings.md#swarm-environment-variables) is used. | unset (use global) |
+| Key                | Type    | Description                                                                                                                                                                                                                                                                             | Default value       |
+|--------------------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------|
+| `enabled`          | boolean | `true` deploys a Docker Swarm stack. `false` deploys a Docker Compose project. When omitted, the Docker context determines the mode. An explicit `true` fails if the context is not a Swarm manager or [`DOCKER_SWARM_FEATURES=false`](Docker-Settings.md#swarm-environment-variables). | unset (auto-detect) |
+| `config_retention` | number  | Number of old Swarm config revisions to keep per resource (excluding the active revision). `-1` disables automatic pruning. If unset, global [`DOCKER_SWARM_CONFIG_RETENTION`](Docker-Settings.md#swarm-environment-variables) is used.                                                 | unset (use global)  |
+| `secret_retention` | number  | Number of old Swarm secret revisions to keep per resource (excluding the active revision). `-1` disables automatic pruning. If unset, global [`DOCKER_SWARM_SECRET_RETENTION`](Docker-Settings.md#swarm-environment-variables) is used.                                                 | unset (use global)  |
+
+Use `swarm.enabled` to select the deployment type for one stack:
+
+```yaml title=".doco-cd.yml"
+name: netbird
+swarm:
+  enabled: false
+```
+
+When the value of `enabled` changes for a doco-cd-managed deployment, doco-cd removes the previous-mode project or stack before deploying the new mode.
+Its volumes are retained during this migration.
 
 #### Keep old Swarm configs/secrets
 
