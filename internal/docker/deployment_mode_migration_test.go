@@ -63,7 +63,7 @@ func TestMigrateDeploymentMode_RejectsUnmanagedPreviousMode(t *testing.T) {
 		}},
 	}}
 
-	err := MigrateDeploymentMode(t.Context(), nil, dockerCli, "", "example", "github.com/acme/example", true, true)
+	_, err := MigrateDeploymentMode(t.Context(), nil, dockerCli, "", "example", "github.com/acme/example", true, true)
 	if !errors.Is(err, ErrDeploymentModeConflict) {
 		t.Fatalf("MigrateDeploymentMode() error = %v, want ErrDeploymentModeConflict", err)
 	}
@@ -88,7 +88,7 @@ func TestMigrateDeploymentMode_RejectsUnmanagedSelectedMode(t *testing.T) {
 	}
 	dockerCli := deploymentModeMigrationCLI{apiClient: apiClient}
 
-	err := MigrateDeploymentMode(t.Context(), nil, dockerCli, "", "example", "owner/repo", true, true)
+	_, err := MigrateDeploymentMode(t.Context(), nil, dockerCli, "", "example", "owner/repo", true, true)
 	if !errors.Is(err, ErrDeploymentModeConflict) {
 		t.Fatalf("MigrateDeploymentMode() error = %v, want ErrDeploymentModeConflict", err)
 	}
@@ -104,8 +104,13 @@ func TestMigrateDeploymentMode_SkipsMigrationWhenSwarmUnavailable(t *testing.T) 
 	apiClient := &deploymentModeMigrationClient{}
 	dockerCli := deploymentModeMigrationCLI{apiClient: apiClient}
 
-	if err := MigrateDeploymentMode(t.Context(), nil, dockerCli, "", "example", "owner/repo", false, false); err != nil {
+	migrated, err := MigrateDeploymentMode(t.Context(), nil, dockerCli, "", "example", "owner/repo", false, false)
+	if err != nil {
 		t.Fatalf("MigrateDeploymentMode() error = %v, want nil", err)
+	}
+
+	if migrated {
+		t.Fatal("MigrateDeploymentMode() migrated without Swarm availability")
 	}
 
 	if apiClient.containerListCalls != 0 || apiClient.serviceListCalls != 0 {
@@ -291,8 +296,13 @@ func TestMigrateDeploymentMode_PreservesNamedVolumes(t *testing.T) {
 			sourceContainerID := migrationServiceContainerID(ctx, t, apiClient, stackName, tt.sourceMode)
 			writeMigrationVolumeMarker(ctx, t, apiClient, sourceContainerID)
 
-			if err := MigrateDeploymentMode(ctx, nil, dockerCli, "", stackName, "owner/repo", !tt.sourceMode, true); err != nil {
+			migrated, err := MigrateDeploymentMode(ctx, nil, dockerCli, "", stackName, "owner/repo", !tt.sourceMode, true)
+			if err != nil {
 				t.Fatalf("MigrateDeploymentMode() error = %v", err)
+			}
+
+			if !migrated {
+				t.Fatal("MigrateDeploymentMode() did not report removing the source deployment")
 			}
 
 			if err := tt.assertGone(stackName); err != nil {

@@ -1,0 +1,10 @@
+services:
+  app:
+    image: alpine:3.22
+    command: ["sleep", "600"]
+    volumes:
+      - data:/data
+
+volumes:
+  data:
+    name: e2e-deployment-mode-migration-data

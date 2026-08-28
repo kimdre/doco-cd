@@ -24,16 +24,17 @@ var ErrDeploymentModeConflict = errors.New("deployment mode migration conflicts 
 // MigrateDeploymentMode removes a previous deployment in the other runtime mode,
 // but only after proving every discovered resource belongs to this doco-cd deployment.
 // Volumes are deliberately retained for the new mode.
-func MigrateDeploymentMode(ctx context.Context, log *slog.Logger, dockerCli command.Cli, contextName, stackName, source string, swarmMode, swarmAvailable bool) error {
+// It reports whether previous-mode resources were removed.
+func MigrateDeploymentMode(ctx context.Context, log *slog.Logger, dockerCli command.Cli, contextName, stackName, source string, swarmMode, swarmAvailable bool) (bool, error) {
 	if dockerCli == nil {
-		return errors.New("docker cli is required")
+		return false, errors.New("docker cli is required")
 	}
 
 	// Without Swarm capability there is no second mode to migrate between: the
 	// context is either a standalone engine or has Swarm features globally
 	// disabled, in which case its Swarm API must not be probed at all.
 	if !swarmAvailable {
-		return nil
+		return false, nil
 	}
 
 	stackLockKey := lock.StackKey(contextName, stackName)
@@ -45,16 +46,16 @@ func MigrateDeploymentMode(ctx context.Context, log *slog.Logger, dockerCli comm
 
 	labelsByService, err := deploymentModeLabels(ctx, dockerCli.Client(), stackName, previousMode)
 	if err != nil {
-		return fmt.Errorf("failed to inspect %s resources for deployment mode migration: %w", deploymentModeName(previousMode), err)
+		return false, fmt.Errorf("failed to inspect %s resources for deployment mode migration: %w", deploymentModeName(previousMode), err)
 	}
 
 	if len(labelsByService) == 0 {
-		return nil
+		return false, nil
 	}
 
 	expectedSources := migrationSourceCandidates(source)
 	if err = validateMigrationOwnership(labelsByService, expectedSources, previousMode, stackName); err != nil {
-		return err
+		return false, err
 	}
 
 	// A partial earlier migration may have resources in both modes. Do not
@@ -62,11 +63,11 @@ func MigrateDeploymentMode(ctx context.Context, log *slog.Logger, dockerCli comm
 	// unmanaged same-named deployment.
 	selectedLabels, err := deploymentModeLabels(ctx, dockerCli.Client(), stackName, swarmMode)
 	if err != nil {
-		return fmt.Errorf("failed to inspect %s resources for deployment mode migration: %w", deploymentModeName(swarmMode), err)
+		return false, fmt.Errorf("failed to inspect %s resources for deployment mode migration: %w", deploymentModeName(swarmMode), err)
 	}
 
 	if err := validateMigrationOwnership(selectedLabels, expectedSources, swarmMode, stackName); err != nil {
-		return err
+		return false, err
 	}
 
 	if log == nil {
@@ -86,10 +87,10 @@ func MigrateDeploymentMode(ctx context.Context, log *slog.Logger, dockerCli comm
 	removeConfig.Destroy.RemoveImages = false
 
 	if err := DestroyStack(log, &ctx, &dockerCli, removeConfig, previousMode); err != nil {
-		return fmt.Errorf("failed to remove previous %s deployment: %w", deploymentModeName(previousMode), err)
+		return false, fmt.Errorf("failed to remove previous %s deployment: %w", deploymentModeName(previousMode), err)
 	}
 
-	return nil
+	return true, nil
 }
 
 // deploymentModeLabels returns a map of service names to their labels for the given stack in the specified deployment mode.

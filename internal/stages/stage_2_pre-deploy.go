@@ -157,7 +157,17 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		source = s.Payload.FullName
 	}
 
-	if err := docker.MigrateDeploymentMode(ctx, stageLog, s.Docker.Cmd, s.DeployConfig.Context, s.DeployConfig.Name, source, s.Docker.SwarmMode, s.Docker.SwarmAvailable); err != nil {
+	deploymentModeMigrated, err := docker.MigrateDeploymentMode(
+		ctx,
+		stageLog,
+		s.Docker.Cmd,
+		s.DeployConfig.Context,
+		s.DeployConfig.Name,
+		source,
+		s.Docker.SwarmMode,
+		s.Docker.SwarmAvailable,
+	)
+	if err != nil {
 		return fmt.Errorf("failed to migrate deployment mode: %w", err)
 	}
 
@@ -203,7 +213,10 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		deployedDigest := deployedState.GetDeploymentCommitSHA()
 		resolvedDigest := s.Repository.Revision
 
-		if shouldSkipOCIDeployment(s.DeployConfig.ForceRecreate, deployedDigest, resolvedDigest) && !autoDiscoveryConfigChanged && !retryAfterFailure {
+		if !deploymentModeMigrated &&
+			shouldSkipOCIDeployment(s.DeployConfig.ForceRecreate, deployedDigest, resolvedDigest) &&
+			!autoDiscoveryConfigChanged &&
+			!retryAfterFailure {
 			stageLog.Debug("OCI artifact digest unchanged, skipping deployment",
 				slog.String("deployed_digest", strings.TrimSpace(deployedDigest)),
 				slog.String("resolved_digest", strings.TrimSpace(resolvedDigest)),
@@ -371,7 +384,8 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			stageLog.Debug("force recreate enabled, proceeding with deployment",
 				slog.String("directory", s.DeployConfig.WorkingDirectory),
 			)
-		} else if shouldSkipDeployment(retryAfterFailure, composeChanged, autoDiscoveryConfigChanged, changedServices, ignoredInfo, imagesChanged, mismatchServices) {
+		} else if !deploymentModeMigrated &&
+			shouldSkipDeployment(retryAfterFailure, composeChanged, autoDiscoveryConfigChanged, changedServices, ignoredInfo, imagesChanged, mismatchServices) {
 			stageLog.Debug("no changes detected, skipping deployment",
 				slog.String("directory", s.DeployConfig.WorkingDirectory),
 			)
