@@ -2535,8 +2535,10 @@
 
 <p>Doco-CD also supports <a href="https://docs.docker.com/engine/swarm/">Docker Swarm mode</a>, which allows you to manage a cluster of Docker engines as a single virtual engine. 
 This is useful for deploying applications across multiple nodes and ensuring high availability.</p>
-<p>If the Docker daemon is running in Swarm mode, doco-cd will detect this automatically and deploy everything as Swarm stacks instead of simple Compose projects.</p>
-<p>You can overwrite this to always deploy as Compose projects while running doco-cd in a Swarm environment by setting the <code>DOCKER_SWARM_FEATURES</code> environment variable to <code>false</code> (See the <a data-preview="" href="../../Docker-Settings/">Docker Settings</a>).</p>
+<p>If the Docker daemon is running in Swarm mode, doco-cd will detect this automatically and deploy deployments as Swarm stacks instead of simple Compose projects.</p>
+<p>Set <code>swarm.enabled</code> in an individual deployment configuration to override this selection: <code>true</code> deploys a Swarm stack and <code>false</code> deploys a Compose project.
+This lets both deployment types run through one doco-cd instance on the same Swarm manager. If omitted, auto-detection is used.</p>
+<p>You can overwrite this globally to always deploy as Compose projects while running doco-cd in a Swarm environment by setting the <code>DOCKER_SWARM_FEATURES</code> environment variable to <code>false</code> (See the <a data-preview="" href="../../Docker-Settings/">Docker Settings</a>).</p>
 <p>The deployment happens the same way as with Docker Compose projects, see the <a data-preview="" href="../../Deploy-Settings/">Deploy Settings</a></p>
 <h2 id="configs-and-secrets">Configs and Secrets<a class="headerlink" href="#configs-and-secrets" title="Permanent link">&para;</a></h2>
 <p>When deploying configs or secrets in Swarm mode, doco-cd will add a suffix to the name of configs and secrets. 
