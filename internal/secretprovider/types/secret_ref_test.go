@@ -105,12 +105,15 @@ func TestInterpolateExternalSecretRefs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected interpolation error: %v", err)
 	}
+
 	if got["DEFAULT"].LegacyRef != "kv:db-lab" || got["SET"].LegacyRef != "kv:db-lab" {
 		t.Fatalf("unexpected interpolated refs: %#v", got)
 	}
+
 	if in["DEFAULT"].LegacyRef != "kv:db-${PROJECT_STAGE:-prod}" {
 		t.Fatal("input refs were mutated")
 	}
+
 	if !reflect.DeepEqual(got["STRUCTURED"], in["STRUCTURED"]) {
 		t.Fatal("structured ref was changed")
 	}
@@ -124,6 +127,7 @@ func TestInterpolateExternalSecretRefs_DefaultValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected interpolation error: %v", err)
 	}
+
 	if got["DB"].LegacyRef != "kv:db-prod" {
 		t.Fatalf("got %q, want %q", got["DB"].LegacyRef, "kv:db-prod")
 	}
@@ -137,6 +141,7 @@ func TestInterpolateExternalSecretRefs_Disabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected interpolation error: %v", err)
 	}
+
 	if got["DB"].LegacyRef != "kv:db-${PROJECT_STAGE:-prod}" {
 		t.Fatalf("got %q while interpolation is disabled", got["DB"].LegacyRef)
 	}

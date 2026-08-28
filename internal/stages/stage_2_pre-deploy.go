@@ -134,6 +134,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		if err != nil {
 			return fmt.Errorf("failed to interpolate external secret references: %w", err)
 		}
+
 		s.DeployConfig.ExternalSecrets = interpolatedRefs
 
 		encodedSecrets, err := secrettypes.EncodeExternalSecretRefs(interpolatedRefs)
