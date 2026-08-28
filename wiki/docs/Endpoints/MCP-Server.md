@@ -12,7 +12,7 @@ The endpoint uses the main `HTTP_PORT` and follows the main server's TLS configu
 
 ## Enable the Server
 
-Enable the server and provide an API secret using `API_SECRET` or `API_SECRET_FILE`:
+Enable the server with `#!yaml MCP_ENABLED: true` and provide an API secret using `API_SECRET` or `API_SECRET_FILE` (see [REST API Authentication](REST-API.md#authentication)):
 
 ```yaml title="docker-compose.yml"
 services:
@@ -26,7 +26,7 @@ services:
 
 ## Authentication
 
-Every request must include the same `x-api-key` header used by the [REST API](REST-API.md):
+Every request must include the same `x-api-key` header used by the [REST API](REST-API.md#authentication):
 
 ```text
 x-api-key: your-api-key
@@ -56,22 +56,22 @@ Set `DOCO_CD_API_SECRET` in the environment that starts OpenCode. Other Streamab
 
 ## Available Tools
 
-| Tool | Description |
-|------|-------------|
-| `get_health` | Verify access to the Docker API. |
-| `list_deployment_runs` | List recent deployment runs, optionally filtered by status and trigger. |
-| `get_deployment_run` | Get a deployment run by `job_id`. |
-| `list_scheduled_jobs` | List scheduler-managed jobs. |
-| `list_projects` | List Docker Compose projects. |
-| `get_project` | Get the containers of one Docker Compose project. |
-| `control_project` | Start, stop, or restart a Docker Compose project. |
-| `destroy_project` | Remove a Docker Compose project and optionally its volumes and images. Reconciliation may recreate managed projects. |
-| `list_stacks` | List Docker Swarm stacks and their services. |
-| `get_stack` | Get the services of one Docker Swarm stack. |
-| `control_stack` | Scale, restart, or run matching services in a Docker Swarm stack. |
-| `remove_stack` | Remove a Docker Swarm stack. |
-| `trigger_scheduled_job` | Initiate one configured scheduled job trigger immediately. |
-| `trigger_poll` | Trigger one or more poll configurations immediately. |
+| Tool                    | Description                                                                                                          |
+|-------------------------|----------------------------------------------------------------------------------------------------------------------|
+| `get_health`            | Verify access to the Docker API.                                                                                     |
+| `list_deployment_runs`  | List recent deployment runs, optionally filtered by status and trigger.                                              |
+| `get_deployment_run`    | Get a deployment run by `job_id`.                                                                                    |
+| `list_scheduled_jobs`   | List scheduler-managed jobs.                                                                                         |
+| `list_projects`         | List Docker Compose projects.                                                                                        |
+| `get_project`           | Get the containers of one Docker Compose project.                                                                    |
+| `control_project`       | Start, stop, or restart a Docker Compose project.                                                                    |
+| `destroy_project`       | Remove a Docker Compose project and optionally its volumes and images. Reconciliation may recreate managed projects. |
+| `list_stacks`           | List Docker Swarm stacks and their services.                                                                         |
+| `get_stack`             | Get the services of one Docker Swarm stack.                                                                          |
+| `control_stack`         | Scale, restart, or run matching services in a Docker Swarm stack.                                                    |
+| `remove_stack`          | Remove a Docker Swarm stack.                                                                                         |
+| `trigger_scheduled_job` | Initiate one configured scheduled job trigger immediately.                                                           |
+| `trigger_poll`          | Trigger one or more poll configurations immediately.                                                                 |
 
 Swarm tools are always advertised. Calls fail if Docker Swarm features are unavailable or disabled.
 
@@ -82,10 +82,10 @@ Swarm tools are always advertised. Calls fail if Docker Swarm features are unava
 
 `trigger_scheduled_job` and `trigger_poll` accept a `wait` argument that defaults to `true`.
 
-- Use `wait: false` for long-running operations. The tool returns an accepted `job_id` immediately.
+- Use `#!yaml wait: false` for long-running operations. The tool returns an accepted `job_id` immediately.
 - Pass the `job_id` to `get_deployment_run` until the status is terminal: `succeeded`, `failed`, or `skipped`.
-- With `wait: true`, cancelling the client request cancels the running operation. During application shutdown, active HTTP requests receive the server's graceful shutdown period before remaining work is cancelled.
-- With `wait: false`, the accepted job uses the application lifecycle rather than the completed request lifecycle. Cancelling or disconnecting the client after the response does not cancel the job, but application shutdown does.
+- With `#!yaml wait: true`, cancelling the client request cancels the running operation. During application shutdown, active HTTP requests receive the server's graceful shutdown period before remaining work is cancelled.
+- With `#!yaml wait: false`, the accepted job uses the application lifecycle rather than the completed request lifecycle. Cancelling or disconnecting the client after the response does not cancel the job, but application shutdown does.
 
 For `trigger_scheduled_job`, `succeeded` means that the trigger operation completed without error. Compose restarts and Swarm reruns can return after Docker accepts the start or update, so this status does not guarantee that the scheduled workload finished successfully or that its process exited with code 0.
 
