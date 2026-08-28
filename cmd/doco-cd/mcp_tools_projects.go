@@ -69,8 +69,8 @@ func (h *handlerData) addProjectMCPTools(server *mcp.Server) {
 
 func setProjectTimeoutSchema(schema *jsonschema.Schema) {
 	timeoutSchema := schema.Properties["timeout"]
-	timeoutSchema.Minimum = jsonschema.Ptr(1.0)
-	timeoutSchema.Maximum = jsonschema.Ptr(float64(maxProjectActionTimeout))
+	timeoutSchema.Minimum = new(1.0)
+	timeoutSchema.Maximum = new(float64(maxProjectActionTimeout))
 }
 
 func (h *handlerData) controlProject(ctx context.Context, _ *mcp.CallToolRequest, input controlProjectInput) (*mcp.CallToolResult, controlProjectOutput, error) {

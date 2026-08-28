@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/docker/compose/v5/pkg/api"
-	"github.com/google/jsonschema-go/jsonschema"
 	dockerswarmtypes "github.com/moby/moby/api/types/swarm"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -117,7 +116,7 @@ func (h *handlerData) addReadOnlyMCPTools(server *mcp.Server) {
 	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true}
 
 	listDeploymentRunsSchema := mustToolInputSchema[listDeploymentRunsInput]("list_deployment_runs")
-	listDeploymentRunsSchema.Properties["limit"].Minimum = jsonschema.Ptr(1.0)
+	listDeploymentRunsSchema.Properties["limit"].Minimum = new(1.0)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_deployment_runs",

@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/kimdre/doco-cd/internal/common/id"
@@ -77,7 +76,7 @@ type triggerPollOutput struct {
 
 func (h *handlerData) addPollMCPTools(server *mcp.Server) {
 	inputSchema := mustToolInputSchema[triggerPollInput]("trigger_poll")
-	inputSchema.Properties["configs"].MaxItems = jsonschema.Ptr(maxTriggerPollConfigs)
+	inputSchema.Properties["configs"].MaxItems = new(maxTriggerPollConfigs)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "trigger_poll",

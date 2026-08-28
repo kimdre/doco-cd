@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -39,7 +38,7 @@ type removeStackOutput struct {
 func (h *handlerData) addStackMCPTools(server *mcp.Server) {
 	controlSchema := mustToolInputSchema[controlStackInput]("control_stack")
 	controlSchema.Properties["action"].Enum = []any{"scale", "restart", "run"}
-	controlSchema.Properties["replicas"].Minimum = jsonschema.Ptr(0.0)
+	controlSchema.Properties["replicas"].Minimum = new(0.0)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "control_stack",
