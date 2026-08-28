@@ -95,6 +95,7 @@ func testDeploymentModeMigration(t *testing.T, scenario, stackName, volumeName s
 		return targetContainerID() != "" && sourceContainerID() == ""
 	})
 	waitForSuccessfulMigration(h, logOffset)
+	waitForScheduledJob(h, logOffset, targetSchedulerMode(sourceSwarm))
 	assertMigrationMarker(t, h, targetContainerID(), marker)
 }
 
@@ -116,6 +117,34 @@ func waitForSuccessfulMigration(h *Harness, logOffset int) {
 
 		return strings.Contains(logs[migrationIndex:], `"msg":"job completed successfully"`)
 	})
+}
+
+func waitForScheduledJob(h *Harness, logOffset int, mode string) {
+	h.t.Helper()
+
+	h.WaitFor(2*time.Minute, "scheduled job registered in "+mode+" mode", func() bool {
+		logs := h.daemonLogs()
+		if len(logs) < logOffset {
+			return false
+		}
+
+		for _, line := range strings.Split(logs[logOffset:], "\n") {
+			if strings.Contains(line, `"msg":"job scheduled"`) &&
+				strings.Contains(line, `"mode":"`+mode+`"`) {
+				return true
+			}
+		}
+
+		return false
+	})
+}
+
+func targetSchedulerMode(sourceSwarm bool) string {
+	if sourceSwarm {
+		return "container"
+	}
+
+	return "swarm"
 }
 
 func assertMigrationMarker(t *testing.T, h *Harness, containerID, want string) {
