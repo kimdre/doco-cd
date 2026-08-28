@@ -110,12 +110,16 @@ func deploy(ctx context.Context,
 			continue
 		}
 
-		if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
-			entry.cli, entry.swarmMode, contextName, repoData.SourceUrl,
-			groupedConfigs,
-			metadata); err != nil {
-			jobLog.Error("failed to clean up obsolete auto-discovered containers for context",
-				slog.String("context", docker.DisplayContextName(contextName)), logger.ErrAttr(err))
+		for swarmMode, modeConfigs := range groupDeployConfigsByMode(groupedConfigs, entry.swarmMode) {
+			if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
+				entry.cli, swarmMode, contextName, repoData.SourceUrl,
+				modeConfigs,
+				metadata); err != nil {
+				jobLog.Error("failed to clean up obsolete auto-discovered containers for context",
+					slog.String("context", docker.DisplayContextName(contextName)),
+					slog.Bool("swarm_mode", swarmMode),
+					logger.ErrAttr(err))
+			}
 		}
 
 		if entry.closeFn != nil {
@@ -309,7 +313,7 @@ func resolveDeployContext(ctx context.Context, contexts *docker.ContextRegistry,
 
 func handleOneDeploy(ctx context.Context, deployLog *slog.Logger,
 	appConfig *app.Config, dataMountPoint container.MountPoint,
-	deploymentDockerCli command.Cli, swarmMode bool,
+	deploymentDockerCli command.Cli, swarmAvailable bool,
 	secretProvider *secretprovider.SecretProvider,
 	dc *deployConfig.Config,
 	jobID string,
@@ -318,6 +322,12 @@ func handleOneDeploy(ctx context.Context, deployLog *slog.Logger,
 	payLad *webhook.ParsedPayload,
 	metadata notification.Metadata,
 ) error {
+	swarmMode, err := dc.ResolveSwarmMode(swarmAvailable)
+	if err != nil {
+		return fmt.Errorf("failed to resolve swarm mode for deployment %q on docker context %q: %w",
+			dc.Name, docker.DisplayContextName(dc.Context), err)
+	}
+
 	if deployerLimiter != nil {
 		deployLog.Debug("queuing deployment")
 
@@ -338,6 +348,7 @@ func handleOneDeploy(ctx context.Context, deployLog *slog.Logger,
 			Cmd:            deploymentDockerCli,
 			DataMountPoint: dataMountPoint,
 			SwarmMode:      swarmMode,
+			SwarmAvailable: swarmAvailable,
 		},
 		payLad,
 		appConfig,
@@ -346,12 +357,34 @@ func handleOneDeploy(ctx context.Context, deployLog *slog.Logger,
 		metadata,
 	)
 
-	err := stageMgr.RunStages(ctx)
+	err = stageMgr.RunStages(ctx)
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// groupDeployConfigsByMode partitions configs by their selected runtime mode.
+// Invalid explicit swarm requests are excluded here; handleOneDeploy reports
+// their descriptive error to the caller.
+func groupDeployConfigsByMode(dcs []*deployConfig.Config, swarmAvailable bool) map[bool][]*deployConfig.Config {
+	grouped := make(map[bool][]*deployConfig.Config)
+
+	for _, dc := range dcs {
+		if dc == nil {
+			continue
+		}
+
+		swarmMode, err := dc.ResolveSwarmMode(swarmAvailable)
+		if err != nil {
+			continue
+		}
+
+		grouped[swarmMode] = append(grouped[swarmMode], dc)
+	}
+
+	return grouped
 }
 
 func dockerCliForContext(baseCli command.Cli, quiet bool, contextName string) (command.Cli, func(), error) {

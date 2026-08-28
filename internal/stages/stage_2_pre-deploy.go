@@ -149,6 +149,18 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		return fmt.Errorf("failed to hash deploy configuration: %w", err)
 	}
 
+	// Init has resolved the repository/payload identity by this point. Migrate
+	// before any skip detection, otherwise an unchanged source could leave the
+	// previous runtime mode alive indefinitely.
+	source := s.Repository.SourceUrl
+	if s.Payload != nil && strings.TrimSpace(s.Payload.FullName) != "" {
+		source = s.Payload.FullName
+	}
+
+	if err := docker.MigrateDeploymentMode(ctx, stageLog, s.Docker.Cmd, s.DeployConfig.Context, s.DeployConfig.Name, source, s.Docker.SwarmMode, s.Docker.SwarmAvailable); err != nil {
+		return fmt.Errorf("failed to migrate deployment mode: %w", err)
+	}
+
 	deployedState, err := docker.GetLatestDeployStatus(ctx, s.Docker.Cmd.Client(), s.Docker.SwarmMode, s.Repository.Name, s.DeployConfig.Name)
 	if err != nil {
 		return fmt.Errorf("failed to get latest state from deployed services: %w", err)

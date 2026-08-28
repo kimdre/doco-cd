@@ -291,6 +291,41 @@ func TestConfig_Validate_SwarmRetention(t *testing.T) {
 	})
 }
 
+func TestConfig_ResolveSwarmMode(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		enabled        *bool
+		swarmAvailable bool
+		want           bool
+		wantErr        error
+	}{
+		{name: "inherits available swarm mode", swarmAvailable: true, want: true},
+		{name: "inherits unavailable swarm mode", swarmAvailable: false, want: false},
+		{name: "explicit compose on swarm", enabled: new(false), swarmAvailable: true, want: false},
+		{name: "explicit swarm when available", enabled: new(true), swarmAvailable: true, want: true},
+		{name: "explicit swarm when unavailable", enabled: new(true), swarmAvailable: false, wantErr: ErrSwarmModeUnavailable},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := Config{Swarm: SwarmConfig{Enabled: tt.enabled}}
+
+			got, err := cfg.ResolveSwarmMode(tt.swarmAvailable)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("expected error %v, got %v", tt.wantErr, err)
+			}
+
+			if got != tt.want {
+				t.Fatalf("expected swarm mode %t, got %t", tt.want, got)
+			}
+		})
+	}
+}
+
 func TestGetConfigs_MissingDefaultConfigFile(t *testing.T) {
 	t.Parallel()
 

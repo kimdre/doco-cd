@@ -33,6 +33,18 @@ func TestNextScheduledRun_PreservesScheduleAlignment(t *testing.T) {
 	}
 }
 
+func TestSchedulerModes(t *testing.T) {
+	t.Parallel()
+
+	if got := schedulerModes(false); !slices.Equal(got, []scheduledJobMode{scheduledJobModeContainer}) {
+		t.Fatalf("schedulerModes(false) = %v, want compose only", got)
+	}
+
+	if got := schedulerModes(true); !slices.Equal(got, []scheduledJobMode{scheduledJobModeContainer, scheduledJobModeSwarm}) {
+		t.Fatalf("schedulerModes(true) = %v, want compose and swarm", got)
+	}
+}
+
 func TestNextScheduledRun_SkipsMissedRunsWithoutDrift(t *testing.T) {
 	t.Parallel()
 
@@ -853,24 +865,24 @@ func TestJobInfo_ContextField(t *testing.T) {
 	}
 }
 
-func TestNewScheduler_NormalizesContextAndCarriesSwarmMode(t *testing.T) {
+func TestNewSchedulerForMode_NormalizesContextAndCarriesMode(t *testing.T) {
 	t.Parallel()
 
-	s := newScheduler(docker.ContextClient{Name: "Default", SwarmMode: true}, nil, nil, nil)
+	s := newSchedulerForMode(docker.ContextClient{Name: "Default", SwarmMode: true}, scheduledJobModeSwarm, nil, nil, nil)
 	if s.contextName != "" {
-		t.Fatalf("newScheduler() contextName = %q, want empty string for the default context", s.contextName)
+		t.Fatalf("newSchedulerForMode() contextName = %q, want empty string for the default context", s.contextName)
 	}
 
-	if !s.swarmMode {
-		t.Fatal("newScheduler() did not carry through SwarmMode=true from the context client")
+	if s.mode != scheduledJobModeSwarm {
+		t.Fatalf("newSchedulerForMode() mode = %q, want %q", s.mode, scheduledJobModeSwarm)
 	}
 
-	remote := newScheduler(docker.ContextClient{Name: "remote", SwarmMode: false}, nil, nil, nil)
+	remote := newSchedulerForMode(docker.ContextClient{Name: "remote", SwarmMode: false}, scheduledJobModeContainer, nil, nil, nil)
 	if remote.contextName != "remote" {
-		t.Fatalf("newScheduler() contextName = %q, want %q", remote.contextName, "remote")
+		t.Fatalf("newSchedulerForMode() contextName = %q, want %q", remote.contextName, "remote")
 	}
 
-	if remote.swarmMode {
-		t.Fatal("newScheduler() reported swarmMode=true, want false")
+	if remote.mode != scheduledJobModeContainer {
+		t.Fatalf("newSchedulerForMode() mode = %q, want %q", remote.mode, scheduledJobModeContainer)
 	}
 }

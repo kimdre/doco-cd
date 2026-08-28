@@ -21,10 +21,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/logger"
 )
 
-func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *slog.Logger, contextName string, cli command.Cli, swarmMode bool) {
-	unhealthyAllDCs := j.deployConfigGroupByEvent["unhealthy"]
-
-	unhealthyDCs := filterConfigsByContext(unhealthyAllDCs, contextName)
+func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *slog.Logger, cli command.Cli, swarmMode bool, unhealthyDCs []*deployConfig.Config) {
 	if len(unhealthyDCs) == 0 || swarmMode {
 		return
 	}
@@ -143,8 +140,8 @@ func uniqueRedeployDCsFromGroupByEvent(grouped map[string][]*deployConfig.Config
 // redeployMissingServicesOnStartup performs a one-time startup check for stacks whose
 // reconciliation is configured for redeploy-oriented events (e.g., "die", "destroy", "update")
 // and triggers a redeploy for any stacks that are completely missing their containers/services.
-func (j *job) redeployMissingServicesOnStartup(ctx context.Context, jobLog *slog.Logger, contextName string, cli command.Cli, swarmMode bool) {
-	allCandidates := uniqueRedeployDCsFromGroupByEvent(j.deployConfigGroupByEvent)
+func (j *job) redeployMissingServicesOnStartup(ctx context.Context, jobLog *slog.Logger, contextName string, cli command.Cli, swarmMode bool, modeConfigs []*deployConfig.Config) {
+	allCandidates := uniqueRedeployDCsFromGroupByEvent(getDeployConfigGroupByEvent(modeConfigs))
 
 	candidates := filterConfigsByContext(allCandidates, contextName)
 	if len(candidates) == 0 {
@@ -174,7 +171,7 @@ func (j *job) redeployMissingServicesOnStartup(ctx context.Context, jobLog *slog
 			),
 		)
 
-	j.deploy(ctx, eventLog, missingDCs, "startup_missing", events.Message{}, traceID, contextName)
+	j.deploy(ctx, eventLog, missingDCs, "startup_missing", events.Message{}, traceID, contextName, swarmMode)
 }
 
 // findMissingContainersOnStartup lists all running containers for this repository and returns
@@ -265,7 +262,24 @@ func filterConfigsByContext(dcs []*deployConfig.Config, contextName string) []*d
 	var result []*deployConfig.Config
 
 	for _, dc := range dcs {
-		if dc != nil && strings.TrimSpace(dc.Context) == contextName {
+		if dc != nil && docker.NormalizeContextName(dc.Context) == docker.NormalizeContextName(contextName) {
+			result = append(result, dc)
+		}
+	}
+
+	return result
+}
+
+func filterConfigsByMode(dcs []*deployConfig.Config, swarmAvailable, swarmMode bool) []*deployConfig.Config {
+	result := make([]*deployConfig.Config, 0, len(dcs))
+
+	for _, dc := range dcs {
+		if dc == nil {
+			continue
+		}
+
+		selected, err := dc.ResolveSwarmMode(swarmAvailable)
+		if err == nil && selected == swarmMode {
 			result = append(result, dc)
 		}
 	}
