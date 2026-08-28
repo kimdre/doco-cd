@@ -147,17 +147,30 @@ func migrationSourceMatches(labels Labels, expectedSources map[string]struct{}) 
 
 // migrationSourceCandidates returns a set of normalized source candidates for matching against existing resources.
 func migrationSourceCandidates(source string) map[string]struct{} {
+	normalized := normalizeRepositoryForLabelMatch(source)
 	candidates := map[string]struct{}{
-		normalizeRepositoryForLabelMatch(source): {},
+		normalized: {},
 	}
 
 	source = strings.TrimSpace(source)
 	if strings.Contains(source, "://") ||
-		(strings.Contains(source, "@") && strings.Contains(source, ":")) {
-		candidates[normalizeRepositoryForLabelMatch(git.GetFullName(source))] = struct{}{}
+		(strings.Contains(source, "@") && strings.Contains(source, ":")) ||
+		hasRepositoryHostPrefix(normalized) {
+		candidates[normalizeRepositoryForLabelMatch(git.GetFullName(normalized))] = struct{}{}
 	}
 
 	return candidates
+}
+
+func hasRepositoryHostPrefix(repository string) bool {
+	parts := strings.Split(repository, "/")
+	if len(parts) < 3 {
+		return false
+	}
+
+	host := parts[0]
+
+	return host == "localhost" || strings.ContainsAny(host, ".:")
 }
 
 // deploymentModeName returns a human-readable name for the deployment mode.

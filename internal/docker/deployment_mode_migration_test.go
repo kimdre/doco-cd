@@ -141,6 +141,12 @@ func TestMigrationSourceMatches(t *testing.T) {
 			want:           true,
 		},
 		{
+			name:           "canonical host path expected",
+			expectedSource: "github.com/owner/repo",
+			labels:         Labels{DocoCDLabels.Source.Name: "owner/repo"},
+			want:           true,
+		},
+		{
 			name:           "different repository",
 			expectedSource: "owner/repo",
 			labels:         Labels{DocoCDLabels.Source.Name: "owner/other"},
