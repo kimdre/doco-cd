@@ -116,30 +116,45 @@ func TestMigrateDeploymentMode_SkipsMigrationWhenSwarmUnavailable(t *testing.T) 
 func TestMigrationSourceMatches(t *testing.T) {
 	t.Parallel()
 
-	expectedSources := buildRepositoryLabelCandidates("owner/repo")
-
 	for _, tt := range []struct {
-		name   string
-		labels Labels
-		want   bool
+		name           string
+		expectedSource string
+		labels         Labels
+		want           bool
 	}{
 		{
-			name:   "source name",
-			labels: Labels{DocoCDLabels.Source.Name: "owner/repo"},
-			want:   true,
+			name:           "source name",
+			expectedSource: "owner/repo",
+			labels:         Labels{DocoCDLabels.Source.Name: "owner/repo"},
+			want:           true,
 		},
 		{
-			name:   "source URL",
-			labels: Labels{DocoCDLabels.Source.URL: "https://github.com/owner/repo.git"},
-			want:   true,
+			name:           "source URL label",
+			expectedSource: "owner/repo",
+			labels:         Labels{DocoCDLabels.Source.URL: "https://github.com/owner/repo.git"},
+			want:           true,
 		},
 		{
-			name:   "different repository",
-			labels: Labels{DocoCDLabels.Source.Name: "owner/other"},
-			want:   false,
+			name:           "source URL expected",
+			expectedSource: "git@github.com:owner/repo.git",
+			labels:         Labels{DocoCDLabels.Source.Name: "owner/repo"},
+			want:           true,
+		},
+		{
+			name:           "different repository",
+			expectedSource: "owner/repo",
+			labels:         Labels{DocoCDLabels.Source.Name: "owner/other"},
+			want:           false,
+		},
+		{
+			name:           "same repository name under different owner",
+			expectedSource: "owner/repo",
+			labels:         Labels{DocoCDLabels.Source.Name: "someone-else/repo"},
+			want:           false,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			expectedSources := migrationSourceCandidates(tt.expectedSource)
 			if got := migrationSourceMatches(tt.labels, expectedSources); got != tt.want {
 				t.Fatalf("migrationSourceMatches() = %t, want %t", got, tt.want)
 			}
@@ -165,11 +180,25 @@ func TestMigrateDeploymentMode_PreservesNamedVolumes(t *testing.T) {
 		t.Skip("Swarm mode is not enabled, skipping migration integration test")
 	}
 
+	info, err := apiClient.Info(ctx, client.InfoOptions{})
+	if err != nil {
+		t.Fatalf("failed to inspect Swarm node: %v", err)
+	}
+
+	nodeID := info.Info.Swarm.NodeID
+	if nodeID == "" {
+		t.Fatal("Swarm manager has no node ID")
+	}
+
 	imageReader, err := apiClient.ImagePull(ctx, "busybox:latest", client.ImagePullOptions{})
 	if err != nil {
 		t.Skipf("cannot pull busybox test image: %v", err)
 	}
-	defer imageReader.Close()
+	defer func() {
+		if err := imageReader.Close(); err != nil {
+			t.Errorf("failed to close image pull response: %v", err)
+		}
+	}()
 
 	if _, err := io.Copy(io.Discard, imageReader); err != nil {
 		t.Fatalf("failed to pull busybox test image: %v", err)
@@ -210,17 +239,9 @@ func TestMigrateDeploymentMode_PreservesNamedVolumes(t *testing.T) {
 			name:       "swarm to compose",
 			sourceMode: true,
 			create: func(t *testing.T, stackName, volumeName string) error {
-				replicas := uint64(1)
-
-				result, createErr := apiClient.ServiceCreate(ctx, client.ServiceCreateOptions{Spec: swarmTypes.ServiceSpec{
-					Annotations: swarmTypes.Annotations{Name: stackName + "_service", Labels: swarmMigrationTestLabels(stackName)},
-					TaskTemplate: swarmTypes.TaskSpec{ContainerSpec: &swarmTypes.ContainerSpec{
-						Image:   "busybox:latest",
-						Command: []string{"sh", "-c", "while true; do sleep 3600; done"},
-						Mounts:  []mount.Mount{{Type: mount.TypeVolume, Source: volumeName, Target: "/data"}},
-					}},
-					Mode: swarmTypes.ServiceMode{Replicated: &swarmTypes.ReplicatedService{Replicas: &replicas}},
-				}})
+				result, createErr := apiClient.ServiceCreate(ctx, client.ServiceCreateOptions{
+					Spec: migrationSwarmVolumeServiceSpec(stackName, volumeName, nodeID),
+				})
 				if createErr != nil {
 					return createErr
 				}
@@ -286,7 +307,7 @@ func TestMigrateDeploymentMode_PreservesNamedVolumes(t *testing.T) {
 				)
 				targetContainerID = targetStack.ServiceContainerID(ctx, t, "service")
 			} else {
-				createMigrationSwarmVolumeService(ctx, t, apiClient, stackName, volumeName)
+				createMigrationSwarmVolumeService(ctx, t, apiClient, stackName, volumeName, nodeID)
 				targetContainerID = migrationServiceContainerID(ctx, t, apiClient, stackName, true)
 			}
 
@@ -309,20 +330,12 @@ volumes:
 `, volumeName)
 }
 
-func createMigrationSwarmVolumeService(ctx context.Context, t *testing.T, apiClient client.APIClient, stackName, volumeName string) {
+func createMigrationSwarmVolumeService(ctx context.Context, t *testing.T, apiClient client.APIClient, stackName, volumeName, nodeID string) {
 	t.Helper()
 
-	replicas := uint64(1)
-
-	result, err := apiClient.ServiceCreate(ctx, client.ServiceCreateOptions{Spec: swarmTypes.ServiceSpec{
-		Annotations: swarmTypes.Annotations{Name: stackName + "_service", Labels: swarmMigrationTestLabels(stackName)},
-		TaskTemplate: swarmTypes.TaskSpec{ContainerSpec: &swarmTypes.ContainerSpec{
-			Image:   "busybox:latest",
-			Command: []string{"sh", "-c", "while true; do sleep 3600; done"},
-			Mounts:  []mount.Mount{{Type: mount.TypeVolume, Source: volumeName, Target: "/data"}},
-		}},
-		Mode: swarmTypes.ServiceMode{Replicated: &swarmTypes.ReplicatedService{Replicas: &replicas}},
-	}})
+	result, err := apiClient.ServiceCreate(ctx, client.ServiceCreateOptions{
+		Spec: migrationSwarmVolumeServiceSpec(stackName, volumeName, nodeID),
+	})
 	if err != nil {
 		t.Fatalf("failed to create target Swarm deployment: %v", err)
 	}
@@ -330,6 +343,24 @@ func createMigrationSwarmVolumeService(ctx context.Context, t *testing.T, apiCli
 	t.Cleanup(func() { //nolint:contextcheck // cleanup must run after the test context is cancelled.
 		_, _ = apiClient.ServiceRemove(context.Background(), result.ID, client.ServiceRemoveOptions{})
 	})
+}
+
+func migrationSwarmVolumeServiceSpec(stackName, volumeName, nodeID string) swarmTypes.ServiceSpec {
+	replicas := uint64(1)
+
+	return swarmTypes.ServiceSpec{
+		Name: stackName + "_service", Labels: swarmMigrationTestLabels(stackName),
+		TaskTemplate: swarmTypes.TaskSpec{
+			ContainerSpec: &swarmTypes.ContainerSpec{
+				Image:   "busybox:latest",
+				Command: []string{"sh", "-c", "while true; do sleep 3600; done"},
+				Labels:  swarmMigrationTestLabels(stackName),
+				Mounts:  []mount.Mount{{Type: mount.TypeVolume, Source: volumeName, Target: "/data"}},
+			},
+			Placement: &swarmTypes.Placement{Constraints: []string{"node.id == " + nodeID}},
+		},
+		Mode: swarmTypes.ServiceMode{Replicated: &swarmTypes.ReplicatedService{Replicas: &replicas}},
+	}
 }
 
 func migrationServiceContainerID(ctx context.Context, t *testing.T, apiClient client.APIClient, stackName string, swarmMode bool) string {
@@ -351,7 +382,10 @@ func migrationServiceContainerID(ctx context.Context, t *testing.T, apiClient cl
 			}
 
 			for _, task := range tasks.Items {
-				if task.Status.ContainerStatus != nil && task.Status.ContainerStatus.ContainerID != "" {
+				if task.DesiredState == swarmTypes.TaskStateRunning &&
+					task.Status.State == swarmTypes.TaskStateRunning &&
+					task.Status.ContainerStatus != nil &&
+					task.Status.ContainerStatus.ContainerID != "" {
 					containerID = task.Status.ContainerStatus.ContainerID
 
 					return nil

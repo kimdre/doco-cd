@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
@@ -51,7 +52,7 @@ func MigrateDeploymentMode(ctx context.Context, log *slog.Logger, dockerCli comm
 		return nil
 	}
 
-	expectedSources := buildRepositoryLabelCandidates(source)
+	expectedSources := migrationSourceCandidates(source)
 	if err = validateMigrationOwnership(labelsByService, expectedSources, previousMode, stackName); err != nil {
 		return err
 	}
@@ -91,6 +92,7 @@ func MigrateDeploymentMode(ctx context.Context, log *slog.Logger, dockerCli comm
 	return nil
 }
 
+// deploymentModeLabels returns a map of service names to their labels for the given stack in the specified deployment mode.
 func deploymentModeLabels(ctx context.Context, dockerClient client.APIClient, stackName string, swarmMode bool) (map[Service]Labels, error) {
 	if swarmMode {
 		return GetServiceLabels(ctx, dockerClient, true, stackName)
@@ -114,6 +116,7 @@ func deploymentModeLabels(ctx context.Context, dockerClient client.APIClient, st
 	return labels, nil
 }
 
+// validateMigrationOwnership checks that all discovered resources are owned by this deployment source.
 func validateMigrationOwnership(labelsByService map[Service]Labels, expectedSources map[string]struct{}, mode bool, stackName string) error {
 	for service, labels := range labelsByService {
 		if labels[DocoCDLabels.Metadata.Manager] != app.Name ||
@@ -126,24 +129,38 @@ func validateMigrationOwnership(labelsByService map[Service]Labels, expectedSour
 	return nil
 }
 
+// migrationSourceMatches returns true if any of the source labels match the expected sources.
 func migrationSourceMatches(labels Labels, expectedSources map[string]struct{}) bool {
 	for _, source := range []string{
 		labels[DocoCDLabels.Source.Name],
 		labels[DocoCDLabels.Source.URL],
 	} {
-		source = normalizeRepositoryForLabelMatch(source)
-		if _, ok := expectedSources[source]; ok {
-			return true
-		}
-
-		if _, ok := expectedSources[git.GetFullName(source)]; ok {
-			return true
+		for candidate := range migrationSourceCandidates(source) {
+			if _, ok := expectedSources[candidate]; ok {
+				return true
+			}
 		}
 	}
 
 	return false
 }
 
+// migrationSourceCandidates returns a set of normalized source candidates for matching against existing resources.
+func migrationSourceCandidates(source string) map[string]struct{} {
+	candidates := map[string]struct{}{
+		normalizeRepositoryForLabelMatch(source): {},
+	}
+
+	source = strings.TrimSpace(source)
+	if strings.Contains(source, "://") ||
+		(strings.Contains(source, "@") && strings.Contains(source, ":")) {
+		candidates[normalizeRepositoryForLabelMatch(git.GetFullName(source))] = struct{}{}
+	}
+
+	return candidates
+}
+
+// deploymentModeName returns a human-readable name for the deployment mode.
 func deploymentModeName(swarmMode bool) string {
 	if swarmMode {
 		return "swarm"
