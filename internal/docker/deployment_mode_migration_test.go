@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"testing"
 
 	"github.com/docker/cli/cli/command"
@@ -70,6 +71,16 @@ func TestMigrateDeploymentMode_PreservesNamedVolumes(t *testing.T) {
 
 	if !swarmAvailable {
 		t.Skip("Swarm mode is not enabled, skipping migration integration test")
+	}
+
+	imageReader, err := apiClient.ImagePull(ctx, "busybox:latest", client.ImagePullOptions{})
+	if err != nil {
+		t.Skipf("cannot pull busybox test image: %v", err)
+	}
+	defer imageReader.Close()
+
+	if _, err := io.Copy(io.Discard, imageReader); err != nil {
+		t.Fatalf("failed to pull busybox test image: %v", err)
 	}
 
 	for _, tt := range []struct {
