@@ -86,27 +86,30 @@ func TestMigrateDeploymentMode_PreservesNamedVolumes(t *testing.T) {
 	for _, tt := range []struct {
 		name       string
 		sourceMode bool
-		create     func(string, string) (func(), error)
+		create     func(*testing.T, string, string) error
 		assertGone func(string) error
 	}{
 		{
 			name:       "compose to swarm",
 			sourceMode: false,
-			create: func(stackName, volumeName string) (func(), error) {
-				result, createErr := apiClient.ContainerCreate(ctx, client.ContainerCreateOptions{
-					Config: &containerTypes.Config{Image: "busybox:latest", Labels: migrationTestLabels(stackName)},
-					HostConfig: &containerTypes.HostConfig{Mounts: []mount.Mount{{
-						Type: mount.TypeVolume, Source: volumeName, Target: "/data",
-					}}},
-					Name: stackName + "-service-1",
-				})
-				if createErr != nil {
-					return nil, createErr
-				}
+			create: func(t *testing.T, stackName, volumeName string) error {
+				test.ComposeUp(ctx, t,
+					test.WithName(stackName),
+					test.WithYAML(fmt.Sprintf(`services:
+  service:
+    image: busybox:latest
+    command: ["sh", "-c", "while true; do sleep 3600; done"]
+    volumes:
+      - data:/data
+volumes:
+  data:
+    external: true
+    name: %s
+`, volumeName)),
+					test.WithCustomLabel(migrationTestOwnershipLabels()),
+				)
 
-				return func() { //nolint:contextcheck // cleanup must run after the test context is cancelled.
-					_, _ = apiClient.ContainerRemove(context.Background(), result.ID, client.ContainerRemoveOptions{Force: true})
-				}, nil
+				return nil
 			},
 			assertGone: func(stackName string) error {
 				containers, listErr := GetLabeledContainers(ctx, apiClient, api.ProjectLabel, stackName, true)
@@ -124,11 +127,11 @@ func TestMigrateDeploymentMode_PreservesNamedVolumes(t *testing.T) {
 		{
 			name:       "swarm to compose",
 			sourceMode: true,
-			create: func(stackName, volumeName string) (func(), error) {
+			create: func(t *testing.T, stackName, volumeName string) error {
 				replicas := uint64(0)
 
 				result, createErr := apiClient.ServiceCreate(ctx, client.ServiceCreateOptions{Spec: swarmTypes.ServiceSpec{
-					Annotations: swarmTypes.Annotations{Name: stackName + "_service", Labels: migrationTestLabels(stackName)},
+					Annotations: swarmTypes.Annotations{Name: stackName + "_service", Labels: swarmMigrationTestLabels(stackName)},
 					TaskTemplate: swarmTypes.TaskSpec{ContainerSpec: &swarmTypes.ContainerSpec{
 						Image:  "busybox:latest",
 						Mounts: []mount.Mount{{Type: mount.TypeVolume, Source: volumeName, Target: "/data"}},
@@ -136,12 +139,14 @@ func TestMigrateDeploymentMode_PreservesNamedVolumes(t *testing.T) {
 					Mode: swarmTypes.ServiceMode{Replicated: &swarmTypes.ReplicatedService{Replicas: &replicas}},
 				}})
 				if createErr != nil {
-					return nil, createErr
+					return createErr
 				}
 
-				return func() { //nolint:contextcheck // cleanup must run after the test context is cancelled.
+				t.Cleanup(func() { //nolint:contextcheck // cleanup must run after the test context is cancelled.
 					_, _ = apiClient.ServiceRemove(context.Background(), result.ID, client.ServiceRemoveOptions{})
-				}, nil
+				})
+
+				return nil
 			},
 			assertGone: func(stackName string) error {
 				services, listErr := GetServiceLabels(ctx, apiClient, true, stackName)
@@ -169,12 +174,9 @@ func TestMigrateDeploymentMode_PreservesNamedVolumes(t *testing.T) {
 				_, _ = apiClient.VolumeRemove(context.Background(), volumeName, client.VolumeRemoveOptions{Force: true})
 			})
 
-			cleanupResource, err := tt.create(stackName, volumeName)
-			if err != nil {
+			if err := tt.create(t, stackName, volumeName); err != nil {
 				t.Fatalf("failed to create source deployment: %v", err)
 			}
-
-			t.Cleanup(cleanupResource)
 
 			if err := MigrateDeploymentMode(ctx, nil, dockerCli, "", stackName, "owner/repo", !tt.sourceMode, true); err != nil {
 				t.Fatalf("MigrateDeploymentMode() error = %v", err)
@@ -191,11 +193,16 @@ func TestMigrateDeploymentMode_PreservesNamedVolumes(t *testing.T) {
 	}
 }
 
-func migrationTestLabels(stackName string) map[string]string {
+func migrationTestOwnershipLabels() map[string]string {
 	return map[string]string{
-		api.ProjectLabel:              stackName,
-		swarm.StackNamespaceLabel:     stackName,
 		DocoCDLabels.Metadata.Manager: app.Name,
 		DocoCDLabels.Source.Name:      "owner/repo",
 	}
+}
+
+func swarmMigrationTestLabels(stackName string) map[string]string {
+	labels := migrationTestOwnershipLabels()
+	labels[swarm.StackNamespaceLabel] = stackName
+
+	return labels
 }
