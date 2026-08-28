@@ -12,6 +12,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
+	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/lock"
 )
 
@@ -132,6 +133,10 @@ func migrationSourceMatches(labels Labels, expectedSources map[string]struct{}) 
 	} {
 		source = normalizeRepositoryForLabelMatch(source)
 		if _, ok := expectedSources[source]; ok {
+			return true
+		}
+
+		if _, ok := expectedSources[git.GetFullName(source)]; ok {
 			return true
 		}
 	}

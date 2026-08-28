@@ -10,6 +10,10 @@ import (
 )
 
 func Exec(apiClient client.APIClient, containerID string, cmd ...string) (out string, err error) {
+	return ExecContext(context.Background(), apiClient, containerID, cmd...)
+}
+
+func ExecContext(ctx context.Context, apiClient client.APIClient, containerID string, cmd ...string) (out string, err error) {
 	// EXEC COMMAND
 	execConfig := client.ExecCreateOptions{
 		Cmd:          cmd,
@@ -17,13 +21,13 @@ func Exec(apiClient client.APIClient, containerID string, cmd ...string) (out st
 		AttachStderr: true,
 	}
 
-	res, err := apiClient.ExecCreate(context.Background(), containerID, execConfig)
+	res, err := apiClient.ExecCreate(ctx, containerID, execConfig)
 	if err != nil {
 		return "", fmt.Errorf("failed to exec command with error: %w", err)
 	}
 
 	// ATTACH TO EXEC PROCESS
-	resp, err := apiClient.ExecAttach(context.Background(), res.ID, client.ExecAttachOptions{})
+	resp, err := apiClient.ExecAttach(ctx, res.ID, client.ExecAttachOptions{})
 	if err != nil {
 		return "", fmt.Errorf("failed to attach to exec process: %w", err)
 	}
