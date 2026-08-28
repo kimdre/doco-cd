@@ -581,7 +581,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if wait {
-		err := h.runSynchronous(r.Context(), func(ctx context.Context) error {
+		err := h.runWebhookSynchronously(r.Context(), func(ctx context.Context) error {
 			return handleFn(ctx, w)
 		})
 		if err != nil {
@@ -608,6 +608,12 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 		JSONResponse(w, "job accepted", jobID, http.StatusAccepted)
 	}
+}
+
+func (h *handlerData) runWebhookSynchronously(requestCtx context.Context, run func(context.Context) error) error {
+	// Webhook senders may disconnect before a deployment finishes. Keep the
+	// deployment running while runSynchronous still honors application shutdown.
+	return h.runSynchronous(context.WithoutCancel(requestCtx), run)
 }
 
 func acquireWebhookRepoLock(ctx context.Context, repoLock *lock.RepoLock, jobID string, onWait func()) bool {

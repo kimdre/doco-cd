@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -51,6 +52,52 @@ func TestAcquireWebhookRepoLockHonorsCancellation(t *testing.T) {
 	if acquireWebhookRepoLock(ctx, repoLock, "waiter", func() {}) {
 		t.Fatal("acquired repository lock after cancellation")
 	}
+}
+
+func TestRunWebhookSynchronouslyIgnoresRequestCancellation(t *testing.T) {
+	t.Parallel()
+
+	applicationCtx, cancelApplication := context.WithCancel(t.Context())
+	background := newBackgroundWork()
+	h := handlerData{
+		backgroundCtx:  applicationCtx,
+		backgroundWork: background,
+	}
+
+	requestCtx, cancelRequest := context.WithCancel(t.Context())
+	runCtx := make(chan context.Context, 1)
+	result := make(chan error, 1)
+
+	go func() {
+		result <- h.runWebhookSynchronously(requestCtx, func(ctx context.Context) error {
+			runCtx <- ctx
+
+			<-ctx.Done()
+
+			return ctx.Err()
+		})
+	}()
+
+	ctx := <-runCtx
+
+	cancelRequest()
+
+	if err := ctx.Err(); err != nil {
+		t.Fatalf("webhook run cancelled with request: %v", err)
+	}
+
+	cancelApplication()
+
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("webhook run error = %v, want context cancellation", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("webhook run did not stop during application shutdown")
+	}
+
+	background.CloseAndWait()
 }
 
 func TestAcquireWebhookRepoLockReportsWaitAndAcquires(t *testing.T) {
