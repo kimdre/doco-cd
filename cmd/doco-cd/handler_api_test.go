@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -234,7 +235,47 @@ func TestHandlerData_ProjectApiHandler(t *testing.T) {
 			if status := rr.Code; status != tc.expectedStatus {
 				t.Errorf("handler returned wrong status code: got %v want %v", status, tc.expectedStatus)
 			}
+
+			switch tc.name {
+			case "Get all Projects":
+				assertAPIContentFields(t, rr.Body.Bytes(), []string{"id", "name", "config_files"}, []string{"ID", "Name", "ConfigFiles"})
+			case "Get Project":
+				assertAPIContentFields(t, rr.Body.Bytes(), []string{"id", "name", "exit_code", "publishers"}, []string{"ID", "Name", "ExitCode", "Publishers"})
+			}
 		})
+	}
+}
+
+func assertAPIContentFields(t *testing.T, body []byte, expected, forbidden []string) {
+	t.Helper()
+
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		t.Fatalf("invalid API response: %v", err)
+	}
+
+	contentJSON, ok := envelope["content"]
+	if !ok {
+		t.Fatalf("API response has no content envelope: %s", body)
+	}
+
+	var content []map[string]json.RawMessage
+	if err := json.Unmarshal(contentJSON, &content); err != nil {
+		t.Fatalf("invalid content envelope: %v", err)
+	}
+	if len(content) == 0 {
+		t.Fatalf("content envelope is empty: %s", body)
+	}
+
+	for _, field := range expected {
+		if _, ok := content[0][field]; !ok {
+			t.Errorf("content is missing %q: %s", field, body)
+		}
+	}
+	for _, field := range forbidden {
+		if _, ok := content[0][field]; ok {
+			t.Errorf("content contains PascalCase field %q: %s", field, body)
+		}
 	}
 }
 

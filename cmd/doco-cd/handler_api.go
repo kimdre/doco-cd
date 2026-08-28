@@ -539,7 +539,7 @@ func (h *handlerData) ProjectApiHandler(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
-		JSONResponse(w, containers, jobID, http.StatusOK)
+		JSONResponse(w, containerResponses(containers), jobID, http.StatusOK)
 	case http.MethodDelete:
 		timeoutSec := getQueryParam(r, w, jobLog, jobID, "timeout", "int", 30).(int)
 		timeout := time.Duration(timeoutSec) * time.Second
@@ -617,7 +617,7 @@ func (h *handlerData) GetProjectsApiHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	JSONResponse(w, projects, jobID, http.StatusOK)
+	JSONResponse(w, projectResponses(projects), jobID, http.StatusOK)
 }
 
 // ProjectActionApiHandler handles API requests to manage Docker Compose projects.
