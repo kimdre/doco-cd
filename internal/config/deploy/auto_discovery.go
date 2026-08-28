@@ -253,6 +253,11 @@ func autoDiscoveryCacheKey(repoRoot string, baseConfig *Config) (string, bool) {
 	composeFiles := append([]string(nil), baseConfig.ComposeFiles...)
 	sort.Strings(composeFiles)
 
+	swarmEnabled := "auto"
+	if baseConfig.Swarm.Enabled != nil {
+		swarmEnabled = strconv.FormatBool(*baseConfig.Swarm.Enabled)
+	}
+
 	return strings.Join([]string{
 		repoRoot,
 		head.Hash().String(),
@@ -263,6 +268,7 @@ func autoDiscoveryCacheKey(repoRoot string, baseConfig *Config) (string, bool) {
 		strconv.FormatBool(baseConfig.AutoDiscovery.RemoveVolumes),
 		strconv.FormatBool(baseConfig.AutoDiscovery.RemoveImages),
 		baseConfig.Name,
+		swarmEnabled,
 	}, "|"), true
 }
 
