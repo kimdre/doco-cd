@@ -26,7 +26,14 @@ type getHealthOutput struct {
 }
 
 func (h *handlerData) newMCPHandler(c *app.Config) http.Handler {
-	server := mcp.NewServer(&mcp.Implementation{Name: "doco-cd", Version: app.Version}, &mcp.ServerOptions{Logger: h.log.Logger})
+	// Suppress the verbose MCP server connection logs
+	mcpLogLevel := slog.LevelWarn
+	if h.log.Level == slog.LevelDebug {
+		mcpLogLevel = slog.LevelDebug
+	}
+
+	mcpLogger := h.log.WithLevel(mcpLogLevel)
+	server := mcp.NewServer(&mcp.Implementation{Name: "doco-cd", Version: app.Version}, &mcp.ServerOptions{Logger: mcpLogger})
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_health",
 		Description: "Verify that doco-cd can access the Docker API.",
@@ -46,7 +53,7 @@ func (h *handlerData) newMCPHandler(c *app.Config) http.Handler {
 		// Same-host reverse proxies are supported, and every request requires API-key authentication.
 		DisableLocalhostProtection: true,
 		MaxRequestBodyBytes:        c.MaxPayloadSize,
-		Logger:                     h.log.Logger,
+		Logger:                     mcpLogger,
 	})
 
 	return h.requireMCPAPIKey(c, handler)
