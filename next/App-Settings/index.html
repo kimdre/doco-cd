@@ -2212,6 +2212,8 @@
       
         
       
+        
+      
     
     
     
@@ -2268,6 +2270,33 @@
     
   
   Healthcheck
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Endpoints/MCP-Server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  MCP Server
 
     
   </span>
@@ -3024,6 +3053,12 @@
 <td>number</td>
 <td>The maximum size of the webhook payload in bytes that the HTTP server will accept</td>
 <td><code>1048576</code> (1MB = 1 * 1024 * 1024)</td>
+</tr>
+<tr>
+<td><code>MCP_ENABLED</code></td>
+<td>boolean</td>
+<td>Enables the <a data-preview="" href="../Endpoints/MCP-Server/">MCP server</a> at <code>/mcp</code>. Requires an API secret from <code>API_SECRET</code> or <code>API_SECRET_FILE</code>; requests use the same <code>x-api-key</code> authentication as the REST API.</td>
+<td><code>false</code></td>
 </tr>
 <tr>
 <td><code>METRICS_PORT</code></td>

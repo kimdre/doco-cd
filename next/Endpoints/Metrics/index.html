@@ -15,7 +15,7 @@
         <link rel="canonical" href="https://doco.cd/next/Endpoints/Metrics/">
       
       
-        <link rel="prev" href="../Healthcheck/">
+        <link rel="prev" href="../MCP-Server/">
       
       
         <link rel="next" href="../REST-API/">
@@ -1945,6 +1945,8 @@
       
         
       
+        
+      
     
     
     
@@ -2001,6 +2003,33 @@
     
   
   Healthcheck
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../MCP-Server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  MCP Server
 
     
   </span>
@@ -2517,6 +2546,8 @@
       
         
       
+        
+      
     
     
     
@@ -2661,6 +2692,22 @@ When both <code>HTTP_TLS_CERT_FILE</code> and <code>HTTP_TLS_KEY_FILE</code> are
 </span><span id="__span-0-94"><a id="__codelineno-0-94" name="__codelineno-0-94" href="#__codelineno-0-94"></a><span class="w">        </span><span class="nx">Name</span><span class="p">:</span><span class="w">      </span><span class="s">"scheduled_runs_active"</span><span class="p">,</span>
 </span><span id="__span-0-95"><a id="__codelineno-0-95" name="__codelineno-0-95" href="#__codelineno-0-95"></a><span class="w">        </span><span class="nx">Help</span><span class="p">:</span><span class="w">      </span><span class="s">"Number of currently active scheduled job runs"</span><span class="p">,</span>
 </span><span id="__span-0-96"><a id="__codelineno-0-96" name="__codelineno-0-96" href="#__codelineno-0-96"></a><span class="w">    </span><span class="p">},</span><span class="w"> </span><span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">"context"</span><span class="p">,</span><span class="w"> </span><span class="s">"stack"</span><span class="p">,</span><span class="w"> </span><span class="s">"job"</span><span class="p">,</span><span class="w"> </span><span class="s">"mode"</span><span class="p">,</span><span class="w"> </span><span class="s">"execution_mode"</span><span class="p">})</span>
+</span><span id="__span-0-97"><a id="__codelineno-0-97" name="__codelineno-0-97" href="#__codelineno-0-97"></a><span class="w">    </span><span class="nx">McpRequestsTotal</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">NewCounterVec</span><span class="p">(</span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">CounterOpts</span><span class="p">{</span>
+</span><span id="__span-0-98"><a id="__codelineno-0-98" name="__codelineno-0-98" href="#__codelineno-0-98"></a><span class="w">        </span><span class="nx">Namespace</span><span class="p">:</span><span class="w"> </span><span class="nx">MetricsNamespace</span><span class="p">,</span>
+</span><span id="__span-0-99"><a id="__codelineno-0-99" name="__codelineno-0-99" href="#__codelineno-0-99"></a><span class="w">        </span><span class="nx">Name</span><span class="p">:</span><span class="w">      </span><span class="s">"mcp_requests_total"</span><span class="p">,</span>
+</span><span id="__span-0-100"><a id="__codelineno-0-100" name="__codelineno-0-100" href="#__codelineno-0-100"></a><span class="w">        </span><span class="nx">Help</span><span class="p">:</span><span class="w">      </span><span class="s">"Total number of dispatched MCP tool calls"</span><span class="p">,</span>
+</span><span id="__span-0-101"><a id="__codelineno-0-101" name="__codelineno-0-101" href="#__codelineno-0-101"></a><span class="w">    </span><span class="p">},</span><span class="w"> </span><span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">"tool"</span><span class="p">})</span>
+</span><span id="__span-0-102"><a id="__codelineno-0-102" name="__codelineno-0-102" href="#__codelineno-0-102"></a><span class="w">    </span><span class="nx">McpErrorsTotal</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">NewCounterVec</span><span class="p">(</span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">CounterOpts</span><span class="p">{</span>
+</span><span id="__span-0-103"><a id="__codelineno-0-103" name="__codelineno-0-103" href="#__codelineno-0-103"></a><span class="w">        </span><span class="nx">Namespace</span><span class="p">:</span><span class="w"> </span><span class="nx">MetricsNamespace</span><span class="p">,</span>
+</span><span id="__span-0-104"><a id="__codelineno-0-104" name="__codelineno-0-104" href="#__codelineno-0-104"></a><span class="w">        </span><span class="nx">Name</span><span class="p">:</span><span class="w">      </span><span class="s">"mcp_errors_total"</span><span class="p">,</span>
+</span><span id="__span-0-105"><a id="__codelineno-0-105" name="__codelineno-0-105" href="#__codelineno-0-105"></a><span class="w">        </span><span class="nx">Help</span><span class="p">:</span><span class="w">      </span><span class="s">"Total number of failed dispatched MCP tool calls"</span><span class="p">,</span>
+</span><span id="__span-0-106"><a id="__codelineno-0-106" name="__codelineno-0-106" href="#__codelineno-0-106"></a><span class="w">    </span><span class="p">},</span><span class="w"> </span><span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">"tool"</span><span class="p">})</span>
+</span><span id="__span-0-107"><a id="__codelineno-0-107" name="__codelineno-0-107" href="#__codelineno-0-107"></a><span class="w">    </span><span class="nx">McpRequestDuration</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">NewHistogramVec</span><span class="p">(</span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">HistogramOpts</span><span class="p">{</span>
+</span><span id="__span-0-108"><a id="__codelineno-0-108" name="__codelineno-0-108" href="#__codelineno-0-108"></a><span class="w">        </span><span class="nx">Namespace</span><span class="p">:</span><span class="w"> </span><span class="nx">MetricsNamespace</span><span class="p">,</span>
+</span><span id="__span-0-109"><a id="__codelineno-0-109" name="__codelineno-0-109" href="#__codelineno-0-109"></a><span class="w">        </span><span class="nx">Name</span><span class="p">:</span><span class="w">      </span><span class="s">"mcp_request_duration_seconds"</span><span class="p">,</span>
+</span><span id="__span-0-110"><a id="__codelineno-0-110" name="__codelineno-0-110" href="#__codelineno-0-110"></a><span class="w">        </span><span class="nx">Help</span><span class="p">:</span><span class="w">      </span><span class="s">"Duration of dispatched MCP tool calls in seconds"</span><span class="p">,</span>
+</span><span id="__span-0-111"><a id="__codelineno-0-111" name="__codelineno-0-111" href="#__codelineno-0-111"></a><span class="w">        </span><span class="nx">Buckets</span><span class="p">:</span><span class="w">   </span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">DefBuckets</span><span class="p">,</span>
+</span><span id="__span-0-112"><a id="__codelineno-0-112" name="__codelineno-0-112" href="#__codelineno-0-112"></a><span class="w">    </span><span class="p">},</span><span class="w"> </span><span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">"tool"</span><span class="p">})</span>
 </span></code></pre></div></p>
 <h2 id="grafana-dashboard">Grafana Dashboard<a class="headerlink" href="#grafana-dashboard" title="Permanent link">&para;</a></h2>
 <p>An example for a Grafana Dashboard can be found at <a href="https://github.com/kimdre/doco-cd/discussions/583">Grafana Dashboard #583</a>.</p>
@@ -2731,7 +2778,7 @@ When both <code>HTTP_TLS_CERT_FILE</code> and <code>HTTP_TLS_KEY_FILE</code> are
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../Healthcheck/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Healthcheck">
+          <a href="../MCP-Server/" class="md-footer__link md-footer__link--prev" aria-label="Previous: MCP Server">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -2741,7 +2788,7 @@ When both <code>HTTP_TLS_CERT_FILE</code> and <code>HTTP_TLS_KEY_FILE</code> are
                 Previous
               </span>
               <div class="md-ellipsis">
-                Healthcheck
+                MCP Server
               </div>
             </div>
           </a>

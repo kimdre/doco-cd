@@ -112,6 +112,9 @@
         <loc>https://doco.cd/next/Endpoints/Healthcheck/</loc>
       </url>
       <url>
+        <loc>https://doco.cd/next/Endpoints/MCP-Server/</loc>
+      </url>
+      <url>
         <loc>https://doco.cd/next/Endpoints/Metrics/</loc>
       </url>
       <url>
