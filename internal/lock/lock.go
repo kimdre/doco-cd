@@ -1,40 +1,123 @@
 package lock
 
 import (
+	"context"
 	"strings"
 	"sync"
 )
 
 // RepoLock represents a lock for a specific repository.
 type RepoLock struct {
-	mu     sync.Mutex
-	holder string
+	mu      sync.Mutex
+	locked  bool
+	holder  string
+	waiters []*repoLockWaiter
+}
+
+type repoLockWaiter struct {
+	jobID   string
+	granted chan struct{}
 }
 
 // TryLock attempts to acquire the lock for the given jobID.
 // It returns true if the lock was successfully acquired.
 func (l *RepoLock) TryLock(jobID string) bool {
-	if l.mu.TryLock() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.locked {
+		return false
+	}
+
+	l.locked = true
+	l.holder = jobID
+
+	return true
+}
+
+// Unlock releases the lock and hands it to the next queued waiter, if any.
+// It panics when the lock is not held, mirroring sync.Mutex misuse semantics:
+// a stray Unlock would otherwise silently grant the lock to a waiter while
+// the real holder is still running.
+func (l *RepoLock) Unlock() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if !l.locked {
+		panic("lock: Unlock of unlocked RepoLock")
+	}
+
+	if len(l.waiters) == 0 {
+		l.locked = false
+		l.holder = ""
+
+		return
+	}
+
+	waiter := l.waiters[0]
+	l.waiters = l.waiters[1:]
+	l.holder = waiter.jobID
+	close(waiter.granted)
+}
+
+// Lock acquires the lock, blocking until it is available.
+func (l *RepoLock) Lock() {
+	l.LockContext(context.Background(), "")
+}
+
+// LockContext acquires the lock in waiter order or returns false when ctx is cancelled.
+func (l *RepoLock) LockContext(ctx context.Context, jobID string) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+
+	l.mu.Lock()
+	if !l.locked {
+		l.locked = true
 		l.holder = jobID
+		l.mu.Unlock()
+
 		return true
+	}
+
+	waiter := &repoLockWaiter{jobID: jobID, granted: make(chan struct{})}
+	l.waiters = append(l.waiters, waiter)
+	l.mu.Unlock()
+
+	select {
+	case <-waiter.granted:
+		return true
+	case <-ctx.Done():
+		if l.removeQueuedWaiter(waiter) {
+			return false
+		}
+
+		l.Unlock()
+
+		return false
+	}
+}
+
+func (l *RepoLock) removeQueuedWaiter(waiter *repoLockWaiter) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	for i, queued := range l.waiters {
+		if queued == waiter {
+			l.waiters = append(l.waiters[:i], l.waiters[i+1:]...)
+
+			return true
+		}
 	}
 
 	return false
 }
 
-// Unlock releases the lock.
-func (l *RepoLock) Unlock() {
-	l.holder = ""
-	l.mu.Unlock()
-}
-
-// Lock acquires the lock, blocking until it is available.
-func (l *RepoLock) Lock() {
-	l.mu.Lock()
-}
-
 // Holder returns the jobID of the current lock holder.
 func (l *RepoLock) Holder() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
 	return l.holder
 }
 

@@ -58,6 +58,10 @@ func (r handleError) Error() string {
 	return ret
 }
 
+func (r handleError) Unwrap() error {
+	return r.err
+}
+
 func earlyFailureCommitStatusDescription(err error) string {
 	if err == nil {
 		return "Failed"

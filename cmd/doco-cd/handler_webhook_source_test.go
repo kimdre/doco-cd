@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
@@ -174,6 +175,21 @@ func TestIsWebhookGitCloneURLAllowed(t *testing.T) {
 				t.Errorf("isWebhookGitCloneURLAllowed(%q, %t) = %t, want %t", tc.url, tc.rewriteApplied, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestRedactURLUserinfo(t *testing.T) {
+	t.Parallel()
+
+	const secret = "sentinel-secret"
+
+	redacted := redactURLUserinfo("https://user:" + secret + "@forgejo.internal/org/repo.git")
+	if strings.Contains(redacted, secret) || strings.Contains(redacted, "user@") {
+		t.Fatalf("redacted URL exposes userinfo: %q", redacted)
+	}
+
+	if redacted != "https://forgejo.internal/org/repo.git" {
+		t.Fatalf("redacted URL = %q", redacted)
 	}
 }
 

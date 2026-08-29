@@ -1,6 +1,7 @@
 package restapi
 
 import (
+	"crypto/subtle"
 	"errors"
 	"net/http"
 )
@@ -18,5 +19,5 @@ func ValidateApiKey(r *http.Request, apiKey string) bool {
 		return false
 	}
 
-	return r.Header.Get(KeyHeader) == apiKey
+	return subtle.ConstantTimeCompare([]byte(r.Header.Get(KeyHeader)), []byte(apiKey)) == 1
 }

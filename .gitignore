@@ -45,3 +45,4 @@ git-auth-domains.yaml
 # Agents/Copilot files
 issue.md
 .github/AGENTS.md
+.github/mcp.json

@@ -82,19 +82,19 @@ func (g GitUrl) Validate() error {
 
 	u, err := url.Parse(s)
 	if err != nil {
-		return fmt.Errorf("%w: failed to parse URL '%s'", ErrInvalidGitUrl, s)
+		return fmt.Errorf("%w: failed to parse URL", ErrInvalidGitUrl)
 	}
 
 	switch u.Scheme {
 	case "http", "https":
 		if u.Host == "" {
-			return fmt.Errorf("%w: URL must have a host, got '%s'", ErrInvalidGitUrl, s)
+			return fmt.Errorf("%w: URL must have a host", ErrInvalidGitUrl)
 		}
 
 		return nil
 	case "ssh":
 		if u.Host == "" || u.Path == "" {
-			return fmt.Errorf("%w: SSH URL must include host and path, got '%s'", ErrInvalidGitUrl, s)
+			return fmt.Errorf("%w: SSH URL must include host and path", ErrInvalidGitUrl)
 		}
 
 		return nil
@@ -103,12 +103,12 @@ func (g GitUrl) Validate() error {
 		// mounted into the container instead of hosted on a remote SCM.
 		// Only the standard file:///abs/path form (empty authority) is supported.
 		if u.Host != "" || u.Path == "" || !strings.HasPrefix(u.Path, "/") {
-			return fmt.Errorf("%w: file URL must be of the form file:///absolute/path, got '%s'", ErrInvalidGitUrl, s)
+			return fmt.Errorf("%w: file URL must be of the form file:///absolute/path", ErrInvalidGitUrl)
 		}
 
 		return nil
 	default:
-		return fmt.Errorf("%w: URL must start with http, https, ssh or file (or be an absolute local path), got '%s'", ErrInvalidGitUrl, s)
+		return fmt.Errorf("%w: URL must start with http, https, ssh or file (or be an absolute local path)", ErrInvalidGitUrl)
 	}
 }
 

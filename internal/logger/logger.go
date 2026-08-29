@@ -95,3 +95,42 @@ func New(logLevel slog.Level) *Logger {
 func (l *Logger) Critical(msg string, args ...any) {
 	l.Log(context.Background(), LevelCritical, msg, args...)
 }
+
+// WithLevel returns a new slog.Logger with the specified log level while preserving
+// the existing logger's formatting and handlers.
+func (l *Logger) WithLevel(level slog.Level) *slog.Logger {
+	jh := slog.NewJSONHandler(
+		os.Stderr,
+		&slog.HandlerOptions{
+			Level: level,
+			ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+				if a.Key == slog.TimeKey {
+					a.Key = "time"
+				}
+
+				if a.Key == slog.LevelKey {
+					level := a.Value.Any().(slog.Level)
+
+					switch {
+					case level < LevelInfo:
+						a.Value = slog.StringValue(LevelDebugName)
+					case level < LevelWarning:
+						a.Value = slog.StringValue(LevelInfoName)
+					case level < LevelError:
+						a.Value = slog.StringValue(LevelWarningName)
+					case level < LevelCritical:
+						a.Value = slog.StringValue(LevelErrorName)
+					default:
+						a.Value = slog.StringValue(LevelCriticalName)
+					}
+				}
+
+				return a
+			},
+		},
+	)
+
+	return slog.New(
+		newAttrFilterHandler(slogdedup.NewOverwriteHandler(jh, nil)),
+	)
+}
