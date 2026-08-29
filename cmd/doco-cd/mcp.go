@@ -27,9 +27,9 @@ type getHealthOutput struct {
 
 func (h *handlerData) newMCPHandler(c *app.Config) http.Handler {
 	// Suppress the verbose MCP server connection logs
-	mcpLogLevel := slog.LevelWarn
-	if h.log.Level == slog.LevelDebug {
-		mcpLogLevel = slog.LevelDebug
+	mcpLogLevel := h.log.Level
+	if h.log.Level == slog.LevelInfo {
+		mcpLogLevel = slog.LevelWarn
 	}
 
 	mcpLogger := h.log.WithLevel(mcpLogLevel)
