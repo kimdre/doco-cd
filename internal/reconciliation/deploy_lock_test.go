@@ -30,7 +30,7 @@ func TestDeploySkipsWhenContextCancelledBeforeRepoLockAcquisition(t *testing.T) 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	j.deploy(ctx, jobLog, nil, "die", events.Message{}, "trace-id", "")
+	j.deploy(ctx, jobLog, nil, "die", events.Message{}, "trace-id", "", false)
 
 	logged := output.String()
 	if !strings.Contains(logged, "reconciliation skipped") {
