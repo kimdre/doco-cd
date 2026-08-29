@@ -1566,18 +1566,21 @@ func RemoveProject(ctx context.Context, dockerCli command.Cli, projectName strin
 		return err
 	}
 
-	return service.Down(ctx, projectName, api.DownOptions{
+	return service.Down(ctx, projectName, projectDownOptions(timeout, removeVolumes, removeImages))
+}
+
+func projectDownOptions(timeout time.Duration, removeVolumes, removeImages bool) api.DownOptions {
+	images := ""
+	if removeImages {
+		images = "all"
+	}
+
+	return api.DownOptions{
 		RemoveOrphans: true,
 		Timeout:       &timeout,
 		Volumes:       removeVolumes,
-		Images: func() string {
-			if removeImages {
-				return "all"
-			}
-
-			return "local"
-		}(),
-	})
+		Images:        images,
+	}
 }
 
 // GetProjects returns a list of all projects.

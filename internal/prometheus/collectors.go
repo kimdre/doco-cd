@@ -20,6 +20,7 @@ func init() {
 		DeploymentsActive, DeploymentsQueued,
 		ScheduledRunsTotal, ScheduledRunErrorsTotal, ScheduledRunSkippedTotal,
 		ScheduledRunDuration, ScheduledRunsActive,
+		McpRequestsTotal, McpErrorsTotal, McpRequestDuration,
 	)
 }
 
@@ -123,6 +124,22 @@ var (
 		Name:      "scheduled_runs_active",
 		Help:      "Number of currently active scheduled job runs",
 	}, []string{"context", "stack", "job", "mode", "execution_mode"})
+	McpRequestsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: MetricsNamespace,
+		Name:      "mcp_requests_total",
+		Help:      "Total number of dispatched MCP tool calls",
+	}, []string{"tool"})
+	McpErrorsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: MetricsNamespace,
+		Name:      "mcp_errors_total",
+		Help:      "Total number of failed dispatched MCP tool calls",
+	}, []string{"tool"})
+	McpRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: MetricsNamespace,
+		Name:      "mcp_request_duration_seconds",
+		Help:      "Duration of dispatched MCP tool calls in seconds",
+		Buckets:   prometheus.DefBuckets,
+	}, []string{"tool"})
 	/* --8<-- [end:collectors]
 	Add new collectors above this comment */
 )

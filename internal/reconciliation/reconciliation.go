@@ -544,7 +544,12 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 
 func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConfig.Config, action string, event events.Message, traceID string, contextName string, swarmMode bool) {
 	repoLock := lock.GetRepoLock(j.info.metadata.Repository)
-	repoLock.Lock()
+	if !repoLock.LockContext(ctx, traceID) {
+		jobLog.Debug("reconciliation skipped, context cancelled while waiting for repository lock")
+
+		return
+	}
+
 	defer repoLock.Unlock()
 
 	jobLog.Info("reconciliation started")

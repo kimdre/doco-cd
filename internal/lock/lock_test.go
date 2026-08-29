@@ -1,11 +1,256 @@
 package lock
 
 import (
+	"context"
 	"strconv"
 	"sync"
 	"testing"
 	"time"
 )
+
+func TestRepoLockLockContextHonorsCancellation(t *testing.T) {
+	t.Parallel()
+
+	lock := &RepoLock{}
+	if !lock.TryLock("holder") {
+		t.Fatal("failed to acquire test lock")
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	if lock.LockContext(ctx, "waiter") {
+		t.Fatal("acquired lock after cancellation")
+	}
+
+	lock.Unlock()
+
+	if !lock.TryLock("next") {
+		t.Fatal("cancelled waiter retained the lock")
+	}
+	lock.Unlock()
+}
+
+func TestRepoLockLockContextPreservesWaiterOrder(t *testing.T) {
+	t.Parallel()
+
+	lock := &RepoLock{}
+	if !lock.TryLock("holder") {
+		t.Fatal("failed to acquire test lock")
+	}
+
+	acquired := make(chan string, 2)
+	releases := map[string]chan struct{}{
+		"first":  make(chan struct{}),
+		"second": make(chan struct{}),
+	}
+
+	for index, jobID := range []string{"first", "second"} {
+		go func() {
+			if lock.LockContext(t.Context(), jobID) {
+				acquired <- jobID
+
+				<-releases[jobID]
+				lock.Unlock()
+			}
+		}()
+
+		deadline := time.Now().Add(time.Second)
+
+		for {
+			lock.mu.Lock()
+			waiterCount := len(lock.waiters)
+			lock.mu.Unlock()
+
+			if waiterCount == index+1 {
+				break
+			}
+
+			if time.Now().After(deadline) {
+				t.Fatal("waiter was not queued")
+			}
+
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	lock.Unlock()
+
+	for _, want := range []string{"first", "second"} {
+		select {
+		case got := <-acquired:
+			if got != want {
+				t.Fatalf("acquisition order = %q, want %q", got, want)
+			}
+
+			close(releases[want])
+		case <-time.After(time.Second):
+			t.Fatalf("waiter %q did not acquire lock", want)
+		}
+	}
+}
+
+func TestRepoLockLockContextCancellationSkipsQueuedWaiter(t *testing.T) {
+	t.Parallel()
+
+	lock := &RepoLock{}
+	if !lock.TryLock("holder") {
+		t.Fatal("failed to acquire test lock")
+	}
+
+	cancelledCtx, cancel := context.WithCancel(t.Context())
+	firstDone := make(chan bool, 1)
+
+	go func() {
+		firstDone <- lock.LockContext(cancelledCtx, "cancelled")
+	}()
+
+	secondAcquired := make(chan bool, 1)
+	go func() {
+		secondAcquired <- lock.LockContext(t.Context(), "second")
+	}()
+
+	deadline := time.Now().Add(time.Second)
+
+	for {
+		lock.mu.Lock()
+		waiterCount := len(lock.waiters)
+		lock.mu.Unlock()
+
+		if waiterCount == 2 {
+			break
+		}
+
+		if time.Now().After(deadline) {
+			t.Fatal("waiters were not queued")
+		}
+
+		time.Sleep(time.Millisecond)
+	}
+
+	cancel()
+
+	if acquired := <-firstDone; acquired {
+		t.Fatal("cancelled waiter acquired lock")
+	}
+
+	lock.Unlock()
+
+	select {
+	case acquired := <-secondAcquired:
+		if !acquired {
+			t.Fatal("second waiter did not acquire lock")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("second waiter did not acquire lock")
+	}
+
+	lock.Unlock()
+}
+
+// TestRepoLockCancelledWaiterAfterGrantReleasesOwnership covers the
+// cancellation-races-with-handoff path of LockContext: the waiter's context is
+// cancelled, but Unlock grants it ownership before it can dequeue itself, so
+// removeQueuedWaiter returns false and LockContext must run the compensating
+// Unlock. Without that compensation the lock is leaked forever.
+//
+// The interleaving is forced by holding lock.mu while cancelling: the waiter
+// deterministically takes the ctx.Done() select case (granted is not yet
+// closed) and then blocks on mu inside removeQueuedWaiter, after which the
+// test performs the grant before releasing mu.
+func TestRepoLockCancelledWaiterAfterGrantReleasesOwnership(t *testing.T) {
+	t.Parallel()
+
+	for attempt := range 10 {
+		lock := &RepoLock{}
+		if !lock.TryLock("holder") {
+			t.Fatal("failed to acquire test lock")
+		}
+
+		ctx, cancel := context.WithCancel(t.Context())
+		got := make(chan bool, 1)
+
+		go func() {
+			got <- lock.LockContext(ctx, "cancelled")
+		}()
+
+		deadline := time.Now().Add(time.Second)
+
+		for {
+			lock.mu.Lock()
+			waiterCount := len(lock.waiters)
+			lock.mu.Unlock()
+
+			if waiterCount == 1 {
+				break
+			}
+
+			if time.Now().After(deadline) {
+				t.Fatal("waiter was not queued")
+			}
+
+			time.Sleep(time.Millisecond)
+		}
+
+		lock.mu.Lock()
+		cancel()
+
+		// Give the waiter time to observe ctx.Done() and block on mu inside
+		// removeQueuedWaiter before the grant happens.
+		time.Sleep(50 * time.Millisecond)
+
+		// Grant ownership to the cancelled waiter while still holding mu,
+		// mirroring what Unlock does when it hands off to the queue head.
+		waiter := lock.waiters[0]
+		lock.waiters = lock.waiters[1:]
+		lock.holder = waiter.jobID
+		close(waiter.granted)
+		lock.mu.Unlock()
+
+		var acquired bool
+
+		select {
+		case acquired = <-got:
+		case <-time.After(time.Second):
+			t.Fatal("cancelled waiter did not return")
+		}
+
+		if acquired {
+			// The scheduler outran the 50ms window and the waiter consumed the
+			// grant instead of ctx.Done(); clean up and retry the interleaving.
+			lock.Unlock()
+
+			continue
+		}
+
+		// LockContext returned false after receiving ownership, so its
+		// compensating Unlock must have released the lock.
+		if !lock.TryLock("next") {
+			t.Fatalf("attempt %d: lock was leaked after cancelled handoff", attempt)
+		}
+
+		lock.Unlock()
+
+		return
+	}
+
+	t.Fatal("cancellation-after-grant interleaving was never observed")
+}
+
+// TestRepoLockUnlockOfUnlockedPanics pins the sync.Mutex-style misuse
+// semantics: releasing a lock that is not held is a programmer error and must
+// panic instead of silently corrupting the waiter queue.
+func TestRepoLockUnlockOfUnlockedPanics(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("Unlock of an unlocked RepoLock did not panic")
+		}
+	}()
+
+	(&RepoLock{}).Unlock()
+}
 
 // reset helper to isolate tests.
 func resetRepoLocks(t *testing.T) {

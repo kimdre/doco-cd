@@ -58,7 +58,9 @@ type deploymentRunTarget struct {
 
 // deploymentRunTracker is a thread-safe, in-memory registry for tracking deployment runs.
 // Runs are stored by jobID and organized by trigger type (webhook, poll, scheduled_job).
-// Memory is bounded by: max entries per type + 7-day TTL expiration.
+// Memory is bounded for terminal runs by: max entries per type + 7-day TTL expiration.
+// Active (accepted/running) runs are never evicted until they reach a terminal status.
+// All methods are safe to call on a nil tracker and act as no-ops.
 type deploymentRunTracker struct {
 	mu                sync.RWMutex
 	runs              map[string]deploymentRun
@@ -79,7 +81,7 @@ func (h *handlerData) deploymentTargetObserver(jobID string) func(string, string
 
 // newDeploymentRunTracker creates a new deployment run tracker with per-type limits.
 // Defaults to 50 entries per trigger type (webhook, poll, scheduled_job) if not specified.
-// Runs older than 7 days are automatically evicted.
+// Terminal runs older than 7 days are automatically evicted.
 func newDeploymentRunTracker(maxPerType map[deploymentRunTrigger]int) *deploymentRunTracker {
 	if maxPerType == nil {
 		maxPerType = make(map[deploymentRunTrigger]int)
@@ -110,6 +112,10 @@ func newDeploymentRunTracker(maxPerType map[deploymentRunTrigger]int) *deploymen
 // This is called when a deployment is initiated (webhook, API trigger, or scheduled).
 // Triggers cleanup of expired runs before insertion.
 func (t *deploymentRunTracker) TrackAccepted(jobID string, trigger deploymentRunTrigger) {
+	if t == nil {
+		return
+	}
+
 	now := time.Now().UTC()
 
 	t.cleanup(now)
@@ -125,6 +131,10 @@ func (t *deploymentRunTracker) TrackAccepted(jobID string, trigger deploymentRun
 
 // MarkRunning updates a run to running state and records the start time.
 func (t *deploymentRunTracker) MarkRunning(jobID string) {
+	if t == nil {
+		return
+	}
+
 	now := time.Now().UTC()
 
 	t.update(jobID, func(r *deploymentRun) {
@@ -139,6 +149,10 @@ func (t *deploymentRunTracker) MarkRunning(jobID string) {
 
 // MarkSucceeded marks a run as succeeded with an optional message.
 func (t *deploymentRunTracker) MarkSucceeded(jobID, message string) {
+	if t == nil {
+		return
+	}
+
 	now := time.Now().UTC()
 
 	t.update(jobID, func(r *deploymentRun) {
@@ -155,6 +169,10 @@ func (t *deploymentRunTracker) MarkSucceeded(jobID, message string) {
 
 // MarkFailed marks a run as failed with an error message.
 func (t *deploymentRunTracker) MarkFailed(jobID, message string) {
+	if t == nil {
+		return
+	}
+
 	now := time.Now().UTC()
 
 	t.update(jobID, func(r *deploymentRun) {
@@ -171,6 +189,10 @@ func (t *deploymentRunTracker) MarkFailed(jobID, message string) {
 
 // MarkSkipped marks a run as skipped with an optional reason message.
 func (t *deploymentRunTracker) MarkSkipped(jobID, message string) {
+	if t == nil {
+		return
+	}
+
 	now := time.Now().UTC()
 
 	t.update(jobID, func(r *deploymentRun) {
@@ -187,6 +209,10 @@ func (t *deploymentRunTracker) MarkSkipped(jobID, message string) {
 
 // SetMetadata updates run metadata (repository, deployment target, git revision).
 func (t *deploymentRunTracker) SetMetadata(jobID, repository, target, revision string) {
+	if t == nil {
+		return
+	}
+
 	repository = strings.TrimSpace(repository)
 	target = strings.TrimSpace(target)
 	revision = strings.TrimSpace(revision)
@@ -209,6 +235,10 @@ func (t *deploymentRunTracker) SetMetadata(jobID, repository, target, revision s
 }
 
 func (t *deploymentRunTracker) AddDeployment(jobID, stack, contextName string) {
+	if t == nil {
+		return
+	}
+
 	stack = strings.TrimSpace(stack)
 	target := deploymentRunTarget{
 		Stack:   stack,
@@ -234,6 +264,10 @@ func (t *deploymentRunTracker) AddDeployment(jobID, stack, contextName string) {
 
 // Get retrieves a run by its jobID. Returns the run and a boolean indicating if it was found.
 func (t *deploymentRunTracker) Get(jobID string) (deploymentRun, bool) {
+	if t == nil {
+		return deploymentRun{}, false
+	}
+
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
@@ -246,6 +280,10 @@ func (t *deploymentRunTracker) Get(jobID string) (deploymentRun, bool) {
 // Runs are returned in reverse chronological order (newest first).
 // Limit defaults to 50 if not specified. Triggers automatic cleanup of expired runs.
 func (t *deploymentRunTracker) List(limit int, trigger string, status string) []deploymentRun {
+	if t == nil {
+		return []deploymentRun{}
+	}
+
 	if limit < 1 {
 		limit = 50
 	}
@@ -364,7 +402,7 @@ func (t *deploymentRunTracker) cleanup(now time.Time) {
 		newOrder := make([]string, 0, len(jobIDs))
 		for _, jobID := range jobIDs {
 			run, ok := t.runs[jobID]
-			if ok && run.CreatedAt.After(cutoffTime) {
+			if ok && (run.CreatedAt.After(cutoffTime) || !isTerminalDeploymentRunStatus(run.Status)) {
 				newOrder = append(newOrder, jobID)
 			} else if ok {
 				delete(t.runs, jobID)
@@ -375,8 +413,7 @@ func (t *deploymentRunTracker) cleanup(now time.Time) {
 	}
 }
 
-// upsert adds or updates a run. Enforces per-type max entry limits with FIFO eviction.
-// When a trigger type exceeds its limit, the oldest run of that type is removed.
+// upsert adds or updates a run and prunes terminal history above the per-type limit.
 func (t *deploymentRunTracker) upsert(run deploymentRun) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -387,6 +424,7 @@ func (t *deploymentRunTracker) upsert(run deploymentRun) {
 		}
 
 		t.runs[run.JobID] = run
+		t.pruneTerminalRuns(run.Trigger)
 
 		return
 	}
@@ -394,20 +432,29 @@ func (t *deploymentRunTracker) upsert(run deploymentRun) {
 	t.runs[run.JobID] = run
 	order := t.orderByTrigger[run.Trigger]
 	t.orderByTrigger[run.Trigger] = append(order, run.JobID)
+	t.pruneTerminalRuns(run.Trigger)
+}
 
-	maxForType := t.maxEntriesPerType[run.Trigger]
+func (t *deploymentRunTracker) pruneTerminalRuns(trigger deploymentRunTrigger) {
+	maxForType := t.maxEntriesPerType[trigger]
 	if maxForType < 1 {
 		maxForType = 50
 	}
 
-	if len(t.orderByTrigger[run.Trigger]) <= maxForType {
-		return
-	}
+	for len(t.orderByTrigger[trigger]) > maxForType {
+		terminalIndex := slices.IndexFunc(t.orderByTrigger[trigger], func(jobID string) bool {
+			run, ok := t.runs[jobID]
 
-	// Evict oldest entry of this trigger type
-	oldestJobID := t.orderByTrigger[run.Trigger][0]
-	t.orderByTrigger[run.Trigger] = t.orderByTrigger[run.Trigger][1:]
-	delete(t.runs, oldestJobID)
+			return ok && isTerminalDeploymentRunStatus(run.Status)
+		})
+		if terminalIndex < 0 {
+			return
+		}
+
+		jobID := t.orderByTrigger[trigger][terminalIndex]
+		t.orderByTrigger[trigger] = slices.Delete(t.orderByTrigger[trigger], terminalIndex, terminalIndex+1)
+		delete(t.runs, jobID)
+	}
 }
 
 // update modifies an existing run using the provided callback function.
@@ -423,4 +470,9 @@ func (t *deploymentRunTracker) update(jobID string, fn func(*deploymentRun)) {
 
 	fn(&run)
 	t.runs[jobID] = run
+	t.pruneTerminalRuns(run.Trigger)
+}
+
+func isTerminalDeploymentRunStatus(status deploymentRunStatus) bool {
+	return status == deploymentRunStatusSucceeded || status == deploymentRunStatusFailed || status == deploymentRunStatusSkipped
 }

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/docker/cli/cli/command"
@@ -142,6 +143,17 @@ func rewriteHostInStandardURL(sourceURL, matchHost, target string) (string, bool
 	return u.String(), true
 }
 
+func redactURLUserinfo(value string) string {
+	u, err := url.Parse(value)
+	if err != nil || u.Host == "" {
+		return "[REDACTED_URL]"
+	}
+
+	u.User = nil
+
+	return u.String()
+}
+
 // rewriteHostInSCPURL rewrites the host in an SCP-style Git URL (e.g., "git@github.com:user/repo.git")
 // if it matches the specified matchHost, replacing it with the target host.
 func rewriteHostInSCPURL(sourceURL, matchHost, target string) (string, bool) {
@@ -235,18 +247,28 @@ func repositoryNameFromWebhookPayload(payload webhook.ParsedPayload) string {
 }
 
 type handlerData struct {
-	appConfig      *app.Config          // Application configuration
-	appVersion     string               // Application version
-	dataMountPoint container.MountPoint // Mount point for the data directory
-	dockerCli      command.Cli          // Docker CLI client
-	contexts       *docker.ContextRegistry
-	log            *logger.Logger // Logger for logging messages
-	runTracker     *deploymentRunTracker
-	runPoll        pollRunner
-	scheduler      *scheduler.Manager
-	secretProvider *secretprovider.SecretProvider
-	testName       string // Overwrites the deployConfig.Name to make test deployments unique and prevent conflicts between tests when running in parallel. Not used in production.
+	appConfig  *app.Config // Application configuration
+	appVersion string      // Application version
+	// backgroundCtx is the application-lifecycle context used to detach
+	// background work from request contexts. Storing it on this
+	// process-lifetime struct is the deliberate lifecycle exception to
+	// "do not store contexts in structs" (compare net/http.Server.BaseContext).
+	backgroundCtx       context.Context
+	backgroundWG        *sync.WaitGroup
+	backgroundWork      *backgroundWork
+	dataMountPoint      container.MountPoint // Mount point for the data directory
+	dockerCli           command.Cli          // Docker CLI client
+	contexts            *docker.ContextRegistry
+	log                 *logger.Logger // Logger for logging messages
+	runTracker          *deploymentRunTracker
+	runPoll             pollRunner
+	scheduler           *scheduler.Manager
+	triggerScheduledJob scheduledJobTrigger
+	secretProvider      *secretprovider.SecretProvider
+	testName            string // Overwrites the deployConfig.Name to make test deployments unique and prevent conflicts between tests when running in parallel. Not used in production.
 }
+
+var errWebhookDeploymentPanicked = errors.New("webhook deployment panicked")
 
 // onError handles errors by logging them, sending a JSON error response, and sending a notification.
 // cause is the error behind the response: when a failure notification was already
@@ -292,25 +314,20 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget string, metadata notification.Metadata,
 	dockerCli command.Cli, contexts *docker.ContextRegistry, secretProvider *secretprovider.SecretProvider,
 	testName string, runTracker *deploymentRunTracker,
-) {
+) error {
 	startTime := time.Now()
 
 	repoName := repositoryNameFromWebhookPayload(payload)
-	if runTracker != nil {
-		runTracker.SetMetadata(metadata.JobID, repoName, customTarget, notification.GetRevision(payload.Ref, payload.RevisionString()))
-		runTracker.MarkRunning(metadata.JobID)
-	}
+	runTracker.SetMetadata(metadata.JobID, repoName, customTarget, notification.GetRevision(payload.Ref, payload.RevisionString()))
+	runTracker.MarkRunning(metadata.JobID)
 
 	if payload.Source != webhook.PayloadSourceOCI && payload.Ref == "" {
 		msg := "no reference provided in webhook payload, skipping event"
 		jobLog.Warn(msg)
 		JSONError(w, msg, msg, metadata.JobID, http.StatusBadRequest)
+		runTracker.MarkSkipped(metadata.JobID, msg)
 
-		if runTracker != nil {
-			runTracker.MarkSkipped(metadata.JobID, msg)
-		}
-
-		return
+		return nil
 	}
 
 	sourceType := config.SourceTypeGit
@@ -327,16 +344,13 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		if !isWebhookGitCloneURLAllowed(sourceRef, cloneURLOverrideApplied) {
 			err := errors.New("local filesystem Git URLs in webhook payloads require a configured source URL rewrite")
 			onError(w, jobLog.With(logger.ErrAttr(err)), "webhook clone URL is not allowed", err, http.StatusForbidden, metadata, err)
+			runTracker.MarkFailed(metadata.JobID, err.Error())
 
-			if runTracker != nil {
-				runTracker.MarkFailed(metadata.JobID, err.Error())
-			}
-
-			return
+			return nil
 		}
 
 		if cloneURLOverrideApplied {
-			jobLog.Debug("using configured webhook clone URL override", slog.String("clone_url", sourceRef))
+			jobLog.Debug("using configured webhook clone URL override", slog.String("clone_url", redactURLUserinfo(sourceRef)))
 		}
 	}
 
@@ -378,12 +392,9 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		sshAuth, authErr := git.GetAuthMethod(payload.SSHUrl, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken)
 		if authErr != nil {
 			onError(w, jobLog.With(logger.ErrAttr(authErr)), "failed to resolve SSH auth method", authErr.Error(), http.StatusInternalServerError, metadata, authErr)
+			runTracker.MarkFailed(metadata.JobID, "failed to resolve SSH auth method: "+authErr.Error())
 
-			if runTracker != nil {
-				runTracker.MarkFailed(metadata.JobID, "failed to resolve SSH auth method: "+authErr.Error())
-			}
-
-			return
+			return nil
 		}
 
 		if sshAuth != nil {
@@ -401,51 +412,43 @@ func HandleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		elapsedTime := time.Since(startTime)
 		jobLog.Info(msg, slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()))
 		JSONResponse(w, msg, metadata.JobID, http.StatusAccepted)
+		runTracker.MarkSkipped(metadata.JobID, msg)
 
-		if runTracker != nil {
-			runTracker.MarkSkipped(metadata.JobID, msg)
-		}
-
-		return
+		return nil
 	}
 
 	if deployErr != nil {
-		// In synchronous mode we should return an error to the caller
-		// For async mode, w is noopResponseWriter and JSONError is a no-op
-		if hr, ok := deployErr.(handleError); ok {
-			onError(w, jobLog.With(logger.ErrAttr(hr.err)), hr.msg, hr.err.Error(), hr.httpStatusCode, metadata, hr.err)
-
-			if runTracker != nil {
-				runTracker.MarkFailed(metadata.JobID, hr.Error())
-			}
-		} else {
-			onError(w, jobLog.With(logger.ErrAttr(deployErr)), "deployment failed", deployErr.Error(), http.StatusInternalServerError, metadata, deployErr)
-
-			if runTracker != nil {
-				runTracker.MarkFailed(metadata.JobID, deployErr.Error())
-			}
+		if isLifecycleCancellation(deployErr) {
+			return deployErr
 		}
 
-		return
+		// In synchronous mode we should return an error to the caller
+		// For async mode, w is noopResponseWriter and JSONError is a no-op
+		if hr, ok := errors.AsType[handleError](deployErr); ok {
+			onError(w, jobLog.With(logger.ErrAttr(hr.err)), hr.msg, hr.err.Error(), hr.httpStatusCode, metadata, hr.err)
+			runTracker.MarkFailed(metadata.JobID, hr.Error())
+		} else {
+			onError(w, jobLog.With(logger.ErrAttr(deployErr)), "deployment failed", deployErr.Error(), http.StatusInternalServerError, metadata, deployErr)
+			runTracker.MarkFailed(metadata.JobID, deployErr.Error())
+		}
+
+		return nil
 	}
 
 	msg := "job completed successfully"
 	elapsedTime := time.Since(startTime)
 	jobLog.Info(msg, slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()))
 	JSONResponse(w, msg, metadata.JobID, http.StatusCreated)
-
-	if runTracker != nil {
-		runTracker.MarkSucceeded(metadata.JobID, msg)
-	}
+	runTracker.MarkSucceeded(metadata.JobID, msg)
 
 	prometheus.WebhookRequestsTotal.WithLabelValues(repoName).Inc()
 	prometheus.WebhookDuration.WithLabelValues(repoName).Observe(elapsedTime.Seconds())
+
+	return nil
 }
 
 // WebhookHandler handles incoming webhook requests.
 func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := context.WithoutCancel(r.Context())
-
 	customTarget := r.PathValue("customTarget")
 
 	// Add a job id to the context to track deployments in the logs
@@ -471,13 +474,11 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		Revision:                 "",
 		DeploymentTargetObserver: h.deploymentTargetObserver(jobID),
 	}
-	if h.runTracker != nil {
-		h.runTracker.TrackAccepted(jobID, deploymentRunTriggerWebhook)
-		h.runTracker.SetMetadata(jobID, metadata.Repository, customTarget, metadata.Revision)
+	h.runTracker.TrackAccepted(jobID, deploymentRunTriggerWebhook)
+	h.runTracker.SetMetadata(jobID, metadata.Repository, customTarget, metadata.Revision)
 
-		if wait {
-			h.runTracker.MarkRunning(jobID)
-		}
+	if wait {
+		h.runTracker.MarkRunning(jobID)
 	}
 
 	// Limit the request body size
@@ -515,16 +516,11 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 			metadata.Repository = repositoryName
 
 			metadata.Revision = notification.GetRevision(payload.Ref, payload.RevisionString())
-			if h.runTracker != nil {
-				h.runTracker.SetMetadata(jobID, metadata.Repository, customTarget, metadata.Revision)
-			}
+			h.runTracker.SetMetadata(jobID, metadata.Repository, customTarget, metadata.Revision)
 		}
 
 		onError(w, jobLog.With(slog.String("ip", h.requestIP(r)), logger.ErrAttr(err)), errMsg, err.Error(), statusCode, metadata, err)
-
-		if h.runTracker != nil {
-			h.runTracker.MarkFailed(jobID, errMsg+": "+err.Error())
-		}
+		h.runTracker.MarkFailed(jobID, errMsg+": "+err.Error())
 
 		return
 	}
@@ -533,21 +529,15 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		errMsg := "branch or tag deletion event received, skipping webhook event"
 		jobLog.Info(errMsg)
 		JSONResponse(w, errMsg, jobID, http.StatusAccepted)
-
-		if h.runTracker != nil {
-			h.runTracker.SetMetadata(jobID, repositoryNameFromWebhookPayload(payload), customTarget, notification.GetRevision(payload.Ref, payload.RevisionString()))
-			h.runTracker.MarkSkipped(jobID, errMsg)
-		}
+		h.runTracker.SetMetadata(jobID, repositoryNameFromWebhookPayload(payload), customTarget, notification.GetRevision(payload.Ref, payload.RevisionString()))
+		h.runTracker.MarkSkipped(jobID, errMsg)
 
 		return
 	} else if eErr != nil {
 		errMsg := "failed to check if event is branch or tag deletion"
 		jobLog.Error(errMsg, logger.ErrAttr(eErr))
 		JSONError(w, errMsg, eErr.Error(), jobID, http.StatusInternalServerError)
-
-		if h.runTracker != nil {
-			h.runTracker.MarkFailed(jobID, errMsg+": "+eErr.Error())
-		}
+		h.runTracker.MarkFailed(jobID, errMsg+": "+eErr.Error())
 
 		return
 	}
@@ -557,9 +547,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		metadata.Revision = notification.GetRevision(payload.Ref, payload.RevisionString())
 	}
 
-	if h.runTracker != nil {
-		h.runTracker.SetMetadata(jobID, metadata.Repository, customTarget, metadata.Revision)
-	}
+	h.runTracker.SetMetadata(jobID, metadata.Repository, customTarget, metadata.Revision)
 
 	lockEntity := "repository"
 	lockLogValue := metadata.Repository
@@ -572,45 +560,67 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	// Prevent concurrent deployments for the same repository using a lock
 	repoLock := lock.GetRepoLock(metadata.Repository)
 
-	handleFn := func(w http.ResponseWriter) {
+	handleFn := func(ctx context.Context, w http.ResponseWriter) (err error) {
 		defer func() {
 			if r := recover(); r != nil {
 				logRecoveredPanic(jobLog, "webhook deployment", r)
 
-				if h.runTracker != nil {
-					h.runTracker.MarkFailed(jobID, "webhook deployment panicked")
-				}
+				err = errWebhookDeploymentPanicked
 			}
 		}()
 
-		locked := make(chan struct{})
-
-		go func() {
-			repoLock.Lock()
-			close(locked)
-		}()
-
-		select {
-		case <-locked:
-			// Acquired immediately
-		case <-time.After(10 * time.Millisecond):
+		if !acquireWebhookRepoLock(ctx, repoLock, jobID, func() {
 			jobLog.Info("waiting for webhook "+lockEntity+" lock", slog.String(lockEntity, lockLogValue))
-			<-locked
+		}) {
+			return ctx.Err()
 		}
 
 		defer repoLock.Unlock()
 
-		HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, metadata, h.dockerCli, h.contexts, h.secretProvider, h.testName, h.runTracker)
+		return HandleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, metadata, h.dockerCli, h.contexts, h.secretProvider, h.testName, h.runTracker)
 	}
 
 	if wait {
-		handleFn(w)
-	} else {
-		// Async mode: respond immediately and run the deployment in the background.
-		JSONResponse(w, "job accepted", jobID, http.StatusAccepted)
+		err := h.runWebhookSynchronously(r.Context(), func(ctx context.Context) error {
+			return handleFn(ctx, w)
+		})
+		if err != nil {
+			h.runTracker.MarkFailed(jobID, err.Error())
 
-		go handleFn(noopResponseWriter{})
+			switch {
+			case errors.Is(err, errWebhookDeploymentPanicked):
+				JSONError(w, err.Error(), "", jobID, http.StatusInternalServerError)
+			case isLifecycleCancellation(err):
+				JSONError(w, err.Error(), "", jobID, http.StatusServiceUnavailable)
+			}
+		}
+	} else {
+		if err := h.runBackground(r.Context(), func(backgroundCtx context.Context) {
+			if err := handleFn(backgroundCtx, noopResponseWriter{}); err != nil {
+				h.runTracker.MarkFailed(jobID, err.Error())
+			}
+		}); err != nil {
+			h.runTracker.MarkFailed(jobID, err.Error())
+			JSONError(w, err.Error(), "", jobID, http.StatusServiceUnavailable)
+
+			return
+		}
+
+		JSONResponse(w, "job accepted", jobID, http.StatusAccepted)
 	}
+}
+
+func (h *handlerData) runWebhookSynchronously(requestCtx context.Context, run func(context.Context) error) error {
+	// Webhook senders may disconnect before a deployment finishes. Keep the
+	// deployment running while runSynchronous still honors application shutdown.
+	return h.runSynchronous(context.WithoutCancel(requestCtx), run)
+}
+
+func acquireWebhookRepoLock(ctx context.Context, repoLock *lock.RepoLock, jobID string, onWait func()) bool {
+	waitTimer := time.AfterFunc(10*time.Millisecond, onWait)
+	defer waitTimer.Stop()
+
+	return repoLock.LockContext(ctx, jobID)
 }
 
 // noopResponseWriter is used when we run HandleEvent asynchronously.

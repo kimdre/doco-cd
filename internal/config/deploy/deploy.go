@@ -75,7 +75,7 @@ type Config struct {
 		Environment                   map[string]string // Environment stores environment variables for variable interpolation in the compose project
 		Hash                          string            `yaml:"-"`          // Hash is a hash of the Config struct
 		OciTrustPolicyOverrideTrusted bool              `yaml:"-" json:"-"` // true only for trusted config sources (e.g. POLL_CONFIG inline deployments)
-	} // Internal holds internal configuration values that are not set by the user
+	} `json:"-"` // Internal holds internal configuration values that are not set by the user
 }
 
 // SwarmConfig contains Docker Swarm-specific deployment settings.
