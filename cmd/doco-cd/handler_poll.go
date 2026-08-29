@@ -371,13 +371,14 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 		pollConfig, webhook.ParsedPayload{},
 	)
 
+	nextRun := time.Now().Add(pollConfig.Interval).Format(time.RFC3339)
 	elapsedTime := time.Since(startTime)
 
 	if deployErr != nil {
 		pollError(jobLog, metadata, deployErr)
-		jobLog.Warn("job completed with errors", log.ErrAttr(deployErr), slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()))
+		jobLog.Warn("job completed with errors", log.ErrAttr(deployErr), slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()), slog.String("next_run", nextRun))
 	} else {
-		jobLog.Info("job completed successfully", slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()))
+		jobLog.Info("job completed successfully", slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()), slog.String("next_run", nextRun))
 	}
 
 	prometheus.PollTotal.WithLabelValues(repoName).Inc()
