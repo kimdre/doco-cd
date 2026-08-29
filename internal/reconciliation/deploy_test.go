@@ -65,6 +65,36 @@ func TestDeploy_RejectsUnverifiedOCIArtifact(t *testing.T) {
 	}
 }
 
+func TestGroupDeployConfigsByMode(t *testing.T) {
+	t.Parallel()
+
+	compose := deployConfig.New("compose", "main")
+	swarm := deployConfig.New("swarm", "main")
+	automatic := deployConfig.New("automatic", "main")
+	composeEnabled := false
+	swarmEnabled := true
+	compose.Swarm.Enabled = &composeEnabled
+	swarm.Swarm.Enabled = &swarmEnabled
+
+	grouped := groupDeployConfigsByMode([]*deployConfig.Config{compose, swarm, automatic}, true)
+	if got := grouped[false]; len(got) != 1 || got[0] != compose {
+		t.Fatalf("compose group = %#v, want only explicit compose config", got)
+	}
+
+	if got := grouped[true]; len(got) != 2 || got[0] != swarm || got[1] != automatic {
+		t.Fatalf("swarm group = %#v, want explicit and automatic swarm configs", got)
+	}
+
+	unavailable := groupDeployConfigsByMode([]*deployConfig.Config{compose, swarm, automatic}, false)
+	if got := unavailable[false]; len(got) != 2 || got[0] != compose || got[1] != automatic {
+		t.Fatalf("unavailable swarm compose group = %#v, want explicit compose and automatic config", got)
+	}
+
+	if len(unavailable[true]) != 0 {
+		t.Fatalf("unavailable swarm group = %#v, want no valid swarm config", unavailable[true])
+	}
+}
+
 func TestDeploy(t *testing.T) {
 	encryption.SetupAgeKeyEnvVar(t)
 

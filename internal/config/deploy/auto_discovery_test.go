@@ -308,6 +308,19 @@ func TestMergeConfig(t *testing.T) {
 			t.Errorf("RestartWindow should remain 300, got %d", base.Reconciliation.RestartWindow)
 		}
 	})
+
+	t.Run("MergeSwarmEnabled_NestedStruct", func(t *testing.T) {
+		t.Parallel()
+
+		base := &Config{Swarm: SwarmConfig{Enabled: new(true)}}
+		override := &Config{Swarm: SwarmConfig{Enabled: new(false)}}
+
+		mergeConfig(base, override)
+
+		if base.Swarm.Enabled == nil || *base.Swarm.Enabled {
+			t.Fatalf("expected nested swarm.enabled override to be false, got %v", base.Swarm.Enabled)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -609,6 +622,21 @@ func TestAutoDiscoverDeployments_CacheKeyedByHeadAndSettings(t *testing.T) {
 
 	if len(second) != 1 {
 		t.Fatalf("expected cached result with 1 config when HEAD is unchanged, got %d", len(second))
+	}
+
+	if err := createTestFile(t, filepath.Join(serviceDir, "compose.yaml"), "services:\n  app:\n    image: nginx"); err != nil {
+		t.Fatal(err)
+	}
+
+	baseConfig.Swarm.Enabled = new(false)
+
+	modeChanged, err := autoDiscoverDeployments(repoRoot, baseConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(modeChanged) != 1 || modeChanged[0].Swarm.Enabled == nil || *modeChanged[0].Swarm.Enabled {
+		t.Fatalf("expected swarm.enabled change to invalidate the cache, got %#v", modeChanged)
 	}
 
 	if err := createTestFile(t, filepath.Join(serviceDir, "compose.yaml"), "services:\n  app:\n    image: nginx:alpine"); err != nil {

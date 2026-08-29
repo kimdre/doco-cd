@@ -8,9 +8,12 @@ tags:
 Doco-CD also supports [Docker Swarm mode](https://docs.docker.com/engine/swarm/), which allows you to manage a cluster of Docker engines as a single virtual engine. 
 This is useful for deploying applications across multiple nodes and ensuring high availability.
 
-If the Docker daemon is running in Swarm mode, doco-cd will detect this automatically and deploy everything as Swarm stacks instead of simple Compose projects.
+If the Docker daemon is running in Swarm mode, doco-cd will detect this automatically and deploy deployments as Swarm stacks instead of simple Compose projects.
 
-You can overwrite this to always deploy as Compose projects while running doco-cd in a Swarm environment by setting the `DOCKER_SWARM_FEATURES` environment variable to `false` (See the [Docker Settings](../Docker-Settings.md)).
+Set `swarm.enabled` in an individual deployment configuration to override this selection: `true` deploys a Swarm stack and `false` deploys a Compose project.
+This lets both deployment types run through one doco-cd instance on the same Swarm manager. If omitted, auto-detection is used.
+
+You can overwrite this globally to always deploy as Compose projects while running doco-cd in a Swarm environment by setting the `DOCKER_SWARM_FEATURES` environment variable to `false` (See the [Docker Settings](../Docker-Settings.md)).
 
 The deployment happens the same way as with Docker Compose projects, see the [Deploy Settings](../Deploy-Settings.md)
 

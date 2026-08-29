@@ -142,12 +142,28 @@ func (w *Watcher) checkAndRotateContext(ctx context.Context, result docker.Conte
 		return
 	}
 
+	// A Swarm manager can also host ordinary Compose deployments. Scan both
+	// resource kinds independently so rotation redeploys with the same mode
+	// the project was deployed with.
+	modes := []bool{false}
+	if result.SwarmMode {
+		modes = append(modes, true)
+	}
+
+	for _, swarmMode := range modes {
+		w.checkAndRotateContextMode(ctx, result, contextLog, swarmMode)
+	}
+}
+
+func (w *Watcher) checkAndRotateContextMode(ctx context.Context, result docker.ContextClientResult, contextLog *slog.Logger, swarmMode bool) {
 	services, err := docker.GetLabeledServices(
-		ctx, result.Cli.Client(), result.SwarmMode,
+		ctx, result.Cli.Client(), swarmMode,
 		docker.DocoCDLabels.Deployment.CertRotatable, "true",
 	)
 	if err != nil {
-		contextLog.Error("failed to list certificate-rotatable deployments", logger.ErrAttr(err))
+		contextLog.Error("failed to list certificate-rotatable deployments",
+			slog.Bool("swarm_mode", swarmMode), logger.ErrAttr(err))
+
 		return
 	}
 
@@ -164,18 +180,23 @@ func (w *Watcher) checkAndRotateContext(ctx context.Context, result docker.Conte
 		contextLog.Info("certificate needs rotation",
 			slog.String("project", project),
 			slog.String("reason", strings.Join(reasons[project], ",")),
+			slog.Bool("swarm_mode", swarmMode),
 		)
 
-		if err := docker.RotateProjectCertificates(ctx, result.Name, result.Cli, labels, w.secretProvider, result.SwarmMode); err != nil {
+		if err := docker.RotateProjectCertificates(ctx, result.Name, result.Cli, labels, w.secretProvider, swarmMode); err != nil {
 			contextLog.Error("failed to rotate certificate",
 				slog.String("project", project),
+				slog.Bool("swarm_mode", swarmMode),
 				logger.ErrAttr(err),
 			)
 
 			continue
 		}
 
-		contextLog.Info("certificate rotation redeploy completed", slog.String("project", project))
+		contextLog.Info("certificate rotation redeploy completed",
+			slog.String("project", project),
+			slog.Bool("swarm_mode", swarmMode),
+		)
 	}
 }
 
