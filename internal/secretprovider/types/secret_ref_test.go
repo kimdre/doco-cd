@@ -93,66 +93,101 @@ func TestEncodeExternalSecretRefs(t *testing.T) {
 }
 
 func TestInterpolateExternalSecretRefs(t *testing.T) {
-	t.Setenv("PROJECT_STAGE", "lab")
+	tests := []struct {
+		name      string
+		envVars   map[string]string
+		input     map[string]ExternalSecretRef
+		enabled   bool
+		check     func(t *testing.T, got map[string]ExternalSecretRef, in map[string]ExternalSecretRef)
+		wantError bool
+	}{
+		{
+			name: "interpolate with defaults",
+			envVars: map[string]string{
+				"PROJECT_STAGE": "lab",
+			},
+			input: map[string]ExternalSecretRef{
+				"DEFAULT":    {LegacyRef: "kv:db-${PROJECT_STAGE:-prod}"},
+				"SET":        {LegacyRef: "kv:db-${PROJECT_STAGE}"},
+				"STRUCTURED": {StoreRef: "store", RemoteRef: map[string]any{"key": "${PROJECT_STAGE}"}},
+			},
+			enabled: true,
+			check: func(t *testing.T, got map[string]ExternalSecretRef, in map[string]ExternalSecretRef) {
+				if got["DEFAULT"].LegacyRef != "kv:db-lab" || got["SET"].LegacyRef != "kv:db-lab" {
+					t.Fatalf("unexpected interpolated refs: %#v", got)
+				}
 
-	in := map[string]ExternalSecretRef{
-		"DEFAULT":    {LegacyRef: "kv:db-${PROJECT_STAGE:-prod}"},
-		"SET":        {LegacyRef: "kv:db-${PROJECT_STAGE}"},
-		"STRUCTURED": {StoreRef: "store", RemoteRef: map[string]any{"key": "${PROJECT_STAGE}"}},
+				if in["DEFAULT"].LegacyRef != "kv:db-${PROJECT_STAGE:-prod}" {
+					t.Fatal("input refs were mutated")
+				}
+
+				if !reflect.DeepEqual(got["STRUCTURED"], in["STRUCTURED"]) {
+					t.Fatal("structured ref was changed")
+				}
+			},
+		},
+		{
+			name: "default when empty",
+			envVars: map[string]string{
+				"PROJECT_STAGE": "",
+			},
+			input: map[string]ExternalSecretRef{
+				"DB": {LegacyRef: "kv:db-${PROJECT_STAGE:-prod}"},
+			},
+			enabled: true,
+			check: func(t *testing.T, got map[string]ExternalSecretRef, _ map[string]ExternalSecretRef) {
+				if got["DB"].LegacyRef != "kv:db-prod" {
+					t.Fatalf("got %q, want %q", got["DB"].LegacyRef, "kv:db-prod")
+				}
+			},
+		},
+		{
+			name: "reject empty result",
+			envVars: map[string]string{
+				"SECRET_ID": "",
+			},
+			input: map[string]ExternalSecretRef{
+				"DB": {LegacyRef: "${SECRET_ID}"},
+			},
+			enabled:   true,
+			wantError: true,
+		},
+		{
+			name: "skip when disabled",
+			envVars: map[string]string{
+				"PROJECT_STAGE": "lab",
+			},
+			input: map[string]ExternalSecretRef{
+				"DB": {LegacyRef: "kv:db-${PROJECT_STAGE:-prod}"},
+			},
+			enabled: false,
+			check: func(t *testing.T, got map[string]ExternalSecretRef, _ map[string]ExternalSecretRef) {
+				if got["DB"].LegacyRef != "kv:db-${PROJECT_STAGE:-prod}" {
+					t.Fatalf("got %q while interpolation is disabled", got["DB"].LegacyRef)
+				}
+			},
+		},
 	}
 
-	got, err := InterpolateExternalSecretRefs(in, true)
-	if err != nil {
-		t.Fatalf("unexpected interpolation error: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for k, v := range tt.envVars {
+				t.Setenv(k, v)
+			}
 
-	if got["DEFAULT"].LegacyRef != "kv:db-lab" || got["SET"].LegacyRef != "kv:db-lab" {
-		t.Fatalf("unexpected interpolated refs: %#v", got)
-	}
+			got, err := InterpolateExternalSecretRefs(tt.input, tt.enabled)
 
-	if in["DEFAULT"].LegacyRef != "kv:db-${PROJECT_STAGE:-prod}" {
-		t.Fatal("input refs were mutated")
-	}
+			if (err != nil) != tt.wantError {
+				if tt.wantError {
+					t.Fatalf("expected interpolation error, got nil")
+				} else {
+					t.Fatalf("unexpected interpolation error: %v", err)
+				}
+			}
 
-	if !reflect.DeepEqual(got["STRUCTURED"], in["STRUCTURED"]) {
-		t.Fatal("structured ref was changed")
-	}
-}
-
-func TestInterpolateExternalSecretRefs_DefaultValue(t *testing.T) {
-	t.Setenv("PROJECT_STAGE", "")
-
-	got, err := InterpolateExternalSecretRefs(
-		map[string]ExternalSecretRef{"DB": {LegacyRef: "kv:db-${PROJECT_STAGE:-prod}"}}, true)
-	if err != nil {
-		t.Fatalf("unexpected interpolation error: %v", err)
-	}
-
-	if got["DB"].LegacyRef != "kv:db-prod" {
-		t.Fatalf("got %q, want %q", got["DB"].LegacyRef, "kv:db-prod")
-	}
-}
-
-func TestInterpolateExternalSecretRefs_RejectsEmptyResult(t *testing.T) {
-	t.Setenv("SECRET_ID", "")
-
-	_, err := InterpolateExternalSecretRefs(
-		map[string]ExternalSecretRef{"DB": {LegacyRef: "${SECRET_ID}"}}, true)
-	if err == nil {
-		t.Fatal("expected interpolation error")
-	}
-}
-
-func TestInterpolateExternalSecretRefs_Disabled(t *testing.T) {
-	t.Setenv("PROJECT_STAGE", "lab")
-
-	got, err := InterpolateExternalSecretRefs(
-		map[string]ExternalSecretRef{"DB": {LegacyRef: "kv:db-${PROJECT_STAGE:-prod}"}}, false)
-	if err != nil {
-		t.Fatalf("unexpected interpolation error: %v", err)
-	}
-
-	if got["DB"].LegacyRef != "kv:db-${PROJECT_STAGE:-prod}" {
-		t.Fatalf("got %q while interpolation is disabled", got["DB"].LegacyRef)
+			if !tt.wantError && tt.check != nil {
+				tt.check(t, got, tt.input)
+			}
+		})
 	}
 }
