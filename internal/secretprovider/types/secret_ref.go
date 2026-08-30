@@ -5,9 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
 
 	"github.com/compose-spec/compose-go/v2/template"
 	"go.yaml.in/yaml/v4"
+)
+
+var (
+	// simpleBracedVariable matches an unguarded braced variable, for example ${SECRET_ID}.
+	simpleBracedVariable = regexp.MustCompile(`\$\{[A-Za-z_][A-Za-z0-9_]*\}`)
+	// simpleVariable matches an unguarded variable, for example $SECRET_ID.
+	simpleVariable = regexp.MustCompile(`\$[A-Za-z_][A-Za-z0-9_]*`)
 )
 
 // ExternalSecretRef represents one external secret reference in deploy config.
@@ -40,6 +49,10 @@ func (r *ExternalSecretRef) UnmarshalYAML(node *yaml.Node) error {
 		var v string
 		if err := node.Decode(&v); err != nil {
 			return err
+		}
+
+		if v == "" {
+			return errors.New("invalid external secret reference: string must not be empty")
 		}
 
 		r.LegacyRef = v
@@ -83,6 +96,10 @@ func (r *ExternalSecretRef) UnmarshalYAML(node *yaml.Node) error {
 func (r *ExternalSecretRef) EncodedReference() (string, error) {
 	if r.LegacyRef != "" {
 		return r.LegacyRef, nil
+	}
+
+	if r.StoreRef == "" && r.RemoteRef == nil {
+		return "", errors.New("invalid external secret reference: reference is empty")
 	}
 
 	b, err := json.Marshal(struct {
@@ -145,12 +162,12 @@ func InterpolateExternalSecretRefs(in map[string]ExternalSecretRef, enabled bool
 			continue
 		}
 
-		value, err := template.SubstituteWithOptions(ref.LegacyRef, os.LookupEnv, template.WithoutLogging)
+		value, err := template.SubstituteWithOptions(requireExternalSecretVariables(ref.LegacyRef), os.LookupEnv, template.WithoutLogging)
 		if err != nil {
 			return nil, fmt.Errorf("interpolate external secret %q: %w", envName, err)
 		}
 
-		if value == "" {
+		if strings.TrimSpace(value) == "" {
 			return nil, fmt.Errorf("interpolate external secret %q: reference is empty after interpolation", envName)
 		}
 
@@ -159,4 +176,20 @@ func InterpolateExternalSecretRefs(in map[string]ExternalSecretRef, enabled bool
 	}
 
 	return out, nil
+}
+
+// requireExternalSecretVariables rewrites unguarded variables as requiredCompose variables
+// while preserving defaults, presence operators, and escapes.
+func requireExternalSecretVariables(ref string) string {
+	const escapedDollar = "\x00"
+
+	ref = strings.ReplaceAll(ref, "$$", escapedDollar)
+	ref = simpleBracedVariable.ReplaceAllStringFunc(ref, func(variable string) string {
+		return variable[:len(variable)-1] + "?}"
+	})
+	ref = simpleVariable.ReplaceAllStringFunc(ref, func(variable string) string {
+		return "${" + variable[1:] + "?}"
+	})
+
+	return strings.ReplaceAll(ref, escapedDollar, "$$")
 }
