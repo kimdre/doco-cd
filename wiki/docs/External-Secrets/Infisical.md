@@ -76,7 +76,7 @@ Compose project.
 
 ## Combining both interpolation layers
 
-`INTERPOLATE_EXTERNAL_SECRETS` applies only to the locator in `.doco-cd.yml`.
+[`INTERPOLATE_EXTERNAL_SECRETS`](../External-Secrets/index.md#with-interpolation) applies only to the locator in `.doco-cd.yml`.
 Infisical secret references apply later, inside the value fetched from
 Infisical. For example:
 
