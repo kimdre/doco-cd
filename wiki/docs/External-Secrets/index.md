@@ -34,16 +34,6 @@ See the provider-specific pages for details.
 
 Doco-CD uses variable interpolation to replace variables in your Compose files with the values fetched from the external secret provider, see the [Compose file reference](https://docs.docker.com/reference/compose-file/interpolation/) for more information and examples.
 
-External-secret references can optionally support Compose-style interpolation using environment variables set on the doco-cd deployment itself. Set `INTERPOLATE_EXTERNAL_SECRETS=true` to enable this feature. It is disabled by default:
-
-```yaml title=".doco-cd.yml"
-name: myapp
-external_secrets:
-  DB_PASSWORD: "kv:db-${PROJECT_STAGE:-prod}"
-```
-
-With `INTERPOLATE_EXTERNAL_SECRETS=true` and `PROJECT_STAGE=lab` set in the doco-cd container or process environment, the provider receives `kv:db-lab`. If `PROJECT_STAGE` is not set, the default `prod` is used. Only legacy string references are interpolated; structured webhook references are preserved unchanged. Enable this option only when the external secret references are trusted, because referenced process environment variables are included in provider requests.
-
 For example with [Bitwarden Secrets Manager](Bitwarden-Secrets-Manager.md), if you want to use secrets named `DB_PASSWORD` and `LABEL_SECRET` in your Compose file, you can reference it like this:
 
 ```yaml title=".doco-cd.yml"
@@ -102,3 +92,23 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: supersecretpassword123 # Value of external secret fetched from Bitwarden Secrets Manager
 ```
+
+### With Interpolation
+
+External-secret references can optionally support Compose-style interpolation using environment variables set on the doco-cd deployment itself. 
+Set `INTERPOLATE_EXTERNAL_SECRETS=true` to enable this feature. It is disabled by default:
+
+```yaml title=".doco-cd.yml"
+name: myapp
+external_secrets:
+  DB_PASSWORD: "kv:db-${PROJECT_STAGE:-prod}"
+```
+
+With `INTERPOLATE_EXTERNAL_SECRETS=true` and `PROJECT_STAGE=lab` set in the doco-cd container, the provider receives `kv:db-lab`. 
+If `PROJECT_STAGE` is not set, the default `prod` is used. 
+
+!!! note "Only legacy string references are interpolated"
+    Structured webhook references are preserved unchanged. 
+
+!!! info "Only use with trusted external secret references"
+    Enable this option only when the external secret references are trusted, because referenced process environment variables are included in provider requests.
