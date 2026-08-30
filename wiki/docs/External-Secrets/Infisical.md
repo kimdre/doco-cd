@@ -28,6 +28,8 @@ A valid secret reference should use the syntax:
 
 !!! warning
     Machine accounts can only access projects for which you have granted read permissions.
+    When using [Infisical secret references](https://infisical.com/docs/documentation/platform/secret-reference),
+    the machine identity also needs read access to every referenced secret and its environment and folder.
 
 ### Example
 
@@ -40,3 +42,50 @@ external_secrets:
   OTHER_PASSWORD: "0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:/Test/Sub/TEST_SECRET"
   USERNAME: 0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:Test/Sub/TEST_SECRET
 ```
+
+## Infisical secret references
+
+You can reference other Infisical secrets, including imported secrets, in a
+secret's value. Define expressions such as `${DB_HOST}` in the value stored in
+Infisical, not in the `external_secrets` locator.
+
+For example, an Infisical secret named `DATABASE_URL` can contain:
+
+```text
+postgres://${DB_HOST}/myapp
+```
+
+The `.doco-cd.yml` file continues to identify that secret using the doco-cd
+locator format:
+
+```yaml title=".doco-cd.yml"
+external_secrets:
+  DATABASE_URL: 0db45926-c97c-40d4-a3aa-fefd5d5fb492:prod:DATABASE_URL
+```
+
+Infisical resolves `${DB_HOST}` before doco-cd injects `DATABASE_URL` into the
+Compose project.
+
+!!! warning "Validate reference permissions"
+    Infisical secret-reference expansion requires access to every secret in the
+    reference chain. Depending on the Infisical server and API behavior, a
+    resolution problem can fail the request or leave reference text unresolved.
+    The SDK does not expose a separate "fully resolved" status, so doco-cd trusts
+    and injects the value returned by Infisical. Validate the machine identity's
+    permissions and the expanded value in Infisical before deployment.
+
+## Combining both interpolation layers
+
+[`INTERPOLATE_EXTERNAL_SECRETS`](../External-Secrets/index.md#with-interpolation) applies only to the locator in `.doco-cd.yml`.
+Infisical secret references apply later, inside the value fetched from
+Infisical. For example:
+
+```yaml title=".doco-cd.yml"
+external_secrets:
+  DATABASE_URL: "0db45926-c97c-40d4-a3aa-fefd5d5fb492:${PROJECT_STAGE:-prod}:DATABASE_URL"
+```
+
+With `INTERPOLATE_EXTERNAL_SECRETS=true`, doco-cd first uses `PROJECT_STAGE` to
+select the Infisical environment. Infisical then retrieves `DATABASE_URL` from
+that environment and expands references such as `${DB_HOST}` in its stored
+value.
