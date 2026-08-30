@@ -2396,6 +2396,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Using External Secrets in Deployments">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#with-interpolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        With Interpolation
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -2655,6 +2672,23 @@ If a variable is set in both an external secret and in a <code>.env</code> file,
 </span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="hll"><span class="w">      </span><span class="nt">POSTGRES_USER</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">postgres</span>
 </span></span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="hll"><span class="w">      </span><span class="nt">POSTGRES_PASSWORD</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">supersecretpassword123</span><span class="w"> </span><span class="c1"># Value of external secret fetched from Bitwarden Secrets Manager</span>
 </span></span></code></pre></div>
+<h3 id="with-interpolation">With Interpolation<a class="headerlink" href="#with-interpolation" title="Permanent link">&para;</a></h3>
+<p>External-secret references can optionally support Compose-style interpolation using environment variables set on the doco-cd deployment itself. 
+Set <code>INTERPOLATE_EXTERNAL_SECRETS=true</code> to enable this feature. It is disabled by default:</p>
+<div class="language-yaml highlight"><span class="filename">.doco-cd.yml</span><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myapp</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">external_secrets</span><span class="p">:</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="nt">DB_PASSWORD</span><span class="p">:</span><span class="w"> </span><span class="s">"kv:db-${PROJECT_STAGE:-prod}"</span>
+</span></code></pre></div>
+<p>With <code>INTERPOLATE_EXTERNAL_SECRETS=true</code> and <code>PROJECT_STAGE=lab</code> set in the doco-cd container, the provider receives <code>kv:db-lab</code>. 
+If <code>PROJECT_STAGE</code> is not set, the default <code>prod</code> is used. </p>
+<div class="admonition note">
+<p class="admonition-title">Only legacy string references are interpolated</p>
+<p>Structured webhook references are preserved unchanged. </p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">Only use with trusted external secret references</p>
+<p>Enable this option only when the external secret references are trusted, because referenced process environment variables are included in provider requests.</p>
+</div>
 
 
   <nav class="md-tags" >
