@@ -280,13 +280,17 @@ func TestShouldSkipOCIDeployment(t *testing.T) {
 		forceRecreate bool
 		deployed      string
 		resolved      string
+		deployedHash  string
+		resolvedHash  string
 		want          bool
 	}{
 		{
-			name:          "skip when digest unchanged",
+			name:          "skip when digest and project hash unchanged",
 			forceRecreate: false,
 			deployed:      "sha256:abc",
 			resolved:      "sha256:abc",
+			deployedHash:  "project-abc",
+			resolvedHash:  "project-abc",
 			want:          true,
 		},
 		{
@@ -294,6 +298,17 @@ func TestShouldSkipOCIDeployment(t *testing.T) {
 			forceRecreate: false,
 			deployed:      "sha256:abc",
 			resolved:      "sha256:def",
+			deployedHash:  "project-abc",
+			resolvedHash:  "project-abc",
+			want:          false,
+		},
+		{
+			name:          "do not skip when project hash changed",
+			forceRecreate: false,
+			deployed:      "sha256:abc",
+			resolved:      "sha256:abc",
+			deployedHash:  "project-abc",
+			resolvedHash:  "project-def",
 			want:          false,
 		},
 		{
@@ -301,6 +316,8 @@ func TestShouldSkipOCIDeployment(t *testing.T) {
 			forceRecreate: false,
 			deployed:      "",
 			resolved:      "sha256:def",
+			deployedHash:  "project-abc",
+			resolvedHash:  "project-abc",
 			want:          false,
 		},
 		{
@@ -308,6 +325,24 @@ func TestShouldSkipOCIDeployment(t *testing.T) {
 			forceRecreate: false,
 			deployed:      "sha256:def",
 			resolved:      "",
+			deployedHash:  "project-abc",
+			resolvedHash:  "project-abc",
+			want:          false,
+		},
+		{
+			name:          "do not skip when deployed project hash missing",
+			forceRecreate: false,
+			deployed:      "sha256:abc",
+			resolved:      "sha256:abc",
+			resolvedHash:  "project-abc",
+			want:          false,
+		},
+		{
+			name:          "do not skip when resolved project hash missing",
+			forceRecreate: false,
+			deployed:      "sha256:abc",
+			resolved:      "sha256:abc",
+			deployedHash:  "project-abc",
 			want:          false,
 		},
 		{
@@ -315,6 +350,8 @@ func TestShouldSkipOCIDeployment(t *testing.T) {
 			forceRecreate: true,
 			deployed:      "sha256:abc",
 			resolved:      "sha256:abc",
+			deployedHash:  "project-abc",
+			resolvedHash:  "project-abc",
 			want:          false,
 		},
 		{
@@ -322,17 +359,51 @@ func TestShouldSkipOCIDeployment(t *testing.T) {
 			forceRecreate: false,
 			deployed:      "  sha256:abc  ",
 			resolved:      "sha256:abc",
+			deployedHash:  "  project-abc  ",
+			resolvedHash:  "project-abc",
 			want:          true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := shouldSkipOCIDeployment(tt.forceRecreate, tt.deployed, tt.resolved)
+			got := shouldSkipOCIDeployment(tt.forceRecreate, tt.deployed, tt.resolved, tt.deployedHash, tt.resolvedHash)
 			if got != tt.want {
 				t.Errorf("shouldSkipOCIDeployment() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestShouldSkipOCIDeployment_InterpolationEnvironmentChanged(t *testing.T) {
+	t.Parallel()
+
+	makeProject := func(value string) *types.Project {
+		return &types.Project{
+			Services: types.Services{
+				"app": {
+					Name:  "app",
+					Image: "myapp:latest",
+					Environment: types.MappingWithEquals{
+						"SECRET": &value,
+					},
+				},
+			},
+		}
+	}
+
+	deployedHash, err := docker.ProjectHash(makeProject("old-secret"))
+	if err != nil {
+		t.Fatalf("hash deployed project: %v", err)
+	}
+
+	resolvedHash, err := docker.ProjectHash(makeProject("new-secret"))
+	if err != nil {
+		t.Fatalf("hash resolved project: %v", err)
+	}
+
+	if shouldSkipOCIDeployment(false, "sha256:abc", "sha256:abc", deployedHash, resolvedHash) {
+		t.Fatal("expected environment-only project change to prevent OCI deployment skip")
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
 	"github.com/kimdre/doco-cd/internal/config"
+	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/git"
 )
@@ -85,19 +86,21 @@ func autoDiscoveryConfigLabelDriftServices(deployedStatus map[docker.Service]doc
 	return affected, firstObserved
 }
 
-func shouldSkipOCIDeployment(forceRecreate bool, deployedDigest, resolvedDigest string) bool {
+func shouldSkipOCIDeployment(forceRecreate bool, deployedDigest, resolvedDigest, deployedProjectHash, resolvedProjectHash string) bool {
 	if forceRecreate {
 		return false
 	}
 
 	deployedDigest = strings.TrimSpace(deployedDigest)
 	resolvedDigest = strings.TrimSpace(resolvedDigest)
+	deployedProjectHash = strings.TrimSpace(deployedProjectHash)
+	resolvedProjectHash = strings.TrimSpace(resolvedProjectHash)
 
-	if deployedDigest == "" || resolvedDigest == "" {
+	if deployedDigest == "" || resolvedDigest == "" || deployedProjectHash == "" || resolvedProjectHash == "" {
 		return false
 	}
 
-	return deployedDigest == resolvedDigest
+	return deployedDigest == resolvedDigest && deployedProjectHash == resolvedProjectHash
 }
 
 // shouldRecoverFromMissingDeployedCommit checks if the error indicates that the deployed commit is no longer reachable
@@ -124,7 +127,19 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	if s.SecretProvider != nil && *s.SecretProvider != nil && len(s.DeployConfig.ExternalSecrets) > 0 {
 		stageLog.Debug("resolving external secrets", slog.Any("external_secrets", s.DeployConfig.ExternalSecrets))
 
-		encodedSecrets, err := secrettypes.EncodeExternalSecretRefs(s.DeployConfig.ExternalSecrets)
+		appConfig, err := app.GetConfig()
+		if err != nil {
+			return fmt.Errorf("failed to get app config: %w", err)
+		}
+
+		interpolatedRefs, err := secrettypes.InterpolateExternalSecretRefs(s.DeployConfig.ExternalSecrets, appConfig.InterpolateExternalSecrets)
+		if err != nil {
+			return fmt.Errorf("failed to interpolate external secret references: %w", err)
+		}
+
+		s.DeployConfig.ExternalSecrets = interpolatedRefs
+
+		encodedSecrets, err := secrettypes.EncodeExternalSecretRefs(interpolatedRefs)
 		if err != nil {
 			return fmt.Errorf("failed to encode external secret references: %w", err)
 		}
@@ -212,29 +227,35 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	if s.Repository.Source == config.SourceTypeOCI {
 		deployedDigest := deployedState.GetDeploymentCommitSHA()
 		resolvedDigest := s.Repository.Revision
+		deployedProjectHash := deployedState.GetDeploymentComposeHash()
+
+		resolvedProjectHash, err := s.loadComposeProjectHash(ctx)
+		if err != nil {
+			return err
+		}
 
 		if !deploymentModeMigrated &&
-			shouldSkipOCIDeployment(s.DeployConfig.ForceRecreate, deployedDigest, resolvedDigest) &&
+			shouldSkipOCIDeployment(s.DeployConfig.ForceRecreate, deployedDigest, resolvedDigest, deployedProjectHash, resolvedProjectHash) &&
 			!autoDiscoveryConfigChanged &&
 			!retryAfterFailure {
-			stageLog.Debug("OCI artifact digest unchanged, skipping deployment",
+			stageLog.Debug("OCI artifact digest and compose project unchanged, skipping deployment",
 				slog.String("deployed_digest", strings.TrimSpace(deployedDigest)),
 				slog.String("resolved_digest", strings.TrimSpace(resolvedDigest)),
+				slog.String("deployed_project_hash", strings.TrimSpace(deployedProjectHash)),
+				slog.String("resolved_project_hash", strings.TrimSpace(resolvedProjectHash)),
 			)
 
 			return ErrSkipDeployment
 		}
 
-		if strings.TrimSpace(deployedDigest) == "" {
-			stageLog.Debug("no previous OCI deployment digest found, proceeding with deployment",
-				slog.String("resolved_digest", strings.TrimSpace(resolvedDigest)),
-			)
-		} else {
-			stageLog.Debug("OCI artifact digest changed, proceeding with deployment",
-				slog.String("deployed_digest", strings.TrimSpace(deployedDigest)),
-				slog.String("resolved_digest", strings.TrimSpace(resolvedDigest)),
-			)
-		}
+		stageLog.Debug("OCI deployment state changed, proceeding with deployment",
+			slog.String("deployed_digest", strings.TrimSpace(deployedDigest)),
+			slog.String("resolved_digest", strings.TrimSpace(resolvedDigest)),
+			slog.String("deployed_project_hash", strings.TrimSpace(deployedProjectHash)),
+			slog.String("resolved_project_hash", strings.TrimSpace(resolvedProjectHash)),
+			slog.Bool("digest_changed", strings.TrimSpace(deployedDigest) != strings.TrimSpace(resolvedDigest)),
+			slog.Bool("project_changed", strings.TrimSpace(deployedProjectHash) != strings.TrimSpace(resolvedProjectHash)),
+		)
 
 		if autoDiscoveryConfigChanged {
 			s.DeployState.changedServices = append(s.DeployState.changedServices, docker.Change{
@@ -244,8 +265,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		}
 
 		if retryForceRecreate {
-			// No compose project is loaded at this point. An empty service
-			// list force-recreates the whole project.
+			// An empty service list force-recreates the whole project.
 			s.DeployState.changedServices = append(s.DeployState.changedServices, docker.Change{
 				Type: docker.ChangeTypeFailedDeployRetry,
 			})
@@ -266,32 +286,9 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			slog.String("deployed_commit", deployedCommit),
 			slog.String("latest_commit", latestCommit))
 
-		// Validate and sanitize the working directory
-		if strings.Contains(s.DeployConfig.WorkingDirectory, "..") {
-			return errors.New("invalid working directory: must not contain '..' to prevent directory traversal")
-		}
-
-		extAbsWorkingDir, err := getAbsWorkingDir(s.Repository.PathExternal, s.DeployConfig.WorkingDirectory)
+		newHash, err := s.loadComposeProjectHash(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to get absolute path of external working directory: %w", err)
-		}
-
-		intAbsWorkingDir, err := getAbsWorkingDir(s.Repository.PathInternal, s.DeployConfig.WorkingDirectory)
-		if err != nil {
-			return fmt.Errorf("failed to get absolute path of internal working directory: %w", err)
-		}
-
-		s.DeployConfig.ComposeFiles, err = docker.CheckDefaultComposeFiles(s.DeployConfig.ComposeFiles, intAbsWorkingDir)
-		if err != nil {
-			return fmt.Errorf("failed to check for default compose files: %w", err)
-		}
-
-		s.Docker.Project, err = docker.LoadCompose(
-			ctx, s.Docker.Cmd, s.Repository.PathExternal, extAbsWorkingDir, s.DeployConfig.Name,
-			s.DeployConfig.ComposeFiles, s.DeployConfig.EnvFiles,
-			s.DeployConfig.Profiles, s.DeployConfig.Internal.Environment)
-		if err != nil {
-			return fmt.Errorf("failed to load compose project: %w", err)
+			return err
 		}
 
 		if s.DeployConfig.ForceRecreate {
@@ -312,17 +309,6 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			} else {
 				stageLog.Debug("deployed image digests match registry")
 			}
-		}
-
-		// pki-role external secrets issue a fresh certificate on every resolution.
-		// Substitute the resolved cert/key PEM values with a stable per-ref placeholder
-		// before hashing so the hash only changes when the ref changes, not when the
-		// cert is re-issued (which would otherwise trigger a spurious redeploy every cycle).
-		hashProject := docker.WithNormalizedEnvValues(s.Docker.Project, pkiRoleNormMap(s.DeployConfig.ExternalSecrets, s.DeployConfig.Internal.Environment))
-
-		newHash, err := docker.ProjectHash(hashProject)
-		if err != nil {
-			return fmt.Errorf("failed to get project hash: %w", err)
 		}
 
 		curProjectHash := deployedState.GetDeploymentComposeHash()
@@ -426,6 +412,47 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	}
 
 	return nil
+}
+
+func (s *StageManager) loadComposeProjectHash(ctx context.Context) (string, error) {
+	if strings.Contains(s.DeployConfig.WorkingDirectory, "..") {
+		return "", errors.New("invalid working directory: must not contain '..' to prevent directory traversal")
+	}
+
+	extAbsWorkingDir, err := getAbsWorkingDir(s.Repository.PathExternal, s.DeployConfig.WorkingDirectory)
+	if err != nil {
+		return "", fmt.Errorf("failed to get absolute path of external working directory: %w", err)
+	}
+
+	intAbsWorkingDir, err := getAbsWorkingDir(s.Repository.PathInternal, s.DeployConfig.WorkingDirectory)
+	if err != nil {
+		return "", fmt.Errorf("failed to get absolute path of internal working directory: %w", err)
+	}
+
+	s.DeployConfig.ComposeFiles, err = docker.CheckDefaultComposeFiles(s.DeployConfig.ComposeFiles, intAbsWorkingDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to check for default compose files: %w", err)
+	}
+
+	s.Docker.Project, err = docker.LoadCompose(
+		ctx, s.Docker.Cmd, s.Repository.PathExternal, extAbsWorkingDir, s.DeployConfig.Name,
+		s.DeployConfig.ComposeFiles, s.DeployConfig.EnvFiles,
+		s.DeployConfig.Profiles, s.DeployConfig.Internal.Environment)
+	if err != nil {
+		return "", fmt.Errorf("failed to load compose project: %w", err)
+	}
+
+	// pki-role external secrets issue a fresh certificate on every resolution.
+	// Hash their references instead of the resolved values to avoid redeploying
+	// solely because an unchanged role issued a fresh certificate.
+	hashProject := docker.WithNormalizedEnvValues(s.Docker.Project, pkiRoleNormMap(s.DeployConfig.ExternalSecrets, s.DeployConfig.Internal.Environment))
+
+	projectHash, err := docker.ProjectHash(hashProject)
+	if err != nil {
+		return "", fmt.Errorf("failed to get project hash: %w", err)
+	}
+
+	return projectHash, nil
 }
 
 // getAbsWorkingDir returns the absolute path of the working directory based on the repository path and the working directory specified in the deployment configuration.
