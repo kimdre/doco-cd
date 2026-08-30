@@ -1455,6 +1455,28 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#infisical-secret-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Infisical secret references
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#combining-both-interpolation-layers" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Combining both interpolation layers
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2490,6 +2512,28 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#infisical-secret-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Infisical secret references
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#combining-both-interpolation-layers" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Combining both interpolation layers
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2687,7 +2731,9 @@
 <code>projectId:env:[/some/path/]key</code></p>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
-<p>Machine accounts can only access projects for which you have granted read permissions.</p>
+<p>Machine accounts can only access projects for which you have granted read permissions.
+When using <a href="https://infisical.com/docs/documentation/platform/secret-reference">Infisical secret references</a>,
+the machine identity also needs read access to every referenced secret and its environment and folder.</p>
 </div>
 <h3 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h3>
 <p>For example in your <code>.doco-cd.yml</code>:</p>
@@ -2697,6 +2743,40 @@
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">OTHER_PASSWORD</span><span class="p">:</span><span class="w"> </span><span class="s">"0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:/Test/Sub/TEST_SECRET"</span>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">USERNAME</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0db45926-c97c-40d4-a3aa-fefd5d5fb492:dev:Test/Sub/TEST_SECRET</span>
 </span></code></pre></div>
+<h2 id="infisical-secret-references">Infisical secret references<a class="headerlink" href="#infisical-secret-references" title="Permanent link">&para;</a></h2>
+<p>You can reference other Infisical secrets, including imported secrets, in a
+secret's value. Define expressions such as <code>${DB_HOST}</code> in the value stored in
+Infisical, not in the <code>external_secrets</code> locator.</p>
+<p>For example, an Infisical secret named <code>DATABASE_URL</code> can contain:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>postgres://${DB_HOST}/myapp
+</span></code></pre></div>
+<p>The <code>.doco-cd.yml</code> file continues to identify that secret using the doco-cd
+locator format:</p>
+<div class="language-yaml highlight"><span class="filename">.doco-cd.yml</span><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">external_secrets</span><span class="p">:</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">DATABASE_URL</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0db45926-c97c-40d4-a3aa-fefd5d5fb492:prod:DATABASE_URL</span>
+</span></code></pre></div>
+<p>Infisical resolves <code>${DB_HOST}</code> before doco-cd injects <code>DATABASE_URL</code> into the
+Compose project.</p>
+<div class="admonition warning">
+<p class="admonition-title">Validate reference permissions</p>
+<p>Infisical secret-reference expansion requires access to every secret in the
+reference chain. Depending on the Infisical server and API behavior, a
+resolution problem can fail the request or leave reference text unresolved.
+The SDK does not expose a separate "fully resolved" status, so doco-cd trusts
+and injects the value returned by Infisical. Validate the machine identity's
+permissions and the expanded value in Infisical before deployment.</p>
+</div>
+<h2 id="combining-both-interpolation-layers">Combining both interpolation layers<a class="headerlink" href="#combining-both-interpolation-layers" title="Permanent link">&para;</a></h2>
+<p><a data-preview="" href="../../External-Secrets/#with-interpolation"><code>INTERPOLATE_EXTERNAL_SECRETS</code></a> applies only to the locator in <code>.doco-cd.yml</code>.
+Infisical secret references apply later, inside the value fetched from
+Infisical. For example:</p>
+<div class="language-yaml highlight"><span class="filename">.doco-cd.yml</span><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">external_secrets</span><span class="p">:</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">DATABASE_URL</span><span class="p">:</span><span class="w"> </span><span class="s">"0db45926-c97c-40d4-a3aa-fefd5d5fb492:${PROJECT_STAGE:-prod}:DATABASE_URL"</span>
+</span></code></pre></div>
+<p>With <code>INTERPOLATE_EXTERNAL_SECRETS=true</code>, doco-cd first uses <code>PROJECT_STAGE</code> to
+select the Infisical environment. Infisical then retrieves <code>DATABASE_URL</code> from
+that environment and expands references such as <code>${DB_HOST}</code> in its stored
+value.</p>
 
 
   <nav class="md-tags" >
