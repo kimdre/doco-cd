@@ -133,6 +133,16 @@ func TestInterpolateExternalSecretRefs_DefaultValue(t *testing.T) {
 	}
 }
 
+func TestInterpolateExternalSecretRefs_RejectsEmptyResult(t *testing.T) {
+	t.Setenv("SECRET_ID", "")
+
+	_, err := InterpolateExternalSecretRefs(
+		map[string]ExternalSecretRef{"DB": {LegacyRef: "${SECRET_ID}"}}, true)
+	if err == nil {
+		t.Fatal("expected interpolation error")
+	}
+}
+
 func TestInterpolateExternalSecretRefs_Disabled(t *testing.T) {
 	t.Setenv("PROJECT_STAGE", "lab")
 

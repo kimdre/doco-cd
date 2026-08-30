@@ -150,6 +150,10 @@ func InterpolateExternalSecretRefs(in map[string]ExternalSecretRef, enabled bool
 			return nil, fmt.Errorf("interpolate external secret %q: %w", envName, err)
 		}
 
+		if value == "" {
+			return nil, fmt.Errorf("interpolate external secret %q: reference is empty after interpolation", envName)
+		}
+
 		ref.LegacyRef = value
 		out[envName] = ref
 	}
