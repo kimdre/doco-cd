@@ -79,7 +79,7 @@ type jobInfo struct {
 	contexts       *docker.ContextRegistry
 	secretProvider secretprovider.SecretProvider
 
-	jobLog *slog.Logger
+	log *slog.Logger
 
 	metadata      notification.Metadata
 	jobTrigger    stages.JobTrigger
@@ -138,7 +138,7 @@ func (j *job) signalReady() {
 	}
 
 	j.readyOnce.Do(func() {
-		j.info.jobLog.Debug("reconciliation event listeners ready")
+		j.info.log.Debug("reconciliation event listeners ready")
 		close(j.readyChan)
 	})
 }
@@ -435,7 +435,7 @@ func (m *Manager) addJob(ctx context.Context, info jobInfo) {
 
 	old.close()
 
-	jobLog := info.jobLog
+	jobLog := info.log
 
 	go func() {
 		defer func() {

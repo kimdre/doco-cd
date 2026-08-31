@@ -169,7 +169,7 @@ func TestReconciliationStopEventRestartSuppressionIntegration(t *testing.T) {
 
 	jobLog := logger.New(slog.LevelError).Logger
 	reconcileJob := newJob(newTestManager(t), jobInfo{
-		jobLog:        jobLog,
+		log:           jobLog,
 		dockerCli:     stack.DockerCli,
 		metadata:      notification.Metadata{Repository: repositoryName, Stack: stackName, JobID: "test-job"},
 		repoData:      stages.RepositoryData{SourceUrl: "https://github.com/kimdre/doco-cd_tests.git", Name: repositoryName},

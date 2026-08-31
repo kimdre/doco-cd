@@ -53,7 +53,7 @@ func (j *job) initContextCLIs(ctx context.Context, quiet bool) {
 
 		entry := resolveDeployContext(ctx, j.info.contexts, j.info.dockerCli, quiet, ctxName)
 		if entry.err != nil {
-			j.info.jobLog.Error("failed to create Docker CLI for context; skipping event listener for that context",
+			j.info.log.Error("failed to create Docker CLI for context; skipping event listener for that context",
 				slog.String("context", docker.DisplayContextName(ctxName)),
 				logger.ErrAttr(entry.err),
 			)
@@ -107,7 +107,7 @@ func (j *job) deployConfigsForContextMode(contextName string, swarmMode bool) []
 }
 
 func (j *job) run(ctx context.Context) {
-	jobLog := j.info.jobLog
+	jobLog := j.info.log
 
 	dockerQuiet := false
 	if j.info.appConfig != nil {
