@@ -1,0 +1,6 @@
+name: e2e-reconciliation
+working_dir: deploy
+swarm:
+  enabled: false
+reconciliation:
+  events: [die]
