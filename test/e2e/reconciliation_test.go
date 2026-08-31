@@ -25,6 +25,7 @@ func TestReconciliation(t *testing.T) {
 	h.WaitFor(120*time.Second, "initial app container", func() bool {
 		return h.ComposeContainerID(stack, service) != ""
 	})
+	h.WaitForLog("reconciliation event listeners ready", 120*time.Second)
 	oldID := h.ComposeContainerID(stack, service)
 
 	if _, err := h.docker.ContainerRemove(h.ctx, oldID, client.ContainerRemoveOptions{Force: true}); err != nil {

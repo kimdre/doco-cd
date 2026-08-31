@@ -138,6 +138,7 @@ func (j *job) signalReady() {
 	}
 
 	j.readyOnce.Do(func() {
+		j.info.jobLog.Debug("reconciliation event listeners ready")
 		close(j.readyChan)
 	})
 }
