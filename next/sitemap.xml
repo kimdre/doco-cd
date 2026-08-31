@@ -49,6 +49,9 @@
         <loc>https://doco.cd/next/External-Secrets/AWS-Secrets-Manager/</loc>
       </url>
       <url>
+        <loc>https://doco.cd/next/External-Secrets/Azure-Key-Vault/</loc>
+      </url>
+      <url>
         <loc>https://doco.cd/next/External-Secrets/Bitwarden-Secrets-Manager/</loc>
       </url>
       <url>
