@@ -3,20 +3,15 @@ package main
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/docker/cli/cli/command"
-
 	"github.com/kimdre/doco-cd/internal/config/app"
 
-	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/logger"
 	restAPI "github.com/kimdre/doco-cd/internal/restapi"
 	"github.com/kimdre/doco-cd/internal/scheduler"
@@ -103,15 +98,22 @@ func TestTriggerScheduledJobSyncTracksResult(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			tracker := newDeploymentRunTracker(nil)
-			h := handlerData{
-				log:        logger.New(logger.LevelCritical),
-				runTracker: tracker,
-				triggerScheduledJob: func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error) {
+			log := logger.New(logger.LevelCritical)
+			runs := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+				tracker: tracker,
+				log:     log,
+				scheduledJobs: testScheduledJobOperations{triggerNow: func(
+					context.Context,
+					string,
+					string,
+					string,
+					*secretprovider.SecretProvider,
+				) (string, error) {
 					return "scheduled-run-id", tc.triggerErr
-				},
-			}
+				}},
+			})
 
-			jobID, err := h.triggerScheduledJobRun(t.Context(), "deployment-job-id", h.dockerCli, docker.DisplayContextName(""), "backup", "prod", true)
+			jobID, err := runs.TriggerScheduledJob(t.Context(), "deployment-job-id", "default", "backup", "prod", true)
 			if jobID != "deployment-job-id" {
 				t.Fatalf("job ID = %q, want deployment-job-id", jobID)
 			}
@@ -144,15 +146,20 @@ func TestTriggerScheduledJobSyncTracksResult(t *testing.T) {
 	}
 }
 
-func TestTriggerScheduledJobWorksWithoutTracker(t *testing.T) {
-	h := handlerData{
-		log: logger.New(logger.LevelCritical),
-		triggerScheduledJob: func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error) {
+func TestTriggerScheduledJobGeneratesJobID(t *testing.T) {
+	runs := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		scheduledJobs: testScheduledJobOperations{triggerNow: func(
+			context.Context,
+			string,
+			string,
+			string,
+			*secretprovider.SecretProvider,
+		) (string, error) {
 			return "scheduled-run-id", nil
-		},
-	}
+		}},
+	})
 
-	jobID, err := h.triggerScheduledJobRun(t.Context(), "", h.dockerCli, docker.DisplayContextName(""), "backup", "", true)
+	jobID, err := runs.TriggerScheduledJob(t.Context(), "", "default", "backup", "", true)
 	if err != nil || jobID == "" {
 		t.Fatalf("job ID = %q, error = %v", jobID, err)
 	}
@@ -160,15 +167,20 @@ func TestTriggerScheduledJobWorksWithoutTracker(t *testing.T) {
 
 func TestTriggerScheduledJobSyncPanicMarksFailedAndReturnsError(t *testing.T) {
 	tracker := newDeploymentRunTracker(nil)
-	h := handlerData{
-		log:        logger.New(logger.LevelCritical),
-		runTracker: tracker,
-		triggerScheduledJob: func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error) {
+	runs := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		tracker: tracker,
+		scheduledJobs: testScheduledJobOperations{triggerNow: func(
+			context.Context,
+			string,
+			string,
+			string,
+			*secretprovider.SecretProvider,
+		) (string, error) {
 			panic("boom")
-		},
-	}
+		}},
+	})
 
-	jobID, err := h.triggerScheduledJobRun(t.Context(), "deployment-job-id", h.dockerCli, docker.DisplayContextName(""), "backup", "", true)
+	jobID, err := runs.TriggerScheduledJob(t.Context(), "deployment-job-id", "default", "backup", "", true)
 	if err == nil {
 		t.Fatal("expected internal error after scheduled job panic")
 	}
@@ -203,13 +215,16 @@ func TestTriggerScheduledJobAsyncLifecycleWaitsBeforeResourceClose(t *testing.T)
 	release := make(chan struct{})
 	resourceClosed := make(chan struct{})
 	tracker := newDeploymentRunTracker(nil)
-	backgroundWG := &sync.WaitGroup{}
-	h := handlerData{
-		backgroundCtx: appCtx,
-		backgroundWG:  backgroundWG,
-		log:           logger.New(logger.LevelCritical),
-		runTracker:    tracker,
-		triggerScheduledJob: func(ctx context.Context, _ command.Cli, _ *slog.Logger, _, _ string, _ *secretprovider.SecretProvider) (string, error) {
+	runs := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		applicationCtx: appCtx,
+		tracker:        tracker,
+		scheduledJobs: testScheduledJobOperations{triggerNow: func(
+			ctx context.Context,
+			_ string,
+			_ string,
+			_ string,
+			_ *secretprovider.SecretProvider,
+		) (string, error) {
 			close(started)
 			<-release
 
@@ -218,12 +233,12 @@ func TestTriggerScheduledJobAsyncLifecycleWaitsBeforeResourceClose(t *testing.T)
 			}
 
 			return "scheduled-run-id", nil
-		},
-	}
+		}},
+	})
 
 	requestCtx, requestCancel := context.WithCancel(t.Context())
 
-	jobID, err := h.triggerScheduledJobRun(requestCtx, "", h.dockerCli, docker.DisplayContextName(""), "backup", "", false)
+	jobID, err := runs.TriggerScheduledJob(requestCtx, "", "default", "backup", "", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -237,7 +252,7 @@ func TestTriggerScheduledJobAsyncLifecycleWaitsBeforeResourceClose(t *testing.T)
 	requestCancel()
 
 	go func() {
-		backgroundWG.Wait()
+		runs.background.Wait()
 		close(resourceClosed)
 	}()
 
@@ -262,21 +277,24 @@ func TestTriggerScheduledJobAsyncLifecycleCancellationMarksFailed(t *testing.T) 
 	appCtx, appCancel := context.WithCancel(t.Context())
 	started := make(chan struct{})
 	tracker := newDeploymentRunTracker(nil)
-	backgroundWG := &sync.WaitGroup{}
-	h := handlerData{
-		backgroundCtx: appCtx,
-		backgroundWG:  backgroundWG,
-		log:           logger.New(logger.LevelCritical),
-		runTracker:    tracker,
-		triggerScheduledJob: func(ctx context.Context, _ command.Cli, _ *slog.Logger, _, _ string, _ *secretprovider.SecretProvider) (string, error) {
+	runs := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		applicationCtx: appCtx,
+		tracker:        tracker,
+		scheduledJobs: testScheduledJobOperations{triggerNow: func(
+			ctx context.Context,
+			_ string,
+			_ string,
+			_ string,
+			_ *secretprovider.SecretProvider,
+		) (string, error) {
 			close(started)
 			<-ctx.Done()
 
 			return "", ctx.Err()
-		},
-	}
+		}},
+	})
 
-	jobID, err := h.triggerScheduledJobRun(t.Context(), "", h.dockerCli, docker.DisplayContextName(""), "backup", "", false)
+	jobID, err := runs.TriggerScheduledJob(t.Context(), "", "default", "backup", "", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -288,7 +306,7 @@ func TestTriggerScheduledJobAsyncLifecycleCancellationMarksFailed(t *testing.T) 
 	}
 
 	appCancel()
-	backgroundWG.Wait()
+	runs.background.Wait()
 
 	run := waitForDeploymentRunStatus(t, tracker, jobID, deploymentRunStatusFailed)
 	if !strings.Contains(run.Message, context.Canceled.Error()) {
@@ -301,6 +319,8 @@ func TestTriggerScheduledJobHandlerMapsSchedulerErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	appConfig.ApiSecret = "test-api-secret"
 
 	tests := []struct {
 		name       string
@@ -319,12 +339,22 @@ func TestTriggerScheduledJobHandlerMapsSchedulerErrors(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			log := logger.New(logger.LevelCritical)
 			h := handlerData{
 				appConfig: appConfig,
-				log:       logger.New(logger.LevelCritical),
-				triggerScheduledJob: func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error) {
-					return "scheduled-run-id", tc.triggerErr
-				},
+				log:       log,
+				controlPlaneRuns: newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+					log: log,
+					scheduledJobs: testScheduledJobOperations{triggerNow: func(
+						context.Context,
+						string,
+						string,
+						string,
+						*secretprovider.SecretProvider,
+					) (string, error) {
+						return "scheduled-run-id", tc.triggerErr
+					}},
+				}),
 			}
 
 			endpoint := path.Join(apiPath, "/job/{jobName}/run")
@@ -347,12 +377,26 @@ func TestTriggerScheduledJobHandlerMapsSchedulerErrors(t *testing.T) {
 func TestTriggerScheduledJobHandlerRejectsAsyncWorkDuringShutdown(t *testing.T) {
 	background := newBackgroundWork()
 	background.CloseAndWait()
+
+	log := logger.New(logger.LevelCritical)
 	h := handlerData{
-		appConfig:      &app.Config{ApiSecret: "job-secret"}, // #nosec G101 -- test fixture.
-		backgroundCtx:  t.Context(),
-		backgroundWork: background,
-		log:            logger.New(logger.LevelCritical),
-		runTracker:     newDeploymentRunTracker(nil),
+		appConfig: &app.Config{ApiSecret: "job-secret"}, // #nosec G101 -- test fixture.
+		log:       log,
+		controlPlaneRuns: newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			background: background,
+			log:        log,
+			scheduledJobs: testScheduledJobOperations{triggerNow: func(
+				context.Context,
+				string,
+				string,
+				string,
+				*secretprovider.SecretProvider,
+			) (string, error) {
+				t.Fatal("scheduled job started during shutdown")
+
+				return "", nil
+			}},
+		}),
 	}
 	req := httptest.NewRequest(http.MethodPost, apiPath+"/job/example-job/run?wait=false", nil)
 	req.SetPathValue("jobName", "example-job")
@@ -372,22 +416,24 @@ func TestTriggerScheduledJobAsyncTracksAcceptedThenTerminal(t *testing.T) {
 	release := make(chan struct{})
 	finished := make(chan struct{})
 	tracker := newDeploymentRunTracker(nil)
-	backgroundWG := &sync.WaitGroup{}
-	h := handlerData{
-		backgroundCtx: t.Context(),
-		backgroundWG:  backgroundWG,
-		log:           logger.New(logger.LevelCritical),
-		runTracker:    tracker,
-		triggerScheduledJob: func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error) {
+	runs := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		tracker: tracker,
+		scheduledJobs: testScheduledJobOperations{triggerNow: func(
+			context.Context,
+			string,
+			string,
+			string,
+			*secretprovider.SecretProvider,
+		) (string, error) {
 			close(started)
 			<-release
 			close(finished)
 
 			return "scheduled-run-id", nil
-		},
-	}
+		}},
+	})
 
-	jobID, err := h.triggerScheduledJobRun(t.Context(), "", h.dockerCli, docker.DisplayContextName(""), "backup", "prod", false)
+	jobID, err := runs.TriggerScheduledJob(t.Context(), "", "default", "backup", "prod", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -416,26 +462,30 @@ func TestTriggerScheduledJobAsyncTracksAcceptedThenTerminal(t *testing.T) {
 	}
 
 	waitForDeploymentRunStatus(t, tracker, jobID, deploymentRunStatusSucceeded)
-	backgroundWG.Wait()
+	runs.background.Wait()
 }
 
 func TestTriggerScheduledJobAsyncRejectsWorkDuringShutdown(t *testing.T) {
 	tracker := newDeploymentRunTracker(nil)
 	background := newBackgroundWork()
 	background.CloseAndWait()
-	h := handlerData{
-		backgroundCtx:  t.Context(),
-		backgroundWork: background,
-		log:            logger.New(logger.LevelCritical),
-		runTracker:     tracker,
-		triggerScheduledJob: func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error) {
+	runs := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		background: background,
+		tracker:    tracker,
+		scheduledJobs: testScheduledJobOperations{triggerNow: func(
+			context.Context,
+			string,
+			string,
+			string,
+			*secretprovider.SecretProvider,
+		) (string, error) {
 			t.Fatal("scheduled job started during shutdown")
 
 			return "", nil
-		},
-	}
+		}},
+	})
 
-	jobID, err := h.triggerScheduledJobRun(t.Context(), "", h.dockerCli, docker.DisplayContextName(""), "backup", "prod", false)
+	jobID, err := runs.TriggerScheduledJob(t.Context(), "", "default", "backup", "prod", false)
 	if !errors.Is(err, errBackgroundWorkClosed) {
 		t.Fatalf("error = %v, want %v", err, errBackgroundWorkClosed)
 	}
@@ -448,18 +498,20 @@ func TestTriggerScheduledJobAsyncRejectsWorkDuringShutdown(t *testing.T) {
 
 func TestTriggerScheduledJobAsyncPanicMarksFailed(t *testing.T) {
 	tracker := newDeploymentRunTracker(nil)
-	backgroundWG := &sync.WaitGroup{}
-	h := handlerData{
-		backgroundCtx: t.Context(),
-		backgroundWG:  backgroundWG,
-		log:           logger.New(logger.LevelCritical),
-		runTracker:    tracker,
-		triggerScheduledJob: func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error) {
+	runs := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		tracker: tracker,
+		scheduledJobs: testScheduledJobOperations{triggerNow: func(
+			context.Context,
+			string,
+			string,
+			string,
+			*secretprovider.SecretProvider,
+		) (string, error) {
 			panic("boom")
-		},
-	}
+		}},
+	})
 
-	jobID, err := h.triggerScheduledJobRun(t.Context(), "", h.dockerCli, docker.DisplayContextName(""), "backup", "", false)
+	jobID, err := runs.TriggerScheduledJob(t.Context(), "", "default", "backup", "", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -469,7 +521,7 @@ func TestTriggerScheduledJobAsyncPanicMarksFailed(t *testing.T) {
 		t.Fatalf("panic failure message = %q", run.Message)
 	}
 
-	backgroundWG.Wait()
+	runs.background.Wait()
 }
 
 func TestTriggerScheduledJobHandlerMalformedWaitDoesNotTrigger(t *testing.T) {
@@ -478,15 +530,27 @@ func TestTriggerScheduledJobHandlerMalformedWaitDoesNotTrigger(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	appConfig.ApiSecret = "test-api-secret"
+
 	triggered := false
+	log := logger.New(logger.LevelCritical)
 	h := handlerData{
 		appConfig: appConfig,
-		log:       logger.New(logger.LevelCritical),
-		triggerScheduledJob: func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error) {
-			triggered = true
+		log:       log,
+		controlPlaneRuns: newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			log: log,
+			scheduledJobs: testScheduledJobOperations{triggerNow: func(
+				context.Context,
+				string,
+				string,
+				string,
+				*secretprovider.SecretProvider,
+			) (string, error) {
+				triggered = true
 
-			return "", nil
-		},
+				return "", nil
+			}},
+		}),
 	}
 
 	endpoint := path.Join(apiPath, "/job/{jobName}/run")

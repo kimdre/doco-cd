@@ -177,7 +177,7 @@ func (h *handlerData) listDeploymentRuns(_ context.Context, _ *mcp.CallToolReque
 		return nil, listDeploymentRunsOutput{}, err
 	}
 
-	return nil, listDeploymentRunsOutput{Runs: h.runTracker.List(limit, trigger, status)}, nil
+	return nil, listDeploymentRunsOutput{Runs: h.controlPlaneRuns.List(limit, trigger, status)}, nil
 }
 
 func (h *handlerData) getDeploymentRun(_ context.Context, _ *mcp.CallToolRequest, input getDeploymentRunInput) (*mcp.CallToolResult, getDeploymentRunOutput, error) {
@@ -186,7 +186,7 @@ func (h *handlerData) getDeploymentRun(_ context.Context, _ *mcp.CallToolRequest
 		return nil, getDeploymentRunOutput{}, errors.New("missing job id")
 	}
 
-	run, ok := h.runTracker.Get(jobID)
+	run, ok := h.controlPlaneRuns.Get(jobID)
 	if !ok {
 		return nil, getDeploymentRunOutput{}, fmt.Errorf("run not found: %s", jobID)
 	}
@@ -202,13 +202,7 @@ func (h *handlerData) listScheduledJobs(ctx context.Context, _ *mcp.CallToolRequ
 
 	stackName := strings.TrimSpace(input.Stack)
 
-	var jobs []scheduler.JobInfo
-	if h.scheduler != nil {
-		jobs, err = h.scheduler.ListJobs(ctx, contextClient.Name, stackName)
-	} else {
-		jobs, err = scheduler.ListJobs(ctx, contextClient.Cli, stackName)
-	}
-
+	jobs, err := h.controlPlaneRuns.ListScheduledJobs(ctx, contextClient.Name, stackName)
 	if err != nil {
 		return nil, listScheduledJobsOutput{}, fmt.Errorf("failed to list scheduled jobs: %w", err)
 	}

@@ -33,11 +33,13 @@ func TestHandlerData_DeploymentRunHandlers(t *testing.T) {
 	tracker.MarkSucceeded("job-1", "ok")
 
 	h := handlerData{
-		appConfig:      appConfig,
-		log:            logger.New(logger.LevelCritical),
-		runTracker:     tracker,
-		secretProvider: nil,
+		appConfig: appConfig,
+		log:       logger.New(logger.LevelCritical),
 	}
+	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		tracker: tracker,
+		log:     h.log,
+	})
 
 	t.Run("list runs", func(t *testing.T) {
 		t.Parallel()

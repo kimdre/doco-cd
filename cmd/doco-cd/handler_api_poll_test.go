@@ -106,17 +106,24 @@ func TestHandlerData_TriggerPollHandler(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
+			log := logger.New(logger.LevelCritical)
 			h := handlerData{
 				dockerCli:  dockerCli,
 				appConfig:  appConfig,
 				appVersion: app.Version,
-				log:        logger.New(logger.LevelCritical),
+				log:        log,
 				testName:   test.ConvertTestName(t.Name()),
-				runPoll: func(context.Context, poll.Config, *app.Config, container.MountPoint,
-					command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider, string,
-				) error {
-					return nil
-				},
+
+				controlPlaneRuns: newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+					appConfig: appConfig,
+					dockerCli: dockerCli,
+					log:       log,
+					pollRunner: func(context.Context, poll.Config, *app.Config, container.MountPoint,
+						command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider, string,
+					) error {
+						return nil
+					},
+				}),
 			}
 
 			endpoint := path.Join(apiPath, "/poll/run")
@@ -181,24 +188,30 @@ func TestHandlerData_TriggerPollHandlerWithoutWait_DetachesRequestContext(t *tes
 
 	ctxCancelled := make(chan bool, 1)
 
+	log := logger.New(logger.LevelCritical)
 	h := handlerData{
 		appConfig: appConfig,
-		log:       logger.New(logger.LevelCritical),
-		runPoll: func(ctx context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
-			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
-			_ string,
-		) error {
-			time.Sleep(50 * time.Millisecond)
+		log:       log,
 
-			select {
-			case <-ctx.Done():
-				ctxCancelled <- true
-			default:
-				ctxCancelled <- false
-			}
+		controlPlaneRuns: newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			appConfig: appConfig,
+			log:       log,
+			pollRunner: func(ctx context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+				_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+				_ string,
+			) error {
+				time.Sleep(50 * time.Millisecond)
 
-			return nil
-		},
+				select {
+				case <-ctx.Done():
+					ctxCancelled <- true
+				default:
+					ctxCancelled <- false
+				}
+
+				return nil
+			},
+		}),
 	}
 
 	endpoint := path.Join(apiPath, "/poll/run")
@@ -256,18 +269,23 @@ func TestHandlerData_TriggerPollHandlerRejectsInvalidRequestsBeforeTracking(t *t
 		t.Run(testCase.name, func(t *testing.T) {
 			tracker := newDeploymentRunTracker(nil)
 			runs := 0
+			log := logger.New(logger.LevelCritical)
 			h := &handlerData{
-				appConfig:  &app.Config{ApiSecret: "poll-secret", MaxPayloadSize: testCase.maxPayload}, // #nosec G101 -- test fixture.
-				log:        logger.New(logger.LevelCritical),
-				runTracker: tracker,
-				runPoll: func(context.Context, poll.Config, *app.Config, container.MountPoint,
+				appConfig: &app.Config{ApiSecret: "poll-secret", MaxPayloadSize: testCase.maxPayload}, // #nosec G101 -- test fixture.
+				log:       log,
+			}
+			h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+				appConfig: h.appConfig,
+				log:       log,
+				tracker:   tracker,
+				pollRunner: func(context.Context, poll.Config, *app.Config, container.MountPoint,
 					command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider, string,
 				) error {
 					runs++
 
 					return nil
 				},
-			}
+			})
 			body := &trackingReadCloser{Reader: strings.NewReader(testCase.body)}
 			recorder := httptest.NewRecorder()
 			request := httptest.NewRequest(http.MethodPost, apiPath+"/poll/run"+testCase.query, body)
@@ -314,17 +332,22 @@ func TestHandlerData_TriggerPollHandlerRejectsInvalidRequestsBeforeTracking(t *t
 
 func TestHandlerData_TriggerPollHandlerAcceptsTrailingWhitespace(t *testing.T) {
 	runs := 0
+	log := logger.New(logger.LevelCritical)
 	h := &handlerData{
 		appConfig: &app.Config{ApiSecret: "poll-secret", MaxPayloadSize: 1024}, // #nosec G101 -- test fixture.
-		log:       logger.New(logger.LevelCritical),
-		runPoll: func(context.Context, poll.Config, *app.Config, container.MountPoint,
+		log:       log,
+	}
+	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		appConfig: h.appConfig,
+		log:       log,
+		pollRunner: func(context.Context, poll.Config, *app.Config, container.MountPoint,
 			command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider, string,
 		) error {
 			runs++
 
 			return nil
 		},
-	}
+	})
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, apiPath+"/poll/run", strings.NewReader(`[{"url":"`+validPollSourceURL+`"}] `+"\n\t"))
 	request.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)
@@ -338,11 +361,16 @@ func TestHandlerData_TriggerPollHandlerAcceptsTrailingWhitespace(t *testing.T) {
 
 func TestHandlerData_TriggerPollHandlerReportsPollFailures(t *testing.T) {
 	tracker := newDeploymentRunTracker(nil)
+	log := logger.New(logger.LevelCritical)
 	h := &handlerData{
-		appConfig:  &app.Config{ApiSecret: "poll-secret", MaxPayloadSize: 1024}, // #nosec G101 -- test fixture.
-		log:        logger.New(logger.LevelCritical),
-		runTracker: tracker,
-		runPoll: func(_ context.Context, cfg poll.Config, _ *app.Config, _ container.MountPoint,
+		appConfig: &app.Config{ApiSecret: "poll-secret", MaxPayloadSize: 1024}, // #nosec G101 -- test fixture.
+		log:       log,
+	}
+	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		appConfig: h.appConfig,
+		log:       log,
+		tracker:   tracker,
+		pollRunner: func(_ context.Context, cfg poll.Config, _ *app.Config, _ container.MountPoint,
 			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider, _ string,
 		) error {
 			if strings.Contains(cfg.SourceUrl, "failed") {
@@ -351,7 +379,7 @@ func TestHandlerData_TriggerPollHandlerReportsPollFailures(t *testing.T) {
 
 			return nil
 		},
-	}
+	})
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, apiPath+"/poll/run", strings.NewReader(`[
 		{"url":"https://example.com/succeeded.git"},
@@ -383,13 +411,17 @@ func TestHandlerData_TriggerPollHandlerReportsPollFailures(t *testing.T) {
 func TestHandlerData_TriggerPollHandlerRejectsAsyncWorkDuringShutdown(t *testing.T) {
 	background := newBackgroundWork()
 	background.CloseAndWait()
+
+	log := logger.New(logger.LevelCritical)
 	h := &handlerData{
-		appConfig:      &app.Config{ApiSecret: "poll-secret", MaxPayloadSize: 1024}, // #nosec G101 -- test fixture.
-		backgroundCtx:  t.Context(),
-		backgroundWork: background,
-		log:            logger.New(logger.LevelCritical),
-		runTracker:     newDeploymentRunTracker(nil),
+		appConfig: &app.Config{ApiSecret: "poll-secret", MaxPayloadSize: 1024}, // #nosec G101 -- test fixture.
+		log:       log,
 	}
+	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		appConfig:  h.appConfig,
+		background: background,
+		log:        log,
+	})
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, apiPath+"/poll/run?wait=false", strings.NewReader(`[{"url":"`+validPollSourceURL+`"}]`))
 	request.Header.Set(restAPI.KeyHeader, h.appConfig.ApiSecret)

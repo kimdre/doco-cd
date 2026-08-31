@@ -443,7 +443,7 @@ env_files:
 					return strings.Contains(strings.ToLower(err.Error()), "no such image")
 				}),
 			).Do(func() error {
-				if err := HandleEvent(
+				if _, err := handleEvent(
 					ctx,
 					jobLog,
 					rr,
@@ -456,11 +456,6 @@ env_files:
 					nil,
 					&secretProvider,
 					stackName,
-					newDeploymentRunTracker(map[deploymentRunTrigger]int{
-						deploymentRunTriggerWebhook:      10,
-						deploymentRunTriggerPoll:         10,
-						deploymentRunTriggerScheduledJob: 10,
-					}),
 				); err != nil {
 					return err
 				}

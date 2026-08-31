@@ -69,16 +69,6 @@ type deploymentRunTracker struct {
 	ttl               time.Duration
 }
 
-func (h *handlerData) deploymentTargetObserver(jobID string) func(string, string) {
-	if h == nil || h.runTracker == nil {
-		return nil
-	}
-
-	return func(stack, contextName string) {
-		h.runTracker.AddDeployment(jobID, stack, contextName)
-	}
-}
-
 // newDeploymentRunTracker creates a new deployment run tracker with per-type limits.
 // Defaults to 50 entries per trigger type (webhook, poll, scheduled_job) if not specified.
 // Terminal runs older than 7 days are automatically evicted.
@@ -272,6 +262,9 @@ func (t *deploymentRunTracker) Get(jobID string) (deploymentRun, bool) {
 	defer t.mu.RUnlock()
 
 	r, ok := t.runs[jobID]
+	if ok {
+		r = cloneDeploymentRun(r)
+	}
 
 	return r, ok
 }
@@ -311,7 +304,7 @@ func (t *deploymentRunTracker) List(limit int, trigger string, status string) []
 				continue
 			}
 
-			runs = append(runs, r)
+			runs = append(runs, cloneDeploymentRun(r))
 		}
 	} else {
 		// Collect all runs across all trigger types, newest first
@@ -343,7 +336,7 @@ func (t *deploymentRunTracker) List(limit int, trigger string, status string) []
 				continue
 			}
 
-			runs = append(runs, r)
+			runs = append(runs, cloneDeploymentRun(r))
 		}
 	}
 
@@ -475,4 +468,10 @@ func (t *deploymentRunTracker) update(jobID string, fn func(*deploymentRun)) {
 
 func isTerminalDeploymentRunStatus(status deploymentRunStatus) bool {
 	return status == deploymentRunStatusSucceeded || status == deploymentRunStatusFailed || status == deploymentRunStatusSkipped
+}
+
+func cloneDeploymentRun(run deploymentRun) deploymentRun {
+	run.Deployments = slices.Clone(run.Deployments)
+
+	return run
 }

@@ -344,29 +344,33 @@ func run() error {
 	}
 
 	schedulerManager := scheduler.NewManager(contexts, log.Logger, &wg, &secretProvider)
-
-	defer wg.Wait()
-	defer backgroundWork.CloseAndWait()
-	// Cancel lifecycle work before waiting, then close shared resources after all jobs stop.
-	defer rootCancel()
-
-	h := handlerData{
-		appConfig:      c,
-		appVersion:     app.Version,
-		backgroundCtx:  ctx,
-		backgroundWG:   &wg,
-		backgroundWork: backgroundWork,
-		dataMountPoint: dataMountPoint,
-		dockerCli:      dockerCli,
-		contexts:       contexts,
-		log:            log,
-		runTracker: newDeploymentRunTracker(map[deploymentRunTrigger]int{
+	controlPlaneRuns := newControlPlaneRuns(
+		ctx,
+		backgroundWork,
+		newDeploymentRunTracker(map[deploymentRunTrigger]int{
 			deploymentRunTriggerPoll:         50,
 			deploymentRunTriggerWebhook:      50,
 			deploymentRunTriggerScheduledJob: 50,
 		}),
-		scheduler:      schedulerManager,
-		secretProvider: &secretProvider,
+		log.Logger,
+		newControlPlaneJobs(schedulerManager, &secretProvider),
+		newControlPlanePoll(c, dataMountPoint, dockerCli, contexts, &secretProvider, RunPoll),
+	)
+
+	defer wg.Wait()
+	defer controlPlaneRuns.CloseAndWait()
+	// Cancel lifecycle work before waiting, then close shared resources after all jobs stop.
+	defer rootCancel()
+
+	h := handlerData{
+		appConfig:        c,
+		appVersion:       app.Version,
+		controlPlaneRuns: controlPlaneRuns,
+		dataMountPoint:   dataMountPoint,
+		dockerCli:        dockerCli,
+		contexts:         contexts,
+		log:              log,
+		secretProvider:   &secretProvider,
 	}
 
 	// Initialize the deployer limiter according to configuration

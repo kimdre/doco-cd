@@ -9,8 +9,6 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/moby/moby/api/types/container"
 
-	"github.com/kimdre/doco-cd/internal/common/id"
-
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
@@ -25,11 +23,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/source/oci"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
-
-type pollRunner func(ctx context.Context, pollConfig poll.Config, appConfig *app.Config, dataMountPoint container.MountPoint,
-	dockerCli command.Cli, contexts *docker.ContextRegistry, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
-	triggerReason string,
-) error
 
 // Poll trigger reasons, reported in the "polling <entity>" log line's
 // trigger.event field so it's possible to tell a regular interval-driven poll
@@ -93,11 +86,6 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 	logger := h.log.With(slog.String(entity, logValue))
 	logger.Debug("Start poll handler")
 
-	runner := h.runPoll
-	if runner == nil {
-		runner = RunPoll
-	}
-
 	// For local git repositories, start a filesystem watcher so new commits
 	// trigger deployment immediately without waiting for the next interval.
 	var watchCh <-chan struct{}
@@ -128,34 +116,14 @@ func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
 	}
 
 	doRun := func(trigger string) {
-		jobID := id.New()
-
-		metadata := notification.Metadata{
-			Repository:               repoName,
-			Stack:                    "",
-			Target:                   pollJob.Config.CustomTarget,
-			Revision:                 notification.GetRevision(pollJob.Config.Reference, ""),
-			JobID:                    jobID,
-			DeploymentTargetObserver: h.deploymentTargetObserver(jobID),
-		}
-
 		logger.Debug("start poll job", slog.String("trigger", trigger))
-
-		h.runTracker.TrackAccepted(jobID, deploymentRunTriggerPoll)
-		h.runTracker.SetMetadata(jobID, repoName, pollJob.Config.CustomTarget, notification.GetRevision(pollJob.Config.Reference, ""))
-		h.runTracker.MarkRunning(jobID)
 
 		triggerReason := pollTriggerDefault
 		if trigger == "watch" {
 			triggerReason = pollTriggerWatch
 		}
 
-		err := runner(ctx, pollJob.Config, h.appConfig, h.dataMountPoint, h.dockerCli, h.contexts, logger, metadata, h.secretProvider, triggerReason)
-		if err != nil {
-			h.runTracker.MarkFailed(jobID, err.Error())
-		} else {
-			h.runTracker.MarkSucceeded(jobID, "poll completed successfully")
-		}
+		_, _ = h.controlPlaneRuns.RunConfiguredPoll(ctx, pollJob.Config, logger, triggerReason)
 
 		pollJob.LastRun = time.Now().Unix()
 

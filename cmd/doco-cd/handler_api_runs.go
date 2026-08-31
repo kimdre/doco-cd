@@ -51,7 +51,7 @@ func (h *handlerData) GetDeploymentRunsHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	runs := h.runTracker.List(limit, trigger, status)
+	runs := h.controlPlaneRuns.List(limit, trigger, status)
 	JSONResponse(w, runs, jobID, http.StatusOK)
 }
 
@@ -77,7 +77,7 @@ func (h *handlerData) GetDeploymentRunHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	run, ok := h.runTracker.Get(requestedJobID)
+	run, ok := h.controlPlaneRuns.Get(requestedJobID)
 	if !ok {
 		JSONError(w, "run not found: "+requestedJobID, "", jobID, http.StatusNotFound)
 		return

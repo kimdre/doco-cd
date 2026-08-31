@@ -45,10 +45,17 @@ func (w *backgroundWork) Go(run func()) error {
 	return nil
 }
 
-func (w *backgroundWork) CloseAndWait() {
+func (w *backgroundWork) Close() {
 	w.mu.Lock()
 	w.closed = true
 	w.mu.Unlock()
+}
 
+func (w *backgroundWork) Wait() {
 	w.wg.Wait()
+}
+
+func (w *backgroundWork) CloseAndWait() {
+	w.Close()
+	w.Wait()
 }

@@ -60,23 +60,24 @@ func TestRunWebhookSynchronouslyIgnoresRequestCancellation(t *testing.T) {
 	t.Parallel()
 
 	applicationCtx, cancelApplication := context.WithCancel(t.Context())
-	background := newBackgroundWork()
-	h := handlerData{
-		backgroundCtx:  applicationCtx,
-		backgroundWork: background,
-	}
+	runs := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{applicationCtx: applicationCtx})
+	jobID := runs.Accept("webhook", deploymentRunTriggerWebhook, controlPlaneRunMetadata{})
 
 	requestCtx, cancelRequest := context.WithCancel(t.Context())
 	runCtx := make(chan context.Context, 1)
 	result := make(chan error, 1)
 
 	go func() {
-		result <- h.runWebhookSynchronously(requestCtx, func(ctx context.Context) error {
+		result <- runs.Execute(requestCtx, jobID, controlPlaneRunExecution{
+			mode:         controlPlaneRunSynchronousDetached,
+			panicContext: "webhook deployment",
+			panicError:   errWebhookDeploymentPanicked,
+		}, func(ctx context.Context) (controlPlaneRunResult, error) {
 			runCtx <- ctx
 
 			<-ctx.Done()
 
-			return ctx.Err()
+			return controlPlaneRunResult{}, ctx.Err()
 		})
 	}()
 
@@ -99,7 +100,7 @@ func TestRunWebhookSynchronouslyIgnoresRequestCancellation(t *testing.T) {
 		t.Fatal("webhook run did not stop during application shutdown")
 	}
 
-	background.CloseAndWait()
+	runs.CloseAndWait()
 }
 
 func TestAcquireWebhookRepoLockReportsWaitAndAcquires(t *testing.T) {
@@ -289,6 +290,12 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		log:      log,
 		testName: stackName,
 	}
+	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		appConfig:      appConfig,
+		dataMountPoint: h.dataMountPoint,
+		dockerCli:      dockerCli,
+		log:            log,
+	})
 
 	req := newWebhookRequest(t, webhookPath+"?wait=true", minifiedPayload.Bytes(), appConfig)
 
@@ -498,6 +505,11 @@ func TestWebhookHandler_WaitQueryParam(t *testing.T) {
 		},
 		log: log,
 	}
+	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		appConfig:      appConfig,
+		dataMountPoint: h.dataMountPoint,
+		log:            log,
+	})
 
 	testCases := []struct {
 		name string

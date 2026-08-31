@@ -13,7 +13,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -374,12 +373,17 @@ func TestMCPServerListsTools(t *testing.T) {
 func TestMCPTriggerPollValidationAndDefaultWait(t *testing.T) {
 	tracker := newDeploymentRunTracker(nil)
 	runs := 0
+	log := logger.New(logger.LevelCritical)
 	h := &handlerData{
 		appConfig:  &app.Config{},
 		appVersion: app.Version,
-		log:        logger.New(logger.LevelCritical),
-		runTracker: tracker,
-		runPoll: func(_ context.Context, cfg poll.Config, _ *app.Config, _ container.MountPoint,
+		log:        log,
+	}
+	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		appConfig: h.appConfig,
+		log:       log,
+		tracker:   tracker,
+		pollRunner: func(_ context.Context, cfg poll.Config, _ *app.Config, _ container.MountPoint,
 			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider, _ string,
 		) error {
 			runs++
@@ -390,7 +394,7 @@ func TestMCPTriggerPollValidationAndDefaultWait(t *testing.T) {
 
 			return nil
 		},
-	}
+	})
 	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
 	session := connectMCPTestClient(t, server)
 
@@ -418,15 +422,17 @@ func TestMCPTriggerPollAsyncJobIDResolves(t *testing.T) {
 	tracker := newDeploymentRunTracker(nil)
 	started := make(chan struct{})
 	release := make(chan struct{})
-	backgroundWG := &sync.WaitGroup{}
+	log := logger.New(logger.LevelCritical)
 	h := &handlerData{
-		appConfig:     &app.Config{},
-		appVersion:    app.Version,
-		backgroundCtx: t.Context(),
-		backgroundWG:  backgroundWG,
-		log:           logger.New(logger.LevelCritical),
-		runTracker:    tracker,
-		runPoll: func(ctx context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+		appConfig:  &app.Config{},
+		appVersion: app.Version,
+		log:        log,
+	}
+	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		appConfig: h.appConfig,
+		log:       log,
+		tracker:   tracker,
+		pollRunner: func(ctx context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
 			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider, _ string,
 		) error {
 			close(started)
@@ -438,7 +444,7 @@ func TestMCPTriggerPollAsyncJobIDResolves(t *testing.T) {
 
 			return nil
 		},
-	}
+	})
 	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
 	session := connectMCPTestClient(t, server)
 	result := callMCPTool(t, session, "trigger_poll", map[string]any{
@@ -470,7 +476,7 @@ func TestMCPTriggerPollAsyncJobIDResolves(t *testing.T) {
 
 	close(release)
 	waitForDeploymentRunStatus(t, tracker, output.JobID, deploymentRunStatusSucceeded)
-	backgroundWG.Wait()
+	h.controlPlaneRuns.background.Wait()
 }
 
 func TestMCPTriggerScheduledJobValidation(t *testing.T) {
@@ -496,8 +502,17 @@ func TestMCPTriggerScheduledJobDefaultsToWait(t *testing.T) {
 		appVersion: app.Version,
 		dockerCli:  dockerCli,
 		log:        logger.New(logger.LevelCritical),
-		runTracker: tracker,
-		triggerScheduledJob: func(ctx context.Context, _ command.Cli, _ *slog.Logger, jobName, stack string, _ *secretprovider.SecretProvider) (string, error) {
+	}
+	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		log:     h.log,
+		tracker: tracker,
+		scheduledJobs: testScheduledJobOperations{triggerNow: func(
+			ctx context.Context,
+			_ string,
+			jobName string,
+			stack string,
+			_ *secretprovider.SecretProvider,
+		) (string, error) {
 			if jobName != "backup" || stack != "prod" {
 				t.Errorf("trigger arguments = %q, %q", jobName, stack)
 			}
@@ -505,8 +520,8 @@ func TestMCPTriggerScheduledJobDefaultsToWait(t *testing.T) {
 			triggered <- ctx
 
 			return "scheduled-run-id", nil
-		},
-	}
+		}},
+	})
 	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
 	result := callMCPTool(t, connectMCPTestClient(t, server), "trigger_scheduled_job", map[string]any{"job_name": " backup ", "stack": " prod "})
 
@@ -528,7 +543,6 @@ func TestMCPTriggerScheduledJobAsyncJobIDResolves(t *testing.T) {
 	tracker := newDeploymentRunTracker(nil)
 	started := make(chan struct{})
 	release := make(chan struct{})
-	backgroundWG := &sync.WaitGroup{}
 
 	dockerCli, err := command.NewDockerCli()
 	if err != nil {
@@ -536,14 +550,21 @@ func TestMCPTriggerScheduledJobAsyncJobIDResolves(t *testing.T) {
 	}
 
 	h := &handlerData{
-		appConfig:     &app.Config{},
-		appVersion:    app.Version,
-		backgroundCtx: t.Context(),
-		backgroundWG:  backgroundWG,
-		dockerCli:     dockerCli,
-		log:           logger.New(logger.LevelCritical),
-		runTracker:    tracker,
-		triggerScheduledJob: func(ctx context.Context, _ command.Cli, _ *slog.Logger, _, _ string, _ *secretprovider.SecretProvider) (string, error) {
+		appConfig:  &app.Config{},
+		appVersion: app.Version,
+		dockerCli:  dockerCli,
+		log:        logger.New(logger.LevelCritical),
+	}
+	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		log:     h.log,
+		tracker: tracker,
+		scheduledJobs: testScheduledJobOperations{triggerNow: func(
+			ctx context.Context,
+			_ string,
+			_ string,
+			_ string,
+			_ *secretprovider.SecretProvider,
+		) (string, error) {
 			close(started)
 			<-release
 
@@ -552,8 +573,8 @@ func TestMCPTriggerScheduledJobAsyncJobIDResolves(t *testing.T) {
 			}
 
 			return "scheduled-run-id", nil
-		},
-	}
+		}},
+	})
 	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
 	session := connectMCPTestClient(t, server)
 	result := callMCPTool(t, session, "trigger_scheduled_job", map[string]any{"job_name": "backup", "wait": false})
@@ -582,7 +603,7 @@ func TestMCPTriggerScheduledJobAsyncJobIDResolves(t *testing.T) {
 
 	close(release)
 	waitForDeploymentRunStatus(t, tracker, output.JobID, deploymentRunStatusSucceeded)
-	backgroundWG.Wait()
+	h.controlPlaneRuns.background.Wait()
 }
 
 // TestMCPTriggerScheduledJobErrorKeepsJobID pins the trigger error contract:
@@ -602,11 +623,20 @@ func TestMCPTriggerScheduledJobErrorKeepsJobID(t *testing.T) {
 		appVersion: app.Version,
 		dockerCli:  dockerCli,
 		log:        logger.New(logger.LevelCritical),
-		runTracker: tracker,
-		triggerScheduledJob: func(context.Context, command.Cli, *slog.Logger, string, string, *secretprovider.SecretProvider) (string, error) {
-			return "", errors.New("scheduled trigger exploded")
-		},
 	}
+	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		log:     h.log,
+		tracker: tracker,
+		scheduledJobs: testScheduledJobOperations{triggerNow: func(
+			context.Context,
+			string,
+			string,
+			string,
+			*secretprovider.SecretProvider,
+		) (string, error) {
+			return "", errors.New("scheduled trigger exploded")
+		}},
+	})
 	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
 	session := connectMCPTestClient(t, server)
 
@@ -1014,7 +1044,8 @@ func TestMCPDeploymentRunTools(t *testing.T) {
 	tracker.MarkSucceeded("job-webhook", "complete")
 	tracker.TrackAccepted("job-poll", deploymentRunTriggerPoll)
 
-	h := &handlerData{runTracker: tracker, appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
+	h := &handlerData{appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
+	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{tracker: tracker, log: h.log})
 	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
 	session := connectMCPTestClient(t, server)
 
@@ -1039,7 +1070,8 @@ func TestMCPDeploymentRunTools(t *testing.T) {
 			defaultTracker.TrackAccepted("default-job-"+strconv.Itoa(i), deploymentRunTriggerWebhook)
 		}
 
-		defaultHandler := &handlerData{runTracker: defaultTracker, appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
+		defaultHandler := &handlerData{appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
+		defaultHandler.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{tracker: defaultTracker, log: defaultHandler.log})
 		defaultServer, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, defaultHandler)
 		result := callMCPTool(t, connectMCPTestClient(t, defaultServer), "list_deployment_runs", map[string]any{})
 
@@ -1090,7 +1122,8 @@ func TestMCPListDeploymentRunsCapsLimitAt200(t *testing.T) {
 		tracker.TrackAccepted("job-"+strconv.Itoa(i), deploymentRunTriggerWebhook)
 	}
 
-	h := &handlerData{runTracker: tracker, appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
+	h := &handlerData{appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
+	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{tracker: tracker, log: h.log})
 	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
 	result := callMCPTool(t, connectMCPTestClient(t, server), "list_deployment_runs", map[string]any{"limit": 201})
 
@@ -1260,6 +1293,13 @@ func TestMCPScheduledJobsTool(t *testing.T) {
 `), test.WithName(projectName))
 
 	h := &handlerData{dockerCli: dockerCli, appConfig: &app.Config{}, appVersion: app.Version, log: logger.New(logger.LevelCritical)}
+	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		dockerCli: dockerCli,
+		log:       h.log,
+		scheduledJobs: testScheduledJobOperations{listJobs: func(ctx context.Context, _ string, stackName string) ([]scheduler.JobInfo, error) {
+			return scheduler.ListJobs(ctx, dockerCli, stackName)
+		}},
+	})
 	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
 	session := connectMCPTestClient(t, server)
 	result := callMCPTool(t, session, "list_scheduled_jobs", map[string]any{"stack": " " + projectName + " "})
@@ -1545,6 +1585,17 @@ func newMCPTestServer(t *testing.T, enabled bool, apiSecret string, maxPayloadSi
 
 func newMCPTestServerWithHandler(t *testing.T, enabled bool, apiSecret string, maxPayloadSize int64, handler *handlerData) (*httptest.Server, []string) {
 	t.Helper()
+
+	if handler.controlPlaneRuns == nil {
+		handler.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			appConfig:      handler.appConfig,
+			dataMountPoint: handler.dataMountPoint,
+			dockerCli:      handler.dockerCli,
+			contexts:       handler.contexts,
+			log:            handler.log,
+			secretProvider: handler.secretProvider,
+		})
+	}
 
 	config := &app.Config{
 		ApiSecret:      apiSecret,

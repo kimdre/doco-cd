@@ -41,7 +41,7 @@ func (h *handlerData) triggerScheduledJobTool(ctx context.Context, _ *mcp.CallTo
 		return nil, triggerScheduledJobOutput{}, err
 	}
 
-	jobID, err := h.triggerScheduledJobRun(ctx, "", contextClient.Cli, contextClient.Name, jobName, strings.TrimSpace(input.Stack), wait)
+	jobID, err := h.controlPlaneRuns.TriggerScheduledJob(ctx, "", contextClient.Name, jobName, strings.TrimSpace(input.Stack), wait)
 	result, status := triggerRunToolResult(wait, err)
 
 	return result, triggerScheduledJobOutput{JobID: jobID, Status: status}, nil

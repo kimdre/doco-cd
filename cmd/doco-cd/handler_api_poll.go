@@ -65,7 +65,7 @@ func (h *handlerData) TriggerPollHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	jobID, err := h.runPollConfigs(r.Context(), pollConfigs, wait, jobLog)
+	jobID, err := h.controlPlaneRuns.TriggerPoll(r.Context(), pollConfigs, wait, jobLog)
 	if err != nil {
 		if isLifecycleCancellation(err) {
 			JSONError(w, err.Error(), "", jobID, http.StatusServiceUnavailable)

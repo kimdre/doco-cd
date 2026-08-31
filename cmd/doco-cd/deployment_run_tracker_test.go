@@ -54,6 +54,28 @@ func TestDeploymentRunTrackerLifecycle(t *testing.T) {
 	}
 }
 
+func TestDeploymentRunTrackerReturnsDeploymentCopies(t *testing.T) {
+	t.Parallel()
+
+	tracker := newDeploymentRunTracker(nil)
+	tracker.TrackAccepted("job", deploymentRunTriggerWebhook)
+	tracker.AddDeployment("job", "api", "")
+
+	run, ok := tracker.Get("job")
+	if !ok {
+		t.Fatal("expected tracked run")
+	}
+
+	run.Deployments[0].Stack = "mutated"
+	listed := tracker.List(1, "", "")
+	listed[0].Deployments[0].Stack = "also-mutated"
+
+	stored, _ := tracker.Get("job")
+	if stored.Deployments[0].Stack != "api" {
+		t.Fatalf("stored deployment was mutated through a query result: %#v", stored.Deployments)
+	}
+}
+
 func TestDeploymentRunTrackerListAndTrim(t *testing.T) {
 	t.Parallel()
 

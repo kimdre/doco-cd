@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -25,24 +24,25 @@ import (
 
 const validPollSourceURL = "https://github.com/kimdre/doco-cd_tests.git"
 
-func TestRunPollConfigsAppliesDefaultsAndReportsIndexedValidationErrors(t *testing.T) {
+func TestControlPlaneRunsTriggerPollAppliesDefaultsAndReportsIndexedValidationErrors(t *testing.T) {
 	t.Run("empty configs", func(t *testing.T) {
 		tracker := newDeploymentRunTracker(nil)
-		runs := 0
-		h := &handlerData{
-			appConfig:  &app.Config{},
-			log:        logger.New(logger.LevelCritical),
-			runTracker: tracker,
-			runPoll: func(context.Context, poll.Config, *app.Config, container.MountPoint,
+		runCount := 0
+		log := logger.New(logger.LevelCritical)
+		controlPlane := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			appConfig: &app.Config{},
+			log:       log,
+			tracker:   tracker,
+			pollRunner: func(context.Context, poll.Config, *app.Config, container.MountPoint,
 				command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider, string,
 			) error {
-				runs++
+				runCount++
 
 				return nil
 			},
-		}
+		})
 
-		jobID, err := h.runPollConfigs(t.Context(), nil, true, h.log.Logger)
+		jobID, err := controlPlane.TriggerPoll(t.Context(), nil, true, log.Logger)
 		if !errors.Is(err, errNoPollConfiguration) {
 			t.Fatalf("empty configs error = %v", err)
 		}
@@ -55,8 +55,8 @@ func TestRunPollConfigsAppliesDefaultsAndReportsIndexedValidationErrors(t *testi
 			t.Fatal("empty configs must not be tracked")
 		}
 
-		if runs != 0 {
-			t.Fatalf("empty configs started %d poll runs", runs)
+		if runCount != 0 {
+			t.Fatalf("empty configs started %d poll runs", runCount)
 		}
 	})
 
@@ -68,11 +68,12 @@ func TestRunPollConfigsAppliesDefaultsAndReportsIndexedValidationErrors(t *testi
 			gotMetadata notification.Metadata
 		)
 
-		h := &handlerData{
-			appConfig:  &app.Config{},
-			log:        logger.New(logger.LevelCritical),
-			runTracker: tracker,
-			runPoll: func(_ context.Context, cfg poll.Config, _ *app.Config, _ container.MountPoint,
+		log := logger.New(logger.LevelCritical)
+		controlPlane := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			appConfig: &app.Config{},
+			log:       log,
+			tracker:   tracker,
+			pollRunner: func(_ context.Context, cfg poll.Config, _ *app.Config, _ container.MountPoint,
 				_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, metadata notification.Metadata, _ *secretprovider.SecretProvider, _ string,
 			) error {
 				gotConfig = cfg
@@ -80,13 +81,13 @@ func TestRunPollConfigsAppliesDefaultsAndReportsIndexedValidationErrors(t *testi
 
 				return nil
 			},
-		}
+		})
 
-		jobID, err := h.runPollConfigs(t.Context(), []poll.Config{{
+		jobID, err := controlPlane.TriggerPoll(t.Context(), []poll.Config{{
 			SourceUrl:    validPollSourceURL,
 			Interval:     time.Hour,
 			CustomTarget: "prod-vm",
-		}}, true, h.log.Logger)
+		}}, true, log.Logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -115,21 +116,22 @@ func TestRunPollConfigsAppliesDefaultsAndReportsIndexedValidationErrors(t *testi
 
 	t.Run("indexed validation", func(t *testing.T) {
 		tracker := newDeploymentRunTracker(nil)
-		runs := 0
-		h := &handlerData{
-			appConfig:  &app.Config{},
-			log:        logger.New(logger.LevelCritical),
-			runTracker: tracker,
-			runPoll: func(context.Context, poll.Config, *app.Config, container.MountPoint,
+		runCount := 0
+		log := logger.New(logger.LevelCritical)
+		controlPlane := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			appConfig: &app.Config{},
+			log:       log,
+			tracker:   tracker,
+			pollRunner: func(context.Context, poll.Config, *app.Config, container.MountPoint,
 				command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider, string,
 			) error {
-				runs++
+				runCount++
 
 				return nil
 			},
-		}
+		})
 
-		jobID, err := h.runPollConfigs(t.Context(), []poll.Config{{SourceUrl: validPollSourceURL}, {}}, true, h.log.Logger)
+		jobID, err := controlPlane.TriggerPoll(t.Context(), []poll.Config{{SourceUrl: validPollSourceURL}, {}}, true, log.Logger)
 		if !errors.Is(err, deploy.ErrKeyNotFound) || !strings.Contains(err.Error(), "at index 1:") {
 			t.Fatalf("unexpected validation error: %v", err)
 		}
@@ -138,8 +140,8 @@ func TestRunPollConfigsAppliesDefaultsAndReportsIndexedValidationErrors(t *testi
 			t.Fatal("expected job ID for validation response")
 		}
 
-		if runs != 0 {
-			t.Fatalf("validation failure started %d poll runs", runs)
+		if runCount != 0 {
+			t.Fatalf("validation failure started %d poll runs", runCount)
 		}
 
 		if _, ok := tracker.Get(jobID); ok {
@@ -148,22 +150,23 @@ func TestRunPollConfigsAppliesDefaultsAndReportsIndexedValidationErrors(t *testi
 	})
 }
 
-func TestRunPollConfigsRejectsTooManyConfigs(t *testing.T) {
+func TestControlPlaneRunsTriggerPollRejectsTooManyConfigs(t *testing.T) {
 	t.Parallel()
 
 	tracker := newDeploymentRunTracker(nil)
-	h := &handlerData{
-		appConfig:  &app.Config{},
-		log:        logger.New(logger.LevelCritical),
-		runTracker: tracker,
-	}
+	log := logger.New(logger.LevelCritical)
+	controlPlane := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		appConfig: &app.Config{},
+		log:       log,
+		tracker:   tracker,
+	})
 
 	configs := make([]poll.Config, maxTriggerPollConfigs+1)
 	for i := range configs {
 		configs[i].SourceUrl = validPollSourceURL
 	}
 
-	jobID, err := h.runPollConfigs(t.Context(), configs, true, h.log.Logger)
+	jobID, err := controlPlane.TriggerPoll(t.Context(), configs, true, log.Logger)
 	if !errors.Is(err, errTooManyPollConfigurations) {
 		t.Fatalf("error = %v, want %v", err, errTooManyPollConfigurations)
 	}
@@ -173,7 +176,7 @@ func TestRunPollConfigsRejectsTooManyConfigs(t *testing.T) {
 	}
 }
 
-func TestRunPollConfigsBoundsConcurrentRunners(t *testing.T) {
+func TestControlPlaneRunsTriggerPollBoundsConcurrentRunners(t *testing.T) {
 	t.Parallel()
 
 	const maxConcurrent = 2
@@ -185,10 +188,11 @@ func TestRunPollConfigsBoundsConcurrentRunners(t *testing.T) {
 
 	release := make(chan struct{})
 	started := make(chan struct{}, maxTriggerPollConfigs)
-	h := &handlerData{
+	log := logger.New(logger.LevelCritical)
+	controlPlane := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
 		appConfig: &app.Config{MaxConcurrentDeployments: maxConcurrent},
-		log:       logger.New(logger.LevelCritical),
-		runPoll: func(context.Context, poll.Config, *app.Config, container.MountPoint,
+		log:       log,
+		pollRunner: func(context.Context, poll.Config, *app.Config, container.MountPoint,
 			command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider, string,
 		) error {
 			current := running.Add(1)
@@ -205,7 +209,7 @@ func TestRunPollConfigsBoundsConcurrentRunners(t *testing.T) {
 
 			return nil
 		},
-	}
+	})
 
 	configs := make([]poll.Config, 5)
 	for i := range configs {
@@ -215,7 +219,7 @@ func TestRunPollConfigsBoundsConcurrentRunners(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		_, err := h.runPollConfigs(t.Context(), configs, true, h.log.Logger)
+		_, err := controlPlane.TriggerPoll(t.Context(), configs, true, log.Logger)
 		done <- err
 	}()
 
@@ -240,7 +244,7 @@ func TestRunPollConfigsBoundsConcurrentRunners(t *testing.T) {
 	}
 }
 
-func TestRunPollConfigsTracksSuccessFailureAndPanic(t *testing.T) {
+func TestControlPlaneRunsTriggerPollTracksSuccessFailureAndPanic(t *testing.T) {
 	for _, testCase := range []struct {
 		name        string
 		run         pollRunner
@@ -283,14 +287,15 @@ func TestRunPollConfigsTracksSuccessFailureAndPanic(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			tracker := newDeploymentRunTracker(nil)
-			h := &handlerData{
+			log := logger.New(logger.LevelCritical)
+			controlPlane := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
 				appConfig:  &app.Config{},
-				log:        logger.New(logger.LevelCritical),
-				runTracker: tracker,
-				runPoll:    testCase.run,
-			}
+				log:        log,
+				tracker:    tracker,
+				pollRunner: testCase.run,
+			})
 
-			jobID, err := h.runPollConfigs(t.Context(), []poll.Config{{SourceUrl: validPollSourceURL}}, true, h.log.Logger)
+			jobID, err := controlPlane.TriggerPoll(t.Context(), []poll.Config{{SourceUrl: validPollSourceURL}}, true, log.Logger)
 			if (err != nil) != testCase.wantError {
 				t.Fatalf("run error = %v, wantError %t", err, testCase.wantError)
 			}
@@ -311,19 +316,18 @@ func TestRunPollConfigsTracksSuccessFailureAndPanic(t *testing.T) {
 	}
 }
 
-func TestRunPollConfigsAsyncUsesApplicationLifecycle(t *testing.T) {
+func TestControlPlaneRunsTriggerPollAsyncUsesApplicationLifecycle(t *testing.T) {
 	appCtx, cancelApp := context.WithCancel(t.Context())
-	backgroundWG := &sync.WaitGroup{}
 	started := make(chan struct{})
 	finished := make(chan error, 1)
 	tracker := newDeploymentRunTracker(nil)
-	h := &handlerData{
-		appConfig:     &app.Config{},
-		backgroundCtx: appCtx,
-		backgroundWG:  backgroundWG,
-		log:           logger.New(logger.LevelCritical),
-		runTracker:    tracker,
-		runPoll: func(ctx context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+	log := logger.New(logger.LevelCritical)
+	controlPlane := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		applicationCtx: appCtx,
+		appConfig:      &app.Config{},
+		log:            log,
+		tracker:        tracker,
+		pollRunner: func(ctx context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
 			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider, _ string,
 		) error {
 			close(started)
@@ -333,11 +337,11 @@ func TestRunPollConfigsAsyncUsesApplicationLifecycle(t *testing.T) {
 
 			return ctx.Err()
 		},
-	}
+	})
 
 	requestCtx, cancelRequest := context.WithCancel(t.Context())
 
-	jobID, err := h.runPollConfigs(requestCtx, []poll.Config{{SourceUrl: validPollSourceURL}}, false, h.log.Logger)
+	jobID, err := controlPlane.TriggerPoll(requestCtx, []poll.Config{{SourceUrl: validPollSourceURL}}, false, log.Logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,31 +376,31 @@ func TestRunPollConfigsAsyncUsesApplicationLifecycle(t *testing.T) {
 		t.Fatal("application cancellation did not stop async poll")
 	}
 
-	backgroundWG.Wait()
+	controlPlane.background.Wait()
 	waitForDeploymentRunStatus(t, tracker, jobID, deploymentRunStatusFailed)
 }
 
-func TestRunPollConfigsAsyncRejectsWorkDuringShutdown(t *testing.T) {
+func TestControlPlaneRunsTriggerPollAsyncRejectsWorkDuringShutdown(t *testing.T) {
 	tracker := newDeploymentRunTracker(nil)
 	background := newBackgroundWork()
 	background.CloseAndWait()
 
-	h := &handlerData{
-		appConfig:      &app.Config{},
-		backgroundCtx:  t.Context(),
-		backgroundWork: background,
-		log:            logger.New(logger.LevelCritical),
-		runTracker:     tracker,
-		runPoll: func(context.Context, poll.Config, *app.Config, container.MountPoint,
+	log := logger.New(logger.LevelCritical)
+	controlPlane := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		appConfig:  &app.Config{},
+		background: background,
+		log:        log,
+		tracker:    tracker,
+		pollRunner: func(context.Context, poll.Config, *app.Config, container.MountPoint,
 			command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider, string,
 		) error {
 			t.Fatal("poll run started during shutdown")
 
 			return nil
 		},
-	}
+	})
 
-	jobID, err := h.runPollConfigs(t.Context(), []poll.Config{{SourceUrl: validPollSourceURL}}, false, nil)
+	jobID, err := controlPlane.TriggerPoll(t.Context(), []poll.Config{{SourceUrl: validPollSourceURL}}, false, log.Logger)
 	if !errors.Is(err, errBackgroundWorkClosed) {
 		t.Fatalf("error = %v, want %v", err, errBackgroundWorkClosed)
 	}
@@ -407,21 +411,22 @@ func TestRunPollConfigsAsyncRejectsWorkDuringShutdown(t *testing.T) {
 	}
 }
 
-func TestRunPollConfigsWaitUsesRequestContext(t *testing.T) {
+func TestControlPlaneRunsTriggerPollWaitUsesRequestContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	h := &handlerData{
+	log := logger.New(logger.LevelCritical)
+	controlPlane := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
 		appConfig: &app.Config{},
-		log:       logger.New(logger.LevelCritical),
-		runPoll: func(ctx context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+		log:       log,
+		pollRunner: func(ctx context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
 			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider, _ string,
 		) error {
 			return ctx.Err()
 		},
-	}
+	})
 
-	_, err := h.runPollConfigs(ctx, []poll.Config{{SourceUrl: validPollSourceURL}}, true, h.log.Logger)
+	_, err := controlPlane.TriggerPoll(ctx, []poll.Config{{SourceUrl: validPollSourceURL}}, true, log.Logger)
 
 	failed, ok := errors.AsType[*pollRunsFailedError](err)
 	if !ok || failed.Failed != 1 || failed.Total != 1 {
@@ -429,18 +434,19 @@ func TestRunPollConfigsWaitUsesRequestContext(t *testing.T) {
 	}
 }
 
-func TestRunPollConfigsWaitUsesApplicationLifecycle(t *testing.T) {
+func TestControlPlaneRunsTriggerPollWaitUsesApplicationLifecycle(t *testing.T) {
 	appCtx, cancelApp := context.WithCancel(t.Context())
 	background := newBackgroundWork()
 	tracker := newDeploymentRunTracker(nil)
 	started := make(chan struct{})
-	h := &handlerData{
+	log := logger.New(logger.LevelCritical)
+	controlPlane := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		applicationCtx: appCtx,
 		appConfig:      &app.Config{},
-		backgroundCtx:  appCtx,
-		backgroundWork: background,
-		log:            logger.New(logger.LevelCritical),
-		runTracker:     tracker,
-		runPoll: func(ctx context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+		background:     background,
+		log:            log,
+		tracker:        tracker,
+		pollRunner: func(ctx context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
 			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider, _ string,
 		) error {
 			close(started)
@@ -448,14 +454,14 @@ func TestRunPollConfigsWaitUsesApplicationLifecycle(t *testing.T) {
 
 			return ctx.Err()
 		},
-	}
+	})
 
 	result := make(chan struct {
 		jobID string
 		err   error
 	}, 1)
 	go func() {
-		jobID, err := h.runPollConfigs(t.Context(), []poll.Config{{SourceUrl: validPollSourceURL}}, true, h.log.Logger)
+		jobID, err := controlPlane.TriggerPoll(t.Context(), []poll.Config{{SourceUrl: validPollSourceURL}}, true, log.Logger)
 		result <- struct {
 			jobID string
 			err   error
@@ -464,7 +470,7 @@ func TestRunPollConfigsWaitUsesApplicationLifecycle(t *testing.T) {
 
 	<-started
 	cancelApp()
-	background.CloseAndWait()
+	controlPlane.CloseAndWait()
 
 	runResult := <-result
 	if runResult.err == nil {
@@ -477,19 +483,20 @@ func TestRunPollConfigsWaitUsesApplicationLifecycle(t *testing.T) {
 	}
 }
 
-func TestRunPollConfigsWaitRejectsWorkDuringShutdown(t *testing.T) {
+func TestControlPlaneRunsTriggerPollWaitRejectsWorkDuringShutdown(t *testing.T) {
 	tracker := newDeploymentRunTracker(nil)
 	background := newBackgroundWork()
 	background.CloseAndWait()
-	h := &handlerData{
-		appConfig:      &app.Config{},
-		backgroundCtx:  t.Context(),
-		backgroundWork: background,
-		log:            logger.New(logger.LevelCritical),
-		runTracker:     tracker,
-	}
 
-	jobID, err := h.runPollConfigs(t.Context(), []poll.Config{{SourceUrl: validPollSourceURL}}, true, h.log.Logger)
+	log := logger.New(logger.LevelCritical)
+	controlPlane := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		appConfig:  &app.Config{},
+		background: background,
+		log:        log,
+		tracker:    tracker,
+	})
+
+	jobID, err := controlPlane.TriggerPoll(t.Context(), []poll.Config{{SourceUrl: validPollSourceURL}}, true, log.Logger)
 	if !errors.Is(err, errBackgroundWorkClosed) {
 		t.Fatalf("error = %v, want %v", err, errBackgroundWorkClosed)
 	}
