@@ -40,7 +40,7 @@ const (
 const pollWatcherlessFallbackInterval = 24 * time.Hour
 
 // StartPoll initializes PollJob with the provided configuration and starts the PollHandler goroutine.
-func StartPoll(ctx context.Context, h *handlerData, pollConfig poll.Config, wg *sync.WaitGroup) error {
+func StartPoll(ctx context.Context, h *orchestrationHandler, pollConfig poll.Config, wg *sync.WaitGroup) error {
 	isLocalGit := config.NormalizeSourceType(pollConfig.Source) == config.SourceTypeGit &&
 		git.IsLocalFile(pollConfig.SourceUrl)
 
@@ -69,7 +69,7 @@ func StartPoll(ctx context.Context, h *handlerData, pollConfig poll.Config, wg *
 }
 
 // PollHandler handles polling for changes in a configured source.
-func (h *handlerData) PollHandler(ctx context.Context, pollJob *poll.Job) {
+func (h *orchestrationHandler) PollHandler(ctx context.Context, pollJob *poll.Job) {
 	sourceType := config.NormalizeSourceType(pollJob.Config.Source)
 	entity := logEntityForSourceType(sourceType)
 
@@ -262,7 +262,7 @@ func pollError(jobLog *slog.Logger, metadata notification.Metadata, err error) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				logRecoveredPanic(jobLog, "poll error notification", r)
+				log.LogRecoveredPanic(jobLog, "poll error notification", r)
 			}
 		}()
 

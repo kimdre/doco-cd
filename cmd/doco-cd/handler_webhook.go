@@ -19,10 +19,12 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
+	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/docker"
 
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/notification"
+	restAPI "github.com/kimdre/doco-cd/internal/restapi"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/stages"
 
@@ -31,8 +33,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
-
-var ErrInvalidHTTPMethod = errors.New("invalid http method")
 
 // normalizeSourceURLRewriteKey normalizes the source URL rewrite key
 // by trimming whitespace and converting it to lowercase.
@@ -244,10 +244,9 @@ func repositoryNameFromWebhookPayload(payload webhook.ParsedPayload) string {
 	return "unknown"
 }
 
-type handlerData struct {
+type orchestrationHandler struct {
 	appConfig        *app.Config // Application configuration
-	appVersion       string      // Application version
-	controlPlaneRuns *controlPlaneRuns
+	controlPlaneRuns *controlplane.Runs
 	dataMountPoint   container.MountPoint // Mount point for the data directory
 	dockerCli        command.Cli          // Docker CLI client
 	contexts         *docker.ContextRegistry
@@ -258,6 +257,21 @@ type handlerData struct {
 
 var errWebhookDeploymentPanicked = errors.New("webhook deployment panicked")
 
+func reportHealthFailure(
+	w http.ResponseWriter,
+	log *slog.Logger,
+	jobID string,
+	failureType error,
+	cause error,
+) {
+	onError(w, log, failureType.Error(), cause.Error(), http.StatusServiceUnavailable, notification.Metadata{
+		JobID:      jobID,
+		Repository: "healthcheck",
+		Stack:      "",
+		Revision:   "",
+	}, cause)
+}
+
 // onError handles errors by logging them, sending a JSON error response, and sending a notification.
 // cause is the error behind the response: when a failure notification was already
 // sent for it deeper down, the HTTP response and the log stay the same and only
@@ -265,7 +279,7 @@ var errWebhookDeploymentPanicked = errors.New("webhook deployment panicked")
 func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any, statusCode int, metadata notification.Metadata, cause error) {
 	prometheus.WebhookErrorsTotal.WithLabelValues(metadata.Repository).Inc()
 	log.Error(errMsg)
-	JSONError(w,
+	restAPI.JSONError(w,
 		errMsg,
 		details,
 		metadata.JobID,
@@ -286,7 +300,7 @@ func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				logRecoveredPanic(log, "webhook error notification", r)
+				logger.LogRecoveredPanic(log, "webhook error notification", r)
 			}
 		}()
 
@@ -302,7 +316,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget string, metadata notification.Metadata,
 	dockerCli command.Cli, contexts *docker.ContextRegistry, secretProvider *secretprovider.SecretProvider,
 	testName string,
-) (controlPlaneRunResult, error) {
+) (controlplane.RunResult, error) {
 	startTime := time.Now()
 
 	repoName := repositoryNameFromWebhookPayload(payload)
@@ -310,9 +324,9 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	if payload.Source != webhook.PayloadSourceOCI && payload.Ref == "" {
 		msg := "no reference provided in webhook payload, skipping event"
 		jobLog.Warn(msg)
-		JSONError(w, msg, msg, metadata.JobID, http.StatusBadRequest)
+		restAPI.JSONError(w, msg, msg, metadata.JobID, http.StatusBadRequest)
 
-		return skippedControlPlaneRun(msg), nil
+		return controlplane.SkippedRun(msg), nil
 	}
 
 	sourceType := config.SourceTypeGit
@@ -330,7 +344,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			err := errors.New("local filesystem Git URLs in webhook payloads require a configured source URL rewrite")
 			onError(w, jobLog.With(logger.ErrAttr(err)), "webhook clone URL is not allowed", err, http.StatusForbidden, metadata, err)
 
-			return failedControlPlaneRun(err.Error()), nil
+			return controlplane.FailedRun(err.Error()), nil
 		}
 
 		if cloneURLOverrideApplied {
@@ -377,7 +391,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		if authErr != nil {
 			onError(w, jobLog.With(logger.ErrAttr(authErr)), "failed to resolve SSH auth method", authErr.Error(), http.StatusInternalServerError, metadata, authErr)
 
-			return failedControlPlaneRun("failed to resolve SSH auth method: " + authErr.Error()), nil
+			return controlplane.FailedRun("failed to resolve SSH auth method: " + authErr.Error()), nil
 		}
 
 		if sshAuth != nil {
@@ -394,14 +408,14 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		msg := "deployment skipped, webhook filter did not match"
 		elapsedTime := time.Since(startTime)
 		jobLog.Info(msg, slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()))
-		JSONResponse(w, msg, metadata.JobID, http.StatusAccepted)
+		restAPI.JSONResponse(w, msg, metadata.JobID, http.StatusAccepted)
 
-		return skippedControlPlaneRun(msg), nil
+		return controlplane.SkippedRun(msg), nil
 	}
 
 	if deployErr != nil {
-		if isLifecycleCancellation(deployErr) {
-			return failedControlPlaneRun(deployErr.Error()), deployErr
+		if controlplane.IsLifecycleCancellation(deployErr) {
+			return controlplane.FailedRun(deployErr.Error()), deployErr
 		}
 
 		// In synchronous mode we should return an error to the caller
@@ -409,27 +423,27 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		if hr, ok := errors.AsType[handleError](deployErr); ok {
 			onError(w, jobLog.With(logger.ErrAttr(hr.err)), hr.msg, hr.err.Error(), hr.httpStatusCode, metadata, hr.err)
 
-			return failedControlPlaneRun(hr.Error()), nil
+			return controlplane.FailedRun(hr.Error()), nil
 		}
 
 		onError(w, jobLog.With(logger.ErrAttr(deployErr)), "deployment failed", deployErr.Error(), http.StatusInternalServerError, metadata, deployErr)
 
-		return failedControlPlaneRun(deployErr.Error()), nil
+		return controlplane.FailedRun(deployErr.Error()), nil
 	}
 
 	msg := "job completed successfully"
 	elapsedTime := time.Since(startTime)
 	jobLog.Info(msg, slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()))
-	JSONResponse(w, msg, metadata.JobID, http.StatusCreated)
+	restAPI.JSONResponse(w, msg, metadata.JobID, http.StatusCreated)
 
 	prometheus.WebhookRequestsTotal.WithLabelValues(repoName).Inc()
 	prometheus.WebhookDuration.WithLabelValues(repoName).Observe(elapsedTime.Seconds())
 
-	return succeededControlPlaneRun(msg), nil
+	return controlplane.SucceededRun(msg), nil
 }
 
 // WebhookHandler handles incoming webhook requests.
-func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
+func (h *orchestrationHandler) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	customTarget := r.PathValue("customTarget")
 
 	// Add a job id to the context to track deployments in the logs
@@ -455,7 +469,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		Revision:                 "",
 		DeploymentTargetObserver: h.controlPlaneRuns.DeploymentTargetObserver(jobID),
 	}
-	h.controlPlaneRuns.Accept(jobID, deploymentRunTriggerWebhook, controlPlaneRunMetadata{
+	h.controlPlaneRuns.Accept(jobID, controlplane.RunTriggerWebhook, controlplane.RunMetadata{
 		Repository: metadata.Repository,
 		Target:     customTarget,
 		Revision:   metadata.Revision,
@@ -500,7 +514,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 			metadata.Repository = repositoryName
 
 			metadata.Revision = notification.GetRevision(payload.Ref, payload.RevisionString())
-			h.controlPlaneRuns.SetMetadata(jobID, controlPlaneRunMetadata{
+			h.controlPlaneRuns.SetMetadata(jobID, controlplane.RunMetadata{
 				Repository: metadata.Repository,
 				Target:     customTarget,
 				Revision:   metadata.Revision,
@@ -516,8 +530,8 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	if deletionEvent, eErr := webhook.IsBranchOrTagDeletionEvent(r, payload, provider); eErr == nil && deletionEvent {
 		errMsg := "branch or tag deletion event received, skipping webhook event"
 		jobLog.Info(errMsg)
-		JSONResponse(w, errMsg, jobID, http.StatusAccepted)
-		h.controlPlaneRuns.SetMetadata(jobID, controlPlaneRunMetadata{
+		restAPI.JSONResponse(w, errMsg, jobID, http.StatusAccepted)
+		h.controlPlaneRuns.SetMetadata(jobID, controlplane.RunMetadata{
 			Repository: repositoryNameFromWebhookPayload(payload),
 			Target:     customTarget,
 			Revision:   notification.GetRevision(payload.Ref, payload.RevisionString()),
@@ -528,7 +542,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	} else if eErr != nil {
 		errMsg := "failed to check if event is branch or tag deletion"
 		jobLog.Error(errMsg, logger.ErrAttr(eErr))
-		JSONError(w, errMsg, eErr.Error(), jobID, http.StatusInternalServerError)
+		restAPI.JSONError(w, errMsg, eErr.Error(), jobID, http.StatusInternalServerError)
 		h.controlPlaneRuns.MarkFailed(jobID, errMsg+": "+eErr.Error())
 
 		return
@@ -539,7 +553,7 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		metadata.Revision = notification.GetRevision(payload.Ref, payload.RevisionString())
 	}
 
-	h.controlPlaneRuns.SetMetadata(jobID, controlPlaneRunMetadata{
+	h.controlPlaneRuns.SetMetadata(jobID, controlplane.RunMetadata{
 		Repository: metadata.Repository,
 		Target:     customTarget,
 		Revision:   metadata.Revision,
@@ -556,11 +570,11 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	// Prevent concurrent deployments for the same repository using a lock
 	repoLock := lock.GetRepoLock(metadata.Repository)
 
-	handleFn := func(ctx context.Context, w http.ResponseWriter) (controlPlaneRunResult, error) {
+	handleFn := func(ctx context.Context, w http.ResponseWriter) (controlplane.RunResult, error) {
 		if !acquireWebhookRepoLock(ctx, repoLock, jobID, func() {
 			jobLog.Info("waiting for webhook "+lockEntity+" lock", slog.String(lockEntity, lockLogValue))
 		}) {
-			return failedControlPlaneRun(ctx.Err().Error()), ctx.Err()
+			return controlplane.FailedRun(ctx.Err().Error()), ctx.Err()
 		}
 
 		defer repoLock.Unlock()
@@ -568,16 +582,16 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		return handleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, metadata, h.dockerCli, h.contexts, h.secretProvider, h.testName)
 	}
 
-	mode := controlPlaneRunAsynchronous
+	mode := controlplane.RunAsynchronous
 	if wait {
-		mode = controlPlaneRunSynchronousDetached
+		mode = controlplane.RunSynchronousDetached
 	}
 
-	err = h.controlPlaneRuns.Execute(r.Context(), jobID, controlPlaneRunExecution{
-		mode:         mode,
-		panicContext: "webhook deployment",
-		panicError:   errWebhookDeploymentPanicked,
-	}, func(ctx context.Context) (controlPlaneRunResult, error) {
+	err = h.controlPlaneRuns.Execute(r.Context(), jobID, controlplane.RunExecution{
+		Mode:         mode,
+		PanicContext: "webhook deployment",
+		PanicError:   errWebhookDeploymentPanicked,
+	}, func(ctx context.Context) (controlplane.RunResult, error) {
 		if wait {
 			return handleFn(ctx, w)
 		}
@@ -588,19 +602,19 @@ func (h *handlerData) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		if wait {
 			switch {
 			case errors.Is(err, errWebhookDeploymentPanicked):
-				JSONError(w, err.Error(), "", jobID, http.StatusInternalServerError)
-			case isLifecycleCancellation(err):
-				JSONError(w, err.Error(), "", jobID, http.StatusServiceUnavailable)
+				restAPI.JSONError(w, err.Error(), "", jobID, http.StatusInternalServerError)
+			case controlplane.IsLifecycleCancellation(err):
+				restAPI.JSONError(w, err.Error(), "", jobID, http.StatusServiceUnavailable)
 			}
 		} else {
-			JSONError(w, err.Error(), "", jobID, http.StatusServiceUnavailable)
+			restAPI.JSONError(w, err.Error(), "", jobID, http.StatusServiceUnavailable)
 		}
 
 		return
 	}
 
 	if !wait {
-		JSONResponse(w, "job accepted", jobID, http.StatusAccepted)
+		restAPI.JSONResponse(w, "job accepted", jobID, http.StatusAccepted)
 	}
 }
 

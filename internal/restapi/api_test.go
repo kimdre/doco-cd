@@ -3,17 +3,12 @@ package restapi
 import (
 	"net/http"
 	"testing"
-
-	"github.com/kimdre/doco-cd/internal/config/app"
 )
 
 func TestValidateApiKey(t *testing.T) {
 	t.Parallel()
 
-	appConfig, err := app.GetConfig()
-	if err != nil {
-		t.Fatalf("Failed to get app config: %v", err)
-	}
+	const apiKey = "test_api_secret"
 
 	testCases := []struct {
 		name       string
@@ -24,21 +19,21 @@ func TestValidateApiKey(t *testing.T) {
 	}{
 		{
 			name:       "Valid API Key",
-			apiKey:     appConfig.ApiSecret,
-			checkKey:   appConfig.ApiSecret,
+			apiKey:     apiKey,
+			checkKey:   apiKey,
 			setHeader:  true,
 			shouldPass: true,
 		},
 		{
 			name:       "Invalid API Key",
-			apiKey:     appConfig.ApiSecret,
+			apiKey:     apiKey,
 			checkKey:   "test_apiSecret2",
 			setHeader:  true,
 			shouldPass: false,
 		},
 		{
 			name:       "Missing API Key",
-			apiKey:     appConfig.ApiSecret,
+			apiKey:     apiKey,
 			setHeader:  false,
 			shouldPass: false,
 		},

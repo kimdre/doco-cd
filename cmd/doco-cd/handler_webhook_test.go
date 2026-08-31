@@ -24,7 +24,9 @@ import (
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
+	restserver "github.com/kimdre/doco-cd/internal/api"
 	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/controlplane"
 
 	"github.com/kimdre/doco-cd/internal/git"
 
@@ -61,23 +63,23 @@ func TestRunWebhookSynchronouslyIgnoresRequestCancellation(t *testing.T) {
 
 	applicationCtx, cancelApplication := context.WithCancel(t.Context())
 	runs := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{applicationCtx: applicationCtx})
-	jobID := runs.Accept("webhook", deploymentRunTriggerWebhook, controlPlaneRunMetadata{})
+	jobID := runs.Accept("webhook", controlplane.RunTriggerWebhook, controlplane.RunMetadata{})
 
 	requestCtx, cancelRequest := context.WithCancel(t.Context())
 	runCtx := make(chan context.Context, 1)
 	result := make(chan error, 1)
 
 	go func() {
-		result <- runs.Execute(requestCtx, jobID, controlPlaneRunExecution{
-			mode:         controlPlaneRunSynchronousDetached,
-			panicContext: "webhook deployment",
-			panicError:   errWebhookDeploymentPanicked,
-		}, func(ctx context.Context) (controlPlaneRunResult, error) {
+		result <- runs.Execute(requestCtx, jobID, controlplane.RunExecution{
+			Mode:         controlplane.RunSynchronousDetached,
+			PanicContext: "webhook deployment",
+			PanicError:   errWebhookDeploymentPanicked,
+		}, func(ctx context.Context) (controlplane.RunResult, error) {
 			runCtx <- ctx
 
 			<-ctx.Done()
 
-			return controlPlaneRunResult{}, ctx.Err()
+			return controlplane.RunResult{}, ctx.Err()
 		})
 	}()
 
@@ -277,10 +279,9 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		}
 	})
 
-	h := handlerData{
-		dockerCli:  dockerCli,
-		appConfig:  appConfig,
-		appVersion: app.Version,
+	h := orchestrationHandler{
+		dockerCli: dockerCli,
+		appConfig: appConfig,
 		dataMountPoint: container.MountPoint{
 			Type:        "bind",
 			Source:      tmpDir,
@@ -297,7 +298,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		log:            log,
 	})
 
-	req := newWebhookRequest(t, webhookPath+"?wait=true", minifiedPayload.Bytes(), appConfig)
+	req := newWebhookRequest(t, restserver.WebhookPath+"?wait=true", minifiedPayload.Bytes(), appConfig)
 
 	rr := httptest.NewRecorder()
 	handler := http.HandlerFunc(h.WebhookHandler)
@@ -494,9 +495,8 @@ func TestWebhookHandler_WaitQueryParam(t *testing.T) {
 
 	log := logger.New(logger.LevelCritical)
 
-	h := handlerData{
-		appConfig:  appConfig,
-		appVersion: app.Version,
+	h := orchestrationHandler{
+		appConfig: appConfig,
 		dataMountPoint: container.MountPoint{
 			Type:        "bind",
 			Source:      t.TempDir(),
@@ -517,11 +517,11 @@ func TestWebhookHandler_WaitQueryParam(t *testing.T) {
 	}{
 		{
 			name: "Default async when wait not set",
-			url:  webhookPath,
+			url:  restserver.WebhookPath,
 		},
 		{
 			name: "Synchronous when wait=true",
-			url:  webhookPath + "?wait=true",
+			url:  restserver.WebhookPath + "?wait=true",
 		},
 	}
 
