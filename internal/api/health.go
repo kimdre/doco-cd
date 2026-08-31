@@ -10,8 +10,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/restapi"
 )
 
-// HealthCheckHandler handles health check requests.
-// HealthCheckHandler reports Docker API availability.
+// HealthCheckHandler handles health check requests and reports Docker API availability.
 func (h *Handler) HealthCheckHandler(w http.ResponseWriter, _ *http.Request) {
 	var (
 		err     error
