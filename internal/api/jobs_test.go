@@ -106,7 +106,7 @@ func TestTriggerScheduledJobSyncTracksResult(t *testing.T) {
 					string,
 					string,
 					string,
-					*secretprovider.SecretProvider,
+					secretprovider.SecretProvider,
 				) (string, error) {
 					return "scheduled-run-id", tc.triggerErr
 				}},
@@ -152,7 +152,7 @@ func TestTriggerScheduledJobGeneratesJobID(t *testing.T) {
 			string,
 			string,
 			string,
-			*secretprovider.SecretProvider,
+			secretprovider.SecretProvider,
 		) (string, error) {
 			return "scheduled-run-id", nil
 		}},
@@ -171,7 +171,7 @@ func TestTriggerScheduledJobSyncPanicMarksFailedAndReturnsError(t *testing.T) {
 			string,
 			string,
 			string,
-			*secretprovider.SecretProvider,
+			secretprovider.SecretProvider,
 		) (string, error) {
 			panic("boom")
 		}},
@@ -218,7 +218,7 @@ func TestTriggerScheduledJobAsyncLifecycleWaitsBeforeResourceClose(t *testing.T)
 			_ string,
 			_ string,
 			_ string,
-			_ *secretprovider.SecretProvider,
+			_ secretprovider.SecretProvider,
 		) (string, error) {
 			close(started)
 			<-release
@@ -286,7 +286,7 @@ func TestTriggerScheduledJobAsyncLifecycleCancellationMarksFailed(t *testing.T) 
 			_ string,
 			_ string,
 			_ string,
-			_ *secretprovider.SecretProvider,
+			_ secretprovider.SecretProvider,
 		) (string, error) {
 			close(started)
 			<-ctx.Done()
@@ -350,7 +350,7 @@ func TestTriggerScheduledJobHandlerMapsSchedulerErrors(t *testing.T) {
 						string,
 						string,
 						string,
-						*secretprovider.SecretProvider,
+						secretprovider.SecretProvider,
 					) (string, error) {
 						return "scheduled-run-id", tc.triggerErr
 					}},
@@ -387,7 +387,7 @@ func TestTriggerScheduledJobHandlerRejectsAsyncWorkDuringShutdown(t *testing.T) 
 				string,
 				string,
 				string,
-				*secretprovider.SecretProvider,
+				secretprovider.SecretProvider,
 			) (string, error) {
 				t.Fatal("scheduled job started during shutdown")
 
@@ -418,7 +418,7 @@ func TestTriggerScheduledJobAsyncTracksAcceptedThenTerminal(t *testing.T) {
 			string,
 			string,
 			string,
-			*secretprovider.SecretProvider,
+			secretprovider.SecretProvider,
 		) (string, error) {
 			close(started)
 			<-release
@@ -467,7 +467,7 @@ func TestTriggerScheduledJobAsyncRejectsWorkDuringShutdown(t *testing.T) {
 			string,
 			string,
 			string,
-			*secretprovider.SecretProvider,
+			secretprovider.SecretProvider,
 		) (string, error) {
 			t.Fatal("scheduled job started during shutdown")
 
@@ -493,7 +493,7 @@ func TestTriggerScheduledJobAsyncPanicMarksFailed(t *testing.T) {
 			string,
 			string,
 			string,
-			*secretprovider.SecretProvider,
+			secretprovider.SecretProvider,
 		) (string, error) {
 			panic("boom")
 		}},
@@ -530,7 +530,7 @@ func TestTriggerScheduledJobHandlerMalformedWaitDoesNotTrigger(t *testing.T) {
 				string,
 				string,
 				string,
-				*secretprovider.SecretProvider,
+				secretprovider.SecretProvider,
 			) (string, error) {
 				triggered = true
 

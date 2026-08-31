@@ -118,7 +118,7 @@ func TestHandler_TriggerPollHandler(t *testing.T) {
 					dockerCli: dockerCli,
 					log:       log,
 					pollRunner: func(context.Context, poll.Config, *app.Config, container.MountPoint,
-						command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider, string,
+						command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, secretprovider.SecretProvider, string,
 					) error {
 						return nil
 					},
@@ -196,7 +196,7 @@ func TestHandler_TriggerPollHandlerWithoutWait_DetachesRequestContext(t *testing
 			appConfig: appConfig,
 			log:       log,
 			pollRunner: func(ctx context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
-				_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+				_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ secretprovider.SecretProvider,
 				_ string,
 			) error {
 				time.Sleep(50 * time.Millisecond)
@@ -276,7 +276,7 @@ func TestHandler_TriggerPollHandlerRejectsInvalidRequestsBeforeTracking(t *testi
 				appConfig: h.appConfig,
 				log:       log,
 				pollRunner: func(context.Context, poll.Config, *app.Config, container.MountPoint,
-					command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider, string,
+					command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, secretprovider.SecretProvider, string,
 				) error {
 					runs++
 
@@ -338,7 +338,7 @@ func TestHandler_TriggerPollHandlerAcceptsTrailingWhitespace(t *testing.T) {
 		appConfig: h.appConfig,
 		log:       log,
 		pollRunner: func(context.Context, poll.Config, *app.Config, container.MountPoint,
-			command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider, string,
+			command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, secretprovider.SecretProvider, string,
 		) error {
 			runs++
 
@@ -366,7 +366,7 @@ func TestHandler_TriggerPollHandlerReportsPollFailures(t *testing.T) {
 		appConfig: h.appConfig,
 		log:       log,
 		pollRunner: func(_ context.Context, cfg poll.Config, _ *app.Config, _ container.MountPoint,
-			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider, _ string,
+			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ secretprovider.SecretProvider, _ string,
 		) error {
 			if strings.Contains(cfg.SourceUrl, "failed") {
 				return errors.New("poll failed")

@@ -207,7 +207,7 @@ func TestDeploy(t *testing.T) {
 		},
 		dockerCli,
 		nil,
-		&secretProvider,
+		secretProvider,
 		notification.Metadata{
 			JobID:      jobId,
 			Repository: repoName,

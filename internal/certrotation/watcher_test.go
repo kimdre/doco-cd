@@ -261,7 +261,7 @@ func TestRevokedProjects(t *testing.T) {
 
 	var secretProvider secretprovider.SecretProvider = provider
 
-	got := revokedProjects(t.Context(), services, &secretProvider, nil)
+	got := revokedProjects(t.Context(), services, secretProvider, nil)
 
 	if len(got) != 1 {
 		t.Fatalf("expected exactly one revoked project, got %v", got)
@@ -299,7 +299,7 @@ func TestRevokedProjectsSwarmLabels(t *testing.T) {
 
 	var secretProvider secretprovider.SecretProvider = provider
 
-	got := revokedProjects(t.Context(), services, &secretProvider, nil)
+	got := revokedProjects(t.Context(), services, secretProvider, nil)
 
 	if _, ok := got["stack-a"]; !ok {
 		t.Fatalf("expected stack-a to be marked revoked via the deployment name label fallback, got %v", got)
@@ -401,7 +401,7 @@ func TestRevokedProjectsStopsCheckingAfterFirstRevokedService(t *testing.T) {
 
 	var secretProvider secretprovider.SecretProvider = provider
 
-	got := revokedProjects(t.Context(), services, &secretProvider, nil)
+	got := revokedProjects(t.Context(), services, secretProvider, nil)
 
 	if _, ok := got["project-a"]; !ok {
 		t.Fatalf("expected project-a to be marked revoked, got %v", got)

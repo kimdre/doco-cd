@@ -38,7 +38,7 @@ import (
 type Watcher struct {
 	contexts       *docker.ContextRegistry
 	log            *slog.Logger
-	secretProvider *secretprovider.SecretProvider
+	secretProvider secretprovider.SecretProvider
 	threshold      time.Duration
 	checkInterval  time.Duration
 
@@ -53,7 +53,7 @@ type Watcher struct {
 func New(
 	contexts *docker.ContextRegistry,
 	log *slog.Logger,
-	secretProvider *secretprovider.SecretProvider,
+	secretProvider secretprovider.SecretProvider,
 	threshold, checkInterval time.Duration,
 ) *Watcher {
 	w := &Watcher{
@@ -216,14 +216,14 @@ func projectKey(labels map[string]string) string {
 func revokedProjects(
 	ctx context.Context,
 	services map[docker.Service]map[string]string,
-	provider *secretprovider.SecretProvider,
+	provider secretprovider.SecretProvider,
 	log *slog.Logger,
 ) map[string]map[string]string {
-	if provider == nil || *provider == nil {
+	if provider == nil {
 		return nil
 	}
 
-	checker, ok := (*provider).(secretprovider.DeploymentCertificateRevocationChecker)
+	checker, ok := provider.(secretprovider.DeploymentCertificateRevocationChecker)
 	if !ok {
 		return nil
 	}

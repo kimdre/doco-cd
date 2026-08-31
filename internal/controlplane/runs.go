@@ -63,7 +63,7 @@ type Runs struct {
 type Dependencies struct {
 	MaxRunsPerTrigger map[RunTrigger]int     `validate:"omitempty,dive,keys,oneof=webhook poll scheduled_job,endkeys,min=1"`
 	ScheduledJobs     ScheduledJobOperations `validate:"required,nostructlevel"`
-	SecretProvider    *secretprovider.SecretProvider
+	SecretProvider    secretprovider.SecretProvider
 	Poll              PollDependencies
 }
 

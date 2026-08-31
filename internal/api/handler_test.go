@@ -104,7 +104,7 @@ func TestNewHandlerValidatesDependencies(t *testing.T) {
 
 type testScheduledJobOperations struct {
 	listJobs   func(context.Context, string, string) ([]scheduler.JobInfo, error)
-	triggerNow func(context.Context, string, string, string, *secretprovider.SecretProvider) (string, error)
+	triggerNow func(context.Context, string, string, string, secretprovider.SecretProvider) (string, error)
 }
 
 func (f testScheduledJobOperations) ListJobs(ctx context.Context, contextName, stackName string) ([]scheduler.JobInfo, error) {
@@ -120,7 +120,7 @@ func (f testScheduledJobOperations) TriggerNow(
 	contextName string,
 	jobName string,
 	stackName string,
-	secretProvider *secretprovider.SecretProvider,
+	secretProvider secretprovider.SecretProvider,
 ) (string, error) {
 	if f.triggerNow == nil {
 		return "", nil
@@ -137,7 +137,7 @@ type testControlPlaneRunsOptions struct {
 	dataMountPoint    container.MountPoint
 	dockerCli         command.Cli
 	contexts          *docker.ContextRegistry
-	secretProvider    *secretprovider.SecretProvider
+	secretProvider    secretprovider.SecretProvider
 	pollRunner        controlplane.PollRunner
 	maxRunsPerTrigger map[controlplane.RunTrigger]int
 	closed            bool
@@ -172,7 +172,7 @@ func newTestControlPlaneRuns(t testing.TB, options testControlPlaneRunsOptions) 
 			*docker.ContextRegistry,
 			*slog.Logger,
 			notification.Metadata,
-			*secretprovider.SecretProvider,
+			secretprovider.SecretProvider,
 			string,
 		) error {
 			return nil

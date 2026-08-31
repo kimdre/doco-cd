@@ -30,7 +30,7 @@ func TestMCPTriggerPollValidationAndDefaultWait(t *testing.T) {
 		appConfig: appConfig,
 		log:       log,
 		pollRunner: func(_ context.Context, cfg poll.Config, _ *app.Config, _ container.MountPoint,
-			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider, _ string,
+			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ secretprovider.SecretProvider, _ string,
 		) error {
 			runs++
 
@@ -74,7 +74,7 @@ func TestMCPTriggerPollAsyncJobIDResolves(t *testing.T) {
 		appConfig: appConfig,
 		log:       log,
 		pollRunner: func(ctx context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
-			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider, _ string,
+			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ secretprovider.SecretProvider, _ string,
 		) error {
 			close(started)
 			<-release

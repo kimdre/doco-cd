@@ -20,7 +20,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 )
 
-func Start(ctx context.Context, dockerCli command.Cli, log *slog.Logger, wg *sync.WaitGroup, secretProvider *secretprovider.SecretProvider) {
+func Start(ctx context.Context, dockerCli command.Cli, log *slog.Logger, wg *sync.WaitGroup, secretProvider secretprovider.SecretProvider) {
 	if dockerCli == nil || log == nil || wg == nil {
 		return
 	}
@@ -149,7 +149,7 @@ func (s *scheduler) listJobs(ctx context.Context, stackName string) ([]JobInfo, 
 // TriggerNow executes one configured scheduled job immediately on the default
 // Docker context. Job selection matches by container/service name and
 // optional stack name.
-func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jobName, stackName string, secretProvider *secretprovider.SecretProvider) (string, error) {
+func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jobName, stackName string, secretProvider secretprovider.SecretProvider) (string, error) {
 	if dockerCli == nil {
 		return "", errors.New("docker cli is required")
 	}
@@ -234,7 +234,7 @@ func (s *scheduler) triggerNow(ctx context.Context, jobName, stackName string) (
 	return runID, nil
 }
 
-func listJobsForModes(ctx context.Context, modes []scheduledJobMode, cc docker.ContextClient, log *slog.Logger, secretProvider *secretprovider.SecretProvider, stackName string) ([]JobInfo, error) {
+func listJobsForModes(ctx context.Context, modes []scheduledJobMode, cc docker.ContextClient, log *slog.Logger, secretProvider secretprovider.SecretProvider, stackName string) ([]JobInfo, error) {
 	var result []JobInfo
 
 	for _, mode := range modes {
@@ -249,7 +249,7 @@ func listJobsForModes(ctx context.Context, modes []scheduledJobMode, cc docker.C
 	return result, nil
 }
 
-func triggerNowForModes(ctx context.Context, modes []scheduledJobMode, cc docker.ContextClient, log *slog.Logger, jobName, stackName string, secretProvider *secretprovider.SecretProvider) (string, error) {
+func triggerNowForModes(ctx context.Context, modes []scheduledJobMode, cc docker.ContextClient, log *slog.Logger, jobName, stackName string, secretProvider secretprovider.SecretProvider) (string, error) {
 	workers := make(map[scheduledJobMode]*scheduler, len(modes))
 
 	var jobs []scheduledJob

@@ -181,7 +181,7 @@ type StageManager struct {
 	Docker            *Docker
 	Payload           *webhook.ParsedPayload
 	Repository        *RepositoryData
-	SecretProvider    *secretprovider.SecretProvider
+	SecretProvider    secretprovider.SecretProvider
 	Metadata          notification.Metadata // Notification metadata (may include reconciliation event info)
 }
 
@@ -192,7 +192,7 @@ func NewStageManager(jobID string, jobTrigger JobTrigger, log *slog.Logger,
 	failNotifyFunc NotifyFailureFunc,
 	repoData *RepositoryData, dockerData *Docker, payload *webhook.ParsedPayload,
 	appConfig *app.Config, deployConfig *deploy.Config,
-	secretProvider *secretprovider.SecretProvider,
+	secretProvider secretprovider.SecretProvider,
 	metadata notification.Metadata,
 ) *StageManager {
 	return &StageManager{

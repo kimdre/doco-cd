@@ -13,16 +13,16 @@ import (
 // ScheduledJobOperations is the scheduler surface required by the control plane.
 type ScheduledJobOperations interface {
 	ListJobs(context.Context, string, string) ([]scheduler.JobInfo, error)
-	TriggerNow(context.Context, string, string, string, *secretprovider.SecretProvider) (string, error)
+	TriggerNow(context.Context, string, string, string, secretprovider.SecretProvider) (string, error)
 }
 
 // controlPlaneJobs binds scheduler operations to the optional secret provider.
 type controlPlaneJobs struct {
 	operations     ScheduledJobOperations
-	secretProvider *secretprovider.SecretProvider
+	secretProvider secretprovider.SecretProvider
 }
 
-func newControlPlaneJobs(operations ScheduledJobOperations, secretProvider *secretprovider.SecretProvider) *controlPlaneJobs {
+func newControlPlaneJobs(operations ScheduledJobOperations, secretProvider secretprovider.SecretProvider) *controlPlaneJobs {
 	if operations == nil {
 		panic("scheduled job operations are required")
 	}

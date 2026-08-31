@@ -48,7 +48,7 @@ func TestMCPTriggerScheduledJobDefaultsToWait(t *testing.T) {
 			_ string,
 			jobName string,
 			stack string,
-			_ *secretprovider.SecretProvider,
+			_ secretprovider.SecretProvider,
 		) (string, error) {
 			if jobName != "backup" || stack != "prod" {
 				t.Errorf("trigger arguments = %q, %q", jobName, stack)
@@ -96,7 +96,7 @@ func TestMCPTriggerScheduledJobAsyncJobIDResolves(t *testing.T) {
 			_ string,
 			_ string,
 			_ string,
-			_ *secretprovider.SecretProvider,
+			_ secretprovider.SecretProvider,
 		) (string, error) {
 			close(started)
 			<-release
@@ -159,7 +159,7 @@ func TestMCPTriggerScheduledJobErrorKeepsJobID(t *testing.T) {
 			string,
 			string,
 			string,
-			*secretprovider.SecretProvider,
+			secretprovider.SecretProvider,
 		) (string, error) {
 			return "", errors.New("scheduled trigger exploded")
 		}},

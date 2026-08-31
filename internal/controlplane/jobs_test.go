@@ -26,7 +26,7 @@ func TestControlPlaneRunsScheduledJobOperations(t *testing.T) {
 
 				return []scheduler.JobInfo{{Name: "backup"}}, nil
 			},
-			triggerNow: func(_ context.Context, contextName, jobName, stackName string, _ *secretprovider.SecretProvider) (string, error) {
+			triggerNow: func(_ context.Context, contextName, jobName, stackName string, _ secretprovider.SecretProvider) (string, error) {
 				triggered = true
 
 				if contextName != "remote" || jobName != "backup" || stackName != "prod" {

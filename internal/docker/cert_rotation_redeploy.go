@@ -43,7 +43,7 @@ func RotateProjectCertificates(
 	contextName string,
 	dockerCli command.Cli,
 	labels map[string]string,
-	secretProvider *secretprovider.SecretProvider,
+	secretProvider secretprovider.SecretProvider,
 	swarmMode bool,
 ) error {
 	if swarmMode {
@@ -115,7 +115,7 @@ func rotateSwarmProjectCertificates(
 	contextName string,
 	dockerCli command.Cli,
 	labels map[string]string,
-	secretProvider *secretprovider.SecretProvider,
+	secretProvider secretprovider.SecretProvider,
 ) error {
 	ref, err := composeScheduledServiceRefFromSwarmLabels(labels)
 	if err != nil {

@@ -46,7 +46,7 @@ type jobInfo struct {
 	dataMountPoint container.MountPoint
 	dockerCli      command.Cli
 	contexts       *docker.ContextRegistry
-	secretProvider *secretprovider.SecretProvider
+	secretProvider secretprovider.SecretProvider
 
 	jobLog *slog.Logger
 

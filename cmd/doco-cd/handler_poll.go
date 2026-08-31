@@ -280,7 +280,7 @@ func pollError(jobLog *slog.Logger, metadata notification.Metadata, err error) {
 // "poll-watch" when triggered by the local repository filesystem watcher) and is
 // reported in the "polling <entity>" log line's trigger.event field.
 func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config, dataMountPoint container.MountPoint,
-	dockerCli command.Cli, contexts *docker.ContextRegistry, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
+	dockerCli command.Cli, contexts *docker.ContextRegistry, logger *slog.Logger, metadata notification.Metadata, secretProvider secretprovider.SecretProvider,
 	triggerReason string,
 ) error {
 	startTime := time.Now()

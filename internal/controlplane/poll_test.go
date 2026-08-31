@@ -34,7 +34,7 @@ func TestControlPlaneRunsTriggerPollAppliesDefaultsAndReportsIndexedValidationEr
 			log:       log,
 			tracker:   tracker,
 			pollRunner: func(context.Context, poll.Config, *app.Config, container.MountPoint,
-				command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider, string,
+				command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, secretprovider.SecretProvider, string,
 			) error {
 				runCount++
 
@@ -74,7 +74,7 @@ func TestControlPlaneRunsTriggerPollAppliesDefaultsAndReportsIndexedValidationEr
 			log:       log,
 			tracker:   tracker,
 			pollRunner: func(_ context.Context, cfg poll.Config, _ *app.Config, _ container.MountPoint,
-				_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, metadata notification.Metadata, _ *secretprovider.SecretProvider, _ string,
+				_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, metadata notification.Metadata, _ secretprovider.SecretProvider, _ string,
 			) error {
 				gotConfig = cfg
 				gotMetadata = metadata
@@ -123,7 +123,7 @@ func TestControlPlaneRunsTriggerPollAppliesDefaultsAndReportsIndexedValidationEr
 			log:       log,
 			tracker:   tracker,
 			pollRunner: func(context.Context, poll.Config, *app.Config, container.MountPoint,
-				command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider, string,
+				command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, secretprovider.SecretProvider, string,
 			) error {
 				runCount++
 
@@ -193,7 +193,7 @@ func TestControlPlaneRunsTriggerPollBoundsConcurrentRunners(t *testing.T) {
 		appConfig: &app.Config{MaxConcurrentDeployments: maxConcurrent},
 		log:       log,
 		pollRunner: func(context.Context, poll.Config, *app.Config, container.MountPoint,
-			command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider, string,
+			command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, secretprovider.SecretProvider, string,
 		) error {
 			current := running.Add(1)
 			for previous := peak.Load(); current > previous; previous = peak.Load() {
@@ -255,7 +255,7 @@ func TestControlPlaneRunsTriggerPollTracksSuccessFailureAndPanic(t *testing.T) {
 		{
 			name: "success",
 			run: func(context.Context, poll.Config, *app.Config, container.MountPoint,
-				command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider, string,
+				command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, secretprovider.SecretProvider, string,
 			) error {
 				return nil
 			},
@@ -265,7 +265,7 @@ func TestControlPlaneRunsTriggerPollTracksSuccessFailureAndPanic(t *testing.T) {
 		{
 			name: "failure",
 			run: func(context.Context, poll.Config, *app.Config, container.MountPoint,
-				command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider, string,
+				command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, secretprovider.SecretProvider, string,
 			) error {
 				return errors.New("secret failure")
 			},
@@ -276,7 +276,7 @@ func TestControlPlaneRunsTriggerPollTracksSuccessFailureAndPanic(t *testing.T) {
 		{
 			name: "panic",
 			run: func(context.Context, poll.Config, *app.Config, container.MountPoint,
-				command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider, string,
+				command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, secretprovider.SecretProvider, string,
 			) error {
 				panic("sensitive panic value")
 			},
@@ -328,7 +328,7 @@ func TestControlPlaneRunsTriggerPollAsyncUsesApplicationLifecycle(t *testing.T) 
 		log:            log,
 		tracker:        tracker,
 		pollRunner: func(ctx context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
-			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider, _ string,
+			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ secretprovider.SecretProvider, _ string,
 		) error {
 			close(started)
 			<-ctx.Done()
@@ -392,7 +392,7 @@ func TestControlPlaneRunsTriggerPollAsyncRejectsWorkDuringShutdown(t *testing.T)
 		log:        log,
 		tracker:    tracker,
 		pollRunner: func(context.Context, poll.Config, *app.Config, container.MountPoint,
-			command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, *secretprovider.SecretProvider, string,
+			command.Cli, *docker.ContextRegistry, *slog.Logger, notification.Metadata, secretprovider.SecretProvider, string,
 		) error {
 			t.Fatal("poll run started during shutdown")
 
@@ -420,7 +420,7 @@ func TestControlPlaneRunsTriggerPollWaitUsesRequestContext(t *testing.T) {
 		appConfig: &app.Config{},
 		log:       log,
 		pollRunner: func(ctx context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
-			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider, _ string,
+			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ secretprovider.SecretProvider, _ string,
 		) error {
 			return ctx.Err()
 		},
@@ -447,7 +447,7 @@ func TestControlPlaneRunsTriggerPollWaitUsesApplicationLifecycle(t *testing.T) {
 		log:            log,
 		tracker:        tracker,
 		pollRunner: func(ctx context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
-			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider, _ string,
+			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ secretprovider.SecretProvider, _ string,
 		) error {
 			close(started)
 			<-ctx.Done()

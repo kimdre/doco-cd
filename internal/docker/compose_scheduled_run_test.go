@@ -37,10 +37,10 @@ func (s *stubSecretProvider) ResolveSecretReferences(_ context.Context, _ map[st
 	return s.resolved, s.err
 }
 
-// newStubProvider returns a secretprovider.SecretProvider pointer backed by stub.
-func newStubProvider(resolved map[string]string, err error) *secretprovider.SecretProvider {
+// newStubProvider returns a secretprovider.SecretProvider backed by stub.
+func newStubProvider(resolved map[string]string, err error) secretprovider.SecretProvider {
 	var sp secretprovider.SecretProvider = &stubSecretProvider{resolved: resolved, err: err}
-	return &sp
+	return sp
 }
 
 func TestComposeScheduledServiceRefFromLabels(t *testing.T) {
