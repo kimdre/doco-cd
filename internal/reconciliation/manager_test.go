@@ -3,13 +3,10 @@ package reconciliation
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/docker/compose/v5/pkg/api"
-	"github.com/moby/moby/api/types/container"
-
-	"github.com/kimdre/doco-cd/internal/notification"
-	"github.com/kimdre/doco-cd/internal/stages"
 )
 
 func TestNewManagerAppliesDefaultDeploymentLimit(t *testing.T) {
@@ -18,6 +15,24 @@ func TestNewManagerAppliesDefaultDeploymentLimit(t *testing.T) {
 	manager := newTestManager(t)
 	if got := cap(manager.limiter.sem); got != 1 {
 		t.Fatalf("default deployment limit = %d, want 1", got)
+	}
+}
+
+func TestNewManagerValidatesDependencies(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewManager(Dependencies{})
+	if err == nil || !strings.Contains(err.Error(), "validate reconciliation dependencies") {
+		t.Fatalf("NewManager() error = %v, want dependency validation error", err)
+	}
+}
+
+func TestManagerDeployValidatesRequest(t *testing.T) {
+	t.Parallel()
+
+	err := newTestManager(t).Deploy(t.Context(), DeployRequest{})
+	if err == nil || !strings.Contains(err.Error(), "validate deploy request") {
+		t.Fatalf("Deploy() error = %v, want request validation error", err)
 	}
 }
 
@@ -41,16 +56,12 @@ func TestManagerStateIsIsolated(t *testing.T) {
 func TestManagerCloseIsIdempotentAndRejectsDeployments(t *testing.T) {
 	t.Parallel()
 
-	manager, err := NewManager(Dependencies{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	manager := newTestManagerWithDependencies(t, Dependencies{})
 
 	manager.Close()
 	manager.Close()
 
-	err = manager.Deploy(t.Context(), nil, nil, container.MountPoint{}, nil, nil, nil,
-		notification.Metadata{}, "", stages.RepositoryData{}, nil, nil, "")
+	err := manager.Deploy(t.Context(), DeployRequest{})
 	if !errors.Is(err, ErrManagerClosed) {
 		t.Fatalf("Deploy() after Close error = %v, want %v", err, ErrManagerClosed)
 	}
@@ -59,13 +70,10 @@ func TestManagerCloseIsIdempotentAndRejectsDeployments(t *testing.T) {
 func TestManagerCloseCancelsJobsBeforeWaiting(t *testing.T) {
 	t.Parallel()
 
-	manager, err := NewManager(Dependencies{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	manager := newTestManagerWithDependencies(t, Dependencies{})
 
 	jobCtx, cancel := context.WithCancel(context.Background())
-	reconciliationJob := newJob(manager, jobInfo{}, nil)
+	reconciliationJob := newJob(manager, DeployRequest{}, nil)
 	reconciliationJob.cancel = cancel
 	manager.jobs.jobs["repo"] = reconciliationJob
 	manager.jobWG.Add(1)

@@ -25,6 +25,8 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
+
+	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
@@ -187,27 +189,53 @@ type StageManager struct {
 
 type NotifyFailureFunc func(log *slog.Logger, err error, metadata notification.Metadata)
 
-// NewStageManager creates and initializes a new StageManager instance for managing stages.ß.
-func NewStageManager(jobID string, jobTrigger JobTrigger, log *slog.Logger,
-	failNotifyFunc NotifyFailureFunc,
-	repoData *RepositoryData, dockerData *Docker, payload *webhook.ParsedPayload,
-	appConfig *app.Config, deployConfig *deploy.Config,
-	secretProvider secretprovider.SecretProvider,
-	metadata notification.Metadata,
-) *StageManager {
+// Dependencies holds the stable services shared by every StageManager run in a process:
+// application configuration, the optional secret provider used to resolve external secret
+// references, and the callback invoked when a deployment fails.
+type Dependencies struct {
+	AppConfig         *app.Config `validate:"required,nostructlevel"`
+	SecretProvider    secretprovider.SecretProvider
+	NotifyFailureFunc NotifyFailureFunc
+}
+
+// RunInput holds the per-deployment input for a single StageManager run: the job identity and
+// trigger, logger, repository data, Docker CLI/data mount point, the parsed webhook payload
+// (may be nil for non-webhook triggers), the resolved deploy config, and notification metadata.
+type RunInput struct {
+	Log          *slog.Logger `validate:"required,nostructlevel"`
+	JobID        string
+	JobTrigger   JobTrigger      `validate:"required,oneof=webhook poll"`
+	Repository   *RepositoryData `validate:"required,nostructlevel"`
+	Docker       *Docker         `validate:"required,nostructlevel"`
+	Payload      *webhook.ParsedPayload
+	DeployConfig *deploy.Config `validate:"required,nostructlevel"`
+	Metadata     notification.Metadata
+}
+
+// NewStageManager validates dependencies and run, then creates and initializes a new
+// StageManager instance for managing stages.
+func NewStageManager(dependencies Dependencies, run RunInput) (*StageManager, error) {
+	if err := validation.Validate(dependencies); err != nil {
+		return nil, fmt.Errorf("validate stage dependencies: %w", err)
+	}
+
+	if err := validation.Validate(run); err != nil {
+		return nil, fmt.Errorf("validate stage run input: %w", err)
+	}
+
 	return &StageManager{
-		Log:               log.With(),
-		JobID:             jobID,
-		JobTrigger:        jobTrigger,
-		NotifyFailureFunc: failNotifyFunc,
-		AppConfig:         appConfig,
-		DeployConfig:      deployConfig,
+		Log:               run.Log.With(),
+		JobID:             run.JobID,
+		JobTrigger:        run.JobTrigger,
+		NotifyFailureFunc: dependencies.NotifyFailureFunc,
+		AppConfig:         dependencies.AppConfig,
+		DeployConfig:      run.DeployConfig,
 		DeployState:       &DeploymentState{},
-		Docker:            dockerData,
-		Payload:           payload,
-		Repository:        repoData,
-		SecretProvider:    secretProvider,
-		Metadata:          metadata,
+		Docker:            run.Docker,
+		Payload:           run.Payload,
+		Repository:        run.Repository,
+		SecretProvider:    dependencies.SecretProvider,
+		Metadata:          run.Metadata,
 		Stages: &Stages{
 			Init: &InitStageData{
 				MetaData: NewMetaData(StageInit),
@@ -231,7 +259,7 @@ func NewStageManager(jobID string, jobTrigger JobTrigger, log *slog.Logger,
 				MetaData: NewMetaData(StageCleanup),
 			},
 		},
-	}
+	}, nil
 }
 
 // GetStageMetaData retrieves the metadata for the specified stage.

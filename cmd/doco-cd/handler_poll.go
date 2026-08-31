@@ -12,10 +12,8 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
-	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/reconciliation"
-	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/stages"
 
 	"github.com/kimdre/doco-cd/internal/git"
@@ -281,7 +279,7 @@ func pollError(jobLog *slog.Logger, metadata notification.Metadata, err error) {
 // "poll-watch" when triggered by the local repository filesystem watcher) and is
 // reported in the "polling <entity>" log line's trigger.event field.
 func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config, dataMountPoint container.MountPoint,
-	dockerCli command.Cli, contexts *docker.ContextRegistry, logger *slog.Logger, metadata notification.Metadata, secretProvider secretprovider.SecretProvider,
+	dockerCli command.Cli, logger *slog.Logger, metadata notification.Metadata,
 	triggerReason string, reconciliationManager *reconciliation.Manager,
 ) error {
 	startTime := time.Now()
@@ -334,10 +332,19 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 	}
 
 	deployErr := handle(ctx, jobLog, reconciliationManager,
-		appConfig, dataMountPoint, secretProvider, dockerCli, contexts,
-		stages.JobTriggerPoll, sourceType, sourceRef, pollReference, false,
-		metadata, pollConfig.CustomTarget, "",
-		pollConfig, webhook.ParsedPayload{},
+		appConfig, dataMountPoint, dockerCli,
+		handleRequest{
+			JobTrigger:   stages.JobTriggerPoll,
+			SourceType:   sourceType,
+			SourceRef:    sourceRef,
+			Ref:          pollReference,
+			Private:      false,
+			Metadata:     metadata,
+			CustomTarget: pollConfig.CustomTarget,
+			TestName:     "",
+			PollConfig:   pollConfig,
+			Payload:      webhook.ParsedPayload{},
+		},
 	)
 
 	nextRun := time.Now().Add(pollConfig.Interval).Format(time.RFC3339)

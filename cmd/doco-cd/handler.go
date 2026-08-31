@@ -16,16 +16,15 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 
 	"github.com/kimdre/doco-cd/internal/commitstatus"
+	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/config/poll"
-	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/reconciliation"
-	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/source/oci"
 	"github.com/kimdre/doco-cd/internal/stages"
 	"github.com/kimdre/doco-cd/internal/webhook"
@@ -148,20 +147,51 @@ func postEarlyCommitStatus(ctx context.Context, jobLog *slog.Logger, appConfig *
 	}
 }
 
+// handleRequest bundles handle's per-call, per-deployment-request input: the source location and
+// its trigger/reference/visibility, notification metadata, an optional custom deploy target,
+// an optional test identity, poll configuration (used only for poll-triggered requests), and the
+// parsed webhook payload (zero value for non-webhook triggers).
+type handleRequest struct {
+	JobTrigger   stages.JobTrigger `validate:"required,oneof=webhook poll"`
+	SourceType   config.SourceType `validate:"required"`
+	SourceRef    string            `validate:"required"`
+	Ref          string
+	Private      bool
+	Metadata     notification.Metadata
+	CustomTarget string
+	TestName     string
+	PollConfig   poll.Config
+	Payload      webhook.ParsedPayload
+}
+
 func handle(ctx context.Context, jobLog *slog.Logger,
 	reconciliationManager *reconciliation.Manager,
 	appConfig *app.Config,
 	dataMountPoint container.MountPoint,
-	secretProvider secretprovider.SecretProvider,
 	dockerCli command.Cli,
-	contexts *docker.ContextRegistry,
-	jobTrigger stages.JobTrigger,
-	sourceType config.SourceType, sourceRef string, ref string, private bool,
-	metadata notification.Metadata,
-	customTarget string, testName string,
-	pollConfig poll.Config,
-	payload webhook.ParsedPayload,
+	req handleRequest,
 ) error {
+	if err := validation.Validate(req); err != nil {
+		return handleError{
+			err:            err,
+			msg:            "invalid deployment request",
+			httpStatusCode: http.StatusInternalServerError,
+		}
+	}
+
+	var (
+		jobTrigger   = req.JobTrigger
+		sourceType   = req.SourceType
+		sourceRef    = req.SourceRef
+		ref          = req.Ref
+		private      = req.Private
+		metadata     = req.Metadata
+		customTarget = req.CustomTarget
+		testName     = req.TestName
+		pollConfig   = req.PollConfig
+		payload      = req.Payload
+	)
+
 	sourceType = config.NormalizeSourceType(sourceType)
 	if err := config.ValidateSourceType(sourceType); err != nil {
 		return handleError{
@@ -416,9 +446,15 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		}
 	}
 
-	if err := reconciliationManager.Deploy(ctx, jobLog, appConfig,
-		dataMountPoint, dockerCli, contexts, secretProvider, metadata, jobTrigger,
-		repoData, deployConfigs, &payload, testName); err != nil {
+	if err := reconciliationManager.Deploy(ctx, reconciliation.DeployRequest{
+		Logger:        jobLog,
+		Metadata:      metadata,
+		JobTrigger:    jobTrigger,
+		Repository:    repoData,
+		DeployConfigs: deployConfigs,
+		Payload:       &payload,
+		TestName:      testName,
+	}); err != nil {
 		if errors.Is(err, stages.ErrWebhookFilterMismatch) {
 			return err
 		}

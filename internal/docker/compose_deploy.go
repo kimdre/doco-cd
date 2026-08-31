@@ -18,6 +18,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/common/types/slice"
+	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker/registryauth"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
@@ -310,13 +311,49 @@ func resolveDeploymentMetricsDeploymentLabel(deployName string) string {
 }
 
 // DeployStack deploys the stack using the provided deployment configuration.
-func DeployStack(
-	jobLog *slog.Logger, externalRepoPath string, ctx *context.Context,
-	dockerCli command.Cli, payload *webhook.ParsedPayload, deployConfig *deploy.Config,
-	detectedChanges []Change, needSignal []SignalService, latestCommit, appVersion string,
-	globalSwarmConfigRetention int, globalSwarmSecretRetention int, swarmMode bool,
-	hashNormMap map[string]string,
-) error {
+// DeployRequest bundles DeployStack's per-deployment input: the job logger, the external
+// repository path used to resolve compose file locations, the Docker CLI, the parsed webhook
+// payload (may be nil for non-webhook triggers), the resolved deploy config, detected service
+// changes and signal targets from change detection, the latest commit, the running app version,
+// Swarm config/secret retention counts, whether Swarm mode is active, and the PKI role
+// normalization map.
+type DeployRequest struct {
+	JobLog                     *slog.Logger `validate:"required,nostructlevel"`
+	ExternalRepoPath           string       `validate:"required"`
+	DockerCLI                  command.Cli  `validate:"required,nostructlevel"`
+	Payload                    *webhook.ParsedPayload
+	DeployConfig               *deploy.Config `validate:"required,nostructlevel"`
+	DetectedChanges            []Change
+	NeedSignal                 []SignalService
+	LatestCommit               string
+	AppVersion                 string `validate:"required"`
+	GlobalSwarmConfigRetention int
+	GlobalSwarmSecretRetention int
+	SwarmMode                  bool
+	HashNormMap                map[string]string
+}
+
+func DeployStack(ctx context.Context, req DeployRequest) error {
+	if err := validation.Validate(req); err != nil {
+		return fmt.Errorf("validate deploy stack request: %w", err)
+	}
+
+	var (
+		jobLog                     = req.JobLog
+		externalRepoPath           = req.ExternalRepoPath
+		dockerCli                  = req.DockerCLI
+		payload                    = req.Payload
+		deployConfig               = req.DeployConfig
+		detectedChanges            = req.DetectedChanges
+		needSignal                 = req.NeedSignal
+		latestCommit               = req.LatestCommit
+		appVersion                 = req.AppVersion
+		globalSwarmConfigRetention = req.GlobalSwarmConfigRetention
+		globalSwarmSecretRetention = req.GlobalSwarmSecretRetention
+		swarmMode                  = req.SwarmMode
+		hashNormMap                = req.HashNormMap
+	)
+
 	startTime := time.Now()
 	repositoryLabel := resolveDeploymentMetricsRepositoryLabel(payload)
 	deploymentLabel := resolveDeploymentMetricsDeploymentLabel(deployConfig.Name)
@@ -349,7 +386,7 @@ func DeployStack(
 
 	deploymentPhase.Set("loading compose configuration")
 
-	project, err := LoadCompose(*ctx, dockerCli, externalRepoPath, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles,
+	project, err := LoadCompose(ctx, dockerCli, externalRepoPath, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles,
 		deployConfig.EnvFiles, deployConfig.Profiles, deployConfig.Internal.Environment)
 	if err != nil {
 		return fmt.Errorf("failed to load compose config: %w", err)
@@ -362,7 +399,7 @@ func DeployStack(
 	if deployConfig.WaitRunningJobs {
 		deploymentPhase.Set("waiting for running scheduled jobs")
 
-		if err = waitForRunningJobs(*ctx, dockerCli, deployConfig, project, stackLog, swarmMode); err != nil {
+		if err = waitForRunningJobs(ctx, dockerCli, deployConfig, project, stackLog, swarmMode); err != nil {
 			return err
 		}
 	}
@@ -412,12 +449,12 @@ func DeployStack(
 		addSwarmConfigLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
 		addSwarmSecretLabels(cfg, deployConfig, payload, externalWorkingDir, appVersion, timestamp, latestCommit)
 
-		if err = removeMismatchedRecreatableVolumes(*ctx, dockerCli.Client(), deployConfig.Name, project); err != nil {
+		if err = removeMismatchedRecreatableVolumes(ctx, dockerCli.Client(), deployConfig.Name, project); err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel, contextLabel).Inc()
 			return fmt.Errorf("failed to remove mismatched recreatable volumes: %w", err)
 		}
 
-		err = DeploySwarmStack(*ctx, dockerCli, cfg, opts)
+		err = DeploySwarmStack(ctx, dockerCli, cfg, opts)
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel, contextLabel).Inc()
 
@@ -429,7 +466,7 @@ func DeployStack(
 		if swarmConfigRetention >= 0 {
 			deploymentPhase.Set("pruning stack configs")
 
-			err = PruneStackConfigs(*ctx, dockerCli.Client(), deployConfig.Name, swarmConfigRetention)
+			err = PruneStackConfigs(ctx, dockerCli.Client(), deployConfig.Name, swarmConfigRetention)
 			if err != nil {
 				prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel, contextLabel).Inc()
 
@@ -444,7 +481,7 @@ func DeployStack(
 		if swarmSecretRetention >= 0 {
 			deploymentPhase.Set("pruning stack secrets")
 
-			err = PruneStackSecrets(*ctx, dockerCli.Client(), deployConfig.Name, swarmSecretRetention)
+			err = PruneStackSecrets(ctx, dockerCli.Client(), deployConfig.Name, swarmSecretRetention)
 			if err != nil {
 				prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel, contextLabel).Inc()
 
@@ -461,7 +498,7 @@ func DeployStack(
 
 			stackLog.Info("prune images on swarm nodes")
 
-			err = RunImagePruneJob(*ctx, dockerCli)
+			err = RunImagePruneJob(ctx, dockerCli)
 			if err != nil {
 				prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel, contextLabel).Inc()
 
@@ -504,7 +541,7 @@ func DeployStack(
 
 		deploymentPhase.Set("deploying compose stack")
 
-		err = deployCompose(*ctx, dockerCli, project, deployConfig, recreateMode,
+		err = deployCompose(ctx, dockerCli, project, deployConfig, recreateMode,
 			forcedServices.ToSlice(), needSignal, deploymentPhase.Set)
 		if err != nil {
 			prometheus.DeploymentErrorsTotal.WithLabelValues(repositoryLabel, deploymentLabel, contextLabel).Inc()

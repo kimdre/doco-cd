@@ -26,9 +26,9 @@ func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *s
 		return
 	}
 
-	repositoryLabelValue := gitInternal.GetFullName(j.info.repoData.SourceUrl)
-	if j.info.payload != nil && strings.TrimSpace(j.info.payload.FullName) != "" {
-		repositoryLabelValue = j.info.payload.FullName
+	repositoryLabelValue := gitInternal.GetFullName(j.info.Repository.SourceUrl)
+	if j.info.Payload != nil && strings.TrimSpace(j.info.Payload.FullName) != "" {
+		repositoryLabelValue = j.info.Payload.FullName
 	}
 
 	filterArgs := make(client.Filters)
@@ -177,9 +177,9 @@ func (j *job) redeployMissingServicesOnStartup(ctx context.Context, jobLog *slog
 // findMissingContainersOnStartup lists all running containers for this repository and returns
 // deploy configs whose stacks have no running containers at all.
 func (j *job) findMissingContainersOnStartup(ctx context.Context, jobLog *slog.Logger, cli command.Cli, candidates []*deployConfig.Config) []*deployConfig.Config {
-	repositoryLabelValue := gitInternal.GetFullName(j.info.repoData.SourceUrl)
-	if j.info.payload != nil && strings.TrimSpace(j.info.payload.FullName) != "" {
-		repositoryLabelValue = j.info.payload.FullName
+	repositoryLabelValue := gitInternal.GetFullName(j.info.Repository.SourceUrl)
+	if j.info.Payload != nil && strings.TrimSpace(j.info.Payload.FullName) != "" {
+		repositoryLabelValue = j.info.Payload.FullName
 	}
 
 	filterArgs := make(client.Filters)
@@ -218,9 +218,9 @@ func (j *job) findMissingContainersOnStartup(ctx context.Context, jobLog *slog.L
 // findMissingSwarmServicesOnStartup lists all swarm services for this repository and returns
 // deploy configs whose stacks have no deployed services at all.
 func (j *job) findMissingSwarmServicesOnStartup(ctx context.Context, jobLog *slog.Logger, cli command.Cli, candidates []*deployConfig.Config) []*deployConfig.Config {
-	repositoryLabelValue := gitInternal.GetFullName(j.info.repoData.SourceUrl)
-	if j.info.payload != nil && strings.TrimSpace(j.info.payload.FullName) != "" {
-		repositoryLabelValue = j.info.payload.FullName
+	repositoryLabelValue := gitInternal.GetFullName(j.info.Repository.SourceUrl)
+	if j.info.Payload != nil && strings.TrimSpace(j.info.Payload.FullName) != "" {
+		repositoryLabelValue = j.info.Payload.FullName
 	}
 
 	services, err := swarm.GetServicesByLabel(ctx, cli.Client(), docker.DocoCDLabels.Metadata.Manager, app.Name)

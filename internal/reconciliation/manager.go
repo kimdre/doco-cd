@@ -28,9 +28,22 @@ import (
 // ErrManagerClosed indicates that a deployment was submitted after shutdown began.
 var ErrManagerClosed = errors.New("reconciliation manager is closed")
 
-// Dependencies configures reconciliation lifecycle and deployment admission.
+// Dependencies configures reconciliation lifecycle, deployment admission, and the stable
+// application-level services shared by every deployment the Manager runs: application
+// configuration, the data mount point, the base Docker CLI, the Docker context registry, and
+// an optional secret provider. Per-run values (trigger, repository, deploy configs, payload,
+// notification metadata) are supplied per call via DeployRequest instead.
 type Dependencies struct {
 	MaxConcurrentDeployments uint `default:"1" validate:"min=1"`
+
+	AppConfig      *app.Config          `validate:"required,nostructlevel"`
+	DataMountPoint container.MountPoint `validate:"required"`
+	DockerCLI      command.Cli          `validate:"required,nostructlevel"`
+	// Contexts and SecretProvider are optional: resolveDeployContext falls back to the
+	// default Docker context/CLI when Contexts is nil, and a nil SecretProvider means no
+	// external secret provider is configured.
+	Contexts       *docker.ContextRegistry
+	SecretProvider secretprovider.SecretProvider
 }
 
 // Manager owns reconciliation jobs, active-deployment tracking, scheduler
@@ -45,6 +58,13 @@ type Manager struct {
 	closed         bool
 	deployWG       sync.WaitGroup
 	jobWG          sync.WaitGroup
+
+	// Stable application dependencies shared by every deployment; see Dependencies.
+	appConfig      *app.Config
+	dataMountPoint container.MountPoint
+	dockerCli      command.Cli
+	contexts       *docker.ContextRegistry
+	secretProvider secretprovider.SecretProvider
 }
 
 // NewManager validates dependencies and creates an isolated reconciliation manager.
@@ -62,36 +82,38 @@ func NewManager(dependencies Dependencies) (*Manager, error) {
 		deployments:    deploymentTracker{stacks: make(map[string]int)},
 		schedulerHolds: schedulerHoldRegistry{services: make(map[string]schedulerHoldEntry)},
 		limiter:        NewDeployerLimiter(dependencies.MaxConcurrentDeployments),
+		appConfig:      dependencies.AppConfig,
+		dataMountPoint: dependencies.DataMountPoint,
+		dockerCli:      dependencies.DockerCLI,
+		contexts:       dependencies.Contexts,
+		secretProvider: dependencies.SecretProvider,
 	}, nil
 }
 
 // contextCLIEntry holds a Docker CLI and its resolved metadata for one Docker context.
 type contextCLIEntry struct {
 	cli       command.Cli
-	closeFn   func() // nil for the default context (which is always j.info.dockerCli)
+	closeFn   func() // nil for the default context (which is always j.manager.dockerCli)
 	swarmMode bool
 }
 
-type jobInfo struct {
-	appConfig      *app.Config
-	dataMountPoint container.MountPoint
-	dockerCli      command.Cli
-	contexts       *docker.ContextRegistry
-	secretProvider secretprovider.SecretProvider
-
-	log *slog.Logger
-
-	metadata      notification.Metadata
-	jobTrigger    stages.JobTrigger
-	repoData      stages.RepositoryData
-	deployConfigs []*deployConfig.Config
-	payload       *webhook.ParsedPayload
-	testName      string
+// DeployRequest carries the per-run input for a single reconciliation deployment: the trigger
+// metadata, source repository/payload data, resolved deploy configs, and (for test runs only) a
+// unique test name. Stable application dependencies (app config, Docker CLI, context registry,
+// secret provider) live on the Manager itself instead; see Dependencies.
+type DeployRequest struct {
+	Logger        *slog.Logger `validate:"required,nostructlevel"`
+	Metadata      notification.Metadata
+	JobTrigger    stages.JobTrigger `validate:"required,oneof=webhook poll"`
+	Repository    stages.RepositoryData
+	DeployConfigs []*deployConfig.Config `validate:"dive,required"`
+	Payload       *webhook.ParsedPayload
+	TestName      string
 }
 
 type job struct {
 	manager                  *Manager
-	info                     jobInfo
+	info                     DeployRequest
 	deployConfigGroupByEvent map[string][]*deployConfig.Config // key is the docker event action name (for example "die" or "unhealthy").
 	restartStateMu           sync.Mutex                        // guards unhealthyRestartHistory and restartSuppressUntil against concurrent access from parallel per-context startup recovery goroutines.
 	unhealthyRestartHistory  map[string][]time.Time            // key is the docker container ID, value is the list of timestamps of recent unhealthy restart events for that container.
@@ -106,7 +128,7 @@ type job struct {
 	contextCLIs map[string]contextCLIEntry
 }
 
-func newJob(manager *Manager, info jobInfo, deployConfigGroupByEvent map[string][]*deployConfig.Config) *job {
+func newJob(manager *Manager, info DeployRequest, deployConfigGroupByEvent map[string][]*deployConfig.Config) *job {
 	return &job{
 		manager:                  manager,
 		info:                     info,
@@ -138,7 +160,7 @@ func (j *job) signalReady() {
 	}
 
 	j.readyOnce.Do(func() {
-		j.info.log.Debug("reconciliation event listeners ready")
+		j.info.Logger.Debug("reconciliation event listeners ready")
 		close(j.readyChan)
 	})
 }
@@ -410,13 +432,13 @@ func (r *deploymentTracker) isInProgress(repository, context, stack string) bool
 	return r.stacks[key] > 0
 }
 
-func (m *Manager) addJob(ctx context.Context, info jobInfo) {
-	cfg := getDeployConfigGroupByEvent(info.deployConfigs)
+func (m *Manager) addJob(ctx context.Context, req DeployRequest) {
+	cfg := getDeployConfigGroupByEvent(req.DeployConfigs)
 	if len(cfg) == 0 {
 		return
 	}
 
-	newJob := newJob(m, info, cfg)
+	newJob := newJob(m, req, cfg)
 	jobCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	newJob.cancel = cancel
 
@@ -429,13 +451,13 @@ func (m *Manager) addJob(ctx context.Context, info jobInfo) {
 	}
 
 	m.jobWG.Add(1)
-	old := m.jobs.jobs[info.repoData.Name]
-	m.jobs.jobs[info.repoData.Name] = newJob
+	old := m.jobs.jobs[req.Repository.Name]
+	m.jobs.jobs[req.Repository.Name] = newJob
 	m.jobs.mu.Unlock()
 
 	old.close()
 
-	jobLog := info.log
+	jobLog := req.Logger
 
 	go func() {
 		defer func() {

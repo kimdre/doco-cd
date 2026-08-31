@@ -21,7 +21,7 @@ func TestDeploySkipsWhenContextCancelledBeforeRepoLockAcquisition(t *testing.T) 
 	t.Parallel()
 
 	repoName := t.Name()
-	j := newJob(newTestManager(t), jobInfo{metadata: notification.Metadata{Repository: repoName}}, nil)
+	j := newJob(newTestManager(t), DeployRequest{Metadata: notification.Metadata{Repository: repoName}}, nil)
 
 	var output bytes.Buffer
 

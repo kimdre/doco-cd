@@ -35,6 +35,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
+	"github.com/kimdre/doco-cd/internal/reconciliation"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -435,7 +436,12 @@ env_files:
 				Repository: git.GetRepoName(tc.payload.CloneURL),
 				Revision:   notification.GetRevision(tc.payload.Ref, tc.payload.CommitSHAString()),
 			}
-			reconciliationManager := newTestReconciliationManager(t)
+			reconciliationManager := newTestReconciliationManager(t, reconciliation.Dependencies{
+				AppConfig:      appConfig,
+				DataMountPoint: testMountPoint,
+				DockerCLI:      dockerCli,
+				SecretProvider: secretProvider,
+			})
 
 			err = retry.New(
 				retry.Attempts(3),
@@ -454,8 +460,6 @@ env_files:
 					tc.customTarget,
 					metadata,
 					dockerCli,
-					nil,
-					secretProvider,
 					stackName,
 					reconciliationManager,
 				); err != nil {

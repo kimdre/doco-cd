@@ -9,38 +9,27 @@ import (
 	"sync"
 
 	"github.com/docker/cli/cli/command"
-	"github.com/moby/moby/api/types/container"
 
+	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config"
-	"github.com/kimdre/doco-cd/internal/config/app"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
 	dockerSwarm "github.com/kimdre/doco-cd/internal/docker/swarm"
 
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
-	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/stages"
 	"github.com/kimdre/doco-cd/internal/test"
-	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
 var ErrOCIArtifactNotVerified = errors.New("OCI artifact is not verified")
 
-func (m *Manager) Deploy(ctx context.Context,
-	jobLog *slog.Logger,
-	appConfig *app.Config,
-	dataMountPoint container.MountPoint,
-	dockerCli command.Cli,
-	contexts *docker.ContextRegistry,
-	secretProvider secretprovider.SecretProvider,
-	metadata notification.Metadata,
-	jobTrigger stages.JobTrigger,
-	repoData stages.RepositoryData,
-	deployConfigs []*deployConfig.Config,
-	payload *webhook.ParsedPayload,
-	testName string,
-) error {
+// Deploy validates req and runs a reconciliation deployment using the Manager's stable
+// dependencies (app config, Docker CLI, context registry, secret provider) together with req's
+// per-run trigger, repository, deploy configs, and notification metadata. Unless req.TestName is
+// set, it also registers a long-lived reconciliation job that watches for drift after the
+// initial deployment.
+func (m *Manager) Deploy(ctx context.Context, req DeployRequest) error {
 	if m == nil {
 		return errors.New("reconciliation manager is required")
 	}
@@ -50,81 +39,57 @@ func (m *Manager) Deploy(ctx context.Context,
 	}
 	defer m.deployWG.Done()
 
-	err := m.deploy(ctx, jobLog, appConfig,
-		dataMountPoint, dockerCli, contexts, secretProvider, metadata,
-		jobTrigger, repoData, deployConfigs, payload, testName)
+	if err := validation.Validate(req); err != nil {
+		return fmt.Errorf("validate deploy request: %w", err)
+	}
+
+	err := m.deploy(ctx, req)
 
 	// Skip long-lived reconciliation listeners for test-triggered deployments.
 	// Test runs use testName only to make stacks unique and do not need background
 	// Docker event watchers that can outlive the test and race with TempDir cleanup.
-	if testName == "" {
-		m.addJob(ctx, jobInfo{
-			appConfig:      appConfig,
-			dataMountPoint: dataMountPoint,
-			dockerCli:      dockerCli,
-			contexts:       contexts,
-			secretProvider: secretProvider,
-			log:            jobLog,
-			metadata:       metadata,
-			jobTrigger:     jobTrigger,
-			repoData:       repoData,
-			deployConfigs:  deployConfigs,
-			payload:        payload,
-			testName:       testName,
-		})
+	if req.TestName == "" {
+		m.addJob(ctx, req)
 	}
 
 	return err
 }
 
-func (m *Manager) deploy(ctx context.Context,
-	jobLog *slog.Logger,
-	appConfig *app.Config,
-	dataMountPoint container.MountPoint,
-	dockerCli command.Cli,
-	contexts *docker.ContextRegistry,
-	secretProvider secretprovider.SecretProvider,
-	metadata notification.Metadata,
-	jobTrigger stages.JobTrigger,
-	repoData stages.RepositoryData,
-	deployConfigs []*deployConfig.Config,
-	payload *webhook.ParsedPayload,
-	testName string,
-) error {
-	if repoData.Source == config.SourceTypeOCI && !repoData.OCITrusted {
+func (m *Manager) deploy(ctx context.Context, req DeployRequest) error {
+	if req.Repository.Source == config.SourceTypeOCI && !req.Repository.OCITrusted {
 		return fmt.Errorf("%w: refusing to run reconciliation cleanup before trust-policy verification", ErrOCIArtifactNotVerified)
 	}
 
 	configsByContext := map[string][]*deployConfig.Config{}
 
-	for _, dc := range deployConfigs {
+	for _, dc := range req.DeployConfigs {
 		contextName := docker.NormalizeContextName(dc.Context)
 		configsByContext[contextName] = append(configsByContext[contextName], dc)
 	}
 
 	dockerQuiet := false
-	if appConfig != nil {
-		dockerQuiet = appConfig.DockerQuietDeploy
+	if m.appConfig != nil {
+		dockerQuiet = m.appConfig.DockerQuietDeploy
 	}
 
 	for contextName, groupedConfigs := range configsByContext {
-		entry := resolveDeployContext(ctx, contexts, dockerCli, dockerQuiet, contextName)
+		entry := resolveDeployContext(ctx, m.contexts, m.dockerCli, dockerQuiet, contextName)
 		if entry.err != nil {
 			// Isolate per-context failures: an unreachable context must not block
 			// cleanup/deploy for other (healthy) contexts. handleDeploy below fails
 			// only the affected deployments.
-			jobLog.Error("failed to create docker client for context, skipping cleanup for it",
+			req.Logger.Error("failed to create docker client for context, skipping cleanup for it",
 				slog.String("context", docker.DisplayContextName(contextName)), logger.ErrAttr(entry.err))
 
 			continue
 		}
 
 		for swarmMode, modeConfigs := range groupDeployConfigsByMode(groupedConfigs, entry.swarmMode) {
-			if err := cleanupObsoleteAutoDiscoveredContainers(ctx, jobLog,
-				entry.cli, swarmMode, contextName, repoData.SourceUrl,
+			if err := cleanupObsoleteAutoDiscoveredContainers(ctx, req.Logger,
+				entry.cli, swarmMode, contextName, req.Repository.SourceUrl,
 				modeConfigs,
-				metadata); err != nil {
-				jobLog.Error("failed to clean up obsolete auto-discovered containers for context",
+				req.Metadata); err != nil {
+				req.Logger.Error("failed to clean up obsolete auto-discovered containers for context",
 					slog.String("context", docker.DisplayContextName(contextName)),
 					slog.Bool("swarm_mode", swarmMode),
 					logger.ErrAttr(err))
@@ -136,34 +101,18 @@ func (m *Manager) deploy(ctx context.Context,
 		}
 	}
 
-	return m.handleDeploy(ctx, jobLog, appConfig,
-		dataMountPoint, dockerCli, contexts, secretProvider, metadata.JobID, jobTrigger,
-		repoData, deployConfigs, payload, testName, metadata)
+	return m.handleDeploy(ctx, req)
 }
 
-func (m *Manager) handleDeploy(ctx context.Context,
-	jobLog *slog.Logger,
-	appConfig *app.Config,
-	dataMountPoint container.MountPoint,
-	dockerCli command.Cli,
-	contexts *docker.ContextRegistry,
-	secretProvider secretprovider.SecretProvider,
-	jobID string,
-	jobTrigger stages.JobTrigger,
-	repoData stages.RepositoryData,
-	deployConfigs []*deployConfig.Config,
-	payload *webhook.ParsedPayload,
-	testName string,
-	metadata notification.Metadata,
-) error {
+func (m *Manager) handleDeploy(ctx context.Context, req DeployRequest) error {
 	dockerQuiet := false
-	if appConfig != nil {
-		dockerQuiet = appConfig.DockerQuietDeploy
+	if m.appConfig != nil {
+		dockerQuiet = m.appConfig.DockerQuietDeploy
 	}
 
 	// Build one Docker CLI per distinct context up front and share it across all
 	// deployments targeting that context, instead of creating a client per deployment.
-	contextCLIs := buildDeployContextCLIs(ctx, contexts, dockerCli, dockerQuiet, deployConfigs)
+	contextCLIs := buildDeployContextCLIs(ctx, m.contexts, m.dockerCli, dockerQuiet, req.DeployConfigs)
 
 	defer func() {
 		for contextName, entry := range contextCLIs {
@@ -177,34 +126,34 @@ func (m *Manager) handleDeploy(ctx context.Context,
 	// limited by this manager's deployment limiter.
 	var wg sync.WaitGroup
 
-	resultCh := make(chan error, len(deployConfigs))
+	resultCh := make(chan error, len(req.DeployConfigs))
 
-	for _, deployCfg := range deployConfigs {
-		deployLog := jobLog.
+	for _, deployCfg := range req.DeployConfigs {
+		deployLog := req.Logger.
 			WithGroup("deploy").
 			With(slog.String("stack", deployCfg.Name))
 
-		if repoData.Source != config.SourceTypeOCI {
+		if req.Repository.Source != config.SourceTypeOCI {
 			deployLog = deployLog.With(slog.String("reference", deployCfg.Reference))
 		}
 
-		if ctx := strings.TrimSpace(deployCfg.Context); ctx != "" {
-			deployLog = deployLog.With(slog.String("context", ctx))
+		if ctxName := strings.TrimSpace(deployCfg.Context); ctxName != "" {
+			deployLog = deployLog.With(slog.String("context", ctxName))
 		}
 
 		// Used to make test deployments unique and prevent conflicts between tests when running in parallel.
 		// It is not used in production.
-		if testName != "" {
-			deployCfg.Name = test.ConvertTestName(testName)
+		if req.TestName != "" {
+			deployCfg.Name = test.ConvertTestName(req.TestName)
 		}
 
-		m.deployments.start(repoData.Name, deployCfg.Context, deployCfg.Name)
+		m.deployments.start(req.Repository.Name, deployCfg.Context, deployCfg.Name)
 
 		wg.Add(1)
 
 		go func(dc *deployConfig.Config) {
 			defer wg.Done()
-			defer m.deployments.finish(repoData.Name, dc.Context, dc.Name)
+			defer m.deployments.finish(req.Repository.Name, dc.Context, dc.Name)
 
 			contextName := docker.NormalizeContextName(dc.Context)
 
@@ -219,9 +168,7 @@ func (m *Manager) handleDeploy(ctx context.Context,
 				return
 			}
 
-			err := m.handleOneDeploy(ctx, deployLog,
-				appConfig, dataMountPoint, entry.cli, entry.swarmMode, secretProvider,
-				dc, jobID, jobTrigger, repoData, payload, metadata)
+			err := m.handleOneDeploy(ctx, req, deployLog, entry.cli, entry.swarmMode, dc)
 
 			resultCh <- err
 		}(deployCfg)
@@ -253,7 +200,7 @@ func (m *Manager) handleDeploy(ctx context.Context,
 		return errors.Join(errs...)
 	}
 
-	if successCount == 0 && len(deployConfigs) > 0 {
+	if successCount == 0 && len(req.DeployConfigs) > 0 {
 		// All deployments were skipped by the webhook filter
 		return stages.ErrWebhookFilterMismatch
 	}
@@ -321,16 +268,8 @@ func resolveDeployContext(ctx context.Context, contexts *docker.ContextRegistry,
 	return deployContextCLI{cli: cli, closeFn: closeFn, swarmMode: swarmMode}
 }
 
-func (m *Manager) handleOneDeploy(ctx context.Context, deployLog *slog.Logger,
-	appConfig *app.Config, dataMountPoint container.MountPoint,
-	deploymentDockerCli command.Cli, swarmAvailable bool,
-	secretProvider secretprovider.SecretProvider,
-	dc *deployConfig.Config,
-	jobID string,
-	jobTrigger stages.JobTrigger,
-	repoData stages.RepositoryData,
-	payLad *webhook.ParsedPayload,
-	metadata notification.Metadata,
+func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deployLog *slog.Logger,
+	deploymentDockerCli command.Cli, swarmAvailable bool, dc *deployConfig.Config,
 ) error {
 	swarmMode, err := dc.ResolveSwarmMode(swarmAvailable)
 	if err != nil {
@@ -341,31 +280,38 @@ func (m *Manager) handleOneDeploy(ctx context.Context, deployLog *slog.Logger,
 	if m.limiter != nil {
 		deployLog.Debug("queuing deployment")
 
-		unlock, lErr := m.limiter.acquire(ctx, repoData.Name, NormalizeReference(dc.Reference))
+		unlock, lErr := m.limiter.acquire(ctx, req.Repository.Name, NormalizeReference(dc.Reference))
 		if lErr != nil {
 			return lErr
 		}
 		defer unlock()
 	}
 
-	stageMgr := stages.NewStageManager(
-		jobID,
-		jobTrigger,
-		deployLog,
-		failNotifyFunc,
-		&repoData,
-		&stages.Docker{
-			Cmd:            deploymentDockerCli,
-			DataMountPoint: dataMountPoint,
-			SwarmMode:      swarmMode,
-			SwarmAvailable: swarmAvailable,
+	stageMgr, err := stages.NewStageManager(
+		stages.Dependencies{
+			AppConfig:         m.appConfig,
+			SecretProvider:    m.secretProvider,
+			NotifyFailureFunc: failNotifyFunc,
 		},
-		payLad,
-		appConfig,
-		dc,
-		secretProvider,
-		metadata,
+		stages.RunInput{
+			Log:        deployLog,
+			JobID:      req.Metadata.JobID,
+			JobTrigger: req.JobTrigger,
+			Repository: &req.Repository,
+			Docker: &stages.Docker{
+				Cmd:            deploymentDockerCli,
+				DataMountPoint: m.dataMountPoint,
+				SwarmMode:      swarmMode,
+				SwarmAvailable: swarmAvailable,
+			},
+			Payload:      req.Payload,
+			DeployConfig: dc,
+			Metadata:     req.Metadata,
+		},
 	)
+	if err != nil {
+		return err
+	}
 
 	err = stageMgr.RunStages(ctx)
 	if err != nil {

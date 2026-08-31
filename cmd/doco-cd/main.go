@@ -349,6 +349,11 @@ func run() error {
 	}
 
 	reconciliationManager, err := reconciliation.NewManager(reconciliation.Dependencies{
+		AppConfig:                c,
+		DataMountPoint:           dataMountPoint,
+		DockerCLI:                dockerCli,
+		Contexts:                 contexts,
+		SecretProvider:           secretProvider,
 		MaxConcurrentDeployments: c.MaxConcurrentDeployments,
 	})
 	if err != nil {
@@ -375,11 +380,11 @@ func run() error {
 				DockerCLI:      dockerCli,
 				Contexts:       contexts,
 				Runner: func(ctx context.Context, pollConfig poll.Config, appConfig *app.Config, dataMountPoint container.MountPoint,
-					dockerCli command.Cli, contexts *docker.ContextRegistry, logger *slog.Logger, metadata notification.Metadata,
-					secretProvider secretprovider.SecretProvider, triggerReason string,
+					dockerCli command.Cli, _ *docker.ContextRegistry, logger *slog.Logger, metadata notification.Metadata,
+					_ secretprovider.SecretProvider, triggerReason string,
 				) error {
-					return RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, contexts, logger, metadata,
-						secretProvider, triggerReason, reconciliationManager)
+					return RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, logger, metadata,
+						triggerReason, reconciliationManager)
 				},
 			},
 		},
