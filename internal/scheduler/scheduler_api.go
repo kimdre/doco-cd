@@ -6,51 +6,14 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"sync"
 	"time"
-
-	"github.com/docker/cli/cli/command"
 
 	"github.com/kimdre/doco-cd/internal/common/id"
 	"github.com/kimdre/doco-cd/internal/docker"
-	"github.com/kimdre/doco-cd/internal/docker/swarm"
-	"github.com/kimdre/doco-cd/internal/graceful"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 )
-
-func Start(ctx context.Context, dockerCli command.Cli, log *slog.Logger, wg *sync.WaitGroup, secretProvider secretprovider.SecretProvider) {
-	if dockerCli == nil || log == nil || wg == nil {
-		return
-	}
-
-	cc := docker.ContextClient{Cli: dockerCli, SwarmMode: swarm.GetModeEnabled()}
-
-	mode := scheduledJobModeContainer
-	if cc.SwarmMode {
-		composeWorker := newSchedulerForMode(cc, scheduledJobModeContainer, log, wg, secretProvider)
-		graceful.SafeGo(wg, log, func() {
-			composeWorker.run(ctx)
-		})
-
-		mode = scheduledJobModeSwarm
-	}
-
-	newSchedulerForMode(cc, mode, log, wg, secretProvider).run(ctx)
-}
-
-// ListJobs returns all discovered scheduler jobs on the default Docker context,
-// optionally filtered by stack name.
-func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]JobInfo, error) {
-	if dockerCli == nil {
-		return nil, errors.New("docker cli is required")
-	}
-
-	cc := docker.ContextClient{Cli: dockerCli, SwarmMode: swarm.GetModeEnabled()}
-
-	return listJobsForModes(ctx, schedulerModes(cc.SwarmMode), cc, nil, nil, stackName)
-}
 
 // listJobs returns all jobs discovered on this worker's Docker context,
 // optionally filtered by stack name.
@@ -63,9 +26,9 @@ func (s *scheduler) listJobs(ctx context.Context, stackName string) ([]JobInfo, 
 	now := schedulerNow()
 	stackName = strings.TrimSpace(stackName)
 	result := make([]JobInfo, 0, len(jobs))
-	states := getRuntimeStatesSnapshot()
-	runStatuses := getRuntimeRunStatusesSnapshot()
-	runningStates := getRuntimeRunningStatesSnapshot()
+	states := s.runtime.statesSnapshot()
+	runStatuses := s.runtime.runStatusesSnapshot()
+	runningStates := s.runtime.runningStatesSnapshot()
 
 	for _, job := range jobs {
 		stack := getJobStackName(job)
@@ -146,19 +109,6 @@ func (s *scheduler) listJobs(ctx context.Context, stackName string) ([]JobInfo, 
 	return result, nil
 }
 
-// TriggerNow executes one configured scheduled job immediately on the default
-// Docker context. Job selection matches by container/service name and
-// optional stack name.
-func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jobName, stackName string, secretProvider secretprovider.SecretProvider) (string, error) {
-	if dockerCli == nil {
-		return "", errors.New("docker cli is required")
-	}
-
-	cc := docker.ContextClient{Cli: dockerCli, SwarmMode: swarm.GetModeEnabled()}
-
-	return triggerNowForModes(ctx, schedulerModes(cc.SwarmMode), cc, log, jobName, stackName, secretProvider)
-}
-
 // triggerNow executes one configured scheduled job immediately on this
 // worker's Docker context. Job selection matches by container/service name
 // and optional stack name.
@@ -212,12 +162,12 @@ func (s *scheduler) triggerNow(ctx context.Context, jobName, stackName string) (
 
 	defer unlockStacks()
 
-	setRuntimeRunInProgress(job.key, true)
-	defer setRuntimeRunInProgress(job.key, false)
+	s.setRunInProgress(job.key, true)
+	defer s.setRunInProgress(job.key, false)
 
 	err = s.executeScheduledRun(ctx, job, cfg)
-	updateRuntimeRunStatus(job, cfg, err)
-	setRuntimeLastRun(job.key, schedulerNow())
+	s.runtime.updateRunStatus(job, cfg, err)
+	s.runtime.setLastRun(job.key, schedulerNow())
 
 	if err != nil {
 		runFailed = true
@@ -234,11 +184,11 @@ func (s *scheduler) triggerNow(ctx context.Context, jobName, stackName string) (
 	return runID, nil
 }
 
-func listJobsForModes(ctx context.Context, modes []scheduledJobMode, cc docker.ContextClient, log *slog.Logger, secretProvider secretprovider.SecretProvider, stackName string) ([]JobInfo, error) {
+func listJobsForModes(ctx context.Context, modes []scheduledJobMode, cc docker.ContextClient, log *slog.Logger, secretProvider secretprovider.SecretProvider, runtime *runtimeStore, stackName string) ([]JobInfo, error) {
 	var result []JobInfo
 
 	for _, mode := range modes {
-		jobs, err := newSchedulerForMode(cc, mode, log, nil, secretProvider).listJobs(ctx, stackName)
+		jobs, err := newSchedulerForMode(cc, mode, log, nil, secretProvider, runtime).listJobs(ctx, stackName)
 		if err != nil {
 			return nil, err
 		}
@@ -249,13 +199,13 @@ func listJobsForModes(ctx context.Context, modes []scheduledJobMode, cc docker.C
 	return result, nil
 }
 
-func triggerNowForModes(ctx context.Context, modes []scheduledJobMode, cc docker.ContextClient, log *slog.Logger, jobName, stackName string, secretProvider secretprovider.SecretProvider) (string, error) {
+func triggerNowForModes(ctx context.Context, modes []scheduledJobMode, cc docker.ContextClient, log *slog.Logger, jobName, stackName string, secretProvider secretprovider.SecretProvider, runtime *runtimeStore) (string, error) {
 	workers := make(map[scheduledJobMode]*scheduler, len(modes))
 
 	var jobs []scheduledJob
 
 	for _, mode := range modes {
-		worker := newSchedulerForMode(cc, mode, log, nil, secretProvider)
+		worker := newSchedulerForMode(cc, mode, log, nil, secretProvider, runtime)
 
 		discovered, err := worker.discoverJobs(ctx)
 		if err != nil {

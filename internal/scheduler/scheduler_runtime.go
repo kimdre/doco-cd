@@ -13,12 +13,29 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 )
 
-var (
-	runtimeStatesMu      sync.RWMutex
-	runtimeStates        = map[string]scheduledJobState{}
-	runtimeRunStatuses   = map[string]string{}
-	runtimeRunningStates = map[string]bool{}
-)
+// runtimeStore keeps the status exposed by scheduler APIs separate from the
+// worker-local scheduling state. Each Manager owns one store shared by its
+// background workers and on-demand operations.
+type runtimeStore struct {
+	mu            sync.RWMutex
+	states        map[string]scheduledJobState
+	runStatuses   map[string]string
+	runningStates map[string]int
+	clearing      map[string]bool
+	cond          *sync.Cond
+}
+
+func newRuntimeStore() *runtimeStore {
+	store := &runtimeStore{
+		states:        map[string]scheduledJobState{},
+		runStatuses:   map[string]string{},
+		runningStates: map[string]int{},
+		clearing:      map[string]bool{},
+	}
+	store.cond = sync.NewCond(&store.mu)
+
+	return store
+}
 
 func formatRunStatus(state, status string) string {
 	state = strings.TrimSpace(state)
@@ -94,32 +111,28 @@ func schedulerNow() time.Time {
 	return time.Now().In(time.Local)
 }
 
-// setRuntimeStatesSnapshot replaces one context's states while preserving all
+// setStatesSnapshot replaces one context's states while preserving all
 // other context partitions and newer manual-run timestamps.
-func setRuntimeStatesSnapshot(contextName string, states map[string]scheduledJobState) {
-	setRuntimeStatesSnapshotForMode(contextName, "", states)
-}
+func (s *runtimeStore) setStatesSnapshot(contextName string, mode scheduledJobMode, states map[string]scheduledJobState) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-func setRuntimeStatesSnapshotForMode(contextName string, mode scheduledJobMode, states map[string]scheduledJobState) {
-	runtimeStatesMu.Lock()
-	defer runtimeStatesMu.Unlock()
-
-	merged := make(map[string]scheduledJobState, len(runtimeStates)+len(states))
-	for key, state := range runtimeStates {
+	merged := make(map[string]scheduledJobState, len(s.states)+len(states))
+	for key, state := range s.states {
 		if !runtimeKeyInContextMode(contextName, mode, key) {
 			merged[key] = state
 		}
 	}
 
 	for key, state := range states {
-		if existing, ok := runtimeStates[key]; ok && existing.lastRun.After(state.lastRun) {
+		if existing, ok := s.states[key]; ok && existing.lastRun.After(state.lastRun) {
 			state.lastRun = existing.lastRun
 		}
 
 		merged[key] = state
 	}
 
-	runtimeStates = merged
+	s.states = merged
 }
 
 func runtimeKeyInContext(contextName, key string) bool {
@@ -144,115 +157,166 @@ func runtimeKeyInContextMode(contextName string, mode scheduledJobMode, key stri
 	return strings.HasPrefix(key, string(mode)+":")
 }
 
-func clearRuntimeContext(contextName string) {
-	clearRuntimeContextMode(contextName, "")
-}
+func (s *runtimeStore) clearContextMode(contextName string, mode scheduledJobMode) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-func clearRuntimeContextMode(contextName string, mode scheduledJobMode) {
-	runtimeStatesMu.Lock()
-	defer runtimeStatesMu.Unlock()
+	partition := runtimePartitionKey(contextName, mode)
 
-	for key := range runtimeStates {
+	s.clearing[partition] = true
+	for s.hasRunningStateLocked(contextName, mode) {
+		s.cond.Wait()
+	}
+
+	for key := range s.states {
 		if runtimeKeyInContextMode(contextName, mode, key) {
-			delete(runtimeStates, key)
+			delete(s.states, key)
 		}
 	}
 
-	for key := range runtimeRunStatuses {
+	for key := range s.runStatuses {
 		if runtimeKeyInContextMode(contextName, mode, key) {
-			delete(runtimeRunStatuses, key)
+			delete(s.runStatuses, key)
 		}
 	}
 
-	for key := range runtimeRunningStates {
+	for key := range s.runningStates {
 		if runtimeKeyInContextMode(contextName, mode, key) {
-			delete(runtimeRunningStates, key)
+			delete(s.runningStates, key)
 		}
 	}
+
+	delete(s.clearing, partition)
+	s.cond.Broadcast()
 }
 
-func getRuntimeStatesSnapshot() map[string]scheduledJobState {
-	runtimeStatesMu.RLock()
-	defer runtimeStatesMu.RUnlock()
+func (s *runtimeStore) statesSnapshot() map[string]scheduledJobState {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
-	return copyMapLocked(runtimeStates)
+	return copyMap(s.states)
 }
 
-func setRuntimeLastRun(key string, lastRun time.Time) {
+func (s *runtimeStore) setLastRun(key string, lastRun time.Time) {
 	if key == "" {
 		return
 	}
 
-	runtimeStatesMu.Lock()
-	defer runtimeStatesMu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	state := runtimeStates[key]
+	state := s.states[key]
 	state.lastRun = lastRun
-	runtimeStates[key] = state
+	s.states[key] = state
 }
 
-func getRuntimeRunStatusesSnapshot() map[string]string {
-	runtimeStatesMu.RLock()
-	defer runtimeStatesMu.RUnlock()
+func (s *runtimeStore) runStatusesSnapshot() map[string]string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
-	return copyMapLocked(runtimeRunStatuses)
+	return copyMap(s.runStatuses)
 }
 
-func setRuntimeRunStatus(key, status string) {
+func (s *runtimeStore) setRunStatus(key, status string) {
 	key = strings.TrimSpace(key)
 	if key == "" {
 		return
 	}
 
-	runtimeStatesMu.Lock()
-	defer runtimeStatesMu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	runtimeRunStatuses[key] = strings.TrimSpace(status)
+	s.runStatuses[key] = strings.TrimSpace(status)
 }
 
-func getRuntimeRunningStatesSnapshot() map[string]bool {
-	runtimeStatesMu.RLock()
-	defer runtimeStatesMu.RUnlock()
+func (s *runtimeStore) runningStatesSnapshot() map[string]bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
-	return copyMapLocked(runtimeRunningStates)
+	states := make(map[string]bool, len(s.runningStates))
+	for key, count := range s.runningStates {
+		states[key] = count > 0
+	}
+
+	return states
 }
 
-func setRuntimeRunInProgress(key string, inProgress bool) {
+func (s *runtimeStore) isRunInProgress(key string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.runningStates[key] > 0
+}
+
+func (s *runtimeStore) beginRun(contextName string, mode scheduledJobMode, key string) {
 	key = strings.TrimSpace(key)
 	if key == "" {
 		return
 	}
 
-	runtimeStatesMu.Lock()
-	defer runtimeStatesMu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	if inProgress {
-		runtimeRunningStates[key] = true
+	partition := runtimePartitionKey(contextName, mode)
+
+	contextPartition := runtimePartitionKey(contextName, "")
+	for s.clearing[partition] || s.clearing[contextPartition] {
+		s.cond.Wait()
+	}
+
+	s.runningStates[key]++
+}
+
+func (s *runtimeStore) endRun(key string) {
+	key = strings.TrimSpace(key)
+	if key == "" {
 		return
 	}
 
-	delete(runtimeRunningStates, key)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.runningStates[key] <= 1 {
+		delete(s.runningStates, key)
+	} else {
+		s.runningStates[key]--
+	}
+
+	s.cond.Broadcast()
 }
 
-func updateRuntimeRunStatus(job scheduledJob, cfg docker.JobScheduleConfig, runErr error) {
+func (s *runtimeStore) updateRunStatus(job scheduledJob, cfg docker.JobScheduleConfig, runErr error) {
 	if job.mode != scheduledJobModeContainer || cfg.ExecutionMode != docker.JobExecutionModeOneOff {
 		return
 	}
 
 	if runErr == nil {
-		setRuntimeRunStatus(job.key, formatExitStatus(0))
+		s.setRunStatus(job.key, formatExitStatus(0))
 		return
 	}
 
 	if exitErr, ok := errors.AsType[*docker.ContainerExitError](runErr); ok {
-		setRuntimeRunStatus(job.key, formatExitStatus(exitErr.ExitCode))
+		s.setRunStatus(job.key, formatExitStatus(exitErr.ExitCode))
 	}
 }
 
-// copyMapLocked returns a shallow copy of m. Callers must hold runtimeStatesMu.
-func copyMapLocked[K comparable, V any](m map[K]V) map[K]V {
+func copyMap[K comparable, V any](m map[K]V) map[K]V {
 	ret := make(map[K]V, len(m))
 	maps.Copy(ret, m)
 
 	return ret
+}
+
+func runtimePartitionKey(contextName string, mode scheduledJobMode) string {
+	return docker.NormalizeContextName(contextName) + "\x00" + string(mode)
+}
+
+func (s *runtimeStore) hasRunningStateLocked(contextName string, mode scheduledJobMode) bool {
+	for key, count := range s.runningStates {
+		if count > 0 && runtimeKeyInContextMode(contextName, mode, key) {
+			return true
+		}
+	}
+
+	return false
 }

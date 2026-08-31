@@ -224,11 +224,16 @@ func TestMCPScheduledJobsTool(t *testing.T) {
 `), test.WithName(projectName))
 
 	h := &Handler{dockerCli: dockerCli, log: logger.New(logger.LevelCritical)}
+	contexts := docker.NewContextRegistry(dockerCli, true)
+
+	t.Cleanup(func() { _ = contexts.Close() })
+
+	schedulerManager := scheduler.NewManager(contexts, h.log.Logger, nil, nil)
 	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
 		dockerCli: dockerCli,
 		log:       h.log,
 		scheduledJobs: testScheduledJobOperations{listJobs: func(ctx context.Context, _ string, stackName string) ([]scheduler.JobInfo, error) {
-			return scheduler.ListJobs(ctx, dockerCli, stackName)
+			return schedulerManager.ListJobs(ctx, "", stackName)
 		}},
 	})
 	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)

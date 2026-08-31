@@ -86,55 +86,51 @@ func TestStatusForScheduledJob(t *testing.T) {
 // manual TriggerNow's last_run_at being wiped by the scheduler's next tick.
 func TestSetRuntimeStatesSnapshot_PreservesNewerManualLastRun(t *testing.T) {
 	key := "container:project/service"
-
-	runtimeStatesMu.Lock()
-	runtimeStates = map[string]scheduledJobState{}
-	runtimeStatesMu.Unlock()
+	runtime := newRuntimeStore()
 
 	manualRun := time.Now()
-	setRuntimeLastRun(key, manualRun)
+	runtime.setLastRun(key, manualRun)
 
 	// Simulate the loop's next refresh, unaware of the manual run.
-	setRuntimeStatesSnapshot("", map[string]scheduledJobState{
+	runtime.setStatesSnapshot("", "", map[string]scheduledJobState{
 		key: {nextRun: manualRun.Add(time.Hour)},
 	})
 
-	got := getRuntimeStatesSnapshot()[key]
+	got := runtime.statesSnapshot()[key]
 	if !got.lastRun.Equal(manualRun) {
 		t.Fatalf("expected manually triggered last run %v to survive scheduler refresh, got %v", manualRun, got.lastRun)
 	}
 
 	// A genuinely newer lastRun must still win.
 	newerRun := manualRun.Add(2 * time.Hour)
-	setRuntimeStatesSnapshot("", map[string]scheduledJobState{
+	runtime.setStatesSnapshot("", "", map[string]scheduledJobState{
 		key: {lastRun: newerRun},
 	})
 
-	got = getRuntimeStatesSnapshot()[key]
+	got = runtime.statesSnapshot()[key]
 	if !got.lastRun.Equal(newerRun) {
 		t.Fatalf("expected newer scheduler-tracked last run %v to win, got %v", newerRun, got.lastRun)
 	}
 }
 
 func TestSetRuntimeStatesSnapshotPreservesOtherContexts(t *testing.T) {
-	runtimeStatesMu.Lock()
-	runtimeStates = map[string]scheduledJobState{
+	runtime := newRuntimeStore()
+	runtime.states = map[string]scheduledJobState{
 		"remote::container:shared/job": {deployment: "remote"},
 	}
-	runtimeStatesMu.Unlock()
 
-	setRuntimeStatesSnapshot("", map[string]scheduledJobState{
+	runtime.setStatesSnapshot("", "", map[string]scheduledJobState{
 		"container:shared/job": {deployment: "default"},
 	})
 
-	states := getRuntimeStatesSnapshot()
+	states := runtime.statesSnapshot()
 	if len(states) != 2 {
 		t.Fatalf("expected both context partitions, got %#v", states)
 	}
 
-	setRuntimeStatesSnapshot("remote", map[string]scheduledJobState{})
+	runtime.setStatesSnapshot("remote", "", map[string]scheduledJobState{})
 
-	states = getRuntimeStatesSnapshot()
+	states = runtime.statesSnapshot()
 	if _, ok := states["remote::container:shared/job"]; ok {
 		t.Fatal("expected stale remote state to be removed")
 	}
@@ -145,54 +141,82 @@ func TestSetRuntimeStatesSnapshotPreservesOtherContexts(t *testing.T) {
 }
 
 func TestClearRuntimeContext(t *testing.T) {
-	t.Cleanup(func() {
-		runtimeStatesMu.Lock()
-		runtimeStates = map[string]scheduledJobState{}
-		runtimeRunStatuses = map[string]string{}
-		runtimeRunningStates = map[string]bool{}
-		runtimeStatesMu.Unlock()
-	})
-
-	runtimeStatesMu.Lock()
-	runtimeStates = map[string]scheduledJobState{
+	runtime := newRuntimeStore()
+	runtime.states = map[string]scheduledJobState{
 		"container:shared/job":         {deployment: "default"},
 		"remote::container:shared/job": {deployment: "remote"},
 	}
-	runtimeRunStatuses = map[string]string{
+	runtime.runStatuses = map[string]string{
 		"container:shared/job":         "running",
 		"remote::container:shared/job": "exited (0)",
 	}
-	runtimeRunningStates = map[string]bool{
-		"container:shared/job":         true,
-		"remote::container:shared/job": true,
+	runtime.runningStates = map[string]int{
+		"container:shared/job":         1,
+		"remote::container:shared/job": 1,
 	}
-	runtimeStatesMu.Unlock()
 
-	clearRuntimeContext("remote")
+	started := make(chan struct{})
+	cleared := make(chan struct{})
 
-	if _, ok := getRuntimeStatesSnapshot()["remote::container:shared/job"]; ok {
+	go func() {
+		close(started)
+		runtime.clearContextMode("remote", "")
+		close(cleared)
+	}()
+
+	<-started
+
+	select {
+	case <-cleared:
+		t.Fatal("expected cleanup to wait for the active remote run")
+	case <-time.After(10 * time.Millisecond):
+	}
+
+	runtime.endRun("remote::container:shared/job")
+	<-cleared
+
+	if _, ok := runtime.statesSnapshot()["remote::container:shared/job"]; ok {
 		t.Fatal("expected remote runtime state to be removed")
 	}
 
-	if _, ok := getRuntimeRunStatusesSnapshot()["remote::container:shared/job"]; ok {
+	if _, ok := runtime.runStatusesSnapshot()["remote::container:shared/job"]; ok {
 		t.Fatal("expected remote run status to be removed")
 	}
 
-	if _, ok := getRuntimeRunningStatesSnapshot()["remote::container:shared/job"]; ok {
+	if _, ok := runtime.runningStatesSnapshot()["remote::container:shared/job"]; ok {
 		t.Fatal("expected remote running state to be removed")
 	}
 
-	if _, ok := getRuntimeStatesSnapshot()["container:shared/job"]; !ok {
+	if _, ok := runtime.statesSnapshot()["container:shared/job"]; !ok {
 		t.Fatal("expected default runtime state to be preserved")
+	}
+}
+
+func TestRuntimeStoreTracksConcurrentRuns(t *testing.T) {
+	t.Parallel()
+
+	runtime := newRuntimeStore()
+	key := "container:shared/job"
+	runtime.beginRun("", scheduledJobModeContainer, key)
+	runtime.beginRun("", scheduledJobModeContainer, key)
+
+	runtime.endRun(key)
+
+	if !runtime.isRunInProgress(key) {
+		t.Fatal("expected the second concurrent run to remain active")
+	}
+
+	runtime.endRun(key)
+
+	if runtime.isRunInProgress(key) {
+		t.Fatal("expected the job to become idle after both runs ended")
 	}
 }
 
 func TestUpdateRuntimeRunStatus(t *testing.T) {
 	t.Parallel()
 
-	runtimeStatesMu.Lock()
-	runtimeRunStatuses = map[string]string{}
-	runtimeStatesMu.Unlock()
+	runtime := newRuntimeStore()
 
 	job := scheduledJob{
 		key:  "container:project/service",
@@ -200,17 +224,111 @@ func TestUpdateRuntimeRunStatus(t *testing.T) {
 	}
 	cfg := docker.JobScheduleConfig{ExecutionMode: docker.JobExecutionModeOneOff}
 
-	updateRuntimeRunStatus(job, cfg, nil)
+	runtime.updateRunStatus(job, cfg, nil)
 
-	if got := getRuntimeRunStatusesSnapshot()[job.key]; got != "exited (0)" {
+	if got := runtime.runStatusesSnapshot()[job.key]; got != "exited (0)" {
 		t.Fatalf("updateRuntimeRunStatus() success status=%q want=%q", got, "exited (0)")
 	}
 
 	wrapped := fmt.Errorf("scheduled run: %w", &docker.ContainerExitError{ContainerID: "abc", ExitCode: 143})
-	updateRuntimeRunStatus(job, cfg, wrapped)
+	runtime.updateRunStatus(job, cfg, wrapped)
 
-	if got := getRuntimeRunStatusesSnapshot()[job.key]; got != "exited (143)" {
+	if got := runtime.runStatusesSnapshot()[job.key]; got != "exited (143)" {
 		t.Fatalf("updateRuntimeRunStatus() error status=%q want=%q", got, "exited (143)")
+	}
+}
+
+func TestManagerRuntimeStateIsIsolated(t *testing.T) {
+	t.Parallel()
+
+	first := NewManager(nil, nil, nil, nil)
+	second := NewManager(nil, nil, nil, nil)
+	key := "container:project/service"
+
+	first.runtime.setLastRun(key, time.Now())
+
+	if _, ok := second.runtime.statesSnapshot()[key]; ok {
+		t.Fatal("expected scheduler managers to own independent runtime state")
+	}
+}
+
+func TestRuntimeStoreClearContextModePreservesOtherPartitions(t *testing.T) {
+	t.Parallel()
+
+	runtime := newRuntimeStore()
+	runtime.states = map[string]scheduledJobState{
+		"remote::container:shared/job": {deployment: "compose"},
+		"remote::swarm:shared/job":     {deployment: "swarm"},
+	}
+
+	runtime.clearContextMode("remote", scheduledJobModeContainer)
+
+	states := runtime.statesSnapshot()
+	if _, ok := states["remote::container:shared/job"]; ok {
+		t.Fatal("expected Compose runtime state to be removed")
+	}
+
+	if _, ok := states["remote::swarm:shared/job"]; !ok {
+		t.Fatal("expected Swarm runtime state to be preserved")
+	}
+}
+
+func TestManagerStopWorkersClearsRuntimeState(t *testing.T) {
+	t.Parallel()
+
+	manager := NewManager(nil, nil, nil, nil)
+	key := schedulerWorkerKey("remote", scheduledJobModeContainer)
+	jobKey := "remote::container:shared/job"
+	cancelled := false
+	manager.workers[key] = managedWorker{
+		cancel: func() { cancelled = true },
+		mode:   scheduledJobModeContainer,
+		id:     1,
+	}
+	manager.runtime.setLastRun(jobKey, time.Now())
+
+	manager.stopWorkers()
+
+	if !cancelled {
+		t.Fatal("expected managed worker to be cancelled")
+	}
+
+	if worker := manager.workers[key]; !worker.stopping {
+		t.Fatal("expected managed worker to be marked as stopping")
+	}
+
+	manager.workerStopped(key, 1)
+
+	if len(manager.workers) != 0 {
+		t.Fatalf("expected stopped worker to be removed, got %d", len(manager.workers))
+	}
+
+	if _, ok := manager.runtime.statesSnapshot()[jobKey]; ok {
+		t.Fatal("expected worker runtime state to be cleared")
+	}
+}
+
+func TestManagerOldWorkerCannotClearReplacementState(t *testing.T) {
+	t.Parallel()
+
+	manager := NewManager(nil, nil, nil, nil)
+	key := schedulerWorkerKey("remote", scheduledJobModeContainer)
+	jobKey := "remote::container:shared/job"
+	manager.workers[key] = managedWorker{
+		cancel: func() {},
+		mode:   scheduledJobModeContainer,
+		id:     2,
+	}
+	manager.runtime.setLastRun(jobKey, time.Now())
+
+	manager.workerStopped(key, 1)
+
+	if _, ok := manager.workers[key]; !ok {
+		t.Fatal("expected replacement worker to remain registered")
+	}
+
+	if _, ok := manager.runtime.statesSnapshot()[jobKey]; !ok {
+		t.Fatal("expected replacement worker runtime state to be preserved")
 	}
 }
 

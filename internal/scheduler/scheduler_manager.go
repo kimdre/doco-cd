@@ -30,14 +30,20 @@ type Manager struct {
 	log            *slog.Logger
 	wg             *sync.WaitGroup
 	secretProvider secretprovider.SecretProvider
+	runtime        *runtimeStore
 
 	mu      sync.Mutex
 	workers map[string]managedWorker // key = normalized context name + runtime mode
+	nextID  uint64
 }
 
 type managedWorker struct {
 	cancel context.CancelFunc
 	mode   scheduledJobMode
+	// id prevents a stopped worker from deleting a replacement using the same key.
+	id uint64
+	// stopping keeps the worker registered until its active runs have drained.
+	stopping bool
 }
 
 // NewManager creates a scheduler Manager bound to registry. log and wg are
@@ -53,6 +59,7 @@ func NewManager(registry *docker.ContextRegistry, log *slog.Logger, wg *sync.Wai
 		log:            log.With(slog.String("component", "scheduler_manager")),
 		wg:             wg,
 		secretProvider: secretProvider,
+		runtime:        newRuntimeStore(),
 		workers:        map[string]managedWorker{},
 	}
 }
@@ -68,6 +75,8 @@ func (m *Manager) Start(ctx context.Context) {
 	m.refreshWorkers(ctx)
 
 	graceful.SafeGo(m.wg, m.log, func() {
+		defer m.stopWorkers()
+
 		ticker := time.NewTicker(contextRefreshInterval)
 		defer ticker.Stop()
 
@@ -123,11 +132,15 @@ func (m *Manager) refreshWorkers(ctx context.Context) {
 				continue
 			}
 
-			worker := newSchedulerForMode(result.ContextClient, mode, m.log, m.wg, m.secretProvider)
+			worker := newSchedulerForMode(result.ContextClient, mode, m.log, m.wg, m.secretProvider, m.runtime)
 			workerCtx, cancel := context.WithCancel(ctx)
-			m.workers[key] = managedWorker{cancel: cancel, mode: mode}
+			m.nextID++
+			workerID := m.nextID
+			m.workers[key] = managedWorker{cancel: cancel, mode: mode, id: workerID}
 
 			graceful.SafeGo(m.wg, m.log, func() {
+				defer m.workerStopped(key, workerID)
+
 				worker.run(workerCtx)
 			})
 		}
@@ -138,9 +151,13 @@ func (m *Manager) refreshWorkers(ctx context.Context) {
 			continue
 		}
 
+		if worker.stopping {
+			continue
+		}
+
 		worker.cancel()
-		delete(m.workers, key)
-		clearRuntimeContextMode(workerContextFromKey(key), worker.mode)
+		worker.stopping = true
+		m.workers[key] = worker
 		m.log.Info("stopped scheduler worker",
 			slog.String("context", docker.DisplayContextName(workerContextFromKey(key))),
 			slog.String("mode", string(worker.mode)),
@@ -161,7 +178,7 @@ func (m *Manager) ListJobs(ctx context.Context, contextName, stackName string) (
 		return nil, fmt.Errorf("failed to resolve docker context %q: %w", docker.DisplayContextName(contextName), err)
 	}
 
-	return listJobsForModes(ctx, schedulerModes(cc.SwarmMode), cc, m.log, m.secretProvider, stackName)
+	return listJobsForModes(ctx, schedulerModes(cc.SwarmMode), cc, m.log, m.secretProvider, m.runtime, stackName)
 }
 
 // TriggerNow executes one configured scheduled job immediately on the given
@@ -177,7 +194,37 @@ func (m *Manager) TriggerNow(ctx context.Context, contextName, jobName, stackNam
 		return "", fmt.Errorf("failed to resolve docker context %q: %w", docker.DisplayContextName(contextName), err)
 	}
 
-	return triggerNowForModes(ctx, schedulerModes(cc.SwarmMode), cc, m.log, jobName, stackName, secretProvider)
+	return triggerNowForModes(ctx, schedulerModes(cc.SwarmMode), cc, m.log, jobName, stackName, secretProvider, m.runtime)
+}
+
+// stopWorkers requests cancellation for every managed worker. Each worker
+// removes its own runtime partition after its active runs have drained.
+func (m *Manager) stopWorkers() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for key, worker := range m.workers {
+		if worker.stopping {
+			continue
+		}
+
+		worker.cancel()
+		worker.stopping = true
+		m.workers[key] = worker
+	}
+}
+
+func (m *Manager) workerStopped(key string, id uint64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	worker, ok := m.workers[key]
+	if !ok || worker.id != id {
+		return
+	}
+
+	m.runtime.clearContextMode(workerContextFromKey(key), worker.mode)
+	delete(m.workers, key)
 }
 
 func schedulerModes(swarmAvailable bool) []scheduledJobMode {
