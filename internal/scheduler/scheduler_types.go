@@ -63,11 +63,10 @@ type scheduler struct {
 	log            *slog.Logger
 	wg             *sync.WaitGroup
 	startedAt      time.Time
+	runtime        *runtimeStore
+	runs           sync.WaitGroup
 
 	states map[string]scheduledJobState
-
-	runningMu sync.Mutex
-	running   map[string]bool
 
 	// stopHolds reference-counts services currently held stopped by
 	// stopServicesForJob/startServicesForJob. It is keyed by (mode, resolved
@@ -125,9 +124,13 @@ type JobInfo struct {
 // newSchedulerForMode builds a scheduler worker bound to a single Docker
 // context and runtime mode. log and wg may be nil for short-lived, one-shot
 // workers (e.g. a single ListJobs/TriggerNow call) that never call run().
-func newSchedulerForMode(cc docker.ContextClient, mode scheduledJobMode, log *slog.Logger, wg *sync.WaitGroup, secretProvider secretprovider.SecretProvider) *scheduler {
+func newSchedulerForMode(cc docker.ContextClient, mode scheduledJobMode, log *slog.Logger, wg *sync.WaitGroup, secretProvider secretprovider.SecretProvider, runtime *runtimeStore) *scheduler {
 	if log == nil {
 		log = slog.Default()
+	}
+
+	if runtime == nil {
+		runtime = newRuntimeStore()
 	}
 
 	contextName := docker.NormalizeContextName(cc.Name)
@@ -140,8 +143,8 @@ func newSchedulerForMode(cc docker.ContextClient, mode scheduledJobMode, log *sl
 		log:            log.With(slog.String("component", "scheduler"), slog.String("context", docker.DisplayContextName(contextName))),
 		wg:             wg,
 		startedAt:      schedulerNow(),
+		runtime:        runtime,
 		states:         map[string]scheduledJobState{},
-		running:        map[string]bool{},
 		stopHolds:      map[stopHoldKey]*stopHoldState{},
 	}
 }

@@ -22,6 +22,8 @@ const (
 )
 
 func (s *scheduler) run(ctx context.Context) {
+	defer s.runs.Wait()
+
 	jobChanges := s.watchJobChanges(ctx)
 	timer := time.NewTimer(time.Hour)
 
@@ -169,7 +171,7 @@ func (s *scheduler) refreshJobs(ctx context.Context, now time.Time) (time.Time, 
 		nearestNextRun, _ = getNearestNextRun(s.states)
 	}
 
-	setRuntimeStatesSnapshotForMode(s.contextName, s.mode, s.states)
+	s.runtime.setStatesSnapshot(s.contextName, s.mode, s.states)
 
 	return nearestNextRun, !nearestNextRun.IsZero()
 }
@@ -259,8 +261,10 @@ func (s *scheduler) triggerRun(ctx context.Context, job scheduledJob, cfg docker
 	}
 
 	s.setRunInProgress(job.key, true)
+	s.runs.Add(1)
 
 	graceful.SafeGo(s.wg, s.log, func() {
+		defer s.runs.Done()
 		defer s.setRunInProgress(job.key, false)
 
 		runStart := time.Now()
@@ -304,7 +308,7 @@ func (s *scheduler) triggerRun(ctx context.Context, job scheduledJob, cfg docker
 		runLog.Debug("triggering scheduled run")
 
 		err := s.executeScheduledRun(ctx, job, cfg)
-		updateRuntimeRunStatus(job, cfg, err)
+		s.runtime.updateRunStatus(job, cfg, err)
 
 		if err != nil {
 			runFailed = true

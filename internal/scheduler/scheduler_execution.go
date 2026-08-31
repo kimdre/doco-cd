@@ -505,24 +505,16 @@ func (s *scheduler) sendRunNotification(job scheduledJob, cfg docker.JobSchedule
 }
 
 func (s *scheduler) isRunInProgress(key string) bool {
-	s.runningMu.Lock()
-	defer s.runningMu.Unlock()
-
-	return s.running[key]
+	return s.runtime.isRunInProgress(key)
 }
 
 func (s *scheduler) setRunInProgress(key string, inProgress bool) {
-	s.runningMu.Lock()
-	defer s.runningMu.Unlock()
-
-	setRuntimeRunInProgress(key, inProgress)
-
 	if inProgress {
-		s.running[key] = true
+		s.runtime.beginRun(s.contextName, s.mode, key)
 		return
 	}
 
-	delete(s.running, key)
+	s.runtime.endRun(key)
 }
 
 func getScheduledRunMetricLabels(job scheduledJob, cfg docker.JobScheduleConfig, stackName string) []string {

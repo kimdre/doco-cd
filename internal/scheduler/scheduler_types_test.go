@@ -21,7 +21,7 @@ func TestJobKeyPrefix(t *testing.T) {
 func TestNewSchedulerForMode_NormalizesContextAndCarriesMode(t *testing.T) {
 	t.Parallel()
 
-	s := newSchedulerForMode(docker.ContextClient{Name: "Default", SwarmMode: true}, scheduledJobModeSwarm, nil, nil, nil)
+	s := newSchedulerForMode(docker.ContextClient{Name: "Default", SwarmMode: true}, scheduledJobModeSwarm, nil, nil, nil, nil)
 	if s.contextName != "" {
 		t.Fatalf("newSchedulerForMode() contextName = %q, want empty string for the default context", s.contextName)
 	}
@@ -30,7 +30,7 @@ func TestNewSchedulerForMode_NormalizesContextAndCarriesMode(t *testing.T) {
 		t.Fatalf("newSchedulerForMode() mode = %q, want %q", s.mode, scheduledJobModeSwarm)
 	}
 
-	remote := newSchedulerForMode(docker.ContextClient{Name: "remote", SwarmMode: false}, scheduledJobModeContainer, nil, nil, nil)
+	remote := newSchedulerForMode(docker.ContextClient{Name: "remote", SwarmMode: false}, scheduledJobModeContainer, nil, nil, nil, nil)
 	if remote.contextName != "remote" {
 		t.Fatalf("newSchedulerForMode() contextName = %q, want %q", remote.contextName, "remote")
 	}
