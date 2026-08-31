@@ -191,6 +191,8 @@ func TestDeploy(t *testing.T) {
 			waitForStackDeploymentToFinish(t, manager, repoName, dc.Context, dc.Name, 20*time.Second)
 		}
 
+		manager.Close()
+
 		for _, dc := range dcs {
 			ctx := context.Background()
 			if err := destroyTestStack(ctx, dockerCli.Client(), dc.Name); err != nil {

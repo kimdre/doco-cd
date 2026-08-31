@@ -1,6 +1,7 @@
 package reconciliation
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -52,6 +53,38 @@ func TestManagerCloseIsIdempotentAndRejectsDeployments(t *testing.T) {
 		notification.Metadata{}, "", stages.RepositoryData{}, nil, nil, "")
 	if !errors.Is(err, ErrManagerClosed) {
 		t.Fatalf("Deploy() after Close error = %v, want %v", err, ErrManagerClosed)
+	}
+}
+
+func TestManagerCloseCancelsJobsBeforeWaiting(t *testing.T) {
+	t.Parallel()
+
+	manager, err := NewManager(Dependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	jobCtx, cancel := context.WithCancel(context.Background())
+	reconciliationJob := newJob(manager, jobInfo{}, nil)
+	reconciliationJob.cancel = cancel
+	manager.jobs.jobs["repo"] = reconciliationJob
+	manager.jobWG.Add(1)
+
+	jobStopped := make(chan struct{})
+
+	go func() {
+		defer manager.jobWG.Done()
+
+		<-jobCtx.Done()
+		close(jobStopped)
+	}()
+
+	manager.Close()
+
+	select {
+	case <-jobStopped:
+	default:
+		t.Fatal("expected reconciliation job context to be cancelled before Close returned")
 	}
 }
 

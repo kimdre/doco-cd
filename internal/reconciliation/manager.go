@@ -97,6 +97,7 @@ type job struct {
 	unhealthyRestartHistory  map[string][]time.Time            // key is the docker container ID, value is the list of timestamps of recent unhealthy restart events for that container.
 	restartSuppressUntil     map[string]time.Time              // key is the docker container ID that was restarted, value is the timestamp until which follow-up events from that restart should be suppressed.
 	closeChan                chan struct{}
+	cancel                   context.CancelFunc
 	readyChan                chan struct{}
 	readyOnce                sync.Once
 	closeOnce                sync.Once
@@ -123,6 +124,10 @@ func (j *job) close() {
 	}
 
 	j.closeOnce.Do(func() {
+		if j.cancel != nil {
+			j.cancel()
+		}
+
 		close(j.closeChan)
 	})
 }
@@ -411,10 +416,14 @@ func (m *Manager) addJob(ctx context.Context, info jobInfo) {
 	}
 
 	newJob := newJob(m, info, cfg)
+	jobCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	newJob.cancel = cancel
 
 	m.jobs.mu.Lock()
 	if m.jobs.closed {
 		m.jobs.mu.Unlock()
+		newJob.close()
+
 		return
 	}
 
@@ -436,7 +445,7 @@ func (m *Manager) addJob(ctx context.Context, info jobInfo) {
 
 		defer m.jobWG.Done()
 
-		newJob.run(context.WithoutCancel(ctx))
+		newJob.run(jobCtx)
 	}()
 }
 
