@@ -14,7 +14,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"testing"
 	"time"
 
 	swarmTypes "github.com/moby/moby/api/types/swarm"
@@ -497,30 +496,6 @@ func PruneStackSecrets(ctx context.Context, client dockerClient.APIClient, names
 	}
 
 	return nil
-}
-
-// WaitForSwarmService waits until a swarm service exists (and optionally has published ports).
-func WaitForSwarmService(ctx context.Context, t *testing.T, cli dockerClient.APIClient, serviceName string, timeout time.Duration) (swarmTypes.Service, error) {
-	t.Helper()
-
-	deadline := time.Now().Add(timeout)
-
-	var lastErr error
-
-	for time.Now().Before(deadline) {
-		result, err := cli.ServiceInspect(ctx, serviceName, dockerClient.ServiceInspectOptions{
-			InsertDefaults: true,
-		})
-		if err == nil {
-			return result.Service, nil
-		}
-
-		lastErr = err
-
-		time.Sleep(500 * time.Millisecond)
-	}
-
-	return swarmTypes.Service{}, fmt.Errorf("timed out waiting for service %s after %s: %w", serviceName, timeout.String(), lastErr)
 }
 
 // RestartService restarts long-running Swarm services by bumping ForceUpdate.
