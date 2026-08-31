@@ -27,7 +27,7 @@ import (
 
 var ErrOCIArtifactNotVerified = errors.New("OCI artifact is not verified")
 
-func Deploy(ctx context.Context,
+func (m *Manager) Deploy(ctx context.Context,
 	jobLog *slog.Logger,
 	appConfig *app.Config,
 	dataMountPoint container.MountPoint,
@@ -41,7 +41,16 @@ func Deploy(ctx context.Context,
 	payload *webhook.ParsedPayload,
 	testName string,
 ) error {
-	err := deploy(ctx, jobLog, appConfig,
+	if m == nil {
+		return errors.New("reconciliation manager is required")
+	}
+
+	if err := m.beginDeploy(); err != nil {
+		return err
+	}
+	defer m.deployWG.Done()
+
+	err := m.deploy(ctx, jobLog, appConfig,
 		dataMountPoint, dockerCli, contexts, secretProvider, metadata,
 		jobTrigger, repoData, deployConfigs, payload, testName)
 
@@ -49,13 +58,13 @@ func Deploy(ctx context.Context,
 	// Test runs use testName only to make stacks unique and do not need background
 	// Docker event watchers that can outlive the test and race with TempDir cleanup.
 	if testName == "" {
-		reconciliationHandler.addJob(ctx, jobInfo{
+		m.addJob(ctx, jobInfo{
 			appConfig:      appConfig,
 			dataMountPoint: dataMountPoint,
 			dockerCli:      dockerCli,
 			contexts:       contexts,
 			secretProvider: secretProvider,
-			jobLog:         jobLog,
+			log:            jobLog,
 			metadata:       metadata,
 			jobTrigger:     jobTrigger,
 			repoData:       repoData,
@@ -68,7 +77,7 @@ func Deploy(ctx context.Context,
 	return err
 }
 
-func deploy(ctx context.Context,
+func (m *Manager) deploy(ctx context.Context,
 	jobLog *slog.Logger,
 	appConfig *app.Config,
 	dataMountPoint container.MountPoint,
@@ -127,12 +136,12 @@ func deploy(ctx context.Context,
 		}
 	}
 
-	return handleDeploy(ctx, jobLog, appConfig,
+	return m.handleDeploy(ctx, jobLog, appConfig,
 		dataMountPoint, dockerCli, contexts, secretProvider, metadata.JobID, jobTrigger,
 		repoData, deployConfigs, payload, testName, metadata)
 }
 
-func handleDeploy(ctx context.Context,
+func (m *Manager) handleDeploy(ctx context.Context,
 	jobLog *slog.Logger,
 	appConfig *app.Config,
 	dataMountPoint container.MountPoint,
@@ -164,7 +173,8 @@ func handleDeploy(ctx context.Context,
 		}
 	}()
 
-	// We'll run each deployment concurrently but grouped by repo+reference and limited by the global deployerLimiter.
+	// Deployments run concurrently, grouped by repository and reference, and
+	// limited by this manager's deployment limiter.
 	var wg sync.WaitGroup
 
 	resultCh := make(chan error, len(deployConfigs))
@@ -188,13 +198,13 @@ func handleDeploy(ctx context.Context,
 			deployCfg.Name = test.ConvertTestName(testName)
 		}
 
-		reconciliationHandler.startStackDeployment(repoData.Name, deployCfg.Context, deployCfg.Name)
+		m.deployments.start(repoData.Name, deployCfg.Context, deployCfg.Name)
 
 		wg.Add(1)
 
 		go func(dc *deployConfig.Config) {
 			defer wg.Done()
-			defer reconciliationHandler.finishStackDeployment(repoData.Name, dc.Context, dc.Name)
+			defer m.deployments.finish(repoData.Name, dc.Context, dc.Name)
 
 			contextName := docker.NormalizeContextName(dc.Context)
 
@@ -209,7 +219,7 @@ func handleDeploy(ctx context.Context,
 				return
 			}
 
-			err := handleOneDeploy(ctx, deployLog,
+			err := m.handleOneDeploy(ctx, deployLog,
 				appConfig, dataMountPoint, entry.cli, entry.swarmMode, secretProvider,
 				dc, jobID, jobTrigger, repoData, payload, metadata)
 
@@ -311,7 +321,7 @@ func resolveDeployContext(ctx context.Context, contexts *docker.ContextRegistry,
 	return deployContextCLI{cli: cli, closeFn: closeFn, swarmMode: swarmMode}
 }
 
-func handleOneDeploy(ctx context.Context, deployLog *slog.Logger,
+func (m *Manager) handleOneDeploy(ctx context.Context, deployLog *slog.Logger,
 	appConfig *app.Config, dataMountPoint container.MountPoint,
 	deploymentDockerCli command.Cli, swarmAvailable bool,
 	secretProvider secretprovider.SecretProvider,
@@ -328,10 +338,10 @@ func handleOneDeploy(ctx context.Context, deployLog *slog.Logger,
 			dc.Name, docker.DisplayContextName(dc.Context), err)
 	}
 
-	if deployerLimiter != nil {
+	if m.limiter != nil {
 		deployLog.Debug("queuing deployment")
 
-		unlock, lErr := deployerLimiter.acquire(ctx, repoData.Name, NormalizeReference(dc.Reference))
+		unlock, lErr := m.limiter.acquire(ctx, repoData.Name, NormalizeReference(dc.Reference))
 		if lErr != nil {
 			return lErr
 		}

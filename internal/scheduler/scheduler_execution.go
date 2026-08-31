@@ -14,7 +14,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
-	"github.com/kimdre/doco-cd/internal/reconciliation"
 )
 
 func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, cfg docker.JobScheduleConfig) error {
@@ -207,7 +206,9 @@ func (s *scheduler) stopServicesForJob(ctx context.Context, mode scheduledJobMod
 			// Mark each service as scheduler-held so that the reconciliation
 			// event listener does not restart it while the job is running.
 			for _, svc := range toStop {
-				reconciliation.MarkSchedulerStopHeld(s.contextName, project, svc)
+				if s.stopHoldTracker != nil {
+					s.stopHoldTracker.MarkSchedulerStopHeld(s.contextName, project, svc)
+				}
 			}
 
 			s.log.Info("stopping services before scheduled job",
@@ -317,7 +318,9 @@ func (s *scheduler) startServicesForJob(ctx context.Context, mode scheduledJobMo
 			// Unmark the scheduler hold before starting — if our start fails,
 			// reconciliation can step in and recover the service.
 			for _, svc := range toStart {
-				reconciliation.UnmarkSchedulerStopHeld(s.contextName, project, svc)
+				if s.stopHoldTracker != nil {
+					s.stopHoldTracker.UnmarkSchedulerStopHeld(s.contextName, project, svc)
+				}
 			}
 
 			s.log.Info("restarting services after scheduled job",

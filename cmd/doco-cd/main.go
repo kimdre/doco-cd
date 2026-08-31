@@ -13,11 +13,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/docker/cli/cli/command"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/git"
 
 	"github.com/kimdre/doco-cd/internal/git/ssh"
@@ -40,6 +42,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/mcp"
+	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/prometheus"
 )
 
@@ -345,7 +348,16 @@ func run() error {
 		log.Info("secret provider initialized", slog.String("provider", secretProvider.Name()))
 	}
 
-	schedulerManager := scheduler.NewManager(contexts, log.Logger, &wg, secretProvider)
+	reconciliationManager, err := reconciliation.NewManager(reconciliation.Dependencies{
+		MaxConcurrentDeployments: c.MaxConcurrentDeployments,
+	})
+	if err != nil {
+		log.Critical("failed to create reconciliation manager", logger.ErrAttr(err))
+
+		return err
+	}
+
+	schedulerManager := scheduler.NewManager(contexts, log.Logger, &wg, secretProvider, reconciliationManager)
 	controlPlaneRuns := controlplane.NewRuns(
 		ctx,
 		log.Logger,
@@ -362,11 +374,18 @@ func run() error {
 				DataMountPoint: dataMountPoint,
 				DockerCLI:      dockerCli,
 				Contexts:       contexts,
-				Runner:         RunPoll,
+				Runner: func(ctx context.Context, pollConfig poll.Config, appConfig *app.Config, dataMountPoint container.MountPoint,
+					dockerCli command.Cli, contexts *docker.ContextRegistry, logger *slog.Logger, metadata notification.Metadata,
+					secretProvider secretprovider.SecretProvider, triggerReason string,
+				) error {
+					return RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, contexts, logger, metadata,
+						secretProvider, triggerReason, reconciliationManager)
+				},
 			},
 		},
 	)
 
+	defer reconciliationManager.Close()
 	defer wg.Wait()
 	defer controlPlaneRuns.CloseAndWait()
 	// Cancel lifecycle work before waiting, then close shared resources after all jobs stop.
@@ -380,6 +399,7 @@ func run() error {
 		contexts:         contexts,
 		log:              log,
 		secretProvider:   secretProvider,
+		reconciliation:   reconciliationManager,
 	}
 
 	apiHandler, err := api.NewHandler(api.Dependencies{
@@ -395,9 +415,6 @@ func run() error {
 
 		return err
 	}
-
-	// Initialize the deployer limiter according to configuration
-	reconciliation.InitializeDeployerLimiter(c.MaxConcurrentDeployments)
 
 	if len(c.PollConfig) > 0 {
 		log.Info(

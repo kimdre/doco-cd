@@ -434,14 +434,15 @@ func TestRunPoll(t *testing.T) {
 	}
 
 	// Run initial poll
-	if err := RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, nil, log.With(), metadata, secretProvider, pollTriggerDefault); err != nil {
+	reconciliationManager := newTestReconciliationManager(t)
+	if err := RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, nil, log.With(), metadata, secretProvider, pollTriggerDefault, reconciliationManager); err != nil {
 		t.Fatalf("Initial poll deployment failed: %v", err)
 	}
 
 	pollConfig.Reference = "destroy"
 
 	// Run the second poll to destroy
-	if err := RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, nil, log.With(), metadata, secretProvider, pollTriggerDefault); err != nil {
+	if err := RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, nil, log.With(), metadata, secretProvider, pollTriggerDefault, reconciliationManager); err != nil {
 		t.Fatalf("Second poll deployment failed: %v", err)
 	}
 }

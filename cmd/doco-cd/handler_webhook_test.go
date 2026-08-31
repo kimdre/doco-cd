@@ -288,8 +288,9 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 			Destination: tmpDir,
 			Mode:        "rw",
 		},
-		log:      log,
-		testName: stackName,
+		log:            log,
+		testName:       stackName,
+		reconciliation: newTestReconciliationManager(t),
 	}
 	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
 		appConfig:      appConfig,

@@ -1,36 +1,118 @@
 package reconciliation
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/docker/compose/v5/pkg/api"
+	"github.com/moby/moby/api/types/container"
+
+	"github.com/kimdre/doco-cd/internal/notification"
+	"github.com/kimdre/doco-cd/internal/stages"
 )
+
+func TestNewManagerAppliesDefaultDeploymentLimit(t *testing.T) {
+	t.Parallel()
+
+	manager := newTestManager(t)
+	if got := cap(manager.limiter.sem); got != 1 {
+		t.Fatalf("default deployment limit = %d, want 1", got)
+	}
+}
+
+func TestManagerStateIsIsolated(t *testing.T) {
+	t.Parallel()
+
+	first := newTestManager(t)
+	second := newTestManager(t)
+	attrs := map[string]string{
+		api.ProjectLabel: "proj",
+		api.ServiceLabel: "db",
+	}
+
+	first.MarkSchedulerStopHeld("", "proj", "db")
+
+	if second.schedulerHolds.isHeld("", attrs) {
+		t.Fatal("expected reconciliation managers to own independent scheduler holds")
+	}
+}
+
+func TestManagerCloseIsIdempotentAndRejectsDeployments(t *testing.T) {
+	t.Parallel()
+
+	manager, err := NewManager(Dependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	manager.Close()
+	manager.Close()
+
+	err = manager.Deploy(t.Context(), nil, nil, container.MountPoint{}, nil, nil, nil,
+		notification.Metadata{}, "", stages.RepositoryData{}, nil, nil, "")
+	if !errors.Is(err, ErrManagerClosed) {
+		t.Fatalf("Deploy() after Close error = %v, want %v", err, ErrManagerClosed)
+	}
+}
+
+func TestManagerCloseCancelsJobsBeforeWaiting(t *testing.T) {
+	t.Parallel()
+
+	manager, err := NewManager(Dependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	jobCtx, cancel := context.WithCancel(context.Background())
+	reconciliationJob := newJob(manager, jobInfo{}, nil)
+	reconciliationJob.cancel = cancel
+	manager.jobs.jobs["repo"] = reconciliationJob
+	manager.jobWG.Add(1)
+
+	jobStopped := make(chan struct{})
+
+	go func() {
+		defer manager.jobWG.Done()
+
+		<-jobCtx.Done()
+		close(jobStopped)
+	}()
+
+	manager.Close()
+
+	select {
+	case <-jobStopped:
+	default:
+		t.Fatal("expected reconciliation job context to be cancelled before Close returned")
+	}
+}
 
 // TestSchedulerStopHold_IsolatedAcrossContexts verifies that MarkSchedulerStopHeld/
 // UnmarkSchedulerStopHeld/isServiceSchedulerStopHeld key holds by Docker context, so
 // the same compose project/service name on two different Docker contexts are tracked
 // independently and never suppress each other's reconciliation events.
 func TestSchedulerStopHold_IsolatedAcrossContexts(t *testing.T) {
-	r := newReconciliation()
+	r := newTestManager(t)
 
 	attrs := map[string]string{
 		api.ProjectLabel: "proj",
 		api.ServiceLabel: "db",
 	}
 
-	r.markSchedulerStopHeld("", "proj", "db")
+	r.MarkSchedulerStopHeld("", "proj", "db")
 
-	if !r.isServiceSchedulerStopHeld("", attrs) {
+	if !r.schedulerHolds.isHeld("", attrs) {
 		t.Fatal("expected service to be held stopped on the default context")
 	}
 
-	if r.isServiceSchedulerStopHeld("remote", attrs) {
+	if r.schedulerHolds.isHeld("remote", attrs) {
 		t.Fatal("expected hold on the default context to not be visible on the \"remote\" context")
 	}
 
-	r.markSchedulerStopHeld("remote", "proj", "db")
+	r.MarkSchedulerStopHeld("remote", "proj", "db")
 
-	if !r.isServiceSchedulerStopHeld("remote", attrs) {
+	if !r.schedulerHolds.isHeld("remote", attrs) {
 		t.Fatal("expected service to be held stopped on the \"remote\" context")
 	}
 
@@ -39,9 +121,9 @@ func TestSchedulerStopHold_IsolatedAcrossContexts(t *testing.T) {
 	// last release, so isServiceSchedulerStopHeld still reports true briefly —
 	// see schedulerStopHoldGracePeriod — but this must remain scoped to the
 	// default context and not leak into the remote context's independent hold.)
-	r.unmarkSchedulerStopHeld("", "proj", "db")
+	r.UnmarkSchedulerStopHeld("", "proj", "db")
 
-	if !r.isServiceSchedulerStopHeld("remote", attrs) {
+	if !r.schedulerHolds.isHeld("remote", attrs) {
 		t.Fatal("expected remote context hold to remain held after releasing the unrelated default context hold")
 	}
 }

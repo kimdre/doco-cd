@@ -26,11 +26,12 @@ const contextRefreshInterval = time.Minute
 // ListJobs/TriggerNow for REST wiring and can be constructed even when
 // automatic scheduling is disabled.
 type Manager struct {
-	registry       *docker.ContextRegistry
-	log            *slog.Logger
-	wg             *sync.WaitGroup
-	secretProvider secretprovider.SecretProvider
-	runtime        *runtimeStore
+	registry        *docker.ContextRegistry
+	log             *slog.Logger
+	wg              *sync.WaitGroup
+	secretProvider  secretprovider.SecretProvider
+	stopHoldTracker ServiceStopHoldTracker
+	runtime         *runtimeStore
 
 	mu      sync.Mutex
 	workers map[string]managedWorker // key = normalized context name + runtime mode
@@ -49,18 +50,19 @@ type managedWorker struct {
 // NewManager creates a scheduler Manager bound to registry. log and wg are
 // required for Start (running background workers) but may be omitted if the
 // Manager is only used for on-demand ListJobs/TriggerNow calls.
-func NewManager(registry *docker.ContextRegistry, log *slog.Logger, wg *sync.WaitGroup, secretProvider secretprovider.SecretProvider) *Manager {
+func NewManager(registry *docker.ContextRegistry, log *slog.Logger, wg *sync.WaitGroup, secretProvider secretprovider.SecretProvider, stopHoldTracker ServiceStopHoldTracker) *Manager {
 	if log == nil {
 		log = slog.Default()
 	}
 
 	return &Manager{
-		registry:       registry,
-		log:            log.With(slog.String("component", "scheduler_manager")),
-		wg:             wg,
-		secretProvider: secretProvider,
-		runtime:        newRuntimeStore(),
-		workers:        map[string]managedWorker{},
+		registry:        registry,
+		log:             log.With(slog.String("component", "scheduler_manager")),
+		wg:              wg,
+		secretProvider:  secretProvider,
+		stopHoldTracker: stopHoldTracker,
+		runtime:         newRuntimeStore(),
+		workers:         map[string]managedWorker{},
 	}
 }
 
@@ -132,7 +134,7 @@ func (m *Manager) refreshWorkers(ctx context.Context) {
 				continue
 			}
 
-			worker := newSchedulerForMode(result.ContextClient, mode, m.log, m.wg, m.secretProvider, m.runtime)
+			worker := newSchedulerForMode(result.ContextClient, mode, m.log, m.wg, m.secretProvider, m.stopHoldTracker, m.runtime)
 			workerCtx, cancel := context.WithCancel(ctx)
 			m.nextID++
 			workerID := m.nextID
@@ -194,7 +196,7 @@ func (m *Manager) TriggerNow(ctx context.Context, contextName, jobName, stackNam
 		return "", fmt.Errorf("failed to resolve docker context %q: %w", docker.DisplayContextName(contextName), err)
 	}
 
-	return triggerNowForModes(ctx, schedulerModes(cc.SwarmMode), cc, m.log, jobName, stackName, secretProvider, m.runtime)
+	return triggerNowForModes(ctx, schedulerModes(cc.SwarmMode), cc, m.log, jobName, stackName, secretProvider, m.stopHoldTracker, m.runtime)
 }
 
 // stopWorkers requests cancellation for every managed worker. Each worker

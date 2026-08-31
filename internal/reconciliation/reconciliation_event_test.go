@@ -405,37 +405,37 @@ func TestCloneDeployConfigsWithForcedRecreate(t *testing.T) {
 func TestStackDeploymentInProgressTracking(t *testing.T) {
 	t.Parallel()
 
-	r := newReconciliation()
+	r := newTestManager(t)
 	repo := "github.com/example/repo"
 	stack := "stack-a"
 	context := ""
 
-	if r.isStackDeploymentInProgress(repo, context, stack) {
+	if r.deployments.isInProgress(repo, context, stack) {
 		t.Fatal("expected stack deployment to be initially not in progress")
 	}
 
-	r.startStackDeployment(repo, context, stack)
+	r.deployments.start(repo, context, stack)
 
-	if !r.isStackDeploymentInProgress(repo, context, stack) {
+	if !r.deployments.isInProgress(repo, context, stack) {
 		t.Fatal("expected stack deployment to be marked in progress")
 	}
 
 	// A same-named stack in a different context must be tracked independently.
-	if r.isStackDeploymentInProgress(repo, "other-context", stack) {
+	if r.deployments.isInProgress(repo, "other-context", stack) {
 		t.Fatal("expected same-named stack in a different context to be unaffected")
 	}
 
 	// Reference counting should keep stack marked as in-progress until all marks are cleared.
-	r.startStackDeployment(repo, context, stack)
-	r.finishStackDeployment(repo, context, stack)
+	r.deployments.start(repo, context, stack)
+	r.deployments.finish(repo, context, stack)
 
-	if !r.isStackDeploymentInProgress(repo, context, stack) {
+	if !r.deployments.isInProgress(repo, context, stack) {
 		t.Fatal("expected stack deployment to remain in progress after one of two marks is cleared")
 	}
 
-	r.finishStackDeployment(repo, context, stack)
+	r.deployments.finish(repo, context, stack)
 
-	if r.isStackDeploymentInProgress(repo, context, stack) {
+	if r.deployments.isInProgress(repo, context, stack) {
 		t.Fatal("expected stack deployment to be cleared after all marks are removed")
 	}
 }

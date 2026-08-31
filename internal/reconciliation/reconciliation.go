@@ -53,7 +53,7 @@ func (j *job) initContextCLIs(ctx context.Context, quiet bool) {
 
 		entry := resolveDeployContext(ctx, j.info.contexts, j.info.dockerCli, quiet, ctxName)
 		if entry.err != nil {
-			j.info.jobLog.Error("failed to create Docker CLI for context; skipping event listener for that context",
+			j.info.log.Error("failed to create Docker CLI for context; skipping event listener for that context",
 				slog.String("context", docker.DisplayContextName(ctxName)),
 				logger.ErrAttr(entry.err),
 			)
@@ -107,7 +107,7 @@ func (j *job) deployConfigsForContextMode(contextName string, swarmMode bool) []
 }
 
 func (j *job) run(ctx context.Context) {
-	jobLog := j.info.jobLog
+	jobLog := j.info.log
 
 	dockerQuiet := false
 	if j.info.appConfig != nil {
@@ -425,7 +425,7 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		return
 	}
 
-	if reconciliationHandler.isStackDeploymentInProgress(j.info.metadata.Repository, contextName, stackName) {
+	if j.manager.deployments.isInProgress(j.info.metadata.Repository, contextName, stackName) {
 		jobLog.Debug("suppressing reconciliation event while stack deployment is in progress",
 			slog.String("event", action),
 			slog.String("stack", stackName),
@@ -438,7 +438,7 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 	// project/service. A Swarm service on the same context can carry matching
 	// labels, so restricting the check to Compose events avoids suppressing an
 	// unrelated Swarm event.
-	if !swarmMode && reconciliationHandler.isServiceSchedulerStopHeld(contextName, event.Actor.Attributes) {
+	if !swarmMode && j.manager.schedulerHolds.isHeld(contextName, event.Actor.Attributes) {
 		jobLog.Debug("suppressing reconciliation event for service intentionally held stopped by job scheduler",
 			slog.String("event", action),
 			slog.String("stack", stackName),
@@ -585,7 +585,7 @@ func (j *job) deploy(ctx context.Context, jobLog *slog.Logger, dcs []*deployConf
 	metadata.AffectedActorName = strings.TrimSpace(event.Actor.Attributes["name"])
 
 	// handleDeploy accepts the base CLI; it handles per-context routing internally.
-	if err := handleDeploy(ctx, jobLog, j.info.appConfig,
+	if err := j.manager.handleDeploy(ctx, jobLog, j.info.appConfig,
 		j.info.dataMountPoint, j.info.dockerCli, j.info.contexts,
 		j.info.secretProvider, metadata.JobID, j.info.jobTrigger,
 		j.info.repoData, reconcileDCs, j.info.payload, j.info.testName, metadata); err != nil {

@@ -12,13 +12,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/prometheus"
 )
 
-var deployerLimiter *DeployerLimiter // deployerLimiter controls the concurrency of deployments across webhook and poll handlers.
-
-// Initialize the deployer limiter according to configuration.
-func InitializeDeployerLimiter(maxConcurrent uint) {
-	deployerLimiter = NewDeployerLimiter(maxConcurrent)
-}
-
 type waiter struct {
 	ref string
 	ch  chan struct{}
@@ -43,6 +36,9 @@ type DeployerLimiter struct {
 	locks           map[string]*repoEntry
 	cleanupInterval time.Duration
 	lockTTL         time.Duration
+	closeOnce       sync.Once
+	closeChan       chan struct{}
+	doneChan        chan struct{}
 }
 
 // NewDeployerLimiter creates a limiter allowing maxConcurrent deployments.
@@ -57,6 +53,8 @@ func NewDeployerLimiter(maxConcurrent uint) *DeployerLimiter {
 		locks:           make(map[string]*repoEntry),
 		cleanupInterval: 1 * time.Minute,
 		lockTTL:         5 * time.Minute,
+		closeChan:       make(chan struct{}),
+		doneChan:        make(chan struct{}),
 	}
 	go l.cleanupLoop()
 
@@ -77,9 +75,23 @@ func (d *DeployerLimiter) getOrCreateRepoEntry(repo string) *repoEntry {
 		d.locks[repo] = ent
 	}
 
+	ent.mu.Lock()
 	ent.lastUsed = time.Now()
+	ent.mu.Unlock()
 
 	return ent
+}
+
+// Close stops the background cleanup loop. It is safe to call more than once.
+func (d *DeployerLimiter) Close() {
+	if d == nil {
+		return
+	}
+
+	d.closeOnce.Do(func() {
+		close(d.closeChan)
+		<-d.doneChan
+	})
 }
 
 // acquire obtains permission to run for given repo+ref. It blocks until the repo allows this ref group to run, then reserves a global slot.
@@ -267,23 +279,33 @@ func (d *DeployerLimiter) TryAcquire(repo, ref string) (func(), bool) {
 
 // cleanupLoop periodically removes unused lock entries to avoid unbounded growth.
 func (d *DeployerLimiter) cleanupLoop() {
+	defer close(d.doneChan)
+
 	t := time.NewTicker(d.cleanupInterval)
 	defer t.Stop()
 
-	for range t.C {
-		now := time.Now()
-
-		d.mu.Lock()
-		for repo, ent := range d.locks {
-			ent.mu.Lock()
-			if len(ent.waiters) == 0 && len(ent.refCounts) == 0 && now.Sub(ent.lastUsed) > d.lockTTL {
-				delete(d.locks, repo)
-				prometheus.DeploymentsActive.WithLabelValues(repo).Set(0)
-				prometheus.DeploymentsQueued.WithLabelValues(repo).Set(0)
-			}
-			ent.mu.Unlock()
+	for {
+		select {
+		case <-d.closeChan:
+			return
+		case <-t.C:
+			d.cleanup(time.Now())
 		}
-		d.mu.Unlock()
+	}
+}
+
+func (d *DeployerLimiter) cleanup(now time.Time) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	for repo, ent := range d.locks {
+		ent.mu.Lock()
+		if len(ent.waiters) == 0 && len(ent.refCounts) == 0 && now.Sub(ent.lastUsed) > d.lockTTL {
+			delete(d.locks, repo)
+			prometheus.DeploymentsActive.WithLabelValues(repo).Set(0)
+			prometheus.DeploymentsQueued.WithLabelValues(repo).Set(0)
+		}
+		ent.mu.Unlock()
 	}
 }
 

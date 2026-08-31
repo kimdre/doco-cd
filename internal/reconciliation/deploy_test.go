@@ -37,7 +37,9 @@ import (
 func TestDeploy_RejectsUnverifiedOCIArtifact(t *testing.T) {
 	t.Parallel()
 
-	err := deploy(
+	manager := newTestManager(t)
+
+	err := manager.deploy(
 		t.Context(),
 		logger.New(logger.LevelCritical).Logger,
 		nil,
@@ -99,6 +101,7 @@ func TestDeploy(t *testing.T) {
 	encryption.SetupAgeKeyEnvVar(t)
 
 	ctx := t.Context()
+	manager := newTestManager(t)
 
 	c, err := app.GetConfig()
 	if err != nil {
@@ -185,10 +188,10 @@ func TestDeploy(t *testing.T) {
 
 	t.Cleanup(func() {
 		for _, dc := range dcs {
-			waitForStackDeploymentToFinish(t, repoName, dc.Context, dc.Name, 20*time.Second)
+			waitForStackDeploymentToFinish(t, manager, repoName, dc.Context, dc.Name, 20*time.Second)
 		}
 
-		reconciliationHandler.close()
+		manager.Close()
 
 		for _, dc := range dcs {
 			ctx := context.Background()
@@ -198,7 +201,7 @@ func TestDeploy(t *testing.T) {
 		}
 	})
 
-	if err := Deploy(ctx, log, c,
+	if err := manager.Deploy(ctx, log, c,
 		container.MountPoint{
 			Type:        "bind",
 			Source:      tmpDir,
@@ -238,7 +241,7 @@ func TestDeploy(t *testing.T) {
 	slices.Sort(wanted)
 
 	waitForRunningContainerNames(ctx, t, dockerCli.Client(), stackName, wanted, 20*time.Second)
-	waitForReconciliationJobReady(t, repoName, 5*time.Second)
+	waitForReconciliationJobReady(t, manager, repoName, 5*time.Second)
 
 	if err := rmContainer(ctx, t, dockerCli.Client(), wanted); err != nil {
 		t.Fatal("rm container err:", err)
@@ -294,13 +297,13 @@ func rmContainer(ctx context.Context, t *testing.T, cli client.APIClient, contai
 	return nil
 }
 
-func waitForStackDeploymentToFinish(t *testing.T, repository, context, stack string, timeout time.Duration) {
+func waitForStackDeploymentToFinish(t *testing.T, manager *Manager, repository, context, stack string, timeout time.Duration) {
 	t.Helper()
 
 	deadline := time.Now().Add(timeout)
 
 	for {
-		if !reconciliationHandler.isStackDeploymentInProgress(repository, context, stack) {
+		if !manager.deployments.isInProgress(repository, context, stack) {
 			return
 		}
 
@@ -312,16 +315,16 @@ func waitForStackDeploymentToFinish(t *testing.T, repository, context, stack str
 	}
 }
 
-func waitForReconciliationJobReady(t *testing.T, repository string, timeout time.Duration) {
+func waitForReconciliationJobReady(t *testing.T, manager *Manager, repository string, timeout time.Duration) {
 	t.Helper()
 
 	deadline := time.Now().Add(timeout)
 
 	for {
-		reconciliationHandler.m.Lock()
-		job := reconciliationHandler.repoJobs[repository]
+		manager.jobs.mu.Lock()
+		job := manager.jobs.jobs[repository]
 		ready := job != nil && job.contextCLIs != nil
-		reconciliationHandler.m.Unlock()
+		manager.jobs.mu.Unlock()
 
 		if ready {
 			return

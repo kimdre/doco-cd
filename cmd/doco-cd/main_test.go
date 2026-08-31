@@ -435,6 +435,7 @@ env_files:
 				Repository: git.GetRepoName(tc.payload.CloneURL),
 				Revision:   notification.GetRevision(tc.payload.Ref, tc.payload.CommitSHAString()),
 			}
+			reconciliationManager := newTestReconciliationManager(t)
 
 			err = retry.New(
 				retry.Attempts(3),
@@ -456,6 +457,7 @@ env_files:
 					nil,
 					secretProvider,
 					stackName,
+					reconciliationManager,
 				); err != nil {
 					return err
 				}

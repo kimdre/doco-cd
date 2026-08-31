@@ -168,8 +168,8 @@ func TestReconciliationStopEventRestartSuppressionIntegration(t *testing.T) {
 	dc.Reconciliation.RestartTimeout = 1
 
 	jobLog := logger.New(slog.LevelError).Logger
-	reconcileJob := newJob(jobInfo{
-		jobLog:        jobLog,
+	reconcileJob := newJob(newTestManager(t), jobInfo{
+		log:           jobLog,
 		dockerCli:     stack.DockerCli,
 		metadata:      notification.Metadata{Repository: repositoryName, Stack: stackName, JobID: "test-job"},
 		repoData:      stages.RepositoryData{SourceUrl: "https://github.com/kimdre/doco-cd_tests.git", Name: repositoryName},
