@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +21,7 @@ import (
 	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
+	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
@@ -328,7 +330,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 		inspectName := stackName + "_" + "test"
 
-		svc, err := docker.WaitForSwarmService(ctx, t, dockerClient, inspectName, 30*time.Second)
+		svc, err := waitForSwarmService(ctx, t, dockerClient, inspectName, 30*time.Second)
 		if err != nil {
 			t.Fatalf("Failed to find swarm service for test container: %v", err)
 		}
@@ -531,4 +533,28 @@ func TestWebhookHandler_WaitQueryParam(t *testing.T) {
 			}
 		})
 	}
+}
+
+// waitForSwarmService waits until a swarm service exists (and optionally has published ports).
+func waitForSwarmService(ctx context.Context, t *testing.T, cli client.APIClient, serviceName string, timeout time.Duration) (swarmTypes.Service, error) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+
+	var lastErr error
+
+	for time.Now().Before(deadline) {
+		result, err := cli.ServiceInspect(ctx, serviceName, client.ServiceInspectOptions{
+			InsertDefaults: true,
+		})
+		if err == nil {
+			return result.Service, nil
+		}
+
+		lastErr = err
+
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	return swarmTypes.Service{}, fmt.Errorf("timed out waiting for service %s after %s: %w", serviceName, timeout.String(), lastErr)
 }
