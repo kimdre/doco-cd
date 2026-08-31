@@ -17,6 +17,7 @@ func TestJobKeyPrefix(t *testing.T) {
 		t.Fatalf("jobKeyPrefix(%q) = %q, want %q", "remote", got, want)
 	}
 }
+
 func TestNewSchedulerForMode_NormalizesContextAndCarriesMode(t *testing.T) {
 	t.Parallel()
 

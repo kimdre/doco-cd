@@ -60,6 +60,7 @@ func TestGetJobStackName(t *testing.T) {
 		})
 	}
 }
+
 func TestGetJobDeploymentIdentity(t *testing.T) {
 	t.Parallel()
 
@@ -79,6 +80,7 @@ func TestGetJobDeploymentIdentity(t *testing.T) {
 		t.Fatalf("getJobDeploymentIdentity() at=%s want=%s", at.Format(time.RFC3339), wantAt.Format(time.RFC3339))
 	}
 }
+
 func TestShouldStopContainerForOneOffDeployRun(t *testing.T) {
 	t.Parallel()
 
@@ -119,6 +121,7 @@ func TestShouldStopContainerForOneOffDeployRun(t *testing.T) {
 		})
 	}
 }
+
 func TestIsEphemeralScheduledContainer(t *testing.T) {
 	t.Parallel()
 
@@ -175,6 +178,7 @@ func TestIsEphemeralScheduledContainer(t *testing.T) {
 		})
 	}
 }
+
 func TestContainerJobKey_EphemeralMatchesSource(t *testing.T) {
 	t.Parallel()
 
@@ -202,6 +206,7 @@ func TestContainerJobKey_EphemeralMatchesSource(t *testing.T) {
 		t.Fatalf("containerJobKey()=%q want=%q", sourceKey, want)
 	}
 }
+
 func TestContainerJobKey_FallsBackToContainerID(t *testing.T) {
 	t.Parallel()
 
@@ -210,6 +215,7 @@ func TestContainerJobKey_FallsBackToContainerID(t *testing.T) {
 		t.Fatalf("containerJobKey()=%q want=%q", got, want)
 	}
 }
+
 func TestJobOwnIdentity(t *testing.T) {
 	t.Parallel()
 
@@ -248,6 +254,7 @@ func TestJobOwnIdentity(t *testing.T) {
 		}
 	})
 }
+
 func TestValidateStopServicesSelfReference_SwarmIdentity(t *testing.T) {
 	t.Parallel()
 

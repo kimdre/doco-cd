@@ -25,6 +25,7 @@ func TestNextScheduledRun_PreservesScheduleAlignment(t *testing.T) {
 		t.Fatalf("nextScheduledRun() = %s, want %s", got.Format(time.RFC3339Nano), want.Format(time.RFC3339Nano))
 	}
 }
+
 func TestNextScheduledRun_SkipsMissedRunsWithoutDrift(t *testing.T) {
 	t.Parallel()
 
@@ -43,6 +44,7 @@ func TestNextScheduledRun_SkipsMissedRunsWithoutDrift(t *testing.T) {
 		t.Fatalf("nextScheduledRun() = %s, want %s", got.Format(time.RFC3339Nano), want.Format(time.RFC3339Nano))
 	}
 }
+
 func TestGetNearestNextRun(t *testing.T) {
 	t.Parallel()
 
@@ -65,6 +67,7 @@ func TestGetNearestNextRun(t *testing.T) {
 		t.Fatalf("getNearestNextRun() = %s, want %s", got.Format(time.RFC3339Nano), want.Format(time.RFC3339Nano))
 	}
 }
+
 func TestParseJobScheduleExpression_NextRunUsesLocalTimezone_Berlin(t *testing.T) {
 	berlin, err := time.LoadLocation("Europe/Berlin")
 	if err != nil {

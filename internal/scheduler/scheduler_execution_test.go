@@ -30,6 +30,7 @@ func TestResolveStopServiceStacks(t *testing.T) {
 		}
 	}
 }
+
 func TestLockStacks_DeduplicatesAndLocksSortedOrder(t *testing.T) {
 	t.Parallel()
 
@@ -44,6 +45,7 @@ func TestLockStacks_DeduplicatesAndLocksSortedOrder(t *testing.T) {
 	unlock2 := lockStacks("", "alpha", "zeta")
 	unlock2()
 }
+
 func TestLockStacks_SameStackDifferentContextsDoNotBlock(t *testing.T) {
 	t.Parallel()
 
@@ -69,6 +71,7 @@ func TestLockStacks_SameStackDifferentContextsDoNotBlock(t *testing.T) {
 
 	unlockA()
 }
+
 func TestStopHold_RefCounting(t *testing.T) {
 	t.Parallel()
 
@@ -99,6 +102,7 @@ func TestStopHold_RefCounting(t *testing.T) {
 		t.Fatal("expected stop hold to be removed after last release")
 	}
 }
+
 func TestStopHold_SwarmReplicasSurviveUntilLastRelease(t *testing.T) {
 	t.Parallel()
 
@@ -133,6 +137,7 @@ func TestStopHold_SwarmReplicasSurviveUntilLastRelease(t *testing.T) {
 		t.Fatalf("replicas = %d, want 3", replicas)
 	}
 }
+
 func TestStopHold_IsolatedAcrossContexts(t *testing.T) {
 	t.Parallel()
 
@@ -162,6 +167,7 @@ func TestStopHold_IsolatedAcrossContexts(t *testing.T) {
 		t.Fatal("expected releaseStopHold() on default context to report isLast=true")
 	}
 }
+
 func TestGetScheduledRunMetricLabels_IncludesContext(t *testing.T) {
 	t.Parallel()
 

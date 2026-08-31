@@ -21,6 +21,7 @@ func TestSchedulerModes(t *testing.T) {
 		t.Fatalf("schedulerModes(true) = %v, want compose and swarm", got)
 	}
 }
+
 func TestFindRunnableJob(t *testing.T) {
 	t.Parallel()
 

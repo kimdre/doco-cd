@@ -115,6 +115,7 @@ func TestSetRuntimeStatesSnapshot_PreservesNewerManualLastRun(t *testing.T) {
 		t.Fatalf("expected newer scheduler-tracked last run %v to win, got %v", newerRun, got.lastRun)
 	}
 }
+
 func TestSetRuntimeStatesSnapshotPreservesOtherContexts(t *testing.T) {
 	runtimeStatesMu.Lock()
 	runtimeStates = map[string]scheduledJobState{
@@ -142,6 +143,7 @@ func TestSetRuntimeStatesSnapshotPreservesOtherContexts(t *testing.T) {
 		t.Fatal("expected default state to be preserved")
 	}
 }
+
 func TestClearRuntimeContext(t *testing.T) {
 	t.Cleanup(func() {
 		runtimeStatesMu.Lock()
@@ -184,6 +186,7 @@ func TestClearRuntimeContext(t *testing.T) {
 		t.Fatal("expected default runtime state to be preserved")
 	}
 }
+
 func TestUpdateRuntimeRunStatus(t *testing.T) {
 	t.Parallel()
 
@@ -210,6 +213,7 @@ func TestUpdateRuntimeRunStatus(t *testing.T) {
 		t.Fatalf("updateRuntimeRunStatus() error status=%q want=%q", got, "exited (143)")
 	}
 }
+
 func TestJobInfo_ContextField(t *testing.T) {
 	t.Parallel()
 
