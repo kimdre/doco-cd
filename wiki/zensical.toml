@@ -42,6 +42,7 @@ nav = [
     { "External Secrets" = [
       "External-Secrets/index.md",
       { "AWS Secrets Manager" = "External-Secrets/AWS-Secrets-Manager.md" },
+      { "Azure Key Vault" = "External-Secrets/Azure-Key-Vault.md" },
       { "Bitwarden Secrets Manager" = "External-Secrets/Bitwarden-Secrets-Manager.md" },
       { "Bitwarden Vault / Vaultwarden" = "External-Secrets/Bitwarden-Vault-Vaultwarden.md" },
       { "1Password" = "External-Secrets/1Password.md" },

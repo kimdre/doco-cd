@@ -15,6 +15,7 @@ This allows you to keep your secrets out of your Git repository and manage them 
 | Provider                                                        | More Information                                                                                |
 |-----------------------------------------------------------------|-------------------------------------------------------------------------------------------------|
 | [AWS Secrets Manager](AWS-Secrets-Manager.md)                   | https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html                          |
+| [Azure Key Vault](Azure-Key-Vault.md)                           | https://azure.microsoft.com/en-us/products/key-vault                                            |
 | [Bitwarden Secrets Manager](Bitwarden-Secrets-Manager.md)       | https://bitwarden.com/products/secrets-manager/                                                 |
 | [Bitwarden Vault / Vaultwarden](Bitwarden-Vault-Vaultwarden.md) | https://bitwarden.com/help/vault-management-api/ and https://github.com/dani-garcia/vaultwarden |
 | [1Password](1Password.md)                                       | https://1password.com                                                                           |
