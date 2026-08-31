@@ -67,6 +67,7 @@ type mcpServiceSummary struct {
 	Publishers   []mcpPortSummary `json:"published_ports,omitempty"`
 }
 
+// addStackReadTools registers Swarm stack and service queries.
 func (h *Handler) addStackReadTools(server *sdkmcp.Server) {
 	readOnly := &sdkmcp.ToolAnnotations{ReadOnlyHint: true}
 
@@ -82,6 +83,7 @@ func (h *Handler) addStackReadTools(server *sdkmcp.Server) {
 	}, instrumentTool(h.log, "get_stack", h.getStack))
 }
 
+// addStackTools registers Swarm stack mutation operations.
 func (h *Handler) addStackTools(server *sdkmcp.Server) {
 	controlSchema := mustToolInputSchema[controlStackInput]("control_stack")
 	controlSchema.Properties["action"].Enum = []any{"scale", "restart", "run"}
@@ -100,6 +102,7 @@ func (h *Handler) addStackTools(server *sdkmcp.Server) {
 	}, instrumentTool(h.log, "remove_stack", h.removeStack))
 }
 
+// listStacks returns Swarm services grouped by stack namespace.
 func (h *Handler) listStacks(
 	ctx context.Context,
 	_ *sdkmcp.CallToolRequest,
@@ -122,6 +125,7 @@ func (h *Handler) listStacks(
 	return nil, listStacksOutput{Stacks: summarizeStacks(stacks)}, nil
 }
 
+// getStack returns service summaries for one Swarm stack.
 func (h *Handler) getStack(
 	ctx context.Context,
 	_ *sdkmcp.CallToolRequest,
@@ -149,6 +153,7 @@ func (h *Handler) getStack(
 	return nil, getStackOutput{Services: summarizeServices(services)}, nil
 }
 
+// controlStack applies a supported action and preserves per-service outcomes.
 func (h *Handler) controlStack(
 	ctx context.Context,
 	_ *sdkmcp.CallToolRequest,
@@ -205,6 +210,7 @@ func (h *Handler) controlStack(
 	return nil, output, nil
 }
 
+// removeStack removes all resources belonging to a Swarm stack.
 func (h *Handler) removeStack(
 	ctx context.Context,
 	_ *sdkmcp.CallToolRequest,
@@ -228,6 +234,7 @@ func (h *Handler) removeStack(
 	return nil, removeStackOutput{StackName: stackName, Status: "removed"}, nil
 }
 
+// summarizeStacks converts Swarm services into stable MCP output grouped by stack.
 func summarizeStacks(stacks map[string][]dockerswarmtypes.Service) map[string][]mcpServiceSummary {
 	summaries := make(map[string][]mcpServiceSummary, len(stacks))
 	for stackName, services := range stacks {
@@ -237,6 +244,7 @@ func summarizeStacks(stacks map[string][]dockerswarmtypes.Service) map[string][]
 	return summaries
 }
 
+// summarizeServices removes internal Swarm fields from MCP service output.
 func summarizeServices(services []dockerswarmtypes.Service) []mcpServiceSummary {
 	summaries := make([]mcpServiceSummary, len(services))
 	for i, service := range services {
@@ -275,6 +283,7 @@ func summarizeServices(services []dockerswarmtypes.Service) []mcpServiceSummary 
 	return summaries
 }
 
+// serviceMode returns the API label for a Swarm service mode.
 func serviceMode(mode dockerswarmtypes.ServiceMode) string {
 	switch {
 	case mode.Replicated != nil:

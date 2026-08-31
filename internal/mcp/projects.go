@@ -85,6 +85,7 @@ type mcpPortSummary struct {
 	Mode          string `json:"mode,omitempty"`
 }
 
+// addProjectReadTools registers Compose project and container queries.
 func (h *Handler) addProjectReadTools(server *sdkmcp.Server) {
 	readOnly := &sdkmcp.ToolAnnotations{ReadOnlyHint: true}
 
@@ -100,6 +101,7 @@ func (h *Handler) addProjectReadTools(server *sdkmcp.Server) {
 	}, instrumentTool(h.log, "get_project", h.getProject))
 }
 
+// addProjectTools registers Compose project lifecycle operations.
 func (h *Handler) addProjectTools(server *sdkmcp.Server) {
 	controlSchema := mustToolInputSchema[controlProjectInput]("control_project")
 	controlSchema.Properties["action"].Enum = []any{"start", "stop", "restart"}
@@ -122,12 +124,14 @@ func (h *Handler) addProjectTools(server *sdkmcp.Server) {
 	}, instrumentTool(h.log, "destroy_project", h.destroyProject))
 }
 
+// setProjectTimeoutSchema applies shared timeout bounds to project tools.
 func setProjectTimeoutSchema(schema *jsonschema.Schema) {
 	timeoutSchema := schema.Properties["timeout"]
 	timeoutSchema.Minimum = new(1.0)
 	timeoutSchema.Maximum = new(float64(controlplane.MaxProjectActionTimeout))
 }
 
+// listProjects returns summaries for Compose projects in a Docker context.
 func (h *Handler) listProjects(
 	ctx context.Context,
 	_ *sdkmcp.CallToolRequest,
@@ -150,6 +154,7 @@ func (h *Handler) listProjects(
 	return nil, listProjectsOutput{Projects: summarizeProjects(projects)}, nil
 }
 
+// getProject returns container summaries for one Compose project.
 func (h *Handler) getProject(
 	ctx context.Context,
 	_ *sdkmcp.CallToolRequest,
@@ -177,6 +182,7 @@ func (h *Handler) getProject(
 	return nil, getProjectOutput{Containers: summarizeContainers(containers)}, nil
 }
 
+// controlProject applies a supported lifecycle action to a Compose project.
 func (h *Handler) controlProject(
 	ctx context.Context,
 	_ *sdkmcp.CallToolRequest,
@@ -203,6 +209,7 @@ func (h *Handler) controlProject(
 	return nil, controlProjectOutput{ProjectName: result.ProjectName, Action: result.Action, Status: "completed"}, nil
 }
 
+// destroyProject removes a Compose project and optional associated resources.
 func (h *Handler) destroyProject(
 	ctx context.Context,
 	_ *sdkmcp.CallToolRequest,
@@ -236,6 +243,7 @@ func (h *Handler) destroyProject(
 	}, nil
 }
 
+// summarizeProjects converts Docker project data into stable MCP output.
 func summarizeProjects(projects []composeapi.Stack) []mcpProjectSummary {
 	summaries := make([]mcpProjectSummary, len(projects))
 	for i, project := range projects {
@@ -249,6 +257,7 @@ func summarizeProjects(projects []composeapi.Stack) []mcpProjectSummary {
 	return summaries
 }
 
+// summarizeContainers removes internal Docker fields from MCP container output.
 func summarizeContainers(containers []composeapi.ContainerSummary) []mcpContainerSummary {
 	summaries := make([]mcpContainerSummary, len(containers))
 	for i, container := range containers {

@@ -15,28 +15,36 @@ import (
 )
 
 const (
+	// DefaultProjectActionTimeout is the default timeout, in seconds, for project actions.
 	DefaultProjectActionTimeout = 30
-	MaxProjectActionTimeout     = math.MaxInt64 / int64(time.Second)
+	// MaxProjectActionTimeout is the largest whole-second timeout representable as time.Duration.
+	MaxProjectActionTimeout = math.MaxInt64 / int64(time.Second)
 )
 
 var (
-	ErrProjectNotFound       = errors.New("project not found")
+	// ErrProjectNotFound indicates that no containers belong to the requested project.
+	ErrProjectNotFound = errors.New("project not found")
+	// ErrInvalidProjectTimeout indicates a timeout outside the supported duration range.
 	ErrInvalidProjectTimeout = errors.New("invalid project timeout")
 )
 
+// ProjectLookupError wraps a Docker lookup failure with the requested project name.
 type ProjectLookupError struct {
 	projectName string
 	cause       error
 }
 
+// Error reports the project lookup failure.
 func (e *ProjectLookupError) Error() string {
 	return fmt.Sprintf("failed to get project: %s: %v", e.projectName, e.cause)
 }
 
+// Unwrap exposes the underlying Docker lookup error.
 func (e *ProjectLookupError) Unwrap() error {
 	return e.cause
 }
 
+// DestroyProjectResult describes a successful project removal.
 type DestroyProjectResult struct {
 	ProjectName string
 	Message     string
@@ -44,12 +52,14 @@ type DestroyProjectResult struct {
 	Images      bool
 }
 
+// ProjectActionResult describes a successful project lifecycle action.
 type ProjectActionResult struct {
 	ProjectName string
 	Action      string
 	Message     string
 }
 
+// ProjectAction is a validated project operation ready to execute.
 type ProjectAction struct {
 	projectName string
 	action      string
@@ -57,6 +67,7 @@ type ProjectAction struct {
 	execute     func(context.Context, time.Duration, *slog.Logger) error
 }
 
+// DestroyProject removes a Compose project and optionally its volumes and images.
 func DestroyProject(
 	ctx context.Context,
 	dockerCLI command.Cli,
@@ -89,6 +100,7 @@ func DestroyProject(
 	}, nil
 }
 
+// RunProjectAction resolves and executes a supported project lifecycle action.
 func RunProjectAction(
 	ctx context.Context,
 	dockerCLI command.Cli,
@@ -105,6 +117,7 @@ func RunProjectAction(
 	return ExecuteProjectAction(ctx, operation, timeoutSeconds, log)
 }
 
+// ResolveProjectAction validates a project and prepares its requested lifecycle action.
 func ResolveProjectAction(ctx context.Context, dockerCLI command.Cli, projectName, action string) (ProjectAction, error) {
 	if err := requireProject(ctx, dockerCLI, projectName); err != nil {
 		return ProjectAction{}, err
@@ -141,6 +154,7 @@ func ResolveProjectAction(ctx context.Context, dockerCLI command.Cli, projectNam
 	return operation, nil
 }
 
+// ExecuteProjectAction runs a previously resolved project action with a validated timeout.
 func ExecuteProjectAction(ctx context.Context, operation ProjectAction, timeoutSeconds int, log *slog.Logger) (ProjectActionResult, error) {
 	timeout, err := projectActionTimeout(timeoutSeconds)
 	if err != nil {

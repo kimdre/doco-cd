@@ -13,6 +13,7 @@ import (
 )
 
 // GetDeploymentRunsHandler returns recent deployment runs tracked by doco-cd.
+// GetDeploymentRunsHandler lists tracked deployment runs using optional filters.
 func (h *Handler) GetDeploymentRunsHandler(w http.ResponseWriter, r *http.Request) {
 	jobID := id.New()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", h.requestIP(r)))
@@ -57,6 +58,7 @@ func (h *Handler) GetDeploymentRunsHandler(w http.ResponseWriter, r *http.Reques
 }
 
 // GetDeploymentRunHandler returns details for one deployment run identified by jobID.
+// GetDeploymentRunHandler returns one tracked deployment run by job ID.
 func (h *Handler) GetDeploymentRunHandler(w http.ResponseWriter, r *http.Request) {
 	jobID := id.New()
 	jobLog := h.log.With(slog.String("job_id", jobID), slog.String("ip", h.requestIP(r)))

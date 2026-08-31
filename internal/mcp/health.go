@@ -15,6 +15,7 @@ type getHealthOutput struct {
 	Status string `json:"status"`
 }
 
+// addHealthTool registers Docker API health reporting.
 func (h *Handler) addHealthTool(server *sdkmcp.Server) {
 	sdkmcp.AddTool(server, &sdkmcp.Tool{
 		Name:        "get_health",
@@ -23,6 +24,7 @@ func (h *Handler) addHealthTool(server *sdkmcp.Server) {
 	}, instrumentTool(h.log, "get_health", getHealth))
 }
 
+// getHealth verifies Docker API access for the current application.
 func getHealth(
 	ctx context.Context,
 	_ *sdkmcp.CallToolRequest,

@@ -29,6 +29,7 @@ type triggerPollOutput struct {
 	Status string `json:"status"`
 }
 
+// addPollTool registers one-shot poll execution.
 func (h *Handler) addPollTool(server *sdkmcp.Server) {
 	inputSchema := mustToolInputSchema[triggerPollInput]("trigger_poll")
 	inputSchema.Properties["configs"].MaxItems = new(controlplane.MaxTriggerPollConfigs)
@@ -41,6 +42,7 @@ func (h *Handler) addPollTool(server *sdkmcp.Server) {
 	}, instrumentTool(h.log, "trigger_poll", h.triggerPoll))
 }
 
+// triggerPoll validates and executes MCP-provided poll configurations.
 func (h *Handler) triggerPoll(
 	ctx context.Context,
 	_ *sdkmcp.CallToolRequest,

@@ -32,6 +32,7 @@ type triggerScheduledJobOutput struct {
 	Status string `json:"status"`
 }
 
+// addScheduledJobReadTool registers scheduled-job discovery.
 func (h *Handler) addScheduledJobReadTool(server *sdkmcp.Server) {
 	sdkmcp.AddTool(server, &sdkmcp.Tool{
 		Name:        "list_scheduled_jobs",
@@ -40,6 +41,7 @@ func (h *Handler) addScheduledJobReadTool(server *sdkmcp.Server) {
 	}, instrumentTool(h.log, "list_scheduled_jobs", h.listScheduledJobs))
 }
 
+// addScheduledJobTriggerTool registers manual scheduled-job execution.
 func (h *Handler) addScheduledJobTriggerTool(server *sdkmcp.Server) {
 	sdkmcp.AddTool(server, &sdkmcp.Tool{
 		Name:        "trigger_scheduled_job",
@@ -48,6 +50,7 @@ func (h *Handler) addScheduledJobTriggerTool(server *sdkmcp.Server) {
 	}, instrumentTool(h.log, "trigger_scheduled_job", h.triggerScheduledJob))
 }
 
+// listScheduledJobs returns jobs for an optional Docker context and stack.
 func (h *Handler) listScheduledJobs(
 	ctx context.Context,
 	_ *sdkmcp.CallToolRequest,
@@ -66,6 +69,7 @@ func (h *Handler) listScheduledJobs(
 	return nil, listScheduledJobsOutput{Jobs: jobs}, nil
 }
 
+// triggerScheduledJob starts a job and reports its control-plane lifecycle state.
 func (h *Handler) triggerScheduledJob(
 	ctx context.Context,
 	_ *sdkmcp.CallToolRequest,

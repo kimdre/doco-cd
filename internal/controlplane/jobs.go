@@ -10,11 +10,13 @@ import (
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 )
 
+// ScheduledJobOperations is the scheduler surface required by the control plane.
 type ScheduledJobOperations interface {
 	ListJobs(context.Context, string, string) ([]scheduler.JobInfo, error)
 	TriggerNow(context.Context, string, string, string, *secretprovider.SecretProvider) (string, error)
 }
 
+// controlPlaneJobs binds scheduler operations to the optional secret provider.
 type controlPlaneJobs struct {
 	operations     ScheduledJobOperations
 	secretProvider *secretprovider.SecretProvider
@@ -31,12 +33,15 @@ func newControlPlaneJobs(operations ScheduledJobOperations, secretProvider *secr
 	}
 }
 
+// ErrScheduledJobRunPanicked is recorded when a scheduled-job callback panics.
 var ErrScheduledJobRunPanicked = errors.New("scheduled job run panicked")
 
+// ListScheduledJobs returns scheduled jobs for an optional Docker context and stack.
 func (c *Runs) ListScheduledJobs(ctx context.Context, contextName, stackName string) ([]scheduler.JobInfo, error) {
 	return c.scheduledJobs.operations.ListJobs(ctx, contextName, stackName)
 }
 
+// TriggerScheduledJob accepts and executes one scheduled job under the shared run lifecycle.
 func (c *Runs) TriggerScheduledJob(
 	ctx context.Context,
 	jobID string,

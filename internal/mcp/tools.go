@@ -14,6 +14,7 @@ import (
 	prometheusmetrics "github.com/kimdre/doco-cd/internal/prometheus"
 )
 
+// mustToolInputSchema derives a tool schema and panics on programmer configuration errors.
 func mustToolInputSchema[T any](tool string) *jsonschema.Schema {
 	schema, err := jsonschema.For[T](nil)
 	if err != nil {
@@ -31,6 +32,7 @@ func valueOr[T any](p *T, def T) T {
 	return def
 }
 
+// destructiveAnnotations marks a tool as destructive and closed to external systems.
 func destructiveAnnotations(idempotent bool) *sdkmcp.ToolAnnotations {
 	return &sdkmcp.ToolAnnotations{
 		DestructiveHint: new(true),
@@ -39,6 +41,7 @@ func destructiveAnnotations(idempotent bool) *sdkmcp.ToolAnnotations {
 	}
 }
 
+// triggerRunToolResult maps run completion into MCP content and a lifecycle status.
 func triggerRunToolResult(wait bool, err error) (*sdkmcp.CallToolResult, string) {
 	if err != nil {
 		return &sdkmcp.CallToolResult{
@@ -54,6 +57,7 @@ func triggerRunToolResult(wait bool, err error) (*sdkmcp.CallToolResult, string)
 	return nil, string(controlplane.RunStatusAccepted)
 }
 
+// instrumentTool records tool latency, request counts, failures, and operational errors.
 func instrumentTool[In, Out any](
 	log *logger.Logger,
 	tool string,

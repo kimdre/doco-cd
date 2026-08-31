@@ -6,12 +6,17 @@ import (
 )
 
 const (
-	APIPath     = "/v1/api"
+	// APIPath is the root path for authenticated REST operations.
+	APIPath = "/v1/api"
+	// WebhookPath is the root path for deployment webhooks.
 	WebhookPath = "/v1/webhook"
-	HealthPath  = "/v1/health"
-	MCPPath     = "/mcp"
+	// HealthPath is the unauthenticated health endpoint.
+	HealthPath = "/v1/health"
+	// MCPPath is the stateless MCP transport endpoint.
+	MCPPath = "/mcp"
 )
 
+// Mounts supplies protocol handlers owned outside the API package.
 type Mounts struct {
 	Webhook http.Handler
 	MCP     http.Handler

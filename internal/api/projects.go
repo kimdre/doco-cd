@@ -14,6 +14,7 @@ import (
 )
 
 // ProjectApiHandler handles API requests to get or delete a Docker Compose project.
+// ProjectApiHandler returns or removes a single Compose project.
 func (h *Handler) ProjectApiHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -105,6 +106,7 @@ func (h *Handler) ProjectApiHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetProjectsApiHandler handles API requests to list Docker Compose projects.
+// GetProjectsApiHandler lists Compose projects in the requested Docker context.
 func (h *Handler) GetProjectsApiHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
 
@@ -161,6 +163,7 @@ func (h *Handler) GetProjectsApiHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 // ProjectActionApiHandler handles API requests to manage Docker Compose projects.
+// ProjectActionApiHandler applies a lifecycle action to a Compose project.
 func (h *Handler) ProjectActionApiHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 

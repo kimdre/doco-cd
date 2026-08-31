@@ -11,6 +11,7 @@ import (
 )
 
 // HealthCheckHandler handles health check requests.
+// HealthCheckHandler reports Docker API availability.
 func (h *Handler) HealthCheckHandler(w http.ResponseWriter, _ *http.Request) {
 	var (
 		err     error

@@ -3,8 +3,10 @@ package controlplane
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -45,6 +47,60 @@ func (f testScheduledJobOperations) TriggerNow(
 	}
 
 	return f.triggerNow(ctx, contextName, jobName, stackName, secretProvider)
+}
+
+func TestNewRunsValidatesDependencies(t *testing.T) {
+	valid := Dependencies{
+		ScheduledJobs: testScheduledJobOperations{},
+		Poll: PollDependencies{
+			AppConfig: &app.Config{},
+			Runner: func(
+				context.Context,
+				poll.Config,
+				*app.Config,
+				container.MountPoint,
+				command.Cli,
+				*docker.ContextRegistry,
+				*slog.Logger,
+				notification.Metadata,
+				*secretprovider.SecretProvider,
+				string,
+			) error {
+				return nil
+			},
+		},
+	}
+
+	for _, testCase := range []struct {
+		name     string
+		contains string
+		mutate   func(*Dependencies)
+	}{
+		{name: "scheduled jobs", contains: "Dependencies.ScheduledJobs", mutate: func(deps *Dependencies) { deps.ScheduledJobs = nil }},
+		{name: "poll app config", contains: "Dependencies.Poll.AppConfig", mutate: func(deps *Dependencies) { deps.Poll.AppConfig = nil }},
+		{name: "poll runner", contains: "Dependencies.Poll.Runner", mutate: func(deps *Dependencies) { deps.Poll.Runner = nil }},
+		{
+			name:     "run limit",
+			contains: "Dependencies.MaxRunsPerTrigger",
+			mutate: func(deps *Dependencies) {
+				deps.MaxRunsPerTrigger = map[RunTrigger]int{RunTriggerWebhook: 0}
+			},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			dependencies := valid
+			testCase.mutate(&dependencies)
+
+			defer func() {
+				recovered := recover()
+				if recovered == nil || !strings.Contains(fmt.Sprint(recovered), testCase.contains) {
+					t.Fatalf("NewRuns() panic = %v, want containing %q", recovered, testCase.contains)
+				}
+			}()
+
+			NewRuns(t.Context(), slog.Default(), dependencies)
+		})
+	}
 }
 
 type testControlPlaneRunsOptions struct {

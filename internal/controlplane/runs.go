@@ -3,38 +3,48 @@ package controlplane
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/kimdre/doco-cd/internal/common/id"
+	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 )
 
+// RunMode controls whether a run blocks its caller and whether request cancellation propagates.
 type RunMode uint8
 
 const (
+	// RunSynchronous runs inline and stops when either the request or application is cancelled.
 	RunSynchronous RunMode = iota
+	// RunSynchronousDetached runs inline but ignores request cancellation.
 	RunSynchronousDetached
+	// RunAsynchronous runs in the background under the application lifecycle.
 	RunAsynchronous
 )
 
+// RunMetadata describes the source and deployment target recorded for a run.
 type RunMetadata struct {
 	Repository string
 	Target     string
 	Revision   string
 }
 
+// RunResult describes the terminal status and optional message produced by a run.
 type RunResult struct {
 	Status  RunStatus
 	Message string
 }
 
+// RunExecution configures lifecycle behavior and panic reporting for one run.
 type RunExecution struct {
 	Mode         RunMode
 	PanicContext string
 	PanicError   error
 }
 
+// RunFunc performs the work associated with an accepted control-plane run.
 type RunFunc func(context.Context) (RunResult, error)
 
 // Runs coordinates control-plane run admission and lifecycle while
@@ -49,14 +59,20 @@ type Runs struct {
 	poll              *controlPlanePoll
 }
 
+// Dependencies contains the operations and limits used by the run coordinator.
 type Dependencies struct {
-	MaxRunsPerTrigger map[RunTrigger]int
-	ScheduledJobs     ScheduledJobOperations
+	MaxRunsPerTrigger map[RunTrigger]int     `validate:"omitempty,dive,keys,oneof=webhook poll scheduled_job,endkeys,min=1"`
+	ScheduledJobs     ScheduledJobOperations `validate:"required,nostructlevel"`
 	SecretProvider    *secretprovider.SecretProvider
 	Poll              PollDependencies
 }
 
+// NewRuns validates dependencies and constructs a control-plane run coordinator.
 func NewRuns(applicationCtx context.Context, log *slog.Logger, dependencies Dependencies) *Runs {
+	if err := validation.Validate(dependencies); err != nil {
+		panic(fmt.Errorf("validate control-plane dependencies: %w", err))
+	}
+
 	return newRuns(
 		applicationCtx,
 		newBackgroundWork(),
@@ -119,6 +135,7 @@ func newRuns(
 	}
 }
 
+// Accept records a run in accepted state, generating a job ID when needed.
 func (c *Runs) Accept(jobID string, trigger RunTrigger, metadata RunMetadata) string {
 	if jobID == "" {
 		jobID = id.New()
@@ -130,40 +147,49 @@ func (c *Runs) Accept(jobID string, trigger RunTrigger, metadata RunMetadata) st
 	return jobID
 }
 
+// SetMetadata updates source and target metadata for a tracked run.
 func (c *Runs) SetMetadata(jobID string, metadata RunMetadata) {
 	c.tracker.SetMetadata(jobID, metadata.Repository, metadata.Target, metadata.Revision)
 }
 
+// AddDeployment records a stack and Docker context observed during a run.
 func (c *Runs) AddDeployment(jobID, stack, contextName string) {
 	c.tracker.AddDeployment(jobID, stack, contextName)
 }
 
+// DeploymentTargetObserver returns a callback that records deployments for jobID.
 func (c *Runs) DeploymentTargetObserver(jobID string) func(string, string) {
 	return func(stack, contextName string) {
 		c.AddDeployment(jobID, stack, contextName)
 	}
 }
 
+// MarkRunning transitions a tracked run to running.
 func (c *Runs) MarkRunning(jobID string) {
 	c.tracker.MarkRunning(jobID)
 }
 
+// MarkFailed transitions a tracked run to failed with a message.
 func (c *Runs) MarkFailed(jobID, message string) {
 	c.tracker.MarkFailed(jobID, message)
 }
 
+// MarkSkipped transitions a tracked run to skipped with a message.
 func (c *Runs) MarkSkipped(jobID, message string) {
 	c.tracker.MarkSkipped(jobID, message)
 }
 
+// Get returns a defensive copy of a run by job ID.
 func (c *Runs) Get(jobID string) (Run, bool) {
 	return c.tracker.Get(jobID)
 }
 
+// List returns filtered runs in reverse creation order.
 func (c *Runs) List(limit int, trigger, status string) []Run {
 	return c.tracker.List(limit, trigger, status)
 }
 
+// Execute runs accepted work in the configured lifecycle mode.
 func (c *Runs) Execute(
 	requestCtx context.Context,
 	jobID string,
@@ -206,6 +232,7 @@ func (c *Runs) Execute(
 	return runRegistered(runCtx)
 }
 
+// executeRegistered transitions an accepted run through execution, recovery, and finalization.
 func (c *Runs) executeRegistered(
 	ctx context.Context,
 	jobID string,
@@ -228,6 +255,7 @@ func (c *Runs) executeRegistered(
 	return err
 }
 
+// finish converts a run result and error into exactly one terminal tracker state.
 func (c *Runs) finish(jobID string, result RunResult, err error) {
 	if result.Status == "" {
 		if err != nil {
@@ -256,24 +284,29 @@ func (c *Runs) finish(jobID string, result RunResult, err error) {
 	}
 }
 
+// CloseAndWait rejects new work, cancels active runs, and waits for them to finish.
 func (c *Runs) CloseAndWait() {
 	c.background.Close()
 	c.cancelApplication()
 	c.background.Wait()
 }
 
+// SucceededRun creates a successful terminal result.
 func SucceededRun(message string) RunResult {
 	return RunResult{Status: deploymentRunStatusSucceeded, Message: message}
 }
 
+// FailedRun creates a failed terminal result.
 func FailedRun(message string) RunResult {
 	return RunResult{Status: deploymentRunStatusFailed, Message: message}
 }
 
+// SkippedRun creates a skipped terminal result.
 func SkippedRun(message string) RunResult {
 	return RunResult{Status: deploymentRunStatusSkipped, Message: message}
 }
 
+// IsLifecycleCancellation reports whether err represents context cancellation or timeout.
 func IsLifecycleCancellation(err error) bool {
 	return errors.Is(err, ErrBackgroundWorkClosed) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }

@@ -49,14 +49,14 @@ func TestNewHandlerValidatesDependencies(t *testing.T) {
 		contains string
 		mutate   func(*Dependencies)
 	}{
-		{name: "version", contains: "version is required", mutate: func(deps *Dependencies) { deps.Version = "" }},
-		{name: "API secret", contains: "API secret is required", mutate: func(deps *Dependencies) { deps.APISecret = "" }},
-		{name: "payload size", contains: "max payload size must be positive", mutate: func(deps *Dependencies) { deps.MaxPayloadSize = 0 }},
-		{name: "logger", contains: "logger is required", mutate: func(deps *Dependencies) { deps.Logger = nil }},
+		{name: "version", contains: "Dependencies.Version", mutate: func(deps *Dependencies) { deps.Version = "" }},
+		{name: "API secret", contains: "Dependencies.APISecret", mutate: func(deps *Dependencies) { deps.APISecret = "" }},
+		{name: "payload size", contains: "Dependencies.MaxPayloadSize", mutate: func(deps *Dependencies) { deps.MaxPayloadSize = 0 }},
+		{name: "logger", contains: "Dependencies.Logger", mutate: func(deps *Dependencies) { deps.Logger = nil }},
 		{name: "logger backend", contains: "logger is required", mutate: func(deps *Dependencies) { deps.Logger = &logger.Logger{} }},
-		{name: "docker CLI", contains: "docker CLI is required", mutate: func(deps *Dependencies) { deps.DockerCLI = nil }},
-		{name: "contexts", contains: "docker context registry is required", mutate: func(deps *Dependencies) { deps.Contexts = nil }},
-		{name: "runs", contains: "control-plane run operations are required", mutate: func(deps *Dependencies) { deps.Runs = nil }},
+		{name: "docker CLI", contains: "Dependencies.DockerCLI", mutate: func(deps *Dependencies) { deps.DockerCLI = nil }},
+		{name: "contexts", contains: "Dependencies.Contexts", mutate: func(deps *Dependencies) { deps.Contexts = nil }},
+		{name: "runs", contains: "Dependencies.Runs", mutate: func(deps *Dependencies) { deps.Runs = nil }},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			dependencies := valid
@@ -67,6 +67,17 @@ func TestNewHandlerValidatesDependencies(t *testing.T) {
 				t.Fatalf("NewHandler() error = %v, want containing %q", err, testCase.contains)
 			}
 		})
+	}
+
+	valid.TrustedProxyHeader = ""
+
+	handler, err := NewHandler(valid)
+	if err != nil {
+		t.Fatalf("NewHandler() default proxy header: %v", err)
+	}
+
+	if handler.trustedProxyHeader != "X-Forwarded-For" {
+		t.Fatalf("trusted proxy header = %q, want default", handler.trustedProxyHeader)
 	}
 }
 

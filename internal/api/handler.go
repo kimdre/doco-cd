@@ -3,11 +3,13 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 
 	"github.com/docker/cli/cli/command"
 
+	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/controlplane"
@@ -35,15 +37,17 @@ type HealthFailureReporter func(
 	cause error,
 )
 
+// Dependencies contains the runtime services required by the REST API handlers.
 type Dependencies struct {
-	AppConfig             *app.Config
-	Logger                *logger.Logger
-	DockerCLI             command.Cli
-	Contexts              *docker.ContextRegistry
-	Runs                  RunOperations
-	HealthFailureReporter HealthFailureReporter
+	AppConfig             *app.Config             `validate:"required,nostructlevel"`
+	Logger                *logger.Logger          `validate:"required,nostructlevel"`
+	DockerCLI             command.Cli             `validate:"required,nostructlevel"`
+	Contexts              *docker.ContextRegistry `validate:"required,nostructlevel"`
+	Runs                  RunOperations           `validate:"required,nostructlevel"`
+	HealthFailureReporter HealthFailureReporter   `validate:"required"`
 }
 
+// Handler adapts REST requests to Docker and control-plane operations.
 type Handler struct {
 	appConfig             *app.Config
 	log                   *logger.Logger
@@ -53,20 +57,14 @@ type Handler struct {
 	healthFailureReporter HealthFailureReporter
 }
 
+// NewHandler validates dependencies and constructs the REST API adapter.
 func NewHandler(dependencies Dependencies) (*Handler, error) {
-	switch {
-	case dependencies.AppConfig == nil:
-		return nil, errors.New("api application config is required")
-	case dependencies.Logger == nil || dependencies.Logger.Logger == nil:
+	if err := validation.Validate(dependencies); err != nil {
+		return nil, fmt.Errorf("validate API dependencies: %w", err)
+	}
+
+	if dependencies.Logger.Logger == nil {
 		return nil, errors.New("api logger is required")
-	case dependencies.DockerCLI == nil:
-		return nil, errors.New("api docker CLI is required")
-	case dependencies.Contexts == nil:
-		return nil, errors.New("api docker context registry is required")
-	case dependencies.Runs == nil:
-		return nil, errors.New("api control-plane run operations are required")
-	case dependencies.HealthFailureReporter == nil:
-		return nil, errors.New("api health failure reporter is required")
 	}
 
 	return &Handler{

@@ -6,6 +6,7 @@ import (
 	"net/http"
 )
 
+// Response is the common JSON envelope for successful REST responses.
 type Response struct {
 	Content any    `json:"content,omitempty"`
 	JobID   string `json:"job_id,omitempty"`
@@ -39,6 +40,7 @@ func JSONError(w http.ResponseWriter, err, details any, jobId string, code int) 
 	}
 }
 
+// JSONResponse writes a successful response in the common JSON envelope.
 func JSONResponse(w http.ResponseWriter, content any, jobId string, code int) {
 	resp := Response{
 		Content: content,

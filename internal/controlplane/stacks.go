@@ -14,6 +14,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/restapi"
 )
 
+// StackActionResult reports the outcome for one service targeted by a stack action.
 type StackActionResult struct {
 	Service string `json:"service"`
 	Status  string `json:"status"`
@@ -21,31 +22,39 @@ type StackActionResult struct {
 }
 
 var (
-	ErrStackNotFound             = errors.New("stack not found")
+	// ErrStackNotFound indicates that the requested stack has no services.
+	ErrStackNotFound = errors.New("stack not found")
+	// ErrNoApplicableStackServices indicates that all matched services were skipped.
 	ErrNoApplicableStackServices = errors.New("no applicable services found")
 )
 
+// StackServiceNotFoundError identifies a requested service absent from its stack.
 type StackServiceNotFoundError struct {
 	Service string
 }
 
+// Error reports the missing service.
 func (e *StackServiceNotFoundError) Error() string {
 	return "service not found: " + e.Service
 }
 
+// StackServiceActionError wraps an operational failure with its service name.
 type StackServiceActionError struct {
 	Service string
 	Cause   error
 }
 
+// Error reports the failed service action.
 func (e *StackServiceActionError) Error() string {
 	return fmt.Sprintf("stack action failed for service %s: %v", e.Service, e.Cause)
 }
 
+// Unwrap exposes the underlying service action error.
 func (e *StackServiceActionError) Unwrap() error {
 	return e.Cause
 }
 
+// GetStackServices returns the services belonging to a named Swarm stack.
 func GetStackServices(ctx context.Context, dockerCLI command.Cli, stack string) ([]dockerswarmtypes.Service, error) {
 	if dockerCLI == nil {
 		return nil, errors.New("docker cli is required")
@@ -63,6 +72,7 @@ func GetStackServices(ctx context.Context, dockerCLI command.Cli, stack string) 
 	return services, nil
 }
 
+// RunStackAction resolves a stack and applies an action to its matching services.
 func RunStackAction(
 	ctx context.Context,
 	dockerCLI command.Cli,
@@ -81,6 +91,7 @@ func RunStackAction(
 	return RunStackActionOnServices(ctx, dockerCLI, services, stack, action, service, replicas, wait, log)
 }
 
+// RunStackActionOnServices applies an action and preserves partial results on failure.
 func RunStackActionOnServices(
 	ctx context.Context,
 	dockerCLI command.Cli,
@@ -179,6 +190,7 @@ func RunStackActionOnServices(
 	return results, nil
 }
 
+// RemoveStack removes all resources belonging to a Swarm stack.
 func RemoveStack(ctx context.Context, dockerCLI command.Cli, stack string, log *slog.Logger) error {
 	if dockerCLI == nil {
 		return errors.New("docker cli is required")

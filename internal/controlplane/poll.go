@@ -23,55 +23,67 @@ import (
 )
 
 var (
-	ErrNoPollConfiguration       = errors.New("no poll configuration provided in request body")
+	// ErrNoPollConfiguration indicates an empty poll-trigger request.
+	ErrNoPollConfiguration = errors.New("no poll configuration provided in request body")
+	// ErrTooManyPollConfigurations indicates that a request exceeds MaxTriggerPollConfigs.
 	ErrTooManyPollConfigurations = errors.New("too many poll configurations: maximum is 32")
-	ErrPollRunPanicked           = errors.New("poll run panicked")
+	// ErrPollRunPanicked is recorded when a poll callback panics.
+	ErrPollRunPanicked = errors.New("poll run panicked")
 )
 
 const (
+	// MaxTriggerPollConfigs limits the number of poll configurations accepted per request.
 	MaxTriggerPollConfigs           = 32
 	defaultConcurrentPollExecutions = 4
 	defaultPollTrigger              = "poll"
 )
 
+// PollConfigValidationError identifies a malformed poll configuration by request index.
 type PollConfigValidationError struct {
 	Index int
 	Err   error
 }
 
+// Error identifies the invalid poll configuration by request index.
 func (e *PollConfigValidationError) Error() string {
 	return fmt.Sprintf("invalid poll configuration at index %d: %v", e.Index, e.Err)
 }
 
+// Unwrap exposes the underlying poll configuration validation error.
 func (e *PollConfigValidationError) Unwrap() error {
 	return e.Err
 }
 
+// PollRunsFailedError summarizes failures from a batch of poll configurations.
 type PollRunsFailedError struct {
 	Failed int
 	Total  int
 	Cause  error
 }
 
+// Error reports the number of failed poll runs.
 func (e *PollRunsFailedError) Error() string {
 	return fmt.Sprintf("%d/%d poll jobs failed", e.Failed, e.Total)
 }
 
+// Unwrap exposes the first poll-run failure.
 func (e *PollRunsFailedError) Unwrap() error {
 	return e.Cause
 }
 
+// PollRunner executes one validated poll configuration with application dependencies.
 type PollRunner func(ctx context.Context, pollConfig poll.Config, appConfig *app.Config, dataMountPoint container.MountPoint,
 	dockerCli command.Cli, contexts *docker.ContextRegistry, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
 	triggerReason string,
 ) error
 
+// PollDependencies contains the services required to execute poll configurations.
 type PollDependencies struct {
-	AppConfig      *app.Config
+	AppConfig      *app.Config `validate:"required,nostructlevel"`
 	DataMountPoint container.MountPoint
 	DockerCLI      command.Cli
 	Contexts       *docker.ContextRegistry
-	Runner         PollRunner
+	Runner         PollRunner `validate:"required"`
 }
 
 type controlPlanePoll struct {
@@ -109,6 +121,7 @@ func newControlPlanePoll(
 	}
 }
 
+// TriggerPoll validates and executes a bounded batch of one-shot poll configurations.
 func (c *Runs) TriggerPoll(ctx context.Context, configs []poll.Config, wait bool, jobLog *slog.Logger) (string, error) {
 	jobID := id.New()
 	if len(configs) == 0 {
@@ -228,6 +241,7 @@ func (c *Runs) TriggerPoll(ctx context.Context, configs []poll.Config, wait bool
 	return jobID, err
 }
 
+// RunConfiguredPoll executes one prevalidated scheduled poll under the shared lifecycle.
 func (c *Runs) RunConfiguredPoll(
 	ctx context.Context,
 	pollConfig poll.Config,
@@ -274,6 +288,7 @@ func (c *Runs) RunConfiguredPoll(
 	return jobID, err
 }
 
+// runProtected converts a callback panic into the supplied stable error.
 func (c *Runs) runProtected(log *slog.Logger, panicContext string, panicError error, run func() error) (err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -286,6 +301,7 @@ func (c *Runs) runProtected(log *slog.Logger, panicContext string, panicError er
 	return run()
 }
 
+// pollRepositoryName returns a stable repository identifier for Git and OCI poll sources.
 func pollRepositoryName(cfg poll.Config) string {
 	sourceType := config.NormalizeSourceType(cfg.Source)
 	if sourceType == config.SourceTypeOCI {

@@ -9,6 +9,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 )
 
+// resolveDockerContext returns a named context or the injected default Docker CLI.
 func (h *Handler) resolveDockerContext(ctx context.Context, contextName string) (docker.ContextClient, error) {
 	contextName = docker.NormalizeContextName(contextName)
 	if h.contexts != nil {
@@ -31,6 +32,7 @@ func (h *Handler) resolveDockerContext(ctx context.Context, contextName string) 
 	return docker.ContextClient{Name: "", Cli: h.dockerCli}, nil
 }
 
+// resolveSwarmDockerContext resolves a context and verifies that it supports Swarm operations.
 func (h *Handler) resolveSwarmDockerContext(ctx context.Context, contextName string) (docker.ContextClient, error) {
 	contextClient, err := h.resolveDockerContext(ctx, contextName)
 	if err != nil {
@@ -44,6 +46,7 @@ func (h *Handler) resolveSwarmDockerContext(ctx context.Context, contextName str
 	return contextClient, nil
 }
 
+// requireDockerSwarm checks named-context state or probes the default daemon directly.
 func requireDockerSwarm(ctx context.Context, contextClient docker.ContextClient) error {
 	enabled := contextClient.SwarmMode
 	if contextClient.Name == "" {

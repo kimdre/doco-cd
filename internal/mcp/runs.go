@@ -29,6 +29,7 @@ type getDeploymentRunOutput struct {
 	Run controlplane.Run `json:"run"`
 }
 
+// addRunTools registers deployment-run list and lookup operations.
 func (h *Handler) addRunTools(server *sdkmcp.Server) {
 	readOnly := &sdkmcp.ToolAnnotations{ReadOnlyHint: true}
 	listSchema := mustToolInputSchema[listDeploymentRunsInput]("list_deployment_runs")
@@ -47,6 +48,7 @@ func (h *Handler) addRunTools(server *sdkmcp.Server) {
 	}, instrumentTool(h.log, "get_deployment_run", h.getDeploymentRun))
 }
 
+// listDeploymentRuns returns filtered control-plane run records.
 func (h *Handler) listDeploymentRuns(
 	_ context.Context,
 	_ *sdkmcp.CallToolRequest,
@@ -75,6 +77,7 @@ func (h *Handler) listDeploymentRuns(
 	return nil, listDeploymentRunsOutput{Runs: h.controlPlaneRuns.List(limit, trigger, status)}, nil
 }
 
+// getDeploymentRun returns one control-plane run by job ID.
 func (h *Handler) getDeploymentRun(
 	_ context.Context,
 	_ *sdkmcp.CallToolRequest,

@@ -16,6 +16,7 @@ import (
 
 const dockerContextHeader = "X-Doco-CD-Context"
 
+// requestIP resolves the client address while honoring configured trusted proxies.
 func (h *Handler) requestIP(r *http.Request) string {
 	if h == nil || h.appConfig == nil {
 		return r.RemoteAddr
@@ -29,6 +30,7 @@ func (h *Handler) requestIP(r *http.Request) string {
 	)
 }
 
+// dockerCliForRequest resolves the requested Docker context or writes an HTTP error.
 func (h *Handler) dockerCliForRequest(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -77,6 +79,7 @@ func (h *Handler) dockerCliForRequest(
 	return contextClient.Cli, contextClient.DisplayName(), true
 }
 
+// getIntQueryParam parses an integer query parameter and writes an HTTP error on failure.
 func getIntQueryParam(r *http.Request, w http.ResponseWriter, log *slog.Logger, jobID, key string, defaultValue int) (int, bool) {
 	queryParam := r.URL.Query().Get(key)
 	if queryParam == "" {
@@ -96,6 +99,7 @@ func getIntQueryParam(r *http.Request, w http.ResponseWriter, log *slog.Logger, 
 	return value, true
 }
 
+// getBoolQueryParam parses a boolean query parameter and writes an HTTP error on failure.
 func getBoolQueryParam(r *http.Request, w http.ResponseWriter, log *slog.Logger, jobID, key string, defaultValue bool) (bool, bool) {
 	queryParam := r.URL.Query().Get(key)
 	if queryParam == "" {
@@ -115,6 +119,7 @@ func getBoolQueryParam(r *http.Request, w http.ResponseWriter, log *slog.Logger,
 	return value, true
 }
 
+// requireMethod verifies the request method or writes a method-not-allowed response.
 func requireMethod(w http.ResponseWriter, log *slog.Logger, r *http.Request, method string) bool {
 	if r.Method == method {
 		return true

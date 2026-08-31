@@ -11,7 +11,9 @@ import (
 )
 
 type (
-	RunStatus  string
+	// RunStatus is the lifecycle state recorded for a control-plane run.
+	RunStatus string
+	// RunTrigger identifies the entry point that created a control-plane run.
 	RunTrigger string
 )
 
@@ -21,11 +23,16 @@ type (
 )
 
 const (
-	RunStatusAccepted  RunStatus = "accepted"
-	RunStatusRunning   RunStatus = "running"
+	// RunStatusAccepted indicates that a run has been admitted but not started.
+	RunStatusAccepted RunStatus = "accepted"
+	// RunStatusRunning indicates that a run is executing.
+	RunStatusRunning RunStatus = "running"
+	// RunStatusSucceeded indicates that a run completed successfully.
 	RunStatusSucceeded RunStatus = "succeeded"
-	RunStatusFailed    RunStatus = "failed"
-	RunStatusSkipped   RunStatus = "skipped"
+	// RunStatusFailed indicates that a run completed with an error.
+	RunStatusFailed RunStatus = "failed"
+	// RunStatusSkipped indicates that a run intentionally performed no work.
+	RunStatusSkipped RunStatus = "skipped"
 )
 
 const (
@@ -37,8 +44,11 @@ const (
 )
 
 const (
-	RunTriggerWebhook      RunTrigger = "webhook"
-	RunTriggerPoll         RunTrigger = "poll"
+	// RunTriggerWebhook identifies runs accepted from webhook requests.
+	RunTriggerWebhook RunTrigger = "webhook"
+	// RunTriggerPoll identifies runs accepted from poll operations.
+	RunTriggerPoll RunTrigger = "poll"
+	// RunTriggerScheduledJob identifies runs accepted from scheduled-job requests.
 	RunTriggerScheduledJob RunTrigger = "scheduled_job"
 )
 
@@ -51,10 +61,13 @@ const (
 const deploymentRunTTL = 7 * 24 * time.Hour
 
 var (
-	ErrInvalidRunStatus  = errors.New("invalid deployment run status")
+	// ErrInvalidRunStatus indicates an unsupported run status filter.
+	ErrInvalidRunStatus = errors.New("invalid deployment run status")
+	// ErrInvalidRunTrigger indicates an unsupported run trigger filter.
 	ErrInvalidRunTrigger = errors.New("invalid deployment run trigger")
 )
 
+// Run is the serializable lifecycle record for one control-plane operation.
 type Run struct {
 	JobID       string      `json:"job_id"`
 	Trigger     RunTrigger  `json:"trigger"`
@@ -72,6 +85,7 @@ type Run struct {
 
 type deploymentRun = Run
 
+// RunTarget identifies a stack deployment observed during a run.
 type RunTarget struct {
 	Stack   string `json:"stack,omitempty"`
 	Context string `json:"context"`
@@ -366,6 +380,7 @@ func (t *deploymentRunTracker) List(limit int, trigger string, status string) []
 	return runs
 }
 
+// NormalizeRunStatus validates and canonicalizes a run status filter.
 func NormalizeRunStatus(value string) (string, error) {
 	value = strings.TrimSpace(strings.ToLower(value))
 	if value == "" {
@@ -387,6 +402,7 @@ func NormalizeRunStatus(value string) (string, error) {
 	return value, nil
 }
 
+// NormalizeRunTrigger validates and canonicalizes a run trigger filter.
 func NormalizeRunTrigger(value string) (string, error) {
 	value = strings.TrimSpace(strings.ToLower(value))
 	if value == "" {
