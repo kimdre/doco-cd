@@ -7,6 +7,7 @@ import (
 
 	onepassword "github.com/kimdre/doco-cd/internal/secretprovider/1password"
 	"github.com/kimdre/doco-cd/internal/secretprovider/awssecretsmanager"
+	"github.com/kimdre/doco-cd/internal/secretprovider/azurekeyvault"
 	"github.com/kimdre/doco-cd/internal/secretprovider/bitwardensecretsmanager"
 	"github.com/kimdre/doco-cd/internal/secretprovider/infisical"
 	"github.com/kimdre/doco-cd/internal/secretprovider/openbao"
@@ -75,6 +76,18 @@ func Initialize(ctx context.Context, provider, version string) (SecretProvider, 
 		}
 
 		p, err = awssecretsmanager.NewProvider(ctx, cfg.Region, cfg.AccessKeyID, cfg.SecretAccessKey)
+	case azurekeyvault.Name:
+		cfg, cfgErr := azurekeyvault.GetConfig()
+		if cfgErr != nil {
+			return nil, cfgErr
+		}
+
+		prov, provErr := azurekeyvault.NewValueProvider(string(cfg.VaultURL))
+		if provErr != nil {
+			return nil, provErr
+		}
+
+		p = AdaptSecretValueProvider(azurekeyvault.Name, prov)
 	case bitwardensecretsmanager.Name:
 		cfg, cfgErr := bitwardensecretsmanager.GetConfig()
 		if cfgErr != nil {
