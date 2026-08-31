@@ -82,7 +82,7 @@ func Initialize(ctx context.Context, provider, version string) (SecretProvider, 
 			return nil, cfgErr
 		}
 
-		prov, provErr := azurekeyvault.NewValueProvider(string(cfg.VaultURL))
+		prov, provErr := azurekeyvault.NewValueProvider(cfg)
 		if provErr != nil {
 			return nil, provErr
 		}

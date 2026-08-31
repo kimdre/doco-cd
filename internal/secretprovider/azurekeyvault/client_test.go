@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azsecrets"
 )
 
@@ -104,5 +105,34 @@ func TestValueProviderGetSecretRejectsMissingValue(t *testing.T) {
 	_, err := provider.GetSecret(t.Context(), "database-password")
 	if !errors.Is(err, ErrSecretValueMissing) {
 		t.Fatalf("GetSecret() error = %v, want ErrSecretValueMissing", err)
+	}
+}
+
+func TestNewCredentialUsesClientSecretCredentialForSecretFile(t *testing.T) {
+	cfg := &Config{
+		TenantID:             "11111111-1111-1111-1111-111111111111",
+		ClientID:             "22222222-2222-2222-2222-222222222222",
+		ClientSecret:         "client-secret",
+		clientSecretFromFile: true,
+	}
+
+	credential, err := newCredential(cfg)
+	if err != nil {
+		t.Fatalf("newCredential() error = %v", err)
+	}
+
+	if _, ok := credential.(*azidentity.ClientSecretCredential); !ok {
+		t.Fatalf("newCredential() type = %T, want *azidentity.ClientSecretCredential", credential)
+	}
+}
+
+func TestNewCredentialRejectsIncompleteSecretFileCredentials(t *testing.T) {
+	cfg := &Config{
+		ClientSecret:         "client-secret",
+		clientSecretFromFile: true,
+	}
+
+	if _, err := newCredential(cfg); err == nil {
+		t.Fatal("newCredential() error = nil, want error")
 	}
 }

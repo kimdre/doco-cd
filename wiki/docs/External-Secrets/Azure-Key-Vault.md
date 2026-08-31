@@ -11,27 +11,28 @@ tags:
 
 To use Azure Key Vault, configure the provider and the URL of the vault:
 
-| Key                         | Value                                                        |
-|-----------------------------|--------------------------------------------------------------|
-| `SECRET_PROVIDER`           | `azure_kv`                                                   |
+| Key                         | Value                                                          |
+|-----------------------------|----------------------------------------------------------------|
+| `SECRET_PROVIDER`           | `azure_kv`                                                     |
 | `SECRET_PROVIDER_VAULT_URL` | Full vault URL, for example `https://my-vault.vault.azure.net` |
 
-Azure authentication uses
-[`DefaultAzureCredential`](https://learn.microsoft.com/en-us/azure/developer/go/sdk/authentication/credential-chains#defaultazurecredential-overview).
+Azure authentication normally uses [`DefaultAzureCredential`](https://learn.microsoft.com/en-us/azure/developer/go/sdk/authentication/credential-chains#defaultazurecredential-overview).
 It supports managed identity, workload identity, and service-principal credentials
 through the standard Azure environment variables.
 
 For a service principal, set:
 
-| Key                   | Value                                  |
-|-----------------------|----------------------------------------|
-| `AZURE_TENANT_ID`     | Microsoft Entra tenant ID              |
-| `AZURE_CLIENT_ID`     | Application/client ID                  |
-| `AZURE_CLIENT_SECRET` | Application client secret              |
+| Key                        | Value                                                          |
+|----------------------------|----------------------------------------------------------------|
+| `AZURE_TENANT_ID`          | Microsoft Entra tenant ID                                      |
+| `AZURE_CLIENT_ID`          | Application/client ID                                          |
+| `AZURE_CLIENT_SECRET`      | Application client secret                                      |
+| `AZURE_CLIENT_SECRET_FILE` | Path to a file containing the application client secret        |
 
-For a user-assigned managed identity, set `AZURE_CLIENT_ID` to the identity's
-client ID. A system-assigned managed identity does not require additional
-credential environment variables.
+Set either `AZURE_CLIENT_SECRET` or `AZURE_CLIENT_SECRET_FILE`, not both.
+
+For a user-assigned managed identity, set `AZURE_CLIENT_ID` to the identity's client ID. 
+A system-assigned managed identity does not require additional credential environment variables.
 
 !!! tip "Grant read-only access"
     Assign the identity the **Key Vault Secrets User** role on the vault, or an

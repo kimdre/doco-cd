@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azsecrets"
 )
@@ -25,19 +26,27 @@ type ValueProvider struct {
 	client secretClient
 }
 
-// NewValueProvider creates a provider using Azure's default credential chain.
-func NewValueProvider(vaultURL string) (*ValueProvider, error) {
-	credential, err := azidentity.NewDefaultAzureCredential(nil)
+// NewValueProvider creates an Azure Key Vault value provider.
+func NewValueProvider(cfg *Config) (*ValueProvider, error) {
+	credential, err := newCredential(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create Azure credential: %w", err)
 	}
 
-	client, err := azsecrets.NewClient(vaultURL, credential, nil)
+	client, err := azsecrets.NewClient(string(cfg.VaultURL), credential, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create Azure Key Vault client: %w", err)
 	}
 
 	return newValueProvider(client), nil
+}
+
+func newCredential(cfg *Config) (azcore.TokenCredential, error) {
+	if cfg.clientSecretFromFile {
+		return azidentity.NewClientSecretCredential(cfg.TenantID, cfg.ClientID, cfg.ClientSecret, nil)
+	}
+
+	return azidentity.NewDefaultAzureCredential(nil)
 }
 
 func newValueProvider(client secretClient) *ValueProvider {
