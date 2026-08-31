@@ -1,16 +1,20 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path"
 	"strings"
 	"testing"
+	"time"
 
 	dockerswarmtypes "github.com/moby/moby/api/types/swarm"
+	dockerclient "github.com/moby/moby/client"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/kimdre/doco-cd/internal/controlplane"
@@ -198,7 +202,12 @@ func TestMCPSwarmToolsRuntimeBehavior(t *testing.T) {
 	assertMCPToolError(t, session, "get_stack", map[string]any{}, "stack_name")
 	assertMCPToolError(t, session, "get_stack", map[string]any{"stack_name": "  "}, "missing stack name")
 
-	if !dockerswarm.GetModeEnabled() {
+	swarmModeEnabled, err := dockerswarm.ResolveModeEnabled(t.Context(), dockerCli.Client())
+	if err != nil {
+		t.Fatalf("failed to resolve Docker Swarm mode: %v", err)
+	}
+
+	if !swarmModeEnabled {
 		assertMCPToolError(t, session, "list_stacks", map[string]any{}, "swarm")
 		assertMCPToolError(t, session, "get_stack", map[string]any{"stack_name": "missing"}, "swarm")
 		assertMCPToolError(t, session, "control_stack", map[string]any{"stack_name": "missing", "action": "restart"}, "swarm")
@@ -207,26 +216,49 @@ func TestMCPSwarmToolsRuntimeBehavior(t *testing.T) {
 		return
 	}
 
+	stackName := fmt.Sprintf("doco-cd-mcp-tools-%d", time.Now().UnixNano())
+	serviceName := stackName + "_service"
+	replicas := uint64(0)
+
+	createdService, err := dockerCli.Client().ServiceCreate(t.Context(), dockerclient.ServiceCreateOptions{
+		Spec: dockerswarmtypes.ServiceSpec{
+			Annotations: dockerswarmtypes.Annotations{
+				Name:   serviceName,
+				Labels: map[string]string{dockerswarm.StackNamespaceLabel: stackName},
+			},
+			TaskTemplate: dockerswarmtypes.TaskSpec{
+				ContainerSpec: &dockerswarmtypes.ContainerSpec{Image: "busybox:latest"},
+			},
+			Mode: dockerswarmtypes.ServiceMode{
+				Replicated: &dockerswarmtypes.ReplicatedService{Replicas: &replicas},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to create Swarm service fixture: %v", err)
+	}
+
+	t.Cleanup(func() {
+		_, _ = dockerCli.Client().ServiceRemove(context.Background(), createdService.ID, dockerclient.ServiceRemoveOptions{})
+	})
+
 	result := callMCPTool(t, session, "list_stacks", map[string]any{})
 
 	var output listStacksOutput
 	decodeMCPStructuredContent(t, result, &output)
 
-	if len(output.Stacks) == 0 {
-		// Passing without asserting anything would be test theater; make the
-		// missing fixture visible instead.
-		t.Skip("swarm is active, but no stack fixture is available for get_stack success coverage")
+	services, ok := output.Stacks[stackName]
+	if !ok || len(services) != 1 || services[0].Name != serviceName {
+		t.Fatalf("expected stack fixture %q, got %#v", stackName, output.Stacks)
 	}
 
-	for stackName := range output.Stacks {
-		stackResult := callMCPTool(t, session, "get_stack", map[string]any{"stack_name": stackName})
+	stackResult := callMCPTool(t, session, "get_stack", map[string]any{"stack_name": stackName})
 
-		var stackOutput getStackOutput
-		decodeMCPStructuredContent(t, stackResult, &stackOutput)
+	var stackOutput getStackOutput
+	decodeMCPStructuredContent(t, stackResult, &stackOutput)
 
-		if len(stackOutput.Services) == 0 {
-			t.Fatalf("expected services for stack %q", stackName)
-		}
+	if len(stackOutput.Services) != 1 || stackOutput.Services[0].Name != serviceName {
+		t.Fatalf("expected service fixture %q, got %#v", serviceName, stackOutput.Services)
 	}
 }
 
