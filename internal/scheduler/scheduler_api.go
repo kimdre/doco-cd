@@ -6,56 +6,14 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"sync"
 	"time"
-
-	"github.com/docker/cli/cli/command"
 
 	"github.com/kimdre/doco-cd/internal/common/id"
 	"github.com/kimdre/doco-cd/internal/docker"
-	"github.com/kimdre/doco-cd/internal/docker/swarm"
-	"github.com/kimdre/doco-cd/internal/graceful"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 )
-
-// legacyManager preserves shared state for the package-level compatibility
-// functions. Application code uses explicitly constructed Manager instances.
-var legacyManager = NewManager(nil, nil, nil, nil)
-
-func Start(ctx context.Context, dockerCli command.Cli, log *slog.Logger, wg *sync.WaitGroup, secretProvider secretprovider.SecretProvider) {
-	if dockerCli == nil || log == nil || wg == nil {
-		return
-	}
-
-	cc := docker.ContextClient{Cli: dockerCli, SwarmMode: swarm.GetModeEnabled()}
-	runtime := legacyManager.runtime
-
-	mode := scheduledJobModeContainer
-	if cc.SwarmMode {
-		composeWorker := newSchedulerForMode(cc, scheduledJobModeContainer, log, wg, secretProvider, runtime)
-		graceful.SafeGo(wg, log, func() {
-			composeWorker.run(ctx)
-		})
-
-		mode = scheduledJobModeSwarm
-	}
-
-	newSchedulerForMode(cc, mode, log, wg, secretProvider, runtime).run(ctx)
-}
-
-// ListJobs returns all discovered scheduler jobs on the default Docker context,
-// optionally filtered by stack name.
-func ListJobs(ctx context.Context, dockerCli command.Cli, stackName string) ([]JobInfo, error) {
-	if dockerCli == nil {
-		return nil, errors.New("docker cli is required")
-	}
-
-	cc := docker.ContextClient{Cli: dockerCli, SwarmMode: swarm.GetModeEnabled()}
-
-	return listJobsForModes(ctx, schedulerModes(cc.SwarmMode), cc, nil, nil, legacyManager.runtime, stackName)
-}
 
 // listJobs returns all jobs discovered on this worker's Docker context,
 // optionally filtered by stack name.
@@ -149,19 +107,6 @@ func (s *scheduler) listJobs(ctx context.Context, stackName string) ([]JobInfo, 
 	}
 
 	return result, nil
-}
-
-// TriggerNow executes one configured scheduled job immediately on the default
-// Docker context. Job selection matches by container/service name and
-// optional stack name.
-func TriggerNow(ctx context.Context, dockerCli command.Cli, log *slog.Logger, jobName, stackName string, secretProvider secretprovider.SecretProvider) (string, error) {
-	if dockerCli == nil {
-		return "", errors.New("docker cli is required")
-	}
-
-	cc := docker.ContextClient{Cli: dockerCli, SwarmMode: swarm.GetModeEnabled()}
-
-	return triggerNowForModes(ctx, schedulerModes(cc.SwarmMode), cc, log, jobName, stackName, secretProvider, legacyManager.runtime)
 }
 
 // triggerNow executes one configured scheduled job immediately on this
