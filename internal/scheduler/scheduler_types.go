@@ -58,13 +58,14 @@ type scheduler struct {
 	// both Compose projects and Swarm stacks, so it runs one worker per mode
 	// instead of deriving behavior from the process-global
 	// swarm.GetModeEnabled().
-	mode           scheduledJobMode
-	secretProvider secretprovider.SecretProvider
-	log            *slog.Logger
-	wg             *sync.WaitGroup
-	startedAt      time.Time
-	runtime        *runtimeStore
-	runs           sync.WaitGroup
+	mode            scheduledJobMode
+	secretProvider  secretprovider.SecretProvider
+	stopHoldTracker ServiceStopHoldTracker
+	log             *slog.Logger
+	wg              *sync.WaitGroup
+	startedAt       time.Time
+	runtime         *runtimeStore
+	runs            sync.WaitGroup
 
 	states map[string]scheduledJobState
 
@@ -79,6 +80,13 @@ type scheduler struct {
 	// restored when the last holder releases it.
 	stopHoldsMu sync.Mutex
 	stopHolds   map[stopHoldKey]*stopHoldState
+}
+
+// ServiceStopHoldTracker suppresses reconciliation while scheduled jobs
+// intentionally keep Compose services stopped.
+type ServiceStopHoldTracker interface {
+	MarkSchedulerStopHeld(contextName, project, service string)
+	UnmarkSchedulerStopHeld(contextName, project, service string)
 }
 
 // stopHoldKey identifies a service that may be concurrently held stopped by
@@ -124,7 +132,7 @@ type JobInfo struct {
 // newSchedulerForMode builds a scheduler worker bound to a single Docker
 // context and runtime mode. log and wg may be nil for short-lived, one-shot
 // workers (e.g. a single ListJobs/TriggerNow call) that never call run().
-func newSchedulerForMode(cc docker.ContextClient, mode scheduledJobMode, log *slog.Logger, wg *sync.WaitGroup, secretProvider secretprovider.SecretProvider, runtime *runtimeStore) *scheduler {
+func newSchedulerForMode(cc docker.ContextClient, mode scheduledJobMode, log *slog.Logger, wg *sync.WaitGroup, secretProvider secretprovider.SecretProvider, stopHoldTracker ServiceStopHoldTracker, runtime *runtimeStore) *scheduler {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -136,15 +144,16 @@ func newSchedulerForMode(cc docker.ContextClient, mode scheduledJobMode, log *sl
 	contextName := docker.NormalizeContextName(cc.Name)
 
 	return &scheduler{
-		dockerCli:      cc.Cli,
-		contextName:    contextName,
-		mode:           mode,
-		secretProvider: secretProvider,
-		log:            log.With(slog.String("component", "scheduler"), slog.String("context", docker.DisplayContextName(contextName))),
-		wg:             wg,
-		startedAt:      schedulerNow(),
-		runtime:        runtime,
-		states:         map[string]scheduledJobState{},
-		stopHolds:      map[stopHoldKey]*stopHoldState{},
+		dockerCli:       cc.Cli,
+		contextName:     contextName,
+		mode:            mode,
+		secretProvider:  secretProvider,
+		stopHoldTracker: stopHoldTracker,
+		log:             log.With(slog.String("component", "scheduler"), slog.String("context", docker.DisplayContextName(contextName))),
+		wg:              wg,
+		startedAt:       schedulerNow(),
+		runtime:         runtime,
+		states:          map[string]scheduledJobState{},
+		stopHolds:       map[stopHoldKey]*stopHoldState{},
 	}
 }

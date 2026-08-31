@@ -31,6 +31,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/prometheus"
+	"github.com/kimdre/doco-cd/internal/reconciliation"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -252,6 +253,7 @@ type orchestrationHandler struct {
 	contexts         *docker.ContextRegistry
 	log              *logger.Logger // Logger for logging messages
 	secretProvider   secretprovider.SecretProvider
+	reconciliation   *reconciliation.Manager
 	testName         string // Overwrites the deployConfig.Name to make test deployments unique and prevent conflicts between tests when running in parallel. Not used in production.
 }
 
@@ -316,6 +318,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget string, metadata notification.Metadata,
 	dockerCli command.Cli, contexts *docker.ContextRegistry, secretProvider secretprovider.SecretProvider,
 	testName string,
+	reconciliationManager *reconciliation.Manager,
 ) (controlplane.RunResult, error) {
 	startTime := time.Now()
 
@@ -399,7 +402,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		}
 	}
 
-	deployErr := handle(ctx, jobLog,
+	deployErr := handle(ctx, jobLog, reconciliationManager,
 		appConfig, dataMountPoint, secretProvider, dockerCli, contexts,
 		stages.JobTriggerWebhook, sourceType, sourceRef, payload.Ref, payload.Private,
 		metadata, customTarget, testName, poll.Config{}, payload,
@@ -579,7 +582,7 @@ func (h *orchestrationHandler) WebhookHandler(w http.ResponseWriter, r *http.Req
 
 		defer repoLock.Unlock()
 
-		return handleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, metadata, h.dockerCli, h.contexts, h.secretProvider, h.testName)
+		return handleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, metadata, h.dockerCli, h.contexts, h.secretProvider, h.testName, h.reconciliation)
 	}
 
 	mode := controlplane.RunAsynchronous

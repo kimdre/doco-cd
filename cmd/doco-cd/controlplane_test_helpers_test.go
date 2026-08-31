@@ -14,9 +14,23 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
+	"github.com/kimdre/doco-cd/internal/reconciliation"
 	"github.com/kimdre/doco-cd/internal/scheduler"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 )
+
+func newTestReconciliationManager(t *testing.T) *reconciliation.Manager {
+	t.Helper()
+
+	manager, err := reconciliation.NewManager(reconciliation.Dependencies{})
+	if err != nil {
+		t.Fatalf("failed to create reconciliation manager: %v", err)
+	}
+
+	t.Cleanup(manager.Close)
+
+	return manager
+}
 
 type testScheduledJobOperations struct {
 	listJobs   func(context.Context, string, string) ([]scheduler.JobInfo, error)

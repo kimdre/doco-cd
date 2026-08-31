@@ -10,7 +10,7 @@ import (
 func TestTryAcquire(t *testing.T) {
 	t.Parallel()
 
-	lim := NewDeployerLimiter(1)
+	lim := newTestDeployerLimiter(t, 1)
 
 	unlock, ok := lim.TryAcquire("repoA", "ref1")
 	if !ok || unlock == nil {
@@ -39,7 +39,7 @@ func TestDifferentReposParallelism(t *testing.T) {
 	t.Parallel()
 
 	// allow max 2 concurrent
-	lim := NewDeployerLimiter(2)
+	lim := newTestDeployerLimiter(t, 2)
 	ctx := context.Background()
 
 	start := time.Now()
@@ -88,7 +88,7 @@ func TestDifferentReposParallelism(t *testing.T) {
 func TestTryAcquire_JoinSameRef(t *testing.T) {
 	t.Parallel()
 
-	lim := NewDeployerLimiter(2)
+	lim := newTestDeployerLimiter(t, 2)
 
 	unlock1, ok := lim.TryAcquire("repoJoin", "refA")
 	if !ok || unlock1 == nil {
@@ -139,7 +139,7 @@ func TestTryAcquire_JoinSameRef(t *testing.T) {
 func TestTryAcquire_DifferentRef_BlockedThenSucceeds(t *testing.T) {
 	t.Parallel()
 
-	lim := NewDeployerLimiter(1)
+	lim := newTestDeployerLimiter(t, 1)
 
 	unlock1, ok := lim.TryAcquire("repoEnq", "ref1")
 	if !ok || unlock1 == nil {
@@ -162,4 +162,18 @@ func TestTryAcquire_DifferentRef_BlockedThenSucceeds(t *testing.T) {
 	}
 
 	unlock2()
+}
+
+func TestDeployerLimiterCloseIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	limiter := NewDeployerLimiter(1)
+	limiter.Close()
+	limiter.Close()
+
+	select {
+	case <-limiter.doneChan:
+	default:
+		t.Fatal("expected limiter cleanup loop to stop")
+	}
 }

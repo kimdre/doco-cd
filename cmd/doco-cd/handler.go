@@ -149,6 +149,7 @@ func postEarlyCommitStatus(ctx context.Context, jobLog *slog.Logger, appConfig *
 }
 
 func handle(ctx context.Context, jobLog *slog.Logger,
+	reconciliationManager *reconciliation.Manager,
 	appConfig *app.Config,
 	dataMountPoint container.MountPoint,
 	secretProvider secretprovider.SecretProvider,
@@ -407,7 +408,15 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		OCITrusted:   ociTrusted,
 	}
 
-	if err := reconciliation.Deploy(ctx, jobLog, appConfig,
+	if reconciliationManager == nil {
+		return handleError{
+			err:            errors.New("reconciliation manager is required"),
+			msg:            "deployment failed",
+			httpStatusCode: http.StatusInternalServerError,
+		}
+	}
+
+	if err := reconciliationManager.Deploy(ctx, jobLog, appConfig,
 		dataMountPoint, dockerCli, contexts, secretProvider, metadata, jobTrigger,
 		repoData, deployConfigs, &payload, testName); err != nil {
 		if errors.Is(err, stages.ErrWebhookFilterMismatch) {

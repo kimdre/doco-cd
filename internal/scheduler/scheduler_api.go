@@ -188,7 +188,7 @@ func listJobsForModes(ctx context.Context, modes []scheduledJobMode, cc docker.C
 	var result []JobInfo
 
 	for _, mode := range modes {
-		jobs, err := newSchedulerForMode(cc, mode, log, nil, secretProvider, runtime).listJobs(ctx, stackName)
+		jobs, err := newSchedulerForMode(cc, mode, log, nil, secretProvider, nil, runtime).listJobs(ctx, stackName)
 		if err != nil {
 			return nil, err
 		}
@@ -199,13 +199,13 @@ func listJobsForModes(ctx context.Context, modes []scheduledJobMode, cc docker.C
 	return result, nil
 }
 
-func triggerNowForModes(ctx context.Context, modes []scheduledJobMode, cc docker.ContextClient, log *slog.Logger, jobName, stackName string, secretProvider secretprovider.SecretProvider, runtime *runtimeStore) (string, error) {
+func triggerNowForModes(ctx context.Context, modes []scheduledJobMode, cc docker.ContextClient, log *slog.Logger, jobName, stackName string, secretProvider secretprovider.SecretProvider, stopHoldTracker ServiceStopHoldTracker, runtime *runtimeStore) (string, error) {
 	workers := make(map[scheduledJobMode]*scheduler, len(modes))
 
 	var jobs []scheduledJob
 
 	for _, mode := range modes {
-		worker := newSchedulerForMode(cc, mode, log, nil, secretProvider, runtime)
+		worker := newSchedulerForMode(cc, mode, log, nil, secretProvider, stopHoldTracker, runtime)
 
 		discovered, err := worker.discoverJobs(ctx)
 		if err != nil {

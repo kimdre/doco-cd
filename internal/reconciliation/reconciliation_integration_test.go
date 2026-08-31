@@ -168,7 +168,7 @@ func TestReconciliationStopEventRestartSuppressionIntegration(t *testing.T) {
 	dc.Reconciliation.RestartTimeout = 1
 
 	jobLog := logger.New(slog.LevelError).Logger
-	reconcileJob := newJob(jobInfo{
+	reconcileJob := newJob(newTestManager(t), jobInfo{
 		jobLog:        jobLog,
 		dockerCli:     stack.DockerCli,
 		metadata:      notification.Metadata{Repository: repositoryName, Stack: stackName, JobID: "test-job"},

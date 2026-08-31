@@ -14,6 +14,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/notification"
+	"github.com/kimdre/doco-cd/internal/reconciliation"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/stages"
 
@@ -281,7 +282,7 @@ func pollError(jobLog *slog.Logger, metadata notification.Metadata, err error) {
 // reported in the "polling <entity>" log line's trigger.event field.
 func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config, dataMountPoint container.MountPoint,
 	dockerCli command.Cli, contexts *docker.ContextRegistry, logger *slog.Logger, metadata notification.Metadata, secretProvider secretprovider.SecretProvider,
-	triggerReason string,
+	triggerReason string, reconciliationManager *reconciliation.Manager,
 ) error {
 	startTime := time.Now()
 	sourceType := config.NormalizeSourceType(pollConfig.Source)
@@ -332,7 +333,7 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 		pollReference = oci.TagFromArtifact(sourceRef)
 	}
 
-	deployErr := handle(ctx, jobLog,
+	deployErr := handle(ctx, jobLog, reconciliationManager,
 		appConfig, dataMountPoint, secretProvider, dockerCli, contexts,
 		stages.JobTriggerPoll, sourceType, sourceRef, pollReference, false,
 		metadata, pollConfig.CustomTarget, "",
