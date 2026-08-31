@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -25,7 +26,9 @@ import (
 	"github.com/kimdre/doco-cd/internal/reconciliation"
 
 	"github.com/kimdre/doco-cd/cmd/doco-cd/healthcheck"
+	"github.com/kimdre/doco-cd/internal/api"
 	"github.com/kimdre/doco-cd/internal/certrotation"
+	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/scheduler"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/secretprovider/openbao"
@@ -36,6 +39,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker/registryauth"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/logger"
+	"github.com/kimdre/doco-cd/internal/mcp"
 	"github.com/kimdre/doco-cd/internal/prometheus"
 )
 
@@ -176,7 +180,7 @@ func run() error {
 			scheme = "https"
 		}
 
-		checkUrl := fmt.Sprintf("%s://localhost:%d%s", scheme, c.HttpPort, healthPath)
+		checkUrl := fmt.Sprintf("%s://localhost:%d%s", scheme, c.HttpPort, api.HealthPath)
 
 		err := healthcheck.Check(ctx, checkUrl, c.HttpTLSEnabled)
 		if err != nil {
@@ -313,8 +317,6 @@ func run() error {
 
 	var wg sync.WaitGroup
 
-	backgroundWork := newBackgroundWork()
-
 	graceful.SafeGo(&wg, log.Logger,
 		func() {
 			notificationForNewAppVersion(log.Logger)
@@ -344,29 +346,54 @@ func run() error {
 	}
 
 	schedulerManager := scheduler.NewManager(contexts, log.Logger, &wg, &secretProvider)
+	controlPlaneRuns := controlplane.NewRuns(
+		ctx,
+		log.Logger,
+		controlplane.Dependencies{
+			MaxRunsPerTrigger: map[controlplane.RunTrigger]int{
+				controlplane.RunTriggerPoll:         50,
+				controlplane.RunTriggerWebhook:      50,
+				controlplane.RunTriggerScheduledJob: 50,
+			},
+			ScheduledJobs:  schedulerManager,
+			SecretProvider: &secretProvider,
+			Poll: controlplane.PollDependencies{
+				AppConfig:      c,
+				DataMountPoint: dataMountPoint,
+				DockerCLI:      dockerCli,
+				Contexts:       contexts,
+				Runner:         RunPoll,
+			},
+		},
+	)
 
 	defer wg.Wait()
-	defer backgroundWork.CloseAndWait()
+	defer controlPlaneRuns.CloseAndWait()
 	// Cancel lifecycle work before waiting, then close shared resources after all jobs stop.
 	defer rootCancel()
 
-	h := handlerData{
-		appConfig:      c,
-		appVersion:     app.Version,
-		backgroundCtx:  ctx,
-		backgroundWG:   &wg,
-		backgroundWork: backgroundWork,
-		dataMountPoint: dataMountPoint,
-		dockerCli:      dockerCli,
-		contexts:       contexts,
-		log:            log,
-		runTracker: newDeploymentRunTracker(map[deploymentRunTrigger]int{
-			deploymentRunTriggerPoll:         50,
-			deploymentRunTriggerWebhook:      50,
-			deploymentRunTriggerScheduledJob: 50,
-		}),
-		scheduler:      schedulerManager,
-		secretProvider: &secretProvider,
+	h := orchestrationHandler{
+		appConfig:        c,
+		controlPlaneRuns: controlPlaneRuns,
+		dataMountPoint:   dataMountPoint,
+		dockerCli:        dockerCli,
+		contexts:         contexts,
+		log:              log,
+		secretProvider:   &secretProvider,
+	}
+
+	apiHandler, err := api.NewHandler(api.Dependencies{
+		AppConfig:             c,
+		Logger:                log,
+		DockerCLI:             dockerCli,
+		Contexts:              contexts,
+		Runs:                  controlPlaneRuns,
+		HealthFailureReporter: reportHealthFailure,
+	})
+	if err != nil {
+		log.Critical("failed to create API handler", logger.ErrAttr(err))
+
+		return err
 	}
 
 	// Initialize the deployer limiter according to configuration
@@ -413,7 +440,32 @@ func run() error {
 		log.Info("certificate rotation watcher disabled by configuration")
 	}
 
-	registryApiServer(c, &h, log)
+	apiMounts := api.Mounts{
+		Webhook: http.HandlerFunc(h.WebhookHandler),
+	}
+
+	if c.McpEnabled && c.ApiSecret != "" {
+		mcpHandler, err := mcp.NewHandler(mcp.Dependencies{
+			Version:              app.Version,
+			APISecret:            c.ApiSecret,
+			MaxPayloadSize:       c.MaxPayloadSize,
+			TrustedProxyHeader:   c.TrustedProxyHeader,
+			TrustedProxyNetworks: c.TrustedProxyNetworks,
+			Logger:               log,
+			DockerCLI:            dockerCli,
+			Contexts:             contexts,
+			Runs:                 controlPlaneRuns,
+		})
+		if err != nil {
+			log.Critical("failed to create MCP handler", logger.ErrAttr(err))
+
+			return err
+		}
+
+		apiMounts.MCP = mcpHandler
+	}
+
+	registryApiServer(c, apiHandler, apiMounts, log)
 	prometheus.RegisterServer(c.MetricsPort, c.HttpTLSCertFile, c.HttpTLSKeyFile, log)
 
 	if err := graceful.Serve(log.Logger); err != nil {

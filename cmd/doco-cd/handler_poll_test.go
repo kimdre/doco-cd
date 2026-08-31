@@ -21,6 +21,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/config/poll"
+	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
@@ -79,18 +80,22 @@ func TestPollHandlerAllowsConcurrentRunsForSameRepository(t *testing.T) {
 	started := make(chan notification.Metadata, 2)
 	release := make(chan struct{})
 
-	h := handlerData{
+	h := orchestrationHandler{
 		log: log,
-		runPoll: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
-			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, metadata notification.Metadata, _ *secretprovider.SecretProvider,
-			_ string,
-		) error {
-			started <- metadata
 
-			<-release
+		controlPlaneRuns: newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			log: log,
+			pollRunner: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+				_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, metadata notification.Metadata, _ *secretprovider.SecretProvider,
+				_ string,
+			) error {
+				started <- metadata
 
-			return nil
-		},
+				<-release
+
+				return nil
+			},
+		}),
 	}
 
 	jobConfig := poll.Config{
@@ -161,14 +166,18 @@ func TestPollHandlerRunOnceDoesNotStartLocalWatcher(t *testing.T) {
 	}
 	srcPath := createLocalPollTestRepository(t)
 
-	h := handlerData{
+	h := orchestrationHandler{
 		log: log,
-		runPoll: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
-			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
-			_ string,
-		) error {
-			return nil
-		},
+
+		controlPlaneRuns: newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			log: log,
+			pollRunner: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+				_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+				_ string,
+			) error {
+				return nil
+			},
+		}),
 	}
 
 	pollJob := &poll.Job{Config: poll.Config{
@@ -195,16 +204,19 @@ func TestPollHandlerRunOnceDoesNotStartLocalWatcher(t *testing.T) {
 }
 
 func TestPollHandlerTracksCustomTarget(t *testing.T) {
-	tracker := newDeploymentRunTracker(nil)
-	h := handlerData{
-		log:        logger.New(logger.LevelCritical),
-		runTracker: tracker,
-		runPoll: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
-			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
-			_ string,
-		) error {
-			return nil
-		},
+	log := logger.New(logger.LevelCritical)
+	h := orchestrationHandler{
+		log: log,
+
+		controlPlaneRuns: newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			log: log,
+			pollRunner: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+				_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+				_ string,
+			) error {
+				return nil
+			},
+		}),
 	}
 
 	h.PollHandler(t.Context(), &poll.Job{Config: poll.Config{
@@ -214,7 +226,7 @@ func TestPollHandlerTracksCustomTarget(t *testing.T) {
 		RunOnce:      true,
 	}})
 
-	runs := tracker.List(1, string(deploymentRunTriggerPoll), "")
+	runs := h.controlPlaneRuns.List(1, string(controlplane.RunTriggerPoll), "")
 	if len(runs) != 1 {
 		t.Fatalf("expected one tracked poll run, got %d", len(runs))
 	}
@@ -286,17 +298,21 @@ func TestPollHandlerShutdownDoesNotEnableWatcherFallback(t *testing.T) {
 		srcPath := createLocalPollTestRepository(t)
 		started := make(chan struct{})
 		release := make(chan struct{})
-		h := handlerData{
+		h := orchestrationHandler{
 			log: log,
-			runPoll: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
-				_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
-				_ string,
-			) error {
-				close(started)
-				<-release
 
-				return nil
-			},
+			controlPlaneRuns: newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+				log: log,
+				pollRunner: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+					_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+					_ string,
+				) error {
+					close(started)
+					<-release
+
+					return nil
+				},
+			}),
 		}
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan struct{})
@@ -440,16 +456,20 @@ func TestPollHandlerFallsBackWhenWatcherFailsWithZeroInterval(t *testing.T) {
 
 	var runCount atomic.Int32
 
-	h := handlerData{
+	h := orchestrationHandler{
 		log: log,
-		runPoll: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
-			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
-			_ string,
-		) error {
-			runCount.Add(1)
 
-			return nil
-		},
+		controlPlaneRuns: newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			log: log,
+			pollRunner: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+				_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+				_ string,
+			) error {
+				runCount.Add(1)
+
+				return nil
+			},
+		}),
 	}
 
 	jobConfig := poll.Config{
@@ -516,16 +536,20 @@ func TestPollHandlerReportsWatchTriggerReason(t *testing.T) {
 
 	reasons := make(chan string, 10)
 
-	h := handlerData{
+	h := orchestrationHandler{
 		log: log,
-		runPoll: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
-			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
-			triggerReason string,
-		) error {
-			reasons <- triggerReason
 
-			return nil
-		},
+		controlPlaneRuns: newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			log: log,
+			pollRunner: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+				_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+				triggerReason string,
+			) error {
+				reasons <- triggerReason
+
+				return nil
+			},
+		}),
 	}
 
 	jobConfig := poll.Config{
@@ -638,16 +662,20 @@ func TestPollHandlerWatchDisabledFallsBackTo24h(t *testing.T) {
 
 	var runCount atomic.Int32
 
-	h := handlerData{
+	h := orchestrationHandler{
 		log: log,
-		runPoll: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
-			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
-			_ string,
-		) error {
-			runCount.Add(1)
 
-			return nil
-		},
+		controlPlaneRuns: newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			log: log,
+			pollRunner: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+				_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+				_ string,
+			) error {
+				runCount.Add(1)
+
+				return nil
+			},
+		}),
 	}
 
 	jobConfig := poll.Config{
@@ -710,16 +738,20 @@ func TestPollHandlerWatcherOnlyModeHasNoPeriodicFallback(t *testing.T) {
 
 	var runCount atomic.Int32
 
-	h := handlerData{
+	h := orchestrationHandler{
 		log: log,
-		runPoll: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
-			_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
-			_ string,
-		) error {
-			runCount.Add(1)
 
-			return nil
-		},
+		controlPlaneRuns: newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			log: log,
+			pollRunner: func(_ context.Context, _ poll.Config, _ *app.Config, _ container.MountPoint,
+				_ command.Cli, _ *docker.ContextRegistry, _ *slog.Logger, _ notification.Metadata, _ *secretprovider.SecretProvider,
+				_ string,
+			) error {
+				runCount.Add(1)
+
+				return nil
+			},
+		}),
 	}
 
 	jobConfig := poll.Config{

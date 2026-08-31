@@ -24,7 +24,9 @@ import (
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
+	restserver "github.com/kimdre/doco-cd/internal/api"
 	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/controlplane"
 
 	"github.com/kimdre/doco-cd/internal/git"
 
@@ -60,23 +62,24 @@ func TestRunWebhookSynchronouslyIgnoresRequestCancellation(t *testing.T) {
 	t.Parallel()
 
 	applicationCtx, cancelApplication := context.WithCancel(t.Context())
-	background := newBackgroundWork()
-	h := handlerData{
-		backgroundCtx:  applicationCtx,
-		backgroundWork: background,
-	}
+	runs := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{applicationCtx: applicationCtx})
+	jobID := runs.Accept("webhook", controlplane.RunTriggerWebhook, controlplane.RunMetadata{})
 
 	requestCtx, cancelRequest := context.WithCancel(t.Context())
 	runCtx := make(chan context.Context, 1)
 	result := make(chan error, 1)
 
 	go func() {
-		result <- h.runWebhookSynchronously(requestCtx, func(ctx context.Context) error {
+		result <- runs.Execute(requestCtx, jobID, controlplane.RunExecution{
+			Mode:         controlplane.RunSynchronousDetached,
+			PanicContext: "webhook deployment",
+			PanicError:   errWebhookDeploymentPanicked,
+		}, func(ctx context.Context) (controlplane.RunResult, error) {
 			runCtx <- ctx
 
 			<-ctx.Done()
 
-			return ctx.Err()
+			return controlplane.RunResult{}, ctx.Err()
 		})
 	}()
 
@@ -99,7 +102,7 @@ func TestRunWebhookSynchronouslyIgnoresRequestCancellation(t *testing.T) {
 		t.Fatal("webhook run did not stop during application shutdown")
 	}
 
-	background.CloseAndWait()
+	runs.CloseAndWait()
 }
 
 func TestAcquireWebhookRepoLockReportsWaitAndAcquires(t *testing.T) {
@@ -276,10 +279,9 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		}
 	})
 
-	h := handlerData{
-		dockerCli:  dockerCli,
-		appConfig:  appConfig,
-		appVersion: app.Version,
+	h := orchestrationHandler{
+		dockerCli: dockerCli,
+		appConfig: appConfig,
 		dataMountPoint: container.MountPoint{
 			Type:        "bind",
 			Source:      tmpDir,
@@ -289,8 +291,14 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		log:      log,
 		testName: stackName,
 	}
+	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		appConfig:      appConfig,
+		dataMountPoint: h.dataMountPoint,
+		dockerCli:      dockerCli,
+		log:            log,
+	})
 
-	req := newWebhookRequest(t, webhookPath+"?wait=true", minifiedPayload.Bytes(), appConfig)
+	req := newWebhookRequest(t, restserver.WebhookPath+"?wait=true", minifiedPayload.Bytes(), appConfig)
 
 	rr := httptest.NewRecorder()
 	handler := http.HandlerFunc(h.WebhookHandler)
@@ -487,9 +495,8 @@ func TestWebhookHandler_WaitQueryParam(t *testing.T) {
 
 	log := logger.New(logger.LevelCritical)
 
-	h := handlerData{
-		appConfig:  appConfig,
-		appVersion: app.Version,
+	h := orchestrationHandler{
+		appConfig: appConfig,
 		dataMountPoint: container.MountPoint{
 			Type:        "bind",
 			Source:      t.TempDir(),
@@ -498,6 +505,11 @@ func TestWebhookHandler_WaitQueryParam(t *testing.T) {
 		},
 		log: log,
 	}
+	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+		appConfig:      appConfig,
+		dataMountPoint: h.dataMountPoint,
+		log:            log,
+	})
 
 	testCases := []struct {
 		name string
@@ -505,11 +517,11 @@ func TestWebhookHandler_WaitQueryParam(t *testing.T) {
 	}{
 		{
 			name: "Default async when wait not set",
-			url:  webhookPath,
+			url:  restserver.WebhookPath,
 		},
 		{
 			name: "Synchronous when wait=true",
-			url:  webhookPath + "?wait=true",
+			url:  restserver.WebhookPath + "?wait=true",
 		},
 	}
 

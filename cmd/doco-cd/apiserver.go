@@ -6,15 +6,16 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/api"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/graceful"
 	"github.com/kimdre/doco-cd/internal/logger"
 )
 
-func registryApiServer(c *app.Config, h *handlerData, log *logger.Logger) {
+func registryApiServer(c *app.Config, h *api.Handler, mounts api.Mounts, log *logger.Logger) {
 	// Register API endpoints
 	apiServerMux := http.NewServeMux()
-	enabledApiEndpoints := registerApiEndpoints(c, h, log, apiServerMux)
+	enabledApiEndpoints := api.RegisterRoutes(apiServerMux, h, mounts)
 
 	protocol := "http"
 	if c.HttpTLSEnabled {
