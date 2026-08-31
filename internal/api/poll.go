@@ -16,9 +16,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/restapi"
 )
 
-// TriggerPollHandler handles API requests to trigger a poll of the configured repositories.
-// This can be used to manually trigger a poll outside the planned intervals,
-// for example after a failed deployment or to check for new commits after a network outage.
 // TriggerPollHandler validates and runs poll configurations from the request body.
 func (h *Handler) TriggerPollHandler(w http.ResponseWriter, r *http.Request) {
 	// Add a job id to the context to track deployments in the logs

@@ -15,7 +15,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/restapi"
 )
 
-// StackActionApiHandler handles API requests to manage Docker Swarm stacks.
 // StackActionApiHandler applies an action to matching services in a Swarm stack.
 func (h *Handler) StackActionApiHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -170,7 +169,6 @@ func (h *Handler) StackActionApiHandler(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-// StackApiHandler handles API requests to get or delete a Docker Swarm stack.
 // StackApiHandler returns or removes a single Swarm stack.
 func (h *Handler) StackApiHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -241,7 +239,6 @@ func (h *Handler) StackApiHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// GetStacksApiHandler handles API requests to list Docker Swarm stacks.
 // GetStacksApiHandler lists Swarm stacks in the requested Docker context.
 func (h *Handler) GetStacksApiHandler(w http.ResponseWriter, r *http.Request) {
 	var err error

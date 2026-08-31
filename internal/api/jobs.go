@@ -13,7 +13,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/scheduler"
 )
 
-// GetScheduledJobsHandler handles API requests to list scheduler-managed jobs.
 // GetScheduledJobsHandler lists scheduled jobs for an optional context and stack.
 func (h *Handler) GetScheduledJobsHandler(w http.ResponseWriter, r *http.Request) {
 	jobID := id.New()
@@ -52,7 +51,6 @@ func (h *Handler) GetScheduledJobsHandler(w http.ResponseWriter, r *http.Request
 	restapi.JSONResponse(w, jobs, jobID, http.StatusOK)
 }
 
-// TriggerScheduledJobHandler handles API requests to run one configured scheduled job immediately.
 // TriggerScheduledJobHandler starts a scheduled job synchronously or asynchronously.
 func (h *Handler) TriggerScheduledJobHandler(w http.ResponseWriter, r *http.Request) {
 	jobID := id.New()

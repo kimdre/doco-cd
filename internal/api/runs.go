@@ -12,7 +12,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/restapi"
 )
 
-// GetDeploymentRunsHandler returns recent deployment runs tracked by doco-cd.
 // GetDeploymentRunsHandler lists tracked deployment runs using optional filters.
 func (h *Handler) GetDeploymentRunsHandler(w http.ResponseWriter, r *http.Request) {
 	jobID := id.New()
@@ -57,7 +56,6 @@ func (h *Handler) GetDeploymentRunsHandler(w http.ResponseWriter, r *http.Reques
 	restapi.JSONResponse(w, runs, jobID, http.StatusOK)
 }
 
-// GetDeploymentRunHandler returns details for one deployment run identified by jobID.
 // GetDeploymentRunHandler returns one tracked deployment run by job ID.
 func (h *Handler) GetDeploymentRunHandler(w http.ResponseWriter, r *http.Request) {
 	jobID := id.New()
