@@ -29,7 +29,7 @@ type Manager struct {
 	registry       *docker.ContextRegistry
 	log            *slog.Logger
 	wg             *sync.WaitGroup
-	secretProvider *secretprovider.SecretProvider
+	secretProvider secretprovider.SecretProvider
 
 	mu      sync.Mutex
 	workers map[string]managedWorker // key = normalized context name + runtime mode
@@ -43,7 +43,7 @@ type managedWorker struct {
 // NewManager creates a scheduler Manager bound to registry. log and wg are
 // required for Start (running background workers) but may be omitted if the
 // Manager is only used for on-demand ListJobs/TriggerNow calls.
-func NewManager(registry *docker.ContextRegistry, log *slog.Logger, wg *sync.WaitGroup, secretProvider *secretprovider.SecretProvider) *Manager {
+func NewManager(registry *docker.ContextRegistry, log *slog.Logger, wg *sync.WaitGroup, secretProvider secretprovider.SecretProvider) *Manager {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -167,7 +167,7 @@ func (m *Manager) ListJobs(ctx context.Context, contextName, stackName string) (
 // TriggerNow executes one configured scheduled job immediately on the given
 // Docker context. Job selection matches by container/service name and
 // optional stack name.
-func (m *Manager) TriggerNow(ctx context.Context, contextName, jobName, stackName string, secretProvider *secretprovider.SecretProvider) (string, error) {
+func (m *Manager) TriggerNow(ctx context.Context, contextName, jobName, stackName string, secretProvider secretprovider.SecretProvider) (string, error) {
 	if m == nil || m.registry == nil {
 		return "", errors.New("scheduler manager is not configured with a docker context registry")
 	}

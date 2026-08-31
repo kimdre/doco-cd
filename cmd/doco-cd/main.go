@@ -345,7 +345,7 @@ func run() error {
 		log.Info("secret provider initialized", slog.String("provider", secretProvider.Name()))
 	}
 
-	schedulerManager := scheduler.NewManager(contexts, log.Logger, &wg, &secretProvider)
+	schedulerManager := scheduler.NewManager(contexts, log.Logger, &wg, secretProvider)
 	controlPlaneRuns := controlplane.NewRuns(
 		ctx,
 		log.Logger,
@@ -356,7 +356,7 @@ func run() error {
 				controlplane.RunTriggerScheduledJob: 50,
 			},
 			ScheduledJobs:  schedulerManager,
-			SecretProvider: &secretProvider,
+			SecretProvider: secretProvider,
 			Poll: controlplane.PollDependencies{
 				AppConfig:      c,
 				DataMountPoint: dataMountPoint,
@@ -379,7 +379,7 @@ func run() error {
 		dockerCli:        dockerCli,
 		contexts:         contexts,
 		log:              log,
-		secretProvider:   &secretProvider,
+		secretProvider:   secretProvider,
 	}
 
 	apiHandler, err := api.NewHandler(api.Dependencies{

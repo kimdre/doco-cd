@@ -454,7 +454,7 @@ env_files:
 					metadata,
 					dockerCli,
 					nil,
-					&secretProvider,
+					secretProvider,
 					stackName,
 				); err != nil {
 					return err

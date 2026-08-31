@@ -124,7 +124,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	)
 
 	// Compare external secrets if a secret provider is configured
-	if s.SecretProvider != nil && *s.SecretProvider != nil && len(s.DeployConfig.ExternalSecrets) > 0 {
+	if s.SecretProvider != nil && len(s.DeployConfig.ExternalSecrets) > 0 {
 		stageLog.Debug("resolving external secrets", slog.Any("external_secrets", s.DeployConfig.ExternalSecrets))
 
 		appConfig, err := app.GetConfig()
@@ -145,7 +145,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		}
 
 		// Resolve external secrets
-		resolvedSecrets, err := (*s.SecretProvider).ResolveSecretReferences(ctx, encodedSecrets)
+		resolvedSecrets, err := s.SecretProvider.ResolveSecretReferences(ctx, encodedSecrets)
 		if err != nil {
 			return fmt.Errorf("failed to resolve external secrets: %w", err)
 		}

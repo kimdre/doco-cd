@@ -46,7 +46,7 @@ func RunComposeScheduledContainer(
 	containerID string,
 	labels map[string]string,
 	waitForExit bool,
-	secretProvider *secretprovider.SecretProvider,
+	secretProvider secretprovider.SecretProvider,
 ) error {
 	ref, err := composeScheduledServiceRefFromLabels(labels)
 	if err != nil {
@@ -107,7 +107,7 @@ func RunComposeOneOffFromServiceDefinition(
 	ctx context.Context,
 	dockerCli command.Cli,
 	labels map[string]string,
-	secretProvider *secretprovider.SecretProvider,
+	secretProvider secretprovider.SecretProvider,
 ) error {
 	ref, err := composeScheduledServiceRefFromLabels(labels)
 	if err != nil {
@@ -207,7 +207,7 @@ func loadComposeScheduledProject(
 	ctx context.Context,
 	dockerCli command.Cli,
 	ref composeScheduledServiceRef,
-	secretProvider *secretprovider.SecretProvider,
+	secretProvider secretprovider.SecretProvider,
 ) (*types.Project, error) {
 	project, _, err := loadComposeScheduledProjectAll(ctx, dockerCli, ref, secretProvider)
 	if err != nil {
@@ -233,7 +233,7 @@ func loadComposeScheduledProjectAll(
 	ctx context.Context,
 	dockerCli command.Cli,
 	ref composeScheduledServiceRef,
-	secretProvider *secretprovider.SecretProvider,
+	secretProvider secretprovider.SecretProvider,
 ) (*types.Project, *deploy.Config, error) {
 	if ref.WorkingDir == "" {
 		return nil, nil, fmt.Errorf("%w: missing %q label",
@@ -388,7 +388,7 @@ func composeScheduledServiceRefFromSwarmLabels(labels map[string]string) (compos
 func loadComposeScheduledDeployConfig(
 	ctx context.Context,
 	ref composeScheduledServiceRef,
-	secretProvider *secretprovider.SecretProvider,
+	secretProvider secretprovider.SecretProvider,
 ) (*deploy.Config, string, error) {
 	if strings.TrimSpace(ref.RepositoryURL) == "" || strings.TrimSpace(ref.DeploymentName) == "" {
 		return nil, "", fmt.Errorf("%w: missing deployment repository and/or name label",
@@ -459,7 +459,7 @@ func prepareComposeScheduledDeployConfig(
 	deployConfig *deploy.Config,
 	sourceRepoPath string,
 	repoPath string,
-	secretProvider *secretprovider.SecretProvider,
+	secretProvider secretprovider.SecretProvider,
 ) error {
 	if deployConfig == nil {
 		return fmt.Errorf("%w: missing deployment config", ErrComposeScheduledMetadataUnavailable)
@@ -485,7 +485,7 @@ func prepareComposeScheduledDeployConfig(
 
 	maps.Copy(deployConfig.Internal.Environment, deployConfig.Environment)
 
-	if secretProvider == nil || *secretProvider == nil || len(deployConfig.ExternalSecrets) == 0 {
+	if secretProvider == nil || len(deployConfig.ExternalSecrets) == 0 {
 		return nil
 	}
 
@@ -506,7 +506,7 @@ func prepareComposeScheduledDeployConfig(
 		return fmt.Errorf("encode external secrets for scheduled service %s: %w", deployConfig.Name, err)
 	}
 
-	resolvedSecrets, err := (*secretProvider).ResolveSecretReferences(ctx, encodedSecrets)
+	resolvedSecrets, err := secretProvider.ResolveSecretReferences(ctx, encodedSecrets)
 	if err != nil {
 		return fmt.Errorf("resolve external secrets for scheduled service %s: %w", deployConfig.Name, err)
 	}

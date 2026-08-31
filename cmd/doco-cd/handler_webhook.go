@@ -251,7 +251,7 @@ type orchestrationHandler struct {
 	dockerCli        command.Cli          // Docker CLI client
 	contexts         *docker.ContextRegistry
 	log              *logger.Logger // Logger for logging messages
-	secretProvider   *secretprovider.SecretProvider
+	secretProvider   secretprovider.SecretProvider
 	testName         string // Overwrites the deployConfig.Name to make test deployments unique and prevent conflicts between tests when running in parallel. Not used in production.
 }
 
@@ -314,7 +314,7 @@ func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any
 // handleEvent executes the deployment process for a given webhook event.
 func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *app.Config,
 	dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget string, metadata notification.Metadata,
-	dockerCli command.Cli, contexts *docker.ContextRegistry, secretProvider *secretprovider.SecretProvider,
+	dockerCli command.Cli, contexts *docker.ContextRegistry, secretProvider secretprovider.SecretProvider,
 	testName string,
 ) (controlplane.RunResult, error) {
 	startTime := time.Now()

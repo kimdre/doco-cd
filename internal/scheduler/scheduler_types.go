@@ -59,7 +59,7 @@ type scheduler struct {
 	// instead of deriving behavior from the process-global
 	// swarm.GetModeEnabled().
 	mode           scheduledJobMode
-	secretProvider *secretprovider.SecretProvider
+	secretProvider secretprovider.SecretProvider
 	log            *slog.Logger
 	wg             *sync.WaitGroup
 	startedAt      time.Time
@@ -125,7 +125,7 @@ type JobInfo struct {
 // newSchedulerForMode builds a scheduler worker bound to a single Docker
 // context and runtime mode. log and wg may be nil for short-lived, one-shot
 // workers (e.g. a single ListJobs/TriggerNow call) that never call run().
-func newSchedulerForMode(cc docker.ContextClient, mode scheduledJobMode, log *slog.Logger, wg *sync.WaitGroup, secretProvider *secretprovider.SecretProvider) *scheduler {
+func newSchedulerForMode(cc docker.ContextClient, mode scheduledJobMode, log *slog.Logger, wg *sync.WaitGroup, secretProvider secretprovider.SecretProvider) *scheduler {
 	if log == nil {
 		log = slog.Default()
 	}

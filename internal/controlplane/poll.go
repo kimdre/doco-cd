@@ -73,7 +73,7 @@ func (e *PollRunsFailedError) Unwrap() error {
 
 // PollRunner executes one validated poll configuration with application dependencies.
 type PollRunner func(ctx context.Context, pollConfig poll.Config, appConfig *app.Config, dataMountPoint container.MountPoint,
-	dockerCli command.Cli, contexts *docker.ContextRegistry, logger *slog.Logger, metadata notification.Metadata, secretProvider *secretprovider.SecretProvider,
+	dockerCli command.Cli, contexts *docker.ContextRegistry, logger *slog.Logger, metadata notification.Metadata, secretProvider secretprovider.SecretProvider,
 	triggerReason string,
 ) error
 
@@ -91,7 +91,7 @@ type controlPlanePoll struct {
 	dataMountPoint container.MountPoint
 	dockerCli      command.Cli
 	contexts       *docker.ContextRegistry
-	secretProvider *secretprovider.SecretProvider
+	secretProvider secretprovider.SecretProvider
 	run            PollRunner
 }
 
@@ -100,7 +100,7 @@ func newControlPlanePoll(
 	dataMountPoint container.MountPoint,
 	dockerCli command.Cli,
 	contexts *docker.ContextRegistry,
-	secretProvider *secretprovider.SecretProvider,
+	secretProvider secretprovider.SecretProvider,
 	run PollRunner,
 ) *controlPlanePoll {
 	if appConfig == nil {

@@ -151,7 +151,7 @@ func postEarlyCommitStatus(ctx context.Context, jobLog *slog.Logger, appConfig *
 func handle(ctx context.Context, jobLog *slog.Logger,
 	appConfig *app.Config,
 	dataMountPoint container.MountPoint,
-	secretProvider *secretprovider.SecretProvider,
+	secretProvider secretprovider.SecretProvider,
 	dockerCli command.Cli,
 	contexts *docker.ContextRegistry,
 	jobTrigger stages.JobTrigger,
