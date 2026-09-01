@@ -10,6 +10,7 @@ import (
 	"github.com/go-co-op/gocron/v2"
 
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 )
 
@@ -59,6 +60,7 @@ type scheduler struct {
 	// using the capability supplied by ContextRegistry.
 	mode            scheduledJobMode
 	secretProvider  secretprovider.SecretProvider
+	notifier        notification.Sender
 	stopHoldTracker ServiceStopHoldTracker
 	log             *slog.Logger
 	wg              *sync.WaitGroup
@@ -135,7 +137,7 @@ type JobInfo struct {
 // newSchedulerForMode builds a scheduler worker bound to a single Docker
 // context and runtime mode. log and wg may be nil for short-lived, one-shot
 // workers (e.g. a single ListJobs/TriggerNow call) that never call run().
-func newSchedulerForMode(cc docker.ContextClient, mode scheduledJobMode, log *slog.Logger, wg *sync.WaitGroup, secretProvider secretprovider.SecretProvider, stopHoldTracker ServiceStopHoldTracker, runtime *runtimeStore, composeOptions docker.ScheduledComposeOptions) *scheduler {
+func newSchedulerForMode(cc docker.ContextClient, mode scheduledJobMode, log *slog.Logger, wg *sync.WaitGroup, secretProvider secretprovider.SecretProvider, notifier notification.Sender, stopHoldTracker ServiceStopHoldTracker, runtime *runtimeStore, composeOptions docker.ScheduledComposeOptions) *scheduler {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -151,6 +153,7 @@ func newSchedulerForMode(cc docker.ContextClient, mode scheduledJobMode, log *sl
 		contextName:     contextName,
 		mode:            mode,
 		secretProvider:  secretProvider,
+		notifier:        notifier,
 		stopHoldTracker: stopHoldTracker,
 		log:             log.With(slog.String("component", "scheduler"), slog.String("context", docker.DisplayContextName(contextName))),
 		wg:              wg,

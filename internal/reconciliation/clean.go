@@ -26,6 +26,7 @@ import (
 func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.Logger,
 	dockerCli command.Cli, swarmMode bool, contextName string,
 	cloneUrl string, deployConfigs []*deployConfig.Config, metadata notification.Metadata,
+	notifier notification.Sender,
 ) error {
 	autoDiscoveredNames := make(map[string]bool)
 	runConfigTargets := make(map[string]struct{})
@@ -132,7 +133,7 @@ func cleanupObsoleteAutoDiscoveredContainers(ctx context.Context, jobLog *slog.L
 				return fmt.Errorf("failed to remove obsolete auto-discovered stack '%s': %w", stackName, err)
 			}
 
-			err = notification.Send(notification.Success, "Stack destroyed", "successfully destroyed stack "+removeConfig.Name, notifyMetadata)
+			err = notifier.Send(notification.Success, "Stack destroyed", "successfully destroyed stack "+removeConfig.Name, notifyMetadata)
 			if err != nil {
 				stackLog.Error("failed to send notification", logger.ErrAttr(err))
 			}

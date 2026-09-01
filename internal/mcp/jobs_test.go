@@ -227,7 +227,7 @@ func TestMCPScheduledJobsTool(t *testing.T) {
 
 	t.Cleanup(func() { _ = contexts.Close() })
 
-	schedulerManager := scheduler.NewManager(contexts, h.log.Logger, nil, nil, nil, docker.ScheduledComposeOptions{})
+	schedulerManager := scheduler.NewManager(contexts, h.log.Logger, nil, nil, nil, nil, docker.ScheduledComposeOptions{})
 	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
 		dockerCli: dockerCli,
 		log:       h.log,

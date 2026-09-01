@@ -460,6 +460,7 @@ env_files:
 					metadata,
 					stackName,
 					deployment,
+					newTestNotifier(t),
 				); err != nil {
 					return err
 				}

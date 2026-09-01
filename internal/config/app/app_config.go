@@ -16,7 +16,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/git"
-	"github.com/kimdre/doco-cd/internal/notification"
 )
 
 const Name = "doco-cd" // Name of the application
@@ -226,18 +225,6 @@ func GetConfig() (*Config, error) {
 		if !path.IsAbs(cfg.DataHostPath) {
 			return nil, fmt.Errorf("DATA_HOST_PATH must be an absolute Unix path: %q", cfg.DataHostPath)
 		}
-	}
-
-	notification.SetFailureRepeatInterval(cfg.AppriseNotifyRepeatInterval)
-
-	err = notification.SetAppriseConfig(
-		string(cfg.AppriseApiURL),
-		cfg.AppriseNotifyUrls,
-		cfg.AppriseNotifyLevel,
-		cfg.AppriseNotifyBodyTemplate,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to configure notifications: %w", err)
 	}
 
 	return &cfg, nil

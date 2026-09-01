@@ -23,6 +23,15 @@ import (
 func newTestReconciliationManager(t *testing.T, dependencies reconciliation.Dependencies) *reconciliation.Manager {
 	t.Helper()
 
+	if dependencies.Notifier == nil {
+		notifier, err := notification.New(notification.Config{})
+		if err != nil {
+			t.Fatalf("failed to create test notifier: %v", err)
+		}
+
+		dependencies.Notifier = notifier
+	}
+
 	if dependencies.Contexts == nil {
 		dependencies.Contexts = docker.NewContextRegistry(dependencies.DockerCLI, docker.ContextRegistryOptions{
 			Quiet:         true,
@@ -40,6 +49,17 @@ func newTestReconciliationManager(t *testing.T, dependencies reconciliation.Depe
 	t.Cleanup(manager.Close)
 
 	return manager
+}
+
+func newTestNotifier(t *testing.T) notification.Sender {
+	t.Helper()
+
+	notifier, err := notification.New(notification.Config{})
+	if err != nil {
+		t.Fatalf("failed to create test notifier: %v", err)
+	}
+
+	return notifier
 }
 
 // newTestDeployment builds a *controlplane.Deployment backed by a fresh

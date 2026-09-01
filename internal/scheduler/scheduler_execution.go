@@ -486,6 +486,10 @@ func (s *scheduler) sendRunNotification(job scheduledJob, cfg docker.JobSchedule
 		return
 	}
 
+	if s.notifier == nil {
+		return
+	}
+
 	actorKind := "container"
 	if job.mode == scheduledJobModeSwarm {
 		actorKind = "service"
@@ -502,7 +506,7 @@ func (s *scheduler) sendRunNotification(job scheduledJob, cfg docker.JobSchedule
 		AffectedActorName: job.name,
 	}
 
-	if err := notification.Send(lvl, title, msg, metadata); err != nil {
+	if err := s.notifier.Send(lvl, title, msg, metadata); err != nil {
 		s.log.Error("failed to send scheduled job notification", logger.ErrAttr(err), slog.String("job", job.name))
 	}
 }

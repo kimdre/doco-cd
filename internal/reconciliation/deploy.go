@@ -16,7 +16,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 
 	"github.com/kimdre/doco-cd/internal/logger"
-	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/stages"
 	"github.com/kimdre/doco-cd/internal/test"
 )
@@ -82,7 +81,7 @@ func (m *Manager) deploy(ctx context.Context, req DeployRequest) error {
 			if err := cleanupObsoleteAutoDiscoveredContainers(ctx, req.Logger,
 				entry.cli, swarmMode, contextName, req.Repository.SourceUrl,
 				modeConfigs,
-				req.Metadata); err != nil {
+				req.Metadata, m.notifier); err != nil {
 				req.Logger.Error("failed to clean up obsolete auto-discovered containers for context",
 					slog.String("context", docker.DisplayContextName(contextName)),
 					slog.Bool("swarm_mode", swarmMode),
@@ -243,9 +242,9 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 
 	stageMgr, err := stages.NewStageManager(
 		stages.Dependencies{
-			AppConfig:         m.appConfig,
-			SecretProvider:    m.secretProvider,
-			NotifyFailureFunc: failNotifyFunc,
+			AppConfig:      m.appConfig,
+			SecretProvider: m.secretProvider,
+			Notifier:       m.notifier,
 		},
 		stages.RunInput{
 			Log:        deployLog,
@@ -295,18 +294,4 @@ func groupDeployConfigsByMode(dcs []*deployConfig.Config, swarmAvailable bool) m
 	}
 
 	return grouped
-}
-
-func failNotifyFunc(deployLog *slog.Logger, err error, metadata notification.Metadata) {
-	// Don't write to HTTP from goroutines. Just send notification and log
-	go func() {
-		notifyErr := notification.Send(notification.Failure, "Deployment Failed", err.Error(), metadata)
-		if notifyErr != nil {
-			deployLog.Error("failed to send notification", logger.ErrAttr(notifyErr))
-		}
-	}()
-
-	deployLog.Error("deployment failed",
-		slog.String("stack", metadata.Stack),
-		logger.ErrAttr(err))
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/graceful"
 	"github.com/kimdre/doco-cd/internal/logger"
+	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 )
 
@@ -30,6 +31,7 @@ type Manager struct {
 	log             *slog.Logger
 	wg              *sync.WaitGroup
 	secretProvider  secretprovider.SecretProvider
+	notifier        notification.Sender
 	stopHoldTracker ServiceStopHoldTracker
 	runtime         *runtimeStore
 	// composeOptions bundles the Docker-owned settings needed to reload scheduled Compose
@@ -53,7 +55,7 @@ type managedWorker struct {
 // NewManager creates a scheduler Manager bound to registry. log and wg are
 // required for Start (running background workers) but may be omitted if the
 // Manager is only used for on-demand ListJobs/TriggerNow calls.
-func NewManager(registry *docker.ContextRegistry, log *slog.Logger, wg *sync.WaitGroup, secretProvider secretprovider.SecretProvider, stopHoldTracker ServiceStopHoldTracker, composeOptions docker.ScheduledComposeOptions) *Manager {
+func NewManager(registry *docker.ContextRegistry, log *slog.Logger, wg *sync.WaitGroup, secretProvider secretprovider.SecretProvider, notifier notification.Sender, stopHoldTracker ServiceStopHoldTracker, composeOptions docker.ScheduledComposeOptions) *Manager {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -63,6 +65,7 @@ func NewManager(registry *docker.ContextRegistry, log *slog.Logger, wg *sync.Wai
 		log:             log.With(slog.String("component", "scheduler_manager")),
 		wg:              wg,
 		secretProvider:  secretProvider,
+		notifier:        notifier,
 		stopHoldTracker: stopHoldTracker,
 		runtime:         newRuntimeStore(),
 		composeOptions:  composeOptions,
@@ -138,7 +141,7 @@ func (m *Manager) refreshWorkers(ctx context.Context) {
 				continue
 			}
 
-			worker := newSchedulerForMode(result.ContextClient, mode, m.log, m.wg, m.secretProvider, m.stopHoldTracker, m.runtime, m.composeOptions)
+			worker := newSchedulerForMode(result.ContextClient, mode, m.log, m.wg, m.secretProvider, m.notifier, m.stopHoldTracker, m.runtime, m.composeOptions)
 			workerCtx, cancel := context.WithCancel(ctx)
 			m.nextID++
 			workerID := m.nextID
@@ -184,7 +187,7 @@ func (m *Manager) ListJobs(ctx context.Context, contextName, stackName string) (
 		return nil, fmt.Errorf("failed to resolve docker context %q: %w", docker.DisplayContextName(contextName), err)
 	}
 
-	return listJobsForModes(ctx, schedulerModes(cc.SwarmMode), cc, m.log, m.secretProvider, m.runtime, stackName, m.composeOptions)
+	return listJobsForModes(ctx, schedulerModes(cc.SwarmMode), cc, m.log, m.secretProvider, m.notifier, m.runtime, stackName, m.composeOptions)
 }
 
 // TriggerNow executes one configured scheduled job immediately on the given
@@ -200,7 +203,7 @@ func (m *Manager) TriggerNow(ctx context.Context, contextName, jobName, stackNam
 		return "", fmt.Errorf("failed to resolve docker context %q: %w", docker.DisplayContextName(contextName), err)
 	}
 
-	return triggerNowForModes(ctx, schedulerModes(cc.SwarmMode), cc, m.log, jobName, stackName, secretProvider, m.stopHoldTracker, m.runtime, m.composeOptions)
+	return triggerNowForModes(ctx, schedulerModes(cc.SwarmMode), cc, m.log, jobName, stackName, secretProvider, m.notifier, m.stopHoldTracker, m.runtime, m.composeOptions)
 }
 
 // stopWorkers requests cancellation for every managed worker. Each worker

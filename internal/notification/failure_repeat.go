@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -21,30 +20,10 @@ import (
 // before it is sent again as a reminder.
 const DefaultFailureRepeatInterval = time.Hour
 
-var (
-	failureMu             sync.Mutex
-	lastFailures          = map[string]failureRecord{}
-	failureRepeatInterval = DefaultFailureRepeatInterval
-)
-
 // failureRecord is the last failure notification sent for one stack.
 type failureRecord struct {
 	fingerprint string
 	sentAt      time.Time
-}
-
-// SetFailureRepeatInterval sets how long an unchanged failure is suppressed.
-// Zero or less turns suppression off entirely: every failure is sent, as it was
-// before this existed.
-func SetFailureRepeatInterval(interval time.Duration) {
-	failureMu.Lock()
-	defer failureMu.Unlock()
-
-	failureRepeatInterval = interval
-
-	if interval <= 0 {
-		lastFailures = map[string]failureRecord{}
-	}
 }
 
 // failureKey identifies the thing that failed. The stack is what an operator
@@ -66,22 +45,22 @@ func failureFingerprint(title, message string) string {
 // shouldSendFailure reports whether this failure is worth sending: it is new,
 // it differs from the last one for the same stack, or the reminder interval has
 // passed. It records what it lets through.
-func shouldSendFailure(key, fingerprint string, now time.Time) bool {
-	failureMu.Lock()
-	defer failureMu.Unlock()
+func (n *Notifier) shouldSendFailure(key, fingerprint string, now time.Time) bool {
+	n.failureMu.Lock()
+	defer n.failureMu.Unlock()
 
-	if failureRepeatInterval <= 0 {
+	if n.failureRepeatInterval <= 0 {
 		return true
 	}
 
-	pruneFailures(now)
+	n.pruneFailures(now)
 
-	last, found := lastFailures[key]
-	if found && last.fingerprint == fingerprint && now.Sub(last.sentAt) < failureRepeatInterval {
+	last, found := n.lastFailures[key]
+	if found && last.fingerprint == fingerprint && now.Sub(last.sentAt) < n.failureRepeatInterval {
 		return false
 	}
 
-	lastFailures[key] = failureRecord{fingerprint: fingerprint, sentAt: now}
+	n.lastFailures[key] = failureRecord{fingerprint: fingerprint, sentAt: now}
 
 	return true
 }
@@ -89,20 +68,20 @@ func shouldSendFailure(key, fingerprint string, now time.Time) bool {
 // pruneFailures drops records that cannot suppress anything anymore. Past the
 // repeat interval the next failure is sent whatever the record says, so keeping
 // it only grows the map for stacks that are renamed, removed or fixed without a
-// success notification. Caller holds failureMu.
-func pruneFailures(now time.Time) {
-	for key, record := range lastFailures {
-		if now.Sub(record.sentAt) >= failureRepeatInterval {
-			delete(lastFailures, key)
+// success notification. Caller holds n.failureMu.
+func (n *Notifier) pruneFailures(now time.Time) {
+	for key, record := range n.lastFailures {
+		if now.Sub(record.sentAt) >= n.failureRepeatInterval {
+			delete(n.lastFailures, key)
 		}
 	}
 }
 
 // clearFailure forgets the last failure of a stack, so the next one is sent
 // immediately instead of being taken for a repeat.
-func clearFailure(key string) {
-	failureMu.Lock()
-	defer failureMu.Unlock()
+func (n *Notifier) clearFailure(key string) {
+	n.failureMu.Lock()
+	defer n.failureMu.Unlock()
 
-	delete(lastFailures, key)
+	delete(n.lastFailures, key)
 }
