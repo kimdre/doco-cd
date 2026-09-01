@@ -303,6 +303,19 @@ func TestConfig_UnmarshalYAML_IntervalDuration(t *testing.T) {
 	}
 }
 
+func TestConfig_UnmarshalYAML_ExplicitZeroInterval(t *testing.T) {
+	t.Parallel()
+
+	var cfg Config
+	if err := yaml.Unmarshal([]byte("source: oci\nurl: ghcr.io/example/app:test\ninterval: 0\n"), &cfg); err != nil {
+		t.Fatalf("failed to unmarshal yaml: %v", err)
+	}
+
+	if cfg.Interval != 0 {
+		t.Fatalf("expected explicit zero interval, got %s", cfg.Interval)
+	}
+}
+
 func TestConfig_UnmarshalYAML_WatchDefaultsToTrueAndCanBeDisabled(t *testing.T) {
 	t.Parallel()
 
@@ -359,6 +372,12 @@ func TestConfig_UnmarshalJSON_IntervalVariants(t *testing.T) {
 			name:     "integer seconds",
 			input:    `{"source":"git","url":"https://example.com/repo.git","reference":"main","interval":45}`,
 			expected: 45 * time.Second,
+			watch:    true,
+		},
+		{
+			name:     "explicit zero",
+			input:    `{"source":"oci","url":"ghcr.io/example/app:test","interval":0}`,
+			expected: 0,
 			watch:    true,
 		},
 		{

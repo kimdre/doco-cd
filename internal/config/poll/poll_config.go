@@ -152,7 +152,6 @@ func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 		Source:       c.Source,
 		SourceUrl:    c.SourceUrl,
 		Reference:    c.Reference,
-		Interval:     c.Interval,
 		CustomTarget: c.CustomTarget,
 		RunOnce:      c.RunOnce,
 		Watch:        c.Watch,
@@ -163,7 +162,12 @@ func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 		return err
 	}
 
-	parsedInterval, err := parsePollInterval(raw.Interval)
+	interval := raw.Interval
+	if interval == nil {
+		interval = c.Interval
+	}
+
+	parsedInterval, err := parsePollInterval(interval)
 	if err != nil {
 		return err
 	}
@@ -190,7 +194,6 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 		Source:       c.Source,
 		SourceUrl:    c.SourceUrl,
 		Reference:    c.Reference,
-		Interval:     c.Interval,
 		CustomTarget: c.CustomTarget,
 		RunOnce:      c.RunOnce,
 		Watch:        c.Watch,
@@ -201,7 +204,12 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	parsedInterval, err := parsePollInterval(raw.Interval)
+	interval := raw.Interval
+	if interval == nil {
+		interval = c.Interval
+	}
+
+	parsedInterval, err := parsePollInterval(interval)
 	if err != nil {
 		return err
 	}
