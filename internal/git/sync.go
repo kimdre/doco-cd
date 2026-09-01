@@ -22,6 +22,14 @@ import (
 	"github.com/kimdre/doco-cd/internal/git/ssh"
 )
 
+func init() {
+	// Required for cloning from Azure DevOps repositories with go-git v5.
+	// Configure the package-level transport setting once to keep clones race-free.
+	transport.UnsupportedCapabilities = []capability.Capability{
+		capability.ThinPack,
+	}
+}
+
 // retrier is a shared retry configuration for git operations that may fail
 // due to transient issues like network errors or temporary repository states.
 var retrier = retry.New(
@@ -295,12 +303,6 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 		if proxyOpts != (transport.ProxyOptions{}) {
 			opts.ProxyOptions = proxyOpts
 		}
-	}
-
-	// Required for cloning from Azure DevOps repositories with go-git v5, should be fixed in v6
-	// https://github.com/go-git/go-git/pull/613
-	transport.UnsupportedCapabilities = []capability.Capability{
-		capability.ThinPack,
 	}
 
 	repo, err := cloneWithRetry(path, opts)
