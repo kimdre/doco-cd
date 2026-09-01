@@ -33,6 +33,8 @@ var ErrManagerClosed = errors.New("reconciliation manager is closed")
 // an optional secret provider. Per-run values (trigger, repository, deploy configs, payload,
 // notification metadata) are supplied per call via DeployRequest instead.
 type Dependencies struct {
+	// MaxConcurrentDeployments controls how many deployments can run concurrently within a manager instance.
+	// It sets the capacity of a semaphore-based limiter (DeployerLimiter).
 	MaxConcurrentDeployments uint `validate:"min=1"`
 
 	AppConfig      *app.Config          `validate:"required,nostructlevel"`
