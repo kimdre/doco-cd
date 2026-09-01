@@ -140,6 +140,10 @@ func TestDeploy(t *testing.T) {
 		CloneURL:  "https://github.com/kimdre/doco-cd_tests.git",
 		Private:   false,
 	}
+	if resolveTestSwarmMode(t, dockerCli.Client()) {
+		p.Ref = git.SwarmModeBranch
+		p.CommitSHA = plumbing.NewHash("244b6f9a5b3dc546ab3822d9c0744846f539c6ef")
+	}
 
 	tmpDir := t.TempDir()
 
@@ -172,13 +176,9 @@ func TestDeploy(t *testing.T) {
 
 	dcs, err := deployConfig.GetConfigs(repoPath, c.DeployConfigBaseDir, "", p.Ref, nil)
 
-	// commit have 5 apps
-	// https://github.com/kimdre/doco-cd_tests/blob/7be81e788a40724cee7542eec00a2af0c4340eba/.doco-cd.yml
-	composeEnabled := false
-
+	// Both runtime fixtures contain five deployments.
 	for _, dc := range dcs {
 		dc.Name = stackName + "-" + dc.Name
-		dc.Swarm.Enabled = &composeEnabled
 	}
 
 	dcs[0].Reconciliation.Enabled = false
