@@ -171,6 +171,7 @@ func TestReconciliationStopEventRestartSuppressionIntegration(t *testing.T) {
 	reconcileJob := newJob(newTestManagerWithDependencies(t, Dependencies{DockerCLI: stack.DockerCli}), DeployRequest{
 		Logger:        jobLog,
 		Metadata:      notification.Metadata{Repository: repositoryName, Stack: stackName, JobID: "test-job"},
+		JobTrigger:    stages.JobTriggerWebhook,
 		Repository:    stages.RepositoryData{SourceUrl: "https://github.com/kimdre/doco-cd_tests.git", Name: repositoryName},
 		Payload:       &webhook.ParsedPayload{FullName: repositoryName},
 		DeployConfigs: []*deployConfig.Config{dc},

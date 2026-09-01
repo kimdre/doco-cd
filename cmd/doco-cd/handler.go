@@ -153,8 +153,8 @@ func postEarlyCommitStatus(ctx context.Context, jobLog *slog.Logger, appConfig *
 // parsed webhook payload (zero value for non-webhook triggers).
 type handleRequest struct {
 	JobTrigger   stages.JobTrigger `validate:"required,oneof=webhook poll"`
-	SourceType   config.SourceType `validate:"required"`
-	SourceRef    string            `validate:"required"`
+	SourceType   config.SourceType
+	SourceRef    string `validate:"required"`
 	Ref          string
 	Private      bool
 	Metadata     notification.Metadata

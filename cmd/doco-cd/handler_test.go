@@ -9,11 +9,23 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/git"
+	"github.com/kimdre/doco-cd/internal/stages"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
+
+func TestHandleRequestAllowsDefaultSourceType(t *testing.T) {
+	err := validation.Validate(handleRequest{
+		JobTrigger: stages.JobTriggerWebhook,
+		SourceRef:  "https://github.com/owner/repo.git",
+	})
+	if err != nil {
+		t.Fatalf("handleRequest with default source type must validate: %v", err)
+	}
+}
 
 func TestEarlyFailureCommitStatusDescription(t *testing.T) {
 	tests := []struct {
