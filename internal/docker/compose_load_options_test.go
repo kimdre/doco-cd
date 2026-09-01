@@ -15,7 +15,7 @@ func TestNewComposeLoadOptions(t *testing.T) {
 	config := &app.Config{
 		PassEnv:                    true,
 		SkipTLSVerification:        true,
-		HttpProxy:                   transport.ProxyOptions{URL: "https://proxy.example.com"},
+		HttpProxy:                  transport.ProxyOptions{URL: "https://proxy.example.com"},
 		GitCloneSubmodules:         true,
 		GitCloneDepth:              5,
 		SSHPrivateKey:              "private-key",
