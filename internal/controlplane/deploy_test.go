@@ -5,9 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/docker/cli/cli/command"
 	"github.com/moby/moby/api/types/container"
-	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/commitstatus"
 	"github.com/kimdre/doco-cd/internal/common/validation"
@@ -20,27 +18,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/source"
 	"github.com/kimdre/doco-cd/internal/stages"
 )
-
-// fakeDockerCli satisfies command.Cli for tests, returning a fakeAPIClient
-// whose Info call reports a non-swarm-manager daemon so
-// Deployment.Deploy's swarm refresh step succeeds without a real Docker
-// daemon and without touching global swarm feature-detection state (which
-// would be unsafe to mutate from parallel tests).
-type fakeDockerCli struct {
-	command.Cli
-}
-
-func (fakeDockerCli) Client() client.APIClient {
-	return fakeAPIClient{}
-}
-
-type fakeAPIClient struct {
-	client.APIClient
-}
-
-func (fakeAPIClient) Info(context.Context, client.InfoOptions) (client.SystemInfoResult, error) {
-	return client.SystemInfoResult{}, nil
-}
 
 type fakeSourcePreparer struct {
 	result source.Result
@@ -75,7 +52,6 @@ func newTestDeployment(t *testing.T, preparer controlplane.SourcePreparer, recon
 	d, err := controlplane.NewDeployment(controlplane.DeploymentDependencies{
 		SourcePreparer: preparer,
 		Reconciler:     reconciler,
-		DockerCLI:      fakeDockerCli{},
 		DataMountPoint: container.MountPoint{Type: "bind", Source: "/src", Destination: "/dst"},
 	})
 	if err != nil {

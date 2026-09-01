@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/kimdre/doco-cd/internal/docker"
-	"github.com/kimdre/doco-cd/internal/docker/swarm"
 )
 
 // resolveDockerContext returns a named context or the injected default Docker CLI.
@@ -46,17 +45,9 @@ func (h *Handler) resolveSwarmDockerContext(ctx context.Context, contextName str
 	return contextClient, nil
 }
 
-// requireDockerSwarm checks named-context state or probes the default daemon directly.
-func requireDockerSwarm(ctx context.Context, contextClient docker.ContextClient) error {
+// requireDockerSwarm checks the capability resolved by ContextRegistry.
+func requireDockerSwarm(_ context.Context, contextClient docker.ContextClient) error {
 	enabled := contextClient.SwarmMode
-	if contextClient.Name == "" {
-		var err error
-
-		enabled, err = swarm.ResolveModeEnabled(ctx, contextClient.Cli.Client())
-		if err != nil {
-			return fmt.Errorf("failed to check Docker Swarm mode: %w", err)
-		}
-	}
 
 	if !enabled {
 		return errors.New("swarm features are disabled or the Docker daemon is not an active swarm manager")

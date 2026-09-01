@@ -124,11 +124,7 @@ func requireSwarmRollbackIntegrationTestGate(t *testing.T) {
 	}
 
 	dockerClient := getDockerClient(t)
-	if err := RefreshModeEnabled(t.Context(), dockerClient); err != nil {
-		t.Skipf("skipping swarm rollback integration test: %v", err)
-	}
-
-	if !GetModeEnabled() {
+	if !resolveTestSwarmMode(t, dockerClient) {
 		t.Skip("swarm mode is not enabled, skipping rollback integration test")
 	}
 }

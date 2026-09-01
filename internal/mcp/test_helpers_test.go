@@ -13,12 +13,14 @@ import (
 
 	"github.com/docker/cli/cli/command"
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/docker"
+	dockerswarm "github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/restapi"
@@ -27,6 +29,17 @@ import (
 )
 
 const testMCPPath = "/mcp"
+
+func resolveTestSwarmMode(t *testing.T, apiClient client.APIClient) bool {
+	t.Helper()
+
+	enabled, err := dockerswarm.ResolveModeEnabled(t.Context(), apiClient)
+	if err != nil {
+		t.Fatalf("failed to check if Docker daemon is in Swarm mode: %v", err)
+	}
+
+	return enabled
+}
 
 type apiKeyRoundTripper struct {
 	apiKey string

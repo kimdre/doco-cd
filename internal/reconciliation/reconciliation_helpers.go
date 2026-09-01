@@ -63,7 +63,7 @@ const containerRemovalSettleTimeout = 15 * time.Second
 // (inspect returns not-found) or no longer reported as "removing", or until the
 // timeout elapses. This prevents a race between Docker's async container teardown
 // and docker compose trying to recreate the container.
-func waitForContainerRemovalSettled(ctx context.Context, jobLog *slog.Logger, cli client.APIClient, containerID string, timeout time.Duration) {
+func (j *job) waitForContainerRemovalSettled(ctx context.Context, jobLog *slog.Logger, cli client.APIClient, containerID string, timeout time.Duration) {
 	if containerID == "" || timeout <= 0 {
 		return
 	}
@@ -71,7 +71,7 @@ func waitForContainerRemovalSettled(ctx context.Context, jobLog *slog.Logger, cl
 	deadline := time.Now().Add(timeout)
 
 	for {
-		inspectResult, err := cli.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
+		state, err := j.manager.runtimeQueries.InspectContainerState(ctx, cli, containerID)
 		if err != nil {
 			// Treat any inspect error (most importantly "no such container") as
 			// "container is gone, safe to proceed".
@@ -87,7 +87,6 @@ func waitForContainerRemovalSettled(ctx context.Context, jobLog *slog.Logger, cl
 			return
 		}
 
-		state := inspectResult.Container.State
 		if state == nil || !strings.EqualFold(strings.TrimSpace(string(state.Status)), "removing") {
 			return
 		}

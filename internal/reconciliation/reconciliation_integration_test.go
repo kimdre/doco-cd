@@ -15,7 +15,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/app"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
-	dockerSwarm "github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/stages"
@@ -241,7 +240,7 @@ func TestCleanupObsoleteAutoDiscoveredContainers_EmptyDiscoveredConfigs_RemovesS
 		ctx,
 		jobLog,
 		stack.DockerCli,
-		dockerSwarm.GetModeEnabled(),
+		resolveTestSwarmMode(t, stack.DockerCli.Client()),
 		"",
 		repoURL,
 		[]*deployConfig.Config{},
@@ -274,11 +273,7 @@ func requireDockerIntegrationTestGate(t *testing.T) {
 		_ = dockerCli.Client().Close()
 	}()
 
-	if err := dockerSwarm.RefreshModeEnabled(t.Context(), dockerCli.Client()); err != nil {
-		t.Fatalf("failed to inspect Docker swarm mode: %v", err)
-	}
-
-	if dockerSwarm.GetModeEnabled() {
+	if resolveTestSwarmMode(t, dockerCli.Client()) {
 		t.Skip("reconciliation Docker event integration tests require non-Swarm mode")
 	}
 }

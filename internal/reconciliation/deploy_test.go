@@ -380,7 +380,12 @@ func destroyTestStack(ctx context.Context, cli client.APIClient, stackName strin
 		}
 	}
 
-	if err := docker.RemoveLabeledVolumes(ctx, cli, dockerSwarm.GetModeEnabled(), stackName); err != nil {
+	swarmMode, err := dockerSwarm.ResolveModeEnabled(ctx, cli)
+	if err != nil {
+		return err
+	}
+
+	if err := docker.RemoveLabeledVolumes(ctx, cli, swarmMode, stackName); err != nil {
 		return err
 	}
 

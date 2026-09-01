@@ -13,7 +13,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/docker"
-	dockerswarm "github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/scheduler"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
@@ -209,7 +208,7 @@ func TestMCPScheduledJobsTool(t *testing.T) {
 
 	t.Cleanup(func() { _ = dockerCli.Client().Close() })
 
-	if dockerswarm.GetModeEnabled() {
+	if resolveTestSwarmMode(t, dockerCli.Client()) {
 		t.Skip("compose scheduled-job fixture requires standalone mode")
 	}
 
@@ -224,7 +223,7 @@ func TestMCPScheduledJobsTool(t *testing.T) {
 `), test.WithName(projectName))
 
 	h := &Handler{dockerCli: dockerCli, log: logger.New(logger.LevelCritical)}
-	contexts := docker.NewContextRegistry(dockerCli, true)
+	contexts := docker.NewContextRegistry(dockerCli, docker.ContextRegistryOptions{Quiet: true, SwarmFeatures: true})
 
 	t.Cleanup(func() { _ = contexts.Close() })
 

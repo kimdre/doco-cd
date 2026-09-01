@@ -32,8 +32,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/test"
 
-	"github.com/kimdre/doco-cd/internal/docker/swarm"
-
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/lock"
@@ -226,7 +224,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 	var cloneUrl string
 
-	if swarm.GetModeEnabled() {
+	if SwarmModeEnabled {
 		payloadFile = githubPayloadFileSwarmMode
 		cloneUrl = "https://github.com/kimdre/doco-cd_tests.git"
 		indexPath = path.Join("html", "index.html")
@@ -256,7 +254,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 
 	appConfig.GitCommitStatus = false
 
-	if !swarm.GetModeEnabled() {
+	if !SwarmModeEnabled {
 		// Route the payload's clone URL to the local fixture repo created
 		// above, so this test never clones the live kimdre/doco-cd repo.
 		appConfig.SourceURLRewrites = map[string]string{
@@ -292,7 +290,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		log:       log,
 		testName:  stackName,
 
-		deployment: newTestDeployment(t, appConfig, mountPoint, dockerCli, reconciliation.Dependencies{
+		deployment: newTestDeployment(t, appConfig, mountPoint, reconciliation.Dependencies{
 			AppConfig:      appConfig,
 			DataMountPoint: mountPoint,
 			DockerCLI:      dockerCli,
@@ -340,7 +338,7 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		testContainerPort string
 	)
 
-	if swarm.GetModeEnabled() {
+	if SwarmModeEnabled {
 		t.Log("Testing in Swarm mode")
 
 		inspectName := stackName + "_" + "test"

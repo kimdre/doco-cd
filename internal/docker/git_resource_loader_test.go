@@ -25,7 +25,6 @@ import (
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
 
-	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/test"
 )
 
@@ -580,11 +579,7 @@ func TestDeployComposeWithGitInclude(t *testing.T) {
 		t.Fatalf("create Docker CLI: %v", err)
 	}
 
-	if err := swarm.RefreshModeEnabled(ctx, dockerCli.Client()); err != nil {
-		t.Fatalf("check Swarm mode: %v", err)
-	}
-
-	if swarm.GetModeEnabled() {
+	if resolveTestSwarmMode(ctx, t, dockerCli.Client()) {
 		t.Skip("Swarm mode is enabled, skipping standalone Compose test")
 	}
 

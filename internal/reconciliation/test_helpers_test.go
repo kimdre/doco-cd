@@ -4,10 +4,23 @@ import (
 	"testing"
 
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/docker"
+	dockerSwarm "github.com/kimdre/doco-cd/internal/docker/swarm"
 )
+
+func resolveTestSwarmMode(t *testing.T, apiClient client.APIClient) bool {
+	t.Helper()
+
+	enabled, err := dockerSwarm.ResolveModeEnabled(t.Context(), apiClient)
+	if err != nil {
+		t.Fatalf("failed to check if Docker daemon is in Swarm mode: %v", err)
+	}
+
+	return enabled
+}
 
 // newTestManagerWithDependencies creates a Manager for tests, filling in a zero-value AppConfig
 // and a fresh Docker CLI (closed via t.Cleanup) for any dependency left unset in deps, so tests
@@ -38,6 +51,15 @@ func newTestManagerWithDependencies(t *testing.T, deps Dependencies) *Manager {
 		t.Cleanup(func() { _ = dockerCli.Client().Close() })
 
 		deps.DockerCLI = dockerCli
+	}
+
+	if deps.Contexts == nil {
+		deps.Contexts = docker.NewContextRegistry(deps.DockerCLI, docker.ContextRegistryOptions{
+			Quiet:         true,
+			SwarmFeatures: true,
+		})
+
+		t.Cleanup(func() { _ = deps.Contexts.Close() })
 	}
 
 	manager, err := NewManager(deps)

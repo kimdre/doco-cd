@@ -7,7 +7,6 @@ import (
 
 	"github.com/docker/cli/cli/command"
 	"github.com/moby/moby/api/types/events"
-	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/common/id"
 	"github.com/kimdre/doco-cd/internal/common/types/set"
@@ -16,7 +15,6 @@ import (
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 
 	"github.com/kimdre/doco-cd/internal/docker"
-	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
 )
@@ -31,17 +29,15 @@ func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *s
 		repositoryLabelValue = j.info.Payload.FullName
 	}
 
-	filterArgs := make(client.Filters)
-	filterArgs.Add("label", docker.DocoCDLabels.Metadata.Manager+"="+app.Name)
-	filterArgs.Add("label", docker.DocoCDLabels.Source.Name+"="+repositoryLabelValue)
-
-	containerResult, err := cli.Client().ContainerList(ctx, client.ContainerListOptions{All: true, Filters: filterArgs})
+	containers, err := j.manager.runtimeQueries.ListManagedRepositoryContainers(
+		ctx, cli.Client(), app.Name, repositoryLabelValue, true,
+	)
 	if err != nil {
 		jobLog.Error("failed to list containers for startup unhealthy scan", logger.ErrAttr(err))
 		return
 	}
 
-	for _, c := range containerResult.Items {
+	for _, c := range containers {
 		stackName := strings.TrimSpace(c.Labels[docker.DocoCDLabels.Deployment.Name])
 		if stackName == "" {
 			continue
@@ -54,7 +50,7 @@ func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *s
 			continue
 		}
 
-		inspectResult, err := cli.Client().ContainerInspect(ctx, c.ID, client.ContainerInspectOptions{})
+		state, err := j.manager.runtimeQueries.InspectContainerState(ctx, cli.Client(), c.ID)
 		if err != nil {
 			jobLog.Debug("failed to inspect container during startup unhealthy scan",
 				slog.String("container_id", shortID(c.ID)),
@@ -64,9 +60,7 @@ func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *s
 			continue
 		}
 
-		inspect := inspectResult.Container
-
-		if inspect.State == nil || inspect.State.Health == nil || strings.ToLower(strings.TrimSpace(string(inspect.State.Health.Status))) != "unhealthy" {
+		if state == nil || state.Health == nil || strings.ToLower(strings.TrimSpace(string(state.Health.Status))) != "unhealthy" {
 			continue
 		}
 
@@ -182,14 +176,9 @@ func (j *job) findMissingContainersOnStartup(ctx context.Context, jobLog *slog.L
 		repositoryLabelValue = j.info.Payload.FullName
 	}
 
-	filterArgs := make(client.Filters)
-	filterArgs.Add("label", docker.DocoCDLabels.Metadata.Manager+"="+app.Name)
-	filterArgs.Add("label", docker.DocoCDLabels.Source.Name+"="+repositoryLabelValue)
-
-	containerResult, err := cli.Client().ContainerList(ctx, client.ContainerListOptions{
-		All:     false, // running only
-		Filters: filterArgs,
-	})
+	containers, err := j.manager.runtimeQueries.ListManagedRepositoryContainers(
+		ctx, cli.Client(), app.Name, repositoryLabelValue, false,
+	)
 	if err != nil {
 		jobLog.Error("failed to list containers for startup missing scan", logger.ErrAttr(err))
 		return nil
@@ -197,7 +186,7 @@ func (j *job) findMissingContainersOnStartup(ctx context.Context, jobLog *slog.L
 
 	runningStacks := set.New[string]()
 
-	for _, c := range containerResult.Items {
+	for _, c := range containers {
 		if stackName := strings.TrimSpace(c.Labels[docker.DocoCDLabels.Deployment.Name]); stackName != "" {
 			runningStacks.Add(stackName)
 		}
@@ -223,7 +212,9 @@ func (j *job) findMissingSwarmServicesOnStartup(ctx context.Context, jobLog *slo
 		repositoryLabelValue = j.info.Payload.FullName
 	}
 
-	services, err := swarm.GetServicesByLabel(ctx, cli.Client(), docker.DocoCDLabels.Metadata.Manager, app.Name)
+	services, err := j.manager.runtimeQueries.ListManagedRepositoryServices(
+		ctx, cli.Client(), app.Name, repositoryLabelValue,
+	)
 	if err != nil {
 		jobLog.Error("failed to list swarm services for startup missing scan", logger.ErrAttr(err))
 		return nil
@@ -233,11 +224,6 @@ func (j *job) findMissingSwarmServicesOnStartup(ctx context.Context, jobLog *slo
 
 	for _, svc := range services {
 		labels := docker.SwarmServiceLabels(svc)
-
-		// Filter by repository to avoid matching services from other repos on the same swarm.
-		if strings.TrimSpace(labels[docker.DocoCDLabels.Source.Name]) != repositoryLabelValue {
-			continue
-		}
 
 		if stackName := strings.TrimSpace(labels[docker.DocoCDLabels.Deployment.Name]); stackName != "" {
 			existingStacks.Add(stackName)

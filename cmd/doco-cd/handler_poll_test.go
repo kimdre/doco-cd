@@ -22,7 +22,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/config/poll"
 	"github.com/kimdre/doco-cd/internal/controlplane"
-	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/reconciliation"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
@@ -355,7 +354,7 @@ func TestRunPoll(t *testing.T) {
 
 	stackName := test.ConvertTestName(t.Name())
 
-	if swarm.GetModeEnabled() {
+	if SwarmModeEnabled {
 		pollConfig.Reference = git.SwarmModeBranch
 
 		t.Log("Testing in Swarm mode, using 'swarm-mode' reference")
@@ -417,7 +416,7 @@ func TestRunPoll(t *testing.T) {
 	})
 
 	t.Cleanup(func() {
-		if swarm.GetModeEnabled() {
+		if SwarmModeEnabled {
 			err = docker.RemoveSwarmStack(ctx, dockerCli, stackName)
 		} else {
 			err = service.Down(ctx, stackName, downOpts)
@@ -435,7 +434,7 @@ func TestRunPoll(t *testing.T) {
 	}
 
 	// Run initial poll
-	deployment := newTestDeployment(t, appConfig, dataMountPoint, dockerCli, reconciliation.Dependencies{
+	deployment := newTestDeployment(t, appConfig, dataMountPoint, reconciliation.Dependencies{
 		AppConfig:      appConfig,
 		DataMountPoint: dataMountPoint,
 		DockerCLI:      dockerCli,

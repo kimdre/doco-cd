@@ -10,7 +10,6 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/docker"
-	dockerswarm "github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/test"
 )
@@ -73,7 +72,7 @@ func TestMCPProjectTools(t *testing.T) {
 
 	t.Cleanup(func() { _ = dockerCli.Client().Close() })
 
-	if dockerswarm.GetModeEnabled() {
+	if resolveTestSwarmMode(t, dockerCli.Client()) {
 		t.Skip("compose project tools require standalone mode")
 	}
 
@@ -154,7 +153,7 @@ func TestMCPDockerReadTools(t *testing.T) {
 
 	t.Cleanup(func() { _ = dockerCli.Client().Close() })
 
-	if dockerswarm.GetModeEnabled() {
+	if resolveTestSwarmMode(t, dockerCli.Client()) {
 		t.Skip("compose project tools require standalone mode")
 	}
 
