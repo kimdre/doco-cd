@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -156,6 +157,83 @@ func TestSendIncludesAppriseErrorDetails(t *testing.T) {
 
 	if strings.Contains(got, "discord://user:pass@discord.example/abcd") {
 		t.Fatalf("expected sensitive url to be redacted, got %q", got)
+	}
+}
+
+func TestSendRetriesFailureAfterDeliveryError(t *testing.T) {
+	t.Parallel()
+
+	var requests atomic.Int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	notifier, err := New(Config{
+		APIURL:                server.URL,
+		NotifyURLs:            "apprise://example.test",
+		NotifyLevel:           "info",
+		FailureRepeatInterval: time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	metadata := Metadata{Repository: "acme/repo", Stack: "app"}
+	if err := notifier.Send(Failure, "Deployment Failed", "pull access denied", metadata); err == nil {
+		t.Fatal("first delivery should fail")
+	}
+
+	if err := notifier.Send(Failure, "Deployment Failed", "pull access denied", metadata); err != nil {
+		t.Fatalf("retry delivery failed: %v", err)
+	}
+
+	if requests.Load() != 2 {
+		t.Fatalf("failure delivery attempts = %d, want 2", requests.Load())
+	}
+}
+
+func TestSendSuppressesFailureAfterPartialDelivery(t *testing.T) {
+	t.Parallel()
+
+	var requests atomic.Int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusFailedDependency)
+	}))
+	defer server.Close()
+
+	notifier, err := New(Config{
+		APIURL:                server.URL,
+		NotifyURLs:            "apprise://example.test",
+		NotifyLevel:           "info",
+		FailureRepeatInterval: time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	metadata := Metadata{Repository: "acme/repo", Stack: "app"}
+
+	err = notifier.Send(Failure, "Deployment Failed", "pull access denied", metadata)
+	if !errors.Is(err, ErrNotifyPartial) {
+		t.Fatalf("first delivery error = %v, want ErrNotifyPartial", err)
+	}
+
+	if err := notifier.Send(Failure, "Deployment Failed", "pull access denied", metadata); err != nil {
+		t.Fatalf("repeated failure should be suppressed: %v", err)
+	}
+
+	if requests.Load() != 1 {
+		t.Fatalf("failure delivery attempts = %d, want 1", requests.Load())
 	}
 }
 
