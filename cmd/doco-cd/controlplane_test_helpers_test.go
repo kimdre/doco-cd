@@ -23,6 +23,15 @@ import (
 func newTestReconciliationManager(t *testing.T, dependencies reconciliation.Dependencies) *reconciliation.Manager {
 	t.Helper()
 
+	if dependencies.Contexts == nil {
+		dependencies.Contexts = docker.NewContextRegistry(dependencies.DockerCLI, docker.ContextRegistryOptions{
+			Quiet:         true,
+			SwarmFeatures: true,
+		})
+
+		t.Cleanup(func() { _ = dependencies.Contexts.Close() })
+	}
+
 	manager, err := reconciliation.NewManager(dependencies)
 	if err != nil {
 		t.Fatalf("failed to create reconciliation manager: %v", err)
@@ -36,8 +45,17 @@ func newTestReconciliationManager(t *testing.T, dependencies reconciliation.Depe
 // newTestDeployment builds a *controlplane.Deployment backed by a fresh
 // reconciliation manager and source preparer, for tests that previously wired
 // a bare *reconciliation.Manager directly into handleEvent/RunPoll.
-func newTestDeployment(t *testing.T, appConfig *app.Config, dataMountPoint container.MountPoint, dockerCli command.Cli, reconciliationDeps reconciliation.Dependencies) *controlplane.Deployment {
+func newTestDeployment(t *testing.T, appConfig *app.Config, dataMountPoint container.MountPoint, reconciliationDeps reconciliation.Dependencies) *controlplane.Deployment {
 	t.Helper()
+
+	if reconciliationDeps.Contexts == nil {
+		reconciliationDeps.Contexts = docker.NewContextRegistry(reconciliationDeps.DockerCLI, docker.ContextRegistryOptions{
+			Quiet:         true,
+			SwarmFeatures: true,
+		})
+
+		t.Cleanup(func() { _ = reconciliationDeps.Contexts.Close() })
+	}
 
 	manager := newTestReconciliationManager(t, reconciliationDeps)
 
@@ -49,7 +67,7 @@ func newTestDeployment(t *testing.T, appConfig *app.Config, dataMountPoint conta
 	deployment, err := controlplane.NewDeployment(controlplane.DeploymentDependencies{
 		SourcePreparer: preparer,
 		Reconciler:     manager,
-		DockerCLI:      dockerCli,
+		Contexts:       reconciliationDeps.Contexts,
 		DataMountPoint: dataMountPoint,
 	})
 	if err != nil {

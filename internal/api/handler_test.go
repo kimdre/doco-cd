@@ -25,6 +25,8 @@ import (
 
 const validPollSourceURL = "https://github.com/kimdre/doco-cd_tests.git"
 
+var swarmModeEnabled bool
+
 func TestMain(m *testing.M) {
 	dockerCli, err := docker.CreateDockerCli(false)
 	if err != nil {
@@ -35,7 +37,8 @@ func TestMain(m *testing.M) {
 		log.Fatalf("Failed to verify docker socket connection: %v", err)
 	}
 
-	if err := swarm.RefreshModeEnabled(context.Background(), dockerCli.Client()); err != nil {
+	swarmModeEnabled, err = swarm.ResolveModeEnabled(context.Background(), dockerCli.Client())
+	if err != nil {
 		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 
@@ -56,7 +59,7 @@ func TestNewHandlerValidatesDependencies(t *testing.T) {
 
 	t.Cleanup(func() { _ = dockerCli.Client().Close() })
 
-	contexts := docker.NewContextRegistry(dockerCli, true)
+	contexts := docker.NewContextRegistry(dockerCli, docker.ContextRegistryOptions{Quiet: true, SwarmFeatures: true})
 
 	t.Cleanup(func() { _ = contexts.Close() })
 

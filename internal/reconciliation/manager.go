@@ -12,6 +12,8 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/swarm"
+	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
@@ -37,14 +39,34 @@ type Dependencies struct {
 	// It sets the capacity of a semaphore-based limiter (DeployerLimiter).
 	MaxConcurrentDeployments uint `validate:"min=1"`
 
-	AppConfig      *app.Config          `validate:"required,nostructlevel"`
-	DataMountPoint container.MountPoint `validate:"required"`
-	DockerCLI      command.Cli          `validate:"required,nostructlevel"`
-	// Contexts and SecretProvider are optional: resolveDeployContext falls back to the
-	// default Docker context/CLI when Contexts is nil, and a nil SecretProvider means no
-	// external secret provider is configured.
-	Contexts       *docker.ContextRegistry
+	AppConfig      *app.Config             `validate:"required,nostructlevel"`
+	DataMountPoint container.MountPoint    `validate:"required"`
+	DockerCLI      command.Cli             `validate:"required,nostructlevel"`
+	Contexts       *docker.ContextRegistry `validate:"required"`
+	// A nil SecretProvider means no external secret provider is configured.
 	SecretProvider secretprovider.SecretProvider
+	RuntimeQueries RuntimeQueries
+}
+
+// RuntimeQueries is the read-only Docker query surface used by reconciliation.
+type RuntimeQueries interface {
+	ListManagedRepositoryContainers(ctx context.Context, apiClient client.APIClient, repository string, all bool) ([]container.Summary, error)
+	InspectContainerState(ctx context.Context, apiClient client.APIClient, containerID string) (*container.State, error)
+	ListManagedRepositoryServices(ctx context.Context, apiClient client.APIClient, repository string) ([]swarm.Service, error)
+}
+
+type dockerRuntimeQueries struct{}
+
+func (dockerRuntimeQueries) ListManagedRepositoryContainers(ctx context.Context, apiClient client.APIClient, repository string, all bool) ([]container.Summary, error) {
+	return docker.ListManagedRepositoryContainers(ctx, apiClient, repository, all)
+}
+
+func (dockerRuntimeQueries) InspectContainerState(ctx context.Context, apiClient client.APIClient, containerID string) (*container.State, error) {
+	return docker.InspectContainerState(ctx, apiClient, containerID)
+}
+
+func (dockerRuntimeQueries) ListManagedRepositoryServices(ctx context.Context, apiClient client.APIClient, repository string) ([]swarm.Service, error) {
+	return docker.ListManagedRepositoryServices(ctx, apiClient, repository)
 }
 
 // Manager owns reconciliation jobs, active-deployment tracking, scheduler
@@ -66,12 +88,17 @@ type Manager struct {
 	dockerCli      command.Cli
 	contexts       *docker.ContextRegistry
 	secretProvider secretprovider.SecretProvider
+	runtimeQueries RuntimeQueries
 }
 
 // NewManager validates dependencies and creates an isolated reconciliation manager.
 func NewManager(dependencies Dependencies) (*Manager, error) {
 	if dependencies.MaxConcurrentDeployments == 0 {
 		dependencies.MaxConcurrentDeployments = 1
+	}
+
+	if dependencies.RuntimeQueries == nil {
+		dependencies.RuntimeQueries = dockerRuntimeQueries{}
 	}
 
 	if err := validation.Validate(dependencies); err != nil {
@@ -88,13 +115,13 @@ func NewManager(dependencies Dependencies) (*Manager, error) {
 		dockerCli:      dependencies.DockerCLI,
 		contexts:       dependencies.Contexts,
 		secretProvider: dependencies.SecretProvider,
+		runtimeQueries: dependencies.RuntimeQueries,
 	}, nil
 }
 
 // contextCLIEntry holds a Docker CLI and its resolved metadata for one Docker context.
 type contextCLIEntry struct {
 	cli       command.Cli
-	closeFn   func() // nil for the default context (which is always j.manager.dockerCli)
 	swarmMode bool
 }
 

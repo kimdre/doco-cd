@@ -34,11 +34,7 @@ func (notFoundError) NotFound() {}
 func TestValidateExternalNetworks(t *testing.T) {
 	t.Parallel()
 
-	if err := RefreshModeEnabled(t.Context(), getDockerClient(t)); err != nil {
-		t.Fatalf("failed refreshing mode enabled: %v", err)
-	}
-
-	if !GetModeEnabled() {
+	if !resolveTestSwarmMode(t, getDockerClient(t)) {
 		t.Skip("Swarm mode not enabled, skipping test")
 	}
 

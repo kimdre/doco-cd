@@ -56,8 +56,7 @@ type scheduler struct {
 	contextName string
 	// mode is the runtime this worker manages jobs for. A Swarm manager hosts
 	// both Compose projects and Swarm stacks, so it runs one worker per mode
-	// instead of deriving behavior from the process-global
-	// swarm.GetModeEnabled().
+	// using the capability supplied by ContextRegistry.
 	mode            scheduledJobMode
 	secretProvider  secretprovider.SecretProvider
 	stopHoldTracker ServiceStopHoldTracker

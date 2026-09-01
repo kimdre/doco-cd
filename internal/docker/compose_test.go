@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"maps"
 	"os"
@@ -28,8 +27,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/test"
 
 	"github.com/kimdre/doco-cd/internal/secretprovider"
-
-	"github.com/kimdre/doco-cd/internal/docker/swarm"
 
 	"github.com/go-git/go-git/v5/plumbing"
 
@@ -263,11 +260,7 @@ func TestDeployCompose(t *testing.T) {
 		})
 	}
 
-	if err := swarm.RefreshModeEnabled(ctx, dockerClient); err != nil {
-		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
-	}
-
-	if swarm.GetModeEnabled() {
+	if resolveTestSwarmMode(ctx, t, dockerClient) {
 		t.Skip("Swarm mode is enabled, skipping test")
 	}
 
@@ -401,7 +394,7 @@ compose_files:
 				DeployConfig:     deployConf,
 				LatestCommit:     latestCommit,
 				AppVersion:       "dev",
-				SwarmMode:        swarm.GetModeEnabled(),
+				SwarmMode:        resolveTestSwarmMode(ctx, t, dockerClient),
 			})
 		})
 		if err != nil {
@@ -410,7 +403,7 @@ compose_files:
 
 		t.Log("Verifying deployment")
 
-		serviceLabels, err := GetLabeledServices(ctx, dockerClient, swarm.GetModeEnabled(), DocoCDLabels.Deployment.Name, deployConf.Name)
+		serviceLabels, err := GetLabeledServices(ctx, dockerClient, resolveTestSwarmMode(ctx, t, dockerClient), DocoCDLabels.Deployment.Name, deployConf.Name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -477,14 +470,14 @@ compose_files:
 
 		t.Log("Destroying deployment")
 
-		err = DestroyStack(jobLog, &ctx, &dockerCli, deployConf, swarm.GetModeEnabled())
+		err = DestroyStack(jobLog, &ctx, &dockerCli, deployConf, resolveTestSwarmMode(ctx, t, dockerClient))
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		t.Log("Verifying destruction")
 
-		serviceLabels, err = GetLabeledServices(ctx, dockerClient, swarm.GetModeEnabled(), DocoCDLabels.Deployment.Name, deployConf.Name)
+		serviceLabels, err = GetLabeledServices(ctx, dockerClient, resolveTestSwarmMode(ctx, t, dockerClient), DocoCDLabels.Deployment.Name, deployConf.Name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -493,7 +486,7 @@ compose_files:
 			t.Fatalf("expected no labeled containers after destruction, got %d", len(serviceLabels))
 		}
 
-		stats, err := GetLatestDeployStatus(ctx, dockerClient, swarm.GetModeEnabled(), p.CloneURL, stackName)
+		stats, err := GetLatestDeployStatus(ctx, dockerClient, resolveTestSwarmMode(ctx, t, dockerClient), p.CloneURL, stackName)
 		if err != nil {
 			t.Fatalf("GetLatestDeployStatus err: %v", err)
 		}

@@ -195,7 +195,11 @@ func TestMCPSwarmToolsRuntimeBehavior(t *testing.T) {
 
 	t.Cleanup(func() { _ = dockerCli.Client().Close() })
 
-	h := &Handler{dockerCli: dockerCli, log: logger.New(logger.LevelCritical)}
+	contexts := docker.NewContextRegistry(dockerCli, docker.ContextRegistryOptions{SwarmFeatures: true})
+
+	t.Cleanup(func() { _ = contexts.Close() })
+
+	h := &Handler{dockerCli: dockerCli, contexts: contexts, log: logger.New(logger.LevelCritical)}
 	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
 	session := connectMCPTestClient(t, server)
 
@@ -270,11 +274,6 @@ func TestMCPSwarmToolsDisabledAtRuntime(t *testing.T) {
 
 	t.Cleanup(func() { _ = dockerCli.Client().Close() })
 
-	previousDisableSwarmFeature := dockerswarm.GetDisableSwarmFeature()
-
-	dockerswarm.SetDisableSwarmFeature(true)
-	t.Cleanup(func() { dockerswarm.SetDisableSwarmFeature(previousDisableSwarmFeature) })
-
 	h := &Handler{dockerCli: dockerCli, log: logger.New(logger.LevelCritical)}
 	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
 	session := connectMCPTestClient(t, server)
@@ -322,7 +321,11 @@ func newStackActionTestHandler(t *testing.T, services []dockerswarmtypes.Service
 
 	t.Cleanup(func() { _ = dockerCli.Client().Close() })
 
-	return &Handler{dockerCli: dockerCli, log: logger.New(logger.LevelCritical)}
+	contexts := docker.NewContextRegistry(dockerCli, docker.ContextRegistryOptions{SwarmFeatures: true})
+
+	t.Cleanup(func() { _ = contexts.Close() })
+
+	return &Handler{dockerCli: dockerCli, contexts: contexts, log: logger.New(logger.LevelCritical)}
 }
 
 func newStackActionTestHandlerWithFailure(
@@ -376,5 +379,9 @@ func newStackActionTestHandlerWithFailure(
 
 	t.Cleanup(func() { _ = dockerCli.Client().Close() })
 
-	return &Handler{dockerCli: dockerCli, log: logger.New(logger.LevelCritical)}
+	contexts := docker.NewContextRegistry(dockerCli, docker.ContextRegistryOptions{SwarmFeatures: true})
+
+	t.Cleanup(func() { _ = contexts.Close() })
+
+	return &Handler{dockerCli: dockerCli, contexts: contexts, log: logger.New(logger.LevelCritical)}
 }

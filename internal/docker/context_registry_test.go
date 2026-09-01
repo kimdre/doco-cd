@@ -22,10 +22,12 @@ func (c contextRegistryTestCli) Client() client.APIClient {
 
 type contextRegistryTestClient struct {
 	client.APIClient
-	closed bool
+	closed    bool
+	infoCalls int
 }
 
 func (c *contextRegistryTestClient) Info(context.Context, client.InfoOptions) (client.SystemInfoResult, error) {
+	c.infoCalls++
 	return client.SystemInfoResult{}, nil
 }
 
@@ -67,7 +69,7 @@ func TestContextRegistryListsAndCachesContexts(t *testing.T) {
 	baseCli := contextRegistryTestCli{apiClient: defaultClient}
 	remoteCli := contextRegistryTestCli{apiClient: remoteClient}
 
-	registry := NewContextRegistry(baseCli, true)
+	registry := NewContextRegistry(baseCli, ContextRegistryOptions{Quiet: true, SwarmFeatures: true})
 	registry.listContexts = func() ([]contextstore.Metadata, error) {
 		return []contextstore.Metadata{{Name: "remote"}, {Name: "default"}}, nil
 	}
@@ -128,7 +130,7 @@ func TestContextRegistryIsolatesContextErrors(t *testing.T) {
 	t.Parallel()
 
 	baseCli := contextRegistryTestCli{apiClient: &contextRegistryTestClient{}}
-	registry := NewContextRegistry(baseCli, true)
+	registry := NewContextRegistry(baseCli, ContextRegistryOptions{Quiet: true, SwarmFeatures: true})
 	registry.listContexts = func() ([]contextstore.Metadata, error) {
 		return []contextstore.Metadata{{Name: "broken"}}, nil
 	}
@@ -173,10 +175,11 @@ func TestContextRegistryDefaultDoesNotRequireContextListing(t *testing.T) {
 	t.Parallel()
 
 	baseCli := contextRegistryTestCli{apiClient: &contextRegistryTestClient{}}
-	registry := NewContextRegistry(baseCli, true)
+	registry := NewContextRegistry(baseCli, ContextRegistryOptions{Quiet: true, SwarmFeatures: true})
 	registry.listContexts = func() ([]contextstore.Metadata, error) {
 		return nil, errors.New("context store unavailable")
 	}
+
 	registry.resolveSwarm = func(_ context.Context, _ client.APIClient) (bool, error) {
 		return false, nil
 	}
@@ -188,5 +191,26 @@ func TestContextRegistryDefaultDoesNotRequireContextListing(t *testing.T) {
 
 	if entry.Cli != baseCli || entry.DisplayName() != "default" {
 		t.Fatalf("unexpected default entry: %#v", entry)
+	}
+}
+
+func TestContextRegistryCanDisableSwarmCapabilities(t *testing.T) {
+	t.Parallel()
+
+	apiClient := &contextRegistryTestClient{}
+	baseCli := contextRegistryTestCli{apiClient: apiClient}
+	registry := NewContextRegistry(baseCli, ContextRegistryOptions{SwarmFeatures: false})
+
+	entry, err := registry.Get(t.Context(), DefaultContextName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if entry.SwarmMode {
+		t.Fatal("expected Swarm capability to be disabled")
+	}
+
+	if apiClient.infoCalls != 0 {
+		t.Fatalf("Docker info calls = %d, want 0", apiClient.infoCalls)
 	}
 }

@@ -103,7 +103,10 @@ func selfDeployFixtureFiles(dir string) map[string]string {
 	}
 }
 
-var WorkingDir string
+var (
+	WorkingDir       string
+	SwarmModeEnabled bool
+)
 
 func TestMain(m *testing.M) {
 	var err error
@@ -127,11 +130,12 @@ func TestMain(m *testing.M) {
 		log.Fatalf("Failed to verify docker socket connection: %v", err)
 	}
 
-	if err := swarm.RefreshModeEnabled(ctx, dockerCli.Client()); err != nil {
+	SwarmModeEnabled, err = swarm.ResolveModeEnabled(ctx, dockerCli.Client())
+	if err != nil {
 		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
 	}
 
-	if swarm.GetModeEnabled() {
+	if SwarmModeEnabled {
 		log.Println("Testing in Docker Swarm mode")
 	} else {
 		log.Println("Testing in Docker Standalone mode")
@@ -341,10 +345,6 @@ env_files:
 		}
 	})
 
-	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli.Client()); err != nil {
-		log.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
-	}
-
 	encryption.SetupAgeKeyEnvVar(t)
 
 	defaultEnvVars := map[string]string{
@@ -360,7 +360,7 @@ env_files:
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			mode := swarm.GetModeEnabled()
+			mode := SwarmModeEnabled
 			if mode != tc.swarmMode {
 				t.Skipf("Skipping test because it requires swarm mode %v, but current mode is %v", tc.swarmMode, mode)
 			}
@@ -414,7 +414,7 @@ env_files:
 					Volumes:       true,
 				}
 
-				if swarm.GetModeEnabled() {
+				if SwarmModeEnabled {
 					err = docker.RemoveSwarmStack(ctx, dockerCli, stackName)
 				} else if svcErr == nil && service != nil {
 					err = service.Down(ctx, stackName, downOpts)
@@ -436,7 +436,7 @@ env_files:
 				Repository: git.GetRepoName(tc.payload.CloneURL),
 				Revision:   notification.GetRevision(tc.payload.Ref, tc.payload.CommitSHAString()),
 			}
-			deployment := newTestDeployment(t, appConfig, testMountPoint, dockerCli, reconciliation.Dependencies{
+			deployment := newTestDeployment(t, appConfig, testMountPoint, reconciliation.Dependencies{
 				AppConfig:      appConfig,
 				DataMountPoint: testMountPoint,
 				DockerCLI:      dockerCli,

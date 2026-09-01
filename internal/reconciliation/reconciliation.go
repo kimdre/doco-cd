@@ -21,7 +21,6 @@ import (
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 
 	"github.com/kimdre/doco-cd/internal/docker"
-	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/logger"
@@ -42,7 +41,7 @@ type contextualEvent struct {
 
 // initContextCLIs populates j.contextCLIs with a Docker CLI entry for the default context
 // and for every unique non-default context referenced in the job's deploy configs.
-func (j *job) initContextCLIs(ctx context.Context, quiet bool) {
+func (j *job) initContextCLIs(ctx context.Context) {
 	contextCLIs := make(map[string]contextCLIEntry)
 
 	for _, dc := range j.info.DeployConfigs {
@@ -51,7 +50,7 @@ func (j *job) initContextCLIs(ctx context.Context, quiet bool) {
 			continue
 		}
 
-		entry := resolveDeployContext(ctx, j.manager.contexts, j.manager.dockerCli, quiet, ctxName)
+		entry := resolveDeployContext(ctx, j.manager.contexts, ctxName)
 		if entry.err != nil {
 			j.info.Logger.Error("failed to create Docker CLI for context; skipping event listener for that context",
 				slog.String("context", docker.DisplayContextName(ctxName)),
@@ -63,7 +62,6 @@ func (j *job) initContextCLIs(ctx context.Context, quiet bool) {
 
 		contextCLIs[ctxName] = contextCLIEntry{
 			cli:       entry.cli,
-			closeFn:   entry.closeFn,
 			swarmMode: entry.swarmMode,
 		}
 	}
@@ -84,8 +82,8 @@ func (j *job) cliForContext(contextName string) command.Cli {
 	return j.manager.dockerCli
 }
 
-// swarmModeForContext returns the swarm mode for the given context name, falling back to the
-// globally cached value for the default context.
+// swarmModeForContext returns the capability resolved when this job initialized
+// the requested Docker context.
 func (j *job) swarmModeForContext(contextName string) bool {
 	contextName = docker.NormalizeContextName(contextName)
 	if j.contextCLIs != nil {
@@ -94,7 +92,7 @@ func (j *job) swarmModeForContext(contextName string) bool {
 		}
 	}
 
-	return swarm.GetModeEnabled()
+	return false
 }
 
 // deployConfigsForContext returns the subset of the job's deploy configs that target contextName.
@@ -109,26 +107,13 @@ func (j *job) deployConfigsForContextMode(contextName string, swarmMode bool) []
 func (j *job) run(ctx context.Context) {
 	jobLog := j.info.Logger
 
-	dockerQuiet := false
-	if j.manager.appConfig != nil {
-		dockerQuiet = j.manager.appConfig.DockerQuietDeploy
-	}
-
-	j.initContextCLIs(ctx, dockerQuiet)
+	j.initContextCLIs(ctx)
 
 	// Wait for all event-listener goroutines to exit before closing their Docker
 	// CLIs, so we never close a client that a listener is still using.
 	var listenerWG sync.WaitGroup
 
-	defer func() {
-		listenerWG.Wait()
-
-		for ctxName, entry := range j.contextCLIs {
-			if ctxName != "" && entry.closeFn != nil {
-				entry.closeFn()
-			}
-		}
-	}()
+	defer listenerWG.Wait()
 
 	// Startup recovery: run for every configured context in parallel.
 	// Run both checks concurrently per context, then wait for all to finish
@@ -521,7 +506,7 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 		restartResult := j.restartContainer(ctx, eventLog, event, restartDC, contextCLI, swarmMode)
 		if restartResult.fallbackToDeploy {
 			if event.Actor.ID != "" {
-				waitForContainerRemovalSettled(ctx, eventLog, contextCLI.Client(), event.Actor.ID, containerRemovalSettleTimeout)
+				j.waitForContainerRemovalSettled(ctx, eventLog, contextCLI.Client(), event.Actor.ID, containerRemovalSettleTimeout)
 			}
 
 			j.deploy(ctx, eventLog, stackDCs, action, event, traceID, contextName, swarmMode)
@@ -536,7 +521,7 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 	// started". Wait briefly for the container to either be fully removed or settle
 	// into a stable state before re-deploying.
 	if event.Actor.ID != "" {
-		waitForContainerRemovalSettled(ctx, eventLog, contextCLI.Client(), event.Actor.ID, containerRemovalSettleTimeout)
+		j.waitForContainerRemovalSettled(ctx, eventLog, contextCLI.Client(), event.Actor.ID, containerRemovalSettleTimeout)
 	}
 
 	j.deploy(ctx, eventLog, stackDCs, action, event, traceID, contextName, swarmMode)

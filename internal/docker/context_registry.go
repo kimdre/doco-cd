@@ -37,11 +37,16 @@ type ContextClientResult struct {
 	Err error
 }
 
+type ContextRegistryOptions struct {
+	Quiet         bool
+	SwarmFeatures bool
+}
+
 type ContextRegistry struct {
 	mu sync.RWMutex
 
 	baseCli command.Cli
-	quiet   bool
+	options ContextRegistryOptions
 	closed  bool
 
 	available map[string]struct{}
@@ -52,15 +57,21 @@ type ContextRegistry struct {
 	resolveSwarm func(context.Context, client.APIClient) (bool, error)
 }
 
-// NewContextRegistry creates a new ContextRegistry with the given baseCli and quiet flag.
-func NewContextRegistry(baseCli command.Cli, quiet bool) *ContextRegistry {
+// NewContextRegistry creates a new ContextRegistry for the configured Docker runtime features.
+func NewContextRegistry(baseCli command.Cli, options ContextRegistryOptions) *ContextRegistry {
 	registry := &ContextRegistry{
-		baseCli:      baseCli,
-		quiet:        quiet,
-		available:    map[string]struct{}{"": {}},
-		clients:      make(map[string]command.Cli),
-		createCli:    CreateDockerCliWithContext,
-		resolveSwarm: dockerSwarm.ResolveModeEnabled,
+		baseCli:   baseCli,
+		options:   options,
+		available: map[string]struct{}{"": {}},
+		clients:   make(map[string]command.Cli),
+		createCli: CreateDockerCliWithContext,
+		resolveSwarm: func(ctx context.Context, dockerClient client.APIClient) (bool, error) {
+			if !options.SwarmFeatures {
+				return false, nil
+			}
+
+			return dockerSwarm.ResolveModeEnabled(ctx, dockerClient)
+		},
 	}
 
 	if baseCli != nil {
@@ -238,7 +249,7 @@ func (r *ContextRegistry) clientForKnownContext(name string) (command.Cli, error
 		return cli, nil
 	}
 
-	cli, err := r.createCli(r.quiet, name)
+	cli, err := r.createCli(r.options.Quiet, name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create docker client for context %q: %w", name, err)
 	}

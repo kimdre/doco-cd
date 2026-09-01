@@ -36,8 +36,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/secretprovider/openbao"
 
-	"github.com/kimdre/doco-cd/internal/docker/swarm"
-
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/registryauth"
 	"github.com/kimdre/doco-cd/internal/filesystem"
@@ -251,28 +249,31 @@ func run() error {
 		}
 	}
 
-	if c.DockerSwarmFeatures {
-		if err := swarm.RefreshModeEnabled(ctx, dockerClient); err != nil {
-			log.Critical("failed to check if docker daemon is a swarm manager", logger.ErrAttr(err))
-			return err
-		}
-	} else {
-		swarm.SetDisableSwarmFeature(true)
+	if !c.DockerSwarmFeatures {
 		log.Debug("swarm features disabled by configuration")
 	}
 
-	contexts := docker.NewContextRegistry(dockerCli, c.DockerQuietDeploy)
+	contexts := docker.NewContextRegistry(dockerCli, docker.ContextRegistryOptions{
+		Quiet:         c.DockerQuietDeploy,
+		SwarmFeatures: c.DockerSwarmFeatures,
+	})
 	defer func() {
 		if closeErr := contexts.Close(); closeErr != nil {
 			log.Error("failed to close docker context clients", logger.ErrAttr(closeErr))
 		}
 	}()
 
+	defaultContext, err := contexts.Get(ctx, docker.DefaultContextName)
+	if err != nil {
+		log.Critical("failed to check default Docker context capabilities", logger.ErrAttr(err))
+		return err
+	}
+
 	log.Debug("negotiated docker versions to use",
 		slog.Group("versions",
 			slog.String("docker_client", dockerClient.ClientVersion()),
 			slog.String("docker_api", dockerCli.CurrentVersion()),
-			slog.Bool("swarm_mode", swarm.GetModeEnabled()),
+			slog.Bool("swarm_mode", defaultContext.SwarmMode),
 		))
 
 	dataMountPoint, err := resolveDataMountPoint(
@@ -375,7 +376,7 @@ func run() error {
 	deployment, err := controlplane.NewDeployment(controlplane.DeploymentDependencies{
 		SourcePreparer: sourcePreparer,
 		Reconciler:     reconciliationManager,
-		DockerCLI:      dockerCli,
+		Contexts:       contexts,
 		DataMountPoint: dataMountPoint,
 	})
 	if err != nil {

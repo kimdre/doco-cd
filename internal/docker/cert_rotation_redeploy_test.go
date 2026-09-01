@@ -463,11 +463,7 @@ func TestRotateSwarmProjectCertificatesIntegration(t *testing.T) {
 		t.Fatalf("failed to create Docker CLI: %v", err)
 	}
 
-	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli.Client()); err != nil {
-		t.Skipf("skipping swarm cert rotation integration test: %v", err)
-	}
-
-	if !swarm.GetModeEnabled() {
+	if !resolveTestSwarmMode(t.Context(), t, dockerCli.Client()) {
 		t.Skip("swarm mode is not enabled, skipping cert rotation integration test")
 	}
 

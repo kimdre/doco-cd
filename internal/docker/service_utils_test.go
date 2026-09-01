@@ -488,11 +488,7 @@ func TestGetLatestServiceState(t *testing.T) {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
 	}
 
-	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli.Client()); err != nil {
-		t.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
-	}
-
-	if swarm.GetModeEnabled() {
+	if resolveTestSwarmMode(t.Context(), t, dockerCli.Client()) {
 		t.Skip("Swarm mode is enabled, skipping test")
 	}
 	// t.Parallel()
@@ -549,7 +545,7 @@ services:
 		}),
 	)
 
-	latest, err := GetLatestDeployStatus(ctx, stack.Client, swarm.GetModeEnabled(), repoName, stackName)
+	latest, err := GetLatestDeployStatus(ctx, stack.Client, resolveTestSwarmMode(ctx, t, stack.Client), repoName, stackName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -580,11 +576,7 @@ func TestGetLatestServiceSwarm(t *testing.T) {
 		t.Fatalf("Failed to create Docker CLI: %v", err)
 	}
 
-	if err := swarm.RefreshModeEnabled(t.Context(), dockerCli.Client()); err != nil {
-		t.Fatalf("Failed to check if Docker daemon is in Swarm mode: %v", err)
-	}
-
-	if !swarm.GetModeEnabled() {
+	if !resolveTestSwarmMode(t.Context(), t, dockerCli.Client()) {
 		t.Skip("Swarm mode is not enabled, skipping test")
 	}
 
@@ -682,7 +674,7 @@ services:
 
 	dockerClient := dockerCli.Client()
 
-	latest, err := GetLatestDeployStatus(ctx, dockerClient, swarm.GetModeEnabled(), repoName, stackName)
+	latest, err := GetLatestDeployStatus(ctx, dockerClient, resolveTestSwarmMode(ctx, t, dockerClient), repoName, stackName)
 	if err != nil {
 		t.Fatal(err)
 	}

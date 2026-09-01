@@ -7,13 +7,12 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/docker/cli/cli/command"
 	"github.com/moby/moby/api/types/container"
 
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/poll"
-	"github.com/kimdre/doco-cd/internal/docker/swarm"
+	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/reconciliation"
 	"github.com/kimdre/doco-cd/internal/source"
@@ -34,25 +33,26 @@ type Reconciler interface {
 	Deploy(ctx context.Context, req reconciliation.DeployRequest) error
 }
 
-// DeploymentDependencies configures the Deployment operation: the source
-// preparer, the reconciler that runs the resolved deploy configs, the Docker
-// CLI used to refresh swarm-mode capability, and the data mount point used to
-// compute the source's internal/external filesystem paths.
+// DockerContextResolver is the capability-aware Docker context surface used by Deployment.
+type DockerContextResolver interface {
+	Get(ctx context.Context, name string) (docker.ContextClient, error)
+}
+
+// DeploymentDependencies configures the source preparer, reconciler, and data
+// mount point used by the protocol-neutral deployment operation.
 type DeploymentDependencies struct {
-	SourcePreparer SourcePreparer       `validate:"required"`
-	Reconciler     Reconciler           `validate:"required"`
-	DockerCLI      command.Cli          `validate:"required,nostructlevel"`
-	DataMountPoint container.MountPoint `validate:"required"`
+	SourcePreparer SourcePreparer        `validate:"required"`
+	Reconciler     Reconciler            `validate:"required"`
+	Contexts       DockerContextResolver `validate:"required"`
+	DataMountPoint container.MountPoint  `validate:"required"`
 }
 
 // Deployment is the protocol-neutral deployment operation shared by the
-// webhook and poll transports: it refreshes the default swarm capability,
-// prepares the source, adapts the result into a reconciliation deploy
-// request, and runs it.
+// webhook and poll transports.
 type Deployment struct {
 	sourcePreparer SourcePreparer
 	reconciler     Reconciler
-	dockerCli      command.Cli
+	contexts       DockerContextResolver
 	dataMountPoint container.MountPoint
 }
 
@@ -65,7 +65,7 @@ func NewDeployment(dependencies DeploymentDependencies) (*Deployment, error) {
 	return &Deployment{
 		sourcePreparer: dependencies.SourcePreparer,
 		reconciler:     dependencies.Reconciler,
-		dockerCli:      dependencies.DockerCLI,
+		contexts:       dependencies.Contexts,
 		dataMountPoint: dependencies.DataMountPoint,
 	}, nil
 }
@@ -166,10 +166,10 @@ func classifySourceFailure(err error) (int, error) {
 	}
 }
 
-// Deploy runs a single protocol-neutral deployment: it validates req,
-// refreshes the default swarm capability, prepares the source, adapts the
-// result into a reconciliation.DeployRequest (notifying the deployment target
-// observer for each resolved deploy config), and runs the reconciliation.
+// Deploy runs a single protocol-neutral deployment: it validates req, prepares
+// the source, adapts the result into a reconciliation.DeployRequest (notifying
+// the deployment target observer for each resolved deploy config), and runs
+// the reconciliation.
 //
 // Errors are returned as DeploymentError so callers can preserve the exact
 // HTTP status/message mapping the pre-refactor handler used. A
@@ -180,7 +180,7 @@ func (d *Deployment) Deploy(ctx context.Context, req DeploymentRequest) error {
 		return newDeploymentError(source.ErrInvalidRequest, err, http.StatusInternalServerError)
 	}
 
-	if err := swarm.RefreshModeEnabled(ctx, d.dockerCli.Client()); err != nil {
+	if _, err := d.contexts.Get(ctx, docker.DefaultContextName); err != nil {
 		return newDeploymentError(errSwarmModeCheck, err, http.StatusInternalServerError)
 	}
 

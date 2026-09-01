@@ -14,7 +14,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
-	dockerSwarm "github.com/kimdre/doco-cd/internal/docker/swarm"
 
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -67,13 +66,8 @@ func (m *Manager) deploy(ctx context.Context, req DeployRequest) error {
 		configsByContext[contextName] = append(configsByContext[contextName], dc)
 	}
 
-	dockerQuiet := false
-	if m.appConfig != nil {
-		dockerQuiet = m.appConfig.DockerQuietDeploy
-	}
-
 	for contextName, groupedConfigs := range configsByContext {
-		entry := resolveDeployContext(ctx, m.contexts, m.dockerCli, dockerQuiet, contextName)
+		entry := resolveDeployContext(ctx, m.contexts, contextName)
 		if entry.err != nil {
 			// Isolate per-context failures: an unreachable context must not block
 			// cleanup/deploy for other (healthy) contexts. handleDeploy below fails
@@ -95,32 +89,15 @@ func (m *Manager) deploy(ctx context.Context, req DeployRequest) error {
 					logger.ErrAttr(err))
 			}
 		}
-
-		if entry.closeFn != nil {
-			entry.closeFn()
-		}
 	}
 
 	return m.handleDeploy(ctx, req)
 }
 
 func (m *Manager) handleDeploy(ctx context.Context, req DeployRequest) error {
-	dockerQuiet := false
-	if m.appConfig != nil {
-		dockerQuiet = m.appConfig.DockerQuietDeploy
-	}
-
 	// Build one Docker CLI per distinct context up front and share it across all
 	// deployments targeting that context, instead of creating a client per deployment.
-	contextCLIs := buildDeployContextCLIs(ctx, m.contexts, m.dockerCli, dockerQuiet, req.DeployConfigs)
-
-	defer func() {
-		for contextName, entry := range contextCLIs {
-			if contextName != "" && entry.closeFn != nil {
-				entry.closeFn()
-			}
-		}
-	}()
+	contextCLIs := buildDeployContextCLIs(ctx, m.contexts, req.DeployConfigs)
 
 	// Deployments run concurrently, grouped by repository and reference, and
 	// limited by this manager's deployment limiter.
@@ -212,16 +189,14 @@ func (m *Manager) handleDeploy(ctx context.Context, req DeployRequest) error {
 // shared across all deployments in a handleDeploy batch that target that context.
 type deployContextCLI struct {
 	cli       command.Cli
-	closeFn   func() // nil for the default context (which reuses the base CLI)
 	swarmMode bool
 	err       error // set when the context CLI could not be created/probed
 }
 
 // buildDeployContextCLIs creates one Docker CLI per distinct context referenced in deployConfigs.
-// The default context (empty string) reuses baseCli; custom contexts get a dedicated client whose
-// closeFn must be called by the caller. Errors are captured per context so only the affected
-// deployments fail rather than the whole batch.
-func buildDeployContextCLIs(ctx context.Context, contexts *docker.ContextRegistry, baseCli command.Cli, quiet bool, deployConfigs []*deployConfig.Config) map[string]deployContextCLI {
+// Errors are captured per context so only the affected deployments fail rather
+// than the whole batch.
+func buildDeployContextCLIs(ctx context.Context, contexts *docker.ContextRegistry, deployConfigs []*deployConfig.Config) map[string]deployContextCLI {
 	contextCLIs := make(map[string]deployContextCLI)
 
 	for _, dc := range deployConfigs {
@@ -230,42 +205,21 @@ func buildDeployContextCLIs(ctx context.Context, contexts *docker.ContextRegistr
 			continue
 		}
 
-		contextCLIs[contextName] = resolveDeployContext(ctx, contexts, baseCli, quiet, contextName)
+		contextCLIs[contextName] = resolveDeployContext(ctx, contexts, contextName)
 	}
 
 	return contextCLIs
 }
 
-func resolveDeployContext(ctx context.Context, contexts *docker.ContextRegistry, baseCli command.Cli, quiet bool, contextName string) deployContextCLI {
+func resolveDeployContext(ctx context.Context, contexts *docker.ContextRegistry, contextName string) deployContextCLI {
 	contextName = docker.NormalizeContextName(contextName)
-	if contexts != nil {
-		cc, err := contexts.Get(ctx, contextName)
-		if err != nil {
-			return deployContextCLI{err: err}
-		}
 
-		return deployContextCLI{cli: cc.Cli, swarmMode: cc.SwarmMode}
-	}
-
-	if contextName == "" {
-		return deployContextCLI{cli: baseCli, swarmMode: dockerSwarm.GetModeEnabled()}
-	}
-
-	cli, closeFn, err := dockerCliForContext(baseCli, quiet, contextName)
+	cc, err := contexts.Get(ctx, contextName)
 	if err != nil {
 		return deployContextCLI{err: err}
 	}
 
-	swarmMode, err := dockerSwarm.ResolveModeEnabled(ctx, cli.Client())
-	if err != nil {
-		if closeFn != nil {
-			closeFn()
-		}
-
-		return deployContextCLI{err: fmt.Errorf("failed to check if docker host is running in swarm mode: %w", err)}
-	}
-
-	return deployContextCLI{cli: cli, closeFn: closeFn, swarmMode: swarmMode}
+	return deployContextCLI{cli: cc.Cli, swarmMode: cc.SwarmMode}
 }
 
 func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deployLog *slog.Logger,
@@ -341,24 +295,6 @@ func groupDeployConfigsByMode(dcs []*deployConfig.Config, swarmAvailable bool) m
 	}
 
 	return grouped
-}
-
-func dockerCliForContext(baseCli command.Cli, quiet bool, contextName string) (command.Cli, func(), error) {
-	contextName = docker.NormalizeContextName(contextName)
-	if contextName == "" {
-		return baseCli, nil, nil
-	}
-
-	contextCli, err := docker.CreateDockerCliWithContext(quiet, contextName)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create docker client for context %q: %w", contextName, err)
-	}
-
-	closeFn := func() {
-		_ = contextCli.Client().Close()
-	}
-
-	return contextCli, closeFn, nil
 }
 
 func failNotifyFunc(deployLog *slog.Logger, err error, metadata notification.Metadata) {

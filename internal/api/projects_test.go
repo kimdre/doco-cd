@@ -17,7 +17,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/test"
 
 	"github.com/kimdre/doco-cd/internal/docker"
-	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/logger"
 	restAPI "github.com/kimdre/doco-cd/internal/restapi"
 )
@@ -100,7 +99,7 @@ func TestHandler_ProjectApiHandler(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			if swarm.GetModeEnabled() {
+			if swarmModeEnabled {
 				t.Skip("Skipping Project API tests in Swarm mode")
 			}
 
