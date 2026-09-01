@@ -11,7 +11,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/common/id"
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 
-	"github.com/kimdre/doco-cd/internal/config/app"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 
 	"github.com/kimdre/doco-cd/internal/docker"
@@ -30,7 +29,7 @@ func (j *job) restartUnhealthyContainersOnStartup(ctx context.Context, jobLog *s
 	}
 
 	containers, err := j.manager.runtimeQueries.ListManagedRepositoryContainers(
-		ctx, cli.Client(), app.Name, repositoryLabelValue, true,
+		ctx, cli.Client(), repositoryLabelValue, true,
 	)
 	if err != nil {
 		jobLog.Error("failed to list containers for startup unhealthy scan", logger.ErrAttr(err))
@@ -177,7 +176,7 @@ func (j *job) findMissingContainersOnStartup(ctx context.Context, jobLog *slog.L
 	}
 
 	containers, err := j.manager.runtimeQueries.ListManagedRepositoryContainers(
-		ctx, cli.Client(), app.Name, repositoryLabelValue, false,
+		ctx, cli.Client(), repositoryLabelValue, false,
 	)
 	if err != nil {
 		jobLog.Error("failed to list containers for startup missing scan", logger.ErrAttr(err))
@@ -213,7 +212,7 @@ func (j *job) findMissingSwarmServicesOnStartup(ctx context.Context, jobLog *slo
 	}
 
 	services, err := j.manager.runtimeQueries.ListManagedRepositoryServices(
-		ctx, cli.Client(), app.Name, repositoryLabelValue,
+		ctx, cli.Client(), repositoryLabelValue,
 	)
 	if err != nil {
 		jobLog.Error("failed to list swarm services for startup missing scan", logger.ErrAttr(err))

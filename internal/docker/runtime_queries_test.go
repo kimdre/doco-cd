@@ -46,13 +46,13 @@ func TestListManagedRepositoryContainers(t *testing.T) {
 		containers: []container.Summary{{ID: "container-id"}},
 	}
 
-	got, err := ListManagedRepositoryContainers(t.Context(), apiClient, "manager", "owner/repository", true)
+	got, err := ListManagedRepositoryContainers(t.Context(), apiClient, "owner/repository", true)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	wantFilters := make(client.Filters)
-	wantFilters.Add("label", DocoCDLabels.Metadata.Manager+"=manager")
+	wantFilters.Add("label", DocoCDLabels.Metadata.Manager+"=doco-cd")
 	wantFilters.Add("label", DocoCDLabels.Source.Name+"=owner/repository")
 
 	if !reflect.DeepEqual(got, apiClient.containers) {
@@ -71,13 +71,13 @@ func TestListManagedRepositoryServices(t *testing.T) {
 		services: []swarm.Service{{ID: "service-id"}},
 	}
 
-	got, err := ListManagedRepositoryServices(t.Context(), apiClient, "manager", "owner/repository")
+	got, err := ListManagedRepositoryServices(t.Context(), apiClient, "owner/repository")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	wantFilters := make(client.Filters)
-	wantFilters.Add("label", DocoCDLabels.Metadata.Manager+"=manager")
+	wantFilters.Add("label", DocoCDLabels.Metadata.Manager+"=doco-cd")
 	wantFilters.Add("label", DocoCDLabels.Source.Name+"=owner/repository")
 
 	if !reflect.DeepEqual(got, apiClient.services) {

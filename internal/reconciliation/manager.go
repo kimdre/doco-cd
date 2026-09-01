@@ -50,23 +50,23 @@ type Dependencies struct {
 
 // RuntimeQueries is the read-only Docker query surface used by reconciliation.
 type RuntimeQueries interface {
-	ListManagedRepositoryContainers(ctx context.Context, apiClient client.APIClient, manager, repository string, all bool) ([]container.Summary, error)
+	ListManagedRepositoryContainers(ctx context.Context, apiClient client.APIClient, repository string, all bool) ([]container.Summary, error)
 	InspectContainerState(ctx context.Context, apiClient client.APIClient, containerID string) (*container.State, error)
-	ListManagedRepositoryServices(ctx context.Context, apiClient client.APIClient, manager, repository string) ([]swarm.Service, error)
+	ListManagedRepositoryServices(ctx context.Context, apiClient client.APIClient, repository string) ([]swarm.Service, error)
 }
 
 type dockerRuntimeQueries struct{}
 
-func (dockerRuntimeQueries) ListManagedRepositoryContainers(ctx context.Context, apiClient client.APIClient, manager, repository string, all bool) ([]container.Summary, error) {
-	return docker.ListManagedRepositoryContainers(ctx, apiClient, manager, repository, all)
+func (dockerRuntimeQueries) ListManagedRepositoryContainers(ctx context.Context, apiClient client.APIClient, repository string, all bool) ([]container.Summary, error) {
+	return docker.ListManagedRepositoryContainers(ctx, apiClient, repository, all)
 }
 
 func (dockerRuntimeQueries) InspectContainerState(ctx context.Context, apiClient client.APIClient, containerID string) (*container.State, error) {
 	return docker.InspectContainerState(ctx, apiClient, containerID)
 }
 
-func (dockerRuntimeQueries) ListManagedRepositoryServices(ctx context.Context, apiClient client.APIClient, manager, repository string) ([]swarm.Service, error) {
-	return docker.ListManagedRepositoryServices(ctx, apiClient, manager, repository)
+func (dockerRuntimeQueries) ListManagedRepositoryServices(ctx context.Context, apiClient client.APIClient, repository string) ([]swarm.Service, error) {
+	return docker.ListManagedRepositoryServices(ctx, apiClient, repository)
 }
 
 // Manager owns reconciliation jobs, active-deployment tracking, scheduler
