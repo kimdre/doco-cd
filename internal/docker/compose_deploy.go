@@ -315,8 +315,8 @@ func resolveDeploymentMetricsDeploymentLabel(deployName string) string {
 // repository path used to resolve compose file locations, the Docker CLI, the parsed webhook
 // payload (may be nil for non-webhook triggers), the resolved deploy config, detected service
 // changes and signal targets from change detection, the latest commit, the running app version,
-// Swarm config/secret retention counts, whether Swarm mode is active, and the PKI role
-// normalization map.
+// the ComposeLoadOptions used to reload the compose project, Swarm config/secret retention counts,
+// whether Swarm mode is active, and the PKI role normalization map.
 type DeployRequest struct {
 	JobLog                     *slog.Logger `validate:"required,nostructlevel"`
 	ExternalRepoPath           string       `validate:"required"`
@@ -327,6 +327,7 @@ type DeployRequest struct {
 	NeedSignal                 []SignalService
 	LatestCommit               string
 	AppVersion                 string `validate:"required"`
+	ComposeLoad                ComposeLoadOptions
 	GlobalSwarmConfigRetention int
 	GlobalSwarmSecretRetention int
 	SwarmMode                  bool
@@ -348,6 +349,7 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 		needSignal                 = req.NeedSignal
 		latestCommit               = req.LatestCommit
 		appVersion                 = req.AppVersion
+		composeLoad                = req.ComposeLoad
 		globalSwarmConfigRetention = req.GlobalSwarmConfigRetention
 		globalSwarmSecretRetention = req.GlobalSwarmSecretRetention
 		swarmMode                  = req.SwarmMode
@@ -387,7 +389,7 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 	deploymentPhase.Set("loading compose configuration")
 
 	project, err := LoadCompose(ctx, dockerCli, externalRepoPath, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles,
-		deployConfig.EnvFiles, deployConfig.Profiles, deployConfig.Internal.Environment)
+		deployConfig.EnvFiles, deployConfig.Profiles, deployConfig.Internal.Environment, composeLoad)
 	if err != nil {
 		return fmt.Errorf("failed to load compose config: %w", err)
 	}

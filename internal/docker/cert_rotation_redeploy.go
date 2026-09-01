@@ -45,9 +45,10 @@ func RotateProjectCertificates(
 	labels map[string]string,
 	secretProvider secretprovider.SecretProvider,
 	swarmMode bool,
+	opts CertificateRotationOptions,
 ) error {
 	if swarmMode {
-		return rotateSwarmProjectCertificates(ctx, contextName, dockerCli, labels, secretProvider)
+		return rotateSwarmProjectCertificates(ctx, contextName, dockerCli, labels, secretProvider, opts)
 	}
 
 	ref, err := composeScheduledServiceRefFromLabels(labels)
@@ -65,7 +66,7 @@ func RotateProjectCertificates(
 	lock.LockStack(stackLockKey)
 	defer lock.UnlockStack(stackLockKey)
 
-	project, deployConfig, err := loadComposeScheduledProjectAll(ctx, dockerCli, ref, secretProvider)
+	project, deployConfig, err := loadComposeScheduledProjectAll(ctx, dockerCli, ref, secretProvider, opts.Scheduled)
 	if err != nil {
 		return fmt.Errorf("reload deploy config for cert rotation of %s: %w", ref.Project, err)
 	}
@@ -116,6 +117,7 @@ func rotateSwarmProjectCertificates(
 	dockerCli command.Cli,
 	labels map[string]string,
 	secretProvider secretprovider.SecretProvider,
+	certOpts CertificateRotationOptions,
 ) error {
 	ref, err := composeScheduledServiceRefFromSwarmLabels(labels)
 	if err != nil {
@@ -127,7 +129,7 @@ func rotateSwarmProjectCertificates(
 	lock.LockStack(stackLockKey)
 	defer lock.UnlockStack(stackLockKey)
 
-	project, deployConfig, err := loadComposeScheduledProjectAll(ctx, dockerCli, ref, secretProvider)
+	project, deployConfig, err := loadComposeScheduledProjectAll(ctx, dockerCli, ref, secretProvider, certOpts.Scheduled)
 	if err != nil {
 		return fmt.Errorf("reload deploy config for cert rotation of %s: %w", ref.Project, err)
 	}
@@ -156,7 +158,7 @@ func rotateSwarmProjectCertificates(
 		return fmt.Errorf("redeploy swarm stack %s for cert rotation: %w", ref.Project, err)
 	}
 
-	pruneSwarmStackRevisions(ctx, dockerCli, ref.Project, deployConfig)
+	pruneSwarmStackRevisions(ctx, dockerCli, ref.Project, deployConfig, certOpts)
 
 	return nil
 }
@@ -165,23 +167,15 @@ func rotateSwarmProjectCertificates(
 // rotation redeploy, honoring the same retention settings as a normal Swarm deploy. Prune
 // failures are only logged, not returned, since the certificate has already been redeployed
 // successfully by the time this runs.
-func pruneSwarmStackRevisions(ctx context.Context, dockerCli command.Cli, stackName string, deployConfig *deploy.Config) {
-	appConfig, err := app.GetConfig()
-	if err != nil {
-		slog.Warn("skipping swarm config/secret prune after cert rotation: failed to load app config",
-			slog.String("project", stackName), logger.ErrAttr(err))
-
-		return
-	}
-
-	if retention := deployConfig.ResolveSwarmConfigRetention(appConfig.DockerSwarmConfigRetention); retention >= 0 {
+func pruneSwarmStackRevisions(ctx context.Context, dockerCli command.Cli, stackName string, deployConfig *deploy.Config, opts CertificateRotationOptions) {
+	if retention := deployConfig.ResolveSwarmConfigRetention(opts.DockerSwarmConfigRetention); retention >= 0 {
 		if err := PruneStackConfigs(ctx, dockerCli.Client(), stackName, retention); err != nil {
 			slog.Warn("failed to prune swarm stack configs after cert rotation",
 				slog.String("project", stackName), logger.ErrAttr(err))
 		}
 	}
 
-	if retention := deployConfig.ResolveSwarmSecretRetention(appConfig.DockerSwarmSecretRetention); retention >= 0 {
+	if retention := deployConfig.ResolveSwarmSecretRetention(opts.DockerSwarmSecretRetention); retention >= 0 {
 		if err := PruneStackSecrets(ctx, dockerCli.Client(), stackName, retention); err != nil {
 			slog.Warn("failed to prune swarm stack secrets after cert rotation",
 				slog.String("project", stackName), logger.ErrAttr(err))

@@ -71,7 +71,7 @@ networks:
 			filePath := filepath.Join(tmpDir, "compose.yaml")
 			createComposeFile(t, filePath, tc.compose)
 
-			project, err := LoadCompose(context.Background(), nil, tmpDir, tmpDir, "test-stack", []string{filePath}, nil, nil, map[string]string{})
+			project, err := LoadCompose(context.Background(), nil, tmpDir, tmpDir, "test-stack", []string{filePath}, nil, nil, map[string]string{}, ComposeLoadOptions{})
 			if err != nil {
 				t.Fatalf("LoadCompose() error = %v", err)
 			}

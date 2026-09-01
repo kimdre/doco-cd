@@ -112,7 +112,7 @@ func TestLoadCompose(t *testing.T) {
 
 	stackName := test.ConvertTestName(t.Name())
 
-	project, err := LoadCompose(ctx, nil, tmpDir, tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
+	project, err := LoadCompose(ctx, nil, tmpDir, tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, map[string]string{}, ComposeLoadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,6 +126,54 @@ func TestLoadCompose(t *testing.T) {
 
 	if len(project.Services) != 1 {
 		t.Fatalf("expected 1 service, got %d", len(project.Services))
+	}
+}
+
+// TestLoadCompose_PassEnvHonoredIndependentOfEnvVar proves that whether the doco-cd process's
+// own OS environment variables are passed through for interpolation is controlled solely by
+// ComposeLoadOptions.PassEnv, not by reading the PASS_ENV environment variable directly. A stale
+// PASS_ENV=true left over from a previous process invocation must not leak OS environment
+// variables into the compose project when the caller explicitly passes PassEnv: false, and setting
+// PassEnv: true must pass them through regardless of what PASS_ENV is set to.
+func TestLoadCompose_PassEnvHonoredIndependentOfEnvVar(t *testing.T) {
+	ctx := context.Background()
+
+	tmpDir := t.TempDir()
+
+	filePath := filepath.Join(tmpDir, "test.compose.yaml")
+
+	composeYAML := `services:
+  test:
+    image: nginx:latest
+    environment:
+      MARKER: ${DOCO_CD_TEST_PASSENV_MARKER}
+`
+	createComposeFile(t, filePath, composeYAML)
+
+	stackName := test.ConvertTestName(t.Name())
+
+	// A stale PASS_ENV=true must have no effect: production code no longer reads this
+	// environment variable, only the explicit ComposeLoadOptions.PassEnv field.
+	t.Setenv("PASS_ENV", "true")
+	t.Setenv("DOCO_CD_TEST_PASSENV_MARKER", "marker-value")
+
+	project, err := LoadCompose(ctx, nil, tmpDir, tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, map[string]string{}, ComposeLoadOptions{PassEnv: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, ok := project.Services["test"].Environment["MARKER"]; ok && got != nil && *got != "" {
+		t.Fatalf("expected MARKER to be unset when PassEnv=false despite PASS_ENV=true, got %q", *got)
+	}
+
+	project, err = LoadCompose(ctx, nil, tmpDir, tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, map[string]string{}, ComposeLoadOptions{PassEnv: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := project.Services["test"].Environment["MARKER"]
+	if got == nil || *got != "marker-value" {
+		t.Fatalf("expected MARKER to be %q when PassEnv=true, got %v", "marker-value", got)
 	}
 }
 
@@ -268,7 +316,7 @@ func TestDeployCompose(t *testing.T) {
 
 	stackName := test.ConvertTestName(t.Name())
 
-	project, err := LoadCompose(ctx, nil, tmpDir, tmpDir, stackName, []string{filePath}, []string{}, []string{}, map[string]string{})
+	project, err := LoadCompose(ctx, nil, tmpDir, tmpDir, stackName, []string{filePath}, []string{}, []string{}, map[string]string{}, ComposeLoadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -471,6 +519,7 @@ compose_files:
 			deployConf.EnvFiles,
 			deployConf.Profiles,
 			deployConf.Internal.Environment,
+			ComposeLoadOptions{},
 		)
 		if err != nil {
 			t.Fatalf("failed to load expected project: %v", err)
@@ -1602,7 +1651,7 @@ func TestProjectFilesHaveChanges(t *testing.T) {
 				t.Fatalf("Failed to get changed files: %v", err)
 			}
 
-			project, err := LoadCompose(t.Context(), nil, tmpDir, tmpDir, d.Name, d.ComposeFiles, d.EnvFiles, d.Profiles, map[string]string{})
+			project, err := LoadCompose(t.Context(), nil, tmpDir, tmpDir, d.Name, d.ComposeFiles, d.EnvFiles, d.Profiles, map[string]string{}, ComposeLoadOptions{})
 			if err != nil {
 				t.Fatalf("Failed to load compose file: %v", err)
 			}
@@ -1940,7 +1989,7 @@ func TestInjectSecretsToProject(t *testing.T) {
 
 			t.Log("Resolved secrets:", resolvedSecrets)
 
-			project, err := LoadCompose(ctx, nil, tmpDir, tmpDir, test.ConvertTestName(t.Name()), []string{filePath}, []string{".env"}, []string{}, resolvedSecrets)
+			project, err := LoadCompose(ctx, nil, tmpDir, tmpDir, test.ConvertTestName(t.Name()), []string{filePath}, []string{".env"}, []string{}, resolvedSecrets, ComposeLoadOptions{})
 			if err != nil {
 				t.Fatal(err)
 			}

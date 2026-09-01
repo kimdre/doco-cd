@@ -241,8 +241,8 @@ func TestUpdateRuntimeRunStatus(t *testing.T) {
 func TestManagerRuntimeStateIsIsolated(t *testing.T) {
 	t.Parallel()
 
-	first := NewManager(nil, nil, nil, nil, nil)
-	second := NewManager(nil, nil, nil, nil, nil)
+	first := NewManager(nil, nil, nil, nil, nil, docker.ScheduledComposeOptions{})
+	second := NewManager(nil, nil, nil, nil, nil, docker.ScheduledComposeOptions{})
 	key := "container:project/service"
 
 	first.runtime.setLastRun(key, time.Now())
@@ -276,7 +276,7 @@ func TestRuntimeStoreClearContextModePreservesOtherPartitions(t *testing.T) {
 func TestManagerStopWorkersClearsRuntimeState(t *testing.T) {
 	t.Parallel()
 
-	manager := NewManager(nil, nil, nil, nil, nil)
+	manager := NewManager(nil, nil, nil, nil, nil, docker.ScheduledComposeOptions{})
 	key := schedulerWorkerKey("remote", scheduledJobModeContainer)
 	jobKey := "remote::container:shared/job"
 	cancelled := false
@@ -311,7 +311,7 @@ func TestManagerStopWorkersClearsRuntimeState(t *testing.T) {
 func TestManagerOldWorkerCannotClearReplacementState(t *testing.T) {
 	t.Parallel()
 
-	manager := NewManager(nil, nil, nil, nil, nil)
+	manager := NewManager(nil, nil, nil, nil, nil, docker.ScheduledComposeOptions{})
 	key := schedulerWorkerKey("remote", scheduledJobModeContainer)
 	jobKey := "remote::container:shared/job"
 	manager.workers[key] = managedWorker{

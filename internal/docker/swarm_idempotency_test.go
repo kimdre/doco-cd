@@ -101,7 +101,7 @@ func TestDeploySwarmStackIsIdempotent(t *testing.T) {
 
 	filePath := filepath.Join(worktree.Filesystem.Root(), "docker-compose.yml")
 
-	project, err := LoadCompose(ctx, nil, tmpDir, tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
+	project, err := LoadCompose(ctx, nil, tmpDir, tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, map[string]string{}, ComposeLoadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

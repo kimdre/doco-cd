@@ -21,8 +21,6 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/moby/buildkit/frontend/dockerfile/dfgitutil"
 
-	"github.com/kimdre/doco-cd/internal/config/app"
-
 	"github.com/kimdre/doco-cd/internal/git"
 )
 
@@ -85,26 +83,26 @@ type gitResourceLoaderConfig struct {
 
 // newRemoteResourceLoaders configures Git includes independently of the Docker CLI.
 // OCI includes require the Docker CLI for registry credentials.
-func newRemoteResourceLoaders(c *app.Config, dockerCli command.Cli, repoPath string) []loader.ResourceLoader {
-	cacheBase := resolveIncludeCacheBase(c, repoPath)
+func newRemoteResourceLoaders(opts ComposeLoadOptions, dockerCli command.Cli, repoPath string) []loader.ResourceLoader {
+	cacheBase := resolveIncludeCacheBase(opts, repoPath)
 
 	remoteLoaders := []loader.ResourceLoader{
 		newGitResourceLoader(gitResourceLoaderConfig{
 			CacheBase:       cacheBase,
-			SkipTLSVerify:   c.SkipTLSVerification,
-			ProxyOptions:    c.HttpProxy,
-			CloneSubmodules: c.GitCloneSubmodules,
-			CloneDepth:      c.GitCloneDepth,
-			PrivateKey:      c.SSHPrivateKey,
-			KeyPassphrase:   c.SSHPrivateKeyPassphrase,
-			AccessToken:     c.GitAccessToken,
+			SkipTLSVerify:   opts.SkipTLSVerify,
+			ProxyOptions:    opts.HttpProxy,
+			CloneSubmodules: opts.GitCloneSubmodules,
+			CloneDepth:      opts.GitCloneDepth,
+			PrivateKey:      opts.SSHPrivateKey,
+			KeyPassphrase:   opts.SSHPrivateKeyPassphrase,
+			AccessToken:     opts.GitAccessToken,
 		}),
 	}
 	if dockerCli != nil {
 		remoteLoaders = append(remoteLoaders, loggingResourceLoader{
 			kind: "oci",
 			loader: remote.NewOCIRemoteLoader(dockerCli, false, api.OCIOptions{
-				InsecureRegistries: c.OciInsecureRegistries,
+				InsecureRegistries: opts.OciInsecureRegistries,
 			}),
 		})
 	}
@@ -112,7 +110,7 @@ func newRemoteResourceLoaders(c *app.Config, dockerCli command.Cli, repoPath str
 	return remoteLoaders
 }
 
-func resolveIncludeCacheBase(c *app.Config, repoPath string) string {
+func resolveIncludeCacheBase(opts ComposeLoadOptions, repoPath string) string {
 	repoPath = strings.TrimSpace(repoPath)
 	if repoPath != "" {
 		absRepoPath, err := filepath.Abs(repoPath)
@@ -121,14 +119,12 @@ func resolveIncludeCacheBase(c *app.Config, repoPath string) string {
 		}
 	}
 
-	if c != nil {
-		if base := strings.TrimSpace(c.DataHostPath); base != "" {
-			return base
-		}
+	if base := strings.TrimSpace(opts.DataHostPath); base != "" {
+		return base
+	}
 
-		if base := strings.TrimSpace(c.DataMountPath); base != "" {
-			return base
-		}
+	if base := strings.TrimSpace(opts.DataMountPath); base != "" {
+		return base
 	}
 
 	return os.TempDir()

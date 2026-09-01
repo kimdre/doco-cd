@@ -17,7 +17,6 @@ import (
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
 	"github.com/kimdre/doco-cd/internal/config"
-	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/git"
 )
@@ -127,12 +126,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 	if s.SecretProvider != nil && len(s.DeployConfig.ExternalSecrets) > 0 {
 		stageLog.Debug("resolving external secrets", slog.Any("external_secrets", s.DeployConfig.ExternalSecrets))
 
-		appConfig, err := app.GetConfig()
-		if err != nil {
-			return fmt.Errorf("failed to get app config: %w", err)
-		}
-
-		interpolatedRefs, err := secrettypes.InterpolateExternalSecretRefs(s.DeployConfig.ExternalSecrets, appConfig.InterpolateExternalSecrets)
+		interpolatedRefs, err := secrettypes.InterpolateExternalSecretRefs(s.DeployConfig.ExternalSecrets, s.AppConfig.InterpolateExternalSecrets)
 		if err != nil {
 			return fmt.Errorf("failed to interpolate external secret references: %w", err)
 		}
@@ -437,7 +431,7 @@ func (s *StageManager) loadComposeProjectHash(ctx context.Context) (string, erro
 	s.Docker.Project, err = docker.LoadCompose(
 		ctx, s.Docker.Cmd, s.Repository.PathExternal, extAbsWorkingDir, s.DeployConfig.Name,
 		s.DeployConfig.ComposeFiles, s.DeployConfig.EnvFiles,
-		s.DeployConfig.Profiles, s.DeployConfig.Internal.Environment)
+		s.DeployConfig.Profiles, s.DeployConfig.Internal.Environment, docker.NewComposeLoadOptions(s.AppConfig))
 	if err != nil {
 		return "", fmt.Errorf("failed to load compose project: %w", err)
 	}

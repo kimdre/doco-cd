@@ -47,7 +47,7 @@ func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, c
 	case scheduledJobModeContainer:
 		switch cfg.ExecutionMode {
 		case docker.JobExecutionModeOneOff:
-			err := docker.RunComposeOneOffFromServiceDefinition(ctx, s.dockerCli, job.labels, s.secretProvider)
+			err := docker.RunComposeOneOffFromServiceDefinition(ctx, s.dockerCli, job.labels, s.secretProvider, s.composeOptions)
 			if err == nil {
 				return nil
 			}
@@ -58,7 +58,7 @@ func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, c
 
 			return docker.RunContainerOneOffFromExisting(ctx, s.dockerCli.Client(), job.id)
 		default:
-			err := docker.RunComposeScheduledContainer(ctx, s.dockerCli, job.id, job.labels, len(cfg.StopServices) > 0, s.secretProvider)
+			err := docker.RunComposeScheduledContainer(ctx, s.dockerCli, job.id, job.labels, len(cfg.StopServices) > 0, s.secretProvider, s.composeOptions)
 			if err == nil {
 				return nil
 			}

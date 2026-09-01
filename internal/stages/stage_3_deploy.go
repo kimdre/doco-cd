@@ -40,6 +40,7 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 		NeedSignal:                 s.DeployState.ignoredInfo.NeedSendSignal,
 		LatestCommit:               latestCommit,
 		AppVersion:                 app.Version,
+		ComposeLoad:                docker.NewComposeLoadOptions(s.AppConfig),
 		GlobalSwarmConfigRetention: s.AppConfig.DockerSwarmConfigRetention,
 		GlobalSwarmSecretRetention: s.AppConfig.DockerSwarmSecretRetention,
 		SwarmMode:                  s.Docker.SwarmMode,

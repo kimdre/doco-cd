@@ -16,7 +16,6 @@ import (
 	containerTypes "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
-	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
@@ -47,13 +46,14 @@ func RunComposeScheduledContainer(
 	labels map[string]string,
 	waitForExit bool,
 	secretProvider secretprovider.SecretProvider,
+	opts ScheduledComposeOptions,
 ) error {
 	ref, err := composeScheduledServiceRefFromLabels(labels)
 	if err != nil {
 		return err
 	}
 
-	project, err := loadComposeScheduledProject(ctx, dockerCli, ref, secretProvider)
+	project, err := loadComposeScheduledProject(ctx, dockerCli, ref, secretProvider, opts)
 	if err != nil {
 		return err
 	}
@@ -108,13 +108,14 @@ func RunComposeOneOffFromServiceDefinition(
 	dockerCli command.Cli,
 	labels map[string]string,
 	secretProvider secretprovider.SecretProvider,
+	opts ScheduledComposeOptions,
 ) error {
 	ref, err := composeScheduledServiceRefFromLabels(labels)
 	if err != nil {
 		return err
 	}
 
-	project, err := loadComposeScheduledProject(ctx, dockerCli, ref, secretProvider)
+	project, err := loadComposeScheduledProject(ctx, dockerCli, ref, secretProvider, opts)
 	if err != nil {
 		return err
 	}
@@ -208,8 +209,9 @@ func loadComposeScheduledProject(
 	dockerCli command.Cli,
 	ref composeScheduledServiceRef,
 	secretProvider secretprovider.SecretProvider,
+	opts ScheduledComposeOptions,
 ) (*types.Project, error) {
-	project, _, err := loadComposeScheduledProjectAll(ctx, dockerCli, ref, secretProvider)
+	project, _, err := loadComposeScheduledProjectAll(ctx, dockerCli, ref, secretProvider, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -234,6 +236,7 @@ func loadComposeScheduledProjectAll(
 	dockerCli command.Cli,
 	ref composeScheduledServiceRef,
 	secretProvider secretprovider.SecretProvider,
+	opts ScheduledComposeOptions,
 ) (*types.Project, *deploy.Config, error) {
 	if ref.WorkingDir == "" {
 		return nil, nil, fmt.Errorf("%w: missing %q label",
@@ -242,7 +245,7 @@ func loadComposeScheduledProjectAll(
 		)
 	}
 
-	deployConfig, repoPath, err := loadComposeScheduledDeployConfig(ctx, ref, secretProvider)
+	deployConfig, repoPath, err := loadComposeScheduledDeployConfig(ctx, ref, secretProvider, opts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -262,7 +265,7 @@ func loadComposeScheduledProjectAll(
 	}
 
 	project, err := LoadCompose(ctx, dockerCli, repoPath, ref.WorkingDir, ref.Project, configFiles,
-		deployConfig.EnvFiles, deployConfig.Profiles, deployConfig.Internal.Environment)
+		deployConfig.EnvFiles, deployConfig.Profiles, deployConfig.Internal.Environment, opts.ComposeLoad)
 	if err != nil {
 		return nil, nil, fmt.Errorf("load compose project for scheduled service %s/%s: %w", ref.Project, ref.Service, err)
 	}
@@ -389,31 +392,29 @@ func loadComposeScheduledDeployConfig(
 	ctx context.Context,
 	ref composeScheduledServiceRef,
 	secretProvider secretprovider.SecretProvider,
+	opts ScheduledComposeOptions,
 ) (*deploy.Config, string, error) {
 	if strings.TrimSpace(ref.RepositoryURL) == "" || strings.TrimSpace(ref.DeploymentName) == "" {
 		return nil, "", fmt.Errorf("%w: missing deployment repository and/or name label",
 			ErrComposeScheduledMetadataUnavailable)
 	}
 
-	appConfig, err := app.GetConfig()
-	if err != nil {
-		return nil, "", fmt.Errorf("load app config for scheduled service %s/%s: %w", ref.Project, ref.Service, err)
-	}
+	dataMountPath := opts.ComposeLoad.DataMountPath
 
 	sourceRepoPath, err := filesystem.VerifyAndSanitizePath(
-		filepath.Join(appConfig.DataMountPath, git.GetRepoName(ref.RepositoryURL)),
-		appConfig.DataMountPath,
+		filepath.Join(dataMountPath, git.GetRepoName(ref.RepositoryURL)),
+		dataMountPath,
 	)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve source repository path for scheduled service %s/%s: %w", ref.Project, ref.Service, err)
 	}
 
-	repoPath, err := resolveScheduledComposeRepoRoot(ref.WorkingDir, appConfig.DataMountPath, sourceRepoPath)
+	repoPath, err := resolveScheduledComposeRepoRoot(ref.WorkingDir, dataMountPath, sourceRepoPath)
 	if err != nil {
 		return nil, "", err
 	}
 
-	configs, err := deploy.GetConfigs(sourceRepoPath, appConfig.DeployConfigBaseDir, ref.ConfigTarget, ref.Reference, nil)
+	configs, err := deploy.GetConfigs(sourceRepoPath, opts.DeployConfigBaseDir, ref.ConfigTarget, ref.Reference, nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("load deploy config for scheduled service %s/%s: %w", ref.Project, ref.Service, err)
 	}
@@ -431,7 +432,7 @@ func loadComposeScheduledDeployConfig(
 	// correct deployment config file.
 	deployConfig.Internal.ConfigTarget = ref.ConfigTarget
 
-	if err = prepareComposeScheduledDeployConfig(ctx, deployConfig, sourceRepoPath, repoPath, secretProvider); err != nil {
+	if err = prepareComposeScheduledDeployConfig(ctx, deployConfig, sourceRepoPath, repoPath, secretProvider, opts); err != nil {
 		return nil, "", err
 	}
 
@@ -460,6 +461,7 @@ func prepareComposeScheduledDeployConfig(
 	sourceRepoPath string,
 	repoPath string,
 	secretProvider secretprovider.SecretProvider,
+	opts ScheduledComposeOptions,
 ) error {
 	if deployConfig == nil {
 		return fmt.Errorf("%w: missing deployment config", ErrComposeScheduledMetadataUnavailable)
@@ -489,12 +491,7 @@ func prepareComposeScheduledDeployConfig(
 		return nil
 	}
 
-	appConfig, err := app.GetConfig()
-	if err != nil {
-		return fmt.Errorf("load app config for scheduled service %s: %w", deployConfig.Name, err)
-	}
-
-	interpolatedRefs, err := secrettypes.InterpolateExternalSecretRefs(deployConfig.ExternalSecrets, appConfig.InterpolateExternalSecrets)
+	interpolatedRefs, err := secrettypes.InterpolateExternalSecretRefs(deployConfig.ExternalSecrets, opts.InterpolateExternalSecrets)
 	if err != nil {
 		return fmt.Errorf("interpolate external secrets for scheduled service %s: %w", deployConfig.Name, err)
 	}
