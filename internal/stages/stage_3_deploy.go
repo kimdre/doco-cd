@@ -30,13 +30,21 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 		}
 	}
 
-	err = docker.DeployStack(stageLog, s.Repository.PathExternal, &ctx, s.Docker.Cmd,
-		s.Payload, s.DeployConfig,
-		s.DeployState.changedServices, s.DeployState.ignoredInfo.NeedSendSignal,
-		latestCommit, app.Version,
-		s.AppConfig.DockerSwarmConfigRetention, s.AppConfig.DockerSwarmSecretRetention,
-		s.Docker.SwarmMode,
-		pkiRoleNormMap(s.DeployConfig.ExternalSecrets, s.DeployConfig.Internal.Environment))
+	err = docker.DeployStack(ctx, docker.DeployRequest{
+		JobLog:                     stageLog,
+		ExternalRepoPath:           s.Repository.PathExternal,
+		DockerCLI:                  s.Docker.Cmd,
+		Payload:                    s.Payload,
+		DeployConfig:               s.DeployConfig,
+		DetectedChanges:            s.DeployState.changedServices,
+		NeedSignal:                 s.DeployState.ignoredInfo.NeedSendSignal,
+		LatestCommit:               latestCommit,
+		AppVersion:                 app.Version,
+		GlobalSwarmConfigRetention: s.AppConfig.DockerSwarmConfigRetention,
+		GlobalSwarmSecretRetention: s.AppConfig.DockerSwarmSecretRetention,
+		SwarmMode:                  s.Docker.SwarmMode,
+		HashNormMap:                pkiRoleNormMap(s.DeployConfig.ExternalSecrets, s.DeployConfig.Internal.Environment),
+	})
 	if err != nil {
 		return fmt.Errorf("failed to deploy stack %s: %w", s.DeployConfig.Name, err)
 	}

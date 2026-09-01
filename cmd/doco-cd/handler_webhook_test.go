@@ -38,6 +38,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/logger"
+	"github.com/kimdre/doco-cd/internal/reconciliation"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -288,10 +289,14 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 			Destination: tmpDir,
 			Mode:        "rw",
 		},
-		log:            log,
-		testName:       stackName,
-		reconciliation: newTestReconciliationManager(t),
+		log:      log,
+		testName: stackName,
 	}
+	h.reconciliation = newTestReconciliationManager(t, reconciliation.Dependencies{
+		AppConfig:      appConfig,
+		DataMountPoint: h.dataMountPoint,
+		DockerCLI:      dockerCli,
+	})
 	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
 		appConfig:      appConfig,
 		dataMountPoint: h.dataMountPoint,

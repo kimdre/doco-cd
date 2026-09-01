@@ -39,25 +39,15 @@ func TestDeploy_RejectsUnverifiedOCIArtifact(t *testing.T) {
 
 	manager := newTestManager(t)
 
-	err := manager.deploy(
-		t.Context(),
-		logger.New(logger.LevelCritical).Logger,
-		nil,
-		container.MountPoint{},
-		nil,
-		nil,
-		nil,
-		notification.Metadata{},
-		stages.JobTriggerWebhook,
-		stages.RepositoryData{
+	err := manager.deploy(t.Context(), DeployRequest{
+		Logger:     logger.New(logger.LevelCritical).Logger,
+		JobTrigger: stages.JobTriggerWebhook,
+		Repository: stages.RepositoryData{
 			Source:     config.SourceTypeOCI,
 			SourceUrl:  "ghcr.io/example/repo:latest",
 			OCITrusted: false,
 		},
-		nil,
-		nil,
-		"",
-	)
+	})
 	if err == nil {
 		t.Fatal("expected deploy to fail for unverified OCI artifact")
 	}
@@ -101,7 +91,6 @@ func TestDeploy(t *testing.T) {
 	encryption.SetupAgeKeyEnvVar(t)
 
 	ctx := t.Context()
-	manager := newTestManager(t)
 
 	c, err := app.GetConfig()
 	if err != nil {
@@ -153,6 +142,19 @@ func TestDeploy(t *testing.T) {
 	}
 
 	tmpDir := t.TempDir()
+
+	manager := newTestManagerWithDependencies(t, Dependencies{
+		AppConfig: c,
+		DataMountPoint: container.MountPoint{
+			Type:        "bind",
+			Source:      tmpDir,
+			Destination: tmpDir,
+			Mode:        "rw",
+		},
+		DockerCLI:      dockerCli,
+		SecretProvider: secretProvider,
+	})
+
 	// Use a test-unique repository name so this test's reconciliation job key does not
 	// collide with other package tests that may run in parallel.
 	repoName := test.ConvertTestName(t.Name()) + "-repo"
@@ -201,33 +203,23 @@ func TestDeploy(t *testing.T) {
 		}
 	})
 
-	if err := manager.Deploy(ctx, log, c,
-		container.MountPoint{
-			Type:        "bind",
-			Source:      tmpDir,
-			Destination: tmpDir,
-			Mode:        "rw",
-		},
-		dockerCli,
-		nil,
-		secretProvider,
-		notification.Metadata{
+	if err := manager.Deploy(ctx, DeployRequest{
+		Logger: log,
+		Metadata: notification.Metadata{
 			JobID:      jobId,
 			Repository: repoName,
 			Revision:   notification.GetRevision(p.Ref, p.CommitSHAString()),
 		},
-		stages.JobTriggerWebhook,
-		stages.RepositoryData{
+		JobTrigger: stages.JobTriggerWebhook,
+		Repository: stages.RepositoryData{
 			SourceUrl:    p.CloneURL,
 			Name:         repoName,
 			PathInternal: repoPath,
 			PathExternal: repoPath,
 		},
-		dcs,
-
-		&p,
-		"",
-	); err != nil {
+		DeployConfigs: dcs,
+		Payload:       &p,
+	}); err != nil {
 		t.Fatalf("Failed to deploy: %v", err)
 	}
 

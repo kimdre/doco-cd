@@ -31,7 +31,7 @@ func TestStageRecordsDeploymentFailure(t *testing.T) {
 func newFailureTestManager(t *testing.T, stack string) *StageManager {
 	t.Helper()
 
-	sm := newTestStageManager()
+	sm := newTestStageManager(t)
 	sm.DeployConfig.Name = stack
 	sm.Repository.Revision = "573a16e"
 

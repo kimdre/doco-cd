@@ -19,10 +19,10 @@ import (
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 )
 
-func newTestReconciliationManager(t *testing.T) *reconciliation.Manager {
+func newTestReconciliationManager(t *testing.T, dependencies reconciliation.Dependencies) *reconciliation.Manager {
 	t.Helper()
 
-	manager, err := reconciliation.NewManager(reconciliation.Dependencies{})
+	manager, err := reconciliation.NewManager(dependencies)
 	if err != nil {
 		t.Fatalf("failed to create reconciliation manager: %v", err)
 	}

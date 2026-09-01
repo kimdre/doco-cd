@@ -16,16 +16,15 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 
 	"github.com/kimdre/doco-cd/internal/commitstatus"
+	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/config/poll"
-	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/reconciliation"
-	"github.com/kimdre/doco-cd/internal/secretprovider"
 	"github.com/kimdre/doco-cd/internal/source/oci"
 	"github.com/kimdre/doco-cd/internal/stages"
 	"github.com/kimdre/doco-cd/internal/webhook"
@@ -148,21 +147,39 @@ func postEarlyCommitStatus(ctx context.Context, jobLog *slog.Logger, appConfig *
 	}
 }
 
+// handleRequest bundles handle's per-call, per-deployment-request input: the source location and
+// its trigger/reference/visibility, notification metadata, an optional custom deploy target,
+// an optional test identity, poll configuration (used only for poll-triggered requests), and the
+// parsed webhook payload (zero value for non-webhook triggers).
+type handleRequest struct {
+	JobTrigger   stages.JobTrigger `validate:"required,oneof=webhook poll"`
+	SourceType   config.SourceType
+	SourceRef    string `validate:"required"`
+	Ref          string
+	Private      bool
+	Metadata     notification.Metadata
+	CustomTarget string
+	TestName     string
+	PollConfig   poll.Config
+	Payload      webhook.ParsedPayload
+}
+
 func handle(ctx context.Context, jobLog *slog.Logger,
 	reconciliationManager *reconciliation.Manager,
 	appConfig *app.Config,
 	dataMountPoint container.MountPoint,
-	secretProvider secretprovider.SecretProvider,
 	dockerCli command.Cli,
-	contexts *docker.ContextRegistry,
-	jobTrigger stages.JobTrigger,
-	sourceType config.SourceType, sourceRef string, ref string, private bool,
-	metadata notification.Metadata,
-	customTarget string, testName string,
-	pollConfig poll.Config,
-	payload webhook.ParsedPayload,
+	req handleRequest,
 ) error {
-	sourceType = config.NormalizeSourceType(sourceType)
+	if err := validation.Validate(req); err != nil {
+		return handleError{
+			err:            err,
+			msg:            "invalid deployment request",
+			httpStatusCode: http.StatusInternalServerError,
+		}
+	}
+
+	sourceType := config.NormalizeSourceType(req.SourceType)
 	if err := config.ValidateSourceType(sourceType); err != nil {
 		return handleError{
 			err:            err,
@@ -186,25 +203,25 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		)
 	}
 
-	repoName := git.GetRepoName(sourceRef)
+	repoName := git.GetRepoName(req.SourceRef)
 	if sourceType == config.SourceTypeOCI {
-		repoName = oci.RepositoryNameFromArtifact(sourceRef)
+		repoName = oci.RepositoryNameFromArtifact(req.SourceRef)
 	}
 
 	logField := logEntityForSourceType(sourceType)
 
 	logValue := repoName
 	if sourceType == config.SourceTypeOCI {
-		logValue = strings.TrimSpace(sourceRef)
+		logValue = strings.TrimSpace(req.SourceRef)
 	}
 
 	jobLog = jobLog.With(
 		slog.String(logField, logValue),
 	)
 
-	if customTarget != "" {
-		jobLog = jobLog.With(slog.String("target", customTarget))
-		metadata.Target = strings.TrimSpace(customTarget)
+	if req.CustomTarget != "" {
+		jobLog = jobLog.With(slog.String("target", req.CustomTarget))
+		req.Metadata.Target = strings.TrimSpace(req.CustomTarget)
 	}
 
 	if strings.Contains(repoName, "..") {
@@ -249,19 +266,19 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		}
 	}
 
-	resolvedRevision := strings.TrimSpace(payload.Digest)
+	resolvedRevision := strings.TrimSpace(req.Payload.Digest)
 	ociTrusted := sourceType != config.SourceTypeOCI
 
 	switch sourceType {
 	case config.SourceTypeGit:
 		// Skip the network fetch when the payload carries the exact commit SHA and
 		// the local repo HEAD already matches it (e.g. webhook re-deliveries).
-		if sha := strings.TrimSpace(payload.CommitSHAString()); sha != "" {
+		if sha := strings.TrimSpace(req.Payload.CommitSHAString()); sha != "" {
 			if matches, _ := git.HeadMatchesCommit(internalRepoPath, sha); matches {
 				jobLog.Debug("skipping fetch, repository already at requested commit", slog.String("commit", sha))
 
 				if repo, openErr := git.OpenRepository(internalRepoPath); openErr == nil {
-					if latestCommit, latestErr := git.GetLatestCommit(repo, ref); latestErr == nil {
+					if latestCommit, latestErr := git.GetLatestCommit(repo, req.Ref); latestErr == nil {
 						resolvedRevision = strings.TrimSpace(latestCommit)
 					}
 				}
@@ -271,12 +288,12 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		}
 
 		repo, err := git.CloneOrUpdateRepository(jobLog,
-			sourceRef, ref, internalRepoPath, externalRepoPath,
-			private, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken,
+			req.SourceRef, req.Ref, internalRepoPath, externalRepoPath,
+			req.Private, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken,
 			appConfig.SkipTLSVerification, appConfig.HttpProxy, appConfig.GitCloneSubmodules, appConfig.GitCloneDepth,
 		)
 		if err != nil {
-			postEarlyCommitStatus(ctx, jobLog, appConfig, sourceType, sourceRef, resolvedRevision, payload, commitstatus.DeployContext, earlyFailureCommitStatusDescription(err))
+			postEarlyCommitStatus(ctx, jobLog, appConfig, sourceType, req.SourceRef, resolvedRevision, req.Payload, commitstatus.DeployContext, earlyFailureCommitStatusDescription(err))
 
 			return handleError{
 				err:            err,
@@ -285,12 +302,12 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 			}
 		}
 
-		latestCommit, err := git.GetLatestCommit(repo, ref)
+		latestCommit, err := git.GetLatestCommit(repo, req.Ref)
 		if err == nil {
 			resolvedRevision = strings.TrimSpace(latestCommit)
 		}
 	case config.SourceTypeOCI:
-		resolvedDigest, err := oci.ResolveDigest(ctx, sourceRef, strings.TrimSpace(payload.Digest))
+		resolvedDigest, err := oci.ResolveDigest(ctx, req.SourceRef, strings.TrimSpace(req.Payload.Digest))
 		if err != nil {
 			return handleError{
 				err:            err,
@@ -299,7 +316,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 			}
 		}
 
-		if err := oci.VerifyWithCosign(ctx, sourceRef, resolvedDigest, appConfig.OciTrustPolicy, config.OciTrustPolicyOverride{}, appConfig.OciVerifyMaxWorkers); err != nil {
+		if err := oci.VerifyWithCosign(ctx, req.SourceRef, resolvedDigest, appConfig.OciTrustPolicy, config.OciTrustPolicyOverride{}, appConfig.OciVerifyMaxWorkers); err != nil {
 			return handleError{
 				err:            err,
 				msg:            "failed OCI signature verification",
@@ -308,8 +325,8 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		}
 
 		pullResult, err := oci.PullAndExtract(ctx,
-			sourceRef, resolvedDigest, config.OciArtifactLayoutV1,
-			internalRepoPath, customTarget)
+			req.SourceRef, resolvedDigest, config.OciArtifactLayoutV1,
+			internalRepoPath, req.CustomTarget)
 		if err != nil {
 			return handleError{
 				err:            err,
@@ -320,21 +337,21 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 
 		resolvedRevision = pullResult.Digest
 		ociTrusted = true
-		payload.Source = webhook.PayloadSourceOCI
-		payload.Artifact = sourceRef
-		payload.Digest = pullResult.Digest
+		req.Payload.Source = webhook.PayloadSourceOCI
+		req.Payload.Artifact = req.SourceRef
+		req.Payload.Digest = pullResult.Digest
 
-		payload.Trigger = pullResult.Digest
-		if payload.FullName == "" {
-			payload.FullName = repoName
+		req.Payload.Trigger = pullResult.Digest
+		if req.Payload.FullName == "" {
+			req.Payload.FullName = repoName
 		}
 
-		if payload.Name == "" {
-			payload.Name = path.Base(repoName)
+		if req.Payload.Name == "" {
+			req.Payload.Name = path.Base(repoName)
 		}
 
-		if payload.WebURL == "" {
-			payload.WebURL = sourceRef
+		if req.Payload.WebURL == "" {
+			req.Payload.WebURL = req.SourceRef
 		}
 	}
 
@@ -352,11 +369,11 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		GitCloneDepth:           appConfig.GitCloneDepth,
 	}
 
-	switch jobTrigger {
+	switch req.JobTrigger {
 	case stages.JobTriggerWebhook:
-		deployConfigs, err = deploy.GetConfigs(internalRepoPath, appConfig.DeployConfigBaseDir, customTarget, payload.Ref, gitOpts)
+		deployConfigs, err = deploy.GetConfigs(internalRepoPath, appConfig.DeployConfigBaseDir, req.CustomTarget, req.Payload.Ref, gitOpts)
 		if err != nil {
-			postEarlyCommitStatus(ctx, jobLog, appConfig, sourceType, sourceRef, resolvedRevision, payload, commitstatus.DeployContext, earlyFailureCommitStatusDescription(err))
+			postEarlyCommitStatus(ctx, jobLog, appConfig, sourceType, req.SourceRef, resolvedRevision, req.Payload, commitstatus.DeployContext, earlyFailureCommitStatusDescription(err))
 
 			return handleError{
 				err:            err,
@@ -365,9 +382,9 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 			}
 		}
 	case stages.JobTriggerPoll:
-		deployConfigs, err = deploy.ResolveConfigs(pollConfig.Deployments, pollConfig.CustomTarget, ref, internalRepoPath, appConfig.DeployConfigBaseDir, gitOpts)
+		deployConfigs, err = deploy.ResolveConfigs(req.PollConfig.Deployments, req.PollConfig.CustomTarget, req.Ref, internalRepoPath, appConfig.DeployConfigBaseDir, gitOpts)
 		if err != nil {
-			postEarlyCommitStatus(ctx, jobLog, appConfig, sourceType, sourceRef, resolvedRevision, payload, commitstatus.DeployContext, earlyFailureCommitStatusDescription(err))
+			postEarlyCommitStatus(ctx, jobLog, appConfig, sourceType, req.SourceRef, resolvedRevision, req.Payload, commitstatus.DeployContext, earlyFailureCommitStatusDescription(err))
 
 			return handleError{
 				err:            err,
@@ -377,7 +394,7 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		}
 	default:
 		return handleError{
-			err:            fmt.Errorf("unsupported job trigger: %s", jobTrigger),
+			err:            fmt.Errorf("unsupported job trigger: %s", req.JobTrigger),
 			msg:            "unsupported job trigger",
 			httpStatusCode: http.StatusBadRequest,
 		}
@@ -385,22 +402,22 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 
 	// For OCI sources, the deploy config's reference must reflect the actual artifact tag that
 	// triggered this deployment (e.g. "latest"), overriding any reference baked into the config file.
-	if sourceType == config.SourceTypeOCI && ref != "" {
+	if sourceType == config.SourceTypeOCI && req.Ref != "" {
 		for _, cfg := range deployConfigs {
-			cfg.Reference = ref
+			cfg.Reference = req.Ref
 		}
 	}
 
 	for _, cfg := range deployConfigs {
-		cfg.Internal.ConfigTarget = strings.TrimSpace(customTarget)
-		if metadata.DeploymentTargetObserver != nil {
-			metadata.DeploymentTargetObserver(cfg.Name, cfg.Context)
+		cfg.Internal.ConfigTarget = strings.TrimSpace(req.CustomTarget)
+		if req.Metadata.DeploymentTargetObserver != nil {
+			req.Metadata.DeploymentTargetObserver(cfg.Name, cfg.Context)
 		}
 	}
 
 	repoData := stages.RepositoryData{
 		Source:       sourceType,
-		SourceUrl:    sourceRef,
+		SourceUrl:    req.SourceRef,
 		Name:         repoName,
 		PathInternal: internalRepoPath,
 		PathExternal: externalRepoPath,
@@ -416,9 +433,15 @@ func handle(ctx context.Context, jobLog *slog.Logger,
 		}
 	}
 
-	if err := reconciliationManager.Deploy(ctx, jobLog, appConfig,
-		dataMountPoint, dockerCli, contexts, secretProvider, metadata, jobTrigger,
-		repoData, deployConfigs, &payload, testName); err != nil {
+	if err := reconciliationManager.Deploy(ctx, reconciliation.DeployRequest{
+		Logger:        jobLog,
+		Metadata:      req.Metadata,
+		JobTrigger:    req.JobTrigger,
+		Repository:    repoData,
+		DeployConfigs: deployConfigs,
+		Payload:       &req.Payload,
+		TestName:      req.TestName,
+	}); err != nil {
 		if errors.Is(err, stages.ErrWebhookFilterMismatch) {
 			return err
 		}

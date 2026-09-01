@@ -316,8 +316,7 @@ func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any
 // handleEvent executes the deployment process for a given webhook event.
 func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *app.Config,
 	dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget string, metadata notification.Metadata,
-	dockerCli command.Cli, contexts *docker.ContextRegistry, secretProvider secretprovider.SecretProvider,
-	testName string,
+	dockerCli command.Cli, testName string,
 	reconciliationManager *reconciliation.Manager,
 ) (controlplane.RunResult, error) {
 	startTime := time.Now()
@@ -403,9 +402,19 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	}
 
 	deployErr := handle(ctx, jobLog, reconciliationManager,
-		appConfig, dataMountPoint, secretProvider, dockerCli, contexts,
-		stages.JobTriggerWebhook, sourceType, sourceRef, payload.Ref, payload.Private,
-		metadata, customTarget, testName, poll.Config{}, payload,
+		appConfig, dataMountPoint, dockerCli,
+		handleRequest{
+			JobTrigger:   stages.JobTriggerWebhook,
+			SourceType:   sourceType,
+			SourceRef:    sourceRef,
+			Ref:          payload.Ref,
+			Private:      payload.Private,
+			Metadata:     metadata,
+			CustomTarget: customTarget,
+			TestName:     testName,
+			PollConfig:   poll.Config{},
+			Payload:      payload,
+		},
 	)
 	if errors.Is(deployErr, stages.ErrWebhookFilterMismatch) {
 		msg := "deployment skipped, webhook filter did not match"
@@ -582,7 +591,7 @@ func (h *orchestrationHandler) WebhookHandler(w http.ResponseWriter, r *http.Req
 
 		defer repoLock.Unlock()
 
-		return handleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, metadata, h.dockerCli, h.contexts, h.secretProvider, h.testName, h.reconciliation)
+		return handleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, metadata, h.dockerCli, h.testName, h.reconciliation)
 	}
 
 	mode := controlplane.RunAsynchronous

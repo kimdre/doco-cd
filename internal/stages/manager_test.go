@@ -12,20 +12,28 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 )
 
-func newTestStageManager() *StageManager {
-	return NewStageManager(
-		"job-1",
-		JobTriggerWebhook,
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		nil,
-		&RepositoryData{Name: "owner/repo"},
-		&Docker{},
-		nil,
-		&app.Config{},
-		&deploy.Config{},
-		nil,
-		notification.Metadata{},
+func newTestStageManager(t *testing.T) *StageManager {
+	t.Helper()
+
+	sm, err := NewStageManager(
+		Dependencies{
+			AppConfig: &app.Config{},
+		},
+		RunInput{
+			Log:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+			JobID:        "job-1",
+			JobTrigger:   JobTriggerWebhook,
+			Repository:   &RepositoryData{Name: "owner/repo"},
+			Docker:       &Docker{},
+			DeployConfig: &deploy.Config{},
+			Metadata:     notification.Metadata{},
+		},
 	)
+	if err != nil {
+		t.Fatalf("NewStageManager() error = %v", err)
+	}
+
+	return sm
 }
 
 func TestNewMetaData(t *testing.T) {
@@ -44,7 +52,7 @@ func TestNewMetaData(t *testing.T) {
 func TestNewStageManager(t *testing.T) {
 	t.Parallel()
 
-	sm := newTestStageManager()
+	sm := newTestStageManager(t)
 
 	if sm.JobID != "job-1" || sm.JobTrigger != JobTriggerWebhook {
 		t.Fatalf("NewStageManager() stored job metadata incorrectly: %#v", sm)
@@ -59,10 +67,22 @@ func TestNewStageManager(t *testing.T) {
 	}
 }
 
+func TestNewStageManagerValidatesInputs(t *testing.T) {
+	t.Parallel()
+
+	if _, err := NewStageManager(Dependencies{}, RunInput{}); err == nil {
+		t.Fatal("NewStageManager() error = nil, want dependency validation error")
+	}
+
+	if _, err := NewStageManager(Dependencies{AppConfig: &app.Config{}}, RunInput{}); err == nil {
+		t.Fatal("NewStageManager() error = nil, want run input validation error")
+	}
+}
+
 func TestStageManagerGetStageMetaData(t *testing.T) {
 	t.Parallel()
 
-	sm := newTestStageManager()
+	sm := newTestStageManager(t)
 
 	tests := []StageName{StageInit, StagePreDeploy, StageDeploy, StageDestroy, StagePostDeploy, StagePostDestroy, StageCleanup}
 	for _, stageName := range tests {
@@ -88,7 +108,7 @@ func TestStageManagerGetStageMetaData(t *testing.T) {
 func TestStageManagerNotifyFailureIncludesTarget(t *testing.T) {
 	t.Parallel()
 
-	sm := newTestStageManager()
+	sm := newTestStageManager(t)
 	sm.Repository.Revision = "abc123"
 	sm.DeployConfig.Name = "app"
 	sm.DeployConfig.Context = "remote-vm"
@@ -121,7 +141,7 @@ func TestStageManagerNotifyFailureIncludesTarget(t *testing.T) {
 func TestStageOrders(t *testing.T) {
 	t.Parallel()
 
-	sm := newTestStageManager()
+	sm := newTestStageManager(t)
 
 	deployOrder := sm.GetDeployStageOrder()
 	if want := []StageName{StageInit, StagePreDeploy, StageDeploy, StagePostDeploy, StageCleanup}; !slices.Equal(deployOrder.Order, want) {

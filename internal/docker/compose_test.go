@@ -173,6 +173,14 @@ func waitForSingleRunningProjectContainerID(ctx context.Context, t *testing.T, c
 	return containerID, err
 }
 
+func TestDeployStackValidatesRequest(t *testing.T) {
+	t.Parallel()
+
+	if err := DeployStack(t.Context(), DeployRequest{}); err == nil {
+		t.Fatal("DeployStack() error = nil, want request validation error")
+	}
+}
+
 func TestDeployCompose(t *testing.T) {
 	encryption.SetupAgeKeyEnvVar(t)
 
@@ -337,8 +345,16 @@ compose_files:
 				return strings.Contains(strings.ToLower(err.Error()), ErrNoSuchImage.Error())
 			}),
 		).Do(func() error {
-			return DeployStack(jobLog, repoPath, &ctx, dockerCli, &p, deployConf,
-				nil, nil, latestCommit, "dev", 0, 0, swarm.GetModeEnabled(), nil)
+			return DeployStack(ctx, DeployRequest{
+				JobLog:           jobLog,
+				ExternalRepoPath: repoPath,
+				DockerCLI:        dockerCli,
+				Payload:          &p,
+				DeployConfig:     deployConf,
+				LatestCommit:     latestCommit,
+				AppVersion:       "dev",
+				SwarmMode:        swarm.GetModeEnabled(),
+			})
 		})
 		if err != nil {
 			t.Fatalf("failed to deploy stack: %v", err)
