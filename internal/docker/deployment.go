@@ -21,15 +21,18 @@ import (
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
+// deploymentPhaseState is a thread-safe structure to hold the current phase of a deployment.
 type deploymentPhaseState struct {
 	mu    sync.RWMutex
 	phase string
 }
 
+// newDeploymentPhaseState creates a new deploymentPhaseState with the given initial phase.
 func newDeploymentPhaseState(initialPhase string) *deploymentPhaseState {
 	return &deploymentPhaseState{phase: normalizeDeploymentPhase(initialPhase)}
 }
 
+// Set updates the current phase of the deployment.
 func (s *deploymentPhaseState) Set(phase string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -37,6 +40,7 @@ func (s *deploymentPhaseState) Set(phase string) {
 	s.phase = normalizeDeploymentPhase(phase)
 }
 
+// Get retrieves the current phase of the deployment.
 func (s *deploymentPhaseState) Get() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -44,6 +48,8 @@ func (s *deploymentPhaseState) Get() string {
 	return s.phase
 }
 
+// normalizeDeploymentPhase ensures that the deployment phase is a non-empty string,
+// defaulting to "unknown" if empty.
 func normalizeDeploymentPhase(phase string) string {
 	phase = strings.TrimSpace(phase)
 	if phase == "" {
@@ -53,16 +59,19 @@ func normalizeDeploymentPhase(phase string) string {
 	return phase
 }
 
+// setDeploymentPhase safely sets the deployment phase using the provided setter function.
 func setDeploymentPhase(setPhase func(string), phase string) {
 	if setPhase != nil {
 		setPhase(phase)
 	}
 }
 
+// logDeploymentHeartbeat logs the current deployment phase as a heartbeat.
 func logDeploymentHeartbeat(log *slog.Logger, phase string) {
 	log.Info("deployment in progress", slog.String("phase", normalizeDeploymentPhase(phase)))
 }
 
+// deploymentRepositoryKey extracts a key representing the repository from the webhook payload.
 func deploymentRepositoryKey(payload *webhook.ParsedPayload) string {
 	if payload == nil {
 		return ""
@@ -77,6 +86,7 @@ func deploymentRepositoryKey(payload *webhook.ParsedPayload) string {
 	return ""
 }
 
+// resolveDeploymentMetricsRepositoryLabel resolves the repository label for deployment metrics.
 func resolveDeploymentMetricsRepositoryLabel(payload *webhook.ParsedPayload) string {
 	repository := normalizeRepositoryForLabelMatch(deploymentRepositoryKey(payload))
 	if repository == "" {
@@ -86,6 +96,7 @@ func resolveDeploymentMetricsRepositoryLabel(payload *webhook.ParsedPayload) str
 	return repository
 }
 
+// resolveDeploymentMetricsDeploymentLabel resolves the deployment label for deployment metrics.
 func resolveDeploymentMetricsDeploymentLabel(deployName string) string {
 	deployment := strings.TrimSpace(deployName)
 	if deployment == "" {

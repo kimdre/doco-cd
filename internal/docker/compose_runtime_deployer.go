@@ -10,6 +10,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/common/types/set"
 )
 
+// deployComposeRuntime deploys a project as specified by the Docker Compose specification (LoadCompose).
 func deployComposeRuntime(ctx context.Context, req runtimeDeployRequest) error {
 	deployConfig := req.request.DeployConfig
 

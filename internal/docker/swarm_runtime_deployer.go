@@ -6,6 +6,7 @@ import (
 	"log/slog"
 )
 
+// deploySwarmRuntime deploys a swarm stack using the provided request parameters.
 func deploySwarmRuntime(ctx context.Context, req runtimeDeployRequest) error {
 	deployConfig := req.request.DeployConfig
 	configRetention := deployConfig.ResolveSwarmConfigRetention(req.request.SwarmRetention.Config)
