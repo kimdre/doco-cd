@@ -168,14 +168,14 @@ func rotateSwarmProjectCertificates(
 // failures are only logged, not returned, since the certificate has already been redeployed
 // successfully by the time this runs.
 func pruneSwarmStackRevisions(ctx context.Context, dockerCli command.Cli, stackName string, deployConfig *deploy.Config, opts CertificateRotationOptions) {
-	if retention := deployConfig.ResolveSwarmConfigRetention(opts.DockerSwarmConfigRetention); retention >= 0 {
+	if retention := deployConfig.ResolveSwarmConfigRetention(opts.SwarmRetention.Config); retention >= 0 {
 		if err := PruneStackConfigs(ctx, dockerCli.Client(), stackName, retention); err != nil {
 			slog.Warn("failed to prune swarm stack configs after cert rotation",
 				slog.String("project", stackName), logger.ErrAttr(err))
 		}
 	}
 
-	if retention := deployConfig.ResolveSwarmSecretRetention(opts.DockerSwarmSecretRetention); retention >= 0 {
+	if retention := deployConfig.ResolveSwarmSecretRetention(opts.SwarmRetention.Secret); retention >= 0 {
 		if err := PruneStackSecrets(ctx, dockerCli.Client(), stackName, retention); err != nil {
 			slog.Warn("failed to prune swarm stack secrets after cert rotation",
 				slog.String("project", stackName), logger.ErrAttr(err))

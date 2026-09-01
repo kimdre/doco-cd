@@ -90,19 +90,34 @@ func NewScheduledComposeOptions(c *app.Config) ScheduledComposeOptions {
 	}
 }
 
-// CertificateRotationOptions bundles the Docker-owned settings needed by RotateProjectCertificates
-// beyond the deployment labels it is given: the settings needed to reload the scheduled Compose
-// project (see ScheduledComposeOptions) plus the global Swarm config/secret revision retention
-// defaults used to prune superseded revisions after a Swarm rotation redeploy.
+// SwarmRetentionOptions holds the global defaults for pruning superseded Swarm config and secret
+// revisions after a deployment.
+type SwarmRetentionOptions struct {
+	// Config is the global default number of old Swarm config revisions to
+	// keep per resource (excluding the active one). -1 disables automatic pruning.
+	Config int
+	// Secret is the global default number of old Swarm secret revisions to
+	// keep per resource (excluding the active one). -1 disables automatic pruning.
+	Secret int
+}
+
+// NewSwarmRetentionOptions builds SwarmRetentionOptions from the application configuration.
+func NewSwarmRetentionOptions(c *app.Config) SwarmRetentionOptions {
+	if c == nil {
+		return SwarmRetentionOptions{}
+	}
+
+	return SwarmRetentionOptions{
+		Config: c.DockerSwarmConfigRetention,
+		Secret: c.DockerSwarmSecretRetention,
+	}
+}
+
+// CertificateRotationOptions bundles the settings needed by RotateProjectCertificates to reload
+// the project and apply the shared Swarm retention policy after a rotation redeploy.
 type CertificateRotationOptions struct {
-	// Scheduled is passed through to reload the deploy config/compose project being rotated.
-	Scheduled ScheduledComposeOptions
-	// DockerSwarmConfigRetention is the global default number of old Swarm config revisions to
-	// keep per resource (excluding the active one). -1 disables automatic pruning.
-	DockerSwarmConfigRetention int
-	// DockerSwarmSecretRetention is the global default number of old Swarm secret revisions to
-	// keep per resource (excluding the active one). -1 disables automatic pruning.
-	DockerSwarmSecretRetention int
+	Scheduled      ScheduledComposeOptions
+	SwarmRetention SwarmRetentionOptions
 }
 
 // NewCertificateRotationOptions builds CertificateRotationOptions from the application
@@ -114,8 +129,7 @@ func NewCertificateRotationOptions(c *app.Config) CertificateRotationOptions {
 	}
 
 	return CertificateRotationOptions{
-		Scheduled:                  NewScheduledComposeOptions(c),
-		DockerSwarmConfigRetention: c.DockerSwarmConfigRetention,
-		DockerSwarmSecretRetention: c.DockerSwarmSecretRetention,
+		Scheduled:      NewScheduledComposeOptions(c),
+		SwarmRetention: NewSwarmRetentionOptions(c),
 	}
 }

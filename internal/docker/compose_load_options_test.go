@@ -82,12 +82,32 @@ func TestNewCertificateRotationOptions(t *testing.T) {
 		Scheduled: ScheduledComposeOptions{
 			DeployConfigBaseDir: "/deploy",
 		},
-		DockerSwarmConfigRetention: 3,
-		DockerSwarmSecretRetention: 4,
+		SwarmRetention: SwarmRetentionOptions{
+			Config: 3,
+			Secret: 4,
+		},
 	}
 
 	if got := NewCertificateRotationOptions(config); !reflect.DeepEqual(got, want) {
 		t.Fatalf("NewCertificateRotationOptions() = %+v, want %+v", got, want)
+	}
+}
+
+func TestNewSwarmRetentionOptions(t *testing.T) {
+	t.Parallel()
+
+	config := &app.Config{
+		DockerSwarmConfigRetention: 3,
+		DockerSwarmSecretRetention: 4,
+	}
+
+	want := SwarmRetentionOptions{
+		Config: 3,
+		Secret: 4,
+	}
+
+	if got := NewSwarmRetentionOptions(config); !reflect.DeepEqual(got, want) {
+		t.Fatalf("NewSwarmRetentionOptions() = %+v, want %+v", got, want)
 	}
 }
 
@@ -100,6 +120,10 @@ func TestRuntimeOptionsConstructorsAllowNilConfig(t *testing.T) {
 
 	if got := NewScheduledComposeOptions(nil); !reflect.DeepEqual(got, ScheduledComposeOptions{}) {
 		t.Fatalf("NewScheduledComposeOptions(nil) = %+v, want zero value", got)
+	}
+
+	if got := NewSwarmRetentionOptions(nil); !reflect.DeepEqual(got, SwarmRetentionOptions{}) {
+		t.Fatalf("NewSwarmRetentionOptions(nil) = %+v, want zero value", got)
 	}
 
 	if got := NewCertificateRotationOptions(nil); !reflect.DeepEqual(got, CertificateRotationOptions{}) {

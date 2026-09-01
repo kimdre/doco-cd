@@ -26,7 +26,7 @@ func TestRotateProjectCertificates_MissingLabels(t *testing.T) {
 
 // TestPruneSwarmStackRevisions_RetentionHonoredIndependentOfEnvVar proves that Swarm
 // config/secret revision retention is controlled solely by
-// CertificateRotationOptions.DockerSwarmConfigRetention/DockerSwarmSecretRetention, not by
+// CertificateRotationOptions.SwarmRetention, not by
 // reading the DOCKER_SWARM_CONFIG_RETENTION/DOCKER_SWARM_SECRET_RETENTION environment variables
 // directly. A stale environment value that would enable pruning must have no effect: when the
 // options explicitly disable pruning (-1) and the deploy config has no override, no attempt is
@@ -39,8 +39,10 @@ func TestPruneSwarmStackRevisions_RetentionHonoredIndependentOfEnvVar(t *testing
 	t.Setenv("DOCKER_SWARM_SECRET_RETENTION", "5")
 
 	opts := CertificateRotationOptions{
-		DockerSwarmConfigRetention: -1,
-		DockerSwarmSecretRetention: -1,
+		SwarmRetention: SwarmRetentionOptions{
+			Config: -1,
+			Secret: -1,
+		},
 	}
 	deployConfig := &deploy.Config{}
 
