@@ -319,6 +319,7 @@ func TestConfig_UnmarshalYAML_IntervalDefaults(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var cfg Config
+
 			raw := "source: oci\nurl: ghcr.io/example/app:test\n" + tt.intervalLine
 			if err := yaml.Unmarshal([]byte(raw), &cfg); err != nil {
 				t.Fatalf("failed to unmarshal yaml: %v", err)
