@@ -50,6 +50,9 @@ type managedWorker struct {
 	id uint64
 	// stopping keeps the worker registered until its active runs have drained.
 	stopping bool
+	// cleaning prevents a replacement from starting while the old worker removes
+	// its runtime partition.
+	cleaning bool
 }
 
 // NewManager creates a scheduler Manager bound to registry. log and wg are
@@ -137,7 +140,9 @@ func (m *Manager) refreshWorkers(ctx context.Context) {
 			key := schedulerWorkerKey(name, mode)
 
 			available[key] = struct{}{}
-			if _, hasWorker := m.workers[key]; hasWorker {
+
+			existing, hasWorker := m.workers[key]
+			if !workerNeedsStart(existing, hasWorker) {
 				continue
 			}
 
@@ -225,15 +230,29 @@ func (m *Manager) stopWorkers() {
 
 func (m *Manager) workerStopped(key string, id uint64) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	worker, ok := m.workers[key]
 	if !ok || worker.id != id {
+		m.mu.Unlock()
+
 		return
 	}
 
+	worker.cleaning = true
+	m.workers[key] = worker
+	m.mu.Unlock()
+
 	m.runtime.clearContextMode(workerContextFromKey(key), worker.mode)
-	delete(m.workers, key)
+
+	m.mu.Lock()
+	if current, found := m.workers[key]; found && current.id == id {
+		delete(m.workers, key)
+	}
+	m.mu.Unlock()
+}
+
+func workerNeedsStart(worker managedWorker, found bool) bool {
+	return !found || (worker.stopping && !worker.cleaning)
 }
 
 func schedulerModes(swarmAvailable bool) []scheduledJobMode {
