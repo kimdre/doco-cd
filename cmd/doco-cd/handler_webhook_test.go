@@ -302,7 +302,8 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 			dataMountPoint: mountPoint,
 			dockerCli:      dockerCli,
 			log:            log,
-		})}
+		}),
+	}
 
 	req := newWebhookRequest(t, restserver.WebhookPath+"?wait=true", minifiedPayload.Bytes(), appConfig)
 
@@ -516,7 +517,8 @@ func TestWebhookHandler_WaitQueryParam(t *testing.T) {
 			appConfig:      appConfig,
 			dataMountPoint: mountPoint,
 			log:            log,
-		})}
+		}),
+	}
 
 	testCases := []struct {
 		name string
