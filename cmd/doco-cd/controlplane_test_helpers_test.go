@@ -48,6 +48,15 @@ func newTestReconciliationManager(t *testing.T, dependencies reconciliation.Depe
 func newTestDeployment(t *testing.T, appConfig *app.Config, dataMountPoint container.MountPoint, reconciliationDeps reconciliation.Dependencies) *controlplane.Deployment {
 	t.Helper()
 
+	if reconciliationDeps.Contexts == nil {
+		reconciliationDeps.Contexts = docker.NewContextRegistry(reconciliationDeps.DockerCLI, docker.ContextRegistryOptions{
+			Quiet:         true,
+			SwarmFeatures: true,
+		})
+
+		t.Cleanup(func() { _ = reconciliationDeps.Contexts.Close() })
+	}
+
 	manager := newTestReconciliationManager(t, reconciliationDeps)
 
 	preparer, err := source.NewPreparer(source.Dependencies{AppConfig: appConfig})
@@ -58,6 +67,7 @@ func newTestDeployment(t *testing.T, appConfig *app.Config, dataMountPoint conta
 	deployment, err := controlplane.NewDeployment(controlplane.DeploymentDependencies{
 		SourcePreparer: preparer,
 		Reconciler:     manager,
+		Contexts:       reconciliationDeps.Contexts,
 		DataMountPoint: dataMountPoint,
 	})
 	if err != nil {

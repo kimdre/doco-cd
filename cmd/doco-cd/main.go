@@ -376,6 +376,7 @@ func run() error {
 	deployment, err := controlplane.NewDeployment(controlplane.DeploymentDependencies{
 		SourcePreparer: sourcePreparer,
 		Reconciler:     reconciliationManager,
+		Contexts:       contexts,
 		DataMountPoint: dataMountPoint,
 	})
 	if err != nil {

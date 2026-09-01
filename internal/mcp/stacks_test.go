@@ -318,6 +318,7 @@ func newStackActionTestHandler(t *testing.T, services []dockerswarmtypes.Service
 	t.Cleanup(func() { _ = dockerCli.Client().Close() })
 
 	contexts := docker.NewContextRegistry(dockerCli, docker.ContextRegistryOptions{SwarmFeatures: true})
+
 	t.Cleanup(func() { _ = contexts.Close() })
 
 	return &Handler{dockerCli: dockerCli, contexts: contexts, log: logger.New(logger.LevelCritical)}
@@ -375,6 +376,7 @@ func newStackActionTestHandlerWithFailure(
 	t.Cleanup(func() { _ = dockerCli.Client().Close() })
 
 	contexts := docker.NewContextRegistry(dockerCli, docker.ContextRegistryOptions{SwarmFeatures: true})
+
 	t.Cleanup(func() { _ = contexts.Close() })
 
 	return &Handler{dockerCli: dockerCli, contexts: contexts, log: logger.New(logger.LevelCritical)}

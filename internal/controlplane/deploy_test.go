@@ -12,6 +12,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/controlplane"
+	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/reconciliation"
@@ -46,12 +47,23 @@ func (f *fakeReconciler) Deploy(_ context.Context, req reconciliation.DeployRequ
 	return f.err
 }
 
+type fakeDockerContextResolver struct {
+	err   error
+	calls int
+}
+
+func (f *fakeDockerContextResolver) Get(_ context.Context, _ string) (docker.ContextClient, error) {
+	f.calls++
+	return docker.ContextClient{}, f.err
+}
+
 func newTestDeployment(t *testing.T, preparer controlplane.SourcePreparer, reconciler controlplane.Reconciler) *controlplane.Deployment {
 	t.Helper()
 
 	d, err := controlplane.NewDeployment(controlplane.DeploymentDependencies{
 		SourcePreparer: preparer,
 		Reconciler:     reconciler,
+		Contexts:       &fakeDockerContextResolver{},
 		DataMountPoint: container.MountPoint{Type: "bind", Source: "/src", Destination: "/dst"},
 	})
 	if err != nil {
@@ -59,6 +71,39 @@ func newTestDeployment(t *testing.T, preparer controlplane.SourcePreparer, recon
 	}
 
 	return d
+}
+
+func TestDeploy_DockerCapabilityErrorShortCircuitsBeforeSourcePreparation(t *testing.T) {
+	t.Parallel()
+
+	preparer := &fakeSourcePreparer{}
+	reconciler := &fakeReconciler{}
+	contexts := &fakeDockerContextResolver{err: errors.New("docker info failed")}
+
+	d, err := controlplane.NewDeployment(controlplane.DeploymentDependencies{
+		SourcePreparer: preparer,
+		Reconciler:     reconciler,
+		Contexts:       contexts,
+		DataMountPoint: container.MountPoint{Type: "bind", Source: "/src", Destination: "/dst"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = d.Deploy(t.Context(), validDeploymentRequest())
+
+	var deploymentErr controlplane.DeploymentError
+	if !errors.As(err, &deploymentErr) {
+		t.Fatalf("expected DeploymentError, got %v", err)
+	}
+
+	if deploymentErr.HTTPStatusCode != 500 || deploymentErr.Response.Error() != "failed to check if docker host is running in swarm mode" {
+		t.Fatalf("unexpected deployment error: %#v", deploymentErr)
+	}
+
+	if contexts.calls != 1 || preparer.calls != 0 || reconciler.calls != 0 {
+		t.Fatalf("calls: contexts=%d, preparer=%d, reconciler=%d", contexts.calls, preparer.calls, reconciler.calls)
+	}
 }
 
 func validDeploymentRequest() controlplane.DeploymentRequest {

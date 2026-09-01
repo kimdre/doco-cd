@@ -12,6 +12,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/poll"
+	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/reconciliation"
 	"github.com/kimdre/doco-cd/internal/source"
@@ -32,12 +33,18 @@ type Reconciler interface {
 	Deploy(ctx context.Context, req reconciliation.DeployRequest) error
 }
 
+// DockerContextResolver is the capability-aware Docker context surface used by Deployment.
+type DockerContextResolver interface {
+	Get(ctx context.Context, name string) (docker.ContextClient, error)
+}
+
 // DeploymentDependencies configures the source preparer, reconciler, and data
 // mount point used by the protocol-neutral deployment operation.
 type DeploymentDependencies struct {
-	SourcePreparer SourcePreparer       `validate:"required"`
-	Reconciler     Reconciler           `validate:"required"`
-	DataMountPoint container.MountPoint `validate:"required"`
+	SourcePreparer SourcePreparer        `validate:"required"`
+	Reconciler     Reconciler            `validate:"required"`
+	Contexts       DockerContextResolver `validate:"required"`
+	DataMountPoint container.MountPoint  `validate:"required"`
 }
 
 // Deployment is the protocol-neutral deployment operation shared by the
@@ -45,6 +52,7 @@ type DeploymentDependencies struct {
 type Deployment struct {
 	sourcePreparer SourcePreparer
 	reconciler     Reconciler
+	contexts       DockerContextResolver
 	dataMountPoint container.MountPoint
 }
 
@@ -57,6 +65,7 @@ func NewDeployment(dependencies DeploymentDependencies) (*Deployment, error) {
 	return &Deployment{
 		sourcePreparer: dependencies.SourcePreparer,
 		reconciler:     dependencies.Reconciler,
+		contexts:       dependencies.Contexts,
 		dataMountPoint: dependencies.DataMountPoint,
 	}, nil
 }
@@ -89,7 +98,10 @@ type DeploymentError struct {
 	HTTPStatusCode int
 }
 
-var errDeploymentFailed = errors.New("deployment failed")
+var (
+	errSwarmModeCheck   = errors.New("failed to check if docker host is running in swarm mode")
+	errDeploymentFailed = errors.New("deployment failed")
+)
 
 func (e DeploymentError) Error() string {
 	switch {
@@ -166,6 +178,10 @@ func classifySourceFailure(err error) (int, error) {
 func (d *Deployment) Deploy(ctx context.Context, req DeploymentRequest) error {
 	if err := validation.Validate(req); err != nil {
 		return newDeploymentError(source.ErrInvalidRequest, err, http.StatusInternalServerError)
+	}
+
+	if _, err := d.contexts.Get(ctx, docker.DefaultContextName); err != nil {
+		return newDeploymentError(errSwarmModeCheck, err, http.StatusInternalServerError)
 	}
 
 	result, err := d.sourcePreparer.Prepare(ctx, source.Request{
