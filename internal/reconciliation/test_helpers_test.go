@@ -9,6 +9,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/docker"
 	dockerSwarm "github.com/kimdre/doco-cd/internal/docker/swarm"
+	"github.com/kimdre/doco-cd/internal/notification"
 )
 
 // resolveTestSwarmMode checks if the Docker daemon is in Swarm mode.
@@ -23,6 +24,17 @@ func resolveTestSwarmMode(t *testing.T, apiClient client.APIClient) bool {
 	return enabled
 }
 
+func newTestNotifier(t *testing.T) notification.Sender {
+	t.Helper()
+
+	notifier, err := notification.New(notification.Config{})
+	if err != nil {
+		t.Fatalf("failed to create test notifier: %v", err)
+	}
+
+	return notifier
+}
+
 // newTestManagerWithDependencies creates a Manager for tests, filling in a zero-value AppConfig
 // and a fresh Docker CLI (closed via t.Cleanup) for any dependency left unset in deps, so tests
 // only need to override the fields they care about.
@@ -31,6 +43,10 @@ func newTestManagerWithDependencies(t *testing.T, deps Dependencies) *Manager {
 
 	if deps.AppConfig == nil {
 		deps.AppConfig = &app.Config{}
+	}
+
+	if deps.Notifier == nil {
+		deps.Notifier = newTestNotifier(t)
 	}
 
 	if deps.DataMountPoint.Source == "" || deps.DataMountPoint.Destination == "" {

@@ -69,7 +69,7 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 
 		restartLog.Error("failed to restart container", logger.ErrAttr(err))
 
-		if notifyErr := notification.Send(
+		if notifyErr := j.manager.notifier.Send(
 			notification.Failure,
 			actorKindTitle+" restart failed",
 			fmt.Sprintf("%s %s (%s) could not be restarted on %q event: %s", actorKindTitle, containerName, shortID(containerID), action, err.Error()),
@@ -83,7 +83,7 @@ func (j *job) restartContainer(ctx context.Context, jobLog *slog.Logger, event e
 
 	restartLog.Info(actorKind + " restarted successfully")
 
-	if notifyErr := notification.Send(
+	if notifyErr := j.manager.notifier.Send(
 		notification.Success,
 		actorKindTitle+" restarted",
 		fmt.Sprintf("%s %s (%s) was restarted successfully on %q event", actorKindTitle, containerName, shortID(containerID), action),
@@ -242,7 +242,7 @@ func (j *job) shouldSuppressUnhealthyRestart(jobLog *slog.Logger, event events.M
 	actorKind := restartNotificationActorKind(swarmMode)
 	metadata := restartNotificationMetadata(j.info.Metadata, dc, action, actorKind, containerID, event.Actor.Attributes["name"], reconciliationTraceIDFromEvent(event))
 
-	if notifyErr := notification.Send(
+	if notifyErr := j.manager.notifier.Send(
 		notification.Warning,
 		restartNotificationActorKindTitle(actorKind)+" restart suppressed",
 		msg,

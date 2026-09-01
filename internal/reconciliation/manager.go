@@ -45,6 +45,7 @@ type Dependencies struct {
 	Contexts       *docker.ContextRegistry `validate:"required"`
 	// A nil SecretProvider means no external secret provider is configured.
 	SecretProvider secretprovider.SecretProvider
+	Notifier       notification.Sender `validate:"required,nostructlevel"`
 	RuntimeQueries RuntimeQueries
 }
 
@@ -88,6 +89,7 @@ type Manager struct {
 	dockerCli      command.Cli
 	contexts       *docker.ContextRegistry
 	secretProvider secretprovider.SecretProvider
+	notifier       notification.Sender
 	runtimeQueries RuntimeQueries
 }
 
@@ -115,6 +117,7 @@ func NewManager(dependencies Dependencies) (*Manager, error) {
 		dockerCli:      dependencies.DockerCLI,
 		contexts:       dependencies.Contexts,
 		secretProvider: dependencies.SecretProvider,
+		notifier:       dependencies.Notifier,
 		runtimeQueries: dependencies.RuntimeQueries,
 	}, nil
 }

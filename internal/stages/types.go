@@ -22,6 +22,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/notification"
 
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
@@ -172,30 +173,28 @@ func (d *DeploymentState) changedServiceNames() []string {
 
 // StageManager is the main structure that holds the logger and stage data.
 type StageManager struct {
-	Stages            *Stages
-	Log               *slog.Logger
-	JobID             string            // Unique identifier for the job
-	JobTrigger        JobTrigger        // Trigger type for the job (e.g., "webhook", "poll")
-	NotifyFailureFunc NotifyFailureFunc // Function to call on failure
-	AppConfig         *app.Config
-	DeployConfig      *deploy.Config
-	DeployState       *DeploymentState
-	Docker            *Docker
-	Payload           *webhook.ParsedPayload
-	Repository        *RepositoryData
-	SecretProvider    secretprovider.SecretProvider
-	Metadata          notification.Metadata // Notification metadata (may include reconciliation event info)
+	Stages         *Stages
+	Log            *slog.Logger
+	JobID          string     // Unique identifier for the job
+	JobTrigger     JobTrigger // Trigger type for the job (e.g., "webhook", "poll")
+	AppConfig      *app.Config
+	DeployConfig   *deploy.Config
+	DeployState    *DeploymentState
+	Docker         *Docker
+	Payload        *webhook.ParsedPayload
+	Repository     *RepositoryData
+	SecretProvider secretprovider.SecretProvider
+	Notifier       notification.Sender
+	Metadata       notification.Metadata // Notification metadata (may include reconciliation event info)
 }
-
-type NotifyFailureFunc func(log *slog.Logger, err error, metadata notification.Metadata)
 
 // Dependencies holds the stable services shared by every StageManager run in a process:
 // application configuration, the optional secret provider used to resolve external secret
-// references, and the callback invoked when a deployment fails.
+// references, and the notifier used for deployment lifecycle messages.
 type Dependencies struct {
-	AppConfig         *app.Config `validate:"required,nostructlevel"`
-	SecretProvider    secretprovider.SecretProvider
-	NotifyFailureFunc NotifyFailureFunc
+	AppConfig      *app.Config `validate:"required,nostructlevel"`
+	SecretProvider secretprovider.SecretProvider
+	Notifier       notification.Sender `validate:"required,nostructlevel"`
 }
 
 // RunInput holds the per-deployment input for a single StageManager run: the job identity and
@@ -224,18 +223,18 @@ func NewStageManager(dependencies Dependencies, run RunInput) (*StageManager, er
 	}
 
 	return &StageManager{
-		Log:               run.Log.With(),
-		JobID:             run.JobID,
-		JobTrigger:        run.JobTrigger,
-		NotifyFailureFunc: dependencies.NotifyFailureFunc,
-		AppConfig:         dependencies.AppConfig,
-		DeployConfig:      run.DeployConfig,
-		DeployState:       &DeploymentState{},
-		Docker:            run.Docker,
-		Payload:           run.Payload,
-		Repository:        run.Repository,
-		SecretProvider:    dependencies.SecretProvider,
-		Metadata:          run.Metadata,
+		Log:            run.Log.With(),
+		JobID:          run.JobID,
+		JobTrigger:     run.JobTrigger,
+		AppConfig:      dependencies.AppConfig,
+		DeployConfig:   run.DeployConfig,
+		DeployState:    &DeploymentState{},
+		Docker:         run.Docker,
+		Payload:        run.Payload,
+		Repository:     run.Repository,
+		SecretProvider: dependencies.SecretProvider,
+		Notifier:       dependencies.Notifier,
+		Metadata:       run.Metadata,
 		Stages: &Stages{
 			Init: &InitStageData{
 				MetaData: NewMetaData(StageInit),
@@ -284,10 +283,8 @@ func (s *StageManager) GetStageMetaData(stageName StageName) (*MetaData, error) 
 	}
 }
 
-// NotifyFailure sends a failure notification using the provided NotifyFailureFunc
-// and returns notifyErr marked as already reported, so the caller that receives
-// it does not notify about the same failure a second time. Without a
-// NotifyFailureFunc nothing is sent and the error is returned unchanged.
+// NotifyFailure sends a failure notification and returns notifyErr marked as already
+// reported, so the caller does not notify about the same failure a second time.
 func (s *StageManager) NotifyFailure(notifyErr error) error {
 	var (
 		latestCommit string
@@ -295,44 +292,48 @@ func (s *StageManager) NotifyFailure(notifyErr error) error {
 		commitSha    string
 	)
 
-	if s.NotifyFailureFunc != nil {
-		if s.Repository.Git != nil {
-			latestCommit, commitErr = gitInternal.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
-			if commitErr != nil {
-				latestCommit = ""
-			}
-
-			commitSha, commitErr = gitInternal.GetShortestUniqueCommitHash(s.Repository.Git, latestCommit, gitInternal.DefaultShortSHALength)
-			if commitErr != nil {
-				commitSha = latestCommit
-			}
+	if s.Repository.Git != nil {
+		latestCommit, commitErr = gitInternal.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
+		if commitErr != nil {
+			latestCommit = ""
 		}
 
-		if s.Repository.Git == nil {
-			commitSha = strings.TrimSpace(s.Repository.Revision)
+		commitSha, commitErr = gitInternal.GetShortestUniqueCommitHash(s.Repository.Git, latestCommit, gitInternal.DefaultShortSHALength)
+		if commitErr != nil {
+			commitSha = latestCommit
 		}
-
-		revision := notification.GetRevision(s.DeployConfig.Reference, commitSha)
-
-		metadata := s.Metadata
-		metadata.Repository = s.Repository.Name
-		metadata.Stack = s.DeployConfig.Name
-		metadata.Context = s.DeployConfig.Context
-		metadata.Target = s.DeployConfig.Internal.ConfigTarget
-		metadata.Revision = revision
-		metadata.JobID = s.JobID
-		metadata.ChangedServices = s.DeployState.changedServiceNames()
-
-		if !s.Stages.Init.StartedAt.IsZero() {
-			metadata.Duration = time.Since(s.Stages.Init.StartedAt).Truncate(time.Millisecond)
-		}
-
-		s.NotifyFailureFunc(s.Log, notifyErr, metadata)
-
-		return notification.MarkNotified(notifyErr)
 	}
 
-	return notifyErr
+	if s.Repository.Git == nil {
+		commitSha = strings.TrimSpace(s.Repository.Revision)
+	}
+
+	revision := notification.GetRevision(s.DeployConfig.Reference, commitSha)
+
+	metadata := s.Metadata
+	metadata.Repository = s.Repository.Name
+	metadata.Stack = s.DeployConfig.Name
+	metadata.Context = s.DeployConfig.Context
+	metadata.Target = s.DeployConfig.Internal.ConfigTarget
+	metadata.Revision = revision
+	metadata.JobID = s.JobID
+	metadata.ChangedServices = s.DeployState.changedServiceNames()
+
+	if !s.Stages.Init.StartedAt.IsZero() {
+		metadata.Duration = time.Since(s.Stages.Init.StartedAt).Truncate(time.Millisecond)
+	}
+
+	go func() {
+		if err := s.Notifier.Send(notification.Failure, "Deployment Failed", notifyErr.Error(), metadata); err != nil {
+			s.Log.Error("failed to send notification", logger.ErrAttr(err))
+		}
+	}()
+
+	s.Log.Error("deployment failed",
+		slog.String("stack", metadata.Stack),
+		logger.ErrAttr(notifyErr))
+
+	return notification.MarkNotified(notifyErr)
 }
 
 func (s *StageManager) NotifyDeploymentStarted() error {
@@ -367,7 +368,7 @@ func (s *StageManager) NotifyDeploymentStarted() error {
 	metadata.JobID = s.JobID
 	metadata.ChangedServices = s.DeployState.changedServiceNames()
 
-	return notification.Send(
+	return s.Notifier.Send(
 		notification.Info,
 		"Deployment started",
 		"Starting deployment of stack "+s.DeployConfig.Name,

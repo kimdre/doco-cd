@@ -6,18 +6,35 @@ import (
 	"log/slog"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/notification"
 )
 
+type recordingNotificationSender struct {
+	metadata chan notification.Metadata
+}
+
+func (s recordingNotificationSender) Send(_ notification.Level, _, _ string, metadata notification.Metadata, _ ...notification.SendOption) error {
+	s.metadata <- metadata
+
+	return nil
+}
+
 func newTestStageManager(t *testing.T) *StageManager {
 	t.Helper()
+
+	notifier, err := notification.New(notification.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	sm, err := NewStageManager(
 		Dependencies{
 			AppConfig: &app.Config{},
+			Notifier:  notifier,
 		},
 		RunInput{
 			Log:          slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -74,7 +91,12 @@ func TestNewStageManagerValidatesInputs(t *testing.T) {
 		t.Fatal("NewStageManager() error = nil, want dependency validation error")
 	}
 
-	if _, err := NewStageManager(Dependencies{AppConfig: &app.Config{}}, RunInput{}); err == nil {
+	notifier, err := notification.New(notification.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := NewStageManager(Dependencies{AppConfig: &app.Config{}, Notifier: notifier}, RunInput{}); err == nil {
 		t.Fatal("NewStageManager() error = nil, want run input validation error")
 	}
 }
@@ -115,15 +137,19 @@ func TestStageManagerNotifyFailureIncludesTarget(t *testing.T) {
 	sm.DeployConfig.Reference = "main"
 	sm.DeployConfig.Internal.ConfigTarget = "prod-vm"
 
-	var got notification.Metadata
-
-	sm.NotifyFailureFunc = func(_ *slog.Logger, _ error, metadata notification.Metadata) {
-		got = metadata
-	}
+	sent := make(chan notification.Metadata, 1)
+	sm.Notifier = recordingNotificationSender{metadata: sent}
 
 	boom := errors.New("boom")
 
 	returned := sm.NotifyFailure(boom)
+
+	var got notification.Metadata
+	select {
+	case got = <-sent:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for failure notification")
+	}
 
 	if got.Target != "prod-vm" {
 		t.Fatalf("expected target prod-vm, got %q", got.Target)

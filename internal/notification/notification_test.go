@@ -57,16 +57,23 @@ func TestSend(t *testing.T) {
 
 		w.WriteHeader(http.StatusOK)
 	}))
-	defer server.Close()
+	t.Cleanup(server.Close)
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Cannot run tests in parallel because SetAppriseConfig modifies global variables
-			if err := SetAppriseConfig(server.URL, tc.appriseURL, "info", ""); err != nil {
-				t.Fatalf("failed to set apprise config: %v", err)
+			t.Parallel()
+
+			notifier, err := New(Config{
+				APIURL:                server.URL,
+				NotifyURLs:            tc.appriseURL,
+				NotifyLevel:           "info",
+				FailureRepeatInterval: DefaultFailureRepeatInterval,
+			})
+			if err != nil {
+				t.Fatalf("failed to create notifier: %v", err)
 			}
 
-			err := Send(Info, "Test Notification", "This is a test message", metadata)
+			err = notifier.Send(Info, "Test Notification", "This is a test message", metadata)
 			if tc.expectedErr == nil {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
@@ -79,6 +86,44 @@ func TestSend(t *testing.T) {
 				t.Fatalf("expected error wrapping %q, got: %v", tc.expectedErr, err)
 			}
 		})
+	}
+}
+
+func TestNewValidatesBodyTemplate(t *testing.T) {
+	t.Parallel()
+
+	if _, err := New(Config{BodyTemplate: "{{.Missing}}"}); !errors.Is(err, ErrInvalidTemplate) {
+		t.Fatalf("New() error = %v, want ErrInvalidTemplate", err)
+	}
+}
+
+func TestNotifierFailureStateIsIsolated(t *testing.T) {
+	t.Parallel()
+
+	first, err := New(Config{FailureRepeatInterval: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := New(Config{FailureRepeatInterval: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now()
+	key := failureKey(Metadata{Repository: "acme/repo", Stack: "app"})
+	fingerprint := failureFingerprint("Deployment Failed", "pull access denied")
+
+	if !first.shouldSendFailure(key, fingerprint, now) {
+		t.Fatal("first notifier should send its initial failure")
+	}
+
+	if first.shouldSendFailure(key, fingerprint, now.Add(time.Second)) {
+		t.Fatal("first notifier should suppress its unchanged failure")
+	}
+
+	if !second.shouldSendFailure(key, fingerprint, now.Add(time.Second)) {
+		t.Fatal("second notifier should have independent failure state")
 	}
 }
 

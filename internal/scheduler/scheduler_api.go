@@ -11,6 +11,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/common/id"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/logger"
+	"github.com/kimdre/doco-cd/internal/notification"
 	"github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 )
@@ -184,11 +185,11 @@ func (s *scheduler) triggerNow(ctx context.Context, jobName, stackName string) (
 	return runID, nil
 }
 
-func listJobsForModes(ctx context.Context, modes []scheduledJobMode, cc docker.ContextClient, log *slog.Logger, secretProvider secretprovider.SecretProvider, runtime *runtimeStore, stackName string, composeOptions docker.ScheduledComposeOptions) ([]JobInfo, error) {
+func listJobsForModes(ctx context.Context, modes []scheduledJobMode, cc docker.ContextClient, log *slog.Logger, secretProvider secretprovider.SecretProvider, notifier notification.Sender, runtime *runtimeStore, stackName string, composeOptions docker.ScheduledComposeOptions) ([]JobInfo, error) {
 	var result []JobInfo
 
 	for _, mode := range modes {
-		jobs, err := newSchedulerForMode(cc, mode, log, nil, secretProvider, nil, runtime, composeOptions).listJobs(ctx, stackName)
+		jobs, err := newSchedulerForMode(cc, mode, log, nil, secretProvider, notifier, nil, runtime, composeOptions).listJobs(ctx, stackName)
 		if err != nil {
 			return nil, err
 		}
@@ -199,13 +200,13 @@ func listJobsForModes(ctx context.Context, modes []scheduledJobMode, cc docker.C
 	return result, nil
 }
 
-func triggerNowForModes(ctx context.Context, modes []scheduledJobMode, cc docker.ContextClient, log *slog.Logger, jobName, stackName string, secretProvider secretprovider.SecretProvider, stopHoldTracker ServiceStopHoldTracker, runtime *runtimeStore, composeOptions docker.ScheduledComposeOptions) (string, error) {
+func triggerNowForModes(ctx context.Context, modes []scheduledJobMode, cc docker.ContextClient, log *slog.Logger, jobName, stackName string, secretProvider secretprovider.SecretProvider, notifier notification.Sender, stopHoldTracker ServiceStopHoldTracker, runtime *runtimeStore, composeOptions docker.ScheduledComposeOptions) (string, error) {
 	workers := make(map[scheduledJobMode]*scheduler, len(modes))
 
 	var jobs []scheduledJob
 
 	for _, mode := range modes {
-		worker := newSchedulerForMode(cc, mode, log, nil, secretProvider, stopHoldTracker, runtime, composeOptions)
+		worker := newSchedulerForMode(cc, mode, log, nil, secretProvider, notifier, stopHoldTracker, runtime, composeOptions)
 
 		discovered, err := worker.discoverJobs(ctx)
 		if err != nil {

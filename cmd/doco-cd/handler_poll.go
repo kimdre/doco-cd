@@ -241,7 +241,7 @@ func watcherClosedFallback(ctx context.Context, logger *slog.Logger, configuredI
 	return fallbackInterval, false
 }
 
-func pollError(jobLog *slog.Logger, metadata notification.Metadata, err error) {
+func pollError(jobLog *slog.Logger, metadata notification.Metadata, err error, notifier notification.Sender) {
 	prometheus.PollErrors.WithLabelValues(metadata.Repository).Inc()
 
 	if metadata.Stack != "" {
@@ -256,6 +256,10 @@ func pollError(jobLog *slog.Logger, metadata notification.Metadata, err error) {
 		return
 	}
 
+	if notifier == nil {
+		return
+	}
+
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -265,7 +269,7 @@ func pollError(jobLog *slog.Logger, metadata notification.Metadata, err error) {
 
 		sendLog := jobLog.With()
 
-		err = notification.Send(notification.Failure, "Poll Job failed", err.Error(), metadata)
+		err = notifier.Send(notification.Failure, "Poll Job failed", err.Error(), metadata)
 		if err != nil {
 			sendLog.Error("failed to send notification", log.ErrAttr(err))
 		}
@@ -277,7 +281,7 @@ func pollError(jobLog *slog.Logger, metadata notification.Metadata, err error) {
 // "poll-watch" when triggered by the local repository filesystem watcher) and is
 // reported in the "polling <entity>" log line's trigger.event field.
 func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config, logger *slog.Logger, metadata notification.Metadata,
-	triggerReason string, deployment *controlplane.Deployment,
+	triggerReason string, deployment *controlplane.Deployment, notifier notification.Sender,
 ) error {
 	startTime := time.Now()
 	sourceType := config.NormalizeSourceType(pollConfig.Source)
@@ -352,7 +356,7 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 	elapsedTime := time.Since(startTime)
 
 	if deployErr != nil {
-		pollError(jobLog, metadata, deployErr)
+		pollError(jobLog, metadata, deployErr, notifier)
 		jobLog.Warn("job completed with errors", log.ErrAttr(deployErr), slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()), slog.String("next_run", nextRun))
 	} else {
 		jobLog.Info("job completed successfully", slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()), slog.String("next_run", nextRun))

@@ -6,112 +6,114 @@ import (
 	"time"
 )
 
-// resetFailureState clears the suppression state so tests do not leak into each
-// other. They cannot run in parallel: the state is package level, like the
-// apprise config the other tests here mutate.
-func resetFailureState(t *testing.T, interval time.Duration) {
+func newFailureTestNotifier(t *testing.T, interval time.Duration) *Notifier {
 	t.Helper()
 
-	failureMu.Lock()
-	lastFailures = map[string]failureRecord{}
-	failureRepeatInterval = interval
-	failureMu.Unlock()
+	notifier, err := New(Config{FailureRepeatInterval: interval})
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	t.Cleanup(func() {
-		failureMu.Lock()
-		lastFailures = map[string]failureRecord{}
-		failureRepeatInterval = DefaultFailureRepeatInterval
-		failureMu.Unlock()
-	})
+	return notifier
 }
 
 func TestShouldSendFailure_SuppressesUnchangedRepeat(t *testing.T) {
-	resetFailureState(t, time.Hour)
+	t.Parallel()
+
+	notifier := newFailureTestNotifier(t, time.Hour)
 
 	now := time.Now()
 	key := failureKey(Metadata{Repository: "acme/deploy", Target: "prod", Stack: "app"})
 	fingerprint := failureFingerprint("Deployment Failed", "pull access denied")
 
-	if !shouldSendFailure(key, fingerprint, now) {
+	if !notifier.shouldSendFailure(key, fingerprint, now) {
 		t.Fatal("first failure must be sent")
 	}
 
-	if shouldSendFailure(key, fingerprint, now.Add(30*time.Second)) {
+	if notifier.shouldSendFailure(key, fingerprint, now.Add(30*time.Second)) {
 		t.Error("same failure 30s later must be suppressed")
 	}
 
-	if shouldSendFailure(key, fingerprint, now.Add(59*time.Minute)) {
+	if notifier.shouldSendFailure(key, fingerprint, now.Add(59*time.Minute)) {
 		t.Error("same failure inside the repeat interval must be suppressed")
 	}
 }
 
 func TestShouldSendFailure_RemindsAfterInterval(t *testing.T) {
-	resetFailureState(t, time.Hour)
+	t.Parallel()
+
+	notifier := newFailureTestNotifier(t, time.Hour)
 
 	now := time.Now()
 	key := failureKey(Metadata{Repository: "acme/deploy", Stack: "app"})
 	fingerprint := failureFingerprint("Deployment Failed", "pull access denied")
 
-	shouldSendFailure(key, fingerprint, now)
+	notifier.shouldSendFailure(key, fingerprint, now)
 
-	if !shouldSendFailure(key, fingerprint, now.Add(time.Hour)) {
+	if !notifier.shouldSendFailure(key, fingerprint, now.Add(time.Hour)) {
 		t.Fatal("failure must be sent again once the repeat interval passed")
 	}
 
-	if shouldSendFailure(key, fingerprint, now.Add(time.Hour+time.Second)) {
+	if notifier.shouldSendFailure(key, fingerprint, now.Add(time.Hour+time.Second)) {
 		t.Error("reminder must restart the interval")
 	}
 }
 
 func TestShouldSendFailure_DifferentFaultOrStackIsSent(t *testing.T) {
-	resetFailureState(t, time.Hour)
+	t.Parallel()
+
+	notifier := newFailureTestNotifier(t, time.Hour)
 
 	now := time.Now()
 	key := failureKey(Metadata{Repository: "acme/deploy", Stack: "app"})
 
-	shouldSendFailure(key, failureFingerprint("Deployment Failed", "pull access denied"), now)
+	notifier.shouldSendFailure(key, failureFingerprint("Deployment Failed", "pull access denied"), now)
 
-	if !shouldSendFailure(key, failureFingerprint("Deployment Failed", "hook exited with status 1"), now) {
+	if !notifier.shouldSendFailure(key, failureFingerprint("Deployment Failed", "hook exited with status 1"), now) {
 		t.Error("a different error on the same stack must be sent")
 	}
 
 	otherStack := failureKey(Metadata{Repository: "acme/deploy", Stack: "db"})
-	if !shouldSendFailure(otherStack, failureFingerprint("Deployment Failed", "pull access denied"), now) {
+	if !notifier.shouldSendFailure(otherStack, failureFingerprint("Deployment Failed", "pull access denied"), now) {
 		t.Error("the same error on another stack must be sent")
 	}
 }
 
 func TestClearFailure_LetsNextFailureThrough(t *testing.T) {
-	resetFailureState(t, time.Hour)
+	t.Parallel()
+
+	notifier := newFailureTestNotifier(t, time.Hour)
 
 	now := time.Now()
 	key := failureKey(Metadata{Repository: "acme/deploy", Stack: "app"})
 	fingerprint := failureFingerprint("Deployment Failed", "pull access denied")
 
-	shouldSendFailure(key, fingerprint, now)
-	clearFailure(key)
+	notifier.shouldSendFailure(key, fingerprint, now)
+	notifier.clearFailure(key)
 
-	if !shouldSendFailure(key, fingerprint, now.Add(time.Second)) {
+	if !notifier.shouldSendFailure(key, fingerprint, now.Add(time.Second)) {
 		t.Error("after a success the next failure must be sent again")
 	}
 }
 
 func TestShouldSendFailure_PrunesStaleRecords(t *testing.T) {
-	resetFailureState(t, time.Hour)
+	t.Parallel()
+
+	notifier := newFailureTestNotifier(t, time.Hour)
 
 	now := time.Now()
 	fingerprint := failureFingerprint("Deployment Failed", "pull access denied")
 
 	gone := failureKey(Metadata{Repository: "acme/deploy", Stack: "removed"})
-	shouldSendFailure(gone, fingerprint, now)
+	notifier.shouldSendFailure(gone, fingerprint, now)
 
 	alive := failureKey(Metadata{Repository: "acme/deploy", Stack: "app"})
-	shouldSendFailure(alive, fingerprint, now.Add(2*time.Hour))
+	notifier.shouldSendFailure(alive, fingerprint, now.Add(2*time.Hour))
 
-	failureMu.Lock()
-	_, found := lastFailures[gone]
-	size := len(lastFailures)
-	failureMu.Unlock()
+	notifier.failureMu.Lock()
+	_, found := notifier.lastFailures[gone]
+	size := len(notifier.lastFailures)
+	notifier.failureMu.Unlock()
 
 	if found {
 		t.Error("a record older than the repeat interval must be dropped")
@@ -122,32 +124,17 @@ func TestShouldSendFailure_PrunesStaleRecords(t *testing.T) {
 	}
 }
 
-func TestSetFailureRepeatInterval_ZeroDropsRecords(t *testing.T) {
-	resetFailureState(t, time.Hour)
-
-	key := failureKey(Metadata{Repository: "acme/deploy", Stack: "app"})
-	shouldSendFailure(key, failureFingerprint("Deployment Failed", "pull access denied"), time.Now())
-
-	SetFailureRepeatInterval(0)
-
-	failureMu.Lock()
-	size := len(lastFailures)
-	failureMu.Unlock()
-
-	if size != 0 {
-		t.Errorf("turning suppression off must drop the records, got %d", size)
-	}
-}
-
 func TestShouldSendFailure_DisabledByZeroInterval(t *testing.T) {
-	resetFailureState(t, 0)
+	t.Parallel()
+
+	notifier := newFailureTestNotifier(t, 0)
 
 	now := time.Now()
 	key := failureKey(Metadata{Repository: "acme/deploy", Stack: "app"})
 	fingerprint := failureFingerprint("Deployment Failed", "pull access denied")
 
 	for i := range 3 {
-		if !shouldSendFailure(key, fingerprint, now.Add(time.Duration(i)*time.Second)) {
+		if !notifier.shouldSendFailure(key, fingerprint, now.Add(time.Duration(i)*time.Second)) {
 			t.Fatalf("suppression is off, send %d must go through", i+1)
 		}
 	}

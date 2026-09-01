@@ -249,6 +249,7 @@ type orchestrationHandler struct {
 	log              *logger.Logger // Logger for logging messages
 	secretProvider   secretprovider.SecretProvider
 	deployment       *controlplane.Deployment
+	notifier         notification.Sender
 	testName         string // Overwrites the deployConfig.Name to make test deployments unique and prevent conflicts between tests when running in parallel. Not used in production.
 }
 
@@ -260,20 +261,21 @@ func reportHealthFailure(
 	jobID string,
 	failureType error,
 	cause error,
+	notifier notification.Sender,
 ) {
 	onError(w, log, failureType.Error(), cause.Error(), http.StatusServiceUnavailable, notification.Metadata{
 		JobID:      jobID,
 		Repository: "healthcheck",
 		Stack:      "",
 		Revision:   "",
-	}, cause)
+	}, cause, notifier)
 }
 
 // onError handles errors by logging them, sending a JSON error response, and sending a notification.
 // cause is the error behind the response: when a failure notification was already
 // sent for it deeper down, the HTTP response and the log stay the same and only
 // the second notification is dropped.
-func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any, statusCode int, metadata notification.Metadata, cause error) {
+func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any, statusCode int, metadata notification.Metadata, cause error, notifier notification.Sender) {
 	prometheus.WebhookErrorsTotal.WithLabelValues(metadata.Repository).Inc()
 	log.Error(errMsg)
 	restAPI.JSONError(w,
@@ -294,6 +296,10 @@ func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any
 		return
 	}
 
+	if notifier == nil {
+		return
+	}
+
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -301,7 +307,7 @@ func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any
 			}
 		}()
 
-		err := notification.Send(notification.Failure, "Deployment Failed", errMsg, metadata)
+		err := notifier.Send(notification.Failure, "Deployment Failed", errMsg, metadata)
 		if err != nil {
 			log.Error("failed to send notification", logger.ErrAttr(err))
 		}
@@ -311,7 +317,7 @@ func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any
 // handleEvent executes the deployment process for a given webhook event.
 func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *app.Config,
 	payload webhook.ParsedPayload, customTarget string, metadata notification.Metadata,
-	testName string, deployment *controlplane.Deployment,
+	testName string, deployment *controlplane.Deployment, notifier notification.Sender,
 ) (controlplane.RunResult, error) {
 	startTime := time.Now()
 
@@ -338,7 +344,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		sourceRef, cloneURLOverrideApplied = resolveWebhookGitCloneURL(payload, appConfig)
 		if !isWebhookGitCloneURLAllowed(sourceRef, cloneURLOverrideApplied) {
 			err := errors.New("local filesystem Git URLs in webhook payloads require a configured source URL rewrite")
-			onError(w, jobLog.With(logger.ErrAttr(err)), "webhook clone URL is not allowed", err, http.StatusForbidden, metadata, err)
+			onError(w, jobLog.With(logger.ErrAttr(err)), "webhook clone URL is not allowed", err, http.StatusForbidden, metadata, err, notifier)
 
 			return controlplane.FailedRun(err.Error()), nil
 		}
@@ -372,7 +378,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 	if sourceType == config.SourceTypeGit && shouldUsePayloadSSHURL(cloneURLOverrideApplied, payload.SSHUrl, resolvedSSH) {
 		sshAuth, authErr := git.GetAuthMethod(payload.SSHUrl, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken)
 		if authErr != nil {
-			onError(w, jobLog.With(logger.ErrAttr(authErr)), "failed to resolve SSH auth method", authErr.Error(), http.StatusInternalServerError, metadata, authErr)
+			onError(w, jobLog.With(logger.ErrAttr(authErr)), "failed to resolve SSH auth method", authErr.Error(), http.StatusInternalServerError, metadata, authErr, notifier)
 
 			return controlplane.FailedRun("failed to resolve SSH auth method: " + authErr.Error()), nil
 		}
@@ -412,12 +418,12 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		// In synchronous mode we should return an error to the caller
 		// For async mode, w is noopResponseWriter and JSONError is a no-op
 		if de, ok := errors.AsType[controlplane.DeploymentError](deployErr); ok {
-			onError(w, jobLog.With(logger.ErrAttr(de.Cause)), de.Response.Error(), de.Cause.Error(), de.HTTPStatusCode, metadata, de.Cause)
+			onError(w, jobLog.With(logger.ErrAttr(de.Cause)), de.Response.Error(), de.Cause.Error(), de.HTTPStatusCode, metadata, de.Cause, notifier)
 
 			return controlplane.FailedRun(de.Error()), nil
 		}
 
-		onError(w, jobLog.With(logger.ErrAttr(deployErr)), "deployment failed", deployErr.Error(), http.StatusInternalServerError, metadata, deployErr)
+		onError(w, jobLog.With(logger.ErrAttr(deployErr)), "deployment failed", deployErr.Error(), http.StatusInternalServerError, metadata, deployErr, notifier)
 
 		return controlplane.FailedRun(deployErr.Error()), nil
 	}
@@ -512,7 +518,7 @@ func (h *orchestrationHandler) WebhookHandler(w http.ResponseWriter, r *http.Req
 			})
 		}
 
-		onError(w, jobLog.With(slog.String("ip", h.requestIP(r)), logger.ErrAttr(err)), errMsg, err.Error(), statusCode, metadata, err)
+		onError(w, jobLog.With(slog.String("ip", h.requestIP(r)), logger.ErrAttr(err)), errMsg, err.Error(), statusCode, metadata, err, h.notifier)
 		h.controlPlaneRuns.MarkFailed(jobID, errMsg+": "+err.Error())
 
 		return
@@ -570,7 +576,7 @@ func (h *orchestrationHandler) WebhookHandler(w http.ResponseWriter, r *http.Req
 
 		defer repoLock.Unlock()
 
-		return handleEvent(ctx, jobLog, w, h.appConfig, payload, customTarget, metadata, h.testName, h.deployment)
+		return handleEvent(ctx, jobLog, w, h.appConfig, payload, customTarget, metadata, h.testName, h.deployment, h.notifier)
 	}
 
 	mode := controlplane.RunAsynchronous

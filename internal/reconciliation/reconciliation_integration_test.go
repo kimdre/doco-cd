@@ -245,6 +245,7 @@ func TestCleanupObsoleteAutoDiscoveredContainers_EmptyDiscoveredConfigs_RemovesS
 		repoURL,
 		[]*deployConfig.Config{},
 		notification.Metadata{Repository: "kimdre/doco-cd_tests", Stack: stackName, JobID: "cleanup-empty-discovered-configs"},
+		newTestNotifier(t),
 	)
 	if err != nil {
 		t.Fatalf("cleanupObsoleteAutoDiscoveredContainers returned error: %v", err)

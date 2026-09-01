@@ -24,7 +24,7 @@ func (s *StageManager) RunPostDestroyStage(_ context.Context, stageLog *slog.Log
 	metadata.JobID = s.JobID
 	metadata.Duration = time.Since(s.Stages.Init.StartedAt).Truncate(time.Millisecond)
 
-	err := notification.Send(notification.Success, "Stack destroyed", "successfully destroyed stack "+s.DeployConfig.Name, metadata)
+	err := s.Notifier.Send(notification.Success, "Stack destroyed", "successfully destroyed stack "+s.DeployConfig.Name, metadata)
 	if err != nil {
 		stageLog.Error("failed to send notification", logger.ErrAttr(err))
 	}

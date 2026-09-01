@@ -440,14 +440,14 @@ func TestRunPoll(t *testing.T) {
 		DockerCLI:      dockerCli,
 		SecretProvider: secretProvider,
 	})
-	if err := RunPoll(ctx, pollConfig, appConfig, log.With(), metadata, pollTriggerDefault, deployment); err != nil {
+	if err := RunPoll(ctx, pollConfig, appConfig, log.With(), metadata, pollTriggerDefault, deployment, newTestNotifier(t)); err != nil {
 		t.Fatalf("Initial poll deployment failed: %v", err)
 	}
 
 	pollConfig.Reference = "destroy"
 
 	// Run the second poll to destroy
-	if err := RunPoll(ctx, pollConfig, appConfig, log.With(), metadata, pollTriggerDefault, deployment); err != nil {
+	if err := RunPoll(ctx, pollConfig, appConfig, log.With(), metadata, pollTriggerDefault, deployment, newTestNotifier(t)); err != nil {
 		t.Fatalf("Second poll deployment failed: %v", err)
 	}
 }

@@ -154,6 +154,19 @@ func run() error {
 		return err
 	}
 
+	notifier, err := notification.New(notification.Config{
+		APIURL:                string(c.AppriseApiURL),
+		NotifyURLs:            c.AppriseNotifyUrls,
+		NotifyLevel:           c.AppriseNotifyLevel,
+		BodyTemplate:          c.AppriseNotifyBodyTemplate,
+		FailureRepeatInterval: c.AppriseNotifyRepeatInterval,
+	})
+	if err != nil {
+		log.Critical("failed to configure notifications", logger.ErrAttr(err))
+
+		return fmt.Errorf("failed to configure notifications: %w", err)
+	}
+
 	git.ConfigureAuthResolver(
 		c.GitAuthDomains,
 		c.SSHPrivateKey,
@@ -324,7 +337,7 @@ func run() error {
 
 	graceful.SafeGo(&wg, log.Logger,
 		func() {
-			notificationForNewAppVersion(log.Logger)
+			notificationForNewAppVersion(log.Logger, notifier)
 		},
 	)
 
@@ -356,6 +369,7 @@ func run() error {
 		DockerCLI:                dockerCli,
 		Contexts:                 contexts,
 		SecretProvider:           secretProvider,
+		Notifier:                 notifier,
 		MaxConcurrentDeployments: c.MaxConcurrentDeployments,
 	})
 	if err != nil {
@@ -385,7 +399,7 @@ func run() error {
 		return err
 	}
 
-	schedulerManager := scheduler.NewManager(contexts, log.Logger, &wg, secretProvider, reconciliationManager, docker.NewScheduledComposeOptions(c))
+	schedulerManager := scheduler.NewManager(contexts, log.Logger, &wg, secretProvider, notifier, reconciliationManager, docker.NewScheduledComposeOptions(c))
 	controlPlaneRuns := controlplane.NewRuns(
 		ctx,
 		log.Logger,
@@ -406,7 +420,7 @@ func run() error {
 					_ command.Cli, _ *docker.ContextRegistry, logger *slog.Logger, metadata notification.Metadata,
 					_ secretprovider.SecretProvider, triggerReason string,
 				) error {
-					return RunPoll(ctx, pollConfig, appConfig, logger, metadata, triggerReason, deployment)
+					return RunPoll(ctx, pollConfig, appConfig, logger, metadata, triggerReason, deployment, notifier)
 				},
 			},
 		},
@@ -425,15 +439,18 @@ func run() error {
 		log:              log,
 		secretProvider:   secretProvider,
 		deployment:       deployment,
+		notifier:         notifier,
 	}
 
 	apiHandler, err := api.NewHandler(api.Dependencies{
-		AppConfig:             c,
-		Logger:                log,
-		DockerCLI:             dockerCli,
-		Contexts:              contexts,
-		Runs:                  controlPlaneRuns,
-		HealthFailureReporter: reportHealthFailure,
+		AppConfig: c,
+		Logger:    log,
+		DockerCLI: dockerCli,
+		Contexts:  contexts,
+		Runs:      controlPlaneRuns,
+		HealthFailureReporter: func(w http.ResponseWriter, log *slog.Logger, jobID string, failureType, cause error) {
+			reportHealthFailure(w, log, jobID, failureType, cause, notifier)
+		},
 	})
 	if err != nil {
 		log.Critical("failed to create API handler", logger.ErrAttr(err))

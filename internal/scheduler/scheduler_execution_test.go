@@ -6,7 +6,53 @@ import (
 	"time"
 
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/notification"
 )
+
+type recordingSender struct {
+	levels   []notification.Level
+	metadata []notification.Metadata
+}
+
+func (s *recordingSender) Send(level notification.Level, _, _ string, metadata notification.Metadata, _ ...notification.SendOption) error {
+	s.levels = append(s.levels, level)
+	s.metadata = append(s.metadata, metadata)
+
+	return nil
+}
+
+func TestSendRunNotificationUsesInjectedSender(t *testing.T) {
+	t.Parallel()
+
+	sender := &recordingSender{}
+	s := &scheduler{notifier: sender}
+	job := scheduledJob{
+		name:    "backup",
+		mode:    scheduledJobModeSwarm,
+		context: "remote",
+		labels: map[string]string{
+			docker.DocoCDLabels.Source.Name:             "acme/repo",
+			docker.DocoCDLabels.Deployment.Name:         "app",
+			docker.DocoCDLabels.Deployment.ConfigTarget: "prod",
+			docker.DocoCDLabels.Deployment.CommitSHA:    "abc123",
+		},
+	}
+
+	s.sendRunNotification(job, docker.JobScheduleConfig{NotifyOn: docker.JobNotifyAll}, "run-1", true, "completed", "done")
+
+	if len(sender.levels) != 1 || sender.levels[0] != notification.Success {
+		t.Fatalf("notification levels = %v, want [success]", sender.levels)
+	}
+
+	if len(sender.metadata) != 1 {
+		t.Fatalf("notification count = %d, want 1", len(sender.metadata))
+	}
+
+	got := sender.metadata[0]
+	if got.Repository != "acme/repo" || got.Stack != "app" || got.Context != "remote" || got.JobID != "run-1" {
+		t.Fatalf("notification metadata = %#v", got)
+	}
+}
 
 func TestResolveStopServiceStacks(t *testing.T) {
 	t.Parallel()
