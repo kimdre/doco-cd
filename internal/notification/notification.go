@@ -57,6 +57,10 @@ var defaultTemplate = template.Must(template.New("notification").Parse("{{ .Defa
 // ErrNotifyFailed is returned when the Apprise request fails due to invalid notify URLs or unreachable service.
 var ErrNotifyFailed = errors.New("request to apprise failed")
 
+// ErrNotifyPartial is returned when Apprise delivered to at least one configured
+// destination but another destination failed.
+var ErrNotifyPartial = fmt.Errorf("%w: partial delivery", ErrNotifyFailed)
+
 // ErrInvalidTemplate is returned when the configured notification body template fails to parse or execute.
 var ErrInvalidTemplate = errors.New("invalid notification template")
 
@@ -225,7 +229,7 @@ func send(apiUrl, notifyUrls, title, message, level string) error {
 	case http.StatusNoContent:
 		return nil
 	case http.StatusFailedDependency:
-		return fmt.Errorf("%w: apprise request failed with status: %s%s", ErrNotifyFailed, resp.Status, appriseResponseErrorDetails(resp))
+		return fmt.Errorf("%w: apprise request failed with status: %s%s", ErrNotifyPartial, resp.Status, appriseResponseErrorDetails(resp))
 	default:
 		return fmt.Errorf("apprise request failed with status: %s%s", resp.Status, appriseResponseErrorDetails(resp))
 	}
@@ -440,9 +444,21 @@ func (n *Notifier) Send(level Level, title, message string, metadata Metadata, o
 		return nil // Do not send notification if the level is lower than the configured level
 	}
 
-	// Suppress a failure that is already reported and unchanged, see failure_repeat.go.
-	if level == Failure && !n.shouldSendFailure(failureKey(metadata), failureFingerprint(title, message), time.Now()) {
-		return nil
+	var (
+		failureID     string
+		failureHash   string
+		failureSentAt time.Time
+	)
+
+	if level == Failure {
+		failureID = failureKey(metadata)
+		failureHash = failureFingerprint(title, message)
+		failureSentAt = time.Now()
+
+		// Suppress a failure that is already reported and unchanged, see failure_repeat.go.
+		if !n.shouldSendFailure(failureID, failureHash, failureSentAt) {
+			return nil
+		}
 	}
 
 	var o sendOptions
@@ -461,6 +477,10 @@ func (n *Notifier) Send(level Level, title, message string, metadata Metadata, o
 
 	err := send(n.apiURL, n.notifyURLs, title, message, logLevels[level])
 	if err != nil {
+		if level == Failure && !errors.Is(err, ErrNotifyPartial) {
+			n.clearUnsentFailure(failureID, failureHash, failureSentAt)
+		}
+
 		return fmt.Errorf("failed to send notification: %w", err)
 	}
 

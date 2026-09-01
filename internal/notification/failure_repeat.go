@@ -85,3 +85,15 @@ func (n *Notifier) clearFailure(key string) {
 
 	delete(n.lastFailures, key)
 }
+
+// clearUnsentFailure removes this attempt's suppression record after delivery
+// failed, without deleting a newer failure recorded concurrently for the stack.
+func (n *Notifier) clearUnsentFailure(key, fingerprint string, sentAt time.Time) {
+	n.failureMu.Lock()
+	defer n.failureMu.Unlock()
+
+	record, found := n.lastFailures[key]
+	if found && record.fingerprint == fingerprint && record.sentAt.Equal(sentAt) {
+		delete(n.lastFailures, key)
+	}
+}
