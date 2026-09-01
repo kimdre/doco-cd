@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/filesystem"
@@ -903,5 +904,37 @@ func TestGetConfig_PollConfigAbsolutePathNormalizedInPlace(t *testing.T) {
 	want := "file:///local-repos/my-app"
 	if got := cfg.PollConfig[0].SourceUrl; got != want {
 		t.Fatalf("expected normalized SourceUrl %q to be persisted, got %q", want, got)
+	}
+}
+
+func TestGetConfig_PollConfigExplicitZeroDisablesPolling(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "info")
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("WEBHOOK_SECRET", "secret")
+	t.Setenv("POLL_CONFIG", `
+- source: oci
+  url: ghcr.io/kimdre/doco-cd_tests:test
+  interval: 0
+- source: git
+  url: https://github.com/kimdre/doco-cd_tests.git
+  reference: main
+  interval: 10
+`)
+
+	cfg, err := GetConfig()
+	if err != nil {
+		t.Fatalf("expected poll config to be accepted, got %v", err)
+	}
+
+	if len(cfg.PollConfig) != 2 {
+		t.Fatalf("expected 2 poll configs, got %d", len(cfg.PollConfig))
+	}
+
+	if got := cfg.PollConfig[0].Interval; got != 0 {
+		t.Fatalf("expected explicit zero interval to be preserved, got %s", got)
+	}
+
+	if got := cfg.PollConfig[1].Interval; got != 10*time.Second {
+		t.Fatalf("expected Git interval to be 10s, got %s", got)
 	}
 }

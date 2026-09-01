@@ -7,6 +7,9 @@ import (
 	"testing"
 
 	"github.com/docker/compose/v5/pkg/api"
+
+	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/poll"
 )
 
 func TestNewManagerAppliesDefaultDeploymentLimit(t *testing.T) {
@@ -15,6 +18,19 @@ func TestNewManagerAppliesDefaultDeploymentLimit(t *testing.T) {
 	manager := newTestManager(t)
 	if got := cap(manager.limiter.sem); got != 1 {
 		t.Fatalf("default deployment limit = %d, want 1", got)
+	}
+}
+
+func TestNewManagerDoesNotApplyDefaultsToAppConfig(t *testing.T) {
+	t.Parallel()
+
+	appConfig := &app.Config{
+		PollConfig: []poll.Config{{Interval: 0}},
+	}
+	newTestManagerWithDependencies(t, Dependencies{AppConfig: appConfig})
+
+	if got := appConfig.PollConfig[0].Interval; got != 0 {
+		t.Fatalf("poll interval = %s, want disabled interval", got)
 	}
 }
 

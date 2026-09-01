@@ -41,8 +41,6 @@ type rawConfig struct {
 	Deployments  []*deploy.Config  `yaml:"deployments" json:"deployments" default:"[]"`
 }
 
-type missingInterval struct{}
-
 type Job struct {
 	Config  Config // config is the Config for this instance
 	LastRun int64  // LastRun is the last time this instance ran
@@ -154,7 +152,7 @@ func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 		Source:       c.Source,
 		SourceUrl:    c.SourceUrl,
 		Reference:    c.Reference,
-		Interval:     missingInterval{},
+		Interval:     c.Interval,
 		CustomTarget: c.CustomTarget,
 		RunOnce:      c.RunOnce,
 		Watch:        c.Watch,
@@ -165,12 +163,7 @@ func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 		return err
 	}
 
-	interval := raw.Interval
-	if _, missing := interval.(missingInterval); missing {
-		interval = c.Interval
-	}
-
-	parsedInterval, err := parsePollInterval(interval)
+	parsedInterval, err := parsePollInterval(raw.Interval)
 	if err != nil {
 		return err
 	}
@@ -197,7 +190,7 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 		Source:       c.Source,
 		SourceUrl:    c.SourceUrl,
 		Reference:    c.Reference,
-		Interval:     missingInterval{},
+		Interval:     c.Interval,
 		CustomTarget: c.CustomTarget,
 		RunOnce:      c.RunOnce,
 		Watch:        c.Watch,
@@ -208,12 +201,7 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	interval := raw.Interval
-	if _, missing := interval.(missingInterval); missing {
-		interval = c.Interval
-	}
-
-	parsedInterval, err := parsePollInterval(interval)
+	parsedInterval, err := parsePollInterval(raw.Interval)
 	if err != nil {
 		return err
 	}

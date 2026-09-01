@@ -16,7 +16,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/config/app"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
 
-	"github.com/kimdre/doco-cd/internal/common/defaults"
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/notification"
@@ -34,7 +33,7 @@ var ErrManagerClosed = errors.New("reconciliation manager is closed")
 // an optional secret provider. Per-run values (trigger, repository, deploy configs, payload,
 // notification metadata) are supplied per call via DeployRequest instead.
 type Dependencies struct {
-	MaxConcurrentDeployments uint `default:"1" validate:"min=1"`
+	MaxConcurrentDeployments uint `validate:"min=1"`
 
 	AppConfig      *app.Config          `validate:"required,nostructlevel"`
 	DataMountPoint container.MountPoint `validate:"required"`
@@ -69,8 +68,8 @@ type Manager struct {
 
 // NewManager validates dependencies and creates an isolated reconciliation manager.
 func NewManager(dependencies Dependencies) (*Manager, error) {
-	if err := defaults.Set(&dependencies); err != nil {
-		return nil, fmt.Errorf("default reconciliation dependencies: %w", err)
+	if dependencies.MaxConcurrentDeployments == 0 {
+		dependencies.MaxConcurrentDeployments = 1
 	}
 
 	if err := validation.Validate(dependencies); err != nil {
