@@ -11,6 +11,7 @@ import (
 	dockerSwarm "github.com/kimdre/doco-cd/internal/docker/swarm"
 )
 
+// resolveTestSwarmMode checks if the Docker daemon is in Swarm mode.
 func resolveTestSwarmMode(t *testing.T, apiClient client.APIClient) bool {
 	t.Helper()
 
