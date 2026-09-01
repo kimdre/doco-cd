@@ -406,74 +406,43 @@ func (s *StageManager) resolveCommitStatusContext() string {
 	return commitstatus.ContextForStack(s.DeployConfig.Internal.ConfigTarget, s.DeployConfig.Name)
 }
 
-func (s *StageManager) resolveCommitStatusRequest() (commitstatus.Provider, string, string, string, string, string, string, bool) {
-	if !s.AppConfig.GitCommitStatus {
-		return commitstatus.ProviderAuto, "", "", "", "", "", "", false
-	}
-
-	if s.Repository.Source == types2.SourceTypeOCI {
-		return commitstatus.ProviderAuto, "", "", "", "", "", "", false
-	}
-
-	commitSHA := s.resolveCommitSHA()
-	if commitSHA == "" {
-		s.Log.Debug("skipping commit status: no commit SHA available")
-
-		return commitstatus.ProviderAuto, "", "", "", "", "", "", false
-	}
-
-	resolved := gitInternal.ResolveAuthConfig(s.Repository.SourceUrl, "", "", "")
-
-	token, err := gitInternal.ResolveHTTPToken(s.Repository.SourceUrl, resolved)
-	if err != nil {
-		s.Log.Warn("failed to resolve commit status token", slog.String("error", err.Error()))
-	}
-
-	if token == "" {
-		token = s.AppConfig.GitAccessToken
-	}
-
-	if token == "" {
-		s.Log.Debug("skipping commit status: no access token configured")
-
-		return commitstatus.ProviderAuto, "", "", "", "", "", "", false
-	}
-
+func (s *StageManager) resolveCommitStatusRequest() (commitstatus.Request, bool) {
 	repoURL := ""
 	repoFullName := ""
 
 	if s.Payload != nil {
-		repoURL = strings.TrimSpace(s.Payload.WebURL)
-		repoFullName = strings.TrimSpace(s.Payload.FullName)
+		repoURL = s.Payload.WebURL
+		repoFullName = s.Payload.FullName
 	}
 
-	if repoURL == "" {
-		repoURL = s.Repository.SourceUrl
-	}
-
-	if repoFullName == "" {
-		repoFullName = gitInternal.GetFullName(repoURL)
-	}
-
-	provider, _ := commitstatus.ParseProvider(s.AppConfig.GitScmProvider)
-
-	return provider, string(s.AppConfig.GitScmApiUrl), repoURL, repoFullName, commitSHA, token, s.resolveCommitStatusContext(), true
+	return commitstatus.ResolveRequest(s.Log, commitstatus.RequestParams{
+		Enabled:          s.AppConfig.GitCommitStatus,
+		SourceIsGit:      s.Repository.Source != types2.SourceTypeOCI,
+		SourceURL:        s.Repository.SourceUrl,
+		CommitSHA:        s.resolveCommitSHA(),
+		PayloadWebURL:    repoURL,
+		PayloadFullName:  repoFullName,
+		ProviderOverride: s.AppConfig.GitScmProvider,
+		APIBaseURL:       string(s.AppConfig.GitScmApiUrl),
+		AccessToken:      s.AppConfig.GitAccessToken,
+		ContextName:      s.resolveCommitStatusContext(),
+	})
 }
 
 func (s *StageManager) GetCurrentCommitStatus(ctx context.Context) (commitstatus.Status, bool) {
-	provider, apiBaseURL, repoURL, repoFullName, commitSHA, token, contextName, ok := s.resolveCommitStatusRequest()
+	req, ok := s.resolveCommitStatusRequest()
 	if !ok {
 		return commitstatus.Status{}, false
 	}
 
 	s.Log.Debug("getting commit status",
-		slog.String("provider", string(provider)),
-		slog.String("repository", repoFullName),
-		slog.String("commit_sha", commitSHA),
-		slog.String("context", contextName),
+		slog.String("provider", string(req.Provider)),
+		slog.String("repository", req.RepoFullName),
+		slog.String("commit_sha", req.CommitSHA),
+		slog.String("context", req.Context),
 	)
 
-	status, found, err := commitstatus.Get(ctx, provider, apiBaseURL, repoURL, repoFullName, commitSHA, token, contextName)
+	status, found, err := req.Get(ctx)
 	if err != nil {
 		s.Log.Warn("failed to get commit status", slog.String("error", err.Error()))
 		return commitstatus.Status{}, false
@@ -481,10 +450,10 @@ func (s *StageManager) GetCurrentCommitStatus(ctx context.Context) (commitstatus
 
 	if !found {
 		s.Log.Debug("no commit status found",
-			slog.String("provider", string(provider)),
-			slog.String("repository", repoFullName),
-			slog.String("commit_sha", commitSHA),
-			slog.String("context", contextName),
+			slog.String("provider", string(req.Provider)),
+			slog.String("repository", req.RepoFullName),
+			slog.String("commit_sha", req.CommitSHA),
+			slog.String("context", req.Context),
 		)
 	}
 
@@ -496,24 +465,23 @@ func (s *StageManager) GetCurrentCommitStatus(ctx context.Context) (commitstatus
 // or when no access token / commit SHA is available.
 // Errors are logged as warnings so they never block a deployment.
 func (s *StageManager) PostCommitStatus(ctx context.Context, state commitstatus.State, description string) {
-	provider, apiBaseURL, repoURL, repoFullName, commitSHA, token, contextName, ok := s.resolveCommitStatusRequest()
+	req, ok := s.resolveCommitStatusRequest()
 	if !ok {
 		return
 	}
 
 	s.Log.Debug("posting commit status",
-		slog.String("provider", string(provider)),
-		slog.String("repository", repoFullName),
-		slog.String("commit_sha", commitSHA),
-		slog.String("context", contextName),
+		slog.String("provider", string(req.Provider)),
+		slog.String("repository", req.RepoFullName),
+		slog.String("commit_sha", req.CommitSHA),
+		slog.String("context", req.Context),
 		slog.String("state", string(state)),
 		slog.String("description", description),
 	)
 
-	err := commitstatus.Post(ctx, provider, apiBaseURL, repoURL, repoFullName, commitSHA, token, commitstatus.Status{
+	err := req.Post(ctx, commitstatus.Status{
 		State:       state,
 		Description: description,
-		Context:     contextName,
 	})
 	if err != nil {
 		s.Log.Warn("failed to post commit status", slog.String("error", err.Error()))

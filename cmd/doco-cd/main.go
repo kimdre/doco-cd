@@ -26,6 +26,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/graceful"
 
 	"github.com/kimdre/doco-cd/internal/reconciliation"
+	"github.com/kimdre/doco-cd/internal/source"
 
 	"github.com/kimdre/doco-cd/cmd/doco-cd/healthcheck"
 	"github.com/kimdre/doco-cd/internal/api"
@@ -362,6 +363,27 @@ func run() error {
 		return err
 	}
 
+	sourcePreparer, err := source.NewPreparer(source.Dependencies{
+		AppConfig: c,
+	})
+	if err != nil {
+		log.Critical("failed to create source preparer", logger.ErrAttr(err))
+
+		return err
+	}
+
+	deployment, err := controlplane.NewDeployment(controlplane.DeploymentDependencies{
+		SourcePreparer: sourcePreparer,
+		Reconciler:     reconciliationManager,
+		DockerCLI:      dockerCli,
+		DataMountPoint: dataMountPoint,
+	})
+	if err != nil {
+		log.Critical("failed to create deployment operation", logger.ErrAttr(err))
+
+		return err
+	}
+
 	schedulerManager := scheduler.NewManager(contexts, log.Logger, &wg, secretProvider, reconciliationManager)
 	controlPlaneRuns := controlplane.NewRuns(
 		ctx,
@@ -379,12 +401,11 @@ func run() error {
 				DataMountPoint: dataMountPoint,
 				DockerCLI:      dockerCli,
 				Contexts:       contexts,
-				Runner: func(ctx context.Context, pollConfig poll.Config, appConfig *app.Config, dataMountPoint container.MountPoint,
-					dockerCli command.Cli, _ *docker.ContextRegistry, logger *slog.Logger, metadata notification.Metadata,
+				Runner: func(ctx context.Context, pollConfig poll.Config, appConfig *app.Config, _ container.MountPoint,
+					_ command.Cli, _ *docker.ContextRegistry, logger *slog.Logger, metadata notification.Metadata,
 					_ secretprovider.SecretProvider, triggerReason string,
 				) error {
-					return RunPoll(ctx, pollConfig, appConfig, dataMountPoint, dockerCli, logger, metadata,
-						triggerReason, reconciliationManager)
+					return RunPoll(ctx, pollConfig, appConfig, logger, metadata, triggerReason, deployment)
 				},
 			},
 		},
@@ -399,12 +420,10 @@ func run() error {
 	h := orchestrationHandler{
 		appConfig:        c,
 		controlPlaneRuns: controlPlaneRuns,
-		dataMountPoint:   dataMountPoint,
-		dockerCli:        dockerCli,
 		contexts:         contexts,
 		log:              log,
 		secretProvider:   secretProvider,
-		reconciliation:   reconciliationManager,
+		deployment:       deployment,
 	}
 
 	apiHandler, err := api.NewHandler(api.Dependencies{

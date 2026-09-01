@@ -23,53 +23,13 @@ func newTestStageManagerForCommitStatus(appConfig *app.Config, repoURL string) *
 	}
 }
 
-func TestResolveCommitStatusRequest_FallsBackToGitHubAppToken(t *testing.T) {
-	gitInternal.ConfigureAuthResolver(nil, "", "", "", "", gitInternal.GitHubAppConfig{
-		ID:         "12345",
-		PrivateKey: "test-private-key",
-	})
-
-	restoreProvider := gitInternal.SwapGitHubAppTokenProviderForTest(func(_ string, cfg gitInternal.GitHubAppConfig) (string, error) {
-		if cfg.ID != "12345" {
-			t.Fatalf("expected app id 12345, got %s", cfg.ID)
-		}
-
-		return "ghs-install-token", nil // #nosec G101 -- test fixture, not a real credential
-	})
-
+// TestResolveCommitStatusRequest_DelegatesToCommitStatusPackage is a thin wiring test:
+// detailed credential-precedence and skip-rule behavior is covered directly against
+// commitstatus.ResolveRequest in internal/commitstatus. This only verifies that the
+// StageManager wires its own configuration/repository state through correctly.
+func TestResolveCommitStatusRequest_DelegatesToCommitStatusPackage(t *testing.T) {
+	gitInternal.ConfigureAuthResolver(nil, "", "", "pat-token", "", gitInternal.GitHubAppConfig{})
 	t.Cleanup(func() {
-		restoreProvider()
-		gitInternal.ConfigureAuthResolver(nil, "", "", "", "", gitInternal.GitHubAppConfig{})
-	})
-
-	sm := newTestStageManagerForCommitStatus(&app.Config{
-		GitCommitStatus: true,
-		GitScmProvider:  "github",
-	}, "https://github.com/org/repo.git")
-
-	_, _, _, _, _, token, _, ok := sm.resolveCommitStatusRequest()
-	if !ok {
-		t.Fatal("expected resolveCommitStatusRequest to succeed")
-	}
-
-	if token != "ghs-install-token" { // #nosec G101 -- test fixture, not a real credential
-		t.Fatalf("expected github app installation token, got '%s'", token)
-	}
-}
-
-func TestResolveCommitStatusRequest_PrefersExplicitToken(t *testing.T) {
-	gitInternal.ConfigureAuthResolver(nil, "", "", "pat-token", "", gitInternal.GitHubAppConfig{
-		ID:         "12345",
-		PrivateKey: "test-private-key",
-	})
-
-	restoreProvider := gitInternal.SwapGitHubAppTokenProviderForTest(func(_ string, _ gitInternal.GitHubAppConfig) (string, error) {
-		t.Fatal("github app token provider should not be called when an explicit token is set")
-		return "", nil
-	})
-
-	t.Cleanup(func() {
-		restoreProvider()
 		gitInternal.ConfigureAuthResolver(nil, "", "", "", "", gitInternal.GitHubAppConfig{})
 	})
 
@@ -79,29 +39,39 @@ func TestResolveCommitStatusRequest_PrefersExplicitToken(t *testing.T) {
 		GitAccessToken:  "pat-token",
 	}, "https://github.com/org/repo.git")
 
-	_, _, _, _, _, token, _, ok := sm.resolveCommitStatusRequest()
+	req, ok := sm.resolveCommitStatusRequest()
 	if !ok {
 		t.Fatal("expected resolveCommitStatusRequest to succeed")
 	}
 
-	if token != "pat-token" {
-		t.Fatalf("expected explicit access token, got '%s'", token)
+	if req.Token != "pat-token" {
+		t.Fatalf("expected explicit access token, got '%s'", req.Token)
+	}
+
+	if req.Context != "doco-cd/stack" {
+		t.Fatalf("expected context derived from deploy config, got %q", req.Context)
 	}
 }
 
-func TestResolveCommitStatusRequest_SkipsWhenNoCredentialsConfigured(t *testing.T) {
-	gitInternal.ConfigureAuthResolver(nil, "", "", "", "", gitInternal.GitHubAppConfig{})
-	t.Cleanup(func() {
-		gitInternal.ConfigureAuthResolver(nil, "", "", "", "", gitInternal.GitHubAppConfig{})
-	})
-
+func TestResolveCommitStatusRequest_SkipsWhenDisabled(t *testing.T) {
 	sm := newTestStageManagerForCommitStatus(&app.Config{
-		GitCommitStatus: true,
-		GitScmProvider:  "github",
+		GitCommitStatus: false,
 	}, "https://github.com/org/repo.git")
 
-	_, _, _, _, _, _, _, ok := sm.resolveCommitStatusRequest()
+	_, ok := sm.resolveCommitStatusRequest()
 	if ok {
-		t.Fatal("expected resolveCommitStatusRequest to skip when no credentials are configured")
+		t.Fatal("expected resolveCommitStatusRequest to skip when commit statuses are disabled")
+	}
+}
+
+func TestResolveCommitStatusRequest_SkipsForOCISource(t *testing.T) {
+	sm := newTestStageManagerForCommitStatus(&app.Config{
+		GitCommitStatus: true,
+	}, "ghcr.io/org/artifact:latest")
+	sm.Repository.Source = "oci"
+
+	_, ok := sm.resolveCommitStatusRequest()
+	if ok {
+		t.Fatal("expected resolveCommitStatusRequest to skip for OCI sources")
 	}
 }
