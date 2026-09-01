@@ -174,8 +174,11 @@ func TestDeploy(t *testing.T) {
 
 	// commit have 5 apps
 	// https://github.com/kimdre/doco-cd_tests/blob/7be81e788a40724cee7542eec00a2af0c4340eba/.doco-cd.yml
+	composeEnabled := false
+
 	for _, dc := range dcs {
 		dc.Name = stackName + "-" + dc.Name
+		dc.Swarm.Enabled = &composeEnabled
 	}
 
 	dcs[0].Reconciliation.Enabled = false

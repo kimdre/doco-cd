@@ -195,7 +195,11 @@ func TestMCPSwarmToolsRuntimeBehavior(t *testing.T) {
 
 	t.Cleanup(func() { _ = dockerCli.Client().Close() })
 
-	h := &Handler{dockerCli: dockerCli, log: logger.New(logger.LevelCritical)}
+	contexts := docker.NewContextRegistry(dockerCli, docker.ContextRegistryOptions{SwarmFeatures: true})
+
+	t.Cleanup(func() { _ = contexts.Close() })
+
+	h := &Handler{dockerCli: dockerCli, contexts: contexts, log: logger.New(logger.LevelCritical)}
 	server, _ := newMCPTestServerWithHandler(t, true, testMCPAPIKey, 1024, h)
 	session := connectMCPTestClient(t, server)
 
