@@ -66,6 +66,10 @@ type scheduler struct {
 	startedAt       time.Time
 	runtime         *runtimeStore
 	runs            sync.WaitGroup
+	// composeOptions bundles the Docker-owned settings needed to reload the compose project for
+	// a scheduled run (see docker.ScheduledComposeOptions), resolved explicitly by the caller
+	// instead of being read from the application configuration deep inside the Docker package.
+	composeOptions docker.ScheduledComposeOptions
 
 	states map[string]scheduledJobState
 
@@ -132,7 +136,7 @@ type JobInfo struct {
 // newSchedulerForMode builds a scheduler worker bound to a single Docker
 // context and runtime mode. log and wg may be nil for short-lived, one-shot
 // workers (e.g. a single ListJobs/TriggerNow call) that never call run().
-func newSchedulerForMode(cc docker.ContextClient, mode scheduledJobMode, log *slog.Logger, wg *sync.WaitGroup, secretProvider secretprovider.SecretProvider, stopHoldTracker ServiceStopHoldTracker, runtime *runtimeStore) *scheduler {
+func newSchedulerForMode(cc docker.ContextClient, mode scheduledJobMode, log *slog.Logger, wg *sync.WaitGroup, secretProvider secretprovider.SecretProvider, stopHoldTracker ServiceStopHoldTracker, runtime *runtimeStore, composeOptions docker.ScheduledComposeOptions) *scheduler {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -153,6 +157,7 @@ func newSchedulerForMode(cc docker.ContextClient, mode scheduledJobMode, log *sl
 		wg:              wg,
 		startedAt:       schedulerNow(),
 		runtime:         runtime,
+		composeOptions:  composeOptions,
 		states:          map[string]scheduledJobState{},
 		stopHolds:       map[stopHoldKey]*stopHoldState{},
 	}

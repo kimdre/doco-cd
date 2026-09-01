@@ -25,7 +25,6 @@ import (
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
 
-	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/test"
 )
@@ -118,7 +117,7 @@ func TestGitResourceLoaderAcceptsDockerComposeGitReferences(t *testing.T) {
 func TestNewRemoteResourceLoadersWithoutDockerCLIIncludesGitOnly(t *testing.T) {
 	repoPath := filepath.Join(t.TempDir(), "repo")
 
-	loaders := newRemoteResourceLoaders(&app.Config{DataMountPath: t.TempDir()}, nil, repoPath)
+	loaders := newRemoteResourceLoaders(ComposeLoadOptions{DataMountPath: t.TempDir()}, nil, repoPath)
 	if len(loaders) != 1 {
 		t.Fatalf("expected only the Git loader without a Docker CLI, got %d loaders", len(loaders))
 	}
@@ -144,7 +143,7 @@ func TestNewRemoteResourceLoadersDoesNotLogCacheBaseWithoutIncludeUsage(t *testi
 		slog.SetDefault(previousDefault)
 	})
 
-	newRemoteResourceLoaders(&app.Config{DataMountPath: t.TempDir()}, nil, filepath.Join(t.TempDir(), "repo"))
+	newRemoteResourceLoaders(ComposeLoadOptions{DataMountPath: t.TempDir()}, nil, filepath.Join(t.TempDir(), "repo"))
 
 	var entry map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &entry); err == nil {
@@ -160,7 +159,7 @@ func TestNewRemoteResourceLoadersDoesNotLogCacheBaseWithoutIncludeUsage(t *testi
 
 func TestResolveIncludeCacheBaseUsesRepoParent(t *testing.T) {
 	repoPath := filepath.Join(t.TempDir(), "repo")
-	got := resolveIncludeCacheBase(&app.Config{DataMountPath: "/data", DataHostPath: "/host-data"}, repoPath)
+	got := resolveIncludeCacheBase(ComposeLoadOptions{DataMountPath: "/data", DataHostPath: "/host-data"}, repoPath)
 	want := filepath.Dir(repoPath)
 
 	if got != want {
@@ -169,14 +168,14 @@ func TestResolveIncludeCacheBaseUsesRepoParent(t *testing.T) {
 }
 
 func TestResolveIncludeCacheBaseFallsBackToDataHostPath(t *testing.T) {
-	got := resolveIncludeCacheBase(&app.Config{DataMountPath: "/data", DataHostPath: "/host-data"}, "")
+	got := resolveIncludeCacheBase(ComposeLoadOptions{DataMountPath: "/data", DataHostPath: "/host-data"}, "")
 	if got != "/host-data" {
 		t.Fatalf("expected /host-data, got %q", got)
 	}
 }
 
 func TestResolveIncludeCacheBaseFallsBackToDataMountPath(t *testing.T) {
-	got := resolveIncludeCacheBase(&app.Config{DataMountPath: "/data"}, "")
+	got := resolveIncludeCacheBase(ComposeLoadOptions{DataMountPath: "/data"}, "")
 	if got != "/data" {
 		t.Fatalf("expected /data, got %q", got)
 	}
@@ -421,8 +420,6 @@ func TestLoadComposeWithRealPublicGitIncludeFullRoundtrip(t *testing.T) {
 	skipUnlessGitIncludeIntegration(t)
 
 	workingDirectory := t.TempDir()
-	t.Setenv("DATA_MOUNT_PATH", t.TempDir())
-	t.Setenv("WEBHOOK_SECRET", "test-secret")
 
 	// docker-compose.yml at the root of this repo defines the "doco-cd" service
 	// and has no .env or extends dependencies, making it a safe integration target.
@@ -445,6 +442,7 @@ func TestLoadComposeWithRealPublicGitIncludeFullRoundtrip(t *testing.T) {
 		nil,
 		nil,
 		map[string]string{},
+		ComposeLoadOptions{},
 	)
 	if err != nil {
 		t.Fatalf("LoadCompose with real Git include: %v", err)
@@ -463,8 +461,6 @@ func TestLoadComposeWithGitIncludeWithoutDockerCLI(t *testing.T) {
 	defer restoreTransport()
 
 	workingDirectory := t.TempDir()
-	t.Setenv("DATA_MOUNT_PATH", t.TempDir())
-	t.Setenv("WEBHOOK_SECRET", "test-secret")
 
 	rootComposePath := filepath.Join(workingDirectory, "compose.yaml")
 
@@ -483,6 +479,7 @@ func TestLoadComposeWithGitIncludeWithoutDockerCLI(t *testing.T) {
 		nil,
 		nil,
 		map[string]string{},
+		ComposeLoadOptions{},
 	)
 	if err != nil {
 		t.Fatalf("load compose with Git include: %v", err)
@@ -609,12 +606,8 @@ func TestDeployComposeWithGitInclude(t *testing.T) {
 	restoreTransport := installLocalGitTransport(t, repo)
 	defer restoreTransport()
 
-	// Set env vars required by LoadCompose → app.GetConfig().
-	workDir := t.TempDir()
-	t.Setenv("DATA_MOUNT_PATH", t.TempDir())
-	t.Setenv("WEBHOOK_SECRET", "test-secret")
-
 	// Root compose file whose only job is to include the Git-hosted one.
+	workDir := t.TempDir()
 	rootComposePath := filepath.Join(workDir, "compose.yaml")
 	rootCompose := "include:\n  - path: git://example.test/repo.git#main\n"
 
@@ -630,6 +623,7 @@ func TestDeployComposeWithGitInclude(t *testing.T) {
 		[]string{rootComposePath},
 		nil, nil,
 		map[string]string{},
+		ComposeLoadOptions{},
 	)
 	if err != nil {
 		t.Fatalf("LoadCompose: %v", err)

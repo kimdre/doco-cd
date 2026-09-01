@@ -22,7 +22,7 @@ func TestComposeSignal(t *testing.T) {
 
 	stackName := test.ConvertTestName(t.Name())
 
-	project, err := LoadCompose(ctx, nil, tmpDir, tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, map[string]string{})
+	project, err := LoadCompose(ctx, nil, tmpDir, tmpDir, stackName, []string{filePath}, []string{".env"}, []string{}, map[string]string{}, ComposeLoadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

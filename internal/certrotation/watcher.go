@@ -41,6 +41,9 @@ type Watcher struct {
 	secretProvider secretprovider.SecretProvider
 	threshold      time.Duration
 	checkInterval  time.Duration
+	// certOptions bundles the Docker-owned settings needed to reload and redeploy the rotated
+	// project (see docker.CertificateRotationOptions), resolved explicitly at composition time.
+	certOptions docker.CertificateRotationOptions
 
 	// now and listContexts are overridable in tests.
 	now          func() time.Time
@@ -55,6 +58,7 @@ func New(
 	log *slog.Logger,
 	secretProvider secretprovider.SecretProvider,
 	threshold, checkInterval time.Duration,
+	certOptions docker.CertificateRotationOptions,
 ) *Watcher {
 	w := &Watcher{
 		contexts:       contexts,
@@ -62,6 +66,7 @@ func New(
 		secretProvider: secretProvider,
 		threshold:      threshold,
 		checkInterval:  checkInterval,
+		certOptions:    certOptions,
 		now:            time.Now,
 	}
 
@@ -183,7 +188,7 @@ func (w *Watcher) checkAndRotateContextMode(ctx context.Context, result docker.C
 			slog.Bool("swarm_mode", swarmMode),
 		)
 
-		if err := docker.RotateProjectCertificates(ctx, result.Name, result.Cli, labels, w.secretProvider, swarmMode); err != nil {
+		if err := docker.RotateProjectCertificates(ctx, result.Name, result.Cli, labels, w.secretProvider, swarmMode, w.certOptions); err != nil {
 			contextLog.Error("failed to rotate certificate",
 				slog.String("project", project),
 				slog.Bool("swarm_mode", swarmMode),

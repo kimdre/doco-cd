@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/lock"
@@ -17,14 +18,39 @@ import (
 )
 
 func TestRotateProjectCertificates_MissingLabels(t *testing.T) {
-	err := RotateProjectCertificates(context.Background(), "", nil, map[string]string{}, nil, false)
+	err := RotateProjectCertificates(context.Background(), "", nil, map[string]string{}, nil, false, CertificateRotationOptions{})
 	if err == nil {
 		t.Fatal("expected an error for missing deployment labels")
 	}
 }
 
+// TestPruneSwarmStackRevisions_RetentionHonoredIndependentOfEnvVar proves that Swarm
+// config/secret revision retention is controlled solely by
+// CertificateRotationOptions.SwarmRetention, not by
+// reading the DOCKER_SWARM_CONFIG_RETENTION/DOCKER_SWARM_SECRET_RETENTION environment variables
+// directly. A stale environment value that would enable pruning must have no effect: when the
+// options explicitly disable pruning (-1) and the deploy config has no override, no attempt is
+// made to reach the Docker daemon at all. dockerCli is passed as nil here; if the retention
+// resolution incorrectly fell back to reading the environment variables (which are set to a
+// pruning-enabled value below), calling dockerCli.Client() on the nil interface would panic and
+// fail the test.
+func TestPruneSwarmStackRevisions_RetentionHonoredIndependentOfEnvVar(t *testing.T) {
+	t.Setenv("DOCKER_SWARM_CONFIG_RETENTION", "5")
+	t.Setenv("DOCKER_SWARM_SECRET_RETENTION", "5")
+
+	opts := CertificateRotationOptions{
+		SwarmRetention: SwarmRetentionOptions{
+			Config: -1,
+			Secret: -1,
+		},
+	}
+	deployConfig := &deploy.Config{}
+
+	pruneSwarmStackRevisions(context.Background(), nil, "stack", deployConfig, opts)
+}
+
 func TestRotateProjectCertificates_SwarmMissingLabels(t *testing.T) {
-	err := RotateProjectCertificates(context.Background(), "", nil, map[string]string{}, nil, true)
+	err := RotateProjectCertificates(context.Background(), "", nil, map[string]string{}, nil, true, CertificateRotationOptions{})
 	if err == nil {
 		t.Fatal("expected an error for missing deployment labels in swarm mode")
 	}
@@ -60,7 +86,7 @@ func TestRotateProjectCertificates_ContextNamespacesLock(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		done <- RotateProjectCertificates(context.Background(), "docker01", nil, labels, nil, true)
+		done <- RotateProjectCertificates(context.Background(), "docker01", nil, labels, nil, true, CertificateRotationOptions{})
 	}()
 
 	select {
@@ -81,8 +107,10 @@ func TestRotateProjectCertificates_ContextNamespacesLock(t *testing.T) {
 // file list to find the project at all.
 func TestRotateProjectCertificates_SwarmReloadFallsBackToConfiguredComposeFiles(t *testing.T) {
 	dataMountPath := t.TempDir()
-	t.Setenv("DATA_MOUNT_PATH", dataMountPath)
-	t.Setenv("DEPLOY_CONFIG_BASE_DIR", "/")
+	scheduledOpts := ScheduledComposeOptions{
+		ComposeLoad:         ComposeLoadOptions{DataMountPath: dataMountPath},
+		DeployConfigBaseDir: "/",
+	}
 
 	repoRoot := filepath.Join(dataMountPath, "example.com", "owner", "repo")
 
@@ -132,7 +160,7 @@ external_secrets:
 
 	provider := newStubProvider(map[string]string{"CERT": certPEM}, nil)
 
-	project, _, err := loadComposeScheduledProjectAll(context.Background(), nil, ref, provider)
+	project, _, err := loadComposeScheduledProjectAll(context.Background(), nil, ref, provider, scheduledOpts)
 	if err != nil {
 		t.Fatalf("unexpected error reloading project: %v", err)
 	}
@@ -154,8 +182,10 @@ external_secrets:
 // off to deployCompose (which requires a live Docker daemon and is out of scope for this unit test).
 func TestRotateProjectCertificates_ReloadReissuesCertAndRelabels(t *testing.T) {
 	dataMountPath := t.TempDir()
-	t.Setenv("DATA_MOUNT_PATH", dataMountPath)
-	t.Setenv("DEPLOY_CONFIG_BASE_DIR", "/")
+	scheduledOpts := ScheduledComposeOptions{
+		ComposeLoad:         ComposeLoadOptions{DataMountPath: dataMountPath},
+		DeployConfigBaseDir: "/",
+	}
 
 	repoRoot := filepath.Join(dataMountPath, "example.com", "owner", "repo")
 
@@ -200,7 +230,7 @@ external_secrets:
 
 	provider := newStubProvider(map[string]string{"CERT": certPEM}, nil)
 
-	project, deployConfig, err := loadComposeScheduledProjectAll(context.Background(), nil, ref, provider)
+	project, deployConfig, err := loadComposeScheduledProjectAll(context.Background(), nil, ref, provider, scheduledOpts)
 	if err != nil {
 		t.Fatalf("unexpected error reloading project: %v", err)
 	}
@@ -245,8 +275,10 @@ external_secrets:
 // relies on that label to find the correct .doco-cd.<target>.yml file.
 func TestRotateProjectCertificates_ReloadPreservesConfigTargetLabel(t *testing.T) {
 	dataMountPath := t.TempDir()
-	t.Setenv("DATA_MOUNT_PATH", dataMountPath)
-	t.Setenv("DEPLOY_CONFIG_BASE_DIR", "/")
+	scheduledOpts := ScheduledComposeOptions{
+		ComposeLoad:         ComposeLoadOptions{DataMountPath: dataMountPath},
+		DeployConfigBaseDir: "/",
+	}
 
 	repoRoot := filepath.Join(dataMountPath, "example.com", "owner", "repo")
 
@@ -292,7 +324,7 @@ external_secrets:
 
 	provider := newStubProvider(map[string]string{"CERT": certPEM}, nil)
 
-	project, deployConfig, err := loadComposeScheduledProjectAll(context.Background(), nil, ref, provider)
+	project, deployConfig, err := loadComposeScheduledProjectAll(context.Background(), nil, ref, provider, scheduledOpts)
 	if err != nil {
 		t.Fatalf("unexpected error reloading project: %v", err)
 	}
@@ -322,8 +354,10 @@ external_secrets:
 // services with no relation to the rotated certificate are excluded.
 func TestServicesUsingRotatableCerts(t *testing.T) {
 	dataMountPath := t.TempDir()
-	t.Setenv("DATA_MOUNT_PATH", dataMountPath)
-	t.Setenv("DEPLOY_CONFIG_BASE_DIR", "/")
+	scheduledOpts := ScheduledComposeOptions{
+		ComposeLoad:         ComposeLoadOptions{DataMountPath: dataMountPath},
+		DeployConfigBaseDir: "/",
+	}
 
 	repoRoot := filepath.Join(dataMountPath, "example.com", "owner", "repo")
 
@@ -385,7 +419,7 @@ external_secrets:
 
 	provider := newStubProvider(map[string]string{"CERT": certPEM}, nil)
 
-	project, deployConfig, err := loadComposeScheduledProjectAll(context.Background(), nil, ref, provider)
+	project, deployConfig, err := loadComposeScheduledProjectAll(context.Background(), nil, ref, provider, scheduledOpts)
 	if err != nil {
 		t.Fatalf("unexpected error reloading project: %v", err)
 	}
@@ -440,8 +474,12 @@ func TestRotateSwarmProjectCertificatesIntegration(t *testing.T) {
 	stackName := test.ConvertTestName(t.Name())
 
 	dataMountPath := t.TempDir()
-	t.Setenv("DATA_MOUNT_PATH", dataMountPath)
-	t.Setenv("DEPLOY_CONFIG_BASE_DIR", "/")
+	certOpts := CertificateRotationOptions{
+		Scheduled: ScheduledComposeOptions{
+			ComposeLoad:         ComposeLoadOptions{DataMountPath: dataMountPath},
+			DeployConfigBaseDir: "/",
+		},
+	}
 
 	repoRoot := filepath.Join(dataMountPath, "example.com", "owner", "repo")
 	workingDir := filepath.Join(repoRoot, "stacks", stackName)
@@ -488,7 +526,7 @@ external_secrets:
 		}
 	})
 
-	if err := RotateProjectCertificates(t.Context(), "", dockerCli, labels, provider, true); err != nil {
+	if err := RotateProjectCertificates(t.Context(), "", dockerCli, labels, provider, true, certOpts); err != nil {
 		t.Fatalf("unexpected error rotating swarm project certificates: %v", err)
 	}
 

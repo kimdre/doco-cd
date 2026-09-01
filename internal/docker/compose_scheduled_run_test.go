@@ -299,7 +299,7 @@ func TestLoadComposeScheduledProject_RequiresComposeMetadata(t *testing.T) {
 		_, err := loadComposeScheduledProject(context.Background(), nil, composeScheduledServiceRef{
 			Project: "project-a",
 			Service: "backup",
-		}, nil)
+		}, nil, ScheduledComposeOptions{})
 		if !errors.Is(err, ErrComposeScheduledMetadataUnavailable) {
 			t.Fatalf("expected ErrComposeScheduledMetadataUnavailable, got %v", err)
 		}
@@ -312,7 +312,7 @@ func TestLoadComposeScheduledProject_RequiresComposeMetadata(t *testing.T) {
 			Project:    "project-a",
 			Service:    "backup",
 			WorkingDir: "/some/dir",
-		}, nil)
+		}, nil, ScheduledComposeOptions{})
 		if !errors.Is(err, ErrComposeScheduledMetadataUnavailable) {
 			t.Fatalf("expected ErrComposeScheduledMetadataUnavailable, got %v", err)
 		}
@@ -325,7 +325,7 @@ func TestLoadComposeScheduledProject_RequiresComposeMetadata(t *testing.T) {
 			Project:     "project-a",
 			Service:     "backup",
 			ConfigFiles: []string{"/some/compose.yaml"},
-		}, nil)
+		}, nil, ScheduledComposeOptions{})
 		if !errors.Is(err, ErrComposeScheduledMetadataUnavailable) {
 			t.Fatalf("expected ErrComposeScheduledMetadataUnavailable, got %v", err)
 		}
@@ -355,7 +355,7 @@ func TestPrepareComposeScheduledDeployConfig(t *testing.T) {
 			},
 		}
 
-		if err := prepareComposeScheduledDeployConfig(context.Background(), cfg, sourceRepoPath, sourceRepoPath, provider); err != nil {
+		if err := prepareComposeScheduledDeployConfig(context.Background(), cfg, sourceRepoPath, sourceRepoPath, provider, ScheduledComposeOptions{}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
@@ -386,7 +386,7 @@ func TestPrepareComposeScheduledDeployConfig(t *testing.T) {
 			},
 		}
 
-		err := prepareComposeScheduledDeployConfig(context.Background(), cfg, t.TempDir(), t.TempDir(), provider)
+		err := prepareComposeScheduledDeployConfig(context.Background(), cfg, t.TempDir(), t.TempDir(), provider, ScheduledComposeOptions{})
 		if !errors.Is(err, providerErr) {
 			t.Fatalf("expected provider error, got %v", err)
 		}
@@ -406,7 +406,7 @@ func TestPrepareComposeScheduledDeployConfig(t *testing.T) {
 			EnvFiles:         []string{".env"},
 		}
 
-		if err := prepareComposeScheduledDeployConfig(context.Background(), cfg, repoPath, repoPath, nil); err != nil {
+		if err := prepareComposeScheduledDeployConfig(context.Background(), cfg, repoPath, repoPath, nil, ScheduledComposeOptions{}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
@@ -418,8 +418,10 @@ func TestPrepareComposeScheduledDeployConfig(t *testing.T) {
 
 func TestLoadComposeScheduledProject_InterpolatesDeployConfigEnvironment(t *testing.T) {
 	dataMountPath := t.TempDir()
-	t.Setenv("DATA_MOUNT_PATH", dataMountPath)
-	t.Setenv("DEPLOY_CONFIG_BASE_DIR", "/")
+	opts := ScheduledComposeOptions{
+		ComposeLoad:         ComposeLoadOptions{DataMountPath: dataMountPath},
+		DeployConfigBaseDir: "/",
+	}
 
 	repoRoot := filepath.Join(dataMountPath, "example.com", "owner", "repo")
 
@@ -453,7 +455,7 @@ environment:
 		RepositoryURL:  "https://example.com/owner/repo",
 		DeploymentName: "adguard-dns",
 		Reference:      "refs/heads/main",
-	}, nil)
+	}, nil, opts)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -476,8 +478,10 @@ environment:
 // regression test for https://github.com/kimdre/doco-cd/issues/1737.
 func TestLoadComposeScheduledProject_FallsBackWhenLabeledComposeFileIsStale(t *testing.T) {
 	dataMountPath := t.TempDir()
-	t.Setenv("DATA_MOUNT_PATH", dataMountPath)
-	t.Setenv("DEPLOY_CONFIG_BASE_DIR", "/")
+	opts := ScheduledComposeOptions{
+		ComposeLoad:         ComposeLoadOptions{DataMountPath: dataMountPath},
+		DeployConfigBaseDir: "/",
+	}
 
 	repoRoot := filepath.Join(dataMountPath, "example.com", "owner", "repo")
 
@@ -509,7 +513,7 @@ compose_files:
 		RepositoryURL:  "https://example.com/owner/repo",
 		DeploymentName: "imap-backup",
 		Reference:      "refs/heads/main",
-	}, nil)
+	}, nil, opts)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -526,8 +530,10 @@ compose_files:
 // its deploy config at run time.
 func TestLoadComposeScheduledProject_ResolvesExternalSecrets(t *testing.T) {
 	dataMountPath := t.TempDir()
-	t.Setenv("DATA_MOUNT_PATH", dataMountPath)
-	t.Setenv("DEPLOY_CONFIG_BASE_DIR", "/")
+	opts := ScheduledComposeOptions{
+		ComposeLoad:         ComposeLoadOptions{DataMountPath: dataMountPath},
+		DeployConfigBaseDir: "/",
+	}
 
 	repoRoot := filepath.Join(dataMountPath, "example.com", "owner", "repo")
 
@@ -569,7 +575,7 @@ external_secrets:
 		RepositoryURL:  "https://example.com/owner/repo",
 		DeploymentName: "backup-job",
 		Reference:      "refs/heads/main",
-	}, newStubProvider(map[string]string{"MY_SECRET": "resolved-secret"}, nil))
+	}, newStubProvider(map[string]string{"MY_SECRET": "resolved-secret"}, nil), opts)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -585,6 +591,81 @@ external_secrets:
 
 	if *svc.Environment["MY_SECRET"] != "resolved-secret" {
 		t.Fatalf("expected MY_SECRET to be resolved from external secret provider, got %q", *svc.Environment["MY_SECRET"])
+	}
+}
+
+// TestLoadComposeScheduledProject_InterpolateExternalSecretsHonoredIndependentOfEnvVar
+// proves that legacy external secret reference interpolation is controlled solely by
+// ScheduledComposeOptions.InterpolateExternalSecrets, not by reading the
+// INTERPOLATE_EXTERNAL_SECRETS environment variable directly. A legacy reference containing
+// an unset variable is left untouched (and so resolves without error) when the option is
+// false, even if a stale INTERPOLATE_EXTERNAL_SECRETS=true is set in the environment; it only
+// fails interpolation (as expected) when the option is explicitly enabled.
+func TestLoadComposeScheduledProject_InterpolateExternalSecretsHonoredIndependentOfEnvVar(t *testing.T) {
+	dataMountPath := t.TempDir()
+
+	repoRoot := filepath.Join(dataMountPath, "example.com", "owner", "repo")
+	workingDir := filepath.Join(repoRoot, "stacks", "nas", "backup")
+
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(workingDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	composePath := filepath.Join(workingDir, "compose.yml")
+	createComposeFile(t, composePath, `services:
+  backup:
+    image: busybox:latest
+    environment:
+      MY_SECRET: ${MY_SECRET}
+`)
+
+	// The legacy reference contains an unguarded variable that is never set in the
+	// process environment; interpolating it must fail because it becomes a
+	// required-but-absent variable.
+	createComposeFile(t, filepath.Join(repoRoot, ".doco-cd.yml"), `name: backup-job
+reference: refs/heads/main
+working_dir: stacks/nas/backup
+compose_files:
+  - compose.yml
+external_secrets:
+  MY_SECRET: item-$UNSET_SECRET_SUFFIX
+`)
+
+	ref := composeScheduledServiceRef{
+		Project:        "backup-job",
+		Service:        "backup",
+		WorkingDir:     workingDir,
+		ConfigFiles:    []string{composePath},
+		RepositoryURL:  "https://example.com/owner/repo",
+		DeploymentName: "backup-job",
+		Reference:      "refs/heads/main",
+	}
+	provider := newStubProvider(map[string]string{"MY_SECRET": "resolved-secret"}, nil)
+
+	// A stale INTERPOLATE_EXTERNAL_SECRETS=true must have no effect: production code no
+	// longer reads this environment variable, only the explicit
+	// ScheduledComposeOptions.InterpolateExternalSecrets field.
+	t.Setenv("INTERPOLATE_EXTERNAL_SECRETS", "true")
+
+	disabledOpts := ScheduledComposeOptions{
+		ComposeLoad:                ComposeLoadOptions{DataMountPath: dataMountPath},
+		DeployConfigBaseDir:        "/",
+		InterpolateExternalSecrets: false,
+	}
+
+	if _, err := loadComposeScheduledProject(context.Background(), nil, ref, provider, disabledOpts); err != nil {
+		t.Fatalf("expected no error with InterpolateExternalSecrets=false despite INTERPOLATE_EXTERNAL_SECRETS=true, got: %v", err)
+	}
+
+	enabledOpts := disabledOpts
+	enabledOpts.InterpolateExternalSecrets = true
+
+	if _, err := loadComposeScheduledProject(context.Background(), nil, ref, provider, enabledOpts); err == nil {
+		t.Fatal("expected an error with InterpolateExternalSecrets=true and an unset reference variable, got nil")
 	}
 }
 

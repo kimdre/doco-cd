@@ -315,22 +315,22 @@ func resolveDeploymentMetricsDeploymentLabel(deployName string) string {
 // repository path used to resolve compose file locations, the Docker CLI, the parsed webhook
 // payload (may be nil for non-webhook triggers), the resolved deploy config, detected service
 // changes and signal targets from change detection, the latest commit, the running app version,
-// Swarm config/secret retention counts, whether Swarm mode is active, and the PKI role
-// normalization map.
+// the ComposeLoadOptions used to reload the compose project, Swarm retention settings,
+// whether Swarm mode is active, and the PKI role normalization map.
 type DeployRequest struct {
-	JobLog                     *slog.Logger `validate:"required,nostructlevel"`
-	ExternalRepoPath           string       `validate:"required"`
-	DockerCLI                  command.Cli  `validate:"required,nostructlevel"`
-	Payload                    *webhook.ParsedPayload
-	DeployConfig               *deploy.Config `validate:"required,nostructlevel"`
-	DetectedChanges            []Change
-	NeedSignal                 []SignalService
-	LatestCommit               string
-	AppVersion                 string `validate:"required"`
-	GlobalSwarmConfigRetention int
-	GlobalSwarmSecretRetention int
-	SwarmMode                  bool
-	HashNormMap                map[string]string
+	JobLog           *slog.Logger `validate:"required,nostructlevel"`
+	ExternalRepoPath string       `validate:"required"`
+	DockerCLI        command.Cli  `validate:"required,nostructlevel"`
+	Payload          *webhook.ParsedPayload
+	DeployConfig     *deploy.Config `validate:"required,nostructlevel"`
+	DetectedChanges  []Change
+	NeedSignal       []SignalService
+	LatestCommit     string
+	AppVersion       string `validate:"required"`
+	ComposeLoad      ComposeLoadOptions
+	SwarmRetention   SwarmRetentionOptions
+	SwarmMode        bool
+	HashNormMap      map[string]string
 }
 
 func DeployStack(ctx context.Context, req DeployRequest) error {
@@ -339,19 +339,19 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 	}
 
 	var (
-		jobLog                     = req.JobLog
-		externalRepoPath           = req.ExternalRepoPath
-		dockerCli                  = req.DockerCLI
-		payload                    = req.Payload
-		deployConfig               = req.DeployConfig
-		detectedChanges            = req.DetectedChanges
-		needSignal                 = req.NeedSignal
-		latestCommit               = req.LatestCommit
-		appVersion                 = req.AppVersion
-		globalSwarmConfigRetention = req.GlobalSwarmConfigRetention
-		globalSwarmSecretRetention = req.GlobalSwarmSecretRetention
-		swarmMode                  = req.SwarmMode
-		hashNormMap                = req.HashNormMap
+		jobLog           = req.JobLog
+		externalRepoPath = req.ExternalRepoPath
+		dockerCli        = req.DockerCLI
+		payload          = req.Payload
+		deployConfig     = req.DeployConfig
+		detectedChanges  = req.DetectedChanges
+		needSignal       = req.NeedSignal
+		latestCommit     = req.LatestCommit
+		appVersion       = req.AppVersion
+		composeLoad      = req.ComposeLoad
+		swarmRetention   = req.SwarmRetention
+		swarmMode        = req.SwarmMode
+		hashNormMap      = req.HashNormMap
 	)
 
 	startTime := time.Now()
@@ -387,7 +387,7 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 	deploymentPhase.Set("loading compose configuration")
 
 	project, err := LoadCompose(ctx, dockerCli, externalRepoPath, externalWorkingDir, deployConfig.Name, deployConfig.ComposeFiles,
-		deployConfig.EnvFiles, deployConfig.Profiles, deployConfig.Internal.Environment)
+		deployConfig.EnvFiles, deployConfig.Profiles, deployConfig.Internal.Environment, composeLoad)
 	if err != nil {
 		return fmt.Errorf("failed to load compose config: %w", err)
 	}
@@ -432,8 +432,8 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 
 	// When SwarmModeEnabled is true, we deploy the stack using Docker Swarm.
 	if swarmMode {
-		swarmConfigRetention := deployConfig.ResolveSwarmConfigRetention(globalSwarmConfigRetention)
-		swarmSecretRetention := deployConfig.ResolveSwarmSecretRetention(globalSwarmSecretRetention)
+		swarmConfigRetention := deployConfig.ResolveSwarmConfigRetention(swarmRetention.Config)
+		swarmSecretRetention := deployConfig.ResolveSwarmSecretRetention(swarmRetention.Secret)
 
 		deploymentPhase.Set("deploying swarm stack")
 

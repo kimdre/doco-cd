@@ -17,28 +17,29 @@ import (
 	"github.com/docker/cli/cli/command"
 
 	"github.com/kimdre/doco-cd/internal/common/types/slice"
-	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/encryption"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 )
 
 // LoadCompose parses and loads Compose files as specified by the Docker Compose specification.
-// dockerCli is required to load OCI artifact includes.
+// dockerCli is required to load OCI artifact includes. opts bundles the Docker-owned settings
+// (env passthrough, Git/OCI remote include configuration) needed beyond the compose project
+// parameters themselves; callers resolve it explicitly (see NewComposeLoadOptions) instead of
+// LoadCompose reading the application configuration itself.
 func LoadCompose(ctx context.Context, dockerCli command.Cli, repoPath, workingDir, projectName string, composeFiles,
-	envFiles, profiles []string, environment map[string]string,
+	envFiles, profiles []string, environment map[string]string, opts ComposeLoadOptions,
 ) (*types.Project, error) {
+	var (
+		absComposeFiles []string
+		err             error
+	)
+
 	// Resolve compose file paths to absolute paths relative to workingDir.
 	// This is necessary because the compose-go library's LoadConfigFiles internally
 	// uses filepath.Abs which resolves relative paths against os.Getwd(), not against
 	// the specified working directory. Without this, concurrent deployments with
 	// different working directories would fail since they share the same process
 	// working directory.
-	c, err := app.GetConfig()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get app config: %w", err)
-	}
-
-	var absComposeFiles []string
 
 	// If the user changed the default compose files, we throw an error of the custom compose file is not found
 	throwError := !reflect.DeepEqual(composeFiles, cli.DefaultFileNames)
@@ -100,7 +101,7 @@ func LoadCompose(ctx context.Context, dockerCli command.Cli, repoPath, workingDi
 	}
 
 	// Remote include support (Git repositories and OCI artifacts).
-	for _, remoteLoader := range newRemoteResourceLoaders(c, dockerCli, repoPath) {
+	for _, remoteLoader := range newRemoteResourceLoaders(opts, dockerCli, repoPath) {
 		projectOptions = append(projectOptions, cli.WithResourceLoader(remoteLoader))
 	}
 
@@ -119,7 +120,7 @@ func LoadCompose(ctx context.Context, dockerCli command.Cli, repoPath, workingDi
 		}
 	}
 
-	if c.PassEnv {
+	if opts.PassEnv {
 		err = cli.WithOsEnv(options)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get OS environment variables for interpolation: %w", err)

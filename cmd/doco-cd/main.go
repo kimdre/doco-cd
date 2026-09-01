@@ -384,7 +384,7 @@ func run() error {
 		return err
 	}
 
-	schedulerManager := scheduler.NewManager(contexts, log.Logger, &wg, secretProvider, reconciliationManager)
+	schedulerManager := scheduler.NewManager(contexts, log.Logger, &wg, secretProvider, reconciliationManager, docker.NewScheduledComposeOptions(c))
 	controlPlaneRuns := controlplane.NewRuns(
 		ctx,
 		log.Logger,
@@ -471,7 +471,7 @@ func run() error {
 				slog.String("secret_provider", c.SecretProvider),
 			)
 		} else {
-			watcher := certrotation.New(contexts, log.Logger, h.secretProvider, c.CertRotationThreshold, c.CertRotationCheckInterval)
+			watcher := certrotation.New(contexts, log.Logger, h.secretProvider, c.CertRotationThreshold, c.CertRotationCheckInterval, docker.NewCertificateRotationOptions(c))
 
 			graceful.SafeGo(&wg, log.Logger, func() {
 				watcher.Start(ctx)
