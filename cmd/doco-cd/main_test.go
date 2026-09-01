@@ -436,7 +436,7 @@ env_files:
 				Repository: git.GetRepoName(tc.payload.CloneURL),
 				Revision:   notification.GetRevision(tc.payload.Ref, tc.payload.CommitSHAString()),
 			}
-			reconciliationManager := newTestReconciliationManager(t, reconciliation.Dependencies{
+			deployment := newTestDeployment(t, appConfig, testMountPoint, dockerCli, reconciliation.Dependencies{
 				AppConfig:      appConfig,
 				DataMountPoint: testMountPoint,
 				DockerCLI:      dockerCli,
@@ -455,13 +455,11 @@ env_files:
 					jobLog,
 					rr,
 					appConfig,
-					testMountPoint,
 					tc.payload,
 					tc.customTarget,
 					metadata,
-					dockerCli,
 					stackName,
-					reconciliationManager,
+					deployment,
 				); err != nil {
 					return err
 				}

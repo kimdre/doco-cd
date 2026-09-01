@@ -11,9 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/cli/cli/command"
-	"github.com/moby/moby/api/types/container"
-
 	"github.com/kimdre/doco-cd/internal/common/id"
 
 	"github.com/kimdre/doco-cd/internal/config"
@@ -26,12 +23,12 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 	restAPI "github.com/kimdre/doco-cd/internal/restapi"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
+	"github.com/kimdre/doco-cd/internal/source"
 	"github.com/kimdre/doco-cd/internal/stages"
 
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/prometheus"
-	"github.com/kimdre/doco-cd/internal/reconciliation"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
 
@@ -248,12 +245,10 @@ func repositoryNameFromWebhookPayload(payload webhook.ParsedPayload) string {
 type orchestrationHandler struct {
 	appConfig        *app.Config // Application configuration
 	controlPlaneRuns *controlplane.Runs
-	dataMountPoint   container.MountPoint // Mount point for the data directory
-	dockerCli        command.Cli          // Docker CLI client
 	contexts         *docker.ContextRegistry
 	log              *logger.Logger // Logger for logging messages
 	secretProvider   secretprovider.SecretProvider
-	reconciliation   *reconciliation.Manager
+	deployment       *controlplane.Deployment
 	testName         string // Overwrites the deployConfig.Name to make test deployments unique and prevent conflicts between tests when running in parallel. Not used in production.
 }
 
@@ -315,9 +310,8 @@ func onError(w http.ResponseWriter, log *slog.Logger, errMsg string, details any
 
 // handleEvent executes the deployment process for a given webhook event.
 func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter, appConfig *app.Config,
-	dataMountPoint container.MountPoint, payload webhook.ParsedPayload, customTarget string, metadata notification.Metadata,
-	dockerCli command.Cli, testName string,
-	reconciliationManager *reconciliation.Manager,
+	payload webhook.ParsedPayload, customTarget string, metadata notification.Metadata,
+	testName string, deployment *controlplane.Deployment,
 ) (controlplane.RunResult, error) {
 	startTime := time.Now()
 
@@ -354,7 +348,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		}
 	}
 
-	entity := logEntityForSourceType(sourceType)
+	entity := source.EntityLabel(sourceType)
 
 	logValue := repoName
 	if sourceType == config.SourceTypeOCI {
@@ -372,19 +366,6 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 			slog.String("commit", payload.RevisionString()), slog.String("ref", payload.Ref),
 			slog.String("event", string(stages.JobTriggerWebhook))))
 
-	git.ConfigureAuthResolver(
-		appConfig.GitAuthDomains,
-		appConfig.SSHPrivateKey,
-		appConfig.SSHPrivateKeyPassphrase,
-		appConfig.GitAccessToken,
-		appConfig.GitAccessTokenUser,
-		git.GitHubAppConfig{
-			ID:             appConfig.GitHubAppID,
-			PrivateKey:     appConfig.GitHubAppPrivateKey,
-			InstallationID: appConfig.GitHubAppInstallationID,
-		},
-	)
-
 	// Only attempt SSH clone when URL-specific credentials include an SSH private key.
 	// If a clone URL override is configured, do not switch back to the payload SSH URL.
 	resolvedSSH := git.ResolveAuthConfig(payload.SSHUrl, appConfig.SSHPrivateKey, appConfig.SSHPrivateKeyPassphrase, appConfig.GitAccessToken)
@@ -401,21 +382,19 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		}
 	}
 
-	deployErr := handle(ctx, jobLog, reconciliationManager,
-		appConfig, dataMountPoint, dockerCli,
-		handleRequest{
-			JobTrigger:   stages.JobTriggerWebhook,
-			SourceType:   sourceType,
-			SourceRef:    sourceRef,
-			Ref:          payload.Ref,
-			Private:      payload.Private,
-			Metadata:     metadata,
-			CustomTarget: customTarget,
-			TestName:     testName,
-			PollConfig:   poll.Config{},
-			Payload:      payload,
-		},
-	)
+	deployErr := deployment.Deploy(ctx, controlplane.DeploymentRequest{
+		Logger:       jobLog,
+		JobTrigger:   stages.JobTriggerWebhook,
+		SourceType:   sourceType,
+		SourceRef:    sourceRef,
+		Ref:          payload.Ref,
+		Private:      payload.Private,
+		Metadata:     metadata,
+		CustomTarget: customTarget,
+		TestName:     testName,
+		PollConfig:   poll.Config{},
+		Payload:      payload,
+	})
 	if errors.Is(deployErr, stages.ErrWebhookFilterMismatch) {
 		msg := "deployment skipped, webhook filter did not match"
 		elapsedTime := time.Since(startTime)
@@ -432,10 +411,10 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 
 		// In synchronous mode we should return an error to the caller
 		// For async mode, w is noopResponseWriter and JSONError is a no-op
-		if hr, ok := errors.AsType[handleError](deployErr); ok {
-			onError(w, jobLog.With(logger.ErrAttr(hr.err)), hr.msg, hr.err.Error(), hr.httpStatusCode, metadata, hr.err)
+		if de, ok := errors.AsType[controlplane.DeploymentError](deployErr); ok {
+			onError(w, jobLog.With(logger.ErrAttr(de.Cause)), de.Response.Error(), de.Cause.Error(), de.HTTPStatusCode, metadata, de.Cause)
 
-			return controlplane.FailedRun(hr.Error()), nil
+			return controlplane.FailedRun(de.Error()), nil
 		}
 
 		onError(w, jobLog.With(logger.ErrAttr(deployErr)), "deployment failed", deployErr.Error(), http.StatusInternalServerError, metadata, deployErr)
@@ -591,7 +570,7 @@ func (h *orchestrationHandler) WebhookHandler(w http.ResponseWriter, r *http.Req
 
 		defer repoLock.Unlock()
 
-		return handleEvent(ctx, jobLog, w, h.appConfig, h.dataMountPoint, payload, customTarget, metadata, h.dockerCli, h.testName, h.reconciliation)
+		return handleEvent(ctx, jobLog, w, h.appConfig, payload, customTarget, metadata, h.testName, h.deployment)
 	}
 
 	mode := controlplane.RunAsynchronous

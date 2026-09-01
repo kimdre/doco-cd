@@ -1,4 +1,4 @@
-# THE shop family compose — single source of truth for every env. Lives in
+# THE shop family compose is the single source of truth for every env. Lives in
 # the app repo (github.com/example/shop-be). Consumed by the deployments
 # repo's per-env stubs via compose `include:` pinned at a sha of this repo.
 #
@@ -16,7 +16,7 @@ services:
     env_file:
       - ../env/shop-${ENV_NAME}.env
       - ../secrets/shop-${ENV_NAME}.sops.env # decrypted by the daemon
-    # Runs INSIDE the container on every recreate — migrations etc.
+    # Runs INSIDE the container on every recreate for migrations etc.
     post_start:
       - command: ["/post-update.sh"]
     depends_on:

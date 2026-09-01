@@ -235,7 +235,7 @@ func Test_getLatestServiceState(t *testing.T) {
 			},
 		},
 		{
-			// svc2 has a different repo label but is still part of the project — it must appear
+			// svc2 has a different repo label but is still part of the project, so it must appear
 			// in DeployedStatus. Only metadata (commit SHA, compose hash) is drawn from svc1.
 			name: "two service with timestamp but repo mixed",
 			serviceStatus: map[Service]ServiceStatus{
@@ -395,7 +395,7 @@ func Test_getLatestServiceState(t *testing.T) {
 					Replicas: 1,
 				},
 				"unlabeled": {
-					// No cd.doco.* labels — simulates a container recreated outside doco-cd.
+					// No cd.doco.* labels simulates a container recreated outside doco-cd.
 					Labels:   Labels{},
 					Replicas: 1,
 				},

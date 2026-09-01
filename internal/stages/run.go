@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/kimdre/doco-cd/internal/commitstatus"
@@ -13,8 +12,6 @@ import (
 )
 
 type StageFunc func(ctx context.Context, stageLog *slog.Logger) error
-
-const maxCommitStatusDescriptionLength = 140
 
 func successfulCommitStatusDescription(startedAt, finishedAt time.Time) string {
 	if startedAt.IsZero() || finishedAt.IsZero() || finishedAt.Before(startedAt) {
@@ -27,21 +24,6 @@ func successfulCommitStatusDescription(startedAt, finishedAt time.Time) string {
 	}
 
 	return fmt.Sprintf("Successful in %s", duration.Round(time.Second))
-}
-
-func failureCommitStatusDescription(err error) string {
-	if err == nil {
-		return "Failed"
-	}
-
-	description := strings.Join(strings.Fields(err.Error()), " ")
-	if len([]rune(description)) <= maxCommitStatusDescriptionLength {
-		return description
-	}
-
-	truncated := []rune(description)
-
-	return string(truncated[:maxCommitStatusDescriptionLength-3]) + "..."
 }
 
 func shouldPostPendingCommitStatus(stageName StageName, destroyEnabled, pendingPosted bool) bool {
@@ -152,7 +134,7 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 			notifiedErr := s.NotifyFailure(err)
 
 			if shouldPostFailureCommitStatus(s.DeployConfig.Destroy.Enabled) {
-				s.PostCommitStatus(ctx, failureCommitStatusState(stageName), failureCommitStatusDescription(err))
+				s.PostCommitStatus(ctx, failureCommitStatusState(stageName), commitstatus.FailureDescription(err))
 			}
 
 			return notifiedErr

@@ -150,7 +150,7 @@ func (s *scheduler) releaseStopHold(mode scheduledJobMode, project, service stri
 
 	st, ok := s.stopHolds[key]
 	if !ok {
-		// No recorded hold (shouldn't normally happen) — nothing to restore.
+		// No recorded hold (shouldn't normally happen), so there is nothing to restore.
 		return false, 0
 	}
 
@@ -171,7 +171,7 @@ func (s *scheduler) releaseStopHold(mode scheduledJobMode, project, service stri
 //
 // If another concurrent scheduled run already holds a given project/service
 // stopped (e.g. two jobs both list the same shared dependency), this run
-// records an additional hold on it but does not stop it again — see
+// records an additional hold on it but does not stop it again. See
 // acquireStopHold. This prevents the first run's restart from prematurely
 // bringing the service back up while the second run still needs it stopped.
 //
@@ -289,7 +289,7 @@ func (s *scheduler) stopServicesForJob(ctx context.Context, mode scheduledJobMod
 // are restarted even if the job itself fails.
 //
 // A service is only actually restarted once every concurrent holder of it has
-// released their hold (see releaseStopHold) — if another concurrent run is
+// released their hold (see releaseStopHold). If another concurrent run is
 // still relying on the service being stopped, this run's release is a no-op.
 func (s *scheduler) startServicesForJob(ctx context.Context, mode scheduledJobMode, jobStack string, refs []docker.StopServiceRef) error {
 	var errs []string
@@ -315,7 +315,7 @@ func (s *scheduler) startServicesForJob(ctx context.Context, mode scheduledJobMo
 				continue
 			}
 
-			// Unmark the scheduler hold before starting — if our start fails,
+			// Unmark the scheduler hold before starting. If our start fails,
 			// reconciliation can step in and recover the service.
 			for _, svc := range toStart {
 				if s.stopHoldTracker != nil {
@@ -353,7 +353,7 @@ func (s *scheduler) startServicesForJob(ctx context.Context, mode scheduledJobMo
 
 			if replicas == 0 {
 				// Was a global-mode service (skipped during stop), or was never
-				// actually stopped by us in the first place — nothing to restore.
+				// actually stopped by us in the first place, so there is nothing to restore.
 				continue
 			}
 
@@ -377,8 +377,8 @@ func (s *scheduler) startServicesForJob(ctx context.Context, mode scheduledJobMo
 
 // lockStacks acquires the per-stack scheduler/deploy lock (see lock.LockStack)
 // for every distinct, non-empty stack name given, in a deterministic (sorted)
-// order. Locking multiple stacks in a fixed global order — rather than in
-// caller-supplied order — prevents ABBA deadlocks when two scheduled runs
+// order. Locking multiple stacks in a fixed global order rather than in
+// caller-supplied order prevents ABBA deadlocks when two scheduled runs
 // need to lock an overlapping set of stacks concurrently (e.g. a job's own
 // stack plus stacks referenced by its stop_services, which another run might
 // need to lock in the opposite order). Stack names are only unique within a

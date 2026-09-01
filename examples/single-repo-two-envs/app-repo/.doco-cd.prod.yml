@@ -1,5 +1,5 @@
 # PROD deploy config. Selected by the prod doco-cd instance's poll
-# `target: prod` — a targeted daemon reads ONLY this file, never the bare
+# `target: prod`: a targeted daemon reads ONLY this file, never the bare
 # .doco-cd.yml.
 #
 # Deliberately only the values that differ from staging. Anything BEHAVIOURAL

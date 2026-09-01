@@ -150,7 +150,7 @@ external_secrets:
 // TestRotateProjectCertificates_ReloadReissuesCertAndRelabels verifies that reloading a rotatable
 // deployment's compose project re-resolves its external secrets (reissuing the pki-role
 // certificate through the secret provider) and that relabeling the reloaded project stamps fresh
-// cert expiry/rotatable labels — the two steps RotateProjectCertificates performs before handing
+// cert expiry/rotatable labels. These are the two steps RotateProjectCertificates performs before handing
 // off to deployCompose (which requires a live Docker daemon and is out of scope for this unit test).
 func TestRotateProjectCertificates_ReloadReissuesCertAndRelabels(t *testing.T) {
 	dataMountPath := t.TempDir()
@@ -318,7 +318,7 @@ external_secrets:
 // TestServicesUsingRotatableCerts verifies that only services actually consuming a pki-role-backed
 // certificate or private key are selected for redeploy, whether the value reaches them via a
 // direct environment variable, a config using "content: $VAR", or a config using the native
-// "environment: VAR" form (see resolveConfigsEnvironment in compose-go's loader) — and that
+// "environment: VAR" form (see resolveConfigsEnvironment in compose-go's loader), and that
 // services with no relation to the rotated certificate are excluded.
 func TestServicesUsingRotatableCerts(t *testing.T) {
 	dataMountPath := t.TempDir()

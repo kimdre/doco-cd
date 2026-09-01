@@ -1,5 +1,5 @@
 # Database stack: postgres + a one-shot migrate container that runs on every
-# deploy of THIS stack (a web-only release does not touch it — separate tags).
+# deploy of THIS stack (a web-only release does not touch it because tags are separate).
 services:
   postgres:
     image: postgres:${PG_TAG}

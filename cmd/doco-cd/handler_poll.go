@@ -6,14 +6,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/cli/cli/command"
-	"github.com/moby/moby/api/types/container"
-
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
+	"github.com/kimdre/doco-cd/internal/controlplane"
 	"github.com/kimdre/doco-cd/internal/notification"
-	"github.com/kimdre/doco-cd/internal/reconciliation"
+	"github.com/kimdre/doco-cd/internal/source"
 	"github.com/kimdre/doco-cd/internal/stages"
 
 	"github.com/kimdre/doco-cd/internal/git"
@@ -70,7 +68,7 @@ func StartPoll(ctx context.Context, h *orchestrationHandler, pollConfig poll.Con
 // PollHandler handles polling for changes in a configured source.
 func (h *orchestrationHandler) PollHandler(ctx context.Context, pollJob *poll.Job) {
 	sourceType := config.NormalizeSourceType(pollJob.Config.Source)
-	entity := logEntityForSourceType(sourceType)
+	entity := source.EntityLabel(sourceType)
 
 	repoName := git.GetRepoName(pollJob.Config.SourceUrl)
 	if sourceType == config.SourceTypeOCI {
@@ -122,7 +120,7 @@ func (h *orchestrationHandler) PollHandler(ctx context.Context, pollJob *poll.Jo
 			triggerReason = pollTriggerWatch
 		}
 
-		_, _ = h.controlPlaneRuns.RunConfiguredPoll(ctx, pollJob.Config, logger, triggerReason)
+		_, _ = h.controlPlaneRuns.RunConfiguredPoll(ctx, pollJob.Config, h.log.Logger, triggerReason)
 
 		pollJob.LastRun = time.Now().Unix()
 
@@ -278,14 +276,13 @@ func pollError(jobLog *slog.Logger, metadata notification.Metadata, err error) {
 // identifies what caused this run (e.g. "poll" for interval/API-triggered runs, or
 // "poll-watch" when triggered by the local repository filesystem watcher) and is
 // reported in the "polling <entity>" log line's trigger.event field.
-func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config, dataMountPoint container.MountPoint,
-	dockerCli command.Cli, logger *slog.Logger, metadata notification.Metadata,
-	triggerReason string, reconciliationManager *reconciliation.Manager,
+func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config, logger *slog.Logger, metadata notification.Metadata,
+	triggerReason string, deployment *controlplane.Deployment,
 ) error {
 	startTime := time.Now()
 	sourceType := config.NormalizeSourceType(pollConfig.Source)
 	sourceRef := pollConfig.SourceUrl
-	entity := logEntityForSourceType(sourceType)
+	entity := source.EntityLabel(sourceType)
 	sourceURLRewriteApplied := false
 
 	if sourceType == config.SourceTypeGit && appConfig != nil {
@@ -302,8 +299,14 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 		repoName = oci.RepositoryNameFromArtifact(sourceRef)
 	}
 
+	logValue := repoName
+	if sourceType == config.SourceTypeOCI {
+		logValue = sourceRef
+	}
+
 	jobLog := logger.With(
 		slog.String("job_id", metadata.JobID),
+		slog.String(entity, logValue),
 	)
 
 	if sourceURLRewriteApplied {
@@ -331,21 +334,19 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 		pollReference = oci.TagFromArtifact(sourceRef)
 	}
 
-	deployErr := handle(ctx, jobLog, reconciliationManager,
-		appConfig, dataMountPoint, dockerCli,
-		handleRequest{
-			JobTrigger:   stages.JobTriggerPoll,
-			SourceType:   sourceType,
-			SourceRef:    sourceRef,
-			Ref:          pollReference,
-			Private:      false,
-			Metadata:     metadata,
-			CustomTarget: pollConfig.CustomTarget,
-			TestName:     "",
-			PollConfig:   pollConfig,
-			Payload:      webhook.ParsedPayload{},
-		},
-	)
+	deployErr := deployment.Deploy(ctx, controlplane.DeploymentRequest{
+		Logger:       jobLog,
+		JobTrigger:   stages.JobTriggerPoll,
+		SourceType:   sourceType,
+		SourceRef:    sourceRef,
+		Ref:          pollReference,
+		Private:      false,
+		Metadata:     metadata,
+		CustomTarget: pollConfig.CustomTarget,
+		TestName:     "",
+		PollConfig:   pollConfig,
+		Payload:      webhook.ParsedPayload{},
+	})
 
 	nextRun := time.Now().Add(pollConfig.Interval).Format(time.RFC3339)
 	elapsedTime := time.Since(startTime)

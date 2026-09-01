@@ -1,8 +1,6 @@
 package stages
 
 import (
-	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -133,44 +131,6 @@ func TestShouldSendDeploymentStartedNotification(t *testing.T) {
 			got := shouldSendDeploymentStartedNotification(tt.stageName, tt.destroyEnabled, tt.startedNotified)
 			if got != tt.want {
 				t.Fatalf("shouldSendDeploymentStartedNotification() = %t, want %t", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestFailureCommitStatusDescription(t *testing.T) {
-	tests := []struct {
-		name string
-		err  error
-		want string
-	}{
-		{
-			name: "nil error",
-			err:  nil,
-			want: "Failed",
-		},
-		{
-			name: "single line error",
-			err:  errors.New("compose validation failed"),
-			want: "compose validation failed",
-		},
-		{
-			name: "normalizes whitespace",
-			err:  errors.New("error from registry:\n denied"),
-			want: "error from registry: denied",
-		},
-		{
-			name: "truncates long descriptions",
-			err:  errors.New(strings.Repeat("x", 200)),
-			want: strings.Repeat("x", 137) + "...",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := failureCommitStatusDescription(tt.err)
-			if got != tt.want {
-				t.Fatalf("failureCommitStatusDescription() = %q, want %q", got, tt.want)
 			}
 		})
 	}

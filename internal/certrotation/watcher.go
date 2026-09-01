@@ -3,7 +3,7 @@
 // see internal/secretprovider/openbao) before they expire.
 //
 // Deployments become eligible for automatic rotation when all of their certificate-bearing
-// external secrets use a rotation-capable reference (e.g. OpenBao's "pki-role:" ref) — this is
+// external secrets use a rotation-capable reference (e.g. OpenBao's "pki-role:" ref). This is
 // recorded at deploy time via the cd.doco.deployment.cert.rotatable and
 // cd.doco.deployment.cert.expiry Docker labels (see internal/docker/cert_rotation_labels.go).
 package certrotation

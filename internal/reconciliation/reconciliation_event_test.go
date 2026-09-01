@@ -779,9 +779,9 @@ func TestUniqueRedeployDCsFromGroupByEvent(t *testing.T) {
 
 	grouped := map[string][]*deployConfig.Config{
 		"die":       {dcDie, dcBoth, dcDifferentContext},
-		"destroy":   {dcDestroy, dcBoth}, // dcBoth appears again — must be deduplicated
-		"unhealthy": {dcRestart},         // restart-oriented — must be excluded
-		"stop":      {dcRestart},         // restart-oriented — must be excluded
+		"destroy":   {dcDestroy, dcBoth}, // dcBoth appears again and must be deduplicated
+		"unhealthy": {dcRestart},         // restart-oriented and must be excluded
+		"stop":      {dcRestart},         // restart-oriented and must be excluded
 	}
 
 	got := uniqueRedeployDCsFromGroupByEvent(grouped)

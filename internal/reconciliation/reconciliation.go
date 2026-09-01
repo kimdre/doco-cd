@@ -505,7 +505,7 @@ func (j *job) handleEvent(ctx context.Context, jobLog *slog.Logger, event events
 	}
 
 	contextCLI := j.cliForContext(contextName)
-	// For restart-oriented events the container is still present — restart it
+	// For restart-oriented events the container is still present, so restart it
 	// directly instead of going through a full redeploy pipeline.
 	if isRestartReconciliationAction(action) {
 		restartDC := selectRestartDeployConfig(stackDCs, event.Actor.Attributes)

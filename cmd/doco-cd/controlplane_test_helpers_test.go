@@ -17,6 +17,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/reconciliation"
 	"github.com/kimdre/doco-cd/internal/scheduler"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
+	"github.com/kimdre/doco-cd/internal/source"
 )
 
 func newTestReconciliationManager(t *testing.T, dependencies reconciliation.Dependencies) *reconciliation.Manager {
@@ -30,6 +31,32 @@ func newTestReconciliationManager(t *testing.T, dependencies reconciliation.Depe
 	t.Cleanup(manager.Close)
 
 	return manager
+}
+
+// newTestDeployment builds a *controlplane.Deployment backed by a fresh
+// reconciliation manager and source preparer, for tests that previously wired
+// a bare *reconciliation.Manager directly into handleEvent/RunPoll.
+func newTestDeployment(t *testing.T, appConfig *app.Config, dataMountPoint container.MountPoint, dockerCli command.Cli, reconciliationDeps reconciliation.Dependencies) *controlplane.Deployment {
+	t.Helper()
+
+	manager := newTestReconciliationManager(t, reconciliationDeps)
+
+	preparer, err := source.NewPreparer(source.Dependencies{AppConfig: appConfig})
+	if err != nil {
+		t.Fatalf("failed to create source preparer: %v", err)
+	}
+
+	deployment, err := controlplane.NewDeployment(controlplane.DeploymentDependencies{
+		SourcePreparer: preparer,
+		Reconciler:     manager,
+		DockerCLI:      dockerCli,
+		DataMountPoint: dataMountPoint,
+	})
+	if err != nil {
+		t.Fatalf("failed to create deployment operation: %v", err)
+	}
+
+	return deployment
 }
 
 type testScheduledJobOperations struct {

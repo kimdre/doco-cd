@@ -280,29 +280,30 @@ func TestHandlerData_WebhookHandler(t *testing.T) {
 		}
 	})
 
-	h := orchestrationHandler{
-		dockerCli: dockerCli,
-		appConfig: appConfig,
-		dataMountPoint: container.MountPoint{
-			Type:        "bind",
-			Source:      tmpDir,
-			Destination: tmpDir,
-			Mode:        "rw",
-		},
-		log:      log,
-		testName: stackName,
+	mountPoint := container.MountPoint{
+		Type:        "bind",
+		Source:      tmpDir,
+		Destination: tmpDir,
+		Mode:        "rw",
 	}
-	h.reconciliation = newTestReconciliationManager(t, reconciliation.Dependencies{
-		AppConfig:      appConfig,
-		DataMountPoint: h.dataMountPoint,
-		DockerCLI:      dockerCli,
-	})
-	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
-		appConfig:      appConfig,
-		dataMountPoint: h.dataMountPoint,
-		dockerCli:      dockerCli,
-		log:            log,
-	})
+
+	h := orchestrationHandler{
+		appConfig: appConfig,
+		log:       log,
+		testName:  stackName,
+
+		deployment: newTestDeployment(t, appConfig, mountPoint, dockerCli, reconciliation.Dependencies{
+			AppConfig:      appConfig,
+			DataMountPoint: mountPoint,
+			DockerCLI:      dockerCli,
+		}),
+		controlPlaneRuns: newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			appConfig:      appConfig,
+			dataMountPoint: mountPoint,
+			dockerCli:      dockerCli,
+			log:            log,
+		}),
+	}
 
 	req := newWebhookRequest(t, restserver.WebhookPath+"?wait=true", minifiedPayload.Bytes(), appConfig)
 
@@ -501,21 +502,23 @@ func TestWebhookHandler_WaitQueryParam(t *testing.T) {
 
 	log := logger.New(logger.LevelCritical)
 
+	mountPoint := container.MountPoint{
+		Type:        "bind",
+		Source:      t.TempDir(),
+		Destination: t.TempDir(),
+		Mode:        "rw",
+	}
+
 	h := orchestrationHandler{
 		appConfig: appConfig,
-		dataMountPoint: container.MountPoint{
-			Type:        "bind",
-			Source:      t.TempDir(),
-			Destination: t.TempDir(),
-			Mode:        "rw",
-		},
-		log: log,
+		log:       log,
+
+		controlPlaneRuns: newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
+			appConfig:      appConfig,
+			dataMountPoint: mountPoint,
+			log:            log,
+		}),
 	}
-	h.controlPlaneRuns = newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
-		appConfig:      appConfig,
-		dataMountPoint: h.dataMountPoint,
-		log:            log,
-	})
 
 	testCases := []struct {
 		name string

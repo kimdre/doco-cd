@@ -187,7 +187,7 @@ func prepareComposeProjectForOneOffRun(project *types.Project, serviceName strin
 
 	// Set oneoff=False on the service definition (Compose will overwrite it to True
 	// on the actual created container). We do not set it to True here because
-	// com.docker.compose.oneoff is a runtime marker managed by Compose itself—setting
+	// com.docker.compose.oneoff is a runtime marker managed by Compose itself. Setting
 	// it on the service definition would blur the semantics and risk side effects.
 	// The actual container created by RunOneOffContainer will get oneoff=True,
 	// which we rely on as a fallback ephemeral detection mechanism in the scheduler.

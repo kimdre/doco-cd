@@ -109,7 +109,7 @@ func TestGetCommitsBetween_DivergedHistory(t *testing.T) {
 		t.Fatalf("checkout: %v", err)
 	}
 
-	d := commitN(t, wt, 2) // d, newTip=e(d[1]) — both parented on b
+	d := commitN(t, wt, 2) // d and newTip=e(d[1]) are both parented on b
 
 	got, err := GetCommitsBetween(repo, h[2], d[1], 50)
 	if err != nil {

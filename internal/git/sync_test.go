@@ -482,7 +482,7 @@ func TestUpdateRepository_ShallowToFullTransition(t *testing.T) {
 
 	t.Logf("Shallow clone (depth=1) has %d commit(s)", shallowCommitCount)
 
-	// Step 2: Update with depth=0 — should trigger re-clone (shallow → full transition)
+	// Step 2: Update with depth=0, which should trigger re-clone (shallow → full transition)
 	repo, err = git.UpdateRepository(dir, cloneUrlTest, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules, 0)
 	if err != nil {
 		t.Fatalf("Failed to update repository with full depth: %v", err)
@@ -578,7 +578,7 @@ func TestUpdateRepository_FullToShallowTransition(t *testing.T) {
 
 	t.Logf("Full clone has %d commits", fullCommitCount)
 
-	// Step 2: Update with depth=1 — should trigger re-clone (full → shallow transition)
+	// Step 2: Update with depth=1, which should trigger re-clone (full → shallow transition)
 	repo, err = git.UpdateRepository(dir, cloneUrlTest, git.MainBranch, false, c.HttpProxy, auth, c.GitCloneSubmodules, 1)
 	if err != nil {
 		t.Fatalf("Failed to update repository with shallow depth: %v", err)

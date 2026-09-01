@@ -86,7 +86,7 @@ func CreateDockerCliWithContext(quiet bool, dockerContext string) (command.Cli, 
 	initErrBuf.Reset()
 
 	/* DockerEndpoint() safely triggers the internal lazy initialization (sync.Once).
-	Unlike Client(), it does NOT call os.Exit(1) on failure — instead it prints the
+	Unlike Client(), it does NOT call os.Exit(1) on failure. Instead, it prints the
 	error to cli.Err() (captured above in initErrBuf) and returns whatever partial
 	endpoint was resolved. Check the buffer first so we surface the real Docker error. */
 	_ = dockerCli.DockerEndpoint()
@@ -97,7 +97,7 @@ func CreateDockerCliWithContext(quiet bool, dockerContext string) (command.Cli, 
 	}
 
 	// Wrap so ConfigFile() re-reads the docker config from disk on every auth
-	// lookup — required for short-lived registry tokens (ECR etc.) that get
+	// lookup. This is required for short-lived registry tokens (ECR etc.) that get
 	// refreshed on disk while the daemon runs. See reloadConfigCli.
 	return reloadConfigCli{dockerCli}, nil
 }

@@ -303,6 +303,35 @@ func TestConfig_UnmarshalYAML_IntervalDuration(t *testing.T) {
 	}
 }
 
+func TestConfig_UnmarshalYAML_IntervalDefaults(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		intervalLine string
+		want         time.Duration
+	}{
+		{name: "omitted", want: 3 * time.Minute},
+		{name: "explicit zero", intervalLine: "interval: 0\n", want: 0},
+		{name: "explicit null", intervalLine: "interval: null\n", want: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var cfg Config
+
+			raw := "source: oci\nurl: ghcr.io/example/app:test\n" + tt.intervalLine
+			if err := yaml.Unmarshal([]byte(raw), &cfg); err != nil {
+				t.Fatalf("failed to unmarshal yaml: %v", err)
+			}
+
+			if cfg.Interval != tt.want {
+				t.Fatalf("interval = %s, want %s", cfg.Interval, tt.want)
+			}
+		})
+	}
+}
+
 func TestConfig_UnmarshalYAML_WatchDefaultsToTrueAndCanBeDisabled(t *testing.T) {
 	t.Parallel()
 
@@ -359,6 +388,24 @@ func TestConfig_UnmarshalJSON_IntervalVariants(t *testing.T) {
 			name:     "integer seconds",
 			input:    `{"source":"git","url":"https://example.com/repo.git","reference":"main","interval":45}`,
 			expected: 45 * time.Second,
+			watch:    true,
+		},
+		{
+			name:     "explicit zero",
+			input:    `{"source":"oci","url":"ghcr.io/example/app:test","interval":0}`,
+			expected: 0,
+			watch:    true,
+		},
+		{
+			name:     "explicit null",
+			input:    `{"source":"oci","url":"ghcr.io/example/app:test","interval":null}`,
+			expected: 0,
+			watch:    true,
+		},
+		{
+			name:     "omitted interval",
+			input:    `{"source":"oci","url":"ghcr.io/example/app:test"}`,
+			expected: 3 * time.Minute,
 			watch:    true,
 		},
 		{

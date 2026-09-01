@@ -3,7 +3,7 @@
 #
 # Split by sensitivity:
 #   - Non-secrets live HERE in git: the domain and the deployed image tag.
-#     Bumping APP_TAG is the release — commit + push, doco-cd redeploys.
+#     Bumping APP_TAG is the release. Commit + push, then doco-cd redeploys.
 #     A CI job can do the bump after the image build (commit with [skip ci]).
 #   - Secrets are NOT here. They live on the host in secrets.env, loaded by
 #     the doco-cd container and forwarded into compose interpolation via

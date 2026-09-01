@@ -1,4 +1,4 @@
-# doco-cd on one fleet host. Same file on every host — only poll.yaml (the
+# doco-cd on one fleet host. Same file on every host; only poll.yaml (the
 # `target:`) differs. Lives on the host (e.g. /opt/doco-cd/), NOT in git.
 services:
   doco-cd:
