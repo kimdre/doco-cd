@@ -33,6 +33,8 @@ import (
 // detail error, while Error() returns only the detail error's message -
 // matching the pre-refactor handler's HTTP response bodies exactly.
 var (
+	// ErrPrepare indicates an unclassified source preparation failure.
+	ErrPrepare = errors.New("failed to prepare source")
 	// ErrInvalidRequest indicates the Request itself failed validation.
 	ErrInvalidRequest = errors.New("invalid deployment request")
 	// ErrInvalidSourceType indicates an unsupported/invalid SourceType.

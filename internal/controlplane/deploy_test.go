@@ -124,8 +124,12 @@ func TestDeploy_InvalidRequest(t *testing.T) {
 		t.Fatalf("expected 500, got %d", de.HTTPStatusCode)
 	}
 
-	if de.Msg != "invalid deployment request" {
-		t.Fatalf("unexpected message: %q", de.Msg)
+	if !errors.Is(de.Response, source.ErrInvalidRequest) {
+		t.Fatalf("response = %v, want %v", de.Response, source.ErrInvalidRequest)
+	}
+
+	if !errors.Is(err, source.ErrInvalidRequest) {
+		t.Fatalf("expected invalid request identity to be preserved, got %v", err)
 	}
 }
 
@@ -148,8 +152,8 @@ func TestDeploy_SourcePreparerError_MapsToBadRequest(t *testing.T) {
 		t.Fatalf("expected 400, got %d", de.HTTPStatusCode)
 	}
 
-	if de.Msg != "invalid source type" {
-		t.Fatalf("unexpected message: %q", de.Msg)
+	if !errors.Is(de.Response, source.ErrInvalidSourceType) {
+		t.Fatalf("response = %v, want %v", de.Response, source.ErrInvalidSourceType)
 	}
 
 	// The early source-preparation failure must short-circuit the pipeline:
@@ -164,22 +168,28 @@ func TestDeploy_SourcePreparerError_Mapping(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		err        error
-		wantStatus int
-		wantMsg    string
+		name         string
+		err          error
+		wantStatus   int
+		wantResponse error
 	}{
 		{
-			name:       "invalid request",
-			err:        errWrap(source.ErrInvalidRequest, "invalid"),
-			wantStatus: 500,
-			wantMsg:    "invalid deployment request",
+			name:         "invalid request",
+			err:          errWrap(source.ErrInvalidRequest, "invalid"),
+			wantStatus:   500,
+			wantResponse: source.ErrInvalidRequest,
 		},
 		{
-			name:       "unsupported trigger",
-			err:        errWrap(source.ErrUnsupportedJobTrigger, "invalid"),
-			wantStatus: 400,
-			wantMsg:    "unsupported job trigger",
+			name:         "unsupported trigger",
+			err:          errWrap(source.ErrUnsupportedJobTrigger, "invalid"),
+			wantStatus:   400,
+			wantResponse: source.ErrUnsupportedJobTrigger,
+		},
+		{
+			name:         "unclassified failure",
+			err:          errors.New("unexpected preparer failure"),
+			wantStatus:   500,
+			wantResponse: source.ErrPrepare,
 		},
 	}
 
@@ -198,8 +208,37 @@ func TestDeploy_SourcePreparerError_Mapping(t *testing.T) {
 				t.Fatalf("status = %d, want %d", de.HTTPStatusCode, tt.wantStatus)
 			}
 
-			if de.Msg != tt.wantMsg {
-				t.Fatalf("message = %q, want %q", de.Msg, tt.wantMsg)
+			if !errors.Is(de.Response, tt.wantResponse) {
+				t.Fatalf("response = %v, want %v", de.Response, tt.wantResponse)
+			}
+
+			if !errors.Is(err, tt.wantResponse) {
+				t.Fatalf("expected response identity %v to be preserved, got %v", tt.wantResponse, err)
+			}
+		})
+	}
+}
+
+func TestDeploymentError_ErrorHandlesMissingValues(t *testing.T) {
+	t.Parallel()
+
+	cause := errors.New("cause")
+
+	tests := []struct {
+		name string
+		err  controlplane.DeploymentError
+		want string
+	}{
+		{name: "empty", err: controlplane.DeploymentError{}, want: ""},
+		{name: "cause only", err: controlplane.DeploymentError{Cause: cause}, want: "cause"},
+		{name: "response only", err: controlplane.DeploymentError{Response: source.ErrPrepare}, want: "failed to prepare source"},
+		{name: "response and cause", err: controlplane.DeploymentError{Response: source.ErrPrepare, Cause: cause}, want: "failed to prepare source: cause"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.err.Error(); got != tt.want {
+				t.Fatalf("Error() = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -240,8 +279,8 @@ func TestDeploy_SourcePreparerError_MapsToInternalServerError(t *testing.T) {
 		t.Fatalf("expected 500, got %d", de.HTTPStatusCode)
 	}
 
-	if de.Msg != "failed to clone repository" {
-		t.Fatalf("unexpected message: %q", de.Msg)
+	if !errors.Is(de.Response, source.ErrGitClone) {
+		t.Fatalf("response = %v, want %v", de.Response, source.ErrGitClone)
 	}
 
 	if reconciler.calls != 0 {
@@ -340,8 +379,8 @@ func TestDeploy_ReconciliationFailure_MapsToInternalServerError(t *testing.T) {
 		t.Fatalf("expected 500, got %d", de.HTTPStatusCode)
 	}
 
-	if de.Msg != "deployment failed" {
-		t.Fatalf("unexpected message: %q", de.Msg)
+	if de.Response.Error() != "deployment failed" {
+		t.Fatalf("unexpected response: %q", de.Response)
 	}
 }
 

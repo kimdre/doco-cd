@@ -93,70 +93,76 @@ type DeploymentRequest struct {
 // transport layers (the webhook/poll handlers) should use to report it,
 // preserving the exact message/status mapping the pre-refactor handler used.
 type DeploymentError struct {
-	Msg            string
-	Err            error
+	Response       error
+	Cause          error
 	HTTPStatusCode int
 }
 
+var (
+	errSwarmModeCheck   = errors.New("failed to check if docker host is running in swarm mode")
+	errDeploymentFailed = errors.New("deployment failed")
+)
+
 func (e DeploymentError) Error() string {
-	if e.Err != nil {
-		return fmt.Sprintf("%s: %v", e.Msg, e.Err)
-	}
-
-	return e.Msg
-}
-
-func (e DeploymentError) Unwrap() error {
-	return e.Err
-}
-
-func newDeploymentError(msg string, err error, statusCode int) DeploymentError {
-	return DeploymentError{Msg: msg, Err: err, HTTPStatusCode: statusCode}
-}
-
-// sourceFailureStatusCode classifies a source.Preparer.Prepare error into the
-// HTTP status code the pre-refactor handler used for it.
-func sourceFailureStatusCode(err error) int {
 	switch {
-	case errors.Is(err, source.ErrInvalidSourceType),
-		errors.Is(err, source.ErrInvalidRepositoryName),
-		errors.Is(err, source.ErrInvalidInternalPath),
-		errors.Is(err, source.ErrInvalidExternalPath),
-		errors.Is(err, source.ErrUnsupportedJobTrigger):
-		return http.StatusBadRequest
+	case e.Response == nil:
+		if e.Cause == nil {
+			return ""
+		}
+
+		return e.Cause.Error()
+	case e.Cause != nil:
+		return fmt.Sprintf("%s: %v", e.Response, e.Cause)
 	default:
-		return http.StatusInternalServerError
+		return e.Response.Error()
 	}
 }
 
-// sourceFailureMessage returns the exact error message the pre-refactor
-// handler used for each classified source.Preparer.Prepare failure.
-func sourceFailureMessage(err error) string {
+func (e DeploymentError) Unwrap() []error {
+	switch {
+	case e.Response == nil && e.Cause == nil:
+		return nil
+	case e.Response == nil:
+		return []error{e.Cause}
+	case e.Cause == nil:
+		return []error{e.Response}
+	default:
+		return []error{e.Response, e.Cause}
+	}
+}
+
+func newDeploymentError(response, cause error, statusCode int) DeploymentError {
+	return DeploymentError{Response: response, Cause: cause, HTTPStatusCode: statusCode}
+}
+
+// classifySourceFailure returns the HTTP status code the pre-refactor handler
+// used together with the source sentinel for a transport-safe response.
+func classifySourceFailure(err error) (int, error) {
 	switch {
 	case errors.Is(err, source.ErrInvalidRequest):
-		return "invalid deployment request"
+		return http.StatusInternalServerError, source.ErrInvalidRequest
 	case errors.Is(err, source.ErrInvalidSourceType):
-		return "invalid source type"
+		return http.StatusBadRequest, source.ErrInvalidSourceType
 	case errors.Is(err, source.ErrInvalidRepositoryName):
-		return "invalid repository name"
+		return http.StatusBadRequest, source.ErrInvalidRepositoryName
 	case errors.Is(err, source.ErrInvalidInternalPath):
-		return "failed to verify and sanitize internal filesystem path"
+		return http.StatusBadRequest, source.ErrInvalidInternalPath
 	case errors.Is(err, source.ErrInvalidExternalPath):
-		return "failed to verify and sanitize external filesystem path"
-	case errors.Is(err, source.ErrGitClone):
-		return "failed to clone repository"
-	case errors.Is(err, source.ErrOCIResolveDigest):
-		return "failed to resolve oci artifact digest"
-	case errors.Is(err, source.ErrOCIVerify):
-		return "failed OCI signature verification"
-	case errors.Is(err, source.ErrOCIPull):
-		return "failed to pull oci artifact"
-	case errors.Is(err, source.ErrDeployConfig):
-		return "failed to get deploy configuration"
+		return http.StatusBadRequest, source.ErrInvalidExternalPath
 	case errors.Is(err, source.ErrUnsupportedJobTrigger):
-		return "unsupported job trigger"
+		return http.StatusBadRequest, source.ErrUnsupportedJobTrigger
+	case errors.Is(err, source.ErrGitClone):
+		return http.StatusInternalServerError, source.ErrGitClone
+	case errors.Is(err, source.ErrOCIResolveDigest):
+		return http.StatusInternalServerError, source.ErrOCIResolveDigest
+	case errors.Is(err, source.ErrOCIVerify):
+		return http.StatusInternalServerError, source.ErrOCIVerify
+	case errors.Is(err, source.ErrOCIPull):
+		return http.StatusInternalServerError, source.ErrOCIPull
+	case errors.Is(err, source.ErrDeployConfig):
+		return http.StatusInternalServerError, source.ErrDeployConfig
 	default:
-		return "failed to prepare source"
+		return http.StatusInternalServerError, source.ErrPrepare
 	}
 }
 
@@ -171,11 +177,11 @@ func sourceFailureMessage(err error) string {
 // callers can keep reporting it as a skipped (not failed) deployment.
 func (d *Deployment) Deploy(ctx context.Context, req DeploymentRequest) error {
 	if err := validation.Validate(req); err != nil {
-		return newDeploymentError("invalid deployment request", err, http.StatusInternalServerError)
+		return newDeploymentError(source.ErrInvalidRequest, err, http.StatusInternalServerError)
 	}
 
 	if err := swarm.RefreshModeEnabled(ctx, d.dockerCli.Client()); err != nil {
-		return newDeploymentError("failed to check if docker host is running in swarm mode", err, http.StatusInternalServerError)
+		return newDeploymentError(errSwarmModeCheck, err, http.StatusInternalServerError)
 	}
 
 	result, err := d.sourcePreparer.Prepare(ctx, source.Request{
@@ -191,7 +197,9 @@ func (d *Deployment) Deploy(ctx context.Context, req DeploymentRequest) error {
 		DataMountPoint: d.dataMountPoint,
 	})
 	if err != nil {
-		return newDeploymentError(sourceFailureMessage(err), err, sourceFailureStatusCode(err))
+		statusCode, response := classifySourceFailure(err)
+
+		return newDeploymentError(response, err, statusCode)
 	}
 
 	for _, cfg := range result.DeployConfigs {
@@ -223,7 +231,7 @@ func (d *Deployment) Deploy(ctx context.Context, req DeploymentRequest) error {
 			return err
 		}
 
-		return newDeploymentError("deployment failed", err, http.StatusInternalServerError)
+		return newDeploymentError(errDeploymentFailed, err, http.StatusInternalServerError)
 	}
 
 	return nil

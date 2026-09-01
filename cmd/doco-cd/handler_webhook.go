@@ -412,7 +412,7 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		// In synchronous mode we should return an error to the caller
 		// For async mode, w is noopResponseWriter and JSONError is a no-op
 		if de, ok := errors.AsType[controlplane.DeploymentError](deployErr); ok {
-			onError(w, jobLog.With(logger.ErrAttr(de.Err)), de.Msg, de.Err.Error(), de.HTTPStatusCode, metadata, de.Err)
+			onError(w, jobLog.With(logger.ErrAttr(de.Cause)), de.Response.Error(), de.Cause.Error(), de.HTTPStatusCode, metadata, de.Cause)
 
 			return controlplane.FailedRun(de.Error()), nil
 		}
