@@ -205,7 +205,7 @@ services:
 Docker Compose resolves `file:` references to absolute paths on the doco-cd host, then sends those paths to the remote daemon. The remote daemon tries to bind-mount them locally — and fails because the files don't exist there.
 
 ```yaml
-# ✗ Will fail on remote contexts — remote daemon can't access this path
+# ✗ Will fail on remote contexts because the remote daemon can't access this path
 configs:
   app.conf:
     file: app.conf

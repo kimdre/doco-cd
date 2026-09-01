@@ -1,5 +1,5 @@
-// Package source resolves a deployment's source — a Git repository or an OCI
-// artifact — into a ready-to-deploy local checkout.
+// Package source resolves a deployment's source, either a Git repository or an OCI
+// artifact, into a ready-to-deploy local checkout.
 //
 // It owns:
 //   - source type normalization/validation

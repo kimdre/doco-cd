@@ -13,7 +13,7 @@ import (
 // to use during checkout, along with the resolved remote commit hash.
 //
 // Resolution order (first match wins):
-//  1. Commit SHA — returned directly; no reference store lookup is performed.
+//  1. Commit SHA: returned directly; no reference store lookup is performed.
 //  2. For refs/-prefixed names: the exact name, then its remote-tracking counterpart.
 //  3. For short names: refs/heads/<ref>, refs/remotes/origin/<ref>, refs/tags/<ref>,
 //     then the bare name (which only resolves for uppercase pseudo-refs like HEAD).
@@ -23,7 +23,7 @@ import (
 // instead of a storage-layer error. Any other storage error is treated as a
 // transient failure and returned immediately.
 func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
-	// Commit SHAs are used directly — there is no reference name to resolve.
+	// Commit SHAs are used directly because there is no reference name to resolve.
 	if plumbing.IsHash(ref) {
 		return RefSet{LocalRef: plumbing.ReferenceName(ref)}, nil
 	}

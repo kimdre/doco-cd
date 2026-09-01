@@ -74,7 +74,7 @@ type scheduler struct {
 	// project/stack, service) so that if two concurrent scheduled runs both
 	// declare the same target in stop_services, the target is only actually
 	// stopped by the first holder and only actually restarted once the last
-	// holder releases it — this prevents one run from prematurely restarting
+	// holder releases it. This prevents one run from prematurely restarting
 	// a service another concurrent run still needs stopped. For swarm mode,
 	// the held state also records the original replica count so it can be
 	// restored when the last holder releases it.

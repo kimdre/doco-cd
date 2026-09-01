@@ -291,7 +291,7 @@ func (c *Config) Hash() (string, error) {
 
 // GetConfigFromYAML reads a YAML file and unmarshals it into a slice of Config structs.
 // When applyDefaults is true, default values are applied to each config (normal usage).
-// When applyDefaults is false, omitted fields remain zero/nil — used for nested auto-discovery
+// When applyDefaults is false, omitted fields remain zero/nil for nested auto-discovery.
 // overrides so unset fields do not accidentally replace base/discovered values during merge.
 func GetConfigFromYAML(f string, applyDefaults bool) ([]*Config, error) {
 	b, err := os.ReadFile(f) // #nosec G304

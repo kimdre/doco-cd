@@ -1,6 +1,6 @@
 # Deploy config for the shop-prod host (target: shop-prod). Same rules as dev:
 # everything pinned, nothing floats. Pins here move only when a release
-# promotes them — usually by the app repo's CI, sometimes by hand.
+# promotes them, usually by the app repo's CI and sometimes by hand.
 name: shop
 working_dir: shop/shop-prod
 environment:

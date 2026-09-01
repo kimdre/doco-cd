@@ -79,7 +79,7 @@ func RestartContainerAndWait(ctx context.Context, apiClient client.APIClient, co
 	// Container is running. ContainerRestart stops and starts it in one API
 	// call; subscribing to WaitConditionNextExit BEFORE the restart would
 	// fire on the stop step (not the eventual job completion). Restart first
-	// — which blocks until the container is running again — then subscribe.
+	// which blocks until the container is running again, then subscribe.
 	if _, err = apiClient.ContainerRestart(ctx, containerID, client.ContainerRestartOptions{}); err != nil {
 		return fmt.Errorf("restart container %s: %w", containerID, err)
 	}

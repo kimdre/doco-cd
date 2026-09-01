@@ -362,7 +362,7 @@ func dockerCliForContext(baseCli command.Cli, quiet bool, contextName string) (c
 }
 
 func failNotifyFunc(deployLog *slog.Logger, err error, metadata notification.Metadata) {
-	// Don't write to HTTP from goroutines — just send notification and log
+	// Don't write to HTTP from goroutines. Just send notification and log
 	go func() {
 		notifyErr := notification.Send(notification.Failure, "Deployment Failed", err.Error(), metadata)
 		if notifyErr != nil {

@@ -175,7 +175,7 @@ json_path: "result"
 }
 
 func TestGetConfig_WebhookStores_DefaultVersion(t *testing.T) {
-	// version field omitted — should default to v1
+	// version field omitted and should default to v1
 	stores := `stores:
   no-version:
     url: "https://example.com/{{ .remote_ref.key }}"

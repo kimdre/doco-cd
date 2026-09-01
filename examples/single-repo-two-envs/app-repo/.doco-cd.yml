@@ -1,6 +1,6 @@
 # STAGING deploy config (both stacks). The staging doco-cd instance polls with
 # no `target:`, so it reads this bare file. The prod instance polls with
-# `target: prod` and reads ONLY .doco-cd.prod.yml — that is real isolation,
+# `target: prod` and reads ONLY .doco-cd.prod.yml. That is real isolation,
 # staging values cannot leak.
 #
 # The rationale for every knob lives here; .doco-cd.prod.yml carries only the
@@ -24,7 +24,7 @@ environment:
   DB_TAG: "3fca2b91" # ci-bumped, never edit by hand
   PG_TAG: "17-alpine"
 # NO `die` here: the one-shot migrate container (restart: "no") exits 0 on
-# every deploy by design, and `die` reads that as a failure — reconcile ->
+# every deploy by design, and `die` reads that as a failure: reconcile ->
 # re-run -> die -> an unbounded loop. `unhealthy` only.
 reconciliation:
   events: [unhealthy]

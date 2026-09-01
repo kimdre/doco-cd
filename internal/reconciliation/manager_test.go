@@ -142,8 +142,8 @@ func TestSchedulerStopHold_IsolatedAcrossContexts(t *testing.T) {
 
 	// Releasing the default context's hold must not affect the remote context's hold.
 	// (unmarkSchedulerStopHeld keeps a short grace-period entry alive after the
-	// last release, so isServiceSchedulerStopHeld still reports true briefly —
-	// see schedulerStopHoldGracePeriod — but this must remain scoped to the
+	// last release, so isServiceSchedulerStopHeld still reports true briefly.
+	// See schedulerStopHoldGracePeriod, but this must remain scoped to the
 	// default context and not leak into the remote context's independent hold.)
 	r.UnmarkSchedulerStopHeld("", "proj", "db")
 

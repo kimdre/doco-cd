@@ -250,7 +250,7 @@ Rules are matched in order of specificity (longest key first).
       "https://forgejo.example.com/": "http://forgejo:3000/"
       # Host-only match (replaces host+port, keeps scheme/path)
       "forgejo.example.com": "forgejo:3000"
-      # SCP-style SSH → SCP-style SSH (the trailing : is required — it is the SCP host/path separator)
+      # SCP-style SSH → SCP-style SSH (the trailing : is required because it is the SCP host/path separator)
       # OR: SCP-style SSH → ssh:// with non-standard port (SCP syntax cannot carry a port number)
       # Pick one of these two, not both (YAML map keys must be unique):
       # "git@forgejo.example.com:": "git@forgejo.internal:"

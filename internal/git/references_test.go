@@ -96,14 +96,14 @@ func TestGetReferenceSet_LocalResolution(t *testing.T) {
 			wantRemoteRef:  remotePrefix + "main",
 			wantRemoteHash: mainHash,
 		},
-		// Full refs/heads/ name — same resolution as the short form.
+		// Full refs/heads/ name uses the same resolution as the short form.
 		{
 			ref:            BranchPrefix + "main",
 			wantLocalRef:   BranchPrefix + "main",
 			wantRemoteRef:  remotePrefix + "main",
 			wantRemoteHash: mainHash,
 		},
-		// Remote tracking ref passed in full — resolved without local branch lookup.
+		// Remote tracking ref passed in full is resolved without local branch lookup.
 		{
 			ref:            remotePrefix + "main",
 			wantLocalRef:   remotePrefix + "main",

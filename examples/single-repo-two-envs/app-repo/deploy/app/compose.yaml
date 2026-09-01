@@ -1,5 +1,5 @@
 # Web stack. Talks to postgres in the OTHER stack (deploy/db) over the
-# external network below — each stack is a separate compose project, so a
+# external network below. Each stack is a separate compose project, so a
 # shared network must be external. Create once per host:
 #   docker network create appnet
 services:
@@ -17,7 +17,7 @@ services:
     networks:
       - appnet
     # Readiness gate for `reconciliation: [unhealthy]`. Distroless image has no
-    # curl — probe with your own binary.
+    # curl. Probe with your own binary.
     healthcheck:
       test: ["CMD", "/app", "healthcheck"]
       interval: 30s

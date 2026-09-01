@@ -1,4 +1,4 @@
-# doco-cd + Apprise sidecar. Same file on both hosts — only poll.yaml differs.
+# doco-cd + Apprise sidecar. Same file on both hosts; only poll.yaml differs.
 # Lives on the host (e.g. /opt/doco-cd/), NOT in the app repo.
 services:
   doco-cd:
@@ -18,10 +18,10 @@ services:
       APPRISE_API_URL: http://apprise:8000/notify
       APPRISE_NOTIFY_LEVEL: success
       # Compact body (default is verbose): identity one-liner, then one line
-      # per deployed commit. Validated at startup — a bad field means the
+      # per deployed commit. Validated at startup, so a bad field means the
       # daemon won't boot. Notes:
       #   - .Message carries the failure reason and is appended only on
-      #     non-success — without it a failed deploy pings with no error.
+      #     non-success. Without it a failed deploy pings with no error.
       #   - .Commits is empty on first deploy / failures / reconcile events,
       #     so the body degrades back to the one-liner.
       #   - the repo prefix is a literal: each daemon polls one repo anyway.
@@ -44,7 +44,7 @@ services:
       timeout: 5s
       retries: 3
 
-  # Apprise API server — doco-cd's notification transport. Stateless,
+  # Apprise API server, doco-cd's notification transport. Stateless,
   # internal-only (no published port; reached at apprise:8000 on the compose
   # network). Turns doco-cd's POST into the actual Telegram/Slack/email call.
   apprise:

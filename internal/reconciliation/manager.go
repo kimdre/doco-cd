@@ -375,7 +375,7 @@ func (r *schedulerHoldRegistry) isHeld(contextName string, attrs map[string]stri
 		return true
 	}
 
-	// Grace period expired — clean up lazily.
+	// Grace period expired, so clean up lazily.
 	delete(r.services, key)
 
 	return false
