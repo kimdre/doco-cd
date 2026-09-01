@@ -332,6 +332,86 @@ func TestManagerOldWorkerCannotClearReplacementState(t *testing.T) {
 	}
 }
 
+func TestManagerWorkerCleanupDoesNotHoldManagerLock(t *testing.T) {
+	t.Parallel()
+
+	manager := NewManager(nil, nil, nil, nil, nil, nil, docker.ScheduledComposeOptions{})
+	key := schedulerWorkerKey("remote", scheduledJobModeContainer)
+	jobKey := "remote::container:shared/job"
+	manager.workers[key] = managedWorker{
+		cancel: func() {},
+		mode:   scheduledJobModeContainer,
+		id:     1,
+	}
+	manager.runtime.beginRun("remote", scheduledJobModeContainer, jobKey)
+
+	stopped := make(chan struct{})
+
+	go func() {
+		manager.workerStopped(key, 1)
+		close(stopped)
+	}()
+
+	deadline := time.Now().Add(time.Second)
+
+	for {
+		manager.mu.Lock()
+		worker := manager.workers[key]
+		cleaning := worker.cleaning
+		replaceable := workerNeedsStart(worker, true)
+		manager.mu.Unlock()
+
+		if cleaning {
+			if replaceable {
+				t.Fatal("worker being cleaned must not be replaced")
+			}
+
+			break
+		}
+
+		if time.Now().After(deadline) {
+			t.Fatal("worker cleanup did not start")
+		}
+	}
+
+	manager.runtime.endRun(jobKey)
+	<-stopped
+
+	if len(manager.workers) != 0 {
+		t.Fatalf("expected stopped worker to be removed, got %d", len(manager.workers))
+	}
+
+	if _, ok := manager.runtime.statesSnapshot()[jobKey]; ok {
+		t.Fatal("expected worker runtime state to be cleared")
+	}
+}
+
+func TestManagerDrainingWorkerCanBeReplaced(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		worker managedWorker
+		found  bool
+		want   bool
+	}{
+		{name: "missing worker", want: true},
+		{name: "active worker", worker: managedWorker{}, found: true},
+		{name: "draining worker", worker: managedWorker{stopping: true}, found: true, want: true},
+		{name: "worker cleaning runtime", worker: managedWorker{stopping: true, cleaning: true}, found: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := workerNeedsStart(tt.worker, tt.found); got != tt.want {
+				t.Fatalf("workerNeedsStart() = %t, want %t", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestJobInfo_ContextField(t *testing.T) {
 	t.Parallel()
 
