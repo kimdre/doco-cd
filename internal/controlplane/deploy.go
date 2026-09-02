@@ -173,8 +173,8 @@ func classifySourceFailure(err error) (int, error) {
 //
 // Errors are returned as DeploymentError so callers can preserve the exact
 // HTTP status/message mapping the pre-refactor handler used. A
-// stages.ErrWebhookFilterMismatch from the reconciler is returned unwrapped so
-// callers can keep reporting it as a skipped (not failed) deployment.
+// For webhook requests, stages.ErrSkipDeployment from the reconciler is
+// returned unwrapped so callers can report a skipped (not failed) deployment.
 func (d *Deployment) Deploy(ctx context.Context, req DeploymentRequest) error {
 	if err := validation.Validate(req); err != nil {
 		return newDeploymentError(source.ErrInvalidRequest, err, http.StatusInternalServerError)
@@ -227,7 +227,11 @@ func (d *Deployment) Deploy(ctx context.Context, req DeploymentRequest) error {
 		Payload:       &result.Payload,
 		TestName:      req.TestName,
 	}); err != nil {
-		if errors.Is(err, stages.ErrWebhookFilterMismatch) {
+		if errors.Is(err, stages.ErrSkipDeployment) {
+			if req.JobTrigger == stages.JobTriggerPoll {
+				return nil
+			}
+
 			return err
 		}
 

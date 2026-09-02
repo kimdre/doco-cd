@@ -476,6 +476,15 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		return controlplane.SkippedRun(msg), nil
 	}
 
+	if errors.Is(deployErr, stages.ErrSkipDeployment) {
+		msg := "deployment skipped"
+		elapsedTime := time.Since(startTime)
+		jobLog.Info(msg, slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()))
+		restAPI.JSONResponse(w, msg, metadata.JobID, http.StatusAccepted)
+
+		return controlplane.SkippedRun(msg), nil
+	}
+
 	if deployErr != nil {
 		if controlplane.IsLifecycleCancellation(deployErr) {
 			return controlplane.FailedRun(deployErr.Error()), deployErr

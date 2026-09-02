@@ -155,8 +155,10 @@ func (m *Manager) handleDeploy(ctx context.Context, req DeployRequest) error {
 	close(resultCh)
 
 	var (
-		errs         []error
-		successCount int
+		errs            []error
+		successCount    int
+		skipCount       int
+		filterSkipCount int
 	)
 
 	for e := range resultCh {
@@ -166,7 +168,13 @@ func (m *Manager) handleDeploy(ctx context.Context, req DeployRequest) error {
 		}
 
 		if errors.Is(e, stages.ErrWebhookFilterMismatch) {
-			continue // counted implicitly via successCount staying 0
+			filterSkipCount++
+			continue
+		}
+
+		if errors.Is(e, stages.ErrSkipDeployment) {
+			skipCount++
+			continue
 		}
 
 		errs = append(errs, e)
@@ -177,8 +185,13 @@ func (m *Manager) handleDeploy(ctx context.Context, req DeployRequest) error {
 	}
 
 	if successCount == 0 && len(req.DeployConfigs) > 0 {
-		// All deployments were skipped by the webhook filter
-		return stages.ErrWebhookFilterMismatch
+		if filterSkipCount == len(req.DeployConfigs) {
+			return stages.ErrWebhookFilterMismatch
+		}
+
+		if skipCount+filterSkipCount == len(req.DeployConfigs) {
+			return stages.ErrSkipDeployment
+		}
 	}
 
 	return nil
