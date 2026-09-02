@@ -38,6 +38,10 @@ func shouldPostFailureCommitStatus(destroyEnabled bool) bool {
 	return !destroyEnabled
 }
 
+func shouldPostWebhookCommitStatus(jobTrigger JobTrigger, destroyEnabled bool) bool {
+	return jobTrigger == JobTriggerWebhook && !destroyEnabled
+}
+
 func failureCommitStatusState(stageName StageName) commitstatus.State {
 	switch stageName {
 	case StageInit, StagePreDeploy:
@@ -121,6 +125,10 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 			// Skip outcomes propagate without failure reporting so callers can
 			// distinguish an intentional no-op from a successful deployment.
 			if errors.Is(err, ErrSkipDeployment) {
+				if shouldPostWebhookCommitStatus(s.JobTrigger, s.DeployConfig.Destroy.Enabled) {
+					s.PostCommitStatus(ctx, commitstatus.StateSuccess, "Skipped")
+				}
+
 				return err
 			}
 
@@ -163,6 +171,14 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 	s.clearDeploymentFailure()
 
 	return nil
+}
+
+// PostQueuedCommitStatus reports that a resolved webhook deployment is waiting
+// to run. Poll and destroy operations do not publish queued statuses.
+func (s *StageManager) PostQueuedCommitStatus(ctx context.Context) {
+	if shouldPostWebhookCommitStatus(s.JobTrigger, s.DeployConfig.Destroy.Enabled) {
+		s.PostCommitStatus(ctx, commitstatus.StatePending, "Queued")
+	}
 }
 
 // stageRecordsDeploymentFailure reports whether a failure of the stage must be

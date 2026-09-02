@@ -14,21 +14,17 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
-	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
 	restserver "github.com/kimdre/doco-cd/internal/api"
-	"github.com/kimdre/doco-cd/internal/commitstatus"
-	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/controlplane"
 
@@ -43,248 +39,6 @@ import (
 	"github.com/kimdre/doco-cd/internal/reconciliation"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
-
-func TestWebhookCommitStatusReporterPostsAggregateContext(t *testing.T) {
-	t.Parallel()
-
-	type postedStatus struct {
-		State       string `json:"state"`
-		Description string `json:"description"`
-		Context     string `json:"context"`
-	}
-
-	var received []postedStatus
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			t.Errorf("method = %s, want POST", r.Method)
-		}
-
-		if !strings.HasSuffix(r.URL.Path, "/api/v1/repos/owner/repo/statuses/0123456789012345678901234567890123456789") {
-			t.Errorf("unexpected status path %q", r.URL.Path)
-		}
-
-		var status postedStatus
-		if err := json.NewDecoder(r.Body).Decode(&status); err != nil {
-			t.Errorf("decode status: %v", err)
-		}
-
-		received = append(received, status)
-
-		w.WriteHeader(http.StatusCreated)
-	}))
-	defer server.Close()
-
-	reporter := webhookCommitStatusReporter{
-		appConfig: &app.Config{
-			GitCommitStatus: true,
-			GitAccessToken:  "token",
-			GitScmProvider:  string(commitstatus.ProviderGitea),
-			GitScmApiUrl:    config.HttpUrl(server.URL),
-		},
-		log: logger.New(logger.LevelCritical).Logger,
-		payload: webhook.ParsedPayload{
-			Source:    webhook.PayloadSourceGit,
-			CommitSHA: plumbing.NewHash("0123456789012345678901234567890123456789"),
-			FullName:  "owner/repo",
-			CloneURL:  "https://git.example.com/owner/repo.git",
-			WebURL:    "https://git.example.com/owner/repo",
-		},
-	}
-
-	reporter.Post(t.Context(), commitstatus.StatePending, "Queued")
-	reporter.Post(t.Context(), commitstatus.StatePending, "In Progress")
-	reporter.Post(t.Context(), commitstatus.StateSuccess, "Successful")
-
-	wantDescriptions := []string{"Queued", "In Progress", "Successful"}
-	if len(received) != len(wantDescriptions) {
-		t.Fatalf("received %d statuses, want %d", len(received), len(wantDescriptions))
-	}
-
-	for i, status := range received {
-		if status.Description != wantDescriptions[i] {
-			t.Errorf("status %d description = %q, want %q", i, status.Description, wantDescriptions[i])
-		}
-
-		if status.Context != commitstatus.DeployContext {
-			t.Errorf("status %d context = %q, want %q", i, status.Context, commitstatus.DeployContext)
-		}
-	}
-}
-
-func TestWebhookCommitStatusReporterSkipsUnsupportedEvents(t *testing.T) {
-	t.Parallel()
-
-	requests := 0
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		requests++
-
-		w.WriteHeader(http.StatusCreated)
-	}))
-	defer server.Close()
-
-	baseConfig := app.Config{
-		GitCommitStatus: true,
-		GitAccessToken:  "token",
-		GitScmProvider:  string(commitstatus.ProviderGitea),
-		GitScmApiUrl:    config.HttpUrl(server.URL),
-	}
-	basePayload := webhook.ParsedPayload{
-		Source:    webhook.PayloadSourceGit,
-		CommitSHA: plumbing.NewHash("0123456789012345678901234567890123456789"),
-		FullName:  "owner/repo",
-		WebURL:    "https://git.example.com/owner/repo",
-	}
-
-	disabledConfig := baseConfig
-	disabledConfig.GitCommitStatus = false
-	webhookCommitStatusReporter{
-		appConfig: &disabledConfig,
-		log:       logger.New(logger.LevelCritical).Logger,
-		payload:   basePayload,
-	}.Post(t.Context(), commitstatus.StatePending, "Queued")
-
-	ociPayload := basePayload
-	ociPayload.Source = webhook.PayloadSourceOCI
-	webhookCommitStatusReporter{
-		appConfig: &baseConfig,
-		log:       logger.New(logger.LevelCritical).Logger,
-		payload:   ociPayload,
-	}.Post(t.Context(), commitstatus.StatePending, "Queued")
-
-	if requests != 0 {
-		t.Fatalf("received %d commit status requests, want none", requests)
-	}
-}
-
-func TestWebhookHandlerPostsAggregateStatusLifecycle(t *testing.T) {
-	testCases := []struct {
-		name             string
-		url              string
-		wantDescriptions []string
-	}{
-		{
-			name:             "asynchronous",
-			url:              restserver.WebhookPath,
-			wantDescriptions: []string{"Queued", "In Progress", "Skipped"},
-		},
-		{
-			name:             "synchronous",
-			url:              restserver.WebhookPath + "?wait=true",
-			wantDescriptions: []string{"In Progress", "Skipped"},
-		},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			type postedStatus struct {
-				State       string `json:"state"`
-				Description string `json:"description"`
-				Context     string `json:"context"`
-			}
-
-			statuses := make(chan postedStatus, len(testCase.wantDescriptions))
-
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				var status postedStatus
-				if err := json.NewDecoder(r.Body).Decode(&status); err != nil {
-					t.Errorf("decode status: %v", err)
-				}
-
-				statuses <- status
-
-				w.WriteHeader(http.StatusCreated)
-			}))
-			defer server.Close()
-
-			appConfig, err := app.GetConfig()
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			appConfig.GitCommitStatus = true
-			appConfig.GitAccessToken = "token"
-			appConfig.GitScmProvider = string(commitstatus.ProviderGitea)
-			appConfig.GitScmApiUrl = config.HttpUrl(server.URL)
-
-			log := logger.New(logger.LevelCritical)
-			mountPoint := container.MountPoint{
-				Type:        "bind",
-				Source:      t.TempDir(),
-				Destination: t.TempDir(),
-				Mode:        "rw",
-			}
-			handler := orchestrationHandler{
-				appConfig: appConfig,
-				log:       log,
-				controlPlaneRuns: newTestControlPlaneRuns(t, testControlPlaneRunsOptions{
-					appConfig:      appConfig,
-					dataMountPoint: mountPoint,
-					log:            log,
-				}),
-			}
-
-			payload := []byte(`{
-				"ref": "",
-				"before": "0000000000000000000000000000000000000000",
-				"after": "0123456789012345678901234567890123456789",
-				"repository": {
-					"name": "repo",
-					"full_name": "owner/repo",
-					"clone_url": "https://git.example.com/owner/repo.git",
-					"html_url": "https://git.example.com/owner/repo",
-					"private": false
-				}
-			}`)
-			recorder := httptest.NewRecorder()
-			handler.WebhookHandler(recorder, newWebhookRequest(t, testCase.url, payload, appConfig))
-
-			for i, wantDescription := range testCase.wantDescriptions {
-				select {
-				case status := <-statuses:
-					if status.Description != wantDescription {
-						t.Errorf("status %d description = %q, want %q", i, status.Description, wantDescription)
-					}
-
-					if status.Context != commitstatus.DeployContext {
-						t.Errorf("status %d context = %q, want %q", i, status.Context, commitstatus.DeployContext)
-					}
-				case <-time.After(5 * time.Second):
-					t.Fatalf("timed out waiting for status %d (%s)", i, wantDescription)
-				}
-			}
-		})
-	}
-}
-
-func TestAggregateWebhookCommitStatus(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name            string
-		result          controlplane.RunResult
-		err             error
-		wantState       commitstatus.State
-		wantDescription string
-	}{
-		{name: "success", result: controlplane.SucceededRun("done"), wantState: commitstatus.StateSuccess, wantDescription: "Successful"},
-		{name: "skipped", result: controlplane.SkippedRun("not applicable"), wantState: commitstatus.StateSuccess, wantDescription: "Skipped"},
-		{name: "failure", result: controlplane.FailedRun("deploy failed"), wantState: commitstatus.StateFailure, wantDescription: "deploy failed"},
-		{name: "error", err: errors.New("run cancelled"), wantState: commitstatus.StateError, wantDescription: "run cancelled"},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			t.Parallel()
-
-			state, description := aggregateWebhookCommitStatus(testCase.result, testCase.err)
-			if state != testCase.wantState || description != testCase.wantDescription {
-				t.Fatalf("status = (%q, %q), want (%q, %q)", state, description, testCase.wantState, testCase.wantDescription)
-			}
-		})
-	}
-}
 
 func TestAcquireWebhookRepoLockHonorsCancellation(t *testing.T) {
 	t.Parallel()
@@ -391,12 +145,6 @@ const (
 	githubPayloadFile          = "testdata/github_payload.json"
 	githubPayloadFileSwarmMode = "testdata/github_payload_swarm_mode.json"
 	webhookTestPollInterval    = 100 * time.Millisecond
-	composeContent             = `services:
-  nginx:
-    image: nginx:latest
-    ports:
-      - "80"
-`
 )
 
 // webhookFixtureFiles backs the local, network-independent fixture repo used

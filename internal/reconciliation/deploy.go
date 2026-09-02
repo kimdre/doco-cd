@@ -243,16 +243,6 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 			dc.Name, docker.DisplayContextName(dc.Context), err)
 	}
 
-	if m.limiter != nil {
-		deployLog.Debug("queuing deployment")
-
-		unlock, lErr := m.limiter.acquire(ctx, req.Repository.Name, NormalizeReference(dc.Reference))
-		if lErr != nil {
-			return lErr
-		}
-		defer unlock()
-	}
-
 	stageMgr, err := stages.NewStageManager(
 		stages.Dependencies{
 			AppConfig:      m.appConfig,
@@ -277,6 +267,18 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 	)
 	if err != nil {
 		return err
+	}
+
+	stageMgr.PostQueuedCommitStatus(ctx)
+
+	if m.limiter != nil {
+		deployLog.Debug("queuing deployment")
+
+		unlock, lErr := m.limiter.acquire(ctx, req.Repository.Name, NormalizeReference(dc.Reference))
+		if lErr != nil {
+			return lErr
+		}
+		defer unlock()
 	}
 
 	err = stageMgr.RunStages(ctx)

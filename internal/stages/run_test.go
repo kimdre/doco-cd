@@ -171,6 +171,28 @@ func TestShouldPostFailureCommitStatus(t *testing.T) {
 	}
 }
 
+func TestShouldPostWebhookCommitStatus(t *testing.T) {
+	tests := []struct {
+		name           string
+		jobTrigger     JobTrigger
+		destroyEnabled bool
+		want           bool
+	}{
+		{name: "webhook deployment", jobTrigger: JobTriggerWebhook, want: true},
+		{name: "poll deployment", jobTrigger: JobTriggerPoll, want: false},
+		{name: "webhook destroy", jobTrigger: JobTriggerWebhook, destroyEnabled: true, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shouldPostWebhookCommitStatus(tt.jobTrigger, tt.destroyEnabled)
+			if got != tt.want {
+				t.Fatalf("shouldPostWebhookCommitStatus() = %t, want %t", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestFailureCommitStatusState(t *testing.T) {
 	tests := []struct {
 		name      string

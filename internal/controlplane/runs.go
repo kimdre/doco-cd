@@ -42,8 +42,6 @@ type RunExecution struct {
 	Mode         RunMode
 	PanicContext string
 	PanicError   error
-	// OnQueued runs after asynchronous admission and before the run starts.
-	OnQueued func(context.Context)
 }
 
 // RunFunc performs the work associated with an accepted control-plane run.
@@ -198,25 +196,19 @@ func (c *Runs) Execute(
 	execution RunExecution,
 	run RunFunc,
 ) error {
-	runRegistered := func(runCtx context.Context, queued bool) error {
-		return c.executeRegistered(runCtx, jobID, execution, run, queued)
+	runRegistered := func(runCtx context.Context) error {
+		return c.executeRegistered(runCtx, jobID, execution, run)
 	}
 
 	if execution.Mode == RunAsynchronous {
-		release, err := c.background.Register()
+		err := c.background.Go(func() {
+			_ = runRegistered(c.applicationCtx)
+		})
 		if err != nil {
 			c.MarkFailed(jobID, err.Error())
-
-			return err
 		}
 
-		go func() {
-			defer release()
-
-			_ = runRegistered(c.applicationCtx, true)
-		}()
-
-		return nil
+		return err
 	}
 
 	release, err := c.background.Register()
@@ -237,7 +229,7 @@ func (c *Runs) Execute(
 	stopApplicationCancel := context.AfterFunc(c.applicationCtx, cancel) //nolint:contextcheck // A synchronous run is intentionally cancelled by either its request or the application lifecycle.
 	defer stopApplicationCancel()
 
-	return runRegistered(runCtx, false)
+	return runRegistered(runCtx)
 }
 
 // executeRegistered transitions an accepted run through execution, recovery, and finalization.
@@ -246,8 +238,9 @@ func (c *Runs) executeRegistered(
 	jobID string,
 	execution RunExecution,
 	run RunFunc,
-	queued bool,
 ) (err error) {
+	c.MarkRunning(jobID)
+
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			logger.LogRecoveredPanic(c.log.With(slog.String("job_id", jobID)), execution.PanicContext, recovered)
@@ -255,12 +248,6 @@ func (c *Runs) executeRegistered(
 			err = execution.PanicError
 		}
 	}()
-
-	if queued && execution.OnQueued != nil {
-		execution.OnQueued(ctx)
-	}
-
-	c.MarkRunning(jobID)
 
 	result, err := run(ctx)
 	c.finish(jobID, result, err)
