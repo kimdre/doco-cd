@@ -16,7 +16,7 @@ type Deploy struct {
 	Detach           bool
 	Quiet            bool
 	Environment      map[string]string
-	Timeout          time.Duration
+	Timeout          time.Duration // Timeout for service convergence (used by Swarm deployments)
 }
 
 // Config holds docker stack config options.

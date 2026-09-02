@@ -429,7 +429,8 @@ func WaitOnServices(ctx context.Context, dockerCli command.Cli, serviceIDs []str
 	})
 }
 
-// WaitOnServicesWithTimeout waits for the specified Swarm services to complete within timeout.
+// WaitOnServicesWithTimeout waits for the specified Swarm services to converge within the configured timeout,
+// returning a clear error if convergence exceeds the deadline (while preserving parent context cancellation).
 func WaitOnServicesWithTimeout(
 	ctx context.Context,
 	dockerCli command.Cli,
@@ -441,6 +442,7 @@ func WaitOnServicesWithTimeout(
 	})
 }
 
+// waitOnServices waits for all services to complete, collecting errors per service without enforcing a deadline.
 func waitOnServices(
 	ctx context.Context,
 	serviceIDs []string,
@@ -457,6 +459,7 @@ func waitOnServices(
 	return errors.Join(errs...)
 }
 
+// waitOnServicesWith waits for all services to complete within a deadline, distinguishing timeout from parent cancellation.
 func waitOnServicesWith(
 	ctx context.Context,
 	serviceIDs []string,
