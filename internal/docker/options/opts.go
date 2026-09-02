@@ -1,6 +1,10 @@
 package options
 
-import "github.com/docker/cli/opts"
+import (
+	"time"
+
+	"github.com/docker/cli/opts"
+)
 
 // Deploy holds docker stack deploy options.
 type Deploy struct {
@@ -12,6 +16,7 @@ type Deploy struct {
 	Detach           bool
 	Quiet            bool
 	Environment      map[string]string
+	Timeout          time.Duration
 }
 
 // Config holds docker stack config options.
