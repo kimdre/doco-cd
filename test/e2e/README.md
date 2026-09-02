@@ -64,10 +64,16 @@ by reading the stack name(s) straight from the fixture's `.doco-cd.yml`
 1. Create `scenarios/<name>/fixture/` with a `.doco-cd.yml` and compose
    files. Prefix stack names with `e2e-`.
 2. Write `<name>_test.go`: call `NewHarness(t, "<name>")`, `Start()`, then
-   combine `WaitForLog`, `WaitFor`, `ContainerID`, `WaitForContainerRecreate`,
-   `RepoPush` and `ReplaceInWorktree` into the flow you want to prove.
+   combine `WaitFor`, `ContainerID`, `ContainerImage`,
+   `WaitForContainerRecreate`, `RepoPush` and `ReplaceInWorktree` into the
+   flow you want to prove. Use `LogMark` with `WaitForLogAfter` for multi-phase
+   scenarios so old log entries cannot satisfy later assertions.
 3. `go test -tags e2e ./test/e2e/... -run Test<Name> -v`.
 
 Keep scenarios independent: every scenario gets a fresh daemon, a fresh data
 volume and a fresh repo. Harness containers remain running until the e2e suite
 finishes; deployed stacks are still cleaned up after each test.
+
+Prefer Docker state for the primary assertion. Logs are useful for proving that
+a specific path ran, but a success log alone does not prove that the expected
+container or image reached the Docker daemon.

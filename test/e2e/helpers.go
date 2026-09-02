@@ -138,6 +138,40 @@ func (h *Harness) WaitForLog(substr string, timeout time.Duration) {
 	})
 }
 
+// LogMark returns a byte offset that can be used to restrict later log
+// assertions to events emitted after the current phase.
+func (h *Harness) LogMark() int {
+	h.t.Helper()
+
+	return len(h.daemonLogs())
+}
+
+func (h *Harness) WaitForLogAfter(substr string, offset int, timeout time.Duration) {
+	h.t.Helper()
+	h.WaitFor(timeout, "new daemon log contains \""+substr+"\"", func() bool {
+		return strings.Contains(logsSince(h.daemonLogs(), offset), substr)
+	})
+}
+
+func (h *Harness) WaitForLogOccurrencesAfter(substr string, offset, count int, timeout time.Duration) {
+	h.t.Helper()
+	h.WaitFor(timeout, fmt.Sprintf("new daemon logs contain %q %d times", substr, count), func() bool {
+		return strings.Count(logsSince(h.daemonLogs(), offset), substr) >= count
+	})
+}
+
+func logsSince(logs string, offset int) string {
+	if offset <= 0 {
+		return logs
+	}
+
+	if offset >= len(logs) {
+		return ""
+	}
+
+	return logs[offset:]
+}
+
 func (h *Harness) daemonHasLog(substr string) bool {
 	return strings.Contains(h.daemonLogs(), substr)
 }
@@ -219,19 +253,45 @@ func (h *Harness) RemoteContainerID(project, service string) string {
 	return h.containerID(h.remoteDocker, false, project, service)
 }
 
+func (h *Harness) ContainerImage(containerID string) string {
+	h.t.Helper()
+
+	return h.containerImage(h.docker, containerID)
+}
+
+func (h *Harness) RemoteContainerImage(containerID string) string {
+	h.t.Helper()
+
+	if h.remoteDocker == nil {
+		h.t.Fatal("remote Docker context is not enabled")
+	}
+
+	return h.containerImage(h.remoteDocker, containerID)
+}
+
+func (h *Harness) containerImage(dockerClient *client.Client, containerID string) string {
+	h.t.Helper()
+
+	inspect, err := dockerClient.ContainerInspect(h.ctx, containerID, client.ContainerInspectOptions{})
+	if err != nil {
+		h.t.Fatalf("inspect container %s: %v", shortContainerID(containerID), err)
+	}
+
+	if inspect.Container.Config == nil {
+		h.t.Fatalf("container %s has no configuration", shortContainerID(containerID))
+	}
+
+	return inspect.Container.Config.Image
+}
+
+func imageReferenceMatches(got, want string) bool {
+	return got == want || (!strings.Contains(want, "@") && strings.HasPrefix(got, want+"@sha256:"))
+}
+
 func (h *Harness) containerID(dockerClient *client.Client, swarmMode bool, project, service string) string {
 	h.t.Helper()
 
-	f := client.Filters{}
-	if swarmMode {
-		f = f.
-			Add("label", "com.docker.stack.namespace="+project).
-			Add("label", "com.docker.swarm.service.name="+project+"_"+service)
-	} else {
-		f = f.
-			Add("label", "com.docker.compose.project="+project).
-			Add("label", "com.docker.compose.service="+service)
-	}
+	f := h.containerFilters(swarmMode, project, service)
 
 	containers, err := dockerClient.ContainerList(h.ctx, client.ContainerListOptions{Filters: f})
 	if err != nil {
@@ -245,6 +305,23 @@ func (h *Harness) containerID(dockerClient *client.Client, swarmMode bool, proje
 	return containers.Items[0].ID
 }
 
+func (h *Harness) containerFilters(swarmMode bool, project, service string) client.Filters {
+	h.t.Helper()
+
+	f := client.Filters{}
+	if swarmMode {
+		f = f.
+			Add("label", "com.docker.stack.namespace="+project).
+			Add("label", "com.docker.swarm.service.name="+project+"_"+service)
+	} else {
+		f = f.
+			Add("label", "com.docker.compose.project="+project).
+			Add("label", "com.docker.compose.service="+service)
+	}
+
+	return f
+}
+
 // WaitForContainerRecreate waits until the container for project/service
 // exists and has an ID different from oldID.
 func (h *Harness) WaitForContainerRecreate(project, service, oldID string, timeout time.Duration) {
@@ -252,6 +329,20 @@ func (h *Harness) WaitForContainerRecreate(project, service, oldID string, timeo
 	h.WaitFor(timeout, project+"/"+service+" recreated", func() bool {
 		id := h.ContainerID(project, service)
 		return id != "" && id != oldID
+	})
+}
+
+func (h *Harness) WaitForContainerRemoval(project, service string, timeout time.Duration) {
+	h.t.Helper()
+	h.WaitFor(timeout, project+"/"+service+" removed", func() bool {
+		filters := h.containerFilters(h.isSwarmMode(), project, service)
+
+		containers, err := h.docker.ContainerList(h.ctx, client.ContainerListOptions{All: true, Filters: filters})
+		if err != nil {
+			h.t.Fatalf("list containers for %s/%s: %v", project, service, err)
+		}
+
+		return len(containers.Items) == 0
 	})
 }
 
