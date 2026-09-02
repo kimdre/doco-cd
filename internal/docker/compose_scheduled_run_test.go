@@ -283,7 +283,7 @@ func TestLoadComposeScheduledDeployConfigResolvesRepoPathBySourceType(t *testing
 		t.Helper()
 
 		content := fmt.Sprintf("name: %s\n", name)
-		if err := os.WriteFile(filepath.Join(repoDir, ".doco-cd.yaml"), []byte(content), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(repoDir, ".doco-cd.yaml"), []byte(content), 0o600); err != nil {
 			t.Fatalf("write deploy config: %v", err)
 		}
 	}
