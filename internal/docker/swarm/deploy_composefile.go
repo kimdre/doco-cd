@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/containerd/errdefs"
 	"github.com/docker/cli/cli/command"
@@ -108,7 +109,7 @@ func deployCompose(ctx context.Context, dockerCli command.Cli, opts *options.Dep
 		}
 	}
 
-	return WaitOnServices(ctx, dockerCli, waitIDs)
+	return WaitOnServicesWithTimeout(ctx, dockerCli, waitIDs, opts.Timeout)
 }
 
 func getServicesDeclaredNetworks(serviceConfigs []composetypes.ServiceConfig) set.Set[string] {
@@ -421,15 +422,60 @@ func isScheduledServiceSpec(spec swarmTypes.ServiceSpec) bool {
 	return enabled
 }
 
-// WaitOnServices waits for the specified Swarm services to complete.
+// WaitOnServices waits for the specified Swarm services to converge.
 func WaitOnServices(ctx context.Context, dockerCli command.Cli, serviceIDs []string) error {
+	return waitOnServices(ctx, serviceIDs, func(ctx context.Context, serviceID string) error {
+		return waitOnService(ctx, dockerCli, serviceID)
+	})
+}
+
+// WaitOnServicesWithTimeout waits for Swarm services to converge within timeout.
+func WaitOnServicesWithTimeout(
+	ctx context.Context,
+	dockerCli command.Cli,
+	serviceIDs []string,
+	timeout time.Duration,
+) error {
+	return waitOnServicesWith(ctx, serviceIDs, timeout, func(ctx context.Context, serviceID string) error {
+		return waitOnService(ctx, dockerCli, serviceID)
+	})
+}
+
+// waitOnServices waits for every service and joins their errors.
+func waitOnServices(
+	ctx context.Context,
+	serviceIDs []string,
+	wait func(context.Context, string) error,
+) error {
 	var errs []error
 
 	for _, serviceID := range serviceIDs {
-		if err := waitOnService(ctx, dockerCli, serviceID); err != nil {
+		if err := wait(ctx, serviceID); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", serviceID, err))
 		}
 	}
 
 	return errors.Join(errs...)
+}
+
+// waitOnServicesWith applies one timeout across all service waits.
+func waitOnServicesWith(
+	ctx context.Context,
+	serviceIDs []string,
+	timeout time.Duration,
+	wait func(context.Context, string) error,
+) error {
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	err := waitOnServices(waitCtx, serviceIDs, wait)
+	if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+		return fmt.Errorf("timed out after %s waiting for swarm services to converge: %w", timeout, err)
+	}
+
+	return err
 }

@@ -61,6 +61,7 @@ func LoadSwarmStack(dockerCli command.Cli, project *types.Project,
 		Prune:            deployConfig.RemoveOrphans,
 		Detach:           false,
 		Environment:      project.Environment,
+		Timeout:          time.Duration(deployConfig.Timeout) * time.Second,
 	}
 
 	cfg, err := swarmInternal.LoadComposefile(dockerCli, opts, deployConfig.Internal.Environment, externalWorkingDir)

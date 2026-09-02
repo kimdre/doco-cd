@@ -1,11 +1,51 @@
 package swarm
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 )
+
+func TestWaitOnServicesWithTimeout(t *testing.T) {
+	t.Parallel()
+
+	const timeout = 10 * time.Millisecond
+
+	err := waitOnServicesWith(t.Context(), []string{"svc-1"}, timeout, func(ctx context.Context, _ string) error {
+		<-ctx.Done()
+
+		return ctx.Err()
+	})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("waitOnServicesWith() error = %v, want context deadline exceeded", err)
+	}
+
+	if !strings.Contains(err.Error(), "timed out after 10ms waiting for swarm services to converge") {
+		t.Fatalf("waitOnServicesWith() error = %q, missing timeout context", err)
+	}
+}
+
+func TestWaitOnServicesWithParentCancellation(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	err := waitOnServicesWith(ctx, []string{"svc-1"}, time.Minute, func(ctx context.Context, _ string) error {
+		return ctx.Err()
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("waitOnServicesWith() error = %v, want context canceled", err)
+	}
+
+	if strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("waitOnServicesWith() error = %q, parent cancellation reported as timeout", err)
+	}
+}
 
 func TestShouldWaitForService(t *testing.T) {
 	t.Parallel()
