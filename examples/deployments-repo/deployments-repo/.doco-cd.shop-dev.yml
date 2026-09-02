@@ -20,4 +20,4 @@ environment:
 # the drift-redeploy loop alive.
 remove_orphans: true
 reconciliation:
-  events: [unhealthy] # never `die` — one-shot/post_start exits would loop it
+  events: [unhealthy] # never `die`, one-shot/post_start exits would loop it

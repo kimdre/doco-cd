@@ -23,7 +23,7 @@ include:
 
 ### Resolving `.env` and other relative paths
 
-When a remote compose file references relative paths — most commonly `env_file: .env` in a service definition — Docker Compose resolves those paths against the remote include's own directory inside doco-cd's internal cache, **not** against your deployment repository.
+When a remote compose file references relative paths, most commonly `env_file: .env` in a service definition, Docker Compose resolves those paths against the remote include's own directory inside doco-cd's internal cache, **not** against your deployment repository.
 
 This means a deployment like the following will fail with *"env file … not found"* even if `.env` exists in your repository:
 

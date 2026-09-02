@@ -134,7 +134,7 @@ which maps Docker API resources to environment variables.
 
 !!! info "Other proxies use different variable names"
     Environment variable names differ between socket proxy implementations.
-    The **Docker API endpoint tables above are the source of truth** — map them to whatever
+    The **Docker API endpoint tables above are the source of truth**. Map them to whatever
     your proxy of choice expects.
 
 ```yaml title="docker-compose.yml"
@@ -197,7 +197,7 @@ volumes:
 1. Needed to wait for Swarm services to converge. Without it every Swarm deployment fails with `403 Forbidden`.
 2. Required for recreating containers, rotating configs/secrets and `remove_orphans`. Set to `0` only if you accept that redeployments will fail.
 3. Point doco-cd at the proxy instead of mounting the socket. See [Docker Settings](../Docker-Settings.md).
-4. The Docker socket is no longer mounted here — only the data volume remains.
+4. The Docker socket is no longer mounted here; only the data volume remains.
 
 ### Minimal standalone (Compose only) configuration
 

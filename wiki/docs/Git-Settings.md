@@ -32,12 +32,12 @@ Supported authentication methods:
 
 | Key                               | Type   | Description                                                                                                                                                                                                                                                                             | Default                                          |
 |-----------------------------------|--------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------|
-| `GIT_ACCESS_TOKEN`                | string | Access token for cloning repositories (required for private repositories) via **HTTP**. See [Setup Access Token](Setup-Access-Token.md), [Required Token Permissions](#required-token-permissions), and [Domain-scoped Authentication](#domain-scoped-authentication). | Optional for public repositories but recommended |
+| `GIT_ACCESS_TOKEN`                | string | Access token for cloning repositories (required for private repositories) via **HTTP**. See [Setup Access Token](Setup-Access-Token.md), [Required Token Permissions](#required-token-permissions), and [Domain-scoped Authentication](#domain-scoped-authentication).                  | Optional for public repositories but recommended |
 | `GIT_ACCESS_TOKEN_USER`           | string | Username paired with `GIT_ACCESS_TOKEN` for **HTTP(S)** clone/fetch. Most providers accept any non-empty value, but some require a specific username for their token (e.g. a GitLab **deploy token** uses `gitlab+deploy-token-1234567`). Set it when your provider needs one.          | `oauth2`                                         |
 | `GIT_ACCESS_TOKEN_FILE`           | string | Path to the file containing the Git Access Token (mutually exclusive with `GIT_ACCESS_TOKEN`).                                                                                                                                                                                          |                                                  |
 | `GIT_AUTH_DOMAINS`                | list   | YAML list of domain-scoped Git credentials (HTTP token, SSH key, and GitHub App credentials). Supports exact domains and wildcard subdomains like `*.example.com` (see [Domain-scoped authentication](#domain-scoped-authentication)). Mutually exclusive with `GIT_AUTH_DOMAINS_FILE`. |                                                  |
 | `GIT_AUTH_DOMAINS_FILE`           | string | Path to a file containing the YAML configuration for `GIT_AUTH_DOMAINS` (mutually exclusive with `GIT_AUTH_DOMAINS`).                                                                                                                                                                   |                                                  |
-| `SSH_PRIVATE_KEY`                 | string | The private key used for cloning repositories via SSH. See [Setup SSH Key](Setup-SSH-Key.md) and [Domain-scoped Authentication](#domain-scoped-authentication).                                                                                                                    |                                                  |
+| `SSH_PRIVATE_KEY`                 | string | The private key used for cloning repositories via SSH. See [Setup SSH Key](Setup-SSH-Key.md) and [Domain-scoped Authentication](#domain-scoped-authentication).                                                                                                                         |                                                  |
 | `SSH_PRIVATE_KEY_FILE`            | string | Path to the file containing the SSH private key.                                                                                                                                                                                                                                        |                                                  |
 | `SSH_PRIVATE_KEY_PASSPHRASE`      | string | Passphrase for the SSH private key (if the key was generated with a passphrase).                                                                                                                                                                                                        |                                                  |
 | `SSH_PRIVATE_KEY_PASSPHRASE_FILE` | string | Path to the file containing the SSH private key passphrase.                                                                                                                                                                                                                             |                                                  |
@@ -156,17 +156,15 @@ Doco-CD can post a commit status back to the source Git provider after each depl
 
 This closes the GitOps feedback loop: instead of only seeing success or failure in container logs or Apprise notifications, the commit itself is marked with the deployment outcome.
 
-For asynchronous webhooks, Doco-CD immediately creates an aggregate `doco-cd/deploy` status after the event is admitted to the queue. Its lifecycle is:
+Once a webhook's deployment configuration is resolved, Doco-CD reports each deployment under its own context, such as `doco-cd/<target>/<project>`:
 
-- **pending / Queued** — the webhook event was accepted and is waiting to run.
-- **pending / In Progress** — processing started after the repository deployment lock was acquired.
-- **success**, **failure**, or **error** — processing reached its final outcome. Intentionally skipped events complete the aggregate status successfully with the description `Skipped`.
+- **pending / Queued**: the deployment is waiting to run.
+- **pending / In Progress**: the deployment has started.
+- **success**: set when all deployment stages complete successfully.
+- **success / Skipped**: set when the deployment intentionally performs no work.
+- **failure**: set when any stage fails after initialization.
 
-Synchronous webhooks (`wait=true`) start with `In Progress` because they are not queued. Doco-CD also keeps reporting stack-specific statuses once repository configuration is available:
-
-- **pending** — set once after the repository is cloned and the stack deployment begins.
-- **success** — set when all deployment stages complete successfully.
-- **failure** — set when any stage fails after initialisation.
+The generic `doco-cd/deploy` context is reserved for failures that happen before deployment configuration can be resolved.
 
 | Key                 | Type    | Description                                                                                                                                                                                                                                                                                                                                                                                                                                           | Default |
 |---------------------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
@@ -218,7 +216,7 @@ Doco-CD derives the SCM API base URL from the clone URL by converting its scheme
 
 **SSH clone URL with a non-standard SSH port**
 
-When the clone URL is an SSH URL with a custom port (e.g. `ssh://git@gitea.example.com:2222/org/repo.git`), doco-cd strips the port before building the API URL — so the API call targets `https://gitea.example.com/...` correctly. If for any reason this stripping doesn't produce the right host or port (e.g. the HTTPS endpoint is on a non-standard port), set the API base URL explicitly:
+When the clone URL is an SSH URL with a custom port (e.g. `ssh://git@gitea.example.com:2222/org/repo.git`), doco-cd strips the port before building the API URL so the API call targets `https://gitea.example.com/...` correctly. If for any reason this stripping doesn't produce the right host or port (e.g. the HTTPS endpoint is on a non-standard port), set the API base URL explicitly:
 
 ```yaml
 GIT_SCM_API_URL: "https://gitea.example.com:8443"

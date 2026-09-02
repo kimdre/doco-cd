@@ -499,7 +499,7 @@ func TestRenderTemplate(t *testing.T) {
 	t.Run("renders metadata fields and trims trailing newlines", func(t *testing.T) {
 		t.Parallel()
 
-		tmpl, err := validateTemplate("{{.Emoji}} {{.Title}} — {{.Target}}/{{.Stack}} @ {{.Revision}}\n")
+		tmpl, err := validateTemplate("{{.Emoji}} {{.Title}} - {{.Target}}/{{.Stack}} @ {{.Revision}}\n")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -510,7 +510,7 @@ func TestRenderTemplate(t *testing.T) {
 			Revision: "main (abc123)",
 			JobID:    "job-1",
 		})
-		expected := "✅ Deployment completed — prod-vm/app @ main (abc123)"
+		expected := "✅ Deployment completed - prod-vm/app @ main (abc123)"
 
 		if got != expected {
 			t.Errorf("expected %q, got %q", expected, got)

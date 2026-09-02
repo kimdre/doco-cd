@@ -7,8 +7,8 @@ One app repo, two Docker hosts (staging + prod). The repo carries **two deploy c
 - **`target:` is real isolation.** The staging daemon (no `target:`) reads only the bare `.doco-cd.yml`. The prod daemon (`target: prod`) reads only `.doco-cd.prod.yml`. Staging values cannot leak into prod.
 - The prod config repeats only what differs: image tags, domain, log level. Behavior blocks are copied on purpose, so the two files cannot argue.
 - **Separate tags per stack.** The db stack pins its own tag. A web-only release must not recreate the stateful side.
-- Why `reconciliation.events` stays `[unhealthy]` and never gets `die`: the one-shot `migrate` container exits 0 on every deploy by design, and `die` reads that as a failure — an unbounded reconcile loop.
-- Cross-stack networking via an **external network** — each stack is its own compose project.
+- Why `reconciliation.events` stays `[unhealthy]` and never gets `die`: the one-shot `migrate` container exits 0 on every deploy by design, and `die` reads that as a failure, causing an unbounded reconcile loop.
+- Cross-stack networking via an **external network**, since each stack is its own compose project.
 - **Deploy notifications** to Telegram (or anything else) via an Apprise sidecar, with a compact body template.
 
 ## Layout
@@ -16,7 +16,7 @@ One app repo, two Docker hosts (staging + prod). The repo carries **two deploy c
 ```
 app-repo/                  # your Git repository
   .doco-cd.yml             # staging config (both stacks)
-  .doco-cd.prod.yml        # prod config — only the values that differ
+  .doco-cd.prod.yml        # prod config with only the values that differ
   deploy/
     app/compose.yaml       # web stack
     db/compose.yaml        # postgres + one-shot migrate

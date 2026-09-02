@@ -36,6 +36,6 @@ Within one poll interval the stack is up. From now on, a push to `main` is a dep
 
 ## How a release works
 
-CI builds the image and tags it with the commit SHA. Then a CI job rewrites `APP_TAG` in `.doco-cd.yml` and commits with `[skip ci]`. doco-cd sees the deploy config changed and redeploys. The repo always states what runs — that is the whole point.
+CI builds the image and tags it with the commit SHA. Then a CI job rewrites `APP_TAG` in `.doco-cd.yml` and commits with `[skip ci]`. doco-cd sees the deploy config changed and redeploys. The repo always states what runs. That is the whole point.
 
 A commit that touches nothing the stack references (docs, other dirs) is skipped: cloned, compared, no `compose up`.

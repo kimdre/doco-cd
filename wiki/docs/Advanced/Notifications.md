@@ -95,16 +95,16 @@ When a notification is sent, the following metadata fields are included in the n
 
 ## Custom notification body
 
-By default the notification body is the message followed by the [metadata fields](#metadata-fields) as `key: value` lines. Set `APPRISE_NOTIFY_BODY_TEMPLATE` (or `APPRISE_NOTIFY_BODY_TEMPLATE_FILE`) to a [Go `text/template`](https://pkg.go.dev/text/template) to render the body yourself — useful to drop noisy fields, add a host label, or produce a one-liner when several stacks report into one channel.
+By default the notification body is the message followed by the [metadata fields](#metadata-fields) as `key: value` lines. Set `APPRISE_NOTIFY_BODY_TEMPLATE` (or `APPRISE_NOTIFY_BODY_TEMPLATE_FILE`) to a [Go `text/template`](https://pkg.go.dev/text/template) to render the body yourself. This is useful to drop noisy fields, add a host label, or produce a one-liner when several stacks report into one channel.
 
 The template is validated at startup: a syntax error or a reference to an unknown field stops doco-cd from starting. The title (emoji + optional `[R]` marker + title text) is not affected by the template.
 
 !!! warning "Don't swallow failure reasons"
 
-    The template replaces the default body for **every** notification level, and on `failure` the error text is only carried by `{{ .Message }}` — a template that never references it produces failure notifications with no failure reason at all (the title only says `Deployment failed`; the details then live only in the logs). On `success`, `.Message` is largely redundant with the title, so compact templates should include it guarded by level:
+    The template replaces the default body for **every** notification level, and on `failure` the error text is only carried by `{{ .Message }}`. A template that never references it produces failure notifications with no failure reason at all (the title only says `Deployment failed`; the details then live only in the logs). On `success`, `.Message` is largely redundant with the title, so compact templates should include it guarded by level:
 
     ```
-    {{ if ne .Level "success" }} — {{ .Message }}{{ end }}
+    {{ if ne .Level "success" }} - {{ .Message }}{{ end }}
     ```
 
 The following fields are available:
@@ -128,7 +128,7 @@ The following fields are available:
 | `.AffectedActorID`    | Affected container/service ID                                            |
 | `.AffectedActorName`  | Affected container/service name                                          |
 | `.Commits`            | Commits deployed since the last deploy (see [Commit changelog](#commit-changelog)) |
-| `.Duration`           | Time the deployment (or destroy) took, from job start to the notification, e.g. `12.483s`. Zero where no deployment ran (reconciliation restarts, scheduled jobs) — hide it with `{{if .Duration}}...{{end}}` |
+| `.Duration`           | Time the deployment (or destroy) took, from job start to the notification, e.g. `12.483s`. Zero where no deployment ran (reconciliation restarts, scheduled jobs); hide it with `{{if .Duration}}...{{end}}` |
 | `.ChangedServices`    | Sorted names of the services changed by this deploy: force-recreated ones (changed mounted/referenced files or a changed auto-discovery label) plus services whose image digest changed in the registry (detected with [`force_image_pull`](../Deploy-Settings.md)). Empty when the whole stack is (re)deployed for other reasons, e.g. a compose config change (including image tag changes in the compose file), state drift or `force_recreate` |
 
 `{{ .DefaultBody }}` renders the built-in body (message + metadata), so you can extend the default format instead of replacing it, e.g. `{{ .DefaultBody }}\nhost: my-vm`.
@@ -137,10 +137,10 @@ The following fields are available:
 
     ```yaml
     environment:
-      APPRISE_NOTIFY_BODY_TEMPLATE: "{{.Emoji}} {{if .Target}}{{.Target}}/{{end}}{{.Stack}} — {{.Message}} ({{.Revision}})"
+      APPRISE_NOTIFY_BODY_TEMPLATE: "{{.Emoji}} {{if .Target}}{{.Target}}/{{end}}{{.Stack}} - {{.Message}} ({{.Revision}})"
     ```
 
-    renders e.g. `✅ prod-vm/app — Successfully deployed stack app (main (abc123))` for target `prod-vm`, or `✅ app — Successfully deployed stack app (main (abc123))` without a custom target.
+    renders e.g. `✅ prod-vm/app - Successfully deployed stack app (main (abc123))` for target `prod-vm`, or `✅ app - Successfully deployed stack app (main (abc123))` without a custom target.
 
 ### Commit changelog
 

@@ -52,7 +52,7 @@ services:
 
 The SSH key used must:
 
-- Be **passphrase-free** — Docker's SSH transport runs `ssh` non-interactively inside the container; a passphrase prompt will cause the connection to fail with `Permission denied`
+- Be **passphrase-free** because Docker's SSH transport runs `ssh` non-interactively inside the container; a passphrase prompt will cause the connection to fail with `Permission denied`
 - Have the corresponding **public key in `~/.ssh/authorized_keys`** on the remote host for the connecting user
 - Be a supported key type (Ed25519 recommended: `ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_doco-cd -N ""`)
 
@@ -114,8 +114,8 @@ services:
       - ~/.ssh:/root/.ssh:ro       # (2)!
 ```
 
-1. Docker context metadata and credentials — required for all non-default contexts
-2. SSH keys and `known_hosts` — required for SSH contexts only
+1. Docker context metadata and credentials, required for all non-default contexts
+2. SSH keys and `known_hosts`, required for SSH contexts only
 
 !!! warning "File permissions"
     The mounted `~/.docker` and `~/.ssh` directories (and all files within them) must be **readable by the user running inside the container** (root by default).
@@ -188,7 +188,7 @@ volumes:
   - /data/myapp:/app/data  # ← this path must exist on the remote host
 ```
 
-Named volumes work fine — they are created on the remote host automatically:
+Named volumes work fine because they are created on the remote host automatically:
 
 ```yaml
 volumes:
@@ -202,7 +202,7 @@ services:
 
 ### Configs and secrets with `file:` sources
 
-Docker Compose resolves `file:` references to absolute paths on the doco-cd host, then sends those paths to the remote daemon. The remote daemon tries to bind-mount them locally — and fails because the files don't exist there.
+Docker Compose resolves `file:` references to absolute paths on the doco-cd host, then sends those paths to the remote daemon. The remote daemon tries to bind-mount them locally and fails because the files don't exist there.
 
 ```yaml
 # ✗ Will fail on remote contexts because the remote daemon can't access this path
@@ -237,5 +237,5 @@ secrets:
 
 === "Docker Swarm"
 
-    Swarm secrets and configs are uploaded to the cluster and distributed automatically — they work correctly with remote contexts.
+    Swarm secrets and configs are uploaded to the cluster and distributed automatically, so they work correctly with remote contexts.
     See [Swarm Mode](Swarm-Mode.md) for details.

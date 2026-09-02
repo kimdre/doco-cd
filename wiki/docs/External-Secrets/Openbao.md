@@ -183,7 +183,7 @@ services:
 ```
 
 Enable `CERT_ROTATION_ENABLED=true` on the doco-cd instance, and the client certificate will be
-reissued and redeployed automatically before it expires — mTLS handshakes never fail due to an
+reissued and redeployed automatically before it expires, so mTLS handshakes never fail due to an
 expired client certificate.
 
 #### Private PKI

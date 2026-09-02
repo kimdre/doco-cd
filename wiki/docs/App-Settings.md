@@ -229,16 +229,16 @@ If you want to pull images from a private registry, see [Container Registry Auth
 
 `SOURCE_URL_REWRITES` (and `SOURCE_URL_REWRITES_FILE`) let you rewrite git source URLs before doco-cd clones them. Rules apply to both webhook- and poll-triggered deployments.
 
-This is useful when your Git provider advertises a public URL (in webhook payloads or poll configs) but doco-cd should clone through an internal network path instead — for example when your Forgejo instance is behind a reverse proxy with a public domain, but is reachable directly over a Docker network.
+This is useful when your Git provider advertises a public URL (in webhook payloads or poll configs) but doco-cd should clone through an internal network path instead, for example when your Forgejo instance is behind a reverse proxy with a public domain, but is reachable directly over a Docker network.
 
 Two match strategies are supported:
 
-- **URL/URI prefix** — e.g. `https://forgejo.example.com/` or `git@forgejo.example.com:`.
+- **URL/URI prefix**, e.g. `https://forgejo.example.com/` or `git@forgejo.example.com:`.
   The matched prefix in the source URL is replaced with the configured target, and the repository path is appended as-is.
     - HTTPS URLs should end with `/` to avoid partial host matches.
-    - SCP-style SSH URLs (e.g. `git@host:`) **must** end with `:` — it is the mandatory separator between host and repository path in SCP syntax (`user@host:path/repo.git`).
+    - SCP-style SSH URLs (e.g. `git@host:`) **must** end with `:` because it is the mandatory separator between host and repository path in SCP syntax (`user@host:path/repo.git`).
     - SCP syntax cannot express a port number. Use `ssh://` syntax when targeting a non-standard port (e.g. `"ssh://git@forgejo.internal:2222/"`).
-- **Host/domain** — e.g. `forgejo.example.com`. Only the host (and optional port) is replaced; scheme, credentials, and path are preserved.
+- **Host/domain**, e.g. `forgejo.example.com`. Only the host (and optional port) is replaced; scheme, credentials, and path are preserved.
 
 Rules are matched in order of specificity (longest key first).
 
