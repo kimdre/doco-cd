@@ -2895,12 +2895,12 @@ no longer repeats it under its own title. Logs and metrics are unchanged.</p>
 </tbody>
 </table>
 <h2 id="custom-notification-body">Custom notification body<a class="headerlink" href="#custom-notification-body" title="Permanent link">&para;</a></h2>
-<p>By default the notification body is the message followed by the <a data-preview="" href="#metadata-fields">metadata fields</a> as <code>key: value</code> lines. Set <code>APPRISE_NOTIFY_BODY_TEMPLATE</code> (or <code>APPRISE_NOTIFY_BODY_TEMPLATE_FILE</code>) to a <a href="https://pkg.go.dev/text/template">Go <code>text/template</code></a> to render the body yourself — useful to drop noisy fields, add a host label, or produce a one-liner when several stacks report into one channel.</p>
+<p>By default the notification body is the message followed by the <a data-preview="" href="#metadata-fields">metadata fields</a> as <code>key: value</code> lines. Set <code>APPRISE_NOTIFY_BODY_TEMPLATE</code> (or <code>APPRISE_NOTIFY_BODY_TEMPLATE_FILE</code>) to a <a href="https://pkg.go.dev/text/template">Go <code>text/template</code></a> to render the body yourself. This is useful to drop noisy fields, add a host label, or produce a one-liner when several stacks report into one channel.</p>
 <p>The template is validated at startup: a syntax error or a reference to an unknown field stops doco-cd from starting. The title (emoji + optional <code>[R]</code> marker + title text) is not affected by the template.</p>
 <div class="admonition warning">
 <p class="admonition-title">Don't swallow failure reasons</p>
-<p>The template replaces the default body for <strong>every</strong> notification level, and on <code>failure</code> the error text is only carried by <code>{{ .Message }}</code> — a template that never references it produces failure notifications with no failure reason at all (the title only says <code>Deployment failed</code>; the details then live only in the logs). On <code>success</code>, <code>.Message</code> is largely redundant with the title, so compact templates should include it guarded by level:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>{{ if ne .Level "success" }} — {{ .Message }}{{ end }}
+<p>The template replaces the default body for <strong>every</strong> notification level, and on <code>failure</code> the error text is only carried by <code>{{ .Message }}</code>. A template that never references it produces failure notifications with no failure reason at all (the title only says <code>Deployment failed</code>; the details then live only in the logs). On <code>success</code>, <code>.Message</code> is largely redundant with the title, so compact templates should include it guarded by level:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>{{ if ne .Level "success" }} - {{ .Message }}{{ end }}
 </span></code></pre></div>
 </div>
 <p>The following fields are available:</p>
@@ -2982,7 +2982,7 @@ no longer repeats it under its own title. Logs and metrics are unchanged.</p>
 </tr>
 <tr>
 <td><code>.Duration</code></td>
-<td>Time the deployment (or destroy) took, from job start to the notification, e.g. <code>12.483s</code>. Zero where no deployment ran (reconciliation restarts, scheduled jobs) — hide it with <code>{{if .Duration}}...{{end}}</code></td>
+<td>Time the deployment (or destroy) took, from job start to the notification, e.g. <code>12.483s</code>. Zero where no deployment ran (reconciliation restarts, scheduled jobs); hide it with <code>{{if .Duration}}...{{end}}</code></td>
 </tr>
 <tr>
 <td><code>.ChangedServices</code></td>
@@ -2994,9 +2994,9 @@ no longer repeats it under its own title. Logs and metrics are unchanged.</p>
 <div class="admonition example">
 <p class="admonition-title">One-line body</p>
 <div class="language-yaml highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">environment</span><span class="p">:</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">APPRISE_NOTIFY_BODY_TEMPLATE</span><span class="p">:</span><span class="w"> </span><span class="s">"{{.Emoji}}</span><span class="nv"> </span><span class="s">{{if</span><span class="nv"> </span><span class="s">.Target}}{{.Target}}/{{end}}{{.Stack}}</span><span class="nv"> </span><span class="s">—</span><span class="nv"> </span><span class="s">{{.Message}}</span><span class="nv"> </span><span class="s">({{.Revision}})"</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">APPRISE_NOTIFY_BODY_TEMPLATE</span><span class="p">:</span><span class="w"> </span><span class="s">"{{.Emoji}}</span><span class="nv"> </span><span class="s">{{if</span><span class="nv"> </span><span class="s">.Target}}{{.Target}}/{{end}}{{.Stack}}</span><span class="nv"> </span><span class="s">-</span><span class="nv"> </span><span class="s">{{.Message}}</span><span class="nv"> </span><span class="s">({{.Revision}})"</span>
 </span></code></pre></div>
-<p>renders e.g. <code>✅ prod-vm/app — Successfully deployed stack app (main (abc123))</code> for target <code>prod-vm</code>, or <code>✅ app — Successfully deployed stack app (main (abc123))</code> without a custom target.</p>
+<p>renders e.g. <code>✅ prod-vm/app - Successfully deployed stack app (main (abc123))</code> for target <code>prod-vm</code>, or <code>✅ app - Successfully deployed stack app (main (abc123))</code> without a custom target.</p>
 </div>
 <h3 id="commit-changelog">Commit changelog<a class="headerlink" href="#commit-changelog" title="Permanent link">&para;</a></h3>
 <p><code>.Commits</code> is the list of commits that got deployed since the previously deployed commit, newest first. It is only populated on successful deploy notifications of Git sources; on the first deploy, on failures and for OCI sources it stays empty (a <code>range</code> over it just renders nothing). Each entry has:</p>

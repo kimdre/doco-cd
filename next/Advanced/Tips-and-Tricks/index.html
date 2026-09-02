@@ -2643,7 +2643,7 @@
 <p>See the full <code>include</code> syntax documentation in the <a href="https://docs.docker.com/reference/compose-file/include">Docker Compose documentation</a>.</p>
 </div>
 <h3 id="resolving-env-and-other-relative-paths">Resolving <code>.env</code> and other relative paths<a class="headerlink" href="#resolving-env-and-other-relative-paths" title="Permanent link">&para;</a></h3>
-<p>When a remote compose file references relative paths — most commonly <code>env_file: .env</code> in a service definition — Docker Compose resolves those paths against the remote include's own directory inside doco-cd's internal cache, <strong>not</strong> against your deployment repository.</p>
+<p>When a remote compose file references relative paths, most commonly <code>env_file: .env</code> in a service definition, Docker Compose resolves those paths against the remote include's own directory inside doco-cd's internal cache, <strong>not</strong> against your deployment repository.</p>
 <p>This means a deployment like the following will fail with <em>"env file … not found"</em> even if <code>.env</code> exists in your repository:</p>
 <div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">include</span><span class="p">:</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://github.com/immich-app/immich.git#v3.0.3:docker/docker-compose.yml</span>

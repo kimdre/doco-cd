@@ -3122,7 +3122,7 @@ If dependent services should also be paused, include them explicitly in <code>cd
 <details class="note">
 <summary>Concurrency and shared targets</summary>
 <p>While services are held stopped, doco-cd locks the job's own stack <strong>and</strong> every stack referenced by <code>cd.doco.job.stop_services</code>, so a concurrent deployment or another scheduled run cannot race with the reconciliation of those stacks.</p>
-<p>If two scheduled jobs happen to list the same target service (e.g. two backup jobs sharing a cache), the target is only actually restarted once every job that stopped it has finished — it will not be brought back up prematurely while another job still needs it stopped.</p>
+<p>If two scheduled jobs happen to list the same target service (e.g. two backup jobs sharing a cache), the target is only actually restarted once every job that stopped it has finished. It will not be brought back up prematurely while another job still needs it stopped.</p>
 </details>
 <h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h2>
 <div class="tabbed-set tabbed-alternate" data-tabs="4:2"><input checked="checked" id="examples-prune-swarm-nodes" name="__tabbed_4" type="radio" /><input id="examples-backup" name="__tabbed_4" type="radio" /><div class="tabbed-labels"><label for="examples-prune-swarm-nodes">Prune swarm nodes</label><label for="examples-backup">Backup</label></div>

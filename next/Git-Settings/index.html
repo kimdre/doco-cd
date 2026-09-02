@@ -3351,12 +3351,14 @@ Doco-CD will auto-detect the installation by repository <em>owner/name</em> and 
 <h2 id="commit-status-reporting">Commit Status Reporting<a class="headerlink" href="#commit-status-reporting" title="Permanent link">&para;</a></h2>
 <p>Doco-CD can post a commit status back to the source Git provider after each deployment, making the result visible directly on the commit or pull request in the Git web UI.</p>
 <p>This closes the GitOps feedback loop: instead of only seeing success or failure in container logs or Apprise notifications, the commit itself is marked with the deployment outcome.</p>
-<p>Three states are reported:</p>
+<p>Once a webhook's deployment configuration is resolved, Doco-CD reports each deployment under its own context, such as <code>doco-cd/&lt;target&gt;/&lt;project&gt;</code>:</p>
 <ul>
-<li><strong>pending</strong> — set once after the repository is cloned and the deployment begins.</li>
-<li><strong>success</strong> — set when all deployment stages complete successfully.</li>
-<li><strong>failure</strong> — set when any stage fails after initialisation.</li>
+<li><strong>pending / Queued</strong>: the deployment is waiting to run.</li>
+<li><strong>pending / In Progress</strong>: the deployment has started.</li>
+<li><strong>success</strong>: set when all deployment stages complete successfully.</li>
+<li><strong>failure</strong>: set when any stage fails after initialization.</li>
 </ul>
+<p>Deployments excluded by a webhook reference filter or requiring no changes do not receive deployment-specific statuses. When the entire webhook run is skipped, Doco-CD posts one <strong>success / Skipped</strong> status under the generic <code>doco-cd/deploy</code> context. This context is also used for failures that happen before deployment configuration can be resolved.</p>
 <table>
 <thead>
 <tr>
@@ -3474,7 +3476,7 @@ Doco-CD will auto-detect the installation by repository <em>owner/name</em> and 
 <h3 id="self-hosted-instances-and-api-url">Self-Hosted Instances and API URL<a class="headerlink" href="#self-hosted-instances-and-api-url" title="Permanent link">&para;</a></h3>
 <p>Doco-CD derives the SCM API base URL from the clone URL by converting its scheme to <code>https://</code>. This works correctly for most setups, but two scenarios require an explicit override via <code>GIT_SCM_API_URL</code>:</p>
 <p><strong>SSH clone URL with a non-standard SSH port</strong></p>
-<p>When the clone URL is an SSH URL with a custom port (e.g. <code>ssh://git@gitea.example.com:2222/org/repo.git</code>), doco-cd strips the port before building the API URL — so the API call targets <code>https://gitea.example.com/...</code> correctly. If for any reason this stripping doesn't produce the right host or port (e.g. the HTTPS endpoint is on a non-standard port), set the API base URL explicitly:</p>
+<p>When the clone URL is an SSH URL with a custom port (e.g. <code>ssh://git@gitea.example.com:2222/org/repo.git</code>), doco-cd strips the port before building the API URL so the API call targets <code>https://gitea.example.com/...</code> correctly. If for any reason this stripping doesn't produce the right host or port (e.g. the HTTPS endpoint is on a non-standard port), set the API base URL explicitly:</p>
 <div class="language-yaml highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">GIT_SCM_API_URL</span><span class="p">:</span><span class="w"> </span><span class="s">"https://gitea.example.com:8443"</span>
 </span></code></pre></div>
 <p><strong>SSH and HTTPS served from different hostnames or ports</strong></p>

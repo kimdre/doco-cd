@@ -2936,7 +2936,7 @@ Doco-CD automatically detects whether the Docker daemon is running in Swarm mode
 <h2 id="deployment-triggers">Deployment Triggers<a class="headerlink" href="#deployment-triggers" title="Permanent link">&para;</a></h2>
 <h3 id="webhook">Webhook<a class="headerlink" href="#webhook" title="Permanent link">&para;</a></h3>
 <p>An event-based HTTP notification sent by your Git provider (GitHub, GitLab, Gitea, etc.) to Doco-CD whenever a commit is pushed.
-Webhooks are the recommended trigger method — they are fast and efficient, but require Doco-CD to be reachable from the internet or local network.</p>
+Webhooks are the recommended trigger method. They are fast and efficient, but require Doco-CD to be reachable from the internet or local network.</p>
 <p>Enabled by setting the <code>WEBHOOK_SECRET</code> environment variable. See <a data-preview="" href="../Setup-Webhook/">Setup Webhook</a> and <a data-preview="" href="../Endpoints/Webhook-Listener/">Webhook Listener</a> for details.</p>
 <h3 id="polling">Polling<a class="headerlink" href="#polling" title="Permanent link">&para;</a></h3>
 <p>A time-based trigger that checks one or more Git repositories for new commits at a configurable interval.

@@ -3292,17 +3292,17 @@ You can still use <a href="https://docs.docker.com/compose/how-tos/use-secrets/"
 <p>If you want to pull images from a private registry, see <a data-preview="" href="../Advanced/Container-Registry-Authentication/">Container Registry Authentication</a> in the wiki.</p>
 <h2 id="source-url-rewrites">Source URL Rewrites<a class="headerlink" href="#source-url-rewrites" title="Permanent link">&para;</a></h2>
 <p><code>SOURCE_URL_REWRITES</code> (and <code>SOURCE_URL_REWRITES_FILE</code>) let you rewrite git source URLs before doco-cd clones them. Rules apply to both webhook- and poll-triggered deployments.</p>
-<p>This is useful when your Git provider advertises a public URL (in webhook payloads or poll configs) but doco-cd should clone through an internal network path instead — for example when your Forgejo instance is behind a reverse proxy with a public domain, but is reachable directly over a Docker network.</p>
+<p>This is useful when your Git provider advertises a public URL (in webhook payloads or poll configs) but doco-cd should clone through an internal network path instead, for example when your Forgejo instance is behind a reverse proxy with a public domain, but is reachable directly over a Docker network.</p>
 <p>Two match strategies are supported:</p>
 <ul>
-<li><strong>URL/URI prefix</strong> — e.g. <code>https://forgejo.example.com/</code> or <code>git@forgejo.example.com:</code>.
+<li><strong>URL/URI prefix</strong>, e.g. <code>https://forgejo.example.com/</code> or <code>git@forgejo.example.com:</code>.
   The matched prefix in the source URL is replaced with the configured target, and the repository path is appended as-is.<ul>
 <li>HTTPS URLs should end with <code>/</code> to avoid partial host matches.</li>
-<li>SCP-style SSH URLs (e.g. <code>git@host:</code>) <strong>must</strong> end with <code>:</code> — it is the mandatory separator between host and repository path in SCP syntax (<code>user@host:path/repo.git</code>).</li>
+<li>SCP-style SSH URLs (e.g. <code>git@host:</code>) <strong>must</strong> end with <code>:</code> because it is the mandatory separator between host and repository path in SCP syntax (<code>user@host:path/repo.git</code>).</li>
 <li>SCP syntax cannot express a port number. Use <code>ssh://</code> syntax when targeting a non-standard port (e.g. <code>"ssh://git@forgejo.internal:2222/"</code>).</li>
 </ul>
 </li>
-<li><strong>Host/domain</strong> — e.g. <code>forgejo.example.com</code>. Only the host (and optional port) is replaced; scheme, credentials, and path are preserved.</li>
+<li><strong>Host/domain</strong>, e.g. <code>forgejo.example.com</code>. Only the host (and optional port) is replaced; scheme, credentials, and path are preserved.</li>
 </ul>
 <p>Rules are matched in order of specificity (longest key first).</p>
 <div class="admonition example">

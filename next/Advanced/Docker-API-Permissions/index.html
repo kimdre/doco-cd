@@ -3136,7 +3136,7 @@ which maps Docker API resources to environment variables.</p>
 <div class="admonition info">
 <p class="admonition-title">Other proxies use different variable names</p>
 <p>Environment variable names differ between socket proxy implementations.
-The <strong>Docker API endpoint tables above are the source of truth</strong> — map them to whatever
+The <strong>Docker API endpoint tables above are the source of truth</strong>. Map them to whatever
 your proxy of choice expects.</p>
 </div>
 <div class="language-yaml highlight"><span class="filename">docker-compose.yml</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">services</span><span class="p">:</span>
@@ -3198,7 +3198,7 @@ your proxy of choice expects.</p>
 <li>Needed to wait for Swarm services to converge. Without it every Swarm deployment fails with <code>403 Forbidden</code>.</li>
 <li>Required for recreating containers, rotating configs/secrets and <code>remove_orphans</code>. Set to <code>0</code> only if you accept that redeployments will fail.</li>
 <li>Point doco-cd at the proxy instead of mounting the socket. See <a data-preview="" href="../../Docker-Settings/">Docker Settings</a>.</li>
-<li>The Docker socket is no longer mounted here — only the data volume remains.</li>
+<li>The Docker socket is no longer mounted here; only the data volume remains.</li>
 </ol>
 <h3 id="minimal-standalone-compose-only-configuration">Minimal standalone (Compose only) configuration<a class="headerlink" href="#minimal-standalone-compose-only-configuration" title="Permanent link">&para;</a></h3>
 <p>If you do not use Docker Swarm, drop the Swarm resources:</p>
