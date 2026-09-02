@@ -16,16 +16,24 @@ import (
 	containerTypes "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
+	"github.com/kimdre/doco-cd/internal/source/oci"
 )
 
 var (
 	ErrComposeScheduledMetadataUnavailable = errors.New("compose scheduled-job metadata unavailable")
 	ErrComposeScheduledServiceReplicated   = errors.New("standalone scheduled compose service must have exactly one replica")
+	// ErrComposeScheduledSourceUnavailable reports that a deployment's Git checkout or extracted
+	// OCI artifact is not (yet) present under the data mount, so its deploy config cannot be
+	// reloaded. It is transient right after startup, before the first poll has fetched the
+	// source, which is why callers that run on a timer treat it as "retry later" rather than as a
+	// deployment failure.
+	ErrComposeScheduledSourceUnavailable = errors.New("deployment source not available on disk")
 )
 
 type composeScheduledServiceRef struct {
@@ -34,6 +42,7 @@ type composeScheduledServiceRef struct {
 	WorkingDir     string
 	ConfigFiles    []string
 	RepositoryURL  string
+	SourceType     string
 	DeploymentName string
 	ConfigTarget   string
 	Reference      string
@@ -342,6 +351,7 @@ func composeScheduledServiceRefFromLabels(labels map[string]string) (composeSche
 		WorkingDir:     strings.TrimSpace(labels[api.WorkingDirLabel]),
 		ConfigFiles:    splitCommaSeparatedLabelValues(labels[api.ConfigFilesLabel]),
 		RepositoryURL:  repositoryURL,
+		SourceType:     strings.TrimSpace(labels[DocoCDLabels.Source.Type]),
 		DeploymentName: strings.TrimSpace(labels[DocoCDLabels.Deployment.Name]),
 		ConfigTarget:   strings.TrimSpace(labels[DocoCDLabels.Deployment.ConfigTarget]),
 		Reference:      strings.TrimSpace(labels[DocoCDLabels.Deployment.TargetRef]),
@@ -379,6 +389,7 @@ func composeScheduledServiceRefFromSwarmLabels(labels map[string]string) (compos
 		Project:        project,
 		WorkingDir:     strings.TrimSpace(labels[DocoCDLabels.Deployment.WorkingDir]),
 		RepositoryURL:  repositoryURL,
+		SourceType:     strings.TrimSpace(labels[DocoCDLabels.Source.Type]),
 		DeploymentName: project,
 		ConfigTarget:   strings.TrimSpace(labels[DocoCDLabels.Deployment.ConfigTarget]),
 		Reference:      strings.TrimSpace(labels[DocoCDLabels.Deployment.TargetRef]),
@@ -401,12 +412,17 @@ func loadComposeScheduledDeployConfig(
 
 	dataMountPath := opts.ComposeLoad.DataMountPath
 
-	sourceRepoPath, err := filesystem.VerifyAndSanitizePath(
-		filepath.Join(dataMountPath, git.GetRepoName(ref.RepositoryURL)),
-		dataMountPath,
-	)
+	sourceRepoPath, _, err := resolveScheduledSourceRepo(ref, dataMountPath)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve source repository path for scheduled service %s/%s: %w", ref.Project, ref.Service, err)
+	}
+
+	// deploy.GetConfigs would fail with a bare ENOENT here. Report the missing source as its own
+	// error instead so a deployment whose source has not been fetched yet is distinguishable from
+	// one whose config is genuinely broken.
+	if !filesystem.IsDir(sourceRepoPath) {
+		return nil, "", fmt.Errorf("%w: %s for scheduled service %s/%s",
+			ErrComposeScheduledSourceUnavailable, sourceRepoPath, ref.Project, ref.Service)
 	}
 
 	repoPath, err := resolveScheduledComposeRepoRoot(ref.WorkingDir, dataMountPath, sourceRepoPath)
@@ -437,6 +453,59 @@ func loadComposeScheduledDeployConfig(
 	}
 
 	return deployConfig, repoPath, nil
+}
+
+// resolveScheduledSourceRepo returns the directory under dataMountPath that holds the
+// checked-out Git repository or the extracted OCI artifact for ref, mirroring how
+// source.Prepare names it at deploy time: git.GetRepoName for Git sources,
+// oci.RepositoryNameFromArtifact for OCI artifacts.
+//
+// The DocoCDLabels.Source.Type label picks the scheme, but it cannot be trusted on its own:
+// deployments created before that label existed, or relabeled by a redeploy path that never knew
+// the source type, carry "git" even though their source URL is an OCI artifact reference. The two
+// schemes only differ in the ":<tag>" suffix, which git.GetRepoName keeps and
+// VerifyAndSanitizePath then rewrites to "_<tag>", so a mislabeled OCI deployment always resolves
+// to a directory that was never created on disk. When the labeled scheme's directory is absent but
+// the other one exists, use that instead so such deployments still reload. The source type that
+// actually resolved is returned alongside the path so callers that relabel the redeployed
+// services (see certRotationPayload) write the corrected value back instead of persisting the
+// stale one.
+func resolveScheduledSourceRepo(ref composeScheduledServiceRef, dataMountPath string) (string, config.SourceType, error) {
+	labeled := config.NormalizeSourceType(config.SourceType(ref.SourceType))
+
+	other := config.SourceTypeGit
+	if labeled == config.SourceTypeGit {
+		other = config.SourceTypeOCI
+	}
+
+	preferred := scheduledSourceRepoName(ref.RepositoryURL, labeled)
+	alternative := scheduledSourceRepoName(ref.RepositoryURL, other)
+
+	preferredPath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPath, preferred), dataMountPath)
+	if err != nil {
+		return "", labeled, err
+	}
+
+	if preferred == alternative || filesystem.IsDir(preferredPath) {
+		return preferredPath, labeled, nil
+	}
+
+	alternativePath, err := filesystem.VerifyAndSanitizePath(filepath.Join(dataMountPath, alternative), dataMountPath)
+	if err == nil && filesystem.IsDir(alternativePath) {
+		return alternativePath, other, nil
+	}
+
+	return preferredPath, labeled, nil
+}
+
+// scheduledSourceRepoName names the data-mount-relative directory that sourceType's fetcher
+// extracts repositoryURL into, mirroring source.Prepare.
+func scheduledSourceRepoName(repositoryURL string, sourceType config.SourceType) string {
+	if sourceType == config.SourceTypeOCI {
+		return oci.RepositoryNameFromArtifact(repositoryURL)
+	}
+
+	return git.GetRepoName(repositoryURL)
 }
 
 // findComposeScheduledDeployConfig selects the deploy config matching the
