@@ -9,10 +9,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 	"github.com/kimdre/doco-cd/internal/filesystem"
+	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/lock"
+	"github.com/kimdre/doco-cd/internal/source/oci"
 	"github.com/kimdre/doco-cd/internal/test"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
@@ -554,5 +557,172 @@ external_secrets:
 
 	if gotCert != certPEM {
 		t.Errorf("expected service environment to carry the freshly issued certificate, got %q", gotCert)
+	}
+}
+
+// TestResolvedSourceType covers the source type a rotation writes back into the redeployed
+// services' labels. The labeled type is only a hint: it is wrong for every deployment created
+// before the source type label existed, so the on-disk layout decides and the label is used only
+// when neither directory is there to look at.
+func TestResolvedSourceType(t *testing.T) {
+	t.Parallel()
+
+	const (
+		artifactRef   = "ghcr.io/kimdre/doco-cd_tests:compose-oci"
+		repositoryURL = "https://example.com/owner/repo"
+	)
+
+	testCases := []struct {
+		name        string
+		sourceType  string
+		repoURL     string
+		existingDir func(dataMountPath string) string
+		want        config.SourceType
+	}{
+		{
+			name:       "oci label with the extracted artifact directory present",
+			sourceType: "oci",
+			repoURL:    artifactRef,
+			existingDir: func(dataMountPath string) string {
+				return filepath.Join(dataMountPath, oci.RepositoryNameFromArtifact(artifactRef))
+			},
+			want: config.SourceTypeOCI,
+		},
+		{
+			name:       "stale git label on an oci artifact resolves to oci",
+			sourceType: "git",
+			repoURL:    artifactRef,
+			existingDir: func(dataMountPath string) string {
+				return filepath.Join(dataMountPath, oci.RepositoryNameFromArtifact(artifactRef))
+			},
+			want: config.SourceTypeOCI,
+		},
+		{
+			name:       "git label with the checkout present stays git",
+			sourceType: "git",
+			repoURL:    repositoryURL,
+			existingDir: func(dataMountPath string) string {
+				return filepath.Join(dataMountPath, git.GetRepoName(repositoryURL))
+			},
+			want: config.SourceTypeGit,
+		},
+		{
+			name:       "no directory on disk keeps the labeled type",
+			sourceType: "oci",
+			repoURL:    artifactRef,
+			want:       config.SourceTypeOCI,
+		},
+		{
+			name:       "missing label defaults to git",
+			sourceType: "",
+			repoURL:    repositoryURL,
+			want:       config.SourceTypeGit,
+		},
+		{
+			// A repository URL that escapes the data mount makes both candidate paths
+			// unusable, so there is nothing on disk left to check and the labeled type
+			// (normalized) is all that remains.
+			name:       "unresolvable path falls back to the normalized label",
+			sourceType: "OCI",
+			repoURL:    "../../escape",
+			want:       config.SourceTypeOCI,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dataMountPath := t.TempDir()
+
+			if tc.existingDir != nil {
+				if err := os.MkdirAll(tc.existingDir(dataMountPath), 0o755); err != nil {
+					t.Fatalf("mkdir repo dir: %v", err)
+				}
+			}
+
+			ref := composeScheduledServiceRef{
+				Project:        "compose-oci",
+				RepositoryURL:  tc.repoURL,
+				SourceType:     tc.sourceType,
+				DeploymentName: "compose-oci",
+			}
+
+			opts := ScheduledComposeOptions{ComposeLoad: ComposeLoadOptions{DataMountPath: dataMountPath}}
+
+			if got := resolvedSourceType(ref, opts); got != tc.want {
+				t.Fatalf("expected source type %q, got %q", tc.want, got)
+			}
+		})
+	}
+}
+
+// TestCertRotationPayload proves that a rotation stamps the resolved source type into the
+// payload instead of the hardcoded "git" it used to write. Rotation redeploys relabel the
+// certificate-consuming services, so a wrong value here is what leaves a project whose services
+// disagree about their own source in the first place.
+func TestCertRotationPayload(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name        string
+		sourceType  config.SourceType
+		labeledType string
+		want        webhook.PayloadSource
+	}{
+		{
+			name:        "resolved oci type overrides a stale git label",
+			sourceType:  config.SourceTypeOCI,
+			labeledType: "git",
+			want:        webhook.PayloadSourceOCI,
+		},
+		{
+			name:        "resolved git type is preserved",
+			sourceType:  config.SourceTypeGit,
+			labeledType: "git",
+			want:        webhook.PayloadSourceGit,
+		},
+		{
+			name:        "empty resolved type falls back to the existing label",
+			sourceType:  "",
+			labeledType: "oci",
+			want:        webhook.PayloadSourceOCI,
+		},
+		{
+			name:        "neither known defaults to git",
+			sourceType:  "",
+			labeledType: "",
+			want:        webhook.PayloadSourceGit,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			labels := map[string]string{
+				DocoCDLabels.Source.Type: tc.labeledType,
+				DocoCDLabels.Source.Name: "  owner/repo  ",
+				DocoCDLabels.Source.URL:  "  https://example.com/owner/repo  ",
+			}
+
+			payload := certRotationPayload(labels, tc.sourceType)
+
+			if payload.Source != tc.want {
+				t.Errorf("expected payload source %q, got %q", tc.want, payload.Source)
+			}
+
+			if payload.Trigger != certRotationTrigger {
+				t.Errorf("expected trigger %q, got %q", certRotationTrigger, payload.Trigger)
+			}
+
+			if payload.FullName != "owner/repo" {
+				t.Errorf("expected trimmed full name, got %q", payload.FullName)
+			}
+
+			if payload.WebURL != "https://example.com/owner/repo" {
+				t.Errorf("expected trimmed web url, got %q", payload.WebURL)
+			}
+		})
 	}
 }
