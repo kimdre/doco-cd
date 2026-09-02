@@ -273,8 +273,6 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 		return stages.ErrWebhookFilterMismatch
 	}
 
-	stageMgr.PostQueuedCommitStatus(ctx)
-
 	if m.limiter != nil {
 		deployLog.Debug("queuing deployment")
 

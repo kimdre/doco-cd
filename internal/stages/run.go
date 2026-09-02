@@ -125,11 +125,6 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 			// Skip outcomes propagate without failure reporting so callers can
 			// distinguish an intentional no-op from a successful deployment.
 			if errors.Is(err, ErrSkipDeployment) {
-				if !errors.Is(err, ErrWebhookFilterMismatch) &&
-					shouldPostWebhookCommitStatus(s.JobTrigger, s.DeployConfig.Destroy.Enabled) {
-					s.PostCommitStatus(ctx, commitstatus.StateSuccess, "No changes")
-				}
-
 				return err
 			}
 
@@ -156,8 +151,9 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 			startedNotified = true
 		}
 
-		// Post "pending" once the repository/commit has been resolved.
+		// Post pending statuses only after pre-deploy confirms work is required.
 		if shouldPostPendingCommitStatus(stageName, s.DeployConfig.Destroy.Enabled, pendingPosted) {
+			s.PostQueuedCommitStatus(ctx)
 			s.PostCommitStatus(ctx, commitstatus.StatePending, "In Progress")
 
 			pendingPosted = true
@@ -174,8 +170,8 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 	return nil
 }
 
-// PostQueuedCommitStatus reports that a resolved webhook deployment is waiting
-// to run. Poll and destroy operations do not publish queued statuses.
+// PostQueuedCommitStatus reports a resolved webhook deployment that requires
+// work. Poll and destroy operations do not publish queued statuses.
 func (s *StageManager) PostQueuedCommitStatus(ctx context.Context) {
 	if shouldPostWebhookCommitStatus(s.JobTrigger, s.DeployConfig.Destroy.Enabled) {
 		s.PostCommitStatus(ctx, commitstatus.StatePending, "Queued")

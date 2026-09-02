@@ -161,10 +161,9 @@ Once a webhook's deployment configuration is resolved, Doco-CD reports each depl
 - **pending / Queued**: the deployment is waiting to run.
 - **pending / In Progress**: the deployment has started.
 - **success**: set when all deployment stages complete successfully.
-- **success / No changes**: set when a queued deployment does not require changes.
 - **failure**: set when any stage fails after initialization.
 
-Deployments excluded by a webhook reference filter do not receive deployment-specific statuses. When the entire webhook run is skipped, Doco-CD posts one **success / Skipped** status under the generic `doco-cd/deploy` context. This context is also used for failures that happen before deployment configuration can be resolved.
+Deployments excluded by a webhook reference filter or requiring no changes do not receive deployment-specific statuses. When the entire webhook run is skipped, Doco-CD posts one **success / Skipped** status under the generic `doco-cd/deploy` context. This context is also used for failures that happen before deployment configuration can be resolved.
 
 | Key                 | Type    | Description                                                                                                                                                                                                                                                                                                                                                                                                                                           | Default |
 |---------------------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
