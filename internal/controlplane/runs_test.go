@@ -280,6 +280,87 @@ func TestControlPlaneRunsConcurrentAsynchronousRuns(t *testing.T) {
 	}
 }
 
+func TestControlPlaneRunsCallsOnQueuedBeforeAsynchronousRun(t *testing.T) {
+	t.Parallel()
+
+	runs := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{})
+	jobID := runs.Accept("queued-hook", deploymentRunTriggerWebhook, RunMetadata{})
+	queuedStarted := make(chan struct{})
+	releaseQueued := make(chan struct{})
+	queued := make(chan struct{})
+	started := make(chan struct{})
+
+	if err := runs.Execute(t.Context(), jobID, RunExecution{
+		Mode:         RunAsynchronous,
+		PanicContext: "test run",
+		PanicError:   errors.New("test run panicked"),
+		OnQueued: func(context.Context) {
+			close(queuedStarted)
+			<-releaseQueued
+			close(queued)
+		},
+	}, func(context.Context) (RunResult, error) {
+		select {
+		case <-queued:
+		default:
+			t.Error("asynchronous run started before OnQueued completed")
+		}
+
+		close(started)
+
+		return SucceededRun("done"), nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-queuedStarted:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for OnQueued")
+	}
+
+	select {
+	case <-started:
+		t.Fatal("asynchronous run started before OnQueued completed")
+	default:
+	}
+
+	close(releaseQueued)
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for asynchronous run")
+	}
+
+	runs.CloseAndWait()
+}
+
+func TestControlPlaneRunsDoesNotCallOnQueuedForSynchronousRun(t *testing.T) {
+	t.Parallel()
+
+	runs := newTestControlPlaneRuns(t, testControlPlaneRunsOptions{})
+	jobID := runs.Accept("sync-hook", deploymentRunTriggerWebhook, RunMetadata{})
+	queued := false
+
+	if err := runs.Execute(t.Context(), jobID, RunExecution{
+		Mode:         RunSynchronous,
+		PanicContext: "test run",
+		PanicError:   errors.New("test run panicked"),
+		OnQueued: func(context.Context) {
+			queued = true
+		},
+	}, func(context.Context) (RunResult, error) {
+		return SucceededRun("done"), nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if queued {
+		t.Fatal("OnQueued called for synchronous run")
+	}
+}
+
 func TestControlPlaneRunsConvertsPanic(t *testing.T) {
 	t.Parallel()
 
@@ -491,11 +572,15 @@ func TestControlPlaneRunsRejectsAfterShutdownBegins(t *testing.T) {
 	runs.CloseAndWait()
 
 	jobID := runs.Accept("rejected", deploymentRunTriggerPoll, RunMetadata{})
+	queued := false
 
 	err := runs.Execute(t.Context(), jobID, RunExecution{
 		Mode:         RunAsynchronous,
 		PanicContext: "test run",
 		PanicError:   errors.New("test run panicked"),
+		OnQueued: func(context.Context) {
+			queued = true
+		},
 	}, func(context.Context) (RunResult, error) {
 		t.Fatal("run started during shutdown")
 
@@ -503,6 +588,10 @@ func TestControlPlaneRunsRejectsAfterShutdownBegins(t *testing.T) {
 	})
 	if !errors.Is(err, ErrBackgroundWorkClosed) {
 		t.Fatalf("error = %v, want %v", err, ErrBackgroundWorkClosed)
+	}
+
+	if queued {
+		t.Fatal("OnQueued called after admission was rejected")
 	}
 
 	run, ok := runs.Get(jobID)

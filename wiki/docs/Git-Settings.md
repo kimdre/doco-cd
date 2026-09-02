@@ -156,9 +156,15 @@ Doco-CD can post a commit status back to the source Git provider after each depl
 
 This closes the GitOps feedback loop: instead of only seeing success or failure in container logs or Apprise notifications, the commit itself is marked with the deployment outcome.
 
-Three states are reported:
+For asynchronous webhooks, Doco-CD immediately creates an aggregate `doco-cd/deploy` status after the event is admitted to the queue. Its lifecycle is:
 
-- **pending** — set once after the repository is cloned and the deployment begins.
+- **pending / Queued** — the webhook event was accepted and is waiting to run.
+- **pending / In Progress** — processing started after the repository deployment lock was acquired.
+- **success**, **failure**, or **error** — processing reached its final outcome. Intentionally skipped events complete the aggregate status successfully with the description `Skipped`.
+
+Synchronous webhooks (`wait=true`) start with `In Progress` because they are not queued. Doco-CD also keeps reporting stack-specific statuses once repository configuration is available:
+
+- **pending** — set once after the repository is cloned and the stack deployment begins.
 - **success** — set when all deployment stages complete successfully.
 - **failure** — set when any stage fails after initialisation.
 

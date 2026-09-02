@@ -13,6 +13,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/common/id"
 
+	"github.com/kimdre/doco-cd/internal/commitstatus"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
@@ -240,6 +241,71 @@ func repositoryNameFromWebhookPayload(payload webhook.ParsedPayload) string {
 	}
 
 	return "unknown"
+}
+
+type webhookCommitStatusReporter struct {
+	appConfig *app.Config
+	log       *slog.Logger
+	payload   webhook.ParsedPayload
+}
+
+func (r webhookCommitStatusReporter) Post(ctx context.Context, state commitstatus.State, description string) {
+	if r.appConfig == nil {
+		return
+	}
+
+	sourceURL, _ := resolveWebhookGitCloneURL(r.payload, r.appConfig)
+	if sourceURL == "" {
+		sourceURL = r.payload.WebURL
+	}
+
+	req, ok := commitstatus.ResolveRequest(r.log, commitstatus.RequestParams{
+		Enabled:          r.appConfig.GitCommitStatus,
+		SourceIsGit:      r.payload.Source == webhook.PayloadSourceGit,
+		SourceURL:        sourceURL,
+		CommitSHA:        r.payload.CommitSHAString(),
+		PayloadWebURL:    r.payload.WebURL,
+		PayloadFullName:  r.payload.FullName,
+		ProviderOverride: r.appConfig.GitScmProvider,
+		APIBaseURL:       string(r.appConfig.GitScmApiUrl),
+		AccessToken:      r.appConfig.GitAccessToken,
+		ContextName:      commitstatus.DeployContext,
+	})
+	if !ok {
+		return
+	}
+
+	r.log.Debug("posting aggregate webhook commit status",
+		slog.String("provider", string(req.Provider)),
+		slog.String("repository", req.RepoFullName),
+		slog.String("commit_sha", req.CommitSHA),
+		slog.String("context", req.Context),
+		slog.String("state", string(state)),
+		slog.String("description", description),
+	)
+
+	if err := req.Post(ctx, commitstatus.Status{State: state, Description: description}); err != nil {
+		r.log.Warn("failed to post aggregate webhook commit status", slog.String("error", err.Error()))
+	}
+}
+
+func aggregateWebhookCommitStatus(result controlplane.RunResult, err error) (commitstatus.State, string) {
+	if err != nil {
+		return commitstatus.StateError, commitstatus.FailureDescription(err)
+	}
+
+	switch result.Status {
+	case controlplane.RunStatusFailed:
+		if strings.TrimSpace(result.Message) == "" {
+			return commitstatus.StateFailure, "Failed"
+		}
+
+		return commitstatus.StateFailure, commitstatus.FailureDescription(errors.New(result.Message))
+	case controlplane.RunStatusSkipped:
+		return commitstatus.StateSuccess, "Skipped"
+	default:
+		return commitstatus.StateSuccess, "Successful"
+	}
 }
 
 type orchestrationHandler struct {
@@ -556,6 +622,12 @@ func (h *orchestrationHandler) WebhookHandler(w http.ResponseWriter, r *http.Req
 		Revision:   metadata.Revision,
 	})
 
+	statusReporter := webhookCommitStatusReporter{
+		appConfig: h.appConfig,
+		log:       jobLog,
+		payload:   payload,
+	}
+
 	lockEntity := "repository"
 	lockLogValue := metadata.Repository
 
@@ -567,7 +639,17 @@ func (h *orchestrationHandler) WebhookHandler(w http.ResponseWriter, r *http.Req
 	// Prevent concurrent deployments for the same repository using a lock
 	repoLock := lock.GetRepoLock(metadata.Repository)
 
-	handleFn := func(ctx context.Context, w http.ResponseWriter) (controlplane.RunResult, error) {
+	handleFn := func(ctx context.Context, w http.ResponseWriter) (result controlplane.RunResult, handleErr error) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				statusReporter.Post(ctx, commitstatus.StateError, "Deployment panicked")
+				panic(recovered)
+			}
+
+			state, description := aggregateWebhookCommitStatus(result, handleErr)
+			statusReporter.Post(ctx, state, description)
+		}()
+
 		if !acquireWebhookRepoLock(ctx, repoLock, jobID, func() {
 			jobLog.Info("waiting for webhook "+lockEntity+" lock", slog.String(lockEntity, lockLogValue))
 		}) {
@@ -575,6 +657,8 @@ func (h *orchestrationHandler) WebhookHandler(w http.ResponseWriter, r *http.Req
 		}
 
 		defer repoLock.Unlock()
+
+		statusReporter.Post(ctx, commitstatus.StatePending, "In Progress")
 
 		return handleEvent(ctx, jobLog, w, h.appConfig, payload, customTarget, metadata, h.testName, h.deployment, h.notifier)
 	}
@@ -584,11 +668,18 @@ func (h *orchestrationHandler) WebhookHandler(w http.ResponseWriter, r *http.Req
 		mode = controlplane.RunSynchronousDetached
 	}
 
-	err = h.controlPlaneRuns.Execute(r.Context(), jobID, controlplane.RunExecution{
+	execution := controlplane.RunExecution{
 		Mode:         mode,
 		PanicContext: "webhook deployment",
 		PanicError:   errWebhookDeploymentPanicked,
-	}, func(ctx context.Context) (controlplane.RunResult, error) {
+	}
+	if !wait {
+		execution.OnQueued = func(ctx context.Context) {
+			statusReporter.Post(ctx, commitstatus.StatePending, "Queued")
+		}
+	}
+
+	err = h.controlPlaneRuns.Execute(r.Context(), jobID, execution, func(ctx context.Context) (controlplane.RunResult, error) {
 		if wait {
 			return handleFn(ctx, w)
 		}
