@@ -47,8 +47,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 	if s.JobTrigger == JobTriggerWebhook {
 		// Skip deployment if the webhook event does not match the filter
 		if s.DeployConfig.WebhookEventFilter != "" {
-			filter := regexp.MustCompile(s.DeployConfig.WebhookEventFilter)
-			if !filter.MatchString(s.Payload.Ref) {
+			if !s.MatchesWebhookEventFilter() {
 				stageLog.Debug("reference does not match the webhook event filter, skipping deployment",
 					slog.String("webhook_filter", s.DeployConfig.WebhookEventFilter), slog.String("ref", s.Payload.Ref))
 
@@ -271,4 +270,14 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 	}
 
 	return nil
+}
+
+// MatchesWebhookEventFilter reports whether this run should proceed based on
+// its trigger, configured webhook filter, and payload reference.
+func (s *StageManager) MatchesWebhookEventFilter() bool {
+	if s.JobTrigger != JobTriggerWebhook || s.DeployConfig.WebhookEventFilter == "" {
+		return true
+	}
+
+	return s.Payload != nil && regexp.MustCompile(s.DeployConfig.WebhookEventFilter).MatchString(s.Payload.Ref)
 }

@@ -125,8 +125,9 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 			// Skip outcomes propagate without failure reporting so callers can
 			// distinguish an intentional no-op from a successful deployment.
 			if errors.Is(err, ErrSkipDeployment) {
-				if shouldPostWebhookCommitStatus(s.JobTrigger, s.DeployConfig.Destroy.Enabled) {
-					s.PostCommitStatus(ctx, commitstatus.StateSuccess, "Skipped")
+				if !errors.Is(err, ErrWebhookFilterMismatch) &&
+					shouldPostWebhookCommitStatus(s.JobTrigger, s.DeployConfig.Destroy.Enabled) {
+					s.PostCommitStatus(ctx, commitstatus.StateSuccess, "No changes")
 				}
 
 				return err
