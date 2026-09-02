@@ -234,7 +234,7 @@ Behavior:
 ??? note "Concurrency and shared targets"
     While services are held stopped, doco-cd locks the job's own stack **and** every stack referenced by `cd.doco.job.stop_services`, so a concurrent deployment or another scheduled run cannot race with the reconciliation of those stacks.
 
-    If two scheduled jobs happen to list the same target service (e.g. two backup jobs sharing a cache), the target is only actually restarted once every job that stopped it has finished — it will not be brought back up prematurely while another job still needs it stopped.
+    If two scheduled jobs happen to list the same target service (e.g. two backup jobs sharing a cache), the target is only actually restarted once every job that stopped it has finished. It will not be brought back up prematurely while another job still needs it stopped.
 
 ## Examples
 

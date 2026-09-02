@@ -423,6 +423,37 @@ func TestDeploy_PreservesErrWebhookFilterMismatchIdentity(t *testing.T) {
 	}
 }
 
+func TestDeploy_PreservesWebhookSkipIdentity(t *testing.T) {
+	t.Parallel()
+
+	preparer := &fakeSourcePreparer{result: source.Result{DeployConfigs: []*deploy.Config{{Name: "stack"}}}}
+	reconciler := &fakeReconciler{err: stages.ErrSkipDeployment}
+	d := newTestDeployment(t, preparer, reconciler)
+
+	err := d.Deploy(t.Context(), validDeploymentRequest())
+	if !errors.Is(err, stages.ErrSkipDeployment) {
+		t.Fatalf("expected ErrSkipDeployment identity to be preserved, got %v", err)
+	}
+
+	if de, ok := errors.AsType[controlplane.DeploymentError](err); ok {
+		t.Fatalf("expected ErrSkipDeployment not to be wrapped in a DeploymentError, got %+v", de)
+	}
+}
+
+func TestDeploy_KeepsPollSkipAsSuccess(t *testing.T) {
+	t.Parallel()
+
+	preparer := &fakeSourcePreparer{result: source.Result{DeployConfigs: []*deploy.Config{{Name: "stack"}}}}
+	reconciler := &fakeReconciler{err: stages.ErrSkipDeployment}
+	d := newTestDeployment(t, preparer, reconciler)
+	req := validDeploymentRequest()
+	req.JobTrigger = stages.JobTriggerPoll
+
+	if err := d.Deploy(t.Context(), req); err != nil {
+		t.Fatalf("expected poll skip to remain successful, got %v", err)
+	}
+}
+
 // TestCommitStatusEarlyFailure_SkipsWithoutBlockingDeployment is a sanity check that
 // commitstatus.ResolveRequest (used by internal/source to report early Git
 // clone/config-resolution failures before controlplane ever runs

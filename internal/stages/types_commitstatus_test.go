@@ -1,9 +1,13 @@
 package stages
 
 import (
+	"encoding/json"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
@@ -50,6 +54,42 @@ func TestResolveCommitStatusRequest_DelegatesToCommitStatusPackage(t *testing.T)
 
 	if req.Context != "doco-cd/stack" {
 		t.Fatalf("expected context derived from deploy config, got %q", req.Context)
+	}
+}
+
+func TestPostQueuedCommitStatusUsesDeploymentContext(t *testing.T) {
+	gitInternal.ConfigureAuthResolver(nil, "", "", "pat-token", "", gitInternal.GitHubAppConfig{})
+	t.Cleanup(func() {
+		gitInternal.ConfigureAuthResolver(nil, "", "", "", "", gitInternal.GitHubAppConfig{})
+	})
+
+	var received map[string]string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Errorf("decode status request: %v", err)
+		}
+
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+
+	sm := newTestStageManagerForCommitStatus(&app.Config{
+		GitCommitStatus: true,
+		GitScmProvider:  "gitea",
+		GitScmApiUrl:    config.HttpUrl(server.URL),
+		GitAccessToken:  "pat-token",
+	}, server.URL+"/org/repo.git")
+	sm.JobTrigger = JobTriggerWebhook
+
+	sm.PostQueuedCommitStatus(t.Context())
+
+	if received["state"] != "pending" || received["description"] != "Queued" {
+		t.Fatalf("unexpected queued status: %v", received)
+	}
+
+	if received["context"] != "doco-cd/stack" {
+		t.Fatalf("expected deployment-specific context, got %q", received["context"])
 	}
 }
 

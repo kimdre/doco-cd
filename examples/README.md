@@ -2,8 +2,8 @@
 
 Full working setups for common doco-cd scenarios. Each example replicates every repo it needs:
 
-- `app-repo/` or `deployments-repo/` — what you commit to Git.
-- `server/` — what you put on the Docker host (doco-cd itself).
+- `app-repo/` or `deployments-repo/`: what you commit to Git.
+- `server/`: what you put on the Docker host (doco-cd itself).
 
 | Example | Pattern | Pick it when |
 |---|---|---|
@@ -13,6 +13,6 @@ Full working setups for common doco-cd scenarios. Each example replicates every 
 
 Notes that apply to all examples:
 
-- All examples poll. Polling needs no inbound port, so the host firewall stays closed. Webhooks work the same way — set `WEBHOOK_SECRET` and publish the port.
+- All examples poll. Polling needs no inbound port, so the host firewall stays closed. Webhooks work the same way: set `WEBHOOK_SECRET` and publish the port.
 - Examples use the `latest` image tag to stay copy-pasteable. In real use pin the doco-cd image by tag + digest.
-- The `server/` compose is the one thing doco-cd cannot GitOps — it deploys stacks, not itself. Copy it to the host by hand (or see [Self-Updating](https://doco.cd/latest/Advanced/Self-Updating/)).
+- The `server/` compose is the one thing doco-cd cannot GitOps because it deploys stacks, not itself. Copy it to the host by hand (or see [Self-Updating](https://doco.cd/latest/Advanced/Self-Updating/)).

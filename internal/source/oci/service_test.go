@@ -176,7 +176,7 @@ func TestSyncDirectoryContents_PreservesDestinationInode(t *testing.T) {
 	// The destination directory inode must be unchanged.
 	inodeAfter := dirInode(t, dst)
 	if inodeBefore != inodeAfter {
-		t.Fatalf("destination inode changed: before=%d after=%d — bind mounts would be broken", inodeBefore, inodeAfter)
+		t.Fatalf("destination inode changed: before=%d after=%d; bind mounts would be broken", inodeBefore, inodeAfter)
 	}
 
 	// The new file must be present.

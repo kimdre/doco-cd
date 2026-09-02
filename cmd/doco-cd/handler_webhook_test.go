@@ -19,12 +19,15 @@ import (
 
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 
 	restserver "github.com/kimdre/doco-cd/internal/api"
+	"github.com/kimdre/doco-cd/internal/commitstatus"
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/controlplane"
 
@@ -39,6 +42,46 @@ import (
 	"github.com/kimdre/doco-cd/internal/reconciliation"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
+
+func TestPostSkippedWebhookCommitStatusUsesRunContext(t *testing.T) {
+	type postedStatus struct {
+		State       string `json:"state"`
+		Description string `json:"description"`
+		Context     string `json:"context"`
+	}
+
+	var received postedStatus
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Errorf("decode status: %v", err)
+		}
+
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+
+	postSkippedWebhookCommitStatus(t.Context(), &app.Config{
+		GitCommitStatus: true,
+		GitAccessToken:  "token",
+		GitScmProvider:  string(commitstatus.ProviderGitea),
+		GitScmApiUrl:    config.HttpUrl(server.URL),
+	}, logger.New(logger.LevelCritical).Logger, webhook.ParsedPayload{
+		Source:    webhook.PayloadSourceGit,
+		CommitSHA: plumbing.NewHash("0123456789012345678901234567890123456789"),
+		FullName:  "owner/repo",
+		CloneURL:  "https://git.example.com/owner/repo.git",
+		WebURL:    "https://git.example.com/owner/repo",
+	})
+
+	if received.State != string(commitstatus.StateSuccess) || received.Description != "Skipped" {
+		t.Fatalf("unexpected skipped status: %+v", received)
+	}
+
+	if received.Context != commitstatus.DeployContext {
+		t.Fatalf("context = %q, want %q", received.Context, commitstatus.DeployContext)
+	}
+}
 
 func TestAcquireWebhookRepoLockHonorsCancellation(t *testing.T) {
 	t.Parallel()
@@ -145,12 +188,6 @@ const (
 	githubPayloadFile          = "testdata/github_payload.json"
 	githubPayloadFileSwarmMode = "testdata/github_payload_swarm_mode.json"
 	webhookTestPollInterval    = 100 * time.Millisecond
-	composeContent             = `services:
-  nginx:
-    image: nginx:latest
-    ports:
-      - "80"
-`
 )
 
 // webhookFixtureFiles backs the local, network-independent fixture repo used

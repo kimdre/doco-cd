@@ -38,6 +38,10 @@ func shouldPostFailureCommitStatus(destroyEnabled bool) bool {
 	return !destroyEnabled
 }
 
+func shouldPostWebhookCommitStatus(jobTrigger JobTrigger, destroyEnabled bool) bool {
+	return jobTrigger == JobTriggerWebhook && !destroyEnabled
+}
+
 func failureCommitStatusState(stageName StageName) commitstatus.State {
 	switch stageName {
 	case StageInit, StagePreDeploy:
@@ -118,15 +122,10 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 			stageLog.Debug(string("end stage early: "+stageName),
 				slog.String("reason", err.Error()),
 				slog.String("duration", metadata.FinishedAt.Sub(metadata.StartedAt).Truncate(time.Millisecond).String()))
-			// If the error is ErrSkipDeployment, we don't treat it as a failure.
-			// ErrWebhookFilterMismatch wraps ErrSkipDeployment but must propagate so
-			// the HTTP handler can return a "skipped" response rather than "success".
+			// Skip outcomes propagate without failure reporting so callers can
+			// distinguish an intentional no-op from a successful deployment.
 			if errors.Is(err, ErrSkipDeployment) {
-				if errors.Is(err, ErrWebhookFilterMismatch) {
-					return err
-				}
-
-				return nil
+				return err
 			}
 
 			s.recordDeploymentFailure(stageName, err)
@@ -152,8 +151,9 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 			startedNotified = true
 		}
 
-		// Post "pending" once the repository/commit has been resolved.
+		// Post pending statuses only after pre-deploy confirms work is required.
 		if shouldPostPendingCommitStatus(stageName, s.DeployConfig.Destroy.Enabled, pendingPosted) {
+			s.PostQueuedCommitStatus(ctx)
 			s.PostCommitStatus(ctx, commitstatus.StatePending, "In Progress")
 
 			pendingPosted = true
@@ -168,6 +168,14 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 	s.clearDeploymentFailure()
 
 	return nil
+}
+
+// PostQueuedCommitStatus reports a resolved webhook deployment that requires
+// work. Poll and destroy operations do not publish queued statuses.
+func (s *StageManager) PostQueuedCommitStatus(ctx context.Context) {
+	if shouldPostWebhookCommitStatus(s.JobTrigger, s.DeployConfig.Destroy.Enabled) {
+		s.PostCommitStatus(ctx, commitstatus.StatePending, "Queued")
+	}
 }
 
 // stageRecordsDeploymentFailure reports whether a failure of the stage must be

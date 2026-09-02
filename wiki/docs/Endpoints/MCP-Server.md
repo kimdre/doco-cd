@@ -108,7 +108,7 @@ x-api-key: your-api-key
 
 | Tool                    | Key Parameters                                                                                 | Description                                                                                                          |
 |-------------------------|------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------|
-| `get_health`            | —                                                                                              | Verify access to the Docker API.                                                                                     |
+| `get_health`            | None                                                                                           | Verify access to the Docker API.                                                                                     |
 | `list_deployment_runs`  | `limit` (default 50, max 200), `status` (accepted/running/succeeded/failed/skipped), `trigger` | List recent deployment runs, optionally filtered by status and trigger.                                              |
 | `get_deployment_run`    | `job_id`                                                                                       | Get a deployment run by job ID.                                                                                      |
 | `list_scheduled_jobs`   | `stack` (filter), `context`                                                                    | List scheduler-managed jobs, optionally filtered by stack or Compose project.                                        |

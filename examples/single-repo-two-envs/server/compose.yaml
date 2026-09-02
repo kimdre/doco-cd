@@ -26,7 +26,7 @@ services:
       #     so the body degrades back to the one-liner.
       #   - the repo prefix is a literal: each daemon polls one repo anyway.
       APPRISE_NOTIFY_BODY_TEMPLATE: |-
-        myapp -> {{.Stack}} @ {{.Revision}}{{if .IsReconciliation}} · {{.ReconciliationEvent}}{{else}} in {{.Duration}}{{end}}{{if ne .Level "success"}} — {{.Message}}{{end}}
+        myapp -> {{.Stack}} @ {{.Revision}}{{if .IsReconciliation}} · {{.ReconciliationEvent}}{{else}} in {{.Duration}}{{end}}{{if ne .Level "success"}} - {{.Message}}{{end}}
         {{- range .Commits }}
         - {{ . }}
         {{- end }}

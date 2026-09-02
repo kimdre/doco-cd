@@ -13,6 +13,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/common/id"
 
+	"github.com/kimdre/doco-cd/internal/commitstatus"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
@@ -242,6 +243,40 @@ func repositoryNameFromWebhookPayload(payload webhook.ParsedPayload) string {
 	return "unknown"
 }
 
+func postSkippedWebhookCommitStatus(ctx context.Context, appConfig *app.Config, log *slog.Logger, payload webhook.ParsedPayload) {
+	if appConfig == nil {
+		return
+	}
+
+	sourceURL, _ := resolveWebhookGitCloneURL(payload, appConfig)
+	if sourceURL == "" {
+		sourceURL = payload.WebURL
+	}
+
+	req, ok := commitstatus.ResolveRequest(log, commitstatus.RequestParams{
+		Enabled:          appConfig.GitCommitStatus,
+		SourceIsGit:      payload.Source == webhook.PayloadSourceGit,
+		SourceURL:        sourceURL,
+		CommitSHA:        payload.CommitSHAString(),
+		PayloadWebURL:    payload.WebURL,
+		PayloadFullName:  payload.FullName,
+		ProviderOverride: appConfig.GitScmProvider,
+		APIBaseURL:       string(appConfig.GitScmApiUrl),
+		AccessToken:      appConfig.GitAccessToken,
+		ContextName:      commitstatus.DeployContext,
+	})
+	if !ok {
+		return
+	}
+
+	if err := req.Post(ctx, commitstatus.Status{
+		State:       commitstatus.StateSuccess,
+		Description: "Skipped",
+	}); err != nil {
+		log.Warn("failed to post skipped webhook commit status", slog.String("error", err.Error()))
+	}
+}
+
 type orchestrationHandler struct {
 	appConfig        *app.Config // Application configuration
 	controlPlaneRuns *controlplane.Runs
@@ -401,8 +436,21 @@ func handleEvent(ctx context.Context, jobLog *slog.Logger, w http.ResponseWriter
 		PollConfig:   poll.Config{},
 		Payload:      payload,
 	})
+	if errors.Is(deployErr, stages.ErrSkipDeployment) {
+		postSkippedWebhookCommitStatus(ctx, appConfig, jobLog, payload)
+	}
+
 	if errors.Is(deployErr, stages.ErrWebhookFilterMismatch) {
 		msg := "deployment skipped, webhook filter did not match"
+		elapsedTime := time.Since(startTime)
+		jobLog.Info(msg, slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()))
+		restAPI.JSONResponse(w, msg, metadata.JobID, http.StatusAccepted)
+
+		return controlplane.SkippedRun(msg), nil
+	}
+
+	if errors.Is(deployErr, stages.ErrSkipDeployment) {
+		msg := "deployment skipped"
 		elapsedTime := time.Since(startTime)
 		jobLog.Info(msg, slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()))
 		restAPI.JSONResponse(w, msg, metadata.JobID, http.StatusAccepted)
