@@ -1,8 +1,11 @@
 package stages
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -11,6 +14,8 @@ import (
 
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 
+	"github.com/kimdre/doco-cd/internal/config/app"
+	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
 )
 
@@ -544,5 +549,77 @@ func TestPkiRoleNormMap_HashStability(t *testing.T) {
 
 	if h1 != h2 {
 		t.Errorf("hash changed despite same pki-role ref: %q vs %q", h1, h2)
+	}
+}
+
+func TestGetAbsWorkingDirContainment(t *testing.T) {
+	t.Parallel()
+
+	repoPath := filepath.Join(t.TempDir(), "repository")
+
+	tests := []struct {
+		name       string
+		workingDir string
+		wantPath   string
+		wantErr    bool
+	}{
+		{name: "repository root", workingDir: ".", wantPath: repoPath},
+		{name: "nested directory", workingDir: "deploy/production", wantPath: filepath.Join(repoPath, "deploy/production")},
+		{name: "normalized nested directory", workingDir: "deploy/../production", wantPath: filepath.Join(repoPath, "production")},
+		{name: "parent traversal", workingDir: "..", wantPath: filepath.Dir(repoPath), wantErr: true},
+		{name: "sibling prefix", workingDir: "../repository-backup", wantPath: repoPath + "-backup", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := getAbsWorkingDir(repoPath, tt.workingDir)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("getAbsWorkingDir() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if got != tt.wantPath {
+				t.Fatalf("getAbsWorkingDir() = %q, want %q", got, tt.wantPath)
+			}
+		})
+	}
+}
+
+func TestLoadComposeProjectHashCachesProjectAndHash(t *testing.T) {
+	t.Parallel()
+
+	repoPath := t.TempDir()
+	composePath := filepath.Join(repoPath, "compose.yaml")
+	if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: busybox:latest\n"), 0o600); err != nil {
+		t.Fatalf("write compose file: %v", err)
+	}
+
+	config := deploy.New("app", "main")
+	config.WorkingDirectory = "."
+	config.ComposeFiles = []string{"compose.yaml"}
+	config.EnvFiles = nil
+
+	manager := &StageManager{
+		AppConfig:    &app.Config{},
+		DeployConfig: config,
+		Docker:       &Docker{},
+		Repository: &RepositoryData{
+			PathInternal: repoPath,
+			PathExternal: repoPath,
+		},
+	}
+
+	got, err := manager.loadComposeProjectHash(context.Background())
+	if err != nil {
+		t.Fatalf("loadComposeProjectHash() error = %v", err)
+	}
+
+	if manager.Docker.Project == nil {
+		t.Fatal("loadComposeProjectHash() did not cache the Compose project")
+	}
+
+	if got == "" || manager.Docker.ProjectHash != got {
+		t.Fatalf("cached project hash = %q, returned %q", manager.Docker.ProjectHash, got)
 	}
 }

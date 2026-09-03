@@ -140,6 +140,7 @@ type Docker struct {
 	Cmd            command.Cli
 	DataMountPoint container.MountPoint
 	Project        *types.Project
+	ProjectHash    string
 	SwarmMode      bool
 	SwarmAvailable bool
 }

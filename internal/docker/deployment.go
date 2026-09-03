@@ -121,6 +121,8 @@ type DeployRequest struct {
 	SwarmRetention   SwarmRetentionOptions
 	SwarmMode        bool
 	HashNormMap      map[string]string
+	Project          *types.Project
+	ProjectHash      string
 }
 
 type runtimeDeployRequest struct {
@@ -170,22 +172,26 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 		return fmt.Errorf("%s", errMsg)
 	}
 
-	deploymentPhase.Set("loading compose configuration")
+	projectPreloaded := req.Project != nil
+	project := req.Project
+	if project == nil {
+		deploymentPhase.Set("loading compose configuration")
 
-	project, err := LoadCompose(
-		ctx,
-		req.DockerCLI,
-		req.ExternalRepoPath,
-		externalWorkingDir,
-		req.DeployConfig.Name,
-		req.DeployConfig.ComposeFiles,
-		req.DeployConfig.EnvFiles,
-		req.DeployConfig.Profiles,
-		req.DeployConfig.Internal.Environment,
-		req.ComposeLoad,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to load compose config: %w", err)
+		project, err = LoadCompose(
+			ctx,
+			req.DockerCLI,
+			req.ExternalRepoPath,
+			externalWorkingDir,
+			req.DeployConfig.Name,
+			req.DeployConfig.ComposeFiles,
+			req.DeployConfig.EnvFiles,
+			req.DeployConfig.Profiles,
+			req.DeployConfig.Internal.Environment,
+			req.ComposeLoad,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to load compose config: %w", err)
+		}
 	}
 
 	if err = validateScheduledJobPolicies(project, req.SwarmMode); err != nil {
@@ -219,9 +225,15 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 
-	projectHash, err := ProjectHash(WithNormalizedEnvValues(project, req.HashNormMap))
-	if err != nil {
-		return fmt.Errorf("failed to generate project hash: %w", err)
+	projectHash := ""
+	if projectPreloaded {
+		projectHash = strings.TrimSpace(req.ProjectHash)
+	}
+	if projectHash == "" {
+		projectHash, err = ProjectHash(WithNormalizedEnvValues(project, req.HashNormMap))
+		if err != nil {
+			return fmt.Errorf("failed to generate project hash: %w", err)
+		}
 	}
 
 	runtimeReq := runtimeDeployRequest{
