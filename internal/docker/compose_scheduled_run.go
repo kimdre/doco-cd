@@ -28,11 +28,9 @@ import (
 var (
 	ErrComposeScheduledMetadataUnavailable = errors.New("compose scheduled-job metadata unavailable")
 	ErrComposeScheduledServiceReplicated   = errors.New("standalone scheduled compose service must have exactly one replica")
-	// ErrComposeScheduledSourceUnavailable reports that a deployment's Git checkout or extracted
-	// OCI artifact is not (yet) present under the data mount, so its deploy config cannot be
-	// reloaded. It is transient right after startup, before the first poll has fetched the
-	// source, which is why callers that run on a timer treat it as "retry later" rather than as a
-	// deployment failure.
+	// ErrComposeScheduledSourceUnavailable reports that a deployment source is not yet on disk.
+	// This can occur before the first poll fetches it, so timer-based callers should retry rather
+	// than treat it as a deployment failure.
 	ErrComposeScheduledSourceUnavailable = errors.New("deployment source not available on disk")
 )
 
@@ -455,21 +453,10 @@ func loadComposeScheduledDeployConfig(
 	return deployConfig, repoPath, nil
 }
 
-// resolveScheduledSourceRepo returns the directory under dataMountPath that holds the
-// checked-out Git repository or the extracted OCI artifact for ref, mirroring how
-// source.Prepare names it at deploy time: git.GetRepoName for Git sources,
-// oci.RepositoryNameFromArtifact for OCI artifacts.
-//
-// The DocoCDLabels.Source.Type label picks the scheme, but it cannot be trusted on its own:
-// deployments created before that label existed, or relabeled by a redeploy path that never knew
-// the source type, carry "git" even though their source URL is an OCI artifact reference. The two
-// schemes only differ in the ":<tag>" suffix, which git.GetRepoName keeps and
-// VerifyAndSanitizePath then rewrites to "_<tag>", so a mislabeled OCI deployment always resolves
-// to a directory that was never created on disk. When the labeled scheme's directory is absent but
-// the other one exists, use that instead so such deployments still reload. The source type that
-// actually resolved is returned alongside the path so callers that relabel the redeployed
-// services (see certRotationPayload) write the corrected value back instead of persisting the
-// stale one.
+// resolveScheduledSourceRepo finds the prepared Git or OCI source directory.
+// It first uses the labeled source type to select the matching naming scheme.
+// If that directory is missing, it tries the other scheme to support legacy or
+// mislabeled deployments. The returned source type reflects the directory found.
 func resolveScheduledSourceRepo(ref composeScheduledServiceRef, dataMountPath string) (string, config.SourceType, error) {
 	labeled := config.NormalizeSourceType(config.SourceType(ref.SourceType))
 

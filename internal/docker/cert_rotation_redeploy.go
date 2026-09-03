@@ -195,17 +195,10 @@ func resolvedSourceType(ref composeScheduledServiceRef, opts ScheduledComposeOpt
 	return sourceType
 }
 
-// certRotationPayload builds a synthetic payload for relabeling purposes only. CommitSHA is
-// intentionally left as the zero value: ParsedPayload.TriggerString() falls back to
-// CommitSHAString(), which itself returns "" for a zero hash instead of panicking, but Trigger is
-// set explicitly anyway so the resulting label clearly identifies this as a rotation-driven
-// redeploy rather than an empty commit SHA.
-//
-// sourceType is the source type that actually resolved for this deployment (see
-// resolvedSourceType), not necessarily the one its labels claim. A rotation redeploy only
-// recreates the certificate-consuming services, so writing the claimed value back would leave a
-// project whose services disagree about their own source - which is how a deployment ends up
-// resolving its repository directory under the wrong naming scheme in the first place.
+// certRotationPayload builds a synthetic payload for relabeling rotated services.
+// Trigger identifies the rotation-driven redeploy, while CommitSHA remains unset.
+// sourceType reflects the source that actually resolved rather than a potentially stale label,
+// keeping recreated services consistent with the rest of the deployment.
 func certRotationPayload(labels map[string]string, sourceType config.SourceType) *webhook.ParsedPayload {
 	return &webhook.ParsedPayload{
 		Source:   webhook.PayloadSource(SourceTypeLabelValue(string(sourceType), labels[DocoCDLabels.Source.Type])),
