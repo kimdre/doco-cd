@@ -28,8 +28,12 @@ func TestIsCorruptionError(t *testing.T) {
 	}{
 		{name: "nil error", err: nil, want: false},
 		{name: "reference not found", err: ErrInvalidReference, want: true},
-		{name: "error with reference not found message", err: gogit.ErrInvalidReference, want: true},
+		{name: "object not found", err: plumbing.ErrObjectNotFound, want: true},
 		{name: "empty ref file", err: fmt.Errorf("fetch failed: %w", dotgit.ErrEmptyRefFile), want: true},
+		{name: "malformed packed refs", err: dotgit.ErrPackedRefsBadFormat, want: true},
+		{name: "duplicated packed ref", err: dotgit.ErrPackedRefsDuplicatedRef, want: true},
+		{name: "symbolic ref target not found", err: dotgit.ErrSymRefTargetNotFound, want: true},
+		{name: "wrapped message fallback", err: errors.New("fetch failed: reference not found"), want: true},
 		{name: "other error", err: ErrMissingAuthToken, want: false},
 	}
 
