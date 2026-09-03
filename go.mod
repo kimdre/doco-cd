@@ -54,7 +54,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/veqryn/slog-dedup v0.6.0
 	go.yaml.in/yaml/v4 v4.0.0-rc.6
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 	golang.org/x/sync v0.22.0
 	gotest.tools/v3 v3.5.2
 )
