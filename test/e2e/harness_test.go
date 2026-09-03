@@ -81,3 +81,50 @@ func TestDaemonBuildArgs(t *testing.T) {
 		t.Fatalf("daemonBuildArgs() = %v, want %v", got, want)
 	}
 }
+
+func TestLogsSince(t *testing.T) {
+	const logs = "first\nsecond\nthird\n"
+
+	tests := []struct {
+		name   string
+		offset int
+		want   string
+	}{
+		{name: "start", offset: 0, want: logs},
+		{name: "negative", offset: -1, want: logs},
+		{name: "middle", offset: len("first\n"), want: "second\nthird\n"},
+		{name: "end", offset: len(logs), want: ""},
+		{name: "past end", offset: len(logs) + 1, want: ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := logsSince(logs, tc.offset); got != tc.want {
+				t.Fatalf("logsSince() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestImageReferenceMatches(t *testing.T) {
+	tests := []struct {
+		name string
+		got  string
+		want string
+		ok   bool
+	}{
+		{name: "exact tag", got: "alpine:3.22", want: "alpine:3.22", ok: true},
+		{name: "swarm resolved tag", got: "alpine:3.22@sha256:abc", want: "alpine:3.22", ok: true},
+		{name: "different tag", got: "alpine:3.21@sha256:abc", want: "alpine:3.22"},
+		{name: "exact digest", got: "alpine:latest@sha256:abc", want: "alpine:latest@sha256:abc", ok: true},
+		{name: "different digest", got: "alpine:latest@sha256:def", want: "alpine:latest@sha256:abc"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := imageReferenceMatches(tc.got, tc.want); got != tc.ok {
+				t.Fatalf("imageReferenceMatches(%q, %q) = %t, want %t", tc.got, tc.want, got, tc.ok)
+			}
+		})
+	}
+}

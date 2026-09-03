@@ -38,17 +38,19 @@ func TestFailedDeployRetry(t *testing.T) {
 	// fix the hook and push. Success must clear the record: the first "no
 	// changes" skip in the whole log proves both the successful deploy and
 	// the cleared record - with the record present the daemon never skips.
+	logMark := h.LogMark()
 	h.ReplaceInWorktree(".doco-cd.yml", `HOOK_EXIT: "1"`, `HOOK_EXIT: "0"`)
 	h.RepoPush("fix the hook")
 
-	h.WaitForLog("no changes detected, skipping deployment", 120*time.Second)
+	h.WaitForLogAfter("no changes detected, skipping deployment", logMark, 120*time.Second)
 
 	cidOK := h.ContainerID("e2e-retry", "app")
 	if cidOK == "" {
 		t.Fatal("app container must run after the successful deploy")
 	}
 
-	time.Sleep(25 * time.Second) // two poll cycles
+	stableMark := h.LogMark()
+	h.WaitForLogOccurrencesAfter("no changes detected, skipping deployment", stableMark, 2, 60*time.Second)
 
 	if got := h.ContainerID("e2e-retry", "app"); got != cidOK {
 		t.Fatalf("stack must stay untouched once the deploy succeeded: got %q, want %q", got, cidOK)
