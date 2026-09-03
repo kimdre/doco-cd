@@ -78,29 +78,19 @@ func remoteRefExists(ctx context.Context, repo *git.Repository, url string, auth
 	return false, nil
 }
 
-// attemptLightweightRepair tries to fix a corrupted repository without re-cloning.
-// It attempts to validate repository metadata, which can recover from many corruption scenarios.
-// Returns true if repair succeeded, false if the repository requires re-clone.
-func attemptLightweightRepair(repo *git.Repository) bool {
-	// Attempt to validate that we can access HEAD and iterate references
-	// This is a lightweight operation compared to re-cloning
-
-	// First check if we can get HEAD
+// repositoryMetadataValid verifies that HEAD and all references can be read.
+func repositoryMetadataValid(repo *git.Repository) bool {
 	head, err := repo.Head()
 	if err != nil && !errors.Is(err, plumbing.ErrReferenceNotFound) {
-		// Head is corrupted beyond recovery
 		return false
 	}
 
-	// Try to list all references - this will fail if refs are corrupted
 	refs, err := repo.References()
 	if err != nil {
-		// References are corrupted
 		return false
 	}
 	defer refs.Close()
 
-	// Count accessible refs to validate repository structure
 	refCount := 0
 
 	err = refs.ForEach(func(_ *plumbing.Reference) error {
@@ -108,17 +98,10 @@ func attemptLightweightRepair(repo *git.Repository) bool {
 		return nil
 	})
 	if err != nil {
-		// Could not enumerate references properly
 		return false
 	}
 
-	// If we have no references and HEAD is also missing, repo is probably empty or very corrupted
-	if refCount == 0 && head == nil {
-		return false
-	}
-
-	// Lightweight repair succeeded - repository structure appears intact
-	return true
+	return refCount > 0 || head != nil
 }
 
 // RepairRepository attempts to fix a corrupted Git repository.
@@ -131,16 +114,23 @@ func RepairRepository(
 	cloneSubmodules bool, depth int,
 	logger *slog.Logger,
 ) (*git.Repository, error) {
-	if logger == nil {
-		logger = slog.Default()
-	}
+	depth = effectiveDepth(url, depth)
 
 	unlock := AcquirePathLock(path)
 	defer unlock()
 
-	repo, err := git.PlainOpen(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open repository for repair: %w", err)
+	return repairRepositoryLocked(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth, logger)
+}
+
+// repairRepositoryLocked repairs a repository while the caller holds its path lock.
+func repairRepositoryLocked(
+	path, url, ref string,
+	skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod,
+	cloneSubmodules bool, depth int,
+	logger *slog.Logger,
+) (*git.Repository, error) {
+	if logger == nil {
+		logger = slog.Default()
 	}
 
 	logger.Warn("repository corruption detected, attempting recovery",
@@ -148,30 +138,46 @@ func RepairRepository(
 		slog.String("url", url),
 		slog.String("ref", ref))
 
-	if attemptLightweightRepair(repo) {
-		logger.Info("lightweight repository repair succeeded",
-			slog.String("path", path))
+	recloneReason := "repository metadata is unreadable"
 
-		if _, err := repo.Reference(plumbing.ReferenceName(ref), true); err == nil {
-			logger.Info("repository references restored after lightweight repair",
-				slog.String("path", path))
+	repo, openErr := git.PlainOpen(path)
+	if openErr == nil && repositoryMetadataValid(repo) {
+		fetchErr := FetchRepository(repo, url, skipTLSVerify, proxyOpts, auth, depth)
+		switch {
+		case fetchErr != nil:
+			if !IsCorruptionError(fetchErr) {
+				return nil, fmt.Errorf("in-place repair fetch failed: %w", fetchErr)
+			}
 
-			return repo, nil
+			recloneReason = "in-place fetch failed: " + FormatGitErrorMessage(fetchErr)
+		default:
+			checkoutErr := CheckoutRepository(repo, ref, auth, cloneSubmodules)
+			if checkoutErr == nil {
+				logger.Info("repository successfully repaired in place",
+					slog.String("path", path))
+
+				return repo, nil
+			}
+
+			if !IsCorruptionError(checkoutErr) {
+				return nil, fmt.Errorf("in-place repair checkout failed: %w", checkoutErr)
+			}
+
+			recloneReason = "in-place checkout failed: " + FormatGitErrorMessage(checkoutErr)
 		}
+	} else if openErr != nil {
+		recloneReason = "repository could not be opened: " + FormatGitErrorMessage(openErr)
 	}
 
-	logger.Warn("lightweight repair failed, performing full repository re-clone",
+	logger.Warn("in-place repair failed, performing full repository re-clone",
 		slog.String("path", path),
-		slog.String("reason", "reference still not accessible after lightweight repair"))
-
-	// Release lock before re-cloning, because CloneRepository acquires the same path lock.
-	unlock()
+		slog.String("reason", recloneReason))
 
 	if err := os.RemoveAll(path); err != nil {
 		return nil, fmt.Errorf("failed to remove corrupted repository at %s: %w", path, err)
 	}
 
-	repairedRepo, err := CloneRepository(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
+	repairedRepo, err := cloneRepositoryLocked(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
 	if err != nil {
 		return nil, fmt.Errorf("failed to re-clone repository during repair: %w", err)
 	}

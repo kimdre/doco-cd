@@ -181,6 +181,11 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 	unlock := AcquirePathLock(path)
 	defer unlock()
 
+	return updateRepositoryLocked(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
+}
+
+// updateRepositoryLocked updates a repository while the caller holds its path lock.
+func updateRepositoryLocked(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, cloneSubmodules bool, depth int) (*git.Repository, error) {
 	repo, err := git.PlainOpen(path)
 	if err != nil {
 		return nil, err
@@ -192,13 +197,11 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 			slog.String("path", path),
 			slog.Int("requested_depth", depth))
 
-		unlock() // release lock before re-clone (CloneRepository acquires its own)
-
 		if err := os.RemoveAll(path); err != nil {
 			return nil, fmt.Errorf("failed to remove repository for re-clone: %w", err)
 		}
 
-		return CloneRepository(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
+		return cloneRepositoryLocked(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
 	}
 
 	err = updateRemoteURL(repo, url)
@@ -209,23 +212,12 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 	err = FetchRepository(repo, url, skipTLSVerify, proxyOpts, auth, depth)
 	if err != nil {
 		if IsCorruptionError(err) {
-			slog.Warn("detected possible repository corruption during fetch",
-				slog.String("path", path),
-				slog.String("error", FormatGitErrorMessage(err)))
-
-			// Release the lock before calling RepairRepository because repair may re-clone.
-			unlock()
-
-			repairedRepo, repairErr := RepairRepository(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth, slog.Default())
+			repairedRepo, repairErr := repairAfterCorruptionLocked(path, url, ref, "fetch", err, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
 			if repairErr == nil {
 				return repairedRepo, nil
 			}
 
-			slog.Error("failed to repair corrupted repository",
-				slog.String("path", path),
-				slog.String("repair_error", FormatGitErrorMessage(repairErr)))
-
-			return nil, fmt.Errorf("%w: %w; repair failed: %v", ErrFetchFailed, err, repairErr)
+			return nil, fmt.Errorf("%w: %w", ErrFetchFailed, errors.Join(err, fmt.Errorf("repair failed: %w", repairErr)))
 		}
 
 		return nil, fmt.Errorf("%w: %w", ErrFetchFailed, err)
@@ -234,6 +226,8 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 	// Pass auth and cloneSubmodules so CheckoutRepository can ensure submodules are updated when needed.
 	err = CheckoutRepository(repo, ref, auth, cloneSubmodules)
 	if err != nil {
+		var corruptionRepairErr error
+
 		// Check if this looks like repository corruption (ref not found despite successful fetch)
 		if IsCorruptionError(err) {
 			fetchedExists, fetchedCheckErr := fetchedReferenceExistsAfterFetch(repo, ref)
@@ -252,26 +246,34 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 				return nil, fmt.Errorf("%w: %w", ErrCheckoutFailed, err)
 			}
 
-			slog.Warn("detected possible repository corruption during checkout",
-				slog.String("path", path),
-				slog.String("error", FormatGitErrorMessage(err)))
-
-			// Release the lock before calling RepairRepository because repair may re-clone.
-			unlock()
-
-			repairedRepo, repairErr := RepairRepository(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth, slog.Default())
+			repairedRepo, repairErr := repairAfterCorruptionLocked(path, url, ref, "checkout", err, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
 			if repairErr == nil {
 				return repairedRepo, nil
 			}
 
-			slog.Error("failed to repair corrupted repository",
-				slog.String("path", path),
-				slog.String("repair_error", FormatGitErrorMessage(repairErr)))
+			corruptionRepairErr = repairErr
+			if depth <= 0 || !IsRefUnreachableError(err) {
+				return nil, fmt.Errorf("%w: %w", ErrCheckoutFailed, errors.Join(err, fmt.Errorf("repair failed: %w", repairErr)))
+			}
+
+			reopenedRepo, reopenErr := git.PlainOpen(path)
+			if reopenErr != nil {
+				return nil, fmt.Errorf("%w: %w", ErrCheckoutFailed, errors.Join(
+					fmt.Errorf("repair failed: %w", repairErr),
+					fmt.Errorf("failed to reopen repository for deepening: %w", reopenErr),
+				))
+			}
+
+			repo = reopenedRepo
 		}
 		// Attempt to deepen if the ref is unreachable in a shallow clone
 		if depth > 0 && IsRefUnreachableError(err) {
 			repo, deepenErr := deepenAndCheckout(repo, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
 			if deepenErr != nil {
+				if corruptionRepairErr != nil {
+					deepenErr = errors.Join(deepenErr, fmt.Errorf("repair failed: %w", corruptionRepairErr))
+				}
+
 				return nil, fmt.Errorf("%w: %w", ErrCheckoutFailed, deepenErr)
 			}
 
@@ -284,6 +286,30 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 	return repo, nil
 }
 
+// repairAfterCorruptionLocked attempts to repair a repository after detecting possible corruption during an operation.
+func repairAfterCorruptionLocked(
+	path, url, ref, operation string,
+	cause error,
+	skipTLSVerify bool,
+	proxyOpts transport.ProxyOptions,
+	auth transport.AuthMethod,
+	cloneSubmodules bool,
+	depth int,
+) (*git.Repository, error) {
+	slog.Warn("detected possible repository corruption during "+operation,
+		slog.String("path", path),
+		slog.String("error", FormatGitErrorMessage(cause)))
+
+	repairedRepo, repairErr := repairRepositoryLocked(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth, slog.Default())
+	if repairErr != nil {
+		slog.Error("failed to repair corrupted repository",
+			slog.String("path", path),
+			slog.String("repair_error", FormatGitErrorMessage(repairErr)))
+	}
+
+	return repairedRepo, repairErr
+}
+
 // CloneRepository clones a repository with HTTP or SSH auth.
 // If depth > 0, a shallow clone is performed with the specified number of commits.
 func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, cloneSubmodules bool, depth int) (*git.Repository, error) {
@@ -293,6 +319,11 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 	unlock := AcquirePathLock(path)
 	defer unlock()
 
+	return cloneRepositoryLocked(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
+}
+
+// cloneRepositoryLocked clones a repository while the caller holds its path lock.
+func cloneRepositoryLocked(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, cloneSubmodules bool, depth int) (*git.Repository, error) {
 	err := os.MkdirAll(path, filesystem.PermDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create directory %s: %w", path, err)
@@ -343,7 +374,7 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 		if errors.Is(err, git.ErrRemoteExists) {
 			// If the directory contains a repository, try UpdateRepository
 			if _, openErr := git.PlainOpen(path); openErr == nil {
-				if upd, uErr := UpdateRepository(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth); uErr == nil {
+				if upd, uErr := updateRepositoryLocked(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth); uErr == nil {
 					return upd, nil
 				}
 			}

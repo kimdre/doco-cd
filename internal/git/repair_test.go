@@ -234,6 +234,102 @@ func TestUpdateRepository_RepairsEmptyRefFileDuringFetch(t *testing.T) {
 	}
 }
 
+func TestRepairRepository_ChecksOutRequestedReference(t *testing.T) {
+	t.Parallel()
+
+	originPath, clonePath, originHash := setupLocalMainRepoAndClone(t)
+
+	repo, err := gogit.PlainOpen(clonePath)
+	if err != nil {
+		t.Fatalf("open clone: %v", err)
+	}
+
+	otherBranch := plumbing.NewBranchReferenceName("other")
+	if err := repo.Storer.SetReference(plumbing.NewHashReference(otherBranch, originHash)); err != nil {
+		t.Fatalf("set other branch: %v", err)
+	}
+
+	if err := repo.Storer.SetReference(plumbing.NewSymbolicReference(plumbing.HEAD, otherBranch)); err != nil {
+		t.Fatalf("set HEAD to other branch: %v", err)
+	}
+
+	repairedRepo, err := RepairRepository(
+		clonePath,
+		originPath,
+		MainBranch,
+		false,
+		transport.ProxyOptions{},
+		nil,
+		false,
+		0,
+		slog.Default(),
+	)
+	if err != nil {
+		t.Fatalf("repair failed: %v", err)
+	}
+
+	assertRepoOnMainHash(t, repairedRepo, originHash)
+}
+
+func TestRepairRepository_ReclonesUnreadableRepository(t *testing.T) {
+	t.Parallel()
+
+	originPath, clonePath, originHash := setupLocalMainRepoAndClone(t)
+
+	if err := os.RemoveAll(filepath.Join(clonePath, ".git")); err != nil {
+		t.Fatalf("remove repository metadata: %v", err)
+	}
+
+	repairedRepo, err := RepairRepository(
+		clonePath,
+		originPath,
+		MainBranch,
+		false,
+		transport.ProxyOptions{},
+		nil,
+		false,
+		0,
+		slog.Default(),
+	)
+	if err != nil {
+		t.Fatalf("repair failed: %v", err)
+	}
+
+	assertRepoOnMainHash(t, repairedRepo, originHash)
+}
+
+func TestRepairRepository_PreservesRepositoryOnNonCorruptionFailure(t *testing.T) {
+	t.Parallel()
+
+	_, clonePath, _ := setupLocalMainRepoAndClone(t)
+
+	sentinel := filepath.Join(clonePath, "sentinel.txt")
+	if err := os.WriteFile(sentinel, []byte("keep\n"), filesystem.PermOwner); err != nil {
+		t.Fatalf("write sentinel: %v", err)
+	}
+
+	missingOrigin := filepath.Join(t.TempDir(), "missing-origin")
+
+	_, err := RepairRepository(
+		clonePath,
+		missingOrigin,
+		MainBranch,
+		false,
+		transport.ProxyOptions{},
+		nil,
+		false,
+		0,
+		slog.Default(),
+	)
+	if err == nil {
+		t.Fatal("expected repair to fail for missing origin")
+	}
+
+	if _, statErr := os.Stat(sentinel); statErr != nil {
+		t.Fatalf("expected repository to remain intact after non-corruption failure: %v", statErr)
+	}
+}
+
 func TestRepairRepositoryWithMissingPath(t *testing.T) {
 	tmpDir := t.TempDir()
 	missingPath := filepath.Join(tmpDir, "missing")
@@ -405,10 +501,6 @@ func commitFile(t *testing.T, repo *gogit.Repository, repoPath, relPath, content
 
 func assertRepoOnMainHash(t *testing.T, repo *gogit.Repository, expected plumbing.Hash) {
 	t.Helper()
-
-	if err := CheckoutRepository(repo, MainBranch, nil, false); err != nil {
-		t.Fatalf("checkout %s: %v", MainBranch, err)
-	}
 
 	mainRef, err := repo.Reference(plumbing.NewBranchReferenceName("main"), true)
 	if err != nil {
