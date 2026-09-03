@@ -2164,6 +2164,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#openapi-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        OpenAPI documentation
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#authentication" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2659,6 +2670,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#openapi-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        OpenAPI documentation
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#authentication" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -3012,6 +3034,29 @@
 <h1 id="rest-api">REST API<a class="headerlink" href="#rest-api" title="Permanent link">&para;</a></h1>
 <p>Doco-CD exposes a RESTful API at the <code>/v1/api</code> endpoint.
 Set both <code>HTTP_TLS_CERT_FILE</code> and <code>HTTP_TLS_KEY_FILE</code> if you want doco-cd itself to serve the API over HTTPS.</p>
+<h2 id="openapi-documentation">OpenAPI documentation<a class="headerlink" href="#openapi-documentation" title="Permanent link">&para;</a></h2>
+<p>Set <code>OPENAPI_ENABLED=true</code> to expose the public <a href="https://www.openapis.org/">OpenAPI</a> 3.2 documentation. The feature is disabled by default.</p>
+<table>
+<thead>
+<tr>
+<th>API surface</th>
+<th>OpenAPI document</th>
+<th>Swagger UI</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>REST and health</td>
+<td><code>/openapi/rest.json</code></td>
+<td><code>/docs/</code></td>
+</tr>
+<tr>
+<td>Webhooks</td>
+<td><code>/openapi/webhooks.json</code></td>
+<td><code>/docs/webhooks/</code></td>
+</tr>
+</tbody>
+</table>
 <h2 id="authentication">Authentication<a class="headerlink" href="#authentication" title="Permanent link">&para;</a></h2>
 <p>Set the <code>API_SECRET</code> or <code>API_SECRET_FILE</code> environment variable in the container to enable the API, see <a data-preview="" href="../../App-Settings/#general-settings">App Settings</a>.</p>
 <p>Use the <code>x-api-key</code> header to authenticate requests to the API using the secret value.</p>
