@@ -18,6 +18,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
 )
 
@@ -451,8 +452,13 @@ func (s *StageManager) loadComposeProjectHash(ctx context.Context) (string, erro
 
 // getAbsWorkingDir returns the absolute path of the working directory based on the repository path and the working directory specified in the deployment configuration.
 func getAbsWorkingDir(repoPath, workingDir string) (string, error) {
-	absPath, err := filepath.Abs(filepath.Join(repoPath, workingDir))
-	if err != nil || !strings.HasPrefix(absPath, repoPath) {
+	absRepoPath, err := filepath.Abs(repoPath)
+	if err != nil {
+		return "", errors.New("invalid working directory: failed to resolve allowed base directory")
+	}
+
+	absPath, err := filepath.Abs(filepath.Join(absRepoPath, workingDir))
+	if err != nil || !filesystem.InBasePath(absRepoPath, absPath) {
 		return absPath, errors.New("invalid working directory: resolved path is outside the allowed base directory: " + absPath)
 	}
 
