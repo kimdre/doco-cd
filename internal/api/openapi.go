@@ -12,6 +12,7 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3gen"
+
 	"github.com/kimdre/doco-cd/internal/restapi"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
@@ -217,6 +218,7 @@ func buildOpenAPIDocument(routes []Route, components *openapi3.Components) (*ope
 
 			operationIDs[metadata.Operation.OperationID] = route.Pattern
 			document.AddOperation(route.Pattern, metadata.Method, metadata.Operation)
+
 			for _, tag := range metadata.Operation.Tags {
 				referencedTags[tag] = true
 			}
@@ -248,6 +250,7 @@ func buildOpenAPIDocument(routes []Route, components *openapi3.Components) (*ope
 // indicating whether REST or Webhook APIs are present and their authentication requirements.
 func openAPIDescription(routes []Route) string {
 	var hasREST, hasWebhooks bool
+
 	for _, route := range routes {
 		switch route.Root {
 		case HealthPath, APIPath:
@@ -288,6 +291,7 @@ All supported routes are documented even when disabled in the current process.`
 // linking to the appropriate documentation for REST or Webhook APIs.
 func openAPIExternalDocs(routes []Route) *openapi3.ExternalDocs {
 	var hasREST, hasWebhooks bool
+
 	for _, route := range routes {
 		switch route.Root {
 		case HealthPath, APIPath:
@@ -338,6 +342,7 @@ func tagDescription(tag string) string {
 // based on the referenced security requirements in the provided routes.
 func addReferencedSecuritySchemes(components *openapi3.Components, routes []Route) {
 	referenced := make(map[string]bool)
+
 	for _, route := range routes {
 		for _, metadata := range route.Operations {
 			if metadata.Operation.Security == nil {
@@ -856,7 +861,7 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 			Root:    WebhookPath,
 			Operations: []Operation{
 				operation(http.MethodPost, "receiveWebhook", "Receive a deployment webhook", []string{"Webhooks"},
-				webhookParameters(false), webhookRequest, responses(webhookResponses), webhookAuth),
+					webhookParameters(false), webhookRequest, responses(webhookResponses), webhookAuth),
 			},
 		},
 		{
@@ -866,7 +871,7 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 			Root:    WebhookPath,
 			Operations: []Operation{
 				operation(http.MethodPost, "receiveTargetedWebhook", "Receive a targeted deployment webhook", []string{"Webhooks"},
-				webhookParameters(true), webhookRequest, responses(webhookResponses), webhookAuth),
+					webhookParameters(true), webhookRequest, responses(webhookResponses), webhookAuth),
 			},
 		},
 	}, nil
