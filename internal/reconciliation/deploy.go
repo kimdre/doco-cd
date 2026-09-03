@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/docker/cli/cli/command"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/docker"
 
 	"github.com/kimdre/doco-cd/internal/logger"
+	"github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/stages"
 	"github.com/kimdre/doco-cd/internal/test"
 )
@@ -279,10 +281,21 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 	if m.limiter != nil {
 		deployLog.Debug("queuing deployment")
 
+		queueStarted := time.Now()
 		unlock, lErr := m.limiter.acquire(ctx, req.Repository.Name, NormalizeReference(dc.Reference))
+		queueOutcome := "admitted"
+		if lErr != nil {
+			queueOutcome = "canceled"
+		}
+		prometheus.DeploymentQueueDuration.WithLabelValues(
+			resolveDeploymentQueueRepository(req.Repository.Name),
+			queueOutcome,
+		).Observe(time.Since(queueStarted).Seconds())
+
 		if lErr != nil {
 			return lErr
 		}
+
 		defer unlock()
 	}
 
@@ -292,6 +305,15 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 	}
 
 	return nil
+}
+
+func resolveDeploymentQueueRepository(repository string) string {
+	repository = strings.TrimSpace(repository)
+	if repository == "" {
+		return "unknown"
+	}
+
+	return repository
 }
 
 // groupDeployConfigsByMode partitions configs by their selected runtime mode.

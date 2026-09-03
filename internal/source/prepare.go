@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	"github.com/kimdre/doco-cd/internal/git"
+	"github.com/kimdre/doco-cd/internal/prometheus"
 	"github.com/kimdre/doco-cd/internal/source/oci"
 )
 
@@ -23,7 +25,18 @@ import (
 // On a Git clone or deploy-configuration resolution failure, Prepare also
 // reports the failure as an early commit status (before reconciliation ever
 // starts), mirroring the pre-refactor handler's behavior.
-func (p *Preparer) Prepare(ctx context.Context, req Request) (Result, error) {
+func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, retErr error) {
+	startedAt := time.Now()
+	sourceLabel := "unknown"
+	defer func() {
+		outcome := "success"
+		if retErr != nil {
+			outcome = "failure"
+		}
+
+		prometheus.SourcePreparationDuration.WithLabelValues(sourceLabel, outcome).Observe(time.Since(startedAt).Seconds())
+	}()
+
 	if err := validation.Validate(req); err != nil {
 		return Result{}, wrapPrepareError(ErrInvalidRequest, err)
 	}
@@ -32,6 +45,7 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (Result, error) {
 	if err := config.ValidateSourceType(sourceType); err != nil {
 		return Result{}, wrapPrepareError(ErrInvalidSourceType, err)
 	}
+	sourceLabel = string(sourceType)
 
 	repoName := git.GetRepoName(req.SourceRef)
 	if sourceType == config.SourceTypeOCI {
