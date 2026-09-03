@@ -12,17 +12,28 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/go-git/go-git/v5/storage/filesystem/dotgit"
 )
 
-// IsCorruptionError checks if an error indicates repository corruption rather than transient failures.
-// Corruption is indicated by reference not found errors when fetches have completed successfully.
+// IsCorruptionError checks if an error indicates repository corruption rather than a transient failure.
 func IsCorruptionError(err error) bool {
 	if err == nil {
 		return false
 	}
 
-	// Reference not found is a primary corruption indicator
-	if errors.Is(err, plumbing.ErrReferenceNotFound) {
+	corruptionErrors := []error{
+		plumbing.ErrReferenceNotFound,
+		plumbing.ErrObjectNotFound,
+		git.ErrInvalidReference,
+		dotgit.ErrEmptyRefFile,
+		dotgit.ErrPackedRefsBadFormat,
+		dotgit.ErrPackedRefsDuplicatedRef,
+		dotgit.ErrSymRefTargetNotFound,
+	}
+
+	if slices.ContainsFunc(corruptionErrors, func(target error) bool {
+		return errors.Is(err, target)
+	}) {
 		return true
 	}
 
@@ -76,7 +87,7 @@ func attemptLightweightRepair(repo *git.Repository) bool {
 
 	// First check if we can get HEAD
 	head, err := repo.Head()
-	if err != nil && err != plumbing.ErrReferenceNotFound {
+	if err != nil && !errors.Is(err, plumbing.ErrReferenceNotFound) {
 		// Head is corrupted beyond recovery
 		return false
 	}
