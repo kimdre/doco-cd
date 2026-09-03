@@ -5,10 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/kimdre/doco-cd/internal/commitstatus"
+	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
+	"github.com/kimdre/doco-cd/internal/prometheus"
 )
 
 type StageFunc func(ctx context.Context, stageLog *slog.Logger) error
@@ -118,6 +121,22 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 		stageLog.Debug(string("begin stage: " + stageName))
 
 		err = stageOrder.Funcs[stageName](ctx, stageLog)
+		outcome := "success"
+		if err != nil {
+			outcome = "failure"
+			if errors.Is(err, ErrSkipDeployment) || errors.Is(err, ErrWebhookFilterMismatch) {
+				outcome = "skipped"
+			}
+		}
+
+		prometheus.DeploymentStageDuration.WithLabelValues(
+			deploymentMetricsRepository(s.Repository),
+			deploymentMetricsName(s.DeployConfig),
+			deploymentMetricsContext(s.DeployConfig),
+			string(stageName),
+			outcome,
+		).Observe(metadata.FinishedAt.Sub(metadata.StartedAt).Seconds())
+
 		if err != nil {
 			stageLog.Debug(string("end stage early: "+stageName),
 				slog.String("reason", err.Error()),
@@ -168,6 +187,30 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 	s.clearDeploymentFailure()
 
 	return nil
+}
+
+func deploymentMetricsRepository(repository *RepositoryData) string {
+	if repository == nil || strings.TrimSpace(repository.Name) == "" {
+		return "unknown"
+	}
+
+	return strings.TrimSpace(repository.Name)
+}
+
+func deploymentMetricsName(config *deploy.Config) string {
+	if config == nil || strings.TrimSpace(config.Name) == "" {
+		return "unknown"
+	}
+
+	return strings.TrimSpace(config.Name)
+}
+
+func deploymentMetricsContext(config *deploy.Config) string {
+	if config == nil {
+		return "default"
+	}
+
+	return docker.DisplayContextName(config.Context)
 }
 
 // PostQueuedCommitStatus reports a resolved webhook deployment that requires

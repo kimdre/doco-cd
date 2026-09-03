@@ -16,7 +16,9 @@ func init() {
 		PollTotal, PollErrors, PollDuration,
 		AutoDiscoveryCacheTotal,
 		WebhookRequestsTotal, WebhookErrorsTotal, WebhookDuration,
-		DeploymentsTotal, DeploymentErrorsTotal, DeploymentDuration,
+		DeploymentsTotal, DeploymentErrorsTotal, DeploymentDuration, DeploymentStageDuration,
+		DeploymentQueueDuration,
+		SourcePreparationDuration,
 		DeploymentsActive, DeploymentsQueued,
 		ScheduledRunsTotal, ScheduledRunErrorsTotal, ScheduledRunSkippedTotal,
 		ScheduledRunDuration, ScheduledRunsActive,
@@ -88,6 +90,24 @@ var (
 		Help:      "Duration of deployment operations in seconds",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"repository", "deployment", "context"})
+	DeploymentStageDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: MetricsNamespace,
+		Name:      "deployment_stage_duration_seconds",
+		Help:      "Duration of deployment stages in seconds",
+		Buckets:   prometheus.DefBuckets,
+	}, []string{"repository", "deployment", "context", "stage", "outcome"})
+	DeploymentQueueDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: MetricsNamespace,
+		Name:      "deployment_queue_duration_seconds",
+		Help:      "Time deployments spend waiting for admission in seconds",
+		Buckets:   prometheus.DefBuckets,
+	}, []string{"repository", "outcome"})
+	SourcePreparationDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: MetricsNamespace,
+		Name:      "source_preparation_duration_seconds",
+		Help:      "Duration of deployment source preparation in seconds",
+		Buckets:   prometheus.DefBuckets,
+	}, []string{"source", "outcome"})
 	DeploymentsActive = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: MetricsNamespace,
 		Name:      "deployments_active",

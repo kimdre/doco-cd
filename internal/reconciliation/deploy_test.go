@@ -60,6 +60,18 @@ func TestDeploy_RejectsUnverifiedOCIArtifact(t *testing.T) {
 	}
 }
 
+func TestResolveDeploymentQueueRepository(t *testing.T) {
+	t.Parallel()
+
+	if got := resolveDeploymentQueueRepository(" owner/repo "); got != "owner/repo" {
+		t.Fatalf("resolveDeploymentQueueRepository() = %q, want owner/repo", got)
+	}
+
+	if got := resolveDeploymentQueueRepository(" "); got != "unknown" {
+		t.Fatalf("resolveDeploymentQueueRepository(empty) = %q, want unknown", got)
+	}
+}
+
 func TestGroupDeployConfigsByMode(t *testing.T) {
 	t.Parallel()
 

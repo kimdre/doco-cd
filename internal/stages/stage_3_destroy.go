@@ -13,10 +13,10 @@ import (
 )
 
 func (s *StageManager) RunDestroyStage(ctx context.Context, stageLog *slog.Logger) error {
-	s.Stages.Deploy.StartedAt = time.Now()
+	s.Stages.Destroy.StartedAt = time.Now()
 
 	defer func() {
-		s.Stages.Deploy.FinishedAt = time.Now()
+		s.Stages.Destroy.FinishedAt = time.Now()
 	}()
 
 	stageLog.Debug("destroying stack")
