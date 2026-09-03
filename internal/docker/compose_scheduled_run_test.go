@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,8 +12,10 @@ import (
 	"github.com/docker/compose/v5/pkg/api"
 
 	"github.com/kimdre/doco-cd/internal/config/deploy"
+	"github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
+	"github.com/kimdre/doco-cd/internal/source/oci"
 )
 
 // stubSecretProvider is a minimal SecretProvider whose ResolveSecretReferences
@@ -56,6 +59,7 @@ func TestComposeScheduledServiceRefFromLabels(t *testing.T) {
 			api.ConfigFilesLabel:                 "/repo/stack/compose.yaml, /repo/stack/compose.override.yaml",
 			DocoCDLabels.Source.Name:             "owner/repo",
 			DocoCDLabels.Source.URL:              "https://example.com/owner/repo",
+			DocoCDLabels.Source.Type:             "oci",
 			DocoCDLabels.Deployment.Name:         "stack-a",
 			DocoCDLabels.Deployment.ConfigTarget: "nas",
 			DocoCDLabels.Deployment.TargetRef:    "refs/heads/main",
@@ -81,6 +85,10 @@ func TestComposeScheduledServiceRefFromLabels(t *testing.T) {
 		// reconstruct a host-qualified repository path.
 		if ref.RepositoryURL != "https://example.com/owner/repo" {
 			t.Fatalf("unexpected repository url: %q", ref.RepositoryURL)
+		}
+
+		if ref.SourceType != "oci" {
+			t.Fatalf("unexpected source type: %q", ref.SourceType)
 		}
 
 		if ref.DeploymentName != "stack-a" {
@@ -184,6 +192,7 @@ func TestComposeScheduledServiceRefFromSwarmLabels(t *testing.T) {
 			DocoCDLabels.Deployment.WorkingDir:   "/repo/stack",
 			DocoCDLabels.Source.Name:             "owner/repo",
 			DocoCDLabels.Source.URL:              "https://example.com/owner/repo",
+			DocoCDLabels.Source.Type:             "oci",
 			DocoCDLabels.Deployment.ConfigTarget: "nas",
 			DocoCDLabels.Deployment.TargetRef:    "refs/heads/main",
 		})
@@ -209,6 +218,10 @@ func TestComposeScheduledServiceRefFromSwarmLabels(t *testing.T) {
 
 		if ref.RepositoryURL != "https://example.com/owner/repo" {
 			t.Fatalf("unexpected repository url: %q", ref.RepositoryURL)
+		}
+
+		if ref.SourceType != "oci" {
+			t.Fatalf("unexpected source type: %q", ref.SourceType)
 		}
 
 		if ref.ConfigTarget != "nas" {
@@ -255,6 +268,160 @@ func TestComposeScheduledServiceRefFromSwarmLabels(t *testing.T) {
 			t.Fatalf("expected ErrComposeScheduledMetadataUnavailable, got %v", err)
 		}
 	})
+}
+
+// TestLoadComposeScheduledDeployConfigResolvesRepoPathBySourceType reproduces the cert-rotation
+// bug where an OCI-sourced deployment's on-disk repository path was reconstructed with
+// git.GetRepoName() (which leaves the ":<tag>" suffix in place), pointing at a directory that
+// was never created on disk (the real directory, extracted at deploy time via
+// oci.RepositoryNameFromArtifact(), has no tag suffix). loadComposeScheduledDeployConfig must
+// branch on ref.SourceType the same way internal/source/prepare.go does for a fresh deploy.
+func TestLoadComposeScheduledDeployConfigResolvesRepoPathBySourceType(t *testing.T) {
+	t.Parallel()
+
+	writeDeployConfig := func(t *testing.T, repoDir, name string) {
+		t.Helper()
+
+		content := fmt.Sprintf("name: %s\n", name)
+		if err := os.WriteFile(filepath.Join(repoDir, ".doco-cd.yaml"), []byte(content), 0o600); err != nil {
+			t.Fatalf("write deploy config: %v", err)
+		}
+	}
+
+	t.Run("oci source resolves repo path without the artifact tag", func(t *testing.T) {
+		t.Parallel()
+
+		dataMountPath := t.TempDir()
+		artifactRef := "ghcr.io/kimdre/doco-cd_tests:compose-oci"
+		repoDir := filepath.Join(dataMountPath, oci.RepositoryNameFromArtifact(artifactRef))
+
+		if err := os.MkdirAll(repoDir, 0o755); err != nil {
+			t.Fatalf("mkdir repo dir: %v", err)
+		}
+
+		writeDeployConfig(t, repoDir, "compose-oci")
+
+		ref := composeScheduledServiceRef{
+			Project:        "compose-oci",
+			RepositoryURL:  artifactRef,
+			SourceType:     "oci",
+			DeploymentName: "compose-oci",
+		}
+
+		opts := ScheduledComposeOptions{ComposeLoad: ComposeLoadOptions{DataMountPath: dataMountPath}}
+
+		cfg, repoPath, err := loadComposeScheduledDeployConfig(context.Background(), ref, newStubProvider(nil, nil), opts)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if cfg.Name != "compose-oci" {
+			t.Fatalf("unexpected config name: %q", cfg.Name)
+		}
+
+		if repoPath != repoDir {
+			t.Fatalf("expected repo path %q, got %q", repoDir, repoPath)
+		}
+	})
+
+	t.Run("stale git label on an oci artifact still finds the extracted directory", func(t *testing.T) {
+		t.Parallel()
+
+		dataMountPath := t.TempDir()
+		artifactRef := "ghcr.io/kimdre/doco-cd_tests:compose-oci"
+		repoDir := filepath.Join(dataMountPath, oci.RepositoryNameFromArtifact(artifactRef))
+
+		if err := os.MkdirAll(repoDir, 0o755); err != nil {
+			t.Fatalf("mkdir repo dir: %v", err)
+		}
+
+		writeDeployConfig(t, repoDir, "compose-oci")
+
+		// Deployments created before the source type label existed carry "git" even though the
+		// source URL is an OCI artifact reference, see resolveScheduledSourceRepoPath.
+		ref := composeScheduledServiceRef{
+			Project:        "compose-oci",
+			RepositoryURL:  artifactRef,
+			SourceType:     "git",
+			DeploymentName: "compose-oci",
+		}
+
+		opts := ScheduledComposeOptions{ComposeLoad: ComposeLoadOptions{DataMountPath: dataMountPath}}
+
+		cfg, repoPath, err := loadComposeScheduledDeployConfig(context.Background(), ref, newStubProvider(nil, nil), opts)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if cfg.Name != "compose-oci" {
+			t.Fatalf("unexpected config name: %q", cfg.Name)
+		}
+
+		if repoPath != repoDir {
+			t.Fatalf("expected repo path %q, got %q", repoDir, repoPath)
+		}
+	})
+
+	t.Run("git source still resolves repo path via git.GetRepoName", func(t *testing.T) {
+		t.Parallel()
+
+		dataMountPath := t.TempDir()
+		repositoryURL := "https://example.com/owner/repo"
+		repoDir := filepath.Join(dataMountPath, git.GetRepoName(repositoryURL))
+
+		if err := os.MkdirAll(repoDir, 0o755); err != nil {
+			t.Fatalf("mkdir repo dir: %v", err)
+		}
+
+		writeDeployConfig(t, repoDir, "stack-a")
+
+		ref := composeScheduledServiceRef{
+			Project:        "stack-a",
+			RepositoryURL:  repositoryURL,
+			SourceType:     "git",
+			DeploymentName: "stack-a",
+		}
+
+		opts := ScheduledComposeOptions{ComposeLoad: ComposeLoadOptions{DataMountPath: dataMountPath}}
+
+		cfg, repoPath, err := loadComposeScheduledDeployConfig(context.Background(), ref, newStubProvider(nil, nil), opts)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if cfg.Name != "stack-a" {
+			t.Fatalf("unexpected config name: %q", cfg.Name)
+		}
+
+		if repoPath != repoDir {
+			t.Fatalf("expected repo path %q, got %q", repoDir, repoPath)
+		}
+	})
+}
+
+// TestLoadComposeScheduledDeployConfigReportsUnavailableSource covers the cold-start case the
+// certificate rotation watcher relies on: until the first poll has fetched a deployment's source
+// into the data mount, the reload must fail with ErrComposeScheduledSourceUnavailable so callers
+// can retry later instead of treating it as a broken deployment.
+func TestLoadComposeScheduledDeployConfigReportsUnavailableSource(t *testing.T) {
+	t.Parallel()
+
+	dataMountPath := t.TempDir()
+
+	ref := composeScheduledServiceRef{
+		Project:        "compose-oci",
+		Service:        "envoy",
+		RepositoryURL:  "ghcr.io/kimdre/doco-cd_tests:compose-oci",
+		SourceType:     "oci",
+		DeploymentName: "compose-oci",
+	}
+
+	opts := ScheduledComposeOptions{ComposeLoad: ComposeLoadOptions{DataMountPath: dataMountPath}}
+
+	_, _, err := loadComposeScheduledDeployConfig(context.Background(), ref, newStubProvider(nil, nil), opts)
+	if !errors.Is(err, ErrComposeScheduledSourceUnavailable) {
+		t.Fatalf("expected ErrComposeScheduledSourceUnavailable, got %v", err)
+	}
 }
 
 func TestSplitCommaSeparatedLabelValues(t *testing.T) {

@@ -11,6 +11,7 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
 
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/lock"
@@ -89,7 +90,7 @@ func RotateProjectCertificates(
 		return fmt.Errorf("select certificate-consuming services for rotation of %s: %w", ref.Project, err)
 	}
 
-	payload := certRotationPayload(labels)
+	payload := certRotationPayload(labels, resolvedSourceType(ref, opts.Scheduled))
 
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 	latestCommit := strings.TrimSpace(labels[DocoCDLabels.Deployment.CommitSHA])
@@ -134,7 +135,7 @@ func rotateSwarmProjectCertificates(
 		return fmt.Errorf("reload deploy config for cert rotation of %s: %w", ref.Project, err)
 	}
 
-	payload := certRotationPayload(labels)
+	payload := certRotationPayload(labels, resolvedSourceType(ref, certOpts.Scheduled))
 
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 	latestCommit := strings.TrimSpace(labels[DocoCDLabels.Deployment.CommitSHA])
@@ -183,14 +184,24 @@ func pruneSwarmStackRevisions(ctx context.Context, dockerCli command.Cli, stackN
 	}
 }
 
-// certRotationPayload builds a synthetic payload for relabeling purposes only. CommitSHA is
-// intentionally left as the zero value: ParsedPayload.TriggerString() falls back to
-// CommitSHAString(), which itself returns "" for a zero hash instead of panicking, but Trigger is
-// set explicitly anyway so the resulting label clearly identifies this as a rotation-driven
-// redeploy rather than an empty commit SHA.
-func certRotationPayload(labels map[string]string) *webhook.ParsedPayload {
+// resolvedSourceType reports the source type whose on-disk layout ref's repository actually
+// matches, falling back to the labeled one when neither directory is present.
+func resolvedSourceType(ref composeScheduledServiceRef, opts ScheduledComposeOptions) config.SourceType {
+	_, sourceType, err := resolveScheduledSourceRepo(ref, opts.ComposeLoad.DataMountPath)
+	if err != nil {
+		return config.NormalizeSourceType(config.SourceType(ref.SourceType))
+	}
+
+	return sourceType
+}
+
+// certRotationPayload builds a synthetic payload for relabeling rotated services.
+// Trigger identifies the rotation-driven redeploy, while CommitSHA remains unset.
+// sourceType reflects the source that actually resolved rather than a potentially stale label,
+// keeping recreated services consistent with the rest of the deployment.
+func certRotationPayload(labels map[string]string, sourceType config.SourceType) *webhook.ParsedPayload {
 	return &webhook.ParsedPayload{
-		Source:   webhook.PayloadSourceGit,
+		Source:   webhook.PayloadSource(SourceTypeLabelValue(string(sourceType), labels[DocoCDLabels.Source.Type])),
 		Trigger:  certRotationTrigger,
 		FullName: strings.TrimSpace(labels[DocoCDLabels.Source.Name]),
 		WebURL:   strings.TrimSpace(labels[DocoCDLabels.Source.URL]),
