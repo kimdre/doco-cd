@@ -414,6 +414,96 @@ func TestUpdateRepository_BranchMissingOnRemote_SkipsRepair(t *testing.T) {
 	}
 }
 
+func TestUpdateRepository_RemoteBranchDeleted_DoesNotUseStaleLocalBranch(t *testing.T) {
+	t.Parallel()
+
+	originPath, clonePath, _ := setupLocalMainRepoAndClone(t)
+
+	originRepo, err := gogit.PlainOpen(originPath)
+	if err != nil {
+		t.Fatalf("open origin: %v", err)
+	}
+
+	mainRef, err := originRepo.Reference(plumbing.NewBranchReferenceName("main"), true)
+	if err != nil {
+		t.Fatalf("read origin main: %v", err)
+	}
+
+	fallbackRef := plumbing.NewBranchReferenceName("fallback")
+	if err := originRepo.Storer.SetReference(plumbing.NewHashReference(fallbackRef, mainRef.Hash())); err != nil {
+		t.Fatalf("create fallback branch: %v", err)
+	}
+
+	if err := originRepo.Storer.SetReference(plumbing.NewSymbolicReference(plumbing.HEAD, fallbackRef)); err != nil {
+		t.Fatalf("point origin HEAD at fallback: %v", err)
+	}
+
+	if err := originRepo.Storer.RemoveReference(plumbing.NewBranchReferenceName("main")); err != nil {
+		t.Fatalf("delete origin main: %v", err)
+	}
+
+	_, err = UpdateRepository(clonePath, originPath, MainBranch, false, transport.ProxyOptions{}, nil, false, 0)
+	if !errors.Is(err, ErrInvalidReference) {
+		t.Fatalf("expected invalid reference after remote branch deletion, got: %v", err)
+	}
+}
+
+func TestUpdateRepository_AllowsHeadPseudoReference(t *testing.T) {
+	t.Parallel()
+
+	originPath, clonePath, originHash := setupLocalMainRepoAndClone(t)
+
+	repo, err := UpdateRepository(clonePath, originPath, plumbing.HEAD.String(), false, transport.ProxyOptions{}, nil, false, 0)
+	if err != nil {
+		t.Fatalf("update using HEAD: %v", err)
+	}
+
+	head, err := repo.Head()
+	if err != nil {
+		t.Fatalf("read HEAD: %v", err)
+	}
+
+	if head.Hash() != originHash {
+		t.Fatalf("HEAD hash mismatch: got %s want %s", head.Hash(), originHash)
+	}
+}
+
+func TestFetchRepository_UsesPathLock(t *testing.T) {
+	t.Parallel()
+
+	originPath, clonePath, _ := setupLocalMainRepoAndClone(t)
+
+	repo, err := gogit.PlainOpen(clonePath)
+	if err != nil {
+		t.Fatalf("open clone: %v", err)
+	}
+
+	unlock := AcquirePathLock(clonePath)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- FetchRepository(repo, originPath, false, transport.ProxyOptions{}, nil, 0)
+	}()
+
+	select {
+	case err := <-done:
+		unlock()
+		t.Fatalf("fetch completed while path lock was held: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	unlock()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("fetch failed after path lock release: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("fetch did not complete after path lock release")
+	}
+}
+
 func TestRemoteRefExists(t *testing.T) {
 	tmpDir := t.TempDir()
 

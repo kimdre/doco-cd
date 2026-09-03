@@ -119,6 +119,20 @@ func effectiveDepth(url string, depth int) int {
 // FetchRepository fetches updates from the remote repository, including all branches and tags, and prunes deleted references.
 // If depth > 0, a shallow fetch is performed with the specified number of commits.
 func FetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, depth int) error {
+	worktree, err := repo.Worktree()
+	if err != nil {
+		// Bare repositories have no worktree path to use as a lock key.
+		return fetchRepositoryLocked(repo, url, skipTLSVerify, proxyOpts, auth, depth)
+	}
+
+	unlock := AcquirePathLock(worktree.Filesystem.Root())
+	defer unlock()
+
+	return fetchRepositoryLocked(repo, url, skipTLSVerify, proxyOpts, auth, depth)
+}
+
+// fetchRepositoryLocked fetches a repository while the caller holds its path lock.
+func fetchRepositoryLocked(repo *git.Repository, url string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, depth int) error {
 	depth = effectiveDepth(url, depth)
 
 	opts := &git.FetchOptions{
@@ -209,7 +223,7 @@ func updateRepositoryLocked(path, url, ref string, skipTLSVerify bool, proxyOpts
 		return nil, err
 	}
 
-	err = FetchRepository(repo, url, skipTLSVerify, proxyOpts, auth, depth)
+	err = fetchRepositoryLocked(repo, url, skipTLSVerify, proxyOpts, auth, depth)
 	if err != nil {
 		if IsCorruptionError(err) {
 			repairedRepo, repairErr := repairAfterCorruptionLocked(path, url, ref, "fetch", err, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
@@ -221,6 +235,11 @@ func updateRepositoryLocked(path, url, ref string, skipTLSVerify bool, proxyOpts
 		}
 
 		return nil, fmt.Errorf("%w: %w", ErrFetchFailed, err)
+	}
+
+	fetchedExists, fetchedCheckErr := fetchedReferenceExistsAfterFetch(repo, ref)
+	if fetchedCheckErr == nil && !fetchedExists {
+		return nil, fmt.Errorf("%w: %w: %s", ErrCheckoutFailed, ErrInvalidReference, ref)
 	}
 
 	// Pass auth and cloneSubmodules so CheckoutRepository can ensure submodules are updated when needed.
@@ -462,7 +481,7 @@ func deepenAndCheckout(repo *git.Repository, url, ref string, skipTLSVerify bool
 			slog.Int("previous_depth", currentDepth),
 			slog.String("new_depth", label))
 
-		err := FetchRepository(repo, url, skipTLSVerify, proxyOpts, auth, newDepth)
+		err := fetchRepositoryLocked(repo, url, skipTLSVerify, proxyOpts, auth, newDepth)
 		if err != nil {
 			if isNonRecoverableError(err) {
 				return nil, fmt.Errorf("non-recoverable error during deepen: %w", err)

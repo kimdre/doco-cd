@@ -142,7 +142,7 @@ func repairRepositoryLocked(
 
 	repo, openErr := git.PlainOpen(path)
 	if openErr == nil && repositoryMetadataValid(repo) {
-		fetchErr := FetchRepository(repo, url, skipTLSVerify, proxyOpts, auth, depth)
+		fetchErr := fetchRepositoryLocked(repo, url, skipTLSVerify, proxyOpts, auth, depth)
 		switch {
 		case fetchErr != nil:
 			if !IsCorruptionError(fetchErr) {

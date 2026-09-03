@@ -1,6 +1,8 @@
 package git
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -15,6 +17,21 @@ func TestLockForPath(t *testing.T) {
 
 	if lock1 != lock2 {
 		t.Fatalf("expected same mutex for the same path, got different instances")
+	}
+}
+
+func TestLockForPath_CanonicalizesSymlinks(t *testing.T) {
+	t.Parallel()
+
+	realDir := t.TempDir()
+
+	symlinkPath := filepath.Join(t.TempDir(), "repo")
+	if err := os.Symlink(realDir, symlinkPath); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	if lockForKey(realDir) != lockForKey(symlinkPath) {
+		t.Fatal("expected real and symlinked paths to use the same mutex")
 	}
 }
 
