@@ -1,0 +1,2 @@
+name: e2e-deployment-lifecycle
+working_dir: deploy
