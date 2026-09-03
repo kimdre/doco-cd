@@ -28,6 +28,7 @@ import (
 func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, retErr error) {
 	startedAt := time.Now()
 	sourceLabel := "unknown"
+
 	defer func() {
 		outcome := "success"
 		if retErr != nil {
@@ -45,6 +46,7 @@ func (p *Preparer) Prepare(ctx context.Context, req Request) (result Result, ret
 	if err := config.ValidateSourceType(sourceType); err != nil {
 		return Result{}, wrapPrepareError(ErrInvalidSourceType, err)
 	}
+
 	sourceLabel = string(sourceType)
 
 	repoName := git.GetRepoName(req.SourceRef)

@@ -148,6 +148,7 @@ func LoadCompose(ctx context.Context, dockerCli command.Cli, repoPath, workingDi
 	}
 
 	projectFilesDecrypted := len(files) > 0
+
 	decryptedFiles = append(decryptedFiles, files...)
 	if len(decryptedFiles) > 0 {
 		slog.Debug("decrypted SOPS-encrypted files", slog.String("stack", project.Name), slog.Any("files", decryptedFiles))

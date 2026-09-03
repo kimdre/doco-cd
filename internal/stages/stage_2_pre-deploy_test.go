@@ -590,6 +590,7 @@ func TestLoadComposeProjectHashCachesProjectAndHash(t *testing.T) {
 	t.Parallel()
 
 	repoPath := t.TempDir()
+
 	composePath := filepath.Join(repoPath, "compose.yaml")
 	if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: busybox:latest\n"), 0o600); err != nil {
 		t.Fatalf("write compose file: %v", err)

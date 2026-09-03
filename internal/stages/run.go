@@ -121,6 +121,7 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 		stageLog.Debug(string("begin stage: " + stageName))
 
 		err = stageOrder.Funcs[stageName](ctx, stageLog)
+
 		outcome := "success"
 		if err != nil {
 			outcome = "failure"
