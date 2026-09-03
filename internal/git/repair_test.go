@@ -3,6 +3,7 @@ package git
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/go-git/go-git/v5/storage/filesystem/dotgit"
 
 	"github.com/kimdre/doco-cd/internal/filesystem"
 )
@@ -27,6 +29,7 @@ func TestIsCorruptionError(t *testing.T) {
 		{name: "nil error", err: nil, want: false},
 		{name: "reference not found", err: ErrInvalidReference, want: true},
 		{name: "error with reference not found message", err: gogit.ErrInvalidReference, want: true},
+		{name: "empty ref file", err: fmt.Errorf("fetch failed: %w", dotgit.ErrEmptyRefFile), want: true},
 		{name: "other error", err: ErrMissingAuthToken, want: false},
 	}
 
@@ -189,6 +192,41 @@ func TestUpdateRepository_RepairsCorruptionWithoutDeadlock(t *testing.T) {
 		assertRepoOnMainHash(t, res.repo, originHash)
 	case <-time.After(5 * time.Second):
 		t.Fatal("UpdateRepository timed out (possible path-lock deadlock during repair)")
+	}
+}
+
+func TestUpdateRepository_RepairsEmptyRefFileDuringFetch(t *testing.T) {
+	t.Parallel()
+
+	originPath, clonePath, originHash := setupLocalMainRepoAndClone(t)
+
+	refPath := filepath.Join(clonePath, ".git", "refs", "remotes", RemoteName, "main")
+	if err := os.WriteFile(refPath, nil, filesystem.PermOwner); err != nil {
+		t.Fatalf("empty remote ref file: %v", err)
+	}
+
+	done := make(chan struct {
+		repo *gogit.Repository
+		err  error
+	}, 1)
+
+	go func() {
+		r, e := UpdateRepository(clonePath, originPath, MainBranch, false, transport.ProxyOptions{}, nil, false, 0)
+		done <- struct {
+			repo *gogit.Repository
+			err  error
+		}{repo: r, err: e}
+	}()
+
+	select {
+	case res := <-done:
+		if res.err != nil {
+			t.Fatalf("UpdateRepository failed: %v", res.err)
+		}
+
+		assertRepoOnMainHash(t, res.repo, originHash)
+	case <-time.After(5 * time.Second):
+		t.Fatal("UpdateRepository timed out (possible path-lock deadlock during fetch repair)")
 	}
 }
 

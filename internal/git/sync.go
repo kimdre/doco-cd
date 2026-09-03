@@ -208,6 +208,26 @@ func UpdateRepository(path, url, ref string, skipTLSVerify bool, proxyOpts trans
 
 	err = FetchRepository(repo, url, skipTLSVerify, proxyOpts, auth, depth)
 	if err != nil {
+		if IsCorruptionError(err) {
+			slog.Warn("detected possible repository corruption during fetch",
+				slog.String("path", path),
+				slog.String("error", FormatGitErrorMessage(err)))
+
+			// Release the lock before calling RepairRepository because repair may re-clone.
+			unlock()
+
+			repairedRepo, repairErr := RepairRepository(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth, slog.Default())
+			if repairErr == nil {
+				return repairedRepo, nil
+			}
+
+			slog.Error("failed to repair corrupted repository",
+				slog.String("path", path),
+				slog.String("repair_error", FormatGitErrorMessage(repairErr)))
+
+			return nil, fmt.Errorf("%w: %w; repair failed: %v", ErrFetchFailed, err, repairErr)
+		}
+
 		return nil, fmt.Errorf("%w: %w", ErrFetchFailed, err)
 	}
 
