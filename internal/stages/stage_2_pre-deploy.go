@@ -447,6 +447,8 @@ func (s *StageManager) loadComposeProjectHash(ctx context.Context) (string, erro
 		return "", fmt.Errorf("failed to get project hash: %w", err)
 	}
 
+	s.Docker.ProjectHash = projectHash
+
 	return projectHash, nil
 }
 

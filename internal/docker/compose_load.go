@@ -147,15 +147,18 @@ func LoadCompose(ctx context.Context, dockerCli command.Cli, repoPath, workingDi
 		return nil, fmt.Errorf("failed to decrypt project files: %w", err)
 	}
 
+	projectFilesDecrypted := len(files) > 0
 	decryptedFiles = append(decryptedFiles, files...)
 	if len(decryptedFiles) > 0 {
 		slog.Debug("decrypted SOPS-encrypted files", slog.String("stack", project.Name), slog.Any("files", decryptedFiles))
 	}
 
-	// Reload project after decryption to ensure all decrypted values are properly loaded into the project.
-	project, err = options.LoadProject(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load compose project: %w", err)
+	// Reload only when project files discovered by the first parse were decrypted.
+	if projectFilesDecrypted {
+		project, err = options.LoadProject(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to reload compose project after decryption: %w", err)
+		}
 	}
 
 	project, err = project.WithServicesEnvironmentResolved(false)
