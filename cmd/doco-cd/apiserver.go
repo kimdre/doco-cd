@@ -12,10 +12,14 @@ import (
 	"github.com/kimdre/doco-cd/internal/logger"
 )
 
-func registryApiServer(c *app.Config, h *api.Handler, mounts api.Mounts, log *logger.Logger) {
+func registryApiServer(c *app.Config, h *api.Handler, mounts api.Mounts, log *logger.Logger) error {
 	// Register API endpoints
 	apiServerMux := http.NewServeMux()
-	enabledApiEndpoints := api.RegisterRoutes(apiServerMux, h, mounts)
+
+	enabledApiEndpoints, err := api.RegisterRoutes(apiServerMux, h, mounts)
+	if err != nil {
+		return fmt.Errorf("register API routes: %w", err)
+	}
 
 	protocol := "http"
 	if c.HttpTLSEnabled {
@@ -44,4 +48,6 @@ func registryApiServer(c *app.Config, h *api.Handler, mounts api.Mounts, log *lo
 	}
 
 	graceful.RegisterServer(graceful.NewHttpServer("api", server, c.HttpTLSCertFile, c.HttpTLSKeyFile))
+
+	return nil
 }

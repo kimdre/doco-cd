@@ -1,8 +1,15 @@
 package api
 
 import (
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+
+	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/swaggest/swgui/v5emb"
+
+	"github.com/kimdre/doco-cd/internal/config/app"
 )
 
 const (
@@ -14,6 +21,14 @@ const (
 	HealthPath = "/v1/health"
 	// MCPPath is the stateless MCP transport endpoint.
 	MCPPath = "/mcp"
+	// OpenAPIRestPath serves the runtime-generated REST and health OpenAPI document.
+	OpenAPIRestPath = "/openapi/rest.json"
+	// OpenAPIWebhookPath serves the runtime-generated webhook OpenAPI document.
+	OpenAPIWebhookPath = "/openapi/webhooks.json"
+	// DocsPath serves the embedded Swagger UI for REST and health endpoints.
+	DocsPath = "/docs/"
+	// DocsWebhookPath serves the embedded Swagger UI for webhook endpoints.
+	DocsWebhookPath = "/docs/webhooks/"
 )
 
 // Mounts supplies protocol handlers owned outside the API package.
@@ -22,82 +37,120 @@ type Mounts struct {
 	MCP     http.Handler
 }
 
+// Operation binds an HTTP method to its OpenAPI operation metadata.
+type Operation struct {
+	Method    string
+	Operation *openapi3.Operation
+}
+
+// Route is the shared source of truth for HTTP registration and OpenAPI generation.
+type Route struct {
+	Pattern    string
+	Handler    http.Handler
+	Enabled    func(*app.Config) bool
+	Root       string
+	Operations []Operation
+}
+
 // RegisterRoutes registers endpoints based on the application configuration
 // and returns all enabled endpoint roots in registration order.
-func RegisterRoutes(mux *http.ServeMux, h *Handler, mounts Mounts) []string {
+func RegisterRoutes(mux *http.ServeMux, h *Handler, mounts Mounts) ([]string, error) {
 	if mux == nil {
-		panic("api router is required")
+		return nil, errors.New("api router is required")
 	}
 
 	if h == nil {
-		panic("api handler is required")
+		return nil, errors.New("api handler is required")
+	}
+
+	if h.appConfig == nil {
+		return nil, errors.New("api application configuration is required")
+	}
+
+	if h.log == nil {
+		return nil, errors.New("api logger is required")
+	}
+
+	builder := newSchemaBuilder()
+
+	routes, err := createRouteCatalog(h, mounts, builder)
+	if err != nil {
+		return nil, fmt.Errorf("create API route catalog: %w", err)
 	}
 
 	var enabledEndpoints []string
 
-	type endpoint struct {
-		path    string
-		handler http.Handler
+	seenRoots := make(map[string]bool)
+
+	for _, route := range routes {
+		if route.Enabled == nil || !route.Enabled(h.appConfig) {
+			continue
+		}
+
+		if route.Handler == nil {
+			return nil, fmt.Errorf("handler for enabled route %q is required", route.Pattern)
+		}
+
+		mux.Handle(route.Pattern, route.Handler)
+		h.log.Debug("register API endpoint", slog.String("path", route.Pattern))
+
+		if !seenRoots[route.Root] {
+			enabledEndpoints = append(enabledEndpoints, route.Root)
+			seenRoots[route.Root] = true
+		}
 	}
 
-	enabledEndpoints = append(enabledEndpoints, HealthPath)
-	mux.Handle(HealthPath, http.HandlerFunc(h.HealthCheckHandler))
-	h.log.Debug("register health endpoint", slog.String("path", HealthPath))
-
-	if h.appConfig.ApiSecret != "" {
-		enabledEndpoints = append(enabledEndpoints, APIPath)
-
-		endpoints := []endpoint{
-			{APIPath + "/runs", http.HandlerFunc(h.GetDeploymentRunsHandler)},
-			{APIPath + "/run/{jobID}", http.HandlerFunc(h.GetDeploymentRunHandler)},
-			{APIPath + "/jobs", http.HandlerFunc(h.GetScheduledJobsHandler)},
-			{APIPath + "/job/{jobName}/run", http.HandlerFunc(h.TriggerScheduledJobHandler)},
-			{APIPath + "/projects", http.HandlerFunc(h.GetProjectsApiHandler)},
-			{APIPath + "/project/{projectName}", http.HandlerFunc(h.ProjectApiHandler)},
-			{APIPath + "/project/{projectName}/{action}", http.HandlerFunc(h.ProjectActionApiHandler)},
-			{APIPath + "/stacks", http.HandlerFunc(h.GetStacksApiHandler)},
-			{APIPath + "/stack/{stackName}", http.HandlerFunc(h.StackApiHandler)},
-			{APIPath + "/stack/{stackName}/{action}", http.HandlerFunc(h.StackActionApiHandler)},
-			{APIPath + "/poll/run", http.HandlerFunc(h.TriggerPollHandler)},
-		}
-
-		for _, ep := range endpoints {
-			mux.Handle(ep.path, ep.handler)
-			h.log.Debug("register api endpoint", slog.String("path", ep.path))
-		}
-	} else {
+	if h.appConfig.ApiSecret == "" {
 		h.log.Info("api endpoints disabled, no api secret configured")
 	}
 
-	if h.appConfig.McpEnabled && h.appConfig.ApiSecret != "" {
-		if mounts.MCP == nil {
-			panic("api MCP handler is required when MCP is enabled")
-		}
-
-		enabledEndpoints = append(enabledEndpoints, MCPPath)
-		mux.Handle("POST "+MCPPath, mounts.MCP)
-		h.log.Debug("register MCP endpoint", slog.String("path", MCPPath))
-	}
-
-	if h.appConfig.WebhookSecret != "" {
-		if mounts.Webhook == nil {
-			panic("api webhook handler is required when webhooks are enabled")
-		}
-
-		enabledEndpoints = append(enabledEndpoints, WebhookPath)
-
-		endpoints := []endpoint{
-			{WebhookPath, mounts.Webhook},
-			{WebhookPath + "/{customTarget}", mounts.Webhook},
-		}
-
-		for _, ep := range endpoints {
-			mux.Handle(ep.path, ep.handler)
-			h.log.Debug("register webhook endpoint", slog.String("path", ep.path))
-		}
-	} else {
+	if h.appConfig.WebhookSecret == "" {
 		h.log.Info("webhook endpoints disabled, no webhook secret configured")
 	}
 
-	return enabledEndpoints
+	if h.appConfig.OpenAPIEnabled {
+		_, restDocumentJSON, err := buildOpenAPIDocument(routesByRoot(routes, HealthPath, APIPath), builder.components)
+		if err != nil {
+			return nil, fmt.Errorf("build runtime REST OpenAPI document: %w", err)
+		}
+
+		_, webhookDocumentJSON, err := buildOpenAPIDocument(routesByRoot(routes, WebhookPath), builder.components)
+		if err != nil {
+			return nil, fmt.Errorf("build runtime webhook OpenAPI document: %w", err)
+		}
+
+		mux.Handle("GET "+OpenAPIRestPath, openAPIDocumentHandler(restDocumentJSON))
+		mux.Handle("GET "+OpenAPIWebhookPath, openAPIDocumentHandler(webhookDocumentJSON))
+		mux.Handle("GET "+DocsPath, v5emb.New("Doco-CD REST API", OpenAPIRestPath, DocsPath))
+		mux.Handle("GET "+DocsWebhookPath, v5emb.New("Doco-CD Webhook API", OpenAPIWebhookPath, DocsWebhookPath))
+
+		enabledEndpoints = append(enabledEndpoints, OpenAPIRestPath, OpenAPIWebhookPath, DocsPath, DocsWebhookPath)
+	}
+
+	return enabledEndpoints, nil
+}
+
+func routesByRoot(routes []Route, roots ...string) []Route {
+	included := make(map[string]bool, len(roots))
+	for _, root := range roots {
+		included[root] = true
+	}
+
+	result := make([]Route, 0, len(routes))
+	for _, route := range routes {
+		if included[route.Root] && len(route.Operations) > 0 {
+			result = append(result, route)
+		}
+	}
+
+	return result
+}
+
+func openAPIDocumentHandler(document []byte) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", openAPIMediaType)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(document)
+	})
 }

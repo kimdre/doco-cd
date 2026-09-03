@@ -23,6 +23,11 @@ func TestRegisterRoutesPreservesEnabledEndpointOrderAndGating(t *testing.T) {
 			wantEndpoints: []string{HealthPath},
 		},
 		{
+			name:          "OpenAPI documentation",
+			config:        app.Config{OpenAPIEnabled: true},
+			wantEndpoints: []string{HealthPath, OpenAPIRestPath, OpenAPIWebhookPath, DocsPath, DocsWebhookPath},
+		},
+		{
 			name:          "REST API",
 			config:        app.Config{ApiSecret: "api-secret"}, // #nosec G101 -- test fixture.
 			wantEndpoints: []string{HealthPath, APIPath},
@@ -30,11 +35,12 @@ func TestRegisterRoutesPreservesEnabledEndpointOrderAndGating(t *testing.T) {
 		{
 			name: "all mounts",
 			config: app.Config{
-				ApiSecret:     "api-secret", // #nosec G101 -- test fixture.
-				McpEnabled:    true,
-				WebhookSecret: "webhook-secret", // #nosec G101 -- test fixture.
+				ApiSecret:      "api-secret", // #nosec G101 -- test fixture.
+				McpEnabled:     true,
+				OpenAPIEnabled: true,
+				WebhookSecret:  "webhook-secret", // #nosec G101 -- test fixture.
 			},
-			wantEndpoints: []string{HealthPath, APIPath, MCPPath, WebhookPath},
+			wantEndpoints: []string{HealthPath, APIPath, MCPPath, WebhookPath, OpenAPIRestPath, OpenAPIWebhookPath, DocsPath, DocsWebhookPath},
 		},
 		{
 			name: "MCP requires API secret",
@@ -53,10 +59,14 @@ func TestRegisterRoutesPreservesEnabledEndpointOrderAndGating(t *testing.T) {
 				log:       logger.New(logger.LevelCritical),
 			}
 			mux := http.NewServeMux()
-			got := RegisterRoutes(mux, h, Mounts{
+
+			got, err := RegisterRoutes(mux, h, Mounts{
 				Webhook: http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}),
 				MCP:     http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}),
 			})
+			if err != nil {
+				t.Fatalf("register routes: %v", err)
+			}
 
 			if !slices.Equal(got, testCase.wantEndpoints) {
 				t.Fatalf("enabled endpoints = %v, want %v", got, testCase.wantEndpoints)
@@ -80,7 +90,8 @@ func TestRegisterRoutesUsesExpectedPatternsAndOpaqueMounts(t *testing.T) {
 	var webhookPath, mcpMethod string
 
 	mux := http.NewServeMux()
-	RegisterRoutes(mux, h, Mounts{
+
+	_, err := RegisterRoutes(mux, h, Mounts{
 		Webhook: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			webhookPath = r.URL.Path
 
@@ -92,6 +103,9 @@ func TestRegisterRoutesUsesExpectedPatternsAndOpaqueMounts(t *testing.T) {
 			w.WriteHeader(http.StatusNoContent)
 		}),
 	})
+	if err != nil {
+		t.Fatalf("register routes: %v", err)
+	}
 
 	for _, pattern := range []string{
 		HealthPath,
