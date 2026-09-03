@@ -53,7 +53,7 @@ func WatchLocalGitRef(ctx context.Context, repoURL string, log *slog.Logger) (<-
 	// Best-effort: also watch refs/heads/ for loose-ref updates.
 	refsHeadsDir := filepath.Join(gitDir, "refs", "heads")
 	if _, statErr := os.Stat(refsHeadsDir); statErr == nil {
-		_ = watcher.Add(refsHeadsDir)
+		addRefDirectoryWatches(watcher, refsHeadsDir, log)
 	}
 
 	packedRefs := filepath.Join(gitDir, "packed-refs")
@@ -130,6 +130,12 @@ func WatchLocalGitRef(ctx context.Context, repoURL string, log *slog.Logger) (<-
 					continue
 				}
 
+				if event.Has(fsnotify.Create) {
+					if info, statErr := os.Stat(cleanName); statErr == nil && info.IsDir() {
+						addRefDirectoryWatches(watcher, cleanName, log)
+					}
+				}
+
 				if debounce != nil {
 					debounce.Stop()
 				}
@@ -151,6 +157,33 @@ func WatchLocalGitRef(ctx context.Context, repoURL string, log *slog.Logger) (<-
 	}()
 
 	return ch, nil
+}
+
+// addRefDirectoryWatches watches all existing ref directories on a best-effort basis.
+func addRefDirectoryWatches(watcher *fsnotify.Watcher, root string, log *slog.Logger) {
+	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			if log != nil && !os.IsNotExist(err) {
+				log.Warn("failed to inspect ref directory",
+					slog.String("path", path),
+					slog.Any("error", err))
+			}
+
+			return nil
+		}
+
+		if !entry.IsDir() {
+			return nil
+		}
+
+		if err := watcher.Add(path); err != nil && log != nil && !os.IsNotExist(err) {
+			log.Warn("failed to watch ref directory",
+				slog.String("path", path),
+				slog.Any("error", err))
+		}
+
+		return nil
+	})
 }
 
 // localPathFromURL extracts the filesystem path from a file:// URL.

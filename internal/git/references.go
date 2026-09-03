@@ -98,6 +98,12 @@ func fetchedReferenceExistsAfterFetch(repo *git.Repository, ref string) (bool, e
 		return true, nil
 	}
 
+	refName := plumbing.ReferenceName(ref)
+	if !strings.HasPrefix(ref, "refs/") && refName.IsSafe() {
+		// Uppercase pseudo-refs such as HEAD are resolved locally rather than fetched.
+		return true, nil
+	}
+
 	candidates := make([]plumbing.ReferenceName, 0, 3)
 
 	switch {

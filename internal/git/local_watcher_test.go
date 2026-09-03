@@ -83,6 +83,32 @@ func TestWatchLocalGitRef_BareRepo(t *testing.T) {
 	}
 }
 
+func TestWatchLocalGitRef_NestedBranch(t *testing.T) {
+	t.Parallel()
+
+	srcPath := filepath.Join(t.TempDir(), "repo")
+	initLocalTestRepo(t, srcPath)
+
+	nestedRefsDir := filepath.Join(srcPath, ".git", "refs", "heads", "feature")
+	if err := os.MkdirAll(nestedRefsDir, 0o755); err != nil {
+		t.Fatalf("create nested refs directory: %v", err)
+	}
+
+	watchCh, err := git.WatchLocalGitRef(t.Context(), "file://"+srcPath, nil)
+	if err != nil {
+		t.Fatalf("WatchLocalGitRef: %v", err)
+	}
+
+	fakeHash := "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+	if err := os.WriteFile(filepath.Join(nestedRefsDir, "foo"), []byte(fakeHash+"\n"), 0o600); err != nil {
+		t.Fatalf("write nested ref: %v", err)
+	}
+
+	if !waitForSignal(t, watchCh, watchSignalTimeout) {
+		t.Fatal("expected watcher signal after nested branch update, got none within timeout")
+	}
+}
+
 func TestWatchLocalGitRef_CancelStopsWatcher(t *testing.T) {
 	t.Parallel()
 
