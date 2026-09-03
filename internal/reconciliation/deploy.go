@@ -59,6 +59,7 @@ func (m *Manager) deploy(ctx context.Context, req DeployRequest) error {
 	}
 
 	configsByContext := map[string][]*deployConfig.Config{}
+	contextCLIs := buildDeployContextCLIs(ctx, m.contexts, req.DeployConfigs)
 
 	for _, dc := range req.DeployConfigs {
 		contextName := docker.NormalizeContextName(dc.Context)
@@ -66,7 +67,7 @@ func (m *Manager) deploy(ctx context.Context, req DeployRequest) error {
 	}
 
 	for contextName, groupedConfigs := range configsByContext {
-		entry := resolveDeployContext(ctx, m.contexts, contextName)
+		entry := contextCLIs[contextName]
 		if entry.err != nil {
 			// Isolate per-context failures: an unreachable context must not block
 			// cleanup/deploy for other (healthy) contexts. handleDeploy below fails
@@ -90,14 +91,16 @@ func (m *Manager) deploy(ctx context.Context, req DeployRequest) error {
 		}
 	}
 
-	return m.handleDeploy(ctx, req)
+	return m.handleDeployWithContexts(ctx, req, contextCLIs)
 }
 
 func (m *Manager) handleDeploy(ctx context.Context, req DeployRequest) error {
-	// Build one Docker CLI per distinct context up front and share it across all
-	// deployments targeting that context, instead of creating a client per deployment.
 	contextCLIs := buildDeployContextCLIs(ctx, m.contexts, req.DeployConfigs)
 
+	return m.handleDeployWithContexts(ctx, req, contextCLIs)
+}
+
+func (m *Manager) handleDeployWithContexts(ctx context.Context, req DeployRequest, contextCLIs map[string]deployContextCLI) error {
 	// Deployments run concurrently, grouped by repository and reference, and
 	// limited by this manager's deployment limiter.
 	var wg sync.WaitGroup
