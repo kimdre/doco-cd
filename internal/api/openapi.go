@@ -195,6 +195,10 @@ func buildOpenAPIDocument(routes []Route, components *openapi3.Components) (*ope
 				Name: "Doco-CD",
 				URL:  "https://doco.cd/" + version + "/",
 			},
+			License: &openapi3.License{
+				Name: "License",
+				URL:  "https://doco.cd/" + version + "/License/",
+			},
 		},
 		ExternalDocs: openAPIExternalDocs(routes),
 		Paths:        openapi3.NewPaths(),
