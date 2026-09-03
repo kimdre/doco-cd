@@ -22,6 +22,7 @@ import (
 
 func TestSSHHostKeyMismatchFailsClosed(t *testing.T) {
 	originalKnownHostsFilePath := internalssh.KnownHostsFilePath
+
 	t.Cleanup(func() {
 		internalssh.KnownHostsFilePath = originalKnownHostsFilePath
 	})
@@ -121,6 +122,7 @@ func startHostKeyMismatchSSHServer(t *testing.T) (string, string) {
 	if err != nil {
 		t.Fatalf("net.Listen() error = %v", err)
 	}
+
 	t.Cleanup(func() {
 		_ = listener.Close()
 	})
@@ -134,12 +136,14 @@ func startHostKeyMismatchSSHServer(t *testing.T) (string, string) {
 
 			go func() {
 				defer func() { _ = conn.Close() }()
+
 				_, _, _, _ = cryptossh.NewServerConn(conn, serverConfig)
 			}()
 		}
 	}()
 
 	address := listener.Addr().String()
+
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
 		t.Fatalf("net.SplitHostPort() error = %v", err)

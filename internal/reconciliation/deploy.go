@@ -283,10 +283,12 @@ func (m *Manager) handleOneDeploy(ctx context.Context, req DeployRequest, deploy
 
 		queueStarted := time.Now()
 		unlock, lErr := m.limiter.acquire(ctx, req.Repository.Name, NormalizeReference(dc.Reference))
+
 		queueOutcome := "admitted"
 		if lErr != nil {
 			queueOutcome = "canceled"
 		}
+
 		prometheus.DeploymentQueueDuration.WithLabelValues(
 			resolveDeploymentQueueRepository(req.Repository.Name),
 			queueOutcome,

@@ -164,6 +164,7 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 	stackLog.Debug("acquired scheduler/deploy lock")
 
 	deploymentPhase := newDeploymentPhaseState("resolving working directory")
+
 	externalWorkingDir, err := resolveExternalWorkingDir(req.ExternalRepoPath, req.DeployConfig.WorkingDirectory)
 	if err != nil {
 		errMsg := "invalid working directory: resolved path is outside the allowed base directory"
@@ -173,6 +174,7 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 	}
 
 	projectPreloaded := req.Project != nil
+
 	project := req.Project
 	if project == nil {
 		deploymentPhase.Set("loading compose configuration")
@@ -229,6 +231,7 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 	if projectPreloaded {
 		projectHash = strings.TrimSpace(req.ProjectHash)
 	}
+
 	if projectHash == "" {
 		projectHash, err = ProjectHash(WithNormalizedEnvValues(project, req.HashNormMap))
 		if err != nil {
