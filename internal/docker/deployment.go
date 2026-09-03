@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
+	"github.com/kimdre/doco-cd/internal/filesystem"
 	gitInternal "github.com/kimdre/doco-cd/internal/git"
 	"github.com/kimdre/doco-cd/internal/lock"
 	"github.com/kimdre/doco-cd/internal/prometheus"
@@ -162,10 +162,8 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 	stackLog.Debug("acquired scheduler/deploy lock")
 
 	deploymentPhase := newDeploymentPhaseState("resolving working directory")
-	externalWorkingDir := path.Join(req.ExternalRepoPath, req.DeployConfig.WorkingDirectory)
-
-	externalWorkingDir, err := filepath.Abs(externalWorkingDir)
-	if err != nil || !strings.HasPrefix(externalWorkingDir, req.ExternalRepoPath) {
+	externalWorkingDir, err := resolveExternalWorkingDir(req.ExternalRepoPath, req.DeployConfig.WorkingDirectory)
+	if err != nil {
 		errMsg := "invalid working directory: resolved path is outside the allowed base directory"
 		req.JobLog.Error(errMsg, slog.String("resolved_path", externalWorkingDir))
 
@@ -262,4 +260,22 @@ func DeployStack(ctx context.Context, req DeployRequest) error {
 	prometheus.DeploymentDuration.WithLabelValues(repositoryLabel, deploymentLabel, contextLabel).Observe(time.Since(startTime).Seconds())
 
 	return nil
+}
+
+func resolveExternalWorkingDir(repoPath, workingDir string) (string, error) {
+	absRepoPath, err := filepath.Abs(repoPath)
+	if err != nil {
+		return "", err
+	}
+
+	absWorkingDir, err := filepath.Abs(filepath.Join(absRepoPath, workingDir))
+	if err != nil {
+		return absWorkingDir, err
+	}
+
+	if !filesystem.InBasePath(absRepoPath, absWorkingDir) {
+		return absWorkingDir, filesystem.ErrPathTraversal
+	}
+
+	return absWorkingDir, nil
 }
