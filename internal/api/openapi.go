@@ -12,6 +12,7 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3gen"
+	"github.com/kimdre/doco-cd/internal/restapi"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
@@ -170,11 +171,18 @@ func jsonRequestFor[T any](builder *schemaBuilder, name, description string) (*o
 	}, nil
 }
 
+// buildOpenAPIDocument generates an OpenAPI document for the given routes and components, returning the document,
+// its JSON representation, and any error encountered.
 func buildOpenAPIDocument(routes []Route, components *openapi3.Components) (*openapi3.T, []byte, error) {
 	documentComponents := openapi3.NewComponents()
 	documentComponents.Schemas = maps.Clone(components.Schemas)
 	documentComponents.SecuritySchemes = make(openapi3.SecuritySchemes)
 	addReferencedSecuritySchemes(&documentComponents, routes)
+
+	version := "next"
+	if !strings.HasPrefix(app.Version, "dev") {
+		version = strings.TrimPrefix(app.Version, "v")
+	}
 
 	document := &openapi3.T{
 		OpenAPI: "3.2.0",
@@ -182,9 +190,14 @@ func buildOpenAPIDocument(routes []Route, components *openapi3.Components) (*ope
 			Title:       "Doco-CD API Documentation",
 			Version:     app.Version,
 			Description: openAPIDescription(routes),
+			Contact: &openapi3.Contact{
+				Name: "Doco-CD",
+				URL:  "https://doco.cd/" + version + "/",
+			},
 		},
-		Paths:      openapi3.NewPaths(),
-		Components: &documentComponents,
+		ExternalDocs: openAPIExternalDocs(routes),
+		Paths:        openapi3.NewPaths(),
+		Components:   &documentComponents,
 	}
 
 	operationIDs := make(map[string]string)
@@ -212,7 +225,10 @@ func buildOpenAPIDocument(routes []Route, components *openapi3.Components) (*ope
 
 	for _, tag := range []string{"Health", "Runs", "Scheduled jobs", "Projects", "Stacks", "Polling", "Webhooks"} {
 		if referencedTags[tag] {
-			document.Tags = append(document.Tags, &openapi3.Tag{Name: tag})
+			document.Tags = append(document.Tags, &openapi3.Tag{
+				Name:        tag,
+				Description: tagDescription(tag),
+			})
 		}
 	}
 
@@ -228,6 +244,8 @@ func buildOpenAPIDocument(routes []Route, components *openapi3.Components) (*ope
 	return document, data, nil
 }
 
+// openAPIDescription generates a description for the OpenAPI document based on the provided routes,
+// indicating whether REST or Webhook APIs are present and their authentication requirements.
 func openAPIDescription(routes []Route) string {
 	var hasREST, hasWebhooks bool
 	for _, route := range routes {
@@ -246,18 +264,14 @@ func openAPIDescription(routes []Route) string {
 
 Authenticated routes require ` + "`API_SECRET` or `API_SECRET_FILE`" + ` being set in the doco-cd environment.
 
-All supported routes are documented even when currently disabled.
-
-[Open webhook API documentation](` + DocsWebhookPath + `).`
+All supported routes are documented even when currently disabled.`
 	case hasWebhooks && !hasREST:
 		return `
 ## Webhook API
 
 Authenticated routes require ` + "`WEBHOOK_SECRET` or `WEBHOOK_SECRET_FILE`" + ` being set in the doco-cd environment.
 
-All supported routes are documented even when currently disabled.
-
-[Open REST API documentation](` + DocsPath + `).`
+All supported routes are documented even when currently disabled.`
 	default:
 		return `
 ## API
@@ -270,6 +284,58 @@ All supported routes are documented even when disabled in the current process.`
 	}
 }
 
+// openAPIExternalDocs generates an ExternalDocs object for the OpenAPI document based on the provided routes,
+// linking to the appropriate documentation for REST or Webhook APIs.
+func openAPIExternalDocs(routes []Route) *openapi3.ExternalDocs {
+	var hasREST, hasWebhooks bool
+	for _, route := range routes {
+		switch route.Root {
+		case HealthPath, APIPath:
+			hasREST = true
+		case WebhookPath:
+			hasWebhooks = true
+		}
+	}
+
+	switch {
+	case hasREST && !hasWebhooks:
+		return &openapi3.ExternalDocs{
+			URL:         DocsWebhookPath,
+			Description: "Webhook API documentation",
+		}
+	case hasWebhooks && !hasREST:
+		return &openapi3.ExternalDocs{
+			URL:         DocsPath,
+			Description: "REST API documentation",
+		}
+	default:
+		return nil
+	}
+}
+
+func tagDescription(tag string) string {
+	switch tag {
+	case "Health":
+		return "Health check and status endpoints"
+	case "Runs":
+		return "Deployment run management and history"
+	case "Scheduled jobs":
+		return "Scheduled container and service operations"
+	case "Projects":
+		return "Docker Compose project management"
+	case "Stacks":
+		return "Docker Swarm stack and service management"
+	case "Polling":
+		return "Repository polling operations"
+	case "Webhooks":
+		return "Webhook receivers for Git providers and container registries"
+	default:
+		return ""
+	}
+}
+
+// addReferencedSecuritySchemes adds security schemes to the OpenAPI components
+// based on the referenced security requirements in the provided routes.
 func addReferencedSecuritySchemes(components *openapi3.Components, routes []Route) {
 	referenced := make(map[string]bool)
 	for _, route := range routes {
@@ -291,18 +357,18 @@ func addReferencedSecuritySchemes(components *openapi3.Components, routes []Rout
 			Value: openapi3.NewSecurityScheme().
 				WithType("apiKey").
 				WithIn("header").
-				WithName("x-api-key").
-				WithDescription("REST API secret configured with API_SECRET or API_SECRET_FILE."),
+				WithName(restapi.KeyHeader).
+				WithDescription("REST API secret configured with `API_SECRET` or `API_SECRET_FILE`."),
 		}
 	}
 
 	for name, header := range map[string]string{ // #nosec G101 -- these are HTTP header names, not credentials.
-		"GitHubSignature":  "X-Hub-Signature-256",
-		"GitLabToken":      "X-Gitlab-Token",
-		"GiteaSignature":   "X-Gitea-Signature",
-		"GogsSignature":    "X-Gogs-Signature",
-		"ForgejoSignature": "X-Forgejo-Signature",
-		"OCISignature":     "X-Doco-OCI-Signature-256",
+		"GitHubSignature":  webhook.ScmProviderSecurityHeaders[webhook.Github],
+		"GitLabToken":      webhook.ScmProviderSecurityHeaders[webhook.Gitlab],
+		"GiteaSignature":   webhook.ScmProviderSecurityHeaders[webhook.Gitea],
+		"GogsSignature":    webhook.ScmProviderSecurityHeaders[webhook.Gogs],
+		"ForgejoSignature": webhook.ScmProviderSecurityHeaders[webhook.Forgejo],
+		"OCISignature":     webhook.ScmProviderSecurityHeaders[webhook.OCIRegistry],
 	} {
 		if !referenced[name] {
 			continue
@@ -440,12 +506,12 @@ func webhookParameters(includeTarget bool) openapi3.Parameters {
 	}
 
 	for _, header := range []string{
-		"X-GitHub-Event",
-		"X-Gitlab-Event",
-		"X-Gitea-Event",
-		"X-Gogs-Event",
-		"X-Forgejo-Event",
-		"X-Doco-OCI-Event",
+		webhook.ScmProviderEventHeaders[webhook.Github],
+		webhook.ScmProviderEventHeaders[webhook.Gitlab],
+		webhook.ScmProviderEventHeaders[webhook.Gitea],
+		webhook.ScmProviderEventHeaders[webhook.Gogs],
+		webhook.ScmProviderEventHeaders[webhook.Forgejo],
+		webhook.ScmProviderEventHeaders[webhook.OCIRegistry],
 	} {
 		parameters = append(parameters, &openapi3.ParameterRef{
 			Value: openapi3.NewHeaderParameter(header).
@@ -503,11 +569,11 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 		return nil, err
 	}
 
-	if err := customizePollSchema(builder.components.Schemas[componentTypeName(reflect.TypeFor[poll.Config]())]); err != nil {
+	if err = customizePollSchema(builder.components.Schemas[componentTypeName(reflect.TypeFor[poll.Config]())]); err != nil {
 		return nil, err
 	}
 
-	if err := customizeRunSchema(builder.components.Schemas[componentTypeName(reflect.TypeFor[controlplane.Run]())]); err != nil {
+	if err = customizeRunSchema(builder.components.Schemas[componentTypeName(reflect.TypeFor[controlplane.Run]())]); err != nil {
 		return nil, err
 	}
 
@@ -534,7 +600,7 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 	builder.components.Schemas["WebhookPayload"] = webhookPayload
 	webhookRequest := &openapi3.RequestBodyRef{
 		Value: openapi3.NewRequestBody().
-			WithDescription("Git provider push payload or OCI artifact payload.").
+			WithDescription("Git provider push payload or OCI artifact payload. See GitHubPushPayload, GitLabPushPayload, or OCIArtifactPayload schemas for details on each provider's event structure.").
 			WithRequired(true).
 			WithJSONSchemaRef(openapi3.NewSchemaRef("#/components/schemas/WebhookPayload", webhookPayload.Value)),
 	}
@@ -789,7 +855,8 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 			Enabled: webhookEnabled,
 			Root:    WebhookPath,
 			Operations: []Operation{
-				operation(http.MethodPost, "receiveWebhook", "Receive a deployment webhook", []string{"Webhooks"}, webhookParameters(false), webhookRequest, responses(webhookResponses), webhookAuth),
+				operation(http.MethodPost, "receiveWebhook", "Receive a deployment webhook", []string{"Webhooks"},
+				webhookParameters(false), webhookRequest, responses(webhookResponses), webhookAuth),
 			},
 		},
 		{
@@ -798,7 +865,8 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 			Enabled: webhookEnabled,
 			Root:    WebhookPath,
 			Operations: []Operation{
-				operation(http.MethodPost, "receiveTargetedWebhook", "Receive a targeted deployment webhook", []string{"Webhooks"}, webhookParameters(true), webhookRequest, responses(webhookResponses), webhookAuth),
+				operation(http.MethodPost, "receiveTargetedWebhook", "Receive a targeted deployment webhook", []string{"Webhooks"},
+				webhookParameters(true), webhookRequest, responses(webhookResponses), webhookAuth),
 			},
 		},
 	}, nil

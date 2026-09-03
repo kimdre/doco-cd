@@ -200,7 +200,7 @@ func TestRegisterRoutesServesPublicOpenAPIAndSwaggerUI(t *testing.T) {
 		excludedSecurityScheme  string
 		includedTag             string
 		excludedTag             string
-		linkedDocsPath          string
+		expectedExternalDocsURL string
 	}{
 		{
 			name:                    "REST",
@@ -211,7 +211,7 @@ func TestRegisterRoutesServesPublicOpenAPIAndSwaggerUI(t *testing.T) {
 			excludedSecurityScheme:  "GitHubSignature",
 			includedTag:             "Projects",
 			excludedTag:             "Webhooks",
-			linkedDocsPath:          DocsWebhookPath,
+			expectedExternalDocsURL: DocsWebhookPath,
 		},
 		{
 			name:                    "webhooks",
@@ -222,7 +222,7 @@ func TestRegisterRoutesServesPublicOpenAPIAndSwaggerUI(t *testing.T) {
 			excludedSecurityScheme:  apiKeySecurityScheme,
 			includedTag:             "Webhooks",
 			excludedTag:             "Projects",
-			linkedDocsPath:          DocsPath,
+			expectedExternalDocsURL: DocsPath,
 		},
 	} {
 		t.Run(testCase.name+" specification", func(t *testing.T) {
@@ -266,8 +266,14 @@ func TestRegisterRoutesServesPublicOpenAPIAndSwaggerUI(t *testing.T) {
 				t.Fatalf("OpenAPI document must not include tag %q", testCase.excludedTag)
 			}
 
-			if !strings.Contains(document.Info.Description, testCase.linkedDocsPath) {
-				t.Fatalf("OpenAPI description does not link to %q", testCase.linkedDocsPath)
+			if testCase.expectedExternalDocsURL != "" {
+				if document.ExternalDocs == nil {
+					t.Fatalf("OpenAPI document is missing ExternalDocs")
+				}
+
+				if document.ExternalDocs.URL != testCase.expectedExternalDocsURL {
+					t.Fatalf("OpenAPI ExternalDocs URL = %q, want %q", document.ExternalDocs.URL, testCase.expectedExternalDocsURL)
+				}
 			}
 		})
 	}
