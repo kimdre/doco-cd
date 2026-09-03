@@ -10,6 +10,15 @@ tags:
 Doco-CD exposes a RESTful API at the `/v1/api` endpoint.
 Set both `HTTP_TLS_CERT_FILE` and `HTTP_TLS_KEY_FILE` if you want doco-cd itself to serve the API over HTTPS.
 
+## OpenAPI documentation
+
+Set `OPENAPI_ENABLED=true` to expose the public [OpenAPI](https://www.openapis.org/) 3.2 documentation. The feature is disabled by default.
+
+| API surface     | OpenAPI document         | Swagger UI        |
+|-----------------|--------------------------|-------------------|
+| REST and health | `/openapi/rest.json`     | `/docs/`          |
+| Webhooks        | `/openapi/webhooks.json` | `/docs/webhooks/` |
+
 ## Authentication
 
 Set the `API_SECRET` or `API_SECRET_FILE` environment variable in the container to enable the API, see [App Settings](../App-Settings.md#general-settings).

@@ -320,6 +320,43 @@ func TestGetConfig_McpEnabled(t *testing.T) {
 	})
 }
 
+func TestGetConfig_OpenAPIEnabled(t *testing.T) {
+	for _, testCase := range []struct {
+		name        string
+		value       string
+		wantEnabled bool
+	}{
+		{
+			name: "disabled by default",
+		},
+		{
+			name:        "enabled",
+			value:       "true",
+			wantEnabled: true,
+		},
+		{
+			name:  "explicitly disabled",
+			value: "false",
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("OPENAPI_ENABLED", testCase.value)
+			t.Setenv("WEBHOOK_SECRET", "secret")
+			t.Setenv("API_SECRET", "")
+			t.Setenv("API_SECRET_FILE", "")
+
+			cfg, err := GetConfig()
+			if err != nil {
+				t.Fatalf("load config: %v", err)
+			}
+
+			if cfg.OpenAPIEnabled != testCase.wantEnabled {
+				t.Fatalf("OpenAPIEnabled = %v, want %v", cfg.OpenAPIEnabled, testCase.wantEnabled)
+			}
+		})
+	}
+}
+
 func TestGetConfigRejectsNonPositiveMaxPayloadSize(t *testing.T) {
 	for _, value := range []string{"0", "-1"} {
 		t.Run(value, func(t *testing.T) {

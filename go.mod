@@ -12,6 +12,7 @@ tool (
 require (
 	github.com/1Password/connect-sdk-go v1.5.3
 	github.com/1password/onepassword-sdk-go v0.4.1
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.1
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.14.1
 	github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azsecrets v1.5.0
 	github.com/avast/retry-go/v5 v5.0.0
@@ -27,6 +28,7 @@ require (
 	github.com/docker/cli v29.7.2+incompatible
 	github.com/docker/compose/v5 v5.5.0
 	github.com/fsnotify/fsnotify v1.10.1
+	github.com/getkin/kin-openapi v0.149.0
 	github.com/getsops/sops/v3 v3.13.3
 	github.com/go-co-op/gocron/v2 v2.22.0
 	github.com/go-git/go-billy/v5 v5.9.1
@@ -48,6 +50,7 @@ require (
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.70.1
 	github.com/sigstore/cosign/v3 v3.1.3
+	github.com/swaggest/swgui v1.8.9
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/veqryn/slog-dedup v0.6.0
 	go.yaml.in/yaml/v4 v4.0.0-rc.6
@@ -71,7 +74,6 @@ require (
 	filippo.io/age v1.3.1 // indirect
 	filippo.io/edwards25519 v1.2.0 // indirect
 	filippo.io/hpke v0.4.0 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.12.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys v1.5.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/internal v1.2.0 // indirect
@@ -277,6 +279,8 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f // indirect
 	github.com/nozzle/throttler v0.0.0-20180817012639-2ea982251481 // indirect
+	github.com/oasdiff/yaml v0.1.1 // indirect
+	github.com/oasdiff/yaml3 v0.0.14 // indirect
 	github.com/oklog/ulid/v2 v2.1.1 // indirect
 	github.com/open-policy-agent/opa v1.17.1 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
@@ -294,7 +298,7 @@ require (
 	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/ryanuber/go-glob v1.0.0 // indirect
-	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect
 	github.com/sassoftware/relic v7.2.1+incompatible // indirect
 	github.com/secure-systems-lab/go-securesystemslib v0.11.0 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
@@ -339,6 +343,7 @@ require (
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
 	github.com/urfave/cli v1.22.17 // indirect
 	github.com/valyala/fastjson v1.6.10 // indirect
+	github.com/vearutop/statigz v1.4.0 // indirect
 	github.com/vektah/gqlparser/v2 v2.5.33 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect

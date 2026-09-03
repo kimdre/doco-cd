@@ -524,7 +524,12 @@ func run() error {
 		apiMounts.MCP = mcpHandler
 	}
 
-	registryApiServer(c, apiHandler, apiMounts, log)
+	if err := registryApiServer(c, apiHandler, apiMounts, log); err != nil {
+		log.Critical("failed to register API server", logger.ErrAttr(err))
+
+		return err
+	}
+
 	prometheus.RegisterServer(c.MetricsPort, c.HttpTLSCertFile, c.HttpTLSKeyFile, log)
 
 	if err := graceful.Serve(log.Logger); err != nil {
