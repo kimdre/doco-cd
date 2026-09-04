@@ -77,8 +77,17 @@ func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 				// Already resolved above; avoid a redundant store lookup.
 				remoteHash = localRef.Hash()
 			case c.remote.IsSafe():
-				if rRef, rErr := repo.Reference(c.remote, true); rErr == nil {
+				rRef, rErr := repo.Reference(c.remote, true)
+
+				switch {
+				case rErr == nil:
 					remoteHash = rRef.Hash()
+				case !errors.Is(rErr, plumbing.ErrReferenceNotFound):
+					return RefSet{}, fmt.Errorf("failed to get reference %s: %w", c.remote, rErr)
+				case c.local.IsBranch():
+					// Branches supplied to deployment synchronization must still
+					// exist on origin; otherwise a same-named tag must win.
+					continue
 				}
 			}
 
@@ -143,9 +152,14 @@ func MatchesHead(path, ref string) (bool, error) {
 		return false, fmt.Errorf("failed to open repository at %s: %w", path, err)
 	}
 
+	return repositoryMatchesHead(repo, ref)
+}
+
+// repositoryMatchesHead checks if the given repository's HEAD matches the specified reference (branch, tag, or commit SHA).
+func repositoryMatchesHead(repo *git.Repository, ref string) (bool, error) {
 	head, err := repo.Head()
 	if err != nil {
-		return false, fmt.Errorf("%w for repository '%s': %w", ErrGetHeadFailed, path, err)
+		return false, fmt.Errorf("%w: %w", ErrGetHeadFailed, err)
 	}
 
 	refSet, err := GetReferenceSet(repo, ref)

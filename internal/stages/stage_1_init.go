@@ -2,7 +2,6 @@ package stages
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -123,60 +122,60 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		return fmt.Errorf("failed to get auth method: %w", err)
 	}
 
-	// Attempt to fetch the remote repository before checking if we can skip cloning/updating,
-	// to ensure we have the latest commits and references available locally
-	if s.DeployConfig.RepositoryUrl != "" {
-		repo, err := git.OpenRepository(s.Repository.PathInternal)
-		switch {
-		case err == nil:
-			err = git.FetchRepository(repo, s.Repository.SourceUrl, s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, auth, s.DeployConfig.ResolveGitDepth(s.AppConfig.GitCloneDepth))
-			if err != nil {
-				// If fetch failed with corruption indicators, attempt repair
-				if git.IsCorruptionError(err) {
-					stageLog.Warn("detected corruption during fetch, attempting repository repair",
-						slog.String("path", s.Repository.PathExternal))
+	var syncResult *git.SyncResult
 
-					if _, repairErr := git.RepairRepository(s.Repository.PathInternal, s.Repository.SourceUrl, s.DeployConfig.Reference,
-						s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, auth, s.AppConfig.GitCloneSubmodules,
-						s.DeployConfig.ResolveGitDepth(s.AppConfig.GitCloneDepth), stageLog); repairErr != nil {
-						return fmt.Errorf("failed to fetch repository and repair attempt failed: %w (repair error: %v)", err, repairErr)
-					}
-				} else {
-					return fmt.Errorf("failed to fetch repository: %w", err)
-				}
+	if s.DeployConfig.RepositoryUrl == "" {
+		matches, matchErr := git.MatchesHead(s.Repository.PathInternal, s.DeployConfig.Reference)
+		if matchErr != nil {
+			return fmt.Errorf("failed to check prepared repository state: %w", matchErr)
+		}
+
+		if matches && !git.RepositoryNeedsReclone(
+			s.Repository.PathInternal,
+			s.Repository.SourceUrl,
+			s.DeployConfig.ResolveGitDepth(s.AppConfig.GitCloneDepth),
+		) {
+			repo, openErr := git.OpenRepository(s.Repository.PathInternal)
+			if openErr != nil {
+				return fmt.Errorf("failed to open prepared repository: %w", openErr)
 			}
-		case errors.Is(err, git.ErrRepositoryNotExists): // Continue without fetching the repository, it will be cloned later
-		default:
-			return fmt.Errorf("failed to open repository: %w", err)
+
+			syncResult = &git.SyncResult{Repository: repo, State: git.SyncStateCurrent}
 		}
 	}
 
-	// Check if we can skip cloning/updating because the previous run (initial or a prior deploy config)
-	skipCloneUpdate, err := git.MatchesHead(s.Repository.PathInternal, s.DeployConfig.Reference)
-	if err != nil {
-		return fmt.Errorf("failed to check if repository matches remote and reference: %w", err)
+	if syncResult == nil {
+		var syncErr error
+
+		syncResult, syncErr = git.SyncRepository(
+			s.Repository.PathInternal, s.Repository.SourceUrl, s.DeployConfig.Reference,
+			s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, auth, s.AppConfig.GitCloneSubmodules,
+			s.DeployConfig.ResolveGitDepth(s.AppConfig.GitCloneDepth),
+		)
+		if syncErr != nil {
+			return fmt.Errorf("failed to synchronize repository: %w", syncErr)
+		}
+	}
+
+	s.Repository.Git = syncResult.Repository
+	switch syncResult.State {
+	case git.SyncStateCurrent:
+		stageLog.Debug("skipping clone of remote repository, already at correct state",
+			slog.String("url", s.Repository.SourceUrl),
+			slog.String("reference", s.DeployConfig.Reference))
+	case git.SyncStateCloned:
+		stageLog.Info("cloned remote repository",
+			slog.String("url", s.Repository.SourceUrl),
+			slog.String("path", s.Repository.PathExternal))
+	default:
+		stageLog.Debug("updated remote repository",
+			slog.String("url", s.Repository.SourceUrl),
+			slog.String("reference", s.DeployConfig.Reference),
+			slog.String("path", s.Repository.PathExternal))
 	}
 
 	if s.DeployConfig.RepositoryUrl != "" {
-		if skipCloneUpdate {
-			stageLog.Debug("skipping clone of remote repository, already at correct state",
-				slog.String("url", s.Repository.SourceUrl),
-				slog.String("reference", s.DeployConfig.Reference))
-		} else {
-			stageLog.Debug("repository URL provided, cloning remote repository")
-
-			_, err = git.CloneRepository(s.Repository.PathInternal, s.Repository.SourceUrl, s.DeployConfig.Reference,
-				s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, auth, s.AppConfig.GitCloneSubmodules, s.DeployConfig.ResolveGitDepth(s.AppConfig.GitCloneDepth))
-			if err != nil && !errors.Is(err, git.ErrRepositoryAlreadyExists) {
-				return fmt.Errorf("failed to clone repository: %w", err)
-			}
-
-			stageLog.Info("cloned remote repository",
-				slog.String("url", s.Repository.SourceUrl),
-				slog.String("path", s.Repository.PathExternal))
-		}
-
-		// Now also load remote dotenv files
+		// Now also load remote dotenv files.
 		err = deploy.LoadLocalDotEnv(s.DeployConfig, filepath.Join(s.Repository.PathInternal, s.DeployConfig.WorkingDirectory))
 		if err != nil {
 			return fmt.Errorf("failed to parse remote env files: %w", err)
@@ -206,26 +205,6 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 
 		if !correctRepo {
 			return fmt.Errorf("%w: %s: skipping deployment", ErrDeploymentConflict, s.DeployConfig.Name)
-		}
-	}
-
-	// Skip UpdateRepository if the previous run already cloned/updated with the same URL and reference
-	if skipCloneUpdate {
-		stageLog.Debug("skipping checkout, already at correct reference",
-			slog.String("reference", s.DeployConfig.Reference),
-			slog.String("path", s.Repository.PathExternal))
-
-		s.Repository.Git, err = git.OpenRepository(s.Repository.PathInternal)
-		if err != nil {
-			return fmt.Errorf("failed to open repository: %w", err)
-		}
-	} else {
-		stageLog.Debug("checking out reference "+s.DeployConfig.Reference, slog.String("path", s.Repository.PathExternal))
-
-		s.Repository.Git, err = git.UpdateRepository(s.Repository.PathInternal, s.Repository.SourceUrl, s.DeployConfig.Reference,
-			s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, auth, s.AppConfig.GitCloneSubmodules, s.DeployConfig.ResolveGitDepth(s.AppConfig.GitCloneDepth))
-		if err != nil {
-			return fmt.Errorf("failed to checkout repository: %w", err)
 		}
 	}
 

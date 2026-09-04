@@ -271,29 +271,16 @@ func (g *gitResourceLoader) checkout(path, remote, ref string) error {
 		return fmt.Errorf("authenticate git include %q: %w", remote, err)
 	}
 
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		slog.Debug("git include repository not cached, cloning", slog.String("remote_host", gitRemoteHostForLog(remote)), slog.String("ref", ref), slog.String("cache_path", path))
-
-		_, err = git.CloneRepository(path, remote, ref, g.skipTLSVerify, g.proxyOptions, auth, g.cloneSubmodules, g.cloneDepth)
-		if err != nil {
-			return fmt.Errorf("clone git include %q: %w", remote, err)
-		}
-
-		slog.Debug("cloned git include repository", slog.String("remote_host", gitRemoteHostForLog(remote)), slog.String("ref", ref), slog.String("cache_path", path))
-
-		return nil
-	} else if err != nil {
-		return fmt.Errorf("stat git include cache: %w", err)
-	}
-
-	slog.Debug("git include repository already cached, updating", slog.String("remote_host", gitRemoteHostForLog(remote)), slog.String("ref", ref), slog.String("cache_path", path))
-
-	_, err = git.UpdateRepository(path, remote, ref, g.skipTLSVerify, g.proxyOptions, auth, g.cloneSubmodules, g.cloneDepth)
+	syncResult, err := git.SyncRepository(path, remote, ref, g.skipTLSVerify, g.proxyOptions, auth, g.cloneSubmodules, g.cloneDepth)
 	if err != nil {
-		return fmt.Errorf("update git include %q: %w", remote, err)
+		return fmt.Errorf("synchronize git include %q: %w", remote, err)
 	}
 
-	slog.Debug("updated git include repository", slog.String("remote_host", gitRemoteHostForLog(remote)), slog.String("ref", ref), slog.String("cache_path", path))
+	slog.Debug("synchronized git include repository",
+		slog.String("remote_host", gitRemoteHostForLog(remote)),
+		slog.String("ref", ref),
+		slog.String("cache_path", path),
+		slog.String("state", string(syncResult.State)))
 
 	return nil
 }

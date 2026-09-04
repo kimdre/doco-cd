@@ -142,7 +142,7 @@ func repairRepositoryLocked(
 
 	repo, openErr := git.PlainOpen(path)
 	if openErr == nil && repositoryMetadataValid(repo) {
-		fetchErr := fetchRepositoryLocked(repo, url, skipTLSVerify, proxyOpts, auth, depth)
+		fetchErr := fetchRepositoryLocked(repo, url, ref, skipTLSVerify, proxyOpts, auth, depth)
 		switch {
 		case fetchErr != nil:
 			if !IsCorruptionError(fetchErr) {
@@ -151,7 +151,7 @@ func repairRepositoryLocked(
 
 			recloneReason = "in-place fetch failed: " + FormatGitErrorMessage(fetchErr)
 		default:
-			checkoutErr := CheckoutRepository(repo, ref, auth, cloneSubmodules)
+			checkoutErr := CheckoutRepository(repo, ref, auth, cloneSubmodules, depth)
 			if checkoutErr == nil {
 				logger.Info("repository successfully repaired in place",
 					slog.String("path", path))
@@ -177,7 +177,7 @@ func repairRepositoryLocked(
 		return nil, fmt.Errorf("failed to remove corrupted repository at %s: %w", path, err)
 	}
 
-	repairedRepo, err := cloneRepositoryLocked(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
+	repairedRepo, err := cloneRepositoryForSyncLocked(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
 	if err != nil {
 		return nil, fmt.Errorf("failed to re-clone repository during repair: %w", err)
 	}

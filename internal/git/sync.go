@@ -10,11 +10,13 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/avast/retry-go/v5"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
@@ -122,26 +124,55 @@ func FetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxy
 	worktree, err := repo.Worktree()
 	if err != nil {
 		// Bare repositories have no worktree path to use as a lock key.
-		return fetchRepositoryLocked(repo, url, skipTLSVerify, proxyOpts, auth, depth)
+		return fetchRepositoryLocked(repo, url, "", skipTLSVerify, proxyOpts, auth, depth)
 	}
 
 	unlock := AcquirePathLock(worktree.Filesystem.Root())
 	defer unlock()
 
-	return fetchRepositoryLocked(repo, url, skipTLSVerify, proxyOpts, auth, depth)
+	return fetchRepositoryLocked(repo, url, "", skipTLSVerify, proxyOpts, auth, depth)
+}
+
+// FetchRepositoryReference fetches the requested reference using focused refspecs
+// where possible and falls back to the compatibility all-refs transfer as needed.
+func FetchRepositoryReference(repo *git.Repository, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, depth int) error {
+	worktree, err := repo.Worktree()
+	if err != nil {
+		return fetchRepositoryLocked(repo, url, ref, skipTLSVerify, proxyOpts, auth, depth)
+	}
+
+	unlock := AcquirePathLock(worktree.Filesystem.Root())
+	defer unlock()
+
+	return fetchRepositoryLocked(repo, url, ref, skipTLSVerify, proxyOpts, auth, depth)
 }
 
 // fetchRepositoryLocked fetches a repository while the caller holds its path lock.
-func fetchRepositoryLocked(repo *git.Repository, url string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, depth int) error {
+func fetchRepositoryLocked(repo *git.Repository, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, depth int) error {
 	depth = effectiveDepth(url, depth)
 
-	opts := &git.FetchOptions{
-		RemoteName: RemoteName,
-		RemoteURL:  url,
-		RefSpecs:   []config.RefSpec{refSpecAllBranches, refSpecAllTags},
-		Prune:      true,
-		Auth:       auth,
-		Depth:      depth,
+	newFetchOptions := func(refSpecs []config.RefSpec, tags git.TagMode) *git.FetchOptions {
+		opts := &git.FetchOptions{
+			RemoteName: RemoteName,
+			RemoteURL:  url,
+			RefSpecs:   refSpecs,
+			Prune:      true,
+			Auth:       auth,
+			Depth:      depth,
+			Tags:       tags,
+		}
+
+		if IsSSH(url) {
+			opts.RemoteURL = ConvertSSHUrl(url)
+		} else if !IsLocalFile(url) {
+			opts.InsecureSkipTLS = skipTLSVerify
+
+			if proxyOpts != (transport.ProxyOptions{}) {
+				opts.ProxyOptions = proxyOpts
+			}
+		}
+
+		return opts
 	}
 
 	// SSH auth when key is provided
@@ -150,17 +181,9 @@ func fetchRepositoryLocked(repo *git.Repository, url string, skipTLSVerify bool,
 		if err != nil {
 			return fmt.Errorf("failed to add host to known_hosts: %w", err)
 		}
-
-		opts.RemoteURL = ConvertSSHUrl(url)
-	} else if !IsLocalFile(url) {
-		opts.InsecureSkipTLS = skipTLSVerify
-
-		if proxyOpts != (transport.ProxyOptions{}) {
-			opts.ProxyOptions = proxyOpts
-		}
 	}
 
-	fetchWithRetry := func() error {
+	fetchWithRetry := func(opts *git.FetchOptions) error {
 		return retrier.Do(
 			func() error {
 				err := repo.Fetch(opts)
@@ -172,18 +195,195 @@ func fetchRepositoryLocked(repo *git.Repository, url string, skipTLSVerify bool,
 			})
 	}
 
-	err := fetchWithRetry()
-	if err != nil && IsSSH(url) && ssh.IsHostKeyMismatchError(err) {
-		if refreshErr := ssh.RefreshKnownHost(url); refreshErr != nil {
-			if !errors.Is(refreshErr, ssh.ErrKnownHostsUserManaged) {
-				return fmt.Errorf("failed to refresh host key after mismatch: %w", refreshErr)
+	fetch := func(opts *git.FetchOptions) error {
+		err := fetchWithRetry(opts)
+		if err != nil && IsSSH(url) && ssh.IsHostKeyMismatchError(err) {
+			if refreshErr := ssh.RefreshKnownHost(url); refreshErr != nil {
+				if !errors.Is(refreshErr, ssh.ErrKnownHostsUserManaged) {
+					return fmt.Errorf("failed to refresh host key after mismatch: %w", refreshErr)
+				}
+			} else {
+				err = fetchWithRetry(opts)
 			}
-		} else {
-			err = fetchWithRetry()
+		}
+
+		return err
+	}
+
+	if ref == "" {
+		return fetch(newFetchOptions([]config.RefSpec{refSpecAllBranches, refSpecAllTags}, git.AllTags))
+	}
+
+	var focusedErr error
+
+	for _, refSpecs := range focusedFetchRefSpecs(ref) {
+		destination, destinationErr := focusedFetchDestination(refSpecs)
+		if destinationErr != nil {
+			return destinationErr
+		}
+
+		err := fetch(newFetchOptions(refSpecs, git.NoTags))
+		if err != nil {
+			if !isFocusedFetchFallbackError(err) {
+				return err
+			}
+
+			// go-git rejects a refspec whose source is missing on the remote before
+			// it prunes anything, so the stale destination is removed here. Leaving
+			// it in place would shadow the reference that still exists remotely.
+			if errors.Is(err, git.NoMatchingRefSpecError{}) {
+				if pruneErr := removeReferenceIfExists(repo, destination); pruneErr != nil {
+					return fmt.Errorf("failed to prune stale reference %s: %w", destination, pruneErr)
+				}
+			}
+
+			focusedErr = errors.Join(focusedErr, err)
+
+			continue
+		}
+
+		exists, existsErr := referenceExists(repo, destination)
+		if existsErr != nil {
+			return fmt.Errorf("failed to validate focused fetch for %s: %w", ref, existsErr)
+		}
+
+		if exists {
+			return nil
+		}
+
+		focusedErr = errors.Join(focusedErr, fmt.Errorf("focused fetch did not make reference %s reachable", ref))
+	}
+
+	broadErr := fetch(newFetchOptions([]config.RefSpec{refSpecAllBranches, refSpecAllTags}, git.AllTags))
+	if broadErr != nil {
+		if focusedErr != nil {
+			return errors.Join(focusedErr, fmt.Errorf("compatibility fetch failed: %w", broadErr))
+		}
+
+		return broadErr
+	}
+
+	return nil
+}
+
+// focusedFetchDestination returns the destination reference a focused refspec writes to.
+func focusedFetchDestination(refSpecs []config.RefSpec) (plumbing.ReferenceName, error) {
+	if len(refSpecs) != 1 {
+		return "", fmt.Errorf("expected exactly one focused refspec, got %d", len(refSpecs))
+	}
+
+	_, destination, ok := strings.Cut(string(refSpecs[0]), ":")
+	if !ok {
+		return "", fmt.Errorf("focused refspec has no destination: %s", refSpecs[0])
+	}
+
+	name := plumbing.ReferenceName(strings.TrimPrefix(destination, "+"))
+	if !name.IsSafe() {
+		return "", fmt.Errorf("focused refspec has unsafe destination: %s", refSpecs[0])
+	}
+
+	return name, nil
+}
+
+// referenceExists reports whether name is present in the repository.
+func referenceExists(repo *git.Repository, name plumbing.ReferenceName) (bool, error) {
+	_, err := repo.Reference(name, false)
+	if errors.Is(err, plumbing.ErrReferenceNotFound) {
+		return false, nil
+	}
+
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+// removeReferenceIfExists deletes name when it is still present in the repository.
+func removeReferenceIfExists(repo *git.Repository, name plumbing.ReferenceName) error {
+	exists, err := referenceExists(repo, name)
+	if err != nil || !exists {
+		return err
+	}
+
+	return repo.Storer.RemoveReference(name)
+}
+
+// isFocusedFetchFallbackError determines if a fetch error should trigger a fallback to the compatibility all-refs fetch.
+func isFocusedFetchFallbackError(err error) bool {
+	return err != nil && !isNonRecoverableError(err) &&
+		!errors.Is(err, transport.ErrRepositoryNotFound) &&
+		!errors.Is(err, transport.ErrEmptyRemoteRepository)
+}
+
+// focusedFetchRefSpecs returns the branch-first attempts needed to fetch ref.
+// Unknown, pseudo, and commit references intentionally return no focused plans so
+// the caller uses the compatibility all-refs fetch.
+func focusedFetchRefSpecs(ref string) [][]config.RefSpec {
+	switch {
+	case strings.HasPrefix(ref, BranchPrefix):
+		name := strings.TrimPrefix(ref, BranchPrefix)
+		if plumbing.NewBranchReferenceName(name).IsSafe() {
+			return [][]config.RefSpec{{config.RefSpec(fmt.Sprintf(refSpecSingleBranch, name, name))}}
+		}
+	case strings.HasPrefix(ref, TagPrefix):
+		name := strings.TrimPrefix(ref, TagPrefix)
+		if plumbing.NewTagReferenceName(name).IsSafe() {
+			return [][]config.RefSpec{{config.RefSpec(fmt.Sprintf(refSpecSingleTag, name, name))}}
+		}
+	// A one-level name that is safe on its own is a pseudo-ref such as HEAD or
+	// FETCH_HEAD, which cannot be resolved to a single branch or tag refspec.
+	case !strings.HasPrefix(ref, "refs/") && !plumbing.IsHash(ref) && !plumbing.ReferenceName(ref).IsSafe():
+		branch := plumbing.NewBranchReferenceName(ref)
+
+		tag := plumbing.NewTagReferenceName(ref)
+		if branch.IsSafe() && tag.IsSafe() {
+			return [][]config.RefSpec{
+				{config.RefSpec(fmt.Sprintf(refSpecSingleBranch, ref, ref))},
+				{config.RefSpec(fmt.Sprintf(refSpecSingleTag, ref, ref))},
+			}
 		}
 	}
 
-	return err
+	return nil
+}
+
+// SyncRepository opens an existing repository or creates it, then brings it to ref
+// while holding the path lock for the full operation.
+func SyncRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, cloneSubmodules bool, depth int) (*SyncResult, error) {
+	depth = effectiveDepth(url, depth)
+
+	unlock := AcquirePathLock(path)
+	defer unlock()
+
+	repo, err := git.PlainOpen(path)
+	if errors.Is(err, git.ErrRepositoryNotExists) {
+		repo, err = cloneRepositoryForSyncLocked(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
+		if err != nil {
+			return nil, err
+		}
+
+		return &SyncResult{Repository: repo, State: SyncStateCloned}, nil
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	before, beforeErr := repo.Head()
+	recloned := needsReclone(path, depth)
+
+	repo, err = updateRepositoryLocked(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
+	if err != nil {
+		return nil, err
+	}
+
+	after, afterErr := repo.Head()
+	if !recloned && beforeErr == nil && afterErr == nil && before.Hash() == after.Hash() {
+		return &SyncResult{Repository: repo, State: SyncStateCurrent}, nil
+	}
+
+	return &SyncResult{Repository: repo, State: SyncStateUpdated}, nil
 }
 
 // UpdateRepository fetches and checks out the requested ref.
@@ -217,7 +417,7 @@ func updateRepositoryLocked(path, url, ref string, skipTLSVerify bool, proxyOpts
 			return nil, fmt.Errorf("failed to remove repository for re-clone: %w", err)
 		}
 
-		return cloneRepositoryLocked(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
+		return cloneRepositoryForSyncLocked(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
 	}
 
 	err = updateRemoteURL(repo, url)
@@ -225,7 +425,7 @@ func updateRepositoryLocked(path, url, ref string, skipTLSVerify bool, proxyOpts
 		return nil, err
 	}
 
-	err = fetchRepositoryLocked(repo, url, skipTLSVerify, proxyOpts, auth, depth)
+	err = fetchRepositoryLocked(repo, url, ref, skipTLSVerify, proxyOpts, auth, depth)
 	if err != nil {
 		if IsCorruptionError(err) {
 			repairedRepo, repairErr := repairAfterCorruptionLocked(path, url, ref, "fetch", err, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
@@ -244,8 +444,13 @@ func updateRepositoryLocked(path, url, ref string, skipTLSVerify bool, proxyOpts
 		return nil, fmt.Errorf("%w: %w: %s", ErrCheckoutFailed, ErrInvalidReference, ref)
 	}
 
+	matches, matchesErr := repositoryMatchesHead(repo, ref)
+	if matchesErr == nil && matches {
+		return repo, nil
+	}
+
 	// Pass auth and cloneSubmodules so CheckoutRepository can ensure submodules are updated when needed.
-	err = CheckoutRepository(repo, ref, auth, cloneSubmodules)
+	err = CheckoutRepository(repo, ref, auth, cloneSubmodules, depth)
 	if err != nil {
 		var corruptionRepairErr error
 
@@ -345,6 +550,59 @@ func CloneRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transp
 
 // cloneRepositoryLocked clones a repository while the caller holds its path lock.
 func cloneRepositoryLocked(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, cloneSubmodules bool, depth int) (*git.Repository, error) {
+	return cloneRepositoryWithReferenceLocked(path, url, ref, "", false, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
+}
+
+// cloneRepositoryForSyncLocked attempts to clone a repository using focused refspecs for the requested ref,
+// falling back to a full clone if needed.
+func cloneRepositoryForSyncLocked(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, cloneSubmodules bool, depth int) (*git.Repository, error) {
+	var focusedErr error
+
+	for _, refSpecs := range focusedFetchRefSpecs(ref) {
+		source, _, ok := strings.Cut(string(refSpecs[0]), ":")
+		if !ok {
+			return nil, fmt.Errorf("focused clone refspec has no source: %s", refSpecs[0])
+		}
+
+		source = strings.TrimPrefix(source, "+")
+
+		repo, err := cloneRepositoryWithReferenceLocked(
+			path, url, ref, plumbing.ReferenceName(source), true,
+			skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth,
+		)
+		if err == nil {
+			return repo, nil
+		}
+
+		if !isFocusedFetchFallbackError(err) {
+			return nil, err
+		}
+
+		focusedErr = errors.Join(focusedErr, err)
+		if removeErr := os.RemoveAll(path); removeErr != nil {
+			return nil, errors.Join(focusedErr, fmt.Errorf("failed to clean up focused clone: %w", removeErr))
+		}
+	}
+
+	repo, err := cloneRepositoryLocked(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
+	if err != nil {
+		return nil, err
+	}
+
+	return repo, nil
+}
+
+// cloneRepositoryWithReferenceLocked clones a repository with an optional reference name for single-branch clones.
+func cloneRepositoryWithReferenceLocked(
+	path, url, ref string,
+	referenceName plumbing.ReferenceName,
+	singleBranch bool,
+	skipTLSVerify bool,
+	proxyOpts transport.ProxyOptions,
+	auth transport.AuthMethod,
+	cloneSubmodules bool,
+	depth int,
+) (*git.Repository, error) {
 	err := os.MkdirAll(path, filesystem.PermDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create directory %s: %w", path, err)
@@ -353,13 +611,15 @@ func cloneRepositoryLocked(path, url, ref string, skipTLSVerify bool, proxyOpts 
 	opts := &git.CloneOptions{
 		RemoteName: RemoteName,
 		URL:        url,
+		NoCheckout: true,
 		Tags:       git.AllTags,
 		Auth:       auth,
 		Depth:      depth,
 	}
-
-	if cloneSubmodules {
-		opts.RecurseSubmodules = git.DefaultSubmoduleRecursionDepth
+	if singleBranch {
+		opts.ReferenceName = referenceName
+		opts.SingleBranch = true
+		opts.Tags = git.NoTags
 	}
 
 	if IsSSH(url) {
@@ -414,7 +674,7 @@ func cloneRepositoryLocked(path, url, ref string, skipTLSVerify bool, proxyOpts 
 		}
 	}
 
-	err = CheckoutRepository(repo, ref, auth, cloneSubmodules)
+	err = CheckoutRepository(repo, ref, auth, cloneSubmodules, depth)
 	if err != nil {
 		// Attempt to deepen if the ref is unreachable in a shallow clone
 		if depth > 0 && IsRefUnreachableError(err) {
@@ -430,6 +690,12 @@ func cloneRepositoryLocked(path, url, ref string, skipTLSVerify bool, proxyOpts 
 	}
 
 	return repo, err
+}
+
+// RepositoryNeedsReclone reports whether the repository depth state differs from
+// the effective depth requested for the remote.
+func RepositoryNeedsReclone(repoPath, url string, depth int) bool {
+	return needsReclone(repoPath, effectiveDepth(url, depth))
 }
 
 // cloneWithRetry attempts to clone a repository with the provided options, retrying on transient errors.
@@ -485,7 +751,7 @@ func deepenAndCheckout(repo *git.Repository, url, ref string, skipTLSVerify bool
 			slog.Int("previous_depth", currentDepth),
 			slog.String("new_depth", label))
 
-		err := fetchRepositoryLocked(repo, url, skipTLSVerify, proxyOpts, auth, newDepth)
+		err := fetchRepositoryLocked(repo, url, ref, skipTLSVerify, proxyOpts, auth, newDepth)
 		if err != nil {
 			if isNonRecoverableError(err) {
 				return nil, fmt.Errorf("non-recoverable error during deepen: %w", err)
@@ -494,7 +760,7 @@ func deepenAndCheckout(repo *git.Repository, url, ref string, skipTLSVerify bool
 			continue
 		}
 
-		err = CheckoutRepository(repo, ref, auth, cloneSubmodules)
+		err = CheckoutRepository(repo, ref, auth, cloneSubmodules, newDepth)
 		if err == nil {
 			return repo, nil
 		}
