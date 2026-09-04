@@ -301,6 +301,7 @@ func focusedFetchDestinationExists(repo *git.Repository, refSpecs []config.RefSp
 	return true, nil
 }
 
+// pruneFocusedFetchReferences removes any remote-tracking branches or tags that are no longer present in the remote repository after a focused fetch.
 func pruneFocusedFetchReferences(repo *git.Repository, url string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod) error {
 	remoteURL := url
 	if IsSSH(url) {
@@ -635,6 +636,8 @@ func cloneRepositoryLocked(path, url, ref string, skipTLSVerify bool, proxyOpts 
 	return cloneRepositoryWithReferenceLocked(path, url, ref, "", false, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
 }
 
+// cloneRepositoryForSyncLocked attempts to clone a repository using focused refspecs for the requested ref,
+// falling back to a full clone if needed.
 func cloneRepositoryForSyncLocked(path, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, cloneSubmodules bool, depth int) (*git.Repository, error) {
 	var focusedErr error
 
@@ -672,6 +675,7 @@ func cloneRepositoryForSyncLocked(path, url, ref string, skipTLSVerify bool, pro
 	return repo, nil
 }
 
+// cloneRepositoryWithReferenceLocked clones a repository with an optional reference name for single-branch clones.
 func cloneRepositoryWithReferenceLocked(
 	path, url, ref string,
 	referenceName plumbing.ReferenceName,
