@@ -16,6 +16,7 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/kimdre/doco-cd/internal/common/id"
+	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 	deployConfig "github.com/kimdre/doco-cd/internal/config/deploy"
@@ -45,6 +46,14 @@ func (j *job) initContextCLIs(ctx context.Context) {
 	contextCLIs := make(map[string]contextCLIEntry)
 
 	for _, dc := range j.info.DeployConfigs {
+		if lifecycle.IsCanceled(ctx.Err()) {
+			j.info.Logger.Debug("reconciliation event listener initialization canceled during application shutdown",
+				logger.ErrAttr(ctx.Err()),
+			)
+
+			break
+		}
+
 		ctxName := docker.NormalizeContextName(dc.Context)
 		if _, already := contextCLIs[ctxName]; already {
 			continue
@@ -52,6 +61,15 @@ func (j *job) initContextCLIs(ctx context.Context) {
 
 		entry := resolveDeployContext(ctx, j.manager.contexts, ctxName)
 		if entry.err != nil {
+			if lifecycle.IsCanceled(entry.err) {
+				j.info.Logger.Debug("reconciliation event listener initialization canceled during application shutdown",
+					slog.String("context", docker.DisplayContextName(ctxName)),
+					logger.ErrAttr(entry.err),
+				)
+
+				break
+			}
+
 			j.info.Logger.Error("failed to create Docker CLI for context; skipping event listener for that context",
 				slog.String("context", docker.DisplayContextName(ctxName)),
 				logger.ErrAttr(entry.err),

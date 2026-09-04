@@ -18,6 +18,7 @@ import (
 	types2 "github.com/kimdre/doco-cd/internal/config"
 
 	"github.com/kimdre/doco-cd/internal/commitstatus"
+	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 	"github.com/kimdre/doco-cd/internal/common/types/slice"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
@@ -486,6 +487,12 @@ func (s *StageManager) PostCommitStatus(ctx context.Context, state commitstatus.
 		Description: description,
 	})
 	if err != nil {
+		if lifecycle.IsCanceled(err) {
+			s.Log.Debug("skipped commit status during application shutdown", slog.String("error", err.Error()))
+
+			return
+		}
+
 		s.Log.Warn("failed to post commit status", slog.String("error", err.Error()))
 	}
 }

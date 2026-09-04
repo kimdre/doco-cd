@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/poll"
@@ -355,17 +356,32 @@ func RunPoll(ctx context.Context, pollConfig poll.Config, appConfig *app.Config,
 	nextRun := time.Now().Add(pollConfig.Interval).Format(time.RFC3339)
 	elapsedTime := time.Since(startTime)
 
-	if deployErr != nil {
-		pollError(jobLog, metadata, deployErr, notifier)
-		jobLog.Warn("job completed with errors", log.ErrAttr(deployErr), slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()), slog.String("next_run", nextRun))
-	} else {
-		jobLog.Info("job completed successfully", slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String()), slog.String("next_run", nextRun))
-	}
+	reportPollOutcome(jobLog, metadata, deployErr, notifier, elapsedTime, nextRun)
 
 	prometheus.PollTotal.WithLabelValues(repoName).Inc()
 	prometheus.PollDuration.WithLabelValues(repoName).Observe(elapsedTime.Seconds())
 
 	return deployErr
+}
+
+// reportPollOutcome logs how a poll run ended and reports genuine failures.
+// A run interrupted by application shutdown is expected, so it stays at debug
+// level and is neither counted nor notified as a poll failure.
+func reportPollOutcome(
+	jobLog *slog.Logger, metadata notification.Metadata, deployErr error, notifier notification.Sender,
+	elapsedTime time.Duration, nextRun string,
+) {
+	elapsed := slog.String("elapsed_time", elapsedTime.Truncate(time.Millisecond).String())
+
+	switch {
+	case lifecycle.IsCanceled(deployErr):
+		jobLog.Debug("poll job canceled during application shutdown", log.ErrAttr(deployErr), elapsed)
+	case deployErr != nil:
+		pollError(jobLog, metadata, deployErr, notifier)
+		jobLog.Warn("job completed with errors", log.ErrAttr(deployErr), elapsed, slog.String("next_run", nextRun))
+	default:
+		jobLog.Info("job completed successfully", elapsed, slog.String("next_run", nextRun))
+	}
 }
 
 func pollConfigLogValue(pollConfig poll.Config) slog.Value {

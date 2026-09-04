@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/kimdre/doco-cd/internal/common/id"
+	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/secretprovider"
@@ -308,5 +309,5 @@ func SkippedRun(message string) RunResult {
 
 // IsLifecycleCancellation reports whether err represents context cancellation or timeout.
 func IsLifecycleCancellation(err error) bool {
-	return errors.Is(err, ErrBackgroundWorkClosed) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+	return errors.Is(err, ErrBackgroundWorkClosed) || lifecycle.IsCancellation(err)
 }
