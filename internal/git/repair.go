@@ -177,7 +177,7 @@ func repairRepositoryLocked(
 		return nil, fmt.Errorf("failed to remove corrupted repository at %s: %w", path, err)
 	}
 
-	repairedRepo, err := cloneRepositoryLocked(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
+	repairedRepo, err := cloneRepositoryForSyncLocked(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
 	if err != nil {
 		return nil, fmt.Errorf("failed to re-clone repository during repair: %w", err)
 	}

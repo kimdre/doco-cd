@@ -1,6 +1,7 @@
 package git
 
 import (
+	"errors"
 	"os"
 	"reflect"
 	"testing"
@@ -149,6 +150,73 @@ func TestSyncRepositoryReportsCloneUpdateAndCurrent(t *testing.T) {
 	}
 }
 
+func TestSyncRepositoryFreshCloneFetchesOnlyRequestedBranch(t *testing.T) {
+	t.Parallel()
+
+	originPath, clonePath, originHash := setupLocalMainRepoAndClone(t)
+	originRepo, err := git.PlainOpen(originPath)
+	if err != nil {
+		t.Fatalf("open origin: %v", err)
+	}
+
+	if err := originRepo.Storer.SetReference(
+		plumbing.NewHashReference(plumbing.NewBranchReferenceName("other"), originHash),
+	); err != nil {
+		t.Fatalf("create other branch: %v", err)
+	}
+	if err := os.RemoveAll(clonePath); err != nil {
+		t.Fatalf("remove initial clone: %v", err)
+	}
+
+	result, err := SyncRepository(clonePath, originPath, MainBranch, false, transport.ProxyOptions{}, nil, false, 0)
+	if err != nil {
+		t.Fatalf("sync fresh clone: %v", err)
+	}
+
+	if result.State != SyncStateCloned {
+		t.Fatalf("sync state = %q, want %q", result.State, SyncStateCloned)
+	}
+
+	if _, err := result.Repository.Reference(
+		plumbing.NewRemoteReferenceName(RemoteName, "other"),
+		true,
+	); !errors.Is(err, plumbing.ErrReferenceNotFound) {
+		t.Fatalf("unrequested branch was fetched: %v", err)
+	}
+}
+
+func TestSyncRepositoryFreshCloneResolvesShortTag(t *testing.T) {
+	t.Parallel()
+
+	originPath, clonePath, originHash := setupLocalMainRepoAndClone(t)
+	originRepo, err := git.PlainOpen(originPath)
+	if err != nil {
+		t.Fatalf("open origin: %v", err)
+	}
+
+	if err := originRepo.Storer.SetReference(
+		plumbing.NewHashReference(plumbing.NewTagReferenceName("v1.0.0"), originHash),
+	); err != nil {
+		t.Fatalf("create tag: %v", err)
+	}
+	if err := os.RemoveAll(clonePath); err != nil {
+		t.Fatalf("remove initial clone: %v", err)
+	}
+
+	result, err := SyncRepository(clonePath, originPath, "v1.0.0", false, transport.ProxyOptions{}, nil, false, 0)
+	if err != nil {
+		t.Fatalf("sync tag clone: %v", err)
+	}
+
+	head, err := result.Repository.Head()
+	if err != nil {
+		t.Fatalf("read HEAD: %v", err)
+	}
+	if head.Hash() != originHash {
+		t.Fatalf("HEAD = %s, want %s", head.Hash(), originHash)
+	}
+}
+
 func TestSyncRepositorySwitchesRequestedReferences(t *testing.T) {
 	t.Parallel()
 
@@ -204,5 +272,61 @@ func TestSyncRepositorySwitchesRequestedReferences(t *testing.T) {
 
 	if head.Hash() != mainHash {
 		t.Fatalf("main HEAD = %s, want %s", head.Hash(), mainHash)
+	}
+}
+
+func TestFetchRepositoryReferencePrunesDeletedBranchesAndTags(t *testing.T) {
+	t.Parallel()
+
+	originPath, clonePath, originHash := setupLocalMainRepoAndClone(t)
+	originRepo, err := git.PlainOpen(originPath)
+	if err != nil {
+		t.Fatalf("open origin: %v", err)
+	}
+
+	staleBranch := plumbing.NewBranchReferenceName("stale")
+	staleTag := plumbing.NewTagReferenceName("stale")
+	if err := originRepo.Storer.SetReference(plumbing.NewHashReference(staleBranch, originHash)); err != nil {
+		t.Fatalf("create stale branch: %v", err)
+	}
+	if err := originRepo.Storer.SetReference(plumbing.NewHashReference(staleTag, originHash)); err != nil {
+		t.Fatalf("create stale tag: %v", err)
+	}
+
+	cloneRepo, err := git.PlainOpen(clonePath)
+	if err != nil {
+		t.Fatalf("open clone: %v", err)
+	}
+	if err := FetchRepository(cloneRepo, originPath, false, transport.ProxyOptions{}, nil, 0); err != nil {
+		t.Fatalf("fetch stale references: %v", err)
+	}
+
+	upstreamRef := plumbing.NewRemoteReferenceName("upstream", staleBranch.Short())
+	if err := cloneRepo.Storer.SetReference(plumbing.NewHashReference(upstreamRef, originHash)); err != nil {
+		t.Fatalf("create upstream reference: %v", err)
+	}
+
+	if err := originRepo.Storer.RemoveReference(staleBranch); err != nil {
+		t.Fatalf("delete stale branch: %v", err)
+	}
+	if err := originRepo.Storer.RemoveReference(staleTag); err != nil {
+		t.Fatalf("delete stale tag: %v", err)
+	}
+
+	if err := FetchRepositoryReference(cloneRepo, originPath, MainBranch, false, transport.ProxyOptions{}, nil, 0); err != nil {
+		t.Fatalf("focused fetch: %v", err)
+	}
+
+	for _, name := range []plumbing.ReferenceName{
+		plumbing.NewRemoteReferenceName(RemoteName, staleBranch.Short()),
+		staleTag,
+	} {
+		if _, err := cloneRepo.Reference(name, true); !errors.Is(err, plumbing.ErrReferenceNotFound) {
+			t.Fatalf("reference %s was not pruned: %v", name, err)
+		}
+	}
+
+	if _, err := cloneRepo.Reference(upstreamRef, true); err != nil {
+		t.Fatalf("reference for another remote was pruned: %v", err)
 	}
 }

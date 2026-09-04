@@ -130,7 +130,11 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 			return fmt.Errorf("failed to check prepared repository state: %w", matchErr)
 		}
 
-		if matches {
+		if matches && !git.RepositoryNeedsReclone(
+			s.Repository.PathInternal,
+			s.Repository.SourceUrl,
+			s.DeployConfig.ResolveGitDepth(s.AppConfig.GitCloneDepth),
+		) {
 			repo, openErr := git.OpenRepository(s.Repository.PathInternal)
 			if openErr != nil {
 				return fmt.Errorf("failed to open prepared repository: %w", openErr)
