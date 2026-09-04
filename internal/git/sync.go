@@ -331,6 +331,8 @@ func focusedFetchRefSpecs(ref string) [][]config.RefSpec {
 		if plumbing.NewTagReferenceName(name).IsSafe() {
 			return [][]config.RefSpec{{config.RefSpec(fmt.Sprintf(refSpecSingleTag, name, name))}}
 		}
+	// A one-level name that is safe on its own is a pseudo-ref such as HEAD or
+	// FETCH_HEAD, which cannot be resolved to a single branch or tag refspec.
 	case !strings.HasPrefix(ref, "refs/") && !plumbing.IsHash(ref) && !plumbing.ReferenceName(ref).IsSafe():
 		branch := plumbing.NewBranchReferenceName(ref)
 
