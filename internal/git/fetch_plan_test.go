@@ -54,6 +54,7 @@ func TestFetchReferenceRepository_ResolvesShortTag(t *testing.T) {
 	t.Parallel()
 
 	originPath, clonePath, originHash := setupLocalMainRepoAndClone(t)
+
 	originRepo, err := git.PlainOpen(originPath)
 	if err != nil {
 		t.Fatalf("open origin: %v", err)
@@ -76,6 +77,7 @@ func TestFetchReferenceRepository_ResolvesShortTag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read fetched tag: %v", err)
 	}
+
 	if tag.Hash() != originHash {
 		t.Fatalf("tag hash = %s, want %s", tag.Hash(), originHash)
 	}
@@ -93,30 +95,36 @@ func TestSyncRepositoryReportsCloneUpdateAndCurrent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initial sync: %v", err)
 	}
+
 	if result.State != SyncStateCloned {
 		t.Fatalf("initial sync state = %q, want %q", result.State, SyncStateCloned)
 	}
+
 	assertRepoOnMainHash(t, result.Repository, originalHash)
 
 	originRepo, err := git.PlainOpen(originPath)
 	if err != nil {
 		t.Fatalf("open origin: %v", err)
 	}
+
 	newHash := commitFile(t, originRepo, originPath, "updated.md", "updated\n", "updated")
 
 	result, err = SyncRepository(clonePath, originPath, MainBranch, false, transport.ProxyOptions{}, nil, false, 0)
 	if err != nil {
 		t.Fatalf("updated sync: %v", err)
 	}
+
 	if result.State != SyncStateUpdated {
 		t.Fatalf("updated sync state = %q, want %q", result.State, SyncStateUpdated)
 	}
+
 	assertRepoOnMainHash(t, result.Repository, newHash)
 
 	result, err = SyncRepository(clonePath, originPath, MainBranch, false, transport.ProxyOptions{}, nil, false, 0)
 	if err != nil {
 		t.Fatalf("current sync: %v", err)
 	}
+
 	if result.State != SyncStateCurrent {
 		t.Fatalf("current sync state = %q, want %q", result.State, SyncStateCurrent)
 	}
@@ -126,6 +134,7 @@ func TestSyncRepositorySwitchesRequestedReferences(t *testing.T) {
 	t.Parallel()
 
 	originPath, clonePath, mainHash := setupLocalMainRepoAndClone(t)
+
 	originRepo, err := git.PlainOpen(originPath)
 	if err != nil {
 		t.Fatalf("open origin: %v", err)
@@ -135,6 +144,7 @@ func TestSyncRepositorySwitchesRequestedReferences(t *testing.T) {
 	if err != nil {
 		t.Fatalf("origin worktree: %v", err)
 	}
+
 	if err := worktree.Checkout(&git.CheckoutOptions{
 		Branch: plumbing.NewBranchReferenceName("feature"),
 		Create: true,
@@ -142,12 +152,14 @@ func TestSyncRepositorySwitchesRequestedReferences(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create feature branch: %v", err)
 	}
+
 	featureHash := commitFile(t, originRepo, originPath, "feature.md", "feature\n", "feature")
 
 	result, err := SyncRepository(clonePath, originPath, "feature", false, transport.ProxyOptions{}, nil, false, 0)
 	if err != nil {
 		t.Fatalf("sync feature branch: %v", err)
 	}
+
 	if result.State != SyncStateUpdated {
 		t.Fatalf("feature sync state = %q, want %q", result.State, SyncStateUpdated)
 	}
@@ -156,6 +168,7 @@ func TestSyncRepositorySwitchesRequestedReferences(t *testing.T) {
 	if err != nil {
 		t.Fatalf("feature HEAD: %v", err)
 	}
+
 	if head.Hash() != featureHash {
 		t.Fatalf("feature HEAD = %s, want %s", head.Hash(), featureHash)
 	}
@@ -164,10 +177,12 @@ func TestSyncRepositorySwitchesRequestedReferences(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sync main branch: %v", err)
 	}
+
 	head, err = result.Repository.Head()
 	if err != nil {
 		t.Fatalf("main HEAD: %v", err)
 	}
+
 	if head.Hash() != mainHash {
 		t.Fatalf("main HEAD = %s, want %s", head.Hash(), mainHash)
 	}

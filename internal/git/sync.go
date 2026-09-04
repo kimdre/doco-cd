@@ -224,6 +224,7 @@ func fetchRepositoryLocked(repo *git.Repository, url, ref string, skipTLSVerify 
 			}
 
 			focusedErr = errors.Join(focusedErr, err)
+
 			continue
 		}
 
@@ -231,6 +232,7 @@ func fetchRepositoryLocked(repo *git.Repository, url, ref string, skipTLSVerify 
 		if existsErr != nil {
 			return fmt.Errorf("failed to validate fetched reference %s: %w", ref, existsErr)
 		}
+
 		if exists {
 			return nil
 		}
@@ -267,6 +269,7 @@ func focusedFetchRefSpecs(ref string) [][]config.RefSpec {
 		}
 	case !strings.HasPrefix(ref, "refs/") && !plumbing.IsHash(ref):
 		branch := plumbing.NewBranchReferenceName(ref)
+
 		tag := plumbing.NewTagReferenceName(ref)
 		if branch.IsSafe() && tag.IsSafe() {
 			return [][]config.RefSpec{
@@ -296,11 +299,13 @@ func SyncRepository(path, url, ref string, skipTLSVerify bool, proxyOpts transpo
 
 		return &SyncResult{Repository: repo, State: SyncStateCloned}, nil
 	}
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to open repository: %w", err)
 	}
 
 	before, beforeErr := repo.Head()
+
 	repo, err = updateRepositoryLocked(path, url, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
 	if err != nil {
 		return nil, err

@@ -129,6 +129,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		if matchErr != nil {
 			return fmt.Errorf("failed to check prepared repository state: %w", matchErr)
 		}
+
 		if matches {
 			repo, openErr := git.OpenRepository(s.Repository.PathInternal)
 			if openErr != nil {
@@ -141,6 +142,7 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 
 	if syncResult == nil {
 		var syncErr error
+
 		syncResult, syncErr = git.SyncRepository(
 			s.Repository.PathInternal, s.Repository.SourceUrl, s.DeployConfig.Reference,
 			s.AppConfig.SkipTLSVerification, s.AppConfig.HttpProxy, auth, s.AppConfig.GitCloneSubmodules,
