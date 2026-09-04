@@ -214,3 +214,14 @@ configurations = [
 ]
 
 [project.plugins.markdown-exec]
+[project.plugins.minify]
+minify_html = true
+minify_js = true
+js_files = [
+  "javascripts/*.js"
+]
+minify_css = true
+css_files = [
+  "stylesheets/*.css"
+]
+cache_safe = true
