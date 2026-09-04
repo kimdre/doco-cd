@@ -497,10 +497,13 @@ func pkiRoleNormMap(externalSecrets map[string]secrettypes.ExternalSecretRef, en
 			norm[v] = ref.LegacyRef
 		}
 
-		// The matching private-key value is stored under <NAME>_KEY.
-		keyName := envVar + secrettypes.PKIRoleKeySuffix
-		if v, ok := env[keyName]; ok && v != "" {
-			norm[v] = ref.LegacyRef + secrettypes.PKIRoleKeySuffix
+		// The matching private-key value is stored under <NAME>_KEY, and the full certificate
+		// chain bundle under <NAME>_FULL. Both change on every issuance, so they need the same
+		// stable placeholder treatment as the certificate itself.
+		for _, suffix := range [2]string{secrettypes.PKIRoleKeySuffix, secrettypes.PKIFullChainSuffix} {
+			if v, ok := env[envVar+suffix]; ok && v != "" {
+				norm[v] = ref.LegacyRef + suffix
+			}
 		}
 	}
 

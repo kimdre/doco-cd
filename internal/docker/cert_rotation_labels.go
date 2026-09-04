@@ -26,8 +26,12 @@ const (
 )
 
 // pkiRoleKeySuffix is the suffix appended to a pki-role external secret's env
-// var name for its private key companion entry.
-const pkiRoleKeySuffix = secrettypes.PKIRoleKeySuffix
+// var name for its private key companion entry, and pkiFullChainSuffix the one for the full
+// certificate chain companion entry exposed for both pki and pki-role references.
+const (
+	pkiRoleKeySuffix   = secrettypes.PKIRoleKeySuffix
+	pkiFullChainSuffix = secrettypes.PKIFullChainSuffix
+)
 
 type deployedRotatableCertState struct {
 	Ref    string `json:"ref"`
@@ -50,7 +54,7 @@ func rotatableCertValues(deployConfig *deploy.Config) map[string]string {
 			continue
 		}
 
-		for _, name := range [2]string{envVar, envVar + pkiRoleKeySuffix} {
+		for _, name := range [3]string{envVar, envVar + pkiRoleKeySuffix, envVar + pkiFullChainSuffix} {
 			if v, ok := deployConfig.Internal.Environment[name]; ok && v != "" {
 				values[name] = v
 			}
@@ -80,6 +84,10 @@ func certificateValues(deployConfig *deploy.Config) map[string]string {
 
 		if v, ok := deployConfig.Internal.Environment[envVar]; ok && v != "" {
 			values[envVar] = v
+		}
+
+		if v, ok := deployConfig.Internal.Environment[envVar+pkiFullChainSuffix]; ok && v != "" {
+			values[envVar+pkiFullChainSuffix] = v
 		}
 
 		if isPKIRole {
