@@ -25,6 +25,10 @@ func TestSSHHostKeyMismatchFailsClosed(t *testing.T) {
 
 	t.Cleanup(func() {
 		internalssh.KnownHostsFilePath = originalKnownHostsFilePath
+
+		if err := internalssh.ConfigureKnownHostsFile(""); err != nil {
+			t.Errorf("reset known_hosts configuration: %v", err)
+		}
 	})
 
 	tests := []struct {
@@ -74,13 +78,17 @@ func TestSSHHostKeyMismatchFailsClosed(t *testing.T) {
 
 			trustedSigner := newSSHSigner(t)
 			knownHostsContent := knownhosts.Line([]string{address}, trustedSigner.PublicKey()) + "\n"
-			internalssh.KnownHostsFilePath = filepath.Join(t.TempDir(), "known_hosts")
+			knownHostsPath := filepath.Join(t.TempDir(), "known_hosts")
 
-			if err := os.WriteFile(internalssh.KnownHostsFilePath, []byte(knownHostsContent), 0o600); err != nil {
+			if err := os.WriteFile(knownHostsPath, []byte(knownHostsContent), 0o600); err != nil {
 				t.Fatalf("write known_hosts: %v", err)
 			}
 
-			hostKeyCallback, err := knownhosts.New(internalssh.KnownHostsFilePath)
+			if err := internalssh.ConfigureKnownHostsFile(knownHostsPath); err != nil {
+				t.Fatalf("ConfigureKnownHostsFile() error = %v", err)
+			}
+
+			hostKeyCallback, err := knownhosts.New(knownHostsPath)
 			if err != nil {
 				t.Fatalf("knownhosts.New() error = %v", err)
 			}
@@ -100,7 +108,7 @@ func TestSSHHostKeyMismatchFailsClosed(t *testing.T) {
 				t.Fatalf("SSH operation error = %v, want explicit host-key mismatch", err)
 			}
 
-			got, readErr := os.ReadFile(internalssh.KnownHostsFilePath)
+			got, readErr := os.ReadFile(knownHostsPath)
 			if readErr != nil {
 				t.Fatalf("read known_hosts: %v", readErr)
 			}

@@ -41,6 +41,46 @@ Supported authentication methods:
 | `SSH_PRIVATE_KEY_FILE`            | string | Path to the file containing the SSH private key.                                                                                                                                                                                                                                        |                                                  |
 | `SSH_PRIVATE_KEY_PASSPHRASE`      | string | Passphrase for the SSH private key (if the key was generated with a passphrase).                                                                                                                                                                                                        |                                                  |
 | `SSH_PRIVATE_KEY_PASSPHRASE_FILE` | string | Path to the file containing the SSH private key passphrase.                                                                                                                                                                                                                             |                                                  |
+| `SSH_KNOWN_HOSTS_FILE`            | string | Optional path to an operator-managed `known_hosts` file for Git SSH servers. When set, doco-cd never changes this file and rejects unknown or changed host keys.                                                                                                                        |                                                  |
+
+### SSH Host-Key Verification
+
+Doco-CD supports two host-key trust modes for Git SSH remotes:
+
+- **Operator-managed:** Set `SSH_KNOWN_HOSTS_FILE` to a mounted `known_hosts` file. Doco-CD treats it as authoritative and read-only. Add both the old and new server keys before a planned rotation, then remove the old key after the rotation.
+- **Automatic (default):** Leave `SSH_KNOWN_HOSTS_FILE` unset. Doco-CD obtains a host key on first use and automatically replaces a changed key for the same host and port. This avoids interruption when providers rotate keys, but it trusts the key returned by the network and therefore does not protect against a host-key substitution attack.
+
+Example using a read-only Docker config:
+
+```yaml title="docker-compose.yml"
+services:
+  doco-cd:
+    environment:
+      SSH_KNOWN_HOSTS_FILE: /run/configs/git_known_hosts
+    configs:
+      - source: git_known_hosts
+        target: /run/configs/git_known_hosts
+
+configs:
+  git_known_hosts:
+    file: ./known_hosts
+```
+
+#### Rotating a Mounted Host Key
+
+When a Git server reports a changed key, obtain the new key from a trusted source and add it to the mounted `known_hosts` file. Doco-CD will then accept the new key on the next connection.
+
+For hosted providers, use the official host-keys. For example [GitHub.com](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints) or [GitLab.com](https://docs.gitlab.com/user/gitlab_com/#ssh-known_hosts-entries).
+
+Use `ssh-keyscan` to obtain the host key:
+
+```bash title="Default SSH port (22)"
+ssh-keyscan -t ed25519 git.example.com
+```
+
+```bash title="Custom SSH port (2222)"
+ssh-keyscan -p 2222 -t ed25519 git.example.com
+```
 
 ### Required Token Permissions
 

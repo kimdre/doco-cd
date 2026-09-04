@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -25,9 +26,51 @@ const (
 )
 
 var (
-	KnownHostsFilePath   = filepath.Join(os.TempDir(), "known_hosts")
-	fetchHostPublicKeyFn = fetchHostPublicKey
+	KnownHostsFilePath    = defaultKnownHostsFilePath()
+	fetchHostPublicKeyFn  = fetchHostPublicKey
+	knownHostsMu          sync.Mutex
+	userManagedKnownHosts bool
 )
+
+// ErrKnownHostsUserManaged indicates that an automatic update was requested for an operator-managed trust store.
+var ErrKnownHostsUserManaged = errors.New("SSH known_hosts file is user managed")
+
+func defaultKnownHostsFilePath() string {
+	return filepath.Join(os.TempDir(), "known_hosts")
+}
+
+// ConfigureKnownHostsFile selects the SSH host-key trust mode. An empty path enables automatic enrollment and replacement.
+// A configured path is authoritative and is never modified by doco-cd.
+func ConfigureKnownHostsFile(path string) error {
+	knownHostsMu.Lock()
+	defer knownHostsMu.Unlock()
+
+	path = strings.TrimSpace(path)
+	if path == "" {
+		KnownHostsFilePath = defaultKnownHostsFilePath()
+		userManagedKnownHosts = false
+
+		return os.Setenv(KnownHostsEnvVar, KnownHostsFilePath)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("failed to access SSH known_hosts file: %w", err)
+	}
+
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("SSH known_hosts path is not a regular file: %s", path)
+	}
+
+	if _, err = knownhosts.New(path); err != nil {
+		return fmt.Errorf("invalid SSH known_hosts file: %w", err)
+	}
+
+	KnownHostsFilePath = path
+	userManagedKnownHosts = true
+
+	return os.Setenv(KnownHostsEnvVar, KnownHostsFilePath)
+}
 
 type sshEndpoint struct {
 	host string
@@ -197,11 +240,35 @@ func rewriteKnownHostsWithoutEndpoint(content string, endpoint sshEndpoint) (str
 }
 
 func overwriteKnownHosts(content string) error {
+	content = strings.TrimRight(content, "\n")
 	if content != "" {
 		content += "\n"
 	}
 
-	if err := os.WriteFile(KnownHostsFilePath, []byte(content), filesystem.PermOwner); err != nil { // #nosec G304
+	file, err := os.CreateTemp(filepath.Dir(KnownHostsFilePath), ".known_hosts-*") // #nosec G304
+	if err != nil {
+		return fmt.Errorf("failed to create temporary known_hosts file: %w", err)
+	}
+
+	tempPath := file.Name()
+	defer func() {
+		_ = file.Close()
+		_ = os.Remove(tempPath)
+	}()
+
+	if err = file.Chmod(filesystem.PermOwner); err != nil {
+		return fmt.Errorf("failed to set known_hosts permissions: %w", err)
+	}
+
+	if _, err = file.WriteString(content); err != nil {
+		return fmt.Errorf("failed to write known_hosts: %w", err)
+	}
+
+	if err = file.Close(); err != nil {
+		return fmt.Errorf("failed to close known_hosts: %w", err)
+	}
+
+	if err = os.Rename(tempPath, KnownHostsFilePath); err != nil {
 		return fmt.Errorf("failed to write known_hosts: %w", err)
 	}
 
@@ -242,22 +309,23 @@ func addHostToKnownHosts(endpoint sshEndpoint) error {
 		return nil // Host already exists
 	}
 
-	f, err := os.OpenFile(KnownHostsFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, filesystem.PermOwner) // #nosec G304
-	if err != nil {
-		return fmt.Errorf("failed to open known_hosts: %w", err)
+	contentWithoutTrailingNewlines := strings.TrimRight(string(content), "\n")
+	if contentWithoutTrailingNewlines != "" {
+		contentWithoutTrailingNewlines += "\n"
 	}
 
-	defer func() { _ = f.Close() }()
-
-	if _, err := f.WriteString(knownHostLine + "\n"); err != nil {
-		return fmt.Errorf("failed to write to known_hosts: %w", err)
-	}
-
-	return os.Setenv(KnownHostsEnvVar, KnownHostsFilePath)
+	return overwriteKnownHosts(contentWithoutTrailingNewlines + knownHostLine)
 }
 
 // RefreshKnownHost replaces the known_hosts entry for the given SSH URL and fetches the current server key.
 func RefreshKnownHost(url string) error {
+	knownHostsMu.Lock()
+	defer knownHostsMu.Unlock()
+
+	if userManagedKnownHosts {
+		return ErrKnownHostsUserManaged
+	}
+
 	if err := createKnownHostsFile(); err != nil {
 		return fmt.Errorf("failed to create known_hosts file: %w", err)
 	}
@@ -333,6 +401,13 @@ func extractHostAndPortFromSSHUrl(sshUrl string) (sshEndpoint, error) {
 
 // AddToKnownHosts adds the host from the SSH URL to the known_hosts file.
 func AddToKnownHosts(url string) error {
+	knownHostsMu.Lock()
+	defer knownHostsMu.Unlock()
+
+	if userManagedKnownHosts {
+		return nil
+	}
+
 	err := createKnownHostsFile()
 	if err != nil {
 		return fmt.Errorf("failed to create known_hosts file: %w", err)

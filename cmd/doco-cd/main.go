@@ -180,6 +180,10 @@ func run() error {
 		},
 	)
 
+	if err = ssh.ConfigureKnownHostsFile(c.SSHKnownHostsFile); err != nil {
+		return fmt.Errorf("failed to configure SSH known_hosts: %w", err)
+	}
+
 	// Parse the log level from the app configuration
 	logLevel, err := logger.ParseLevel(c.LogLevel)
 	if err != nil {
