@@ -82,6 +82,54 @@ func TestAddToKnownHosts(t *testing.T) {
 	}
 }
 
+func TestConfigureKnownHostsFile(t *testing.T) {
+	originalKnownHostsFilePath := KnownHostsFilePath
+	originalUserManagedKnownHosts := userManagedKnownHosts
+
+	t.Cleanup(func() {
+		KnownHostsFilePath = originalKnownHostsFilePath
+		userManagedKnownHosts = originalUserManagedKnownHosts
+	})
+
+	knownHostsPath := filepath.Join(t.TempDir(), "known_hosts")
+	if err := os.WriteFile(knownHostsPath, nil, 0o600); err != nil {
+		t.Fatalf("write known_hosts: %v", err)
+	}
+
+	if err := ConfigureKnownHostsFile(knownHostsPath); err != nil {
+		t.Fatalf("ConfigureKnownHostsFile() error = %v", err)
+	}
+
+	if KnownHostsFilePath != knownHostsPath {
+		t.Errorf("KnownHostsFilePath = %q, want %q", KnownHostsFilePath, knownHostsPath)
+	}
+
+	if !userManagedKnownHosts {
+		t.Error("userManagedKnownHosts = false, want true")
+	}
+
+	if err := AddToKnownHosts("ssh://git@invalid.host.example:2222/admin/test.git"); err != nil {
+		t.Fatalf("AddToKnownHosts() error = %v, want nil for user-managed known_hosts", err)
+	}
+
+	content, err := os.ReadFile(knownHostsPath)
+	if err != nil {
+		t.Fatalf("read known_hosts: %v", err)
+	}
+
+	if len(content) != 0 {
+		t.Errorf("user-managed known_hosts changed: %q", content)
+	}
+
+	if err = ConfigureKnownHostsFile(""); err != nil {
+		t.Fatalf("ConfigureKnownHostsFile(\"\") error = %v", err)
+	}
+
+	if userManagedKnownHosts {
+		t.Error("userManagedKnownHosts = true, want false")
+	}
+}
+
 func TestAddToKnownHosts_SkipsProbeWhenEndpointAlreadyExists(t *testing.T) {
 	host, port, stopServer := startTestSSHServerWithStop(t)
 

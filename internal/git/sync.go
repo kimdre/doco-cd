@@ -160,15 +160,30 @@ func fetchRepositoryLocked(repo *git.Repository, url string, skipTLSVerify bool,
 		}
 	}
 
-	return retrier.Do(
-		func() error {
-			err := repo.Fetch(opts)
-			if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
-				return err
-			}
+	fetchWithRetry := func() error {
+		return retrier.Do(
+			func() error {
+				err := repo.Fetch(opts)
+				if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
+					return err
+				}
 
-			return nil
-		})
+				return nil
+			})
+	}
+
+	err := fetchWithRetry()
+	if err != nil && IsSSH(url) && ssh.IsHostKeyMismatchError(err) {
+		if refreshErr := ssh.RefreshKnownHost(url); refreshErr != nil {
+			if !errors.Is(refreshErr, ssh.ErrKnownHostsUserManaged) {
+				return fmt.Errorf("failed to refresh host key after mismatch: %w", refreshErr)
+			}
+		} else {
+			err = fetchWithRetry()
+		}
+	}
+
+	return err
 }
 
 // UpdateRepository fetches and checks out the requested ref.
@@ -363,6 +378,16 @@ func cloneRepositoryLocked(path, url, ref string, skipTLSVerify bool, proxyOpts 
 	}
 
 	repo, err := cloneWithRetry(path, opts)
+	if err != nil && IsSSH(url) && ssh.IsHostKeyMismatchError(err) {
+		if refreshErr := ssh.RefreshKnownHost(url); refreshErr != nil {
+			if !errors.Is(refreshErr, ssh.ErrKnownHostsUserManaged) {
+				return nil, fmt.Errorf("failed to refresh host key after mismatch: %w", refreshErr)
+			}
+		} else {
+			repo, err = cloneWithRetry(path, opts)
+		}
+	}
+
 	if err != nil {
 		if errors.Is(err, transport.ErrInvalidAuthMethod) && cloneSubmodules {
 			return nil, fmt.Errorf("%w: %w", err, ErrPossibleAuthMethodMismatch)
