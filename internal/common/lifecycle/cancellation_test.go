@@ -30,3 +30,15 @@ func TestIsCancellation(t *testing.T) {
 		})
 	}
 }
+
+func TestIsCanceledExcludesDeadline(t *testing.T) {
+	t.Parallel()
+
+	if !IsCanceled(fmt.Errorf("operation: %w", context.Canceled)) {
+		t.Fatal("IsCanceled() = false for wrapped cancellation")
+	}
+
+	if IsCanceled(context.DeadlineExceeded) {
+		t.Fatal("IsCanceled() = true for deadline exceeded")
+	}
+}

@@ -188,7 +188,7 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 func (s *StageManager) handleStageFailure(ctx context.Context, stageName StageName, stageLog *slog.Logger, err error) error {
 	s.recordDeploymentFailure(stageName, err)
 
-	if lifecycle.IsCancellation(err) {
+	if lifecycle.IsCanceled(err) {
 		stageLog.Debug("deployment canceled during application shutdown", slog.String("reason", err.Error()))
 
 		return err

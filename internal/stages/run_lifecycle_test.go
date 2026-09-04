@@ -62,3 +62,26 @@ func TestHandleStageFailureReportsOrdinaryFailure(t *testing.T) {
 		t.Fatal("ordinary failure notification was not sent")
 	}
 }
+
+func TestHandleStageFailureReportsDeadlineExceeded(t *testing.T) {
+	t.Parallel()
+
+	sm := newFailureTestManager(t, "app-deadline-exceeded")
+	sent := make(chan notification.Metadata, 1)
+	sm.Notifier = recordingNotificationSender{metadata: sent}
+
+	err := sm.handleStageFailure(context.Background(), StageDeploy, sm.Log, context.DeadlineExceeded)
+	if !notification.WasNotified(err) {
+		t.Fatal("deadline exceeded must send a failure notification")
+	}
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("handleStageFailure() error = %v, want deadline exceeded", err)
+	}
+
+	select {
+	case <-sent:
+	case <-time.After(time.Second):
+		t.Fatal("deadline exceeded notification was not sent")
+	}
+}

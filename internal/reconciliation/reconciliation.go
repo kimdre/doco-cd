@@ -46,7 +46,7 @@ func (j *job) initContextCLIs(ctx context.Context) {
 	contextCLIs := make(map[string]contextCLIEntry)
 
 	for _, dc := range j.info.DeployConfigs {
-		if lifecycle.IsCancellation(ctx.Err()) {
+		if lifecycle.IsCanceled(ctx.Err()) {
 			j.info.Logger.Debug("reconciliation event listener initialization canceled during application shutdown",
 				logger.ErrAttr(ctx.Err()),
 			)
@@ -61,7 +61,7 @@ func (j *job) initContextCLIs(ctx context.Context) {
 
 		entry := resolveDeployContext(ctx, j.manager.contexts, ctxName)
 		if entry.err != nil {
-			if lifecycle.IsCancellation(entry.err) {
+			if lifecycle.IsCanceled(entry.err) {
 				j.info.Logger.Debug("reconciliation event listener initialization canceled during application shutdown",
 					slog.String("context", docker.DisplayContextName(ctxName)),
 					logger.ErrAttr(entry.err),
