@@ -217,10 +217,24 @@ func fetchRepositoryLocked(repo *git.Repository, url, ref string, skipTLSVerify 
 	var focusedErr error
 
 	for _, refSpecs := range focusedFetchRefSpecs(ref) {
+		destination, destinationErr := focusedFetchDestination(refSpecs)
+		if destinationErr != nil {
+			return destinationErr
+		}
+
 		err := fetch(newFetchOptions(refSpecs, git.NoTags))
 		if err != nil {
 			if !isFocusedFetchFallbackError(err) {
 				return err
+			}
+
+			// go-git rejects a refspec whose source is missing on the remote before
+			// it prunes anything, so the stale destination is removed here. Leaving
+			// it in place would shadow the reference that still exists remotely.
+			if errors.Is(err, git.NoMatchingRefSpecError{}) {
+				if pruneErr := removeReferenceIfExists(repo, destination); pruneErr != nil {
+					return fmt.Errorf("failed to prune stale reference %s: %w", destination, pruneErr)
+				}
 			}
 
 			focusedErr = errors.Join(focusedErr, err)
@@ -228,34 +242,13 @@ func fetchRepositoryLocked(repo *git.Repository, url, ref string, skipTLSVerify 
 			continue
 		}
 
-		exists, existsErr := focusedFetchDestinationExists(repo, refSpecs)
+		exists, existsErr := referenceExists(repo, destination)
 		if existsErr != nil {
 			return fmt.Errorf("failed to validate focused fetch for %s: %w", ref, existsErr)
 		}
 
 		if exists {
-			if err := pruneFocusedFetchReferences(repo, url, skipTLSVerify, proxyOpts, auth); err != nil {
-				if !isFocusedFetchFallbackError(err) {
-					return fmt.Errorf("failed to prune references after focused fetch: %w", err)
-				}
-
-				focusedErr = errors.Join(focusedErr, fmt.Errorf("focused reference pruning failed: %w", err))
-
-				break
-			}
-
-			exists, existsErr = focusedFetchDestinationExists(repo, refSpecs)
-			if existsErr != nil {
-				return fmt.Errorf("failed to validate pruned focused fetch for %s: %w", ref, existsErr)
-			}
-
-			if exists {
-				return nil
-			}
-
-			focusedErr = errors.Join(focusedErr, fmt.Errorf("focused reference %s was absent after pruning", ref))
-
-			continue
+			return nil
 		}
 
 		focusedErr = errors.Join(focusedErr, fmt.Errorf("focused fetch did not make reference %s reachable", ref))
@@ -273,23 +266,28 @@ func fetchRepositoryLocked(repo *git.Repository, url, ref string, skipTLSVerify 
 	return nil
 }
 
-// focusedFetchDestinationExists checks if the destination reference of a focused refspec exists in the repository after a fetch.
-func focusedFetchDestinationExists(repo *git.Repository, refSpecs []config.RefSpec) (bool, error) {
+// focusedFetchDestination returns the destination reference a focused refspec writes to.
+func focusedFetchDestination(refSpecs []config.RefSpec) (plumbing.ReferenceName, error) {
 	if len(refSpecs) != 1 {
-		return false, fmt.Errorf("expected exactly one focused refspec, got %d", len(refSpecs))
+		return "", fmt.Errorf("expected exactly one focused refspec, got %d", len(refSpecs))
 	}
 
 	_, destination, ok := strings.Cut(string(refSpecs[0]), ":")
 	if !ok {
-		return false, fmt.Errorf("focused refspec has no destination: %s", refSpecs[0])
+		return "", fmt.Errorf("focused refspec has no destination: %s", refSpecs[0])
 	}
 
-	destination = strings.TrimPrefix(destination, "+")
-	if !plumbing.ReferenceName(destination).IsSafe() {
-		return false, fmt.Errorf("focused refspec has unsafe destination: %s", refSpecs[0])
+	name := plumbing.ReferenceName(strings.TrimPrefix(destination, "+"))
+	if !name.IsSafe() {
+		return "", fmt.Errorf("focused refspec has unsafe destination: %s", refSpecs[0])
 	}
 
-	_, err := repo.Reference(plumbing.ReferenceName(destination), true)
+	return name, nil
+}
+
+// referenceExists reports whether name is present in the repository.
+func referenceExists(repo *git.Repository, name plumbing.ReferenceName) (bool, error) {
+	_, err := repo.Reference(name, false)
 	if errors.Is(err, plumbing.ErrReferenceNotFound) {
 		return false, nil
 	}
@@ -301,97 +299,14 @@ func focusedFetchDestinationExists(repo *git.Repository, refSpecs []config.RefSp
 	return true, nil
 }
 
-// pruneFocusedFetchReferences removes any remote-tracking branches or tags that are no longer present in the remote repository after a focused fetch.
-func pruneFocusedFetchReferences(repo *git.Repository, url string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod) error {
-	remoteURL := url
-	if IsSSH(url) {
-		remoteURL = ConvertSSHUrl(url)
-	}
-
-	remote := git.NewRemote(repo.Storer, &config.RemoteConfig{
-		Name: RemoteName,
-		URLs: []string{remoteURL},
-	})
-
-	listOpts := &git.ListOptions{Auth: auth}
-	if !IsSSH(url) && !IsLocalFile(url) {
-		listOpts.InsecureSkipTLS = skipTLSVerify
-		listOpts.ProxyOptions = proxyOpts
-	}
-
-	listRemoteReferences := func() ([]*plumbing.Reference, error) {
-		var refs []*plumbing.Reference
-
-		err := retrier.Do(func() error {
-			var err error
-
-			refs, err = remote.List(listOpts)
-
-			return err
-		})
-
-		return refs, err
-	}
-
-	remoteRefs, err := listRemoteReferences()
-	if err != nil && IsSSH(url) && ssh.IsHostKeyMismatchError(err) {
-		if refreshErr := ssh.RefreshKnownHost(url); refreshErr != nil {
-			if !errors.Is(refreshErr, ssh.ErrKnownHostsUserManaged) {
-				return fmt.Errorf("failed to refresh host key after mismatch: %w", refreshErr)
-			}
-		} else {
-			remoteRefs, err = listRemoteReferences()
-		}
-	}
-
-	if err != nil {
+// removeReferenceIfExists deletes name when it is still present in the repository.
+func removeReferenceIfExists(repo *git.Repository, name plumbing.ReferenceName) error {
+	exists, err := referenceExists(repo, name)
+	if err != nil || !exists {
 		return err
 	}
 
-	expected := make(map[plumbing.ReferenceName]struct{}, len(remoteRefs))
-	for _, remoteRef := range remoteRefs {
-		switch {
-		case remoteRef.Name().IsBranch():
-			expected[plumbing.NewRemoteReferenceName(RemoteName, remoteRef.Name().Short())] = struct{}{}
-		case remoteRef.Name().IsTag():
-			expected[remoteRef.Name()] = struct{}{}
-		}
-	}
-
-	refs, err := repo.References()
-	if err != nil {
-		return err
-	}
-	defer refs.Close()
-
-	var stale []plumbing.ReferenceName
-
-	err = refs.ForEach(func(ref *plumbing.Reference) error {
-		name := ref.Name()
-
-		isRemoteBranch := strings.HasPrefix(name.String(), "refs/remotes/"+RemoteName+"/") &&
-			name != plumbing.NewRemoteReferenceName(RemoteName, "HEAD")
-		if !isRemoteBranch && !name.IsTag() {
-			return nil
-		}
-
-		if _, ok := expected[name]; !ok {
-			stale = append(stale, name)
-		}
-
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-
-	for _, name := range stale {
-		if err := repo.Storer.RemoveReference(name); err != nil {
-			return fmt.Errorf("failed to prune reference %s: %w", name, err)
-		}
-	}
-
-	return nil
+	return repo.Storer.RemoveReference(name)
 }
 
 // isFocusedFetchFallbackError determines if a fetch error should trigger a fallback to the compatibility all-refs fetch.
