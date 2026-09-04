@@ -5,10 +5,12 @@ import (
 	"os"
 	"reflect"
 	"testing"
+	"time"
 
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 )
 
@@ -219,6 +221,116 @@ func TestSyncRepositoryFreshCloneResolvesShortTag(t *testing.T) {
 
 	if head.Hash() != originHash {
 		t.Fatalf("HEAD = %s, want %s", head.Hash(), originHash)
+	}
+}
+
+func TestSyncRepositoryFreshCloneChecksOutAnnotatedTagCommit(t *testing.T) {
+	t.Parallel()
+
+	originPath, clonePath, originHash := setupLocalMainRepoAndClone(t)
+
+	originRepo, err := git.PlainOpen(originPath)
+	if err != nil {
+		t.Fatalf("open origin: %v", err)
+	}
+
+	if _, err := originRepo.CreateTag("v1.0.0", originHash, &git.CreateTagOptions{
+		Tagger: &object.Signature{
+			Name:  "test",
+			Email: "test@example.com",
+			When:  time.Now(),
+		},
+		Message: "release",
+	}); err != nil {
+		t.Fatalf("create annotated tag: %v", err)
+	}
+
+	if err := os.RemoveAll(clonePath); err != nil {
+		t.Fatalf("remove initial clone: %v", err)
+	}
+
+	result, err := SyncRepository(clonePath, originPath, "v1.0.0", false, transport.ProxyOptions{}, nil, false, 0)
+	if err != nil {
+		t.Fatalf("sync annotated tag clone: %v", err)
+	}
+
+	head, err := result.Repository.Head()
+	if err != nil {
+		t.Fatalf("read HEAD: %v", err)
+	}
+
+	if head.Hash() != originHash {
+		t.Fatalf("HEAD = %s, want tagged commit %s", head.Hash(), originHash)
+	}
+}
+
+func TestSyncRepositoryShortTagWinsOverDeletedBranch(t *testing.T) {
+	t.Parallel()
+
+	originPath, clonePath, _ := setupLocalMainRepoAndClone(t)
+
+	originRepo, err := git.PlainOpen(originPath)
+	if err != nil {
+		t.Fatalf("open origin: %v", err)
+	}
+
+	tagHash := commitFile(t, originRepo, originPath, "tag.md", "tag\n", "tag commit")
+
+	worktree, err := originRepo.Worktree()
+	if err != nil {
+		t.Fatalf("get origin worktree: %v", err)
+	}
+
+	if err := worktree.Checkout(&git.CheckoutOptions{
+		Branch: plumbing.NewBranchReferenceName("release"),
+		Create: true,
+		Keep:   true,
+	}); err != nil {
+		t.Fatalf("create release branch: %v", err)
+	}
+
+	releaseHash := commitFile(t, originRepo, originPath, "release.md", "release\n", "release")
+	if err := originRepo.Storer.SetReference(
+		plumbing.NewHashReference(plumbing.NewTagReferenceName("release"), tagHash),
+	); err != nil {
+		t.Fatalf("create release tag: %v", err)
+	}
+
+	cloneRepo, err := git.PlainOpen(clonePath)
+	if err != nil {
+		t.Fatalf("open clone: %v", err)
+	}
+
+	if err := FetchRepository(cloneRepo, originPath, false, transport.ProxyOptions{}, nil, 0); err != nil {
+		t.Fatalf("fetch release branch: %v", err)
+	}
+
+	if err := cloneRepo.Storer.SetReference(
+		plumbing.NewHashReference(plumbing.NewBranchReferenceName("release"), releaseHash),
+	); err != nil {
+		t.Fatalf("create stale local release branch: %v", err)
+	}
+
+	if err := originRepo.Storer.RemoveReference(plumbing.NewBranchReferenceName("release")); err != nil {
+		t.Fatalf("delete release branch: %v", err)
+	}
+
+	result, err := SyncRepository(clonePath, originPath, "release", false, transport.ProxyOptions{}, nil, false, 0)
+	if err != nil {
+		t.Fatalf("sync release tag: %v", err)
+	}
+
+	head, err := result.Repository.Head()
+	if err != nil {
+		t.Fatalf("read HEAD: %v", err)
+	}
+
+	if head.Hash() != tagHash {
+		t.Fatalf("HEAD = %s, want release tag commit %s", head.Hash(), tagHash)
+	}
+
+	if head.Name() != plumbing.HEAD {
+		t.Fatalf("HEAD = %s, want detached checkout of the release tag", head.Name())
 	}
 }
 

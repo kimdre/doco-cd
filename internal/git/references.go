@@ -77,8 +77,15 @@ func GetReferenceSet(repo *git.Repository, ref string) (RefSet, error) {
 				// Already resolved above; avoid a redundant store lookup.
 				remoteHash = localRef.Hash()
 			case c.remote.IsSafe():
-				if rRef, rErr := repo.Reference(c.remote, true); rErr == nil {
+				rRef, rErr := repo.Reference(c.remote, true)
+				if rErr == nil {
 					remoteHash = rRef.Hash()
+				} else if !errors.Is(rErr, plumbing.ErrReferenceNotFound) {
+					return RefSet{}, fmt.Errorf("failed to get reference %s: %w", c.remote, rErr)
+				} else if c.local.IsBranch() {
+					// Branches supplied to deployment synchronization must still
+					// exist on origin; otherwise a same-named tag must win.
+					continue
 				}
 			}
 

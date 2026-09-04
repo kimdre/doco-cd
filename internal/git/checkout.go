@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 )
 
@@ -84,7 +85,12 @@ func CheckoutRepository(repo *git.Repository, ref string, auth transport.AuthMet
 			}
 		} else {
 			// Fallback: detached checkout at remote hash (e.g. tags or remote-only refs that are not branches)
-			if err = worktree.Checkout(&git.CheckoutOptions{Hash: remoteHash, Keep: true}); err != nil {
+			commitHash, resolveErr := resolveCheckoutCommitHash(repo, remoteHash)
+			if resolveErr != nil {
+				return fmt.Errorf("failed to resolve commit for remote ref %s: %w", refSet.RemoteRef, resolveErr)
+			}
+
+			if err = worktree.Checkout(&git.CheckoutOptions{Hash: commitHash, Keep: true}); err != nil {
 				return fmt.Errorf("failed to checkout commit for remote ref %s: %w", refSet.RemoteRef, err)
 			}
 		}
@@ -107,4 +113,22 @@ func CheckoutRepository(repo *git.Repository, ref string, auth transport.AuthMet
 	}
 
 	return nil
+}
+
+// resolveCheckoutCommitHash dereferences annotated tags so a detached checkout
+// records the target commit, matching Git's checkout behavior.
+func resolveCheckoutCommitHash(repo *git.Repository, hash plumbing.Hash) (plumbing.Hash, error) {
+	for {
+		obj, err := repo.Object(plumbing.AnyObject, hash)
+		if err != nil {
+			return plumbing.ZeroHash, err
+		}
+
+		tag, ok := obj.(*object.Tag)
+		if !ok {
+			return hash, nil
+		}
+
+		hash = tag.Target
+	}
 }
