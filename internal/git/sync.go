@@ -248,6 +248,7 @@ func fetchRepositoryLocked(repo *git.Repository, url, ref string, skipTLSVerify 
 			if existsErr != nil {
 				return fmt.Errorf("failed to validate pruned focused fetch for %s: %w", ref, existsErr)
 			}
+
 			if exists {
 				return nil
 			}
@@ -310,6 +311,7 @@ func pruneFocusedFetchReferences(repo *git.Repository, url string, skipTLSVerify
 		Name: RemoteName,
 		URLs: []string{remoteURL},
 	})
+
 	listOpts := &git.ListOptions{Auth: auth}
 	if !IsSSH(url) && !IsLocalFile(url) {
 		listOpts.InsecureSkipTLS = skipTLSVerify
@@ -340,6 +342,7 @@ func pruneFocusedFetchReferences(repo *git.Repository, url string, skipTLSVerify
 			remoteRefs, err = listRemoteReferences()
 		}
 	}
+
 	if err != nil {
 		return err
 	}
@@ -364,6 +367,7 @@ func pruneFocusedFetchReferences(repo *git.Repository, url string, skipTLSVerify
 
 	err = refs.ForEach(func(ref *plumbing.Reference) error {
 		name := ref.Name()
+
 		isRemoteBranch := strings.HasPrefix(name.String(), "refs/remotes/"+RemoteName+"/") &&
 			name != plumbing.NewRemoteReferenceName(RemoteName, "HEAD")
 		if !isRemoteBranch && !name.IsTag() {
@@ -641,6 +645,7 @@ func cloneRepositoryForSyncLocked(path, url, ref string, skipTLSVerify bool, pro
 		}
 
 		source = strings.TrimPrefix(source, "+")
+
 		repo, err := cloneRepositoryWithReferenceLocked(
 			path, url, ref, plumbing.ReferenceName(source), true,
 			skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth,
@@ -648,6 +653,7 @@ func cloneRepositoryForSyncLocked(path, url, ref string, skipTLSVerify bool, pro
 		if err == nil {
 			return repo, nil
 		}
+
 		if !isFocusedFetchFallbackError(err) {
 			return nil, err
 		}

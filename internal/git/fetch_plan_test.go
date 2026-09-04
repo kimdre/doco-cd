@@ -154,6 +154,7 @@ func TestSyncRepositoryFreshCloneFetchesOnlyRequestedBranch(t *testing.T) {
 	t.Parallel()
 
 	originPath, clonePath, originHash := setupLocalMainRepoAndClone(t)
+
 	originRepo, err := git.PlainOpen(originPath)
 	if err != nil {
 		t.Fatalf("open origin: %v", err)
@@ -164,6 +165,7 @@ func TestSyncRepositoryFreshCloneFetchesOnlyRequestedBranch(t *testing.T) {
 	); err != nil {
 		t.Fatalf("create other branch: %v", err)
 	}
+
 	if err := os.RemoveAll(clonePath); err != nil {
 		t.Fatalf("remove initial clone: %v", err)
 	}
@@ -189,6 +191,7 @@ func TestSyncRepositoryFreshCloneResolvesShortTag(t *testing.T) {
 	t.Parallel()
 
 	originPath, clonePath, originHash := setupLocalMainRepoAndClone(t)
+
 	originRepo, err := git.PlainOpen(originPath)
 	if err != nil {
 		t.Fatalf("open origin: %v", err)
@@ -199,6 +202,7 @@ func TestSyncRepositoryFreshCloneResolvesShortTag(t *testing.T) {
 	); err != nil {
 		t.Fatalf("create tag: %v", err)
 	}
+
 	if err := os.RemoveAll(clonePath); err != nil {
 		t.Fatalf("remove initial clone: %v", err)
 	}
@@ -212,6 +216,7 @@ func TestSyncRepositoryFreshCloneResolvesShortTag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read HEAD: %v", err)
 	}
+
 	if head.Hash() != originHash {
 		t.Fatalf("HEAD = %s, want %s", head.Hash(), originHash)
 	}
@@ -279,6 +284,7 @@ func TestFetchRepositoryReferencePrunesDeletedBranchesAndTags(t *testing.T) {
 	t.Parallel()
 
 	originPath, clonePath, originHash := setupLocalMainRepoAndClone(t)
+
 	originRepo, err := git.PlainOpen(originPath)
 	if err != nil {
 		t.Fatalf("open origin: %v", err)
@@ -286,9 +292,11 @@ func TestFetchRepositoryReferencePrunesDeletedBranchesAndTags(t *testing.T) {
 
 	staleBranch := plumbing.NewBranchReferenceName("stale")
 	staleTag := plumbing.NewTagReferenceName("stale")
+
 	if err := originRepo.Storer.SetReference(plumbing.NewHashReference(staleBranch, originHash)); err != nil {
 		t.Fatalf("create stale branch: %v", err)
 	}
+
 	if err := originRepo.Storer.SetReference(plumbing.NewHashReference(staleTag, originHash)); err != nil {
 		t.Fatalf("create stale tag: %v", err)
 	}
@@ -297,6 +305,7 @@ func TestFetchRepositoryReferencePrunesDeletedBranchesAndTags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open clone: %v", err)
 	}
+
 	if err := FetchRepository(cloneRepo, originPath, false, transport.ProxyOptions{}, nil, 0); err != nil {
 		t.Fatalf("fetch stale references: %v", err)
 	}
@@ -309,6 +318,7 @@ func TestFetchRepositoryReferencePrunesDeletedBranchesAndTags(t *testing.T) {
 	if err := originRepo.Storer.RemoveReference(staleBranch); err != nil {
 		t.Fatalf("delete stale branch: %v", err)
 	}
+
 	if err := originRepo.Storer.RemoveReference(staleTag); err != nil {
 		t.Fatalf("delete stale tag: %v", err)
 	}
