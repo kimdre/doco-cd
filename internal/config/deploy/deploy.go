@@ -443,17 +443,10 @@ func GetConfigs(repoRoot, configBaseDir, customTarget, reference string, gitOpts
 
 					repoDir = path.Join(path.Dir(repoRoot), gitInternal.GetRepoName(string(c.RepositoryUrl)))
 
-					// Clone the repository to repoDir if it does not exist, otherwise fetch the latest changes and checkout to the correct reference
-					_, err = gitInternal.CloneRepository(repoDir, string(c.RepositoryUrl), c.Reference, opts.SkipTLSVerification, opts.HttpProxy, auth, opts.GitCloneSubmodules, c.ResolveGitDepth(opts.GitCloneDepth))
+					// Synchronize the repository once, whether it already exists or must be cloned.
+					_, err = gitInternal.SyncRepository(repoDir, string(c.RepositoryUrl), c.Reference, opts.SkipTLSVerification, opts.HttpProxy, auth, opts.GitCloneSubmodules, c.ResolveGitDepth(opts.GitCloneDepth))
 					if err != nil {
-						if errors.Is(err, git.ErrRepositoryAlreadyExists) {
-							_, err = gitInternal.UpdateRepository(repoDir, string(c.RepositoryUrl), c.Reference, opts.SkipTLSVerification, opts.HttpProxy, auth, opts.GitCloneSubmodules, c.ResolveGitDepth(opts.GitCloneDepth))
-							if err != nil {
-								return nil, fmt.Errorf("failed to update repository: %w", err)
-							}
-						} else {
-							return nil, fmt.Errorf("failed to clone repository: %w", err)
-						}
+						return nil, fmt.Errorf("failed to synchronize repository: %w", err)
 					}
 				} else if isGitRepo {
 					auth, err := gitInternal.GetAuthMethod(string(c.RepositoryUrl), opts.SSHPrivateKey, opts.SSHPrivateKeyPassphrase, opts.GitAccessToken)

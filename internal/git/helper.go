@@ -1,7 +1,6 @@
 package git
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
 
@@ -38,24 +37,14 @@ func CloneOrUpdateRepository(log *slog.Logger,
 		log.Debug("No auth method configured, using anonymous access")
 	}
 
-	var repo *git.Repository
-	// Try to clone the repository
-	repo, err = CloneRepository(internalRepoPath, cloneUrl, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
+	syncResult, err := SyncRepository(internalRepoPath, cloneUrl, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
 	if err != nil {
-		// If the repository already exists, check it out to the specified commit SHA
-		if errors.Is(err, ErrRepositoryAlreadyExists) {
-			log.Debug("repository already exists, checking out reference "+ref, slog.String("host_path", externalRepoPath))
+		return nil, err
+	}
 
-			repo, err = UpdateRepository(internalRepoPath, cloneUrl, ref, skipTLSVerify, proxyOpts, auth, cloneSubmodules, depth)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			return nil, err
-		}
-	} else {
+	if syncResult.State == SyncStateCloned {
 		log.Debug("repository cloned", slog.String("path", externalRepoPath))
 	}
 
-	return repo, nil
+	return syncResult.Repository, nil
 }
