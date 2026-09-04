@@ -143,9 +143,13 @@ func MatchesHead(path, ref string) (bool, error) {
 		return false, fmt.Errorf("failed to open repository at %s: %w", path, err)
 	}
 
+	return repositoryMatchesHead(repo, ref)
+}
+
+func repositoryMatchesHead(repo *git.Repository, ref string) (bool, error) {
 	head, err := repo.Head()
 	if err != nil {
-		return false, fmt.Errorf("%w for repository '%s': %w", ErrGetHeadFailed, path, err)
+		return false, fmt.Errorf("%w: %w", ErrGetHeadFailed, err)
 	}
 
 	refSet, err := GetReferenceSet(repo, ref)
