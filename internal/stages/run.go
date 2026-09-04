@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kimdre/doco-cd/internal/commitstatus"
+	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/prometheus"
@@ -148,15 +149,7 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 				return err
 			}
 
-			s.recordDeploymentFailure(stageName, err)
-
-			notifiedErr := s.NotifyFailure(err)
-
-			if shouldPostFailureCommitStatus(s.DeployConfig.Destroy.Enabled) {
-				s.PostCommitStatus(ctx, failureCommitStatusState(stageName), commitstatus.FailureDescription(err))
-			}
-
-			return notifiedErr
+			return s.handleStageFailure(ctx, stageName, stageLog, err)
 		}
 
 		stageLog.Debug(string("completed stage: "+stageName),
@@ -188,6 +181,26 @@ func (s *StageManager) RunStages(ctx context.Context) error {
 	s.clearDeploymentFailure()
 
 	return nil
+}
+
+// handleStageFailure preserves retry safety for interrupted deploys without
+// reporting the process's own shutdown as an operator-actionable failure.
+func (s *StageManager) handleStageFailure(ctx context.Context, stageName StageName, stageLog *slog.Logger, err error) error {
+	s.recordDeploymentFailure(stageName, err)
+
+	if lifecycle.IsCancellation(err) {
+		stageLog.Debug("deployment canceled during application shutdown", slog.String("reason", err.Error()))
+
+		return err
+	}
+
+	notifiedErr := s.NotifyFailure(err)
+
+	if shouldPostFailureCommitStatus(s.DeployConfig.Destroy.Enabled) {
+		s.PostCommitStatus(ctx, failureCommitStatusState(stageName), commitstatus.FailureDescription(err))
+	}
+
+	return notifiedErr
 }
 
 func deploymentMetricsRepository(repository *RepositoryData) string {
