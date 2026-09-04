@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/kimdre/doco-cd/internal/commitstatus"
+	"github.com/kimdre/doco-cd/internal/common/lifecycle"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/webhook"
 )
@@ -54,6 +55,12 @@ func (p *Preparer) postEarlyFailureCommitStatus(
 		State:       commitstatus.StateError,
 		Description: description,
 	}); err != nil {
+		if lifecycle.IsCanceled(err) {
+			req.Logger.Debug("skipped commit status during application shutdown", slog.String("error", err.Error()))
+
+			return
+		}
+
 		req.Logger.Warn("failed to post commit status", slog.String("error", err.Error()))
 	}
 }
