@@ -271,6 +271,7 @@ func focusedFetchDestinationExists(repo *git.Repository, refSpecs []config.RefSp
 	if errors.Is(err, plumbing.ErrReferenceNotFound) {
 		return false, nil
 	}
+
 	if err != nil {
 		return false, err
 	}
