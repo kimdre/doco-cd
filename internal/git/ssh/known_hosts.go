@@ -240,11 +240,35 @@ func rewriteKnownHostsWithoutEndpoint(content string, endpoint sshEndpoint) (str
 }
 
 func overwriteKnownHosts(content string) error {
+	content = strings.TrimRight(content, "\n")
 	if content != "" {
 		content += "\n"
 	}
 
-	if err := os.WriteFile(KnownHostsFilePath, []byte(content), filesystem.PermOwner); err != nil { // #nosec G304
+	file, err := os.CreateTemp(filepath.Dir(KnownHostsFilePath), ".known_hosts-*") // #nosec G304
+	if err != nil {
+		return fmt.Errorf("failed to create temporary known_hosts file: %w", err)
+	}
+
+	tempPath := file.Name()
+	defer func() {
+		_ = file.Close()
+		_ = os.Remove(tempPath)
+	}()
+
+	if err = file.Chmod(filesystem.PermOwner); err != nil {
+		return fmt.Errorf("failed to set known_hosts permissions: %w", err)
+	}
+
+	if _, err = file.WriteString(content); err != nil {
+		return fmt.Errorf("failed to write known_hosts: %w", err)
+	}
+
+	if err = file.Close(); err != nil {
+		return fmt.Errorf("failed to close known_hosts: %w", err)
+	}
+
+	if err = os.Rename(tempPath, KnownHostsFilePath); err != nil {
 		return fmt.Errorf("failed to write known_hosts: %w", err)
 	}
 
@@ -285,18 +309,12 @@ func addHostToKnownHosts(endpoint sshEndpoint) error {
 		return nil // Host already exists
 	}
 
-	f, err := os.OpenFile(KnownHostsFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, filesystem.PermOwner) // #nosec G304
-	if err != nil {
-		return fmt.Errorf("failed to open known_hosts: %w", err)
+	contentWithoutTrailingNewlines := strings.TrimRight(string(content), "\n")
+	if contentWithoutTrailingNewlines != "" {
+		contentWithoutTrailingNewlines += "\n"
 	}
 
-	defer func() { _ = f.Close() }()
-
-	if _, err := f.WriteString(knownHostLine + "\n"); err != nil {
-		return fmt.Errorf("failed to write to known_hosts: %w", err)
-	}
-
-	return os.Setenv(KnownHostsEnvVar, KnownHostsFilePath)
+	return overwriteKnownHosts(contentWithoutTrailingNewlines + knownHostLine)
 }
 
 // RefreshKnownHost replaces the known_hosts entry for the given SSH URL and fetches the current server key.
