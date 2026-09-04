@@ -133,9 +133,9 @@ func FetchRepository(repo *git.Repository, url string, skipTLSVerify bool, proxy
 	return fetchRepositoryLocked(repo, url, "", skipTLSVerify, proxyOpts, auth, depth)
 }
 
-// FetchReferenceRepository fetches the requested reference using focused refspecs
+// FetchRepositoryReference fetches the requested reference using focused refspecs
 // where possible and falls back to the compatibility all-refs transfer as needed.
-func FetchReferenceRepository(repo *git.Repository, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, depth int) error {
+func FetchRepositoryReference(repo *git.Repository, url, ref string, skipTLSVerify bool, proxyOpts transport.ProxyOptions, auth transport.AuthMethod, depth int) error {
 	worktree, err := repo.Worktree()
 	if err != nil {
 		return fetchRepositoryLocked(repo, url, ref, skipTLSVerify, proxyOpts, auth, depth)
@@ -252,6 +252,7 @@ func fetchRepositoryLocked(repo *git.Repository, url, ref string, skipTLSVerify 
 	return nil
 }
 
+// focusedFetchDestinationExists checks if the destination reference of a focused refspec exists in the repository after a fetch.
 func focusedFetchDestinationExists(repo *git.Repository, refSpecs []config.RefSpec) (bool, error) {
 	if len(refSpecs) != 1 {
 		return false, fmt.Errorf("expected exactly one focused refspec, got %d", len(refSpecs))
@@ -279,6 +280,7 @@ func focusedFetchDestinationExists(repo *git.Repository, refSpecs []config.RefSp
 	return true, nil
 }
 
+// isFocusedFetchFallbackError determines if a fetch error should trigger a fallback to the compatibility all-refs fetch.
 func isFocusedFetchFallbackError(err error) bool {
 	return err != nil && !isNonRecoverableError(err) &&
 		!errors.Is(err, transport.ErrRepositoryNotFound) &&

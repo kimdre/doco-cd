@@ -70,7 +70,7 @@ func TestFetchReferenceRepository_ResolvesShortTag(t *testing.T) {
 		t.Fatalf("open clone: %v", err)
 	}
 
-	if err := FetchReferenceRepository(cloneRepo, originPath, "v1.0.0", false, transport.ProxyOptions{}, nil, 0); err != nil {
+	if err := FetchRepositoryReference(cloneRepo, originPath, "v1.0.0", false, transport.ProxyOptions{}, nil, 0); err != nil {
 		t.Fatalf("fetch short tag: %v", err)
 	}
 
@@ -88,7 +88,7 @@ func TestFetchReferenceRepository_ResolvesShortTag(t *testing.T) {
 		t.Fatalf("move tag: %v", err)
 	}
 
-	if err := FetchReferenceRepository(cloneRepo, originPath, "v1.0.0", false, transport.ProxyOptions{}, nil, 0); err != nil {
+	if err := FetchRepositoryReference(cloneRepo, originPath, "v1.0.0", false, transport.ProxyOptions{}, nil, 0); err != nil {
 		t.Fatalf("refresh short tag: %v", err)
 	}
 

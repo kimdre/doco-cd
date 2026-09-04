@@ -146,6 +146,7 @@ func MatchesHead(path, ref string) (bool, error) {
 	return repositoryMatchesHead(repo, ref)
 }
 
+// repositoryMatchesHead checks if the given repository's HEAD matches the specified reference (branch, tag, or commit SHA).
 func repositoryMatchesHead(repo *git.Repository, ref string) (bool, error) {
 	head, err := repo.Head()
 	if err != nil {
