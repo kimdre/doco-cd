@@ -172,6 +172,17 @@ func jsonRequestFor[T any](builder *schemaBuilder, name, description string) (*o
 	}, nil
 }
 
+func documentationVersion(version string) string {
+	if strings.HasPrefix(version, "dev") {
+		return "next"
+	}
+
+	major, remainder, _ := strings.Cut(version, ".")
+	minor, _, _ := strings.Cut(remainder, ".")
+
+	return major + "." + minor
+}
+
 // buildOpenAPIDocument generates an OpenAPI document for the given routes and components, returning the document,
 // its JSON representation, and any error encountered.
 func buildOpenAPIDocument(routes []Route, components *openapi3.Components) (*openapi3.T, []byte, error) {
@@ -180,10 +191,7 @@ func buildOpenAPIDocument(routes []Route, components *openapi3.Components) (*ope
 	documentComponents.SecuritySchemes = make(openapi3.SecuritySchemes)
 	addReferencedSecuritySchemes(&documentComponents, routes)
 
-	version := "next"
-	if !strings.HasPrefix(app.Version, "dev") {
-		version = strings.TrimPrefix(app.Version, "v")
-	}
+	version := documentationVersion(app.Version)
 
 	document := &openapi3.T{
 		OpenAPI: "3.2.0",

@@ -92,6 +92,30 @@ func TestOpenAPIDocumentMatchesRouteCatalog(t *testing.T) {
 	}
 }
 
+func TestDocumentationVersion(t *testing.T) {
+	t.Parallel()
+
+	for _, testCase := range []struct {
+		version string
+		want    string
+	}{
+		{version: "v0.115.0", want: "v0.115"},
+		{version: "0.115.0", want: "0.115"},
+		{version: "v1.2.3", want: "v1.2"},
+		{version: "1.2.3", want: "1.2"},
+		{version: "dev", want: "next"},
+		{version: "dev-build", want: "next"},
+	} {
+		t.Run(testCase.version, func(t *testing.T) {
+			t.Parallel()
+
+			if got := documentationVersion(testCase.version); got != testCase.want {
+				t.Fatalf("documentation version = %q, want %q", got, testCase.want)
+			}
+		})
+	}
+}
+
 func TestOpenAPIDocumentDescribesSecurityParametersAndSchemas(t *testing.T) {
 	t.Parallel()
 
