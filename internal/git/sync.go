@@ -219,7 +219,7 @@ func fetchRepositoryLocked(repo *git.Repository, url, ref string, skipTLSVerify 
 	for _, refSpecs := range focusedFetchRefSpecs(ref) {
 		err := fetch(newFetchOptions(refSpecs, git.NoTags))
 		if err != nil {
-			if isNonRecoverableError(err) {
+			if !isFocusedFetchFallbackError(err) {
 				return err
 			}
 
@@ -228,9 +228,9 @@ func fetchRepositoryLocked(repo *git.Repository, url, ref string, skipTLSVerify 
 			continue
 		}
 
-		exists, existsErr := fetchedReferenceExistsAfterFetch(repo, ref)
+		exists, existsErr := focusedFetchDestinationExists(repo, refSpecs)
 		if existsErr != nil {
-			return fmt.Errorf("failed to validate fetched reference %s: %w", ref, existsErr)
+			return fmt.Errorf("failed to validate focused fetch for %s: %w", ref, existsErr)
 		}
 
 		if exists {
@@ -252,6 +252,38 @@ func fetchRepositoryLocked(repo *git.Repository, url, ref string, skipTLSVerify 
 	return nil
 }
 
+func focusedFetchDestinationExists(repo *git.Repository, refSpecs []config.RefSpec) (bool, error) {
+	if len(refSpecs) != 1 {
+		return false, fmt.Errorf("expected exactly one focused refspec, got %d", len(refSpecs))
+	}
+
+	_, destination, ok := strings.Cut(string(refSpecs[0]), ":")
+	if !ok {
+		return false, fmt.Errorf("focused refspec has no destination: %s", refSpecs[0])
+	}
+
+	destination = strings.TrimPrefix(destination, "+")
+	if !plumbing.ReferenceName(destination).IsSafe() {
+		return false, fmt.Errorf("focused refspec has unsafe destination: %s", refSpecs[0])
+	}
+
+	_, err := repo.Reference(plumbing.ReferenceName(destination), true)
+	if errors.Is(err, plumbing.ErrReferenceNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func isFocusedFetchFallbackError(err error) bool {
+	return err != nil && !isNonRecoverableError(err) &&
+		!errors.Is(err, transport.ErrRepositoryNotFound) &&
+		!errors.Is(err, transport.ErrEmptyRemoteRepository)
+}
+
 // focusedFetchRefSpecs returns the branch-first attempts needed to fetch ref.
 // Unknown, pseudo, and commit references intentionally return no focused plans so
 // the caller uses the compatibility all-refs fetch.
@@ -267,7 +299,7 @@ func focusedFetchRefSpecs(ref string) [][]config.RefSpec {
 		if plumbing.NewTagReferenceName(name).IsSafe() {
 			return [][]config.RefSpec{{config.RefSpec(fmt.Sprintf(refSpecSingleTag, name, name))}}
 		}
-	case !strings.HasPrefix(ref, "refs/") && !plumbing.IsHash(ref):
+	case !strings.HasPrefix(ref, "refs/") && !plumbing.IsHash(ref) && !plumbing.ReferenceName(ref).IsSafe():
 		branch := plumbing.NewBranchReferenceName(ref)
 
 		tag := plumbing.NewTagReferenceName(ref)

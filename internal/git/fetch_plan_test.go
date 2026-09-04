@@ -38,6 +38,7 @@ func TestFocusedFetchRefSpecs(t *testing.T) {
 			},
 		},
 		{name: "commit hash uses compatibility fetch", ref: "0123456789012345678901234567890123456789"},
+		{name: "pseudo ref uses compatibility fetch", ref: plumbing.HEAD.String()},
 		{name: "unsupported qualified ref uses compatibility fetch", ref: "refs/changes/1"},
 	}
 
@@ -80,6 +81,24 @@ func TestFetchReferenceRepository_ResolvesShortTag(t *testing.T) {
 
 	if tag.Hash() != originHash {
 		t.Fatalf("tag hash = %s, want %s", tag.Hash(), originHash)
+	}
+
+	newHash := commitFile(t, originRepo, originPath, "updated.md", "updated\n", "updated")
+	if err := originRepo.Storer.SetReference(plumbing.NewHashReference(plumbing.NewTagReferenceName("v1.0.0"), newHash)); err != nil {
+		t.Fatalf("move tag: %v", err)
+	}
+
+	if err := FetchReferenceRepository(cloneRepo, originPath, "v1.0.0", false, transport.ProxyOptions{}, nil, 0); err != nil {
+		t.Fatalf("refresh short tag: %v", err)
+	}
+
+	tag, err = cloneRepo.Reference(plumbing.NewTagReferenceName("v1.0.0"), true)
+	if err != nil {
+		t.Fatalf("read refreshed tag: %v", err)
+	}
+
+	if tag.Hash() != newHash {
+		t.Fatalf("refreshed tag hash = %s, want %s", tag.Hash(), newHash)
 	}
 }
 
