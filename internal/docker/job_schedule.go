@@ -26,13 +26,13 @@ const (
 )
 
 type JobScheduleConfig struct {
-	Enabled       bool
 	Schedule      string
-	SkipRunning   bool
 	ExecutionMode JobExecutionMode
 	NotifyOn      JobNotifyOn
-	SwarmReplicas uint64
 	StopServices  []StopServiceRef
+	SwarmReplicas uint64
+	Enabled       bool
+	SkipRunning   bool
 }
 
 // StopServiceRef identifies a compose service (or swarm service) to be temporarily

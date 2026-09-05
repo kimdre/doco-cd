@@ -60,18 +60,18 @@ type ParsedPayload struct {
 	Source    PayloadSource
 	Ref       string        // Ref is the branch or tag that triggered the webhook
 	RefType   string        // RefType is the type of ref (branch or tag) that triggered the webhook, only present in delete events
-	Before    plumbing.Hash // Before is the hash of the commit before the push
-	After     plumbing.Hash // After is the hash of the commit after the push
-	CommitSHA plumbing.Hash // CommitSHA is the SHA of the commit that triggered the webhook
 	Trigger   string        // Trigger is the value that triggered the deployment (e.g., "poll", commit SHA, or OCI digest)
 	Name      string        // Name is the short name of the repository (without owner or organization)
 	FullName  string        // FullName is the full name of the repository (e.g., owner/repo)
 	CloneURL  string        // CloneURL is the URL to clone the repository
 	SSHUrl    string        // SSHUrl is the SSH URL to clone the repository
 	WebURL    string        // WebURL is the URL to view the repository in a web browser
-	Private   bool          // Private indicates whether the repository is private or public
 	Artifact  string        // Artifact is the OCI artifact reference that triggered the webhook
 	Digest    string        // Digest is the OCI digest that triggered the webhook
+	Before    plumbing.Hash // Before is the hash of the commit before the push
+	After     plumbing.Hash // After is the hash of the commit after the push
+	CommitSHA plumbing.Hash // CommitSHA is the SHA of the commit that triggered the webhook
+	Private   bool          // Private indicates whether the repository is private or public
 }
 
 // CommitSHAString returns the CommitSHA as a string.
