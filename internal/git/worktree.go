@@ -99,11 +99,10 @@ func shouldResetDecryptedFile(tree *object.Tree, repoRoot, file string) bool {
 		return true
 	}
 
-	if !encryption.IsEncryptedContent(committedBytes) {
+	format, encrypted := encryption.DetectFormat([]byte(committedBytes), fileObj.Name)
+	if !encrypted {
 		return true
 	}
-
-	format := encryption.GetFileFormat(fileObj.Name)
 
 	decryptedContent, err := encryption.DecryptContent([]byte(committedBytes), format)
 	if err != nil {
