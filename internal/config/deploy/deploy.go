@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/go-git/go-git/v5"
@@ -40,6 +41,20 @@ var (
 	ErrMultipleYAMLDocuments         = errors.New("nested .doco-cd configuration file must contain only a single YAML document")
 	ErrSwarmModeUnavailable          = errors.New("docker swarm mode is not available for this deployment")
 )
+
+var configFileCache = struct {
+	mu      sync.RWMutex
+	entries map[string]configFileCacheEntry
+}{
+	entries: map[string]configFileCacheEntry{},
+}
+
+const maxConfigFileCacheEntries = 64
+
+type configFileCacheEntry struct {
+	contentHash [sha256.Size]byte
+	configs     []*Config
+}
 
 // Config is the structure of the deployment configuration file.
 type Config struct {
@@ -299,9 +314,16 @@ func GetConfigFromYAML(f string, applyDefaults bool) ([]*Config, error) {
 		return nil, fmt.Errorf("failed to read file: %v", err)
 	}
 
-	dec := yaml.NewDecoder(bytes.NewReader(b))
+	return getConfigFromYAMLBytes(b, f, applyDefaults)
+}
 
-	var configs []*Config
+func getConfigFromYAMLBytes(contents []byte, fileName string, applyDefaults bool) ([]*Config, error) {
+	dec := yaml.NewDecoder(bytes.NewReader(contents))
+
+	var (
+		configs []*Config
+		err     error
+	)
 
 	// Use a type alias to bypass the UnmarshalYAML hook (which injects defaults)
 	// when the caller explicitly does not want defaults applied.
@@ -327,7 +349,7 @@ func GetConfigFromYAML(f string, applyDefaults bool) ([]*Config, error) {
 			return nil, fmt.Errorf("failed to decode yaml: %v", err)
 		}
 
-		c.Internal.File = f
+		c.Internal.File = fileName
 
 		configs = append(configs, &c)
 	}
@@ -509,26 +531,55 @@ func getConfigsFromFile(dir string, files []os.DirEntry, configFile string) ([]*
 		}
 
 		if f.Name() == configFile {
-			// Get contents of deploy config file
-			configs, err := GetConfigFromYAML(path.Join(dir, f.Name()), true)
-			if err != nil {
-				return nil, err
-			}
-
-			// Validate all deploy configs
-			for _, c := range configs {
-				if err = c.Validate(); err != nil {
-					return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
-				}
-			}
-
-			if configs != nil {
-				return configs, nil
-			}
+			return getCachedConfigsFromFile(path.Join(dir, f.Name()))
 		}
 	}
 
 	return nil, ErrConfigFileNotFound
+}
+
+func getCachedConfigsFromFile(fileName string) ([]*Config, error) {
+	contents, err := os.ReadFile(fileName) // #nosec G304
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file: %v", err)
+	}
+
+	contentHash := sha256.Sum256(contents)
+	cacheKey := filepath.Clean(fileName)
+
+	configFileCache.mu.RLock()
+	entry, ok := configFileCache.entries[cacheKey]
+	configFileCache.mu.RUnlock()
+
+	if ok && entry.contentHash == contentHash {
+		return cloneConfigSlice(entry.configs), nil
+	}
+
+	configs, err := getConfigFromYAMLBytes(contents, fileName, true)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, c := range configs {
+		if err = c.Validate(); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+		}
+	}
+
+	configFileCache.mu.Lock()
+	if _, exists := configFileCache.entries[cacheKey]; !exists && len(configFileCache.entries) >= maxConfigFileCacheEntries {
+		for key := range configFileCache.entries {
+			delete(configFileCache.entries, key)
+			break
+		}
+	}
+	configFileCache.entries[cacheKey] = configFileCacheEntry{
+		contentHash: contentHash,
+		configs:     cloneConfigSlice(configs),
+	}
+	configFileCache.mu.Unlock()
+
+	return configs, nil
 }
 
 // ValidateUniqueProjectNames checks if project names are unique within each Docker context.

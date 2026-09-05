@@ -18,6 +18,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/common/validation"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/filesystem"
+	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
 
 const remoteAutoDiscoveryFixtureCommit = "ee6dda09a7cef86ace9e5991dcf3c4b9a56716d3"
@@ -549,6 +550,103 @@ func TestResolveConfigs_InlineOverride(t *testing.T) {
 
 	if !cfg.Internal.OciTrustPolicyOverrideTrusted {
 		t.Errorf("expected inline deployment OCI trust policy override to be trusted")
+	}
+}
+
+func TestGetConfigsFromFileCachesDecodedConfigByContent(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	fileName := filepath.Join(dir, ".doco-cd.yaml")
+	initialConfig := "name: initial\ncontext: default\n"
+
+	if err := createTestFile(t, fileName, initialConfig); err != nil {
+		t.Fatalf("create config: %v", err)
+	}
+
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read config directory: %v", err)
+	}
+
+	first, err := getConfigsFromFile(dir, files, ".doco-cd.yaml")
+	if err != nil {
+		t.Fatalf("first load: %v", err)
+	}
+
+	first[0].Name = "mutated"
+
+	second, err := getConfigsFromFile(dir, files, ".doco-cd.yaml")
+	if err != nil {
+		t.Fatalf("second load: %v", err)
+	}
+
+	if second[0].Name != "initial" {
+		t.Fatalf("cached config was mutated: got %q, want %q", second[0].Name, "initial")
+	}
+
+	if err := createTestFile(t, fileName, "name: updated\ncontext: default\n"); err != nil {
+		t.Fatalf("update config: %v", err)
+	}
+
+	third, err := getConfigsFromFile(dir, files, ".doco-cd.yaml")
+	if err != nil {
+		t.Fatalf("load updated config: %v", err)
+	}
+
+	if third[0].Name != "updated" {
+		t.Fatalf("content change did not invalidate cache: got %q, want %q", third[0].Name, "updated")
+	}
+}
+
+func TestCloneConfigSliceDeepCopiesMutableFields(t *testing.T) {
+	t.Parallel()
+
+	swarmEnabled := true
+	configRetention := 3
+	verifyOCI := true
+	ignoreTlog := true
+	configs := []*Config{{
+		ComposeFiles: []string{"compose.yaml"},
+		Environment:  map[string]string{"ENV": "original"},
+		Swarm: SwarmConfig{
+			Enabled:         &swarmEnabled,
+			ConfigRetention: &configRetention,
+		},
+		Reconciliation: ReconciliationConfig{Events: []string{"unhealthy"}},
+		Oci: config.OciTrustPolicyOverride{
+			Verify:            &verifyOCI,
+			IgnoreTlog:        &ignoreTlog,
+			KeylessIdentities: []config.OciKeylessIdentity{{Issuer: "issuer"}},
+			PublicKeys:        []string{"public-key"},
+		},
+		ExternalSecrets: map[string]secrettypes.ExternalSecretRef{
+			"SECRET": {RemoteRef: map[string]any{"nested": map[string]any{"value": "original"}}},
+		},
+	}}
+
+	cloned := cloneConfigSlice(configs)
+	configs[0].ComposeFiles[0] = "changed.yaml"
+	configs[0].Environment["ENV"] = "changed"
+	*configs[0].Swarm.Enabled = false
+	*configs[0].Swarm.ConfigRetention = 4
+	configs[0].Reconciliation.Events[0] = "die"
+	*configs[0].Oci.Verify = false
+	*configs[0].Oci.IgnoreTlog = false
+	configs[0].Oci.KeylessIdentities[0].Issuer = "changed"
+	configs[0].Oci.PublicKeys[0] = "changed"
+	configs[0].ExternalSecrets["SECRET"] = secrettypes.ExternalSecretRef{
+		RemoteRef: map[string]any{"nested": map[string]any{"value": "changed"}},
+	}
+
+	got := cloned[0]
+	if got.ComposeFiles[0] != "compose.yaml" || got.Environment["ENV"] != "original" ||
+		!*got.Swarm.Enabled || *got.Swarm.ConfigRetention != 3 ||
+		got.Reconciliation.Events[0] != "unhealthy" || !*got.Oci.Verify ||
+		!*got.Oci.IgnoreTlog || got.Oci.KeylessIdentities[0].Issuer != "issuer" ||
+		got.Oci.PublicKeys[0] != "public-key" ||
+		got.ExternalSecrets["SECRET"].RemoteRef["nested"].(map[string]any)["value"] != "original" {
+		t.Fatalf("cloneConfigSlice did not isolate mutable configuration fields: %#v", got)
 	}
 }
 
