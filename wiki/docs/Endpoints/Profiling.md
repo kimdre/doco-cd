@@ -7,8 +7,12 @@ tags:
 
 # Go Runtime Profiling
 
-Set `PPROF_ENABLED=true` to expose Go's built-in runtime profiling endpoints on `127.0.0.1:6060` inside the doco-cd container. 
-Set `PPROF_PORT` to use another port.
+Configure the profiling server with these environment variables:
+
+| Key             | Type    | Description                                              | Default |
+|-----------------|---------|----------------------------------------------------------|---------|
+| `PPROF_ENABLED` | boolean | Enables Go's built-in runtime profiling endpoints.       | `false` |
+| `PPROF_PORT`    | number  | Loopback port used by the profiling server when enabled. | `6060`  |
 
 !!! note "Profiling server is not exposed"
     The profiling server is intentionally bound to loopback and cannot be exposed through Docker port publishing. 
