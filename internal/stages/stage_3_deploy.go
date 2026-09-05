@@ -24,9 +24,12 @@ func (s *StageManager) RunDeployStage(ctx context.Context, stageLog *slog.Logger
 
 	latestCommit := strings.TrimSpace(s.Repository.Revision)
 	if s.Repository.Source != config.SourceTypeOCI {
-		latestCommit, err = git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
-		if err != nil {
-			return fmt.Errorf("failed to get latest commit: %w", err)
+		latestCommit = s.DeployState.latestCommit
+		if latestCommit == "" {
+			latestCommit, err = git.GetLatestCommit(s.Repository.Git, s.DeployConfig.Reference)
+			if err != nil {
+				return fmt.Errorf("failed to get latest commit: %w", err)
+			}
 		}
 	}
 

@@ -114,23 +114,23 @@ type stopHoldState struct {
 
 // JobInfo describes one scheduler-managed target and its runtime scheduling status.
 type JobInfo struct {
+	LastRunAt      *time.Time              `json:"last_run_at,omitempty"`
+	NextRunAt      *time.Time              `json:"next_run_at,omitempty"`
+	LabelNextRunAt *time.Time              `json:"label_next_run_at,omitempty"`
 	Name           string                  `json:"name"`
 	Context        string                  `json:"context"`
-	Enabled        bool                    `json:"enabled"`
 	Stack          string                  `json:"stack,omitempty"`
 	Mode           string                  `json:"mode"`
 	Schedule       string                  `json:"schedule,omitempty"`
 	ExecutionMode  docker.JobExecutionMode `json:"execution_mode,omitempty"`
-	SkipRunning    bool                    `json:"skip_running"`
 	NotifyOn       docker.JobNotifyOn      `json:"notify_on,omitempty"`
-	Replicas       uint64                  `json:"replicas,omitempty"`
-	StopServices   []string                `json:"stop_services,omitempty"`
 	Status         string                  `json:"status,omitempty"`
-	LastRunAt      *time.Time              `json:"last_run_at,omitempty"`
-	NextRunAt      *time.Time              `json:"next_run_at,omitempty"`
-	LabelNextRunAt *time.Time              `json:"label_next_run_at,omitempty"`
 	Repository     string                  `json:"repository,omitempty"`
 	ScheduleError  string                  `json:"schedule_error,omitempty"`
+	StopServices   []string                `json:"stop_services,omitempty"`
+	Replicas       uint64                  `json:"replicas,omitempty"`
+	Enabled        bool                    `json:"enabled"`
+	SkipRunning    bool                    `json:"skip_running"`
 	Valid          bool                    `json:"valid"`
 }
 

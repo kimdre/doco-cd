@@ -117,11 +117,6 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 		slog.String("reference", s.DeployConfig.Reference),
 	)
 
-	auth, err := git.GetAuthMethod(s.Repository.SourceUrl, s.AppConfig.SSHPrivateKey, s.AppConfig.SSHPrivateKeyPassphrase, s.AppConfig.GitAccessToken)
-	if err != nil {
-		return fmt.Errorf("failed to get auth method: %w", err)
-	}
-
 	var syncResult *git.SyncResult
 
 	if s.DeployConfig.RepositoryUrl == "" {
@@ -145,6 +140,11 @@ func (s *StageManager) RunInitStage(ctx context.Context, stageLog *slog.Logger) 
 	}
 
 	if syncResult == nil {
+		auth, err := git.GetAuthMethod(s.Repository.SourceUrl, s.AppConfig.SSHPrivateKey, s.AppConfig.SSHPrivateKeyPassphrase, s.AppConfig.GitAccessToken)
+		if err != nil {
+			return fmt.Errorf("failed to get auth method: %w", err)
+		}
+
 		var syncErr error
 
 		syncResult, syncErr = git.SyncRepository(

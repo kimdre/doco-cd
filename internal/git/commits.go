@@ -32,18 +32,16 @@ func GetLatestCommit(repo *git.Repository, ref string) (string, error) {
 		return string(refSet.LocalRef), nil
 	}
 
-	r, err := repo.Reference(refSet.RemoteRef, true)
-	if err != nil {
-		return plumbing.ZeroHash.String(), fmt.Errorf("failed to get reference %s: %w", ref, err)
+	if refSet.RemoteRef.IsTag() {
+		hash, err := repo.ResolveRevision(plumbing.Revision(refSet.RemoteRef))
+		if err != nil {
+			return plumbing.ZeroHash.String(), fmt.Errorf("failed to resolve tag %s: %w", refSet.RemoteRef, err)
+		}
+
+		return hash.String(), nil
 	}
 
-	// Get the commit object for the reference
-	commit, err := repo.CommitObject(r.Hash())
-	if err != nil {
-		return plumbing.ZeroHash.String(), fmt.Errorf("failed to get commit object for %s: %w", r.Hash(), err)
-	}
-
-	return commit.Hash.String(), nil
+	return refSet.RemoteHash.String(), nil
 }
 
 // GetChangedFilesBetweenCommits retrieves a list of changed files between two commits in a repository.
@@ -166,29 +164,30 @@ func GetShortestUniqueCommitHash(repo *git.Repository, commitSHA string, minLeng
 		return "", errors.New("commit SHA is empty")
 	}
 
-	iter, err := repo.CommitObjects()
+	iter, err := repo.Storer.IterEncodedObjects(plumbing.CommitObject)
 	if err != nil {
 		return "", err
 	}
 	defer iter.Close()
 
-	// collect all commit SHAs, skipping any errors
 	var (
-		allSHAs     []string
-		foundCommit bool
+		foundCommit    bool
+		requiredLength = minLength
 	)
 
-	err = iter.ForEach(func(c *object.Commit) error {
-		if c == nil {
+	err = iter.ForEach(func(encoded plumbing.EncodedObject) error {
+		if encoded == nil {
 			return nil
 		}
 
-		sha := c.Hash.String()
-
-		allSHAs = append(allSHAs, sha)
+		sha := encoded.Hash().String()
 		if sha == commitSHA {
 			foundCommit = true
+
+			return nil
 		}
+
+		requiredLength = max(requiredLength, sharedPrefixLength(commitSHA, sha)+1)
 
 		return nil
 	})
@@ -200,21 +199,21 @@ func GetShortestUniqueCommitHash(repo *git.Repository, commitSHA string, minLeng
 		return "", fmt.Errorf("commit SHA %s not found in repository", commitSHA)
 	}
 
-	shaLen := len(commitSHA)
-	for length := minLength; length <= shaLen; length++ {
-		prefixCount := make(map[string]int, len(allSHAs))
-		for _, sha := range allSHAs {
-			if len(sha) >= length {
-				prefix := sha[:length]
-				prefixCount[prefix]++
-			}
-		}
-
-		prefix := commitSHA[:length]
-		if prefixCount[prefix] == 1 {
-			return prefix, nil
-		}
+	if requiredLength <= len(commitSHA) {
+		return commitSHA[:requiredLength], nil
 	}
 
 	return "", fmt.Errorf("no unique prefix found for commit SHA %s", commitSHA)
+}
+
+// sharedPrefixLength returns the length of the common prefix between two strings.
+func sharedPrefixLength(first, second string) int {
+	length := min(len(first), len(second))
+	for i := range length {
+		if first[i] != second[i] {
+			return i
+		}
+	}
+
+	return length
 }

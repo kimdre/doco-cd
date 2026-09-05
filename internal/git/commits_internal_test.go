@@ -1,6 +1,7 @@
 package git
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -122,5 +123,59 @@ func TestGetCommitsBetween_DivergedHistory(t *testing.T) {
 
 	if got[0].Hash != d[1].String() || got[1].Hash != d[0].String() {
 		t.Fatalf("expected [e, d], got %+v", got)
+	}
+}
+
+func TestGetShortestUniqueCommitHash(t *testing.T) {
+	repo, err := gogit.Init(memory.NewStorage(), memfs.New())
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+
+	hashes := commitN(t, wt, 3)
+	target := hashes[2].String()
+
+	got, err := GetShortestUniqueCommitHash(repo, target, 1)
+	if err != nil {
+		t.Fatalf("GetShortestUniqueCommitHash: %v", err)
+	}
+
+	for _, hash := range hashes[:2] {
+		if strings.HasPrefix(hash.String(), got) {
+			t.Fatalf("prefix %q for %s is not unique; also matches %s", got, target, hash)
+		}
+	}
+
+	if got != target[:len(got)] {
+		t.Fatalf("got %q, want prefix of %s", got, target)
+	}
+}
+
+func TestSharedPrefixLength(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		first  string
+		second string
+		want   int
+	}{
+		{name: "no shared prefix", first: "abcdef", second: "123456", want: 0},
+		{name: "shared prefix", first: "abcdef", second: "abc123", want: 3},
+		{name: "identical strings", first: "abcdef", second: "abcdef", want: 6},
+		{name: "prefix of second", first: "abc", second: "abcdef", want: 3},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sharedPrefixLength(tt.first, tt.second); got != tt.want {
+				t.Errorf("sharedPrefixLength(%q, %q) = %d, want %d", tt.first, tt.second, got, tt.want)
+			}
+		})
 	}
 }

@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,14 +16,17 @@ import (
 	"github.com/go-git/go-git/v5"
 	"go.yaml.in/yaml/v4"
 
+	"github.com/kimdre/doco-cd/internal/common/types/clone"
+	"github.com/kimdre/doco-cd/internal/common/types/set"
+	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
 )
 
 // AutoDiscoveryConfig holds auto-discovery settings for a deployment.
 type AutoDiscoveryConfig struct {
-	Enabled       bool `yaml:"enabled" json:"enabled" default:"false"`               // Enabled enables autodiscovery of services to deploy in the working directory
 	ScanDepth     int  `yaml:"depth" json:"depth" default:"0"`                       // ScanDepth is the maximum depth of subdirectories to scan for docker-compose files
+	Enabled       bool `yaml:"enabled" json:"enabled" default:"false"`               // Enabled enables autodiscovery of services to deploy in the working directory
 	Delete        bool `yaml:"delete" json:"delete" default:"false"`                 // Delete removes obsolete auto-discovered deployments that are no longer present in the repository
 	RemoveVolumes bool `yaml:"remove_volumes" json:"remove_volumes" default:"false"` // RemoveVolumes removes the volumes of an auto-discovered deployment when it is deleted
 	RemoveImages  bool `yaml:"remove_images" json:"remove_images" default:"true"`    // RemoveImages removes the images of an auto-discovered deployment when it is deleted
@@ -36,6 +38,8 @@ var autoDiscoveryCache = struct {
 }{
 	entries: map[string][]*Config{},
 }
+
+const maxAutoDiscoveryCacheEntries = 64
 
 func (c *AutoDiscoveryConfig) UnmarshalYAML(node *yaml.Node) error {
 	switch node.Kind {
@@ -134,6 +138,7 @@ func autoDiscoverDeployments(repoRoot string, baseConfig *Config) ([]*Config, er
 	var configs []*Config
 
 	searchPath := filepath.Join(repoRoot, baseConfig.WorkingDirectory)
+	composeFileNames := set.New(baseConfig.ComposeFiles...)
 
 	err := filepath.WalkDir(searchPath, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -166,14 +171,13 @@ func autoDiscoverDeployments(repoRoot string, baseConfig *Config) ([]*Config, er
 			return nil
 		}
 
-		// Read directory entries once and build a filename set for O(1) compose-file membership checks,
-		// avoiding one os.Stat syscall per candidate compose filename.
+		// Read directory entries once, avoiding one os.Stat syscall per candidate compose filename.
 		dirEntries, err := os.ReadDir(p)
 		if err != nil {
 			return err
 		}
 
-		if !dirContainsAnyComposeFile(dirEntries, baseConfig.ComposeFiles) {
+		if !dirContainsAnyComposeFile(dirEntries, composeFileNames) {
 			return nil
 		}
 
@@ -232,6 +236,13 @@ func autoDiscoverDeployments(repoRoot string, baseConfig *Config) ([]*Config, er
 
 	if cacheable {
 		autoDiscoveryCache.mu.Lock()
+		if _, exists := autoDiscoveryCache.entries[cacheKey]; !exists && len(autoDiscoveryCache.entries) >= maxAutoDiscoveryCacheEntries {
+			for key := range autoDiscoveryCache.entries {
+				delete(autoDiscoveryCache.entries, key)
+				break
+			}
+		}
+
 		autoDiscoveryCache.entries[cacheKey] = cloneConfigSlice(configs)
 		autoDiscoveryCache.mu.Unlock()
 	}
@@ -239,6 +250,7 @@ func autoDiscoverDeployments(repoRoot string, baseConfig *Config) ([]*Config, er
 	return configs, nil
 }
 
+// autoDiscoveryCacheKey generates a unique cache key for the auto-discovery results based on the repository root.
 func autoDiscoveryCacheKey(repoRoot string, baseConfig *Config) (string, bool) {
 	repo, err := git.PlainOpen(repoRoot)
 	if err != nil {
@@ -250,28 +262,23 @@ func autoDiscoveryCacheKey(repoRoot string, baseConfig *Config) (string, bool) {
 		return "", false
 	}
 
-	composeFiles := append([]string(nil), baseConfig.ComposeFiles...)
-	sort.Strings(composeFiles)
-
-	swarmEnabled := "auto"
-	if baseConfig.Swarm.Enabled != nil {
-		swarmEnabled = strconv.FormatBool(*baseConfig.Swarm.Enabled)
+	configHash, err := baseConfig.Hash()
+	if err != nil {
+		return "", false
 	}
 
 	return strings.Join([]string{
 		repoRoot,
 		head.Hash().String(),
-		baseConfig.WorkingDirectory,
-		strings.Join(composeFiles, "\x00"),
-		strconv.Itoa(baseConfig.AutoDiscovery.ScanDepth),
-		strconv.FormatBool(baseConfig.AutoDiscovery.Delete),
-		strconv.FormatBool(baseConfig.AutoDiscovery.RemoveVolumes),
-		strconv.FormatBool(baseConfig.AutoDiscovery.RemoveImages),
-		baseConfig.Name,
-		swarmEnabled,
+		configHash,
+		baseConfig.Internal.File,
+		baseConfig.Internal.ConfigTarget,
+		baseConfig.Internal.Hash,
+		strconv.FormatBool(baseConfig.Internal.OciTrustPolicyOverrideTrusted),
 	}, "|"), true
 }
 
+// cloneConfigSlice creates a deep copy of a slice of Config pointers.
 func cloneConfigSlice(configs []*Config) []*Config {
 	if configs == nil {
 		return nil
@@ -293,24 +300,15 @@ func cloneConfigSlice(configs []*Config) []*Config {
 	return cloned
 }
 
-// dirContainsAnyComposeFile returns true when at least one of the given compose
-// filenames is present as a regular file in the pre-read directory entries.
-// Using the already-read entries avoids one os.Stat syscall per candidate name.
-func dirContainsAnyComposeFile(entries []os.DirEntry, composeFiles []string) bool {
-	if len(entries) == 0 || len(composeFiles) == 0 {
+// dirContainsAnyComposeFile returns true when a compose filename is present as a
+// regular file in the pre-read directory entries.
+func dirContainsAnyComposeFile(entries []os.DirEntry, composeFileNames set.Set[string]) bool {
+	if len(entries) == 0 || len(composeFileNames) == 0 {
 		return false
 	}
 
-	fileNames := make(map[string]struct{}, len(entries))
-
 	for _, entry := range entries {
-		if !entry.IsDir() {
-			fileNames[entry.Name()] = struct{}{}
-		}
-	}
-
-	for _, composeFile := range composeFiles {
-		if _, ok := fileNames[composeFile]; ok {
+		if !entry.IsDir() && composeFileNames.Contains(entry.Name()) {
 			return true
 		}
 	}
@@ -401,7 +399,6 @@ func mergeAllStructFields(base, override reflect.Value) {
 func deepCopy(src, dst *Config) {
 	*dst = *src
 
-	// Deep copy maps and slices
 	if src.ComposeFiles != nil {
 		dst.ComposeFiles = make([]string, len(src.ComposeFiles))
 		copy(dst.ComposeFiles, src.ComposeFiles)
@@ -428,12 +425,41 @@ func deepCopy(src, dst *Config) {
 	}
 
 	if src.ExternalSecrets != nil {
-		dst.ExternalSecrets = make(map[string]secrettypes.ExternalSecretRef)
-		maps.Copy(dst.ExternalSecrets, src.ExternalSecrets)
+		dst.ExternalSecrets = make(map[string]secrettypes.ExternalSecretRef, len(src.ExternalSecrets))
+		for key, ref := range src.ExternalSecrets {
+			dst.ExternalSecrets[key] = cloneExternalSecretRef(ref)
+		}
 	}
 
 	if src.Internal.Environment != nil {
 		dst.Internal.Environment = make(map[string]string)
 		maps.Copy(dst.Internal.Environment, src.Internal.Environment)
 	}
+
+	dst.Swarm.Enabled = clone.Pointer(src.Swarm.Enabled)
+	dst.Swarm.ConfigRetention = clone.Pointer(src.Swarm.ConfigRetention)
+	dst.Swarm.SecretRetention = clone.Pointer(src.Swarm.SecretRetention)
+
+	if src.Reconciliation.Events != nil {
+		dst.Reconciliation.Events = append([]string(nil), src.Reconciliation.Events...)
+	}
+
+	dst.Oci.Verify = clone.Pointer(src.Oci.Verify)
+
+	dst.Oci.IgnoreTlog = clone.Pointer(src.Oci.IgnoreTlog)
+	if src.Oci.KeylessIdentities != nil {
+		dst.Oci.KeylessIdentities = append([]config.OciKeylessIdentity(nil), src.Oci.KeylessIdentities...)
+	}
+
+	if src.Oci.PublicKeys != nil {
+		dst.Oci.PublicKeys = append([]string(nil), src.Oci.PublicKeys...)
+	}
+}
+
+// cloneExternalSecretRef creates a deep copy of an ExternalSecretRef struct.
+func cloneExternalSecretRef(ref secrettypes.ExternalSecretRef) secrettypes.ExternalSecretRef {
+	cloned := ref
+	cloned.RemoteRef = clone.StringAnyMap(ref.RemoteRef)
+
+	return cloned
 }

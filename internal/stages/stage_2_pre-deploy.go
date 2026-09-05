@@ -277,6 +277,8 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 			return fmt.Errorf("failed to get latest commit: %w", err)
 		}
 
+		s.DeployState.latestCommit = latestCommit
+
 		stageLog.Debug("comparing commits",
 			slog.String("deployed_commit", deployedCommit),
 			slog.String("latest_commit", latestCommit))
@@ -316,32 +318,40 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		// Check for file changes
 		deployedHash := plumbing.NewHash(deployedCommit)
 		latestHash := plumbing.NewHash(latestCommit)
-		gitChangedFiles := make([]git.ChangedFile, 0)
 
-		if _, err := s.Repository.Git.CommitObject(deployedHash); err != nil {
-			if shouldRecoverFromMissingDeployedCommit(err) {
-				stageLog.Warn("previous deployed commit is no longer reachable; continuing with full-change deployment comparison",
-					slog.String("deployed_commit", deployedCommit),
-					slog.String("latest_commit", latestCommit),
-					slog.String("reason", err.Error()),
-				)
+		var (
+			changedServices []docker.Change
+			ignoredInfo     docker.IgnoredInfo
+		)
 
-				composeChanged = true
+		if deployedHash != latestHash {
+			gitChangedFiles := make([]git.ChangedFile, 0)
+
+			if _, err := s.Repository.Git.CommitObject(deployedHash); err != nil {
+				if shouldRecoverFromMissingDeployedCommit(err) {
+					stageLog.Warn("previous deployed commit is no longer reachable; continuing with full-change deployment comparison",
+						slog.String("deployed_commit", deployedCommit),
+						slog.String("latest_commit", latestCommit),
+						slog.String("reason", err.Error()),
+					)
+
+					composeChanged = true
+				} else {
+					return fmt.Errorf("failed to resolve deployed commit %s: %w", deployedCommit, err)
+				}
 			} else {
-				return fmt.Errorf("failed to resolve deployed commit %s: %w", deployedCommit, err)
+				gitChangedFiles, err = git.GetChangedFilesBetweenCommits(s.Repository.Git, deployedHash, latestHash)
+				if err != nil {
+					return fmt.Errorf("failed to get changed files between commits: %w", err)
+				}
 			}
-		} else {
-			gitChangedFiles, err = git.GetChangedFilesBetweenCommits(s.Repository.Git, deployedHash, latestHash)
+
+			changedFiles := docker.GetPathsFromGitChangedFiles(gitChangedFiles, s.Repository.PathExternal)
+
+			changedServices, ignoredInfo, err = docker.ProjectFilesHaveChanges(s.Repository.PathExternal, changedFiles, s.Docker.Project)
 			if err != nil {
-				return fmt.Errorf("failed to get changed files between commits: %w", err)
+				return fmt.Errorf("failed to check for changed project files: %s", err)
 			}
-		}
-
-		changedFiles := docker.GetPathsFromGitChangedFiles(gitChangedFiles, s.Repository.PathExternal)
-
-		changedServices, ignoredInfo, err := docker.ProjectFilesHaveChanges(s.Repository.PathExternal, changedFiles, s.Docker.Project)
-		if err != nil {
-			return fmt.Errorf("failed to check for changed project files: %s", err)
 		}
 
 		if autoDiscoveryConfigChanged {

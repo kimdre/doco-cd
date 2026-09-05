@@ -22,6 +22,8 @@ services:
       args:
         - APP_VERSION=dev
     pull_policy: build
+    cpus: "0.25"
+    mem_limit: 128M
     depends_on:
       proxy:
         condition: "service_started"
@@ -36,6 +38,7 @@ services:
       HTTP_PORT: 80
       LOG_LEVEL: info
       OPENAPI_ENABLED: true
+      PPROF_ENABLED: true
       OCI_VERIFY_MAX_WORKERS: 1
       OCI_TRUST_POLICY: |
         enabled: true
