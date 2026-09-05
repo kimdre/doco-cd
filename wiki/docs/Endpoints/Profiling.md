@@ -16,7 +16,7 @@ Configure the profiling server with these environment variables:
 | `PPROF_PORT`    | number  | Loopback port used by the profiling server when enabled. | `6060`  |
 
 !!! note "Profiling server is not exposed"
-    The profiling server is intentionally bound to loopback and cannot be exposed through Docker port publishing. 
+    The profiling server is intentionally bound to loopback and cannot be exposed through Docker port publishing.
 
 The doco-cd image does not include a shell, so collect profiles through a helper container that shares its network namespace:
 
@@ -25,8 +25,8 @@ docker run --rm --network container:doco-cd curlimages/curl:latest \
   -sSf 'http://127.0.0.1:6060/debug/pprof/heap?gc=1' > heap.pb.gz
 ```
 
-Use `gc=1` for baseline and memory-growth comparisons. It forces garbage collection before the profile is collected, 
-excluding objects that are no longer reachable but have not yet been reclaimed. 
+Use `gc=1` for baseline and memory-growth comparisons. It forces garbage collection before the profile is collected,
+excluding objects that are no longer reachable but have not yet been reclaimed.
 Omit it only when investigating short-lived allocation spikes or garbage-collection behavior.
 
 Compare two heap profiles with the Go toolchain:
