@@ -152,6 +152,7 @@ type DeploymentState struct {
 	imageChangedServices []string // services whose image moved: digest drift under force_image_pull, otherwise a changed image reference
 	ignoredInfo          docker.IgnoredInfo
 	DeployedCommit       string // previously-deployed commit SHA, carried to post-deploy for the changelog
+	latestCommit         string // current commit SHA, resolved during pre-deploy for reuse by deploy
 }
 
 // changedServiceNames flattens the detected changes and image digest drifts into a unique list of service names.
