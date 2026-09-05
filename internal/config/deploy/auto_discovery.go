@@ -16,6 +16,7 @@ import (
 	"github.com/go-git/go-git/v5"
 	"go.yaml.in/yaml/v4"
 
+	"github.com/kimdre/doco-cd/internal/common/types/clone"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
@@ -441,17 +442,17 @@ func deepCopy(src, dst *Config) {
 		maps.Copy(dst.Internal.Environment, src.Internal.Environment)
 	}
 
-	dst.Swarm.Enabled = cloneBool(src.Swarm.Enabled)
-	dst.Swarm.ConfigRetention = cloneInt(src.Swarm.ConfigRetention)
-	dst.Swarm.SecretRetention = cloneInt(src.Swarm.SecretRetention)
+	dst.Swarm.Enabled = clone.Pointer(src.Swarm.Enabled)
+	dst.Swarm.ConfigRetention = clone.Pointer(src.Swarm.ConfigRetention)
+	dst.Swarm.SecretRetention = clone.Pointer(src.Swarm.SecretRetention)
 
 	if src.Reconciliation.Events != nil {
 		dst.Reconciliation.Events = append([]string(nil), src.Reconciliation.Events...)
 	}
 
-	dst.Oci.Verify = cloneBool(src.Oci.Verify)
+	dst.Oci.Verify = clone.Pointer(src.Oci.Verify)
 
-	dst.Oci.IgnoreTlog = cloneBool(src.Oci.IgnoreTlog)
+	dst.Oci.IgnoreTlog = clone.Pointer(src.Oci.IgnoreTlog)
 	if src.Oci.KeylessIdentities != nil {
 		dst.Oci.KeylessIdentities = append([]config.OciKeylessIdentity(nil), src.Oci.KeylessIdentities...)
 	}
@@ -461,58 +462,9 @@ func deepCopy(src, dst *Config) {
 	}
 }
 
-func cloneBool(value *bool) *bool {
-	if value == nil {
-		return nil
-	}
-
-	cloned := *value
-
-	return &cloned
-}
-
-func cloneInt(value *int) *int {
-	if value == nil {
-		return nil
-	}
-
-	cloned := *value
-
-	return &cloned
-}
-
 func cloneExternalSecretRef(ref secrettypes.ExternalSecretRef) secrettypes.ExternalSecretRef {
 	cloned := ref
-	cloned.RemoteRef = cloneStringAnyMap(ref.RemoteRef)
+	cloned.RemoteRef = clone.StringAnyMap(ref.RemoteRef)
 
 	return cloned
-}
-
-func cloneStringAnyMap(source map[string]any) map[string]any {
-	if source == nil {
-		return nil
-	}
-
-	cloned := make(map[string]any, len(source))
-	for key, value := range source {
-		cloned[key] = cloneAny(value)
-	}
-
-	return cloned
-}
-
-func cloneAny(value any) any {
-	switch value := value.(type) {
-	case map[string]any:
-		return cloneStringAnyMap(value)
-	case []any:
-		cloned := make([]any, len(value))
-		for i, item := range value {
-			cloned[i] = cloneAny(item)
-		}
-
-		return cloned
-	default:
-		return value
-	}
 }
