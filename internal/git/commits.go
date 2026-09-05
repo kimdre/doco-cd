@@ -32,18 +32,7 @@ func GetLatestCommit(repo *git.Repository, ref string) (string, error) {
 		return string(refSet.LocalRef), nil
 	}
 
-	r, err := repo.Reference(refSet.RemoteRef, true)
-	if err != nil {
-		return plumbing.ZeroHash.String(), fmt.Errorf("failed to get reference %s: %w", ref, err)
-	}
-
-	// Get the commit object for the reference
-	commit, err := repo.CommitObject(r.Hash())
-	if err != nil {
-		return plumbing.ZeroHash.String(), fmt.Errorf("failed to get commit object for %s: %w", r.Hash(), err)
-	}
-
-	return commit.Hash.String(), nil
+	return refSet.RemoteHash.String(), nil
 }
 
 // GetChangedFilesBetweenCommits retrieves a list of changed files between two commits in a repository.
