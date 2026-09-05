@@ -28,20 +28,6 @@ Use `gc=1` for baseline and memory-growth comparisons. It forces garbage collect
 excluding objects that are no longer reachable but have not yet been reclaimed. 
 Omit it only when investigating short-lived allocation spikes or garbage-collection behavior.
 
-To capture a GC-forced heap profile automatically once the container exceeds 60 MiB of Docker-reported memory, run:
-
-```bash
-./scripts/capture-heap-on-memory.sh
-```
-
-The script polls every 10 seconds, writes `after.pb.gz`, and exits after a successful capture. 
-Override its defaults with environment variables:
-
-```bash
-INTERVAL_SECONDS=30 THRESHOLD_MIB=100 OUTPUT_FILE=high-memory.pb.gz \
-  ./scripts/capture-heap-on-memory.sh
-```
-
 Compare two heap profiles with the Go toolchain:
 
 ```bash
