@@ -161,14 +161,14 @@ func IsEncryptedContent(content string) bool {
 	return hasSopsMetadata([]byte(content), "")
 }
 
-// hasSopsMetadata checks if the content contains valid SOPS metadata for the preferred format or any other supported format.
+// hasSopsMetadata checks the preferred format, or every supported format when no format is supplied.
 func hasSopsMetadata(content []byte, preferredFormat string) bool {
-	if preferredFormat != "" && isEncryptedContent(content, preferredFormat) {
-		return true
+	if preferredFormat != "" {
+		return isEncryptedContent(content, preferredFormat)
 	}
 
 	for _, format := range []string{"yaml", "json", "dotenv", "ini", "binary"} {
-		if format != preferredFormat && isEncryptedContent(content, format) {
+		if isEncryptedContent(content, format) {
 			return true
 		}
 	}

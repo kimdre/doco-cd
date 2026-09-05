@@ -98,8 +98,8 @@ sops:
 	}
 }
 
-func TestIsSopsEncryptedFile_UnknownExtension(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "encrypted-secret")
+func TestIsSopsEncryptedFile_RecognizedExtension(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "encrypted.env")
 	if err := os.WriteFile(path, []byte(readTestFile(t, "testdata/encrypted.yaml")), filesystem.PermOwner); err != nil {
 		t.Fatalf("Failed to write encrypted fixture: %v", err)
 	}
@@ -109,8 +109,8 @@ func TestIsSopsEncryptedFile_UnknownExtension(t *testing.T) {
 		t.Fatalf("Failed to check encrypted fixture: %v", err)
 	}
 
-	if !encrypted {
-		t.Error("Expected SOPS-encrypted content to be detected without a recognized extension")
+	if encrypted {
+		t.Error("Expected YAML content with an .env extension not to be detected as SOPS-encrypted dotenv")
 	}
 }
 
