@@ -17,6 +17,7 @@ import (
 	"go.yaml.in/yaml/v4"
 
 	"github.com/kimdre/doco-cd/internal/common/types/clone"
+	"github.com/kimdre/doco-cd/internal/common/types/set"
 	"github.com/kimdre/doco-cd/internal/config"
 	"github.com/kimdre/doco-cd/internal/filesystem"
 	secrettypes "github.com/kimdre/doco-cd/internal/secretprovider/types"
@@ -137,6 +138,7 @@ func autoDiscoverDeployments(repoRoot string, baseConfig *Config) ([]*Config, er
 	var configs []*Config
 
 	searchPath := filepath.Join(repoRoot, baseConfig.WorkingDirectory)
+	composeFileNames := set.New(baseConfig.ComposeFiles...)
 
 	err := filepath.WalkDir(searchPath, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -169,14 +171,13 @@ func autoDiscoverDeployments(repoRoot string, baseConfig *Config) ([]*Config, er
 			return nil
 		}
 
-		// Read directory entries once and build a filename set for O(1) compose-file membership checks,
-		// avoiding one os.Stat syscall per candidate compose filename.
+		// Read directory entries once, avoiding one os.Stat syscall per candidate compose filename.
 		dirEntries, err := os.ReadDir(p)
 		if err != nil {
 			return err
 		}
 
-		if !dirContainsAnyComposeFile(dirEntries, baseConfig.ComposeFiles) {
+		if !dirContainsAnyComposeFile(dirEntries, composeFileNames) {
 			return nil
 		}
 
@@ -299,24 +300,15 @@ func cloneConfigSlice(configs []*Config) []*Config {
 	return cloned
 }
 
-// dirContainsAnyComposeFile returns true when at least one of the given compose
-// filenames is present as a regular file in the pre-read directory entries.
-// Using the already-read entries avoids one os.Stat syscall per candidate name.
-func dirContainsAnyComposeFile(entries []os.DirEntry, composeFiles []string) bool {
-	if len(entries) == 0 || len(composeFiles) == 0 {
+// dirContainsAnyComposeFile returns true when a compose filename is present as a
+// regular file in the pre-read directory entries.
+func dirContainsAnyComposeFile(entries []os.DirEntry, composeFileNames set.Set[string]) bool {
+	if len(entries) == 0 || len(composeFileNames) == 0 {
 		return false
 	}
 
-	fileNames := make(map[string]struct{}, len(entries))
-
 	for _, entry := range entries {
-		if !entry.IsDir() {
-			fileNames[entry.Name()] = struct{}{}
-		}
-	}
-
-	for _, composeFile := range composeFiles {
-		if _, ok := fileNames[composeFile]; ok {
+		if !entry.IsDir() && composeFileNames.Contains(entry.Name()) {
 			return true
 		}
 	}
