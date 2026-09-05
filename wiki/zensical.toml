@@ -71,6 +71,7 @@ nav = [
       { "Healthcheck" = "Endpoints/Healthcheck.md" },
       { "MCP Server" = "Endpoints/MCP-Server.md" },
       { "Prometheus Metrics / Monitoring" = "Endpoints/Metrics.md" },
+      { "Go Runtime Profiling" = "Endpoints/Profiling.md" },
       { "REST API" = "Endpoints/REST-API.md" },
       { "Webhook Listener" = "Endpoints/Webhook-Listener.md" },
     ] },

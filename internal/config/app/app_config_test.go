@@ -357,6 +357,75 @@ func TestGetConfig_OpenAPIEnabled(t *testing.T) {
 	}
 }
 
+func TestGetConfig_Pprof(t *testing.T) {
+	tests := []struct {
+		name        string
+		enabled     string
+		port        string
+		metricsPort string
+		wantEnabled bool
+		wantPort    uint16
+		wantErr     string
+	}{
+		{
+			name:     "disabled by default",
+			wantPort: 6060,
+		},
+		{
+			name:        "enabled with custom port",
+			enabled:     "true",
+			port:        "6061",
+			wantEnabled: true,
+			wantPort:    6061,
+		},
+		{
+			name:    "rejects HTTP port conflict",
+			enabled: "true",
+			port:    "8080",
+			wantErr: "PPROF_PORT and HTTP_PORT cannot be the same",
+		},
+		{
+			name:        "rejects metrics port conflict",
+			enabled:     "true",
+			port:        "6061",
+			metricsPort: "6061",
+			wantErr:     "PPROF_PORT and METRICS_PORT cannot be the same",
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("LOG_LEVEL", "info")
+			t.Setenv("HTTP_PORT", "8080")
+			t.Setenv("WEBHOOK_SECRET", "secret")
+			t.Setenv("PPROF_ENABLED", testCase.enabled)
+			t.Setenv("PPROF_PORT", testCase.port)
+			t.Setenv("METRICS_PORT", testCase.metricsPort)
+
+			cfg, err := GetConfig()
+			if testCase.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), testCase.wantErr) {
+					t.Fatalf("expected error containing %q, got %v", testCase.wantErr, err)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("expected config to load, got %v", err)
+			}
+
+			if cfg.PprofEnabled != testCase.wantEnabled {
+				t.Fatalf("PprofEnabled = %t, want %t", cfg.PprofEnabled, testCase.wantEnabled)
+			}
+
+			if cfg.PprofPort != testCase.wantPort {
+				t.Fatalf("PprofPort = %d, want %d", cfg.PprofPort, testCase.wantPort)
+			}
+		})
+	}
+}
+
 func TestGetConfigRejectsNonPositiveMaxPayloadSize(t *testing.T) {
 	for _, value := range []string{"0", "-1"} {
 		t.Run(value, func(t *testing.T) {

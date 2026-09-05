@@ -84,6 +84,8 @@ type Config struct {
 	PollConfig                    []poll.Config          `yaml:"-"`                                                                                              // PollConfig is the YAML configuration for polling Git repositories for changes
 	MaxPayloadSize                int64                  `env:"MAX_PAYLOAD_SIZE,notEmpty" envDefault:"1048576" validate:"min=1"`                                 // MaxPayloadSize is the maximum size of the payload in bytes that the HTTP server will accept (default 1MB = 1048576 bytes)
 	MetricsPort                   uint16                 `env:"METRICS_PORT,notEmpty" envDefault:"9120" validate:"min=1,max=65535"`                              // MetricsPort is the port the prometheus metrics server will listen on
+	PprofEnabled                  bool                   `env:"PPROF_ENABLED,notEmpty" envDefault:"false"`                                                       // PprofEnabled enables the loopback-only Go runtime profiling server.
+	PprofPort                     uint16                 `env:"PPROF_PORT,notEmpty" envDefault:"6060" validate:"min=1,max=65535"`                                // PprofPort is the loopback port used by the Go runtime profiling server.
 	AppriseApiURL                 config.HttpUrl         `env:"APPRISE_API_URL" validate:"httpUrl"`                                                              // AppriseApiURL is the URL of the Apprise notification service
 	AppriseNotifyUrls             string                 `env:"APPRISE_NOTIFY_URLS"`                                                                             // AppriseNotifyUrls is a comma-separated list of URLs to notify via the Apprise notification service
 	AppriseNotifyUrlsFile         string                 `env:"APPRISE_NOTIFY_URLS_FILE,file"`                                                                   // AppriseNotifyUrlsFile is the file containing the AppriseNotifyUrls
@@ -189,6 +191,16 @@ func GetConfig() (*Config, error) {
 
 	if cfg.HttpPort == cfg.MetricsPort {
 		return nil, fmt.Errorf("HTTP_PORT and METRICS_PORT cannot be the same port number: %d", cfg.HttpPort)
+	}
+
+	if cfg.PprofEnabled {
+		if cfg.PprofPort == cfg.HttpPort {
+			return nil, fmt.Errorf("PPROF_PORT and HTTP_PORT cannot be the same port number: %d", cfg.PprofPort)
+		}
+
+		if cfg.PprofPort == cfg.MetricsPort {
+			return nil, fmt.Errorf("PPROF_PORT and METRICS_PORT cannot be the same port number: %d", cfg.PprofPort)
+		}
 	}
 
 	cfg.HttpTLSCertFile = strings.TrimSpace(cfg.HttpTLSCertFile)

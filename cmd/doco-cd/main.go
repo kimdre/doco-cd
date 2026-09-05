@@ -42,6 +42,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/logger"
 	"github.com/kimdre/doco-cd/internal/mcp"
 	"github.com/kimdre/doco-cd/internal/notification"
+	"github.com/kimdre/doco-cd/internal/profiling"
 	"github.com/kimdre/doco-cd/internal/prometheus"
 )
 
@@ -535,6 +536,10 @@ func run() error {
 	}
 
 	prometheus.RegisterServer(c.MetricsPort, c.HttpTLSCertFile, c.HttpTLSKeyFile, log)
+
+	if c.PprofEnabled {
+		profiling.RegisterServer(c.PprofPort, log)
+	}
 
 	if err := graceful.Serve(log.Logger); err != nil {
 		log.Critical("failed to serve", logger.ErrAttr(err))
