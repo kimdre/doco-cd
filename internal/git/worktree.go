@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/kimdre/doco-cd/internal/encryption"
 )
@@ -28,49 +29,75 @@ func ResetTrackedFiles(repo *git.Repository) error {
 
 	resetFiles := make([]string, 0, len(changedFiles))
 
+	headRef, err := repo.Head()
+	if err != nil {
+		return resetChangedFiles(worktree, changedFiles)
+	}
+
+	commit, err := repo.CommitObject(headRef.Hash())
+	if err != nil {
+		return resetChangedFiles(worktree, changedFiles)
+	}
+
+	tree, err := commit.Tree()
+	if err != nil {
+		return resetChangedFiles(worktree, changedFiles)
+	}
+
 	for file, status := range changedFiles {
 		// Do not touch files that are not part of the Git repository (e.g. created by a container process)
 		if status.Staging == git.Untracked {
 			continue
 		}
 
-		if shouldResetDecryptedFile(repo, repoRoot, file) {
+		if shouldResetDecryptedFile(tree, repoRoot, file) {
 			resetFiles = append(resetFiles, file)
 		}
 	}
 
-	if len(resetFiles) > 0 {
-		err = worktree.Reset(&git.ResetOptions{
-			Mode:  git.HardReset,
-			Files: resetFiles,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to reset worktree: %w", err)
+	return resetFilesInWorktree(worktree, resetFiles)
+}
+
+func resetChangedFiles(worktree *git.Worktree, changedFiles git.Status) error {
+	resetFiles := make([]string, 0, len(changedFiles))
+
+	for file, status := range changedFiles {
+		if status.Staging != git.Untracked {
+			resetFiles = append(resetFiles, file)
 		}
+	}
+
+	return resetFilesInWorktree(worktree, resetFiles)
+}
+
+func resetFilesInWorktree(worktree *git.Worktree, files []string) error {
+	if len(files) == 0 {
+		return nil
+	}
+
+	if err := worktree.Reset(&git.ResetOptions{
+		Mode:  git.HardReset,
+		Files: files,
+	}); err != nil {
+		return fmt.Errorf("failed to reset worktree: %w", err)
 	}
 
 	return nil
 }
 
 // shouldResetDecryptedFile determines whether a file should be reset based on its decrypted content.
-func shouldResetDecryptedFile(repo *git.Repository, repoRoot, file string) bool {
-	headRef, err := repo.Head()
-	if err != nil {
-		return true
-	}
-
-	commit, err := repo.CommitObject(headRef.Hash())
-	if err != nil {
-		return true
-	}
-	// Get file from commit tree
-	fileObj, err := commit.File(file)
+func shouldResetDecryptedFile(tree *object.Tree, repoRoot, file string) bool {
+	fileObj, err := tree.File(file)
 	if err != nil {
 		return true // Not tracked, default to reset
 	}
 
 	committedBytes, err := fileObj.Contents()
 	if err != nil {
+		return true
+	}
+
+	if !encryption.IsEncryptedContent(committedBytes) {
 		return true
 	}
 
