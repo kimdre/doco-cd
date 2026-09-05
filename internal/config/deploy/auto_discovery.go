@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,6 +36,8 @@ var autoDiscoveryCache = struct {
 }{
 	entries: map[string][]*Config{},
 }
+
+const maxAutoDiscoveryCacheEntries = 64
 
 func (c *AutoDiscoveryConfig) UnmarshalYAML(node *yaml.Node) error {
 	switch node.Kind {
@@ -233,6 +234,13 @@ func autoDiscoverDeployments(repoRoot string, baseConfig *Config) ([]*Config, er
 
 	if cacheable {
 		autoDiscoveryCache.mu.Lock()
+		if _, exists := autoDiscoveryCache.entries[cacheKey]; !exists && len(autoDiscoveryCache.entries) >= maxAutoDiscoveryCacheEntries {
+			for key := range autoDiscoveryCache.entries {
+				delete(autoDiscoveryCache.entries, key)
+				break
+			}
+		}
+
 		autoDiscoveryCache.entries[cacheKey] = cloneConfigSlice(configs)
 		autoDiscoveryCache.mu.Unlock()
 	}
@@ -251,25 +259,19 @@ func autoDiscoveryCacheKey(repoRoot string, baseConfig *Config) (string, bool) {
 		return "", false
 	}
 
-	composeFiles := append([]string(nil), baseConfig.ComposeFiles...)
-	sort.Strings(composeFiles)
-
-	swarmEnabled := "auto"
-	if baseConfig.Swarm.Enabled != nil {
-		swarmEnabled = strconv.FormatBool(*baseConfig.Swarm.Enabled)
+	configHash, err := baseConfig.Hash()
+	if err != nil {
+		return "", false
 	}
 
 	return strings.Join([]string{
 		repoRoot,
 		head.Hash().String(),
-		baseConfig.WorkingDirectory,
-		strings.Join(composeFiles, "\x00"),
-		strconv.Itoa(baseConfig.AutoDiscovery.ScanDepth),
-		strconv.FormatBool(baseConfig.AutoDiscovery.Delete),
-		strconv.FormatBool(baseConfig.AutoDiscovery.RemoveVolumes),
-		strconv.FormatBool(baseConfig.AutoDiscovery.RemoveImages),
-		baseConfig.Name,
-		swarmEnabled,
+		configHash,
+		baseConfig.Internal.File,
+		baseConfig.Internal.ConfigTarget,
+		baseConfig.Internal.Hash,
+		strconv.FormatBool(baseConfig.Internal.OciTrustPolicyOverrideTrusted),
 	}, "|"), true
 }
 

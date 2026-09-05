@@ -665,6 +665,62 @@ func TestAutoDiscoverDeployments_CacheKeyedByHeadAndSettings(t *testing.T) {
 	}
 }
 
+func TestAutoDiscoverDeployments_CacheSeparatesFullBaseConfig(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+
+	repo, err := git.PlainInit(repoRoot, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	serviceDir := filepath.Join(repoRoot, "service")
+	if err := os.MkdirAll(serviceDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := createTestFile(t, filepath.Join(serviceDir, "compose.yaml"), "services:\n  app:\n    image: nginx"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := commitAll(t, repo, "initial"); err != nil {
+		t.Fatal(err)
+	}
+
+	productionConfig := &Config{
+		Context:          "production",
+		WorkingDirectory: ".",
+		ComposeFiles:     []string{"compose.yaml"},
+		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
+	}
+
+	production, err := autoDiscoverDeployments(repoRoot, productionConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(production) != 1 || production[0].Context != "production" {
+		t.Fatalf("expected production config, got %#v", production)
+	}
+
+	nasConfig := &Config{
+		Context:          "nas",
+		WorkingDirectory: ".",
+		ComposeFiles:     []string{"compose.yaml"},
+		AutoDiscovery:    AutoDiscoveryConfig{Enabled: true},
+	}
+
+	nas, err := autoDiscoverDeployments(repoRoot, nasConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(nas) != 1 || nas[0].Context != "nas" {
+		t.Fatalf("expected nas config rather than a cached production config, got %#v", nas)
+	}
+}
+
 func commitAll(t *testing.T, repo *git.Repository, message string) error {
 	t.Helper()
 
