@@ -249,6 +249,7 @@ func autoDiscoverDeployments(repoRoot string, baseConfig *Config) ([]*Config, er
 	return configs, nil
 }
 
+// autoDiscoveryCacheKey generates a unique cache key for the auto-discovery results based on the repository root,.
 func autoDiscoveryCacheKey(repoRoot string, baseConfig *Config) (string, bool) {
 	repo, err := git.PlainOpen(repoRoot)
 	if err != nil {
@@ -276,6 +277,7 @@ func autoDiscoveryCacheKey(repoRoot string, baseConfig *Config) (string, bool) {
 	}, "|"), true
 }
 
+// cloneConfigSlice creates a deep copy of a slice of Config pointers.
 func cloneConfigSlice(configs []*Config) []*Config {
 	if configs == nil {
 		return nil
@@ -462,6 +464,7 @@ func deepCopy(src, dst *Config) {
 	}
 }
 
+// cloneExternalSecretRef creates a deep copy of an ExternalSecretRef struct.
 func cloneExternalSecretRef(ref secrettypes.ExternalSecretRef) secrettypes.ExternalSecretRef {
 	cloned := ref
 	cloned.RemoteRef = clone.StringAnyMap(ref.RemoteRef)

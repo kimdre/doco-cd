@@ -165,6 +165,7 @@ func (c *Config) LogValue() slog.Value {
 	return logger.BuildLogValue(c, "Internal")
 }
 
+// Validate checks the Config for required fields and valid values.
 func (c *Config) Validate() error {
 	c.Source = config.NormalizeSourceType(c.Source)
 	c.RepositoryUrl = config.GitUrl(config.NormalizeGitURL(string(c.RepositoryUrl)))
@@ -317,6 +318,7 @@ func GetConfigFromYAML(f string, applyDefaults bool) ([]*Config, error) {
 	return getConfigFromYAMLBytes(b, f, applyDefaults)
 }
 
+// getConfigFromYAMLBytes reads YAML content from a byte slice and unmarshals it into a slice of Config structs.
 func getConfigFromYAMLBytes(contents []byte, fileName string, applyDefaults bool) ([]*Config, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(contents))
 
@@ -538,6 +540,7 @@ func getConfigsFromFile(dir string, files []os.DirEntry, configFile string) ([]*
 	return nil, ErrConfigFileNotFound
 }
 
+// getCachedConfigsFromFile returns the deployment configurations from the cache or reads them from the file if not cached or changed.
 func getCachedConfigsFromFile(fileName string) ([]*Config, error) {
 	contents, err := os.ReadFile(fileName) // #nosec G304
 	if err != nil {

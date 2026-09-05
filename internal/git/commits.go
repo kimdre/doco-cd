@@ -208,6 +208,7 @@ func GetShortestUniqueCommitHash(repo *git.Repository, commitSHA string, minLeng
 	return "", fmt.Errorf("no unique prefix found for commit SHA %s", commitSHA)
 }
 
+// sharedPrefixLength returns the length of the common prefix between two strings.
 func sharedPrefixLength(first, second string) int {
 	length := min(len(first), len(second))
 	for i := range length {
