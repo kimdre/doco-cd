@@ -18,7 +18,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/filesystem"
 )
 
-var ErrSopsKeyNotSet = errors.New("SOPS secret key is not set")
+var errSopsKeyNotSet = errors.New("SOPS secret key is not set")
 
 func GetFileFormat(path string) string {
 	var format string
@@ -42,7 +42,7 @@ func GetFileFormat(path string) string {
 // DecryptFile decrypts a SOPS-encrypted file at the given path and returns its contents as a byte slice.
 func DecryptFile(path string) ([]byte, error) {
 	if !SopsKeyIsSet() {
-		return nil, ErrSopsKeyNotSet
+		return nil, errSopsKeyNotSet
 	}
 
 	format := GetFileFormat(path)
@@ -171,6 +171,7 @@ func IsEncryptedContent(content string) bool {
 	return hasSopsMetadata([]byte(content), "")
 }
 
+// hasSopsMetadata checks if the content contains valid SOPS metadata for the preferred format or any other supported format.
 func hasSopsMetadata(content []byte, preferredFormat string) bool {
 	if preferredFormat != "" && isEncryptedContent(content, preferredFormat) {
 		return true
