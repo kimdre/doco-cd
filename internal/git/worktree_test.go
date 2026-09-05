@@ -33,6 +33,7 @@ func TestResetTrackedFiles_ResetsTrackedFilesAndKeepsUntrackedFiles(t *testing.T
 	if err != nil {
 		t.Fatalf("failed to read reset tracked file: %v", err)
 	}
+
 	if string(content) != "initial\n" {
 		t.Errorf("tracked file = %q, want %q", content, "initial\n")
 	}
