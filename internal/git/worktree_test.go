@@ -1,11 +1,47 @@
 package git_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/git"
 )
+
+func TestResetTrackedFiles_ResetsTrackedFilesAndKeepsUntrackedFiles(t *testing.T) {
+	t.Parallel()
+
+	repoPath := t.TempDir()
+	repo := initLocalTestRepo(t, repoPath)
+
+	readmePath := filepath.Join(repoPath, "README.md")
+	if err := os.WriteFile(readmePath, []byte("modified\n"), 0o600); err != nil {
+		t.Fatalf("failed to modify tracked file: %v", err)
+	}
+
+	untrackedPath := filepath.Join(repoPath, "untracked.txt")
+	if err := os.WriteFile(untrackedPath, []byte("untracked\n"), 0o600); err != nil {
+		t.Fatalf("failed to create untracked file: %v", err)
+	}
+
+	if err := git.ResetTrackedFiles(repo); err != nil {
+		t.Fatalf("failed to reset tracked files: %v", err)
+	}
+
+	content, err := os.ReadFile(readmePath)
+	if err != nil {
+		t.Fatalf("failed to read reset tracked file: %v", err)
+	}
+
+	if string(content) != "initial\n" {
+		t.Errorf("tracked file = %q, want %q", content, "initial\n")
+	}
+
+	if _, err := os.Stat(untrackedPath); err != nil {
+		t.Errorf("untracked file was removed: %v", err)
+	}
+}
 
 func TestUpdateRepository_KeepUntrackedFiles(t *testing.T) {
 	t.Parallel()
