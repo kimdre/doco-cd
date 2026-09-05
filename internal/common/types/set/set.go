@@ -5,7 +5,7 @@ type Set[T comparable] map[T]struct{}
 
 // New creates a new set and initializes it with the provided elements.
 func New[T comparable](elements ...T) Set[T] {
-	s := Set[T]{}
+	s := make(Set[T], len(elements))
 	for _, elem := range elements {
 		s.Add(elem)
 	}
