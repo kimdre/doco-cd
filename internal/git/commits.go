@@ -166,29 +166,30 @@ func GetShortestUniqueCommitHash(repo *git.Repository, commitSHA string, minLeng
 		return "", errors.New("commit SHA is empty")
 	}
 
-	iter, err := repo.CommitObjects()
+	iter, err := repo.Storer.IterEncodedObjects(plumbing.CommitObject)
 	if err != nil {
 		return "", err
 	}
 	defer iter.Close()
 
-	// collect all commit SHAs, skipping any errors
 	var (
-		allSHAs     []string
-		foundCommit bool
+		foundCommit    bool
+		requiredLength = minLength
 	)
 
-	err = iter.ForEach(func(c *object.Commit) error {
-		if c == nil {
+	err = iter.ForEach(func(encoded plumbing.EncodedObject) error {
+		if encoded == nil {
 			return nil
 		}
 
-		sha := c.Hash.String()
-
-		allSHAs = append(allSHAs, sha)
+		sha := encoded.Hash().String()
 		if sha == commitSHA {
 			foundCommit = true
+
+			return nil
 		}
+
+		requiredLength = max(requiredLength, sharedPrefixLength(commitSHA, sha)+1)
 
 		return nil
 	})
@@ -200,21 +201,20 @@ func GetShortestUniqueCommitHash(repo *git.Repository, commitSHA string, minLeng
 		return "", fmt.Errorf("commit SHA %s not found in repository", commitSHA)
 	}
 
-	shaLen := len(commitSHA)
-	for length := minLength; length <= shaLen; length++ {
-		prefixCount := make(map[string]int, len(allSHAs))
-		for _, sha := range allSHAs {
-			if len(sha) >= length {
-				prefix := sha[:length]
-				prefixCount[prefix]++
-			}
-		}
-
-		prefix := commitSHA[:length]
-		if prefixCount[prefix] == 1 {
-			return prefix, nil
-		}
+	if requiredLength <= len(commitSHA) {
+		return commitSHA[:requiredLength], nil
 	}
 
 	return "", fmt.Errorf("no unique prefix found for commit SHA %s", commitSHA)
+}
+
+func sharedPrefixLength(first, second string) int {
+	length := min(len(first), len(second))
+	for i := range length {
+		if first[i] != second[i] {
+			return i
+		}
+	}
+
+	return length
 }
