@@ -448,6 +448,7 @@ func deepCopy(src, dst *Config) {
 	}
 
 	dst.Oci.Verify = cloneBool(src.Oci.Verify)
+
 	dst.Oci.IgnoreTlog = cloneBool(src.Oci.IgnoreTlog)
 	if src.Oci.KeylessIdentities != nil {
 		dst.Oci.KeylessIdentities = append([]config.OciKeylessIdentity(nil), src.Oci.KeylessIdentities...)

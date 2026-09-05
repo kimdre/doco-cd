@@ -573,6 +573,7 @@ func getCachedConfigsFromFile(fileName string) ([]*Config, error) {
 			break
 		}
 	}
+
 	configFileCache.entries[cacheKey] = configFileCacheEntry{
 		contentHash: contentHash,
 		configs:     cloneConfigSlice(configs),
