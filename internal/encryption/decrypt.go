@@ -21,22 +21,12 @@ import (
 var errSopsKeyNotSet = errors.New("SOPS secret key is not set")
 
 func GetFileFormat(path string) string {
-	var format string
+	store := common.StoreForFormat(
+		formats.FormatForPath(path),
+		config.NewStoresConfig(),
+	)
 
-	switch {
-	case formats.IsYAMLFile(path):
-		format = "yaml"
-	case formats.IsJSONFile(path):
-		format = "json"
-	case formats.IsEnvFile(path):
-		format = "dotenv"
-	case formats.IsIniFile(path):
-		format = "ini"
-	default:
-		format = "binary"
-	}
-
-	return format
+	return store.Name()
 }
 
 // DecryptFile decrypts a SOPS-encrypted file at the given path and returns its contents as a byte slice.
