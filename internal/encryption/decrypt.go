@@ -193,9 +193,11 @@ func isEncryptedContent(content []byte, format string) bool {
 		config.NewStoresConfig(),
 	)
 
-	_, err := store.LoadEncryptedFile(content)
+	tree, err := store.LoadEncryptedFile(content)
 
-	return err == nil
+	return err == nil &&
+		tree.Metadata.MasterKeyCount() > 0 &&
+		strings.HasPrefix(tree.Metadata.MessageAuthenticationCode, "ENC[")
 }
 
 // DecryptFileInPlace decrypts a SOPS-encrypted file at the given path and overwrites it with the decrypted content.

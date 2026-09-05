@@ -77,6 +77,16 @@ sops:
 `,
 			encrypted: false,
 		},
+		{
+			name: "SOPS-shaped plaintext without encryption metadata",
+			content: `value: plaintext
+sops:
+  lastmodified: "2025-06-28T18:23:51Z"
+  mac: plaintext
+  version: 3.9.0
+`,
+			encrypted: false,
+		},
 	}
 
 	for _, test := range tests {
