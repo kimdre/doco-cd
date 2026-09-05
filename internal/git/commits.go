@@ -32,6 +32,15 @@ func GetLatestCommit(repo *git.Repository, ref string) (string, error) {
 		return string(refSet.LocalRef), nil
 	}
 
+	if refSet.RemoteRef.IsTag() {
+		hash, err := repo.ResolveRevision(plumbing.Revision(refSet.RemoteRef))
+		if err != nil {
+			return plumbing.ZeroHash.String(), fmt.Errorf("failed to resolve tag %s: %w", refSet.RemoteRef, err)
+		}
+
+		return hash.String(), nil
+	}
+
 	return refSet.RemoteHash.String(), nil
 }
 
