@@ -318,6 +318,7 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		// Check for file changes
 		deployedHash := plumbing.NewHash(deployedCommit)
 		latestHash := plumbing.NewHash(latestCommit)
+
 		var (
 			changedServices []docker.Change
 			ignoredInfo     docker.IgnoredInfo
