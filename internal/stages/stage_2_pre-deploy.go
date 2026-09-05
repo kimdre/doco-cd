@@ -224,6 +224,20 @@ func (s *StageManager) RunPreDeployStage(ctx context.Context, stageLog *slog.Log
 		resolvedDigest := s.Repository.Revision
 		deployedProjectHash := deployedState.GetDeploymentComposeHash()
 
+		// Skip expensive compose project hash computation if digest hasn't changed.
+		// Lazy-load only if digest differs (common case: unchanged artifact).
+		if !deploymentModeMigrated &&
+			strings.TrimSpace(deployedDigest) == strings.TrimSpace(resolvedDigest) &&
+			!autoDiscoveryConfigChanged &&
+			!retryAfterFailure {
+			stageLog.Debug("OCI artifact digest unchanged, skipping deployment",
+				slog.String("digest", strings.TrimSpace(resolvedDigest)),
+			)
+
+			return ErrSkipDeployment
+		}
+
+		// Digest changed or retrying; now compute project hash for full skip detection.
 		resolvedProjectHash, err := s.loadComposeProjectHash(ctx)
 		if err != nil {
 			return err
