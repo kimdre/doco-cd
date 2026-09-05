@@ -22,6 +22,8 @@ services:
       args:
         - APP_VERSION=dev
     pull_policy: build
+    cpus: "0.25"
+    mem_limit: 128M
     depends_on:
       proxy:
         condition: "service_started"
