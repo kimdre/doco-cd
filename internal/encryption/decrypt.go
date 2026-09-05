@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/getsops/sops/v3"
 	"github.com/getsops/sops/v3/cmd/sops/common"
 	"github.com/getsops/sops/v3/cmd/sops/formats"
 	"github.com/getsops/sops/v3/config"
@@ -188,7 +189,16 @@ func isEncryptedContent(content []byte, format string) bool {
 
 	return err == nil &&
 		tree.Metadata.MasterKeyCount() > 0 &&
-		strings.HasPrefix(tree.Metadata.MessageAuthenticationCode, "ENC[")
+		strings.HasPrefix(tree.Metadata.MessageAuthenticationCode, "ENC[") &&
+		(store.Name() != "binary" || isBinarySopsTree(tree.Branches))
+}
+
+// isBinarySopsTree checks if the SOPS tree structure for a binary file is valid.
+// A valid binary SOPS tree has exactly one branch with a single key "data".
+func isBinarySopsTree(branches sops.TreeBranches) bool {
+	return len(branches) == 1 &&
+		len(branches[0]) == 1 &&
+		branches[0][0].Key == "data"
 }
 
 // DecryptFileInPlace decrypts a SOPS-encrypted file at the given path and overwrites it with the decrypted content.

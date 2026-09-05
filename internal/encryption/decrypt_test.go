@@ -10,6 +10,29 @@ import (
 	"github.com/kimdre/doco-cd/internal/filesystem"
 )
 
+func TestGetFileFormat(t *testing.T) {
+	tests := []struct {
+		path   string
+		format string
+	}{
+		{"config.yaml", "yaml"},
+		{"config.yml", "yaml"},
+		{"config.json", "json"},
+		{"config.env", "dotenv"},
+		{"config.ini", "ini"},
+		{"config", "binary"},
+		{"config.txt", "binary"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.path, func(t *testing.T) {
+			if format := GetFileFormat(test.path); format != test.format {
+				t.Errorf("Expected format %q, got %q", test.format, format)
+			}
+		})
+	}
+}
+
 func TestIsSopsEncryptedFile(t *testing.T) {
 	files := []struct {
 		path      string
@@ -18,6 +41,7 @@ func TestIsSopsEncryptedFile(t *testing.T) {
 		{"testdata/encrypted.yaml", true},
 		{"testdata/encrypted.json", true},
 		{"testdata/encrypted.env", true},
+		{"testdata/encrypted", true},
 		{"testdata/unencrypted.yaml", false},
 		{"testdata/unencrypted.json", false},
 		{"testdata/unencrypted.env", false},
@@ -98,6 +122,22 @@ sops:
 	}
 }
 
+func TestIsSopsEncryptedFile_UnknownExtension(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "encrypted-secret")
+	if err := os.WriteFile(path, []byte(readTestFile(t, "testdata/encrypted.json")), filesystem.PermOwner); err != nil {
+		t.Fatalf("Failed to write encrypted fixture: %v", err)
+	}
+
+	encrypted, err := IsEncryptedFile(path)
+	if err != nil {
+		t.Fatalf("Failed to check encrypted fixture: %v", err)
+	}
+
+	if encrypted {
+		t.Error("Expected structured JSON not to be detected as a binary SOPS file")
+	}
+}
+
 func TestIsSopsEncryptedFile_RecognizedExtension(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "encrypted.env")
 	if err := os.WriteFile(path, []byte(readTestFile(t, "testdata/encrypted.yaml")), filesystem.PermOwner); err != nil {
@@ -133,6 +173,7 @@ func TestDecryptSopsFile(t *testing.T) {
 	}{
 		{"testdata/encrypted.yaml", "this.is.encrypted: \"yes\"\n", nil},
 		{"testdata/encrypted.env", "THIS_IS_ENCRYPTED=yes\n", nil},
+		{"testdata/encrypted", "binary-secret\n", nil},
 		{"testdata/unencrypted.yaml", "this.is.encrypted: \"yes\"\n", sops.MetadataNotFound},
 		{"testdata/unencrypted.env", "THIS_IS_ENCRYPTED=yes\n", sops.MetadataNotFound},
 		{"testdata/empty.yaml", "", sops.MetadataNotFound},
