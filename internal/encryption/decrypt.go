@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/getsops/sops/v3/cmd/sops/common"
 	"github.com/getsops/sops/v3/cmd/sops/formats"
+	"github.com/getsops/sops/v3/config"
 	"github.com/getsops/sops/v3/decrypt"
 	"github.com/go-git/go-billy/v5/osfs"
 	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
@@ -161,12 +163,39 @@ func IsEncryptedFile(path string) (bool, error) {
 		return false, err
 	}
 
-	return IsEncryptedContent(string(bytes)), nil
+	return hasSopsMetadata(bytes, GetFileFormat(path)), nil
 }
 
-// IsEncryptedContent checks the given content for SOPS-specific markers to determine if it is a SOPS-encrypted file.
+// IsEncryptedContent determines whether the content contains valid SOPS metadata.
 func IsEncryptedContent(content string) bool {
-	return strings.Contains(content, "sops") && strings.Contains(content, "ENC[")
+	return hasSopsMetadata([]byte(content), "")
+}
+
+func hasSopsMetadata(content []byte, preferredFormat string) bool {
+	if preferredFormat != "" && isEncryptedContent(content, preferredFormat) {
+		return true
+	}
+
+	for _, format := range []string{"yaml", "json", "dotenv", "ini", "binary"} {
+		if format != preferredFormat && isEncryptedContent(content, format) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isEncryptedContent parses the content with the supplied SOPS format and verifies
+// that it contains valid SOPS metadata without attempting decryption.
+func isEncryptedContent(content []byte, format string) bool {
+	store := common.StoreForFormat(
+		formats.FormatFromString(format),
+		config.NewStoresConfig(),
+	)
+
+	_, err := store.LoadEncryptedFile(content)
+
+	return err == nil
 }
 
 // DecryptFileInPlace decrypts a SOPS-encrypted file at the given path and overwrites it with the decrypted content.

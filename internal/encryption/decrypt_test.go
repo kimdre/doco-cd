@@ -12,8 +12,8 @@ import (
 
 func TestIsSopsEncryptedFile(t *testing.T) {
 	files := []struct {
-		path     string
-		expected bool
+		path      string
+		encrypted bool
 	}{
 		{"testdata/encrypted.yaml", true},
 		{"testdata/encrypted.json", true},
@@ -35,11 +35,84 @@ func TestIsSopsEncryptedFile(t *testing.T) {
 				t.Fatalf("Error checking if file is encrypted: %v", err)
 			}
 
-			if isEncrypted != file.expected {
-				t.Errorf("Expected %v for %s, got %v", file.expected, file.path, isEncrypted)
+			if isEncrypted != file.encrypted {
+				t.Errorf("Expected %v for %s, got %v", file.encrypted, file.path, isEncrypted)
 			}
 		})
 	}
+}
+
+func TestIsEncryptedContent(t *testing.T) {
+	tests := []struct {
+		name      string
+		content   string
+		encrypted bool
+	}{
+		{
+			name:      "SOPS encrypted YAML",
+			content:   readTestFile(t, "testdata/encrypted.yaml"),
+			encrypted: true,
+		},
+		{
+			name:      "SOPS encrypted JSON",
+			content:   readTestFile(t, "testdata/encrypted.json"),
+			encrypted: true,
+		},
+		{
+			name:      "SOPS encrypted dotenv",
+			content:   readTestFile(t, "testdata/encrypted.env"),
+			encrypted: true,
+		},
+		{
+			name:      "plaintext containing legacy markers",
+			content:   "description: sops-compatible value ENC[not-encrypted]\n",
+			encrypted: false,
+		},
+		{
+			name: "invalid SOPS metadata",
+			content: `value: ENC[not-encrypted]
+sops:
+  lastmodified: invalid
+  mac: ENC[not-encrypted]
+`,
+			encrypted: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if encrypted := IsEncryptedContent(test.content); encrypted != test.encrypted {
+				t.Errorf("Expected encrypted=%v, got %v", test.encrypted, encrypted)
+			}
+		})
+	}
+}
+
+func TestIsSopsEncryptedFile_UnknownExtension(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "encrypted-secret")
+	if err := os.WriteFile(path, []byte(readTestFile(t, "testdata/encrypted.yaml")), filesystem.PermOwner); err != nil {
+		t.Fatalf("Failed to write encrypted fixture: %v", err)
+	}
+
+	encrypted, err := IsEncryptedFile(path)
+	if err != nil {
+		t.Fatalf("Failed to check encrypted fixture: %v", err)
+	}
+
+	if !encrypted {
+		t.Error("Expected SOPS-encrypted content to be detected without a recognized extension")
+	}
+}
+
+func readTestFile(t *testing.T, path string) string {
+	t.Helper()
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("Failed to read %s: %v", path, err)
+	}
+
+	return string(content)
 }
 
 func TestDecryptSopsFile(t *testing.T) {
