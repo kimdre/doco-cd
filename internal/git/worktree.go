@@ -58,6 +58,7 @@ func ResetTrackedFiles(repo *git.Repository) error {
 	return resetFilesInWorktree(worktree, resetFiles)
 }
 
+// resetChangedFiles resets all changed files in the worktree to their last committed state.
 func resetChangedFiles(worktree *git.Worktree, changedFiles git.Status) error {
 	resetFiles := make([]string, 0, len(changedFiles))
 
@@ -70,6 +71,7 @@ func resetChangedFiles(worktree *git.Worktree, changedFiles git.Status) error {
 	return resetFilesInWorktree(worktree, resetFiles)
 }
 
+// resetFilesInWorktree resets the specified files in the worktree to their last committed state.
 func resetFilesInWorktree(worktree *git.Worktree, files []string) error {
 	if len(files) == 0 {
 		return nil
