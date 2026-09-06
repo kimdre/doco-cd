@@ -35,7 +35,7 @@ require (
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/go-playground/validator/v10 v10.30.4
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/google/go-containerregistry v0.22.0
+	github.com/google/go-containerregistry v0.22.1
 	github.com/google/jsonschema-go v0.4.3
 	github.com/infisical/go-sdk v0.8.0
 	github.com/jmespath/go-jmespath v0.4.1-0.20220621161143-b0104c826a24
