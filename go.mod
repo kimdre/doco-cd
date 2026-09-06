@@ -47,7 +47,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/prometheus/client_golang v1.24.1
-	github.com/prometheus/client_model v0.6.2
+	github.com/prometheus/client_model v0.6.3
 	github.com/prometheus/common v0.70.1
 	github.com/sigstore/cosign/v3 v3.1.3
 	github.com/swaggest/swgui v1.8.9
