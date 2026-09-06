@@ -152,13 +152,20 @@ func TestAutoDiscoveryConfigLabelDriftServices(t *testing.T) {
 				expected = tt.expected
 			}
 
-			gotServices, gotFirst := autoDiscoveryConfigLabelDriftServices(tt.status, expected)
+			expectedCfg := docker.ParseAutoDiscoveryConfig(expected)
+
+			gotServices, gotFirst := autoDiscoveryConfigLabelDriftServices(tt.status, expectedCfg)
 			if !slices.Equal(gotServices, tt.wantServices) {
 				t.Fatalf("autoDiscoveryConfigLabelDriftServices() services = %v, want %v", gotServices, tt.wantServices)
 			}
 
-			if gotFirst != tt.wantFirstLabel {
-				t.Fatalf("autoDiscoveryConfigLabelDriftServices() first label = %q, want %q", gotFirst, tt.wantFirstLabel)
+			wantFirstLabel := tt.wantFirstLabel
+			if wantFirstLabel == expected {
+				wantFirstLabel = docker.MarshalAutoDiscoveryConfig(expectedCfg)
+			}
+
+			if gotFirst != wantFirstLabel {
+				t.Fatalf("autoDiscoveryConfigLabelDriftServices() first label = %q, want %q", gotFirst, wantFirstLabel)
 			}
 		})
 	}
