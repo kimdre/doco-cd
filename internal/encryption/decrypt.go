@@ -182,6 +182,12 @@ func DetectFormat(content []byte, path string) (formats.Format, bool) {
 	return formats.Binary, false
 }
 
+// formatName returns the SOPS name of a format, such as "yaml" or "binary".
+// formats.Format is an unnamed integer enum, so it is unusable in messages as is.
+func formatName(format formats.Format) string {
+	return common.StoreForFormat(format, config.NewStoresConfig()).Name()
+}
+
 // hasSopsMetadata parses the content with the supplied SOPS format and verifies
 // that it contains valid SOPS metadata without attempting decryption.
 func hasSopsMetadata(content []byte, format formats.Format) bool {
@@ -211,7 +217,7 @@ func hasSopsMetadata(content []byte, format formats.Format) bool {
 
 // DecryptFileInPlace decrypts a SOPS-encrypted file at the given path and overwrites it with the decrypted content.
 // If the file is encrypted and successfully decrypted, it returns true. If the file is not encrypted, it returns false without modifying the file.
-// The repoPath parameter is used to ensure that the file being decrypted is within the trusted repository root, preventing potential security issues with symlinks or path traversal.
+// The path must be absolute so that it cannot be resolved relative to an unexpected working directory.
 func DecryptFileInPlace(path string) (bool, error) {
 	path = filepath.Clean(path)
 
@@ -227,20 +233,29 @@ func DecryptFileInPlace(path string) (bool, error) {
 	lock := acquireFileLock(path)
 	defer releaseFileLock(path, lock)
 
-	isEncrypted, err := IsEncryptedFile(path)
+	// Read and detect once, as calling IsEncryptedFile and DecryptFile would read
+	// and parse the same file twice for every file visited during a repository walk.
+	content, err := os.ReadFile(path) // #nosec G304
 	if err != nil {
-		return false, fmt.Errorf("failed to check if file is encrypted: %w", err)
+		return false, fmt.Errorf("failed to read file %s: %w", path, err)
 	}
 
-	if !isEncrypted {
+	format, encrypted := DetectFormat(content, path)
+	if !encrypted {
 		return false, nil
 	}
 
-	decryptedContent, err := DecryptFile(path)
+	if !SopsKeyIsSet() {
+		return false, errSopsKeyNotSet
+	}
+
+	decryptedContent, err := DecryptContent(content, format)
 	if err != nil {
 		return false, fmt.Errorf("failed to decrypt file %s: %w", path, err)
 	}
 
+	// #nosec G703 -- path is cleaned, required to be absolute and verified to be a regular
+	// file above, and is the same file that was just read.
 	err = os.WriteFile(path, decryptedContent, filesystem.PermOwner)
 	if err != nil {
 		return false, fmt.Errorf("failed to write file %s: %w", path, err)

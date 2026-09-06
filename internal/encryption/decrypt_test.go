@@ -20,6 +20,7 @@ func TestIsSopsEncryptedFile(t *testing.T) {
 		{"testdata/encrypted.yaml", true},
 		{"testdata/encrypted.json", true},
 		{"testdata/encrypted.env", true},
+		{"testdata/encrypted.ini", true},
 		{"testdata/encrypted", true},
 		{"testdata/unencrypted.yaml", false},
 		{"testdata/unencrypted.json", false},
@@ -72,6 +73,12 @@ func TestDetectFormat(t *testing.T) {
 			encrypted: true,
 		},
 		{
+			name:      "SOPS encrypted INI",
+			content:   readTestFile(t, "testdata/encrypted.ini"),
+			format:    formats.Ini,
+			encrypted: true,
+		},
+		{
 			name:      "SOPS encrypted binary",
 			content:   readTestFile(t, "testdata/encrypted"),
 			format:    formats.Binary,
@@ -121,7 +128,7 @@ sops:
 			}
 
 			if format != test.format {
-				t.Errorf("Expected format %v, got %v", test.format, format)
+				t.Errorf("Expected format %s, got %s", formatName(test.format), formatName(format))
 			}
 		})
 	}
@@ -149,7 +156,7 @@ func TestDetectFormat_PathExtension(t *testing.T) {
 			}
 
 			if format != test.format {
-				t.Errorf("Expected format %v, got %v", test.format, format)
+				t.Errorf("Expected format %s, got %s", formatName(test.format), formatName(format))
 			}
 		})
 	}
@@ -166,6 +173,7 @@ func TestDecryptSopsFile_UnknownExtension(t *testing.T) {
 	}{
 		{"testdata/encrypted.yaml", "this.is.encrypted: \"yes\"\n"},
 		{"testdata/encrypted.env", "THIS_IS_ENCRYPTED=yes\n"},
+		{"testdata/encrypted.ini", "[default]\nsecret = value\n"},
 		{"testdata/encrypted", "binary-secret\n"},
 	}
 
@@ -213,6 +221,53 @@ func TestIsSopsEncryptedFile_RecognizedExtension(t *testing.T) {
 	}
 }
 
+// TestDecryptFileInPlace verifies that unencrypted files are left untouched and that
+// encrypted files are rewritten with their decrypted content in the detected format.
+func TestDecryptFileInPlace(t *testing.T) {
+	SetupAgeKeyEnvVar(t)
+
+	tests := []struct {
+		name      string
+		fileName  string
+		fixture   string
+		decrypted bool
+		expected  string
+	}{
+		{"encrypted YAML", "secret.yaml", "testdata/encrypted.yaml", true, "this.is.encrypted: \"yes\"\n"},
+		{"encrypted INI without extension", "secret", "testdata/encrypted.ini", true, "[default]\nsecret = value\n"},
+		{"unencrypted YAML", "plain.yaml", "testdata/unencrypted.yaml", false, ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			original := readTestFile(t, test.fixture)
+
+			path := filepath.Join(t.TempDir(), test.fileName)
+			if err := os.WriteFile(path, []byte(original), filesystem.PermOwner); err != nil {
+				t.Fatalf("Failed to write fixture: %v", err)
+			}
+
+			decrypted, err := DecryptFileInPlace(path)
+			if err != nil {
+				t.Fatalf("DecryptFileInPlace failed: %v", err)
+			}
+
+			if decrypted != test.decrypted {
+				t.Fatalf("Expected decrypted=%v, got %v", test.decrypted, decrypted)
+			}
+
+			expected := test.expected
+			if !test.decrypted {
+				expected = original
+			}
+
+			if content := readTestFile(t, path); content != expected {
+				t.Errorf("Expected file content %q, got %q", expected, content)
+			}
+		})
+	}
+}
+
 func readTestFile(t *testing.T, path string) string {
 	t.Helper()
 
@@ -232,6 +287,7 @@ func TestDecryptSopsFile(t *testing.T) {
 	}{
 		{"testdata/encrypted.yaml", "this.is.encrypted: \"yes\"\n", nil},
 		{"testdata/encrypted.env", "THIS_IS_ENCRYPTED=yes\n", nil},
+		{"testdata/encrypted.ini", "[default]\nsecret = value\n", nil},
 		{"testdata/encrypted", "binary-secret\n", nil},
 		{"testdata/unencrypted.yaml", "this.is.encrypted: \"yes\"\n", sops.MetadataNotFound},
 		{"testdata/unencrypted.env", "THIS_IS_ENCRYPTED=yes\n", sops.MetadataNotFound},
