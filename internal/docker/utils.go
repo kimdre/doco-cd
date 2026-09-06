@@ -347,3 +347,9 @@ func ParseAutoDiscoveryConfig(labelValue string) deployConfig.AutoDiscoveryConfi
 
 	return cfg
 }
+
+// AutoDiscoveryConfigsEqual reports whether two auto-discovery configs are equivalent.
+// Compare normalized label values to support future complex fields (#1818).
+func AutoDiscoveryConfigsEqual(a, b deployConfig.AutoDiscoveryConfig) bool {
+	return MarshalAutoDiscoveryConfig(a) == MarshalAutoDiscoveryConfig(b)
+}
