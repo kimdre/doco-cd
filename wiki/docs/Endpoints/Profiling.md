@@ -8,6 +8,12 @@ tags:
 
 # Go Runtime Profiling
 
+pprof is Go's built-in profiling toolkit for collecting and analyzing runtime performance data.
+
+!!! danger "Profiling endpoints are intended for development and debugging purposes only"  
+    Be aware that memory and CPU profiling can significantly impact performance 
+    and **may expose sensitive information** about the application.
+
 Configure the profiling server with these environment variables:
 
 | Key             | Type    | Description                                              | Default |
