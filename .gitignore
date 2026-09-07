@@ -13,6 +13,7 @@ bin/
 *.dll
 *.so
 *.dylib
+doco-cd
 
 # Test binary, built with `go test -c`
 *.test
