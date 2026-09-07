@@ -107,7 +107,7 @@ func RunStackActionOnServices(
 		return nil, errors.New("'replicas' parameter is required and must be a non-negative integer")
 	}
 
-	if action != "scale" && action != "restart" && action != "run" {
+	if action != "scale" && action != "restart" && action != "run" && action != "recreate" {
 		return nil, fmt.Errorf("%w: %s", restapi.ErrInvalidAction, action)
 	}
 
@@ -141,13 +141,18 @@ func RunStackActionOnServices(
 				result.Status = "skipped"
 				result.Reason = swarm.ErrNotReplicatedService.Error()
 			}
-		case "restart":
+		case "restart", "recreate":
+			actionName := "restarting"
+			if action == "recreate" {
+				actionName = "recreating"
+			}
+
 			if svc.Spec.Mode.ReplicatedJob != nil || svc.Spec.Mode.GlobalJob != nil {
 				result.Status = "skipped"
 				result.Reason = docker.ErrJobServiceRestartNotSupported.Error()
 				err = docker.ErrJobServiceRestartNotSupported
 			} else {
-				log.Info("restarting service", slog.String("service", svcName))
+				log.Info(actionName+" service", slog.String("service", svcName))
 
 				err = docker.RestartService(ctx, dockerCLI.Client(), svcName)
 				if errors.Is(err, docker.ErrJobServiceRestartNotSupported) {

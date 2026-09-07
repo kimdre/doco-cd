@@ -799,9 +799,10 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 			Operations: []Operation{
 				operation(http.MethodPost, "runComposeProjectAction", "Run a Compose project action", []string{"Projects"}, openapi3.Parameters{
 					pathParameter("projectName", "Compose project name."),
-					pathParameter("action", "Lifecycle action.", "start", "stop", "restart"),
+					pathParameter("action", "Lifecycle action.", "start", "stop", "restart", "recreate"),
 					contextParameter(),
 					timeout,
+					queryStringParameter("service", "Optional service name for recreate action."),
 				}, nil, responses(mutationResponses), apiAuth),
 			},
 		},
@@ -840,7 +841,7 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 			Operations: []Operation{
 				operation(http.MethodPost, "runSwarmStackAction", "Run a Swarm stack action", []string{"Stacks"}, openapi3.Parameters{
 					pathParameter("stackName", "Swarm stack name."),
-					pathParameter("action", "Stack action.", "scale", "restart", "run"),
+					pathParameter("action", "Stack action.", "scale", "restart", "run", "recreate"),
 					contextParameter(),
 					queryStringParameter("service", "Optional service name."),
 					queryOptionalIntParameter("replicas", "Non-negative replica count. Required for the scale action.", 0),

@@ -234,6 +234,79 @@ func GetProjects(ctx context.Context, dockerCli command.Cli, showDisabled bool) 
 	})
 }
 
+// RecreateProject recreates services in the specified project.
+// If serviceName is empty, all services are recreated.
+// If serviceName is specified, only that service is recreated.
+func RecreateProject(ctx context.Context, dockerCli command.Cli, projectName, serviceName string, timeout time.Duration) error {
+	containers, err := GetProjectContainers(ctx, dockerCli, projectName)
+	if err != nil {
+		return fmt.Errorf("failed to get project containers: %w", err)
+	}
+
+	if len(containers) == 0 {
+		return fmt.Errorf("project not found or has no containers: %s", projectName)
+	}
+
+	// Extract compose file paths and working directory from container labels
+	firstContainer := containers[0]
+	workingDir := firstContainer.Labels[api.WorkingDirLabel]
+	configFilesStr := firstContainer.Labels[api.ConfigFilesLabel]
+
+	if workingDir == "" {
+		return fmt.Errorf("working directory not found in container labels for project: %s", projectName)
+	}
+
+	var composeFiles []string
+
+	if configFilesStr != "" {
+		// Parse the comma-separated list and trim whitespace
+		parts := strings.SplitSeq(configFilesStr, ",")
+		for part := range parts {
+			if trimmed := strings.TrimSpace(part); trimmed != "" {
+				composeFiles = append(composeFiles, trimmed)
+			}
+		}
+	} else {
+		// If no compose files label, use default
+		composeFiles = []string{"compose.yaml", "docker-compose.yaml"}
+	}
+
+	// Load the project with minimal options (empty ComposeLoadOptions)
+	project, err := LoadCompose(ctx, dockerCli, "", workingDir, projectName, composeFiles, []string{}, []string{}, nil, ComposeLoadOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to load compose project: %w", err)
+	}
+
+	// Filter services if a specific service is requested
+	var services []string
+	if serviceName != "" {
+		services = []string{serviceName}
+		// Validate that the service exists
+		if _, ok := project.Services[serviceName]; !ok {
+			return fmt.Errorf("service %q not found in project %q", serviceName, projectName)
+		}
+	}
+
+	// Use the compose service API to recreate
+	service, err := compose.NewComposeService(dockerCli)
+	if err != nil {
+		return err
+	}
+
+	return service.Up(ctx, project, api.UpOptions{
+		Create: api.CreateOptions{
+			Services:             services,
+			RemoveOrphans:        true,
+			Recreate:             api.RecreateForce,
+			RecreateDependencies: api.RecreateDiverged,
+			Timeout:              &timeout,
+		},
+		Start: api.StartOptions{
+			Project: project,
+		},
+	})
+}
+
 // GetProjectContainers returns the status of all services in the specified project.
 func GetProjectContainers(ctx context.Context, dockerCli command.Cli, projectName string) ([]api.ContainerSummary, error) {
 	service, err := compose.NewComposeService(dockerCli)

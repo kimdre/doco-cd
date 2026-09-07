@@ -63,6 +63,7 @@ type ProjectActionResult struct {
 type ProjectAction struct {
 	projectName string
 	action      string
+	serviceName string
 	message     string
 	execute     func(context.Context, time.Duration, *slog.Logger) error
 }
@@ -109,7 +110,7 @@ func RunProjectAction(
 	timeoutSeconds int,
 	log *slog.Logger,
 ) (ProjectActionResult, error) {
-	operation, err := ResolveProjectAction(ctx, dockerCLI, projectName, action)
+	operation, err := ResolveProjectAction(ctx, dockerCLI, projectName, action, "")
 	if err != nil {
 		return ProjectActionResult{}, err
 	}
@@ -118,12 +119,12 @@ func RunProjectAction(
 }
 
 // ResolveProjectAction validates a project and prepares its requested lifecycle action.
-func ResolveProjectAction(ctx context.Context, dockerCLI command.Cli, projectName, action string) (ProjectAction, error) {
+func ResolveProjectAction(ctx context.Context, dockerCLI command.Cli, projectName, action, serviceName string) (ProjectAction, error) {
 	if err := requireProject(ctx, dockerCLI, projectName); err != nil {
 		return ProjectAction{}, err
 	}
 
-	operation := ProjectAction{projectName: projectName, action: action}
+	operation := ProjectAction{projectName: projectName, action: action, serviceName: serviceName}
 
 	switch action {
 	case "start":
@@ -146,6 +147,17 @@ func ResolveProjectAction(ctx context.Context, dockerCLI command.Cli, projectNam
 			log.Info("restarting project", slog.String("project", projectName))
 
 			return docker.RestartProject(ctx, dockerCLI, projectName, timeout)
+		}
+	case "recreate":
+		operation.message = "project recreated: " + projectName
+		if serviceName != "" {
+			operation.message = "service recreated: " + projectName + "/" + serviceName
+		}
+
+		operation.execute = func(ctx context.Context, timeout time.Duration, log *slog.Logger) error {
+			log.Info("recreating project", slog.String("project", projectName), slog.String("service", serviceName))
+
+			return docker.RecreateProject(ctx, dockerCLI, projectName, serviceName, timeout)
 		}
 	default:
 		return ProjectAction{}, fmt.Errorf("%w: action not supported: %s", restapi.ErrInvalidAction, action)

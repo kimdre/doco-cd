@@ -199,8 +199,9 @@ func (h *Handler) ProjectActionApiHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	action := r.PathValue("action")
+	serviceName := r.URL.Query().Get("service")
 
-	operation, err := controlplane.ResolveProjectAction(ctx, dockerCli, projectName, action)
+	operation, err := controlplane.ResolveProjectAction(ctx, dockerCli, projectName, action, serviceName)
 	if err != nil {
 		if errors.Is(err, controlplane.ErrProjectNotFound) {
 			restapi.JSONError(w, err.Error(), "", jobID, http.StatusNotFound)

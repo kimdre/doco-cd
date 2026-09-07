@@ -215,6 +215,7 @@ curl --request POST \
 | `/v1/api/project/{projectName}/start`   | POST   | Start a project                           |                                                                                                                                                                                            |
 | `/v1/api/project/{projectName}/stop`    | POST   | Stop a project                            |                                                                                                                                                                                            |
 | `/v1/api/project/{projectName}/restart` | POST   | Restart a project                         |                                                                                                                                                                                            |
+| `/v1/api/project/{projectName}/recreate` | POST | Force-recreate a project or service       | - `service` (string, optional): Name of the service to recreate.<br/>- `timeout` (integer, default: `30`): Time in seconds to wait for containers to stop.                              |
 
 ### Swarm Stacks
 
@@ -228,6 +229,7 @@ curl --request POST \
 | `/v1/api/stack/{stackName}`         | DELETE | Remove a Swarm stack                                                                                              |                                                                                                                                                                                            |
 | `/v1/api/stack/{stackName}/scale`   | POST   | Rescale a Swarm stack or service                                                                                  | - `replicas` (integer): Scale to n replicas.<br/>- `service` (string, optional): Name of service to scale.<br/>- `wait` (boolean, default: `true`): Wait for service to be running/healthy | 
 | `/v1/api/stack/{stackName}/restart` | POST   | Restart/Redeploy a Swarm stack or service                                                                         | - `service` (string, optional): Name of service to restart.                                                                                                                                | 
+| `/v1/api/stack/{stackName}/recreate` | POST   | Force-redeploy a Swarm stack or service                                                                           | - `service` (string, optional): Name of service to recreate.                                                                                                                               |
 | `/v1/api/stack/{stackName}/run`     | POST   | Trigger one or all [jobs](https://docs.docker.com/reference/cli/docker/service/create/#running-as-a-job) in stack | - `service` (string, optional): Name of the job service to run.                                                                                                                            |
 
 ## Example Request
@@ -248,4 +250,16 @@ curl -X DELETE -H "x-api-key: your_api_key" "http://example.com/v1/api/project/m
 
 ```sh
 curl -X POST -H "x-api-key: your_api_key" "http://example.com/v1/api/project/my_project/restart?timeout=60"
+```
+
+### Force-recreate all services in a Compose project
+
+```sh
+curl -X POST -H "x-api-key: your_api_key" "http://example.com/v1/api/project/my_project/recreate"
+```
+
+### Force-recreate a specific Compose service
+
+```sh
+curl -X POST -H "x-api-key: your_api_key" "http://example.com/v1/api/project/my_project/recreate?service=web"
 ```
