@@ -25,8 +25,10 @@ import (
 
 var swarmJobLock = sync.Map{}
 
-const swarmOneOffCleanupTimeout = 30 * time.Second
-const maxSwarmServiceNameLength = 63
+const (
+	swarmOneOffCleanupTimeout = 30 * time.Second
+	maxSwarmServiceNameLength = 63
+)
 
 func getSwarmJobLock(name string) *sync.Mutex {
 	lock, _ := swarmJobLock.LoadOrStore(name, &sync.Mutex{})
