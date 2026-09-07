@@ -2,18 +2,27 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
+	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v5/pkg/api"
 	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/moby/moby/client"
 
+	"github.com/kimdre/doco-cd/internal/config/app"
 	"github.com/kimdre/doco-cd/internal/config/deploy"
+	"github.com/kimdre/doco-cd/internal/lock"
+	"github.com/kimdre/doco-cd/internal/secretprovider"
+	"github.com/kimdre/doco-cd/internal/webhook"
 )
+
+// ErrComposeServiceNotFound indicates that the requested service is not declared by the project.
+var ErrComposeServiceNotFound = errors.New("compose service not found")
 
 // DestroyStack destroys the stack using the provided deployment configuration.
 func DestroyStack(
@@ -237,7 +246,19 @@ func GetProjects(ctx context.Context, dockerCli command.Cli, showDisabled bool) 
 // RecreateProject recreates services in the specified project.
 // If serviceName is empty, all services are recreated.
 // If serviceName is specified, only that service is recreated.
-func RecreateProject(ctx context.Context, dockerCli command.Cli, projectName, serviceName string, timeout time.Duration) error {
+func RecreateProject(
+	ctx context.Context,
+	contextName string,
+	dockerCli command.Cli,
+	projectName string,
+	serviceName string,
+	timeout time.Duration,
+	secretProvider secretprovider.SecretProvider,
+	opts ScheduledComposeOptions,
+) error {
+	lock.LockStack(lock.StackKey(contextName, projectName))
+	defer lock.UnlockStack(lock.StackKey(contextName, projectName))
+
 	containers, err := GetProjectContainers(ctx, dockerCli, projectName)
 	if err != nil {
 		return fmt.Errorf("failed to get project containers: %w", err)
@@ -247,53 +268,149 @@ func RecreateProject(ctx context.Context, dockerCli command.Cli, projectName, se
 		return fmt.Errorf("project not found or has no containers: %s", projectName)
 	}
 
-	// Extract compose file paths and working directory from container labels
-	firstContainer := containers[0]
-	workingDir := firstContainer.Labels[api.WorkingDirLabel]
-	configFilesStr := firstContainer.Labels[api.ConfigFilesLabel]
+	labels := recreateProjectLabels(containers)
 
-	if workingDir == "" {
-		return fmt.Errorf("working directory not found in container labels for project: %s", projectName)
-	}
-
-	var composeFiles []string
-
-	if configFilesStr != "" {
-		// Parse the comma-separated list and trim whitespace
-		parts := strings.SplitSeq(configFilesStr, ",")
-		for part := range parts {
-			if trimmed := strings.TrimSpace(part); trimmed != "" {
-				composeFiles = append(composeFiles, trimmed)
-			}
-		}
-	} else {
-		// If no compose files label, use default
-		composeFiles = []string{"compose.yaml", "docker-compose.yaml"}
-	}
-
-	// Load the project with minimal options (empty ComposeLoadOptions)
-	project, err := LoadCompose(ctx, dockerCli, "", workingDir, projectName, composeFiles, []string{}, []string{}, nil, ComposeLoadOptions{})
+	ref, err := composeScheduledServiceRefFromLabels(labels)
 	if err != nil {
-		return fmt.Errorf("failed to load compose project: %w", err)
+		return fmt.Errorf("parse project metadata: %w", err)
 	}
 
-	// Filter services if a specific service is requested
-	var services []string
-	if serviceName != "" {
-		services = []string{serviceName}
-		// Validate that the service exists
-		if _, ok := project.Services[serviceName]; !ok {
-			return fmt.Errorf("service %q not found in project %q", serviceName, projectName)
+	if ref.DeploymentName != "" && ref.RepositoryURL != "" {
+		return recreateManagedProject(ctx, dockerCli, ref, labels, serviceName, timeout, secretProvider, opts)
+	}
+
+	return recreateStandardProject(ctx, dockerCli, ref, labels, containers, serviceName, timeout, opts.ComposeLoad)
+}
+
+func recreateProjectLabels(containers []api.ContainerSummary) map[string]string {
+	var fallback map[string]string
+
+	for _, container := range containers {
+		labels := container.Labels
+		if fallback == nil && strings.TrimSpace(labels[api.WorkingDirLabel]) != "" {
+			fallback = labels
+		}
+
+		if strings.TrimSpace(labels[DocoCDLabels.Deployment.Name]) != "" &&
+			(strings.TrimSpace(labels[DocoCDLabels.Source.URL]) != "" ||
+				strings.TrimSpace(labels[DocoCDLabels.Source.Name]) != "") {
+			return labels
 		}
 	}
 
-	// Use the compose service API to recreate
-	service, err := compose.NewComposeService(dockerCli)
+	return fallback
+}
+
+func recreateManagedProject(
+	ctx context.Context,
+	dockerCli command.Cli,
+	ref composeScheduledServiceRef,
+	labels map[string]string,
+	serviceName string,
+	timeout time.Duration,
+	secretProvider secretprovider.SecretProvider,
+	opts ScheduledComposeOptions,
+) error {
+	project, deployConfig, err := loadComposeScheduledProjectAll(ctx, dockerCli, ref, secretProvider, opts)
+	if err != nil {
+		return fmt.Errorf("reload managed compose project %s: %w", ref.Project, err)
+	}
+
+	project, services, err := selectRecreateServices(project, serviceName, nil)
 	if err != nil {
 		return err
 	}
 
-	return service.Up(ctx, project, api.UpOptions{
+	timestamp := time.Now().UTC().Format(time.RFC3339)
+	sourceType := resolvedSourceType(ref, opts)
+	payload := &webhook.ParsedPayload{
+		Source:   webhook.PayloadSource(SourceTypeLabelValue(string(sourceType), labels[DocoCDLabels.Source.Type])),
+		Trigger:  "api.recreate",
+		FullName: strings.TrimSpace(labels[DocoCDLabels.Source.Name]),
+		WebURL:   strings.TrimSpace(labels[DocoCDLabels.Source.URL]),
+	}
+
+	addComposeServiceLabels(
+		project,
+		deployConfig,
+		payload,
+		ref.WorkingDir,
+		app.Version,
+		timestamp,
+		ComposeVersion,
+		strings.TrimSpace(labels[DocoCDLabels.Deployment.CommitSHA]),
+		strings.TrimSpace(labels[DocoCDLabels.Deployment.ComposeHash]),
+	)
+	addComposeVolumeLabels(
+		project,
+		deployConfig,
+		payload,
+		app.Version,
+		timestamp,
+		ComposeVersion,
+		strings.TrimSpace(labels[DocoCDLabels.Deployment.CommitSHA]),
+		strings.TrimSpace(labels[DocoCDLabels.Deployment.ComposeHash]),
+	)
+
+	config := *deployConfig
+	config.Timeout = int(timeout.Seconds())
+
+	if err := deployCompose(ctx, dockerCli, project, &config, api.RecreateForce, services, nil, func(string) {}); err != nil {
+		return fmt.Errorf("recreate managed compose project %s: %w", ref.Project, err)
+	}
+
+	return nil
+}
+
+func recreateStandardProject(
+	ctx context.Context,
+	dockerCli command.Cli,
+	ref composeScheduledServiceRef,
+	labels map[string]string,
+	containers []api.ContainerSummary,
+	serviceName string,
+	timeout time.Duration,
+	loadOpts ComposeLoadOptions,
+) error {
+	if len(ref.ConfigFiles) == 0 {
+		return fmt.Errorf("%w: missing %q label", ErrComposeScheduledMetadataUnavailable, api.ConfigFilesLabel)
+	}
+
+	project, err := LoadCompose(
+		ctx,
+		dockerCli,
+		ref.WorkingDir,
+		ref.WorkingDir,
+		ref.Project,
+		ref.ConfigFiles,
+		splitCommaSeparatedLabelValues(labels[api.EnvironmentFileLabel]),
+		[]string{"*"},
+		nil,
+		loadOpts,
+	)
+	if err != nil {
+		return fmt.Errorf("load compose project %s: %w", ref.Project, err)
+	}
+
+	activeServices := make([]string, 0, len(containers))
+	for _, container := range containers {
+		service := strings.TrimSpace(container.Labels[api.ServiceLabel])
+		if _, declared := project.Services[service]; service != "" && declared {
+			activeServices = append(activeServices, service)
+		}
+	}
+
+	project, services, err := selectRecreateServices(project, serviceName, activeServices)
+	if err != nil {
+		return err
+	}
+
+	service, err := compose.NewComposeService(dockerCli)
+	if err != nil {
+		return fmt.Errorf("create compose service: %w", err)
+	}
+
+	if err := service.Up(ctx, project, api.UpOptions{
 		Create: api.CreateOptions{
 			Services:             services,
 			RemoveOrphans:        true,
@@ -304,7 +421,37 @@ func RecreateProject(ctx context.Context, dockerCli command.Cli, projectName, se
 		Start: api.StartOptions{
 			Project: project,
 		},
-	})
+	}); err != nil {
+		return fmt.Errorf("recreate compose project %s: %w", ref.Project, err)
+	}
+
+	return nil
+}
+
+func selectRecreateServices(project *types.Project, serviceName string, activeServices []string) (*types.Project, []string, error) {
+	if serviceName != "" {
+		if _, ok := project.Services[serviceName]; !ok {
+			return nil, nil, fmt.Errorf("%w: %s/%s", ErrComposeServiceNotFound, project.Name, serviceName)
+		}
+
+		selected, err := project.WithSelectedServices([]string{serviceName}, types.IncludeDependencies)
+		if err != nil {
+			return nil, nil, fmt.Errorf("select compose service %s/%s: %w", project.Name, serviceName, err)
+		}
+
+		return selected, []string{serviceName}, nil
+	}
+
+	if len(activeServices) == 0 {
+		return project, nil, nil
+	}
+
+	selected, err := project.WithSelectedServices(activeServices, types.IncludeDependencies)
+	if err != nil {
+		return nil, nil, fmt.Errorf("select active services for compose project %s: %w", project.Name, err)
+	}
+
+	return selected, nil, nil
 }
 
 // GetProjectContainers returns the status of all services in the specified project.
