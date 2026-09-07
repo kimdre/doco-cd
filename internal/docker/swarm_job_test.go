@@ -3,9 +3,48 @@ package docker
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
 )
+
+func TestSwarmOneOffServiceName(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(0, 1730000000000000000)
+	suffix := "-doco-job-1730000000000000000"
+
+	testCases := []struct {
+		name              string
+		sourceServiceName string
+		want              string
+	}{
+		{
+			name:              "keeps short source service name",
+			sourceServiceName: "stack_backup",
+			want:              "stack_backup" + suffix,
+		},
+		{
+			name:              "truncates source service name to Docker limit",
+			sourceServiceName: strings.Repeat("a", maxSwarmServiceNameLength),
+			want:              strings.Repeat("a", maxSwarmServiceNameLength-len(suffix)) + suffix,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := swarmOneOffServiceName(tc.sourceServiceName, now)
+
+			if got != tc.want {
+				t.Errorf("swarmOneOffServiceName() = %q, want %q", got, tc.want)
+			}
+
+			if len(got) > maxSwarmServiceNameLength {
+				t.Errorf("swarmOneOffServiceName() length = %d, want <= %d", len(got), maxSwarmServiceNameLength)
+			}
+		})
+	}
+}
 
 func TestRunSwarmJob(t *testing.T) {
 	t.Parallel()

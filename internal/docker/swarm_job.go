@@ -26,6 +26,7 @@ import (
 var swarmJobLock = sync.Map{}
 
 const swarmOneOffCleanupTimeout = 30 * time.Second
+const maxSwarmServiceNameLength = 63
 
 func getSwarmJobLock(name string) *sync.Mutex {
 	lock, _ := swarmJobLock.LoadOrStore(name, &sync.Mutex{})
@@ -213,7 +214,7 @@ func RunSwarmOneOffFromService(ctx context.Context, dockerCLI command.Cli, servi
 
 	sourceService := inspectResult.Service
 	oneOffSpec := sourceService.Spec
-	oneOffSpec.Name = fmt.Sprintf("%s-doco-job-%d", sourceService.Spec.Name, time.Now().UTC().UnixNano())
+	oneOffSpec.Name = swarmOneOffServiceName(sourceService.Spec.Name, time.Now())
 
 	if oneOffSpec.TaskTemplate.ContainerSpec == nil {
 		return fmt.Errorf("service %s has no task container spec", serviceName)
@@ -319,6 +320,17 @@ func RunSwarmOneOffFromService(ctx context.Context, dockerCLI command.Cli, servi
 	}
 
 	return nil
+}
+
+func swarmOneOffServiceName(sourceServiceName string, now time.Time) string {
+	suffix := fmt.Sprintf("%s%d", oneOffServiceNameSeparator, now.UTC().UnixNano())
+	maxSourceServiceNameLength := maxSwarmServiceNameLength - len(suffix)
+
+	if len(sourceServiceName) > maxSourceServiceNameLength {
+		sourceServiceName = sourceServiceName[:maxSourceServiceNameLength]
+	}
+
+	return sourceServiceName + suffix
 }
 
 // RemoveSwarmOneOffService removes a retained temporary job service.
