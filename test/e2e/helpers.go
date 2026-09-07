@@ -343,7 +343,8 @@ func (h *Harness) SwarmServiceHasRunningTask(serviceID string) bool {
 	}
 
 	for _, task := range tasks.Items {
-		if task.DesiredState == swarmTypes.TaskStateRunning && task.Status.State == swarmTypes.TaskStateRunning {
+		// Swarm job tasks are desired to complete even while their status is running.
+		if task.Status.State == swarmTypes.TaskStateRunning {
 			return true
 		}
 	}
