@@ -10,6 +10,9 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'wiki/**'
+      - '.github/workflows/docs.yaml'
   release:
     types:
       - published
