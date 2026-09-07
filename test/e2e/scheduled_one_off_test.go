@@ -77,8 +77,8 @@ func TestScheduledOneOff_RecoversAfterForcedDaemonTermination(t *testing.T) {
 }
 
 func TestScheduledOneOff_SwarmRecoversAfterForcedDaemonTermination(t *testing.T) {
-	t.Parallel()
-
+	// Scheduled-job discovery spans the shared Swarm cluster, so this test must
+	// not run alongside other E2E scenarios that create scheduled services.
 	h := NewHarness(t, "scheduled-one-off-swarm-recovery")
 	if !h.isSwarmMode() {
 		t.Skip("scheduled one-off Swarm recovery requires a Swarm manager")
