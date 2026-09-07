@@ -20,6 +20,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/cache"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/storage/filesystem"
+	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 	"go.yaml.in/yaml/v4"
 
@@ -297,6 +298,57 @@ func (h *Harness) OneOffContainerID(project, service string) string {
 	h.t.Helper()
 
 	return h.oneOffContainerID(h.docker, project, service)
+}
+
+// SwarmOneOffServiceID returns the single temporary Swarm one-off service for
+// a stack, or "" after doco-cd has completed its cleanup.
+func (h *Harness) SwarmOneOffServiceID(stack string) string {
+	h.t.Helper()
+
+	f := client.Filters{}.Add("label", "com.docker.stack.namespace="+stack)
+
+	services, err := h.docker.ServiceList(h.ctx, client.ServiceListOptions{Filters: f})
+	if err != nil {
+		h.t.Fatalf("list one-off services for %s: %v", stack, err)
+	}
+
+	var oneOffServices []swarmTypes.Service
+
+	for _, service := range services.Items {
+		if service.Spec.Labels[docker.DocoCDJobLabels.JobEphemeral] == "true" {
+			oneOffServices = append(oneOffServices, service)
+		}
+	}
+
+	if len(oneOffServices) == 0 {
+		return ""
+	}
+
+	if len(oneOffServices) != 1 {
+		h.t.Fatalf("found %d temporary one-off services for %s", len(oneOffServices), stack)
+	}
+
+	return oneOffServices[0].ID
+}
+
+// SwarmServiceHasRunningTask reports whether serviceID has a running task.
+func (h *Harness) SwarmServiceHasRunningTask(serviceID string) bool {
+	h.t.Helper()
+
+	tasks, err := h.docker.TaskList(h.ctx, client.TaskListOptions{
+		Filters: client.Filters{}.Add("service", serviceID),
+	})
+	if err != nil {
+		h.t.Fatalf("list tasks for service %s: %v", serviceID, err)
+	}
+
+	for _, task := range tasks.Items {
+		if task.DesiredState == swarmTypes.TaskStateRunning && task.Status.State == swarmTypes.TaskStateRunning {
+			return true
+		}
+	}
+
+	return false
 }
 
 // RemoteOneOffContainerID returns a retained one-off container from the

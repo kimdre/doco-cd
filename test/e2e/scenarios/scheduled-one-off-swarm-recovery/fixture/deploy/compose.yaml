@@ -1,0 +1,15 @@
+services:
+  app:
+    image: alpine:3.22
+    command: ["sh", "-c", "trap 'exit 0' TERM; while :; do sleep 1; done"]
+
+  backup:
+    image: alpine:3.22
+    command: ["sleep", "30"]
+    labels:
+      cd.doco.job.enabled: "true"
+      cd.doco.job.schedule: "@every 10s"
+      cd.doco.job.execution_mode: "one_off"
+      cd.doco.job.skip_running: "true"
+      cd.doco.job.notify_on: "none"
+      cd.doco.job.stop_services: "app"

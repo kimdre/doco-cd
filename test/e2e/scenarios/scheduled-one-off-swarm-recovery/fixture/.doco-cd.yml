@@ -1,0 +1,6 @@
+name: e2e-scheduled-one-off-swarm-recovery
+working_dir: deploy
+compose_files: [compose.yaml]
+swarm:
+  enabled: true
+reconciliation: false
