@@ -16,7 +16,7 @@ import (
 	"github.com/kimdre/doco-cd/internal/notification"
 )
 
-func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, cfg docker.JobScheduleConfig) error {
+func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, cfg docker.JobScheduleConfig, record *executionRecord, scheduledAt, startedAt time.Time) (err error) {
 	// Stop any declared services before executing the job, then restart them
 	// afterwards regardless of whether the job succeeds or fails.
 	//
@@ -26,15 +26,44 @@ func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, c
 	// service 2 of 3 fails, service 1 must still be restarted). Restarting an
 	// already-running service/container is a harmless no-op.
 	if len(cfg.StopServices) > 0 {
+		if record != nil {
+			if err := s.prepareExecutionStopPlans(ctx, job, cfg, record); err != nil {
+				return err
+			}
+
+			if err := s.executions.update(*record); err != nil {
+				return fmt.Errorf("persist scheduled execution before stopping services: %w", err)
+			}
+		}
+
 		stackName := getJobStackName(job)
 		restoreCtx := context.WithoutCancel(ctx)
 
 		defer func() {
-			if err := s.startServicesForJob(restoreCtx, job.mode, stackName, cfg.StopServices); err != nil {
+			if record != nil && ctx.Err() != nil {
+				return
+			}
+
+			if restoreErr := s.startServicesForJob(restoreCtx, job.mode, stackName, cfg.StopServices); restoreErr != nil {
 				s.log.Error("failed to restart services after scheduled job",
 					slog.String("job", job.name),
-					logger.ErrAttr(err),
+					logger.ErrAttr(restoreErr),
 				)
+				err = errors.Join(err, fmt.Errorf("restarting services after job: %w", restoreErr))
+
+				return
+			}
+
+			if record != nil {
+				record.Restored = true
+
+				if persistErr := s.executions.update(*record); persistErr != nil {
+					s.log.Error("failed to persist scheduled execution restoration state",
+						slog.String("run_id", record.RunID),
+						logger.ErrAttr(persistErr),
+					)
+					err = errors.Join(err, fmt.Errorf("persisting service restoration state: %w", persistErr))
+				}
 			}
 		}()
 
@@ -47,7 +76,17 @@ func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, c
 	case scheduledJobModeContainer:
 		switch cfg.ExecutionMode {
 		case docker.JobExecutionModeOneOff:
-			err := docker.RunComposeOneOffFromServiceDefinition(ctx, s.dockerCli, job.labels, s.secretProvider, s.composeOptions)
+			runOpts := docker.ComposeOneOffOptions{}
+			if record != nil {
+				runOpts = docker.ComposeOneOffOptions{
+					RunID:       record.RunID,
+					SourceID:    job.id,
+					ScheduledAt: scheduledAt.Format(time.RFC3339Nano),
+					StartedAt:   startedAt.Format(time.RFC3339Nano),
+				}
+			}
+
+			err := docker.RunComposeOneOffFromServiceDefinitionWithOptions(ctx, s.dockerCli, job.labels, s.secretProvider, s.composeOptions, runOpts)
 			if err == nil {
 				return nil
 			}
@@ -56,7 +95,17 @@ func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, c
 				return err
 			}
 
-			return docker.RunContainerOneOffFromExisting(ctx, s.dockerCli.Client(), job.id)
+			containerOpts := docker.OneOffContainerOptions{}
+			if record != nil {
+				containerOpts = docker.OneOffContainerOptions{
+					RunID:       record.RunID,
+					SourceID:    job.id,
+					ScheduledAt: scheduledAt.Format(time.RFC3339Nano),
+					StartedAt:   startedAt.Format(time.RFC3339Nano),
+				}
+			}
+
+			return docker.RunContainerOneOffFromExistingWithOptions(ctx, s.dockerCli.Client(), job.id, containerOpts)
 		default:
 			err := docker.RunComposeScheduledContainer(ctx, s.dockerCli, job.id, job.labels, len(cfg.StopServices) > 0, s.secretProvider, s.composeOptions)
 			if err == nil {
@@ -79,10 +128,18 @@ func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, c
 	case scheduledJobModeSwarm:
 		switch cfg.ExecutionMode {
 		case docker.JobExecutionModeOneOff:
-			return docker.RunSwarmOneOffFromService(ctx, s.dockerCli, job.id, docker.SwarmOneOffFromServiceOptions{
+			swarmOpts := docker.SwarmOneOffFromServiceOptions{
 				Replicas:         cfg.SwarmReplicas,
 				SendRegistryAuth: true,
-			})
+			}
+			if record != nil {
+				swarmOpts.RunID = record.RunID
+				swarmOpts.KeepService = true
+				swarmOpts.ScheduledAt = scheduledAt.Format(time.RFC3339Nano)
+				swarmOpts.StartedAt = startedAt.Format(time.RFC3339Nano)
+			}
+
+			return docker.RunSwarmOneOffFromService(ctx, s.dockerCli, job.id, swarmOpts)
 		default:
 			err := docker.RerunJobService(ctx, s.dockerCli.Client(), job.id)
 			if err == nil {
@@ -98,6 +155,39 @@ func (s *scheduler) executeScheduledRun(ctx context.Context, job scheduledJob, c
 	default:
 		return fmt.Errorf("unsupported scheduled job mode %q", job.mode)
 	}
+}
+
+func (s *scheduler) prepareExecutionStopPlans(ctx context.Context, job scheduledJob, cfg docker.JobScheduleConfig, record *executionRecord) error {
+	stackName := getJobStackName(job)
+
+	plans := make([]executionStopPlan, 0, len(cfg.StopServices))
+	for _, ref := range cfg.StopServices {
+		project := ref.Project
+		if project == "" {
+			project = stackName
+		}
+
+		plan := executionStopPlan{Project: project, Service: ref.Service}
+		if job.mode == scheduledJobModeSwarm {
+			replicas, err := docker.SwarmServiceReplicas(ctx, s.dockerCli, project+"_"+ref.Service)
+			if errors.Is(err, docker.ErrGlobalSwarmServiceNotScalable) {
+				plans = append(plans, plan)
+				continue
+			}
+
+			if err != nil {
+				return fmt.Errorf("record restoration plan for swarm service %s_%s: %w", project, ref.Service, err)
+			}
+
+			plan.Replicas = replicas
+		}
+
+		plans = append(plans, plan)
+	}
+
+	record.StopPlans = plans
+
+	return s.executions.update(*record)
 }
 
 const stopServicesTimeout = 30 * time.Second

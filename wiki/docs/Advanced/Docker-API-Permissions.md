@@ -100,7 +100,7 @@ These endpoints are only needed when the corresponding setting is enabled.
 #### `SCHEDULER_ENABLED` endpoint details
 
 - Default (`execution_mode: restart`): `POST /containers/{id}/restart`; Swarm: `GET /services/{id}`, `POST /services/{id}/update`
-- `execution_mode: one_off`: `POST /containers/create`, `POST /containers/{id}/wait`, `POST /containers/{id}/start`; Swarm: `POST /services/create`, `DELETE /services/{id}`, `GET /tasks`
+- `execution_mode: one_off`: `GET /containers/json`, `GET /containers/{id}/json`, `POST /containers/create`, `POST /containers/{id}/wait`, `POST /containers/{id}/start`, `DELETE /containers/{id}`; Swarm: `GET /services`, `GET /services/{id}`, `POST /services/create`, `DELETE /services/{id}`, `GET /tasks`
 - `stop_services`: `POST /containers/{id}/stop|start`; Swarm: `POST /services/{id}/update`, `GET /tasks`
 
 #### REST API endpoint details

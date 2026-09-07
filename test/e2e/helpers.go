@@ -20,8 +20,11 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/cache"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/storage/filesystem"
+	swarmTypes "github.com/moby/moby/api/types/swarm"
 	"github.com/moby/moby/client"
 	"go.yaml.in/yaml/v4"
+
+	"github.com/kimdre/doco-cd/internal/docker"
 )
 
 // initRepo creates the repo the gitserver container mounts read-only, plus a
@@ -234,6 +237,14 @@ func (h *Harness) ComposeContainerID(project, service string) string {
 	return h.containerID(h.docker, false, project, service)
 }
 
+// RemoteComposeContainerID returns a Compose container from the disposable
+// remote Docker context enabled with EnableRemoteContext.
+func (h *Harness) RemoteComposeContainerID(project, service string) string {
+	h.t.Helper()
+
+	return h.containerID(h.remoteDockerClient(), false, project, service)
+}
+
 // SwarmContainerID returns the running Swarm task container for a deployment.
 func (h *Harness) SwarmContainerID(project, service string) string {
 	h.t.Helper()
@@ -246,11 +257,7 @@ func (h *Harness) SwarmContainerID(project, service string) string {
 func (h *Harness) RemoteContainerID(project, service string) string {
 	h.t.Helper()
 
-	if h.remoteDocker == nil {
-		h.t.Fatal("remote Docker context is not enabled")
-	}
-
-	return h.containerID(h.remoteDocker, false, project, service)
+	return h.containerID(h.remoteDockerClient(), false, project, service)
 }
 
 func (h *Harness) ContainerImage(containerID string) string {
@@ -259,14 +266,137 @@ func (h *Harness) ContainerImage(containerID string) string {
 	return h.containerImage(h.docker, containerID)
 }
 
+// ContainerRunning reports whether containerID is currently running.
+func (h *Harness) ContainerRunning(containerID string) bool {
+	h.t.Helper()
+
+	return h.containerRunning(h.docker, containerID)
+}
+
+// RemoteContainerRunning reports whether containerID is running in the
+// disposable remote Docker context.
+func (h *Harness) RemoteContainerRunning(containerID string) bool {
+	h.t.Helper()
+
+	return h.containerRunning(h.remoteDockerClient(), containerID)
+}
+
+func (h *Harness) containerRunning(dockerClient *client.Client, containerID string) bool {
+	h.t.Helper()
+
+	inspect, err := dockerClient.ContainerInspect(h.ctx, containerID, client.ContainerInspectOptions{})
+	if err != nil {
+		h.t.Fatalf("inspect container %s: %v", shortContainerID(containerID), err)
+	}
+
+	return inspect.Container.State != nil && inspect.Container.State.Running
+}
+
+// OneOffContainerID returns the retained Compose one-off container for a
+// scheduled job, or "" after doco-cd has completed its cleanup.
+func (h *Harness) OneOffContainerID(project, service string) string {
+	h.t.Helper()
+
+	return h.oneOffContainerID(h.docker, project, service)
+}
+
+// SwarmOneOffServiceID returns the single temporary Swarm one-off service for
+// a stack, or "" after doco-cd has completed its cleanup.
+func (h *Harness) SwarmOneOffServiceID(stack string) string {
+	h.t.Helper()
+
+	f := client.Filters{}.Add("label", "com.docker.stack.namespace="+stack)
+
+	services, err := h.docker.ServiceList(h.ctx, client.ServiceListOptions{Filters: f})
+	if err != nil {
+		h.t.Fatalf("list one-off services for %s: %v", stack, err)
+	}
+
+	var oneOffServices []swarmTypes.Service
+
+	for _, service := range services.Items {
+		if service.Spec.Labels[docker.DocoCDJobLabels.JobEphemeral] == "true" {
+			oneOffServices = append(oneOffServices, service)
+		}
+	}
+
+	if len(oneOffServices) == 0 {
+		return ""
+	}
+
+	if len(oneOffServices) != 1 {
+		h.t.Fatalf("found %d temporary one-off services for %s", len(oneOffServices), stack)
+	}
+
+	return oneOffServices[0].ID
+}
+
+// SwarmServiceHasRunningTask reports whether serviceID has a running task.
+func (h *Harness) SwarmServiceHasRunningTask(serviceID string) bool {
+	h.t.Helper()
+
+	tasks, err := h.docker.TaskList(h.ctx, client.TaskListOptions{
+		Filters: client.Filters{}.Add("service", serviceID),
+	})
+	if err != nil {
+		h.t.Fatalf("list tasks for service %s: %v", serviceID, err)
+	}
+
+	for _, task := range tasks.Items {
+		// Swarm job tasks are desired to complete even while their status is running.
+		if task.Status.State == swarmTypes.TaskStateRunning {
+			return true
+		}
+	}
+
+	return false
+}
+
+// RemoteOneOffContainerID returns a retained one-off container from the
+// disposable remote Docker context.
+func (h *Harness) RemoteOneOffContainerID(project, service string) string {
+	h.t.Helper()
+
+	return h.oneOffContainerID(h.remoteDockerClient(), project, service)
+}
+
+func (h *Harness) oneOffContainerID(dockerClient *client.Client, project, service string) string {
+	h.t.Helper()
+
+	f := client.Filters{}.
+		Add("label", "com.docker.compose.project="+project).
+		Add("label", "com.docker.compose.service="+service).
+		Add("label", docker.DocoCDJobLabels.JobEphemeral+"=true").
+		Add("label", docker.DocoCDJobLabels.JobRunID)
+
+	containers, err := dockerClient.ContainerList(h.ctx, client.ContainerListOptions{All: true, Filters: f})
+	if err != nil {
+		h.t.Fatalf("list one-off containers for %s/%s: %v", project, service, err)
+	}
+
+	if len(containers.Items) == 0 {
+		return ""
+	}
+
+	if len(containers.Items) != 1 {
+		h.t.Fatalf("found %d retained one-off containers for %s/%s", len(containers.Items), project, service)
+	}
+
+	return containers.Items[0].ID
+}
+
 func (h *Harness) RemoteContainerImage(containerID string) string {
 	h.t.Helper()
 
+	return h.containerImage(h.remoteDockerClient(), containerID)
+}
+
+func (h *Harness) remoteDockerClient() *client.Client {
 	if h.remoteDocker == nil {
 		h.t.Fatal("remote Docker context is not enabled")
 	}
 
-	return h.containerImage(h.remoteDocker, containerID)
+	return h.remoteDocker
 }
 
 func (h *Harness) containerImage(dockerClient *client.Client, containerID string) string {

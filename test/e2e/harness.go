@@ -32,6 +32,8 @@ import (
 // repoDir is the doco-cd repo root, relative to this package (test/e2e).
 const repoDir = "../.."
 
+const e2eStopTimeout = time.Second
+
 // Harness owns one gitserver + one doco-cd container built from the working
 // tree, plus the host-side git repo the daemon polls. Every scenario gets
 // its own instance (own network, own containers, own workdir), so scenarios
@@ -41,11 +43,13 @@ type Harness struct {
 	ctx      context.Context
 	scenario string
 
-	workDir    string // host tmp dir: repos/<scenario>.git + src/<scenario>
-	repoPath   string // bare repo dir the gitserver container mounts read-only
-	worktree   string // host worktree dir used to build fixture/commits
-	dataVolume string
-	volumes    []string
+	workDir      string // host tmp dir: repos/<scenario>.git + src/<scenario>
+	repoPath     string // bare repo dir the gitserver container mounts read-only
+	worktree     string // host worktree dir used to build fixture/commits
+	pollConfig   string
+	pollInterval time.Duration
+	dataVolume   string
+	volumes      []string
 
 	wt     *git.Worktree
 	docker *client.Client
@@ -121,6 +125,13 @@ func (h *Harness) TrackVolume(name string) {
 	h.volumes = append(h.volumes, name)
 }
 
+// SetPollInterval sets the poll interval for the test daemon.
+// Call before Start.
+func (h *Harness) SetPollInterval(interval time.Duration) {
+	h.t.Helper()
+	h.pollInterval = interval
+}
+
 // Start creates the initial fixture commit, builds and starts the gitserver
 // + doco-cd containers, and waits for the daemon to become healthy.
 func (h *Harness) Start() {
@@ -156,8 +167,43 @@ func (h *Harness) Start() {
 	}
 
 	pollPath := h.writePollConfig()
+	h.pollConfig = pollPath
 	h.logf("starting daemon")
 	h.startDaemon(pollPath)
+}
+
+// KillAndRestartDaemon forcibly removes the daemon container, then starts a
+// replacement with the same scenario data volume and poll configuration.
+func (h *Harness) KillAndRestartDaemon() {
+	h.t.Helper()
+
+	if h.daemon == nil {
+		h.t.Fatal("doco-cd daemon is not running")
+	}
+
+	if h.pollConfig == "" {
+		h.t.Fatal("doco-cd poll configuration is unavailable")
+	}
+
+	daemonID := h.daemon.GetContainerID()
+	h.logf("force-killing doco-cd container %s", shortContainerID(daemonID))
+
+	if _, err := h.docker.ContainerKill(h.ctx, daemonID, client.ContainerKillOptions{Signal: "SIGKILL"}); err != nil {
+		h.t.Fatalf("force-kill doco-cd container: %v", err)
+	}
+
+	h.WaitFor(10*time.Second, "doco-cd container stopped", func() bool {
+		inspect, err := h.docker.ContainerInspect(h.ctx, daemonID, client.ContainerInspectOptions{})
+		return err == nil && inspect.Container.State != nil && !inspect.Container.State.Running
+	})
+
+	if _, err := h.docker.ContainerRemove(h.ctx, daemonID, client.ContainerRemoveOptions{Force: true}); err != nil {
+		h.t.Fatalf("remove force-killed doco-cd container: %v", err)
+	}
+
+	h.daemon = nil
+	h.logf("starting replacement doco-cd container")
+	h.startDaemon(h.pollConfig)
 }
 
 func (h *Harness) startGitServer() {
@@ -444,7 +490,12 @@ func daemonImageName() string {
 func (h *Harness) writePollConfig() string {
 	h.t.Helper()
 
-	content := fmt.Sprintf("- url: http://gitserver/%s.git\n  reference: refs/heads/main\n  interval: 10\n", h.scenario)
+	interval := h.pollInterval
+	if interval == 0 {
+		interval = 10 * time.Second
+	}
+
+	content := fmt.Sprintf("- url: http://gitserver/%s.git\n  reference: refs/heads/main\n  interval: %s\n", h.scenario, interval)
 
 	path := filepath.Join(h.workDir, "poll.yaml")
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
@@ -492,7 +543,7 @@ func (h *Harness) teardownSuite() {
 func (h *Harness) teardownInternal() {
 	h.teardownOnce.Do(func() {
 		if h.daemon != nil {
-			_ = h.daemon.Terminate(h.ctx)
+			h.terminateContainer(h.daemon)
 		}
 
 		h.cleanupStacks()
@@ -508,11 +559,11 @@ func (h *Harness) teardownInternal() {
 		}
 
 		if h.remoteDaemon != nil {
-			_ = h.remoteDaemon.Terminate(h.ctx)
+			h.terminateContainer(h.remoteDaemon)
 		}
 
 		if h.gitSrv != nil {
-			_ = h.gitSrv.Terminate(h.ctx)
+			h.terminateContainer(h.gitSrv)
 		}
 
 		if h.net != nil {
@@ -523,6 +574,10 @@ func (h *Harness) teardownInternal() {
 
 		_ = os.RemoveAll(h.workDir)
 	})
+}
+
+func (h *Harness) terminateContainer(container testcontainers.Container) {
+	_ = container.Terminate(h.ctx, testcontainers.StopTimeout(e2eStopTimeout))
 }
 
 func (h *Harness) logFailure() {

@@ -46,6 +46,13 @@ type composeScheduledServiceRef struct {
 	Reference      string
 }
 
+type ComposeOneOffOptions struct {
+	RunID       string
+	SourceID    string
+	ScheduledAt string
+	StartedAt   string
+}
+
 func RunComposeScheduledContainer(
 	ctx context.Context,
 	dockerCli command.Cli,
@@ -117,6 +124,20 @@ func RunComposeOneOffFromServiceDefinition(
 	secretProvider secretprovider.SecretProvider,
 	opts ScheduledComposeOptions,
 ) error {
+	return RunComposeOneOffFromServiceDefinitionWithOptions(ctx, dockerCli, labels, secretProvider, opts, ComposeOneOffOptions{})
+}
+
+// RunComposeOneOffFromServiceDefinitionWithOptions runs a Compose service as a
+// retained one-off when RunID is set, allowing a replacement process to inspect
+// and finalize it after a forced termination.
+func RunComposeOneOffFromServiceDefinitionWithOptions(
+	ctx context.Context,
+	dockerCli command.Cli,
+	labels map[string]string,
+	secretProvider secretprovider.SecretProvider,
+	opts ScheduledComposeOptions,
+	runOpts ComposeOneOffOptions,
+) error {
 	ref, err := composeScheduledServiceRefFromLabels(labels)
 	if err != nil {
 		return err
@@ -127,7 +148,7 @@ func RunComposeOneOffFromServiceDefinition(
 		return err
 	}
 
-	project, err = prepareComposeProjectForOneOffRun(project, ref.Service)
+	project, err = prepareComposeProjectForOneOffRunWithOptions(project, ref.Service, runOpts)
 	if err != nil {
 		return err
 	}
@@ -140,7 +161,7 @@ func RunComposeOneOffFromServiceDefinition(
 	exitCode, err := service.RunOneOffContainer(ctx, project, api.RunOptions{
 		Service:     ref.Service,
 		NoDeps:      true,
-		AutoRemove:  true,
+		AutoRemove:  runOpts.RunID == "",
 		Tty:         false,
 		Interactive: false,
 	})
@@ -163,6 +184,10 @@ func RunComposeOneOffFromServiceDefinition(
 // one-off containers from being rediscovered as standalone scheduled jobs while
 // preserving the rest of the service definition used to launch them.
 func prepareComposeProjectForOneOffRun(project *types.Project, serviceName string) (*types.Project, error) {
+	return prepareComposeProjectForOneOffRunWithOptions(project, serviceName, ComposeOneOffOptions{})
+}
+
+func prepareComposeProjectForOneOffRunWithOptions(project *types.Project, serviceName string, opts ComposeOneOffOptions) (*types.Project, error) {
 	if project == nil {
 		return nil, errors.New("compose project is required")
 	}
@@ -202,7 +227,27 @@ func prepareComposeProjectForOneOffRun(project *types.Project, serviceName strin
 	svc.CustomLabels[api.OneoffLabel] = "False"
 
 	svc.Labels[DocoCDJobLabels.JobEphemeral] = "true"
+
 	svc.CustomLabels[DocoCDJobLabels.JobEphemeral] = "true"
+	if opts.RunID != "" {
+		svc.Labels[DocoCDJobLabels.JobRunID] = opts.RunID
+		svc.CustomLabels[DocoCDJobLabels.JobRunID] = opts.RunID
+	}
+
+	if opts.SourceID != "" {
+		svc.Labels[DocoCDJobLabels.JobSourceServiceID] = opts.SourceID
+		svc.CustomLabels[DocoCDJobLabels.JobSourceServiceID] = opts.SourceID
+	}
+
+	if opts.ScheduledAt != "" {
+		svc.Labels[DocoCDJobLabels.JobScheduledAt] = opts.ScheduledAt
+		svc.CustomLabels[DocoCDJobLabels.JobScheduledAt] = opts.ScheduledAt
+	}
+
+	if opts.StartedAt != "" {
+		svc.Labels[DocoCDJobLabels.JobStartedAt] = opts.StartedAt
+		svc.CustomLabels[DocoCDJobLabels.JobStartedAt] = opts.StartedAt
+	}
 
 	projectCopy := *project
 	projectCopy.Services = maps.Clone(project.Services)

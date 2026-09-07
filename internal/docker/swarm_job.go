@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
+	"maps"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/avast/retry-go/v5"
+	"github.com/containerd/errdefs"
 	"github.com/docker/cli/cli/command"
 
 	"github.com/kimdre/doco-cd/internal/config/app"
@@ -24,6 +25,11 @@ import (
 
 var swarmJobLock = sync.Map{}
 
+const (
+	swarmOneOffCleanupTimeout = 30 * time.Second
+	maxSwarmServiceNameLength = 63
+)
+
 func getSwarmJobLock(name string) *sync.Mutex {
 	lock, _ := swarmJobLock.LoadOrStore(name, &sync.Mutex{})
 	return lock.(*sync.Mutex)
@@ -35,8 +41,9 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 	apiClient := dockerCLI.Client()
 
 	var (
-		serviceMode swarmTypes.ServiceMode
-		serviceId   string
+		serviceMode          swarmTypes.ServiceMode
+		serviceID            string
+		previousJobIteration *uint64
 	)
 
 	switch mode {
@@ -96,7 +103,7 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 		QueryRegistry: true,
 	})
 	if err == nil {
-		serviceId = response.ID
+		serviceID = response.ID
 	} else {
 		// Update existing service to trigger a new job run
 		if strings.Contains(err.Error(), "already exists") {
@@ -114,12 +121,12 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 
 			for _, service := range listResult.Items {
 				if service.Spec.Name == newServiceSpec.Name {
-					serviceId = service.ID
+					serviceID = service.ID
 					break
 				}
 			}
 
-			if serviceId == "" {
+			if serviceID == "" {
 				return errors.New("service already exists but could not find its ID")
 			}
 
@@ -132,25 +139,24 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 				}),
 			).Do(
 				func() error {
-					inspectResult, getErr := apiClient.ServiceInspect(ctx, serviceId, client.ServiceInspectOptions{})
+					inspectResult, getErr := apiClient.ServiceInspect(ctx, serviceID, client.ServiceInspectOptions{})
 					if getErr != nil {
 						return fmt.Errorf("error inspecting existing service: %w", getErr)
 					}
 
 					existingService := inspectResult.Service
-
-					// already up to date, no need to update
-					if existingService.Spec.TaskTemplate.ForceUpdate == newServiceSpec.TaskTemplate.ForceUpdate &&
-						reflect.DeepEqual(existingService.Spec.TaskTemplate.ContainerSpec.Labels, newServiceSpec.TaskTemplate.ContainerSpec.Labels) &&
-						reflect.DeepEqual(existingService.Spec.TaskTemplate.ContainerSpec.Command, newServiceSpec.TaskTemplate.ContainerSpec.Command) {
-						return nil
+					if existingService.JobStatus != nil {
+						iteration := existingService.JobStatus.JobIteration.Index
+						previousJobIteration = &iteration
 					}
-					// Update the ForceUpdate to trigger a new job run
+
+					// Update ForceUpdate monotonically so every invocation starts a
+					// new job iteration, including multiple runs in one second.
 					existingService.Spec.TaskTemplate.ContainerSpec.Labels = newServiceSpec.TaskTemplate.ContainerSpec.Labels
 					existingService.Spec.TaskTemplate.ContainerSpec.Command = newServiceSpec.TaskTemplate.ContainerSpec.Command
-					existingService.Spec.TaskTemplate.ForceUpdate = newServiceSpec.TaskTemplate.ForceUpdate
+					existingService.Spec.TaskTemplate.ForceUpdate++
 
-					_, updateErr := apiClient.ServiceUpdate(ctx, serviceId, client.ServiceUpdateOptions{
+					_, updateErr := apiClient.ServiceUpdate(ctx, serviceID, client.ServiceUpdateOptions{
 						Version:       existingService.Version,
 						Spec:          existingService.Spec,
 						QueryRegistry: true,
@@ -166,10 +172,10 @@ func RunSwarmJob(ctx context.Context, dockerCLI command.Cli, mode swarm.DeployMo
 		}
 	}
 
-	// Wait for container to complete
-	err = swarm.WaitOnServices(ctx, dockerCLI, []string{serviceId})
+	// Wait for the job's current iteration to complete or fail.
+	err = swarm.WaitOnJobService(ctx, dockerCLI, serviceID, previousJobIteration)
 	if err != nil {
-		return fmt.Errorf("error waiting for one-off job service: %w", err)
+		return fmt.Errorf("error waiting for job service: %w", err)
 	}
 
 	return nil
@@ -189,10 +195,14 @@ func RunImageRemoveJob(ctx context.Context, dockerCLI command.Cli, images []stri
 type SwarmOneOffFromServiceOptions struct {
 	Replicas         uint64
 	SendRegistryAuth bool
+	RunID            string
+	ScheduledAt      string
+	StartedAt        string
+	KeepService      bool
 }
 
 // RunSwarmOneOffFromService creates a temporary job service from an existing service spec and waits for completion.
-func RunSwarmOneOffFromService(ctx context.Context, dockerCLI command.Cli, serviceName string, opts SwarmOneOffFromServiceOptions) error {
+func RunSwarmOneOffFromService(ctx context.Context, dockerCLI command.Cli, serviceName string, opts SwarmOneOffFromServiceOptions) (err error) {
 	apiClient := dockerCLI.Client()
 
 	if opts.Replicas == 0 {
@@ -206,20 +216,46 @@ func RunSwarmOneOffFromService(ctx context.Context, dockerCLI command.Cli, servi
 
 	sourceService := inspectResult.Service
 	oneOffSpec := sourceService.Spec
-	oneOffSpec.Name = fmt.Sprintf("%s-doco-job-%d", sourceService.Spec.Name, time.Now().UTC().UnixNano())
+	oneOffSpec.Name = swarmOneOffServiceName(sourceService.Spec.Name, time.Now())
 
 	if oneOffSpec.TaskTemplate.ContainerSpec == nil {
 		return fmt.Errorf("service %s has no task container spec", serviceName)
 	}
 
+	// Copy the nested reference fields before changing the clone. A direct
+	// ServiceSpec assignment shares the source service's label maps and
+	// ContainerSpec pointer.
+	containerSpec := *oneOffSpec.TaskTemplate.ContainerSpec
+	containerSpec.Labels = maps.Clone(containerSpec.Labels)
+	oneOffSpec.TaskTemplate.ContainerSpec = &containerSpec
+	oneOffSpec.Labels = maps.Clone(oneOffSpec.Labels)
+
 	if oneOffSpec.TaskTemplate.ContainerSpec.Labels == nil {
 		oneOffSpec.TaskTemplate.ContainerSpec.Labels = map[string]string{}
 	}
 
-	oneOffSpec.TaskTemplate.ContainerSpec.Labels[DocoCDJobLabels.JobEphemeral] = "true"
-
 	if oneOffSpec.Labels == nil {
 		oneOffSpec.Labels = map[string]string{}
+	}
+
+	for _, labels := range []map[string]string{
+		oneOffSpec.TaskTemplate.ContainerSpec.Labels,
+		oneOffSpec.Labels,
+	} {
+		labels[DocoCDJobLabels.JobEphemeral] = "true"
+
+		labels[DocoCDJobLabels.JobSourceServiceID] = sourceService.ID
+		if opts.RunID != "" {
+			labels[DocoCDJobLabels.JobRunID] = opts.RunID
+		}
+
+		if opts.ScheduledAt != "" {
+			labels[DocoCDJobLabels.JobScheduledAt] = opts.ScheduledAt
+		}
+
+		if opts.StartedAt != "" {
+			labels[DocoCDJobLabels.JobStartedAt] = opts.StartedAt
+		}
 	}
 
 	oneOffSpec.Labels[DocoCDLabels.Metadata.Manager] = app.Name
@@ -262,12 +298,81 @@ func RunSwarmOneOffFromService(ctx context.Context, dockerCLI command.Cli, servi
 		return fmt.Errorf("create one-off service from %s: %w", serviceName, err)
 	}
 
-	defer func() {
-		_, _ = apiClient.ServiceRemove(context.WithoutCancel(ctx), createResult.ID, client.ServiceRemoveOptions{})
-	}()
+	if !opts.KeepService {
+		defer func() {
+			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), swarmOneOffCleanupTimeout)
+			defer cancel()
 
-	if err = swarm.WaitOnServices(ctx, dockerCLI, []string{createResult.ID}); err != nil {
+			_, cleanupErr := apiClient.ServiceRemove(cleanupCtx, createResult.ID, client.ServiceRemoveOptions{})
+			if cleanupErr == nil || errdefs.IsNotFound(cleanupErr) {
+				return
+			}
+
+			cleanupErr = fmt.Errorf("remove one-off service %s: %w", createResult.ID, cleanupErr)
+			if err == nil {
+				err = cleanupErr
+			} else {
+				err = errors.Join(err, cleanupErr)
+			}
+		}()
+	}
+
+	if err = swarm.WaitOnJobService(ctx, dockerCLI, createResult.ID, nil); err != nil {
 		return fmt.Errorf("wait one-off service %s: %w", createResult.ID, err)
+	}
+
+	return nil
+}
+
+func swarmOneOffServiceName(sourceServiceName string, now time.Time) string {
+	suffix := fmt.Sprintf("%s%d", oneOffServiceNameSeparator, now.UTC().UnixNano())
+	maxSourceServiceNameLength := maxSwarmServiceNameLength - len(suffix)
+
+	if len(sourceServiceName) > maxSourceServiceNameLength {
+		sourceServiceName = sourceServiceName[:maxSourceServiceNameLength]
+	}
+
+	return sourceServiceName + suffix
+}
+
+// RemoveSwarmOneOffService removes a retained temporary job service.
+func RemoveSwarmOneOffService(ctx context.Context, dockerCLI command.Cli, serviceID string) error {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), swarmOneOffCleanupTimeout)
+	defer cancel()
+
+	_, err := dockerCLI.Client().ServiceRemove(cleanupCtx, serviceID, client.ServiceRemoveOptions{})
+	if err != nil && !errdefs.IsNotFound(err) {
+		return fmt.Errorf("remove one-off service %s: %w", serviceID, err)
+	}
+
+	return nil
+}
+
+// FindSwarmOneOffService finds the single retained temporary service for runID.
+func FindSwarmOneOffService(ctx context.Context, dockerCLI command.Cli, runID string) (string, error) {
+	filter := make(client.Filters)
+	filter.Add("label", DocoCDJobLabels.JobRunID+"="+runID)
+
+	result, err := dockerCLI.Client().ServiceList(ctx, client.ServiceListOptions{Filters: filter})
+	if err != nil {
+		return "", fmt.Errorf("list one-off services for run %s: %w", runID, err)
+	}
+
+	if len(result.Items) == 0 {
+		return "", nil
+	}
+
+	if len(result.Items) != 1 {
+		return "", fmt.Errorf("found %d one-off services for run %s", len(result.Items), runID)
+	}
+
+	return result.Items[0].ID, nil
+}
+
+// WaitOnSwarmOneOffService adopts a retained temporary job service.
+func WaitOnSwarmOneOffService(ctx context.Context, dockerCLI command.Cli, serviceID string) error {
+	if err := swarm.WaitOnJobService(ctx, dockerCLI, serviceID, nil); err != nil {
+		return fmt.Errorf("wait one-off service %s: %w", serviceID, err)
 	}
 
 	return nil
