@@ -25,7 +25,7 @@ require (
 	github.com/compose-spec/compose-go/v2 v2.15.0
 	github.com/containerd/errdefs v1.0.0
 	github.com/distribution/reference v0.6.0
-	github.com/docker/cli v29.7.2+incompatible
+	github.com/docker/cli v29.8.0+incompatible
 	github.com/docker/compose/v5 v5.5.1
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/getkin/kin-openapi v0.149.0
@@ -40,8 +40,8 @@ require (
 	github.com/infisical/go-sdk v0.8.0
 	github.com/jmespath/go-jmespath v0.4.1-0.20220621161143-b0104c826a24
 	github.com/moby/buildkit v0.33.0
-	github.com/moby/moby/api v1.55.0
-	github.com/moby/moby/client v0.5.1
+	github.com/moby/moby/api v1.56.0
+	github.com/moby/moby/client v0.6.0
 	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/openbao/openbao/api/v2 v2.6.0
 	github.com/opencontainers/go-digest v1.0.0
@@ -150,7 +150,7 @@ require (
 	github.com/fatih/color v1.19.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fsnotify/fsevents v0.2.0 // indirect
-	github.com/fvbommel/sortorder v1.1.0 // indirect
+	github.com/fvbommel/sortorder v1.2.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.15 // indirect
 	github.com/getsops/gopgagent v0.0.0-20241224165529-7044f28e491e // indirect
@@ -324,9 +324,6 @@ require (
 	github.com/vearutop/statigz v1.4.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
-	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
-	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
-	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
 	github.com/xhit/go-str2duration/v2 v2.1.0 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
