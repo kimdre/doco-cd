@@ -32,6 +32,8 @@ import (
 // repoDir is the doco-cd repo root, relative to this package (test/e2e).
 const repoDir = "../.."
 
+const e2eStopTimeout = time.Second
+
 // Harness owns one gitserver + one doco-cd container built from the working
 // tree, plus the host-side git repo the daemon polls. Every scenario gets
 // its own instance (own network, own containers, own workdir), so scenarios
@@ -541,7 +543,7 @@ func (h *Harness) teardownSuite() {
 func (h *Harness) teardownInternal() {
 	h.teardownOnce.Do(func() {
 		if h.daemon != nil {
-			_ = h.daemon.Terminate(h.ctx)
+			h.terminateContainer(h.daemon)
 		}
 
 		h.cleanupStacks()
@@ -557,11 +559,11 @@ func (h *Harness) teardownInternal() {
 		}
 
 		if h.remoteDaemon != nil {
-			_ = h.remoteDaemon.Terminate(h.ctx)
+			h.terminateContainer(h.remoteDaemon)
 		}
 
 		if h.gitSrv != nil {
-			_ = h.gitSrv.Terminate(h.ctx)
+			h.terminateContainer(h.gitSrv)
 		}
 
 		if h.net != nil {
@@ -572,6 +574,10 @@ func (h *Harness) teardownInternal() {
 
 		_ = os.RemoveAll(h.workDir)
 	})
+}
+
+func (h *Harness) terminateContainer(container testcontainers.Container) {
+	_ = container.Terminate(h.ctx, testcontainers.StopTimeout(e2eStopTimeout))
 }
 
 func (h *Harness) logFailure() {
