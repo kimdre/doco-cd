@@ -85,6 +85,7 @@ var docoCDJobLabelNames = struct {
 	JobSkipRunning     string // Skip a schedule trigger when a previous run is still in progress
 	JobExecutionMode   string // Defines if a run restarts/reruns the job or starts an ephemeral one-off execution
 	JobEphemeral       string // Marks a runtime-created scheduler one-off target that should be ignored as drift
+	JobSourceServiceID string // Identifies the source service of a runtime-created Swarm one-off target
 	JobNotifyOn        string // Controls notification behavior: none, success, failure, all
 	JobSwarmReplicas   string // Number of replicas for one-off replicated-job runs in swarm mode
 	JobRestartReplicas string // Intended replica count for swarm restart-mode jobs deployed at 0 replicas
@@ -98,6 +99,7 @@ var docoCDJobLabelNames = struct {
 	JobSkipRunning:     "cd.doco.job.skip_running",
 	JobExecutionMode:   "cd.doco.job.execution_mode",
 	JobEphemeral:       "cd.doco.job.ephemeral",
+	JobSourceServiceID: "cd.doco.job.source_service_id",
 	JobNotifyOn:        "cd.doco.job.notify_on",
 	JobSwarmReplicas:   "cd.doco.job.swarm.replicas",
 	JobRestartReplicas: "cd.doco.job.swarm.restart_replicas",

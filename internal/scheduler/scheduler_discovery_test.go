@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/docker/compose/v5/pkg/api"
+	swarmTypes "github.com/moby/moby/api/types/swarm"
 
 	"github.com/kimdre/doco-cd/internal/docker"
 	"github.com/kimdre/doco-cd/internal/docker/swarm"
@@ -174,6 +175,35 @@ func TestIsEphemeralScheduledContainer(t *testing.T) {
 			got := isEphemeralScheduledContainer(tt.labels)
 			if got != tt.want {
 				t.Fatalf("isEphemeralScheduledContainer()=%v want=%v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsActiveSwarmTask(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		state swarmTypes.TaskState
+		want  bool
+	}{
+		{state: swarmTypes.TaskStateNew, want: true},
+		{state: swarmTypes.TaskStatePending, want: true},
+		{state: swarmTypes.TaskStateRunning, want: true},
+		{state: swarmTypes.TaskStateComplete, want: false},
+		{state: swarmTypes.TaskStateShutdown, want: false},
+		{state: swarmTypes.TaskStateFailed, want: false},
+		{state: swarmTypes.TaskStateRejected, want: false},
+		{state: swarmTypes.TaskStateOrphaned, want: false},
+		{state: swarmTypes.TaskStateRemove, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.state), func(t *testing.T) {
+			t.Parallel()
+
+			if got := isActiveSwarmTask(swarmTypes.Task{Status: swarmTypes.TaskStatus{State: tt.state}}); got != tt.want {
+				t.Fatalf("isActiveSwarmTask(%q) = %v, want %v", tt.state, got, tt.want)
 			}
 		})
 	}

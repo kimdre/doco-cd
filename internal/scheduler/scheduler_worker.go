@@ -248,7 +248,7 @@ func (s *scheduler) triggerRun(ctx context.Context, job scheduledJob, cfg docker
 	stackName := getJobStackName(job)
 	metricLabels := getScheduledRunMetricLabels(job, cfg, stackName)
 
-	if cfg.SkipRunning && s.isRunInProgress(job.key) {
+	if cfg.SkipRunning && (job.running || s.isRunInProgress(job.key)) {
 		s.log.Warn("skipping scheduled run because previous run is still in progress",
 			slog.String("job", job.name),
 			slog.String("stack", stackName),
