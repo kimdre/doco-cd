@@ -13,6 +13,8 @@ on:
     paths:
       - 'wiki/**'
       - '.github/workflows/docs.yaml'
+      - '*.md'
+      - 'LICENSE'
   release:
     types:
       - published
