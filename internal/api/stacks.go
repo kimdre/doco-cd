@@ -66,7 +66,7 @@ func (h *Handler) StackActionApiHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	action := r.PathValue("action")
-	if action != "scale" && action != "restart" && action != "run" && action != "recreate" {
+	if action != "scale" && action != "restart" && action != "run" {
 		jobLog.Error(restapi.ErrInvalidAction.Error())
 		restapi.JSONError(w, restapi.ErrInvalidAction.Error(), "action not supported: "+action, jobID, http.StatusBadRequest)
 
@@ -111,10 +111,9 @@ func (h *Handler) StackActionApiHandler(w http.ResponseWriter, r *http.Request) 
 
 		if errors.Is(err, controlplane.ErrNoApplicableStackServices) {
 			errMsg := map[string]string{
-				"scale":    "no services found to scale in stack: " + stackName,
-				"restart":  "no services found to restart in stack: " + stackName,
-				"run":      "no job services found to retrigger in stack: " + stackName,
-				"recreate": "no services found to recreate in stack: " + stackName,
+				"scale":   "no services found to scale in stack: " + stackName,
+				"restart": "no services found to restart in stack: " + stackName,
+				"run":     "no job services found to retrigger in stack: " + stackName,
 			}[action]
 			restapi.JSONError(w, errMsg, "", jobID, http.StatusNotFound)
 
@@ -122,10 +121,9 @@ func (h *Handler) StackActionApiHandler(w http.ResponseWriter, r *http.Request) 
 		}
 
 		errMsg := map[string]string{
-			"scale":    "failed to scale service",
-			"restart":  "failed to restart service",
-			"run":      "failed to retrigger job service",
-			"recreate": "failed to recreate service",
+			"scale":   "failed to scale service",
+			"restart": "failed to restart service",
+			"run":     "failed to retrigger job service",
 		}[action]
 		jobLog.With(logger.ErrAttr(err)).Error(errMsg)
 		restapi.JSONError(w, err, errMsg, jobID, http.StatusInternalServerError)
@@ -152,14 +150,6 @@ func (h *Handler) StackActionApiHandler(w http.ResponseWriter, r *http.Request) 
 		}
 
 		restapi.JSONResponse(w, "stack restarted: "+stackName, jobID, http.StatusOK)
-	case "recreate":
-		if serviceName != "" {
-			restapi.JSONResponse(w, "service recreated: "+stackName+"_"+serviceName, jobID, http.StatusOK)
-
-			return
-		}
-
-		restapi.JSONResponse(w, "stack recreated: "+stackName, jobID, http.StatusOK)
 	case "run":
 		if serviceName != "" {
 			restapi.JSONResponse(w, "job retriggered: "+stackName+"_"+serviceName, jobID, http.StatusOK)

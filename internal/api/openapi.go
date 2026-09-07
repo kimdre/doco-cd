@@ -841,7 +841,7 @@ func createRouteCatalog(h *Handler, mounts Mounts, builder *schemaBuilder) ([]Ro
 			Operations: []Operation{
 				operation(http.MethodPost, "runSwarmStackAction", "Run a Swarm stack action", []string{"Stacks"}, openapi3.Parameters{
 					pathParameter("stackName", "Swarm stack name."),
-					pathParameter("action", "Stack action.", "scale", "restart", "run", "recreate"),
+					pathParameter("action", "Stack action.", "scale", "restart", "run"),
 					contextParameter(),
 					queryStringParameter("service", "Optional service name."),
 					queryOptionalIntParameter("replicas", "Non-negative replica count. Required for the scale action.", 0),
